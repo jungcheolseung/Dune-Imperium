@@ -26,6 +26,7 @@ from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -37,6 +38,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.engine import Transition
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules import (
     UprisingRulesEngine,
@@ -46,6 +48,7 @@ from dune_imperium.rules import (
     frames,
     leader_abilities,
 )
+from dune_imperium.rules.agent_icons import card_is_boosted
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import (
@@ -752,8 +755,9 @@ def test_a_partner_box_with_a_choice_stays_reachable(
     optional arrow and Dissecting Kit's trash are the partner's box to
     take. The engine before codec v143 hid its switch once a dry run called
     both boxes unavailable, which misread such choice boxes, so the
-    partner's box could only fizzle at the turn's end; now its rows stay
-    offered next to the turn end."""
+    partner's box could only fizzle at the turn's end; now its rows are
+    offered, and the turn end waits for them (codec v144,
+    ``test_a_box_with_a_choice_holds_the_turn_end``)."""
 
     state = _settle_all_but_box_one(
         _graft(_state((placed, partner), troops_supply=9), placed, "arrakeen", partner)
@@ -778,6 +782,254 @@ def test_a_partner_box_with_a_choice_stays_reachable(
     else:
         assert after.specimens == before.specimens + 1
         assert placed in after.trashed
+
+
+# A box that offers a choice holds the turn end (codec v144)
+# ---------------------------------------------------------------------------
+
+SURGEON = "imperium:tleilaxu_surgeon:0"
+MASTER = "imperium:tleilaxu_master:0"
+DIPLOMACY = next(card for card in STARTERS if "diplomacy:0" in card)
+# The first research column with a genetic marker [Immortality p. 6].
+FIRST_MARKER_SPACE = "c4r2"
+FINISH = DomainAction("finish_agent_turn", 0)
+
+
+def _settle_space(state: GameState) -> GameState:
+    """Resolve the visited space's own effects and its Faction Influence."""
+
+    while True:
+        legal = ENGINE.legal_actions(state, 0)
+        rows = [
+            action
+            for action in legal
+            if action.action_id in ("resolve_board_effect", "resolve_faction_influence")
+        ]
+        if not rows:
+            return state
+        state = ENGINE.apply(state, rows[0], legal_actions=legal).state
+
+
+def _place_alone(state: GameState, card_id: str, space_id: str) -> GameState:
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == card_id
+        and dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments).get("graft") is not True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    return ENGINE.apply(state, placement).state
+
+
+def test_stitched_horror_holds_the_turn_end_until_it_names_two() -> None:
+    """Stitched Horror's box is "Choose two" of water, troop, trash and
+    Tleilaxu (docs/rules/immortality.md, slice 5c-1), named before either
+    resolves (OQ-057 (4)). It has no arrow and no condition, so it is a
+    mandatory effect that can always resolve: "'턴 종료'는 의무 효과가 모두
+    끝났을 때만 제시된다" (OQ-095 2), and a mandatory box fizzles at the end
+    only when "turn이 끝날 때까지 불가능할 때만" (OQ-057 (1)). Before codec
+    v144 the dry run behind the turn end tried the box's generic resolution,
+    which a choice box does not take, read it as unavailable, and offered
+    the end beside the four rewards; the press then fizzled the box with no
+    reward (water, garrison and Tleilaxu unchanged)."""
+
+    state = _settle_space(
+        _graft(_state((HORROR, DAGGER), troops_supply=9), HORROR, "arrakeen", DAGGER)
+    )
+    assert not agent_effects.agent_card_effect_is_unavailable(state)
+    assert not agent_effects.graft_boxes_are_stalled(state)
+    legal = ENGINE.legal_actions(state, 0)
+    assert FINISH not in legal
+    assert {
+        dict(action.arguments)["reward"]
+        for action in legal
+        if action.action_id == "choose_agent_card_reward"
+    } == {"water", "troop", "trash", "tleilaxu"}
+    named = _apply(state, "choose_agent_card_reward", reward="water")
+    assert FINISH not in ENGINE.legal_actions(named, 0)
+    done = _apply(named, "choose_agent_card_reward", reward="tleilaxu")
+    assert FINISH in ENGINE.legal_actions(done, 0)
+    owner = done.players[0]
+    before = state.players[0]
+    assert owner.resources.water == before.resources.water + 1
+    assert owner.tleilaxu_space == before.tleilaxu_space + 1
+    finished = ENGINE.apply(done, FINISH)
+    assert "agent_card_effect_unavailable" not in {
+        event.kind for event in finished.events
+    }
+
+
+def test_ghola_s_copy_of_stitched_horror_holds_the_turn_end_too() -> None:
+    """Ghola's copy is a box of its own (OQ-057 (12)): once Stitched Horror
+    names its two, the copy's "Choose two" still holds the end."""
+
+    state = _settle_space(
+        _graft(_state((HORROR, GHOLA), troops_supply=9), HORROR, "arrakeen", GHOLA)
+    )
+    assert FINISH not in ENGINE.legal_actions(state, 0)
+    first = _apply(state, "choose_agent_card_reward", reward="water")
+    horror_done = _apply(first, "choose_agent_card_reward", reward="troop")
+    assert _boxes_offered(horror_done, "choose_agent_card_reward") == {1}
+    assert FINISH not in ENGINE.legal_actions(horror_done, 0)
+    copy_first = _apply(horror_done, "choose_agent_card_reward", box=1, reward="water")
+    both_done = _apply(copy_first, "choose_agent_card_reward", box=1, reward="tleilaxu")
+    assert FINISH in ENGINE.legal_actions(both_done, 0)
+
+
+def _arrow_box(case: str) -> GameState:
+    if case == "piter":
+        return _settle_space(
+            _place_alone(_state((PITER, DAGGER)), PITER, "accept_contract")
+        )
+    if case == "piter_no_unit":
+        return _settle_space(
+            _place_alone(
+                _state((PITER, DAGGER), troops_garrison=0, troops_supply=12),
+                PITER,
+                "accept_contract",
+            )
+        )
+    if case == "surgeon":
+        return _settle_space(
+            _place_alone(
+                _state((SURGEON, DAGGER), specimens=2, troops_supply=7),
+                SURGEON,
+                "dutiful_service",
+            )
+        )
+    if case == "surgeon_one_specimen":
+        return _settle_space(
+            _place_alone(
+                _state((SURGEON, DAGGER), specimens=1, troops_supply=8),
+                SURGEON,
+                "dutiful_service",
+            )
+        )
+    if case == "tleilaxu_master":
+        return _settle_space(
+            _place_alone(
+                _state((MASTER, DAGGER), research_space=FIRST_MARKER_SPACE),
+                MASTER,
+                "accept_contract",
+            )
+        )
+    assert case == "dissecting_kit"
+    return _settle_space(
+        _graft(_state((DISSECTING, DAGGER)), DISSECTING, "arrakeen", DAGGER)
+    )
+
+
+_PAY = "decline_agent_card_payment"
+_ACQUIRE = "decline_agent_card_acquisition"
+
+
+@pytest.mark.parametrize(
+    ("case", "rows", "refusal"),
+    [
+        ("piter", {_PAY, "lose_agent_card_troop"}, _PAY),
+        ("surgeon", {_PAY, "pay_agent_card_two_specimens"}, _PAY),
+        ("dissecting_kit", {_PAY, "trash_grafted_card_for_specimen"}, _PAY),
+        ("tleilaxu_master", {_ACQUIRE, "acquire_imperium_by_card"}, _ACQUIRE),
+    ],
+)
+def test_a_box_with_a_choice_holds_the_turn_end(
+    case: str, rows: set[str], refusal: str
+) -> None:
+    """Effects are mandatory unless they say "may", pay an arrow's cost or
+    show the black trash icon [FAQ p. 3] (docs/rules/official-rulings-
+    index.md), and "화살표(→) 비용 효과는 어디서나 선택이다 ... Intrigue 밖의
+    화살표 효과는 이미 거절 행동을 가진다: ... Tleilaxu(Surgeon·Slig
+    Farmer·Scientific Breakthrough·Dissecting Kit)" (OQ-058). Piter's "Lose
+    a troop -> draw two cards and Research", Tleilaxu Surgeon's "2
+    specimens -> Tleilaxu Tleilaxu", Dissecting Kit's "Trash the other
+    grafted card -> a specimen" and Tleilaxu Master's "[one genetic marker]:
+    you may acquire a card costing 6 or less" can still resolve while the
+    cost can be paid (the card acquired), so the box is answered, paying or
+    refusing, before the turn ends. Before codec v144 the turn end's dry run
+    misread these four as unavailable and offered the end beside their
+    rows. The refusal answers the box; the end follows."""
+
+    state = _arrow_box(case)
+    legal = ENGINE.legal_actions(state, 0)
+    assert {
+        action.action_id for action in legal if action.action_id in rows
+    } == rows
+    assert FINISH not in legal
+    assert not agent_effects.agent_card_effect_is_unavailable(state)
+    declined = _apply(state, refusal)
+    assert FINISH in ENGINE.legal_actions(declined, 0)
+
+
+@pytest.mark.parametrize("case", ["piter_no_unit", "surgeon_one_specimen"])
+def test_an_arrow_whose_cost_cannot_be_paid_still_lets_the_turn_end(
+    case: str,
+) -> None:
+    """With no unit to lose (Piter) or one specimen short of two (Tleilaxu
+    Surgeon) the box offers only its refusal: its effect cannot happen
+    this turn, so it is a box that can only fizzle (OQ-057 (1)) and the
+    turn end is offered beside the refusal, as before codec v144. The press
+    fizzles it with the refusal's result: nothing."""
+
+    state = _arrow_box(case)
+    legal = ENGINE.legal_actions(state, 0)
+    assert {action.action_id for action in legal if action.action_id == _PAY} == {
+        _PAY
+    }
+    assert agent_effects.agent_card_effect_is_unavailable(state)
+    assert FINISH in legal
+    finished = ENGINE.apply(state, FINISH)
+    assert "agent_card_effect_unavailable" in {
+        event.kind for event in finished.events
+    }
+
+
+def test_beguiling_pheromones_holds_the_turn_end_on_a_faction_space() -> None:
+    """Beguiling Pheromones' "trash one of the grafted cards and gain an
+    additional Influence" has no "may", arrow or black trash icon, so it is
+    mandatory [FAQ p. 3] (``legal_agent_card_payment_actions``): on a
+    Faction space it can resolve, so the turn end waits for the trash
+    (OQ-095 2, OQ-057 (1)). Before codec v144 the end was offered beside
+    the trash and the press fizzled the box."""
+
+    state = _settle_space(
+        _graft(_state((DIPLOMACY, PHEROMONES)), DIPLOMACY, "secrets", PHEROMONES)
+    )
+    legal = ENGINE.legal_actions(state, 0)
+    assert FINISH not in legal
+    assert _boxes_offered(state, "trash_grafted_card_for_influence") == {1}
+    trashed = _apply(
+        state, "trash_grafted_card_for_influence", box=1, card_id=PHEROMONES
+    )
+    assert trashed.players[0].influence.bene_gesserit == (
+        state.players[0].influence.bene_gesserit + 1
+    )
+    assert FINISH in ENGINE.legal_actions(trashed, 0)
+
+
+def test_dissecting_kit_without_its_partner_in_play_can_only_fizzle() -> None:
+    """With no other grafted card in play Dissecting Kit's box offers
+    nothing ("without a partner still in play the box does nothing",
+    ``legal_agent_card_payment_actions``), so it is one that only fizzles
+    and the turn end stays offered (OQ-057 (1))."""
+
+    state = _graft(_state((DISSECTING, DAGGER)), DISSECTING, "arrakeen", DAGGER)
+    owner = state.players[0]
+    gone = replace(
+        state,
+        players=(
+            replace(
+                owner,
+                in_play=tuple(card for card in owner.in_play if card != DAGGER),
+                trashed=(*owner.trashed, DAGGER),
+            ),
+            *state.players[1:],
+        ),
+    )
+    assert agent_effects.agent_card_effect_is_unavailable(gone)
+    assert agent_effects.graft_boxes_are_stalled(_settle_space(gone))
+    assert FINISH in ENGINE.legal_actions(_settle_space(gone), 0)
 
 
 def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
@@ -813,11 +1065,12 @@ def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
     }
 
 
-def test_box_one_s_card_draw_is_never_urgent_shigawire_s() -> None:
+def test_box_one_s_own_card_draw_leaves_the_placed_card_s_added_draw() -> None:
     """Urgent Shigawire adds its draw to the boosted card's box: the placed
-    Planned Coupling, box 0. Box 0 prints no card-draw icon, so the untagged
-    ``effect=cards`` is the added draw; box 1's (Tleilaxu Infiltrator's) is
-    its own icon and leaves the added draw waiting (OQ-106 1)."""
+    Planned Coupling, box 0 (Tleilaxu Infiltrator, box 1, is no Bene
+    Gesserit card, OQ-107). Box 0 prints no card-draw icon, so the untagged
+    ``effect=cards`` is the added draw; box 1's is its own icon and leaves
+    the added draw waiting (OQ-106 1)."""
 
     state = _graft(
         _state((COUPLING, INFILTRATOR), bene_gesserit_boost_pending=True),
@@ -890,3 +1143,228 @@ def test_the_observation_names_both_boxes_by_their_fixed_number() -> None:
         1,
         0,
     )
+
+
+# Urgent Shigawire and a Bene Gesserit graft partner (OQ-107, codec v144)
+# ---------------------------------------------------------------------------
+#
+# "The next Bene Gesserit card you play this round has all Agent icons and,
+# added to its Agent box: draw a card." [Urgent Shigawire card]. A graft
+# plays two cards -- "You must play two cards (and only two) on that turn"
+# [Immortality p. 10] -- and "Both played cards are considered to have
+# “sent” the Agent, no matter which card’s icon you use." [Immortality p.
+# 10]. User ruling 2026-10-12 (OQ-107): "1. 짝도 받음" -- the partner is a
+# card played, so a Bene Gesserit partner takes a boost still pending: its
+# box gets the added draw (``box=1``) and the boost is spent. With two Bene
+# Gesserit cards the placed one takes it.
+
+TRUTHTRANCE = "imperium:truthtrance:0"
+USURP = "tleilaxu:usurp:0"
+CARDS = (("effect", "cards"),)
+BOX_ZERO_DRAW = DomainAction("resolve_agent_card_effect", 0, CARDS)
+PARTNER_DRAW = DomainAction("resolve_agent_card_effect", 0, (("box", 1), *CARDS))
+
+
+def _placed(state: GameState, card_id: str, space_id: str) -> GameState:
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == card_id
+        and dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments).get("graft") is True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    return ENGINE.apply(state, placement).state
+
+
+def _choose_partner(state: GameState, partner: str) -> Transition:
+    return ENGINE.apply(
+        state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
+    )
+
+
+def _boost_consumed(result: Transition) -> list[object]:
+    return [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "agent_card_boost_consumed"
+    ]
+
+
+def test_a_bene_gesserit_partner_takes_the_boost_and_its_draw() -> None:
+    """Tleilaxu Infiltrator (no Bene Gesserit card) is placed; Truthtrance
+    (Bene Gesserit, no Agent box of its own) is its partner, so Truthtrance
+    is "the next Bene Gesserit card you play": the boost is spent on it and
+    its box, box 1, gets the added draw. The placed card's own card-draw
+    icon stays its own (untagged); the turn end waits for the added draw;
+    the boost is not carried to a later Bene Gesserit card."""
+
+    placed = _placed(
+        _state((INFILTRATOR, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+        INFILTRATOR,
+        "arrakeen",
+    )
+    assert placed.players[0].bene_gesserit_boost_pending is True
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == [TRUTHTRANCE]
+    state = grafted.state
+    owner = state.players[0]
+    assert owner.bene_gesserit_boost_pending is False
+    _, context = current_agent_effect_context(state)
+    assert context["boost_draw_card_id"] == TRUTHTRANCE
+    legal = ENGINE.legal_actions(state, 0)
+    assert PARTNER_DRAW in legal and BOX_ZERO_DRAW in legal
+    assert agent_effects.resolves_boost_draw(state, PARTNER_DRAW)
+    assert not agent_effects.resolves_boost_draw(state, BOX_ZERO_DRAW)
+    assert FINISH not in legal
+
+    drawn = ENGINE.apply(state, PARTNER_DRAW)
+    assert len(drawn.state.players[0].hand) == len(owner.hand) + 1
+    assert any(
+        event.kind == "agent_card_effect_resolved"
+        and dict(event.payload)["card_id"] == TRUTHTRANCE
+        for event in drawn.events
+    )
+    _, context = current_agent_effect_context(drawn.state)
+    assert "boost_draw_card_id" not in context
+    # The draw is bound to its card: no box was made active for it.
+    assert context["card_id"] == INFILTRATOR
+    later = drawn.state
+    assert PARTNER_DRAW not in ENGINE.legal_actions(later, 0)
+    # Infiltrator's own card-draw icon is still box 0's to take.
+    assert BOX_ZERO_DRAW in ENGINE.legal_actions(later, 0)
+    # Spent: a Bene Gesserit card played later this round is not boosted.
+    assert not card_is_boosted(
+        personal_card_for_instance(COUPLING), later.players[0]
+    )
+
+
+def test_a_usurp_partner_from_the_row_takes_the_boost() -> None:
+    """Usurp has no icons of its own; a boosted Bene Gesserit Row partner's
+    "all Agent icons" send the Agent ("You may use an Agent icon from either
+    card" [Immortality p. 10]), here to Arrakeen, which no candidate's
+    printed icons reach. Before codec v144 Usurp's placement read only the
+    candidates' printed icons, so the boosted partner's reach counted only
+    where another candidate's printed icon opened the space. That partner
+    is a card played, so it also spends the boost and gets the added draw
+    in its box."""
+
+    base = _state((USURP, DAGGER), bene_gesserit_boost_pending=True)
+    # No other Row card (nor Dagger) prints a City icon or is Bene Gesserit.
+    row = (
+        TRUTHTRANCE,
+        "imperium:captured_mentat:0",
+        CORRINTH,
+        "imperium:desert_power:0",
+        "imperium:desert_survival:0",
+    )
+    base = replace(
+        base,
+        imperium_row=row,
+        imperium_deck=tuple(
+            card
+            for card in (*base.imperium_row, *base.imperium_deck)
+            if card not in row
+        ),
+    )
+    unboosted = replace(
+        base,
+        players=(
+            replace(base.players[0], bene_gesserit_boost_pending=False),
+            *base.players[1:],
+        ),
+    )
+    assert not any(
+        action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == USURP
+        and dict(action.arguments)["space_id"] == "arrakeen"
+        for action in ENGINE.legal_actions(unboosted, 0)
+    )
+    placed = _placed(base, USURP, "arrakeen")
+    assert {
+        dict(action.arguments)["card_id"]
+        for action in ENGINE.legal_actions(placed, 0)
+        if action.action_id == "choose_graft_partner"
+    } == {TRUTHTRANCE}
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == [TRUTHTRANCE]
+    state = grafted.state
+    assert state.players[0].bene_gesserit_boost_pending is False
+    assert state.players[0].usurped_row_card_id == TRUTHTRANCE
+    state = _settle_space(state)
+    assert FINISH not in ENGINE.legal_actions(state, 0)
+    drawn = ENGINE.apply(state, PARTNER_DRAW).state
+    assert len(drawn.players[0].hand) == len(state.players[0].hand) + 1
+    assert FINISH in ENGINE.legal_actions(drawn, 0)
+
+
+def test_with_two_bene_gesserit_cards_the_placed_one_takes_the_boost() -> None:
+    """Planned Coupling (Bene Gesserit) is placed first and spends the boost
+    at its placement; its Bene Gesserit partner finds none left."""
+
+    placed = _placed(
+        _state((COUPLING, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+        COUPLING,
+        "arrakeen",
+    )
+    assert placed.players[0].bene_gesserit_boost_pending is False
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == []
+    _, context = current_agent_effect_context(grafted.state)
+    assert context["boost_draw_card_id"] == COUPLING
+    legal = ENGINE.legal_actions(grafted.state, 0)
+    assert PARTNER_DRAW not in legal
+    assert BOX_ZERO_DRAW in legal
+    assert agent_effects.resolves_boost_draw(grafted.state, BOX_ZERO_DRAW)
+
+
+def test_a_partner_that_is_not_bene_gesserit_leaves_the_boost_pending() -> None:
+    grafted = _choose_partner(
+        _placed(
+            _state((INFILTRATOR, DAGGER), bene_gesserit_boost_pending=True),
+            INFILTRATOR,
+            "arrakeen",
+        ),
+        DAGGER,
+    )
+    assert _boost_consumed(grafted) == []
+    assert grafted.state.players[0].bene_gesserit_boost_pending is True
+    _, context = current_agent_effect_context(grafted.state)
+    assert "boost_draw_card_id" not in context
+    assert PARTNER_DRAW not in ENGINE.legal_actions(grafted.state, 0)
+
+
+def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
+    """The draw was "added to its Agent box" [Urgent Shigawire card]: when
+    Dissecting Kit (box 0) trashes the boosted partner first, the partner's
+    box and the added draw expire with it -- "you can't receive or activate
+    an effect from a card that is already trashed" (OQ-022 designer ruling;
+    OQ-106 1). Taken first, the draw stands and the trash still follows."""
+
+    state = _choose_partner(
+        _placed(
+            _state((DISSECTING, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+            DISSECTING,
+            "arrakeen",
+        ),
+        TRUTHTRANCE,
+    ).state
+    trash = DomainAction("trash_grafted_card_for_specimen", 0)
+    assert PARTNER_DRAW in ENGINE.legal_actions(state, 0)
+
+    trashed = ENGINE.apply(state, trash)
+    assert any(
+        event.kind == "agent_card_effect_expired"
+        and dict(event.payload)["card_id"] == TRUTHTRANCE
+        for event in trashed.events
+    )
+    _, context = current_agent_effect_context(trashed.state)
+    assert "boost_draw_card_id" not in context
+    assert PARTNER_DRAW not in ENGINE.legal_actions(trashed.state, 0)
+    assert trashed.state.players[0].hand == state.players[0].hand
+
+    drawn_first = ENGINE.apply(state, PARTNER_DRAW).state
+    assert len(drawn_first.players[0].hand) == len(state.players[0].hand) + 1
+    after = ENGINE.apply(drawn_first, trash).state
+    assert TRUTHTRANCE in after.players[0].trashed

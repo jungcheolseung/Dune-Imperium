@@ -80,9 +80,11 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.graft_boxes import (
     active_box,
+    box_card_id,
     box_is_pending,
     is_grafted_turn,
     state_with_active_box,
+    tagged,
 )
 from dune_imperium.rules.immortality import (
     advance_research,
@@ -3480,6 +3482,20 @@ def legal_agent_card_icon_actions(
 _BOOST_DRAW_ACTION_ARGUMENTS: Final = (("effect", AGENT_ICON_CARDS),)
 
 
+def boost_draw_box(context: Mapping[str, ActionValue]) -> int:
+    """The grafted box Urgent Shigawire's added draw belongs to.
+
+    Box 1 when the boosted card is the graft partner (a Bene Gesserit
+    partner played with a card that is not, user ruling 2026-10-12,
+    OQ-107), else box 0: the placed card, or a single-card turn.
+    """
+
+    boosted = pending_boost_draw(context)
+    if boosted and is_grafted_turn(context) and boosted == box_card_id(context, 1):
+        return 1
+    return 0
+
+
 def legal_agent_card_boost_actions(
     state: GameState,
     player: int,
@@ -3496,13 +3512,14 @@ def legal_agent_card_boost_actions(
     버림더미 카드를 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10,
     OQ-106): the placement no longer draws, so it stays undoable.
 
-    While the box's own card-draw icon is offered too, the one action
-    resolves the box's icon first (``resolve_agent_card_icon``); this
-    provider offers the action only when the box does not, so it is never
-    listed twice. The boosted card is the placed one, box 0 of a graft
-    (``agent_turn``): the row is box 0's card-draw icon while box 0 offers
-    one, and this added draw otherwise -- also while box 0's rows wait for
-    box 1 to finish a bundled selection (``box_in_progress``).
+    The row is the boosted card's box's: untagged for box 0 (the placed
+    card), ``box=1`` for a Bene Gesserit graft partner that took the boost
+    (OQ-107, ``boost_draw_box``). While that box's own card-draw icon is
+    offered too, the one row resolves the box's icon first
+    (``resolve_agent_card_icon``); this provider offers the row only when
+    the box does not, so it is never listed twice -- also while the box's
+    rows wait for the other box to finish a bundled selection
+    (``box_in_progress``), when the row is this added draw.
     """
 
     if not 0 <= player < state.config.players:
@@ -3515,19 +3532,22 @@ def legal_agent_card_boost_actions(
         return ()
     if not pending_boost_draw(context):
         return ()
-    action = DomainAction(
+    box = boost_draw_box(context)
+    draw = DomainAction(
         action_id="resolve_agent_card_effect",
         actor=player,
         arguments=_BOOST_DRAW_ACTION_ARGUMENTS,
     )
-    box_zero_waits = (
-        is_grafted_turn(context) and active_box(context) == 1 and box_in_progress(state)
+    box_waits = (
+        is_grafted_turn(context)
+        and active_box(context) != box
+        and box_in_progress(state)
     )
-    if not box_zero_waits and action in legal_agent_card_icon_actions(
-        state_with_active_box(state, 0), player
+    if not box_waits and draw in legal_agent_card_icon_actions(
+        state_with_active_box(state, box), player
     ):
         return ()
-    return (action,)
+    return (tagged(draw, box),)
 
 
 def resolves_boost_draw(state: GameState, action: DomainAction) -> bool:
@@ -3788,10 +3808,11 @@ def resolve_agent_card_icon(
     Conditions printed on the box (Hidden Missive's, Maker Keeper's and
     Wheels Within Wheels' Influence thresholds) are judged when the icon
     resolves in the owner's order [Main pp. 7, 9]; an icon is offered only
-    while its condition holds (``agent_icon_condition_holds``). Box 1's
-    rows never stand for Urgent Shigawire's added draw, which is box 0's
-    card's (``boost=False``: the engine resolves a ``box=1`` row on the
-    state with box 1 active).
+    while its condition holds (``agent_icon_condition_holds``). Urgent
+    Shigawire's added draw is bound to its card, not to a box's machinery:
+    the engine routes it as no box's row (``agent_effect_frame.
+    route_box_action``) and resolves it here; a row routed to box 1 is box
+    1's own icon (``boost=False``).
     """
 
     if boost and resolves_boost_draw(state, action):
@@ -4018,6 +4039,17 @@ def _dry_run_effect_is_unavailable(state: GameState) -> bool:
         return False
     if pending_agent_icons(context):
         return _pending_icons_offer_nothing(state, context)
+    from dune_imperium.rules.agent_effect_frame import agent_box_can_resolve_by_choice
+
+    if agent_box_can_resolve_by_choice(state, context_int(context, "turn_owner")):
+        # A box resolved by a choice it still offers can resolve, so it is
+        # not one that only fizzles and the turn end waits for it (OQ-057
+        # (1), OQ-095 2). The generic resolution below is not its path and
+        # would report it unavailable: Stitched Horror's "Choose two"
+        # (OQ-057 (4)), Beguiling Pheromones' trash, the optional arrows of
+        # Piter, Tleilaxu Surgeon and Dissecting Kit and Tleilaxu Master's
+        # acquisition while they can be taken (OQ-058), and Ghola's copies.
+        return False
     try:
         dry_run = resolve_agent_card_effect(state)
     except (NotImplementedError, RuntimeError, ValueError):

@@ -599,6 +599,33 @@ def test_a_graft_pairs_two_rows_name_each_card_and_its_box() -> None:
     assert _RESOLVE_BOX_ONE not in _ENGINE.legal_actions(partner_done, 0)
 
 
+def test_a_bene_gesserit_partner_s_added_draw_names_its_card() -> None:
+    # A Bene Gesserit graft partner takes a pending Urgent Shigawire boost
+    # (user ruling 2026-10-12, OQ-107): the draw added to its box is its
+    # ``box=1`` card-draw row, led by the partner and named as the added
+    # draw, while the placed Face Dancer's box keeps its own row.
+    truthtrance = "imperium:truthtrance:0"
+    state = _turn((_FACE_DANCER, truthtrance))
+    state = replace(
+        state,
+        players=(
+            replace(state.players[0], bene_gesserit_boost_pending=True),
+            *state.players[1:],
+        ),
+    )
+    grafted = _place(state, _FACE_DANCER, truthtrance)
+    added = DomainAction(
+        action_id="resolve_agent_card_effect",
+        actor=0,
+        arguments=(("box", 1), ("effect", "cards")),
+    )
+    title, text, text_ko = _row(grafted, added)
+    assert isinstance(title, tuple) and title[0] == "Truthtrance"
+    assert text == "Draw 1 card (Urgent Shigawire)"
+    assert text_ko == "{draw:1} (다급한 시거와이어)"
+    assert _row(grafted, _RESOLVE_BOX)[0] == ("Face Dancer", "얼굴의 춤꾼")
+
+
 def test_a_ghola_box_names_ghola_with_the_box_it_copies() -> None:
     # "This card has the same Agent box as the other grafted card" [Ghola
     # card]: Ghola's row (box 0) and Seek Allies' (box 1) both read Seek

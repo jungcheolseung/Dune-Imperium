@@ -38,6 +38,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
     legal_corrinth_city_payment_actions,
+    resolves_boost_draw,
 )
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
@@ -97,6 +98,8 @@ from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
 )
+
+_RESOLVE_BOX = "resolve_agent_card_effect"
 
 # Serial Agent-card choices. When any of these offers an action, the generic
 # ``resolve_agent_card_effect`` action is withheld until the choice is made.
@@ -212,6 +215,43 @@ def agent_box_is_waiting(
     return not _single_box_actions(view, player)
 
 
+# A box choice that answers the box without its effect: an optional
+# arrow's or "may" effect's refusal ("You do not have to pay such a cost on
+# a card" [Main p. 20], OQ-058).
+_REFUSALS = frozenset(
+    action_id for action_id in BOX_ACTION_IDS if action_id.startswith("decline_")
+)
+
+
+def _box_choice_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The serial choices the Agent box in ``card_id`` offers now."""
+
+    return tuple(
+        action
+        for provider in _AGENT_CARD_CHOICE_PROVIDERS
+        for action in provider(state, player)
+    )
+
+
+def agent_box_can_resolve_by_choice(state: GameState, player: int) -> bool:
+    """Whether the Agent box in ``card_id`` offers a choice that gives its effect.
+
+    A box resolved by a choice -- Stitched Horror's "Choose two", Beguiling
+    Pheromones' trash, an optional arrow whose cost can be paid, Tleilaxu
+    Master's acquisition -- does not take the generic resolution, so its
+    dry run reads "unavailable" whatever it offers. While it offers such a
+    choice it can still resolve, and the turn end waits for it (OQ-057
+    (1), OQ-095 2; ``agent_effects.agent_card_effect_is_unavailable``). A
+    box that offers only its refusal (an arrow whose cost cannot be paid)
+    cannot: the end fizzles it, as the refusal would.
+    """
+
+    return any(
+        action.action_id not in _REFUSALS
+        for action in _box_choice_actions(state, player)
+    )
+
+
 def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """What a pending single-effect Agent box offers now; () while it waits.
 
@@ -222,11 +262,7 @@ def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     (OQ-057); ``finish_agent_turn`` resolves it then.
     """
 
-    choice_actions = tuple(
-        action
-        for provider in _AGENT_CARD_CHOICE_PROVIDERS
-        for action in provider(state, player)
-    )
+    choice_actions = _box_choice_actions(state, player)
     if choice_actions:
         return choice_actions
     if agent_card_effect_is_unavailable(state):
@@ -309,10 +345,14 @@ def route_box_action(
     """The state to apply a legal row on, the row untagged, and its box.
 
     A ``box=1`` row is box 1's; an untagged row is box 0's when box 0
-    offers it, and otherwise no box's (the turn's other effects, Urgent
-    Shigawire's added draw). A box's row is applied with that box active,
-    so the ordinary Agent-box handlers read it; any other row is applied
-    as it is (box ``None``).
+    offers it, and otherwise no box's (the turn's other effects). Urgent
+    Shigawire's added draw is no box's either, whichever box it was added
+    to (untagged for box 0, ``box=1`` for a Bene Gesserit partner, OQ-107):
+    it is bound to its card (``effects.BOOST_DRAW_KEY``) and kept as it is,
+    so no box is made active for it -- not even while the other box is part
+    way through a bundled selection. A box's row is applied with that box
+    active, so the ordinary Agent-box handlers read it; any other row is
+    applied as it is (box ``None``).
     """
 
     if not state.decision_stack:
@@ -321,6 +361,8 @@ def route_box_action(
     if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
         frame.decision, PlayerDecision
     ):
+        return state, action, None
+    if action.action_id == _RESOLVE_BOX and resolves_boost_draw(state, action):
         return state, action, None
     context = dict(frame.context)
     if row_box(action) == 1:
@@ -354,7 +396,8 @@ def _pending_group_actions(
         *(tagged(action, 1) for action in box_one),
     ]
     # Urgent Shigawire's draw added to the boosted card's box, its own step
-    # whatever the box is (user ruling 2026-10-10, OQ-106).
+    # whatever the box is (user ruling 2026-10-10, OQ-106); ``box=1`` when
+    # the boosted card is the graft partner (OQ-107).
     actions.extend(legal_agent_card_boost_actions(state, player))
     # One action per pending automatic icon of the visited space; its
     # choice icons are offered by the dedicated providers below (OQ-027).

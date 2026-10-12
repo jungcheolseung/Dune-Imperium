@@ -37,6 +37,8 @@
 | `reshuffle_renamed` | codec 142 미만 | 적힌 reshuffle을 다시 쓴다 | 위 분리로 일부 draw의 출처 이름이 바뀌어(Piter `agent_card_payment` → `agent_card:<카드>:cards`·`:research`, Reverse Engineering `leader_signet:cards`, Shigawire `shigawire:<카드>:cards`, Cunning `:rewards:draw`) reshuffle id도 바뀌었다. 같은 라운드·같은 좌석의 **개인 덱** reshuffle이고 적힌 값이 지금 버림 더미와 정확히 같은(multiset) 때만 지금의 id로 바꾸고 순서는 그대로 둔다. Intrigue reshuffle은 바꾸지 않는다 |
 | `refinish_agent_turn` | codec 142 미만 | `finish_agent_turn`을 한 번 더 | turn 종료 누름 자체(Usurp trash 등)가 번 draw를 v142는 붙잡아 turn을 다시 연다. 옛 엔진은 누름 안에서 뽑고 turn을 닫았다. `owed_draw`가 뽑은 뒤, 다음 적힌 수(다른 좌석의 것)가 거절되면 다시 누른다. 다시 열린 까닭이 그 draw뿐이고 누름이 turn을 닫을 때만 |
 | `graft_switch`·`graft_box` | codec 143 미만 | 적힌 `switch_graft_card`를 지우고, 짝(칸 1)이 활성이던 동안의 칸 행동에 `box=1`을 붙인다 | v143([graft-boxes-plan.md](graft-boxes-plan.md))부터 graft한 Agent turn의 두 칸을 처음부터 함께 제시한다. 옛 엔진은 한 번에 한 칸만 풀었고 `switch_graft_card`로 다른 칸을 활성으로 바꿨다. 다른 다리와 달리 기보를 따라가며 옛 엔진의 활성 칸을 기억한다(`_GraftSlot`): `agent_turn`·`choose_graft_partner`에서 칸 0, switch마다 뒤집기, `finish_agent_turn` 뒤에는 그 누름이 남긴 칸(옛 엔진의 turn 종료도 대기 중인 짝 칸으로 바꿨고 이 엔진도 같다). 칸 1이 활성인 동안 적힌 칸 행동은 `box=1`을 붙인 행이 합법일 때 그것으로 바꾼다. 그 칸의 장치가 내지 않는 수는 turn의 다른 효과라 그대로 둔다. 그 칸의 수인데 이 엔진이 다른 칸의 묶음 선택(계획 4.3의 잠금) 때문에 그 칸 행을 숨기는 자리면 그 수에서 `Divergence`로 멈춘다(`graft_box_held`; 칸 0이 활성이던 수도 같다). 그대로 적용하면 다른 칸의 행이나 칸 없는 행으로 읽혀 다른 수가 되기 때문이다. 예: Piter의 troop을 낸 뒤 switch해 적힌 Tleilaxu Infiltrator의 `effect=cards`는 이 엔진에서 Piter의 두 장 보상이다. 칸 1이 활성인 동안의 `effect=cards`: 옛 엔진은 활성 칸의 아이콘이 먼저였으므로 칸 1이 그 아이콘을 내면 `box=1`이다. 칸 1에 그 아이콘이 없으면 옛 엔진에서는 Urgent Shigawire의 추가 draw였다. 이 엔진에서 태그 없는 같은 행은 칸 0이 자기 draw 아이콘을 아직 내면 칸 0의 아이콘을 해결한다. 뽑는 장수는 같고, 남는 것이 칸 0의 아이콘 대신 추가 draw일 뿐이다(나중에 적힌 칸 0의 `effect=cards`가 그 추가 draw가 된다) |
+| `shigawire_partner_draw` | codec 144 미만 | 적힌 `finish_agent_turn` 바로 앞에 `resolve_agent_card_effect{box: 1, effect: cards}` | v144([OQ-107](rules/open-questions.md), 사용자 판정 "1. 짝도 받음")부터 Urgent Shigawire의 부스트가 남았을 때 graft 상대인 Bene Gesserit 카드가 부스트를 받고, 그 box(칸 1)에 더해진 draw가 turn 종료를 막는다. 옛 엔진은 상대에게 아무것도 주지 않았으므로 기보에 그 draw가 없다. turn 안의 적힌 수가 옛 엔진이 보인 손패를 그대로 보도록 가장 늦은 자리, 턴 종료 누름이 거절될 때 그 앞에서 뽑는다 |
+| `box_refused_at_turn_end` | codec 144 미만 | 적힌 `finish_agent_turn` 바로 앞에 그 box의 거절(`decline_agent_card_payment`·`decline_agent_card_acquisition`, 칸 1이면 `box=1`) | v144(OQ-057 (1) 보강, 사용자 지시 "2. 고치자")부터 효과를 주는 선택을 아직 제시하는 Agent box가 턴 종료를 막는다. 옛 엔진은 Piter·Tleilaxu Surgeon·Dissecting Kit의 낼 수 있는 화살표와 Tleilaxu Master의 획득 곁에 턴 종료를 내놓았고(dry run의 오판), 누름이 box를 불발시켰다 — 거절과 같은 결과다("You do not have to pay such a cost on a card" `[Main p. 20]`). 의무 box(Stitched Horror의 "Choose two", Beguiling Pheromones의 trash)에는 거절이 없으므로 답하지 않는다 |
 
 - **안전장치:** 다리는 적힌 수가 **바로 그 결정의 답**일 때는 끼어들지 않는다(`_made_for`). 결정을 가진 좌석이 둔 수가 다음 중 하나이면 그 결정의 답으로 본다.
   - 그 틀(frame)이 답으로 받는 `action_id`다. 전투 책략은 pass·`play_intrigue`, Conflict 끝 창은 거절·`play_conflict_end_intrigue`다.
@@ -53,6 +55,9 @@
 - **다리 없이 갈라지는 v143(graft 두 칸) 경우**(v142 묶음 2,000판 중 4판, 2026-10-12):
   - Ghola + Stitched Horror(1판): 옛 엔진은 두 번째 칸에 남은 보상 둘만 내고 한 번 고르면 끝냈고, 첫 칸의 보상을 다시 줬다. v143은 칸마다 둘을 고른다(OQ-057 (12) 보강, 규칙 수정). 적힌 다음 수(그 보상 병력의 배치)가 불법이 된다.
   - 잠금([graft-boxes-plan.md](graft-boxes-plan.md) 4.3)이 막는 순서(3판): 옛 엔진은 한 칸의 묶음 선택 도중에도 `switch_graft_card`로 다른 칸에 갈 수 있었다. The Beast's Spoils의 남은 trash를 두고 Dissecting Kit 칸으로 간 판 1, Signet Ring 칸의 Spy 회수 뒤 배치 전 1, Staban Tuek Signet의 Spy 배치 뒤 지불 전 1. 새 엔진은 그 칸의 묶음이 끝날 때까지 다른 칸 행을 숨기므로 적힌 다른 칸의 수가 불법이 된다. 적힌 수의 순서를 바꾸는 다리는 두지 않았다.
+- **다리 없이 갈라지는 v144 경우**(2026-10-12):
+  - 의무 box를 남긴 채 누른 턴 종료: Beguiling Pheromones(Faction space에서 grafted 카드 하나를 trash하고 Influence 1)나 Stitched Horror의 "Choose two"가 남아 있는데 옛 엔진이 턴 종료를 내놓아 누름이 그 효과를 건너뛰었다. v144는 그 효과를 끝내야 턴 종료를 내놓는다(OQ-057 (1) 보강, 규칙 수정). 적힌 누름이 불법이 된다.
+  - Bene Gesserit 상대가 받은 부스트의 뒤끝: `shigawire_partner_draw`가 뽑은 카드는 옛 기보의 손패에 없던 카드라, 그 카드에 대한 선택이 뒤에 필요하면(예: Reveal에서 그 카드의 표본 만들기) 적힌 수가 그 선택을 만나 갈라진다. 옛 엔진이 남겨 둔 부스트를 같은 라운드의 뒤 Bene Gesserit 카드가 쓴 기보도 그 수(모든 아이콘으로 닿은 배치나 더해진 draw)에서 갈라진다.
 - **OQ-106 분리 가운데 다리로 잇지 못하는 경우**(독립 조사·반박 검증, 2026-10-10). 엔진은 바꾸지 않았다.
   - Urgent Shigawire: 옛 엔진이 부스트된 배치 바로 뒤에 reshuffle을 적었는데, v142에서 먼저 답할 것(Gather Intelligence, graft 상대, box 자신의 `cards` 아이콘)이 있으면 그 자리에 기다리는 draw가 없다. box 아이콘을 미리 뽑는 다리는 기보가 그 아이콘을 끝내 쓰지 않으면(trash로 소멸) 멈추므로 두지 않았다. 1,563판 중 5판(Gather Intelligence 2, box 아이콘 3).
   - Cunning·Insider Information이 Sardaukar Standard를 trash하고 그 draw가 reshuffle하는 경우: 옛 엔진은 reshuffle 뒤 Skill 선택을 열었고, v142는 붙잡은 Intrigue 선택 위에 Skill 선택을 먼저 연다. 적힌 chance가 Skill 선택을 만나 멈춘다. 1,563판에는 없고, 같은 판에서 다른 trash를 고른 v141 기보 셋으로 재현됐다. reshuffle이 없으면 draw가 `choose_skill` 뒤로 한 수 늦을 뿐이다(2판). 엔진 순서는 바꾸지 않는다(2026-10-10 엔진 세션 결정 (b)): "trash될 때" 촉발의 Skill 선택은 공개 정보만으로 하는 선택이라 숨은 draw보다 먼저 오는 것이 OQ-106 원칙에 맞고, 옛 기보를 맞추려고 플레이어가 보는 순서를 바꾸지 않는다.
@@ -120,6 +125,14 @@ graft 두 칸 변환(codec v143, 2절 표의 `graft_switch`·`graft_box`)을 넣
   - 갈라진 4판은 2절의 v143 경우다(Ghola + Stitched Horror 1, 잠금 3). 판정은 4판 모두 `collateral`이다. 잠금 3판은 리뷰 뒤(`graft_box_held`)에는 "그 칸의 수가 다른 칸의 선택이 끝날 때까지 기다린다"는 이유로 같은 수에서 멈춘다. 그 전에는 같은 수가 불법이라는 이유로 멈췄다. 결과 수는 리뷰 전후가 같다. 셋은 갈라진 자리에서도 필드 차이가 없고, Ghola 판은 그 좌석의 자원·병력이 다르다(옛 엔진이 다시 준 보상과 병력).
   - 갈라지기 전까지 필드가 다른 구간은 없다.
 - 리뷰 반영(잠금 교착 수정, `graft_box_held`) 뒤 세 측정을 다시 돌렸고, 수는 모두 같다.
+
+codec v144(턴 종료를 막는 선택 box — OQ-057 (1) 보강, Bene Gesserit graft 상대의 Urgent Shigawire 부스트 — OQ-107)와 다리 둘(`shigawire_partner_draw`, `box_refused_at_turn_end`)을 넣은 뒤 다시 쟀다(2026-10-12).
+- `dune-imperium-records check`(로컬 저장본 6판): 6판 모두 끝까지 옮겨졌고 다리 쓰임은 v143 때와 같다(새 다리 0회). 6판 모두 마지막 상태의 해시(`canonical_state_hash` 전체)가 v143 엔진(`944bb1b7`)으로 옮긴 것과 같다.
+- `problems check`(사람 판 문제집 285곳): 285곳 모두 풀린다.
+- `corpus check v143-944bb1b7`(2,000판, worker 2, 약 11분): exact 1,861, equal 5, transient 0, persistent 1, diverged 133, failed 0.
+  - 다리 쓰임: `box_refused_at_turn_end` 5수(5판, 모두 Dissecting Kit — 그 5판이 equal), `shigawire_partner_draw` 2수(2판).
+  - 갈라진 133판: 132판은 Faction space의 Beguiling Pheromones trash를 남긴 채 누른 턴 종료다(2절의 v144 경우, 규칙 수정; 그중 17판은 조건을 기다리는 다른 box(Fremen War Name, Lisan al Gaib 등)나 거절만 남은 Tleilaxu Surgeon이 함께 있다). Stitched Horror를 남긴 판은 없었다. 1판(`no-scouts-epic.h4.144`)은 `shigawire_partner_draw`가 뽑은 카드가 뒤의 Reveal에서 표본 만들기를 요구해 적힌 `finish_reveal`이 그 선택을 만난다(2절).
+  - persistent 1판(`full.ha.67`): `shigawire_partner_draw`가 뽑은 카드가 손패·덱·play에 끝까지 남고, 부스트가 옛 판보다 일찍 소비된다(`bene_gesserit_boost_pending`). 판정은 133판과 함께 모두 `collateral`이고, 갈라지기 전까지 필드가 다른 구간은 없다.
 
 v135 기보의 차이는 모두 **Conflict 보상을 주는 도중**이다.
 - 옛 엔진은 받는 사람들의 자동 보상을 한꺼번에 주고 선택을 물었다. 지금 엔진은 받는 사람 순서대로 준다.
