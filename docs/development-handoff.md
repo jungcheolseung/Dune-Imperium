@@ -53,8 +53,13 @@
 - **(결정) 다음 학습 후보:** ExIt v2 이어 하기(510판에서 멈춤; 옛 엔진으로 이어 갈지 새 codec으로 다시 할지),
   사람 판 국면의 ExIt 레이블(미룸). 사람 판이 쌓이면 진단을 다시 돌린다.
   [2026-10-09 학습 정리: expert iteration v2, 2026-10-10 사람 문제집·사람이 둔 판]
-- **탐색 AI의 첫 턴 가문 핵:** 분석만 했다(사용자 "다음에 다루기"). 탐색 없이 망이 바로 답하는 Agent 효과 순서
-  결정에서 가문 핵 로짓이 상황과 무관하게 높다. Y도 같다. [2026-10-10 플레이 피드백 10항목]
+- **(결정) 망이 가문 핵 시점을 배우게 하기:** 탐색 좌석은 지금 앱 AI 규칙으로 쓴다(`family_atomics="app"`). 사용자
+  목표는 망이 스스로 배우는 것이다. 제안: 재적응 self-play에서 모든 좌석이 앱 규칙으로 써서 가치 head가 남은 토큰을
+  보게 하고, 정책을 앱 규칙 흉내로 출발시켜 강화학습을 잇고, `family_atomics="network"` 좌석이 앱 규칙 좌석과
+  같거나 나으면 넘긴다. [2026-10-12 탐색 AI의 가문 핵을 앱 규칙으로]
+- **탐색 AI의 이상한 수 후보 둘:** 단독 1등일 때 비용을 내고 전투력만 올리는 전투 책략(1등이면 pass해도 대응할
+  기회가 남는다 `[Main p. 14]`), "이번 턴" 책략(Insider Information)을 쓰고 그 효과가 필요 없는 칸으로 감(책략과
+  Agent 턴을 따로 평가). 후퇴 장면은 사용자 확인 대기. [evaluation/search-atomics-2026-10-12.md](evaluation/search-atomics-2026-10-12.md) 1절
 - **tips-v1의 5081 행 다시 캐기:** v144에서 heuristic 행만 다시 캤고 5081 행은 이어받았다. [2026-10-12 OQ-107]
 - 작은 것: heuristic은 Harkonnen Advisor의 배치 못 하는 병력과 Emperor of the Known Universe의 막기를 모르고,
   Plot을 Agent 뒤에 내서 Emperor's Invitation #1·Insider Information #1·Twisted Resourceful을 못 쓴다.

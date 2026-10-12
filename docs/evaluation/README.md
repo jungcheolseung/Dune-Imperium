@@ -11,7 +11,7 @@
 | heuristic·rollout 기준선 | [baseline-2026-09-16.md](baseline-2026-09-16.md). 그 뒤 규칙이 여러 번 바뀌어(턴 종료 L1, 접합 두 칸 v143 등) 다시 잰 기준선은 없다. 가장 최근의 heuristic 대 앱 AI 수치는 [app-ai-expansions-2026-10-05.md](app-ai-expansions-2026-10-05.md)(codec v135) |
 | 앱 AI의 강도 | [app-ai-expansions-2026-10-05.md](app-ai-expansions-2026-10-05.md), 난이도 사이는 [app-ai-2026-10-05.md](app-ai-2026-10-05.md). 망 대 앱 AI는 [m10-2026-10-06.md](m10-2026-10-06.md), 탐색 대 앱 AI는 [m10-2026-10-07.md](m10-2026-10-07.md) 6~7절 |
 | 학습 계보의 머리 Y@10881 | [m10-2026-10-09.md](m10-2026-10-09.md), Z가 Y를 넘지 못한 [m10-2026-10-11.md](m10-2026-10-11.md). readapt-v143(대조군 C만)은 [worklog/2026-10.md](../worklog/2026-10.md)에만 있다 |
-| 플레이 서버의 탐색 AI 망 X | [m10-2026-10-07.md](m10-2026-10-07.md) 6~7절 |
+| 플레이 서버의 탐색 AI 망 X | [m10-2026-10-07.md](m10-2026-10-07.md) 6~7절. 가문 핵은 앱 규칙: [search-atomics-2026-10-12.md](search-atomics-2026-10-12.md) |
 | 탐색 좌석의 설계 근거 | [m10-2026-09-22.md](m10-2026-09-22.md) 11~14·16절 |
 | 사람이 둔 판의 문제집 | [human-games-2026-10-10.md](human-games-2026-10-10.md) (도구·기보 다리는 [../human-records.md](../human-records.md)) |
 | 규칙에서 답이 나오는 평가 문제집(tips-v1) | [problem-set.md](problem-set.md) |
@@ -38,3 +38,4 @@
 | [human-games-2026-10-10.md](human-games-2026-10-10.md) | 사람이 둔 판을 탐색으로 판정해 문제집으로 고정(10-11까지 늘림) | 갱신 중 |
 | [m10-2026-10-11.md](m10-2026-10-11.md) | Y를 v142에 재적응한 Z@11681(Y보다 낫지 않음) | 계보 머리는 Y 유지 |
 | [problem-set.md](problem-set.md) | tips-v1 문제집의 구조와 codec마다의 재채굴 기록 | 갱신 중 |
+| [search-atomics-2026-10-12.md](search-atomics-2026-10-12.md) | 사용자가 본 탐색 AI의 이상한 수 네 장면 진단, 가문 핵을 앱 규칙으로 쓴 탐색 좌석 A/B | 가문 핵 규칙의 근거 |
