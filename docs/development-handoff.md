@@ -58,6 +58,12 @@
 - **tips-v1의 5081 행 다시 캐기:** v144에서 heuristic 행만 다시 캤고 5081 행은 이어받았다. [2026-10-12 OQ-107]
 - **수집 작업 프로세스 수 다시 재기:** 좌석 구성별로 고르게 나눈 뒤라 2026-09-19의 "4가 가장 빠름"이 바뀌었을
   수 있다. [2026-10-12 학습 수집 약 2배 빠르게]
+- **엔진 수집 최적화 후보:** 불변 상태 복사의 필드 수집 경로, 공개 좌석 인코딩 캐시, 앱 AI의 고정 카드
+  메타데이터 캐시를 조사했다. 우선은 검사 유지 복사 개선(WSL 단독 self-play 수집 시간 중앙값 −9.3%)과
+  앱 AI 메타데이터(별도 탐색 수집 −16% 안팎)이며, 공개 좌석 캐시만의 이득은 일관되지 않았다.
+  생산 코드 채택 전이며 최신 Y·Mac의 실제 수집에서 확인해야 한다.
+  `PlayerState.__post_init__`는 검증과 함께 `hand_public` 정규화도 하므로 비우면 관측이 바뀐다.
+  [`evaluation/engine-throughput-2026-10-12.md`](evaluation/engine-throughput-2026-10-12.md)
 - 작은 것: heuristic은 Harkonnen Advisor의 배치 못 하는 병력과 Emperor of the Known Universe의 막기를 모르고,
   Plot을 Agent 뒤에 내서 Emperor's Invitation #1·Insider Information #1·Twisted Resourceful을 못 쓴다.
   [2026-10-06 Steam 앱과 카드·보드 전수 대조]
@@ -170,6 +176,8 @@ cProfile의 *누적 시간*은 호출 수에 비례해 부풀므로 트리 간 �
 학습 수집(2026-10-12, `fast-collect`): 표본 경로가 합법 행동의 정책 머리 행만 읽고, 판을 좌석 구성별로 고르게
 나눠 수집이 약 2배 빨라졌다. 새 병목은 셀프플레이 판의 엔진(규칙 진행·관측 만들기, 76%)과 앱 AI 판의 앱 AI(46%)다.
 작업 프로세스마다 판 묶음 하나를 받는 구조(묶음 수 = 작업 프로세스 수)는 그대로다.
+엔진 내부의 후속 계측·임시 후보 대조는 [engine-throughput-2026-10-12](evaluation/engine-throughput-2026-10-12.md)에
+있다(WSL·5081, 위 Mac·Y 측정과 직접 전후 비교하지 않는다).
 
 ## 유용한 명령
 

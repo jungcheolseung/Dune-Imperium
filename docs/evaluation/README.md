@@ -16,6 +16,7 @@
 | 사람이 둔 판의 문제집 | [human-games-2026-10-10.md](human-games-2026-10-10.md) (도구·기보 다리는 [../human-records.md](../human-records.md)) |
 | 규칙에서 답이 나오는 평가 문제집(tips-v1) | [problem-set.md](problem-set.md) |
 | 처리량을 재는 절차 | [throughput-2026-09-10.md](throughput-2026-09-10.md). 학습 수집 약 2배(2026-10-12)는 [worklog/2026-10.md](../worklog/2026-10.md)에 있다 |
+| 현행 학습 엔진의 병목·개선 후보 | [engine-throughput-2026-10-12.md](engine-throughput-2026-10-12.md). WSL/5081에서 상태 복사·관측·앱 AI 비용을 나누고 임시 후보를 같은 판으로 대조 |
 
 ## 문서 목록
 
@@ -25,6 +26,7 @@
 | [baseline-2026-09-10.md](baseline-2026-09-10.md) | 확장을 넣은 기준선 재측정, 13절 보드 공간 표 재정비 A/B | 1~12절은 대체됨 → 2026-09-16, 13절은 유효 |
 | [baseline-2026-09-16.md](baseline-2026-09-16.md) | 같은 행렬을 현행 heuristic 표로 재측정, rollout 정비·동점 깨기·값 함수 A/B | 마지막 기준선(위 주의) |
 | [throughput-2026-09-10.md](throughput-2026-09-10.md) | 처리량 35% 회귀 귀인, 합법 집합 열거 개선(7~8절은 2026-09-16) | 절차는 유효 |
+| [engine-throughput-2026-10-12.md](engine-throughput-2026-10-12.md) | 현행 수집의 상태 복사·반복 검증·관측 인코딩·앱 AI 메타데이터 비용과 임시 A/B | 조사 완료, 생산 코드 채택 전 |
 | [community-tips-2026-09-22.md](community-tips-2026-09-22.md) | 커뮤니티 전략 팁 49개의 출처 대조 | 참고 자료([../player-tips-for-training.md](../player-tips-for-training.md)) |
 | [m10-2026-09-22.md](m10-2026-09-22.md) | M10 종합: 순위 보상 기각, 5081 착취 불가, 탐색 기본(후보 5 × 세계 8), ExIt v1 무익 | 일부 대체(사다리·champion은 09-27·09-28, ExIt는 exit-v2), 탐색 근거는 유효 |
 | [m10-2026-09-27.md](m10-2026-09-27.md) | v110 규칙 재적응과 slot 입력 실험 | 대체됨 → 09-28 |
