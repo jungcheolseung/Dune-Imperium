@@ -9,7 +9,8 @@ specifics.
 ## Session start
 
 1. Read `README.md` and `docs/development-handoff.md`; the handoff names the
-   current baseline and the next work item.
+   current baseline and the next work item. For the latest work, read the
+   top entries of the current month's `docs/worklog/<YYYY-MM>.md`.
 2. Run `git status --short` and `git log --oneline -10`; never overwrite
    pre-existing user changes.
 3. Run `git fetch origin` and compare both directions
