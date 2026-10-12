@@ -1,6 +1,6 @@
 """Unit movements shared by several rule modules (leaf: no rule imports)."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent

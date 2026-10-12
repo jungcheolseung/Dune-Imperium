@@ -22,7 +22,7 @@ new key cannot ride along unclassified.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.core.actions import ActionValue, DomainAction

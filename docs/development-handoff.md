@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-12 (master `29f70d7c`, Ghola 부스트 draw 병합 뒤)
+기준일: 2026-10-12 (master, 탐색 AI 가문 핵 규칙과 engine-speed-audit 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,9 +28,9 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | `29f70d7c` (2026-10-12) |
-| pytest | 7,494개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 8개가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 482파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| master | engine-speed-audit 병합 (2026-10-12) |
+| pytest | 7,524개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| Ruff · mypy | `src tests` 통과, mypy 487파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 "접합 두 칸" 병합 |
 | action codec | **v145** (다음 번호 v146) |
 | 관측 | v31, 4,537 int |
@@ -61,6 +61,12 @@
   기회가 남는다 `[Main p. 14]`), "이번 턴" 책략(Insider Information)을 쓰고 그 효과가 필요 없는 칸으로 감(책략과
   Agent 턴을 따로 평가). 후퇴 장면은 사용자 확인 대기. [evaluation/search-atomics-2026-10-12.md](evaluation/search-atomics-2026-10-12.md) 1절
 - **tips-v1의 5081 행 다시 캐기:** v144에서 heuristic 행만 다시 캤고 5081 행은 이어받았다. [2026-10-12 OQ-107]
+- **엔진 수집 최적화(2026-10-12 병합):** 검사를 유지하는 상태 복사와 앱 AI 고정 메타데이터의 재사용. Mac에서
+  학습 설정(Y, 32판, 작업 프로세스 4개) 수집이 8.65초에서 8.08초(−6.6%, 번갈아 9번씩)이고 결과는 비트 단위로 같다.
+  셀프플레이 쪽은 거의 줄지 않았다. 다음 후보: Agent 효과 context 재구성(8판에 14만 번), 바뀌지 않은 불변식의
+  재검사, 탐색 AI의 `determinize`가 아직 표준 복사를 쓰는 것. `PlayerState.__post_init__`는 검증과 함께
+  `hand_public` 정규화도 하므로 비우면 관측이 바뀐다.
+  [`evaluation/engine-throughput-2026-10-12.md`](evaluation/engine-throughput-2026-10-12.md)
 - 작은 것: heuristic은 Harkonnen Advisor의 배치 못 하는 병력과 Emperor of the Known Universe의 막기를 모르고,
   Plot을 Agent 뒤에 내서 Emperor's Invitation #1·Insider Information #1·Twisted Resourceful을 못 쓴다.
   [2026-10-06 Steam 앱과 카드·보드 전수 대조]
@@ -176,6 +182,8 @@ cProfile의 *누적 시간*은 호출 수에 비례해 부풀므로 트리 간 �
 32판 수집이 4개 6.78초, 5개 6.86초, 6개 6.69초, 8개 6.31초, 10개 6.64초(각 9번의 중앙값)이고, 작업 프로세스 메모리는
 4개 2.0 GB, 8개 3.9 GB다. 8개가 7% 빠를 뿐이라 학습은 계속 `--workers 4`로 돈다. 작업 프로세스마다 판을 lockstep으로
 두어 가장 긴 판이 끝나야 수집이 끝나므로, 작업 프로세스를 늘려도 그 판은 짧아지지 않는다.
+엔진 내부의 계측과 상태 복사·앱 AI 메타데이터 개선은
+[engine-throughput-2026-10-12](evaluation/engine-throughput-2026-10-12.md)에 있다(WSL·5081 측정과 Mac·Y 확인).
 
 ## 유용한 명령
 

@@ -1,6 +1,6 @@
 """Spy decisions tied to Agent placement timing."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import DomainAction

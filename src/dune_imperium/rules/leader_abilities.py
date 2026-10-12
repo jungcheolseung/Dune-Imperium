@@ -10,7 +10,7 @@ through ``leader_signet_is_implemented``.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.content.uprising.board import (

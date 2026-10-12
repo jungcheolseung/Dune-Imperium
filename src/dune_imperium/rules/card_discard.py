@@ -8,7 +8,7 @@ your hand triggers the ability." [Main p. 17]. Moving cards from in play to the
 discard pile during Clean Up is not a discard and never triggers it.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardDiscardEffect

@@ -1,6 +1,6 @@
 """Legal action enumeration and placement for an Uprising Agent turn."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import (

@@ -28,7 +28,7 @@ stays undoable, but while one waits it is the owner's only action, on
 whatever frame of the owner's is open (``immediate_owed_draw_actions``).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision

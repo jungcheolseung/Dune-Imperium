@@ -1,6 +1,6 @@
 """Shield Wall board state and protected-Conflict rules."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.core.engine import RuleResult

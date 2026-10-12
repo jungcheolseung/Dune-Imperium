@@ -1,6 +1,6 @@
 """Shared personal-card trash transition and card-specific triggers."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID

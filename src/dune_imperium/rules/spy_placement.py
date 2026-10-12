@@ -1,6 +1,6 @@
 """Shared Observation Post occupancy operations."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,

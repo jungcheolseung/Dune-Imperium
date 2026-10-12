@@ -22,7 +22,7 @@ joining one opens its line.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from copy import replace
 from typing import Final, cast
 
 from dune_imperium.content.arrakeen_scouts import (

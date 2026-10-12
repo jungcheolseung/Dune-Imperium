@@ -1,6 +1,7 @@
 """Final Uprising standings after Endgame effects are resolved."""
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID

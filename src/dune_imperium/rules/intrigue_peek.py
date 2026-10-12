@@ -12,7 +12,7 @@ L2-Q4). The discard's Twisted cards are never shuffled in, so a discard of
 Twisted cards alone counts as empty (OQ-097).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.core.actions import DomainAction

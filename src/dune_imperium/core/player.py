@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from dune_imperium.core.dataclass_copy import positional_dataclass_replace
+
 
 @dataclass(frozen=True, slots=True)
 class Resources:
@@ -48,6 +50,7 @@ class Influence:
             raise ValueError("influence cannot exceed the top of its track")
 
 
+@positional_dataclass_replace
 @dataclass(frozen=True, slots=True)
 class PlayerState:
     """All public and private state owned by one player."""

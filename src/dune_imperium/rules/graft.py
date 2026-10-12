@@ -15,7 +15,7 @@ the engine makes a row's box the active one (``graft_boxes``) so either box
 resolves through the ordinary Agent-box machinery in the owner's order.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry

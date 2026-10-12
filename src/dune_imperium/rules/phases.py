@@ -1,6 +1,6 @@
 """Automatic transitions between top-level Uprising round phases."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.core.actions import DomainAction

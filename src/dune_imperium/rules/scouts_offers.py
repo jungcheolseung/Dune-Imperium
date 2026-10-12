@@ -29,7 +29,7 @@ subcommittees are on display and a new seat has at most three other
 members.
 """
 
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.core.state import GameState

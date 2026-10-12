@@ -1,6 +1,7 @@
 """Player-scoped, immutable observations with explicit redaction."""
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech

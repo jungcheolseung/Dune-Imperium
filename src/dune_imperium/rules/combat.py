@@ -1,6 +1,7 @@
 """Pure four-player Combat ranking rules."""
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING
 

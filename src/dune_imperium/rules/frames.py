@@ -1,6 +1,6 @@
 """Decision-frame kinds and shared frame/context helpers for rule modules."""
 
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 
 from dune_imperium.core.actions import ActionValue

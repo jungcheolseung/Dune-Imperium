@@ -3,11 +3,13 @@
 import dataclasses
 import hashlib
 import json
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
 from dune_imperium.config import RulesetConfig
+from dune_imperium.core.dataclass_copy import positional_dataclass_replace
 from dune_imperium.core.decisions import DecisionFrame
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -26,6 +28,7 @@ class GamePhase(StrEnum):
     FINISHED = "finished"
 
 
+@positional_dataclass_replace
 @dataclass(frozen=True, slots=True)
 class GameState:
     """Minimal authoritative state shared by all later rule modules."""

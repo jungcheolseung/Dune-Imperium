@@ -1,6 +1,6 @@
 """Replayable personal-deck draw and discard reshuffle transitions."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame

@@ -22,7 +22,8 @@ where to return. The step's frames never sit above a turn frame, so nothing
 it grants belongs to anyone's turn.
 """
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.arrakeen_scouts import (

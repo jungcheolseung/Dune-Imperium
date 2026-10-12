@@ -12,7 +12,7 @@ advance their Tleilaxu token one space on the Tleilaxu track), but leave the
 card in place" [Immortality p. 9].
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.immortality.board import (
     TLEILAXU_ROW_SIZE,

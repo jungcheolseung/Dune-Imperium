@@ -19,7 +19,7 @@
 Rulings the official documents leave open are OQ-048 to OQ-051.
 """
 
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import (

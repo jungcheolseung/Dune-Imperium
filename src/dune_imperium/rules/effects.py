@@ -1,7 +1,9 @@
 """Small typed effects and pending-effect frame utilities."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
+from dataclasses import replace as replace_card
 
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
@@ -400,7 +402,7 @@ def borrowed_agent_card(
     if not partner_id or not card_is_ghola(card):
         return card
     partner = personal_card_for_instance(partner_id)
-    return replace(
+    return replace_card(
         card,
         agent_effect=partner.agent_effect,
         agent_spy_factions=partner.agent_spy_factions,

@@ -8,7 +8,7 @@ turn order, the First Player last, everything public. The two unpicked
 Leaders stay unused for the game.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision

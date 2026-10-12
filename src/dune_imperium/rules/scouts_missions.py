@@ -12,7 +12,7 @@ Goods rows are ``(mission, location, resource, amount, seat)`` (seat -1:
 whoever collects first); parked rows ``(mission, seat, location, troops)``.
 """
 
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID, Mission, MissionKind
