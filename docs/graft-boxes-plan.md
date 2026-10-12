@@ -74,11 +74,11 @@
 ### 4.5 기존 결함과 확인할 것
 
 1. **Ghola + Stitched Horror**: `rewards_chosen`이 칸별로 나뉘지 않아, 두 번째 칸이 남은 2개만 제시받고 한 번 고르면 첫 칸의 보상을 다시 준다(조사에서 메모리로 재현: water 3→4, Tleilaxu 1→2). 칸별 키로 고친다. 회귀 테스트와 OQ-057 (12) 문구.
-2. **Urgent Shigawire + 베네 게세리트 접합 짝**: 짝 카드가 BG일 때 any-icon은 쓰지만(`graft.py:155-164`) 추가 뽑기를 기록하지 않는 것으로 보인다(`agent_turn.py:449-452, 518`은 놓은 카드만). 먼저 [rules/](rules/)의 Urgent Shigawire 문구·판정과 대조한다. 문서가 답하지 않으면 고치지 말고 `open-questions.md`에 OQ로 올려 사용자 판정을 받는다.
+2. **Urgent Shigawire + 베네 게세리트 접합 짝**(이후: codec v144에서 OQ-107 판정 "짝도 받음"으로 구현됨 — 아래 문장은 v143 당시 기록): 짝 카드가 BG일 때 any-icon은 쓰지만(`graft.py:155-164`) 추가 뽑기를 기록하지 않는 것으로 보인다(`agent_turn.py:449-452, 518`은 놓은 카드만). 먼저 [rules/](rules/)의 Urgent Shigawire 문구·판정과 대조한다. 문서가 답하지 않으면 고치지 말고 `open-questions.md`에 OQ로 올려 사용자 판정을 받는다.
 
 ### 4.6 행동 목록 (codec v143)
 
-- 칸에 따라 뜻이 달라지는 행동(조사 결과 1,987 템플릿: `resolve_agent_card_effect` ±`effect` 12, 지불 748, 선택 735, Signet 492)에 **`box=1` 변형**을 더한다. 인자가 없는 기존 행동은 칸 0을 뜻한다(Servo-Receivers의 Signet 창과 Kota의 보상, Shigawire 추가 뽑기 같은 칸 밖 출처도 그대로 쓴다).
+- 칸에 따라 뜻이 달라지는 행동(조사 결과 1,987 템플릿: `resolve_agent_card_effect` ±`effect` 12, 지불 748, 선택 735, Signet 492)에 **`box=1` 변형**을 더한다. 인자가 없는 기존 행동은 칸 0을 뜻한다(Servo-Receivers의 Signet 창과 Kota의 보상, Shigawire 추가 뽑기 같은 칸 밖 출처도 그대로 쓴다; v144부터 Bene Gesserit 짝이 받은 추가 뽑기는 `box=1` 행, OQ-107).
 - Immortality 카탈로그에만 더한다(접합이 없는 카탈로그는 그대로, base 4,413 고정 테스트 유지). 전 옵션 33,986 → 약 35,973, Immortality만 9,261 → 약 10,639.
 - `switch_graft_card`를 뺀다. `ACTION_CODEC_VERSION` 142 → 143.
 - 엔진 디스패처(`engine.py:403`)가 `effect` 키 유무로 아이콘/box를 가르고, 기록 다리(`migration.py:436`)가 인자 키가 정확히 `("effect",)`인지 본다 — `box` 키를 더할 때 둘 다 맞춘다.
