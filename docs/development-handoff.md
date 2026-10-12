@@ -48,6 +48,15 @@
 - 에셋 커밋 `b4a694f`(화살표 16장)·`7463ac2`(4장)·`c88aa84`(새 앞면 37장·문구)·`2d64881`(제목 가운데 103장)·`1b44c11`(두 줄 제목 23장). 두 저장소를 함께 푸시해야 한다.
 - 뒤이은 사용자 요청 "제목이 띠 안에서 조금 아래에 있네 … uprising 책략도": 책략 제목을 인쇄처럼 띠(위 7–144단위)의 가운데에 둔다. 제목만 따로 그려 잉크를 재고 옮긴다(Tech 타일과 같은 `centre_ink`). 책략 앞면 103장 전부(영어·한국어) 다시 그림(`f9b72918`, 에셋 `2d64881`). 이어서 "두 줄 제목도 인쇄판처럼": 영어 스캔에서 한 줄 제목은 우리 글꼴로 432.5단위 이하, 두 줄 제목은 438.5단위 이상이라 435단위를 넘는 제목을 두 줄로 나누고, 나눌 곳은 긴 줄이 가장 짧아지는 단어다(인쇄판 두 줄 23장 모두 일치). 새로 두 줄이 된 6장(Backed by CHOAM·Contingency Plan·Reach Agreement·Ripples in the Sand·Secure Spice Trade·Unexpected Allies)과 이미 두 줄이던 17장이 다시 그려졌다(`6da37308`, 에셋 `1b44c11`; 커밋 메시지의 "seven"은 6장의 오기). 한국어 제목은 모두 짧아 한 줄 그대로.
 
+## 2026-10-12 OQ-107 판정과 턴 종료 보류 (codec v144)
+
+사용자 판정·지시: "1. 짝도 받음", "2. 고치자". 브랜치 `oq107-horror`.
+
+- **OQ-107(DECIDED):** Bene Gesserit 접합 짝도 Urgent Shigawire의 "다음으로 플레이하는 Bene Gesserit 카드"다(`[Immortality p. 10]` "Both played cards are considered to have “sent” the Agent"). 짝이 부스트를 받으면 모든 Agent 아이콘과 그 칸(칸 1)의 추가 draw(`resolve_agent_card_effect(box=1, effect=cards)`)를 얻고 부스트는 소비된다. 둘 다 BG면 놓은 카드가 받는다. Usurp의 배치는 부스트된 BG 짝을 통해 모든 칸에 닿는다(보통 graft는 BG 카드를 놓으면 된다). 판정 없는 남은 것: Ghola의 복사 box는 부스트된 카드의 추가 draw를 갖지 않는다(project convention, 사용자 판정 대기).
+- **턴 종료 보류(OQ-057 (1) 보강):** 효과를 주는 선택을 아직 내는 Agent box가 있으면 "턴 종료"를 내지 않는다. 전에는 턴 종료 판정이 box의 일반 해결을 dry run해 선택으로 해결하는 box를 불발로 읽었다. 결과가 바뀐 의무 box: Stitched Horror의 "Choose two", Beguiling Pheromones의 Faction space trash(전에는 턴 종료가 건너뛰었다). 지불할 수 있는 선택 화살표(Piter, Tleilaxu Surgeon, Dissecting Kit, Tleilaxu Master)는 지불이나 거절을 먼저 해야 한다. 거절만 남은 box는 지금처럼 턴 종료로 불발.
+- **기보:** 다리 `shigawire_partner_draw`(짝의 추가 draw를 기록된 턴 종료 바로 앞에)와 `box_refused_at_turn_end`(선택 box를 턴 종료 앞에서 거절). 측정: 로컬 저장본 6/6, 문제집 285/285, 묶음 v143-944bb1b7 exact 1,861·equal 5·persistent 1·diverged 133(132는 Pheromones 의무 trash를 남기고 누른 턴 종료, 1은 짝 draw로 바뀐 Reveal)·failed 0. tips-v1은 heuristic 행만 다시 캤다(5081 행은 이어받음, 다음에 다시 캐기).
+- **검증:** pytest **7,483개 통과**, ruff·mypy(482파일) 통과, e2e 관련 6종. 독립 리뷰: 규칙 문서와 판정 밖의 변화는 Usurp 닿기 하나(판정에서 따라 나옴), 퍼즈 3,000판·카드 103종 스캔에서 교착 0, 숨은 정보 누출 없음. 지적(Ghola 판정 없음 표시, Pheromones 근거 보강, 옛 문서 앞 참조, 거절 목록 고정 테스트)을 고쳤다.
+
 ## 2026-10-12 접합 두 칸을 처음부터 따로 (codec v143, 관측 v31)
 
 사용자 피드백 "카드 효과 해결 … 접합했을 때도 왜 다른 접합한 카드 효과 보기를 또 눌러야" → "그럼 완전한 방식으로 진행하자" → 계획에 "그래 추천한 대로 진행해보자". 설계 [graft-boxes-plan.md](graft-boxes-plan.md). 브랜치 `graft-boxes`(+ 화면 `graft-boxes-ui`), 착지 `graft-land`(master 쪽에서 병합).
