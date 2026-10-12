@@ -8,8 +8,8 @@ Dune: Imperium - Uprising을 Python으로 규칙에 맞게, 재현 가능하게 
 실력과 플레이 화면을 다듬는 쪽에 있다. 버전·테스트 수·승률 같은 현재 수치와 다음 작업은
 [개발 인수인계](docs/development-handoff.md)에 있다.
 
-<!-- 이 문서는 입구다. codec·관측 버전, 테스트·E2E 수, 승률처럼 자주 바뀌는 숫자와 날짜별
-작업 기록은 여기 쓰지 않고 docs/development-handoff.md에 둔다(사용자 결정 2026-10-12). -->
+<!-- 이 문서는 입구다. codec·관측 버전, 테스트·E2E 수, 승률처럼 자주 바뀌는 숫자는 여기 쓰지 않고
+docs/development-handoff.md에, 날짜별 작업 기록은 docs/worklog/에 둔다(사용자 결정 2026-10-12). -->
 
 ## 바로 한 판
 
@@ -79,7 +79,8 @@ AI끼리의 실력 비교는 [docs/evaluation/](docs/evaluation/)에 있다.
 
 | 문서 | 내용 |
 |---|---|
-| [development-handoff.md](docs/development-handoff.md) | 현재 기준선(버전·테스트 수), 날짜별 작업 기록, 다음 작업. 새 개발 세션은 여기서 시작한다 |
+| [development-handoff.md](docs/development-handoff.md) | 현재 기준선(버전·테스트 수), 진행 중·다음 작업, 알아 둘 것. 새 개발 세션은 여기서 시작한다 |
+| [worklog/](docs/worklog/) | 날짜별 작업 기록(월별 파일, 최신이 위) |
 | [implementation-plan.md](docs/implementation-plan.md) | 마일스톤 M0~M15와 완료 조건 |
 | [rules/README.md](docs/rules/README.md) | 규칙 명세: 공식 룰북·FAQ를 구현 단위로 정리한 요약과 출처 |
 | [rules/open-questions.md](docs/rules/open-questions.md) | 공식 문서로 정할 수 없는 판정의 대장(OQ) |

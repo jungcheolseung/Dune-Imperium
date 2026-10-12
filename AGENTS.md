@@ -6,6 +6,16 @@ continuing implementation in a new session, also read
 that status conflicts with code or tests, treat the executable repository as
 authoritative and update the handoff in the same work unit.
 
+## Work log and handoff
+
+- Record each merged work unit at the top of the current month's
+  `docs/worklog/<YYYY-MM>.md` (newest first): what was asked, what changed,
+  how it was verified, and what is left.
+- Edit `docs/development-handoff.md` only where its baseline numbers, its
+  in-progress / next-work list, or its standing cautions change, and never
+  append dated entries to it. (User decision 2026-10-12: as a running log it
+  had grown to 783 KB, and sessions no longer reached its baseline.)
+
 ## Commit workflow
 
 - During implementation tasks, proactively commit completed work in small,

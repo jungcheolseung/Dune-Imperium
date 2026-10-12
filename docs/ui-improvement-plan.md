@@ -663,9 +663,9 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
 L1(명시적 Agent 턴 종료)·L2(자동 처리 대신 결정 창)는 완료됐고, 선택 불가 표시 확대(C1)와
 Harvest Cells 숨은 정보 수정(C2)는 남아 있다. Epic 카드 두 장의 에셋 연결 누락은 사용자의
 에셋 업데이트(`b1c7dd4`)로 해결됐다. 이 PC의 전체 검증 결과는
-[`development-handoff.md`](development-handoff.md)의 "2026-10-02 최신 master와 UI 통합"에 기록한다.
+[`worklog/2026-10.md`](worklog/2026-10.md)의 "2026-10-02 최신 master와 UI 통합"에 기록한다.
 같은 날 master `49f5b73`까지 추가로 합쳐 계약 아이콘·교전 책략 수정(codec v127)도 반영했다.
-추가 검증은 같은 인수인계의 "2026-10-02 추가 master 통합" 기록을 따른다.
+추가 검증은 같은 작업 기록의 "2026-10-02 추가 master 통합" 기록을 따른다.
 
 ## 12단계 — 게임다운 연출 (2026-10-08, 워크트리 `visual-effects`)
 

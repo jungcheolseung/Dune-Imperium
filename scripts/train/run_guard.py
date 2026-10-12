@@ -1,7 +1,7 @@
 """Run a long training command under a memory watchdog (stdlib only).
 
 Why: on WSL an out-of-memory run has taken the whole session down before
-(docs/development-handoff.md, 2026-09-17 pre-training check), and a training
+(docs/worklog/2026-09.md, 2026-09-17 pre-training check), and a training
 main process that dies can leave orphan workers that look like progress
 (docs/lessons.md, 2026-09-06). This wrapper
 
