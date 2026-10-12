@@ -16,6 +16,120 @@
 
 **2026-09-01 확정 캠페인**: 공식 리소스 페이지를 재확인해 Uprising Main Rulebook·Rules Supplements 23-10-12판과 FAQ 2025-01-13판이 여전히 최신임을 확정한 뒤, 남아 있던 `OPEN`/`CONTENT` 19건 전부에 확정 판정을 내렸다. `DECIDED` 판정은 프로젝트의 최종 판정이며 "공식 답변 대기" 상태가 아니고, 새 공식 문서가 발표될 때만 해당 항목을 다시 연다. 같은 날 사용자 검토로 세 항목을 갱신했다: OQ-022는 디자이너 판정을 찾아 반대 방향으로 확정, OQ-023은 사용자 재판정으로 교체, OQ-010은 방향만 확정한 `OPEN`으로 되돌렸다가 2026-09-02에 사용자 판정 4건(상대 discard·완료 contract identity 공개, 실시간 로그 기준, 종료 후 전체 공개)으로 `DECIDED`했다.
 
+## 색인
+
+번호·제목·상태만 번호순으로 모은 표다(본문의 순서는 번호순이 아닌 곳이 있다). 판정 내용은 각 항목을 본다. 새 항목을 더하거나 상태를 바꾸면 이 표도 함께 고친다.
+
+| 번호 | 제목 | 상태 |
+| --- | --- | --- |
+| [OQ-001](#oq-001--endgame-처리-순서와-priority) | Endgame 처리 순서와 priority | `DECIDED` |
+| [OQ-002](#oq-002--동률-combat-reward-해결-순서) | 동률 Combat reward 해결 순서 | `DECIDED` |
+| [OQ-003](#oq-003--combat-intrigue-도중-참가-자격-변화) | Combat Intrigue 도중 참가 자격 변화 | `DECIDED` |
+| [OQ-004](#oq-004--imperium-deck-완전-고갈) | Imperium Deck 완전 고갈 | `DECIDED` |
+| [OQ-005](#oq-005--여러-matching-battle-icon-중-pair-선택) | 여러 matching battle icon 중 pair 선택 | `RESOLVED` |
+| [OQ-006](#oq-006--한-space에-여러-opponent-agent가-있을-때-infiltrate) | 한 space에 여러 opponent Agent가 있을 때 Infiltrate | `DECIDED` |
+| [OQ-007](#oq-007--leader-선택-절차) | Leader 선택 절차 | `DECIDED` |
+| [OQ-008](#oq-008--control-bonus와-방문자-효과의-상대-순서) | Control bonus와 방문자 효과의 상대 순서 | `DECIDED` |
+| [OQ-009](#oq-009--observation-post-연결-graph) | observation post 연결 graph | `RESOLVED` |
+| [OQ-010](#oq-010--손패discard와-과거-공개-정보의-열람-범위) | 손패·discard와 과거 공개 정보의 열람 범위 | `DECIDED` |
+| [OQ-011](#oq-011--gather-intelligence와-contract-완료의-상대-순서) | Gather Intelligence와 contract 완료의 상대 순서 | `DECIDED` |
+| [OQ-012](#oq-012--자유-순서-그룹-밖-의무-효과의-충돌) | 자유 순서 그룹 밖 의무 효과의 충돌 | `DECIDED` |
+| [OQ-013](#oq-013--clean-up-이동과-일반적인-discard-반응) | Clean Up 이동과 일반적인 `discard` 반응 | `RESOLVED` |
+| [OQ-014](#oq-014--alliance-상실-때-여러-수령-후보) | Alliance 상실 때 여러 수령 후보 | `RESOLVED` |
+| [OQ-015](#oq-015--intrigue의-plot-timing-시작점과-복수-비용-줄의-의무-지불) | Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불 | `DECIDED` |
+| [OQ-016](#oq-016--face-up-trigger-intrigue의-수명) | face-up trigger Intrigue의 수명 | `DECIDED` |
+| [OQ-017](#oq-017--feyd-token이-맨-오른쪽에-있을-때의-signet-보상) | Feyd token이 맨 오른쪽에 있을 때의 Signet 보상 | `DECIDED` |
+| [OQ-018](#oq-018--memory-0개일-때의-other-memories-사용-가능-여부) | memory 0개일 때의 Other Memories 사용 가능 여부 | `DECIDED` |
+| [OQ-019](#oq-019--reverend-mother-반복의-적용-범위) | Reverend Mother 반복의 적용 범위 | `DECIDED` |
+| [OQ-020](#oq-020--always-smiling-부여-뒤-strength가-내려간-경우) | Always Smiling 부여 뒤 strength가 내려간 경우 | `DECIDED` |
+| [OQ-021](#oq-021--시장이-빈-뒤의-set-aside-sardaukar-contract-접근) | 시장이 빈 뒤의 set-aside Sardaukar contract 접근 | `DECIDED` |
+| [OQ-022](#oq-022--agent-효과-해결-전에-play된-카드-자체가-trash될-때) | Agent 효과 해결 전에 play된 카드 자체가 trash될 때 | `DECIDED` |
+| [OQ-023](#oq-023--imperial-privilege의-recall-의무와-대상-부재-시-처리) | Imperial Privilege의 recall 의무와 대상 부재 시 처리 | `DECIDED` |
+| [OQ-024](#oq-024--the-beasts-spoils프로모의-battle-icon별-보상-범위) | The Beast's Spoils(프로모)의 battle icon별 보상 범위 | `DECIDED` |
+| [OQ-025](#oq-025--pivotal-gambit프로모의-1위-보상에-influence-1-선택-추가) | Pivotal Gambit(프로모)의 "1위 보상에 Influence 1 선택 추가" | `DECIDED` |
+| [OQ-026](#oq-026--arrakis-revolt프로모의-shield-wall-제거-선택과-보호된-conflict) | Arrakis Revolt(프로모)의 Shield Wall 제거 선택과 보호된 Conflict | `DECIDED` |
+| [OQ-027](#oq-027--보드-공간에-인쇄된-여러-아이콘의-해결-단위) | 보드 공간에 인쇄된 여러 아이콘의 해결 단위 | `DECIDED` |
+| [OQ-028](#oq-028--인쇄-조건의-판정-시점-같은-turn의-뒤-선택으로-성립하는-조건) | 인쇄 조건의 판정 시점: 같은 turn의 뒤 선택으로 성립하는 조건 | `DECIDED` |
+| [OQ-029](#oq-029--conflict에-배치한-troop의-임의-회수와-배치의-분할) | Conflict에 배치한 troop의 임의 회수와 배치의 분할 | `DECIDED` |
+| [OQ-030](#oq-030--supply-부족으로-못-한-recruit와-같은-turn에-supply가-뒤늦게-늘어난-경우) | supply 부족으로 못 한 recruit와 같은 turn에 supply가 뒤늦게 늘어난 경우 | `DECIDED` |
+| [OQ-031](#oq-031--고를-수-있는-face-up-skill이-없을-때의-sardaukar-commander-획득) | 고를 수 있는 face-up Skill이 없을 때의 Sardaukar Commander 획득 | `DECIDED` |
+| [OQ-032](#oq-032--skill의-combat-strength-조건을-판정하는-시점) | Skill의 Combat strength 조건을 판정하는 시점 | `DECIDED` |
+| [OQ-033](#oq-033--command-6의-persuasion-판정-시점) | Command (6+)의 Persuasion 판정 시점 | `DECIDED` |
+| [OQ-034](#oq-034--disruption-tactics의-enemy-troop-선택과-reveal-중-combat-아이콘-배치의-회수) | Disruption Tactics의 "enemy troop" 선택과 Reveal 중 Combat 아이콘 배치의 회수 | `DECIDED` |
+| [OQ-035](#oq-035--sardaukar-standard의-trash-트리거와-skill-선택시점) | Sardaukar Standard의 trash 트리거와 Skill 선택·시점 | `DECIDED` |
+| [OQ-036](#oq-036--lose-a-troop의-출처와-강제-spy-이동의-목적지) | "lose a troop"의 출처와 강제 Spy 이동의 목적지 | `DECIDED` |
+| [OQ-037](#oq-037--into-the-fray로-conflict에-간-agent와-bloodlines-leader-카드면의-아이콘-읽기) | Into the Fray로 Conflict에 간 Agent와 Bloodlines Leader 카드면의 아이콘 읽기 | `DECIDED` |
+| [OQ-038](#oq-038--lose-troops-비용의-출처와-harkonnen-advisor의-배치-금지-troop) | "Lose troops" 비용의 출처와 Harkonnen Advisor의 배치 금지 troop | `DECIDED` |
+| [OQ-039](#oq-039--navigation-카드의-play-시점선택-불가slot-조건) | Navigation 카드의 play 시점·선택 불가·slot 조건 | `DECIDED` |
+| [OQ-040](#oq-040--tech-tile의-endgame-효과-시점) | Tech tile의 Endgame 효과 시점 | `DECIDED` |
+| [OQ-041](#oq-041--secret-project-tile의-취급과-kota의-기억) | Secret Project tile의 취급과 Kota의 기억 | `DECIDED` |
+| [OQ-042](#oq-042--suspensor-suits의-자기-turn과-배치-불가) | Suspensor Suits의 "자기 turn"과 배치 불가 | `DECIDED` |
+| [OQ-043](#oq-043--command-6-판정에-세는-persuasion의-범위) | Command (6+) 판정에 세는 Persuasion의 범위 | `DECIDED` |
+| [OQ-044](#oq-044--forbidden-weaponspanopticonplasteel-blades의-해결-세부) | Forbidden Weapons·Panopticon·Plasteel Blades의 해결 세부 | `DECIDED` |
+| [OQ-045](#oq-045--reveal-turn의-troop-recruitintrigue-draw-시점) | Reveal turn의 troop recruit·Intrigue draw 시점 | `DECIDED` |
+| [OQ-046](#oq-046--treacherous-maneuver를-faction이-없는-space에서-play할-때) | Treacherous Maneuver를 Faction이 없는 space에서 play할 때 | `DECIDED` |
+| [OQ-047](#oq-047--endgame-tiebreaker의-garrison의-troop-수와-sardaukar-commander) | Endgame tiebreaker의 "garrison의 troop 수"와 Sardaukar Commander | `DECIDED` |
+| [OQ-048](#oq-048--tleilaxu-track-마지막-칸에서의-추가-전진) | Tleilaxu track 마지막 칸에서의 추가 전진 | `DECIDED` |
+| [OQ-049](#oq-049--supply가-빈-상태의-specimen-생성) | supply가 빈 상태의 specimen 생성 | `DECIDED` |
+| [OQ-050](#oq-050--언제든-가능한-specimen-반환의-결정-창) | "언제든" 가능한 specimen 반환의 결정 창 | `DECIDED` |
+| [OQ-051](#oq-051--family-atomics로-제거한-imperium-row-카드의-행선지) | Family Atomics로 제거한 Imperium Row 카드의 행선지 | `DECIDED` |
+| [OQ-052](#oq-052--imperium-ceremony-intrigue-deck이-두-장-미만일-때의-peek) | Imperium Ceremony: Intrigue deck이 두 장 미만일 때의 peek | `DECIDED` |
+| [OQ-053](#oq-053--tleilaxu-surgeon-lose-two-troops의-출처-존) | Tleilaxu Surgeon: "Lose two troops"의 출처 존 | `DECIDED` |
+| [OQ-054](#oq-054--usurp로-빌린-imperium-row-카드의-trash) | Usurp로 빌린 Imperium Row 카드의 "trash" | `DECIDED` |
+| [OQ-055](#oq-055--slig-farmer의-agent-아이콘마다에-조건부부여-아이콘이-드는지) | Slig Farmer의 "Agent 아이콘마다"에 조건부·부여 아이콘이 드는지 | `DECIDED` |
+| [OQ-056](#oq-056--earn-any-alliance의-완료-시점과-alliance-이전) | Earn Any Alliance의 완료 시점과 Alliance 이전 | `DECIDED` |
+| [OQ-057](#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) | 디자이너 커뮤니티 판정의 일괄 채택 (2026-09-09) | `DECIDED` |
+| [OQ-058](#oq-058--intrigue-카드의-인쇄-줄은-각각-따로-쓰고-쓸-때-지불한다) | Intrigue 카드의 인쇄 줄은 각각 따로 쓰고, 쓸 때 지불한다 | `DECIDED` |
+| [OQ-059](#oq-059--시장에-face-up-contract가-남았지만-아무것도-가져갈-수-없을-때의-contract-아이콘) | 시장에 face-up contract가 남았지만 아무것도 가져갈 수 없을 때의 contract 아이콘 | `DECIDED` |
+| [OQ-060](#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상) | Influence track 맨 위(6)에서의 "진영을 골라 Influence" 보상 | `DECIDED` |
+| [OQ-061](#oq-061--imperial-privilege-인쇄된-trash-an-intrigue-card-아이콘과-board-guide의-discard) | Imperial Privilege: 인쇄된 "Trash an Intrigue card" 아이콘과 Board Guide의 "discard" | `DECIDED` |
+| [OQ-062](#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력) | Servo-Receivers의 Signet Ring 아이콘: Signet Ring 카드 밖에서 쓰는 Leader 능력 | `DECIDED` |
+| [OQ-063](#oq-063--hungry-for-spice의-in-a-single-turn) | Hungry for Spice의 "in a single turn" | `DECIDED` |
+| [OQ-064](#oq-064--coercive-negotiation이-공개한-contract를-하나도-가져갈-수-없을-때) | Coercive Negotiation이 공개한 contract를 하나도 가져갈 수 없을 때 | `DECIDED` |
+| [OQ-065](#oq-065--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때) | 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때 | `DECIDED` |
+| [OQ-066](#oq-066--reclaimed-forces의-acquire는-whenever-you-acquire-a-card-trigger를-일으키는가) | Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가 | `DECIDED` |
+| [OQ-067](#oq-067--두-intrigue-더미가-모두-비었을-때-captured-mentatguild-spy의-discard) | 두 Intrigue 더미가 모두 비었을 때 Captured Mentat·Guild Spy의 discard | `DECIDED` |
+| [OQ-068](#oq-068--recall-agent-아이콘이-into-the-fray로-conflict에-간-agent를-되돌릴-수-있는지) | Recall Agent 아이콘이 Into the Fray로 Conflict에 간 Agent를 되돌릴 수 있는지 | `DECIDED` |
+| [OQ-069](#oq-069--desert-power의-선택-전-2-persuasion과-command-6) | Desert Power의 선택 전 2 Persuasion과 Command (6+) | `DECIDED` |
+| [OQ-070](#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫) | 이번 turn에 recruit한 Sardaukar Commander의 배치 몫 | `DECIDED` |
+| [OQ-071](#oq-071--scouts-결정의-차례-순서와-판단-시점) | Scouts 결정의 차례 순서와 판단 시점 | `DECIDED` |
+| [OQ-072](#oq-072--scouts-단계와-control-방어-배치의-순서) | Scouts 단계와 Control 방어 배치의 순서 | `DECIDED` |
+| [OQ-073](#oq-073--봉인-입찰-동점-승자의-처리-순서와-입찰-상한) | 봉인 입찰: 동점 승자의 처리 순서와 입찰 상한 | `DECIDED` |
+| [OQ-074](#oq-074--mercenaries와-shadow-warfare의-턴-밖-conflict-투입) | Mercenaries와 Shadow Warfare의 턴 밖 Conflict 투입 | `DECIDED` |
+| [OQ-075](#oq-075--contingencies의-다른-agent) | Contingencies의 "다른 Agent" | `DECIDED` |
+| [OQ-076](#oq-076--소위원회-가입-시점과-비용) | 소위원회 가입 시점과 비용 | `DECIDED` |
+| [OQ-077](#oq-077--세워-둔-troop과-garrison-재모집-금지) | 세워 둔 troop과 garrison 재모집 금지 | `DECIDED` |
+| [OQ-078](#oq-078--칸-위-물품을-여러-방문자가-나눌-때) | 칸 위 물품을 여러 방문자가 나눌 때 | `DECIDED` |
+| [OQ-079](#oq-079--desert-riding의-maker-hooks-토큰) | Desert Riding의 Maker Hooks 토큰 | `DECIDED` |
+| [OQ-080](#oq-080--valued-informants-관측소에-spy를-놓을-때의-범위) | Valued Informants: "관측소에 Spy를 놓을 때"의 범위 | `DECIDED` |
+| [OQ-081](#oq-081--friends-everywhere와-market-opening의-범위) | Friends Everywhere와 Market Opening의 범위 | `DECIDED` |
+| [OQ-082](#oq-082--mating-season과-tueks-sietch) | Mating Season과 Tuek's Sietch | `DECIDED` |
+| [OQ-083](#oq-083--clear-the-marketcritical-moment에서-치운-카드의-행방) | Clear the Market·Critical Moment에서 치운 카드의 행방 | `DECIDED` |
+| [OQ-084](#oq-084--rebuild-infrastructure의-비용-분담) | Rebuild Infrastructure의 비용 분담 | `DECIDED` |
+| [OQ-085](#oq-085--비밀-선택-보상의-소멸과-해결-순서) | 비밀 선택 보상의 소멸과 해결 순서 | `DECIDED` |
+| [OQ-086](#oq-086--앱-한국어의-오역과-누락) | 앱 한국어의 오역과 누락 | `DECIDED` |
+| [OQ-087](#oq-087--critical-moment-모두-패스-덱-부족-2위의-선택) | Critical Moment: 모두 패스, 덱 부족, 2위의 선택 | `DECIDED` |
+| [OQ-088](#oq-088--임무-참여를-할-수-없는-좌석) | 임무 참여를 할 수 없는 좌석 | `DECIDED` |
+| [OQ-089](#oq-089--immortality-풀-항목의-세부) | Immortality 풀 항목의 세부 | `DECIDED` |
+| [OQ-090](#oq-090--choam-research의-뒷면-contract가-bloodlines의-immediate일-때) | CHOAM Research의 뒷면 Contract가 Bloodlines의 Immediate일 때 | `DECIDED` |
+| [OQ-091](#oq-091--go-to-11-변형을-uprising에-적용하는-방식) | Go to 11 변형을 Uprising에 적용하는 방식 | `DECIDED` |
+| [OQ-092](#oq-092--epic-game-mode를-rise-of-ix-없이-uprising에-적용) | Epic Game Mode를 Rise of Ix 없이 Uprising에 적용 | `DECIDED` |
+| [OQ-093](#oq-093--go-to-11과-epic-game-mode를-함께-쓸-때) | Go to 11과 Epic Game Mode를 함께 쓸 때 | `DECIDED` |
+| [OQ-094](#oq-094--battle-icon이-없는-conflict-카드) | battle icon이 없는 Conflict 카드 | `DECIDED` |
+| [OQ-095](#oq-095--agent-turn은-소유자의-턴-종료로만-끝난다) | Agent turn은 소유자의 "턴 종료"로만 끝난다 | `DECIDED` |
+| [OQ-096](#oq-096--epic-setup-intrigue와-leader의-game-start-선택-순서) | Epic setup Intrigue와 Leader의 Game Start 선택 순서 | `DECIDED` |
+| [OQ-097](#oq-097--twisted-intrigue-카드가-공용-intrigue-덱에-섞이는-것) | Twisted Intrigue 카드가 공용 Intrigue 덱에 섞이는 것 | `DECIDED` |
+| [OQ-098](#oq-098--tech-획득-효과를-구매-뒤-turn-안에서-자유-순서로-해결) | Tech 획득 효과를 구매 뒤 turn 안에서 자유 순서로 해결 | `DECIDED` |
+| [OQ-099](#oq-099--덱과-버린-더미가-모두-비었을-때-gather-intelligence로-spy만-회수할-수-있는지) | 덱과 버린 더미가 모두 비었을 때 Gather Intelligence로 Spy만 회수할 수 있는지 | `DECIDED` |
+| [OQ-100](#oq-100--arrakeen-scouts-줄의-보상-아이콘-순서) | Arrakeen Scouts 줄의 보상 아이콘 순서 | `DECIDED` |
+| [OQ-101](#oq-101--if-you-recalled-a-spy-this-turn이-세는-recall과-special-mission의-city-spy) | "If you recalled a Spy this turn"이 세는 recall과 Special Mission의 City Spy | `DECIDED` |
+| [OQ-102](#oq-102--서로-다른-순위-사이의-conflict-보상-순서) | 서로 다른 순위 사이의 Conflict 보상 순서 | `DECIDED` |
+| [OQ-103](#oq-103--턴-밖-선택-뒤-공개-앞의-멈춤) | 턴 밖 선택 뒤 공개 앞의 멈춤 | `DECIDED` |
+| [OQ-104](#oq-104--navigation-chamber의-할인은-의무인가) | Navigation Chamber의 할인은 의무인가 | `DECIDED` |
+| [OQ-105](#oq-105--스스로-내는-troop-잃기-비용에-sardaukar-commander를-쓸-수-있는가) | 스스로 내는 "troop 잃기" 비용에 Sardaukar Commander를 쓸 수 있는가 | `DECIDED` |
+| [OQ-106](#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) | 공개 선택과 숨은 draw를 한 단계에 묶지 않는다 | `DECIDED` |
+| [OQ-107](#oq-107--urgent-shigawire의-부스트와-graft-상대인-bene-gesserit-카드) | Urgent Shigawire의 부스트와 graft 상대인 Bene Gesserit 카드 | `DECIDED` |
+
 ## OQ-001 — Endgame 처리 순서와 priority
 
 - 상태: `DECIDED`
