@@ -14,8 +14,11 @@ from dune_imperium.adapters.pettingzoo_env import (  # noqa: E402
     LOSER_REWARD,
     WINNER_REWARD,
 )
-from dune_imperium.agents import StateAgent, make_agent  # noqa: E402
-from dune_imperium.agents import network_search_agent  # noqa: E402
+from dune_imperium.agents import (  # noqa: E402
+    StateAgent,
+    make_agent,
+    network_search_agent,
+)
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
     SearchResult,
