@@ -120,6 +120,18 @@ class TorchBatchPolicy:
     def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
         if not requests:
             return ()
+        if self.sample:
+            # Sampling stays unguarded on purpose: masking already-taken
+            # actions changes the behaviour distribution without any
+            # correction in the learner, and a from-scratch comparison
+            # (2026-09-06, baseline report section 7) collapsed entropy to
+            # 0.2 and doubled decisions per game. The collector withholds
+            # the pure-undo pair at the mask level instead (on-policy, since
+            # the learner sees the same mask); what loops remain are priced
+            # by the step penalty and bounded by the game cap.
+            catalog, probabilities = self.distribution(requests)
+            chosen = torch.multinomial(probabilities, 1, generator=self._generator)
+            return tuple(int(catalog[index]) for index in chosen.squeeze(-1).tolist())
         observations = torch.from_numpy(
             np.stack([request.observation for request in requests])
         ).to(self.device)
@@ -130,18 +142,6 @@ class TorchBatchPolicy:
         with torch.no_grad():
             logits, _ = self.network(observations, masks)
         logits = logits.to("cpu")
-        if self.sample:
-            # Sampling stays unguarded on purpose: masking already-taken
-            # actions changes the behaviour distribution without any
-            # correction in the learner, and a from-scratch comparison
-            # (2026-09-06, baseline report section 7) collapsed entropy to
-            # 0.2 and doubled decisions per game. The collector withholds
-            # the pure-undo pair at the mask level instead (on-policy, since
-            # the learner sees the same mask); what loops remain are priced
-            # by the step penalty and bounded by the game cap.
-            probabilities = torch.softmax(logits / self.temperature, dim=-1)
-            chosen = torch.multinomial(probabilities, 1, generator=self._generator)
-            return tuple(int(index) for index in chosen.squeeze(-1).tolist())
         answers: list[int] = []
         for row, request in enumerate(requests):
             answers.append(
@@ -150,6 +150,45 @@ class TorchBatchPolicy:
                 )
             )
         return tuple(answers)
+
+    def distribution(
+        self, requests: Sequence[PolicyRequest]
+    ) -> tuple[np.ndarray, torch.Tensor]:
+        """Return the sampling distribution of every request.
+
+        ``catalog`` is the sorted union of the requests' legal indices and
+        ``probabilities[i, j]`` the chance that request ``i`` plays
+        ``catalog[j]``: the masked softmax of the full forward pass, read
+        over the actions legal somewhere in the batch. A decision offers
+        about five of the catalog's 34,000 actions, and the full policy head
+        and a 34,000-wide multinomial were two thirds of a self-play
+        worker's time (2026-10-12); the head reads only these rows
+        (``action_logits``, as the learner's ``local_legal`` does). An
+        action legal in another request but not in this one gets
+        ``MASKED_LOGIT`` and so exactly zero probability, as before.
+        """
+
+        observations = torch.from_numpy(
+            np.stack([request.observation for request in requests])
+        ).to(self.device)
+        legal = [
+            np.asarray(request.legal_indices, dtype=np.int64) for request in requests
+        ]
+        catalog, columns = np.unique(np.concatenate(legal), return_inverse=True)
+        allowed = np.zeros((len(requests), catalog.shape[0]), dtype=np.bool_)
+        rows = np.repeat(np.arange(len(requests)), [row.shape[0] for row in legal])
+        allowed[rows, columns.reshape(-1)] = True
+        self.network.eval()
+        with torch.no_grad():
+            hidden = self.network.trunk(observations)
+            logits = self.network.action_logits(
+                hidden, torch.from_numpy(catalog).to(self.device)
+            )
+            logits = logits.masked_fill(
+                ~torch.from_numpy(allowed).to(self.device), MASKED_LOGIT
+            )
+        probabilities = torch.softmax(logits.to("cpu") / self.temperature, dim=-1)
+        return catalog, probabilities
 
     def _guard(self, request: PolicyRequest) -> _CycleGuard:
         return self._guards.setdefault((request.game, request.seat), _CycleGuard())
