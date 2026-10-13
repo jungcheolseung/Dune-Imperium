@@ -89,6 +89,7 @@ def test_without_opponent_games_every_game_seats_the_opponent() -> None:
         ({"go_to_11": True}, "requires the Immortality"),
         ({"retarget": True}, "needs a checkpoint"),
         ({"family_atomics": "heuristic"}, "family_atomics must be one of"),
+        ({"arch": "transformer"}, "unknown network architecture"),
     ],
 )
 def test_invalid_option_mixes_are_rejected(
@@ -251,6 +252,30 @@ def test_retarget_resumes_a_checkpoint_onto_another_ruleset(tmp_path: Path) -> N
     assert network.action_size > base_info.action_size
 
 
+def test_an_entity_run_trains_and_resumes_onto_another_ruleset(
+    tmp_path: Path,
+) -> None:
+    from dune_imperium.training.entity_network import EntityNetwork
+
+    base = train(_tiny(tmp_path / "base", opponent="random", arch="entity"))
+    network, info = load_checkpoint(base.latest_checkpoint)
+    assert isinstance(network, EntityNetwork) and info.arch == "entity"
+    assert info.optimizer_state is not None
+    # A resumed run keeps the file's network, whatever ``arch`` says.
+    moved = train(
+        _tiny(
+            tmp_path / "epic",
+            opponent="random",
+            epic_game=True,
+            resume=base.latest_checkpoint,
+            retarget=True,
+        )
+    )
+    network, info = load_checkpoint(moved.latest_checkpoint)
+    assert isinstance(network, EntityNetwork)
+    assert info.ruleset == "uprising-4p-base+epic" and info.iteration == 2
+
+
 def test_cli_forwards_the_new_options(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -282,11 +307,14 @@ def test_cli_forwards_the_new_options(
                 "--retarget",
                 "--family-atomics",
                 "app",
+                "--arch",
+                "entity",
             ]
         )
 
     (config,) = seen
     assert config.family_atomics == "app"
+    assert config.arch == "entity"
     assert config.go_to_11 and config.epic_game and config.arrakeen_scouts
     assert config.leader_draft and not config.rotate_leaders
     assert config.opponent == "app_ai" and config.opponent_games == 16

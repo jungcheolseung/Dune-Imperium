@@ -94,6 +94,17 @@ class PolicyValueNetwork(nn.Module):
             hidden, self.policy_head.weight[actions], self.policy_head.bias[actions]
         )
 
+    def row_action_logits(self, hidden: Tensor, actions: Tensor) -> Tensor:
+        """Unmasked logits ``[B, L]``: row ``b`` scores its own indices ``actions[b]``.
+
+        Distillation's padded legal sets differ per row; ``action_logits``
+        scores one index list for every row.
+        """
+
+        weight = self.policy_head.weight[actions]
+        bias = self.policy_head.bias[actions]
+        return torch.einsum("bh,blh->bl", hidden, weight) + bias
+
 
 class MlpSlotsNetwork(PolicyValueNetwork):
     """The MLP plus a zero-initialised embedding of the identity columns.
@@ -172,4 +183,29 @@ def build_network(arch: Mapping[str, Any], action_size: int) -> PolicyValueNetwo
                 f"current v{SLOT_VERSION}"
             )
         return MlpSlotsNetwork(action_size, hidden=hidden)
+    if kind == "entity":
+        # Imported here: the entity network imports this module.
+        from dune_imperium.config import RulesetConfig
+        from dune_imperium.training.entity_features import FEATURE_DIGEST
+        from dune_imperium.training.entity_network import EntityNetwork
+
+        if arch.get("feature_digest") != FEATURE_DIGEST:
+            raise ValueError(
+                "the entity feature table changed since the file was written "
+                "(training.entity_features)"
+            )
+        network = EntityNetwork(
+            RulesetConfig.from_identifier(str(arch["ruleset"])),
+            hidden=hidden,
+            entity_width=int(arch["entity_width"]),
+            seat_width=int(arch["seat_width"]),
+            action_width=int(arch["action_width"]),
+            aux_vp=bool(arch.get("aux_vp", False)),
+        )
+        if network.action_size != action_size:
+            raise ValueError(
+                f"entity network for {arch['ruleset']} has {network.action_size} "
+                f"actions, not {action_size}"
+            )
+        return network
     raise ValueError(f"unknown network architecture: {kind!r}")

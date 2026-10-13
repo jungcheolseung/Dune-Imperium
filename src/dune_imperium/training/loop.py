@@ -88,6 +88,10 @@ class TrainConfig:
     # four, so the learner meets every Leader. Not with leader_draft.
     rotate_leaders: bool = False
     hidden: tuple[int, ...] = DEFAULT_HIDDEN
+    # The network a fresh run builds: "mlp" (the flat MLP) or "entity" (the
+    # entity network, docs/entity-network-plan.md). A resumed run keeps the
+    # checkpoint's own.
+    arch: str = "mlp"
     learner: LearnerConfig = field(default_factory=LearnerConfig)
     # Baseline kind seated in the non-learner seats during collection; None
     # means pure self-play with the learner in every seat.
@@ -162,6 +166,8 @@ class TrainConfig:
             raise ValueError("workers must be positive")
         if self.step_penalty < 0.0:
             raise ValueError("step_penalty must not be negative")
+        if self.arch not in ("mlp", "entity"):
+            raise ValueError(f"unknown network architecture: {self.arch!r}")
         if self.family_atomics not in FAMILY_ATOMICS_DECIDERS:
             raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         if not 1 <= self.learner_seats <= 3:
@@ -397,7 +403,7 @@ def train(
     if config.resume is not None:
         # Resuming keeps the checkpoint's architecture (an ``mlp_slots`` file
         # made by ``dune-imperium-checkpoint widen`` resumes as one); a fresh
-        # run is always the plain MLP.
+        # run builds ``config.arch``.
         network, info = load_checkpoint(
             config.resume, ruleset=ruleset if config.retarget else None
         )
@@ -417,7 +423,12 @@ def train(
         resumed_optimizer = info.optimizer_state
     else:
         torch.manual_seed(config.seed)
-        network = PolicyValueNetwork(codec_size, hidden=config.hidden)
+        if config.arch == "entity":
+            from dune_imperium.training.entity_network import EntityNetwork
+
+            network = EntityNetwork(ruleset, hidden=config.hidden)
+        else:
+            network = PolicyValueNetwork(codec_size, hidden=config.hidden)
     learner = Learner(network, device, config.learner, seed=config.seed)
     if resumed_optimizer is not None:
         learner.restore_optimizer(resumed_optimizer)

@@ -245,13 +245,11 @@ def legal_log_probs(
 ) -> Tensor:
     """Log-probabilities over each row's legal actions ``[B, L]``.
 
-    Reads only the gathered policy-head rows; padded slots get
+    Scores only each row's gathered actions; padded slots get
     ``MASKED_LOGIT`` so they carry no probability.
     """
 
-    weight = network.policy_head.weight[index]
-    bias = network.policy_head.bias[index]
-    logits = torch.einsum("bh,blh->bl", hidden, weight) + bias
+    logits = network.row_action_logits(hidden, index)
     logits = logits.masked_fill(~valid, MASKED_LOGIT)
     return torch.log_softmax(logits, dim=-1)
 

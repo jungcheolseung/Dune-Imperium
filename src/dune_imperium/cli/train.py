@@ -95,6 +95,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=",".join(str(width) for width in DEFAULT_HIDDEN),
         help="comma-separated hidden widths (default: 512,512)",
     )
+    parser.add_argument(
+        "--arch",
+        choices=("mlp", "entity"),
+        default="mlp",
+        help=(
+            "the network a fresh run builds: the flat MLP (default) or the "
+            "entity network (docs/entity-network-plan.md); a resumed run keeps "
+            "the checkpoint's"
+        ),
+    )
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--entropy", type=float, default=0.01)
     parser.add_argument("--value-coefficient", type=float, default=0.5)
@@ -260,6 +270,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             leader_draft=arguments.leader_draft,
             rotate_leaders=arguments.rotate_leaders,
             hidden=hidden,
+            arch=arguments.arch,
             learner=LearnerConfig(
                 learning_rate=arguments.learning_rate,
                 value_coefficient=arguments.value_coefficient,

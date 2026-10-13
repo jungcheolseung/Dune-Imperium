@@ -97,9 +97,7 @@ class MigrationReport:
     actions_aliased: int = 0
 
     def describe(self) -> str:
-        aliased = (
-            f"{self.actions_aliased} aliased, " if self.actions_aliased else ""
-        )
+        aliased = f"{self.actions_aliased} aliased, " if self.actions_aliased else ""
         return (
             f"codec v{self.from_codec_version} -> v{self.to_codec_version}: "
             f"{self.actions_kept} actions kept, {aliased}{self.actions_new} new, "
@@ -337,6 +335,8 @@ def load_checkpoint(
 
     document = _read(path)
     arch = _document_arch(document)
+    if arch["kind"] == "entity":
+        return _load_entity(document, arch, ruleset)
     migration: MigrationReport | None = None
     state_dict = dict(document["state_dict"])
     optimizer_state = document.get("optimizer_state")
@@ -397,6 +397,102 @@ def load_checkpoint(
         and document.get("observation_layout") is not None,
         migration=migration,
         arch=str(arch["kind"]),
+    )
+    return network, info
+
+
+def _load_entity(
+    document: Mapping[str, Any],
+    arch: Mapping[str, Any],
+    ruleset: RulesetConfig | None,
+) -> tuple[PolicyValueNetwork, CheckpointInfo]:
+    """Load an ``entity`` file, moving it onto another catalog when asked.
+
+    Its entity and observation weights do not depend on the catalog. The
+    action parts (kinds, argument keys, labels) move by name and the
+    per-action bias by template identity; a part or template the file never
+    had starts at zero, and such an action is still scored from its other
+    parts, so it is not an untrained row. It reads only the observation it
+    was written for (the segments it parses).
+    """
+
+    # Imported here: the entity tables read every content package, which an
+    # MLP-only caller should not pay for.
+    from dune_imperium.training.entity_network import (
+        EntityNetwork,
+        action_vocabulary,
+        retarget_action_parts,
+    )
+
+    if (
+        document["observation_version"] != OBSERVATION_VERSION
+        or document["observation_size"] != OBSERVATION_SIZE
+    ):
+        raise ValueError(
+            f"an entity checkpoint reads only the observation it was written for "
+            f"(v{document['observation_version']}, current v{OBSERVATION_VERSION})"
+        )
+    own = str(document["ruleset"])
+    target = None if ruleset is None or ruleset.identifier == own else ruleset
+    state_dict = dict(document["state_dict"])
+    optimizer_state = document.get("optimizer_state")
+    templates = document.get("action_templates")
+    migration: MigrationReport | None = None
+    if document["action_codec_version"] == ACTION_CODEC_VERSION and target is None:
+        network = build_network(arch, int(document["action_size"]))
+    else:
+        if templates is None:
+            raise ValueError(
+                "an entity checkpoint carries no template list to move its "
+                "action bias by"
+            )
+        config = target or RulesetConfig.from_identifier(own)
+        codec = ActionCodec(config)
+        network = build_network({**arch, "ruleset": config.identifier}, codec.size)
+        assert isinstance(network, EntityNetwork)
+        old_keys = [_key(entry) for entry in templates]
+        state_dict = retarget_action_parts(
+            state_dict, action_vocabulary(old_keys), network.action_vocabulary
+        )
+        old_index = {key: index for index, key in enumerate(old_keys)}
+        old_bias = state_dict["action_bias"]
+        bias = torch.zeros(codec.size, dtype=old_bias.dtype)
+        kept = 0
+        for index, key in enumerate(template_keys(codec.catalog)):
+            row = old_index.get(key)
+            if row is not None:
+                bias[index] = old_bias[row]
+                kept += 1
+        state_dict["action_bias"] = bias
+        # The optimizer's per-action moments no longer fit the catalog.
+        optimizer_state = None
+        migration = MigrationReport(
+            from_codec_version=int(document["action_codec_version"]),
+            to_codec_version=ACTION_CODEC_VERSION,
+            from_observation_version=int(document["observation_version"]),
+            to_observation_version=OBSERVATION_VERSION,
+            actions_kept=kept,
+            actions_new=codec.size - kept,
+            actions_dropped=len(templates) - kept,
+            observation_kept=OBSERVATION_SIZE,
+            observation_new=0,
+            observation_dropped=0,
+        )
+    network.load_state_dict(state_dict)
+    network.eval()
+    info = CheckpointInfo(
+        ruleset=own,
+        action_size=network.action_size,
+        hidden=network.hidden,
+        iteration=int(document["iteration"]),
+        metadata=dict(document.get("metadata", {})),
+        optimizer_state=optimizer_state,
+        format=int(document["format"]),
+        action_codec_version=int(document["action_codec_version"]),
+        observation_version=int(document["observation_version"]),
+        migratable=templates is not None,
+        migration=migration,
+        arch="entity",
     )
     return network, info
 
