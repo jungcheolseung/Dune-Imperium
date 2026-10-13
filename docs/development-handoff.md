@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-13 (master, 개체 기반 망 P2·P3 병합 뒤)
+기준일: 2026-10-14 (master, 관측 v32 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,12 +28,12 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | entity-distill(P2·P3) 병합 (2026-10-13) |
-| pytest | 7,562개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| master | obs-v32 병합 (2026-10-14) |
+| pytest | 7,565개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 494파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-13 entity-distill(P2·P3) 병합 전(62 통과) |
+| 브라우저 E2E | `scripts/e2e/` 63종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 obs-v32 병합 전(63 통과) |
 | action codec | **v145** (다음 번호 v146) |
-| 관측 | v31, 4,537 int |
+| 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,413 · CHOAM 4,704 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 35,972 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `mix-v139-10081.pt`(X). MLP 계보의 머리는 Y@10881(v141 재적응), 망끼리 가장 강한 것은 엔티티 E2v@800(2026-10-13) |
