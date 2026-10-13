@@ -5,6 +5,7 @@ playing next to it (the user's requirement of 2026-10-12), so the seat test
 plays both kinds in one game.
 """
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -209,6 +210,31 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]
     assert seen["subcommittee_id"] == {None}
+
+
+def test_actions_built_from_the_same_parts_are_copies_of_one_card() -> None:
+    """Two catalog rows only the per-action bias tells apart name two copies
+    of the same card (``imperium:x:0`` and ``imperium:x:1``), never two
+    different choices."""
+
+    network = EntityNetwork(_EVERY_OPTION, hidden=(8,))
+    catalog = ActionCodec(_EVERY_OPTION).catalog
+
+    def without_copy(index: int) -> object:
+        template = catalog[index]
+        return template.action_id, tuple(
+            (key, re.sub(r":\d+$", "", value) if isinstance(value, str) else value)
+            for key, value in template.arguments
+        )
+
+    twins = network.twin_actions()
+    assert twins  # the copies are there
+    different = [
+        [catalog[index] for index in rows]
+        for rows in twins
+        if len({without_copy(index) for index in rows}) > 1
+    ]
+    assert not different
 
 
 # -- the network's wiring ------------------------------------------------------

@@ -641,6 +641,27 @@ class EntityNetwork(PolicyValueNetwork):
         self.action_mlp = nn.Sequential(nn.ReLU(), nn.Linear(a, a))
         self.action_bias = nn.Parameter(torch.zeros(self.action_size))
 
+    def twin_actions(self) -> list[list[int]]:
+        """Groups of catalog rows built from the same parts.
+
+        Only their per-action bias tells them apart (the plan's section 7:
+        what the features miss is listed, not hidden).
+        """
+
+        groups: dict[tuple[object, ...], list[int]] = {}
+        parts = zip(
+            self.action_kind.tolist(),
+            self.arg_key.tolist(),
+            self.arg_entity.tolist(),
+            self.arg_label.tolist(),
+            self.arg_number.tolist(),
+            strict=True,
+        )
+        for index, (kind, keys, entities, labels, numbers) in enumerate(parts):
+            key = (kind, tuple(keys), tuple(entities), tuple(labels), tuple(numbers))
+            groups.setdefault(key, []).append(index)
+        return [rows for rows in groups.values() if len(rows) > 1]
+
     def action_vectors(self, actions: Tensor, entities: Tensor | None = None) -> Tensor:
         """The vectors ``[K, A]`` of catalog indices ``actions``."""
 
