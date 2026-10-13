@@ -197,5 +197,8 @@ checkpoints/
 /*.app/
 /*.lnk
 
+# The Godot prototype imports and caches resources locally.
+.godot/
+
 # Output of the A/B, soak and profiling tools under scripts/ab (see its README)
 ab-runs/
