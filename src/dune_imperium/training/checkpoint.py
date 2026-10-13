@@ -455,15 +455,23 @@ def _load_entity(
             state_dict, action_vocabulary(old_keys), network.action_vocabulary
         )
         old_index = {key: index for index, key in enumerate(old_keys)}
-        old_bias = state_dict["action_bias"]
-        bias = torch.zeros(codec.size, dtype=old_bias.dtype)
+        # Per-action rows (the bias, and the own vectors when the file has
+        # them) move by template identity; a new template starts at zero.
+        rows: list[str] = [
+            name for name in ("action_bias", "action_own") if name in state_dict
+        ]
+        moved = {
+            name: state_dict[name].new_zeros((codec.size, *state_dict[name].shape[1:]))
+            for name in rows
+        }
         kept = 0
         for index, key in enumerate(template_keys(codec.catalog)):
             row = old_index.get(key)
             if row is not None:
-                bias[index] = old_bias[row]
+                for name in rows:
+                    moved[name][index] = state_dict[name][row]
                 kept += 1
-        state_dict["action_bias"] = bias
+        state_dict.update(moved)
         # The optimizer's per-action moments no longer fit the catalog.
         optimizer_state = None
         migration = MigrationReport(
