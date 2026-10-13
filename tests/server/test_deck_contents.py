@@ -264,14 +264,16 @@ def test_no_other_view_log_or_summary_depends_on_a_seats_deck(
     # The deck in another order, and a hand card traded with a deck card:
     # nothing any seat sees changes, the owner's public block included.
     hand = original.players[owner].hand
+    hidden = [card for card in hand if card not in original.players[owner].hand_public]
+    assert hidden, "the walk must leave the owner a hidden hand card"
     traded = replace(
         original,
         players=replace_player(
             original.players,
             replace(
                 original.players[owner],
-                deck=(*hand[:1], *reversed(deck[1:])),
-                hand=(deck[0], *hand[1:]),
+                deck=(hidden[0], *reversed(deck[1:])),
+                hand=tuple(deck[0] if card == hidden[0] else card for card in hand),
             ),
         ),
     )

@@ -1,6 +1,6 @@
 """The ``entity`` policy/value network (docs/entity-network-plan.md section 3).
 
-It reads the same flat observation (v31) and answers through the same three
+It reads the same flat observation (v32) and answers through the same three
 calls as the MLP -- ``trunk``, ``action_logits``, ``value_head`` -- so
 collection, the learner, the search seat and checkpoints use it unchanged.
 What changes is how it reads and scores:

@@ -44,12 +44,13 @@ class PublicPlayerView:
     # The cards in the deck and the hidden part of the hand together, as
     # card ids (never instance ids) sorted by id: every seat can work it out
     # from public moves alone -- a card enters a seat's deck or hand only
-    # from a face-up source (the starting deck, a Row or reserve purchase, a
-    # face-up discard pile reshuffled) and leaves it only to a face-up place
-    # (in play, a face-up discard pile, the trash, the public hand) -- so it
-    # is public under OQ-010's "information once public stays checkable"
-    # (user decision 2026-10-13). Which of the two zones a card is in stays
-    # hidden, and so does which copy.
+    # from a public source (the starting deck, a face-up Row, reserve or
+    # Tleilaxu Row purchase, a face-up discard pile reshuffled) and leaves
+    # them only to a public place (in play, a face-up discard pile, the
+    # trash, or out of the game with a Leader's setup) -- so it is public
+    # under OQ-010's "information once public stays checkable" (ruling 6,
+    # user decision 2026-10-13). Which of the two zones a card is in stays
+    # hidden; the pool prints no instance ids.
     deck_pool: tuple[str, ...]
     agents_available: int
     agent_locations: tuple[str, ...]
@@ -773,11 +774,12 @@ def _cached_public_player_view(player: PlayerState) -> PublicPlayerView:
 def _card_identity(instance_id: str) -> str:
     """A deck or hand card's card id. An id that names no personal card (the
     hand-made states of unit tests) reads ``unknown``: the pool never carries
-    an instance id."""
+    an instance id. A real card whose play data is not transcribed still
+    raises, as every other zone's encoding would."""
 
     try:
         return personal_card_for_instance(instance_id).card.card_id
-    except (KeyError, ValueError, NotImplementedError):
+    except KeyError, ValueError:
         return "unknown"
 
 

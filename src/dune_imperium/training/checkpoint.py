@@ -458,7 +458,19 @@ def _load_entity(
             [tuple(row) for row in document["observation_layout"]],
             width,
         )
-    observation_moved = old_inputs != network.input_names or old_slot_keys != SLOT_KEYS
+    version = int(document["observation_version"])
+    if version < 31:
+        raise ValueError(
+            f"an entity checkpoint of observation v{version} cannot be read "
+            "(entity files start at v31)"
+        )
+    # A version change moves the file even when every name is unchanged, so
+    # it is reported (a later version may change what a column means).
+    observation_moved = (
+        version != OBSERVATION_VERSION
+        or old_inputs != network.input_names
+        or old_slot_keys != SLOT_KEYS
+    )
     kept_inputs = new_inputs = dropped_inputs = 0
     if observation_moved:
         state_dict = retarget_inputs(

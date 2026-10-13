@@ -5,7 +5,9 @@ playing next to it (the user's requirement of 2026-10-12), so the seat test
 plays both kinds in one game.
 """
 
+import hashlib
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -50,6 +52,7 @@ from dune_imperium.training import (  # noqa: E402
 from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
     load_checkpoint,
+    observation_layout,
     save_checkpoint,
     template_keys,
 )
@@ -590,6 +593,42 @@ def test_an_entity_file_is_refused_under_another_feature_table(tmp_path: Path) -
     torch.save(document, path)
     with pytest.raises(ValueError, match="carries no input names"):
         load_checkpoint(path)
+
+
+def test_the_v31_input_names_are_pinned() -> None:
+    """``legacy_inputs`` names a v31 file's inputs from today's tables; pinned
+    so that a later change of the slot table or the zone list cannot change
+    what "v31" means. The digests were checked against master's real v31
+    network (independent review 2026-10-14: every board, private and seat
+    input and the 1,140 slot keys identical, in order); the keys' digest is
+    the v31 slot table's own golden digest."""
+
+    layout = [row for row in observation_layout() if not row[0].endswith("_deck_pool")]
+    names, keys = legacy_inputs(31, layout, 64)
+
+    def digest(rows: Sequence[str]) -> str:
+        return hashlib.sha256("\n".join(rows).encode()).hexdigest()
+
+    assert {encoder: len(rows) for encoder, rows in names.items()} == {
+        "seat": 1_329,
+        "board": 1_659,
+        "private": 576,
+    }
+    assert digest(names["board"]) == (
+        "636b4dbc0a46475cf6b69d9d7d656e8728183cdefce6beee8f24baa544a396c2"
+    )
+    assert digest(names["private"]) == (
+        "e7fae9c7a8eca45cdc03351a97f25e2bb0cd16be3e5c0425d5cc1f0778ed81d7"
+    )
+    assert digest(names["seat"]) == (
+        "cbd15c29f653067823b54dcc7fe0bca8569da2ea0aba4ee820f7283a87112cca"
+    )
+    assert len(keys) == 1_140
+    assert digest(keys) == (
+        "53913e6515a83e29c0e835d6277841b143fcaa07a5012645d650d91f9e7a774d"
+    )
+    with pytest.raises(ValueError, match="carries no input names"):
+        legacy_inputs(30, layout, 64)
 
 
 def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
