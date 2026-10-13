@@ -149,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--smoke", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--capture", help=argparse.SUPPRESS)
+    parser.add_argument("--playthrough", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     server: ServerProcess | None = None
     client: subprocess.Popen[bytes] | None = None
@@ -187,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
         command = godot_command(binary, base, labels, extra)
         if args.smoke:
             command.append("--smoke")
+        if args.playthrough:
+            command.append(f"--playthrough={args.playthrough}")
         if args.capture:
             captures = Path(args.capture).resolve()
             if not captures.is_relative_to(PROJECT_ROOT):

@@ -3,6 +3,7 @@ extends RefCounted
 const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft", "pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue"]
 const SEAT_COLORS = [Color("438bde"), Color("d66063"), Color("42ac87"), Color("e4b955")]
 const SECTIONS = ["cards", "intrigue", "leaders", "spaces", "conflicts", "objectives", "contracts", "skills", "tech"]
+const EXPANSIONS = ["choam_module", "promo_cards", "bloodlines", "tech_module", "immortality", "go_to_11", "epic_game", "arrakeen_scouts"]
 
 var catalog: Dictionary = {}
 var words: Dictionary = {}
@@ -33,13 +34,52 @@ func signature() -> String:
 
 func adopt(data: Dictionary) -> bool:
 	var before = signature()
+	var previous = snapshot
 	snapshot = data
 	var changed = before != signature()
 	if changed:
 		held.clear()
 		selected_card = ""
 		selected_space = ""
-	return changed
+	# Confirmation and AI activity may change without an engine revision.
+	var old_summary = previous.get("summary", {}).duplicate()
+	var new_summary = summary().duplicate()
+	old_summary.erase("clock")
+	new_summary.erase("clock")
+	return changed or old_summary != new_summary or previous.get("actions") != data.get("actions")
+
+
+func seat_name(seat: int) -> String:
+	return "나" if seat == 0 else "앱 AI %d" % seat
+
+
+func finish_action() -> Dictionary:
+	for action in actions():
+		if action.action_id in END_ACTIONS:
+			return action
+	return {}
+
+
+func finish_text() -> String:
+	if not held_action().is_empty():
+		return "선택 확정 ▶"
+	var action = finish_action()
+	return label("ACTION_LABELS", action.action_id) + " ▶" if not action.is_empty() else "턴 종료 ▶"
+
+
+func supported_save(saved: Dictionary) -> bool:
+	if saved.has("error"):
+		return false
+	var seats = saved.get("seats", [])
+	if seats.size() != 4 or seats[0] != "human" or "human" in seats.slice(1):
+		return false
+	var config = saved.get("ruleset", {})
+	if not config is Dictionary or int(config.get("players", 0)) != 4:
+		return false
+	for expansion in EXPANSIONS:
+		if config.get(expansion, false):
+			return false
+	return true
 
 
 func section_id(ref: String) -> Array[String]:
@@ -64,7 +104,8 @@ func entry(ref: String) -> Dictionary:
 
 
 func localized(data: Dictionary, key: String) -> Variant:
-	return data.get(key + "_ko", data.get(key)) if language == "ko" else data.get(key)
+	var translated = data.get(key + "_ko") if language == "ko" else null
+	return translated if translated != null else data.get(key)
 
 
 func name_of(ref: String) -> String:
@@ -152,6 +193,16 @@ func describe(action: Dictionary) -> String:
 		parts.append(phrase(detail))
 	for key in args:
 		var value = args[key]
+		if key in ["effect_key", "box", "cost_option"] or (value is String and value.is_empty()):
+			continue
+		if key == "effect" and detail != null:
+			continue
+		if key == "option" and action.get("action_id") == "play_intrigue":
+			var lines = localized(entry(str(args.get("card_id", ""))), "text")
+			if lines is Array and int(value) < lines.size():
+				parts.append(phrase(lines[int(value)]))
+				continue
+		var field = label("PAYLOAD_KEY_LABELS", key)
 		if value is String and (not entry(value).is_empty() or key in ["faction", "faction_id", "space_id", "post_id"]):
 			if key == "post_id":
 				var spaces = catalog.get("post_spaces", {}).get(value, [])
@@ -160,9 +211,19 @@ func describe(action: Dictionary) -> String:
 					names.append(name_of(space))
 				parts.append("관측소 · " + " / ".join(names))
 			else:
-				parts.append(name_of(value))
-		elif (value is int or value is float) and key in ["count", "troops", "amount", "water", "spice", "solari"]:
-			parts.append("× %d" % int(value))
+				parts.append(field + ": " + name_of(value))
+		elif value is bool:
+			if value:
+				parts.append(field)
+		elif value is int or value is float:
+			parts.append(field + ": " + (seat_name(int(value)) if key in ["player", "target_player", "opponent", "from_player", "to_player"] else str(int(value))))
+		elif value is Array:
+			var names: PackedStringArray = []
+			for ref in value:
+				names.append(name_of(str(ref)))
+			parts.append(field + ": " + " / ".join(names))
+		elif value is String:
+			parts.append(field + ": " + name_of(value))
 	if args.has("cost_option") and args.has("space_id"):
 		var options = entry(args.space_id).get("options", [])
 		var index = int(args.cost_option)
@@ -170,6 +231,8 @@ func describe(action: Dictionary) -> String:
 			parts.append(cost_text(options[index].get("cost", {})) + " → " + phrase(localized(options[index], "effect")))
 	if action.get("strength_after") != null:
 		parts.append("전투력 → %d" % int(action.strength_after))
+	if action.get("reveal_preview") is Dictionary:
+		parts.append("공개 후 설득력 %d · 전투력 %d" % [int(action.reveal_preview.get("persuasion", 0)), int(action.reveal_preview.get("strength", 0))])
 	if action.get("warning") != null:
 		parts.append(phrase(action.warning))
 	return heading + ("\n" + " · ".join(parts) if not parts.is_empty() else "")

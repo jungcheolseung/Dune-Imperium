@@ -16,6 +16,7 @@ func _initialize() -> void:
 	check(model.name_of("player:0:starter:dagger:1") == "단검", "starter copy name")
 	check(model.name_of("intrigue:plot:2") == "책략", "intrigue section")
 	check(model.phrase("{spice:2}") == "스파이스 2", "reviewed term and count")
+	check(model.localized({"detail": "available English", "detail_ko": null}, "detail") == "available English", "null Korean detail falls back to supplied English")
 	var actions = [
 		{"index": 2, "action_id": "agent_turn", "arguments": {"card_id": "player:0:starter:dagger:0", "space_id": "a"}},
 		{"index": 3, "action_id": "agent_turn", "arguments": {"card_id": "player:0:starter:dagger:1", "space_id": "b"}},
@@ -36,6 +37,29 @@ func _initialize() -> void:
 	check(model.request_body(actions[0]).undo_count == 1, "action carries undo generation")
 	var text = model.describe({"action_id": "take", "arguments": {"effect_key": "internal_rule_key"}, "detail_ko": "{spice:2}"})
 	check(text.contains("스파이스 2") and not text.contains("internal_rule_key") and not text.contains("{spice"), "detail is readable, internal effect key absent")
+	var numeric = model.describe({"action_id": "deploy_troops", "arguments": {"count": 3.0, "player": 2.0, "destroy_shield_wall": true}})
+	check(numeric.contains("3") and numeric.contains("앱 AI 2"), "JSON float counts and target seats remain distinguishable")
+	model.catalog.intrigue.plot.text_ko = ["교전 — 효과 하나", "교전 — 효과 둘"]
+	var option = model.describe({"action_id": "play_intrigue", "arguments": {"card_id": "intrigue:plot:0", "option": 1.0}})
+	check(option.contains("효과 둘") and not option.contains("효과 하나"), "intrigue options show their printed effect")
+	var data = {"summary": {"game_id": "same", "revision": 3, "undo_count": 0, "confirmation": null, "clock": {"elapsed": 1}}, "actions": {"actions": []}}
+	model.adopt(data)
+	var confirming = data.duplicate(true)
+	confirming.summary.confirmation = 0
+	check(model.adopt(confirming), "confirmation updates controls without a new revision")
+	var clock_only = confirming.duplicate(true)
+	clock_only.summary.clock.elapsed = 2
+	check(not model.adopt(clock_only), "clock polling does not recreate action controls")
+	var saved = {"seats": ["human", "app_ai", "app_ai", "app_ai"], "ruleset": {"players": 4, "leader_draft": true}}
+	check(model.supported_save(saved), "basic drafted game can resume")
+	var expanded = saved.duplicate(true)
+	expanded.ruleset.bloodlines = true
+	check(not model.supported_save(expanded), "unsupported expansion save is excluded")
+	var other_seat = saved.duplicate(true)
+	other_seat.seats = ["app_ai", "human", "app_ai", "app_ai"]
+	check(not model.supported_save(other_seat), "save never assigns the wrong human seat")
+	model.adopt({"summary": {"game_id": "end", "revision": 8}, "actions": {"actions": [{"index": 4, "action_id": "pass_combat_intrigue", "arguments": {}}]}})
+	check(model.finish_action().action_id == "pass_combat_intrigue", "combat pass remains available on the finish control")
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)

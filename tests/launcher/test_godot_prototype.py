@@ -37,6 +37,8 @@ def test_native_words_cover_engine_actions_and_use_reviewed_terms() -> None:
     assert data["en"]["ACTION_LABELS"]["finish_agent_turn"]
     assert data["prompts"]["Choose an Agent turn or Reveal turn"]
     assert data["ko"]["AGENT_ICON_GROUPS"]["landsraad"] != "landsraad"
+    assert data["ko"]["PAYLOAD_KEY_LABELS"]["count"] == "수"
+    assert data["ko"]["PAYLOAD_KEY_LABELS"]["player"] == "플레이어"
 
 
 def test_ui_data_is_unicode_json_and_written_only_to_requested_path(

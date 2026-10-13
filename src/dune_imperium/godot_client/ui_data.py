@@ -7,7 +7,8 @@ from typing import Any
 
 STATIC = Path(__file__).resolve().parents[1] / "server" / "static"
 TABLES = (
-    "ACTION_LABELS", "EVENT_LABELS", "PHASE_LABELS", "FACTION_LABELS", "VALUE_LABELS"
+    "ACTION_LABELS", "EVENT_LABELS", "PHASE_LABELS", "FACTION_LABELS", "VALUE_LABELS",
+    "PAYLOAD_KEY_LABELS",
 )
 
 

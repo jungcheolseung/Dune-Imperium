@@ -21,7 +21,7 @@ func call_json(method: int, path: String, data: Dictionary = {}) -> Dictionary:
 	var result = await request.request_completed
 	request.queue_free()
 	var parsed = JSON.parse_string(result[3].get_string_from_utf8())
-	var response = parsed if parsed is Dictionary else {}
+	var response = parsed if parsed is Dictionary or parsed is Array else {}
 	var success = result[0] == HTTPRequest.RESULT_SUCCESS and result[1] >= 200 and result[1] < 300
 	return {"ok": success, "code": result[1], "data": response}
 
