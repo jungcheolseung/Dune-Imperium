@@ -1015,7 +1015,10 @@ func _run_smoke() -> void:
 		if not await _send_action(model.actions()[0]):
 			_smoke_fail("effect choice")
 			return
-	for attempt in range(50):
+	# The server may wait up to eight seconds for a single AI presentation
+	# cue. Three seats need a bounded time window, not fifty fast polls.
+	var hand_back_deadline = Time.get_ticks_msec() + 30000
+	while Time.get_ticks_msec() < hand_back_deadline:
 		await get_tree().create_timer(0.1).timeout
 		await _sync()
 		var decision = model.summary().get("decision")
