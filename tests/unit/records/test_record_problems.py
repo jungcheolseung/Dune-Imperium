@@ -8,10 +8,12 @@ import pytest
 
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.records.problems import (
     HumanProblem,
     Resolved,
     answer,
+    build_mistake_suite,
     build_suite,
     load_suite,
     merge_suites,
@@ -20,6 +22,7 @@ from dune_imperium.records.problems import (
     summarize,
 )
 from dune_imperium.records.saves import SavedGame, human_decisions, read_saved_game
+from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.persistence import serialize_step
 from dune_imperium.training.policy import without_undo_actions
 
@@ -495,3 +498,80 @@ def test_a_later_run_is_appended_and_a_game_is_never_frozen_twice(
     ]
     with pytest.raises(ValueError, match="games already in the suite: aaaaaaaa"):
         merge_suites(merged, first)
+
+
+def _ai_choices(
+    game: SavedGame, seat: int, count: int
+) -> list[tuple[int, DomainAction]]:
+    """The recorded index and an unplayed alternative of AI decisions."""
+
+    engine = UprisingRulesEngine()
+    found: list[tuple[int, DomainAction]] = []
+    for state, migrated in walk(migrate_record(game.parsed.replay, engine), engine):
+        step = migrated.step
+        if (
+            migrated.recorded_index is None
+            or not isinstance(step, DomainAction)
+            or step.actor != seat
+            or step.action_id == "pick_leader"
+        ):
+            continue
+        offered = without_undo_actions(engine.legal_actions(state, seat))
+        others = [action for action in offered if action != step]
+        if others:
+            found.append((migrated.recorded_index, others[0]))
+        if len(found) == count:
+            break
+    return found
+
+
+def test_an_ai_seat_s_mistakes_are_frozen_and_scored_by_kind(
+    game: SavedGame, tmp_path: Path
+) -> None:
+    """The recorded AI move is the wrong one; the summary keeps each kind."""
+
+    choices = _ai_choices(game, seat=1, count=2)
+    picks = [
+        {
+            "game": GAME[:8],
+            "step": index,
+            "right": _text(right),
+            "kind": kind,
+            "evidence": {"why": "test"},
+        }
+        for (index, right), kind in zip(
+            choices, ("first_kind", "second_kind"), strict=True
+        )
+    ]
+    suite = build_mistake_suite([game], picks, note="test")
+    path = tmp_path / "mistakes.json"
+    save_suite(path, suite)
+    loaded = load_suite(path)
+    assert [problem.family for problem in loaded.problems] == ["ai_mistake"] * 2
+    assert {problem.seat for problem in loaded.problems} == {1}
+
+    positions = resolve(loaded)
+    for problem, (_, right) in zip(loaded.problems, choices, strict=True):
+        position = positions[problem.problem_id]
+        assert isinstance(position, Resolved)
+        assert position.right == right
+        assert position.wrong == problem.person
+        assert position.wrong != right
+    answers = [
+        answer(position, "heuristic")
+        for position in positions.values()
+        if isinstance(position, Resolved)
+    ]
+    summary = summarize(answers)
+    assert {"ai_mistake", "ai_mistake/first_kind", "ai_mistake/second_kind"} <= set(
+        summary
+    )
+
+    with pytest.raises(ValueError, match="right is the recorded move"):
+        build_mistake_suite(
+            [game],
+            [{**picks[0], "right": _text(loaded.problems[0].wrong)}],
+            note="test",
+        )
+    with pytest.raises(ValueError, match="picked twice"):
+        build_mistake_suite([game], [picks[0], picks[0]], note="test")

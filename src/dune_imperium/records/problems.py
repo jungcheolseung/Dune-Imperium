@@ -12,6 +12,14 @@ lead to investigate rather than a wrong answer. The ``network_right``
 family is the control: an agent that learned people's moves wholesale
 would lose it.
 
+A third family, ``ai_mistake``, holds positions from the same kind of games
+where an AI seat made a move people found baffling and the diagnosis agreed
+was a mistake (docs/evaluation/search-atomics-2026-10-12.md section 1): its
+``wrong`` move is the AI seat's recorded one and its ``right`` move a better
+move there, chosen by hand with the evidence noted (``build_mistake_suite``).
+Those suites are a yardstick for broad changes to the network
+(docs/entity-network-plan.md section 4), not a list of moves to teach.
+
 Unlike the mined suite, these positions cannot be mined again: they come
 from people's games. So a suite carries its records -- each game's save
 document without its undo log -- and resolves a position by migrating its
@@ -59,10 +67,12 @@ SUITE_FORMAT: Final = "dune-imperium-human-problems"
 # Version 2 (2026-10-10): ``position_state`` keeps every seat field; version
 # 1 kept a handful, and named four card zones wrongly so they were skipped.
 SUITE_VERSION: Final = 2
-FAMILIES: Final = ("human_right", "network_right")
+FAMILIES: Final = ("human_right", "network_right", "ai_mistake")
 # Kept with the machine's other lasting local files (git-ignored ``local/``):
 # the suite holds people's games, which the public repository does not.
 DEFAULT_SUITE: Final = LOCAL_DIR / "records" / "human-problems.json"
+# The AI seats' mistakes in the same games (family ``ai_mistake``).
+AI_MISTAKES_SUITE: Final = LOCAL_DIR / "records" / "ai-mistakes.json"
 # The save fields a record keeps; the undo log and the session's turn-end
 # state are not part of the game.
 _RECORD_FIELDS: Final = (
@@ -174,7 +184,7 @@ class HumanProblem:
 
     @property
     def person(self) -> DomainAction:
-        """The move the person made."""
+        """The move the record holds: the person's, or an AI seat's mistake."""
 
         return self.right if self.family == "human_right" else self.wrong
 
@@ -301,6 +311,62 @@ def build_suite(
                     "second_error": float(row["error"]),
                     "p_person": float(row["p_human"]),
                 },
+                judged_state=judged_state,
+            )
+        )
+        if game.game_id not in records:
+            document = json.loads(game.path.read_text(encoding="utf-8"))
+            records[game.game_id] = {
+                "format": "dune-imperium-save",
+                "format_version": 1,
+                **{key: document[key] for key in _RECORD_FIELDS if key in document},
+            }
+    problems.sort(key=lambda problem: (problem.game, problem.recorded_index))
+    return Suite(note=note, records=records, problems=tuple(problems))
+
+
+def build_mistake_suite(
+    games: Iterable[SavedGame], picks: Iterable[Mapping[str, Any]], note: str
+) -> Suite:
+    """Freeze AI seats' recorded mistakes as ``ai_mistake`` problems.
+
+    Each pick names a game by the first eight characters of its id, the
+    recorded ``step`` of the mistake, the ``right`` move (``{"id", "args"}``),
+    a ``kind`` and the ``evidence`` behind the verdict. The recorded move,
+    as the migration replays it, is the problem's ``wrong`` move.
+    """
+
+    by_short = {game.game_id[:8]: game for game in games}
+    picks = list(picks)
+    keys = [(pick["game"], int(pick["step"])) for pick in picks]
+    if len(keys) != len(set(keys)):
+        raise ValueError("a mistake is picked twice")
+    wanted: dict[str, tuple[SavedGame, set[int]]] = {}
+    for short, step in keys:
+        game = by_short[short]
+        wanted.setdefault(game.game_id, (game, set()))[1].add(step)
+    positions = _judged_positions(wanted)
+    problems: list[HumanProblem] = []
+    records: dict[str, Mapping[str, Any]] = {}
+    for pick in picks:
+        game = by_short[pick["game"]]
+        index = int(pick["step"])
+        recorded, judged_state = positions[(game.game_id, index)]
+        right = _action(pick["right"], recorded.actor)
+        if right == recorded:
+            raise ValueError(f"{pick['game']} step {index}: right is the recorded move")
+        problems.append(
+            HumanProblem(
+                problem_id=f"{pick['game']}:{index}",
+                game=game.game_id,
+                recorded_index=index,
+                seat=recorded.actor,
+                round_number=int(judged_state["round"]),
+                kind=str(pick["kind"]),
+                family="ai_mistake",
+                right=right,
+                wrong=recorded,
+                evidence=dict(pick.get("evidence", {})),
                 judged_state=judged_state,
             )
         )
@@ -585,12 +651,14 @@ def answer(
 def summarize(answers: Sequence[HumanAnswer]) -> dict[str, dict[str, Any]]:
     """Per family, and per family and kind group: shares and mean probabilities.
 
-    The kind groups are ``agent_turn``, ``effect_order`` and ``other``.
+    The kind groups are ``agent_turn``, ``effect_order`` and ``other``; an
+    ``ai_mistake`` problem keeps its own kind, which names the mistake.
     """
 
     groups: dict[str, list[HumanAnswer]] = defaultdict(list)
     for item in answers:
-        group = item.kind if item.kind in ("agent_turn", "effect_order") else "other"
+        named = item.kind in ("agent_turn", "effect_order")
+        group = item.kind if named or item.family == "ai_mistake" else "other"
         groups[item.family].append(item)
         groups[f"{item.family}/{group}"].append(item)
     summary: dict[str, dict[str, Any]] = {}
