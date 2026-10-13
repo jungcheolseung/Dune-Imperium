@@ -12,7 +12,7 @@
   - **상태 존**: multi-hot(alliance 4, control 3, spy post 13, contract 28)과 battle card 23칸의 tri-state(0=없음, 1=face-up, 2=face-down).
 - **egocentric 좌석 회전**: 상대 좌석 블록과 모든 좌석 참조 값(first player, 결정 소유자, reveal 순서)은 관측자를 상대 좌석 0으로 회전한 상대 인덱스다. self-play 가중치 공유를 위해서다.
 - **결정 컨텍스트**: top frame kind(43종), 결정 소유자, turn 소유자를 공개한다. frame별 세부 컨텍스트는 비공개 정보를 담을 수 있어 kind별 화이트리스트를 검토한 뒤에만 추가한다(후속 작업).
-- 상대 hand·deck·Intrigue **장수**는 OQ-010 convention으로 공개다(실물 테이블에서 항상 보이는 수량). 상대 **discard pile identity**와 **완료 contract identity**는 OQ-010 확정 판정(2026-09-02, "한 번 공개된 정보는 재확인 가능")으로 공개다: discard pile의 모든 카드는 face-up으로 들어왔고, 완료 contract는 활성 중 face-up이었으며 완료가 공지됐다. hand·deck·보유 Intrigue identity는 계속 비공개이되, 공개 경로로 hand에 들어온 카드(Corrinth City·Intrigue "put it in your hand"·Bond 반환)는 hand를 떠날 때까지 `hand_public`으로 공개되고, play돼 선택 해결 중인 Intrigue는 `intrigue_resolving`으로 공개된다([`rules/information-visibility.md`](rules/information-visibility.md)).
+- 상대 hand·deck·Intrigue **장수**는 OQ-010 convention으로 공개다(실물 테이블에서 항상 보이는 수량). 상대 **discard pile identity**와 **완료 contract identity**는 OQ-010 확정 판정(2026-09-02, "한 번 공개된 정보는 재확인 가능")으로 공개다: discard pile의 모든 카드는 face-up으로 들어왔고, 완료 contract는 활성 중 face-up이었으며 완료가 공지됐다. hand·deck·보유 Intrigue identity는 계속 비공개이되, 공개 경로로 hand에 들어온 카드(Price is No Object 등의 hand로 바로 acquire, Intrigue "put it in your hand", Weirding Woman의 Bond·Stillsuit Manufacturer·Chairdog의 반환)는 hand를 떠날 때까지 `hand_public`으로 공개되고, play돼 선택 해결 중인 Intrigue는 `intrigue_resolving`으로 공개된다([`rules/information-visibility.md`](rules/information-visibility.md)).
 
 ## 보상
 
