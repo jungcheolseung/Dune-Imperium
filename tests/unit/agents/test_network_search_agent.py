@@ -757,8 +757,10 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
             path, seed=11, rollouts=2, candidates=2, config=config
         )
 
-    decided = _search_seat_game(seat_agent(), config, seed=3, seat=1, count=70)
-    assert len(decided) == 70
+    # 80 decisions: the Immortality game's first forced decision is its
+    # 74th since observation v32 changed the fresh test network's play.
+    decided = _search_seat_game(seat_agent(), config, seed=3, seat=1, count=80)
+    assert len(decided) == 80
     kinds = {entry.kind for entry in decided}
     assert {"searched", "effect order", "forced"} <= kinds
     if expansion == "arrakeen_scouts":
