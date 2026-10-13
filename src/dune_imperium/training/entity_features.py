@@ -249,17 +249,6 @@ def vocabularies() -> dict[str, Vocabulary]:
     return {table.name: table for table in tables}
 
 
-def _digest() -> str:
-    digest = hashlib.sha256(f"entity-features v{FEATURE_VERSION}".encode())
-    for name, table in sorted(vocabularies().items()):
-        digest.update(repr((name, table.ids, table.columns)).encode())
-        digest.update(np.ascontiguousarray(table.features).tobytes())
-    return digest.hexdigest()
-
-
-FEATURE_DIGEST: Final = _digest()
-
-
 @cache
 def _indexes() -> dict[str, dict[str, int]]:
     return {
@@ -320,6 +309,42 @@ SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
         )
     },
 }
+
+
+# Arguments that name a choice, never an entity, even where a value equals
+# some id (the Subcommittee ``leverage`` is also an Intrigue card's id).
+LABEL_ARGUMENTS: Final = frozenset(
+    {"choice", "effect", "reward", "subcommittee_id", "zone", "zones"}
+)
+# Where an argument's vocabulary depends on the action: a battle card's id
+# is often a Conflict card's id too.
+ACTION_ARGUMENT_HINTS: Final[Mapping[tuple[str, str], tuple[str, ...]]] = {
+    ("flip_battle_card", "card_id"): ("battle",),
+}
+
+
+def _digest() -> str:
+    digest = hashlib.sha256(f"entity-features v{FEATURE_VERSION}".encode())
+    for name, table in sorted(vocabularies().items()):
+        digest.update(repr((name, table.ids, table.columns)).encode())
+        digest.update(np.ascontiguousarray(table.features).tobytes())
+    # How ids are read decides which entity an action or a slot points at.
+    for hints in (ARGUMENT_HINTS, SLOT_HINTS, ACTION_ARGUMENT_HINTS):
+        digest.update(repr(sorted(hints.items())).encode())
+    digest.update(repr(sorted(LABEL_ARGUMENTS)).encode())
+    return digest.hexdigest()
+
+
+FEATURE_DIGEST: Final = _digest()
+
+
+def resolve_argument(action_id: str, key: str, value: str) -> tuple[str, int] | None:
+    """The entity an action argument names, or ``None`` for a label."""
+
+    if key in LABEL_ARGUMENTS:
+        return None
+    prefer = ACTION_ARGUMENT_HINTS.get((action_id, key), ARGUMENT_HINTS.get(key, ()))
+    return resolve(value, prefer)
 
 
 @cache

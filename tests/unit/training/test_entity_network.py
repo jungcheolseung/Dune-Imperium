@@ -1,0 +1,507 @@
+"""The ``entity`` network: feature tables, wiring, caches, checkpoints, seats.
+
+docs/entity-network-plan.md stage P1. The MLP files must keep loading and
+playing next to it (the user's requirement of 2026-10-12), so the seat test
+plays both kinds in one game.
+"""
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+torch = pytest.importorskip("torch")
+
+from torch import Tensor  # noqa: E402
+
+from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
+from dune_imperium.adapters.observation_encoding import (  # noqa: E402
+    BATTLE_CARD_IDS,
+    CONFLICT_IDS,
+    CONTRACT_IDS,
+    FACTION_IDS,
+    INTRIGUE_IDS,
+    LEADER_IDS,
+    OBSERVATION_SIZE,
+    PERSONAL_CARD_IDS,
+    POST_IDS,
+    RESEARCH_SPACE_IDS,
+    SKILL_IDS,
+    SPACE_IDS,
+)
+from dune_imperium.agents import StateAgent  # noqa: E402
+from dune_imperium.agents.network_search_agent import NetworkSearchAgent  # noqa: E402
+from dune_imperium.agents.registry import CHECKPOINT_PREFIX, make_agent  # noqa: E402
+from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
+from dune_imperium.core.chance import ChanceResolver  # noqa: E402
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
+from dune_imperium.core.state import GamePhase  # noqa: E402
+from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.simulation.runner import run_policy_game  # noqa: E402
+from dune_imperium.training import (  # noqa: E402
+    RandomBatchPolicy,
+    SelfPlayRunner,
+    SelfPlaySpec,
+)
+from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
+from dune_imperium.training.checkpoint import (  # noqa: E402
+    load_checkpoint,
+    save_checkpoint,
+    template_keys,
+)
+from dune_imperium.training.distill import legal_log_probs  # noqa: E402
+from dune_imperium.training.entity_features import (  # noqa: E402
+    FEATURE_DIGEST,
+    resolve,
+    resolve_argument,
+    vocabularies,
+)
+from dune_imperium.training.entity_network import (  # noqa: E402
+    EntityNetwork,
+    action_vocabulary,
+)
+from dune_imperium.training.network import (  # noqa: E402
+    PolicyValueNetwork,
+    build_network,
+)
+
+# Changing the feature table or how ids are read must change this
+# deliberately (with FEATURE_VERSION when the reflection changes): an entity
+# checkpoint stores the digest and is refused under another one, so a card
+# data fix also retires every entity file written before it.
+_GOLDEN_DIGEST = "261827acbb4bc16f5b83379712d98ac89978c414a30c7340c8aa89a9ec66f3e8"
+_BASE = RulesetConfig()
+_FULL = RulesetConfig(
+    choam_module=True,
+    promo_cards=True,
+    bloodlines=True,
+    tech_module=True,
+    immortality=True,
+)
+# Every option: the catalog with every argument kind (Subcommittees, Scouts).
+_EVERY_OPTION = RulesetConfig(
+    choam_module=True,
+    promo_cards=True,
+    bloodlines=True,
+    tech_module=True,
+    immortality=True,
+    go_to_11=True,
+    epic_game=True,
+    arrakeen_scouts=True,
+    leader_draft=True,
+)
+
+
+def _network(config: RulesetConfig, seed: int = 0) -> EntityNetwork:
+    """A small network whose zero-initialised parts carry values too."""
+
+    torch.manual_seed(seed)
+    network = EntityNetwork(
+        config, hidden=(32,), entity_width=16, seat_width=32, action_width=16
+    )
+    with torch.no_grad():
+        for parameter in (
+            *network.entity_own.values(),
+            network.slot_key_own,
+            network.action_bias,
+        ):
+            parameter.normal_(0.0, 0.5)
+    return network.eval()
+
+
+@pytest.fixture(scope="module")
+def recorded() -> list[tuple[np.ndarray, np.ndarray, int]]:
+    """``(observation, legal, action)`` of every 20th decision of a random game."""
+
+    runner = SelfPlayRunner(_FULL, max_steps=3_000, record=True)
+    result = runner.run(
+        {"r": RandomBatchPolicy(seed=3)},
+        (SelfPlaySpec(game_seed=5, lineup=("r",) * 4),),
+    )
+    steps = [step for episode in result.episodes for step in episode.steps]
+    return [(step.observation, step.legal, step.action) for step in steps[::20]]
+
+
+def _observations(recorded: list[tuple[np.ndarray, np.ndarray, int]]) -> Tensor:
+    stacked: Tensor = torch.from_numpy(
+        np.stack([row[0] for row in recorded]).astype(np.int32)
+    )
+    return stacked
+
+
+# -- the feature tables ---------------------------------------------------------
+def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
+    tables = vocabularies()
+    # Each vocabulary lists its ids in the order the observation counts them.
+    expected = {
+        "personal": PERSONAL_CARD_IDS,
+        "intrigue": INTRIGUE_IDS,
+        "contract": CONTRACT_IDS,
+        "conflict": CONFLICT_IDS,
+        "battle": BATTLE_CARD_IDS,
+        "space": SPACE_IDS,
+        "post": POST_IDS,
+        "leader": LEADER_IDS,
+        "tech": TECH_IDS,
+        "skill": SKILL_IDS,
+        "research": RESEARCH_SPACE_IDS,
+        "faction": FACTION_IDS,
+    }
+    assert {name: table.ids for name, table in tables.items()} == expected
+    for name, table in tables.items():
+        assert table.features.shape == (table.size, len(table.columns)), name
+        assert np.all(np.isfinite(table.features)), name
+        assert np.abs(table.features).max() <= 1.0, name
+        # A column no member uses is dropped.
+        assert np.all(np.abs(table.features).max(axis=0) > 0), name
+    # Costs, effects and kinds are features (two cards share what they share).
+    personal = tables["personal"]
+    assert {"acquisition_cost", ":ImperiumCardEntry"} <= set(personal.columns)
+    assert FEATURE_DIGEST == _GOLDEN_DIGEST
+
+
+def test_ids_resolve_by_the_argument_that_names_them() -> None:
+    def vocabulary(found: tuple[str, int] | None) -> str | None:
+        return None if found is None else found[0]
+
+    # ``deliver_supplies`` is a space and a contract tile.
+    assert vocabulary(resolve("deliver_supplies", ("space",))) == "space"
+    assert vocabulary(resolve("deliver_supplies", ("contract",))) == "contract"
+    # The codec writes a starting card relative to its owner.
+    assert resolve("starter:dagger:0") == (
+        "personal",
+        PERSONAL_CARD_IDS.index("dagger"),
+    )
+    # A battle card's id is often a Conflict's id too.
+    assert (
+        vocabulary(resolve_argument("flip_battle_card", "card_id", "propaganda"))
+        == "battle"
+    )
+    assert vocabulary(resolve("propaganda")) == "conflict"
+    # A Subcommittee shares an Intrigue card's id but names a choice.
+    assert vocabulary(resolve("leverage")) == "intrigue"
+    assert resolve_argument("join_subcommittee", "subcommittee_id", "leverage") is None
+    assert resolve("no_such_id") is None
+
+
+def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
+    hinted = {
+        "space_id": {"space", "research"},
+        "post_id": {"post"},
+        "infiltrate_post_id": {"post"},
+        "tech_id": {"tech"},
+        "leader_id": {"leader"},
+        "intrigue_card_id": {"intrigue"},
+        "matching_card_id": {"battle"},
+        "card_id": {"personal", "intrigue", "battle"},
+        "instance_id": {"personal", "intrigue", "contract"},
+    }
+    seen: dict[str, set[str | None]] = {}
+    for template in ActionCodec(_EVERY_OPTION).catalog:
+        for key, value in template.arguments:
+            if isinstance(value, str):
+                found = resolve_argument(template.action_id, key, value)
+                seen.setdefault(key, set()).add(None if found is None else found[0])
+    for key, allowed in hinted.items():
+        assert seen[key] - {None} <= allowed, key
+    # Every Imperium card a seat can play or buy is an entity, not a label.
+    assert "personal" in seen["card_id"]
+    assert seen["subcommittee_id"] == {None}
+
+
+# -- the network's wiring ------------------------------------------------------
+def test_each_count_zone_feeds_its_own_entities() -> None:
+    network = _network(_BASE)
+    with torch.no_grad():
+        entities = network.entity_table()
+        for vocabulary in network.zone_vocabulary_order:
+            columns = getattr(network, f"zone_columns_{vocabulary}")
+            start = network.entity_offsets[vocabulary]
+            first = sum(
+                getattr(network, f"zone_columns_{name}").shape[0]
+                for name in network.zone_vocabulary_order[
+                    : network.zone_vocabulary_order.index(vocabulary)
+                ]
+            )
+            for zone in range(columns.shape[0]):
+                for member in {0, columns.shape[1] // 2, columns.shape[1] - 1}:
+                    observation = torch.zeros(1, OBSERVATION_SIZE)
+                    observation[0, columns[zone, member]] = 2.0
+                    vectors = network._zone_vectors(observation, entities)
+                    assert torch.equal(
+                        vectors[0, first + zone], 2.0 * entities[start + member]
+                    ), (vocabulary, zone, member)
+                    others = torch.cat(
+                        [vectors[0, : first + zone], vectors[0, first + zone + 1 :]]
+                    )
+                    assert not others.any()
+
+
+def test_inference_and_training_paths_compute_the_same_function(
+    recorded: list[tuple[np.ndarray, np.ndarray, int]],
+) -> None:
+    network = _network(_FULL)
+    observations = _observations(recorded)
+    actions = torch.tensor([0, 17, network.action_size - 1, 17, 905])
+    masks = torch.zeros(len(recorded), network.action_size, dtype=torch.int8)
+    for row, (_, legal, _) in enumerate(recorded):
+        masks[row, torch.from_numpy(legal.astype(np.int64))] = 1
+    with torch.no_grad():
+        hidden = network.trunk(observations)
+        logits = network.action_logits(hidden, actions)
+        full, values = network(observations, torch.ones_like(masks))
+        masked, _ = network(observations, masks)
+        cached_again = network.action_logits(network.trunk(observations), actions)
+    assert torch.equal(logits, cached_again)
+    trained_hidden = network.trunk(observations)
+    trained_logits = network.action_logits(trained_hidden, actions)
+    torch.testing.assert_close(trained_hidden.detach(), hidden)
+    torch.testing.assert_close(trained_logits.detach(), logits)
+    torch.testing.assert_close(full[:, actions], logits)
+    torch.testing.assert_close(values, network.value_head(hidden).squeeze(-1))
+    assert torch.all(masked[masks == 0] < -1e8)
+    assert torch.equal(masked[masks == 1], full[masks == 1])
+
+    # Per-row index lists (distillation's padded legal sets).
+    index = torch.stack([actions.roll(row) for row in range(len(recorded))])
+    with torch.no_grad():
+        rows = network.row_action_logits(hidden, index)
+        for row in range(len(recorded)):
+            torch.testing.assert_close(
+                rows[row], network.action_logits(hidden[row : row + 1], index[row])[0]
+            )
+        valid = torch.ones_like(index, dtype=torch.bool)
+        valid[:, -1] = False
+        log_probs = legal_log_probs(network, hidden, index, valid)
+    torch.testing.assert_close(
+        log_probs[:, :-1].exp().sum(dim=1), torch.ones(len(recorded))
+    )
+
+
+def test_the_inference_cache_follows_every_weight_change(
+    recorded: list[tuple[np.ndarray, np.ndarray, int]],
+) -> None:
+    network = _network(_FULL)
+    observations = _observations(recorded)
+    actions = torch.arange(0, network.action_size, 997)
+
+    def outputs() -> tuple[Tensor, Tensor]:
+        with torch.no_grad():
+            hidden = network.trunk(observations)
+            return hidden, network.action_logits(hidden, actions)
+
+    before = outputs()
+    optimizer = torch.optim.SGD(network.parameters(), lr=0.1)
+    hidden = network.trunk(observations)
+    loss = network.action_logits(hidden, actions).square().mean() + hidden.mean()
+    loss.backward()  # type: ignore[no-untyped-call]
+    optimizer.step()
+    stepped = outputs()
+    assert not torch.equal(before[1], stepped[1])
+    with torch.enable_grad():
+        hidden = network.trunk(observations)
+        expected = network.action_logits(hidden, actions).detach()
+    torch.testing.assert_close(stepped[1], expected)
+
+    other = _network(_FULL, seed=7)
+    network.load_state_dict(other.state_dict())
+    with torch.no_grad():
+        hidden = other.trunk(observations)
+        expected = other.action_logits(hidden, actions)
+    loaded = outputs()
+    assert torch.equal(loaded[0], hidden)
+    assert torch.equal(loaded[1], expected)
+
+
+def test_a_small_batch_is_learned(
+    recorded: list[tuple[np.ndarray, np.ndarray, int]],
+) -> None:
+    """The policy and value can fit a batch (gradients reach every encoder)."""
+
+    torch.manual_seed(0)
+    network = EntityNetwork(
+        _FULL, hidden=(64,), entity_width=16, seat_width=32, action_width=32
+    ).train()
+    observations = _observations(recorded)
+    legal = [torch.from_numpy(row[1].astype(np.int64)) for row in recorded]
+    width = max(len(row) for row in legal)
+    index = torch.zeros(len(legal), width, dtype=torch.long)
+    valid = torch.zeros(len(legal), width, dtype=torch.bool)
+    for row, actions in enumerate(legal):
+        index[row, : len(actions)] = actions
+        valid[row, : len(actions)] = True
+    chosen = valid.sum(dim=1) - 1  # the last legal action of each row
+    keep = chosen > 0
+    targets = torch.where(torch.arange(len(legal)) % 2 == 0, 1.0, -1.0)
+    optimizer = torch.optim.Adam(network.parameters(), lr=3e-3)
+
+    def losses() -> tuple[Tensor, Tensor]:
+        hidden = network.trunk(observations)
+        log_probs = legal_log_probs(network, hidden, index, valid)
+        policy = -log_probs[keep, chosen[keep]].mean()
+        value = (network.value_head(hidden).squeeze(-1) - targets).square().mean()
+        return policy, value
+
+    first = [loss.item() for loss in losses()]
+    for _ in range(120):
+        policy, value = losses()
+        optimizer.zero_grad()
+        (policy + value).backward()  # type: ignore[no-untyped-call]
+        optimizer.step()
+    last = [loss.item() for loss in losses()]
+    assert last[0] < 0.1 * first[0]
+    assert last[1] < 0.1 * first[1]
+    for name, parameter in network.named_parameters():
+        if name.startswith(("seat_encoder", "board_encoder", "private_encoder")):
+            assert parameter.grad is not None and parameter.grad.abs().sum() > 0, name
+
+
+# -- checkpoints ------------------------------------------------------------------
+def _saved(tmp_path: Path, config: RulesetConfig, name: str = "entity.pt") -> Path:
+    path = tmp_path / name
+    save_checkpoint(
+        path,
+        _network(config),
+        ruleset=config.identifier,
+        iteration=3,
+        codec=ActionCodec(config),
+    )
+    return path
+
+
+def test_an_entity_file_loads_as_written(
+    tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
+) -> None:
+    path = _saved(tmp_path, _FULL)
+    network, info = load_checkpoint(path)
+    assert isinstance(network, EntityNetwork)
+    assert info.arch == "entity" and info.iteration == 3 and info.migration is None
+    assert network.arch_spec() == _network(_FULL).arch_spec()
+    observations = _observations(recorded)
+    original = _network(_FULL)
+    with torch.no_grad():
+        assert torch.equal(network.trunk(observations), original.trunk(observations))
+        hidden = original.trunk(observations)
+        actions = torch.arange(0, original.action_size, 101)
+        assert torch.equal(
+            network.action_logits(hidden, actions),
+            original.action_logits(hidden, actions),
+        )
+
+
+@pytest.mark.parametrize(("own", "target"), [(_BASE, _FULL), (_FULL, _BASE)])
+def test_another_ruleset_keeps_every_shared_action_score(
+    tmp_path: Path,
+    recorded: list[tuple[np.ndarray, np.ndarray, int]],
+    own: RulesetConfig,
+    target: RulesetConfig,
+) -> None:
+    path = _saved(tmp_path, own)
+    network, info = load_checkpoint(path, ruleset=target)
+    again, _ = load_checkpoint(path, ruleset=target)
+    assert isinstance(network, EntityNetwork)
+    assert network.action_size == ActionCodec(target).size
+    assert info.ruleset == own.identifier
+    assert info.migration is not None and info.optimizer_state is None
+    # Loading is deterministic: a part the file never had starts at zero.
+    for (name, left), right in zip(
+        network.state_dict().items(), again.state_dict().values(), strict=True
+    ):
+        assert torch.equal(left, right), name
+
+    original = _network(own)
+    old_keys = template_keys(ActionCodec(own).catalog)
+    new_keys = template_keys(ActionCodec(target).catalog)
+    old_index = {key: index for index, key in enumerate(old_keys)}
+    shared = [
+        (index, old_index[key])
+        for index, key in enumerate(new_keys)
+        if key in old_index
+    ]
+    fresh = [index for index, key in enumerate(new_keys) if key not in old_index]
+    assert shared and (fresh or len(new_keys) < len(old_keys))
+    observations = _observations(recorded)
+    with torch.no_grad():
+        hidden = original.trunk(observations)
+        torch.testing.assert_close(network.trunk(observations), hidden)
+        new, old = (torch.tensor(column) for column in zip(*shared, strict=True))
+        torch.testing.assert_close(
+            network.action_logits(hidden, new), original.action_logits(hidden, old)
+        )
+        if fresh:
+            assert not network.action_bias[torch.tensor(fresh)].any()
+            # A new action is still scored from its parts.
+            assert network.action_logits(hidden, torch.tensor(fresh)).abs().sum() > 0
+    new_parts = action_vocabulary(new_keys)
+    old_parts = action_vocabulary(old_keys)
+    for position, kind in enumerate(new_parts.kinds):
+        row = network.kind_embed.weight[position]
+        if kind in old_parts.kinds:
+            assert torch.equal(
+                row, original.kind_embed.weight[old_parts.kinds.index(kind)]
+            )
+        else:
+            assert not row.any()
+
+
+def test_an_entity_file_is_refused_under_another_feature_table(tmp_path: Path) -> None:
+    arch = _network(_BASE).arch_spec()
+    with pytest.raises(ValueError, match="feature table"):
+        build_network({**arch, "feature_digest": "0" * 64}, ActionCodec(_BASE).size)
+    path = _saved(tmp_path, _BASE)
+    document = checkpoint_module._read(path)
+    document["observation_version"] -= 1
+    torch.save(document, path)
+    with pytest.raises(ValueError, match="observation it was written for"):
+        load_checkpoint(path)
+
+
+# -- seats ------------------------------------------------------------------------
+def test_entity_and_mlp_files_play_a_game_together(tmp_path: Path) -> None:
+    entity = _saved(tmp_path, _BASE)
+    torch.manual_seed(0)
+    mlp = tmp_path / "mlp.pt"
+    save_checkpoint(
+        mlp,
+        PolicyValueNetwork(ActionCodec(_BASE).size, hidden=(32,)),
+        ruleset=_BASE.identifier,
+        iteration=1,
+        codec=ActionCodec(_BASE),
+    )
+    agents = [
+        make_agent(f"{CHECKPOINT_PREFIX}{entity}", 0, _BASE),
+        make_agent(f"{CHECKPOINT_PREFIX}{mlp}", 1, _BASE),
+        make_agent(f"{CHECKPOINT_PREFIX}{entity}", 2, _BASE),
+        make_agent("heuristic", 3),
+    ]
+    game = run_policy_game(UprisingRulesEngine(), _BASE, 4, agents)
+    assert game.state.phase is GamePhase.FINISHED
+
+
+def test_a_search_seat_reads_an_entity_file(tmp_path: Path) -> None:
+    path = str(_saved(tmp_path, _FULL))
+    agent = NetworkSearchAgent(path, seed=0, config=_BASE, rollouts=2, candidates=2)
+    assert isinstance(agent, StateAgent)
+    assert isinstance(agent.greedy.network, EntityNetwork)
+    engine = UprisingRulesEngine()
+    state = engine.reset(_BASE, 2)
+    chance = ChanceResolver(seed=2)
+    heuristics = [make_agent("heuristic", seat) for seat in range(4)]
+    searched = 0
+    while searched < 3 and state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        view = engine.observe(state, decision.owner)
+        if decision.owner == 0 and len(actions) > 1:
+            choice = agent.choose_action_with_state(state, view, actions)
+            searched += 1
+        else:
+            choice = heuristics[decision.owner].choose_action(view, actions)
+        assert choice in actions
+        state = engine.apply(state, choice).state
+    assert searched == 3

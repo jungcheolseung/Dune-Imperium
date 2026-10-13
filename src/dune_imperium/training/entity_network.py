@@ -47,10 +47,10 @@ from dune_imperium.adapters.observation_encoding import (
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.training.entity_features import (
-    ARGUMENT_HINTS,
     FEATURE_DIGEST,
     SLOT_HINTS,
     resolve,
+    resolve_argument,
     vocabularies,
 )
 from dune_imperium.training.network import PolicyValueNetwork
@@ -118,14 +118,16 @@ class ActionVocabulary(NamedTuple):
     labels: tuple[tuple[str, object], ...]
 
 
-def _argument_label(key: str, value: object) -> tuple[str, object] | None:
+def _argument_label(
+    action_id: str, key: str, value: object
+) -> tuple[str, object] | None:
     """The label an argument value is embedded by, if it is not an entity."""
 
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
         return (key, value)
-    if isinstance(value, str) and resolve(value, ARGUMENT_HINTS.get(key, ())) is None:
+    if isinstance(value, str) and resolve_argument(action_id, key, value) is None:
         return (key, value)
     return None
 
@@ -135,9 +137,9 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 
     rows = list(templates)
     labels: dict[tuple[str, object], None] = {}
-    for _, arguments in rows:
+    for action_id, arguments in rows:
         for key, value in arguments:
-            label = _argument_label(key, value)
+            label = _argument_label(action_id, key, value)
             if label is not None:
                 labels.setdefault(label, None)
     return ActionVocabulary(
@@ -596,13 +598,13 @@ class EntityNetwork(PolicyValueNetwork):
                 row_key.append(key_index[key])
                 entity = self.entity_count
                 number = 0.0
-                label_key = _argument_label(key, value)
+                label_key = _argument_label(template.action_id, key, value)
                 if isinstance(value, bool):
                     number = float(value)
                 elif isinstance(value, int):
                     number = math.log1p(abs(value)) * (1 if value >= 0 else -1)
                 elif isinstance(value, str) and label_key is None:
-                    found = resolve(value, ARGUMENT_HINTS.get(key, ()))
+                    found = resolve_argument(template.action_id, key, value)
                     assert found is not None
                     entity = self.entity_offsets[found[0]] + found[1]
                 label = 0 if label_key is None else labels[label_key]
