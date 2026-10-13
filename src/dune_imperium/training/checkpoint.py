@@ -337,6 +337,8 @@ def load_checkpoint(
 
     document = _read(path)
     arch = _document_arch(document)
+    if arch["kind"] == "entity":
+        return _load_entity(document, arch, ruleset)
     migration: MigrationReport | None = None
     state_dict = dict(document["state_dict"])
     optimizer_state = document.get("optimizer_state")
@@ -397,6 +399,88 @@ def load_checkpoint(
         and document.get("observation_layout") is not None,
         migration=migration,
         arch=str(arch["kind"]),
+    )
+    return network, info
+
+
+def _load_entity(
+    document: Mapping[str, Any],
+    arch: Mapping[str, Any],
+    ruleset: RulesetConfig | None,
+) -> tuple[PolicyValueNetwork, CheckpointInfo]:
+    """Load an ``entity`` file, moving it onto another catalog when asked.
+
+    Its weights do not depend on the catalog except the per-action bias:
+    entities and action parts carry over as they are, and the bias moves by
+    template identity (a template the file never had starts at zero, but is
+    still scored from its parts, so it is not an untrained row). It reads
+    only the observation it was written for (the segments it parses).
+    """
+
+    if (
+        document["observation_version"] != OBSERVATION_VERSION
+        or document["observation_size"] != OBSERVATION_SIZE
+    ):
+        raise ValueError(
+            f"an entity checkpoint reads only the observation it was written for "
+            f"(v{document['observation_version']}, current v{OBSERVATION_VERSION})"
+        )
+    own = str(document["ruleset"])
+    target = None if ruleset is None or ruleset.identifier == own else ruleset
+    state_dict = dict(document["state_dict"])
+    optimizer_state = document.get("optimizer_state")
+    templates = document.get("action_templates")
+    migration: MigrationReport | None = None
+    if document["action_codec_version"] == ACTION_CODEC_VERSION and target is None:
+        network = build_network(arch, int(document["action_size"]))
+    else:
+        if templates is None:
+            raise ValueError(
+                "an entity checkpoint carries no template list to move its "
+                "action bias by"
+            )
+        config = target or RulesetConfig.from_identifier(own)
+        codec = ActionCodec(config)
+        network = build_network({**arch, "ruleset": config.identifier}, codec.size)
+        old_index = {_key(entry): index for index, entry in enumerate(templates)}
+        old_bias = state_dict["action_bias"]
+        bias = torch.zeros(codec.size, dtype=old_bias.dtype)
+        kept = 0
+        for index, key in enumerate(template_keys(codec.catalog)):
+            row = old_index.get(key)
+            if row is not None:
+                bias[index] = old_bias[row]
+                kept += 1
+        state_dict["action_bias"] = bias
+        # The optimizer's per-action moments no longer fit the catalog.
+        optimizer_state = None
+        migration = MigrationReport(
+            from_codec_version=int(document["action_codec_version"]),
+            to_codec_version=ACTION_CODEC_VERSION,
+            from_observation_version=int(document["observation_version"]),
+            to_observation_version=OBSERVATION_VERSION,
+            actions_kept=kept,
+            actions_new=codec.size - kept,
+            actions_dropped=len(templates) - kept,
+            observation_kept=OBSERVATION_SIZE,
+            observation_new=0,
+            observation_dropped=0,
+        )
+    network.load_state_dict(state_dict)
+    network.eval()
+    info = CheckpointInfo(
+        ruleset=own,
+        action_size=network.action_size,
+        hidden=network.hidden,
+        iteration=int(document["iteration"]),
+        metadata=dict(document.get("metadata", {})),
+        optimizer_state=optimizer_state,
+        format=int(document["format"]),
+        action_codec_version=int(document["action_codec_version"]),
+        observation_version=int(document["observation_version"]),
+        migratable=templates is not None,
+        migration=migration,
+        arch="entity",
     )
     return network, info
 
