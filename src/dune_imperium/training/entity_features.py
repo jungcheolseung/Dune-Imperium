@@ -350,10 +350,11 @@ def resolve(value: str, prefer: tuple[str, ...] = ()) -> tuple[str, int] | None:
     if value.startswith("starter:"):
         # The action codec writes a starting card relative to its owner
         # (``starter:<card>:<copy>``, ``action_codec._normalize_arguments``).
-        card_id = value.split(":")[1]
-        if card_id in index["personal"]:
-            return "personal", index["personal"][card_id]
+        starter = value.split(":")[1]
+        if starter in index["personal"]:
+            return "personal", index["personal"][starter]
     if ":" in value:
+        card_id: str | None
         try:
             card_id = personal_card_for_instance(value).card.card_id
         except KeyError, ValueError, NotImplementedError, StopIteration:
