@@ -2,6 +2,7 @@
 
 from copy import replace
 from dataclasses import dataclass
+from functools import cache
 from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
@@ -382,7 +383,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     here (``tests/unit/test_known_card_seats.py`` checks it against
     what each seat's view and choices show). It is knowledge of a card's
     place: a deck card stays known to nobody even though the play server
-    shows the owner its deck's composition, sorted (OQ-010 ruling 5).
+    shows the owner its deck's composition, sorted (OQ-010 ruling 5), and
+    every seat each seat's deck pool (``PublicPlayerView.deck_pool``, card
+    ids by identity only, OQ-010 ruling 6).
     """
 
     nobody: frozenset[int] = frozenset()
@@ -766,11 +769,23 @@ def _cached_public_player_view(player: PlayerState) -> PublicPlayerView:
     return view
 
 
+@cache
+def _card_identity(instance_id: str) -> str:
+    """A deck or hand card's card id. An id that names no personal card (the
+    hand-made states of unit tests) reads ``unknown``: the pool never carries
+    an instance id."""
+
+    try:
+        return personal_card_for_instance(instance_id).card.card_id
+    except (KeyError, ValueError, NotImplementedError):
+        return "unknown"
+
+
 def _deck_pool(player: PlayerState) -> tuple[str, ...]:
     public = set(player.hand_public)
     return tuple(
         sorted(
-            personal_card_for_instance(card_id).card.card_id
+            _card_identity(card_id)
             for card_id in (
                 *player.deck,
                 *(card_id for card_id in player.hand if card_id not in public),

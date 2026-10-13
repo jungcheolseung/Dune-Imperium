@@ -56,6 +56,30 @@ def _ints(value: object) -> int:
     return value
 
 
+def _without_pools(value: object) -> object:
+    """``value`` with every seat's ``deck_pool`` left out."""
+
+    if isinstance(value, dict):
+        return {
+            key: _without_pools(item)
+            for key, item in value.items()
+            if key != "deck_pool"
+        }
+    if isinstance(value, list):
+        return [_without_pools(item) for item in value]
+    return value
+
+
+def _pool(view: object, seat: int) -> list[str]:
+    players = _obj(view)["players"]
+    assert isinstance(players, list)
+    pool = _obj(players[seat])["deck_pool"]
+    assert isinstance(pool, list) and all(isinstance(card, str) for card in pool)
+    # Card ids only: never an instance id, so no copy is placed.
+    assert not [card for card in pool if ":" in str(card)]
+    return [str(card) for card in pool]
+
+
 def _deck_cards(view: Mapping[str, object]) -> list[str]:
     cards = _obj(view["private"])["deck_cards"]
     assert isinstance(cards, list)
@@ -237,15 +261,40 @@ def test_no_other_view_log_or_summary_depends_on_a_seats_deck(
     session.state = changed
     after = everything_but_the_owner()
     owner_after = manager.view(game_id, owner)
+    # The deck in another order, and a hand card traded with a deck card:
+    # nothing any seat sees changes, the owner's public block included.
+    hand = original.players[owner].hand
+    traded = replace(
+        original,
+        players=replace_player(
+            original.players,
+            replace(
+                original.players[owner],
+                deck=(*hand[:1], *reversed(deck[1:])),
+                hand=(deck[0], *hand[1:]),
+            ),
+        ),
+    )
+    session.state = traded
+    reordered = everything_but_the_owner()
+    owner_reordered = manager.view(game_id, owner)
     session.state = original
 
-    assert after == before
-    # The owner's own block is the one place the list lives.
+    assert reordered == before
+    assert _obj(owner_reordered)["players"] == _obj(owner_before)["players"]
+    # Another deck composition shows in one field only: the owner's deck
+    # pool, by card identity (OQ-010 ruling 6, user decision 2026-10-13).
+    assert _without_pools(after) == _without_pools(before)
+    assert _pool(owner_after, owner) != _pool(owner_before, owner)
+    for seat in range(4):
+        if seat != owner:
+            assert _pool(after[f"view {seat}"], owner) == _pool(owner_after, owner)
+    # The owner's own block is the one place the list of instances lives.
     assert _deck_cards(owner_before) == sorted(deck)
     assert _deck_cards(owner_after) == sorted(swapped)
-    assert _obj(owner_before)["players"] == _obj(owner_after)["players"], (
-        "the public block of the owner shows no deck contents"
-    )
+    assert _without_pools(_obj(owner_before)["players"]) == _without_pools(
+        _obj(owner_after)["players"]
+    ), "the public block of the owner shows no deck contents but its pool"
     # In plain text, too: another seat's view and the public summary name none
     # of the owner's starter instance ids (they are per seat, and a card in
     # the deck is in no public zone of the same state). The logs are left out

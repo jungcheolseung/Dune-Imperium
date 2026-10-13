@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 31
+    assert OBSERVATION_VERSION == 32
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -76,6 +76,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # (4,529 -> 4,533; user ruling 2026-10-04).
     # v31: the open Agent turn's two boxes, card identity + 1 and pending
     # flag each, 4 columns (4,533 -> 4,537; docs/graft-boxes-plan.md 4.7).
+    # v32: each relative seat's deck pool, one count per personal-card
+    # identity, 4 x 139 columns (4,537 -> 5,093; OQ-010 ruling 6).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -106,8 +108,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
         - 90
         + 4
         + 4
+        + 4 * 139
     )
-    assert OBSERVATION_SIZE == 4_537
+    assert OBSERVATION_SIZE == 5_093
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -134,7 +137,14 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert segment_slice("epic_game").stop == segment_slice("shortfall").start
     assert segment_slice("shortfall").stop == segment_slice("track_spies_owed").start
     assert segment_slice("track_spies_owed").stop == segment_slice("agent_boxes").start
-    assert segment_slice("agent_boxes").stop == OBSERVATION_SIZE
+    # v32 appends the four deck pools, seat by seat, after agent_boxes.
+    assert segment_slice("agent_boxes").stop == segment_slice("seat0_deck_pool").start
+    for seat in range(3):
+        assert (
+            segment_slice(f"seat{seat}_deck_pool").stop
+            == segment_slice(f"seat{seat + 1}_deck_pool").start
+        )
+    assert segment_slice("seat3_deck_pool").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -598,20 +608,26 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # trajectory moved. The new columns are nonzero in 1,880 (base), 1,760
 # (choam), 1,748 (draft), 2,208 (everything), 2,084 (promo_bloodlines_tech)
 # and 2,036 (scouts) vectors: every open Agent turn names its placed card.
+# v32 (OQ-010 ruling 6): the same games with each vector cut to its first
+# 4,537 columns (the four deck-pool segments dropped) reproduce the v31
+# digests exactly with the same vector counts (base d96a5baa, choam 2f49afd3,
+# draft e8e7e54f, everything a63b5a28, promo_bloodlines_tech 2a4e10aa, scouts
+# f6b5fc5e), so no older column and no trajectory moved. The new columns are
+# nonzero in every vector: every seat always holds a deck or a hand.
 _GOLDEN_DIGESTS = {
-    "base": ("d96a5baa97b1594cd8099093f6c9e37278b86528dee02198a97fdf5dfc3c23a9", 3052),
-    "choam": ("2f49afd38bd894f7b8978d0dc79bdc218c53cf2f32274b07612b806c8fa8db86", 2816),
+    "base": ("30837bf1b0271bd8bae0be51b505cafd783911a9fb7507720472e94664039355", 3052),
+    "choam": ("7d83bbb5377584afecfdfce7106942cc2ff0d13a6adc04011d4243bfa26d9387", 2816),
     "promo_bloodlines_tech": (
-        "2a4e10aaf584a460eabce7ea00bfc71a078fba3079cfda2c1b7e79f4d03e4ac0",
+        "3b7acb4f7be6823100163b62c6e4a6a7cd270eb08043734c4e6ce4a31544e230",
         3164,
     ),
     "everything": (
-        "a63b5a287d3dcdf27c0126c4fbe51c916174c9bae8a5e274753c8059b520b132",
+        "6f48c933926c15e67bd17614e863837e26666f6b64421f983dc0f1c78e7e5295",
         3544,
     ),
-    "draft": ("e8e7e54fa0f101fd04321aeb5edfa5a342c2d60f153b8424e35c4057b3a66916", 2864),
+    "draft": ("1e888be1d633723a518caf88efe997271b0dfae5549ad3a8604e3ac6ccb792c5", 2864),
     "scouts": (
-        "f6b5fc5eaddcd66c8b7f104c03906b37390a4896711e7aec4995bfdd8ee35e92",
+        "6685cfb79851038e38e0e56e7b5b258c71691670f0abdbdb527aa4ea66e8daa9",
         3532,
     ),
 }

@@ -122,12 +122,17 @@ def test_publicly_acquired_hand_cards_and_resolving_intrigue_are_public() -> Non
 
 
 def test_opponent_secrets_and_hidden_deck_orders_do_not_change_view() -> None:
+    """An opponent's hand and deck may trade cards and the deck may change
+    order without the view changing: only the two zones' combined
+    composition is public (``deck_pool``, OQ-010 ruling 6)."""
+
     state = _state()
     opponent = state.players[1]
+    pool = (*opponent.deck, *opponent.hand)
     changed_opponent = replace(
         opponent,
-        deck=tuple(reversed(opponent.deck)),
-        hand=("different_hand",),
+        deck=tuple(reversed(pool[len(opponent.hand) :])),
+        hand=pool[: len(opponent.hand)],
         intrigue_cards=("different_intrigue",),
     )
     hidden_variant = replace(
@@ -138,6 +143,35 @@ def test_opponent_secrets_and_hidden_deck_orders_do_not_change_view() -> None:
     )
 
     assert observe_state(state, 0) == observe_state(hidden_variant, 0)
+
+
+def test_every_seat_sees_each_seats_deck_and_hidden_hand_composition() -> None:
+    """OQ-010 ruling 6 (user decision 2026-10-13): the cards in a seat's deck
+    and the hidden part of its hand, together, by identity and sorted --
+    public because every way into or out of the two passes a public place.
+    A publicly acquired hand card is shown as such and not counted again."""
+
+    state = _state()
+    opponent = replace(
+        state.players[1],
+        deck=("player:1:starter:dune_the_desert_planet:0", "player:1:starter:dagger:1"),
+        hand=("player:1:starter:dagger:0", "imperium:public_spectacle:0"),
+        hand_public=("imperium:public_spectacle:0",),
+    )
+    state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+    expected = ("dagger", "dagger", "dune_the_desert_planet")
+    assert observe_state(state, 0).players[1].deck_pool == expected
+    assert observe_state(state, 2).players[1].deck_pool == expected
+    # A different composition is a different view.
+    changed = replace(
+        opponent, hand=("player:1:starter:diplomacy:0", "imperium:public_spectacle:0")
+    )
+    other = replace(state, players=(state.players[0], changed, *state.players[2:]))
+    assert observe_state(other, 0).players[1].deck_pool == (
+        "dagger",
+        "diplomacy",
+        "dune_the_desert_planet",
+    )
 
 
 def test_each_player_receives_their_own_private_cards() -> None:
@@ -309,7 +343,6 @@ def test_game_state_rejects_two_owners_of_one_alliance() -> None:
         replace(state, players=(first, second, *state.players[2:]))
 
 
-
 def test_public_views_are_reused_for_unchanged_seats() -> None:
     # A seat's public view is built once per state object: between two
     # decisions most seats do not change, so their views come back from the
@@ -322,9 +355,7 @@ def test_public_views_are_reused_for_unchanged_seats() -> None:
 
     seat = state.players[2]
     richer = replace(seat, victory_points=seat.victory_points + 1)
-    changed = replace(
-        state, players=(*state.players[:2], richer, *state.players[3:])
-    )
+    changed = replace(state, players=(*state.players[:2], richer, *state.players[3:]))
     view = observe_state(changed, 0)
     assert view.players[2] is not first.players[2]
     assert view.players[2].victory_points == first.players[2].victory_points + 1

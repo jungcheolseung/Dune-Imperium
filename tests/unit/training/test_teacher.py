@@ -44,7 +44,7 @@ def _teacher() -> PolicyValueNetwork:
     torch.manual_seed(0)
     network = PolicyValueNetwork(ActionCodec(_RULES).size, hidden=(16,))
     with torch.no_grad():
-        network.policy_head.weight.mul_(30.0)
+        network.policy_head.weight.mul_(100.0)
     return network.eval()
 
 
@@ -268,7 +268,11 @@ def test_the_teacher_value_is_kept_and_can_be_the_value_target(
     filled = add_teacher_values(old, teacher)
     np.testing.assert_allclose(filled.values, data.values, atol=1e-5)
 
-    joined = concatenate([part for _, part in collected])
+    # A teacher whose values spread out, so there is something to learn.
+    spread = _teacher()
+    with torch.no_grad():
+        spread.value_head.weight.mul_(40.0)
+    joined = add_teacher_values(concatenate([part for _, part in collected]), spread)
     torch.manual_seed(2)
     student = PolicyValueNetwork(joined.action_size, hidden=(32,))
     config = StudentConfig(
