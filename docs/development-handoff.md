@@ -105,9 +105,10 @@
 **플레이 화면**
 
 - **Godot PC 2D 시제품:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
-  기존 서버에 연결한 기본 게임+앱 AI 화면. 실제 배치·효과 선택·되돌리기·턴 종료·AI 차례 복귀와
-  Linux의 실제 렌더링/클릭을 확인했다. 다음은 Windows 사용자 직접 플레이 피드백이며,
-  원격 인증·확장·완주 화면 대응·배포 패키징은 후속 범위다.
+  기존 서버에 연결한 기본 게임+앱 AI 화면. 드래프트·책략·구매·전투·최종 순위·저장/이어하기를
+  구현했고 네 판의 8~9라운드 완주와 중간 복원을 검증했다(49종 행동·12종 결정창).
+  다음은 Windows 직접 완주 피드백과 보드/카드 가독성·조작감 개선이며,
+  전수 카드/지도자 화면 감사·원격 인증·확장·배포 패키징은 후속 범위다.
   [실행 안내](godot-prototype-guide.md), [전체 계획](godot-client-plan.md)
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
@@ -138,6 +139,8 @@
   [2026-10-12 Ghola, 2026-10-14 자기 차례 안의 선택 효과, [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
   (`test_a_local_server_stops_on_its_closed_input_with_a_stream_open`). 둘 다 혼자 돌리면 통과한다.
+- 깊은 worktree의 `tmp/pytest/`는 Linux forkserver의 UNIX 소켓 이름 길이 제한을 넘을 수 있다.
+  Godot 작업 트리의 tournament worker 검사는 프로젝트 내부의 짧은 임시 경로로 재실행해 통과했다.
 
 ## 알아 둘 것
 
