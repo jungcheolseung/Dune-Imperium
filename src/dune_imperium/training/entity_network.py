@@ -33,8 +33,8 @@ table's digest; ``training.checkpoint`` refuses a file under another table.
 """
 
 import math
-from collections.abc import Sequence
-from typing import Any, Final
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, Final, NamedTuple
 
 import torch
 from torch import Tensor, nn
@@ -55,7 +55,6 @@ from dune_imperium.training.entity_features import (
 )
 from dune_imperium.training.network import PolicyValueNetwork
 from dune_imperium.training.slots import (
-    PAD_ROW,
     SLOT_FIELDS,
     SLOT_KEYS,
     VALUE_RANGE,
@@ -96,6 +95,95 @@ _ZONE_VOCABULARY: Final = {
 }
 
 
+class _Tables(NamedTuple):
+    entities: Tensor  # [N + 1, E]
+    keys: Tensor  # [K + 1, E], the pad row zero
+
+
+# A catalog template's identity: its action id and its arguments.
+TemplateKey = tuple[str, tuple[tuple[str, object], ...]]
+
+
+class ActionVocabulary(NamedTuple):
+    """The parts a catalog's actions are scored from, in table order.
+
+    Row ``0`` of the argument-key and label tables is the pad, so ``keys[i]``
+    and ``labels[i]`` are rows ``i + 1``. Another catalog (another ruleset or
+    codec version) has other parts; a checkpoint moves its rows by these
+    names (``retarget_action_parts``).
+    """
+
+    kinds: tuple[str, ...]
+    keys: tuple[str, ...]
+    labels: tuple[tuple[str, object], ...]
+
+
+def _argument_label(key: str, value: object) -> tuple[str, object] | None:
+    """The label an argument value is embedded by, if it is not an entity."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return (key, value)
+    if isinstance(value, str) and resolve(value, ARGUMENT_HINTS.get(key, ())) is None:
+        return (key, value)
+    return None
+
+
+def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
+    """The action parts of ``templates`` (``checkpoint.template_keys``)."""
+
+    rows = list(templates)
+    labels: dict[tuple[str, object], None] = {}
+    for _, arguments in rows:
+        for key, value in arguments:
+            label = _argument_label(key, value)
+            if label is not None:
+                labels.setdefault(label, None)
+    return ActionVocabulary(
+        kinds=tuple(sorted({action_id for action_id, _ in rows})),
+        keys=tuple(sorted({key for _, arguments in rows for key, _ in arguments})),
+        labels=tuple(labels),
+    )
+
+
+def _moved_rows(
+    old: Tensor, old_names: Sequence[object], new_names: Sequence[object], pad: bool
+) -> Tensor:
+    """``old``'s rows reordered to ``new_names``; a name it lacks is zero."""
+
+    offset = 1 if pad else 0
+    rows = old.new_zeros((len(new_names) + offset, *old.shape[1:]))
+    where = {name: index + offset for index, name in enumerate(old_names)}
+    for index, name in enumerate(new_names):
+        found = where.get(name)
+        if found is not None:
+            rows[index + offset] = old[found]
+    return rows
+
+
+def retarget_action_parts(
+    state_dict: dict[str, Tensor], old: ActionVocabulary, new: ActionVocabulary
+) -> dict[str, Tensor]:
+    """Move a state dict's action-part rows from ``old`` to ``new``.
+
+    A part the old catalog never had starts at zero (deterministic: loading
+    a file twice gives the same network); the action is still scored from
+    its other parts.
+    """
+
+    moved = dict(state_dict)
+    moved["kind_embed.weight"] = _moved_rows(
+        state_dict["kind_embed.weight"], old.kinds, new.kinds, pad=False
+    )
+    for name in ("key_number.weight", "key_entity"):
+        moved[name] = _moved_rows(state_dict[name], old.keys, new.keys, pad=True)
+    moved["label_embed.weight"] = _moved_rows(
+        state_dict["label_embed.weight"], old.labels, new.labels, pad=True
+    )
+    return moved
+
+
 def _group(segment: str) -> str:
     if segment.startswith("seat") and segment[4].isdigit():
         return f"seat{segment[4]}"
@@ -125,6 +213,7 @@ class EntityNetwork(PolicyValueNetwork):
     slot_bases: Tensor
     slot_lookup_field: Tensor
     slot_key_entity: Tensor
+    slot_key_live: Tensor
     action_kind: Tensor
     arg_key: Tensor
     arg_entity: Tensor
@@ -159,6 +248,9 @@ class EntityNetwork(PolicyValueNetwork):
         self._build_action_tables(catalog)
         self._cache_key: tuple[int, ...] | None = None
         self._cache_value: Tensor | None = None
+        self._tables_key: tuple[int, ...] | None = None
+        self._tables_value: _Tables | None = None
+        self._weights: tuple[nn.Parameter, ...] = tuple(self.parameters())
 
     # -- entities -------------------------------------------------------------
     def _build_entities(self) -> None:
@@ -203,9 +295,9 @@ class EntityNetwork(PolicyValueNetwork):
 
     # -- the observation ------------------------------------------------------
     def _build_observation_tables(self) -> None:
-        groups = ("board", "private", *(f"seat{seat}" for seat in range(_SEATS)))
         slot_columns = {column for field in SLOT_FIELDS for column in field.columns}
         sizes = {name: table.size for name, table in vocabularies().items()}
+        groups = ("board", "private", *(f"seat{seat}" for seat in range(_SEATS)))
         zones: dict[str, list[tuple[int, int, str]]] = {group: [] for group in groups}
         raw: dict[str, list[int]] = {group: [] for group in groups}
         for segment in OBSERVATION_SEGMENTS:
@@ -224,13 +316,90 @@ class EntityNetwork(PolicyValueNetwork):
                 for column in range(segment.offset, segment.offset + segment.length)
                 if column not in slot_columns
             )
-        self.zone_specs = zones
-        for group in groups:
+        field_groups = []
+        for field in SLOT_FIELDS:
+            owners = {_group(segment) for segment in field.segments}
+            field_groups.append(owners.pop() if len(owners) == 1 else "board")
+        fields = {
+            group: [index for index, owner in enumerate(field_groups) if owner == group]
+            for group in groups
+        }
+
+        seat_vocabularies = {
+            tuple(vocabulary for _, _, vocabulary in zones[f"seat{seat}"])
+            for seat in range(_SEATS)
+        }
+        seat_shapes = {
+            (len(raw[f"seat{seat}"]), len(fields[f"seat{seat}"]))
+            for seat in range(_SEATS)
+        }
+        if len(seat_vocabularies) != 1 or len(seat_shapes) != 1:
+            raise ValueError("every seat must have the same columns")
+        # Zones are read one vocabulary at a time (every hand and discard pile
+        # of every seat against the personal-card embeddings in one product):
+        # a block-diagonal product over all of them would be mostly zeros.
+        # ``zone_columns_<vocabulary>`` holds each zone's columns ``[Zv, n]``;
+        # the results are concatenated in vocabulary order, and each encoder
+        # finds its zones there by ``zone_positions_<encoder>``.
+        self.zone_vocabulary_order = tuple(
+            sorted(
+                {vocabulary for group in groups for _, _, vocabulary in zones[group]}
+            )
+        )
+        position: dict[tuple[str, int], int] = {}
+        placed = 0
+        for vocabulary in self.zone_vocabulary_order:
+            columns_of = []
+            for group in groups:
+                for index, (offset, length, owner) in enumerate(zones[group]):
+                    if owner == vocabulary:
+                        columns_of.append(list(range(offset, offset + length)))
+                        position[(group, index)] = placed
+                        placed += 1
+            self.register_buffer(
+                f"zone_columns_{vocabulary}",
+                torch.tensor(columns_of, dtype=torch.long),
+                persistent=False,
+            )
+        for group in ("board", "private"):
             self.register_buffer(
                 f"raw_{group}",
                 torch.tensor(raw[group], dtype=torch.long),
                 persistent=False,
             )
+            self.register_buffer(
+                f"zone_positions_{group}",
+                torch.tensor(
+                    [position[(group, index)] for index in range(len(zones[group]))],
+                    dtype=torch.long,
+                ),
+                persistent=False,
+            )
+            self.register_buffer(
+                f"fields_{group}",
+                torch.tensor(fields[group], dtype=torch.long),
+                persistent=False,
+            )
+        seats = [f"seat{seat}" for seat in range(_SEATS)]
+        self.register_buffer(
+            "raw_seat", torch.tensor([raw[seat] for seat in seats]), persistent=False
+        )
+        self.register_buffer(
+            "zone_positions_seat",
+            torch.tensor(
+                [
+                    [position[(seat, index)] for index in range(len(zones[seat]))]
+                    for seat in seats
+                ],
+                dtype=torch.long,
+            ),
+            persistent=False,
+        )
+        self.register_buffer(
+            "fields_seat",
+            torch.tensor([fields[seat] for seat in seats]),
+            persistent=False,
+        )
         # Slot lookups (training.slots): which field each lookup feeds, and
         # each key's entity (or the zero row).
         columns, table = lookup_tables()
@@ -267,36 +436,32 @@ class EntityNetwork(PolicyValueNetwork):
             torch.tensor(key_entity, dtype=torch.long),
             persistent=False,
         )
+        self.register_buffer(
+            "slot_key_live",
+            torch.tensor([1.0] * len(SLOT_KEYS) + [0.0]).unsqueeze(1),
+            persistent=False,
+        )
         self.slot_key_own = nn.Parameter(
             torch.zeros(len(SLOT_KEYS) + 1, self.entity_width)
         )
-        field_groups = []
-        for field in SLOT_FIELDS:
-            owners = {_group(segment) for segment in field.segments}
-            field_groups.append(owners.pop() if len(owners) == 1 else "board")
-        self.slot_field_groups = tuple(field_groups)
-        self.groups = groups
 
-    def _group_width(self, group: str) -> int:
-        raw: Tensor = getattr(self, f"raw_{group}")
-        zones = len(self.zone_specs[group])
-        fields = sum(1 for owner in self.slot_field_groups if owner == group)
-        return int(raw.shape[0]) + (zones + fields) * self.entity_width
+    def _encoder_width(self, encoder: str) -> int:
+        raw: Tensor = getattr(self, f"raw_{encoder}")
+        fields: Tensor = getattr(self, f"fields_{encoder}")
+        positions: Tensor = getattr(self, f"zone_positions_{encoder}")
+        zones = int(positions.shape[-1])
+        return int(raw.shape[-1]) + (zones + int(fields.shape[-1])) * self.entity_width
 
     # -- the encoders -----------------------------------------------------------
     def _build_encoders(self) -> None:
-        seat_input = self._group_width("seat0")
-        for seat in range(1, _SEATS):
-            if self._group_width(f"seat{seat}") != seat_input:
-                raise ValueError("every seat must have the same columns")
         self.seat_encoder = nn.Sequential(
-            nn.Linear(seat_input, self.seat_width), nn.ReLU()
+            nn.Linear(self._encoder_width("seat"), self.seat_width), nn.ReLU()
         )
         self.board_encoder = nn.Sequential(
-            nn.Linear(self._group_width("board"), self.seat_width), nn.ReLU()
+            nn.Linear(self._encoder_width("board"), self.seat_width), nn.ReLU()
         )
         self.private_encoder = nn.Sequential(
-            nn.Linear(self._group_width("private"), self.seat_width), nn.ReLU()
+            nn.Linear(self._encoder_width("private"), self.seat_width), nn.ReLU()
         )
         layers: list[nn.Module] = []
         width = self.seat_width * (2 + _SEATS)
@@ -311,61 +476,112 @@ class EntityNetwork(PolicyValueNetwork):
             nn.Linear(width, _SEATS) if self.aux_vp else None
         )
 
-    def _group_vector(
-        self, group: str, observations: Tensor, entities: Tensor, fields: Tensor
-    ) -> Tensor:
-        raw: Tensor = getattr(self, f"raw_{group}")
-        parts = [torch.log1p(observations.index_select(1, raw).clamp(min=0.0))]
-        for offset, length, vocabulary in self.zone_specs[group]:
-            start = self.entity_offsets[vocabulary]
-            counts = observations[:, offset : offset + length]
-            parts.append(counts @ entities[start : start + length])
-        for index, owner in enumerate(self.slot_field_groups):
-            if owner == group:
-                parts.append(fields[:, index])
-        return torch.cat(parts, dim=1)
+    # -- the tables an observation is read with ----------------------------------
+    def _weights_version(self) -> tuple[int, ...]:
+        # In-place updates (optimizer steps, load_state_dict copies) bump a
+        # tensor's version; walking ``self.parameters()`` on every call costs
+        # more than the batch-1 forward pass, so the list is kept and only
+        # rebuilt when the parameters themselves are replaced.
+        return tuple(parameter._version for parameter in self._weights)
 
-    def _slot_fields(self, observations: Tensor, entities: Tensor) -> Tensor:
+    def _refresh_weights(self) -> None:
+        self._weights = tuple(self.parameters())
+        self._cache_key = self._tables_key = None
+        self._cache_value = None
+        self._tables_value = None
+
+    def _apply(self, fn: Any, recurse: bool = True) -> EntityNetwork:
+        super()._apply(fn, recurse)  # type: ignore[no-untyped-call]
+        self._refresh_weights()
+        return self
+
+    def load_state_dict(
+        self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False
+    ) -> Any:
+        result = super().load_state_dict(state_dict, strict=strict, assign=assign)
+        self._refresh_weights()
+        return result
+
+    def _compute_tables(self) -> _Tables:
+        entities = self.entity_table()
+        keys = (self.slot_key_own + entities[self.slot_key_entity]) * self.slot_key_live
+        return _Tables(entities=entities, keys=keys)
+
+    def _tables(self) -> _Tables:
+        """The entity and slot-key tables; cached while no gradient is taken
+        (inference does not change the weights)."""
+
+        if torch.is_grad_enabled():
+            return self._compute_tables()
+        version = self._weights_version()
+        if self._tables_key != version or self._tables_value is None:
+            self._tables_value = self._compute_tables()
+            self._tables_key = version
+        return self._tables_value
+
+    def _slot_fields(self, observations: Tensor, keys: Tensor) -> Tensor:
         """Each slot field's summed key vectors ``[B, F, E]``."""
 
         values = observations.index_select(1, self.slot_columns).long()
         values = values.clamp(0, VALUE_RANGE - 1)
         rows = self.slot_table[values + self.slot_bases]  # [B, C]
-        keys = self.slot_key_own + entities[self.slot_key_entity]  # [K + 1, E]
-        keys = keys.clone()
-        keys[PAD_ROW] = 0.0
         vectors = keys[rows]  # [B, C, E]
         fields = torch.zeros(observations.shape[0], len(SLOT_FIELDS), self.entity_width)
         return fields.index_add(1, self.slot_lookup_field, vectors)
+
+    def _zone_vectors(self, observations: Tensor, entities: Tensor) -> Tensor:
+        """Every zone's count-weighted entity sum ``[B, Z, E]``."""
+
+        vectors = []
+        for vocabulary in self.zone_vocabulary_order:
+            columns: Tensor = getattr(self, f"zone_columns_{vocabulary}")
+            start = self.entity_offsets[vocabulary]
+            table = entities[start : start + int(columns.shape[1])]
+            vectors.append(observations[:, columns] @ table)
+        return torch.cat(vectors, dim=1)
+
+    def _encode(
+        self, encoder: str, observations: Tensor, fields: Tensor, zones: Tensor
+    ) -> Tensor:
+        """One encoder's input: raw columns, zone sums and slot fields."""
+
+        raw: Tensor = getattr(self, f"raw_{encoder}")
+        positions: Tensor = getattr(self, f"zone_positions_{encoder}")
+        chosen: Tensor = getattr(self, f"fields_{encoder}")
+        parts = [
+            torch.log1p(observations[:, raw].clamp(min=0.0)),
+            zones[:, positions].flatten(-2),
+            fields[:, chosen].flatten(-2),
+        ]
+        return torch.cat(parts, dim=-1)
 
     def trunk(self, observations: Tensor) -> Tensor:
         """The hidden features ``[B, H]`` both heads read."""
 
         observations = observations.to(torch.float32)
-        entities = self.entity_table()
-        fields = self._slot_fields(observations, entities)
-        seats = [
-            self.seat_encoder(
-                self._group_vector(f"seat{seat}", observations, entities, fields)
-            )
-            for seat in range(_SEATS)
-        ]
-        board = self.board_encoder(
-            self._group_vector("board", observations, entities, fields)
-        )
+        tables = self._tables()
+        fields = self._slot_fields(observations, tables.keys)
+        zones = self._zone_vectors(observations, tables.entities)
+        # Seats ``[B, 4, ...]``: one shared encoder for the four of them.
+        seats = self.seat_encoder(
+            self._encode("seat", observations, fields, zones)
+        ).flatten(1)
+        board = self.board_encoder(self._encode("board", observations, fields, zones))
         private = self.private_encoder(
-            self._group_vector("private", observations, entities, fields)
+            self._encode("private", observations, fields, zones)
         )
-        hidden: Tensor = self.body(torch.cat([board, private, *seats], dim=1))
+        hidden: Tensor = self.body(torch.cat([board, private, seats], dim=1))
         return hidden
 
     # -- the actions ------------------------------------------------------------
     def _build_action_tables(self, catalog: Sequence[Any]) -> None:
-        kinds = sorted({template.action_id for template in catalog})
+        vocabulary = action_vocabulary(
+            (template.action_id, template.arguments) for template in catalog
+        )
+        kinds, keys = vocabulary.kinds, vocabulary.keys
         kind_index = {kind: index for index, kind in enumerate(kinds)}
-        keys = sorted({key for template in catalog for key, _ in template.arguments})
         key_index = {key: index + 1 for index, key in enumerate(keys)}
-        labels: dict[tuple[str, object], int] = {}
+        labels = {label: index + 1 for index, label in enumerate(vocabulary.labels)}
         width = max((len(template.arguments) for template in catalog), default=0)
         width = max(width, 1)
         action_kind = []
@@ -380,21 +596,16 @@ class EntityNetwork(PolicyValueNetwork):
                 row_key.append(key_index[key])
                 entity = self.entity_count
                 number = 0.0
-                label_key: tuple[str, object] | None = None
+                label_key = _argument_label(key, value)
                 if isinstance(value, bool):
                     number = float(value)
                 elif isinstance(value, int):
                     number = math.log1p(abs(value)) * (1 if value >= 0 else -1)
-                    label_key = (key, value)
-                elif isinstance(value, str):
+                elif isinstance(value, str) and label_key is None:
                     found = resolve(value, ARGUMENT_HINTS.get(key, ()))
-                    if found is None:
-                        label_key = (key, value)
-                    else:
-                        entity = self.entity_offsets[found[0]] + found[1]
-                label = 0
-                if label_key is not None:
-                    label = labels.setdefault(label_key, len(labels) + 1)
+                    assert found is not None
+                    entity = self.entity_offsets[found[0]] + found[1]
+                label = 0 if label_key is None else labels[label_key]
                 row_entity.append(entity)
                 row_label.append(label)
                 row_number.append(number)
@@ -403,8 +614,7 @@ class EntityNetwork(PolicyValueNetwork):
             arg_entity.append(row_entity + [self.entity_count] * padding)
             arg_label.append(row_label + [0] * padding)
             arg_number.append(row_number + [0.0] * padding)
-        self.action_kinds = tuple(kinds)
-        self.argument_keys = tuple(keys)
+        self.action_vocabulary = vocabulary
         self.register_buffer("action_kind", torch.tensor(action_kind), persistent=False)
         self.register_buffer("arg_key", torch.tensor(arg_key), persistent=False)
         self.register_buffer("arg_entity", torch.tensor(arg_entity), persistent=False)
@@ -455,22 +665,30 @@ class EntityNetwork(PolicyValueNetwork):
     def action_logits(self, hidden: Tensor, actions: Tensor) -> Tensor:
         """Unmasked logits ``[B, K]`` of the catalog indices ``actions``."""
 
-        vectors = self.action_vectors(actions)
+        if torch.is_grad_enabled():
+            vectors = self.action_vectors(actions, self._tables().entities)
+        else:
+            vectors = self._all_actions()[actions]
         logits: Tensor = self.query(hidden) @ vectors.T + self.action_bias[actions]
         return logits
+
+    def row_action_logits(self, hidden: Tensor, actions: Tensor) -> Tensor:
+        """Unmasked logits ``[B, L]``; row ``b`` scores ``actions[b]``."""
+
+        unique, inverse = torch.unique(actions, return_inverse=True)
+        logits = self.action_logits(hidden, unique)  # [B, U]
+        return torch.gather(logits, 1, inverse.reshape(actions.shape))
 
     def _all_actions(self) -> Tensor:
         """Every catalog action's vector, cached while no gradient is taken."""
 
         everything = torch.arange(self.action_size)
         if torch.is_grad_enabled():
-            return self.action_vectors(everything)
-        key = tuple(int(parameter._version) for parameter in self.parameters()) + (
-            id(self),
-        )
-        if self._cache_key != key or self._cache_value is None:
-            self._cache_value = self.action_vectors(everything)
-            self._cache_key = key
+            return self.action_vectors(everything, self._tables().entities)
+        version = self._weights_version()
+        if self._cache_key != version or self._cache_value is None:
+            self._cache_value = self.action_vectors(everything, self._tables().entities)
+            self._cache_key = version
         return self._cache_value
 
     def forward(self, observations: Tensor, masks: Tensor) -> tuple[Tensor, Tensor]:

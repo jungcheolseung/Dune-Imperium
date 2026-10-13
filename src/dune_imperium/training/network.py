@@ -94,6 +94,17 @@ class PolicyValueNetwork(nn.Module):
             hidden, self.policy_head.weight[actions], self.policy_head.bias[actions]
         )
 
+    def row_action_logits(self, hidden: Tensor, actions: Tensor) -> Tensor:
+        """Unmasked logits ``[B, L]``: row ``b`` scores its own indices ``actions[b]``.
+
+        Distillation's padded legal sets differ per row; ``action_logits``
+        scores one index list for every row.
+        """
+
+        weight = self.policy_head.weight[actions]
+        bias = self.policy_head.bias[actions]
+        return torch.einsum("bh,blh->bl", hidden, weight) + bias
+
 
 class MlpSlotsNetwork(PolicyValueNetwork):
     """The MLP plus a zero-initialised embedding of the identity columns.

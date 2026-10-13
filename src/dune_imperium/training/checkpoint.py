@@ -97,9 +97,7 @@ class MigrationReport:
     actions_aliased: int = 0
 
     def describe(self) -> str:
-        aliased = (
-            f"{self.actions_aliased} aliased, " if self.actions_aliased else ""
-        )
+        aliased = f"{self.actions_aliased} aliased, " if self.actions_aliased else ""
         return (
             f"codec v{self.from_codec_version} -> v{self.to_codec_version}: "
             f"{self.actions_kept} actions kept, {aliased}{self.actions_new} new, "
@@ -410,12 +408,21 @@ def _load_entity(
 ) -> tuple[PolicyValueNetwork, CheckpointInfo]:
     """Load an ``entity`` file, moving it onto another catalog when asked.
 
-    Its weights do not depend on the catalog except the per-action bias:
-    entities and action parts carry over as they are, and the bias moves by
-    template identity (a template the file never had starts at zero, but is
-    still scored from its parts, so it is not an untrained row). It reads
-    only the observation it was written for (the segments it parses).
+    Its entity and observation weights do not depend on the catalog. The
+    action parts (kinds, argument keys, labels) move by name and the
+    per-action bias by template identity; a part or template the file never
+    had starts at zero, and such an action is still scored from its other
+    parts, so it is not an untrained row. It reads only the observation it
+    was written for (the segments it parses).
     """
+
+    # Imported here: the entity tables read every content package, which an
+    # MLP-only caller should not pay for.
+    from dune_imperium.training.entity_network import (
+        EntityNetwork,
+        action_vocabulary,
+        retarget_action_parts,
+    )
 
     if (
         document["observation_version"] != OBSERVATION_VERSION
@@ -442,7 +449,12 @@ def _load_entity(
         config = target or RulesetConfig.from_identifier(own)
         codec = ActionCodec(config)
         network = build_network({**arch, "ruleset": config.identifier}, codec.size)
-        old_index = {_key(entry): index for index, entry in enumerate(templates)}
+        assert isinstance(network, EntityNetwork)
+        old_keys = [_key(entry) for entry in templates]
+        state_dict = retarget_action_parts(
+            state_dict, action_vocabulary(old_keys), network.action_vocabulary
+        )
+        old_index = {key: index for index, key in enumerate(old_keys)}
         old_bias = state_dict["action_bias"]
         bias = torch.zeros(codec.size, dtype=old_bias.dtype)
         kept = 0
