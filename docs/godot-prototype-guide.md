@@ -3,6 +3,9 @@
 상태: Windows x64용 시작 스크립트와 PC 2D 시제품. 작업 브랜치는
 `docs/godot-client-plan`이며 master에는 반영하지 않는다.
 
+**Python·uv가 없는 Windows에서는 [설치 없는 ZIP 안내](godot-windows-package.md)를 따른다.**
+아래 저장소·uv 실행과 Git bundle은 개발 환경용이다. 개인 테스트 ZIP에는 런타임과 그림이 들어 있다.
+
 ## Windows에서 한 번 실행하기
 
 기존 저장소와 `uv`를 쓰는 개발용 시제품이다. Godot 에디터를 직접 설치하거나 열 필요는 없다.
