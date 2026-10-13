@@ -75,6 +75,7 @@ _SEATS: Final = 4
 # their suffix after ``seat<k>_``).
 _ZONE_VOCABULARY: Final = {
     "hand_public": "personal",
+    "deck_pool": "personal",
     "in_play": "personal",
     "discard": "personal",
     "trashed": "personal",
@@ -152,6 +153,156 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
         keys=tuple(sorted({key for _, arguments in rows for key, _ in arguments})),
         labels=tuple(labels),
     )
+
+
+# The slot fields observation v32 added (training.slots). Their columns were
+# read as numbers before, and still are, so a v31 file moved onto v32
+# computes the same function: its new inputs start at zero.
+FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
+# Encoder inputs by name, for moving a file's first-layer columns.
+_ENCODER_WEIGHTS: Final = {
+    "seat": "seat_encoder.0.weight",
+    "board": "board_encoder.0.weight",
+    "private": "private_encoder.0.weight",
+}
+
+
+class FieldPlace(NamedTuple):
+    """A slot field as the input naming reads it: its observation places as
+    (segment, index in the segment), which do not move between versions."""
+
+    name: str
+    segments: tuple[str, ...]
+    columns: tuple[tuple[str, int], ...]
+    keys: tuple[str, ...]
+
+
+def field_places(fields: Sequence[Any] = SLOT_FIELDS) -> tuple[FieldPlace, ...]:
+    where = {
+        segment.offset + index: (segment.name, index)
+        for segment in OBSERVATION_SEGMENTS
+        for index in range(segment.length)
+    }
+    return tuple(
+        FieldPlace(
+            name=field.name,
+            segments=tuple(field.segments),
+            columns=tuple(where[column] for column in field.columns),
+            keys=tuple(field.keys),
+        )
+        for field in fields
+    )
+
+
+def encoder_input_names(
+    layout: Sequence[tuple[str, int, int]],
+    places: Sequence[FieldPlace],
+    width: int,
+) -> dict[str, tuple[str, ...]]:
+    """Each encoder's (``seat``, ``board``, ``private``) inputs in order, named.
+
+    ``layout`` is an observation layout as (segment, offset, length) rows
+    (``checkpoint.observation_layout``), ``places`` the slot fields it is read
+    with. A raw column is ``raw:<segment>:<index>``, a zone or field dimension
+    ``zone:<segment>:<d>`` or ``field:<name>:<d>``; the seat encoder's names
+    are seat 0's without the ``seat0_`` prefix (every seat reads the same
+    way). The names do not depend on where a segment sits in the observation,
+    so a file's first-layer columns move to another version by name.
+    """
+
+    slot = {
+        column
+        for place in places
+        if place.name not in FIELDS_KEPT_RAW
+        for column in place.columns
+    }
+    raw: dict[str, list[str]] = {"seat": [], "board": [], "private": []}
+    zones: dict[str, list[str]] = {"seat": [], "board": [], "private": []}
+    for name, _, length in layout:
+        group = _group(name)
+        if group.startswith("seat") and group != "seat0":
+            continue
+        encoder = "seat" if group == "seat0" else group
+        local = _zone_name(name)
+        if local in _ZONE_VOCABULARY:
+            zones[encoder].append(local)
+            continue
+        raw[encoder].extend(
+            f"raw:{local}:{index}"
+            for index in range(length)
+            if (name, index) not in slot
+        )
+    fields: dict[str, list[str]] = {"seat": [], "board": [], "private": []}
+    for place in places:
+        owners = {_group(segment) for segment in place.segments}
+        owner = owners.pop() if len(owners) == 1 else "board"
+        if owner.startswith("seat"):
+            if owner == "seat0":
+                fields["seat"].append(place.name.removeprefix("seat0_"))
+            continue
+        fields[owner].append(place.name)
+    return {
+        encoder: (
+            *raw[encoder],
+            *(f"zone:{zone}:{d}" for zone in zones[encoder] for d in range(width)),
+            *(f"field:{name}:{d}" for name in fields[encoder] for d in range(width)),
+        )
+        for encoder in raw
+    }
+
+
+def legacy_inputs(
+    observation_version: int, layout: Sequence[tuple[str, int, int]], width: int
+) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
+    """The input names and slot keys of an entity file written before files
+    stored them (observation v31: before the v32 slot fields)."""
+
+    if observation_version != 31:
+        raise ValueError(
+            f"an entity checkpoint of observation v{observation_version} carries no "
+            "input names to move by"
+        )
+    places = [place for place in field_places() if place.name not in FIELDS_KEPT_RAW]
+    keys = tuple(key for place in places for key in place.keys)
+    return encoder_input_names(layout, places, width), keys
+
+
+def retarget_inputs(
+    state_dict: dict[str, Tensor],
+    old: Mapping[str, Sequence[str]],
+    new: Mapping[str, Sequence[str]],
+    old_keys: Sequence[str],
+    new_keys: Sequence[str],
+) -> dict[str, Tensor]:
+    """Move a state dict's encoder input columns and slot-key rows by name.
+
+    An input or key the file never had starts at zero, so the moved network
+    computes what the file did wherever the new inputs are zero.
+    """
+
+    moved = dict(state_dict)
+    for encoder, name in _ENCODER_WEIGHTS.items():
+        weight = state_dict[name]
+        if weight.shape[1] != len(old[encoder]):
+            raise ValueError(f"{name} does not match the file's input names")
+        where = {label: index for index, label in enumerate(old[encoder])}
+        columns = weight.new_zeros((weight.shape[0], len(new[encoder])))
+        for index, label in enumerate(new[encoder]):
+            found = where.get(label)
+            if found is not None:
+                columns[:, index] = weight[:, found]
+        moved[name] = columns
+    own = state_dict["slot_key_own"]
+    if own.shape[0] != len(old_keys) + 1:
+        raise ValueError("slot_key_own does not match the file's slot keys")
+    rows = own.new_zeros((len(new_keys) + 1, own.shape[1]))  # the pad row last
+    where = {key: index for index, key in enumerate(old_keys)}
+    for index, key in enumerate(new_keys):
+        found = where.get(key)
+        if found is not None:
+            rows[index] = own[found]
+    moved["slot_key_own"] = rows
+    return moved
 
 
 def _moved_rows(
@@ -253,6 +404,14 @@ class EntityNetwork(PolicyValueNetwork):
         self.action_size = len(catalog)
         self._build_entities()
         self._build_observation_tables()
+        self.input_names = encoder_input_names(
+            [
+                (segment.name, segment.offset, segment.length)
+                for segment in OBSERVATION_SEGMENTS
+            ],
+            field_places(),
+            entity_width,
+        )
         self._build_encoders()
         self._build_action_tables(catalog)
         self._cache_key: tuple[int, ...] | None = None
@@ -304,7 +463,14 @@ class EntityNetwork(PolicyValueNetwork):
 
     # -- the observation ------------------------------------------------------
     def _build_observation_tables(self) -> None:
-        slot_columns = {column for field in SLOT_FIELDS for column in field.columns}
+        # Columns a slot field reads are not read again as numbers, except the
+        # fields observation v32 added (``FIELDS_KEPT_RAW``).
+        slot_columns = {
+            column
+            for field in SLOT_FIELDS
+            if field.name not in FIELDS_KEPT_RAW
+            for column in field.columns
+        }
         sizes = {name: table.size for name, table in vocabularies().items()}
         groups = ("board", "private", *(f"seat{seat}" for seat in range(_SEATS)))
         zones: dict[str, list[tuple[int, int, str]]] = {group: [] for group in groups}

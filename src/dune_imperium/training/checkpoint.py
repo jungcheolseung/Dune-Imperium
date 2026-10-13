@@ -196,8 +196,18 @@ def save_checkpoint(
     if arch["kind"] != "mlp":
         document["format"] = ARCH_CHECKPOINT_FORMAT
         document["arch"] = arch
-        if arch["kind"] == "mlp_slots":
+        if arch["kind"] in ("mlp_slots", "entity"):
             document["slot_keys"] = list(SLOT_KEYS)
+        if arch["kind"] == "entity":
+            # The encoders' inputs by name, so a later observation version
+            # moves the file's first-layer columns by name (_load_entity).
+            from dune_imperium.training.entity_network import EntityNetwork
+
+            assert isinstance(network, EntityNetwork)
+            names = network.input_names
+            document["entity_inputs"] = {
+                key: list(value) for key, value in names.items()
+            }
     _write(document, path)
 
 
@@ -406,14 +416,16 @@ def _load_entity(
     arch: Mapping[str, Any],
     ruleset: RulesetConfig | None,
 ) -> tuple[PolicyValueNetwork, CheckpointInfo]:
-    """Load an ``entity`` file, moving it onto another catalog when asked.
+    """Load an ``entity`` file, moving it onto the current observation and,
+    when asked, another catalog.
 
-    Its entity and observation weights do not depend on the catalog. The
-    action parts (kinds, argument keys, labels) move by name and the
-    per-action bias by template identity; a part or template the file never
-    had starts at zero, and such an action is still scored from its other
-    parts, so it is not an untrained row. It reads only the observation it
-    was written for (the segments it parses).
+    Its entity weights do not depend on either. The encoders' first-layer
+    columns move by input name and the slot-key rows by key
+    (``entity_network.retarget_inputs``; a file written before files stored
+    them is named by ``legacy_inputs``); the action parts (kinds, argument
+    keys, labels) move by name and the per-action rows by template identity.
+    Whatever the file never had starts at zero: a new input adds nothing
+    until trained, and a new action is still scored from its other parts.
     """
 
     # Imported here: the entity tables read every content package, which an
@@ -421,35 +433,52 @@ def _load_entity(
     from dune_imperium.training.entity_network import (
         EntityNetwork,
         action_vocabulary,
+        legacy_inputs,
         retarget_action_parts,
+        retarget_inputs,
     )
 
-    if (
-        document["observation_version"] != OBSERVATION_VERSION
-        or document["observation_size"] != OBSERVATION_SIZE
-    ):
-        raise ValueError(
-            f"an entity checkpoint reads only the observation it was written for "
-            f"(v{document['observation_version']}, current v{OBSERVATION_VERSION})"
-        )
     own = str(document["ruleset"])
     target = None if ruleset is None or ruleset.identifier == own else ruleset
     state_dict = dict(document["state_dict"])
     optimizer_state = document.get("optimizer_state")
     templates = document.get("action_templates")
-    migration: MigrationReport | None = None
-    if document["action_codec_version"] == ACTION_CODEC_VERSION and target is None:
-        network = build_network(arch, int(document["action_size"]))
+    config = target or RulesetConfig.from_identifier(own)
+    codec = ActionCodec(config)
+    network = build_network({**arch, "ruleset": config.identifier}, codec.size)
+    assert isinstance(network, EntityNetwork)
+    width = int(arch["entity_width"])
+    stored_inputs = document.get("entity_inputs")
+    if stored_inputs is not None:
+        old_inputs = {name: tuple(values) for name, values in stored_inputs.items()}
+        old_slot_keys = tuple(document.get("slot_keys") or ())
     else:
+        old_inputs, old_slot_keys = legacy_inputs(
+            int(document["observation_version"]),
+            [tuple(row) for row in document["observation_layout"]],
+            width,
+        )
+    observation_moved = old_inputs != network.input_names or old_slot_keys != SLOT_KEYS
+    kept_inputs = new_inputs = dropped_inputs = 0
+    if observation_moved:
+        state_dict = retarget_inputs(
+            state_dict, old_inputs, network.input_names, old_slot_keys, SLOT_KEYS
+        )
+        for encoder, names in network.input_names.items():
+            old_names = set(old_inputs[encoder])
+            kept_inputs += sum(name in old_names for name in names)
+            new_inputs += sum(name not in old_names for name in names)
+            dropped_inputs += len(old_names - set(names))
+    catalog_moved = (
+        document["action_codec_version"] != ACTION_CODEC_VERSION or target is not None
+    )
+    kept = codec.size
+    if catalog_moved:
         if templates is None:
             raise ValueError(
                 "an entity checkpoint carries no template list to move its "
                 "action bias by"
             )
-        config = target or RulesetConfig.from_identifier(own)
-        codec = ActionCodec(config)
-        network = build_network({**arch, "ruleset": config.identifier}, codec.size)
-        assert isinstance(network, EntityNetwork)
         old_keys = [_key(entry) for entry in templates]
         state_dict = retarget_action_parts(
             state_dict, action_vocabulary(old_keys), network.action_vocabulary
@@ -472,7 +501,9 @@ def _load_entity(
                     moved[name][index] = state_dict[name][row]
                 kept += 1
         state_dict.update(moved)
-        # The optimizer's per-action moments no longer fit the catalog.
+    migration: MigrationReport | None = None
+    if observation_moved or catalog_moved:
+        # The optimizer's moments no longer fit the moved parameters.
         optimizer_state = None
         migration = MigrationReport(
             from_codec_version=int(document["action_codec_version"]),
@@ -481,10 +512,12 @@ def _load_entity(
             to_observation_version=OBSERVATION_VERSION,
             actions_kept=kept,
             actions_new=codec.size - kept,
-            actions_dropped=len(templates) - kept,
-            observation_kept=OBSERVATION_SIZE,
-            observation_new=0,
-            observation_dropped=0,
+            actions_dropped=(len(templates) - kept)
+            if catalog_moved and templates
+            else 0,
+            observation_kept=kept_inputs,
+            observation_new=new_inputs,
+            observation_dropped=dropped_inputs,
         )
     network.load_state_dict(state_dict)
     network.eval()

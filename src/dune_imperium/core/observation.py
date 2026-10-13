@@ -7,6 +7,7 @@ from typing import Final
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState, Resources
@@ -19,6 +20,9 @@ class PublicPlayerView:
 
     Hand, deck, and held-Intrigue identities deliberately have no field here,
     so adapter code cannot accidentally recover them from an opponent's view.
+    The one summary of them is ``deck_pool``: which cards, and how many of
+    each, are somewhere in the deck or the hidden part of the hand, without
+    saying which copy or which of the two (see the field).
     """
 
     player: int
@@ -36,6 +40,16 @@ class PublicPlayerView:
     # Hand cards every seat can identify because they entered the hand
     # through a public move (OQ-010); see ``PlayerState.hand_public``.
     hand_public: tuple[str, ...]
+    # The cards in the deck and the hidden part of the hand together, as
+    # card ids (never instance ids) sorted by id: every seat can work it out
+    # from public moves alone -- a card enters a seat's deck or hand only
+    # from a face-up source (the starting deck, a Row or reserve purchase, a
+    # face-up discard pile reshuffled) and leaves it only to a face-up place
+    # (in play, a face-up discard pile, the trash, the public hand) -- so it
+    # is public under OQ-010's "information once public stays checkable"
+    # (user decision 2026-10-13). Which of the two zones a card is in stays
+    # hidden, and so does which copy.
+    deck_pool: tuple[str, ...]
     agents_available: int
     agent_locations: tuple[str, ...]
     swordmaster_acquired: bool
@@ -736,9 +750,7 @@ def _public_view_of(state: GameState, player: PlayerState) -> PublicPlayerView:
     """
 
     view = _cached_public_player_view(player)
-    owed = sum(
-        1 for seat, _ in state.pending_track_spies if seat == player.player_id
-    )
+    owed = sum(1 for seat, _ in state.pending_track_spies if seat == player.player_id)
     return replace(view, track_spies_owed=owed) if owed else view
 
 
@@ -754,6 +766,19 @@ def _cached_public_player_view(player: PlayerState) -> PublicPlayerView:
     return view
 
 
+def _deck_pool(player: PlayerState) -> tuple[str, ...]:
+    public = set(player.hand_public)
+    return tuple(
+        sorted(
+            personal_card_for_instance(card_id).card.card_id
+            for card_id in (
+                *player.deck,
+                *(card_id for card_id in player.hand if card_id not in public),
+            )
+        )
+    )
+
+
 def _public_player_view(player: PlayerState) -> PublicPlayerView:
     return PublicPlayerView(
         player=player.player_id,
@@ -766,6 +791,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         deck_size=len(player.deck),
         intrigue_card_count=len(player.intrigue_cards),
         hand_public=player.hand_public,
+        deck_pool=_deck_pool(player),
         agents_available=player.agents_available,
         agent_locations=player.agent_locations,
         swordmaster_acquired=player.swordmaster_acquired,
