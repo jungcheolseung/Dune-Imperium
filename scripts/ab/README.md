@@ -53,6 +53,7 @@ heuristic·rollout 변경을 측정으로 채택하는 데 쓰는 스크립트�
 | `profile_run.py`, `profile_legal.py`, `profile_guards.py` | 대회 경로 cProfile(전체 / legal·관측 / handler guard 비용) |
 | `profile_selfplay.py` | M10 수집 경로(`SelfPlayRunner`) cProfile |
 | `compare_engine_collection.py` | 두 소스 트리의 실제 `Collector`를 번갈아 측정. 관측·합법 집합·행동·보상·종료 점수가 같아야 비교를 인정하며, worker 2 이상은 시작·전송을 포함한 첫 수집 시간 |
+| `network_probes.py` | 학습 망이 무엇을 읽는지 진단: 가치 머리의 민감도(자기 spice·Solari·물·병력·VP·가문 핵 하나만 바꾼 차이), 임페리움 열을 바꿔 넣었을 때 가치·정책의 변화, 탐욕 복사본 넷이 가문 핵을 쓰는 라운드, 사람 문제집·AI 실수 문제집 점수(`evaluation.network_probes`, [개체 기반 망 계획](../../docs/entity-network-plan.md) 4절) |
 | `soak.sh`, `soak_summary.py` | 전 룰셋 검증 소크와 census 요약 |
 | `baseline_cells.sh`, `summarize_cells.py` | 기준선 12셀 재측정과 요약 행 |
 
