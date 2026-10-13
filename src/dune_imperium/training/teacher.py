@@ -7,6 +7,8 @@ distribution (``Collector``: its own seats plus app_ai opponent games);
 every decision it made is kept with
 
 - the teacher's probabilities over the offered actions (temperature 1),
+- the teacher's value of the position (format 2; ``add_teacher_values``
+  fills it in for a format 1 shard),
 - the game's outcome for the acting seat (winner +1, the others -1/3),
 - every seat's final Victory Points, in the observation's relative seat
   order (0 is the acting seat, then the seats after it),
@@ -14,8 +16,11 @@ every decision it made is kept with
 and two students -- ``entity`` and a fresh MLP of the teacher's shape --
 learn it with the same loss, data and steps (``train_student``): the
 cross-entropy to the teacher's distribution, plus the value regressed on
-the outcome, plus (when the student has one) the auxiliary head regressed
-on the final Victory Points / 10.
+the outcome or on the teacher's value (``StudentConfig.value_target``),
+plus (when the student has one) the auxiliary head regressed on the final
+Victory Points / 10. Regressed on the outcome, every student's value head
+memorised its games in P2 round 1 (every decision of a game shares one
+target): held-out MSE 0.46 against 0.33 for a constant zero.
 
 Observations are stored sparse (about 5% of the 4,537 columns are not
 zero), the offered actions and the teacher's probabilities in compressed
@@ -25,6 +30,7 @@ rows, so a few million decisions fit in a few GB.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import math
 import time
 from collections.abc import Callable, Sequence
@@ -39,7 +45,7 @@ from dune_imperium.adapters.observation_encoding import OBSERVATION_SIZE
 from dune_imperium.training.collect import CollectionResult
 from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
 
-TEACHER_FORMAT = 1
+TEACHER_FORMAT = 2
 _SEATS = 4
 # Final Victory Points are regressed at this scale (a game ends near 10).
 VP_SCALE = 10.0
@@ -76,6 +82,9 @@ class TeacherData:
     returns: np.ndarray  # float32 [rows]: outcome of the acting seat
     victory_points: np.ndarray  # int16 [rows, 4]: final VP, relative seats
     games: np.ndarray  # int32 [rows]: game number (the held-out split)
+    # float32 [rows]: the teacher's value of the position; NaN in a format 1
+    # shard until ``add_teacher_values`` fills it in.
+    values: np.ndarray
 
     @property
     def rows(self) -> int:
@@ -129,19 +138,20 @@ def _sparse(observations: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarra
     )
 
 
-def teacher_probabilities(
+def teacher_outputs(
     network: PolicyValueNetwork,
     observations: np.ndarray,
     legal_indices: np.ndarray,
     legal_offsets: np.ndarray,
     *,
     chunk: int = 1024,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """The network's probabilities over each row's offered actions (float32,
-    aligned with ``legal_indices``)."""
+    aligned with ``legal_indices``) and its value of each row (float32)."""
 
     rows = observations.shape[0]
     out = np.zeros(legal_indices.shape[0], dtype=np.float32)
+    values = np.zeros(rows, dtype=np.float32)
     network.eval()
     with torch.no_grad():
         for start in range(0, rows, chunk):
@@ -162,7 +172,8 @@ def teacher_probabilities(
             out[legal_offsets[start] : legal_offsets[part[-1] + 1]] = probabilities[
                 owner, rank
             ]
-    return out
+            values[part] = network.value_head(hidden).squeeze(-1).numpy()
+    return out, values
 
 
 def build_teacher_data(
@@ -181,6 +192,9 @@ def build_teacher_data(
     )
     seats = batch.seats.astype(np.int64)
     relative = (seats[:, None] + np.arange(_SEATS)[None, :]) % _SEATS
+    probabilities, teacher_values = teacher_outputs(
+        network, batch.observations, batch.legal_indices, batch.legal_offsets
+    )
     return TeacherData(
         ruleset=ruleset,
         action_size=batch.action_size,
@@ -189,19 +203,30 @@ def build_teacher_data(
         obs_offsets=offsets,
         legal_indices=batch.legal_indices.astype(np.int32),
         legal_offsets=batch.legal_offsets.astype(np.int64),
-        teacher=teacher_probabilities(
-            network,
-            batch.observations,
-            batch.legal_indices,
-            batch.legal_offsets,
-        ).astype(np.float16),
+        teacher=probabilities.astype(np.float16),
         actions=batch.actions.astype(np.int32),
         returns=batch.returns.astype(np.float32),
         victory_points=victory[batch.episode_ids][
             np.arange(seats.shape[0])[:, None], relative
         ],
         games=(batch.episode_ids + first_game).astype(np.int32),
+        values=teacher_values,
     )
+
+
+def add_teacher_values(
+    data: TeacherData, network: PolicyValueNetwork, *, chunk: int = 2048
+) -> TeacherData:
+    """``data`` with ``network``'s value of every row."""
+
+    values = np.zeros(data.rows, dtype=np.float32)
+    network.eval()
+    with torch.no_grad():
+        for start in range(0, data.rows, chunk):
+            part = np.arange(start, min(start + chunk, data.rows))
+            hidden = network.trunk(torch.from_numpy(data.observations(part)))
+            values[part] = network.value_head(hidden).squeeze(-1).numpy()
+    return dataclasses.replace(data, values=values)
 
 
 _ARRAYS = (
@@ -215,6 +240,7 @@ _ARRAYS = (
     "returns",
     "victory_points",
     "games",
+    "values",
 )
 
 
@@ -231,12 +257,18 @@ def save_teacher_data(data: TeacherData, path: Path) -> None:
 
 def load_teacher_data(path: Path) -> TeacherData:
     with np.load(path) as arrays:
-        if int(arrays["format"]) != TEACHER_FORMAT:
-            raise ValueError(f"teacher data format {int(arrays['format'])}")
+        version = int(arrays["format"])
+        if version not in (1, TEACHER_FORMAT):
+            raise ValueError(f"teacher data format {version}")
+        fields = {name: arrays[name] for name in _ARRAYS if name in arrays}
+        if version == 1:
+            fields["values"] = np.full(
+                arrays["actions"].shape[0], np.nan, dtype=np.float32
+            )
         return TeacherData(
             ruleset=str(arrays["ruleset"]),
             action_size=int(arrays["action_size"]),
-            **{name: arrays[name] for name in _ARRAYS},
+            **fields,
         )
 
 
@@ -281,6 +313,9 @@ class StudentConfig:
     minibatch_size: int = 512
     epochs: int = 3
     value_coefficient: float = 0.5
+    # What the value head is regressed on: "outcome" (the game's result for
+    # the acting seat) or "teacher" (the teacher's value of the position).
+    value_target: str = "outcome"
     # The auxiliary Victory Point head's weight; a student without the head
     # ignores it.
     vp_coefficient: float = 0.1
@@ -295,6 +330,8 @@ class StudentConfig:
     def __post_init__(self) -> None:
         if self.learning_rate <= 0.0 or self.minibatch_size < 1 or self.epochs < 1:
             raise ValueError("learning rate, minibatch and epochs must be positive")
+        if self.value_target not in ("outcome", "teacher"):
+            raise ValueError("value_target is 'outcome' or 'teacher'")
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,6 +344,8 @@ class StudentScore:
     agreement: float  # top-1 match, rows offering two or more actions
     value_mse: float  # against the outcome
     vp_mse: float | None  # auxiliary head, VP / VP_SCALE
+    # Against the teacher's value (NaN when the data has none).
+    teacher_value_mse: float = math.nan
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,11 +371,23 @@ def _vp_head(network: PolicyValueNetwork) -> nn.Module | None:
     return head if isinstance(head, nn.Module) else None
 
 
+def _value_targets(data: TeacherData, value_target: str) -> np.ndarray:
+    if value_target == "outcome":
+        return data.returns
+    if np.isnan(data.values).any():
+        raise ValueError("the data has no teacher values (add_teacher_values)")
+    return data.values
+
+
 def _losses(
-    network: PolicyValueNetwork, data: TeacherData, rows: np.ndarray
-) -> tuple[Tensor, Tensor, Tensor | None, Tensor, Tensor]:
-    """Policy cross-entropy, value MSE and VP MSE (means over ``rows``), and
-    the student's log-probabilities and validity for scoring."""
+    network: PolicyValueNetwork,
+    data: TeacherData,
+    rows: np.ndarray,
+    targets: np.ndarray,
+) -> tuple[Tensor, Tensor, Tensor | None, Tensor, Tensor, Tensor]:
+    """Policy cross-entropy, value MSE against ``targets[rows]`` and VP MSE
+    (means over ``rows``), the student's log-probabilities and validity for
+    scoring, and its values."""
 
     observations = torch.from_numpy(data.observations(rows))
     index, valid, target = data.legal(rows)
@@ -346,14 +397,14 @@ def _losses(
     log_probs = torch.log_softmax(logits.masked_fill(~valid_t, MASKED_LOGIT), dim=-1)
     policy = -(torch.from_numpy(target) * log_probs.masked_fill(~valid_t, 0.0)).sum(1)
     value = network.value_head(hidden).squeeze(-1)
-    value_loss = (value - torch.from_numpy(data.returns[rows])).square()
+    value_loss = (value - torch.from_numpy(targets[rows])).square()
     head = _vp_head(network)
     vp_loss = None
     if head is not None:
         predicted = head(hidden)
         wanted = torch.from_numpy(data.victory_points[rows].astype(np.float32))
         vp_loss = (predicted - wanted / VP_SCALE).square().mean(dim=1).mean()
-    return policy.mean(), value_loss.mean(), vp_loss, log_probs, valid_t
+    return policy.mean(), value_loss.mean(), vp_loss, log_probs, valid_t, value
 
 
 def score_student(
@@ -365,14 +416,18 @@ def score_student(
 ) -> StudentScore:
     """``network`` against the teacher on ``rows``."""
 
-    totals = {"ce": 0.0, "entropy": 0.0, "value": 0.0, "vp": 0.0}
+    totals = {"ce": 0.0, "entropy": 0.0, "value": 0.0, "vp": 0.0, "teacher": 0.0}
     agree = counted = 0
     has_vp = _vp_head(network) is not None
     network.eval()
     with torch.no_grad():
         for start in range(0, rows.shape[0], chunk):
             part = rows[start : start + chunk]
-            policy, value, vp, log_probs, valid = _losses(network, data, part)
+            policy, value, vp, log_probs, valid, predicted = _losses(
+                network, data, part, data.returns
+            )
+            gap = predicted.numpy() - data.values[part]
+            totals["teacher"] += float(np.square(gap).sum())
             _, _, target = data.legal(part)
             teacher = torch.from_numpy(target)
             entropy = -(teacher * torch.log(teacher.clamp(min=1e-12))).sum(1)
@@ -394,6 +449,7 @@ def score_student(
         agreement=agree / counted if counted else math.nan,
         value_mse=totals["value"] / total,
         vp_mse=totals["vp"] / total if has_vp else None,
+        teacher_value_mse=totals["teacher"] / total,
     )
 
 
@@ -415,6 +471,7 @@ def train_student(
     torch.set_num_threads(config.threads)
     torch.manual_seed(config.seed)
     generator = np.random.default_rng(config.seed)
+    targets = _value_targets(data, config.value_target)
     train_rows, heldout_rows = split_rows(data, config.heldout_modulus)
     if heldout_rows.shape[0] > config.heldout_rows:
         heldout_rows = np.sort(
@@ -432,7 +489,7 @@ def train_student(
         network.train()
         for start in range(0, order.shape[0], config.minibatch_size):
             rows = np.sort(order[start : start + config.minibatch_size])
-            policy, value, vp, _, _ = _losses(network, data, rows)
+            policy, value, vp, _, _, _ = _losses(network, data, rows, targets)
             loss = policy + config.value_coefficient * value
             if vp is not None:
                 loss = loss + config.vp_coefficient * vp

@@ -47,6 +47,7 @@ from dune_imperium.training.network import PolicyValueNetwork
 from dune_imperium.training.teacher import (
     StudentConfig,
     StudentEpoch,
+    add_teacher_values,
     build_teacher_data,
     choice_frequency,
     concatenate,
@@ -139,6 +140,27 @@ def make_data(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def add_values(arguments: argparse.Namespace) -> int:
+    """Rewrite each shard with the teacher's value of every row (format 2)."""
+
+    torch.set_num_threads(arguments.threads)
+    teacher: PolicyValueNetwork | None = None
+    for path in sorted(arguments.data.glob("shard_*.npz")):
+        data = load_teacher_data(path)
+        if not np.isnan(data.values).any():
+            continue
+        if teacher is None:
+            ruleset = RulesetConfig.from_identifier(data.ruleset)
+            teacher, _ = load_checkpoint(arguments.teacher, ruleset=ruleset)
+        # Written beside the shard, then moved over it: an interrupted run
+        # leaves every shard whole.
+        scratch = path.with_name(f"{path.stem}.partial.npz")
+        save_teacher_data(add_teacher_values(data, teacher), scratch)
+        scratch.replace(path)
+        print(f"{time.strftime('%H:%M:%S')} {path.name}: {data.rows} rows", flush=True)
+    return 0
+
+
 def train(arguments: argparse.Namespace) -> int:
     shards = sorted(arguments.data.glob("shard_*.npz"))
     if not shards:
@@ -165,6 +187,7 @@ def train(arguments: argparse.Namespace) -> int:
         learning_rate=arguments.learning_rate,
         minibatch_size=arguments.minibatch,
         epochs=arguments.epochs,
+        value_target=arguments.value_target,
         seed=arguments.seed,
         threads=arguments.threads,
     )
@@ -196,6 +219,7 @@ def train(arguments: argparse.Namespace) -> int:
             f"{record.policy_loss:.4f} value {record.value_loss:.4f} | held-out ce "
             f"{score.cross_entropy:.4f} (teacher {score.teacher_entropy:.4f}) agree "
             f"{score.agreement:.4f} value {score.value_mse:.4f} "
+            f"(teacher's {score.teacher_value_mse:.4f}) "
             f"({record.seconds:.0f}s)",
             flush=True,
         )
@@ -300,6 +324,9 @@ def main(argv: list[str] | None = None) -> int:
     student.add_argument("--arch", choices=("entity", "mlp"), required=True)
     student.add_argument("--aux-vp", action="store_true")
     student.add_argument("--own-actions", action="store_true")
+    student.add_argument(
+        "--value-target", choices=("outcome", "teacher"), default="outcome"
+    )
     student.add_argument("--entity-width", type=int, default=DEFAULT_ENTITY_WIDTH)
     student.add_argument("--seat-width", type=int, default=DEFAULT_SEAT_WIDTH)
     student.add_argument("--epochs", type=int, default=3)
@@ -308,6 +335,11 @@ def main(argv: list[str] | None = None) -> int:
     student.add_argument("--seed", type=int, default=0)
     student.add_argument("--threads", type=int, default=4)
     student.set_defaults(run=train)
+    values = commands.add_parser("values", help="add the teacher's values to shards")
+    values.add_argument("--teacher", type=Path, required=True)
+    values.add_argument("--data", type=Path, required=True)
+    values.add_argument("--threads", type=int, default=4)
+    values.set_defaults(run=add_values)
     verdict = commands.add_parser("judge", help="students against the teacher")
     verdict.add_argument("--data", type=Path, required=True)
     verdict.add_argument("--control", required=True, help="name of the control")

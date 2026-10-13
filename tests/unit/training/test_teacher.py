@@ -21,6 +21,7 @@ from dune_imperium.training.teacher import (  # noqa: E402
     VP_SCALE,
     StudentConfig,
     TeacherData,
+    add_teacher_values,
     build_teacher_data,
     choice_frequency,
     concatenate,
@@ -220,3 +221,67 @@ def test_choices_and_their_training_frequency(
         for choice in teacher[heldout][:25]
     ]
     assert seen[:25].tolist() == expected
+
+
+def test_the_teacher_value_is_kept_and_can_be_the_value_target(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    teacher = _teacher()
+    result, data = collected[0]
+    with torch.no_grad():
+        expected = teacher.value_head(
+            teacher.trunk(torch.from_numpy(result.batch.observations))
+        ).squeeze(-1)
+    np.testing.assert_allclose(data.values, expected.numpy(), atol=1e-5)
+    # A format 1 shard has no values until they are added.
+    path = tmp_path / "old.npz"
+    arrays = {
+        name: getattr(data, name)
+        for name in (
+            "obs_columns",
+            "obs_values",
+            "obs_offsets",
+            "legal_indices",
+            "legal_offsets",
+            "teacher",
+            "actions",
+            "returns",
+            "victory_points",
+            "games",
+        )
+    }
+    np.savez(
+        path,
+        format=np.asarray(1),
+        ruleset=np.asarray(data.ruleset),
+        action_size=np.asarray(data.action_size),
+        **arrays,
+    )
+    old = load_teacher_data(path)
+    assert np.isnan(old.values).all()
+    with pytest.raises(ValueError, match="no teacher values"):
+        train_student(
+            PolicyValueNetwork(old.action_size, hidden=(8,)),
+            old,
+            StudentConfig(value_target="teacher", epochs=1, heldout_modulus=2),
+        )
+    filled = add_teacher_values(old, teacher)
+    np.testing.assert_allclose(filled.values, data.values, atol=1e-5)
+
+    joined = concatenate([part for _, part in collected])
+    torch.manual_seed(2)
+    student = PolicyValueNetwork(joined.action_size, hidden=(32,))
+    config = StudentConfig(
+        learning_rate=3e-3,
+        warmup_steps=5,
+        minibatch_size=64,
+        epochs=2,
+        heldout_modulus=2,
+        threads=1,
+        value_target="teacher",
+    )
+    train_rows, _ = split_rows(joined, 2)
+    before = score_student(student, joined, train_rows)
+    train_student(student, joined, config)
+    after = score_student(student, joined, train_rows)
+    assert after.teacher_value_mse < 0.5 * before.teacher_value_mse
