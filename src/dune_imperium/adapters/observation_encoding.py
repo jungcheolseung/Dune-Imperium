@@ -123,7 +123,14 @@ from dune_imperium.rules.frames import FrameKind
 # 1's (the graft partner's) personal-card identity + 1 (0 when there is no
 # such box), then whether each is still pending. Every older column keeps
 # its offset; a v30 checkpoint migrates by segment and starts them at 0.
-OBSERVATION_VERSION: Final = 31
+# v32 (user decision 2026-10-13, OQ-010): each relative seat's deck pool --
+# the cards in its deck and the hidden part of its hand together, counted
+# by identity (``PublicPlayerView.deck_pool``) -- appended as
+# ``seat{k}_deck_pool`` after ``agent_boxes``. The network has no memory: a
+# card a seat bought vanished from its observation once the discard pile was
+# shuffled into the deck, though every seat saw it bought. Every older column
+# keeps its offset; a v31 checkpoint migrates by segment and starts them at 0.
+OBSERVATION_VERSION: Final = 32
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -207,9 +214,7 @@ _LEADER_DRAFT_SLOTS: Final = 6
 # instead of an O(n) linear scan repeated on every encode call.
 _SPACE_INDEX: Final = {space_id: index for index, space_id in enumerate(SPACE_IDS)}
 _LEADER_INDEX: Final = {leader_id: index for index, leader_id in enumerate(LEADER_IDS)}
-_CONFLICT_INDEX: Final = {
-    card_id: index for index, card_id in enumerate(CONFLICT_IDS)
-}
+_CONFLICT_INDEX: Final = {card_id: index for index, card_id in enumerate(CONFLICT_IDS)}
 _BATTLE_CARD_INDEX: Final = {
     card_id: index for index, card_id in enumerate(BATTLE_CARD_IDS)
 }
@@ -230,9 +235,7 @@ _CONTROL_SPACE_INDEX: Final = {
 _COMMANDER_SPACE_INDEX: Final = {
     space_id: index for index, space_id in enumerate(COMMANDER_SPACE_IDS)
 }
-_CONTRACT_INDEX: Final = {
-    card_id: index for index, card_id in enumerate(CONTRACT_IDS)
-}
+_CONTRACT_INDEX: Final = {card_id: index for index, card_id in enumerate(CONTRACT_IDS)}
 _SKILL_INDEX: Final = {skill_id: index for index, skill_id in enumerate(SKILL_IDS)}
 _RESERVE_STACK_INDEX: Final = {
     card_id: index for index, card_id in enumerate(RESERVE_STACK_IDS)
@@ -374,6 +377,11 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # v31: the open Agent turn's box 0 and box 1 card identity + 1,
             # then each box's pending flag.
             ("agent_boxes", 4),
+            # v32: per relative seat, its deck pool by card identity.
+            *(
+                (f"seat{seat}_deck_pool", len(PERSONAL_CARD_IDS))
+                for seat in range(_SEATS)
+            ),
         )
     )
     return tuple(lengths)
@@ -455,9 +463,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         _PHASE_INDEX[view.phase],
         relative(view.first_player),
         int(view.shield_wall_present),
-        0
-        if view.decision_kind is None
-        else _FRAME_KIND_INDEX[view.decision_kind] + 1,
+        0 if view.decision_kind is None else _FRAME_KIND_INDEX[view.decision_kind] + 1,
         relative(view.decision_owner),
         relative(view.turn_owner),
         int(view.endgame_intrigue_complete),
@@ -511,9 +517,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     )
     if len(view.leader_draft_pool) > _LEADER_DRAFT_SLOTS:
         raise ValueError("the Leader draft pool holds more than six Leaders")
-    pool_slots = [
-        _LEADER_INDEX[leader_id] + 1 for leader_id in view.leader_draft_pool
-    ]
+    pool_slots = [_LEADER_INDEX[leader_id] + 1 for leader_id in view.leader_draft_pool]
     offset = _OFFSET["leader_draft_pool"]
     values[offset : offset + _LEADER_DRAFT_SLOTS] = pool_slots + [0] * (
         _LEADER_DRAFT_SLOTS - len(pool_slots)
@@ -528,9 +532,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     values[_OFFSET["commander_bank"]] = view.sardaukar_commanders_bank
     values[_OFFSET["skill_stack_size"]] = view.skill_stack_size
     _write_skill_counts(values, _OFFSET["skill_face_up"], view.skill_face_up)
-    tops = [
-        _TECH_INDEX[tech_id] + 1 if tech_id else 0 for tech_id in view.tech_face_up
-    ]
+    tops = [_TECH_INDEX[tech_id] + 1 if tech_id else 0 for tech_id in view.tech_face_up]
     _write_fixed(
         values,
         _OFFSET["tech_face_up"],
@@ -592,9 +594,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         "private_navigation_slots",
     )
     secret = view.private.secret_project_tech_id
-    values[_OFFSET["private_secret_project"]] = (
-        _TECH_INDEX[secret] + 1 if secret else 0
-    )
+    values[_OFFSET["private_secret_project"]] = _TECH_INDEX[secret] + 1 if secret else 0
     _write_scouts(values, view, relative)
     values[_OFFSET["epic_game"]] = int(view.epic_game)
     offset = _OFFSET["shortfall"]
@@ -609,6 +609,10 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     for box, (card_id, pending) in enumerate(view.agent_boxes[:2]):
         values[offset + box] = _personal_identity_index(card_id) + 1
         values[offset + 2 + box] = int(pending)
+    for seat_offset in range(_SEATS):
+        offset = _OFFSET[f"seat{seat_offset}_deck_pool"]
+        for card_id in view.players[(observer + seat_offset) % _SEATS].deck_pool:
+            values[offset + _PERSONAL_INDEX[card_id]] += 1
     return tuple(values)
 
 
@@ -752,9 +756,7 @@ def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -
         CONTROL_SPACE_IDS,
         _CONTROL_SPACE_INDEX,
     )
-    location_slots = [
-        _SPACE_INDEX[space_id] + 1 for space_id in player.agent_locations
-    ]
+    location_slots = [_SPACE_INDEX[space_id] + 1 for space_id in player.agent_locations]
     if len(location_slots) > _AGENT_LOCATION_SLOTS:
         raise RuntimeError("a player cannot have more than three placed Agents")
     offset = offsets["agent_locations"]

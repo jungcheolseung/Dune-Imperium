@@ -5,7 +5,9 @@ playing next to it (the user's requirement of 2026-10-12), so the seat test
 plays both kinds in one game.
 """
 
+import hashlib
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +33,7 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     RESEARCH_SPACE_IDS,
     SKILL_IDS,
     SPACE_IDS,
+    segment_slice,
 )
 from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.network_search_agent import NetworkSearchAgent  # noqa: E402
@@ -49,6 +52,7 @@ from dune_imperium.training import (  # noqa: E402
 from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
     load_checkpoint,
+    observation_layout,
     save_checkpoint,
     template_keys,
 )
@@ -62,11 +66,13 @@ from dune_imperium.training.entity_features import (  # noqa: E402
 from dune_imperium.training.entity_network import (  # noqa: E402
     EntityNetwork,
     action_vocabulary,
+    legacy_inputs,
 )
 from dune_imperium.training.network import (  # noqa: E402
     PolicyValueNetwork,
     build_network,
 )
+from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 
 # Changing the feature table or how ids are read must change this
 # deliberately (with FEATURE_VERSION when the reflection changes): an entity
@@ -254,6 +260,7 @@ _COUNTED = {
     **dict.fromkeys(
         (
             "hand_public",
+            "deck_pool",
             "in_play",
             "discard",
             "trashed",
@@ -578,12 +585,124 @@ def test_an_entity_file_is_refused_under_another_feature_table(tmp_path: Path) -
     arch = _network(_BASE).arch_spec()
     with pytest.raises(ValueError, match="feature table"):
         build_network({**arch, "feature_digest": "0" * 64}, ActionCodec(_BASE).size)
+    # A file that stores no input names is named only for observation v31.
     path = _saved(tmp_path, _BASE)
     document = checkpoint_module._read(path)
-    document["observation_version"] -= 1
+    del document["entity_inputs"]
+    document["observation_version"] = 30
     torch.save(document, path)
-    with pytest.raises(ValueError, match="observation it was written for"):
+    with pytest.raises(ValueError, match="carries no input names"):
         load_checkpoint(path)
+
+
+def test_the_v31_input_names_are_pinned() -> None:
+    """``legacy_inputs`` names a v31 file's inputs from today's tables; pinned
+    so that a later change of the slot table or the zone list cannot change
+    what "v31" means. The digests were checked against master's real v31
+    network (independent review 2026-10-14: every board, private and seat
+    input and the 1,140 slot keys identical, in order); the keys' digest is
+    the v31 slot table's own golden digest."""
+
+    layout = [row for row in observation_layout() if not row[0].endswith("_deck_pool")]
+    names, keys = legacy_inputs(31, layout, 64)
+
+    def digest(rows: Sequence[str]) -> str:
+        return hashlib.sha256("\n".join(rows).encode()).hexdigest()
+
+    assert {encoder: len(rows) for encoder, rows in names.items()} == {
+        "seat": 1_329,
+        "board": 1_659,
+        "private": 576,
+    }
+    assert digest(names["board"]) == (
+        "636b4dbc0a46475cf6b69d9d7d656e8728183cdefce6beee8f24baa544a396c2"
+    )
+    assert digest(names["private"]) == (
+        "e7fae9c7a8eca45cdc03351a97f25e2bb0cd16be3e5c0425d5cc1f0778ed81d7"
+    )
+    assert digest(names["seat"]) == (
+        "cbd15c29f653067823b54dcc7fe0bca8569da2ea0aba4ee820f7283a87112cca"
+    )
+    assert len(keys) == 1_140
+    assert digest(keys) == (
+        "53913e6515a83e29c0e835d6277841b143fcaa07a5012645d650d91f9e7a774d"
+    )
+    with pytest.raises(ValueError, match="carries no input names"):
+        legacy_inputs(30, layout, 64)
+
+
+def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
+    tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
+) -> None:
+    """A file written before observation v32 (no stored input names, no deck
+    pool zones, no v32 slot fields) loads with every old input in its new
+    place and the new ones at zero: on observations whose deck pools are
+    empty it scores exactly as before (the v32 slot fields' columns are
+    still read as numbers too, ``FIELDS_KEPT_RAW``)."""
+
+    network = _network(_FULL)
+    path = _saved(tmp_path, _FULL)
+    document = checkpoint_module._read(path)
+    # Cut the file down to what v31 code wrote.
+    old_layout = [
+        row
+        for row in document["observation_layout"]
+        if not row[0].endswith("_deck_pool")
+    ]
+    old_names, old_keys = legacy_inputs(31, old_layout, network.entity_width)
+    state = dict(document["state_dict"])
+    for encoder, key in (
+        ("seat", "seat_encoder.0.weight"),
+        ("board", "board_encoder.0.weight"),
+        ("private", "private_encoder.0.weight"),
+    ):
+        where = {name: index for index, name in enumerate(network.input_names[encoder])}
+        state[key] = state[key][:, [where[name] for name in old_names[encoder]]]
+    key_index = {key: index for index, key in enumerate(SLOT_KEYS)}
+    state["slot_key_own"] = state["slot_key_own"][
+        [*(key_index[key] for key in old_keys), len(SLOT_KEYS)]
+    ]
+    del document["entity_inputs"]
+    document.pop("slot_keys", None)
+    document.update(
+        state_dict=state,
+        observation_version=31,
+        observation_layout=old_layout,
+        observation_size=old_layout[-1][1] + old_layout[-1][2],
+    )
+    torch.save(document, path)
+
+    moved, info = load_checkpoint(path)
+    assert isinstance(moved, EntityNetwork)
+    assert info.migration is not None
+    assert info.migration.from_observation_version == 31
+    assert info.migration.observation_new == network.entity_width * (1 + 3)
+    assert info.migration.observation_dropped == 0
+    observations = _observations(recorded).clone()
+    pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
+    observations[:, pools] = 0
+    actions = torch.arange(0, moved.action_size, 211)
+    with torch.no_grad():
+        # The original with its v32-only weights cleared is the v31 file.
+        original = _network(_FULL)
+        for encoder, layer in (
+            ("seat", original.seat_encoder[0]),
+            ("board", original.board_encoder[0]),
+            ("private", original.private_encoder[0]),
+        ):
+            assert isinstance(layer, torch.nn.Linear)
+            new = [
+                index
+                for index, name in enumerate(original.input_names[encoder])
+                if name not in set(old_names[encoder])
+            ]
+            layer.weight[:, new] = 0.0
+        hidden = original.trunk(observations)
+        assert torch.equal(moved.trunk(observations), hidden)
+        assert torch.equal(
+            moved.action_logits(hidden, actions),
+            original.action_logits(hidden, actions),
+        )
 
 
 # -- seats ------------------------------------------------------------------------

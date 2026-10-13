@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-13 (master, 개체 기반 망 P2·P3 병합 뒤)
+기준일: 2026-10-14 (master, 관측 v32 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,12 +28,12 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | entity-distill(P2·P3) 병합 (2026-10-13) |
-| pytest | 7,562개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| master | obs-v32 병합 (2026-10-14) |
+| pytest | 7,565개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 494파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-13 entity-distill(P2·P3) 병합 전(62 통과) |
+| 브라우저 E2E | `scripts/e2e/` 63종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 obs-v32 병합 전(63 통과) |
 | action codec | **v145** (다음 번호 v146) |
-| 관측 | v31, 4,537 int |
+| 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,413 · CHOAM 4,704 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 35,972 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `mix-v139-10081.pt`(X). MLP 계보의 머리는 Y@10881(v141 재적응), 망끼리 가장 강한 것은 엔티티 E2v@800(2026-10-13) |
@@ -47,10 +47,11 @@
 
 - **개체 기반 망(진행 중):** 망이 카드·칸·행동을 뜻(특성)으로 읽고 행동 점수를 조합으로 계산하게 다시 설계한다. 관측 v31·codec은
   그대로 두고 망만 바꾸며, 기존 망 파일로 플레이하는 길은 유지한다. 평가 도구(AI 실수 문제집, `scripts/ab/network_probes.py`)와
-  X·Y·A·B 기준값, P1(`entity` 망), P2(Y 증류, 규칙상 불통과), P3(강화학습)가 끝났다. **P3에서 엔티티 E2v@800
-  (`checkpoints/2026-10-13/entity-p3/E2v-800.pt`, PPO 학습률 1e-5)이 같은 출발의 MLP를 +7.9%p, Y를 +5.7%p 이겼다(각 1,400판).**
-  다음은 P4 측정(탐색 좌석 1 대 앱 AI 3 A/B, E2v 대 X)과 **(결정)** 플레이 서버 망 교체. 교체 전에 할 것: 탐색 좌석의 엔티티
-  결정이 약 1.6배 느린 것, 카드 데이터를 고치면 entity 파일을 못 읽는 것(특성 열 이관).
+  X·Y·A·B 기준값, P1(`entity` 망), P2(Y 증류, 규칙상 불통과), P3(강화학습), P4 탐색 좌석 측정이 끝났다. 엔티티 E2v@800
+  (`checkpoints/2026-10-13/entity-p3/E2v-800.pt`)이 Y를 +5.7%p 넘었지만, **학습률을 맞춘 MLP(Mv-1e5, `checkpoints/2026-10-14/overnight/`)와는
+  같다(2026-10-14): 이득은 구조가 아니라 학습 방법(Y 증류 + Y 가치 목표 + PPO 1e-5)이다.** 탐색 좌석 E2v 대 X는 승률 비김, 순위·점수 차는
+  E2v. 다음: Mv-1e5 대 Y(`checkpoints/2026-10-14/mlp-recipe/`), 그다음 **(결정)** 계보 재학습의 방법·구조와 플레이 서버 망. 엔티티를 서버에
+  쓰려면: 탐색 결정 속도, 카드 데이터 수정 시 entity 파일 이관(특성 열).
   [entity-network-plan.md](entity-network-plan.md) 10절 [2026-10-13 개체 기반 망 P2·P3]
 - **(결정) readapt-v143 판정.** 대조군 C(`C/iteration_11681.pt`)만 돌렸다. 점수 보상 갈래 S(`--score-rewards`)와
   판정 `judge.sh`(G1 S 대 C, G2 C 대 Y, G3 S 대 Y)는 안 돌렸다. C가 Y보다 나은지는 G2만 따로(1,400판, 약 25분)

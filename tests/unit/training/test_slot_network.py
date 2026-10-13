@@ -3,6 +3,7 @@
 import random
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -20,6 +21,7 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     LEADER_IDS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
+    PERSONAL_CARD_IDS,
     RESEARCH_SPACE_IDS,
     SPACE_IDS,
     encode_player_view,
@@ -79,7 +81,10 @@ from dune_imperium.training.slots import (  # noqa: E402
 # the current-Conflict field (Epic Game Mode's fifth Conflict III); every
 # v27 key (the same as v25's) is kept in order, so SLOT_VERSION stays and an
 # older slot file re-links its rows by key.
-_GOLDEN_DIGEST = "53913e6515a83e29c0e835d6277841b143fcaa07a5012645d650d91f9e7a774d"
+# Re-pinned for observation v32: 161 keys appended after every older one
+# (``decision_owner``, ``leader_draft_pool``, ``agent_box``); the 1,140 v31
+# keys keep their order and index, so SLOT_VERSION stays (re-link by key).
+_GOLDEN_DIGEST = "d0c34d0a5d3d02c667e35667326e301b8f05e86746247b0802c22c2aaf59fdb4"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -120,7 +125,12 @@ def _active_keys(network: MlpSlotsNetwork, observation: np.ndarray) -> Counter[s
 
 
 def _game_views(
-    seed: int, leaders: Sequence[str], *, agent: str | None = None
+    seed: int,
+    leaders: Sequence[str],
+    *,
+    agent: str | None = None,
+    config: RulesetConfig = _FULL,
+    limit: int = 3_000,
 ) -> list[PlayerView]:
     """All four seats' views at every decision of one seeded full-expansion game.
 
@@ -128,13 +138,17 @@ def _game_views(
     the Intrigue cards that grant Agent icons and sets Imperium cards aside.
     """
 
-    engine = UprisingRulesEngine(leader_ids=tuple(leaders))
-    state = engine.reset(_FULL, seed)
+    engine = (
+        UprisingRulesEngine(leader_ids=tuple(leaders))
+        if leaders
+        else UprisingRulesEngine()
+    )
+    state = engine.reset(config, seed)
     chance = ChanceResolver(seed=seed)
     choices = random.Random(seed)
     agents = [make_agent(agent or "random", seed + seat) for seat in range(4)]
     views: list[PlayerView] = []
-    for _ in range(3_000):
+    for _ in range(limit):
         if engine.is_terminal(state):
             break
         decision = engine.current_decision(state)
@@ -181,6 +195,10 @@ def _expected_keys(view: PlayerView) -> Counter[str]:
         keys[f"first_player:seat{relative(view.first_player)}"] += 1
     if view.turn_owner is not None:
         keys[f"turn_owner:seat{relative(view.turn_owner)}"] += 1
+    if view.decision_owner is not None:
+        keys[f"decision_owner:seat{relative(view.decision_owner)}"] += 1
+    keys.update(f"leader_draft_pool:{leader}" for leader in view.leader_draft_pool)
+    keys.update(f"agent_box:{card(instance)}" for instance, _ in view.agent_boxes[:2])
     if view.decision_kind is not None:
         keys[f"decision_kind:{view.decision_kind}"] += 1
     if view.current_conflict_ids:
@@ -262,6 +280,10 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         "occupancy": len(SPACE_IDS),
         **{f"reveal_order{slot}": 4 for slot in range(4)},
         **{f"navigation{slot}": len(navigation) for slot in range(4)},
+        # v32: identity columns the table had left to log1p.
+        "decision_owner": 4,
+        "leader_draft_pool": len(LEADER_IDS),
+        "agent_box": len(PERSONAL_CARD_IDS),
     }
     for seat in range(4):
         expected |= {
@@ -275,15 +297,16 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
             f"seat{seat}_set_aside": len(IMPERIUM_CARDS_BY_ID),
         }
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
-    # v28: 1_139 -> 1_140 (conflict:economic_supremacy).
-    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_140
+    # v28: 1_139 -> 1_140 (conflict:economic_supremacy). v32: + 4 + 18 + 139.
+    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_301
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10
 
     columns, table = lookup_tables()
-    assert columns.shape == (108,)
-    assert table.shape == (108 * VALUE_RANGE,)
+    # v32: + 1 decision owner + 6 draft-pool slots + 2 Agent boxes.
+    assert columns.shape == (108 + 9,)
+    assert table.shape == ((108 + 9) * VALUE_RANGE,)
     assert int(table.max()) == PAD_ROW
     # Every trainable row is reachable from exactly the values its field lists.
     assert set(table.tolist()) == set(range(PAD_ROW + 1))
@@ -321,8 +344,11 @@ def test_slot_rows_name_what_the_view_shows() -> None:
     # heuristic plays its Plot Intrigue after sending the Agent, where an
     # Agent icon no longer changes anything and is not offered, while the
     # app AI plays them on its turn frame first).
-    views = _game_views(21, _FORCED_LEADERS) + _game_views(
-        58, _FORCED_LEADERS, agent="app_ai"
+    # The opening of a Leader draft game covers the draft pool (v32).
+    views = (
+        _game_views(21, _FORCED_LEADERS)
+        + _game_views(58, _FORCED_LEADERS, agent="app_ai")
+        + _game_views(21, (), config=replace(_FULL, leader_draft=True), limit=40)
     )
     observations = np.stack(
         [np.asarray(encode_player_view(view), dtype=np.int32) for view in views]
@@ -352,8 +378,10 @@ def test_slot_rows_name_what_the_view_shows() -> None:
             ) -> int:
                 return int(observation[_field(f"seat{k}_{name}").columns[0]])
 
-            assert player.leader_id is not None
-            assert column("leader") == LEADER_IDS.index(player.leader_id) + 1
+            # A Leader draft's opening has no Leader yet.
+            assert column("leader") == (
+                LEADER_IDS.index(player.leader_id) + 1 if player.leader_id else 0
+            )
             assert column("feyd") == FEYD_TRACK_IDS.index(player.feyd_track_space)
             assert column("research") == (
                 RESEARCH_SPACE_IDS.index(player.research_space) + 1

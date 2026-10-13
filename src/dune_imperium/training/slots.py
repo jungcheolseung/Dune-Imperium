@@ -87,13 +87,22 @@ SLOT_VERSION: Final = 1
 # turn's two box cards as identity + 1 and their pending flags. No slot
 # field reads it (fields address the segments by name), so no row changes;
 # the ``mlp`` trunk reads it through ``log1p`` like every other column.
-SLOT_OBSERVATION_VERSION: Final = 31
+# v32 (user decision 2026-10-13) appends each seat's deck pool: counts, not
+# identities, so no row changes for it. The same version names three
+# identity columns the table had left to ``log1p`` (found while reviewing
+# what the entity network reads): the decision owner (a relative seat, global
+# scalar 5), the Leader draft pool's six slots and the open Agent turn's two
+# box cards (``agent_boxes``). Their fields are appended after every older
+# field, so every older key keeps its index (checkpoints re-link by key,
+# SLOT_VERSION kept).
+SLOT_OBSERVATION_VERSION: Final = 32
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).
 _GLOBAL_PHASE: Final = 1
 _GLOBAL_FIRST_PLAYER: Final = 2
 _GLOBAL_DECISION_KIND: Final = 4
+_GLOBAL_DECISION_OWNER: Final = 5
 _GLOBAL_TURN_OWNER: Final = 6
 # Positions inside ``seat{k}_scalars`` (``_write_seat``).
 _SEAT_LEADER: Final = 20
@@ -117,6 +126,7 @@ _REFERENCE_PHASE: Final = GamePhase.PLAYER_TURNS
 _DECIDED_FRAME_KINDS: Final = tuple(
     kind for kind in _FRAME_KINDS if kind != FrameKind.PAUSE.value
 )
+
 
 @dataclass(frozen=True, slots=True)
 class SlotField:
@@ -289,6 +299,31 @@ def _build_fields() -> tuple[SlotField, ...]:
     )
     for seat in range(_SEATS):
         fields.extend(_seat_fields(seat, imperium))
+    # v32: appended after every older field so every older key keeps its
+    # index (SLOT_OBSERVATION_VERSION).
+    fields.extend(
+        (
+            _relative_seat(
+                "decision_owner",
+                "global_scalars",
+                _scalar("global_scalars", _GLOBAL_DECISION_OWNER),
+            ),
+            _identity(
+                "leader_draft_pool",
+                "leader_draft_pool",
+                _columns("leader_draft_pool"),
+                LEADER_IDS,
+            ),
+            # The two box cards; the segment's last two columns are the
+            # boxes' pending flags, read through log1p.
+            _identity(
+                "agent_box",
+                "agent_boxes",
+                _columns("agent_boxes")[:2],
+                PERSONAL_CARD_IDS,
+            ),
+        )
+    )
     return tuple(fields)
 
 

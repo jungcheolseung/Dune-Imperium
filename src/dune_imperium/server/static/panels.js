@@ -394,9 +394,13 @@ function renderSeats() {
         phraseText(count) + (index < zoneCounts.length - 1 ? " ·" : "");
       zones.appendChild(part);
     });
-    if (player.discard_pile.length) {
+    /* The zones line opens the seat's two public lists: the deck pool (the
+       draw deck and the hidden part of the hand together, OQ-010 ruling 6)
+       and the discard pile. The hand strip's own discard count opens the
+       discard pile alone, so only this opener asks for the pool. */
+    if ((player.deck_pool || []).length || player.discard_pile.length) {
       zones.classList.add("clickable");
-      zones.title = t("panels.discard_pile_view");
+      zones.title = t("panels.seat_piles_view");
       /* Same "mine" test as this seat panel's own "you" badge above, with a
          review guard added to the local branch: on a remote table
          ownership follows the seats this browser claimed regardless of what
@@ -411,7 +415,7 @@ function renderSeats() {
       zones.dataset.pileOpener = opener;
       zones.addEventListener("click", (event) => {
         event.stopPropagation();
-        togglePileViewer({ kind: "discard", seat, mine, opener }, zones);
+        togglePileViewer({ kind: "discard", seat, mine, opener, pool: true }, zones);
       });
     }
     card.appendChild(zones);
@@ -732,8 +736,9 @@ function fillPileViewer(content) {
 }
 
 /* What a key shows in the current state, or null when there is nothing to
-   show. The openers read the same fields: a seat's public discard pile,
-   the Intrigue discard (newest first) and the seat's own deck_cards. */
+   show. The openers read the same fields: a seat's public discard pile
+   (and, for a seat panel's key with `pool`, its public deck pool before
+   it), the Intrigue discard (newest first) and the seat's own deck_cards. */
 function pileViewerContent(key) {
   const view = state.view;
   if (!view) return null;
@@ -747,7 +752,57 @@ function pileViewerContent(key) {
   const title = key.mine
     ? t("panels.my_discard")
     : t("panels.seat_discard", { seat: t("common.seat", { seat: key.seat }) });
-  return pileListContent([[title, player ? player.discard_pile : []]]);
+  const discard = pileListContent([[title, player ? player.discard_pile : []]]);
+  if (!key.pool) return discard;
+  const pool = deckPoolSection(key, player ? player.deck_pool || [] : []);
+  if (!pool) return discard;
+  return { sections: [pool, ...(discard ? discard.sections : [])] };
+}
+
+/* A seat's deck pool as a viewer section: the cards of its draw deck and of
+   the hidden part of its hand, together, by card id (`deck_pool`: plain ids
+   sorted by id, one entry per copy; OQ-010 ruling 6, user decision
+   2026-10-13). Which of them is in the deck and which in the hand stays
+   hidden, so this groups copies of one card (x N) and sorts the groups by
+   the name on screen like deckListContent, and shows no instance ids. A
+   click on a card only pins its enlargement. Null for an empty pool. */
+function deckPoolSection(key, ids) {
+  if (!ids.length) return null;
+  const title = key.mine
+    ? t("panels.my_deck_pool", { count: ids.length })
+    : t("panels.seat_deck_pool", {
+        seat: t("common.seat", { seat: key.seat }),
+        count: ids.length,
+      });
+  const groups = new Map();
+  for (const id of ids) {
+    if (!groups.has(id)) {
+      const entry = lookup(id, "cards");
+      groups.set(id, { id, count: 0, entry, name: entry ? entry.name : prettify(id) });
+    }
+    groups.get(id).count += 1;
+  }
+  const locale = TERM_LANGUAGE === "ko" ? "ko" : "en";
+  const sorted = [...groups.values()].sort(
+    (a, b) => a.name.localeCompare(b.name, locale) || (a.id < b.id ? -1 : 1),
+  );
+  const note = document.createElement("div");
+  note.className = "popover-note";
+  note.textContent = t("panels.deck_pool_note");
+  const pin = (entry, card) => {
+    if (entry) pinPopover(entry, card);
+  };
+  const cards = sorted.map((group) => {
+    const copies = group.count > 1 ? `×${group.count}` : "";
+    return visualCard(group.id, {
+      entry: group.entry || undefined,
+      className: "small",
+      badge: copies,
+      title: copies ? `${group.name} ${copies}` : group.name,
+      onClick: pin,
+    });
+  });
+  return { title, notes: [note], cards };
 }
 
 /* A pile listing (discard, Intrigue piles): one pile, or several as

@@ -486,14 +486,16 @@ def run(base: str, browser) -> None:
     ]
     check.ok(not english, "the zone counts are not left in English", english[:2])
 
-    # The zone counts are clickable when a discard pile is non-empty, opening
-    # a popover whose title used to concatenate `${t("common.seat", {seat})}
-    # discard` (ITEM 8f, 2026-09-25): fixed English word next to a Korean
-    # seat label. watched_game's game is all-heuristic in review, so this
-    # browser plays no seat (mySeats() == []); every popover here must read
-    # "seat N's discard pile", never "my discard pile" -- crediting an AI
-    # seat's pile to this browser just because it is the one under review
-    # was the fix's own regression (reviewer-found blocker, 2026-09-25).
+    # The zone counts are clickable when a seat has a deck pool or a discard
+    # pile, opening a viewer whose discard title used to concatenate
+    # `${t("common.seat", {seat})} discard` (ITEM 8f, 2026-09-25): fixed English
+    # word next to a Korean seat label. watched_game's game is all-heuristic in
+    # review, so this browser plays no seat (mySeats() == []); every title here
+    # must read "seat N's ...", never "my ..." -- crediting an AI seat's pile
+    # to this browser just because it is the one under review was the fix's own
+    # regression (reviewer-found blocker, 2026-09-25). Since 2026-10-13 the
+    # viewer shows the seat's deck pool first and its discard pile after it
+    # (deck_pool.py checks the lists themselves).
     my_seats = page.evaluate("mySeats()")
     check.ok(not my_seats, "watched_game is spectating, no seats of its own", my_seats)
     discard_seats = page.evaluate(
@@ -501,34 +503,40 @@ def run(base: str, browser) -> None:
         ".map((c, i) => (c.querySelector('.zones.clickable') ? i : -1))"
         ".filter((i) => i >= 0)"
     )
-    check.ok(discard_seats, "some seat has a discard pile to click", discard_seats)
+    check.ok(discard_seats, "some seat has a pile to click", discard_seats)
     titles = {}
     for seat in discard_seats:
         page.click(f"#seats article.seat[data-seat='{seat}'] .zones")
         page.wait_for_selector("#pile-viewer:not([hidden]) .popover-title")
         titles[seat] = page.evaluate(
-            "document.querySelector('#pile-viewer .popover-title').textContent"
+            "[document.getElementById('pile-viewer-title').textContent,"
+            " ...[...document.querySelectorAll('#pile-viewer-body > .popover-title')]"
+            ".map((n) => n.textContent)]"
         )
         page.keyboard.press("Escape")
     latin = {
-        seat: title for seat, title in titles.items() if re.search(r"[A-Za-z]", title)
+        seat: found
+        for seat, found in titles.items()
+        if any(re.search(r"[A-Za-z]", title) for title in found)
     }
-    check.ok(not latin, "no seat's discard popover title has Latin letters", latin)
+    check.ok(not latin, "no seat's pile popover title has Latin letters", latin)
     expected = {
-        # pileListContent appends " (<count>)" itself (panels.js).
+        # pileListContent appends " (<count>)" itself (panels.js); a seat with
+        # no pool or no discard pile has no such section.
         seat: page.evaluate(
-            "t('panels.seat_discard', { seat: t('common.seat', { seat: "
-            f"{seat}"
-            " }) })"
-            " + ` (${state.view.players["
-            f"{seat}"
-            "].discard_pile.length})`"
+            "(seat) => { const p = state.view.players.find((q) => q.player === seat);"
+            " const seatLabel = t('common.seat', { seat });"
+            " return [...(p.deck_pool.length ? [t('panels.seat_deck_pool',"
+            " { seat: seatLabel, count: p.deck_pool.length })] : []),"
+            " ...(p.discard_pile.length ? [t('panels.seat_discard', { seat: seatLabel })"
+            " + ` (${p.discard_pile.length})`] : [])]; }",
+            seat,
         )
         for seat in discard_seats
     }
     check.ok(
         titles == expected,
-        "an all-AI review never calls a seat's pile 'my discard'",
+        "an all-AI review never calls a seat's pile 'my ...'",
         {
             s: (titles[s], expected[s])
             for s in discard_seats

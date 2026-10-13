@@ -96,6 +96,7 @@ VIEWER_JS = """() => {
       && viewer.getAttribute('aria-labelledby') === title.id,
     close: [close.getAttribute('aria-label'), close.textContent],
     notes: [...body.querySelectorAll('.popover-note')].map((n) => n.textContent),
+    heads: [...body.querySelectorAll(':scope > .popover-title')].map((n) => n.textContent),
     cards: [...body.querySelectorAll('.vcard')].map((c) => c.dataset.instance),
     tops: [...body.querySelectorAll('.vcard.deck-top')].map((c) => c.dataset.instance),
     rect: { left: box.left, top: box.top, right: box.right, bottom: box.bottom,
@@ -544,19 +545,35 @@ def check_other_piles(page: Any, lang: str, seat: int) -> None:
         "(seat) => t('panels.seat_discard', { seat: t('common.seat', { seat }) })",
         other,
     ) + f" ({len(pile)})"
+    # A seat panel's zones line opens the seat's deck pool first (2026-10-13,
+    # deck_pool.py checks it in full), its discard pile as the second section.
+    pool_title = page.evaluate(
+        "(seat) => t('panels.seat_deck_pool', { seat: t('common.seat', { seat }),"
+        " count: state.view.players.find((p) => p.player === seat)"
+        ".deck_pool.length })",
+        other,
+    )
     theirs = open_pile(page, f"[data-pile-opener='seat-discard:{other}']")
     check.ok(
-        theirs["title"] == expected and theirs["cards"] == pile,
-        f"{label} seat {other}'s discard pile opens in the viewer",
-        (theirs["title"], len(theirs["cards"])),
+        theirs["title"] == pool_title
+        and theirs["heads"] == [expected]
+        and theirs["cards"][len(theirs["cards"]) - len(pile) :] == pile,
+        f"{label} seat {other}'s discard pile opens in the viewer, after its pool",
+        (theirs["title"], theirs["heads"], len(theirs["cards"])),
     )
     check_hover(page, f"{label} seat {other}'s discard")
     own = open_pile(page, f"[data-pile-opener='seat-discard:{seat}']")
+    own_pool = page.evaluate(
+        "(seat) => t('panels.my_deck_pool', { count: state.view.players"
+        ".find((p) => p.player === seat).deck_pool.length })",
+        seat,
+    )
     check.ok(
-        own["title"] == TEXT[lang]["my_discard"].format(n=len(discard_of(page, seat)))
+        own["title"] == own_pool
+        and own["heads"] == [TEXT[lang]["my_discard"].format(n=len(discard_of(page, seat)))]
         and own["rect"] != theirs["rect"],
         f"{label} another pile's opener replaces the contents and moves the viewer",
-        (own["title"], own["rect"], theirs["rect"]),
+        (own["title"], own["heads"], own["rect"], theirs["rect"]),
     )
     page.locator(f"[data-pile-opener='seat-discard:{seat}']").click()
     check.ok(not viewer(page)["open"], f"{label} and its own opener closes it")

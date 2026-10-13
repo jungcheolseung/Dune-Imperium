@@ -852,6 +852,22 @@ const UI_TEXT = {
     "ko": "{{seat}}의 {deck} · {{count}}장 (순서 비공개)",
     "en": "{{seat}}'s deck · {{count}} cards (order hidden)"
   },
+  "panels.my_deck_pool": {
+    "ko": "내 {deck}·{hand}에 있는 카드 · {{count}}장",
+    "en": "In my deck or hand · {{count}} cards"
+  },
+  "panels.seat_deck_pool": {
+    "ko": "{{seat}}의 {deck}·{hand}에 있는 카드 · {{count}}장",
+    "en": "In {{seat}}'s deck or hand · {{count}} cards"
+  },
+  "panels.deck_pool_note": {
+    "ko": "어느 카드가 {deck}에 있고 어느 카드가 {hand}에 있는지는 알 수 없습니다. 산 카드·버린 카드·폐기한 카드가 모두 공개되므로 누구나 셀 수 있는 목록입니다.",
+    "en": "Which of these are in the deck and which in the hand is not known. Every card bought, discarded or trashed is public, so anyone can count this list."
+  },
+  "panels.seat_piles_view": {
+    "ko": "{deck}·{hand}와 {discard_pile} 보기",
+    "en": "View the deck, hand and discard pile"
+  },
   "panels.discard_pile_view": {
     "ko": "{discard_pile} 보기",
     "en": "View {discard_pile}"
