@@ -22,12 +22,15 @@ from dune_imperium.training.teacher import (  # noqa: E402
     StudentConfig,
     TeacherData,
     build_teacher_data,
+    choice_frequency,
     concatenate,
     gather_rows,
     load_teacher_data,
     save_teacher_data,
     score_student,
     split_rows,
+    student_choices,
+    teacher_choices,
     train_student,
 )
 
@@ -190,3 +193,30 @@ def test_a_student_learns_the_teacher_and_keeps_its_best_epoch(
     else:
         assert all(record.vp_loss is None for record in history)
         assert after.vp_mse is None
+
+
+def test_choices_and_their_training_frequency(
+    collected: list[tuple[CollectionResult, TeacherData]],
+) -> None:
+    data = concatenate([part for _, part in collected])
+    rows = np.arange(data.rows)
+    index, valid, target = data.legal(rows)
+    teacher = teacher_choices(data, rows)
+    for row in range(0, data.rows, 97):
+        offered = index[row, valid[row]]
+        assert teacher[row] == offered[np.argmax(target[row, valid[row]])]
+    # The teacher as its own student agrees wherever the float16 storage
+    # keeps its top choice apart.
+    own = student_choices(_teacher(), data, rows)
+    top_two = np.sort(np.where(valid, target, -1.0), axis=1)[:, -2:]
+    clear = (top_two[:, 1] - top_two[:, 0] > 1e-2) & (valid.sum(axis=1) > 1)
+    assert clear.sum() > 100
+    assert np.array_equal(own[clear], teacher[clear])
+    train, heldout = split_rows(data, 2)
+    seen = choice_frequency(data, train, teacher[heldout])
+    choosing = train[data.offered()[train] > 1]
+    expected = [
+        int((teacher_choices(data, choosing) == choice).sum())
+        for choice in teacher[heldout][:25]
+    ]
+    assert seen[:25].tolist() == expected

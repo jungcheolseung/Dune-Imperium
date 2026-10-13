@@ -468,3 +468,50 @@ def train_student(
     network.load_state_dict(best[1])
     network.eval()
     return history
+
+
+# -- judging ------------------------------------------------------------------
+def teacher_choices(data: TeacherData, rows: np.ndarray) -> np.ndarray:
+    """The catalog index of the teacher's most probable action on each row."""
+
+    index, valid, target = data.legal(rows)
+    target = np.where(valid, target, -1.0)
+    chosen: np.ndarray = index[np.arange(rows.shape[0]), target.argmax(axis=1)]
+    return chosen
+
+
+def student_choices(
+    network: PolicyValueNetwork,
+    data: TeacherData,
+    rows: np.ndarray,
+    *,
+    chunk: int = 2048,
+) -> np.ndarray:
+    """The catalog index of the student's most probable action on each row."""
+
+    out = np.zeros(rows.shape[0], dtype=np.int64)
+    network.eval()
+    with torch.no_grad():
+        for start in range(0, rows.shape[0], chunk):
+            part = rows[start : start + chunk]
+            index, valid, _ = data.legal(part)
+            hidden = network.trunk(torch.from_numpy(data.observations(part)))
+            logits = network.row_action_logits(hidden, torch.from_numpy(index))
+            logits = logits.masked_fill(~torch.from_numpy(valid), MASKED_LOGIT)
+            best = logits.argmax(dim=1).numpy()
+            out[start : start + part.shape[0]] = index[np.arange(part.shape[0]), best]
+    return out
+
+
+def choice_frequency(
+    data: TeacherData, train_rows: np.ndarray, choices: np.ndarray
+) -> np.ndarray:
+    """How often each of ``choices`` was the teacher's choice on ``train_rows``
+    that offered two or more actions."""
+
+    offered = data.offered()[train_rows] > 1
+    seen = np.bincount(
+        teacher_choices(data, train_rows[offered]), minlength=data.action_size
+    )
+    counts: np.ndarray = seen[choices]
+    return counts

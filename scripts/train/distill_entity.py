@@ -1,0 +1,309 @@
+"""Teacher data and students for the entity network's stage P2.
+
+    uv run python scripts/train/distill_entity.py data \\
+        --teacher checkpoints/2026-10-09/readapt-v141/Y/iteration_10881.pt \\
+        --out checkpoints/2026-10-13/entity-p2/data --iterations 60
+    uv run python scripts/train/distill_entity.py train --arch entity \\
+        --data checkpoints/2026-10-13/entity-p2/data \\
+        --out checkpoints/2026-10-13/entity-p2/entity
+
+``data`` lets the teacher play the training distribution of the v141+
+re-adaptations (every UI option and the Leader draft; 16 of 32 games an
+iteration against app_ai Hard at two learner seats) and keeps its
+decisions with its distribution over the offered actions, the outcomes
+and every seat's final Victory Points (``training.teacher``), one shard an
+iteration. Games are seeded from ``--seed`` the way a training run is
+(``training.loop``), away from the teacher's own run.
+
+``train`` fits one student to every shard in the folder and writes its
+best held-out epoch as ``student.pt`` with an ``epochs.jsonl`` log
+(docs/entity-network-plan.md section 5, P2).
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+import time
+from dataclasses import asdict
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.config import RulesetConfig
+from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
+from dune_imperium.training.collect import Collector
+from dune_imperium.training.entity_network import EntityNetwork
+from dune_imperium.training.loop import TrainConfig, _iteration_specs
+from dune_imperium.training.network import PolicyValueNetwork
+from dune_imperium.training.teacher import (
+    StudentConfig,
+    StudentEpoch,
+    build_teacher_data,
+    choice_frequency,
+    concatenate,
+    load_teacher_data,
+    save_teacher_data,
+    split_rows,
+    student_choices,
+    teacher_choices,
+    train_student,
+)
+
+
+def _play_rules(out: Path, seed: int) -> TrainConfig:
+    return TrainConfig(
+        out_dir=out,
+        games_per_iteration=32,
+        workers=4,
+        choam_module=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+        go_to_11=True,
+        epic_game=True,
+        arrakeen_scouts=True,
+        leader_draft=True,
+        opponent="app_ai",
+        learner_seats=2,
+        opponent_games=16,
+        seed=seed,
+    )
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+
+
+def make_data(arguments: argparse.Namespace) -> int:
+    out: Path = arguments.out
+    out.mkdir(parents=True, exist_ok=True)
+    config = _play_rules(out, arguments.seed)
+    teacher, info = load_checkpoint(arguments.teacher, ruleset=config.ruleset)
+    teacher.eval()
+    torch.set_num_threads(arguments.threads)
+    (out / "data.json").write_text(
+        json.dumps(
+            {
+                "teacher": str(arguments.teacher),
+                "teacher_sha256_16": _digest(arguments.teacher),
+                "teacher_iteration": info.iteration,
+                "ruleset": config.ruleset.identifier,
+                "seed": arguments.seed,
+                "iterations": [arguments.start, arguments.start + arguments.iterations],
+                "games_per_iteration": config.games_per_iteration,
+            },
+            indent=1,
+        )
+    )
+    with Collector(
+        config.ruleset,
+        workers=arguments.workers,
+        max_steps=config.max_steps,
+        opponent=config.opponent,
+    ) as collector:
+        for iteration in range(arguments.start, arguments.start + arguments.iterations):
+            shard = out / f"shard_{iteration:04d}.npz"
+            if shard.exists():
+                continue
+            started = time.perf_counter()
+            result = collector.collect(
+                teacher,
+                torch.device("cpu"),
+                _iteration_specs(config, iteration),
+                policy_seed=config.seed + 1 + iteration * 1_000,
+                opponent_seed=config.seed + 2 + iteration * 1_000,
+            )
+            data = build_teacher_data(
+                result,
+                teacher,
+                ruleset=config.ruleset.identifier,
+                first_game=iteration * config.games_per_iteration,
+            )
+            save_teacher_data(data, shard)
+            truncated = sum(episode.truncated for episode in result.episodes)
+            print(
+                f"{time.strftime('%H:%M:%S')} shard {iteration}: {data.rows} rows, "
+                f"{truncated} truncated, {time.perf_counter() - started:.1f}s",
+                flush=True,
+            )
+    return 0
+
+
+def train(arguments: argparse.Namespace) -> int:
+    shards = sorted(arguments.data.glob("shard_*.npz"))
+    if not shards:
+        print(f"no shards in {arguments.data}", file=sys.stderr)
+        return 1
+    data = concatenate([load_teacher_data(path) for path in shards])
+    ruleset = RulesetConfig.from_identifier(data.ruleset)
+    torch.manual_seed(arguments.seed)
+    student: PolicyValueNetwork
+    if arguments.arch == "entity":
+        student = EntityNetwork(ruleset, aux_vp=arguments.aux_vp)
+    else:
+        if arguments.aux_vp:
+            print("the MLP has no auxiliary head", file=sys.stderr)
+            return 2
+        student = PolicyValueNetwork(data.action_size)
+    config = StudentConfig(
+        learning_rate=arguments.learning_rate,
+        minibatch_size=arguments.minibatch,
+        epochs=arguments.epochs,
+        seed=arguments.seed,
+        threads=arguments.threads,
+    )
+    out: Path = arguments.out
+    out.mkdir(parents=True, exist_ok=True)
+    log = out / "epochs.jsonl"
+    log.write_text("")
+    (out / "student.json").write_text(
+        json.dumps(
+            {
+                "arch": student.arch_spec(),
+                "data": str(arguments.data),
+                "shards": len(shards),
+                "rows": data.rows,
+                "config": asdict(config),
+            },
+            indent=1,
+        )
+    )
+    print(f"{data.rows} rows from {len(shards)} shards; {arguments.arch}", flush=True)
+
+    def report(record: StudentEpoch) -> None:
+        line = asdict(record)
+        with log.open("a") as handle:
+            handle.write(json.dumps(line) + "\n")
+        score = record.heldout
+        print(
+            f"{time.strftime('%H:%M:%S')} epoch {record.epoch}: policy "
+            f"{record.policy_loss:.4f} value {record.value_loss:.4f} | held-out ce "
+            f"{score.cross_entropy:.4f} (teacher {score.teacher_entropy:.4f}) agree "
+            f"{score.agreement:.4f} value {score.value_mse:.4f} "
+            f"({record.seconds:.0f}s)",
+            flush=True,
+        )
+
+    train_student(student, data, config, on_epoch=report)
+    save_checkpoint(
+        out / "student.pt",
+        student,
+        ruleset=data.ruleset,
+        iteration=0,
+        metadata={"distilled_from": str(arguments.data)},
+        codec=ActionCodec(ruleset),
+    )
+    return 0
+
+
+_RARE = 20
+_BINS = ((0, 0), (1, _RARE), (_RARE + 1, 200), (201, None))
+
+
+def _bootstrap(
+    games: np.ndarray, left: np.ndarray, right: np.ndarray, *, draws: int = 2_000
+) -> tuple[float, float, float]:
+    """Mean of ``left - right`` and its 95% interval, resampling games."""
+
+    numbers, owner = np.unique(games, return_inverse=True)
+    counts = np.bincount(owner, minlength=numbers.shape[0]).astype(np.float64)
+    gap = np.bincount(owner, weights=left - right, minlength=numbers.shape[0])
+    generator = np.random.default_rng(0)
+    picks = generator.integers(0, numbers.shape[0], size=(draws, numbers.shape[0]))
+    sampled = gap[picks].sum(axis=1) / np.maximum(counts[picks].sum(axis=1), 1.0)
+    low, high = np.percentile(sampled, [2.5, 97.5])
+    return float(gap.sum() / max(counts.sum(), 1.0)), float(low), float(high)
+
+
+def _bins(seen: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    named = []
+    for low, high in _BINS:
+        top = high if high is not None else int(seen.max(initial=0))
+        named.append(
+            (
+                f"{low}-{high if high is not None else 'max'}",
+                (seen >= low) & (seen <= top),
+            )
+        )
+    return named
+
+
+def judge(arguments: argparse.Namespace) -> int:
+    shards = sorted(arguments.data.glob("shard_*.npz"))
+    data = concatenate([load_teacher_data(path) for path in shards])
+    train_rows, heldout = split_rows(data, StudentConfig().heldout_modulus)
+    heldout = heldout[data.offered()[heldout] > 1]
+    teacher = teacher_choices(data, heldout)
+    seen = choice_frequency(data, train_rows, teacher)
+    games = data.games[heldout]
+    print(f"held-out rows offering a choice: {heldout.shape[0]}")
+    print(f"held-out games: {np.unique(games).shape[0]}")
+    for name, inside in _bins(seen):
+        print(f"  teacher's choice seen {name} times in training: {int(inside.sum())}")
+    correct: dict[str, np.ndarray] = {}
+    for entry in arguments.students:
+        name, _, path = entry.partition("=")
+        network, _ = load_checkpoint(Path(path))
+        correct[name] = student_choices(network, data, heldout) == teacher
+    rare = seen <= _RARE
+    for name, right in correct.items():
+        parts = [f"{name}: agreement {right.mean():.4f}"]
+        for label, inside in _bins(seen):
+            if inside.any():
+                parts.append(f"[{label}] {right[inside].mean():.4f}")
+        print("  ".join(parts))
+    control = correct[arguments.control].astype(np.float64)
+    for name, right in correct.items():
+        if name == arguments.control:
+            continue
+        whole = _bootstrap(games, right.astype(np.float64), control)
+        few = _bootstrap(games[rare], right[rare].astype(np.float64), control[rare])
+        print(
+            f"{name} - {arguments.control}: agreement {whole[0]:+.4f} "
+            f"[{whole[1]:+.4f}, {whole[2]:+.4f}]; rare (seen <= {_RARE}, "
+            f"{int(rare.sum())} rows) {few[0]:+.4f} [{few[1]:+.4f}, {few[2]:+.4f}]"
+        )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    commands = parser.add_subparsers(dest="command", required=True)
+    data = commands.add_parser("data", help="keep the teacher's decisions")
+    data.add_argument("--teacher", type=Path, required=True)
+    data.add_argument("--out", type=Path, required=True)
+    data.add_argument("--iterations", type=int, required=True)
+    data.add_argument("--start", type=int, default=0)
+    data.add_argument("--seed", type=int, default=11)
+    data.add_argument("--workers", type=int, default=4)
+    data.add_argument("--threads", type=int, default=4)
+    data.set_defaults(run=make_data)
+    student = commands.add_parser("train", help="fit one student to the shards")
+    student.add_argument("--data", type=Path, required=True)
+    student.add_argument("--out", type=Path, required=True)
+    student.add_argument("--arch", choices=("entity", "mlp"), required=True)
+    student.add_argument("--aux-vp", action="store_true")
+    student.add_argument("--epochs", type=int, default=3)
+    student.add_argument("--learning-rate", type=float, default=3.0e-4)
+    student.add_argument("--minibatch", type=int, default=512)
+    student.add_argument("--seed", type=int, default=0)
+    student.add_argument("--threads", type=int, default=4)
+    student.set_defaults(run=train)
+    verdict = commands.add_parser("judge", help="students against the teacher")
+    verdict.add_argument("--data", type=Path, required=True)
+    verdict.add_argument("--control", required=True, help="name of the control")
+    verdict.add_argument("students", nargs="+", help="name=student.pt")
+    verdict.set_defaults(run=judge)
+    arguments = parser.parse_args(argv)
+    result: int = arguments.run(arguments)
+    return result
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
