@@ -37,7 +37,11 @@ from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.config import RulesetConfig
 from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
 from dune_imperium.training.collect import Collector
-from dune_imperium.training.entity_network import EntityNetwork
+from dune_imperium.training.entity_network import (
+    DEFAULT_ENTITY_WIDTH,
+    DEFAULT_SEAT_WIDTH,
+    EntityNetwork,
+)
 from dune_imperium.training.loop import TrainConfig, _iteration_specs
 from dune_imperium.training.network import PolicyValueNetwork
 from dune_imperium.training.teacher import (
@@ -145,10 +149,16 @@ def train(arguments: argparse.Namespace) -> int:
     torch.manual_seed(arguments.seed)
     student: PolicyValueNetwork
     if arguments.arch == "entity":
-        student = EntityNetwork(ruleset, aux_vp=arguments.aux_vp)
+        student = EntityNetwork(
+            ruleset,
+            aux_vp=arguments.aux_vp,
+            own_actions=arguments.own_actions,
+            entity_width=arguments.entity_width,
+            seat_width=arguments.seat_width,
+        )
     else:
-        if arguments.aux_vp:
-            print("the MLP has no auxiliary head", file=sys.stderr)
+        if arguments.aux_vp or arguments.own_actions:
+            print("--aux-vp and --own-actions are entity options", file=sys.stderr)
             return 2
         student = PolicyValueNetwork(data.action_size)
     config = StudentConfig(
@@ -289,6 +299,9 @@ def main(argv: list[str] | None = None) -> int:
     student.add_argument("--out", type=Path, required=True)
     student.add_argument("--arch", choices=("entity", "mlp"), required=True)
     student.add_argument("--aux-vp", action="store_true")
+    student.add_argument("--own-actions", action="store_true")
+    student.add_argument("--entity-width", type=int, default=DEFAULT_ENTITY_WIDTH)
+    student.add_argument("--seat-width", type=int, default=DEFAULT_SEAT_WIDTH)
     student.add_argument("--epochs", type=int, default=3)
     student.add_argument("--learning-rate", type=float, default=3.0e-4)
     student.add_argument("--minibatch", type=int, default=512)

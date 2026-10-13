@@ -95,12 +95,19 @@ _EVERY_OPTION = RulesetConfig(
 )
 
 
-def _network(config: RulesetConfig, seed: int = 0) -> EntityNetwork:
+def _network(
+    config: RulesetConfig, seed: int = 0, *, own_actions: bool = False
+) -> EntityNetwork:
     """A small network whose zero-initialised parts carry values too."""
 
     torch.manual_seed(seed)
     network = EntityNetwork(
-        config, hidden=(32,), entity_width=16, seat_width=32, action_width=16
+        config,
+        hidden=(32,),
+        entity_width=16,
+        seat_width=32,
+        action_width=16,
+        own_actions=own_actions,
     )
     with torch.no_grad():
         for parameter in (
@@ -109,6 +116,8 @@ def _network(config: RulesetConfig, seed: int = 0) -> EntityNetwork:
             network.action_bias,
         ):
             parameter.normal_(0.0, 0.5)
+        if network.action_own is not None:
+            network.action_own.normal_(0.0, 0.5)
     return network.eval()
 
 
@@ -436,11 +445,17 @@ def test_a_small_batch_is_learned(
 
 
 # -- checkpoints ------------------------------------------------------------------
-def _saved(tmp_path: Path, config: RulesetConfig, name: str = "entity.pt") -> Path:
+def _saved(
+    tmp_path: Path,
+    config: RulesetConfig,
+    name: str = "entity.pt",
+    *,
+    own_actions: bool = False,
+) -> Path:
     path = tmp_path / name
     save_checkpoint(
         path,
-        _network(config),
+        _network(config, own_actions=own_actions),
         ruleset=config.identifier,
         iteration=3,
         codec=ActionCodec(config),
@@ -468,14 +483,16 @@ def test_an_entity_file_loads_as_written(
         )
 
 
+@pytest.mark.parametrize("own_actions", [False, True])
 @pytest.mark.parametrize(("own", "target"), [(_BASE, _FULL), (_FULL, _BASE)])
 def test_another_ruleset_keeps_every_shared_action_score(
     tmp_path: Path,
     recorded: list[tuple[np.ndarray, np.ndarray, int]],
     own: RulesetConfig,
     target: RulesetConfig,
+    own_actions: bool,
 ) -> None:
-    path = _saved(tmp_path, own)
+    path = _saved(tmp_path, own, own_actions=own_actions)
     network, info = load_checkpoint(path, ruleset=target)
     again, _ = load_checkpoint(path, ruleset=target)
     assert isinstance(network, EntityNetwork)
@@ -488,7 +505,7 @@ def test_another_ruleset_keeps_every_shared_action_score(
     ):
         assert torch.equal(left, right), name
 
-    original = _network(own)
+    original = _network(own, own_actions=own_actions)
     old_keys = template_keys(ActionCodec(own).catalog)
     new_keys = template_keys(ActionCodec(target).catalog)
     old_index = {key: index for index, key in enumerate(old_keys)}
@@ -509,6 +526,8 @@ def test_another_ruleset_keeps_every_shared_action_score(
         )
         if fresh:
             assert not network.action_bias[torch.tensor(fresh)].any()
+            if network.action_own is not None:
+                assert not network.action_own[torch.tensor(fresh)].any()
             # A new action is still scored from its parts.
             assert network.action_logits(hidden, torch.tensor(fresh)).abs().sum() > 0
     new_parts = action_vocabulary(new_keys)
@@ -521,6 +540,38 @@ def test_another_ruleset_keeps_every_shared_action_score(
             )
         else:
             assert not row.any()
+
+
+def test_own_action_vectors_start_at_zero_and_train(
+    recorded: list[tuple[np.ndarray, np.ndarray, int]],
+) -> None:
+    """A fresh network with own action vectors computes what one without does
+    (they start at zero), and the vectors receive gradient."""
+
+    torch.manual_seed(5)
+    plain = EntityNetwork(_BASE, hidden=(32,), entity_width=16, seat_width=32)
+    torch.manual_seed(5)
+    owning = EntityNetwork(
+        _BASE, hidden=(32,), entity_width=16, seat_width=32, own_actions=True
+    )
+    assert plain.action_own is None and owning.action_own is not None
+    assert owning.arch_spec() == {**plain.arch_spec(), "own_actions": True}
+    rebuilt = build_network(owning.arch_spec(), owning.action_size)
+    assert isinstance(rebuilt, EntityNetwork) and rebuilt.action_own is not None
+    observations = torch.zeros(3, OBSERVATION_SIZE, dtype=torch.int32)
+    actions = torch.tensor([0, 7, owning.action_size - 1])
+    with torch.no_grad():
+        assert torch.equal(
+            plain.action_logits(plain.trunk(observations), actions),
+            owning.action_logits(owning.trunk(observations), actions),
+        )
+    owning.action_logits(owning.trunk(observations), actions).sum().backward()  # type: ignore[no-untyped-call]
+    grad = owning.action_own.grad
+    assert grad is not None
+    assert grad[actions].abs().sum() > 0
+    others = torch.ones(owning.action_size, dtype=torch.bool)
+    others[actions] = False
+    assert not grad[others].any()
 
 
 def test_an_entity_file_is_refused_under_another_feature_table(tmp_path: Path) -> None:

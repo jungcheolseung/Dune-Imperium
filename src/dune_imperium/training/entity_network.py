@@ -25,6 +25,11 @@ What changes is how it reads and scores:
   learned vector per argument -- and scored against the state by a dot
   product, plus a learned bias per action that starts at zero. A new action
   (a rule change) gets a sensible score from its parts at once.
+- **Optional own action vectors** (``own_actions``): a learned vector per
+  catalog action, zero at the start, added to the vector built from its
+  parts. The parts alone lost about 2pp of agreement with network Y in the
+  distillation of 2026-10-13 (docs/entity-network-plan.md section 10); an
+  action never trained still scores from its parts.
 - **Optional auxiliary head** (``aux_vp``): each relative seat's final
   Victory Points, a denser target than the win (section 3.5).
 
@@ -231,6 +236,7 @@ class EntityNetwork(PolicyValueNetwork):
         seat_width: int = DEFAULT_SEAT_WIDTH,
         action_width: int = DEFAULT_ACTION_WIDTH,
         aux_vp: bool = False,
+        own_actions: bool = False,
     ) -> None:
         nn.Module.__init__(self)
         if not hidden or any(width < 1 for width in hidden):
@@ -241,6 +247,7 @@ class EntityNetwork(PolicyValueNetwork):
         self.seat_width = seat_width
         self.action_width = action_width
         self.aux_vp = aux_vp
+        self.own_actions = own_actions
         self.observation_size = OBSERVATION_SIZE
         catalog = ActionCodec(config).catalog
         self.action_size = len(catalog)
@@ -640,6 +647,9 @@ class EntityNetwork(PolicyValueNetwork):
             self.key_entity[0].zero_()
         self.action_mlp = nn.Sequential(nn.ReLU(), nn.Linear(a, a))
         self.action_bias = nn.Parameter(torch.zeros(self.action_size))
+        self.action_own: nn.Parameter | None = (
+            nn.Parameter(torch.zeros(self.action_size, a)) if self.own_actions else None
+        )
 
     def twin_actions(self) -> list[list[int]]:
         """Groups of catalog rows built from the same parts.
@@ -683,6 +693,8 @@ class EntityNetwork(PolicyValueNetwork):
         ).squeeze(1)  # [P, A]
         vector = vector + projected[inverse].sum(dim=1)
         vectors: Tensor = self.action_mlp(vector)
+        if self.action_own is not None:
+            vectors = vectors + self.action_own[actions]
         return vectors
 
     def action_logits(self, hidden: Tensor, actions: Tensor) -> Tensor:
@@ -731,6 +743,7 @@ class EntityNetwork(PolicyValueNetwork):
             "seat_width": self.seat_width,
             "action_width": self.action_width,
             "aux_vp": self.aux_vp,
+            "own_actions": self.own_actions,
             "ruleset": self.config.identifier,
             "feature_digest": FEATURE_DIGEST,
         }

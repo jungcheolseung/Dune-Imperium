@@ -201,6 +201,7 @@ def build_network(arch: Mapping[str, Any], action_size: int) -> PolicyValueNetwo
             seat_width=int(arch["seat_width"]),
             action_width=int(arch["action_width"]),
             aux_vp=bool(arch.get("aux_vp", False)),
+            own_actions=bool(arch.get("own_actions", False)),
         )
         if network.action_size != action_size:
             raise ValueError(
