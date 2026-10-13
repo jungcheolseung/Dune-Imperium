@@ -23,6 +23,7 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     FACTION_IDS,
     INTRIGUE_IDS,
     LEADER_IDS,
+    OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     PERSONAL_CARD_IDS,
     POST_IDS,
@@ -211,31 +212,80 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
 
 
 # -- the network's wiring ------------------------------------------------------
+# What each count segment counts, written here from the observation's
+# meaning (``observation_encoding`` writes a count at its id's index in the
+# vocabulary's id list); seat segments by their name after ``seat<k>_``.
+_COUNTED = {
+    **dict.fromkeys(
+        (
+            "hand_public",
+            "in_play",
+            "discard",
+            "trashed",
+            "private_hand",
+            "private_peeked_card",
+            "imperium_removed",
+        ),
+        "personal",
+    ),
+    **dict.fromkeys(
+        (
+            "intrigue_resolving",
+            "intrigue_discard",
+            "intrigue_faceup",
+            "private_intrigue",
+            "private_peeked_intrigue",
+        ),
+        "intrigue",
+    ),
+    **dict.fromkeys(
+        (
+            "face_up_contracts",
+            "sardaukar_contracts",
+            "contract_trash",
+            "active_contracts",
+            "completed_contracts",
+        ),
+        "contract",
+    ),
+    "tech": "tech",
+    "tech_trash": "tech",
+    "skills": "skill",
+    "skill_face_up": "skill",
+    "battle_cards": "battle",
+    "spy_posts": "post",
+    "alliances": "faction",
+}
+
+
 def test_each_count_zone_feeds_its_own_entities() -> None:
     network = _network(_BASE)
+    sizes = {name: table.size for name, table in vocabularies().items()}
+    found = set()
     with torch.no_grad():
         entities = network.entity_table()
-        for vocabulary in network.zone_vocabulary_order:
-            columns = getattr(network, f"zone_columns_{vocabulary}")
-            start = network.entity_offsets[vocabulary]
-            first = sum(
-                getattr(network, f"zone_columns_{name}").shape[0]
-                for name in network.zone_vocabulary_order[
-                    : network.zone_vocabulary_order.index(vocabulary)
-                ]
+        for segment in OBSERVATION_SEGMENTS:
+            name = segment.name
+            if name.startswith("seat") and name[4].isdigit():
+                name = name.split("_", 1)[1]
+            vocabulary = _COUNTED.get(name)
+            members = (
+                {0, segment.length // 2, segment.length - 1} if vocabulary else {0}
             )
-            for zone in range(columns.shape[0]):
-                for member in {0, columns.shape[1] // 2, columns.shape[1] - 1}:
-                    observation = torch.zeros(1, OBSERVATION_SIZE)
-                    observation[0, columns[zone, member]] = 2.0
-                    vectors = network._zone_vectors(observation, entities)
-                    assert torch.equal(
-                        vectors[0, first + zone], 2.0 * entities[start + member]
-                    ), (vocabulary, zone, member)
-                    others = torch.cat(
-                        [vectors[0, : first + zone], vectors[0, first + zone + 1 :]]
-                    )
-                    assert not others.any()
+            for member in members:
+                observation = torch.zeros(1, OBSERVATION_SIZE)
+                observation[0, segment.offset + member] = 2.0
+                vectors = network._zone_vectors(observation, entities)[0]
+                live = vectors.abs().sum(dim=1).nonzero().flatten()
+                if vocabulary is None:
+                    assert not len(live), segment.name
+                    continue
+                assert segment.length == sizes[vocabulary], segment.name
+                assert len(live) == 1, (segment.name, member)
+                expected = entities[network.entity_offsets[vocabulary] + member]
+                assert torch.equal(vectors[live[0]], 2.0 * expected), segment.name
+                found.add(name)
+    assert found == set(_COUNTED)
 
 
 def test_inference_and_training_paths_compute_the_same_function(
@@ -304,14 +354,16 @@ def test_the_inference_cache_follows_every_weight_change(
         expected = network.action_logits(hidden, actions).detach()
     torch.testing.assert_close(stepped[1], expected)
 
-    other = _network(_FULL, seed=7)
-    network.load_state_dict(other.state_dict())
-    with torch.no_grad():
-        hidden = other.trunk(observations)
-        expected = other.action_logits(hidden, actions)
-    loaded = outputs()
-    assert torch.equal(loaded[0], hidden)
-    assert torch.equal(loaded[1], expected)
+    # Copied into place, and assigned (new parameter objects).
+    for seed, assign in ((7, False), (8, True)):
+        other = _network(_FULL, seed=seed)
+        with torch.no_grad():
+            hidden = other.trunk(observations)
+            expected = other.action_logits(hidden, actions)
+        network.load_state_dict(other.state_dict(), assign=assign)
+        loaded = outputs()
+        assert torch.equal(loaded[0], hidden), assign
+        assert torch.equal(loaded[1], expected), assign
 
 
 def test_a_small_batch_is_learned(
