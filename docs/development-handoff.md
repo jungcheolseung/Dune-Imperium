@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-13 (master, 탐색 AI의 단독 1등 전투 책략 보류 병합 뒤)
+기준일: 2026-10-13 (master, 개체 기반 망 P1 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,10 +28,10 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | search-combat-lead 병합 (2026-10-13) |
-| pytest | 7,531개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 487파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 engine-speed-audit 병합(62 통과) |
+| master | entity-network(P1) 병합 (2026-10-13) |
+| pytest | 7,551개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| Ruff · mypy | `src tests` 통과, mypy 492파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-13 entity-network(P1) 병합 전(62 통과) |
 | action codec | **v145** (다음 번호 v146) |
 | 관측 | v31, 4,537 int |
 | action catalog | 기본 4,413 · CHOAM 4,704 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 35,972 |
@@ -47,8 +47,9 @@
 
 - **개체 기반 망(진행 중):** 망이 카드·칸·행동을 뜻(특성)으로 읽고 행동 점수를 조합으로 계산하게 다시 설계한다. 관측 v31·codec은
   그대로 두고 망만 바꾸며, 기존 망 파일로 플레이하는 길은 유지한다. 평가 도구(AI 실수 문제집, `scripts/ab/network_probes.py`)와
-  X·Y·A·B 기준값은 끝났다. 다음은 P1 구현(특성 표, `entity` 망, 속도), 그다음 Y 증류(대조 MLP 학생과 비교).
-  [entity-network-plan.md](entity-network-plan.md) 9·10절 [2026-10-13 개체 기반 망: 평가 도구]
+  X·Y·A·B 기준값, P1(`entity` 망, `--arch entity`, 수집 속도 1.1배)은 끝났다. 다음은 P2 Y 증류(entity 학생 대 대조 MLP 학생,
+  보조 VP 켬·끔; 판정 규칙을 실험 README에 먼저). 주의: 카드 데이터를 고치면 그 전 entity 파일을 못 읽는다(P4 전에 이관).
+  [entity-network-plan.md](entity-network-plan.md) 9·10절 [2026-10-13 개체 기반 망 P1]
 - **(결정) readapt-v143 판정.** 대조군 C(`C/iteration_11681.pt`)만 돌렸다. 점수 보상 갈래 S(`--score-rewards`)와
   판정 `judge.sh`(G1 S 대 C, G2 C 대 Y, G3 S 대 Y)는 안 돌렸다. C가 Y보다 나은지는 G2만 따로(1,400판, 약 25분)
   돌려도 안다. 판정 전이라 계보의 머리는 Y다. [2026-10-12 readapt-v143]

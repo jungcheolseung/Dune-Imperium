@@ -49,12 +49,13 @@
 
 ## 네트워크 구조와 형식 3 (2026-09-27)
 
-- **`mlp`**(기본): `log1p(clamp(obs, 0))` → MLP → 행동마다 한 행인 정책 head + 가치 head. 새 학습 실행은 늘 이것이다.
+- **`mlp`**(기본): `log1p(clamp(obs, 0))` → MLP → 행동마다 한 행인 정책 head + 가치 head. 새 학습 실행의 기본이다.
 - **`mlp_slots`**: `training/slots.py`가 관측 v20에서 정체를 `index + 1`로 담는 칸(Imperium Row, 현재 Conflict, 결정 종류, Agent 위치,
   좌석별 Leader·track 칸 등; 108개 조회 → 1,128행, v28에서 Scouts 결정 종류와 `conflict:economic_supremacy`까지 1,140행, `SLOT_KEYS`)을 이름 붙이고, `MlpSlotsNetwork`가 0으로 초기화한 `EmbeddingBag`을 첫 층의
   활성화 전 값에 더한다. MLP는 이 칸을 크기로 읽어 무엇이 있는지 가르지 못한다(가치 민감도 측정, [evaluation/m10-2026-09-27.md](evaluation/m10-2026-09-27.md) 3절).
   `dune-imperium-checkpoint widen --arch mlp_slots SRC DST`가 MLP 파일을 **같은 함수**의 slot 네트워크로 바꾼다(Adam 모멘트 유지, 새 매개변수는
   상태 없이 index `2 * len(hidden) + 4`, iteration 유지, 불러올 때의 이관 기록 보존). 1,000 iteration RL 비교에서는 강해지지 않았다(불확정). 2,000 iteration으로 연장한 비교에서는 무익으로 판정했다(2:2 2,800판 −4.2%p [−7.8, −0.6], [evaluation/m10-2026-09-28.md](evaluation/m10-2026-09-28.md) 4절). Row·Conflict에 대한 반응은 C보다 3.6~7배다.
+- **`entity`**(2026-10-13, `dune-imperium-train --arch entity`, [entity-network-plan.md](entity-network-plan.md)): 카드·칸·Conflict·계약·Leader·Tech·Skill·첩자 자리·연구 칸을 콘텐츠 데이터에서 반사로 읽은 특성(`training.entity_features`)과 0에서 시작하는 고유 벡터로 임베딩한다. 장수 구역(손패·버림 더미 등)은 장수 × 임베딩의 합, 정체 칸(Imperium Row 등)은 slot 표로 읽고, 좌석 넷은 한 인코더를 함께 쓴다. 행동 점수는 행동의 종류·인자로 만든 벡터와 상태의 내적에 행동별 보정값(0에서 시작)을 더한 값이다. 매개변수는 약 262만이다(MLP는 약 2,100만, 그 87.6%가 정책 head). 형식 3 파일에 규칙 설정과 특성 표 digest(`FEATURE_DIGEST`)를 담고, 다른 digest나 다른 관측 버전의 파일은 거부한다. **카드 데이터를 고치면 digest가 바뀌어 그 전 entity 파일을 못 읽는다**(MLP 파일은 영향 없음). 다른 규칙 설정·codec으로 옮길 때는 행동 부품(종류·인자·라벨)을 이름으로, 보정값을 템플릿 정체로 옮기고, 파일에 없던 것은 0에서 시작한다. `--arch`는 새 실행에만 쓰이고, 이어 하기는 파일의 구조를 따른다.
 - **형식 3**: `mlp`가 아닌 구조만 쓴다(`arch`, `slot_keys`). MLP 파일은 형식 2 그대로다. `slot_keys`나 `slot_version`이 현재 표와 다르면 읽기를
   거부하고(행의 뜻이 달라진다), `stamp`는 형식을 내리지 않는다. 관측 버전을 올리면 slot 표를 다시 보고 `SLOT_VERSION`을 올린다.
 - **learner**: 미니배치마다 그 행들에서 합법인 행동의 합집합만으로 logit·log-softmax·엔트로피를 계산한다(`TrainingBatch.local_legal`).
