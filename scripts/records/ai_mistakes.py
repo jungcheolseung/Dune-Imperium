@@ -7,8 +7,8 @@ a yardstick for broad changes to the network (docs/entity-network-plan.md
 section 4), scored like the human suite:
 
     uv run python scripts/records/ai_mistakes.py --saves-dir saves
-    uv run dune-imperium-records problems score --suite local/records/ai-mistakes.json \\
-        --agents checkpoint:<file>,search:<file>
+    uv run dune-imperium-records problems score \\
+        --suite local/records/ai-mistakes.json --agents checkpoint:<file>,search:<file>
 
 An agent scores by not repeating the mistake: the summary's ``wrong`` share
 is how often it does.
@@ -49,7 +49,8 @@ PICKS = (
         "kind": "combat_intrigue_in_the_lead",
         "evidence": {
             "why": _LEAD,
-            "strength": "12 against 6, 2 and 0; Spice is Power pays 3 spice for 6 swords",
+            "strength": "12 against 6, 2 and 0; "
+            "Spice is Power pays 3 spice for 6 swords",
         },
     },
     {
@@ -94,7 +95,10 @@ def main() -> None:
         "(docs/evaluation/search-atomics-2026-10-12.md)",
     )
     save_suite(arguments.out, suite)
-    print(f"{len(suite.problems)} problems from {len(suite.records)} games -> {arguments.out}")
+    print(
+        f"{len(suite.problems)} problems from {len(suite.records)} games "
+        f"-> {arguments.out}"
+    )
 
 
 if __name__ == "__main__":
