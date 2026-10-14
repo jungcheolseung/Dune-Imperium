@@ -503,14 +503,11 @@ def test_a_turn_passing_card_is_the_press_itself(
 
 def test_a_turn_start_card_goes_once_the_seat_acted() -> None:
     # "At the start of your turn" [Litany Against Fear card]: only the
-    # turn's first action (OQ-095 (6), user ruling 2026-10-04), and asked
-    # first and alone (user ruling 2026-10-14): the turn opens with just the
-    # card and ``decline_turn_start``. The refusal leaves the seat on the
-    # same turn frame, with no hold, and without Litany (greyed out with the
-    # reason) while the usual choices, the Plot among them, follow. (Undo
-    # rebuilds by replaying the engine's steps, which set the same mark;
-    # this injected state cannot be rebuilt from the session's seed, so it
-    # is not undone.)
+    # turn's first action (OQ-095 (6), user ruling 2026-10-04). A Plot at
+    # the turn start leaves the seat on the same turn frame, with no hold,
+    # and without Litany (greyed out with the reason). (Undo rebuilds by
+    # replaying the engine's steps, which set the same mark; this injected
+    # state cannot be rebuilt from the session's seed, so it is not undone.)
     plot = "intrigue:contingency_plan:0"
     owner = PlayerState(
         player_id=0,
@@ -524,16 +521,16 @@ def test_a_turn_start_card_goes_once_the_seat_acted() -> None:
         actions = _rows(manager.legal_actions(game_id, 0)["actions"])
         return {str(action["action_id"]) for action in actions}
 
-    assert offered() == {"play_turn_start_card", "decline_turn_start"}
+    assert "play_turn_start_card" in offered()
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    entry = next(a for a in actions if a["action_id"] == "decline_turn_start")
+    entry = next(a for a in actions if a["action_id"] == "play_intrigue")
     summary = manager.apply_action(game_id, 0, 0, _int(entry["index"]))
 
     assert summary["confirmation"] is None
     decision = _obj(summary["decision"])
     assert decision["kind"] == "turn" and decision["owner"] == 0
     assert "play_turn_start_card" not in offered()
-    assert {"reveal_turn", "play_intrigue"} <= offered()
+    assert "reveal_turn" in offered()
     payload = _obj(manager.legal_actions(game_id, 0)["unavailable"])
     (row,) = [
         row

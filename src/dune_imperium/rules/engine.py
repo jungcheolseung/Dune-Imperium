@@ -173,7 +173,6 @@ from dune_imperium.rules.intrigue import (
     legal_intrigue_choice_actions,
     legal_intrigue_effect_actions,
     legal_intrigue_play_actions,
-    legal_turn_start_intrigue_actions,
     plays_turn_start_option,
 )
 from dune_imperium.rules.intrigue_deck import (
@@ -485,78 +484,22 @@ def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
     return board_effect_is_implemented(state, space_id, cost_option)
 
 
-def turn_start_window_actions(
-    state: GameState, player: int
-) -> tuple[DomainAction, ...]:
-    """The start of ``player``'s turn, asked first and alone; () when closed.
-
-    "At the start of your turn" [Litany Against Fear card] [Withdrawn card]
-    can only be the turn's first action (OQ-095 (6)), so while the seat can
-    play one of them the turn opens with just those plays and their refusal
-    ``decline_turn_start``; once answered (or after any other way the start
-    ends) the turn's usual choices follow. User ruling 2026-10-14: "정해진
-    순간에만 쓸 수 있는 선택 행동은 무조건 먼저 단독으로 선택하게" -- 그렇게 하자.
-    """
-
-    if not turn_start_is_open(state, player):
-        return ()
-    plays = (
-        *legal_turn_start_card_actions(state, player),
-        *legal_turn_start_intrigue_actions(state, player),
-    )
-    if not plays:
-        return ()
-    return (*plays, DomainAction(action_id="decline_turn_start", actor=player))
-
-
-def _turn_frame_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
-    window = turn_start_window_actions(state, player)
-    if window:
-        return window
-    return tuple(
-        action for provider in _TURN_PROVIDERS for action in provider(state, player)
-    )
-
-
-def _apply_turn_start_decline(state: GameState, action: DomainAction) -> RuleResult:
-    """Leave the turn-start card unplayed; the start of the turn is over
-    (``_end_turn_start``) and the turn's usual choices follow."""
-
-    return RuleResult(
-        state=state,
-        events=(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"turn_start_declined:{state.revision}"
-                ),
-                kind="turn_start_declined",
-                payload=(("player", action.actor),),
-            ),
-        ),
-    )
-
-
-# The turn frame's choices once its start window is answered or closed
-# (``turn_start_window_actions`` offers the turn-start plays themselves).
-_TURN_PROVIDERS: Final[tuple[LegalActionProvider, ...]] = (
-    _executable_agent_actions,
-    legal_reveal_actions,
-    legal_intrigue_play_actions,
-    legal_tech_flip_actions,
-    legal_tech_acquire_effect_actions,
-    legal_specimen_return_actions,
-    legal_family_atomics_actions,
-    # The owner's waiting Emperor track Spy, before the Agent or Reveal
-    # too: a Plot is part of the turn (user ruling 2026-10-04).
-    legal_track_spy_actions,
-    # A draw a Plot's trigger earned, its own step (OQ-106).
-    legal_owed_draw_actions,
-)
-
-
 LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
-    FrameKind.TURN: (_turn_frame_actions,),
+    FrameKind.TURN: (
+        _executable_agent_actions,
+        legal_turn_start_card_actions,
+        legal_reveal_actions,
+        legal_intrigue_play_actions,
+        legal_tech_flip_actions,
+        legal_tech_acquire_effect_actions,
+        legal_specimen_return_actions,
+        legal_family_atomics_actions,
+        # The owner's waiting Emperor track Spy, before the Agent or Reveal
+        # too: a Plot is part of the turn (user ruling 2026-10-04).
+        legal_track_spy_actions,
+        # A draw a Plot's trigger earned, its own step (OQ-106).
+        legal_owed_draw_actions,
+    ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
     FrameKind.ACQUISITION_SPY: (legal_acquisition_spy_actions,),
@@ -934,7 +877,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
     "take_reveal_contract": apply_reveal_persuasion_or_contract,
     "play_turn_start_card": apply_turn_start_card,
-    "decline_turn_start": _apply_turn_start_decline,
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
     "resolve_commander_without_skill": apply_skill_choice,

@@ -84,10 +84,7 @@ from dune_imperium.rules.graft_boxes import (
     tagged,
     untagged,
 )
-from dune_imperium.rules.intrigue import (
-    current_intrigue_choice_slot,
-    plays_turn_start_option,
-)
+from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
 from dune_imperium.rules.pauses import SCOUTS_REWARD
@@ -1484,38 +1481,6 @@ def _box_refused_at_turn_end(
     return None
 
 
-def _turn_start_window(
-    engine: UprisingRulesEngine,
-    state: GameState,
-    decision: Decision,
-    step: ReplayStep,
-) -> ReplayStep | None:
-    """Leave a turn-start card unplayed where the record did something else.
-
-    Codec v146 (user ruling 2026-10-14): while a seat can play Litany
-    Against Fear or Withdrawn ("At the start of your turn"), its turn opens
-    with just those plays and ``decline_turn_start``. An older engine
-    offered them among the turn's other choices; a recorded first action of
-    any other kind left them unplayed, which the refusal does here. A
-    recorded play of either card is the window's own answer.
-    """
-
-    if not (
-        isinstance(decision, PlayerDecision)
-        and state.decision_stack[-1].kind == FrameKind.TURN
-    ):
-        return None
-    if isinstance(step, DomainAction) and (
-        step.action_id in ("play_turn_start_card", "decline_turn_start")
-        or plays_turn_start_option(step)
-    ):
-        return None
-    refusal = DomainAction(action_id="decline_turn_start", actor=decision.owner)
-    if refusal not in engine.legal_actions(state, decision.owner):
-        return None
-    return refusal
-
-
 def _reopened_since_press(state: GameState, player: int) -> bool:
     """Whether ``player``'s Agent turn was reopened after its last press."""
 
@@ -1632,8 +1597,4 @@ BRIDGES: tuple[Bridge, ...] = (
     Bridge(
         "boost_draw_at_turn_end", _boost_draw_at_turn_end, before_codec=145
     ),
-    # Codec v146 opens a turn with Litany Against Fear's or Withdrawn's
-    # window while the seat can play one; an older engine offered them among
-    # the turn's choices, so a seat that did anything else left them unused.
-    Bridge("turn_start_window", _turn_start_window, before_codec=146),
 )

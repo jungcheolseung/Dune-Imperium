@@ -303,32 +303,6 @@ def legal_intrigue_play_actions(
     return tuple(actions)
 
 
-def legal_turn_start_intrigue_actions(
-    state: GameState,
-    player: int,
-) -> tuple[DomainAction, ...]:
-    """The "At the start of your turn" options ``player`` can play now.
-
-    Withdrawn's "At the start of your turn: Pass your turn." [Withdrawn
-    card]; offered with Litany Against Fear in the turn's start window
-    (user ruling 2026-10-14).
-    """
-
-    if not any(
-        entry is not None and any(option.turn_start_only for option in entry.options)
-        for entry in (
-            INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
-            for card_id in state.players[player].intrigue_cards
-        )
-    ):
-        return ()
-    return tuple(
-        action
-        for action in legal_intrigue_play_actions(state, player)
-        if plays_turn_start_option(action)
-    )
-
-
 def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     """Reveal and pay for one Intrigue option, then resolve or open choices."""
 

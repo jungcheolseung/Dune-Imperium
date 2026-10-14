@@ -441,9 +441,9 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     the owner's view says so, and working that out leaves the session as it
     was. (v146: optional Agent-turn effects offer no refusal (OQ-095 (2),
     2026-10-14), which moved seed 23's random walk off this position, and
-    the turn-start window and Other Memories without a refusal (same day)
-    moved its replacement seed 43 off it again; re-searched, seeds 111 and
-    223 are the only ones of 0-299.)"""
+    Other Memories without a refusal (same day) moved its replacement seed
+    43 off it again; re-searched, seeds 111 and 223 are the only ones of
+    0-299.)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
         FOUR_HUMANS, 111, _twin_trash, random_play=True, immortality=True

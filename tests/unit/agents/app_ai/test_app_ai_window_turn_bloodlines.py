@@ -108,23 +108,12 @@ def _owe(state: GameState, *keys: str) -> GameState:
 # ===========================================================================
 
 
-def _with_litany(state: GameState, seat: int) -> GameState:
-    return with_player(state, seat, hand=(LITANY, *state.players[seat].hand))
-
-
 def test_litany_is_a_turn_start_key_valued_by_its_ability() -> None:
-    """Litany's key is ``LitanyTurnStartAbility::Evaluate``. The engine asks
-    the turn's start alone (its play and ``decline_turn_start``, OQ-095 (6),
-    user ruling 2026-10-14); the key itself is ranked in ``DetermineTurn``
-    with the choices that follow the refusal."""
-
     state, seat = _turn()
-    state = _with_litany(state, seat)
+    state = with_player(state, seat, hand=(LITANY, *state.players[seat].hand))
     run = _run(state, seat)
     play = run.first("play_turn_start_card")
-    decline = run.first("decline_turn_start")
     assert play is not None and arg(play, "card_id") == LITANY
-    assert decline is not None and set(run.legal) == {play, decline}
     sources = turn._turn_start_card_sources(run)
     assert sources is not None and len(sources) == 1
     expected = LitanyTurnStartAbility(card_entity(LITANY, seat)).evaluate(
@@ -133,46 +122,10 @@ def test_litany_is_a_turn_start_key_valued_by_its_ability() -> None:
     assert sources[0].evaluate is not None
     assert sources[0].evaluate() == (expected.value, play)
     # Against the empty answer alone: played iff its value is positive.
-    after = ENGINE.apply(state, decline).state
-    reveal = next(
-        a for a in ENGINE.legal_actions(after, seat) if a.action_id == "reveal_turn"
-    )
-    chosen = turn._determine_turn(_run(state, seat, (play, reveal)))
+    reveal = run.first("reveal_turn")
+    assert reveal is not None
+    chosen = turn.turn_window(_run(state, seat, (play, reveal)))
     assert chosen == (play if expected.value > 0 else reveal)
-
-
-@pytest.mark.parametrize("value", [1e6, -1.0], ids=["best", "worthless"])
-def test_the_turn_start_window_plays_litany_only_when_determine_turn_does(
-    monkeypatch: pytest.MonkeyPatch, value: float
-) -> None:
-    """The window's answer is ``DetermineTurn`` over the play and the choices
-    the engine offers after the refusal: the play when that prompt picks it
-    (a value above every placement), else ``decline_turn_start`` with the
-    prompt's RNG draws and memory writes undone."""
-
-    monkeypatch.setattr(
-        LitanyTurnStartAbility,
-        "evaluate",
-        lambda self, p, request: Answer(value, (), "pinned"),
-    )
-    state, seat = _turn()
-    state = _with_litany(state, seat)
-    run = _run(state, seat)
-    play = run.first("play_turn_start_card")
-    decline = run.first("decline_turn_start")
-    assert play is not None and decline is not None
-    after = ENGINE.apply(state, decline).state
-    prompt = turn._prompt_with_start(run, (play,), decline)
-    assert set(prompt) == {*ENGINE.legal_actions(after, seat), play}
-    # The prompt itself, on a run of its own from the same RNG position.
-    picked = turn._determine_turn(_run(state, seat, prompt))
-    assert (picked == play) is (value > 0)
-    rng_before = run.rng.getstate()
-    chosen = turn.turn_window(run)
-    assert chosen == (play if value > 0 else decline)
-    if chosen == decline:
-        assert run.rng.getstate() == rng_before
-        assert run.memory == Memory()
 
 
 def test_a_turn_start_card_without_litanys_ability_falls_back() -> None:

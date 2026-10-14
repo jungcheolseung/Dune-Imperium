@@ -1164,7 +1164,6 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
     )
     from dune_imperium.core import (
         DecisionFrame,
-        DomainAction,
         GamePhase,
         GameState,
         Influence,
@@ -1204,9 +1203,6 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
             ),
         ),
     )
-    # Withdrawn is playable, so the turn opens with its start window first
-    # (OQ-095 (6), user ruling 2026-10-14); leave it unplayed.
-    turn = engine.apply(turn, DomainAction("decline_turn_start", 0)).state
     place = next(
         action
         for action in engine.legal_actions(turn, 0)

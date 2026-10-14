@@ -774,12 +774,7 @@ def test_unnatural_puts_a_trashed_twisted_card_on_the_shared_discard() -> None:
     owner = PlayerState(
         player_id=0, leader_id="piter_de_vries", intrigue_cards=(card, other)
     )
-    # Withdrawn is asked first and alone at the turn's start (OQ-095 (6),
-    # user ruling 2026-10-14); left unplayed, it is Unnatural's target.
-    declined = ENGINE.apply(
-        _turn_state(owner), DomainAction("decline_turn_start", 0)
-    ).state
-    trashing = ENGINE.apply(declined, _play(card)).state
+    trashing = ENGINE.apply(_turn_state(owner), _play(card)).state
     options = legal_intrigue_choice_actions(trashing, 0)
     assert [dict(a.arguments)["card_id"] for a in options] == [other]
     result = ENGINE.apply(trashing, options[0])
@@ -887,11 +882,6 @@ def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:
     )
     state = _turn_state(owner)
     assert _play(card) in legal_intrigue_play_actions(state, 0)
-    # Asked first and alone (OQ-095 (6), user ruling 2026-10-14).
-    assert ENGINE.legal_actions(state, 0) == (
-        _play(card),
-        DomainAction("decline_turn_start", 0),
-    )
     passed = ENGINE.apply(state, _play(card)).state
     frame = passed.decision_stack[-1]
     assert frame.kind == "turn"
@@ -902,16 +892,11 @@ def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:
     placed = _placed(state, DAGGER, "assembly_hall")
     assert _play(card) not in legal_intrigue_play_actions(placed, 0)
     # "At the start of your turn: Pass your turn." [Withdrawn card]: only the
-    # turn's first action (OQ-095 (6), user ruling 2026-10-04). The Plot
-    # waits behind the turn-start window (user ruling 2026-10-14); once the
-    # window is refused, Withdrawn is not offered though the turn frame is
-    # still open, before the Plot or after it.
+    # turn's first action, so not after a Plot either, though the turn frame
+    # is still open (OQ-095 (6), user ruling 2026-10-04).
     plot = "intrigue:contingency_plan:0"
     with_plot = _turn_state(replace(owner, intrigue_cards=(card, plot)))
-    assert _play(plot) not in ENGINE.legal_actions(with_plot, 0)
-    declined = ENGINE.apply(with_plot, DomainAction("decline_turn_start", 0)).state
-    assert _play(card) not in legal_intrigue_play_actions(declined, 0)
-    plotted = ENGINE.apply(declined, _play(plot)).state
+    plotted = ENGINE.apply(with_plot, _play(plot)).state
     assert plotted.decision_stack[-1].kind == "turn"
     assert _play(card) not in legal_intrigue_play_actions(plotted, 0)
 

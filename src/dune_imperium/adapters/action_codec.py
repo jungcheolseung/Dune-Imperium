@@ -451,12 +451,8 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # Spy placement passed up with an empty supply (OQ-057 (14)), the
 # confirmations of mandatory effects with no target, and every frame on top
 # of the turn. Imperial Privilege's trade and recall are now separate icons
-# offered together. Also in v146 (user ruling 2026-10-14, "그렇게 하자"):
-# Litany Against Fear and Withdrawn ("At the start of your turn") are asked
-# first and alone -- while the seat can play one, its turn opens with just
-# those plays and the new ``decline_turn_start`` (one template in the
-# Bloodlines catalogs, where both cards are). Recorded step sequences
-# change, so saves and replays from v145 are refused by the version check.
+# offered together. No template change; recorded step sequences change, so
+# saves and replays from v145 are refused by the version check.
 ACTION_CODEC_VERSION = 146
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -1170,10 +1166,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # A bank Commander with no choosable Skill is confirmed
             # (OQ-031, OQ-035 (b), user ruling 2026-10-02).
             "resolve_commander_without_skill",
-            # Leaving Litany Against Fear or Withdrawn (both Bloodlines)
-            # unplayed in the turn's start window (user ruling 2026-10-14;
-            # codec v146).
-            "decline_turn_start",
         )
     ]
     for action_id in (

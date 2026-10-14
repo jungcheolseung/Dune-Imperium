@@ -126,19 +126,10 @@ def _give_tech(state: GameState, seat: int, *tech_ids: str) -> GameState:
 
 def _turn(*instances: str) -> GameState:
     """The first turn-start prompt of a Bloodlines game, the seat holding
-    ``instances``.
-
-    Holding Withdrawn opens the turn's start window first (its play and
-    ``decline_turn_start`` alone, OQ-095 (6), user ruling 2026-10-14); it is
-    declined here, so the prompt is the turn's usual one with the Plots.
-    """
+    ``instances``."""
 
     state = first_decision("turn", config=BLOODLINES, seed=3)
-    state = _holding(state, _seat(state), *instances)
-    decline = next(
-        (a for a in _legal(state) if a.action_id == "decline_turn_start"), None
-    )
-    return state if decline is None else _apply(state, decline)
+    return _holding(state, _seat(state), *instances)
 
 
 def _combat(*instances: str) -> GameState:

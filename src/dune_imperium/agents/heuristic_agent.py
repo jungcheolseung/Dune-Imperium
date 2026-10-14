@@ -57,14 +57,6 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Keep placing Agents before revealing.
     "agent_turn": 4.0,
     "reveal_turn": 1.0,
-    # The turn's start window (user ruling 2026-10-14): Litany Against Fear
-    # or Withdrawn, or this refusal, before the turn's usual choices. Before
-    # it the plays competed with every placement and the Reveal (1.0, always
-    # offered), so the refusal ranks as that Reveal: Litany Against Fear
-    # (0.0) stays unplayed as before; Withdrawn (3.0) is now played at the
-    # first start where it is held, where before a placement above 3.0
-    # could still come first.
-    "decline_turn_start": 1.0,
     # Combat presence.
     "summon_maker_sandworms": 4.0,
     "deploy_control_defense": 2.0,

@@ -630,23 +630,31 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # ``core/observation.py`` are unchanged.
 # Re-pinned the same day (codec v146 still, observation v32): Lady Jessica's
 # Other Memories offers no refusal either and lapses at the turn end (OQ-095
-# (2), user ruling 2026-10-14 "기존대로 턴 중에 원할 때"), and the turn-start
-# window asks Litany Against Fear and Withdrawn first and alone (OQ-095 (6),
-# 2026-10-14). Five games move at their first Other Memories decision, where
-# the random seat now draws from a list without ``decline_other_memories``:
-# base at decision 111 (round 2, seat 3; 2,692 -> 2,400 vectors), choam at
-# 137 (round 3, seat 3; 3,440 -> 2,880), promo_bloodlines_tech at 64 (round
-# 2, seat 3; 3,580 -> 3,388), everything at 351 (round 5, seat 3; 3,800 ->
-# 3,556) and scouts at 510 (round 8, seat 3; 3,080 -> 2,872). Each game's
-# decision trace (round, seat, offered action ids, choice) before that point
-# equals the previous pins' trace exactly, so no turn-start window came
-# first; draft meets no Other Memories decision and keeps its pin.
+# (2), user ruling 2026-10-14 "기존대로 턴 중에 원할 때"). Five games move at
+# their first Other Memories decision, where the random seat now draws from
+# a list without ``decline_other_memories``: base at decision 111 (round 2,
+# seat 3; 2,692 -> 2,400 vectors), choam at 137 (round 3, seat 3; 3,440 ->
+# 2,880), promo_bloodlines_tech at 64 (round 2, seat 3; 3,580 -> 3,232),
+# everything at 351 (round 5, seat 3; 3,800 -> 3,556) and scouts at 510
+# (round 8, seat 3; 3,080 -> 2,872). Each game's decision trace (round,
+# seat, offered action ids, choice) before that point equals the previous
+# pins' trace exactly; draft meets no Other Memories decision and keeps its
+# pin. For a while that day the engine also asked Litany Against Fear and
+# Withdrawn first and alone at the turn's start, beside a refusal of its
+# own, which pinned promo_bloodlines_tech at ccc02716 / 3,388; the window was
+# taken out of the engine again (whether it opened told the other seats
+# such a card was held). Against that pin the trace is identical through
+# decision 587; at 588 (round 8, seat 3) Litany stands beside
+# ``reveal_turn`` instead of the refusal and the random seat plays it
+# either way, and the first different choice is at 749 (round 10, seat 3),
+# where Litany comes with the turn's usual choices and the seat places an
+# Agent. The other five games never met the window and keep their pins.
 _GOLDEN_DIGESTS = {
     "base": ("e6baf5e50aabc0aba8f90913fd81aa06861569c9fd06d035de9676b730970c5a", 2400),
     "choam": ("a5461ae6884cf8dab8513963469caafb8509a0e84be6e338d77c4f5ac40af830", 2880),
     "promo_bloodlines_tech": (
-        "ccc02716fc8868d73787284ab65e9145567974211d544a9d7f2f6ccfe1497b14",
-        3388,
+        "6d98c686649896eaa48cf3ff6f926f668c41d467c0419364541337d796f4866d",
+        3232,
     ),
     "everything": (
         "f568f095c74608b9ec4bc928cd25766a37d1cc57daeb10d1921e86bebd9d0542",

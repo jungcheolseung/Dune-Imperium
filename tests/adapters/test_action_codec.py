@@ -375,7 +375,6 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1  # v142: draw_planetologist_intrigue (OQ-106)
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 1  # v142: draw_owed_card (OQ-106)
-        + 1  # v146: decline_turn_start (user ruling 2026-10-14)
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

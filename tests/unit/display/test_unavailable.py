@@ -575,19 +575,12 @@ def test_harvest_cells_below_its_loss_says_how_many_units_are_lost() -> None:
 
 
 def test_a_start_of_turn_card_is_played_then_only_dimmed_after_that_point() -> None:
-    """Inside the turn-start window (user ruling 2026-10-14) Withdrawn is
-    offered with its refusal and nothing is greyed; once the Reveal replaced
-    the turn frame the card is only dimmed, printed for another window."""
-
     state = _intrigue_state("twisted_withdrawn")
     withdrawn = {"card_id": "intrigue:twisted_withdrawn:0", "option": 0}
 
     assert _legal(state, "play_intrigue") == [withdrawn]
-    assert _legal(state, "decline_turn_start") == [{}]
-    assert len(ENGINE.legal_actions(state, 0)) == 2
     assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
-    declined = ENGINE.apply(state, DomainAction("decline_turn_start", 0)).state
-    revealed = _reveal(declined, 0)
+    revealed = _reveal(state, 0)
     found = _found(revealed)
     assert found["rows"] == []
     assert found["refs"]["intrigue:twisted_withdrawn:0"]["reason"] == (
@@ -597,41 +590,29 @@ def test_a_start_of_turn_card_is_played_then_only_dimmed_after_that_point() -> N
 
 def test_both_start_of_turn_cards_grey_out_once_the_seat_acted() -> None:
     """Withdrawn and Litany Against Fear are only the turn's first action
-    (OQ-095 (6), user ruling 2026-10-04), asked first and alone (user
-    ruling 2026-10-14): once the seat refused the turn-start window, the
-    usual choices on the still-open turn frame follow -- the Plot among
-    them -- and each card is a greyed-out row with the same reason,
-    Withdrawn among the Intrigue cards, Litany beside the Agent and Reveal
-    turns. A Plot played next leaves them so."""
+    (OQ-095 (6), user ruling 2026-10-04): after a Plot on the still-open
+    turn frame each is a greyed-out row with the same reason, Withdrawn
+    among the Intrigue cards, Litany beside the Agent and Reveal turns."""
 
     litany = "imperium:litany_against_fear:0"
     state = _intrigue_state(
         "twisted_withdrawn", "contingency_plan", hand=(litany,)
     )
     assert _legal(state, "play_turn_start_card") == [{"card_id": litany}]
-    # The Plot waits behind the window.
-    assert _legal(state, "play_intrigue") == [
-        {"card_id": "intrigue:twisted_withdrawn:0", "option": 0}
-    ]
-    declined = ENGINE.apply(state, DomainAction("decline_turn_start", 0)).state
-    assert declined.decision_stack[-1].kind == "turn"
-    assert _legal(declined, "play_turn_start_card") == []
     plot = DomainAction(
         "play_intrigue",
         0,
         (("card_id", "intrigue:contingency_plan:0"), ("option", 0)),
     )
-    assert _legal(declined, "play_intrigue") == [dict(plot.arguments)]
-    plotted = ENGINE.apply(declined, plot).state
+    plotted = ENGINE.apply(state, plot).state
     assert plotted.decision_stack[-1].kind == "turn"
     assert _legal(plotted, "play_turn_start_card") == []
     assert _legal(plotted, "play_intrigue") == []
-    assert _found(plotted) == _found(declined)
 
     found = _found(plotted)
     reason = {
-        "reason": "Only at the start of your turn: this turn's start has passed",
-        "reason_ko": "차례를 시작할 때만 사용 — 이번 차례의 시작이 지났음",
+        "reason": "Only at the start of your turn: you already acted this turn",
+        "reason_ko": "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
         "code": "turn_started",
     }
     (withdrawn_row,) = _rows(found, "intrigue").values()

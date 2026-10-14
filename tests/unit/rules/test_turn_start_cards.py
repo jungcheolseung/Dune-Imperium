@@ -10,15 +10,6 @@ turn's owner while its turn frame is open ends the start of the turn
 (``frames.TURN_START_OVER_KEY`` on that frame, set by the engine); another
 seat's answer and the engine's automatic steps do not. The Emperor track Spy
 case is in ``test_track_spy.py``.
-
-User ruling 2026-10-14 (OQ-095 (6), "그렇게 하자"): the start is asked first
-and alone. While the seat can play either card, its turn frame offers just
-those plays and ``decline_turn_start`` (``engine.turn_start_window_actions``);
-the refusal ends the start and the turn's usual choices follow. So the other
-actions that end the start meet a seat that held no playable card when its
-turn opened, and the tests below check them by handing it the cards
-afterwards (``_arm``): a card that arrives once the start is over is not
-offered.
 """
 
 from collections.abc import Callable
@@ -42,7 +33,6 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.state import canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
-from dune_imperium.rules.engine import turn_start_window_actions
 from dune_imperium.rules.frames import (
     TURN_START_OVER_KEY,
     FrameKind,
@@ -66,7 +56,6 @@ def _plot(card_id: str) -> DomainAction:
 
 
 WITHDRAWN_PLAY = _plot(WITHDRAWN)
-DECLINE = DomainAction("decline_turn_start", 0)
 
 
 def _owner(*intrigue_cards: str, **fields: object) -> PlayerState:
@@ -80,28 +69,6 @@ def _owner(*intrigue_cards: str, **fields: object) -> PlayerState:
     }
     values.update(fields)
     return PlayerState(**values)  # type: ignore[arg-type]
-
-
-def _unarmed(*intrigue_cards: str, **fields: object) -> PlayerState:
-    """The owner holding neither turn-start card: no window opens."""
-
-    return replace(
-        _owner(*intrigue_cards, **fields),
-        hand=(DAGGER,),
-        intrigue_cards=intrigue_cards,
-    )
-
-
-def _arm(state: GameState) -> GameState:
-    """Hand seat 0 both turn-start cards, as a draw in the turn could."""
-
-    owner = state.players[0]
-    armed = replace(
-        owner,
-        hand=(LITANY, *owner.hand),
-        intrigue_cards=(WITHDRAWN, *owner.intrigue_cards),
-    )
-    return replace(state, players=(armed, *state.players[1:]))
 
 
 def _turn_state(
@@ -153,102 +120,25 @@ def _starts_open(state: GameState) -> bool:
     return litany
 
 
-def test_the_turn_opens_with_both_cards_and_the_refusal_alone() -> None:
-    state = _turn_state(_owner(CONTINGENCY_PLAN))
+def test_both_cards_are_offered_as_the_turns_first_action() -> None:
+    state = _turn_state(_owner())
 
     assert _starts_open(state)
     assert TURN_START_OVER_KEY not in dict(state.decision_stack[-1].context)
-    # Asked first and alone (user ruling 2026-10-14): no Agent or Reveal
-    # turn, no Plot, until the start is answered.
-    assert _offered(state) == (LITANY_PLAY, WITHDRAWN_PLAY, DECLINE)
-    assert turn_start_window_actions(state, 0) == _offered(state)
-
-
-@pytest.mark.parametrize(
-    ("hand", "intrigue_cards", "play"),
-    [
-        pytest.param((LITANY, DAGGER), (), LITANY_PLAY, id="litany"),
-        pytest.param((DAGGER,), (WITHDRAWN,), WITHDRAWN_PLAY, id="withdrawn"),
-    ],
-)
-def test_either_card_alone_opens_the_window(
-    hand: tuple[str, ...], intrigue_cards: tuple[str, ...], play: DomainAction
-) -> None:
-    owner = replace(_owner(), hand=hand, intrigue_cards=intrigue_cards)
-    state = _turn_state(owner)
-
-    assert _offered(state) == (play, DECLINE)
-    played = ENGINE.apply(state, play)
-    # The play is the start's own answer: it passes the turn to seat 1.
-    turn = played.state.decision_stack[-1]
-    assert turn.kind == FrameKind.TURN
-    assert isinstance(turn.decision, PlayerDecision) and turn.decision.owner == 1
-    assert "turn_start_declined" not in {event.kind for event in played.events}
-
-
-def test_the_refusal_ends_the_start_and_the_usual_choices_follow() -> None:
-    state = _turn_state(_owner(CONTINGENCY_PLAN))
-
-    declined = ENGINE.apply(state, DECLINE)
-
-    (event,) = declined.events
-    assert event.kind == "turn_start_declined"
-    assert event.payload == (("player", 0),)
-    after = declined.state
-    # The same turn frame, marked as any other owner action marks it.
-    assert after.decision_stack == end_turn_start(state, 0).decision_stack
-    assert not _starts_open(after)
-    assert DECLINE not in _offered(after)
-    ids = {action.action_id for action in _offered(after)}
-    assert {"agent_turn", "reveal_turn"} <= ids
-    assert _plot(CONTINGENCY_PLAN) in _offered(after)
-    # Exactly what a seat that never held the cards is offered.
-    unarmed = end_turn_start(_turn_state(_unarmed(CONTINGENCY_PLAN)), 0)
-    assert _offered(after) == _offered(unarmed)
-    # Neither card's state moved: both stay in hand, unplayed.
-    assert after.players[0].hand == state.players[0].hand
-    assert after.players[0].intrigue_cards == state.players[0].intrigue_cards
-
-
-def test_no_window_opens_without_a_playable_card() -> None:
-    # Neither card held: the turn opens on its usual choices, its start
-    # still open for a card that a first action could bring.
-    bare = _turn_state(_unarmed(CONTINGENCY_PLAN))
-    assert turn_start_window_actions(bare, 0) == ()
-    assert turn_start_is_open(bare, 0)
-    ids = {action.action_id for action in _offered(bare)}
-    assert {"agent_turn", "reveal_turn", "play_intrigue"} <= ids
-    assert "decline_turn_start" not in ids
-
-    # Withdrawn alone with every other seat revealed changes nothing, so it
-    # is not playable (``test_withdrawn_is_not_offered_when_every_other_
-    # seat_has_revealed``) and no window opens either.
-    withdrawn_only = replace(_owner(), hand=(DAGGER,))
-    alone = _turn_state(withdrawn_only, others_revealed=True)
-    assert turn_start_window_actions(alone, 0) == ()
-    assert DECLINE not in _offered(alone)
-    assert WITHDRAWN_PLAY not in _offered(alone)
-    # Litany Against Fear still draws, so it still opens the window there.
-    both = _turn_state(_owner(), others_revealed=True)
-    assert _offered(both) == (LITANY_PLAY, DECLINE)
 
 
 def test_a_plot_ends_the_start_on_the_still_open_turn_frame() -> None:
-    # The seat held no turn-start card when its turn opened, so the Plot is
-    # its first action; a card it holds afterwards is not offered.
-    state = _turn_state(_unarmed(CONTINGENCY_PLAN))
-    assert _starts_open(_arm(state))
+    state = _turn_state(_owner(CONTINGENCY_PLAN))
 
     plotted = _apply(state, _plot(CONTINGENCY_PLAN))
 
     turn = plotted.decision_stack[-1]
     assert turn.kind == FrameKind.TURN
     assert dict(turn.context)[TURN_START_OVER_KEY] is True
-    assert not _starts_open(_arm(plotted))
+    assert not _starts_open(plotted)
     # Only the two cards go: the Agent and Reveal turns are still the choice.
-    ids = {action.action_id for action in _offered(_arm(plotted))}
+    ids = {action.action_id for action in _offered(plotted)}
     assert {"agent_turn", "reveal_turn"} <= ids
-    assert "decline_turn_start" not in ids
     # The mark is part of the state (hashed, kept by undo and replay).
     unmarked = replace(
         plotted,
@@ -259,7 +149,7 @@ def test_a_plot_ends_the_start_on_the_still_open_turn_frame() -> None:
 
 
 def test_a_plots_own_choice_frame_keeps_the_start_over() -> None:
-    state = _turn_state(_unarmed(IMPERIUM_POLITICS))
+    state = _turn_state(_owner(IMPERIUM_POLITICS))
 
     opened = _apply(state, _plot(IMPERIUM_POLITICS))
 
@@ -269,7 +159,7 @@ def test_a_plots_own_choice_frame_keeps_the_start_over() -> None:
     assert not turn_start_is_open(opened, 0)
     done = _apply(opened, _offered(opened)[0])
     assert done.decision_stack[-1].kind == FrameKind.TURN
-    assert not _starts_open(_arm(done))
+    assert not _starts_open(done)
 
 
 def _return_specimen(state: GameState) -> GameState:
@@ -297,13 +187,13 @@ def test_any_other_owner_action_on_the_turn_frame_ends_the_start(
     fields: dict[str, object], act: Callable[[GameState], GameState]
 ) -> None:
     immortality = RulesetConfig(bloodlines=True, immortality=True)
-    state = _turn_state(_unarmed(**fields), immortality)
-    assert _starts_open(_arm(state))
+    state = _turn_state(_owner(**fields), immortality)
+    assert _starts_open(state)
 
     acted = act(state)
 
     assert acted.decision_stack[-1].kind == FrameKind.TURN
-    assert not _starts_open(_arm(acted))
+    assert not _starts_open(acted)
 
 
 def _answer_every_opponent(state: GameState) -> GameState:
@@ -328,9 +218,8 @@ def test_another_seats_answer_neither_ends_nor_reopens_the_start() -> None:
     assert _starts_open(answered)
     assert answered.decision_stack == state.decision_stack
 
-    # An answer following the owner's refusal and Plot leaves the start
-    # over.
-    plotted = _apply(_apply(state, DECLINE), _plot(CONTINGENCY_PLAN))
+    # An answer following the owner's Plot leaves the start over.
+    plotted = _apply(state, _plot(CONTINGENCY_PLAN))
     answered_after = _answer_every_opponent(plotted)
     assert not _starts_open(answered_after)
     assert answered_after.decision_stack == plotted.decision_stack
@@ -341,7 +230,7 @@ def test_a_turn_passed_to_the_seat_itself_starts_afresh() -> None:
     # seat's own next turn, whose start is open again -- playing a
     # turn-start card is the start's own action, not one that ends it.
     state = _turn_state(_owner(CONTINGENCY_PLAN), others_revealed=True)
-    assert _offered(state) == (LITANY_PLAY, DECLINE)
+    assert LITANY_PLAY in _offered(state)
 
     passed = _apply(state, LITANY_PLAY)
     turn = passed.decision_stack[-1]
@@ -378,57 +267,3 @@ def test_withdrawn_is_not_offered_when_every_other_seat_has_revealed() -> None:
         ),
     )
     assert WITHDRAWN_PLAY in _offered(waiting)
-
-
-@pytest.mark.parametrize(
-    "options",
-    [
-        pytest.param({}, id="base"),
-        pytest.param({"choam_module": True}, id="choam"),
-        pytest.param({"promo_cards": True}, id="promo"),
-        pytest.param({"immortality": True, "choam_module": True}, id="immortality"),
-        pytest.param({"arrakeen_scouts": True, "epic_game": True}, id="scouts-epic"),
-    ],
-)
-def test_no_window_opens_outside_bloodlines(options: dict[str, bool]) -> None:
-    # Both cards are Bloodlines cards -- Litany Against Fear in the Imperium
-    # deck, Withdrawn among Piter De Vries' Twisted Intrigue cards -- so no
-    # other game deals one, and its catalog has no ``decline_turn_start``
-    # template to encode the window's refusal with (codec v146).
-    from dune_imperium.adapters.action_codec import ActionCodec
-    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
-    from dune_imperium.content.uprising.leaders import leaders_for_choam
-    from dune_imperium.rules.agent_turn import turn_start_cards
-
-    config = RulesetConfig(**options)
-    imperium = imperium_deck_instance_ids(
-        config.choam_module, config.promo_cards, immortality=config.immortality
-    )
-    intrigue = intrigue_deck_instance_ids(
-        config.choam_module, immortality=config.immortality
-    )
-    assert LITANY not in imperium
-    every_card = PlayerState(player_id=0, hand=(*imperium, *STARTERS))
-    assert turn_start_cards(every_card) == ()
-    assert not any(
-        option.turn_start_only
-        for card in intrigue
-        for option in intrigue_card_for_instance(card).options
-    )
-    assert "piter_de_vries" not in {
-        leader.leader_id for leader in leaders_for_choam(config.choam_module)
-    }
-    templates = {template.action_id for template in ActionCodec(config).catalog}
-    assert "decline_turn_start" not in templates
-
-    # The Bloodlines game deals both and encodes the refusal.
-    bloodlines = replace(config, bloodlines=True)
-    assert LITANY in imperium_deck_instance_ids(
-        bloodlines.choam_module, bloodlines.promo_cards, bloodlines=True
-    )
-    assert "piter_de_vries" in {
-        leader.leader_id
-        for leader in leaders_for_choam(bloodlines.choam_module, bloodlines=True)
-    }
-    codec = ActionCodec(bloodlines)
-    assert codec.decode(codec.encode(DECLINE), actor=0) == DECLINE

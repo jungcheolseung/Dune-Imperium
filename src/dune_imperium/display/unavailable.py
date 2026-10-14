@@ -472,12 +472,11 @@ _TURN_START: Final[Reason] = (
     "timing",
 )
 # "At the start of your turn" (Withdrawn, Litany Against Fear) on the turn
-# frame once the seat already acted in the turn or refused the turn-start
-# window (OQ-095 (6), user rulings 2026-10-04 and 2026-10-14,
-# ``frames.turn_start_is_open``).
+# frame once the seat already acted in the turn (OQ-095 (6), user ruling
+# 2026-10-04, ``frames.turn_start_is_open``).
 _TURN_STARTED: Final[Reason] = (
-    "Only at the start of your turn: this turn's start has passed",
-    "차례를 시작할 때만 사용 — 이번 차례의 시작이 지났음",
+    "Only at the start of your turn: you already acted this turn",
+    "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
     "turn_started",
 )
 
