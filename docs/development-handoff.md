@@ -29,9 +29,9 @@
 | 항목 | 값 |
 | --- | --- |
 | master | reveal-choices 병합 (2026-10-14) |
-| pytest | 7,660개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 499파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 65종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 reveal-choices 병합 전(65 통과) |
+| pytest | 7,712개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| Ruff · mypy | `src tests` 통과, mypy 500파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 선택 불가 표시 첫 묶음 병합 뒤(66 통과, `server_errors`는 탐색 AI 없는 서버로 고친 뒤 혼자 통과) |
 | action codec | **v147** (다음 번호 v148) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,553 · CHOAM 4,848 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 36,379 |
