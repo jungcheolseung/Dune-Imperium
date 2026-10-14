@@ -92,8 +92,6 @@
   `stalls/`에 남는 상태로 고친다. [2026-10-06 탐색 AI 좌석·L3 재학습, 2026-10-07 학습: 앱 AI 섞기 대 self-play만]
 - Glowglobes·Navigation Chamber의 Tech 획득 아이콘이 여전히 6인 진영을 내놓는다(v137 경계). [2026-10-06 Steam 앱과 카드·보드 전수 대조]
 - Ghola + Subversive Advisor의 2+2=4는 project convention이다(`rules/open-questions.md` OQ-022 보강의 남은 의문).
-- 테스트 빈자리(낮음): 여러 칸 Influence 잃기(OQ-014)의 직접 테스트, 0-supply Control 방어 frame의 서버·E2E 테스트.
-  [2026-10-07 Steam 앱과 일반 규칙 대조, 2026-10-04 Steam 앱 대조와 앱 방식 재판정]
 
 **플레이 화면**
 
