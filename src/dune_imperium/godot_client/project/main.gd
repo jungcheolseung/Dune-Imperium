@@ -312,7 +312,7 @@ func _build_table() -> void:
 	own_line = _label(hand_heading, model.native("내 손패"), 14)
 	own_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	own_line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	var deck_button = _button(hand_heading, model.native("덱"), func(): _open_pile(model.native("내 덱 구성 · 순서 비공개"), model.view().get("private", {}).get("deck_cards", [])))
+	var deck_button = _button(hand_heading, model.native("덱"), func(): _open_pile(model.native("내 덱 구성 · 순서 비공개"), model.view().get("private", {}).get("deck_cards", []), false, ["private", "deck_cards"]))
 	deck_button.custom_minimum_size.y = 26
 	var hand_scroll = ScrollContainer.new()
 	hand_scroll.custom_minimum_size.y = 190
@@ -530,7 +530,7 @@ func _sync(preferred_seat = -2) -> bool:
 		var path = "/games/" + requested_game + "/snapshot"
 		if seat >= 0:
 			path += "?seat=" + str(seat)
-			var known = model.snapshot.get("log")
+			var known = (tools_ui.live_snapshot if not tools_ui.review.is_empty() else model.snapshot).get("log")
 			if known is Dictionary and int(known.get("seat", -1)) == seat:
 				path += "&log_after=%d&log_epoch=%s" % [int(known.get("count", 0)), str(known.get("epoch", "")).uri_encode()]
 		reply = await api.call_json(HTTPClient.METHOD_GET, path)
@@ -548,17 +548,28 @@ func _sync(preferred_seat = -2) -> bool:
 		return false
 	if not _accept(reply):
 		return false
-	if not tools_ui.review.is_empty():
-		return true
 	var data = reply.data
 	if data.get("log") is Dictionary and int(data.log.get("from", 0)) > 0:
-		var known = model.snapshot.get("log", {})
+		var known = (tools_ui.live_snapshot if not tools_ui.review.is_empty() else model.snapshot).get("log", {})
 		if not known is Dictionary or int(known.get("seat", -1)) != int(data.log.seat) or known.get("entries", []).size() != int(data.log.from):
 			return await _sync(-1)
 		data.log.entries = known.entries + data.log.entries
 	tools_ui.anchor_clock(data)
 	var previous_owned = model.owned_seats.duplicate()
 	var previous_seat = model.active_seat
+	var current_owned = data.get("you", {}).get("seats", []).map(func(value): return int(value))
+	if not tools_ui.review.is_empty():
+		tools_ui.live_snapshot = data.duplicate(true)
+		if previous_owned.any(func(value): return value not in current_owned):
+			tools_ui.playback = false
+			tools_ui.review_serial += 1
+			tools_ui.review.clear()
+		else:
+			model.owned_seats = current_owned
+			model.snapshot.you = data.get("you", {})
+			return true
+	if int(model.summary().get("undo_count", 0)) != int(data.summary.get("undo_count", 0)):
+		tools_ui.close_game_dialogs(true)
 	var changed = model.adopt(data)
 	if previous_seat != model.active_seat:
 		tools_ui.close_game_dialogs()
@@ -625,7 +636,7 @@ func _render() -> void:
 	_update_inspector()
 	effects.observe()
 	for child in find_children("*", "Window", true, false):
-		if child.has_meta("pile_viewer"):
+		if child.has_meta("pile_viewer") and not child.is_queued_for_deletion():
 			child.get_meta("pile_viewer").refresh()
 	if summary.get("finished", false):
 		status.text = model.native("게임이 끝났습니다. 승점과 최종 순위는 오른쪽에서 확인하세요.")
@@ -882,6 +893,8 @@ func _reset_board() -> void:
 
 func _action_button(action: Dictionary, description = "") -> void:
 	var ref = ""
+	if Model.DECK_TOP_CHOICES.has(action.action_id):
+		ref = model.top_choice_card()
 	for value in action.get("arguments", {}).values():
 		if value is String and not model.entry(value).is_empty():
 			ref = value
@@ -892,7 +905,7 @@ func _action_button(action: Dictionary, description = "") -> void:
 	if not ref.is_empty() and not _image_path(model.entry(ref)).is_empty():
 		_picture(row, _image_path(model.entry(ref)), Vector2(44, 62))
 	var apply = _apply_placement if action.action_id == "agent_turn" else _choose_action
-	var button = _button(row, description if not description.is_empty() else model.describe(action), apply.bind(action, model.signature()))
+	var button = _button(row, description if not description.is_empty() else model.live_description(action), apply.bind(action, model.signature()))
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1074,15 +1087,15 @@ func _render_table() -> void:
 			_button(content, model.native("%s · %d장") % [group[1], refs.size()], _open_pile.bind(who + " · " + group[1], refs))
 		if int(player.player) == model.active_seat:
 			var deck = model.view().get("private", {}).get("deck_cards", [])
-			_button(content, model.native("내 덱 구성 · %d장") % deck.size(), _open_pile.bind(model.native("내 덱 구성 · 순서 비공개"), deck))
+			_button(content, model.native("내 덱 구성 · %d장") % deck.size(), _open_pile.bind(model.native("내 덱 구성 · 순서 비공개"), deck, false, ["private", "deck_cards"]))
 		else:
 			_label(content, model.native("손패 %d장 · 덱 %d장") % [int(player.hand_size), int(player.deck_size)], 14)
 	_button(content, model.native("책략 버린 더미"), _open_pile.bind(model.native("책략 버린 더미"), model.view().get("intrigue_discard", [])))
 
 
-func _open_pile(title: String, refs: Array, order = false) -> AcceptDialog:
+func _open_pile(title: String, refs: Array, order = false, source_path: Array = []) -> AcceptDialog:
 	_hide_preview()
-	return preload("res://pile_viewer.gd").new().open(self, title, refs, order)
+	return preload("res://pile_viewer.gd").new().open(self, title, refs, order, source_path)
 
 
 func _attach_dialog(dialog: Window) -> void:
@@ -1174,6 +1187,7 @@ func _open_details(ref: String) -> void:
 	dialog.ok_button_text = model.native("닫기")
 	dialog.theme = theme
 	dialog.set_meta("game_dialog", game_id)
+	dialog.set_meta("detail_ref", ref)
 	var row = HBoxContainer.new()
 	row.custom_minimum_size = Vector2(620, 460)
 	dialog.add_child(row)

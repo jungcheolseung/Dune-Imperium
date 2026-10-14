@@ -177,6 +177,19 @@ func run() -> void:
 	pile.confirmed.emit()
 	await process_frame
 	if mode == "open":
+		var original = table.model.view().private.hand.duplicate()
+		if not await play_first():
+			return
+		pile = table._open_pile("Hand across undo", table.model.view().private.hand)
+		viewer = pile.get_meta("pile_viewer")
+		table._open_details(str(original[0]))
+		var detail = table.find_children("*", "Window", true, false).filter(func(window): return window.has_meta("detail_ref"))[0]
+		if not check(await table._mutate("undo", {"steps": 1}), "undo while a pile and nested detail are open"):
+			return
+		if not check(viewer.refs == original and pile.visible and (not is_instance_valid(detail) or not detail.visible), "undo refreshes the pile and closes its stale nested detail"):
+			return
+		pile.confirmed.emit()
+		await process_frame
 		var switched = false
 		for attempt in range(45):
 			if table.model.active_seat == 3:
@@ -190,6 +203,12 @@ func run() -> void:
 		if not check(switched and table.model.view().player == 3, "local table follows hotseat handover"):
 			return
 	else:
+		var outer = AcceptDialog.new()
+		outer.exclusive = true
+		table.add_child(outer)
+		outer.popup_centered(Vector2i(200, 100))
+		table._open_details(str(original_hand[0]))
+		var detail = table.find_children("*", "Window", true, false).filter(func(window): return window.has_meta("detail_ref"))[0]
 		var released = await host.call_json(HTTPClient.METHOD_POST, "/games/" + game + "/seats/1/release")
 		if not check(released.ok, "host releases a claimed seat"):
 			return
@@ -198,6 +217,10 @@ func run() -> void:
 			await process_frame
 		if not check(table.model.active_seat == -1 and table.model.view().is_empty() and table.hand.get_child_count() == 0, "SSE release clears private cards and controls"):
 			return
+		if not check(not is_instance_valid(detail) or not detail.visible, "seat loss closes a private detail nested under an untagged window"):
+			return
+		outer.hide()
+		outer.queue_free()
 		if not check(not await table._send_action({"index": 0}), "a released seat cannot send a move"):
 			return
 	# Finished AI-only games expose review views, never live choice controls.
@@ -213,11 +236,21 @@ func run() -> void:
 		return
 	if not check(int(table.tools_ui.review.cursor) == 3 and table.model.actions().is_empty(), "review seeks without exposing live actions"):
 		return
+	pile = table._open_pile("Review private hand", table.model.view().get("private", {}).get("hand", []))
+	table._open_details(str(table.model.view().players[table.model.active_seat].leader_id))
+	var private_detail = table.find_children("*", "Window", true, false).filter(func(window): return window.has_meta("detail_ref"))[0]
 	if not await table.tools_ui._review_meta(2, 3):
 		check(false, "review perspective")
 		return
 	if not check(table.model.active_seat == 2 and int(table.tools_ui.review.cursor) == 3, "review switches seat at the same step"):
 		return
+	if not check((not is_instance_valid(pile) or not pile.visible) and (not is_instance_valid(private_detail) or not private_detail.visible), "review perspective changes close private piles and nested details"):
+		return
+	pile = table._open_pile("Review pile before seek", table.model.view().get("private", {}).get("hand", []))
+	await table.tools_ui.review_goto(4)
+	if not check(not is_instance_valid(pile) or not pile.visible, "review cursor changes close information from the previous position"):
+		return
+	await table.tools_ui.review_goto(3)
 	table.tools_ui.playback_interval = 0.05
 	table.tools_ui.playback_unit = "step"
 	table.tools_ui.playback = true

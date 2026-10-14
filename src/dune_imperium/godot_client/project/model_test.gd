@@ -122,6 +122,7 @@ func _initialize() -> void:
 	later.summary.undo_count = 1
 	check(Effects.changes(earlier, later, false).is_empty(), "undo produces no false acquisition or resource cue")
 	test_staged_picks()
+	test_private_deck()
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)
@@ -170,3 +171,26 @@ func test_staged_picks() -> void:
 	model.catalog.spaces.a.options = [{"cost": {"spice": 1, "water": 2}}]
 	var discounted = {"arguments": {"space_id": "a", "cost_option": 0, "discount": "spice"}}
 	check(model.paid_cost(discounted) == {"spice": 0, "water": 2} and model.catalog.spaces.a.options[0].cost.spice == 1, "paid cost applies only the offered discount without changing printed catalog cost")
+
+
+func test_private_deck() -> void:
+	var model = Model.new()
+	model.catalog = {"cards": {"dagger": {"name": "Dagger"}, "ring": {"name": "Ring"}}, "tech": {"glowglobes": {"name": "Glowglobes"}}, "intrigue": {"twisted_controlled": {"name": "Controlled"}}}
+	model.language = "en"
+	model.words.ui = {"panels.deck_top_discard": {"en": "Discard ({{card}})"}}
+	var top = "imperium:dagger:2"
+	var other = "imperium:dagger:1"
+	var ring = "imperium:ring:1"
+	model.adopt({"summary": {"game_id": "deck", "revision": 1}, "view": {"player": 0, "players": [{"tech_ids": ["glowglobes"]}], "private": {"peeked_card_id": top, "deck_cards": [ring, other, top]}}, "actions": {"actions": [{"index": 1, "action_id": "discard_top_card", "arguments": {}}]}})
+	check(model.known_deck_top() == {"ref": top, "source": "Glowglobes"}, "only the authorized deck member receives its typed effect source")
+	var grouped = model.pile_groups([ring, top, other], top)
+	check(grouped[0] == {"ref": top, "count": 1, "top": true} and grouped[1] == {"ref": other, "count": 1, "top": false}, "the known physical top copy splits off before its remaining copies")
+	check(grouped == model.pile_groups([other, ring, top], top), "no order below the known top affects the displayed deck")
+	check(model.live_description(model.actions()[0]) == "Discard (Dagger)" and not model.describe(model.actions()[0]).contains("Dagger"), "only the live choice names the private top, never a shared log description")
+	model.snapshot.view.players[0].tech_ids = []
+	check(model.known_deck_top().source == "Controlled", "the deck note names Controlled when Glowglobes is absent")
+	model.snapshot.actions = null
+	check(model.top_choice_card().is_empty(), "readonly views never manufacture a live private choice")
+	model.snapshot.view.private.peeked_card_id = "imperium:dagger:99"
+	check(model.known_deck_top().is_empty(), "a stale peek outside the current deck is never marked")
+	check(model.pile_groups([other, top]).size() == 1 and int(model.pile_groups([other, top])[0].count) == 2, "an unknown top keeps all equivalent copies grouped")
