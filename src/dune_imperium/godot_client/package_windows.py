@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import urllib.request
 import zipfile
+from importlib import invalidate_caches
 from importlib.metadata import distributions
 from pathlib import Path, PurePosixPath
 
@@ -128,6 +129,9 @@ def unpack(archive: Path, destination: Path, members: list[str] | None = None) -
 
 
 def check_windows_dependencies(packages: Path) -> dict[str, str]:
+    # A fast reinstall can keep the directory's timestamp unchanged on WSL.
+    # Inspect the current metadata rather than a previous directory listing.
+    invalidate_caches()
     versions = {
         str(item.metadata["Name"]): item.version
         for item in distributions(path=[str(packages)])
