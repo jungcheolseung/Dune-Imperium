@@ -28,8 +28,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | search-combat-lead 병합 (2026-10-13) |
-| pytest | master 기준 7,531개 통과(에셋이 없으면 일부 skip). Godot 브랜치 현재 7,568개 수집. 변경 전 전체 7,531 통과·9 skip·임시 경로 override 실패 1건(기본 설정 단독 통과). 클라이언트/배포/호스트 회귀 37개 통과 |
+| Godot 분기 · 원격 master | Godot 분기 기준 `a6ea62dc`(search-combat-lead 병합, 2026-10-13). 현재 origin/master `2af1d9f5`는 후속 codec v147이며 이 브랜치에 병합하지 않음 |
+| pytest | Godot 브랜치 7,559개 통과·9 skip·2 warnings, 7,568개 수집(2026-10-14 이 PC의 전체 실행). 클라이언트/배포/호스트 회귀 37개 통과. master의 이전 분기 기준은 7,531개 통과 |
 | Ruff · mypy | master `src tests` 통과, mypy 487파일. Godot 브랜치 496파일 통과(검증 스크립트 포함 500), Windows portable 진입점 타입 검사도 통과. `scripts/`의 기존 Ruff 오류 68건은 검사 대상 아님 |
 | 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 engine-speed-audit 병합(62 통과) |
 | action codec | **v145** (다음 번호 v146) |
@@ -86,8 +86,10 @@
 
 - **Godot PC 2D 클라이언트:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
   기본판 드래프트·책략·구매·전투·최종 순위·저장/이어하기와 네 판 완주를 검증했다(49종 행동·12종
-  결정창). Python·uv·Git 없는 개인용 Windows ZIP(243.7 MiB / 풀면 357.7 MiB)은 사용자 시작/플레이
-  확인을 받았다. 웹과 같은 열 배치·큰 카드 hover·항상 보이는 시장/기록·보드 조각으로 개선했다.
+  결정창). Python·uv·Git 없는 개인용 Windows ZIP의 이전판은 사용자 시작/플레이 확인을 받았다.
+  이 PC의 최신 ZIP(233.39 MiB / 풀면 347.54 MiB)은 동봉 Windows 런타임으로 한글·공백 경로에서
+  콘솔 없는 headless 배치/undo/턴 진행·종료를 통과했다(이 PC에는 `board/map-ko.jpg`가 없다).
+  웹과 같은 열 배치·큰 카드 hover·항상 보이는 시장/기록·보드 조각으로 개선했다.
   기존 웹 기능 대응으로 세션/좌석·cookie/SSE·설정/저장/관전/시계에 이어 확장 시장·연구 보드·지도자/
   Scouts 상태·선택 이유/예고·정보 창·두 언어·개인 드래그/접힘·연출/합성음·호스트 설정을 연결했다.
   모델 75항목, 현재 실제 open 39 / remote 42항목과 native 두 언어/1440×900·1100×740 입력 검사를 통과했고,
