@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import platform
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -14,7 +15,7 @@ from typing import Any
 import pytest
 
 from dune_imperium.godot_client import launch
-from dune_imperium.godot_client.ui_data import build_ui_data, write_ui_data
+from dune_imperium.godot_client.ui_data import STATIC, build_ui_data, write_ui_data
 from dune_imperium.launcher.command import LaunchPlan
 from dune_imperium.launcher.supervisor import StartupFailed, Stopped
 from dune_imperium.rules.engine import ACTION_HANDLERS
@@ -49,6 +50,31 @@ def test_ui_data_is_unicode_json_and_written_only_to_requested_path(
     data = json.loads(target.read_text(encoding="utf-8"))
     assert data["terms"]["water"]["ko"] == "물"
     assert "물" in target.read_text(encoding="utf-8")
+
+
+def test_native_ui_uses_the_browser_preferences_and_localized_seat_kinds() -> None:
+    data = build_ui_data()
+    assert data["ui"]["clock.game_title"] == {
+        "ko": "게임 시간", "en": "Game time",
+    }
+    assert data["ko"]["SEAT_KINDS"]["app_ai_easy"] == "앱 AI·쉬움"
+    assert data["en"]["SEAT_KINDS"]["app_ai_easy"] == "App AI·Easy"
+    assert data["ui"]["html.opt_tech"]["ko"]
+    assert data["ui"]["html.opt_tech"]["en"]
+
+
+def test_native_ui_rejects_an_incomplete_browser_translation(tmp_path: Path) -> None:
+    for name in (
+        "labels.js", "labels_en.js", "core.js", "prompts_ko.js", "ui_text.js",
+    ):
+        shutil.copyfile(STATIC / name, tmp_path / name)
+    path = tmp_path / "ui_text.js"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(', "en": "Game time"', ""),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="incomplete UI translation"):
+        build_ui_data(tmp_path)
 
 
 def test_runtime_installer_extracts_only_the_verified_executable(

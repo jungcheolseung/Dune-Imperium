@@ -5,8 +5,40 @@ signal texture_ready(path: String, texture: Texture2D)
 var base_url = "http://127.0.0.1:8000"
 var textures: Dictionary = {}
 var pending: Dictionary = {}
-var image_queue: Array[String] = []
+var image_queue: Array[Dictionary] = []
 var image_workers = 0
+const CookieJar = preload("res://cookie_jar.gd")
+const COOKIE_FILE = "res://../../../../local/godot-cookies.json"
+var cookies = CookieJar.new()
+var cookie_file = COOKIE_FILE
+
+
+func _ready() -> void:
+	if FileAccess.file_exists(cookie_file):
+		var data = JSON.parse_string(FileAccess.get_file_as_string(cookie_file))
+		if data is Array:
+			cookies.entries = data.filter(func(cookie): return cookie is Dictionary and cookie.has_all(["origin", "path", "name", "value", "expires", "secure"]))
+
+
+func headers(path: String) -> PackedStringArray:
+	var result: PackedStringArray = ["Content-Type: application/json"]
+	var cookie = cookies.header(base_url, path.get_slice("?", 0), Time.get_unix_time_from_system())
+	if not cookie.is_empty():
+		result.append("Cookie: " + cookie)
+	return result
+
+
+func _remember_headers(response: PackedStringArray, origin: String) -> void:
+	var changed = false
+	for header in response:
+		if header.to_lower().begins_with("set-cookie:"):
+			cookies.remember(origin, header.substr(11).strip_edges(), Time.get_unix_time_from_system())
+			changed = true
+	if changed:
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(cookie_file.get_base_dir()))
+		var file = FileAccess.open(cookie_file, FileAccess.WRITE)
+		if file != null:
+			file.store_string(JSON.stringify(cookies.entries))
 
 
 func call_json(method: int, path: String, data: Dictionary = {}) -> Dictionary:
@@ -14,12 +46,15 @@ func call_json(method: int, path: String, data: Dictionary = {}) -> Dictionary:
 	request.timeout = 30.0
 	add_child(request)
 	var body = "" if method == HTTPClient.METHOD_GET else JSON.stringify(data)
-	var error = request.request(base_url + path, ["Content-Type: application/json"], method, body)
+	var origin = base_url
+	request.max_redirects = 0
+	var error = request.request(origin + path, headers(path), method, body)
 	if error != OK:
 		request.queue_free()
 		return {"ok": false, "code": 0, "data": {"detail": "서버에 연결하지 못했습니다."}}
 	var result = await request.request_completed
 	request.queue_free()
+	_remember_headers(result[2], origin)
 	var parsed = JSON.parse_string(result[3].get_string_from_utf8())
 	var response = parsed if parsed is Dictionary or parsed is Array else {}
 	var success = result[0] == HTTPRequest.RESULT_SUCCESS and result[1] >= 200 and result[1] < 300
@@ -29,11 +64,12 @@ func call_json(method: int, path: String, data: Dictionary = {}) -> Dictionary:
 func texture(path: String) -> Texture2D:
 	if path.is_empty():
 		return null
-	if textures.has(path):
-		return textures[path]
-	if not pending.has(path):
-		pending[path] = true
-		image_queue.append(path)
+	var key = base_url + path
+	if textures.has(key):
+		return textures[key]
+	if not pending.has(key):
+		pending[key] = true
+		image_queue.append({"origin": base_url, "path": path})
 		_pump_images()
 	return null
 
@@ -41,15 +77,16 @@ func texture(path: String) -> Texture2D:
 func _pump_images() -> void:
 	while image_workers < 3 and not image_queue.is_empty():
 		image_workers += 1
-		_download_image(image_queue.pop_front())
+		var job = image_queue.pop_front()
+		_download_image(job.origin, job.path)
 
 
-func _download_image(path: String) -> void:
+func _download_image(origin: String, path: String) -> void:
 	var request = HTTPRequest.new()
 	request.timeout = 30.0
 	request.body_size_limit = 32 * 1024 * 1024
 	add_child(request)
-	var error = request.request(base_url + path)
+	var error = request.request(origin + path)
 	if error == OK:
 		var result = await request.request_completed
 		if result[0] == HTTPRequest.RESULT_SUCCESS and result[1] == 200:
@@ -68,8 +105,10 @@ func _download_image(path: String) -> void:
 					var ratio = float(limit) / longest
 					image.resize(maxi(1, roundi(image.get_width() * ratio)), maxi(1, roundi(image.get_height() * ratio)), Image.INTERPOLATE_LANCZOS)
 				var loaded = ImageTexture.create_from_image(image)
-				textures[path] = loaded
-				texture_ready.emit(path, loaded)
+				textures[origin + path] = loaded
+				if origin == base_url:
+					texture_ready.emit(path, loaded)
 	request.queue_free()
+	pending.erase(origin + path)
 	image_workers -= 1
 	_pump_images()

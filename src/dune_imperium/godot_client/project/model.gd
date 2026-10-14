@@ -12,6 +12,9 @@ var language = "ko"
 var selected_card = ""
 var selected_space = ""
 var held: Dictionary = {}
+var active_seat = 0
+var owned_seats: Array = [0]
+var server_info: Dictionary = {}
 
 
 func summary() -> Dictionary:
@@ -19,7 +22,8 @@ func summary() -> Dictionary:
 
 
 func view() -> Dictionary:
-	return snapshot.get("view", {})
+	var data = snapshot.get("view")
+	return data if data is Dictionary else {}
 
 
 func actions() -> Array:
@@ -29,13 +33,19 @@ func actions() -> Array:
 
 func signature() -> String:
 	var current = summary()
-	return "%s:%s:%s" % [current.get("game_id", ""), current.get("revision", -1), current.get("undo_count", -1)]
+	return "%s:%s:%s:%s" % [current.get("game_id", ""), current.get("revision", -1), current.get("undo_count", -1), active_seat]
 
 
 func adopt(data: Dictionary) -> bool:
 	var before = signature()
 	var previous = snapshot
 	snapshot = data
+	if data.get("you") is Dictionary:
+		owned_seats = data.you.get("seats", []).map(func(seat): return int(seat))
+	if view().has("player"):
+		active_seat = int(view().player)
+	elif data.has("you"):
+		active_seat = -1
 	var changed = before != signature()
 	if changed:
 		held.clear()
@@ -46,11 +56,40 @@ func adopt(data: Dictionary) -> bool:
 	var new_summary = summary().duplicate()
 	old_summary.erase("clock")
 	new_summary.erase("clock")
-	return changed or old_summary != new_summary or previous.get("actions") != data.get("actions")
+	return changed or old_summary != new_summary or previous.get("actions") != data.get("actions") or previous.get("you") != data.get("you")
 
 
 func seat_name(seat: int) -> String:
-	return "나" if seat == 0 else "앱 AI %d" % seat
+	var players = summary().get("players", [])
+	if players.size() > seat and seat >= 0:
+		var name = players[seat].get("name")
+		if name != null and not str(name).is_empty():
+			return str(name)
+	var kinds = summary().get("seats", [])
+	if kinds.size() > seat and seat >= 0 and kinds[seat] == "human":
+		return ("나" if language == "ko" else "You") if seat == active_seat else ui("common.seat", {"seat": seat})
+	return ("나" if language == "ko" else "You") if seat == active_seat else ("앱 AI %d" if language == "ko" else "AI %d") % seat
+
+
+func ui(key: String, values: Dictionary = {}) -> String:
+	var text = str(words.get("ui", {}).get(key, {}).get(language, key))
+	for field in values:
+		text = text.replace("{{" + str(field) + "}}", str(values[field]))
+	return phrase(text)
+
+
+func pick_seat(data: Dictionary) -> int:
+	var mine = data.get("you", {}).get("seats", []).map(func(seat): return int(seat))
+	var state = data.get("summary", {})
+	if mine.is_empty():
+		return -1
+	var confirming = state.get("confirmation")
+	if confirming != null and int(confirming) in mine:
+		return int(confirming)
+	var decision = state.get("decision")
+	if confirming == null and decision is Dictionary and int(decision.get("owner", -1)) in mine:
+		return int(decision.owner)
+	return active_seat if active_seat in mine else int(mine[0])
 
 
 func finish_action() -> Dictionary:
@@ -71,14 +110,11 @@ func supported_save(saved: Dictionary) -> bool:
 	if saved.has("error"):
 		return false
 	var seats = saved.get("seats", [])
-	if seats.size() != 4 or seats[0] != "human" or "human" in seats.slice(1):
+	if seats.size() != 4:
 		return false
 	var config = saved.get("ruleset", {})
 	if not config is Dictionary or int(config.get("players", 0)) != 4:
 		return false
-	for expansion in EXPANSIONS:
-		if config.get(expansion, false):
-			return false
 	return true
 
 
@@ -252,4 +288,58 @@ func held_action() -> Dictionary:
 
 
 func request_body(action: Dictionary) -> Dictionary:
-	return {"seat": 0, "revision": int(summary().get("revision", -1)), "undo_count": int(summary().get("undo_count", -1)), "index": int(action.index)}
+	return {"seat": active_seat, "revision": int(summary().get("revision", -1)), "undo_count": int(summary().get("undo_count", -1)), "index": int(action.index)}
+
+
+func clock_reading(clock: Dictionary, age: float) -> Dictionary:
+	var seats = clock.get("seat_ms", [0, 0, 0, 0]).duplicate()
+	var running = clock.get("running")
+	var left = maxf(0, age)
+	var spell = float(clock.get("spell_ms", 0)) if running != null else 0.0
+	for segment in clock.get("narration", []):
+		var spent = minf(left, float(segment[1]))
+		seats[int(segment[0])] += spent
+		if segment[0] == running:
+			spell += spent
+		left -= spent
+		if spent < float(segment[1]):
+			break
+	if left > 0 and running != null:
+		seats[int(running)] += left
+		spell += left
+	return {"elapsed": float(clock.get("elapsed_ms", 0)) + (maxf(0, age) if clock.get("counting", false) else 0), "seats": seats, "spell": spell}
+
+
+func clock_text(milliseconds: float) -> String:
+	var seconds = maxi(0, int(milliseconds / 1000))
+	return "%d:%02d:%02d" % [seconds / 3600, (seconds / 60) % 60, seconds % 60] if seconds >= 3600 else "%d:%02d" % [seconds / 60, seconds % 60]
+
+
+func turn_stops(steps: Array) -> Array:
+	var result: Array = []
+	var last: Dictionary = {}
+	var passes = ["pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue"]
+	for index in range(steps.size()):
+		var step = steps[index]
+		if step.get("type") != "action":
+			continue
+		if not last.is_empty():
+			var closed = last.action_id in END_ACTIONS or last.action_id == "pick_leader" or step.actor != last.actor
+			if closed and not (last.action_id in passes and step.action_id in passes):
+				result.append(index)
+		last = step
+	result.append(steps.size())
+	return result
+
+
+func reviewed_log(meta: Dictionary, cursor: int) -> Array:
+	var live: Array = []
+	var log = meta.get("log", [])
+	for entry in log:
+		if entry.get("type") != "undo" and not entry.get("undone", false):
+			live.append(int(entry.index))
+	if cursor <= 0:
+		return []
+	if cursor >= live.size():
+		return log.duplicate()
+	return log.slice(0, live[cursor - 1] + 1)

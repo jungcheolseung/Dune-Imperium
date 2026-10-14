@@ -54,12 +54,37 @@ func _initialize() -> void:
 	check(model.supported_save(saved), "basic drafted game can resume")
 	var expanded = saved.duplicate(true)
 	expanded.ruleset.bloodlines = true
-	check(not model.supported_save(expanded), "unsupported expansion save is excluded")
+	check(model.supported_save(expanded), "expansion saves can resume")
 	var other_seat = saved.duplicate(true)
 	other_seat.seats = ["app_ai", "human", "app_ai", "app_ai"]
-	check(not model.supported_save(other_seat), "save never assigns the wrong human seat")
+	check(model.supported_save(other_seat), "a different human seat can resume")
 	model.adopt({"summary": {"game_id": "end", "revision": 8}, "actions": {"actions": [{"index": 4, "action_id": "pass_combat_intrigue", "arguments": {}}]}})
 	check(model.finish_action().action_id == "pass_combat_intrigue", "combat pass remains available on the finish control")
+	var roles = {"you": {"seats": [1, 3]}, "summary": {"game_id": "roles", "revision": 2, "confirmation": 3, "decision": {"owner": 1}}, "view": {"player": 3}, "actions": {"actions": actions}}
+	roles = JSON.parse_string(JSON.stringify(roles))
+	check(model.pick_seat(roles) == 3, "confirmation takes precedence over a new hotseat decision")
+	model.adopt(roles)
+	check(model.active_seat == 3 and model.request_body(actions[0]).seat == 3, "requests carry the observed seat, never a fixed first seat")
+	model.hold(actions[2])
+	var switched = roles.duplicate(true)
+	switched.view.player = 1
+	model.adopt(switched)
+	check(model.held_action().is_empty(), "switching perspective invalidates a held action")
+	model.adopt({"summary": roles.summary, "you": {"seats": []}})
+	check(model.active_seat == -1 and model.view().is_empty() and model.actions().is_empty(), "losing a seat clears private cards and controls")
+	var clock = {"elapsed_ms": 5000, "seat_ms": [0, 0, 0, 0], "running": 0, "spell_ms": 100, "narration": [[1, 600], [2, 400]], "counting": true}
+	var reading = model.clock_reading(clock, 1500)
+	check(reading.elapsed == 6500 and reading.seats == [500.0, 600.0, 400.0, 0] and reading.spell == 600, "clock charges AI narration before the human, using server age")
+	check(clock.seat_ms == [0, 0, 0, 0] and model.clock_text(3661000) == "1:01:01", "clock display never mutates the received totals")
+	var jar = load("res://cookie_jar.gd").new()
+	jar.remember("https://one", "dune_seat_g_1=private; Path=/games/g; Max-Age=10; HttpOnly; Secure", 100)
+	check(jar.header("https://one", "/games/g/snapshot", 101).contains("private"), "owned game sends its cookie")
+	check(jar.header("https://two", "/games/g", 101).is_empty() and jar.header("https://one", "/games/g2", 101).is_empty(), "cookies never cross origin or a game path boundary")
+	check(jar.header("https://one", "/games/g", 111).is_empty(), "expired seat cookies are excluded")
+	jar.remember("https://one", "dune_seat_g_1=; Path=/games/g; Max-Age=0", 101)
+	check(jar.entries.is_empty(), "a release deletes the stored cookie")
+	var timeline = [{"type": "action", "index": 0}, {"type": "action", "index": 1, "undone": true}, {"type": "undo", "index": 2}, {"type": "chance", "index": 3}, {"type": "action", "index": 4}]
+	check(model.reviewed_log({"log": timeline}, 1).size() == 1 and model.reviewed_log({"log": timeline}, 2).size() == 4, "review log ends at its live cursor while retaining earlier undo history")
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)
