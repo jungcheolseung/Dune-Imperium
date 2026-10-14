@@ -880,7 +880,7 @@ def _server_error_messages() -> set[str]:
     messages: set[str] = set()
     sessions = ast.parse((_SERVER / "sessions.py").read_text())
     operations = tuple(
-        node.args[0].value
+        str(node.args[0].value)
         for node in ast.walk(sessions)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
