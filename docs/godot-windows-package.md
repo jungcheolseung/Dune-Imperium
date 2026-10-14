@@ -22,7 +22,14 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 
 ## 작은 플레이 업데이트
 
-최신 `dune-uprising-windows-information-update-20261014.zip`은 이전 개인용 v1/v2/v3의 프로그램을
+`dune-uprising-windows-scaling-update-20261014.zip`은 이 PC에서 만든
+`dune-uprising-windows-personal-20261014.zip`에 적용하는 화면 배율 업데이트다.
+모니터 해상도·시스템 배율에 따라 글씨·버튼·카드·팝업을 함께 확대한다.
+시스템 배율 100% 기준 FHD 100% / QHD 125% / 4K 200%이며, 창 크기와 모니터 변경에도
+다시 맞춘다. 게임을 닫고 업데이트 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의
+상위 폴더에 풀어 병합/덮어쓴 뒤 `Play Dune.cmd`로 실행한다. 저장·설정·그림은 보존한다.
+
+이전 `dune-uprising-windows-information-update-20261014.zip`은 개인용 v1/v2/v3의 프로그램을
 갱신한다. 앞서 받은 `dune-uprising-windows-play-update-20261014.zip` 적용 여부와 관계없이 쓴다.
 실행 중인 창을 닫고 ZIP 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의 **상위 폴더**에
 복사해 같은 파일을 덮어쓴다. 기존 `Play Dune.cmd`로 다시 실행한다.
