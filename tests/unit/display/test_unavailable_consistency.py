@@ -23,6 +23,10 @@ rows read (``AcquireBlock``, ``option_unplayable_reason``,
 ``test_the_refactored_providers_offer_what_they_did`` pins that refactor
 against copies of the providers as they were before it (2026-09-29): a later
 rule change to one of them should update or drop the copy on purpose.
+``combat_reward_payment_block`` and ``combat_reward_spy_recall_block``
+(2026-10-14, a Conflict reward's resource or Spies payment) are pinned by
+copies of the providers here too, over the seeded games and a sweep of every
+optional arrow (``test_the_conflict_reward_payment_blocks_are_the_old_comparisons``).
 ``combat.conflict_end_trigger_block`` (2026-10-09, the Conflict-end
 window's Harvest Cells) has no copy here: the window tests of
 ``tests/unit/rules/test_immortality_intrigue.py`` pin what it offers.
@@ -43,6 +47,7 @@ from tests.unit.display.test_unavailable import (
     HARVEST_CELLS,
     _conflict_end_window,
     _play_conflict_end,
+    reward_window,
 )
 
 from dune_imperium import RulesetConfig
@@ -151,8 +156,12 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
+    combat_reward_payment_block,
+    combat_reward_spy_recall_block,
     legal_combat_reward_influence_actions,
+    legal_combat_reward_optional_payment_actions,
     legal_combat_reward_spy_actions,
+    legal_combat_reward_spy_recall_actions,
     legal_distinct_combat_reward_influence_actions,
 )
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
@@ -1112,6 +1121,65 @@ def _old_combat_reward_spy(state: GameState, player: int) -> tuple[DomainAction,
     return ()
 
 
+def _old_combat_reward_payment(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``combat.legal_combat_reward_optional_payment_actions`` before
+    ``combat_reward_payment_block`` (2026-10-14): the resource comparison
+    was inline."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_OPTIONAL:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    context = dict(frame.context)
+    cost = context["cost"]
+    resource = context.get("resource")
+    assert isinstance(cost, int) and resource in ("solari", "spice")
+    actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
+    if getattr(state.players[player].resources, resource) >= cost:
+        actions.append(DomainAction(action_id="pay_combat_reward", actor=player))
+    return tuple(actions)
+
+
+def _old_combat_reward_spy_recall(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``combat.legal_combat_reward_spy_recall_actions`` before
+    ``combat_reward_spy_recall_block`` (2026-10-14): every pair of placed
+    Spies, which is none with fewer than two."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_SPY_RECALL:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    count = dict(frame.context)["spy_count"]
+    posts = state.players[player].spy_post_ids
+    actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
+    assert count == 2
+    actions.extend(
+        DomainAction(
+            action_id="recall_spies_for_combat_reward",
+            actor=player,
+            arguments=(
+                ("first_post_id", posts[first]),
+                ("second_post_id", posts[second]),
+            ),
+        )
+        for first in range(len(posts))
+        for second in range(first + 1, len(posts))
+    )
+    return tuple(actions)
+
+
 def _old_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
     """``unit_loss._loss_options`` before it became ``unit_loss_options``
     over ``unit_loss_block`` (2026-10-02)."""
@@ -1522,6 +1590,8 @@ _PAIRS: list[
     (legal_research_bonus_actions, _old_research_bonus),
     (legal_agent_card_recall_actions, _old_agent_card_recall),
     (legal_agent_card_icon_actions, _old_agent_card_icons),
+    (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),
+    (legal_combat_reward_spy_recall_actions, _old_combat_reward_spy_recall),
 ]
 _OPTIONS = tuple(
     option
@@ -2215,3 +2285,77 @@ def test_the_optional_block_functions_are_the_old_gates(
                     ), seed
                     compared += 1
     assert compared > 0
+
+
+# --- The Conflict reward payments before their blocks (2026-10-14) -----------
+#
+# ``combat_reward_payment_block`` and ``combat_reward_spy_recall_block``
+# replaced the providers' inline comparisons (a resource against the arrow's
+# cost, two Spies on the board); each provider now asks ``block is None``.
+# ``_old_combat_reward_payment`` and ``_old_combat_reward_spy_recall`` are the
+# comparisons as they were written inline. The seeded games above compare the
+# providers wherever one is met (``_PAIRS``); the optional windows are rare
+# in a random game, so this sweeps every optional arrow of every Conflict
+# over what the seat holds.
+
+_ARROW_CONFLICTS = (
+    ("spice_freighters", RulesetConfig()),
+    ("battle_for_imperial_basin", RulesetConfig()),
+    ("battle_for_arrakeen", RulesetConfig()),
+    ("battle_for_spice_refinery", RulesetConfig()),
+    ("economic_supremacy", RulesetConfig(epic_game=True)),
+)
+
+
+def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
+    """Over every optional arrow of every Conflict, with 0-8 of each
+    resource and 0-3 Spies on the board, each provider offers what its old
+    copy did, the payment exactly where its block is None, and the block
+    names what the seat is short of."""
+
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS)
+    decline = DomainAction(action_id="decline_combat_reward", actor=0)
+    blocked = open_windows = recalls = 0
+    for conflict_id, config in _ARROW_CONFLICTS:
+        for held in range(9):
+            for spies in range(4):
+                state = reward_window(
+                    conflict_id,
+                    config=config,
+                    resources=Resources(solari=held, spice=(held + 3) % 9),
+                    spies_supply=3 - spies,
+                    spy_post_ids=posts[:spies],
+                )
+                # Economic Supremacy's second arrow follows the first.
+                while state.decision_stack[-1].kind in (
+                    FrameKind.COMBAT_REWARD_OPTIONAL,
+                    FrameKind.COMBAT_REWARD_SPY_RECALL,
+                ):
+                    frame = state.decision_stack[-1]
+                    owner = state.players[0]
+                    legal = ENGINE.legal_actions(state, 0)
+                    if frame.kind == FrameKind.COMBAT_REWARD_SPY_RECALL:
+                        assert legal == _old_combat_reward_spy_recall(state, 0)
+                        spy_block = combat_reward_spy_recall_block(frame, owner)
+                        assert (spy_block is None) == (spies >= 2)
+                        assert (len(legal) > 1) == (spy_block is None)
+                        if spy_block is not None:
+                            assert (spy_block.needed, spy_block.held) == (2, spies)
+                        recalls += 1
+                        break
+                    assert legal == _old_combat_reward_payment(state, 0)
+                    block = combat_reward_payment_block(frame, owner)
+                    context = dict(frame.context)
+                    resource, cost = str(context["resource"]), int(str(context["cost"]))
+                    have = getattr(owner.resources, resource)
+                    pay = DomainAction(action_id="pay_combat_reward", actor=0)
+                    assert (block is None) == (pay in legal)
+                    if block is None:
+                        assert have >= cost
+                        open_windows += 1
+                    else:
+                        assert block.kind.value == resource
+                        assert (block.needed, block.held) == (cost, have)
+                        blocked += 1
+                    state = ENGINE.apply(state, decline).state
+    assert blocked > 0 and open_windows > 0 and recalls > 0

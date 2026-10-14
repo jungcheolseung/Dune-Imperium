@@ -408,7 +408,8 @@ class OptionalBlockKind(StrEnum):
     so one that cannot be used now offers no row at all; each provider gates
     it with a block function returning ``OptionalEffectBlock`` (None when it
     can be used), and the page greys the effect out with the same answer
-    (``display.unavailable``).
+    (``display.unavailable``). A Conflict reward's optional arrow is the same
+    kind of block, worded the same (``combat.combat_reward_payment_block``).
     """
 
     # A cost short of ``needed`` (``held`` now).
@@ -426,6 +427,8 @@ class OptionalBlockKind(StrEnum):
     NO_COMMANDER_IN_CONFLICT = "no_commander_in_conflict"
     NO_CARD_TO_TRASH = "no_card_to_trash"
     NO_SPY_POST = "no_spy_post"  # no Spy to place where the ability needs one
+    # Spies of the owner's on the board to recall (``needed``, ``held``).
+    SPIES_ON_BOARD = "spies_on_board"
     NO_EMPEROR_CARD = "no_emperor_card"  # another Emperor card in hand
     # Nothing in reach of the acquisition (``needed``: its cost cap, 0 when
     # it is paid in Solari, ``held`` of them).

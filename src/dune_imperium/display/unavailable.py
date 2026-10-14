@@ -14,7 +14,8 @@ for the branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
 cannot be paid or whose reward would change nothing, an Agent box's arrow
 whose reward would change nothing (OQ-071), a Conflict reward's, a research
-space's or Shipping's Faction already at the top, a Holy War unit the
+space's or Shipping's Faction already at the top, a Conflict reward's payment
+(resource or Spies) the seat is short of, a Holy War unit the
 seat does not have, a Skill the seat already holds, a Navigation card's
 option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
@@ -46,6 +47,7 @@ Display only, under four rules:
   ``shipping_influence_factions``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``conflict_end_trigger_block``,
   ``skill_choice_block``, ``tech_candidates``,
+  ``combat_reward_payment_block``, ``combat_reward_spy_recall_block``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
@@ -196,6 +198,8 @@ from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
     ConflictEndTriggerBlock,
     combat_reward_influence_block,
+    combat_reward_payment_block,
+    combat_reward_spy_recall_block,
     conflict_end_trigger_block,
 )
 from dune_imperium.rules.contracts import (
@@ -1400,13 +1404,13 @@ _NOTHING_TO_CHOOSE: Final[Reason] = (
 )
 
 
-def _spies_reason(needed: int, held: int) -> Reason:
+def _spies_reason(needed: int, held: int, code: str = "waiting") -> Reason:
     en, ko = held_text(held)
     spies = "Spy" if needed == 1 else "Spies"
     return (
         f"Needs {needed} {spies} of yours on the board{en}",
         f"보드에 내 {{spy:{needed}}} 필요{ko}",
-        "waiting",
+        code,
     )
 
 
@@ -1903,6 +1907,36 @@ def _combat_reward_influence(state: GameState, seat: int, found: _Found) -> None
             if block is CombatInfluenceBlock.TOP
             else _NAMED_FOR_THIS_REWARD,
         )
+
+
+def _combat_reward_payment(state: GameState, seat: int, found: _Found) -> None:
+    """An optional Conflict reward's arrow the seat cannot pay now.
+
+    "Each optional cost is its own arrow" [Main p. 9] [FAQ p. 3]: the window
+    always offers the refusal, and the payment (a resource, or Arrakeen's two
+    Spies recalled from the board) exactly when its block is None
+    (``combat_reward_payment_block``, ``combat_reward_spy_recall_block``);
+    otherwise it shows greyed out beside the refusal with what the seat is
+    short of. The window's terms are fixed, so a shortfall cannot be made up
+    inside it and the row sits among the choices that cannot be taken.
+    """
+
+    frame = state.decision_stack[-1]
+    owner = state.players[seat]
+    if frame.kind == FrameKind.COMBAT_REWARD_SPY_RECALL:
+        action_id = "recall_spies_for_combat_reward"
+        block = combat_reward_spy_recall_block(frame, owner)
+    else:
+        action_id = "pay_combat_reward"
+        block = combat_reward_payment_block(frame, owner)
+    if block is None:
+        return
+    found.row(
+        "choice",
+        action_id,
+        DomainAction(action_id=action_id, actor=seat),
+        _optional_block_reason(block),
+    )
 
 
 def _unit_loss_reason(zone: str, block: UnitLossBlock) -> Reason:
@@ -2445,6 +2479,8 @@ def _one_optional_reason(block: OptionalEffectBlock) -> Reason:
             return resource_reason(kind.value, needed, held)
         case OptionalBlockKind.SPECIMENS:
             return _specimen_cost_reason(needed, held)
+        case OptionalBlockKind.SPIES_ON_BOARD:
+            return _spies_reason(needed, held, "cost")
         case OptionalBlockKind.HAND:
             en, ko = held_text(held)
             return (
@@ -2881,6 +2917,8 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.RESEARCH_BONUS: (_research_bonus,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (_combat_reward_influence,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (_combat_reward_influence,),
+    FrameKind.COMBAT_REWARD_OPTIONAL: (_combat_reward_payment,),
+    FrameKind.COMBAT_REWARD_SPY_RECALL: (_combat_reward_payment,),
     FrameKind.OPPONENT_UNIT_LOSS: (_unit_loss,),
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),

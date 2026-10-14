@@ -11,7 +11,7 @@ engine's, untouched (``test_unavailable_consistency.py`` guards that).
 
 import random
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from tests.unit.rules.test_immortality_intrigue import (
     _combat_state,
@@ -3299,6 +3299,220 @@ def test_the_optional_rows_read_nothing_hidden() -> None:
         legal = ENGINE.legal_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
         assert found is not None and found["rows"]
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            other_legal = ENGINE.legal_actions(other, seat)
+            assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Conflict reward's payment the seat cannot make (plan 4, row 1) --------
+#
+# "Each optional cost is its own arrow" [Main p. 9] [FAQ p. 3]: the window
+# always offers the refusal; the payment (a resource, or Arrakeen's two
+# Spies recalled from the board) is legal exactly when
+# ``combat_reward_payment_block`` / ``combat_reward_spy_recall_block`` are
+# None, and otherwise shows greyed out on the "choice" surface beside it.
+
+_PAY = DomainAction(action_id="pay_combat_reward", actor=0)
+_DECLINE_REWARD = DomainAction(action_id="decline_combat_reward", actor=0)
+_RECALL_SPIES = "recall_spies_for_combat_reward"
+_EPIC = RulesetConfig(epic_game=True)
+
+
+def reward_window(
+    conflict_id: str,
+    *,
+    config: RulesetConfig = BASE,
+    sandworm: bool = False,
+    **owner_fields: Any,
+) -> GameState:
+    """Seat 0 alone wins ``conflict_id`` and its first payment window is open
+    (a "choose a Faction" Influence in front of it is answered)."""
+
+    owner = PlayerState(
+        player_id=0,
+        combat_strength=8,
+        sandworms_conflict=1 if sandworm else 0,
+        **owner_fields,
+    )
+    state = _state(
+        owner,
+        config=config,
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        decision_stack=(),
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        intrigue_deck=("intrigue:0", "intrigue:1"),
+    )
+    state = resolve_combat_rewards(state).state
+    while state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
+        state = ENGINE.apply(state, ENGINE.legal_actions(state, 0)[0]).state
+    return state
+
+
+def _reward_payment_row(state: GameState, action_id: str) -> dict[str, Any]:
+    found = _found(state)
+    assert found["refs"] == {}
+    row = _rows(found, "choice")[f"choice:{action_id}"]
+    assert [r["key"] for r in found["rows"]] == [f"choice:{action_id}"]
+    assert row["action"]["action_id"] == action_id
+    assert row["action"]["arguments"] == {}
+    return row
+
+
+def test_a_spice_payment_short_of_spice_greys_out_beside_the_refusal() -> None:
+    """Spice Freighters: "pay 3 spice for 1 VP" with 1 spice, the case that
+    showed only the refusal (79% of these windows)."""
+
+    state = reward_window("spice_freighters", resources=Resources(spice=1))
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+    row = _reward_payment_row(state, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 3 spice (you have 1)",
+        "{spice:3} 필요 (보유 1)",
+        "cost",
+    )
+    assert "card_id" not in row and row["refs"] == []
+
+
+def test_a_solari_payment_short_of_solari_names_the_solari() -> None:
+    state = reward_window("battle_for_spice_refinery", resources=Resources(solari=5))
+    assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+    row = _reward_payment_row(state, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 6 solari (you have 5)",
+        "{solari:6} 필요 (보유 5)",
+        "cost",
+    )
+    state = reward_window("battle_for_imperial_basin", resources=Resources(spice=2))
+    row = _reward_payment_row(state, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"]) == (
+        "Needs 4 spice (you have 2)",
+        "{spice:4} 필요 (보유 2)",
+    )
+
+
+def test_a_payment_the_seat_can_make_is_legal_and_greys_nothing() -> None:
+    for conflict_id, resources in (
+        ("spice_freighters", Resources(spice=3)),
+        ("battle_for_imperial_basin", Resources(spice=9)),
+        ("battle_for_spice_refinery", Resources(solari=6)),
+    ):
+        state = reward_window(conflict_id, resources=resources)
+        assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD, _PAY)
+        assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+
+
+def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
+    """Economic Supremacy prints 6 Solari then 4 spice, each its own arrow:
+    paying the first leaves the second window to be judged on what is left,
+    and a sandworm offers an arrow a second time [Main p. 14]."""
+
+    ready = reward_window(
+        "economic_supremacy", config=_EPIC, resources=Resources(solari=6, spice=3)
+    )
+    assert dict(ready.decision_stack[-1].context)["resource"] == "solari"
+    assert ENGINE.legal_actions(ready, 0) == (_DECLINE_REWARD, _PAY)
+    assert unavailable_choices(ready, 0, ENGINE.legal_actions(ready, 0)) is None
+    paid = ENGINE.apply(ready, _PAY).state
+    assert dict(paid.decision_stack[-1].context)["resource"] == "spice"
+    assert ENGINE.legal_actions(paid, 0) == (_DECLINE_REWARD,)
+    row = _reward_payment_row(paid, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"]) == (
+        "Needs 4 spice (you have 3)",
+        "{spice:4} 필요 (보유 3)",
+    )
+    declined = ENGINE.apply(ready, _DECLINE_REWARD).state
+    assert (
+        _reward_payment_row(declined, "pay_combat_reward")["reason_ko"]
+        == "{spice:4} 필요 (보유 3)"
+    )
+
+    twice = reward_window(
+        "spice_freighters", sandworm=True, resources=Resources(spice=3)
+    )
+    assert ENGINE.legal_actions(twice, 0) == (_DECLINE_REWARD, _PAY)
+    again = ENGINE.apply(twice, _PAY).state
+    while again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
+        again = ENGINE.apply(again, ENGINE.legal_actions(again, 0)[0]).state
+    assert again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    assert ENGINE.legal_actions(again, 0) == (_DECLINE_REWARD,)
+    assert _reward_payment_row(again, "pay_combat_reward")["reason_ko"] == (
+        "{spice:3} 필요 (보유 0)"
+    )
+
+
+def _post_ids(count: int) -> tuple[str, ...]:
+    return tuple(post.post_id for post in OBSERVATION_POSTS[:count])
+
+
+def test_arrakeen_s_spy_recall_short_of_spies_greys_out_the_recall() -> None:
+    """"Recall 2 Spies" needs two of the seat's Spies on the board: with one
+    (or none) only the refusal is legal and the recall greys out, "게임판에
+    스파이 2 필요"."""
+
+    for count, held_en, held_ko in ((1, "1", "1"), (0, "0", "0")):
+        state = reward_window(
+            "battle_for_arrakeen",
+            spies_supply=3 - count,
+            spy_post_ids=_post_ids(count),
+        )
+        assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_SPY_RECALL
+        assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+        row = _reward_payment_row(state, _RECALL_SPIES)
+        assert (row["reason"], row["reason_ko"], row["code"]) == (
+            f"Needs 2 Spies of yours on the board (you have {held_en})",
+            f"보드에 내 {{spy:2}} 필요 (보유 {held_ko})",
+            "cost",
+        )
+
+
+def test_a_spy_recall_with_two_spies_on_the_board_is_legal_and_greys_nothing() -> None:
+    state = reward_window(
+        "battle_for_arrakeen", spies_supply=0, spy_post_ids=_post_ids(3)
+    )
+    legal = ENGINE.legal_actions(state, 0)
+    assert legal[0] == _DECLINE_REWARD and len(legal) == 4
+    assert {action.action_id for action in legal[1:]} == {_RECALL_SPIES}
+    assert unavailable_choices(state, 0, legal) is None
+
+
+def test_no_payment_row_for_a_seat_that_does_not_decide_it() -> None:
+    for state in (
+        reward_window("spice_freighters", resources=Resources(spice=1)),
+        reward_window(
+            "battle_for_arrakeen", spies_supply=2, spy_post_ids=_post_ids(1)
+        ),
+    ):
+        for seat in range(1, 4):
+            legal = ENGINE.legal_actions(state, seat)
+            assert unavailable_choices(state, seat, legal) is None
+
+
+def test_the_payment_rows_read_nothing_hidden() -> None:
+    """Resources and Spies on the board are public: re-dealing every zone
+    the seat cannot see leaves the legal list and the rows as they are."""
+
+    states = (
+        reward_window("spice_freighters", resources=Resources(spice=1)),
+        reward_window("battle_for_spice_refinery", resources=Resources(solari=2)),
+        reward_window(
+            "battle_for_arrakeen", spies_supply=2, spy_post_ids=_post_ids(1)
+        ),
+    )
+    rng = random.Random(5)
+    for state in states:
+        legal = ENGINE.legal_actions(state, 0)
+        found = cast(dict[str, Any] | None, unavailable_choices(state, 0, legal))
+        assert found is not None and len(found["rows"]) == 1
         for _ in range(20):
             hidden = determinize(state, 0, rng)
             hidden_legal = ENGINE.legal_actions(hidden, 0)
