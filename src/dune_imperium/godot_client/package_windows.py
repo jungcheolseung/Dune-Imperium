@@ -60,7 +60,11 @@ Python, uv, Git, Godot을 따로 설치할 필요가 없습니다.
 테이블에서 지도자 능력·교전 보상·목표·공개 카드 더미를 살펴봅니다.
 저장 / 이어하기로 판을 이어갑니다. saves 폴더는 업데이트 때 보존하세요.
 
-이 배포본은 기본 봉기 게임과 앱 AI 셋을 사용하는 개발 시제품입니다.
+새 게임에서 기본판/웹 기본 옵션, 좌석 종류·AI 난이도·확장을 선택할 수 있습니다.
+메뉴에서 원격 접속·관전/다시보기·언어·연출·효과음·서버 설정을 엽니다.
+손패와 책략은 드래그로 정렬하고, 열 사이를 드래그하면 너비를 저장합니다.
+승점을 누르면 승점 기록, 행동 기록을 누르면 이벤트 상세를 봅니다.
+이 배포본의 기본 AI는 앱 AI이며 학습 런타임은 별도로 지정합니다.
 이전 배포본의 Windows 시작·플레이는 사용자 확인을 받았습니다.
 이번 화면 변경의 Windows 조작감과 전체 카드/지도자 조합은 추가 확인이 필요합니다.
 그림을 포함한 개인용 묶음은 소유자의 컴퓨터 사이에서만 사용하세요.
@@ -170,6 +174,7 @@ def assemble(
     docs.mkdir()
     for name in (
         "godot-prototype-guide.md", "local-images.md", "godot-windows-package.md",
+        "godot-feature-parity.md",
     ):
         shutil.copyfile(source / "docs" / name, docs / name)
     # These empty folders prevent invoking Git and keep all user data local.

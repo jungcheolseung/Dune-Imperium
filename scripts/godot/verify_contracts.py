@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 
+from dune_imperium.godot_client.host_config import write_credentials
 from dune_imperium.godot_client.launch import PROJECT, ensure_godot, free_port
 from dune_imperium.godot_client.ui_data import write_ui_data
 from dune_imperium.launcher.command import build_plan
@@ -37,9 +38,16 @@ def main() -> int:
         # A synthetic test key, never any user's administrator credential.
         plan = build_plan(settings, 'a' * 48 if mode == 'remote' else None)
         server = ServerProcess(plan, log_dir=directory / f'{mode}-server')
+        credentials = None
         try:
             server.start()
             server.wait_ready()
+            extra: list[str] = []
+            if mode == 'remote':
+                credentials = write_credentials(
+                    directory, f'http://127.0.0.1:{settings.port}', 'a' * 48
+                )
+                extra.append(f'--host-credentials={credentials}')
             with (directory / f'{mode}.log').open('wb') as output:
                 result = subprocess.run([
                     str(binary), '--headless', '--path', str(PROJECT),
@@ -47,6 +55,7 @@ def main() -> int:
                     str(directory / f'{mode}-engine.log'), '--',
                     f'--server=http://127.0.0.1:{settings.port}',
                     f'--labels={labels}', f'--mode={mode}',
+                    *extra,
                 ], cwd=PROJECT_ROOT, env=env, stdout=output,
                     stderr=subprocess.STDOUT, timeout=180, check=False)
             log = (directory / f'{mode}.log').read_text(encoding='utf-8')
@@ -56,6 +65,8 @@ def main() -> int:
                 return 1
             print(f'Native {mode} contracts verified.')
         finally:
+            if credentials is not None:
+                credentials.unlink(missing_ok=True)
             stopped = server.stop()
             if not stopped.port_free:
                 raise RuntimeError('validation server did not release its port')

@@ -41,6 +41,8 @@ func check(condition: bool, message: String) -> bool:
 
 func ready_table() -> void:
 	table = load("res://main.tscn").instantiate()
+	table.tools_ui.prefs_file = "res://../../../../tmp/godot/contracts/" + mode + "-ui.json"
+	table.api.cookie_file = "res://../../../../tmp/godot/contracts/" + mode + "-native-cookies.json"
 	root.add_child(table)
 	while table.model.catalog.is_empty() or table.tools_ui.table == null:
 		await process_frame
@@ -128,6 +130,9 @@ func run() -> void:
 		if not check(int(other.code) == 403, "another human's hand is not available"):
 			return
 	await ready_table()
+	if mode == "remote":
+		if not check(table.model.server_info.admin, "one-use host credentials authenticate the native window"):
+			return
 	table.api.cookies.entries = peer.cookies.entries.duplicate(true)
 	if not await table._adopt_game(game):
 		check(false, "native game adopt")
@@ -143,6 +148,31 @@ func run() -> void:
 		await process_frame
 	if not check(table.doorbell.live, "SSE connection established"):
 		return
+	table.doorbell._retry()
+	deadline = Time.get_ticks_msec() + 6000
+	while not table.doorbell.live and Time.get_ticks_msec() < deadline:
+		await process_frame
+	if not check(table.doorbell.live, "SSE reconnects after a dropped stream"):
+		return
+	var original_hand = table.model.view().private.hand.duplicate()
+	if original_hand.size() >= 2:
+		var revision = table.model.summary().revision
+		table.layout_ui.move(original_hand[-1], original_hand[0], "hand")
+		if not check(table.layout_ui.ordered(original_hand, "hand")[0] == original_hand[-1] and table.model.view().private.hand == original_hand and table.model.summary().revision == revision, "local card order never changes engine hand order or revision"):
+			return
+	table.model.language = "en"
+	table._render()
+	if not check(table.new_button.text == "New Game" and table.own_line.text.begins_with("My hand"), "English updates existing chrome and dynamic hand labels"):
+		return
+	table.model.language = "ko"
+	table._render()
+	var pile = table._open_pile("Private hand test", original_hand, true)
+	var viewer = pile.get_meta("pile_viewer")
+	viewer.inspect(str(original_hand[0]))
+	if not check(viewer.heading.text == table.model.name_of(str(original_hand[0])) and viewer.refs.size() == original_hand.size() and not viewer.preserve_order, "live pile viewer reads its card and cannot expose hidden order"):
+		return
+	pile.confirmed.emit()
+	await process_frame
 	if mode == "open":
 		var switched = false
 		for attempt in range(45):
@@ -185,6 +215,33 @@ func run() -> void:
 		return
 	if not check(table.model.active_seat == 2 and int(table.tools_ui.review.cursor) == 3, "review switches seat at the same step"):
 		return
+	table.tools_ui.playback_interval = 0.05
+	table.tools_ui.playback_unit = "step"
+	table.tools_ui.playback = true
+	table.tools_ui._playback_next()
+	deadline = Time.get_ticks_msec() + 3000
+	while int(table.tools_ui.review.cursor) == 3 and Time.get_ticks_msec() < deadline:
+		await process_frame
+	table.tools_ui.playback = false
+	if not check(int(table.tools_ui.review.cursor) > 3 and table.finish_button.disabled, "review playback advances without enabling live moves"):
+		return
+	var slider: HSlider
+	for control in table.content.find_children("*", "HSlider", true, false):
+		if control.has_meta("review_slider"):
+			slider = control
+	slider.value = 8
+	deadline = Time.get_ticks_msec() + 3000
+	while int(table.tools_ui.review.cursor) != 8 and Time.get_ticks_msec() < deadline:
+		await process_frame
+	if not check(int(table.tools_ui.review.cursor) == 8, "keyboard/value changes seek the review slider without a mouse drag"):
+		return
+	var deck = table.model.view().disclosure.imperium_deck
+	pile = table._open_pile("Disclosed deck order", deck, true)
+	viewer = pile.get_meta("pile_viewer")
+	if not check(viewer.preserve_order and viewer.shown.map(func(group): return group.ref) == deck, "ended-game disclosure keeps each physical card in server deck order"):
+		return
+	pile.confirmed.emit()
+	await process_frame
 	var live = await host.call_json(HTTPClient.METHOD_GET, "/games/" + str(finished.data.game_id))
 	if not check(live.data.revision == finished.data.revision, "seeking never mutates the finished game"):
 		return
@@ -193,6 +250,57 @@ func run() -> void:
 		return
 	var loaded = await host.call_json(HTTPClient.METHOD_POST, "/saves/" + str(saved.data.save_id) + "/load")
 	if not check(loaded.ok and loaded.data.finished and loaded.data.game_id != finished.data.game_id, "restore uses a new game identity"):
+		return
+	# All destructive UI checks use only the dedicated test server/save directory.
+	table.api.cookies.entries = host.cookies.entries.duplicate(true)
+	if mode == "remote":
+		table.model.server_info.admin = true
+	var save_dialog = await table._show_saves()
+	var remove: Button
+	for button in save_dialog.find_children("*", "Button", true, false):
+		if button.get_meta("delete_save_id", "") == str(saved.data.save_id):
+			remove = button
+	if not check(remove != null, "save has a deletion control"):
+		return
+	remove.pressed.emit()
+	var confirmation: ConfirmationDialog
+	for child in table.find_children("*", "Window", true, false):
+		if child is ConfirmationDialog:
+			confirmation = child
+	if not check(confirmation != null, "save deletion asks for a second explicit click"):
+		return
+	confirmation.canceled.emit()
+	await process_frame
+	var list = await host.call_json(HTTPClient.METHOD_GET, "/saves")
+	if not check(list.data.any(func(row): return str(row.save_id) == str(saved.data.save_id)), "cancel preserves the saved game"):
+		return
+	remove.pressed.emit()
+	for child in table.find_children("*", "Window", true, false):
+		if child is ConfirmationDialog and not child.is_queued_for_deletion():
+			confirmation = child
+	confirmation.confirmed.emit()
+	await create_timer(0.2).timeout
+	list = await host.call_json(HTTPClient.METHOD_GET, "/saves")
+	if not check(not list.data.any(func(row): return str(row.save_id) == str(saved.data.save_id)), "confirmed deletion removes only the selected test save"):
+		return
+	var fake_list = AcceptDialog.new()
+	table.add_child(fake_list)
+	table.tools_ui.delete_game(str(loaded.data.game_id), fake_list)
+	for child in table.find_children("*", "Window", true, false):
+		if child is ConfirmationDialog and child.has_meta("delete_game_id"):
+			confirmation = child
+	confirmation.canceled.emit()
+	var kept = await host.call_json(HTTPClient.METHOD_GET, "/games/" + str(loaded.data.game_id))
+	if not check(kept.ok, "cancel preserves the selected game"):
+		return
+	table.tools_ui.delete_game(str(loaded.data.game_id), fake_list)
+	for child in table.find_children("*", "Window", true, false):
+		if child is ConfirmationDialog and child.has_meta("delete_game_id") and not child.is_queued_for_deletion():
+			confirmation = child
+	confirmation.confirmed.emit()
+	await create_timer(0.2).timeout
+	kept = await host.call_json(HTTPClient.METHOD_GET, "/games/" + str(loaded.data.game_id))
+	if not check(not kept.ok, "confirmed deletion removes the selected test game"):
 		return
 	print("GODOT_CONTRACTS_OK ", JSON.stringify({"mode": mode, "checks": checks}))
 	timer.stop()
