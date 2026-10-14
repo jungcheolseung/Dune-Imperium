@@ -29,8 +29,8 @@
 | 항목 | 값 |
 | --- | --- |
 | master | search-combat-lead 병합 (2026-10-13) |
-| pytest | master 기준 7,531개 통과(에셋이 없으면 일부 skip). Godot 브랜치 현재 7,554개 수집. 변경 전 전체 7,531 통과·9 skip·임시 경로 override 실패 1건(기본 설정 단독 통과). 클라이언트/배포 회귀 23개 통과 |
-| Ruff · mypy | master `src tests` 통과, mypy 487파일. Godot 브랜치 494파일 통과(검증 스크립트 포함 495), Windows portable 진입점 타입 검사도 통과. `scripts/`의 기존 Ruff 오류 68건은 검사 대상 아님 |
+| pytest | master 기준 7,531개 통과(에셋이 없으면 일부 skip). Godot 브랜치 현재 7,556개 수집. 변경 전 전체 7,531 통과·9 skip·임시 경로 override 실패 1건(기본 설정 단독 통과). 클라이언트/배포 회귀 25개 통과 |
+| Ruff · mypy | master `src tests` 통과, mypy 487파일. Godot 브랜치 494파일 통과(검증 스크립트 포함 496), Windows portable 진입점 타입 검사도 통과. `scripts/`의 기존 Ruff 오류 68건은 검사 대상 아님 |
 | 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 engine-speed-audit 병합(62 통과) |
 | action codec | **v145** (다음 번호 v146) |
 | 관측 | v31, 4,537 int |
@@ -84,16 +84,15 @@
 
 **플레이 화면**
 
-- **Godot PC 2D 시제품:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
-  기존 서버에 연결한 기본 게임+앱 AI 화면. 드래프트·책략·구매·전투·최종 순위·저장/이어하기를
-  구현했고 네 판의 8~9라운드 완주와 중간 복원을 검증했다(49종 행동·12종 결정창).
-  Python·uv·Git이 없는 Windows용으로 런타임·서버 의존성·개인 그림을 포함한 ZIP 후보를 만들었다
-  (압축 243.7 MiB / 풀면 357.7 MiB). 소유자 개인용이며 공개 이미지 배포가 아니다.
-  사용자가 이전 ZIP의 Windows 시작·플레이 가능을 확인했다. 웹과 UI가 너무 다르다는 피드백에
-  웹의 열 배치·항상 보이는 시장/기록·큰 카드 hover·보드 병력 그림을 맞췄고, 작은 창의 실제 구매와
-  드래프트 유무 두 판의 완주/복원도 다시 확인했다. 다음은 갱신 ZIP의 Windows 조작감·완주 피드백과
-  열 너비/손패 순서·지도자별 표시·연출 개선이며,
-  전수 카드/지도자 화면 감사·원격 인증·확장·release export/설치 프로그램은 후속 범위다.
+- **Godot PC 2D 클라이언트:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
+  기본판 드래프트·책략·구매·전투·최종 순위·저장/이어하기와 네 판 완주를 검증했다(49종 행동·12종
+  결정창). Python·uv·Git 없는 개인용 Windows ZIP(243.7 MiB / 풀면 357.7 MiB)은 사용자 시작/플레이
+  확인을 받았다. 웹과 같은 열 배치·큰 카드 hover·항상 보이는 시장/기록·보드 조각으로 개선했다.
+  사용자가 기존 웹 기능 전체 대응을 요청해 진행 중이다. 첫 좌석 아닌 사람·로컬 좌석 교대·쿠키/SSE·
+  새 설정·저장/다시보기·관전·시계 기반을 연결하고 모델 31항목, 실제 open 23 / remote 25항목을
+  통과했다. 전용 확장/지도자 표시·정보 조회·개인 배치·두 언어·선택 불가·연출·호스트 설정·배포
+  갱신을 이어 간다. [기능 대응 표](godot-feature-parity.md)를 갱신하며 전체 완료 선언은 아니다.
+  release export/설치 프로그램·전수 카드/지도자 감사는 후속 범위다.
   [설치 없는 ZIP](godot-windows-package.md), [개발용 실행](godot-prototype-guide.md), [전체 계획](godot-client-plan.md)
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
