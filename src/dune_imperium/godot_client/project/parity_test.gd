@@ -146,6 +146,18 @@ func run() -> void:
 						var paid = table.model.cost_text(table.model.paid_cost(action))
 						check(table.model.describe(action).contains(table.model.native("지불 비용: ") + (table.model.ui("render.free") if paid.is_empty() else paid)), "the actual action label names the discounted payment")
 				var chosen = table.model.actions().filter(func(row): return int(row.index) == int(scenario.index))[0]
+				table._action_details(chosen, str(scenario.card))
+				await settled()
+				var dialogs = table.find_children("*", "Window", true, false).filter(func(window): return window.visible and not window.is_queued_for_deletion() and window.has_meta("action_detail_index"))
+				if check(dialogs.size() == 1, "a placement's two-target preview opens"):
+					var labels = dialogs[0].find_children("*", "Label", true, false).map(func(label): return label.text)
+					check(scenario.preview_names.all(func(name): return name in labels), "card and board-space preview names equal the actual browser's detail")
+					var position = labels.find(table.model.name_of(str(chosen.arguments.space_id)))
+					var body = str(labels[position + 1]) if position >= 0 and position + 1 < labels.size() else ""
+					check(body.contains(table.model.phrase(scenario.preview_effect)), "the detailed board body contains the browser's selected option, using native amount grammar")
+					dialogs[0].confirmed.emit()
+					await process_frame
+				check(int(table.model.summary().revision) == revision, "inspecting multiple targets never sends a placement")
 				if table.has_method("_apply_placement"):
 					await table._apply_placement(chosen, table.model.signature())
 				else:
