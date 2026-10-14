@@ -186,7 +186,8 @@ _LOG_LINES: Final = tuple(
         ),
     )
 )
-# uvicorn's level word at the start of any other line of its (an access line).
+# Any other line in uvicorn's format (an access line, a warning) keeps its text
+# and gets its level word in Korean.
 _LEVEL_WORDS: Final = {
     "INFO": "정보",
     "WARNING": "경고",
