@@ -89,3 +89,51 @@ def ensure_extra_saves(directory: Path) -> dict[str, str]:
         raise RuntimeError('bounded UI fixture walk missed: '
                            + ', '.join(sorted(missing)))
     return {name: found[name] for name in wanted}
+
+
+def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
+    """Save actual offered research/contract/leader decisions, never edited UI state."""
+    store = SaveStore(directory)
+    found: dict[str, dict[str, Any]] = {}
+    targets = {
+        'choice-research': {'choose_research_space'},
+        'choice-contract': {'take_contract', 'complete_contract'},
+        'choice-leader': {'choose_leader_signet_influence',
+                          'gain_leader_signet_troop', 'trash_leader_card',
+                          'pay_leader_signet_solari', 'pay_leader_signet_spice'},
+    }
+    for seed in (22, 3, 11, 1):
+        manager: Any = GameSessionManager()
+        summary = manager.create_game(
+            ('human',) * 4, game_seed=seed, choam_module=True,
+            bloodlines=True, tech_module=True, immortality=True,
+            leader_draft=True)
+        game = str(summary['game_id'])
+        agents = [HeuristicAgent(seed=7000 + seed * 4 + s) for s in range(4)]
+        for _ in range(2000):
+            if summary['finished']:
+                break
+            if summary['confirmation'] is not None:
+                summary = manager.confirm_turn(
+                    game, int(summary['confirmation']), int(summary['revision']))
+                continue
+            owner = int(summary['decision']['owner'])
+            session = manager._get(game)
+            actions = session.engine.legal_actions(session.state, owner)
+            for name, ids in targets.items():
+                target = next((i for i, a in enumerate(actions)
+                               if a.action_id in ids), None)
+                if target is not None and name not in found:
+                    saved = store.write(manager.save_game(game, name=name))
+                    found[name] = dict(save_id=str(saved['save_id']), index=target)
+            if targets.keys() <= found.keys():
+                return found
+            preferred = next((a for a in actions if
+                (a.action_id == 'pick_leader' and dict(a.arguments).get('leader_id')
+                 == 'shaddam_corrino_iv') or a.action_id == 'take_contract'), None)
+            chosen = preferred or agents[owner].choose_action(
+                session.engine.observe(session.state, owner), actions)
+            summary = manager.apply_action(
+                game, owner, int(summary['revision']), actions.index(chosen))
+    raise RuntimeError('bounded expansion UI walk missed: '
+                       + ', '.join(targets.keys() - found.keys()))

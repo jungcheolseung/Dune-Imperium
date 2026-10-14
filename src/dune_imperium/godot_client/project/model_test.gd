@@ -124,6 +124,7 @@ func _initialize() -> void:
 	test_staged_picks()
 	test_private_deck()
 	test_quantities()
+	test_choice_zones()
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)
@@ -239,3 +240,33 @@ func test_quantities() -> void:
 	model.snapshot.actions.actions = calls
 	model.stage_quantity(calls[1])
 	check(int(model.finish_action().index) == 9, "the open call uses the staged DTO as the single turn-end action")
+
+
+func test_choice_zones() -> void:
+	var model = Model.new()
+	var refs = ["player:1:starter:dagger:0", "imperium:dagger:1", "reserve:dagger:2", "imperium:dagger:3"]
+	var rows: Array = []
+	for index in range(refs.size()):
+		rows.append({"index": index, "action_id": "trash_optional_card", "arguments": {"card_id": refs[index]}})
+	rows.append({"index": 4, "action_id": "trash_grafted_card_for_influence", "arguments": {}})
+	model.adopt({"summary": {"game_id": "zones", "revision": 1}, "view": {"player": 1, "private": {"hand": [refs[0]]}, "players": [{"player": 1, "discard_pile": [refs[1]], "in_play": [refs[2], refs[3]]}], "turn_card_ids": [refs[2]], "box_losing_trash": [{"action_id": "trash_optional_card", "card_id": refs[2]}, {"action_id": "trash_grafted_card_for_influence"}]}, "actions": {"actions": rows}})
+	check(model.own_card_zone(refs[0]) == "hand" and model.own_card_zone(refs[1]) == "discard_pile", "physical copies use the viewing seat's actual hand and discard zones")
+	check(model.own_card_zone("imperium:dagger:8").is_empty(), "unowned and unseen cards have no personal zone")
+	var zones = model.choice_zones(rows)
+	check(zones == {0: "hand", 1: "discard_pile", 2: "turn_pending", 3: "earlier_turn", 4: "turn_pending"}, "current-turn, earlier-turn and card-less graft trash warnings come from the server dry run")
+	model.snapshot.view.box_losing_trash = []
+	check(model.choice_zones(rows)[2] == "turn", "a pending box alone never invents a lost-box warning for a self-trash")
+	model.snapshot.view.turn_card_ids = []
+	check(model.choice_zones([rows[2], rows[3]]).is_empty(), "same-pile interchangeable copies do not gain misleading suffixes")
+	model.snapshot.view.private.hand = []
+	model.snapshot.view.players = [{"player": 0, "in_play": [refs[2]], "discard_pile": [refs[1]]}]
+	check(model.choice_zones(rows).is_empty(), "another seat's public cards are not classified as our personal piles")
+	model.catalog = {"cards": {"dagger": {"name": "Dagger"}}, "spaces": {"a": {"name": "A"}}}
+	var pair = {"index": 5, "action_id": "agent_turn", "arguments": {"space_id": "a", "card_id": refs[0], "cards": [refs[0], refs[1]], "effect_key": "unrecognized"}}
+	check(model.preview_refs(pair) == ["a", refs[0], refs[1]], "effect previews include all known references once, including nested card arrays")
+	model.snapshot.actions.agent_boxes = [{"box": 1, "card_id": refs[0]}]
+	var box = {"index": 6, "action_id": "resolve_agent_card_effect", "box": 1, "arguments": {}}
+	check(model.preview_refs(box) == [refs[0]], "an argument-less Agent box can inspect the server-named card")
+	model.snapshot.actions.agent_boxes = null
+	check(model.preview_refs(pair) == ["a", refs[0], refs[1]], "server null boxes leave ordinary effect previews available")
+	check(model.describe(rows[2]) == model.live_description(rows[2]), "personal zone warnings stay out of the shared log description")

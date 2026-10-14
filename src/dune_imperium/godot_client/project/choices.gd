@@ -23,9 +23,13 @@ func render(actions: Array) -> void:
 			var disabled = waiting.filter(func(row): return row.get("box") == box.box)
 			if rows.is_empty() and disabled.is_empty() and not box.get("locked", false):
 				continue
-			table._label(table.content, table.model.ui("render.agent_box_heading", {"name": table.model.localized(box, "name")}), 17).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			if box.get("locked", false):
-				table._label(table.content, table.model.ui("render.agent_box_locked"), 13).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var heading = table._label(table.content, table.model.ui("render.agent_box_heading", {"name": table.model.localized(box, "name")}), 17)
+			heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			heading.set_meta("agent_box", int(box.box))
+			if box.get("locked", false) and rows.is_empty() and disabled.is_empty():
+				var note = table._label(table.content, table.model.ui("render.agent_box_locked"), 13)
+				note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				note.set_meta("locked_box", int(box.box))
 			_rows(rows, disabled, [])
 		var other = actions.filter(func(action): return action.get("box") == null)
 		var other_disabled = waiting.filter(func(row): return row.get("box") == null)
@@ -37,6 +41,7 @@ func render(actions: Array) -> void:
 
 
 func _rows(actions: Array, waiting: Array, lines: Variant) -> void:
+	var suffixes = table.model.choice_zones(actions)
 	var groups: Dictionary = {}
 	var order: Array = []
 	for action in actions:
@@ -61,14 +66,39 @@ func _rows(actions: Array, waiting: Array, lines: Variant) -> void:
 				descriptions[int(line.action_index)] = table.model.phrase(table.model.localized(line, "text"))
 			else:
 				_unavailable_line(table.model.phrase(table.model.localized(line, "text")), table.model.phrase(table.model.localized(line, "reason")))
+	# Fold quantities first; only the remaining physical card rows form pile runs.
+	var rows: Array = []
+	var zones: Dictionary = {}
 	for key in order:
 		var group = groups[key]
 		var count_control = not group.field.is_empty() and (group.actions.size() >= 3 or group.actions[0].action_id in table.Model.AUCTION_AMOUNTS or group.actions[0].action_id in table.Model.FORCE_AMOUNTS)
-		if not count_control:
-			for action in group.actions:
-				table._action_button(action, descriptions.get(int(action.index), ""))
+		if count_control:
+			rows.append({"group": group, "zone": ""})
 		else:
-			_quantity(group.actions, group.field, descriptions)
+			for action in group.actions:
+				var zone = table.model.own_card_zone(str(action.arguments.get("card_id", "")))
+				rows.append({"action": action, "zone": zone})
+				if not zone.is_empty():
+					zones[zone] = true
+	var run = ""
+	for index in range(rows.size()):
+		var row = rows[index]
+		if zones.size() >= 2 and row.zone != run:
+			if not row.zone.is_empty():
+				var count = 0
+				while index + count < rows.size() and rows[index + count].zone == row.zone:
+					count += 1
+				var word = table.model.phrase("{" + row.zone + "}")
+				var heading = table._label(table.content, table.model.ui("render.zone_heading", {"zone": word.left(1).to_upper() + word.substr(1), "count": count}), 13)
+				heading.set_meta("choice_zone", row.zone)
+				heading.set_meta("zone_count", count)
+			else:
+				table.content.add_child(HSeparator.new())
+			run = row.zone
+		if row.has("action"):
+			table._action_button(row.action, descriptions.get(int(row.action.index), ""), str(suffixes.get(int(row.action.index), "")))
+		else:
+			_quantity(row.group.actions, row.group.field, descriptions)
 	for row in waiting:
 		_unavailable_line(table.model.describe(row.action), table.model.phrase(table.model.localized(row, "reason")), row.get("refs", []))
 

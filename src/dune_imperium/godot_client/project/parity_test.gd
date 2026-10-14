@@ -41,10 +41,13 @@ func indices(rows: Array) -> Array:
 func capture_evidence(name: String) -> void:
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--evidence="):
+			print("PARITY_CAPTURE_START ", name)
 			table.capture_dir = argument.trim_prefix("--evidence=")
 			DirAccess.make_dir_recursive_absolute(table.capture_dir)
 			await table._wait_images()
+			print("PARITY_CAPTURE_IMAGES_READY ", name)
 			await table._capture(name)
+			print("PARITY_CAPTURE_WIDE_READY ", name)
 			table.get_window().size = Vector2i(1100, 740)
 			await process_frame
 			await process_frame

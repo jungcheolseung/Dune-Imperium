@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-from parity_fixtures import ensure_extra_saves
+from parity_fixtures import ensure_choice_expansions, ensure_extra_saves
 
 from dune_imperium.agents import HeuristicAgent
 from dune_imperium.godot_client.launch import PROJECT, ensure_godot, free_port
@@ -243,6 +243,89 @@ def info_case(page: Any, base: str, game: str, language: str) -> dict[str, Any]:
     return case
 
 
+def choice_fixtures(directory: Path) -> dict[str, dict[str, Any]]:
+    metadata = directory / 'choice-fixtures.json'
+    if metadata.exists():
+        cached: dict[str, dict[str, Any]] = json.loads(
+            metadata.read_text(encoding='utf-8'))
+        if 'choice-research' in cached:
+            return cached
+        found = cached
+    else:
+        found = {}
+    for script, name in (('graft_box_saves.py', 'graft-boxes'),
+                         ('turn_card_trash_saves.py', 'turn-card-pending')):
+        if name in found:
+            continue
+        run = subprocess.run([
+            sys.executable, str(PROJECT_ROOT / 'scripts/e2e/fixtures' / script),
+            str(directory),
+        ], cwd=PROJECT_ROOT, check=True, timeout=180, capture_output=True,
+            text=True, encoding='utf-8')
+        found.update(json.loads(run.stdout))
+    found.update(ensure_choice_expansions(directory))
+    metadata.write_text(json.dumps(found), encoding='utf-8')
+    return found
+
+
+def choice_layout(page: Any) -> dict[str, Any]:
+    layout: dict[str, Any] = page.evaluate('''() => ({
+        boxes: [...document.querySelectorAll('#actions .agent-box-heading[data-box]')]
+            .map(n => ({box: Number(n.dataset.box), text: n.textContent})),
+        locks: [...document.querySelectorAll('#actions .agent-box-note')]
+            .map(n => ({box: Number(n.dataset.box), text: n.textContent})),
+        zones: [...document.querySelectorAll('#actions .zone-heading')]
+            .map(n => ({zone: n.dataset.zone, text: n.textContent})),
+        indices: [...document.querySelectorAll('#actions .action-item')]
+            .map(n => Number(n.dataset.index)),
+        suffixes: [...zoneSuffixes(state.actions.actions)].map(([a, zone]) =>
+            ({index: a.index, text: zoneSuffixNode(zone).textContent}))
+    })''')
+    return layout
+
+
+def choice_case(page: Any, base: str, game: str, language: str, kind: str,
+                fixture: dict[str, Any]) -> dict[str, Any]:
+    page.goto(base + '/#game=' + game)
+    page.wait_for_function('state.view !== null && refreshFlight === null')
+    page.evaluate('(language) => setLanguage(language)', language)
+    seat = page.evaluate('state.viewSeat')
+    revision = page.evaluate('state.summary.revision')
+    case: dict[str, Any] = dict(kind=kind, seat=seat, language=language,
+                                before=choice_layout(page))
+    if kind == 'box':
+        case['index'] = fixture['lock_index']
+    elif kind == 'decision':
+        case['index'] = fixture['index']
+    else:
+        ref = fixture['this_turn' if kind == 'trash-current' else 'earlier']
+        case['index'] = page.evaluate('''ref => state.actions.actions.find(
+            a => a.action_id === 'trash_optional_card'
+                && a.arguments.card_id === ref).index''', ref)
+    case['previews'] = page.evaluate('''index => actionPreviewEntries(
+        state.actions.actions.find(a => a.index === index)).map(e => e.name)''',
+        case['index'])
+    selector = f'#actions .action-item[data-index="{case["index"]}"] button'
+    page.locator(selector).first.click()
+    page.wait_for_function('''revision => !state.busy && refreshFlight === null
+        && state.summary.revision === revision + 1''', arg=revision)
+    case['after'] = choice_layout(page)
+    if kind == 'box':
+        assert case['after']['locks'], 'real bundled choice must lock the other box'
+        page.locator('#decision-info .undo-row button').first.click()
+        page.wait_for_function('''revision => !state.busy && refreshFlight === null
+            && state.summary.revision === revision
+            && state.summary.undo_count === 1''', arg=revision)
+        case['restored'] = choice_layout(page)
+        case['other_index'] = fixture['box_one_index']
+        selector = f'#actions .action-item[data-index="{case["other_index"]}"] button'
+        page.locator(selector).first.click()
+        page.wait_for_function('''revision => !state.busy && refreshFlight === null
+            && state.summary.revision === revision + 1''', arg=revision)
+    case['expected'] = digest(request(base, f'/games/{game}/snapshot?seat={seat}'))
+    return case
+
+
 def quantity_case(page: Any, base: str, game: str,
                   action_id: str, language: str) -> dict[str, Any]:
     page.goto(base + '/#game=' + game)
@@ -296,20 +379,24 @@ def main() -> int:
     parser.add_argument('--chromium', default=os.environ.get('E2E_CHROMIUM'))
     parser.add_argument('--baseline-project', type=Path,
                         help='Run old unique/held behavior to prove regressions')
-    parser.add_argument('--suite', choices=('core', 'info', 'quantity'),
+    parser.add_argument('--suite', choices=('core', 'info', 'quantity', 'choices'),
                         default='core')
     parser.add_argument('--evidence', action='store_true',
                         help='Capture information or quantity screens on a display')
     args = parser.parse_args()
     if args.evidence and args.suite == 'core':
-        parser.error('--evidence requires --suite info or quantity')
+        parser.error('--evidence requires --suite info, quantity or choices')
     binary = ensure_godot(args.godot)
     directory = TMP_DIR / 'godot/parity'
     saves = directory / 'saves'
     saves.mkdir(parents=True, exist_ok=True)
     names = fixtures(saves)
-    if args.suite != 'core':
+    choice_data: dict[str, dict[str, Any]] = {}
+    if args.suite in ('info', 'quantity'):
         names.update(ensure_extra_saves(saves))
+    if args.suite == 'choices':
+        choice_data = choice_fixtures(saves)
+        names.update({name: row['save_id'] for name, row in choice_data.items()})
     labels = directory / 'labels.json'
     write_ui_data(labels)
     empty = directory / 'empty-assets'
@@ -353,6 +440,13 @@ def main() -> int:
                     ('scouts_bid', 'parity-zero-bid'),
                     ('scouts_call', 'parity-call'),
                     ('scouts_call', 'parity-zero-call'))]
+            if args.suite == 'choices':
+                scenarios = [('box', 'graft-boxes', False)] + [
+                    (kind, name, False) for name in
+                    ('turn-card-pending', 'turn-card-done') for kind in
+                    ('trash-current', 'trash-earlier')]
+                scenarios += [('decision', name, False) for name in
+                              ('choice-research', 'choice-contract', 'choice-leader')]
             for kind, name, space_first in scenarios:
                 print(f'Compare {kind} (space first: {space_first})', flush=True)
                 path = '/saves/' + names[name] + '/load'
@@ -362,10 +456,14 @@ def main() -> int:
                         case = info_case(page, base, browser_game, language)
                     elif args.suite == 'quantity':
                         case = quantity_case(page, base, browser_game, kind, language)
+                    elif args.suite == 'choices':
+                        case = choice_case(page, base, browser_game, language,
+                                           kind, choice_data[name])
                     else:
                         case = browser_case(page, base, browser_game, kind,
                                             space_first=space_first)
                     case['game'] = request(base, path, {})['game_id']
+                    case['fixture'] = name
                     cases.append(case)
             browser.close()
             if errors:
@@ -379,7 +477,8 @@ def main() -> int:
         log_file = directory / (
             'baseline.log' if args.baseline_project else 'native.log')
         script = {'core': 'parity_test.gd', 'info': 'info_parity_test.gd',
-                  'quantity': 'quantity_parity_test.gd'}[args.suite]
+                  'quantity': 'quantity_parity_test.gd',
+                  'choices': 'choice_parity_test.gd'}[args.suite]
         display_args = ([f'--evidence={directory / "screenshots"}']
                         if args.evidence else [])
         with log_file.open('wb') as output:
@@ -392,7 +491,9 @@ def main() -> int:
                 f'--labels={labels}', f'--scenarios={scenario_file}',
                 *display_args,
             ], cwd=PROJECT_ROOT, env=env, stdout=output,
-                stderr=subprocess.STDOUT, timeout=150, check=False)
+                stderr=subprocess.STDOUT,
+                timeout=360 if args.evidence and args.suite == 'choices' else 150,
+                check=False)
         log = log_file.read_text(encoding='utf-8')
         if result.returncode or 'GODOT_PARITY_OK' not in log or 'ERROR:' in log:
             print(log, file=sys.stderr)
