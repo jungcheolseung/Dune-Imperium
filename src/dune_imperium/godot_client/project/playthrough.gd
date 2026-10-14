@@ -207,8 +207,11 @@ func run(client: Control, seeds: String) -> void:
 		while not table.model.summary().get("finished", false):
 			if stopped:
 				return
-			if steps >= 1700 or Time.get_ticks_msec() > deadline:
-				fail("game did not finish, seed=" + value)
+			if steps >= 1700:
+				fail("step limit, seed=%s steps=%d revision=%d" % [value, steps, int(table.model.summary().revision)])
+				return
+			if Time.get_ticks_msec() > deadline:
+				fail("time limit, seed=%s steps=%d revision=%d" % [value, steps, int(table.model.summary().revision)])
 				return
 			var summary = table.model.summary()
 			if int(summary.round_number) != last_round:

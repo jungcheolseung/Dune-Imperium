@@ -194,6 +194,18 @@ def browser_case(page: Any, base: str, game: str, kind: str,
                     a.arguments.cost_option || 0].cost, a.arguments.discount)
             }))''')
             case['index'] = chosen['index']
+            selector = f'#actions .action-item[data-index="{chosen["index"]}"]'
+            page.locator(selector + ' .action-info').click()
+            case['preview_names'] = page.locator(
+                selector + ' .action-detail .popover-title').all_text_contents()
+            assert len(case['preview_names']) == 2
+            case['preview_effect'] = page.evaluate('''index => {
+                const action = state.actions.actions.find(a => a.index === index);
+                const option = spaceOptionsFor(
+                    state.catalog.spaces[action.arguments.space_id])[
+                    action.arguments.cost_option || 0];
+                return option.effect_ko || option.effect;
+            }''', chosen['index'])
             selector = ('#actions .action-item'
                         f'[data-index="{chosen["index"]}"] button')
             page.locator(selector).first.click()
