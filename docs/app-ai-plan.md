@@ -67,8 +67,9 @@ registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
 3. **`DeferredThresholdReached`를 재현한다.** 이번 턴 카드·칸·손의 책략·해당 계약의 `DeferValue` 합이 3 이상이면, 뽑기·칸 영향력·
    계약 획득이 자동 처리에서 행동 뒤 질문으로 넘어가 값으로 순서가 정해진다(`engine-order.md` §4.1–4.2).
 4. **Plot은 앱의 세 창에서만 쓴다.** 턴 시작, Agent 행동 뒤(우리 `agent_effects`에서는 `finish_agent_turn`이 합법일 때만), Reveal 뒤.
-5. **우리 엔진만 묻는 질문은 앱 엔진이 실제로 하는 쪽으로 답한다.** `withdraw_troops`는 쓰지 않고, Reveal 선택 미루기
-   (`defer_reveal_choice`)는 앱의 Reveal 효과 순서가 요구할 때만 쓴다. 효과 순서 결정도 2번에 따른다.
+5. **우리 엔진만 묻는 질문은 앱 엔진이 실제로 하는 쪽으로 답한다.** `withdraw_troops`는 쓰지 않는다. (Reveal 선택 미루기
+   `defer_reveal_choice`는 codec v147에서 없어졌다: Reveal 선택은 Reveal 창의 행으로 구매와 함께 나와 앱의 Reveal 뒤
+   질문처럼 값으로 경쟁하고, 쓰지 않은 Optional 선택은 `finish_reveal`에서 사라진다.) 효과 순서 결정도 2번에 따른다.
 6. **앱이 한 번에 답하는 것을 우리가 여러 단계로 물으면**, 첫 단계에서 앱 답을 계산해 `Memory.intents`에 두고 이어지는 단계에서 쓴다.
 7. **동점은 앱처럼 무작위**로 깨되 agent의 시드 RNG로 한다(앱은 시계 시드). 한 출처 안의 동점은 앱 목록 순서상 "먼저 나온 엄격한
    최댓값"(`first_strictly_best`).

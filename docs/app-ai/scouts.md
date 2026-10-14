@@ -319,8 +319,10 @@ No value threshold applies: the line was chosen already (its value was > 0 or it
   an unused key lapses at `finish_agent_turn`. With nothing joinable now no row is offered; because joinability is recomputed at every decision, a line that becomes affordable
   later in the turn reappears as a key (the free order of OQ-076 C needs no extra term).
 - **`reveal`** (Corrinth City's seat; `queue_reveal_subcommittee_offer`, `rules/scouts_offers.py:70`): the same PROMPT
-  source in the post-reveal prompt (`excl = ""`); on the End Turn path `decline_subcommittee` is one of the Optional
-  blockers the adapter declines (`windows/reveal.py` §3 of its docstring).
+  source in the post-reveal prompt (`excl = ""`). The offer holds `finish_reveal` back, so when nothing else does and no
+  key is worth > 0, `decline_subcommittee` is the app's empty answer (End Turn) and `finish_reveal` follows without a
+  second evaluation (`_END_TURN`). Since codec v147 it is the only Optional blocker of the Reveal: the Optional card
+  choices offer no refusal and lapse at `finish_reveal` (`windows/reveal.py` §2 and §4 of its docstring).
 - **`scouts_subcommittee`** frame (`join_subcommittee(subcommittee_id)` / `decline_subcommittee`,
   `legal_subcommittee_actions` :1387): the stored intent if still legal; else `mc` over the joinable lines' `L`; None →
   `decline_subcommittee`. Not forced. No deny-the-opponents and no wait terms (plan §11.5).
