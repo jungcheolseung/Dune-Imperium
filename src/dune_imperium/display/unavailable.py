@@ -16,7 +16,8 @@ cannot be paid or whose reward would change nothing, an Agent box's arrow
 whose reward would change nothing (OQ-071), a Conflict reward's, a research
 space's or Shipping's Faction already at the top, a Conflict reward's payment
 (resource or Spies) the seat is short of, a Maker space's sandworm or Desert
-Riding token it cannot take, a Holy War unit the
+Riding token it cannot take, Sietch Tabr's detonation once the Shield Wall is
+destroyed, a Holy War unit the
 seat does not have, a Skill the seat already holds, a Navigation card's
 option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
@@ -50,6 +51,7 @@ Display only, under four rules:
   ``skill_choice_block``, ``tech_candidates``,
   ``combat_reward_payment_block``, ``combat_reward_spy_recall_block``,
   ``maker_sandworm_block``, ``desert_riding_block``,
+  ``sietch_tabr_wall_block``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
@@ -198,7 +200,9 @@ from dune_imperium.rules.board_effects import (
     legal_shipping_actions,
     maker_sandworm_block,
     pending_maker_space,
+    pending_sietch_tabr,
     shipping_influence_factions,
+    sietch_tabr_wall_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
@@ -416,6 +420,11 @@ _MAKER_HOOKS_HELD: Final[Reason] = (
     "You already hold Maker Hooks",
     "이미 가진 {maker_hooks}",
     "held",
+)
+_WALL_DESTROYED: Final[Reason] = (
+    "The Shield Wall is already destroyed",
+    "{shield_wall}이 이미 파괴됨",
+    "condition",
 )
 _NO_OTHER_AGENT: Final[Reason] = (
     "No other Agent of yours to recall (not the one sent this turn)",
@@ -982,11 +991,7 @@ def _condition_reason(state: GameState, seat: int, option: IntrigueOption) -> Re
                 f"{condition_text_ko(condition)} 사용 가능",
                 "condition",
             )
-    return (
-        "The Shield Wall is already destroyed",
-        "{shield_wall}이 이미 파괴됨",
-        "condition",
-    )
+    return _WALL_DESTROYED
 
 
 def _resource_short_reason(owner: PlayerState, cost: PayResources | None) -> Reason:
@@ -1685,6 +1690,28 @@ def _maker_space(state: GameState, seat: int, found: _Found) -> None:
                 ),
                 _optional_block_reason(block),
             )
+
+
+def _sietch_tabr(state: GameState, seat: int, found: _Found) -> None:
+    """Sietch Tabr's "water and destroy the Shield Wall" once the Wall is gone.
+
+    Supplies and plain water stay on offer; the detonation branch is offered
+    exactly when ``sietch_tabr_wall_block`` is None, and otherwise shows
+    greyed out beside them. A Shield Wall destroyed is gone for good, so
+    nothing in the turn lifts the block.
+    """
+
+    if not pending_sietch_tabr(state, seat):
+        return
+    block = sietch_tabr_wall_block(state)
+    if block is None:
+        return
+    found.row(
+        "choice",
+        "take_sietch_tabr_water_and_destroy_wall",
+        DomainAction(action_id="take_sietch_tabr_water_and_destroy_wall", actor=seat),
+        _optional_block_reason(block),
+    )
 
 
 def _imperial_privilege_recall(state: GameState, seat: int, found: _Found) -> None:
@@ -2500,6 +2527,7 @@ _OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
     OptionalBlockKind.NO_CONFLICT: _NO_CONFLICT,
     OptionalBlockKind.DEPLOYMENT_BARRED: _DEPLOYMENT_BARRED,
     OptionalBlockKind.SHIELD_WALL: _SHIELD_WALL,
+    OptionalBlockKind.NO_SHIELD_WALL: _WALL_DESTROYED,
     OptionalBlockKind.MAKER_HOOKS_HELD: _MAKER_HOOKS_HELD,
     OptionalBlockKind.AGENT_LEFT: (
         "The Agent sent this turn already left its space",
@@ -2970,6 +2998,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _each_box(_agent_icons),
         _imperial_privilege_recall,
         _maker_space,
+        _sietch_tabr,
         _optional_board_effects,
         _subcommittee_choice,
         _intrigue,

@@ -31,6 +31,8 @@ optional arrow (``test_the_conflict_reward_payment_blocks_are_the_old_comparison
 (2026-10-14, a Maker space's sandworm and Desert Riding token) likewise, over
 the seeded games and a sweep of the Maker spaces
 (``test_the_maker_space_blocks_are_the_old_conditions``).
+``board_effects.sietch_tabr_wall_block`` (2026-10-14, Sietch Tabr's
+detonation) likewise (``test_the_sietch_tabr_block_is_the_old_condition``).
 ``combat.conflict_end_trigger_block`` (2026-10-09, the Conflict-end
 window's Harvest Cells) has no copy here: the window tests of
 ``tests/unit/rules/test_immortality_intrigue.py`` pin what it offers.
@@ -53,6 +55,7 @@ from tests.unit.display.test_unavailable import (
     _conflict_end_window,
     _maker_visit,
     _play_conflict_end,
+    _sietch_tabr_visit,
     reward_window,
 )
 
@@ -154,6 +157,7 @@ from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
     BOARD_ICON_MAKER,
+    BOARD_ICON_SIETCH_TABR,
     MAKER_SANDWORM_SPACE_IDS,
     desert_riding_block,
     desert_riding_offered_at,
@@ -164,7 +168,9 @@ from dune_imperium.rules.board_effects import (
     legal_desert_tactics_actions,
     legal_imperial_privilege_actions,
     legal_maker_space_actions,
+    legal_sietch_tabr_actions,
     maker_sandworm_block,
+    sietch_tabr_wall_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
@@ -1251,6 +1257,36 @@ def _old_maker_space(state: GameState, player: int) -> tuple[DomainAction, ...]:
     return tuple(actions)
 
 
+def _old_sietch_tabr(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``board_effects.legal_sietch_tabr_actions`` before
+    ``sietch_tabr_wall_block`` (2026-10-14): the Shield Wall test was inline."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("space_id") != "sietch_tabr" or not board_icon_is_pending(
+        context, BOARD_ICON_SIETCH_TABR
+    ):
+        return ()
+    actions = [
+        DomainAction(action_id="take_sietch_tabr_supplies", actor=player),
+        DomainAction(action_id="take_sietch_tabr_water", actor=player),
+    ]
+    if state.shield_wall_present:
+        actions.append(
+            DomainAction(
+                action_id="take_sietch_tabr_water_and_destroy_wall",
+                actor=player,
+            )
+        )
+    return tuple(actions)
+
+
 def _old_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
     """``unit_loss._loss_options`` before it became ``unit_loss_options``
     over ``unit_loss_block`` (2026-10-02)."""
@@ -1664,6 +1700,7 @@ _PAIRS: list[
     (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),
     (legal_combat_reward_spy_recall_actions, _old_combat_reward_spy_recall),
     (legal_maker_space_actions, _old_maker_space),
+    (legal_sietch_tabr_actions, _old_sietch_tabr),
 ]
 _OPTIONS = tuple(
     option
@@ -2517,3 +2554,32 @@ def test_the_maker_space_blocks_are_the_old_conditions() -> None:
         OptionalBlockKind.DEPLOYMENT_BARRED,
         OptionalBlockKind.SHIELD_WALL,
     }
+
+
+# --- Sietch Tabr before its block (2026-10-14) -----------------------------
+
+
+def test_the_sietch_tabr_block_is_the_old_condition() -> None:
+    """With the Shield Wall on the board and destroyed, while the choice is
+    pending and once it is taken, the provider offers what its old copy did
+    and the detonation exactly where ``sietch_tabr_wall_block`` is None."""
+
+    detonate = DomainAction(
+        action_id="take_sietch_tabr_water_and_destroy_wall", actor=0
+    )
+    compared = 0
+    for wall in (True, False):
+        pending = _sietch_tabr_visit(shield_wall_present=wall)
+        taken = ENGINE.apply(
+            pending, DomainAction(action_id="take_sietch_tabr_water", actor=0)
+        ).state
+        for state in (pending, taken):
+            for seat in range(4):
+                assert legal_sietch_tabr_actions(state, seat) == _old_sietch_tabr(
+                    state, seat
+                )
+        legal = legal_sietch_tabr_actions(pending, 0)
+        assert (detonate in legal) == (sietch_tabr_wall_block(pending) is None) == wall
+        assert legal_sietch_tabr_actions(taken, 0) == ()
+        compared += 1
+    assert compared == 2

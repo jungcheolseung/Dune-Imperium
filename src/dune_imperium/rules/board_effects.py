@@ -837,6 +837,36 @@ def apply_espionage_action(
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def pending_sietch_tabr(state: GameState, player: int) -> bool:
+    """Whether ``player`` decides Sietch Tabr's unresolved choice-one row."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return False
+    return context.get("space_id") == "sietch_tabr" and board_icon_is_pending(
+        context, BOARD_ICON_SIETCH_TABR
+    )
+
+
+def sietch_tabr_wall_block(state: GameState) -> OptionalEffectBlock | None:
+    """Why Sietch Tabr's "water and destroy the Shield Wall" cannot be taken.
+
+    The branch destroys the Shield Wall, so it needs the token still on the
+    board: once a detonation has destroyed it for good, the branch does
+    nothing and is not offered. ``legal_sietch_tabr_actions`` offers
+    ``take_sietch_tabr_water_and_destroy_wall`` exactly when this is None,
+    and the page's greyed-out row reads the same block
+    (``display.unavailable``). Public: the Shield Wall lies on the board.
+    """
+
+    if state.shield_wall_present:
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.NO_SHIELD_WALL)
+
+
 def legal_sietch_tabr_actions(
     state: GameState,
     player: int,
@@ -845,21 +875,13 @@ def legal_sietch_tabr_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("space_id") != "sietch_tabr" or not board_icon_is_pending(
-        context, BOARD_ICON_SIETCH_TABR
-    ):
+    if not pending_sietch_tabr(state, player):
         return ()
     actions = [
         DomainAction(action_id="take_sietch_tabr_supplies", actor=player),
         DomainAction(action_id="take_sietch_tabr_water", actor=player),
     ]
-    if state.shield_wall_present:
+    if sietch_tabr_wall_block(state) is None:
         actions.append(
             DomainAction(
                 action_id="take_sietch_tabr_water_and_destroy_wall",

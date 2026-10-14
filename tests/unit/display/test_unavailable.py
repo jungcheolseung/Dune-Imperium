@@ -3759,3 +3759,89 @@ def test_the_maker_rows_read_nothing_hidden() -> None:
             other = determinize(state, seat, rng)
             other_legal = ENGINE.legal_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- Sietch Tabr's detonation once the Shield Wall is gone (plan 4, row 13) --
+#
+# Sietch Tabr prints a choose-one row; the "water and destroy the Shield
+# Wall" branch destroys a token that a detonation may already have removed
+# for good. ``legal_sietch_tabr_actions`` offers it exactly when
+# ``sietch_tabr_wall_block`` is None, and it shows greyed out otherwise.
+
+_WALL_GONE = (
+    "The Shield Wall is already destroyed",
+    "{shield_wall}이 이미 파괴됨",
+    "condition",
+)
+_DETONATE = "take_sietch_tabr_water_and_destroy_wall"
+
+
+RECONNAISSANCE = "player:0:starter:reconnaissance:0"  # a City icon
+
+
+def _sietch_tabr_visit(**fields: Any) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        hand=(RECONNAISSANCE,),
+        influence=Influence(fremen=2),
+    )
+    return _agent_turn(_state(owner, **fields), RECONNAISSANCE, "sietch_tabr")
+
+
+def _sietch_ids(state: GameState) -> list[str]:
+    return [
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id.startswith("take_sietch_tabr")
+    ]
+
+
+def test_sietch_tabr_greys_out_the_detonation_once_the_wall_is_destroyed() -> None:
+    gone = _sietch_tabr_visit(shield_wall_present=False)
+    assert _sietch_ids(gone) == ["take_sietch_tabr_supplies", "take_sietch_tabr_water"]
+    found = _found(gone)
+    assert found["frame"] == FrameKind.AGENT_EFFECTS and found["refs"] == {}
+    row = _rows(found, "choice")[f"choice:{_DETONATE}"]
+    assert [r["key"] for r in found["rows"]] == [f"choice:{_DETONATE}"]
+    assert row["action"]["action_id"] == _DETONATE
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _WALL_GONE
+
+
+def test_sietch_tabr_with_the_wall_in_place_offers_the_detonation() -> None:
+    present = _sietch_tabr_visit(shield_wall_present=True)
+    assert _sietch_ids(present) == [
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+        _DETONATE,
+    ]
+    assert unavailable_choices(present, 0, ENGINE.legal_actions(present, 0)) is None
+
+
+def test_the_detonation_row_goes_once_the_choice_is_taken() -> None:
+    gone = _sietch_tabr_visit(shield_wall_present=False)
+    taken = ENGINE.apply(
+        gone, DomainAction(action_id="take_sietch_tabr_water", actor=0)
+    ).state
+    assert _sietch_ids(taken) == []
+    found = unavailable_choices(taken, 0, ENGINE.legal_actions(taken, 0))
+    assert found is None or all(
+        _DETONATE not in row["key"] for row in cast(dict[str, Any], found)["rows"]
+    )
+
+
+def test_the_detonation_row_reads_nothing_hidden() -> None:
+    state = _sietch_tabr_visit(shield_wall_present=False)
+    legal = ENGINE.legal_actions(state, 0)
+    found = cast(dict[str, Any] | None, unavailable_choices(state, 0, legal))
+    assert found is not None and len(found["rows"]) == 1
+    rng = random.Random(13)
+    for _ in range(20):
+        hidden = determinize(state, 0, rng)
+        hidden_legal = ENGINE.legal_actions(hidden, 0)
+        assert hidden_legal == legal
+        assert unavailable_choices(hidden, 0, hidden_legal) == found
+    for seat in range(1, 4):
+        other = determinize(state, seat, rng)
+        other_legal = ENGINE.legal_actions(other, seat)
+        assert unavailable_choices(other, seat, other_legal) is None

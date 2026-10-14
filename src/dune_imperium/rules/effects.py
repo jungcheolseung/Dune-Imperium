@@ -447,6 +447,7 @@ class OptionalBlockKind(StrEnum):
     NO_CONFLICT = "no_conflict"
     DEPLOYMENT_BARRED = "deployment_barred"
     SHIELD_WALL = "shield_wall"  # the Shield Wall protects the Conflict
+    NO_SHIELD_WALL = "no_shield_wall"  # the Shield Wall is already destroyed
     MAKER_HOOKS_HELD = "maker_hooks_held"  # a second Maker Hooks cannot be taken
     AGENT_LEFT = "agent_left"  # the Agent sent this turn left its space
     COMMANDER_GONE = "commander_gone"  # no Commander waits on the space
