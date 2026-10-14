@@ -155,6 +155,7 @@ def test_package_contains_source_data_not_user_state_and_is_relocatable(
     (source / "docs").mkdir()
     for name in (
         "godot-prototype-guide.md", "local-images.md", "godot-windows-package.md",
+        "godot-feature-parity.md",
     ):
         (source / "docs" / name).write_text("instructions")
     archives = []

@@ -48,10 +48,13 @@ func press_action(action: Dictionary) -> void:
 	else:
 		var found = false
 		for button in buttons(table.content):
-			if int(button.get_meta("action_index", -1)) == int(action.index):
+			if int(button.get_meta("action_index", -1)) == int(action.index) or (button.has_meta("quantity_select") and int(action.index) in button.get_meta("action_indices", [])):
 				if button.disabled or button.text.is_empty():
 					fail("action control disabled or empty")
 					return
+				var select = button.get_meta("quantity_select") if button.has_meta("quantity_select") else null
+				if select is OptionButton:
+					select.select(button.get_meta("action_indices").find(int(action.index)))
 				button.pressed.emit()
 				found = true
 				break
@@ -77,6 +80,8 @@ func check_choices() -> bool:
 		var index = int(button.get_meta("action_index", -1))
 		if index >= 0:
 			offered[index] = true
+		for alternate in button.get_meta("action_indices", []) if button.has_meta("quantity_select") else []:
+			offered[int(alternate)] = true
 	for action in table.model.actions():
 		if action.action_id == "agent_turn":
 			if table.model.placements(action.arguments.card_id, action.arguments.space_id).is_empty():
@@ -151,15 +156,18 @@ func run(client: Control, seeds: String) -> void:
 	for value in seeds.split(",", false):
 		var seed_value = int(value)
 		rng.seed = seed_value
-		var draft = game_index % 2 == 1
+		var draft = game_index % 2 == 1 or table.playthrough_rules == "all"
+		var options: Dictionary = {}
+		for key in table.Model.EXPANSIONS:
+			options[key] = table.playthrough_rules == "all" or key in table.playthrough_rules.split(",")
 		# Skip presentation delays in the bounded test, retaining the same AI.
-		if not await table._create_game(seed_value, draft, "instant"):
+		if not await table._create_game(seed_value, draft, "instant", options):
 			fail("create")
 			return
 		var restored = false
 		var captured_combat = false
 		var steps = 0
-		var deadline = Time.get_ticks_msec() + 240000
+		var deadline = Time.get_ticks_msec() + (420000 if not table.playthrough_rules.is_empty() else 240000)
 		var last_round = -1
 		while not table.model.summary().get("finished", false):
 			if stopped:
@@ -226,7 +234,7 @@ func run(client: Control, seeds: String) -> void:
 			return
 		if not table.capture_dir.is_empty():
 			await table._capture("results")
-		report.games.append({"seed": seed_value, "draft": draft, "round": final.round_number, "revision": final.revision, "steps": steps, "leader": table.model.view().players[0].leader_id, "standings": final.standings})
+		report.games.append({"seed": seed_value, "draft": draft, "rules": options, "round": final.round_number, "revision": final.revision, "steps": steps, "leader": table.model.view().players[0].leader_id, "standings": final.standings})
 		print("GODOT_GAME_FINISHED ", JSON.stringify(report.games[-1]))
 		game_index += 1
 	watchdog.stop()

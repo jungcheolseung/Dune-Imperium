@@ -15,6 +15,12 @@ func _initialize() -> void:
 	model.catalog = {"cards": {"dagger": {"name": "Dagger", "name_ko": "단검"}}, "intrigue": {"plot": {"name": "Plot", "name_ko": "책략"}}}
 	check(model.name_of("player:0:starter:dagger:1") == "단검", "starter copy name")
 	check(model.name_of("intrigue:plot:2") == "책략", "intrigue section")
+	model.catalog.contracts = {"espionage|copy2": {"name": "Espionage", "name_ko": "첩보", "image": "/contract-image"}, "deliver_supplies": {"name_ko": "계약"}}
+	model.catalog.spaces = {"deliver_supplies": {"name_ko": "보드 칸"}}
+	check(model.name_of("contract:espionage|copy2") == "첩보" and model.entry("contract:espionage|copy2").image == "/contract-image", "physical contract IDs resolve their printed name and picture without dropping the copy suffix")
+	check(model.name_of("contract:deliver_supplies") == "계약" and model.name_of("deliver_supplies") == "보드 칸", "contract and board-space identities remain distinct")
+	var Expansions = preload("res://expansions.gd")
+	check(not Expansions.scouts_visible(true, false, false, false) and Expansions.scouts_visible(true, true, false, false) and Expansions.scouts_visible(true, false, false, true) and not Expansions.scouts_visible(true, true, true, false), "Scouts opens for its decision or explicit browsing and does not cover the board during ordinary play")
 	check(model.phrase("{spice:2}") == "스파이스 2", "reviewed term and count")
 	check(model.localized({"detail": "available English", "detail_ko": null}, "detail") == "available English", "null Korean detail falls back to supplied English")
 	var actions = [
@@ -85,6 +91,36 @@ func _initialize() -> void:
 	check(jar.entries.is_empty(), "a release deletes the stored cookie")
 	var timeline = [{"type": "action", "index": 0}, {"type": "action", "index": 1, "undone": true}, {"type": "undo", "index": 2}, {"type": "chance", "index": 3}, {"type": "action", "index": 4}]
 	check(model.reviewed_log({"log": timeline}, 1).size() == 1 and model.reviewed_log({"log": timeline}, 2).size() == 4, "review log ends at its live cursor while retaining earlier undo history")
+	model.catalog.spaces = {"test_space": {"options": [{"effect": "base"}], "choam_options": [{"effect": "choam"}], "image_ko": "base-ko", "immortality": {"options": [{"effect": "specimens"}], "image": "tile"}}}
+	model.adopt({"summary": {"game_id": "expanded", "revision": 1, "choam_module": true}})
+	check(model.entry("test_space").options[0].effect == "choam", "space text uses the enabled CHOAM module")
+	model.snapshot.summary.immortality = true
+	check(model.entry("test_space").options[0].effect == "specimens" and not model.entry("test_space").has("image_ko"), "Immortality overrides the effective tile and removes the base-language image")
+	check(model.catalog.spaces.test_space.options[0].effect == "base", "effective space presentation never mutates the catalog")
+	var choice = {"index": 9, "action_id": "select_cards", "arguments": {"card_ids": ["imperium:dagger:1", "imperium:dagger:2"]}, "sent_by_turn_end": true}
+	model.adopt({"summary": {"game_id": "expanded", "revision": 1}, "actions": {"actions": [choice], "unavailable": {"refs": {"tech": {"reason": "spice"}}}}})
+	check(model.ref_actions("imperium:dagger:2").size() == 1 and model.ref_actions("imperium:dagger:3").is_empty(), "card arrays match exact physical references")
+	check(model.unavailable("tech").reason == "spice" and model.unavailable("unknown").is_empty(), "disabled reasons come only from the server")
+	model.hold(choice)
+	var changed_choice = choice.duplicate(true)
+	changed_choice.arguments.card_ids = ["imperium:dagger:3"]
+	model.snapshot.actions.actions = [changed_choice]
+	check(not model.offered(choice) and model.offered(changed_choice) and model.held_action().is_empty(), "same index and revision cannot send or confirm replaced arguments")
+	model.language = "en"
+	check(model.native("스파이스 비용 %d") % 3 == "Spice cost 3" and model.native("내 손패") == "My hand", "native English preserves costs and hand labels")
+	model.language = "ko"
+	model.words.prompt_patterns = [["^Pay (\\d+) Spice to gain (\\d+) Victory Point$", "{spice} $1 지불 → $2점"]]
+	model.snapshot.summary.decision = {"prompt": "Pay 4 Spice to gain 2 Victory Point"}
+	check(model.prompt() == "스파이스 4 지불 → 2점", "dynamic prompt uses the reviewed pattern and glossary")
+	var Effects = preload("res://table_effects.gd")
+	var earlier = {"summary": {"game_id": "effects", "revision": 2, "undo_count": 0}, "view": {"player": 0, "players": [{"player": 0, "victory_points": 1, "resources": {"spice": 2}}]}, "log": {"entries": []}}
+	var later = earlier.duplicate(true)
+	later.summary.revision = 3
+	later.view.players[0].resources.spice = 5
+	check(Effects.changes(earlier, later, false)[0].delta.spice == 3, "resource cue comes from public state differences")
+	check(Effects.changes(earlier, later, true).is_empty(), "review cursor changes generate no live cue")
+	later.summary.undo_count = 1
+	check(Effects.changes(earlier, later, false).is_empty(), "undo produces no false acquisition or resource cue")
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)

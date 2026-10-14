@@ -17,6 +17,7 @@ var previous_agents: Dictionary = {}
 var move_started = 0.0
 var zoom = 1.0
 var pan = Vector2.ZERO
+var animations = true
 
 
 func _ready() -> void:
@@ -59,16 +60,21 @@ func _draw() -> void:
 	if board_texture != null:
 		draw_texture_rect(board_texture, map_rect, false)
 	else:
-		draw_string(get_theme_default_font(), map_rect.position + Vector2(20, 32), "아라키스 · 그림 없이도 칸을 선택할 수 있습니다", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("b2ac9e"))
+		draw_string(get_theme_default_font(), map_rect.position + Vector2(20, 32), model.native("아라키스 · 그림 없이도 칸을 선택할 수 있습니다"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("b2ac9e"))
 	if model == null:
 		return
 	_draw_wall()
 	var legal = model.legal_refs()
 	for id in model.catalog.get("spaces", {}):
-		var entry = model.catalog.spaces[id]
-		if entry.get("box") == null or entry.get("required_leader_id") != null:
+		var entry = model.entry(id)
+		if entry.get("box") == null or not _space_visible(entry):
 			continue
 		var rect = _box(entry.box)
+		if entry.get("tile_box") is Array:
+			var tile_path = model.localized(entry, "tile_image")
+			var tile = _texture(str(tile_path)) if tile_path != null else null
+			if tile != null:
+				draw_texture_rect(tile, _box(entry.tile_box), false)
 		var enabled = legal.has(id)
 		var active = id == hovered or id == model.selected_space
 		if enabled or active or board_texture == null:
@@ -90,7 +96,7 @@ func _draw() -> void:
 			continue
 		var target = _box(entry.box).get_center() + Vector2((marker.seat - 1.5) * 9, 0)
 		var elapsed = clampf((Time.get_ticks_msec() / 1000.0 - move_started) / 0.45, 0, 1)
-		if not previous_agents.has(key):
+		if animations and not previous_agents.has(key):
 			var start = map_rect.position + Vector2(map_rect.size.x * (marker.seat + 0.5) / 4, map_rect.size.y)
 			target = start.lerp(target, 1 - pow(1 - elapsed, 3))
 		var piece = _texture(_piece_path("agent", marker.seat))
@@ -174,13 +180,13 @@ func _draw_units() -> void:
 	for player in model.view().get("players", []):
 		var seat = int(player.player)
 		if rings.size() > seat:
-			_draw_force(_box(rings[seat]).grow(-map_rect.size.x * 0.018), seat, int(player.troops_garrison), 0)
+			_draw_force(_box(rings[seat]).grow(-map_rect.size.x * 0.018), seat, int(player.troops_garrison), 0, int(player.get("commanders_garrison", 0)))
 		if conflicts.size() > seat:
-			_draw_force(_box(conflicts[seat]).grow(-map_rect.size.x * 0.008), seat, int(player.troops_conflict), int(player.sandworms_conflict))
+			_draw_force(_box(conflicts[seat]).grow(-map_rect.size.x * 0.008), seat, int(player.troops_conflict), int(player.sandworms_conflict), int(player.get("commanders_conflict", 0)), int(player.get("agent_in_conflict", 0)))
 
 
-func _draw_force(box: Rect2, seat: int, troops: int, worms: int) -> void:
-	var count = troops + worms
+func _draw_force(box: Rect2, seat: int, troops: int, worms: int, commanders = 0, agent = 0) -> void:
+	var count = troops + worms + commanders + agent
 	if count == 0:
 		return
 	var columns = maxi(1, int(ceil(sqrt(count * box.size.x / maxf(1, box.size.y)))))
@@ -190,7 +196,12 @@ func _draw_force(box: Rect2, seat: int, troops: int, worms: int) -> void:
 	var origin = box.get_center() - Vector2(columns, rows) * cell / 2
 	for index in range(count):
 		var rect = Rect2(origin + Vector2(index % columns, int(index / columns)) * cell + Vector2.ONE, Vector2.ONE * (cell - 2))
-		var texture = _texture(_piece_path("troop" if index < troops else "sandworm", seat))
+		var kind = "troop" if index < troops else ("sandworm" if index < troops + worms else "agent")
+		var path = _piece_path(kind, seat)
+		if index >= troops + worms and index < troops + worms + commanders:
+			path = str(model.catalog.commander_token) if model.catalog.get("commander_token") != null else ""
+			draw_rect(rect, Color(model.SEAT_COLORS[seat], 0.55))
+		var texture = _texture(path)
 		if texture != null:
 			draw_texture_rect(texture, rect, false)
 		else:
@@ -212,6 +223,34 @@ func _draw_public_markers() -> void:
 					draw_texture_rect(texture, rect, false)
 				else:
 					draw_rect(rect, Model.SEAT_COLORS[seat])
+	for player in model.view().get("players", []):
+		var seat = int(player.player)
+		var council = tracks.get("council_seats", [])
+		if player.get("high_council", false) and council.size() > seat:
+			draw_circle(_point(council[seat][0], council[seat][1]), map_rect.size.x * 0.011, model.SEAT_COLORS[seat])
+		var hooks = tracks.get("maker_hooks", {})
+		if player.get("maker_hooks", false) and hooks.get("points", []).size() > seat:
+			var point = hooks.points[seat]
+			var center = _point(point[0], point[1])
+			var token = _texture(str(model.catalog.maker_hooks_token)) if model.catalog.get("maker_hooks_token") != null else null
+			if token != null:
+				var dimensions = Vector2(hooks.size[0], hooks.size[1]) * map_rect.size / 100
+				var turns = hooks.get("turns", [])[seat]
+				draw_set_transform(center, deg_to_rad(float(turns.rotation)), Vector2(-1 if turns.mirrored else 1, 1))
+				draw_texture_rect(token, Rect2(-dimensions / 2, dimensions), false)
+				draw_set_transform(Vector2.ZERO)
+	var commander = _texture(str(model.catalog.commander_token)) if model.catalog.get("commander_token") != null else null
+	for ref in model.view().get("sardaukar_commander_space_ids", []):
+		var entry = model.entry(str(ref))
+		if entry.get("box") is Array:
+			var box = _box(entry.box)
+			var center = box.position + box.size * Vector2(0.85, 0.75)
+			if commander != null:
+				var height = map_rect.size.y * 0.035
+				draw_texture_rect(commander, Rect2(center - Vector2(height * 0.4, height), Vector2(height * 0.8, height)), false)
+			else:
+				draw_circle(center, 5, Color("ded7c5"))
+	_draw_scouts()
 	var points = tracks.get("maker_spice", {}).get("points", {})
 	for bonus in model.view().get("maker_bonus_spice", []):
 		if int(bonus[1]) > 0 and points.has(bonus[0]):
@@ -227,8 +266,8 @@ func _hit(position: Vector2) -> String:
 		if model.legal_refs().has(post) and position.distance_to(_point(point[0], point[1])) < 15:
 			return post
 	for id in model.catalog.get("spaces", {}):
-		var entry = model.catalog.spaces[id]
-		if entry.get("box") != null and entry.get("required_leader_id") == null and _box(entry.box).has_point(position):
+		var entry = model.entry(id)
+		if entry.get("box") != null and _space_visible(entry) and _box(entry.box).has_point(position):
 			return id
 	return ""
 
@@ -265,3 +304,45 @@ func _gui_input(event: InputEvent) -> void:
 		if not hit.is_empty():
 			chosen.emit(hit)
 			accept_event()
+
+
+func _space_visible(entry: Dictionary) -> bool:
+	var leader = entry.get("required_leader_id")
+	if leader == null:
+		return true
+	for player in model.view().get("players", []):
+		if player.get("leader_id") == leader:
+			return true
+	return false
+
+
+func _draw_scouts() -> void:
+	var regions = model.catalog.get("tracks", {}).get("scouts", {}).get("regions", {})
+	var rows: Array = []
+	for row in model.view().get("scouts_goods", []):
+		rows.append({"location": row[1], "kind": row[2], "count": int(row[3]), "seat": int(row[4])})
+	for row in model.view().get("scouts_parked", []):
+		rows.append({"location": row[2], "kind": "troop", "count": int(row[3]), "seat": int(row[1])})
+	for row in model.view().get("scouts_board_card_counts", []):
+		rows.append({"location": row[1], "kind": "card", "count": int(row[2]), "seat": -1})
+	var positions: Dictionary = {}
+	for row in rows:
+		var location = str(row.location)
+		var region = regions.get(location, [])
+		if region.is_empty():
+			continue
+		var box = _box(region[0].box)
+		var offset = int(positions.get(location, 0))
+		positions[location] = offset + 1
+		var width = maxf(9, map_rect.size.x * 0.023)
+		var point = box.position + Vector2(width / 2 + offset * (width + 2), box.size.y - width / 2 if region[0].get("from_bottom", false) else width / 2)
+		var path = str(model.catalog.get("icons", {}).get(str(row.kind), ""))
+		if row.kind == "troop" and row.seat >= 0:
+			path = _piece_path("troop", row.seat)
+		var texture = _texture(path)
+		draw_rect(Rect2(point - Vector2.ONE * width / 2, Vector2.ONE * width), Color("181915"))
+		if texture != null:
+			draw_texture_rect(texture, Rect2(point - Vector2.ONE * width / 2, Vector2.ONE * width), false)
+		else:
+			draw_circle(point, width / 2, model.SEAT_COLORS[row.seat] if row.seat >= 0 else Color("c7b48b"))
+		draw_string(get_theme_default_font(), point + Vector2(width / 3, width / 3), str(row.count), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)

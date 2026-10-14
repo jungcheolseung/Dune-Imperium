@@ -1,8 +1,14 @@
 extends RefCounted
 
+const NativeText = preload("res://native_text.gd")
+
+
+func native(text: String) -> String:
+	return str(NativeText.EN.get(text, text)) if language == "en" else text
+
 const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft", "pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue"]
 const SEAT_COLORS = [Color("438bde"), Color("d66063"), Color("42ac87"), Color("e4b955")]
-const SECTIONS = ["cards", "intrigue", "leaders", "spaces", "conflicts", "objectives", "contracts", "skills", "tech"]
+const SECTIONS = ["cards", "intrigue", "leaders", "spaces", "conflicts", "objectives", "contracts", "skills", "tech", "scouts_items"]
 const EXPANSIONS = ["choam_module", "promo_cards", "bloodlines", "tech_module", "immortality", "go_to_11", "epic_game", "arrakeen_scouts"]
 
 var catalog: Dictionary = {}
@@ -67,8 +73,8 @@ func seat_name(seat: int) -> String:
 			return str(name)
 	var kinds = summary().get("seats", [])
 	if kinds.size() > seat and seat >= 0 and kinds[seat] == "human":
-		return ("나" if language == "ko" else "You") if seat == active_seat else ui("common.seat", {"seat": seat})
-	return ("나" if language == "ko" else "You") if seat == active_seat else ("앱 AI %d" if language == "ko" else "AI %d") % seat
+		return (native("나") if language == "ko" else "You") if seat == active_seat else ui("common.seat", {"seat": seat})
+	return (native("나") if language == "ko" else "You") if seat == active_seat else (native("앱 AI %d") if language == "ko" else "AI %d") % seat
 
 
 func ui(key: String, values: Dictionary = {}) -> String:
@@ -101,9 +107,9 @@ func finish_action() -> Dictionary:
 
 func finish_text() -> String:
 	if not held_action().is_empty():
-		return "선택 확정 ▶"
+		return native("선택 확정 ▶")
 	var action = finish_action()
-	return label("ACTION_LABELS", action.action_id) + " ▶" if not action.is_empty() else "턴 종료 ▶"
+	return label("ACTION_LABELS", action.action_id) + " ▶" if not action.is_empty() else native("턴 종료 ▶")
 
 
 func supported_save(saved: Dictionary) -> bool:
@@ -119,6 +125,8 @@ func supported_save(saved: Dictionary) -> bool:
 
 
 func section_id(ref: String) -> Array[String]:
+	if ref.begins_with("contract:"):
+		return ["contracts", ref.trim_prefix("contract:")]
 	var parts = ref.split(":")
 	if parts.size() >= 5 and parts[0] == "player" and parts[2] == "starter":
 		return ["cards", parts[3]]
@@ -135,7 +143,19 @@ func entry(ref: String) -> Dictionary:
 		return catalog.get(parsed[0], {}).get(parsed[1], {})
 	for section in SECTIONS:
 		if catalog.get(section, {}).has(parsed[1]):
-			return catalog[section][parsed[1]]
+			var found = catalog[section][parsed[1]]
+			if section == "spaces":
+				var effective = found.duplicate()
+				if summary().get("choam_module", false) and found.get("choam_options") is Array:
+					effective.options = found.choam_options
+				if summary().get("immortality", false) and found.get("immortality") is Dictionary:
+					effective.erase("image_ko")
+					effective.merge(found.immortality, true)
+				return effective
+			return found
+	for space in catalog.get("bene_tleilax", {}).get("research_spaces", []):
+		if space.id == ref:
+			return {"name": "Research %d-%d" % [int(space.column), int(space.row)], "name_ko": "연구 %d-%d" % [int(space.column), int(space.row)], "text": [label("RESEARCH_BONUS_LABELS", str(space.bonus))]}
 	return {}
 
 
@@ -179,7 +199,21 @@ func prompt() -> String:
 	if not decision is Dictionary:
 		return ""
 	var text = str(decision.get("prompt", ""))
-	return phrase(words.get("prompts", {}).get(text, text)) if language == "ko" else text
+	if language != "ko":
+		return phrase(text)
+	if words.get("prompts", {}).has(text):
+		return phrase(words.prompts[text])
+	for pattern in words.get("prompt_patterns", []):
+		var regex = RegEx.new()
+		if regex.compile(pattern[0]) != OK:
+			continue
+		var found = regex.search(text)
+		if found != null:
+			var translated = str(pattern[1])
+			for index in range(1, found.get_group_count() + 1):
+				translated = translated.replace("$" + str(index), found.get_string(index))
+			return phrase(translated)
+	return phrase(text)
 
 
 func placements(card: String = "", space: String = "") -> Array:
@@ -194,9 +228,28 @@ func placements(card: String = "", space: String = "") -> Array:
 func ref_actions(ref: String) -> Array:
 	var result: Array = []
 	for action in actions():
-		if ref in action.get("arguments", {}).values():
+		if _contains_ref(action.get("arguments", {}), ref):
 			result.append(action)
 	return result
+
+
+func _contains_ref(value: Variant, ref: String) -> bool:
+	if value is String:
+		return value == ref
+	if value is Dictionary:
+		return _contains_ref(value.values(), ref)
+	if value is Array:
+		for part in value:
+			if _contains_ref(part, ref):
+				return true
+	return false
+
+
+func unavailable(ref: String) -> Dictionary:
+	var rows = snapshot.get("actions")
+	if rows is Dictionary and rows.get("unavailable") is Dictionary:
+		return rows.unavailable.get("refs", {}).get(ref, {})
+	return {}
 
 
 func legal_refs() -> Dictionary:
@@ -245,7 +298,7 @@ func describe(action: Dictionary) -> String:
 				var names: PackedStringArray = []
 				for space in spaces:
 					names.append(name_of(space))
-				parts.append("관측소 · " + " / ".join(names))
+				parts.append(native("관측소 · ") + " / ".join(names))
 			else:
 				parts.append(field + ": " + name_of(value))
 		elif value is bool:
@@ -266,23 +319,34 @@ func describe(action: Dictionary) -> String:
 		if index < options.size():
 			parts.append(cost_text(options[index].get("cost", {})) + " → " + phrase(localized(options[index], "effect")))
 	if action.get("strength_after") != null:
-		parts.append("전투력 → %d" % int(action.strength_after))
+		parts.append(native("전투력 → %d") % int(action.strength_after))
 	if action.get("reveal_preview") is Dictionary:
-		parts.append("공개 후 설득력 %d · 전투력 %d" % [int(action.reveal_preview.get("persuasion", 0)), int(action.reveal_preview.get("strength", 0))])
-	if action.get("warning") != null:
+		parts.append(native("공개 후 설득력 %d · 전투력 %d") % [int(action.reveal_preview.get("persuasion", 0)), int(action.reveal_preview.get("strength", 0))])
+	if action.get("shortfall") is Array:
+		for shortage in action.shortfall:
+			var data = shortage.duplicate()
+			data["short"] = int(data.requested) - int(data.made)
+			data["tile"] = name_of("suspensor_suits")
+			var key = "render.shortfall_" + str(data.kind)
+			if data.kind == "intrigue" and int(data.get("twisted", 0)) > 0:
+				key += "_twisted"
+			parts.append(ui(key, data))
+	elif action.get("warning") != null and language == "ko":
 		parts.append(phrase(action.warning))
+	if action.get("undoable") == false and not action.get("sent_by_turn_end", false):
+		parts.append(ui("render.irreversible_badge"))
 	return heading + ("\n" + " · ".join(parts) if not parts.is_empty() else "")
 
 
 func hold(action: Dictionary) -> void:
-	held = {"signature": signature(), "index": int(action.index)}
+	held = {"signature": signature(), "index": int(action.index), "choice": JSON.stringify([action.action_id, action.get("arguments", {})])}
 
 
 func held_action() -> Dictionary:
 	if held.get("signature") != signature():
 		return {}
 	for action in actions():
-		if int(action.index) == int(held.get("index", -1)) and action.get("sent_by_turn_end", false):
+		if int(action.index) == int(held.get("index", -1)) and action.get("sent_by_turn_end", false) and held.get("choice") == JSON.stringify([action.action_id, action.get("arguments", {})]):
 			return action
 	return {}
 
@@ -343,3 +407,17 @@ func reviewed_log(meta: Dictionary, cursor: int) -> Array:
 	if cursor >= live.size():
 		return log.duplicate()
 	return log.slice(0, live[cursor - 1] + 1)
+
+
+func leader_player(ref: String) -> Dictionary:
+	for player in view().get("players", []):
+		if player.get("leader_id") == ref or player.get("leader_face_id") == ref:
+			return player
+	return {}
+
+
+func offered(action: Dictionary) -> bool:
+	for current in actions():
+		if int(current.index) == int(action.get("index", -1)) and current.action_id == action.get("action_id") and current.get("arguments", {}) == action.get("arguments", {}):
+			return true
+	return false

@@ -13,9 +13,13 @@ import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from dune_imperium.godot_client.host_config import (
+    read_host_config,
+    server_origin,
+    write_credentials,
+)
 from dune_imperium.godot_client.ui_data import write_ui_data
 from dune_imperium.launcher.command import build_plan, no_window_flags
-from dune_imperium.launcher.settings import LauncherSettings
 from dune_imperium.launcher.supervisor import ServerProcess, StartupFailed
 from dune_imperium.paths import PROJECT_ROOT, TMP_DIR
 
@@ -150,9 +154,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--capture", help=argparse.SUPPRESS)
     parser.add_argument("--playthrough", help=argparse.SUPPRESS)
+    parser.add_argument("--rules", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     server: ServerProcess | None = None
     client: subprocess.Popen[bytes] | None = None
+    credentials: Path | None = None
     log_dir = TMP_DIR / "godot"
     log_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -173,21 +179,29 @@ def main(argv: list[str] | None = None) -> int:
         base = args.server
         if base is None:
             assets = find_assets()
-            settings = LauncherSettings(
-                port=free_port(), ai_pace="fast", autosave=True,
-                assets_dir=str(assets) if assets is not None else None,
-                open_browser=False,
+            config = read_host_config(
+                PROJECT_ROOT / "local" / "godot-ui.json",
+                assets=assets, local_port=free_port(),
             )
             server = ServerProcess(
-                build_plan(settings, None), log_dir=log_dir / "server"
+                build_plan(config.settings, config.key, python=config.python),
+                log_dir=log_dir / "server",
             )
             server.start()
             server.wait_ready()
-            base = server.plan.open_url.rstrip("/")
+            base = server_origin(server.plan.host, server.plan.port)
+            if config.key:
+                credentials = write_credentials(log_dir, base, config.key)
         extra = ["--headless"] if args.headless else []
         command = godot_command(binary, base, labels, extra)
+        if credentials:
+            command.append(f"--host-credentials={credentials}")
+        if args.smoke or args.capture or args.playthrough:
+            command.append(f"--test-profile={log_dir / 'test-profile'}")
         if args.smoke:
             command.append("--smoke")
+        if args.rules:
+            command.append(f"--rules={args.rules}")
         if args.playthrough:
             command.append(f"--playthrough={args.playthrough}")
         if args.capture:
@@ -209,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"시제품을 시작하지 못했습니다: {error}", file=sys.stderr)
         return 1
     finally:
+        if credentials is not None:
+            credentials.unlink(missing_ok=True)
         if client is not None and client.poll() is None:
             client.terminate()
             try:

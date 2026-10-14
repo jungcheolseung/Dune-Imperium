@@ -91,13 +91,15 @@ func _download_image(origin: String, path: String) -> void:
 		var result = await request.request_completed
 		if result[0] == HTTPRequest.RESULT_SUCCESS and result[1] == 200:
 			var image = Image.new()
-			var extension = path.get_slice("?", 0).get_extension().to_lower()
-			if extension == "webp":
-				error = image.load_webp_from_buffer(result[3])
-			elif extension in ["jpg", "jpeg"] or path.begins_with("/board-image"):
-				error = image.load_jpg_from_buffer(result[3])
-			else:
-				error = image.load_png_from_buffer(result[3])
+			# Image endpoints have no extension; choose the decoder from the bytes.
+			var bytes: PackedByteArray = result[3]
+			error = ERR_FILE_UNRECOGNIZED
+			if bytes.size() >= 12 and bytes.slice(0, 4).get_string_from_ascii() == "RIFF" and bytes.slice(8, 12).get_string_from_ascii() == "WEBP":
+				error = image.load_webp_from_buffer(bytes)
+			elif bytes.size() >= 3 and bytes[0] == 255 and bytes[1] == 216 and bytes[2] == 255:
+				error = image.load_jpg_from_buffer(bytes)
+			elif bytes.size() >= 8 and bytes.slice(0, 8) == PackedByteArray([137, 80, 78, 71, 13, 10, 26, 10]):
+				error = image.load_png_from_buffer(bytes)
 			if error == OK:
 				var limit = 3072 if path.begins_with("/board-image") else 900
 				var longest = maxi(image.get_width(), image.get_height())

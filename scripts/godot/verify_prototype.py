@@ -26,6 +26,9 @@ def main() -> int:
     parser.add_argument(
         "--seeds", default="11,22,33,44", help="Bounded playthrough seeds"
     )
+    parser.add_argument(
+        "--rules", default="", help="Comma-separated option flags or all"
+    )
     args = parser.parse_args()
     seeds = args.seeds.split(",")
     if not 1 <= len(seeds) <= 8 or not all(seed.isdecimal() for seed in seeds):
@@ -42,17 +45,21 @@ def main() -> int:
     # Fail promptly on native script errors instead of waiting for a UI watchdog
     # that cannot start when the main scene does not parse.
     for script in ("board.gd", "main.gd"):
-        checked = subprocess.run(
+        syntax = subprocess.run(
             [str(binary), "--headless", "--path", str(PROJECT),
              "--script", script, "--check-only"],
             cwd=PROJECT_ROOT, env=env, timeout=30, check=False,
+            capture_output=True, text=True, encoding="utf-8",
         )
-        if checked.returncode:
-            return checked.returncode
+        if syntax.returncode or "ERROR:" in syntax.stdout + syntax.stderr:
+            print(syntax.stdout + syntax.stderr, file=sys.stderr)
+            return syntax.returncode or 1
     command = [
         sys.executable, "-m", "dune_imperium.godot_client.launch",
         "--godot", str(binary),
     ]
+    if args.rules:
+        command += ["--rules", args.rules]
     if args.full_game:
         command += ["--playthrough", args.seeds]
         if args.capture:

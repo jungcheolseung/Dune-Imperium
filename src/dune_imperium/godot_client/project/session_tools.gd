@@ -15,6 +15,7 @@ var clock: Dictionary = {}
 var clock_label: Label
 var seat_clock_labels: Dictionary = {}
 const PREFS_FILE = "res://../../../../local/godot-ui.json"
+var prefs_file = PREFS_FILE
 const OPTION_KEYS = ["leader_draft", "choam_module", "promo_cards", "bloodlines", "tech_module", "immortality", "go_to_11", "epic_game", "arrakeen_scouts"]
 const OPTION_NAMES = ["html.opt_leader_draft", "html.opt_choam", "html.opt_promo", "html.opt_bloodlines", "html.opt_tech", "html.opt_immortality", "html.opt_go_to_11", "html.opt_epic_game", "html.opt_scouts"]
 const KINDS = ["human", "app_ai", "app_ai_medium", "app_ai_easy", "search", "heuristic", "rollout", "rollout_strong", "random", "checkpoint"]
@@ -22,28 +23,37 @@ const KINDS = ["human", "app_ai", "app_ai_medium", "app_ai_easy", "search", "heu
 
 func setup(owner_table: Control) -> void:
 	table = owner_table
-	if FileAccess.file_exists(PREFS_FILE):
-		var parsed = JSON.parse_string(FileAccess.get_file_as_string(PREFS_FILE))
+	if FileAccess.file_exists(prefs_file):
+		var parsed = JSON.parse_string(FileAccess.get_file_as_string(prefs_file))
 		if parsed is Dictionary:
 			prefs = parsed
 	table.model.language = str(prefs.get("language", "ko"))
 	clock_label = table._label(table.new_button.get_parent(), "", 12)
 	clock_label.move_to_front()
 	menu = MenuButton.new()
-	menu.text = "메뉴"
+	menu.text = table.model.native("메뉴")
 	table.new_button.get_parent().add_child(menu)
-	var popup = menu.get_popup()
-	for title in ["게임 목록 / 방", "원격 서버 연결", "플레이 설정", "도움말", "다시보기 / 관전", "방 링크 복사", "이번 방 나가기", "공용 카드 접기 / 펼치기", "플레이어 상세 접기 / 펼치기"]:
-		popup.add_item(title)
-	popup.id_pressed.connect(_menu)
+	refresh_menu()
+	menu.get_popup().id_pressed.connect(_menu)
 	var response = await table.api.call_json(HTTPClient.METHOD_GET, "/whoami")
 	if response.ok:
 		table.model.server_info = response.data
+	table.market_scroll.get_parent().visible = not prefs.get("market_folded", false)
+
+
+func refresh_menu() -> void:
+	if menu == null:
+		return
+	menu.text = table.model.native("메뉴")
+	var popup = menu.get_popup()
+	popup.clear()
+	for title in ["게임 목록 / 방", "원격 서버 연결", "플레이 설정", "도움말", "다시보기 / 관전", "방 링크 복사", "이번 방 나가기", "공용 카드 접기 / 펼치기", "플레이어 상세 접기 / 펼치기"]:
+		popup.add_item(table.model.native(title))
 
 
 func save_preferences() -> void:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(PREFS_FILE.get_base_dir()))
-	var file = FileAccess.open(PREFS_FILE, FileAccess.WRITE)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(prefs_file.get_base_dir()))
+	var file = FileAccess.open(prefs_file, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(prefs))
 
@@ -63,7 +73,7 @@ func _dialog(title: String, dimensions = Vector2i(690, 520)) -> Array:
 	root.custom_minimum_size = dimensions
 	dialog.add_child(root)
 	var body = table._scroll(root)
-	table.add_child(dialog)
+	table._attach_dialog(dialog)
 	dialog.confirmed.connect(dialog.queue_free)
 	dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered()
@@ -96,7 +106,7 @@ func new_game() -> void:
 	var dialog = ConfirmationDialog.new()
 	dialog.title = text("html.setup_title")
 	dialog.ok_button_text = text("html.create_game")
-	dialog.cancel_button_text = ("취소" if table.model.language == "ko" else "Cancel")
+	dialog.cancel_button_text = (table.model.native("취소") if table.model.language == "ko" else "Cancel")
 	dialog.theme = table.theme
 	dialog.set_meta("game_dialog", table.game_id)
 	var root = VBoxContainer.new()
@@ -140,7 +150,7 @@ func new_game() -> void:
 	seed.visible = table.model.server_info.get("access", "open") == "open"
 	body.add_child(seed)
 	var checkpoint = LineEdit.new()
-	checkpoint.placeholder_text = "학습 파일의 서버 경로 / Server checkpoint path"
+	checkpoint.placeholder_text = table.model.native("학습 파일의 서버 경로 / Server checkpoint path")
 	body.add_child(checkpoint)
 	var pace = OptionButton.new()
 	for value in ["normal", "fast", "instant"]:
@@ -171,13 +181,13 @@ func new_game() -> void:
 	sync_dependencies.call()
 	var presets = HBoxContainer.new()
 	body.add_child(presets)
-	for preset in [["기본판 / Base", false], ["웹 기본 설정 / Web defaults", true]]:
+	for preset in [[table.model.native("기본판 / Base"), false], [table.model.native("웹 기본 설정 / Web defaults"), true]]:
 		table._button(presets, preset[0], func():
 			for key in switches:
 				switches[key].button_pressed = preset[1] and key not in ["leader_draft", "arrakeen_scouts"]
 			sync_dependencies.call()
 		)
-	table.add_child(dialog)
+	table._attach_dialog(dialog)
 	dialog.confirmed.connect(func():
 		var config: Dictionary = {"seats": []}
 		for select in selectors:
@@ -208,30 +218,63 @@ func games() -> void:
 		return
 	var parts = _dialog(text("html.game_list_title"))
 	for game in response.data:
-		var button = table._button(parts[1], "%s · %s" % [game.game_id.left(8), text("common.finished") if game.finished else text("screens.round_number", {"round": int(game.round_number)})], func():
+		var row = HBoxContainer.new()
+		parts[1].add_child(row)
+		var button = table._button(row, "%s · %s" % [game.game_id.left(8), text("common.finished") if game.finished else text("screens.round_number", {"round": int(game.round_number)})], func():
 			parts[0].queue_free()
 			table._adopt_game(str(game.game_id))
 		)
 		button.set_meta("game_id", game.game_id)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if table.model.server_info.get("admin", false):
+			var remove = table._button(row, text("screens.delete_button"), func(): delete_game(str(game.game_id), parts[0]))
+			remove.set_meta("delete_game_id", game.game_id)
 	if not table.game_id.is_empty():
 		table._button(parts[1], text("html.open_lobby"), lobby)
+	table._button(parts[1], table.model.native("새로고침"), func(): parts[0].queue_free(); games())
+
+
+func delete_game(id: String, list_dialog: Window) -> void:
+	var dialog = ConfirmationDialog.new()
+	dialog.title = text("screens.delete_confirm_button")
+	dialog.dialog_text = table.model.native("이 게임을 삭제하시겠습니까? 저장한 파일은 별도로 남습니다.")
+	dialog.ok_button_text = text("screens.delete_button")
+	dialog.cancel_button_text = table.model.native("취소")
+	dialog.theme = table.theme
+	dialog.set_meta("delete_game_id", id)
+	table._attach_dialog(dialog)
+	dialog.confirmed.connect(func():
+		var response = await table.api.call_json(HTTPClient.METHOD_DELETE, "/games/" + id)
+		if table._accept(response):
+			if table.game_id == id:
+				leave_game()
+			list_dialog.hide()
+			list_dialog.queue_free()
+			games()
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.popup_centered(Vector2i(450, 170))
 
 
 func connect_dialog() -> void:
-	var parts = _dialog("서버 / Server", Vector2i(620, 190))
+	var parts = _dialog(table.model.native("서버 / Server"), Vector2i(620, 190))
 	var url = LineEdit.new()
 	url.placeholder_text = "http://host:port/#game=…"
 	parts[1].add_child(url)
-	table._button(parts[1], "접속 / Connect", func():
+	table._button(parts[1], table.model.native("접속 / Connect"), func():
 		connect_url(url.text)
 		parts[0].queue_free()
 	)
 
 
 func connect_url(url: String) -> bool:
+	if table.busy:
+		table.status.text = table.model.native("현재 선택을 처리하고 있습니다. 잠시 후 연결하세요.")
+		return false
 	var clean = url.strip_edges()
 	if not clean.begins_with("http://") and not clean.begins_with("https://"):
-		table.status.text = "http:// 또는 https:// 주소를 입력하세요. / Enter an HTTP(S) URL."
+		table.status.text = table.model.native("http:// 또는 https:// 주소를 입력하세요. / Enter an HTTP(S) URL.")
 		return false
 	var authority = clean.get_slice("#", 0).trim_suffix("/")
 	var origin = authority.get_slice("/", 0) + "//" + authority.get_slice("/", 2)
@@ -284,10 +327,10 @@ func lobby() -> void:
 		if player.kind != "human":
 			table._label(row, table.model.label("SEAT_KINDS", str(player.kind)), 14)
 		elif seat in table.model.owned_seats:
-			table._button(row, "입장 / Enter", func(): parts[0].queue_free(); table._sync(seat))
-			table._button(row, "자리 비우기 / Release", func(): _release_seat(seat, parts[0]))
+			table._button(row, table.model.native("입장 / Enter"), func(): parts[0].queue_free(); table._sync(seat))
+			table._button(row, table.model.native("자리 비우기 / Release"), func(): _release_seat(seat, parts[0]))
 		elif not player.claimed:
-			table._button(row, "앉기 / Sit", func():
+			table._button(row, table.model.native("앉기 / Sit"), func():
 				var response = await table.api.call_json(HTTPClient.METHOD_POST, "/games/" + table.game_id + "/seats/" + str(seat) + "/claim", {"name": name.text})
 				if table._accept(response):
 					prefs.name = name.text
@@ -297,7 +340,7 @@ func lobby() -> void:
 					await table._sync(seat)
 			)
 		elif table.model.server_info.get("admin", false):
-			table._button(row, "자리 비우기 / Release", func(): _release_seat(seat, parts[0]))
+			table._button(row, table.model.native("자리 비우기 / Release"), func(): _release_seat(seat, parts[0]))
 
 
 func _release_seat(seat: int, dialog: Window) -> void:
@@ -323,7 +366,7 @@ func leave_game() -> void:
 
 
 func settings() -> void:
-	var parts = _dialog("플레이 설정 / Preferences", Vector2i(620, 300))
+	var parts = _dialog(table.model.native("플레이 설정 / Preferences"), Vector2i(650, 500))
 	var language = OptionButton.new()
 	language.add_item("한국어")
 	language.add_item("English")
@@ -334,6 +377,9 @@ func settings() -> void:
 		prefs.language = table.model.language
 		save_preferences()
 		table._render()
+		parts[0].hide()
+		parts[0].queue_free()
+		settings()
 	)
 	var pace = OptionButton.new()
 	for value in ["normal", "fast", "instant"]:
@@ -350,11 +396,85 @@ func settings() -> void:
 			save_preferences()
 			await table._sync()
 	)
+	table._button(parts[1], table.model.native("개인 배치 초기화"), table.layout_ui.reset)
+	table._button(parts[1], table.model.native("다음 실행의 서버 설정"), host_settings)
+	for pair in [["log_follow", "로그 자동 따라가기", true], ["animations", "연출 켜기", true], ["reduced_motion", "움직임 줄이기", false], ["sound", "효과음 켜기", true]]:
+		var check = CheckBox.new()
+		check.text = table.model.native(pair[1])
+		check.button_pressed = prefs.get(pair[0], pair[2])
+		parts[1].add_child(check)
+		check.toggled.connect(func(value): prefs[pair[0]] = value; save_preferences())
+	table._label(parts[1], table.model.native("효과음 음량"), 14)
+	var volume = HSlider.new()
+	volume.min_value = 0
+	volume.max_value = 1
+	volume.step = 0.05
+	volume.value = float(prefs.get("volume", 0.35))
+	parts[1].add_child(volume)
+	volume.value_changed.connect(func(value): prefs.volume = value; save_preferences())
+	table._button(parts[1], table.model.native("효과음 들어보기"), func(): table.effects.sound("decision"))
+	table._label(parts[1], table.model.native("손패·책략을 드래그해서 순서를 바꾸고 열 사이를 드래그해서 너비를 조절하세요."), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+
+func host_settings() -> void:
+	var config = prefs.get("host", {})
+	var parts = _dialog(table.model.native("다음 실행의 서버 설정"), Vector2i(710, 490))
+	table._label(parts[1], table.model.native("저장 후 앱을 다시 실행하면 적용됩니다."), 14)
+	var mode = OptionButton.new()
+	for title in ["혼자 / 같은 컴퓨터에서 플레이", "친구 초대 서버"]:
+		mode.add_item(table.model.native(title))
+	mode.select(1 if config.get("mode") == "remote" else 0)
+	parts[1].add_child(mode)
+	var fields: Dictionary = {}
+	for pair in [["bind", "서버가 받을 주소", "0.0.0.0"], ["public_url", "친구에게 보낼 서버 주소", "http://192.168.1.10:8000"], ["checkpoint", "선택: 학습 체크포인트 파일", ""], ["python", "선택: 학습 런타임 실행 파일", ""]]:
+		table._label(parts[1], table.model.native(pair[1]), 14)
+		var row = HBoxContainer.new()
+		parts[1].add_child(row)
+		var input = LineEdit.new()
+		input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		input.text = str(config.get(pair[0], pair[2] if pair[0] == "bind" else ""))
+		input.placeholder_text = pair[2]
+		row.add_child(input)
+		fields[pair[0]] = input
+		if pair[0] in ["checkpoint", "python"]:
+			table._button(row, table.model.native("파일 선택"), func():
+				var file = FileDialog.new()
+				file.access = FileDialog.ACCESS_FILESYSTEM
+				file.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+				file.use_native_dialog = true
+				table.add_child(file)
+				file.file_selected.connect(func(path): input.text = path; file.queue_free())
+				file.canceled.connect(file.queue_free)
+				file.popup_centered(Vector2i(850, 600))
+			)
+	table._label(parts[1], table.model.native("포트"), 14)
+	var port = SpinBox.new()
+	port.min_value = 1
+	port.max_value = 65535
+	port.value = int(config.get("port", 8000))
+	parts[1].add_child(port)
+	var message = table._label(parts[1], "", 13)
+	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	table._button(parts[1], table.model.native("저장"), func():
+		for key in ["python", "checkpoint"]:
+			if not fields[key].text.is_empty() and not FileAccess.file_exists(fields[key].text):
+				message.text = table.model.native("선택한 파일을 찾지 못했습니다.")
+				return
+		if mode.selected == 1 and (fields.bind.text.strip_edges().is_empty() or not (fields.public_url.text.begins_with("http://") or fields.public_url.text.begins_with("https://"))):
+			message.text = table.model.native("서버가 받을 주소와 친구에게 보낼 HTTP(S) 주소를 입력하세요.")
+			return
+		prefs.host = {"mode": "remote" if mode.selected == 1 else "local", "bind": fields.bind.text.strip_edges(), "public_url": fields.public_url.text.strip_edges(), "port": int(port.value), "checkpoint": fields.checkpoint.text.strip_edges(), "python": fields.python.text.strip_edges()}
+		save_preferences()
+		parts[0].hide()
+		parts[0].queue_free()
+	)
 
 
 func help() -> void:
 	var parts = _dialog(text("help.title"))
-	for key in ["help.turn_agent", "help.turn_reveal", "help.turn_confirm", "help.shortcuts_heading", "help.shortcut_cancel", "help.shortcut_collapse_columns", "help.shortcut_expand_seats", "help.shortcut_open_help"]:
+	for key in table.model.words.get("ui", {}):
+		if not str(key).begins_with("help.") or key == "help.title":
+			continue
 		table._label(parts[1], text(key), 16).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for key in table.model.words.get("terms", {}):
 		table._label(parts[1], "%s / %s" % [table.model.words.terms[key].ko, table.model.words.terms[key].en], 14)
@@ -362,7 +482,7 @@ func help() -> void:
 
 func enter_review() -> void:
 	if table.game_id.is_empty() or not table.model.summary().get("finished", false):
-		table.status.text = "끝난 게임을 고르면 다시보기와 관전을 할 수 있습니다. / Select a finished game."
+		table.status.text = table.model.native("끝난 게임을 고르면 다시보기와 관전을 할 수 있습니다. / Select a finished game.")
 		return
 	await _review_meta(maxi(0, table.model.active_seat))
 
@@ -410,7 +530,7 @@ func vp_ledger(seat: int) -> void:
 		return
 	var parts = _dialog(text("panels.vp_ledger_title", {"name": table.model.seat_name(seat), "points": table.model.view().get("players", [])[seat].victory_points}), Vector2i(660, 460))
 	table._label(parts[1], text("panels.vp_ledger_note"), 14)
-	table._label(parts[1], "%s: %d" % [text("common.start") if table.model.words.ui.has("common.start") else "시작 / Start", int(response.data.start[seat])], 15)
+	table._label(parts[1], "%s: %d" % [text("common.start") if table.model.words.ui.has("common.start") else table.model.native("시작 / Start"), int(response.data.start[seat])], 15)
 	var shown = table.model.snapshot.get("log", {}).get("entries", [])
 	var last_index = int(shown[-1].index) if not shown.is_empty() else -1
 	for row in response.data.get("entries", []):
@@ -508,7 +628,16 @@ func render_review(parent: VBoxContainer) -> void:
 	slider.step = 1
 	slider.value = int(review.cursor)
 	parent.add_child(slider)
+	slider.set_meta("review_slider", true)
+	var dragging = {"active": false}
+	slider.drag_started.connect(func(): dragging.active = true)
+	slider.value_changed.connect(func(value):
+		if not dragging.active:
+			playback = false
+			review_goto(int(value))
+	)
 	slider.drag_ended.connect(func(changed):
+		dragging.active = false
 		if changed:
 			playback = false
 			review_goto(int(slider.value))
@@ -603,6 +732,7 @@ func toggle_market() -> void:
 	table.market_scroll.get_parent().visible = not prefs.market_folded
 	save_preferences()
 	table._hide_preview()
+	table._fit_columns()
 
 
 func toggle_seats() -> void:
@@ -617,9 +747,9 @@ func save_delete_button(parent: Node, save_id: String, list_dialog: Window) -> v
 		dialog.title = text("screens.delete_confirm_button")
 		dialog.dialog_text = text("screens.delete_confirm_button")
 		dialog.ok_button_text = text("screens.delete_button")
-		dialog.cancel_button_text = "취소" if table.model.language == "ko" else "Cancel"
+		dialog.cancel_button_text = table.model.native("취소") if table.model.language == "ko" else "Cancel"
 		dialog.theme = table.theme
-		table.add_child(dialog)
+		table._attach_dialog(dialog)
 		dialog.confirmed.connect(func():
 			var response = await table.api.call_json(HTTPClient.METHOD_DELETE, "/saves/" + save_id.uri_encode())
 			if table._accept(response):

@@ -9,6 +9,8 @@ STATIC = Path(__file__).resolve().parents[1] / "server" / "static"
 TABLES = (
     "ACTION_LABELS", "EVENT_LABELS", "PHASE_LABELS", "FACTION_LABELS", "VALUE_LABELS",
     "PAYLOAD_KEY_LABELS",
+    "EFFECT_ICON_LABELS", "RESEARCH_BONUS_LABELS", "TLEILAXU_TRACK_LABELS",
+    "FEYD_TRACK_LABELS",
 )
 
 
@@ -73,9 +75,16 @@ def build_ui_data(static: Path = STATIC) -> dict[str, Any]:
     for name in TABLES:
         if set(korean[name]) != set(english[name]):
             raise ValueError(f"UI language keys differ: {name}")
-    prompts = json.loads(_block(
-        (static / "prompts_ko.js").read_text(encoding="utf-8"), "PROMPT_KO"
-    ))
+    prompt_source = (static / "prompts_ko.js").read_text(encoding="utf-8")
+    prompts = json.loads(_block(prompt_source, "PROMPT_KO"))
+    patterns = re.search(
+        r"const PROMPT_KO_PATTERNS = (\[.*?\n\]);", prompt_source, re.DOTALL
+    )
+    if patterns is None:
+        raise ValueError("missing dynamic prompt translations")
+    prompt_patterns = json.loads(patterns[1])
+    for pattern, _ in prompt_patterns:
+        re.compile(pattern)
     ui = json.loads(_block(
         (static / "ui_text.js").read_text(encoding="utf-8"), "UI_TEXT"
     ))
@@ -84,6 +93,7 @@ def build_ui_data(static: Path = STATIC) -> dict[str, Any]:
     return {
         "ko": korean, "en": english, "terms": terms, "prompts": prompts,
         "ui": ui,
+        "prompt_patterns": prompt_patterns,
     }
 
 
