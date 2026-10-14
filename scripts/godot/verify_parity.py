@@ -243,6 +243,52 @@ def info_case(page: Any, base: str, game: str, language: str) -> dict[str, Any]:
     return case
 
 
+def quantity_case(page: Any, base: str, game: str,
+                  action_id: str, language: str) -> dict[str, Any]:
+    page.goto(base + '/#game=' + game)
+    page.wait_for_function('state.view !== null && refreshFlight === null')
+    page.evaluate('(language) => setLanguage(language)', language)
+    seat = page.evaluate('state.viewSeat')
+    revision = page.evaluate('state.summary.revision')
+    family = page.evaluate('(id) => countFamilies(state.actions.actions).get(id)',
+                           action_id)
+    assert family, 'real position must provide the tested count family'
+    initial = page.evaluate('''(id) => chosenOf(id,
+        countFamilies(state.actions.actions).get(id)).index''', action_id)
+    target = family[-1] if initial != family[-1]['index'] else family[0]
+    row = page.locator(f'#actions .count-row[data-action="{action_id}"]')
+    while int(row.get_attribute('data-index')) != target['index']:
+        current = page.evaluate('''(id) => chosenOf(id,
+            countFamilies(state.actions.actions).get(id)).arguments.count''', action_id)
+        buttons = row.locator('.stepper button')
+        (buttons.first if target['arguments']['count'] < current
+         else buttons.last).click()
+    assert page.evaluate('state.summary.revision') == revision
+    auction = action_id in ('scouts_bid', 'scouts_call')
+    case = {'kind': 'quantity', 'seat': seat, 'language': language,
+            'action_id': action_id, 'default_index': initial,
+            'index': target['index'], 'count': target['arguments']['count'],
+            'indices': [a['index'] for a in family], 'auction': auction}
+    if auction:
+        case['finish_label'] = page.locator(
+            '#decision-banner .turn-end-row button').inner_text()
+        assert row.locator('.count-confirm').count() == 0
+        page.locator('#decision-banner .turn-end-row button').click()
+    else:
+        row.locator('.count-confirm').click()
+        if page.evaluate('heldChoice()'):
+            page.locator('.held-send-row button').click()
+    page.wait_for_function('''(revision) => !state.busy && refreshFlight === null
+        && state.summary.revision > revision''', arg=revision)
+    if action_id == 'scouts_bid':
+        page.wait_for_function('''(seat) => state.summary.decision.kind
+            !== 'scouts_bid' || state.summary.decision.owner !== seat''', arg=seat)
+    snapshot = request(base, f'/games/{game}/snapshot?seat={seat}')
+    case['steps'] = snapshot['summary']['revision'] - revision
+    case['expected'] = digest(snapshot)
+    return case
+
+
 def main() -> int:
     from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -250,8 +296,13 @@ def main() -> int:
     parser.add_argument('--chromium', default=os.environ.get('E2E_CHROMIUM'))
     parser.add_argument('--baseline-project', type=Path,
                         help='Run old unique/held behavior to prove regressions')
-    parser.add_argument('--suite', choices=('core', 'info'), default='core')
+    parser.add_argument('--suite', choices=('core', 'info', 'quantity'),
+                        default='core')
+    parser.add_argument('--evidence', action='store_true',
+                        help='Capture information or quantity screens on a display')
     args = parser.parse_args()
+    if args.evidence and args.suite == 'core':
+        parser.error('--evidence requires --suite info or quantity')
     binary = ensure_godot(args.godot)
     directory = TMP_DIR / 'godot/parity'
     saves = directory / 'saves'
@@ -295,15 +346,25 @@ def main() -> int:
             if args.suite == 'info':
                 scenarios = [('deck', name, False) for name in
                              ('parity-glowglobes', 'parity-controlled')]
+            if args.suite == 'quantity':
+                scenarios = [(action, name, False) for action, name in (
+                    ('deploy_troops', 'parity-deploy'),
+                    ('scouts_bid', 'parity-bid'),
+                    ('scouts_bid', 'parity-zero-bid'),
+                    ('scouts_call', 'parity-call'),
+                    ('scouts_call', 'parity-zero-call'))]
             for kind, name, space_first in scenarios:
                 print(f'Compare {kind} (space first: {space_first})', flush=True)
                 path = '/saves/' + names[name] + '/load'
-                for language in ('ko', 'en') if args.suite == 'info' else ('ko',):
+                for language in ('ko', 'en') if args.suite != 'core' else ('ko',):
                     browser_game = request(base, path, {})['game_id']
-                    case = (info_case(page, base, browser_game, language)
-                            if args.suite == 'info' else browser_case(
-                                page, base, browser_game, kind,
-                                space_first=space_first))
+                    if args.suite == 'info':
+                        case = info_case(page, base, browser_game, language)
+                    elif args.suite == 'quantity':
+                        case = quantity_case(page, base, browser_game, kind, language)
+                    else:
+                        case = browser_case(page, base, browser_game, kind,
+                                            space_first=space_first)
                     case['game'] = request(base, path, {})['game_id']
                     cases.append(case)
             browser.close()
@@ -317,13 +378,19 @@ def main() -> int:
                    XDG_DATA_HOME=str(directory / 'data'))
         log_file = directory / (
             'baseline.log' if args.baseline_project else 'native.log')
-        script = 'info_parity_test.gd' if args.suite == 'info' else 'parity_test.gd'
+        script = {'core': 'parity_test.gd', 'info': 'info_parity_test.gd',
+                  'quantity': 'quantity_parity_test.gd'}[args.suite]
+        display_args = ([f'--evidence={directory / "screenshots"}']
+                        if args.evidence else [])
         with log_file.open('wb') as output:
             result = subprocess.run([
-                str(binary), '--headless', '--path', str(project),
+                str(binary), *([] if args.evidence else ['--headless']),
+                '--audio-driver', 'Dummy',
+                '--path', str(project),
                 '--script', script, '--log-file',
                 str(directory / 'engine.log'), '--', f'--server={base}',
                 f'--labels={labels}', f'--scenarios={scenario_file}',
+                *display_args,
             ], cwd=PROJECT_ROOT, env=env, stdout=output,
                 stderr=subprocess.STDOUT, timeout=150, check=False)
         log = log_file.read_text(encoding='utf-8')

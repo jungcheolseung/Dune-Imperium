@@ -49,7 +49,7 @@ func _rows(actions: Array, waiting: Array, lines: Variant) -> void:
 				fixed.erase(field)
 				break
 		if not count_key.is_empty():
-			key = str(action.action_id) + ":" + count_key + ":" + JSON.stringify(fixed)
+			key = table.model.quantity_key(action, count_key)
 		if not groups.has(key):
 			groups[key] = {"field": count_key, "actions": []}
 			order.append(key)
@@ -63,7 +63,8 @@ func _rows(actions: Array, waiting: Array, lines: Variant) -> void:
 				_unavailable_line(table.model.phrase(table.model.localized(line, "text")), table.model.phrase(table.model.localized(line, "reason")))
 	for key in order:
 		var group = groups[key]
-		if group.actions.size() < 3 or group.field.is_empty():
+		var count_control = not group.field.is_empty() and (group.actions.size() >= 3 or group.actions[0].action_id in table.Model.AUCTION_AMOUNTS or group.actions[0].action_id in table.Model.FORCE_AMOUNTS)
+		if not count_control:
 			for action in group.actions:
 				table._action_button(action, descriptions.get(int(action.index), ""))
 		else:
@@ -73,6 +74,9 @@ func _rows(actions: Array, waiting: Array, lines: Variant) -> void:
 
 
 func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
+	actions = actions.duplicate()
+	actions.sort_custom(func(a, b): return int(a.arguments[field]) < int(b.arguments[field]))
+	var auction = actions[0].action_id in table.Model.AUCTION_AMOUNTS
 	var body = VBoxContainer.new()
 	var panel = table._panel(table.content, 8)
 	panel.add_child(body)
@@ -87,33 +91,37 @@ func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
 	var indices: Array = []
 	for action in actions:
 		indices.append(int(action.index))
-		select.add_item(table.model.label("PAYLOAD_KEY_LABELS", field) + " " + str(int(action.arguments[field])))
+		var unit = table.model.phrase("{" + table.model.scouts_currency() + "}") if auction else table.model.label("PAYLOAD_KEY_LABELS", field)
+		select.add_item(str(int(action.arguments[field])) + " " + unit)
 	select.set_meta("action_indices", indices)
 	row.add_child(select)
+	select.select(indices.find(int(table.model.selected_quantity(actions, field).index)))
 	var held = table.model.held_action()
 	if not held.is_empty() and int(held.index) in indices:
 		select.select(indices.find(int(held.index)))
 	var expected = table.model.signature()
 	var detail = table._label(body, "", 13)
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var submit = table._button(row, table.model.native("선택 / Choose"), func(): table._choose_action(actions[select.selected], expected))
+	var submit: Button
+	if not auction:
+		submit = table._button(row, table.model.native("선택 / Choose"), func(): table._choose_action(actions[select.selected], expected))
 	var update = func():
 		var action = actions[select.selected]
-		submit.set_meta("action_index", int(action.index))
-		submit.set_meta("action_indices", indices)
-		submit.set_meta("quantity_select", select)
+		if submit != null:
+			submit.text = table.model.ui("render.confirm_count_label", {"count": int(action.arguments[field]), "label": title.text})
+			submit.set_meta("action_index", int(action.index))
+			submit.set_meta("action_indices", indices)
+			submit.set_meta("quantity_select", select)
+			submit.disabled = table.busy
 		detail.text = descriptions.get(int(action.index), table.model.describe(action))
-		select.disabled = table.busy
-		submit.disabled = table.busy
+		select.disabled = table.busy or actions.size() == 1
 	update.call()
 	select.item_selected.connect(func(_index):
-		update.call()
-		var action = actions[select.selected]
-		if action.get("sent_by_turn_end", false):
-			table._choose_action(action, expected)
+		if expected == table.model.signature() and table.model.stage_quantity(actions[select.selected], field):
+			table._render()
 	)
 	for value in actions[0].arguments.values():
-		if value is String and not table.model.entry(value).is_empty():
+		if submit != null and value is String and not table.model.entry(value).is_empty():
 			table._bind_preview(submit, value)
 			break
 

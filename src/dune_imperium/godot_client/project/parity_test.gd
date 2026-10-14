@@ -38,6 +38,27 @@ func indices(rows: Array) -> Array:
 	return result
 
 
+func capture_evidence(name: String) -> void:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--evidence="):
+			table.capture_dir = argument.trim_prefix("--evidence=")
+			DirAccess.make_dir_recursive_absolute(table.capture_dir)
+			await table._wait_images()
+			await table._capture(name)
+			table.get_window().size = Vector2i(1100, 740)
+			await process_frame
+			await process_frame
+			table._fit_columns()
+			for window in table.find_children("*", "Window", true, false):
+				if window.visible and not window.is_queued_for_deletion():
+					check(Rect2(Vector2.ZERO, table.size).encloses(Rect2(Vector2(window.position), Vector2(window.size))), "open information window remains inside the narrow viewport")
+			await table._capture(name + "-narrow")
+			table.get_window().size = Vector2i(1440, 900)
+			await process_frame
+			await process_frame
+			table._fit_columns()
+
+
 func run() -> void:
 	var timer = Timer.new()
 	timer.one_shot = true

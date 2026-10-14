@@ -35,11 +35,36 @@ func buttons(node: Node) -> Array[Button]:
 
 func press_action(action: Dictionary) -> void:
 	var before = table.model.signature()
+	if action.action_id in table.Model.AUCTION_AMOUNTS:
+		var found = false
+		for select in table.content.find_children("*", "OptionButton", true, false):
+			var offered = select.get_meta("action_indices", [])
+			if int(action.index) in offered:
+				var position = offered.find(int(action.index))
+				select.select(position)
+				select.item_selected.emit(position)
+				found = true
+				break
+		if not found:
+			fail("missing auction amount control")
+			return
+		if action.action_id == "scouts_bid":
+			report.actions.confirm_scouts_bid = int(report.actions.get("confirm_scouts_bid", 0)) + 1
+		table.finish_button.pressed.emit()
+		await ready_frame()
+		return
 	if action.action_id == "agent_turn":
 		table._choose_ref(action.arguments.card_id)
 		table._choose_ref(action.arguments.space_id)
 	else:
 		table._set_tab("choices")
+		for select in table.content.find_children("*", "OptionButton", true, false):
+			var offered = select.get_meta("action_indices", [])
+			if int(action.index) in offered:
+				var position = offered.find(int(action.index))
+				select.select(position)
+				select.item_selected.emit(position)
+				break
 	await get_tree().process_frame
 	if action.action_id == "agent_turn" and (table.busy or table.model.signature() != before):
 		if table.busy and (not table.new_button.disabled or not table.undo_button.disabled or not table.finish_button.disabled):
@@ -59,9 +84,6 @@ func press_action(action: Dictionary) -> void:
 				if button.disabled or button.text.is_empty():
 					fail("action control disabled or empty")
 					return
-				var select = button.get_meta("quantity_select") if button.has_meta("quantity_select") else null
-				if select is OptionButton:
-					select.select(button.get_meta("action_indices").find(int(action.index)))
 				button.pressed.emit()
 				found = true
 				break
@@ -89,9 +111,15 @@ func check_choices() -> bool:
 			offered[index] = true
 		for alternate in button.get_meta("action_indices", []) if button.has_meta("quantity_select") else []:
 			offered[int(alternate)] = true
+	for select in table.content.find_children("*", "OptionButton", true, false):
+		for index in select.get_meta("action_indices", []):
+			offered[int(index)] = true
 	for action in table.model.actions():
 		if action.action_id == "agent_turn":
 			if table.model.placements(action.arguments.card_id, action.arguments.space_id).is_empty():
+				return false
+		elif action.action_id in table.Model.AUCTION_AMOUNTS:
+			if not offered.has(int(action.index)) or table.finish_button.disabled:
 				return false
 		elif action.action_id in table.Model.END_ACTIONS:
 			if int(table.model.finish_action().get("index", -1)) != int(action.index):

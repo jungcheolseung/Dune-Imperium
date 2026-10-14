@@ -74,8 +74,16 @@ func play_first() -> bool:
 		await table._choose_ref(action.arguments.space_id)
 		if table.model.signature() != before:
 			return true
+	else:
+		for select in table.content.find_children("*", "OptionButton", true, false):
+			var offered = select.get_meta("action_indices", [])
+			if int(action.index) in offered:
+				var position = offered.find(int(action.index))
+				select.select(position)
+				select.item_selected.emit(position)
+				break
 	await process_frame
-	if action.action_id in table.Model.END_ACTIONS:
+	if action.action_id in table.Model.END_ACTIONS or action.action_id in table.Model.AUCTION_AMOUNTS:
 		table.finish_button.pressed.emit()
 	else:
 		var found = false
