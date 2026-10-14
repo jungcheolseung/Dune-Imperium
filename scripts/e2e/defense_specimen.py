@@ -309,14 +309,16 @@ def scenario_english(browser, base: str, seat: int) -> None:
     context, page, rec, posts = open_save(browser, base, "defense-specimen-en")
     switch_language(page, "en")
     offered = rows(page)
-    check.ok(
+    if not check.ok(
         [r["action_id"] for r in offered] == [DECLINE, RETURN]
         and offered[0]["text"] == "Decline to deploy defense"
         and offered[1]["text"] == "Return a  to supply"
         and offered[1]["alts"] == ["specimen"],
         "B1: the rows read in English, the specimen icon between the words",
         offered,
-    )
+    ):
+        finish_page(context, rec, "B")
+        return
     shown = page.inner_text("#decision-info")
     check.ok(
         not HANGUL.search(shown)
