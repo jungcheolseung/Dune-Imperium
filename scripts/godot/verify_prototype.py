@@ -39,6 +39,16 @@ def main() -> int:
     )
     if checked.returncode:
         return checked.returncode
+    # Fail promptly on native script errors instead of waiting for a UI watchdog
+    # that cannot start when the main scene does not parse.
+    for script in ("board.gd", "main.gd"):
+        checked = subprocess.run(
+            [str(binary), "--headless", "--path", str(PROJECT),
+             "--script", script, "--check-only"],
+            cwd=PROJECT_ROOT, env=env, timeout=30, check=False,
+        )
+        if checked.returncode:
+            return checked.returncode
     command = [
         sys.executable, "-m", "dune_imperium.godot_client.launch",
         "--godot", str(binary),

@@ -22,7 +22,7 @@ var poll_timer: Timer
 
 var status: Label
 var round_label: Label
-var seats: HBoxContainer
+var seats: VBoxContainer
 var hand: HBoxContainer
 var content: VBoxContainer
 var inspector_title: Label
@@ -36,6 +36,15 @@ var load_button: Button
 var selection: Label
 var board: Control
 var own_line: Label
+var market_content: VBoxContainer
+var log_content: VBoxContainer
+var seat_scroll: ScrollContainer
+var side_stack: VBoxContainer
+var market_scroll: ScrollContainer
+var preview: PanelContainer
+var hover_source: Control
+var hover_serial = 0
+var hand_panel: PanelContainer
 
 
 func _ready() -> void:
@@ -96,15 +105,15 @@ func _ready() -> void:
 func _build_theme() -> void:
 	theme = Theme.new()
 	theme.default_font = load("res://fonts/NanumGothic-Regular.ttf")
-	theme.default_font_size = 16
+	theme.default_font_size = 14
 	theme.set_color("font_color", "Label", Color("efe9dd"))
 	theme.set_color("font_color", "Button", Color("efe9dd"))
 	theme.set_color("font_hover_color", "Button", Color.WHITE)
 	theme.set_color("font_disabled_color", "Button", Color("747d85"))
 	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
-		var style = _style(Color("222d36"), Color("40515e"))
+		var style = _style(Color("252b2d"), Color("555044"))
 		if state == "hover":
-			style.bg_color = Color("34434f")
+			style.bg_color = Color("38352c")
 			style.border_color = Color("d9b67e")
 		elif state == "pressed":
 			style.bg_color = Color("4b4031")
@@ -121,17 +130,17 @@ func _style(background: Color, border: Color = Color("35414b")) -> StyleBoxFlat:
 	style.bg_color = background
 	style.border_color = border
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(10)
+	style.set_corner_radius_all(6)
 	style.content_margin_left = 12
 	style.content_margin_right = 12
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
 	return style
 
 
 func _panel(parent: Node, padding = 12) -> PanelContainer:
 	var panel = PanelContainer.new()
-	var style = _style(Color("141e26"))
+	var style = _style(Color("1b1f21"))
 	style.content_margin_left = padding
 	style.content_margin_right = padding
 	style.content_margin_top = padding
@@ -174,18 +183,15 @@ func _build_table() -> void:
 	var margin = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for key in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(key, 18)
+		margin.add_theme_constant_override(key, 8)
 	add_child(margin)
 	var root = VBoxContainer.new()
-	root.add_theme_constant_override("separation", 14)
+	root.add_theme_constant_override("separation", 8)
 	margin.add_child(root)
 	var header = HBoxContainer.new()
 	root.add_child(header)
-	var branding = VBoxContainer.new()
-	header.add_child(branding)
-	_label(branding, "DUNE  /  IMPERIUM", 28).add_theme_color_override("font_color", Color("dfbd84"))
-	_label(branding, "봉기 · 아라키스의 주인이 되세요", 13)
-	round_label = _label(header, "", 20)
+	_label(header, "Dune: Imperium — Uprising", 18).add_theme_color_override("font_color", Color("d5b478"))
+	round_label = _label(header, "", 15)
 	round_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	new_button = _button(header, "새 게임", _new_game)
@@ -196,73 +202,188 @@ func _build_table() -> void:
 	save_button.disabled = true
 	undo_button = _button(header, "되돌리기", _undo)
 	undo_button.disabled = true
-	seats = HBoxContainer.new()
-	root.add_child(seats)
-	var middle = HBoxContainer.new()
-	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(middle)
-	var board_panel = _panel(middle, 4)
-	board_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var board_stack = VBoxContainer.new()
-	board_panel.add_child(board_stack)
-	var board_tools = HBoxContainer.new()
-	board_stack.add_child(board_tools)
-	_label(board_tools, "보드 위에서 휠: 확대 · 가운데 버튼 드래그: 이동", 12).size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_button(board_tools, "전체 보기", _reset_board)
+	for button in [new_button, load_button, save_button, undo_button]:
+		button.custom_minimum_size.y = 34
+	var table = HBoxContainer.new()
+	table.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	table.add_theme_constant_override("separation", 8)
+	root.add_child(table)
+	seat_scroll = ScrollContainer.new()
+	seat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	table.add_child(seat_scroll)
+	seats = VBoxContainer.new()
+	seats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	seats.add_theme_constant_override("separation", 8)
+	seat_scroll.add_child(seats)
+	var center = HBoxContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.add_theme_constant_override("separation", 8)
+	table.add_child(center)
+	var board_column = VBoxContainer.new()
+	board_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.add_child(board_column)
+	var tools = HBoxContainer.new()
+	board_column.add_child(tools)
+	_label(tools, "아라키스", 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var reset = _button(tools, "전체 보기", _reset_board)
+	reset.custom_minimum_size.y = 28
+	reset.tooltip_text = "휠: 확대·축소 / 가운데 버튼 드래그: 이동"
 	board = Board.new()
 	board.model = model
+	board.api = api
 	board.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	board.custom_minimum_size = Vector2(450, 340)
+	board.custom_minimum_size = Vector2(300, 280)
 	board.chosen.connect(_choose_ref)
-	board.inspected.connect(_inspect)
-	board_stack.add_child(board)
-	selection = _label(board_stack, "카드와 칸을 선택해 에이전트를 보내세요", 15)
-	selection.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	selection.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	selection.custom_minimum_size.y = 28
-	var side = _panel(middle)
-	side.custom_minimum_size.x = 360
+	board.inspected.connect(func(ref): _hover(ref, board))
+	board.mouse_exited.connect(_hide_preview)
+	board_column.add_child(board)
+	hand_panel = _panel(board_column, 6)
+	var hand_stack = VBoxContainer.new()
+	hand_stack.add_theme_constant_override("separation", 4)
+	hand_panel.add_child(hand_stack)
+	var hand_heading = HBoxContainer.new()
+	hand_stack.add_child(hand_heading)
+	own_line = _label(hand_heading, "내 손패", 14)
+	own_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var deck_button = _button(hand_heading, "덱", func(): _open_pile("내 덱 구성 · 순서 비공개", model.view().get("private", {}).get("deck_cards", [])))
+	deck_button.custom_minimum_size.y = 26
+	var hand_scroll = ScrollContainer.new()
+	hand_scroll.custom_minimum_size.y = 190
+	hand_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	hand_stack.add_child(hand_scroll)
+	hand = HBoxContainer.new()
+	hand.add_theme_constant_override("separation", 6)
+	hand_scroll.add_child(hand)
+	var shared_panel = _panel(center, 6)
+	market_scroll = ScrollContainer.new()
+	market_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	shared_panel.add_child(market_scroll)
+	market_content = VBoxContainer.new()
+	market_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	market_content.add_theme_constant_override("separation", 6)
+	market_scroll.add_child(market_content)
+	side_stack = VBoxContainer.new()
+	side_stack.add_theme_constant_override("separation", 8)
+	table.add_child(side_stack)
+	var side = _panel(side_stack, 10)
+	side.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var stack = VBoxContainer.new()
 	side.add_child(stack)
 	var tabs = HBoxContainer.new()
 	stack.add_child(tabs)
-	for item in [["choices", "선택"], ["market", "시장"], ["table", "테이블"], ["log", "기록"]]:
+	for item in [["choices", "현재 선택"], ["table", "테이블 상세"]]:
 		var button = _button(tabs, item[1], _set_tab.bind(item[0]))
+		button.custom_minimum_size.y = 30
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var preview = HBoxContainer.new()
-	preview.custom_minimum_size.y = 150
-	stack.add_child(preview)
-	inspector_image = TextureRect.new()
-	inspector_image.custom_minimum_size = Vector2(104, 146)
-	inspector_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	inspector_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	preview.add_child(inspector_image)
-	var description = _scroll(preview)
-	inspector_title = _label(description, "테이블을 살펴보세요", 18)
-	inspector_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inspector_words = _label(description, "카드나 칸 위에 마우스를 올리면 여기에서 자세히 볼 수 있습니다.", 14)
-	inspector_words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	selection = _label(stack, "카드를 선택하세요", 14)
+	selection.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	selection.add_theme_color_override("font_color", Color("e8c78a"))
 	content = _scroll(stack)
 	finish_button = _button(stack, "턴 종료 ▶", _finish)
-	finish_button.custom_minimum_size.y = 54
-	finish_button.add_theme_font_size_override("font_size", 20)
+	finish_button.custom_minimum_size.y = 46
+	finish_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	finish_button.add_theme_font_size_override("font_size", 18)
 	finish_button.add_theme_stylebox_override("normal", _style(Color("514330"), Color("d7b178")))
 	finish_button.disabled = true
-	var hand_panel = _panel(root)
-	var hand_stack = VBoxContainer.new()
-	hand_panel.add_child(hand_stack)
-	own_line = _label(hand_stack, "내 손패", 17)
-	var hand_scroll = ScrollContainer.new()
-	hand_scroll.custom_minimum_size.y = 180
-	hand_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	hand_stack.add_child(hand_scroll)
-	hand = HBoxContainer.new()
-	hand.add_theme_constant_override("separation", 12)
-	hand_scroll.add_child(hand)
-	status = _label(root, "테이블을 준비하고 있습니다…", 13)
+	var history = _panel(side_stack, 8)
+	var history_stack = VBoxContainer.new()
+	history_stack.custom_minimum_size.y = 168
+	history.add_child(history_stack)
+	_label(history_stack, "행동 기록", 14)
+	log_content = _scroll(history_stack)
+	status = _label(root, "테이블을 준비하고 있습니다…", 12)
 	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status.add_theme_color_override("font_color", Color("9caebc"))
+	_build_preview()
+	resized.connect(_fit_columns)
+	_fit_columns()
+
+
+func _fit_columns() -> void:
+	# Match the browser's three main columns, with shared cards beside the board.
+	seat_scroll.custom_minimum_size.x = 210 if size.x >= 1340 else 172
+	side_stack.custom_minimum_size.x = 320 if size.x >= 1340 else 280
+	market_scroll.custom_minimum_size.x = 176 if size.x >= 1340 else 160
+	_hide_preview()
+
+
+func _build_preview() -> void:
+	preview = _panel(self, 12)
+	preview.z_index = 20
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row = HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	preview.add_child(row)
+	inspector_image = TextureRect.new()
+	inspector_image.custom_minimum_size = Vector2(265, 372)
+	inspector_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	inspector_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(inspector_image)
+	var body = VBoxContainer.new()
+	body.custom_minimum_size.x = 275
+	row.add_child(body)
+	inspector_title = _label(body, "", 20)
+	inspector_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inspector_title.add_theme_color_override("font_color", Color("e8c78a"))
+	inspector_words = _label(body, "", 15)
+	inspector_words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inspector_words.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inspector_words.clip_text = true
+	_label(body, "오른쪽 클릭: 상세 보기", 12).add_theme_color_override("font_color", Color("a9a69b"))
+	_ignore_mouse(preview)
+	preview.hide()
+
+
+func _ignore_mouse(node: Node) -> void:
+	if node is Control:
+		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for child in node.get_children():
+		_ignore_mouse(child)
+
+
+func _bind_preview(control: Control, ref: String) -> void:
+	control.set_meta("preview_ref", ref)
+	if control is Label:
+		control.mouse_filter = Control.MOUSE_FILTER_PASS
+	control.mouse_entered.connect(_hover.bind(ref, control))
+	control.mouse_exited.connect(_hide_preview)
+	control.gui_input.connect(func(event):
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+			_open_details(ref)
+	)
+
+
+func _hover(ref: String, source: Control) -> void:
+	hover_serial += 1
+	var serial = hover_serial
+	await get_tree().create_timer(0.22).timeout
+	if serial != hover_serial or not is_instance_valid(source) or not source.is_visible_in_tree():
+		return
+	hover_source = source
+	_inspect(ref)
+	preview.show()
+	preview.size = Vector2(574, 400)
+	var bounds = source.get_global_rect()
+	if source == board:
+		bounds = Rect2(get_global_mouse_position(), Vector2(1, 1))
+	var point = Vector2(bounds.end.x + 12, bounds.position.y)
+	if content.is_ancestor_of(source) or log_content.is_ancestor_of(source):
+		point.x = side_stack.get_global_rect().position.x - preview.size.x - 12
+	elif market_content.is_ancestor_of(source):
+		point.x = market_scroll.get_global_rect().position.x - preview.size.x - 12
+	elif bounds.position.y > size.y * 0.65:
+		point = Vector2(bounds.position.x, bounds.position.y - preview.size.y - 12)
+	elif point.x + preview.size.x > size.x - 8:
+		point.x = bounds.position.x - preview.size.x - 12
+	preview.position = Vector2(clampf(point.x, 8, maxf(8, size.x - preview.size.x - 8)), clampf(point.y, 8, maxf(8, size.y - preview.size.y - 8)))
+
+
+func _hide_preview() -> void:
+	hover_serial += 1
+	if preview != null:
+		preview.hide()
+	hover_source = null
 
 
 func _clear(node: Node) -> void:
@@ -356,6 +477,7 @@ func _sync() -> bool:
 
 
 func _render() -> void:
+	_hide_preview()
 	var summary = model.summary()
 	var view = model.view()
 	new_button.disabled = busy
@@ -368,29 +490,7 @@ func _render() -> void:
 			if int(item.seat) == 0 and int(item.steps) > 0:
 				undo_button.disabled = false
 	round_label.text = "%d 라운드  /  %s" % [int(summary.get("round_number", 0)), model.label("PHASE_LABELS", summary.get("phase", ""))]
-	_clear(seats)
-	for player in view.get("players", []):
-		var seat = int(player.player)
-		var panel = _panel(seats, 10)
-		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var accent = Model.SEAT_COLORS[seat]
-		panel.add_theme_stylebox_override("panel", _style(Color("18232c"), accent))
-		var stack = VBoxContainer.new()
-		panel.add_child(stack)
-		var who = model.seat_name(seat)
-		var leader_name = model.name_of(str(player.leader_id)) if player.leader_id != null else "지도자 선택 대기"
-		var leader = _label(stack, "%s · %s" % [who, leader_name], 15)
-		leader.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		var resources = player.get("resources", {})
-		_label(stack, "%d점    솔라리 %d  ·  스파이스 %d  ·  물 %d" % [int(player.victory_points), int(resources.get("solari", 0)), int(resources.get("spice", 0)), int(resources.get("water", 0))], 14)
-		_label(stack, "에이전트 %d  ·  수비대 %d  ·  전투력 %d  ·  책략 %d" % [int(player.agents_available), int(player.troops_garrison), int(player.combat_strength), int(player.intrigue_card_count)], 13)
-		_label(stack, "전투: 병력 %d · 모래벌레 %d%s" % [int(player.troops_conflict), int(player.sandworms_conflict), "  /  공개 완료" if player.has_revealed else ""], 13)
-		if player.leader_id != null:
-			panel.mouse_entered.connect(_inspect.bind(str(player.leader_id)))
-			panel.gui_input.connect(func(event):
-				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-					_open_details(str(player.leader_id))
-			)
+	_render_seats()
 	_clear(hand)
 	images = images.filter(func(image): return is_instance_valid(image))
 	var private = view.get("private", {})
@@ -401,12 +501,15 @@ func _render() -> void:
 	if decision is Dictionary and decision.get("persuasion") != null:
 		own_line.text += "    /    남은 설득력 %d" % int(decision.persuasion)
 	for ref in hand_cards:
-		_card(hand, ref, 124, 164)
+		_card(hand, ref, 112, 180)
 	if not intrigues.is_empty():
 		var separator = VSeparator.new()
 		hand.add_child(separator)
 		for ref in intrigues:
-			_card(hand, ref, 114, 164)
+			_card(hand, ref, 98, 156)
+	hand_panel.visible = not summary.get("finished", false)
+	_render_market()
+	_render_log(log_content)
 	board.refresh()
 	board.conflict_texture = null
 	board.set_meta("conflict_path", "")
@@ -429,15 +532,88 @@ func _render() -> void:
 		status.text = "카드를 고르고 보드의 칸을 선택하세요. 배치 후 남은 효과를 해결하면 턴을 끝낼 수 있습니다."
 
 
+func _render_seats() -> void:
+	_clear(seats)
+	for player in model.view().get("players", []):
+		var seat = int(player.player)
+		var panel = _panel(seats, 8)
+		var style = _style(Color("1b1f21"), Model.SEAT_COLORS[seat])
+		style.border_width_left = 3
+		panel.add_theme_stylebox_override("panel", style)
+		var stack = VBoxContainer.new()
+		stack.add_theme_constant_override("separation", 5)
+		panel.add_child(stack)
+		var header = HBoxContainer.new()
+		stack.add_child(header)
+		var turn = model.summary().get("thinking")
+		var decision = model.summary().get("decision")
+		if turn == null and decision is Dictionary:
+			turn = decision.get("owner")
+		_label(header, model.seat_name(seat) + (" · 선" if int(model.summary().get("first_player", -1)) == seat else "") + (" · 차례" if turn != null and int(turn) == seat else ""), 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_label(header, "%d점" % int(player.victory_points), 19).add_theme_color_override("font_color", Color("e8c78a"))
+		var portrait = HBoxContainer.new()
+		stack.add_child(portrait)
+		if player.leader_id != null:
+			var ref = str(player.get("leader_face_id") if player.get("leader_face_id") != null else player.leader_id)
+			var leader = Button.new()
+			leader.custom_minimum_size = Vector2(58, 82)
+			leader.pressed.connect(_open_details.bind(ref))
+			portrait.add_child(leader)
+			var picture = _picture(leader, _image_path(model.entry(ref)), Vector2(54, 78))
+			picture.position = Vector2(2, 2)
+			_bind_preview(leader, ref)
+		var info = VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation", 4)
+		portrait.add_child(info)
+		var name = model.name_of(str(player.leader_id)) if player.leader_id != null else "지도자 선택 대기"
+		_label(info, name, 13).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var resources = HBoxContainer.new()
+		resources.add_theme_constant_override("separation", 7)
+		info.add_child(resources)
+		for key in ["solari", "spice", "water"]:
+			_amount(resources, key, int(player.get("resources", {}).get(key, 0)))
+		_label(info, "에이전트 %d · 책략 %d" % [int(player.agents_available), int(player.intrigue_card_count)], 12)
+		_label(stack, "수비대 %d  /  교전 병력 %d · 벌레 %d" % [int(player.troops_garrison), int(player.troops_conflict), int(player.sandworms_conflict)], 12)
+		_label(stack, "전투력 %d%s" % [int(player.combat_strength), " · 공개 완료" if player.has_revealed else ""], 13)
+		var piles = HBoxContainer.new()
+		piles.add_theme_constant_override("separation", 4)
+		stack.add_child(piles)
+		for group in [["discard_pile", "버림"], ["in_play", "플레이"]]:
+			var refs = player.get(group[0], [])
+			var button = _button(piles, "%s %d" % [group[1], refs.size()], _open_pile.bind(model.seat_name(seat) + " · " + group[1], refs))
+			button.custom_minimum_size.y = 25
+			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			button.add_theme_font_size_override("font_size", 12)
+
+
+func _amount(parent: Node, key: String, value: int) -> void:
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	parent.add_child(row)
+	var path = str(model.catalog.get("icons", {}).get(key, ""))
+	if not path.is_empty():
+		var picture = _picture(row, path, Vector2(17, 17))
+		picture.tooltip_text = model.phrase("{" + key + "}")
+	else:
+		_label(row, model.phrase("{" + key + "}"), 12)
+	_label(row, str(value), 14)
+
+
 func _lock_controls() -> void:
 	new_button.disabled = true
 	load_button.disabled = true
 	save_button.disabled = true
 	undo_button.disabled = true
 	finish_button.disabled = true
-	for node in content.get_children():
-		if node is Button:
-			node.disabled = true
+	_disable_buttons(content)
+
+
+func _disable_buttons(node: Node) -> void:
+	for child in node.get_children():
+		if child is Button:
+			child.disabled = true
+		_disable_buttons(child)
 
 
 func _image_path(entry: Dictionary) -> String:
@@ -445,49 +621,58 @@ func _image_path(entry: Dictionary) -> String:
 	return str(value) if value != null else ""
 
 
-func _card(parent: Node, ref: String, width: int, height: int, playable = true) -> void:
-	var button = Button.new()
-	button.custom_minimum_size = Vector2(width, height)
-	button.tooltip_text = model.name_of(ref)
-	button.set_meta("instance_ref", ref)
-	button.pressed.connect(_choose_ref.bind(ref) if playable else _open_details.bind(ref))
-	button.mouse_entered.connect(_inspect.bind(ref))
-	button.gui_input.connect(func(event):
-		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-			_open_details(ref)
-	)
-	var color = Color("d8b77b") if model.selected_card == ref else Color("3a4b59")
-	if not model.ref_actions(ref).is_empty():
-		color = Color("b89965")
-	button.add_theme_stylebox_override("normal", _style(Color("18222c"), color))
-	parent.add_child(button)
+func _picture(parent: Node, path: String, dimensions: Vector2) -> TextureRect:
 	var picture = TextureRect.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	picture.position = Vector2(4, 4)
-	picture.size = Vector2(width - 8, height - 36)
-	var path = _image_path(model.entry(ref))
+	picture.custom_minimum_size = dimensions
+	picture.size = dimensions
 	picture.set_meta("image_path", path)
 	picture.texture = api.texture(path)
-	button.add_child(picture)
+	parent.add_child(picture)
 	images.append(picture)
-	var caption = _label(button, model.name_of(ref), 13)
-	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	caption.position = Vector2(7, height - 29)
-	caption.size = Vector2(width - 14, 25)
-	caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return picture
+
+
+func _card(parent: Node, ref: String, width: int, height: int, playable = true) -> Button:
+	var button = Button.new()
+	button.custom_minimum_size = Vector2(width, height)
+	button.set_meta("instance_ref", ref)
+	button.pressed.connect(_choose_ref.bind(ref) if playable else _open_details.bind(ref))
+	_bind_preview(button, ref)
+	var legal = playable and not model.ref_actions(ref).is_empty()
+	var selected = model.selected_card == ref
+	var style = _style(Color("24211c"), Color("ebc87e") if legal else Color("3d4141"))
+	if selected:
+		style.border_color = Color.WHITE
+		style.set_border_width_all(3)
+		style.bg_color = Color("514330")
+	button.add_theme_stylebox_override("normal", style)
+	parent.add_child(button)
+	var path = _image_path(model.entry(ref))
+	var picture = _picture(button, path, Vector2(width - 8, height - (30 if width >= 90 else 8)))
+	picture.position = Vector2(4, 4)
+	if width >= 90:
+		var caption = _label(button, model.name_of(ref), 12)
+		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		caption.position = Vector2(5, height - 25)
+		caption.size = Vector2(width - 10, 22)
+		caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if path.is_empty():
-		var fallback = _label(button, _entry_words(model.entry(ref)), 13)
+		var fallback = _label(button, model.name_of(ref) + "\n" + _entry_words(model.entry(ref)), 12)
 		fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		fallback.position = Vector2(10, 16)
-		fallback.size = Vector2(width - 20, height - 55)
+		fallback.position = Vector2(8, 12)
+		fallback.size = Vector2(width - 16, height - 42)
 		fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		fallback.clip_text = true
+	return button
 
 
 func _texture_ready(path: String, texture: Texture2D) -> void:
+	board.textures[path] = texture
+	board.queue_redraw()
 	for picture in images:
 		if is_instance_valid(picture) and picture.get_meta("image_path", "") == path:
 			picture.texture = texture
@@ -502,6 +687,7 @@ func _texture_ready(path: String, texture: Texture2D) -> void:
 
 
 func _choose_ref(ref: String) -> void:
+	_hide_preview()
 	if busy:
 		return
 	_inspect(ref)
@@ -535,7 +721,8 @@ func _choose_ref_action(ref: String) -> void:
 
 
 func _set_tab(value: String) -> void:
-	tab = value
+	_hide_preview()
+	tab = "choices" if value == "market" else value
 	_render_choices()
 
 
@@ -544,19 +731,24 @@ func _reset_board() -> void:
 
 
 func _action_button(action: Dictionary) -> void:
-	var button = _button(content, model.describe(action), _choose_action.bind(action, model.signature()))
+	var ref = ""
+	for value in action.get("arguments", {}).values():
+		if value is String and not model.entry(value).is_empty():
+			ref = value
+			break
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	content.add_child(row)
+	if not ref.is_empty() and not _image_path(model.entry(ref)).is_empty():
+		_picture(row, _image_path(model.entry(ref)), Vector2(44, 62))
+	var button = _button(row, model.describe(action), _choose_action.bind(action, model.signature()))
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button.set_meta("action_index", int(action.index))
 	button.disabled = busy
-	for value in action.get("arguments", {}).values():
-		if value is String and not model.entry(value).is_empty():
-			button.mouse_entered.connect(_inspect.bind(value))
-			button.gui_input.connect(func(event):
-				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-					_open_details(value)
-			)
-			break
+	if not ref.is_empty():
+		_bind_preview(button, ref)
 	if int(model.held_action().get("index", -1)) == int(action.index):
 		button.add_theme_stylebox_override("normal", _style(Color("53442f"), Color("e1bd7c")))
 
@@ -575,9 +767,6 @@ func _render_choices(filtered: Array = []) -> void:
 		finish_button.disabled = busy
 	else:
 		finish_button.disabled = busy or model.finish_action().is_empty()
-	if tab == "market":
-		_render_market()
-		return
 	if tab == "log":
 		_render_log()
 		return
@@ -605,7 +794,7 @@ func _render_choices(filtered: Array = []) -> void:
 				spaces[action.arguments.space_id] = true
 			for space in spaces:
 				var button = _button(content, model.name_of(space), _choose_ref.bind(space))
-				button.mouse_entered.connect(_inspect.bind(space))
+				_bind_preview(button, space)
 		elif not model.selected_space.is_empty():
 			var cards: Dictionary = {}
 			for action in model.placements("", model.selected_space):
@@ -620,26 +809,38 @@ func _render_choices(filtered: Array = []) -> void:
 
 
 func _render_market() -> void:
+	_clear(market_content)
+	var heading = HBoxContainer.new()
+	market_content.add_child(heading)
+	_label(heading, "공용 카드", 16).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var expand = _button(heading, "크게", func(): _open_pile("임페리움 열 · 살펴보기", model.view().get("imperium_row", [])))
+	expand.custom_minimum_size.y = 26
+	expand.add_theme_font_size_override("font_size", 12)
 	var decision = model.summary().get("decision")
 	if decision is Dictionary and decision.get("persuasion") != null:
-		_label(content, "남은 설득력 %d" % int(decision.persuasion), 20)
-	_label(content, "임페리움 열", 20)
-	var row = model.view().get("imperium_row", [])
-	for index in range(0, row.size(), 2):
-		var pair = HBoxContainer.new()
-		content.add_child(pair)
-		_card(pair, row[index], 146, 192)
-		if index + 1 < row.size():
-			_card(pair, row[index + 1], 146, 192)
-	_label(content, "예비 더미", 18)
-	for stack in model.view().get("reserve_stacks", []):
-		var entry = model.entry(str(stack[0]))
-		var label = "%s · %d장" % [model.name_of(str(stack[0])), int(stack[1])]
-		var button = _button(content, label, _inspect.bind(str(stack[0])))
-		button.mouse_entered.connect(_inspect.bind(str(stack[0])))
-		for action in model.actions():
-			if action.action_id.begins_with("acquire_reserve") and str(stack[0]) in action.arguments.values():
-				_action_button(action)
+		_label(market_content, "설득력 %d 남음" % int(decision.persuasion), 14)
+	_label(market_content, "임페리움 열", 13)
+	var refs = model.view().get("imperium_row", [])
+	var width = 84 if size.x >= 1340 else 76
+	for index in range(0, refs.size(), 2):
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		market_content.add_child(row)
+		for offset in range(mini(2, refs.size() - index)):
+			_card(row, refs[index + offset], width, int(width * 1.4) + 8)
+	_label(market_content, "예비 더미", 13)
+	for reserve in model.view().get("reserve_stacks", []):
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 5)
+		market_content.add_child(row)
+		var ref = str(reserve[0])
+		_card(row, ref, width, int(width * 1.4) + 8)
+		var text = VBoxContainer.new()
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(text)
+		_label(text, model.name_of(ref), 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_label(text, "%d장" % int(reserve[1]), 12)
+	_label(market_content, "마우스를 올려 크게 보기", 11)
 
 
 func _render_results() -> void:
@@ -651,7 +852,7 @@ func _render_results() -> void:
 		panel.add_child(body)
 		_label(body, "%d위 · %s · %d점" % [int(standing.rank), model.seat_name(seat), int(standing.victory_points)], 20)
 		_label(body, "스파이스 %d · 솔라리 %d · 물 %d\n수비대 %d" % [int(standing.spice), int(standing.solari), int(standing.water), int(standing.troops_garrison)], 14)
-	_label(content, "순위와 동점 결과는 Python 서버의 최종 판정입니다. 테이블에서 각자의 카드를 다시 볼 수 있습니다.", 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_label(content, "테이블 상세에서 각자의 카드와 이번 판을 다시 살펴볼 수 있습니다.", 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 func _render_table() -> void:
@@ -710,8 +911,10 @@ func _open_pile(title: String, refs: Array) -> AcceptDialog:
 	return dialog
 
 
-func _render_log() -> void:
-	_label(content, "이번 판의 기록", 20)
+func _render_log(parent: VBoxContainer = null) -> void:
+	if parent == null:
+		parent = content
+	_clear(parent)
 	var entries = model.snapshot.get("log", {}).get("entries", [])
 	for index in range(entries.size() - 1, maxi(-1, entries.size() - 31), -1):
 		var entry = entries[index]
@@ -724,7 +927,12 @@ func _render_log() -> void:
 			for event in entry.get("events", []):
 				text += model.label("EVENT_LABELS", str(event.get("kind", ""))) + "\n"
 		if not text.is_empty():
-			_label(content, text, 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var line = _label(parent, text, 12)
+			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			for value in entry.get("arguments", {}).values():
+				if value is String and not _image_path(model.entry(value)).is_empty():
+					_bind_preview(line, value)
+					break
 
 
 func _inspect(ref: String) -> void:
@@ -741,7 +949,7 @@ func _entry_words(entry: Dictionary) -> String:
 	if not icons.is_empty():
 		var names: PackedStringArray = []
 		for icon in icons:
-			names.append(model.label("AGENT_ICON_GROUPS", icon))
+			names.append(model.phrase("{spy}") if icon == "spy" else model.label("AGENT_ICON_GROUPS", icon))
 		parts.append("에이전트: " + " / ".join(names))
 	if int(entry.get("persuasion", 0)) or int(entry.get("swords", 0)):
 		parts.append("공개: 설득력 %d · 검 %d" % [int(entry.get("persuasion", 0)), int(entry.get("swords", 0))])
@@ -771,8 +979,8 @@ func _entry_words(entry: Dictionary) -> String:
 
 func _update_inspector() -> void:
 	if inspect_ref.is_empty():
-		inspector_title.text = "테이블을 살펴보세요"
-		inspector_words.text = "카드·칸·선택 버튼에 마우스를 올리면 자세히 볼 수 있습니다. 오른쪽 클릭으로 큰 그림과 설명을 엽니다."
+		inspector_title.text = ""
+		inspector_words.text = ""
 		inspector_image.set_meta("image_path", "")
 		inspector_image.texture = null
 		return
@@ -780,11 +988,13 @@ func _update_inspector() -> void:
 	inspector_title.text = model.name_of(inspect_ref)
 	inspector_words.text = _entry_words(entry)
 	var path = _image_path(entry)
+	inspector_image.visible = not path.is_empty()
 	inspector_image.set_meta("image_path", path)
 	inspector_image.texture = api.texture(path)
 
 
 func _open_details(ref: String) -> void:
+	_hide_preview()
 	var dialog = AcceptDialog.new()
 	dialog.title = model.name_of(ref)
 	dialog.dialog_text = ""
@@ -812,6 +1022,7 @@ func _open_details(ref: String) -> void:
 
 
 func _choose_action(action: Dictionary, expected: String) -> void:
+	_hide_preview()
 	if busy or expected != model.signature():
 		return
 	if action.get("sent_by_turn_end", false):
@@ -1030,49 +1241,196 @@ func _run_smoke() -> void:
 	_smoke_fail("AI did not hand back the turn")
 
 
-func _run_capture() -> void:
-	if not await _create_game(11):
-		_smoke_fail("capture create")
-		return
+func _wait_images() -> void:
 	for attempt in range(100):
 		if api.image_workers == 0:
 			break
 		await get_tree().create_timer(0.1).timeout
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
+func _ref_button(root: Node, ref: String) -> Button:
+	if ref.is_empty():
+		return null
+	for child in root.get_children():
+		if child is Button and child.get_meta("instance_ref", "") == ref:
+			return child
+		var found = _ref_button(child, ref)
+		if found != null:
+			return found
+	return null
+
+
+func _move_pointer(point: Vector2) -> void:
+	var event = InputEventMouseMotion.new()
+	event.position = get_viewport().get_final_transform() * point
+	event.global_position = event.position
+	Input.parse_input_event(event)
+	await get_tree().process_frame
+	await get_tree().create_timer(0.35).timeout
+
+
+func _check_layout() -> bool:
+	var window_rect = Rect2(Vector2.ZERO, size)
+	for control in [board, market_scroll, content.get_parent(), finish_button, hand_panel]:
+		if not window_rect.encloses(control.get_global_rect()):
+			_smoke_fail("table control outside the window")
+			return false
+	if board.size.x < 300 or board.map_rect.size.x < 300:
+		_smoke_fail("board lost its reading area")
+		return false
+	if finish_button.get_global_rect().position.y < content.get_parent().get_global_rect().end.y:
+		_smoke_fail("turn end overlaps choices")
+		return false
+	return true
+
+
+func _check_hover(ref: String, source: Control) -> bool:
+	await _move_pointer(source.get_global_rect().get_center())
+	if not preview.visible or inspect_ref != ref or inspector_image.texture == null:
+		_smoke_fail("native hover did not show the matching large card")
+		return false
+	if not Rect2(Vector2.ZERO, size).encloses(preview.get_global_rect()) or preview.get_global_rect().intersects(source.get_global_rect()):
+		_smoke_fail("hover outside window or covering its control")
+		return false
+	if "spy" in model.entry(ref).get("agent_icons", []) and inspector_words.text.contains("에이전트: Spy"):
+		_smoke_fail("untranslated spy icon in the card preview")
+		return false
+	if inspector_image.size.x < 250 or preview.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+		_smoke_fail("hover card too small or consumes input")
+		return false
+	return true
+
+
+func _run_capture() -> void:
+	if not await _create_game(11):
+		_smoke_fail("capture create")
+		return
+	await _wait_images()
+	if not _check_layout():
+		return
 	await _capture("table")
 	var first = model.placements()[0]
-	var card: Button
-	for child in hand.get_children():
-		if child is Button and child.get_meta("instance_ref", "") == first.arguments.card_id:
-			card = child
+	var card = _ref_button(hand, first.arguments.card_id)
 	if card == null:
 		_smoke_fail("visible card button")
 		return
+	if not await _check_hover(first.arguments.card_id, card):
+		return
+	await _capture("card-hover")
 	await _click(card.get_global_rect().get_center())
 	if model.selected_card != first.arguments.card_id:
-		_smoke_fail("native card click")
+		_smoke_fail("native card click with hover open")
 		return
 	var point = board._box(model.entry(first.arguments.space_id).box).get_center()
 	await _click(board.get_global_transform() * point)
 	if model.selected_space != first.arguments.space_id:
 		_smoke_fail("native board click")
 		return
-	for attempt in range(100):
-		if api.image_workers == 0:
-			break
-		await get_tree().create_timer(0.1).timeout
+	await _wait_images()
 	await _capture("selected")
-	_set_tab("market")
-	for attempt in range(100):
-		if api.image_workers == 0:
-			break
-		await get_tree().create_timer(0.1).timeout
-	await _capture("market")
+	# Wheel zoom keeps the pointed-at board space under the cursor.
+	var wheel = InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	wheel.position = board.get_global_transform() * point
+	Input.parse_input_event(wheel)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if board.zoom <= 1.0 or board._hit(point) != first.arguments.space_id:
+		_smoke_fail("wheel zoom moved the selected space away from the cursor")
+		return
+	await _capture("zoom")
+	_reset_board()
+	await _wait_images()
+	var placement_button: Button
+	for button in content.find_children("*", "Button", true, false):
+		if int(button.get_meta("action_index", -1)) == int(first.index):
+			placement_button = button
+	if placement_button == null or not await _check_hover(first.arguments.card_id, placement_button):
+		return
+	if preview.get_global_rect().intersects(content.get_parent().get_global_rect()):
+		_smoke_fail("action hover covers the decision column")
+		return
+	await _capture("choice-hover")
+	_hide_preview()
 	_set_tab("table")
 	await _capture("tableau")
 	var pile = _open_pile("내 손패 · 살펴보기", model.view().get("private", {}).get("hand", []))
 	await _capture("pile")
 	pile.confirmed.emit()
 	await get_tree().process_frame
+	_set_tab("choices")
+	await _wait_images()
+	# Reveal and buy through actual input, using only the server's choices.
+	var reveal: Dictionary = {}
+	for action in model.actions():
+		if action.action_id == "reveal_turn":
+			reveal = action
+	if reveal.is_empty():
+		_smoke_fail("reveal choice absent")
+		return
+	var before_reveal = model.signature()
+	for button in content.find_children("*", "Button", true, false):
+		if int(button.get_meta("action_index", -1)) == int(reveal.index):
+			await _click(button.get_global_rect().get_center())
+			break
+	while busy or refreshing:
+		await get_tree().process_frame
+	if not model.held_action().is_empty():
+		await _click(finish_button.get_global_rect().get_center())
+		while busy or refreshing:
+			await get_tree().process_frame
+	if model.signature() == before_reveal:
+		_smoke_fail("native reveal click did not advance")
+		return
+	await _wait_images()
+	await _capture("market")
+	var purchase_ref = ""
+	for action in model.actions():
+		if str(action.action_id).begins_with("acquire_imperium"):
+			for value in action.arguments.values():
+				if value is String and value in model.view().get("imperium_row", []):
+					purchase_ref = value
+					break
+		if not purchase_ref.is_empty():
+			break
+	var market_card = _ref_button(market_content, purchase_ref)
+	if market_card == null or not await _check_hover(purchase_ref, market_card):
+		_smoke_fail("market purchase control absent")
+		return
+	await _capture("market-hover")
+	var before = model.signature()
+	await _click(market_card.get_global_rect().get_center())
+	while busy or refreshing:
+		await get_tree().process_frame
+	if model.signature() == before or purchase_ref in model.view().get("imperium_row", []):
+		_smoke_fail("native market click did not purchase")
+		return
+	await _wait_images()
+	for line in log_content.get_children():
+		var ref = str(line.get_meta("preview_ref", ""))
+		if not ref.is_empty():
+			if not await _check_hover(ref, line):
+				return
+			await _capture("log-hover")
+			_hide_preview()
+			break
+	get_window().size = Vector2i(1100, 740)
+	await _wait_images()
+	if not _check_layout():
+		return
+	await _capture("narrow")
+	var row_refs = model.view().get("imperium_row", [])
+	if not row_refs.is_empty():
+		var narrow_card = _ref_button(market_content, row_refs[0])
+		if not await _check_hover(row_refs[0], narrow_card):
+			return
+		await _capture("narrow-hover")
+	_hide_preview()
+	get_window().size = Vector2i(1440, 900)
+	await _wait_images()
 	await _click(new_button.get_global_rect().get_center())
 	await _capture("new-game")
 	var draft_dialog: ConfirmationDialog
@@ -1098,7 +1456,7 @@ func _run_capture() -> void:
 	if not model.summary().get("leader_draft", false):
 		_smoke_fail("draft game did not start from dialog")
 		return
-	if inspector_image.texture != null or inspector_title.text != "테이블을 살펴보세요":
+	if inspector_image.texture != null or not inspector_title.text.is_empty() or preview.visible:
 		_smoke_fail("new game kept another game's inspector")
 		return
 	await _capture("draft")
@@ -1124,8 +1482,8 @@ func _capture(name: String) -> void:
 	if name == "selected":
 		var pane = content.get_parent().get_global_rect()
 		var visible_actions = 0
-		for node in content.get_children():
-			if node is Button and pane.intersects(node.get_global_rect()):
+		for node in content.find_children("*", "Button", true, false):
+			if pane.intersects(node.get_global_rect()):
 				visible_actions += 1
 		if visible_actions == 0 or finish_button.get_global_rect().position.y < pane.end.y:
 			_smoke_fail("selected action visibility or overlap")
