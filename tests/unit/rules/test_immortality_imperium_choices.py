@@ -385,6 +385,52 @@ def test_for_humanity_passes_the_alliance_on_the_second_step() -> None:
     assert second.victory_points == 3
 
 
+def test_for_humanity_passes_the_alliance_when_a_step_starts_tied() -> None:
+    # OQ-014 (reinforced 2026-10-07): "Guild 6인 보유자가 5인 상대를 두고
+    # 2를 잃으면(Opportunism, For Humanity) 4로 끝나 token을 지킨다. 한 칸씩
+    # 읽으면 6→5에서 동률이 되고 5→4에서 상대가 token을 가져간다. 엔진은
+    # 한 칸씩 처리하며 ... 이 읽기를 유지한다." (a project convention, not an
+    # official rule; each space applies "You were previously tied for
+    # Influence with another player; the player you were tied with now takes
+    # the Alliance token." [FAQ p. 1].) For Humanity's Bene Gesserit Alliance
+    # cost is two Influence [For Humanity card]: a holder on 6 with one rival
+    # on 5 falls to 5 (tied, token kept) and then to 4, where the rival takes
+    # the token. Exactly one rival is tied, so no recipient is offered.
+    humanity = _card("for_humanity")
+    allied = _reveal(
+        _state(
+            _owner(
+                (humanity,),
+                influence=Influence(bene_gesserit=6),
+                alliance_faction_ids=("bene_gesserit",),
+                victory_points=3,
+            ),
+            _seat(1, influence=Influence(bene_gesserit=5), victory_points=2),
+        )
+    )
+    actions = legal_reveal_influence_loss_actions(allied, 0)
+    assert [(a.action_id, dict(a.arguments)) for a in actions] == [
+        ("lose_reveal_influence_for_vp", {"faction": "bene_gesserit"})
+    ]
+
+    result = apply_reveal_influence_loss(allied, actions[0])
+
+    owner, rival = result.state.players[:2]
+    assert owner.influence.bene_gesserit == 4
+    assert owner.alliance_faction_ids == ()
+    # Token point lost, the card's Victory Point gained.
+    assert owner.victory_points == 3 - 1 + 1
+    assert rival.influence.bene_gesserit == 5
+    assert rival.alliance_faction_ids == ("bene_gesserit",)
+    assert rival.victory_points == 3
+    transfers = [e for e in result.events if e.kind == "alliance_transferred"]
+    assert [dict(e.payload) for e in transfers] == [
+        {"faction": "bene_gesserit", "from_player": 0, "to_player": 1}
+    ]
+    # ...:lost:<faction>:<space>:alliance:0 -- it moved in the second space.
+    assert transfers[0].event_id.endswith(":lost:bene_gesserit:1:alliance:0")
+
+
 def test_high_priority_travel_offers_the_draw_or_the_combat_icon() -> None:
     travel = _card("high_priority_travel")
     low = _place(_state(_owner((travel,))), travel, "assembly_hall")
