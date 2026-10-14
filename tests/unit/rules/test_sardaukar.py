@@ -1388,6 +1388,7 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
+        + 135  # v147: the ``source``-named Reveal choice rows
     )
 
     actions = (
@@ -1400,6 +1401,12 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
         DomainAction("deploy_intrigue_troops", 0, (("commanders", 1), ("count", 1))),
         DomainAction("retreat_two_troops_for_reveal", 0, (("commanders", 2),)),
+        # v147: the retreat names its card (``source``).
+        DomainAction(
+            "retreat_two_troops_for_reveal",
+            0,
+            (("commanders", 2), ("source", "chani_clever_tactician")),
+        ),
         DomainAction("retreat_leader_commander", 3),
         DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
     )
@@ -1553,9 +1560,15 @@ def test_reveal_two_troop_retreat_may_include_commanders() -> None:
         _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
     ).state
     actions = legal_reveal_troop_retreat_actions(revealed, 0)
-    # One troop and one Commander: only the mixed pair reaches two units.
-    assert [dict(a.arguments) for a in actions] == [{}, {"commanders": 1}]
-    result = apply_reveal_troop_retreat(revealed, actions[1]).state.players[0]
+    # One troop and one Commander: only the mixed pair reaches two units. The
+    # effect is a "may" [FAQ p. 3], so no refusal is offered beside it.
+    assert [dict(a.arguments) for a in actions] == [
+        {"commanders": 1, "source": "chani_clever_tactician"}
+    ]
+    offered = {a.action_id for a in UprisingRulesEngine().legal_actions(revealed, 0)}
+    assert "decline_reveal_troop_retreat" not in offered
+    assert "finish_reveal" in offered
+    result = apply_reveal_troop_retreat(revealed, actions[0]).state.players[0]
     assert result.troops_conflict == 0 and result.commanders_conflict == 0
     assert result.commanders_garrison == 1
     assert result.combat_strength == 0

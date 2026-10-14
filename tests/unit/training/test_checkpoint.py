@@ -368,6 +368,67 @@ def test_box_one_rows_start_from_their_untagged_twins(tmp_path: Path) -> None:
         assert torch.equal(moments["exp_avg"][twin], moments["exp_avg"][plain])
 
 
+def test_source_rows_start_from_their_source_less_rows(tmp_path: Path) -> None:
+    """Codec v147 names the Reveal card of seven Reveal choice ids with
+    ``source`` (OQ-095 (7) addition). A file written before it starts each
+    card's row from the source-less row of the same choice: the same weights
+    and bias, counted as aliased (trained), so the play network keeps its
+    Reveal choices and a network-only seat never hands them to a heuristic."""
+
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=3, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    sourced = [
+        i
+        for i, t in enumerate(codec.catalog)
+        if any(name == "source" for name, _ in t.arguments)
+    ]
+    assert len(sourced) == 135
+    keep = [i for i in range(codec.size) if i not in set(sourced)]
+    rows = torch.tensor(keep)
+    state = dict(document["state_dict"])
+    for name in ("policy_head.weight", "policy_head.bias"):
+        state[name] = state[name][rows]
+    forged = {
+        **document,
+        "state_dict": state,
+        "action_templates": [document["action_templates"][i] for i in keep],
+        "action_size": len(keep),
+        "action_codec_version": ACTION_CODEC_VERSION - 1,
+        "optimizer_state": None,
+    }
+    older = tmp_path / "v146.pt"
+    torch.save(forged, older)
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.actions_kept, report.actions_aliased, report.actions_new) == (
+        len(keep),
+        len(sourced),
+        0,
+    )
+    assert report.new_action_rows == frozenset()
+    index = {template: row for row, template in enumerate(codec.catalog)}
+    weight = migrated.policy_head.weight.detach()
+    bias = migrated.policy_head.bias.detach()
+    for row in sourced:
+        template = codec.catalog[row]
+        plain = index[
+            ActionTemplate(
+                template.action_id,
+                tuple(item for item in template.arguments if item[0] != "source"),
+            )
+        ]
+        assert torch.equal(weight[row], weight[plain])
+        assert torch.equal(bias[row], bias[plain])
+
+
 def test_a_format_1_mismatch_is_refused_and_stamping_fixes_it(tmp_path: Path) -> None:
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)

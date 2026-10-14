@@ -23,13 +23,16 @@ early. (It used to skip the graft switch, which no longer exists: both
 grafted boxes are offered from the start, codec v143.)
 
 A third case covers the "choice" surface, a branch of an open choice the
-seat cannot take: Desert Power revealed without Maker Hooks opens its
+seat cannot take: Desert Power revealed without Maker Hooks offers its
 choice with only the Persuasion branch legal and the sandworm branch greyed
-out, "{maker_hooks} 없음" (option (B), user ruling 2026-09-30). A first-row
+out, "{maker_hooks} 없음" (option (B), user ruling 2026-09-30). Since codec
+v147 the choice is a row of the Reveal list (OQ-095 (7) addition), so the
+greyed-out branch sits under Desert Power's own header, and the Reveal
+offers no turn end until a branch is chosen (OQ-069). A first-row
 seat almost never buys Desert Power, so this checkout's own engine plays
 seat 0 with a heuristic to that point and saves the game
 (`SAVE_AT_ROW_PY`); the page loads the save and must show the row under
-its own heading, beside the legal Persuasion branch, and drop it once the
+the card's header, beside the legal Persuasion branch, and drop it once the
 Persuasion branch is taken. A fourth case, on the same surface, is
 Imperial Privilege with no other Agent to recall: the recall greys out,
 "소환할 다른 {agent} 없음", beside the confirm the seat now takes itself
@@ -305,6 +308,22 @@ HEADING_JS = """(surface) => {
     ? node.textContent : null;
 }"""
 
+# The Reveal choice header a greyed-out row sits under (codec v147: a branch
+# of a revealed card's choice it cannot take is set under that card's
+# header, render.js revealChoiceHeading), with each icon as its name.
+CARD_HEADING_JS = """(surface) => {
+  const row = document.querySelector(
+    `#actions .unavailable-item[data-surface="${surface}"]`);
+  const walk = (n) => n.nodeType === 3 ? n.textContent
+    : n.tagName === 'IMG' ? n.alt : [...n.childNodes].map(walk).join('');
+  for (let n = row && row.previousElementSibling; n; n = n.previousElementSibling) {
+    if (n.classList.contains('reveal-choice-heading')) {
+      return walk(n).replace(/ +/g, ' ').trim();
+    }
+    if (n.classList.contains('pick-others')) return null;
+  }
+  return null;
+}"""
 
 # A node's words with each icon as its name (an icon is an <img> whose alt
 # is the term), so "{maker_hooks} 없음" reads "메이커 작살 없음".
@@ -371,10 +390,15 @@ def choice_case(page, base: str, saves: Path) -> bool:
     print(f"  .. seed {found['seed']}")
     load_saved(page, base, found)
     legal = page.evaluate("state.actions.actions.map((a) => a.action_id).sort()")
+    # Codec v147: the choice is a row of the Reveal list, beside the gains
+    # and purchases; it is mandatory, so the Reveal cannot end before it.
     ok = check.ok(
-        page.evaluate("state.summary.decision.kind") == "reveal_choice"
-        and legal == ["decline_reveal_sandworm", "defer_reveal_choice"],
-        "Desert Power: the choice opens with the Persuasion branch legal",
+        page.evaluate("state.summary.decision.kind") == "reveal"
+        and "decline_reveal_sandworm" in legal
+        and "pay_reveal_water_for_sandworm" not in legal
+        and "finish_reveal" not in legal
+        and "defer_reveal_choice" not in legal,
+        "Desert Power: the Reveal offers the Persuasion branch, and no turn end",
         legal,
     )
     reason = choice_reasons(page)
@@ -383,19 +407,29 @@ def choice_case(page, base: str, saves: Path) -> bool:
         "Desert Power: the sandworm branch greys out for want of Maker Hooks",
         reason,
     )
-    korean = (page.evaluate(HEADING_JS, "choice"), page.evaluate(WORDS_OF_JS, BADGE))
+    korean = (
+        page.evaluate(CARD_HEADING_JS, "choice"),
+        page.evaluate(WORDS_OF_JS, BADGE),
+    )
     ok &= check.ok(
-        korean == ("지금 고를 수 없는 선택지", "메이커 작살 없음"),
-        "Desert Power: the row sits under the choice heading, with its reason",
+        korean[0] is not None
+        and korean[0].startswith("사막의 힘 — ")
+        and korean[1] == "메이커 작살 없음",
+        "Desert Power: the row sits under its card's header, with its reason",
         korean,
     )
     ok &= inspect_surface(page, "choice", "Desert Power")
     page.evaluate("setLanguage('en')")
     assert settled(page, 10)
-    english = (page.evaluate(HEADING_JS, "choice"), page.evaluate(WORDS_OF_JS, BADGE))
+    english = (
+        page.evaluate(CARD_HEADING_JS, "choice"),
+        page.evaluate(WORDS_OF_JS, BADGE),
+    )
     ok &= check.ok(
-        english == ("Choices you cannot take now", "No Maker Hooks"),
-        "Desert Power: in English the heading and the reason",
+        english[0] is not None
+        and english[0].startswith("Desert Power — ")
+        and english[1] == "No Maker Hooks",
+        "Desert Power: in English the card's header and the reason",
         english,
     )
     page.evaluate("setLanguage('ko')")

@@ -138,15 +138,46 @@ def revealed(hand: list[str], **changes: object) -> GameState:
     return apply(state, find(state, "reveal_turn"))
 
 
-def defer_all(state: GameState) -> GameState:
-    while state.decision_stack[-1].kind == "reveal_choice":
-        state = apply(state, find(state, "defer_reveal_choice"))
+def take_gains(state: GameState) -> GameState:
+    """Answer the automatic gains until the post-reveal prompt is reached."""
+
+    gain_ids = {
+        "recruit_reveal_troops",
+        "draw_reveal_intrigue",
+        "gain_reveal_resources",
+        "generate_reveal_specimens",
+    }
+    while any(a.action_id in gain_ids for a in legal(state)):
+        action = reveal.reveal_window(make_run(state))
+        assert action is not None
+        state = apply(state, action)
     return state
 
 
-def resumed(hand: list[str], effect: str, **changes: object) -> GameState:
-    state = defer_all(revealed(hand, **changes))
-    return apply(state, find(state, "resume_reveal_choice", effect=effect))
+def entry_of(state: GameState, effect: str) -> reveal._Entry:
+    """The pending choice of ``effect`` that offers rows (the only one)."""
+
+    entries = reveal._choice_entries(make_run(state))
+    assert entries is not None
+    (entry,) = [e for e in entries if e.effect == effect]
+    return entry
+
+
+def entry_run(state: GameState, effect: str) -> DecisionRun:
+    """A run over the rows of the pending choice of ``effect``."""
+
+    return reveal._entry_run(make_run(state), entry_of(state, effect))
+
+
+def key_of(
+    state: GameState, effect: str, constants: AIConstants = HARD
+) -> tuple[float, DomainAction | None]:
+    """The post-reveal key of the pending choice of ``effect``."""
+
+    run = make_run(state, constants=constants)
+    (source,) = reveal._choice_sources(run, [entry_of(state, effect)], {})
+    assert source.evaluate is not None
+    return source.evaluate()
 
 
 def gain_sources(run: DecisionRun) -> list[Source]:
@@ -379,17 +410,15 @@ def no_tleilaxu_buys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("no_tleilaxu_buys")
 def test_family_atomics_is_a_key_worth_100_with_four_to_eight_persuasion() -> None:
-    state = defer_all(
-        revealed(
-            [
-                "player:0:starter:experimentation:0",
-                "player:0:starter:dagger:0",
-                "player:0:starter:diplomacy:0",
-                "player:0:starter:seek_allies:0",
-                "player:0:starter:signet_ring:0",
-                "imperium:for_humanity:0",
-            ]
-        )
+    state = revealed(
+        [
+            "player:0:starter:experimentation:0",
+            "player:0:starter:dagger:0",
+            "player:0:starter:diplomacy:0",
+            "player:0:starter:seek_allies:0",
+            "player:0:starter:signet_ring:0",
+            "imperium:for_humanity:0",
+        ]
     )
     while any(a.action_id == "generate_reveal_specimens" for a in legal(state)):
         state = apply(state, find(state, "generate_reveal_specimens"))
@@ -468,73 +497,75 @@ def test_a_stale_return_batch_is_dropped() -> None:
 
 
 # ===========================================================================
-# reveal_choice: For Humanity, Shadout Mapes, Tleilaxu Surgeon
+# Prompt keys: For Humanity, Shadout Mapes, Tleilaxu Surgeon
 # ===========================================================================
 
 
-def test_for_humanity_choice_is_deferred_first() -> None:
+def test_for_humanity_is_an_optional_prompt_key() -> None:
+    effect = "may_lose_influence_for_vp_if_bene_gesserit_alliance"
     state = revealed(
         ["imperium:for_humanity:0"],
         alliance_faction_ids=("bene_gesserit",),
         influence=Influence(bene_gesserit=4, fremen=2),
     )
-    assert state.decision_stack[-1].kind == "reveal_choice"
+    assert state.decision_stack[-1].kind == "reveal"
     run = make_run(state)
-    assert reveal.reveal_choice_window(run) == find(state, "defer_reveal_choice")
+    (source,) = reveal._choice_sources(run, [entry_of(state, effect)], {})
+    assert source.extra == {"blocking": False, "explicit": False}
+    assert not reveal._outside_prompt(run, entry_of(state, effect))
 
 
 def test_for_humanity_loses_on_the_app_best_track() -> None:
     effect = "may_lose_influence_for_vp_if_bene_gesserit_alliance"
-    state = resumed(
-        ["imperium:for_humanity:0"],
-        effect,
-        alliance_faction_ids=("bene_gesserit",),
-        influence=Influence(bene_gesserit=4, fremen=2, emperor=1),
-        victory_points=5,
+    state = take_gains(
+        revealed(
+            ["imperium:for_humanity:0"],
+            alliance_faction_ids=("bene_gesserit",),
+            influence=Influence(bene_gesserit=4, fremen=2, emperor=1),
+            victory_points=5,
+        )
     )
     run = make_run(state)
     tracks = tuple(track_entity(f) for f in ("bene_gesserit", "fremen"))
     ability = ForHumanityRevealAbility(card_entity("imperium:for_humanity:0"))
     answer = ability.evaluate(run.profile, Request((TargetInfo(entities=tracks),)))
-    action = reveal.reveal_choice_window(run)
+    value, action = key_of(state, effect)
+    assert value == answer.value
+    assert answer.response is not None
+    lose = find(state, "lose_reveal_influence_for_vp", faction=answer.response[0][0])
+    assert action == lose
+    chosen = reveal.reveal_window(make_run(state, constants=NO_BUYS))
     if answer.value > 0:
-        assert answer.response is not None
-        assert action == find(
-            state, "lose_reveal_influence_for_vp", faction=answer.response[0][0]
-        )
+        assert chosen == lose
     else:
-        assert action == find(state, "decline_reveal_influence_loss")
+        assert chosen == find(state, "finish_reveal")
 
 
-def test_for_humanity_worth_nothing_declines() -> None:
+def test_for_humanity_worth_nothing_lapses() -> None:
     effect = "may_lose_influence_for_vp_if_bene_gesserit_alliance"
-    state = resumed(
-        ["imperium:for_humanity:0"],
-        effect,
-        alliance_faction_ids=("bene_gesserit",),
-        influence=Influence(bene_gesserit=4),
+    state = take_gains(
+        revealed(
+            ["imperium:for_humanity:0"],
+            alliance_faction_ids=("bene_gesserit",),
+            influence=Influence(bene_gesserit=4),
+        )
     )
-    zero = replace(HARD, VictoryPointValueEarly=-100.0, VictoryPointValueMid=-100.0)
+    zero = replace(NO_BUYS, VictoryPointValueEarly=-100.0, VictoryPointValueMid=-100.0)
+    assert key_of(state, effect, zero)[0] <= 0.0
     run = make_run(state, constants=zero)
-    assert reveal.reveal_choice_window(run) == find(
-        state, "decline_reveal_influence_loss"
-    )
+    assert reveal.reveal_window(run) == find(state, "finish_reveal")
 
 
 def test_shadout_mapes_follows_its_evaluate() -> None:
-    state = resumed(
-        ["imperium:shadout_mapes:0"],
-        "may_deploy_or_retreat_one_troop",
-        troops_garrison=3,
-    )
+    state = take_gains(revealed(["imperium:shadout_mapes:0"], troops_garrison=3))
     run = make_run(state)
     ability = ShadoutMapesAbility(card_entity("imperium:shadout_mapes:0"))
     answer = ability.evaluate(run.profile, Request((TargetInfo(options=(0,)),)))
-    action = reveal.reveal_choice_window(run)
+    action = reveal.reveal_window(make_run(state, constants=NO_BUYS))
     if answer.value > 0:
         assert action == find(state, "deploy_reveal_card_troop")
     else:
-        assert action == find(state, "decline_reveal_troop_move")
+        assert action == find(state, "finish_reveal")
 
 
 @pytest.mark.parametrize(
@@ -544,41 +575,32 @@ def test_shadout_mapes_follows_its_evaluate() -> None:
 def test_shadout_mapes_options_map_to_deploy_then_retreat(
     option: int, action_id: str
 ) -> None:
-    state = resumed(
-        ["imperium:shadout_mapes:0"],
-        "may_deploy_or_retreat_one_troop",
-        troops_garrison=2,
-        troops_conflict=2,
+    effect = "may_deploy_or_retreat_one_troop"
+    state = revealed(
+        ["imperium:shadout_mapes:0"], troops_garrison=2, troops_conflict=2
     )
-    run = make_run(state)
     answer = Answer(100.0, ((option,),))
-    action = reveal._realise(run, "may_deploy_or_retreat_one_troop", answer)
+    action = reveal._realise(entry_run(state, effect), effect, answer)
     assert action == find(state, action_id)
 
 
 def test_tleilaxu_surgeon_trades_the_app_troops_for_specimens() -> None:
-    state = resumed(
-        ["imperium:tleilaxu_surgeon:0"],
-        "may_lose_two_troops_for_two_specimens",
-        troops_garrison=3,
-        troops_conflict=2,
+    effect = "may_lose_two_troops_for_two_specimens"
+    state = revealed(
+        ["imperium:tleilaxu_surgeon:0"], troops_garrison=3, troops_conflict=2
     )
     run = make_run(state)
-    request = reveal._choice_request(
-        run, "may_lose_two_troops_for_two_specimens", "imperium:tleilaxu_surgeon:0"
-    )
+    request = reveal._choice_request(run, effect, "imperium:tleilaxu_surgeon:0")
     assert request.infos[0].options == (0, 0, 0, 1, 1)
     ability = TleilaxuSurgeonRevealAbility(card_entity("imperium:tleilaxu_surgeon:0"))
     answer = ability.evaluate(run.profile, request)
-    action = reveal.reveal_choice_window(run)
-    if answer.value > 0:
-        assert answer.response is not None
+    value, action = key_of(state, effect)
+    assert value == answer.value
+    if answer.response is not None:
         zones = ",".join(
             "garrison" if c == 0 else "conflict" for c in sorted(answer.response[0])
         )
         assert action == find(state, "lose_reveal_troops_for_specimens", zones=zones)
-    else:
-        assert action == find(state, "decline_reveal_troop_sacrifice")
 
 
 @pytest.mark.parametrize(
@@ -592,15 +614,12 @@ def test_tleilaxu_surgeon_trades_the_app_troops_for_specimens() -> None:
 def test_surgeon_zone_codes_map_to_our_zone_pairs(
     codes: tuple[int, int], zones: str
 ) -> None:
-    state = resumed(
-        ["imperium:tleilaxu_surgeon:0"],
-        "may_lose_two_troops_for_two_specimens",
-        troops_garrison=2,
-        troops_conflict=2,
+    effect = "may_lose_two_troops_for_two_specimens"
+    state = revealed(
+        ["imperium:tleilaxu_surgeon:0"], troops_garrison=2, troops_conflict=2
     )
-    run = make_run(state)
     answer = Answer(5.0, (codes,))
-    action = reveal._realise(run, "may_lose_two_troops_for_two_specimens", answer)
+    action = reveal._realise(entry_run(state, effect), effect, answer)
     assert action == find(state, "lose_reveal_troops_for_specimens", zones=zones)
 
 
@@ -611,16 +630,16 @@ def test_choice_card_without_its_mapped_ability_is_not_mirrored(
     catalog gap) is not valued with another card's ability: no answer."""
 
     effect = "may_lose_influence_for_vp_if_bene_gesserit_alliance"
-    state = resumed(
-        ["imperium:for_humanity:0"],
-        effect,
-        alliance_faction_ids=("bene_gesserit",),
-        influence=Influence(bene_gesserit=4, fremen=2),
+    state = take_gains(
+        revealed(
+            ["imperium:for_humanity:0"],
+            alliance_faction_ids=("bene_gesserit",),
+            influence=Influence(bene_gesserit=4, fremen=2),
+        )
     )
-    run = make_run(state)
-    assert reveal.reveal_choice_window(run) is not None
+    assert reveal.reveal_window(make_run(state)) is not None
     monkeypatch.setitem(reveal._CHOICE_ABILITIES, effect, ShadoutMapesAbility)
-    assert reveal.reveal_choice_window(make_run(state)) is None
+    assert reveal.reveal_window(make_run(state)) is None
 
 
 def test_buy_key_of_a_card_without_the_acquire_class_is_not_mirrored(
@@ -637,22 +656,23 @@ def test_buy_key_of_a_card_without_the_acquire_class_is_not_mirrored(
     assert reveal.reveal_window(make_run(state)) is None
 
 
-def test_immortality_choices_are_optional_end_turn_blockers() -> None:
-    """With nothing else to do the app ends the turn: the pending Optional
-    choice is resumed to be declined, then the turn ends."""
+def test_immortality_choices_lapse_at_the_end_turn() -> None:
+    """Optional choices hold nothing back: with nothing else worth doing the
+    app ends the turn and the pending choice lapses."""
 
-    state = defer_all(revealed(["imperium:shadout_mapes:0"], troops_garrison=1))
-    resume = find(
-        state, "resume_reveal_choice", effect="may_deploy_or_retreat_one_troop"
-    )
-    assert all(a.action_id != "finish_reveal" for a in legal(state))
-    memory = Memory()
-    run = make_run(state, memory, constants=NO_BUYS)
+    state = take_gains(revealed(["imperium:shadout_mapes:0"], troops_garrison=1))
+    effect = "may_deploy_or_retreat_one_troop"
+    entry = entry_of(state, effect)
+    finish = find(state, "finish_reveal")
+    run = make_run(state, constants=NO_BUYS)
     ability = ShadoutMapesAbility(card_entity("imperium:shadout_mapes:0"))
     answer = ability.evaluate(run.profile, Request((TargetInfo(options=(0,)),)))
-    assert reveal.reveal_window(run) == resume
-    key = ("reveal_choice", state.round_number, "may_deploy_or_retreat_one_troop")
-    assert memory.intents[key] == (answer if answer.value > 0 else "decline")
+    action = reveal.reveal_window(run)
+    if answer.value > 0:
+        assert action in entry.rows
+    else:
+        assert action == finish
+    assert run.memory.intents == {}
 
 
 # ===========================================================================

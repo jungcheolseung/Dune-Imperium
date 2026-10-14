@@ -24,7 +24,6 @@ from dune_imperium.agents.app_ai.abilities.generic import (
 )
 from dune_imperium.agents.app_ai.abilities.imperium_a import (
     CalculusofPowerEmperorAbility,
-    CapturedMentatRevealAbility,
     CorrinthCityRevealAbility,
     DesertPowerDeferredAbility,
 )
@@ -132,12 +131,6 @@ def revealed(hand: list[str], **changes: object) -> GameState:
     return apply(state, find(state, "reveal_turn"))
 
 
-def defer_all(state: GameState) -> GameState:
-    while state.decision_stack[-1].kind == "reveal_choice":
-        state = apply(state, find(state, "defer_reveal_choice"))
-    return state
-
-
 def take_gains(state: GameState) -> GameState:
     """Answer the automatic gains until the post-reveal prompt is reached."""
 
@@ -153,21 +146,29 @@ def take_gains(state: GameState) -> GameState:
     return state
 
 
-def resumed(hand: list[str], effect: str, **changes: object) -> GameState:
-    """``hand`` revealed, every choice deferred, then ``effect`` resumed."""
+def entry_of(state: GameState, effect: str) -> reveal._Entry:
+    """The pending choice of ``effect`` that offers rows (the only one)."""
 
-    state = defer_all(revealed(hand, **changes))
-    return apply(state, find(state, "resume_reveal_choice", effect=effect))
+    entries = reveal._choice_entries(make_run(state))
+    assert entries is not None
+    (entry,) = [e for e in entries if e.effect == effect]
+    return entry
 
 
-def intent_run(
-    state: GameState, effect: str, intent: object, *, rng_seed: int = 0
-) -> DecisionRun:
-    """A run whose memory holds the Reveal window's intent for ``effect``."""
+def entry_run(state: GameState, effect: str) -> DecisionRun:
+    """A run over the rows of the pending choice of ``effect``."""
 
-    memory = Memory()
-    memory.intents[("reveal_choice", state.round_number, effect)] = intent
-    return make_run(state, memory, rng_seed=rng_seed)
+    return reveal._entry_run(make_run(state), entry_of(state, effect))
+
+
+def choice_source(
+    state: GameState, effect: str, constants: AIConstants = HARD
+) -> Source:
+    """The post-reveal key of the pending choice of ``effect``."""
+
+    run = make_run(state, constants=constants)
+    (source,) = reveal._choice_sources(run, [entry_of(state, effect)], {})
+    return source
 
 
 def best_post(run: DecisionRun, actions: tuple[DomainAction, ...]) -> str:
@@ -194,28 +195,57 @@ def worst_post(run: DecisionRun, posts: tuple[str, ...]) -> str:
 
 
 # ===========================================================================
-# reveal_choice
+# Pending choices: rows of the Reveal frame, keys of the post-reveal prompt
 # ===========================================================================
 
 
-def test_initial_choice_frame_is_deferred() -> None:
-    state = revealed(["imperium:public_spectacle:0", "imperium:desert_power:0"])
-    assert state.decision_stack[-1].kind == "reveal_choice"
-    action = reveal.reveal_choice_window(make_run(state))
-    assert action is not None and action.action_id == "defer_reveal_choice"
+def test_revealed_choices_wait_on_the_reveal_frame() -> None:
+    """Codec v147: no choice frame is pushed; each choice is a pending entry
+    whose rows the Reveal frame offers, and no refusal is offered."""
+
+    state = revealed(
+        ["imperium:public_spectacle:0", "imperium:spacing_guild_s_favor:0"],
+        resources=Resources(spice=5),
+    )
+    assert state.decision_stack[-1].kind == "reveal"
+    entries = reveal._choice_entries(make_run(state))
+    assert entries is not None
+    assert [e.effect for e in entries] == [
+        "place_spy",
+        "may_pay_three_spice_for_influence",
+    ]
+    assert {a.action_id for a in entries[0].rows} == {"place_reveal_spy"}
+    cards = {dict(a.arguments)["source"] for a in entries[0].rows}
+    assert cards == {"public_spectacle"}
+    assert {a.action_id for a in entries[1].rows} == {"pay_reveal_spice_influence"}
+    assert not any(a.action_id.startswith("decline_") for a in legal(state))
+    # The Explicit Spy key blocks the End Turn; the Optional key does not.
+    sources = reveal._choice_sources(make_run(state), entries, {})
+    assert [s.extra for s in sources] == [
+        {"blocking": True, "explicit": True},
+        {"blocking": False, "explicit": False},
+    ]
 
 
 def test_seated_corrinth_city_runs_immediately() -> None:
     """``CorrinthCityRevealAbility::CanRunImmediately`` = HighCouncilSeat: the
-    seated owner's choice is answered at once (option 1 is not ours: 5 Solari)."""
+    seated owner's choice is a state-400 step after the printed gains, not a
+    prompt key (option 1 is not ours: 5 Solari); unseated, it is a key."""
 
     hand = ["imperium:corrinth_city:0", "imperium:sardaukar_soldier:0"]
-    seated = revealed(hand, high_council=True, resources=Resources(solari=6))
-    action = reveal.reveal_choice_window(make_run(seated))
-    assert action is not None and action.action_id == "gain_five_reveal_solari"
-    unseated = revealed(hand, resources=Resources(solari=6))
-    action = reveal.reveal_choice_window(make_run(unseated))
-    assert action is not None and action.action_id == "defer_reveal_choice"
+    seated = take_gains(
+        revealed(hand, high_council=True, resources=Resources(solari=6))
+    )
+    run = make_run(seated, constants=NO_BUYS)
+    entry = entry_of(seated, "gain_five_solari_or_take_high_council")
+    assert reveal._outside_prompt(run, entry)
+    action = reveal.reveal_window(run)
+    assert action == find(seated, "gain_five_reveal_solari")
+    unseated = take_gains(revealed(hand, resources=Resources(solari=6)))
+    entry = entry_of(unseated, "gain_five_solari_or_take_high_council")
+    assert not reveal._outside_prompt(make_run(unseated), entry)
+    action = reveal.reveal_window(make_run(unseated, constants=NO_BUYS))
+    assert action is not None and action in entry.rows
 
 
 def test_recalled_spy_frame_places_on_the_best_post() -> None:
@@ -232,91 +262,96 @@ def test_recalled_spy_frame_places_on_the_best_post() -> None:
     assert action == find(state, "place_reveal_spy", post_id=expected)
 
 
-def test_resumed_spy_with_empty_supply_recalls_the_worst_spy() -> None:
-    state = resumed(
-        ["imperium:public_spectacle:0"],
-        "place_spy",
-        spies_supply=0,
-        spy_post_ids=FEYD_POSTS,
+def test_a_choice_frame_other_than_the_recalled_spy_is_not_mirrored() -> None:
+    """Our engine leaves no other choice frame on top: None (counted)."""
+
+    state = revealed(
+        ["imperium:public_spectacle:0"], spies_supply=0, spy_post_ids=FEYD_POSTS
     )
-    run = intent_run(state, "place_spy", Answer(1.0, (), "Place Spy"))
-    expected = worst_post(make_run(state), FEYD_POSTS)
-    action = reveal.reveal_choice_window(run)
-    assert action == find(state, "recall_spy_for_reveal_placement", post_id=expected)
-
-
-def test_intent_answer_is_realised_and_consumed() -> None:
-    state = resumed(
-        ["imperium:spacing_guild_s_favor:0"],
-        "may_pay_three_spice_for_influence",
-        resources=Resources(spice=5),
+    state = apply(
+        state, find(state, "recall_spy_for_reveal_placement", post_id=FEYD_POSTS[0])
     )
-    run = intent_run(
-        state,
-        "may_pay_three_spice_for_influence",
-        Answer(3.0, (("bene_gesserit",),), "SGF"),
-    )
-    action = reveal.reveal_choice_window(run)
-    assert action == find(state, "pay_reveal_spice_influence", faction="bene_gesserit")
-    assert run.memory.intents == {}
+    frame = state.decision_stack[-1]
+    for changes in ({"reveal_spy_recalled": False}, {"reveal_choice_effect": "x"}):
+        context = {**dict(frame.context), **changes}
+        fake = replace(frame, context=tuple(sorted(context.items())))
+        odd = with_state(state, decision_stack=(*state.decision_stack[:-1], fake))
+        assert reveal.reveal_choice_window(make_run(odd, actions=legal(state))) is None
 
 
-def test_decline_intent_declines() -> None:
-    state = resumed(
-        ["imperium:spacing_guild_s_favor:0"],
-        "may_pay_three_spice_for_influence",
-        resources=Resources(spice=5),
-    )
-    run = intent_run(state, "may_pay_three_spice_for_influence", "decline")
-    action = reveal.reveal_choice_window(run)
-    assert action is not None and action.action_id == "decline_reveal_spice_influence"
-
-
-def test_random_intent_runs_the_ability_with_a_random_target() -> None:
-    """``DefaultRandomChoice``: an Optional key picked at random is used."""
-
-    state = resumed(
-        ["imperium:spacing_guild_s_favor:0"],
-        "may_pay_three_spice_for_influence",
-        resources=Resources(spice=5),
-    )
-    seen = set()
-    for seed in range(8):
-        run = intent_run(
-            state, "may_pay_three_spice_for_influence", "random", rng_seed=seed
+def test_spy_key_with_an_empty_supply_recalls_the_worst_spy() -> None:
+    state = take_gains(
+        revealed(
+            ["imperium:public_spectacle:0"], spies_supply=0, spy_post_ids=FEYD_POSTS
         )
-        action = reveal.reveal_choice_window(run)
-        assert action is not None
-        assert action.action_id == "pay_reveal_spice_influence"
-        seen.add(dict(action.arguments)["faction"])
-    assert len(seen) > 1
+    )
+    expected = worst_post(make_run(state), FEYD_POSTS)
+    recall = find(state, "recall_spy_for_reveal_placement", post_id=expected)
+    run = entry_run(state, "place_spy")
+    assert reveal._realise(run, "place_spy", Answer(1.0, ())) == recall
+    assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == recall
 
 
-def test_resumed_optional_without_intent_follows_its_value() -> None:
-    """No intent (the Reveal decision had one legal action): an Optional
-    ability is used iff its ``Evaluate`` value is > 0."""
+def test_a_choice_key_answers_with_its_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    effect = "may_pay_three_spice_for_influence"
+    state = take_gains(
+        revealed(["imperium:spacing_guild_s_favor:0"], resources=Resources(spice=5))
+    )
+    answer = Answer(3.0, (("bene_gesserit",),), "SGF")
+    monkeypatch.setattr(
+        SpacingGuildsFavorRevealAbility, "evaluate", lambda s, p, r: answer
+    )
+    pay = find(state, "pay_reveal_spice_influence", faction="bene_gesserit")
+    source = choice_source(state, effect)
+    assert source.evaluate is not None and source.evaluate() == (3.0, pay)
+    run = make_run(state, constants=NO_BUYS)
+    assert reveal.reveal_window(run) == pay
+    assert run.memory.intents == {} and run.memory.data == {}
+
+
+def test_an_optional_choice_worth_nothing_lapses_at_the_end_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The app's End Turn leaves its Optional keys: ``finish_reveal`` is the
+    skip, and the engine lapses the unused choice (no refusal step)."""
+
+    state = take_gains(
+        revealed(["imperium:spacing_guild_s_favor:0"], resources=Resources(spice=5))
+    )
+    monkeypatch.setattr(
+        SpacingGuildsFavorRevealAbility,
+        "evaluate",
+        lambda s, p, r: Answer(0.0, (("fremen",),), "worth nothing"),
+    )
+    finish = find(state, "finish_reveal")
+    assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == finish
+    events = ENGINE.apply(state, finish, legal_actions=legal(state)).events
+    assert [e.kind for e in events if e.kind == "reveal_choice_lapsed"] == [
+        "reveal_choice_lapsed"
+    ]
+
+
+def test_optional_keys_follow_their_value() -> None:
+    """An Optional key is used iff its ``Evaluate`` value is > 0."""
 
     # Captured Mentat's E never finds an InfluenceDelta 2 info: value 0.
-    mentat = resumed(
-        ["imperium:captured_mentat:0"],
-        "may_lose_influence_to_gain_influence",
-        influence=Influence(emperor=1, fremen=1),
+    mentat = take_gains(
+        revealed(
+            ["imperium:captured_mentat:0"], influence=Influence(emperor=1, fremen=1)
+        )
     )
-    run = make_run(mentat)
-    ability = CapturedMentatRevealAbility(card_entity("imperium:captured_mentat:0"))
-    request = reveal._choice_request(
-        run, "may_lose_influence_to_gain_influence", "imperium:captured_mentat:0"
-    )
-    assert ability.evaluate(run.profile, request).value == 0.0
-    action = reveal.reveal_choice_window(run)
-    assert action is not None
-    assert action.action_id == "decline_reveal_influence_exchange"
+    effect = "may_lose_influence_to_gain_influence"
+    source = choice_source(mentat, effect)
+    assert source.evaluate is not None and source.evaluate()[0] == 0.0
+    run = make_run(mentat, constants=NO_BUYS)
+    assert reveal.reveal_window(run) == find(mentat, "finish_reveal")
     # Calculus of Power with a cheap Emperor card in play: trash it.
-    calculus = resumed(
-        ["imperium:calculus_of_power:0", "imperium:sardaukar_soldier:0"],
-        "may_trash_other_emperor_for_three_strength",
-        troops_conflict=2,
-        troops_supply=7,
+    calculus = take_gains(
+        revealed(
+            ["imperium:calculus_of_power:0", "imperium:sardaukar_soldier:0"],
+            troops_conflict=2,
+            troops_supply=7,
+        )
     )
     run = make_run(calculus)
     ability_c = CalculusofPowerEmperorAbility(
@@ -332,80 +367,74 @@ def test_resumed_optional_without_intent_follows_its_value() -> None:
     )
     assert answer.value > 0.0
     assert answer.response == (("imperium:sardaukar_soldier:0",),)
-    action = reveal.reveal_choice_window(make_run(calculus))
-    assert action == find(
-        calculus, "trash_reveal_card", card_id="imperium:sardaukar_soldier:0"
+    trash = find(
+        calculus,
+        "trash_reveal_card",
+        card_id="imperium:sardaukar_soldier:0",
+        source="calculus_of_power",
     )
+    assert reveal.reveal_window(make_run(calculus, constants=NO_BUYS)) == trash
 
 
-def test_resumed_explicit_without_intent_uses_its_answer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_explicit_key_uses_its_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     """Desert Power (Explicit, value > 0): its answer. Real values: the
     2 Persuasion (with Buy Gains) beat a sandworm (``SandWorms`` 3.0 minus a
     water); a sandworm worth more takes the worm branch."""
 
-    state = resumed(
-        ["imperium:desert_power:0"],
-        "may_pay_water_for_sandworm",
-        maker_hooks=True,
-        resources=Resources(water=2),
+    state = take_gains(
+        revealed(
+            ["imperium:desert_power:0"],
+            maker_hooks=True,
+            resources=Resources(water=2),
+        )
     )
     answer = DesertPowerDeferredAbility(
         card_entity("imperium:desert_power:0")
     ).evaluate(make_run(state).profile, Request())
     assert answer.response == ((0,),)
     assert answer.value == pytest.approx(4.78)
-    action = reveal.reveal_choice_window(make_run(state))
+    assert make_run(state).first("finish_reveal") is None  # mandatory
+    action = reveal.reveal_window(make_run(state, constants=NO_BUYS))
     assert action == find(state, "decline_reveal_sandworm")
     monkeypatch.setattr(Profile, "sandworm_value", lambda self, n, cpm=False: 20.0)
-    action = reveal.reveal_choice_window(make_run(state))
+    action = reveal.reveal_window(make_run(state, constants=NO_BUYS))
     assert action == find(state, "pay_reveal_water_for_sandworm")
 
 
-def test_explicit_without_a_response_answers_at_random(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = resumed(
-        ["imperium:desert_power:0"],
-        "may_pay_water_for_sandworm",
-        maker_hooks=True,
-        resources=Resources(water=2),
+def _desert_power_alone() -> tuple[GameState, tuple[DomainAction, ...]]:
+    """Desert Power's pending choice as the only legal rows (a forced prompt
+    with this one key)."""
+
+    state = take_gains(
+        revealed(
+            ["imperium:desert_power:0"],
+            maker_hooks=True,
+            resources=Resources(water=2),
+        )
     )
-    monkeypatch.setattr(
-        DesertPowerDeferredAbility,
-        "evaluate",
-        lambda self, p, request: Answer(0.0, None, "nothing"),
-    )
-    picks = {
-        reveal.reveal_choice_window(make_run(state, rng_seed=seed)) for seed in range(8)
-    }
-    assert {a.action_id for a in picks if a is not None} == {
-        "pay_reveal_water_for_sandworm",
-        "decline_reveal_sandworm",
-    }
+    return state, entry_of(state, "may_pay_water_for_sandworm").rows
 
 
-def test_explicit_worth_nothing_answers_at_random_despite_its_response(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "answer",
+    [Answer(0.0, None, "nothing"), Answer(0.0, ((1,),), "worth nothing")],
+    ids=["no-response", "worth-nothing"],
+)
+def test_forced_key_worth_nothing_runs_with_a_random_row(
+    monkeypatch: pytest.MonkeyPatch, answer: Answer
 ) -> None:
     """``MakeChoice`` keeps only a value > 0: a forced prompt whose single
-    key is worth 0 goes to ``DefaultRandomChoice`` even though the ability
-    stored a response (engine-order.md §0)."""
+    key is worth 0 goes to ``DefaultRandomChoice``, and the picked key runs
+    with a random row of its own, whatever response the ability stored
+    (engine-order.md §0)."""
 
-    state = resumed(
-        ["imperium:desert_power:0"],
-        "may_pay_water_for_sandworm",
-        maker_hooks=True,
-        resources=Resources(water=2),
-    )
+    state, rows = _desert_power_alone()
     monkeypatch.setattr(
-        DesertPowerDeferredAbility,
-        "evaluate",
-        lambda self, p, request: Answer(0.0, ((1,),), "worth nothing"),
+        DesertPowerDeferredAbility, "evaluate", lambda self, p, request: answer
     )
     picks = {
-        reveal.reveal_choice_window(make_run(state, rng_seed=seed)) for seed in range(8)
+        reveal.reveal_window(make_run(state, rng_seed=seed, actions=rows))
+        for seed in range(8)
     }
     assert {a.action_id for a in picks if a is not None} == {
         "pay_reveal_water_for_sandworm",
@@ -428,46 +457,19 @@ def test_seated_corrinth_city_worth_nothing_answers_at_random(
 
     monkeypatch.setattr(reveal, "_random_option", recording)
     hand = ["imperium:corrinth_city:0", "imperium:sardaukar_soldier:0"]
-    seated = revealed(hand, high_council=True, resources=Resources(solari=6))
+    seated = take_gains(
+        revealed(hand, high_council=True, resources=Resources(solari=6))
+    )
     solari = find(seated, "gain_five_reveal_solari")
-    assert reveal.reveal_choice_window(make_run(seated)) == solari
+    assert reveal.reveal_window(make_run(seated)) == solari
     assert calls == []
     monkeypatch.setattr(
         CorrinthCityRevealAbility,
         "evaluate",
         lambda self, p, request: Answer(0.0, ((0,),), "worth nothing"),
     )
-    assert reveal.reveal_choice_window(make_run(seated)) == solari
+    assert reveal.reveal_window(make_run(seated)) == solari
     assert calls == ["gain_five_solari_or_take_high_council"]
-
-
-def test_decline_intent_without_a_decline_action_is_evaluated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Desert Power has no decline action: a ``"decline"`` intent is
-    consumed and the ability's own answer is used."""
-
-    state = resumed(
-        ["imperium:desert_power:0"],
-        "may_pay_water_for_sandworm",
-        maker_hooks=True,
-        resources=Resources(water=2),
-    )
-    monkeypatch.setattr(Profile, "sandworm_value", lambda self, n, cpm=False: 20.0)
-    run = intent_run(state, "may_pay_water_for_sandworm", "decline")
-    action = reveal.reveal_choice_window(run)
-    assert action == find(state, "pay_reveal_water_for_sandworm")
-    assert run.memory.intents == {}
-
-
-def test_non_core_choice_is_not_mirrored() -> None:
-    state = revealed(["imperium:public_spectacle:0"])
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    context["reveal_choice_effect"] = "command_place_spy"
-    fake = replace(frame, context=tuple(sorted(context.items())))
-    odd = with_state(state, decision_stack=(*state.decision_stack[:-1], fake))
-    assert reveal.reveal_choice_window(make_run(odd, actions=legal(state))) is None
 
 
 # -- realising each choice's answer -------------------------------------------------
@@ -516,8 +518,8 @@ _SPIES_2 = {"spy_post_ids": FEYD_POSTS[:2], "spies_supply": 1}
             ["imperium:calculus_of_power:0", "imperium:sardaukar_soldier:0"],
             "may_trash_other_emperor_for_three_strength",
             {},
-            (("imperium:not_in_play:0",),),  # unrealisable -> decline
-            ("decline_reveal_card_trash", {}),
+            (("imperium:not_in_play:0",),),  # unrealisable -> not used
+            None,
         ),
         (
             ["imperium:chani_clever_tactician:0"],
@@ -552,7 +554,7 @@ _SPIES_2 = {"spy_post_ids": FEYD_POSTS[:2], "spies_supply": 1}
             "may_deploy_or_retreat_one_troop_if_fremen_bond",
             {"troops_conflict": 0, "troops_garrison": 2, "troops_supply": 10},
             ((1,),),  # the app's retreat index with no deployed troop
-            ("decline_reveal_troop_move", {}),
+            None,
         ),
         (
             ["imperium:corrinth_city:0"],
@@ -605,35 +607,41 @@ _SPIES_2 = {"spy_post_ids": FEYD_POSTS[:2], "spies_supply": 1}
         ),
     ],
 )
-def test_resumed_answer_maps_to_our_action(
+def test_choice_answer_maps_to_its_row(
     hand: list[str],
     effect: str,
     changes: dict[str, object],
     answer: tuple[ResponseItem, ...],
-    expected: tuple[str, dict[str, object]],
+    expected: tuple[str, dict[str, object]] | None,
 ) -> None:
-    state = resumed(hand, effect, **changes)
-    run = intent_run(state, effect, Answer(1.0, answer, "test"))
-    action = reveal.reveal_choice_window(run)
-    assert action == find(state, expected[0], **expected[1])
+    """``_realise`` over the entry's rows (offered from the Reveal's start,
+    before the gains); an Optional answer no row carries realises nothing
+    (the choice is not used)."""
+
+    state = revealed(hand, **changes)
+    action = reveal._realise(entry_run(state, effect), effect, Answer(1.0, answer))
+    if expected is None:
+        assert action is None
+    else:
+        assert action == find(state, expected[0], **expected[1])
 
 
 def test_undercover_asset_spy_answer_places_or_recalls() -> None:
-    state = resumed(["imperium:undercover_asset:0"], "place_spy_or_gain_two_strength")
-    run = intent_run(state, "place_spy_or_gain_two_strength", Answer(1.0, ((0,),)))
-    expected = best_post(make_run(state), make_run(state).by_id("place_reveal_spy"))
-    assert reveal.reveal_choice_window(run) == find(
-        state, "place_reveal_spy", post_id=expected
+    effect = "place_spy_or_gain_two_strength"
+    state = take_gains(revealed(["imperium:undercover_asset:0"]))
+    run = entry_run(state, effect)
+    expected = best_post(make_run(state), run.by_id("place_reveal_spy"))
+    assert reveal._realise(run, effect, Answer(1.0, ((0,),))) == find(
+        state, "place_reveal_spy", post_id=expected, source="undercover_asset"
     )
-    empty = resumed(
-        ["imperium:undercover_asset:0"],
-        "place_spy_or_gain_two_strength",
-        spies_supply=0,
-        spy_post_ids=FEYD_POSTS,
+    empty = take_gains(
+        revealed(
+            ["imperium:undercover_asset:0"], spies_supply=0, spy_post_ids=FEYD_POSTS
+        )
     )
-    run = intent_run(empty, "place_spy_or_gain_two_strength", Answer(1.0, ((0,),)))
+    run = entry_run(empty, effect)
     expected = worst_post(make_run(empty), FEYD_POSTS)
-    assert reveal.reveal_choice_window(run) == find(
+    assert reveal._realise(run, effect, Answer(1.0, ((0,),))) == find(
         empty, "recall_spy_for_reveal_placement", post_id=expected
     )
 
@@ -641,11 +649,14 @@ def test_undercover_asset_spy_answer_places_or_recalls() -> None:
 def test_seated_corrinth_option_one_falls_back_to_solari() -> None:
     """Our engine offers a seated owner only the 5 Solari (module judgement)."""
 
-    state = revealed(
-        ["imperium:corrinth_city:0"], high_council=True, resources=Resources(solari=6)
+    state = take_gains(
+        revealed(
+            ["imperium:corrinth_city:0"],
+            high_council=True,
+            resources=Resources(solari=6),
+        )
     )
-    actions = legal(state)
-    run = make_run(state, actions=actions)
+    run = entry_run(state, "gain_five_solari_or_take_high_council")
     action = reveal._realise(
         run, "gain_five_solari_or_take_high_council", Answer(9.0, ((1,),))
     )
@@ -805,21 +816,18 @@ def test_nothing_positive_ends_the_turn() -> None:
     assert action == find(state, "finish_reveal")
 
 
-def test_resume_key_competes_with_buys(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A deferred choice is one key of the same prompt: the higher value
-    wins, and the chosen answer is kept for the resumed frame."""
+def test_a_choice_key_competes_with_buys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pending choice is one key of the same prompt as the buys (the app's
+    own list): the higher value wins."""
 
     state = take_gains(
-        defer_all(
-            revealed(
-                ["imperium:spacing_guild_s_favor:0"],
-                resources=Resources(spice=5),
-                reveal_persuasion_bonus=12,
-            )
+        revealed(
+            ["imperium:spacing_guild_s_favor:0"],
+            resources=Resources(spice=5),
+            reveal_persuasion_bonus=12,
         )
     )
-    effect = "may_pay_three_spice_for_influence"
-    resume = find(state, "resume_reveal_choice", effect=effect)
+    pay = find(state, "pay_reveal_spice_influence", faction="fremen")
     answer = Answer(7.0, (("fremen",),), "patched")
     monkeypatch.setattr(
         SpacingGuildsFavorRevealAbility, "evaluate", lambda s, p, r: answer
@@ -828,56 +836,30 @@ def test_resume_key_competes_with_buys(monkeypatch: pytest.MonkeyPatch) -> None:
         AcquireAbility, "evaluate", lambda s, p, r: Answer(6.0, (), "buy")
     )
     run = make_run(state)
-    assert reveal.reveal_window(run) == resume
-    assert run.memory.intents == {("reveal_choice", state.round_number, effect): answer}
+    assert reveal.reveal_window(run) == pay
     monkeypatch.setattr(
         AcquireAbility, "evaluate", lambda s, p, r: Answer(8.0, (), "buy")
     )
-    run = make_run(state)
-    action = reveal.reveal_window(run)
+    action = reveal.reveal_window(make_run(state))
     assert action is not None and action.action_id.startswith("acquire_")
-    assert run.memory.intents == {}
 
 
-def test_optional_blocker_is_resumed_to_be_declined() -> None:
-    """Nothing positive and only an Optional choice in the way: the app ends
-    the turn, so the choice is resumed with a ``"decline"`` intent."""
-
-    state = take_gains(
-        defer_all(
-            revealed(["imperium:captured_mentat:0"], influence=Influence(emperor=1))
-        )
-    )
-    assert find(state, "resume_reveal_choice") is not None
-    run = make_run(state, constants=NO_BUYS)
-    effect = "may_lose_influence_to_gain_influence"
-    action = reveal.reveal_window(run)
-    assert action == find(state, "resume_reveal_choice", effect=effect)
-    assert run.memory.intents == {
-        ("reveal_choice", state.round_number, effect): "decline"
-    }
-    state = apply(state, action)
-    choice = reveal.reveal_choice_window(make_run(state, run.memory))
-    assert choice == find(state, "decline_reveal_influence_exchange")
-
-
-def test_end_turn_declines_every_optional_blocker_after_one_choice(
+def test_end_turn_is_one_answer_with_optional_choices_pending(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """12 §4.3: one ``MakeChoice`` gives the empty answer and the turn ends.
-    Two Optional blockers are declined and the Reveal finished with a single
-    evaluation of the prompt (no second shuffle)."""
+    Two Optional choices worth nothing hold nothing back: ``finish_reveal``
+    after a single evaluation of the prompt, and both lapse."""
 
     state = take_gains(
-        defer_all(
-            revealed(
-                ["imperium:captured_mentat:0", "imperium:spacing_guild_s_favor:0"],
-                influence=Influence(emperor=1),
-                resources=Resources(spice=5),
-            )
+        revealed(
+            ["imperium:captured_mentat:0", "imperium:spacing_guild_s_favor:0"],
+            influence=Influence(emperor=1),
+            resources=Resources(spice=5),
         )
     )
-    assert len(make_run(state).by_id("resume_reveal_choice")) == 2
+    entries = reveal._choice_entries(make_run(state))
+    assert entries is not None and len(entries) == 2
     monkeypatch.setattr(
         SpacingGuildsFavorRevealAbility,
         "evaluate",
@@ -891,181 +873,192 @@ def test_end_turn_declines_every_optional_blocker_after_one_choice(
         sources: list[Source],
         *,
         skip: DomainAction | None,
-        forced: bool | None = None,
+        forced: bool | Callable[[], bool] | None = None,
     ) -> DomainAction | None:
         prompts.append(len(sources))
         return original(run, sources, skip=skip, forced=forced)
 
     monkeypatch.setattr(reveal, "decide", counting)
     memory = Memory()
-    taken: list[str] = []
-    while True:
-        kind = state.decision_stack[-1].kind
-        handler = (
-            reveal.reveal_window if kind == "reveal" else reveal.reveal_choice_window
-        )
-        action = handler(make_run(state, memory, constants=NO_BUYS))
-        assert action is not None
-        taken.append(action.action_id)
-        if action.action_id == "finish_reveal":
-            break
-        state = apply(state, action)
+    finish = find(state, "finish_reveal")
+    assert reveal.reveal_window(make_run(state, memory, constants=NO_BUYS)) == finish
     assert len(prompts) == 1
-    assert sorted(taken) == sorted(
-        [
-            "resume_reveal_choice",
-            "decline_reveal_influence_exchange",
-            "resume_reveal_choice",
-            "decline_reveal_spice_influence",
-            "finish_reveal",
-        ]
-    )
-    assert taken[0] == "resume_reveal_choice" and taken[2] == "resume_reveal_choice"
+    assert memory.intents == {} and memory.data == {}
+    events = ENGINE.apply(state, finish, legal_actions=legal(state)).events
+    lapsed = [
+        dict(e.payload)["effect"] for e in events if e.kind == "reveal_choice_lapsed"
+    ]
+    assert sorted(lapsed) == sorted(e.effect for e in entries)
+
+
+def test_end_turn_mark_finishes_or_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_END_TURN`` (a declined subcommittee offer) takes ``finish_reveal``
+    without a second ``MakeChoice``; a mark from another Reveal, or one that
+    meets a blocked finish, is dropped and the prompt is evaluated."""
+
+    plain = take_gains(revealed(["imperium:steersman:0"]))
+    memory = Memory()
+    memory.data[reveal._END_TURN] = (plain.round_number, owner(plain))
+
+    def no_prompt(*args: object, **kwargs: object) -> DomainAction | None:
+        raise AssertionError("the empty answer is not asked again")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reveal, "decide", no_prompt)
+        run = make_run(plain, memory)
+        assert reveal.reveal_window(run) == find(plain, "finish_reveal")
     assert reveal._END_TURN not in memory.data
-    assert memory.intents == {}
-
-
-def test_end_turn_mark_is_dropped_when_it_does_not_fit() -> None:
-    """A mark from another Reveal, or one that meets an Explicit blocker, is
-    dropped and the prompt is evaluated as usual."""
-
-    state = take_gains(defer_all(revealed(["imperium:public_spectacle:0"])))
-    resume = find(state, "resume_reveal_choice", effect="place_spy")
+    state = take_gains(revealed(["imperium:public_spectacle:0"]))
+    spy = entry_of(state, "place_spy")
     for mark in [(state.round_number, owner(state)), (state.round_number - 1, 0)]:
         memory = Memory()
         memory.data[reveal._END_TURN] = mark
-        run = make_run(state, memory, constants=NO_BUYS)
-        assert reveal.reveal_window(run) == resume
+        action = reveal.reveal_window(make_run(state, memory, constants=NO_BUYS))
+        assert action is not None and action in spy.rows
         assert reveal._END_TURN not in memory.data
-        (intent,) = memory.intents.values()
-        assert isinstance(intent, Answer)
 
 
-def test_two_copies_of_one_choice_are_one_key_of_the_oldest_card(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_each_pending_entry_is_its_own_key() -> None:
     """Delivery Agreement (1 Spice) and Priority Contracts (2 Spice) share a
-    kind: one ``resume`` key, valued by the oldest openable entry's card
-    (``_resumed_card``); a waiting entry is skipped."""
+    choice effect: two keys, each valued by its own card and answered with
+    its own ``source`` row; two copies of one card are two keys too."""
 
     effect = "keep_spice_or_trash_self_for_vp_if_four_contracts"
     state = take_gains(
-        defer_all(
-            revealed(["imperium:priority_contracts:0", "imperium:delivery_agreement:0"])
-        )
+        revealed(["imperium:priority_contracts:0", "imperium:delivery_agreement:0"])
     )
     run = make_run(state)
-    queue = reveal._deferred_entries(reveal._reveal_context(run))
-    assert [kind for _, kind in queue] == [effect, effect]
-    (oldest, _), (newest, _) = queue
-    (resume,) = run.by_id("resume_reveal_choice")
-    spice = {
-        "imperium:priority_contracts:0": run.profile.spice_value(2),
-        "imperium:delivery_agreement:0": run.profile.spice_value(1),
-    }
-    assert spice[oldest] != spice[newest]
-    answers: dict[str, Answer] = {}
-    sources = reveal._resume_sources(run, answers)
-    assert sources is not None
-    (source,) = sources
-    assert source.evaluate is not None
-    value, action = source.evaluate()
-    assert value == pytest.approx(spice[oldest]) and action == resume
-    assert answers[effect].response == ((0,),)
-    # The oldest entry waits (its condition fails): the next one is resumed.
-    monkeypatch.setattr(
-        reveal, "waiting_deferred_choices", lambda state, seat: ((oldest, effect),)
+    entries = reveal._choice_entries(run)
+    assert entries is not None
+    assert [(e.card, e.effect) for e in entries] == [
+        ("imperium:priority_contracts:0", effect),
+        ("imperium:delivery_agreement:0", effect),
+    ]
+    used: dict[DomainAction, tuple[reveal._Entry, Answer]] = {}
+    sources = reveal._choice_sources(run, entries, used)
+    values = []
+    for source, card in zip(
+        sources, ("priority_contracts", "delivery_agreement"), strict=True
+    ):
+        assert source.evaluate is not None
+        value, action = source.evaluate()
+        assert action == find(state, "keep_contract_reveal_spice", source=card)
+        assert used[action][1].response == ((0,),)
+        values.append(value)
+    assert values == [
+        pytest.approx(run.profile.spice_value(2)),
+        pytest.approx(run.profile.spice_value(1)),
+    ]
+    twins = take_gains(
+        revealed(["imperium:public_spectacle:0", "imperium:public_spectacle:1"])
     )
-    assert reveal._resumed_card(run, effect) == newest
-    sources = reveal._resume_sources(run, {})
-    assert sources is not None
-    (source,) = sources
-    assert source.evaluate is not None
-    value, action = source.evaluate()
-    assert value == pytest.approx(spice[newest]) and action == resume
+    entries = reveal._choice_entries(make_run(twins))
+    assert entries is not None and len(entries) == 2
+    assert entries[0].rows == entries[1].rows
 
 
 def test_covert_operation_places_its_two_spies_as_two_keys() -> None:
-    """``place_two_spies`` is deferred, resumed by value, and places one Spy;
-    the second icon's fresh ``place_spy`` frame is deferred again and comes
-    back as its own key of the re-issued prompt."""
+    """``place_two_spies`` is a key valued by ``SpyValue`` that places one
+    Spy; the second icon waits as a fresh ``place_spy`` entry of the same
+    card and is its own key of the re-issued prompt."""
 
-    state = revealed(["imperium:covert_operation:0"])
-    context = dict(state.decision_stack[-1].context)
-    assert context["reveal_choice_effect"] == "place_two_spies"
-    first = reveal.reveal_choice_window(make_run(state))
-    assert first == find(state, "defer_reveal_choice")
-    state = take_gains(apply(state, first))
+    state = take_gains(revealed(["imperium:covert_operation:0"]))
+    entry = entry_of(state, "place_two_spies")
     run = make_run(state, constants=NO_BUYS)
-    assert reveal.reveal_window(run) == find(
-        state, "resume_reveal_choice", effect="place_two_spies"
+    (source,) = reveal._choice_sources(run, [entry], {})
+    assert source.evaluate is not None
+    value, _action = source.evaluate()
+    assert value == pytest.approx(run.profile.spy_value().sum)
+    expected = best_post(make_run(state), make_run(state).by_id("place_reveal_spy"))
+    placed = reveal.reveal_window(make_run(state, constants=NO_BUYS))
+    assert placed == find(
+        state, "place_reveal_spy", post_id=expected, source="covert_operation"
     )
-    (intent,) = run.memory.intents.values()
-    assert isinstance(intent, Answer)
-    assert intent.value == pytest.approx(run.profile.spy_value().sum)
-    state = apply(state, find(state, "resume_reveal_choice", effect="place_two_spies"))
-    choice_run = make_run(state, run.memory)
-    expected = best_post(make_run(state), choice_run.by_id("place_reveal_spy"))
-    placed = reveal.reveal_choice_window(choice_run)
-    assert placed == find(state, "place_reveal_spy", post_id=expected)
     state = apply(state, placed)
-    context = dict(state.decision_stack[-1].context)
-    assert context["reveal_choice_effect"] == "place_spy"
-    second = reveal.reveal_choice_window(make_run(state))
-    assert second == find(state, "defer_reveal_choice")
-    state = apply(state, second)
-    assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == find(
-        state, "resume_reveal_choice", effect="place_spy"
-    )
+    second = entry_of(state, "place_spy")
+    assert second.card == "imperium:covert_operation:0"
+    action = reveal.reveal_window(make_run(state, constants=NO_BUYS))
+    assert action is not None and action in second.rows
 
 
 def test_unmirrored_blockers_fall_back() -> None:
     """``None`` (the agent falls back) when finish is blocked by something
-    with no app key, or a ``resume`` key has no openable card / no port."""
+    with no app key, a choice row belongs to no pending entry, or an action
+    is not one this adapter knows."""
 
     state = take_gains(revealed(["imperium:steersman:0"]))
     seat = owner(state)
     no_finish = tuple(a for a in legal(state) if a.action_id != "finish_reveal")
     assert reveal.reveal_window(make_run(state, actions=no_finish)) is None
-    for effect in ("may_pay_three_spice_for_influence", "command_place_spy"):
-        ghost = DomainAction("resume_reveal_choice", seat, (("effect", effect),))
+    ghosts = [
+        DomainAction(
+            "resume_reveal_choice",
+            seat,
+            (("effect", "may_pay_three_spice_for_influence"),),
+        ),
+        DomainAction(
+            "trash_reveal_card",
+            seat,
+            (("card_id", "imperium:steersman:0"), ("source", "calculus_of_power")),
+        ),
+    ]
+    for ghost in ghosts:
         run = make_run(state, actions=(*legal(state), ghost))
         assert reveal.reveal_window(run) is None
 
 
 def test_explicit_blocker_is_resolved_by_value() -> None:
-    state = take_gains(defer_all(revealed(["imperium:public_spectacle:0"])))
-    run = make_run(state, constants=NO_BUYS)
-    action = reveal.reveal_window(run)
-    assert action == find(state, "resume_reveal_choice", effect="place_spy")
-    (intent,) = run.memory.intents.values()
-    assert isinstance(intent, Answer)
-    assert intent.value == pytest.approx(run.profile.spy_value().sum)
+    state = take_gains(revealed(["imperium:public_spectacle:0"]))
+    assert make_run(state).first("finish_reveal") is None
+    source = choice_source(state, "place_spy", NO_BUYS)
+    assert source.extra == {"blocking": True, "explicit": True}
+    assert source.evaluate is not None
+    value, action = source.evaluate()
+    assert value == pytest.approx(make_run(state).profile.spy_value().sum)
+    expected = best_post(make_run(state), make_run(state).by_id("place_reveal_spy"))
+    assert action == find(state, "place_reveal_spy", post_id=expected)
+    assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == action
 
 
 def test_forced_prompt_with_nothing_positive_picks_at_random(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``DefaultRandomChoice`` over the whole list (a buy worth 0 too); a
-    resumed pick runs the ability with random targets (intent ``"random"``)."""
+    """``DefaultRandomChoice`` over the whole list (a buy worth 0 too, an
+    Optional choice worth 0 too); a choice key picked so runs with a random
+    row of its own (Spacing Guild's Favor: a random track)."""
 
-    state = take_gains(defer_all(revealed(["imperium:public_spectacle:0"])))
+    state = take_gains(
+        revealed(
+            ["imperium:public_spectacle:0", "imperium:spacing_guild_s_favor:0"],
+            resources=Resources(spice=5),
+        )
+    )
     monkeypatch.setattr(
         PlaceSpyRevealAbility, "evaluate", lambda s, p, r: Answer(0.0, ())
     )
-    resume = find(state, "resume_reveal_choice", effect="place_spy")
-    picks: set[str] = set()
-    for seed in range(12):
+    monkeypatch.setattr(
+        SpacingGuildsFavorRevealAbility,
+        "evaluate",
+        lambda s, p, r: Answer(0.0, (("fremen",),)),
+    )
+    picks: Counter[str] = Counter()
+    factions: set[object] = set()
+    for seed in range(40):
         run = make_run(state, constants=NO_BUYS, rng_seed=seed)
         action = reveal.reveal_window(run)
         assert action is not None
-        picks.add(action.action_id)
-        if action == resume:
-            assert list(run.memory.intents.values()) == ["random"]
-        else:
-            assert action.action_id.startswith("acquire_")
-            assert run.memory.intents == {}
-    assert picks >= {"resume_reveal_choice", "acquire_imperium"}
+        picks[action.action_id] += 1
+        if action.action_id == "pay_reveal_spice_influence":
+            factions.add(dict(action.arguments)["faction"])
+        assert run.memory.intents == {}
+    assert set(picks) >= {
+        "place_reveal_spy",
+        "pay_reveal_spice_influence",
+        "acquire_imperium",
+    }
+    assert len(factions) > 1
 
 
 def test_track_spy_is_an_explicit_spy_value_key() -> None:
@@ -1121,15 +1114,6 @@ def test_gain_action_without_its_pending_entry_is_not_mirrored() -> None:
     odd = DomainAction(action_id="advance_reveal_research", actor=owner(state))
     run = make_run(state, actions=(*legal(state), odd))
     assert reveal.reveal_window(run) is None
-
-
-def test_stale_choice_intents_are_dropped() -> None:
-    state = take_gains(revealed(["imperium:steersman:0"]))
-    memory = Memory()
-    memory.intents[("reveal_choice", 1, "may_pay_water_for_sandworm")] = "decline"
-    memory.intents[("intrigue", "x")] = "kept"
-    reveal.reveal_window(make_run(state, memory))
-    assert memory.intents == {("intrigue", "x"): "kept"}
 
 
 # -- leader keys ----------------------------------------------------------------
@@ -1281,4 +1265,6 @@ def test_full_games_never_fall_back_in_these_windows(
             for kind in reveal.HANDLERS:
                 assert agent.fallbacks[kind] == 0, (game, kind)
                 mirrored[kind] += agent.mirrored[kind]
+    # A ``reveal_choice`` frame stays on top only after a Spy recalled for a
+    # placement: once in these six games.
     assert all(mirrored[kind] > 0 for kind in reveal.HANDLERS), mirrored

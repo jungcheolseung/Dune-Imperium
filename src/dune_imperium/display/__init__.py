@@ -17,6 +17,8 @@ from dune_imperium.display.actions import (
     agent_card_icon_text_ko,
     effect_action_text,
     effect_action_text_ko,
+    reveal_choice_headers,
+    reveal_choice_of_rows,
 )
 from dune_imperium.display.cards import (
     RECLAIMED_FORCES_TEXT,
@@ -96,6 +98,8 @@ __all__ = [
     "personal_card_text_ko",
     "required_image_keys",
     "resolve_card_images",
+    "reveal_choice_headers",
+    "reveal_choice_of_rows",
     "space_is_implemented",
     "space_notes",
     "space_notes_ko",

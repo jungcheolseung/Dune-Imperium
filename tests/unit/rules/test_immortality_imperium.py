@@ -56,6 +56,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_gain,
     begin_reveal_turn,
     legal_reveal_gain_actions,
+    pending_reveal_choices,
 )
 
 IMMORTALITY = RulesetConfig(immortality=True)
@@ -1148,7 +1149,9 @@ def test_call_to_arms_comes_before_the_choice_of_a_card_fervor_s_research_drew()
     # acquired card: Call to Arms waits only for the acquired card's own
     # effects and the decisions they open (OQ-012, user ruling 2026-10-04,
     # "선택 뒤로 맞춤"), so its troop comes after the research and before
-    # Corrinth City's choice.
+    # Corrinth City's choice. A late-revealed card's choice is a pending entry
+    # of the Reveal frame, not a frame above it (OQ-095 (7) addition, user
+    # ruling 2026-10-14), so the choice stays unused until the owner takes it.
     corrinth = _card("corrinth_city")
     state, fervor = _fervor_reveal(
         research_space="c8r2", intrigue_faceup=(CALL_TO_ARMS,), deck=(corrinth,)
@@ -1166,13 +1169,26 @@ def test_call_to_arms_comes_before_the_choice_of_a_card_fervor_s_research_drew()
         f"round:1:player:0:acquire:{fervor}:reveal_trigger:{CALL_TO_ARMS}"
     )
     assert bought.state.players[0].troops_garrison == garrison + 1
-    top = bought.state.decision_stack[-1]
-    assert top.kind == FrameKind.REVEAL_CHOICE
-    assert dict(top.context)["reveal_card_id"] == corrinth
-    reveal = bought.state.decision_stack[-2]
+    reveal = bought.state.decision_stack[-1]
     assert reveal.kind == FrameKind.REVEAL
     assert dict(reveal.context)["reveal_troops_recruited"] == 1
     assert "deferred_acquisition_triggers" not in dict(reveal.context)
+    # Corrinth City's choice is still unused: it waits on the Reveal frame,
+    # holds the end of the Reveal, and is taken only now that the troop is in.
+    assert pending_reveal_choices(dict(reveal.context)) == (
+        (corrinth, "gain_five_solari_or_take_high_council"),
+    )
+    engine = UprisingRulesEngine()
+    offered = {a.action_id for a in engine.legal_actions(bought.state, 0)}
+    assert "gain_five_reveal_solari" in offered
+    assert "finish_reveal" not in offered
+    solari = bought.state.players[0].resources.solari
+    taken = engine.apply(
+        bought.state, DomainAction(action_id="gain_five_reveal_solari", actor=0)
+    ).state
+    assert taken.players[0].resources.solari == solari + 5
+    assert taken.players[0].troops_garrison == garrison + 1
+    assert pending_reveal_choices(dict(taken.decision_stack[-1].context)) == ()
 
 
 def test_call_to_arms_waits_for_an_inspire_awe_fervor_s_research_direction() -> None:

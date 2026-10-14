@@ -29,6 +29,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision
+from dune_imperium.core.engine import Transition
 from dune_imperium.core.observation import observe_state, peeked_intrigue_ids
 from dune_imperium.rules.acquisition import (
     apply_agent_card_acquisition,
@@ -185,6 +186,25 @@ def _payment(state: GameState, action_id: str) -> DomainAction:
     )
 
 
+def _offered_ids(state: GameState) -> set[str]:
+    """Every action id seat 0 is offered now, through the engine."""
+
+    actions = UprisingRulesEngine().legal_actions(state, 0)
+    return {action.action_id for action in actions}
+
+
+def _finish_reveal(state: GameState) -> Transition:
+    """Press ``finish_reveal``: every Reveal choice still pending lapses."""
+
+    return UprisingRulesEngine().apply(
+        state, DomainAction(action_id="finish_reveal", actor=0)
+    )
+
+
+def _lapsed(result: Transition) -> list[dict[str, object]]:
+    return [dict(e.payload) for e in result.events if e.kind == "reveal_choice_lapsed"]
+
+
 def _turn_end_offered(state: GameState) -> bool:
     """Whether seat 0 may press its Agent turn's end now (OQ-095 (2))."""
 
@@ -274,6 +294,9 @@ def test_for_humanity_chooses_influence_and_trades_influence_for_a_vp() -> None:
 
     plain = _reveal(_state(_owner((humanity,), influence=Influence(fremen=2))))
     assert plain.decision_stack[-1].kind == FrameKind.REVEAL
+    # Without the Bene Gesserit Alliance the Reveal choice offers nothing.
+    assert legal_reveal_influence_loss_actions(plain, 0) == ()
+    assert "lose_reveal_influence_for_vp" not in _offered_ids(plain)
     # "Bene Gesserit Alliance: [lose two Influence] -> [1 VP]": the Reveal
     # prints a "?" Influence diamond with two red chevrons [For Humanity card]
     # (Dune Cards Hub: "lose 2 Influence with any one Faction"; BGG inventory:
@@ -291,24 +314,36 @@ def test_for_humanity_chooses_influence_and_trades_influence_for_a_vp() -> None:
             )
         )
     )
-    assert allied.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    # The cost is an arrow, so the effect is optional [FAQ p. 3]: the Reveal
+    # frame offers the loss beside its other rows and no refusal.
+    assert allied.decision_stack[-1].kind == FrameKind.REVEAL
     actions = legal_reveal_influence_loss_actions(allied, 0)
     assert [(a.action_id, dict(a.arguments).get("faction")) for a in actions] == [
-        ("decline_reveal_influence_loss", None),
         ("lose_reveal_influence_for_vp", "bene_gesserit"),
         ("lose_reveal_influence_for_vp", "fremen"),
     ]
+    assert "decline_reveal_influence_loss" not in _offered_ids(allied)
+    assert "finish_reveal" in _offered_ids(allied)
     lose = next(a for a in actions if dict(a.arguments).get("faction") == "fremen")
     result = apply_reveal_influence_loss(allied, lose)
     owner = result.state.players[0]
     # Fremen 2 -> 0 gives back its two-Influence VP; the card pays one.
     assert owner.influence.fremen == 0 and owner.victory_points == 4
     assert result.state.decision_stack[-1].kind == FrameKind.REVEAL
-    declined = apply_reveal_influence_loss(allied, actions[0]).state
-    assert declined.players[0].victory_points == 4
+    # Not paying means pressing ``finish_reveal``: the choice lapses unused.
+    finished = _finish_reveal(allied)
+    assert _lapsed(finished) == [
+        {
+            "card_id": humanity,
+            "effect": "may_lose_influence_for_vp_if_bene_gesserit_alliance",
+            "player": 0,
+        }
+    ]
+    assert finished.state.players[0].victory_points == 4
+    assert finished.state.players[0].influence == allied.players[0].influence
     # Paid with Bene Gesserit, 4 -> 2 costs the Alliance (nobody else has
     # four, so the token returns) but keeps the two-Influence VP.
-    bene = apply_reveal_influence_loss(allied, actions[1]).state.players[0]
+    bene = apply_reveal_influence_loss(allied, actions[0]).state.players[0]
     assert bene.influence.bene_gesserit == 2
     assert bene.alliance_faction_ids == ()
     assert bene.victory_points == 4
@@ -335,12 +370,12 @@ def test_for_humanity_passes_the_alliance_on_the_second_step() -> None:
         )
     )
     actions = legal_reveal_influence_loss_actions(allied, 0)
-    assert [dict(a.arguments) for a in actions[1:]] == [
+    assert [dict(a.arguments) for a in actions] == [
         {"alliance_recipient": 1, "faction": "bene_gesserit"},
         {"alliance_recipient": 2, "faction": "bene_gesserit"},
     ]
 
-    result = apply_reveal_influence_loss(allied, actions[2]).state
+    result = apply_reveal_influence_loss(allied, actions[1]).state
     owner, first, second = result.players[:3]
     assert owner.influence.bene_gesserit == 3
     assert owner.alliance_faction_ids == ()
@@ -609,28 +644,41 @@ def test_shadout_mapes_deploys_or_retreats_one_troop_at_reveal() -> None:
     mapes = _card("shadout_mapes")
     none = _reveal(_state(_owner((mapes,), troops_garrison=0, troops_supply=12)))
     assert none.decision_stack[-1].kind == FrameKind.REVEAL
+    assert legal_reveal_troop_move_actions(none, 0) == ()
 
     revealed = _reveal(
         _state(_owner((mapes,), troops_garrison=2, troops_conflict=1, troops_supply=9))
     )
-    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    # "You may" makes the move optional [FAQ p. 3]: the Reveal frame offers
+    # the two moves and no refusal.
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
     actions = legal_reveal_troop_move_actions(revealed, 0)
-    assert {a.action_id for a in actions} == {
-        "decline_reveal_troop_move",
+    assert [a.action_id for a in actions] == [
         "deploy_reveal_card_troop",
         "retreat_reveal_card_troop",
-    }
-    deployed = apply_reveal_troop_move(revealed, actions[1])
+    ]
+    assert "decline_reveal_troop_move" not in _offered_ids(revealed)
+    assert "finish_reveal" in _offered_ids(revealed)
+    deployed = apply_reveal_troop_move(revealed, actions[0])
     owner = deployed.state.players[0]
     assert owner.troops_conflict == 2 and owner.troops_garrison == 1
     assert dict(deployed.state.decision_stack[-1].context)["strength"] == 2 * 2 + 1
-    retreated = apply_reveal_troop_move(revealed, actions[2])
+    retreated = apply_reveal_troop_move(revealed, actions[1])
     owner = retreated.state.players[0]
     assert owner.troops_conflict == 0 and owner.troops_garrison == 3
     assert owner.combat_strength == 0
     assert dict(retreated.state.decision_stack[-1].context)["strength"] == 0
-    declined = apply_reveal_troop_move(revealed, actions[0]).state
-    assert declined.decision_stack[-1].kind == FrameKind.REVEAL
+    # Not moving a troop means pressing ``finish_reveal``: the choice lapses.
+    finished = _finish_reveal(revealed)
+    assert _lapsed(finished) == [
+        {
+            "card_id": mapes,
+            "effect": "may_deploy_or_retreat_one_troop",
+            "player": 0,
+        }
+    ]
+    owner = finished.state.players[0]
+    assert owner.troops_conflict == 1 and owner.troops_garrison == 2
 
 
 # Shadout Mapes: "You may deploy or retreat one of your troops." [Shadout
@@ -659,11 +707,11 @@ def test_shadout_mapes_deploys_a_garrison_commander() -> None:
         skill_ids=("skill:charismatic:0", "skill:loyal:0"),
         influence=Influence(emperor=3),
     )
-    # The Commander alone opens the choice (it used to need a plain troop).
-    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
-    decline, deploy = legal_reveal_troop_move_actions(revealed, 0)
-    assert decline.action_id == "decline_reveal_troop_move"
+    # The Commander alone offers the move (it used to need a plain troop).
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    (deploy,) = legal_reveal_troop_move_actions(revealed, 0)
     assert deploy == DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1),))
+    assert "decline_reveal_troop_move" not in _offered_ids(revealed)
     result = UprisingRulesEngine().apply(revealed, deploy)
     owner = result.state.players[0]
     assert (owner.commanders_conflict, owner.commanders_garrison) == (1, 0)
@@ -685,7 +733,7 @@ def test_shadout_mapes_retreats_the_last_commander_and_its_skills() -> None:
     )
     # Commander 2 + Loyal 2 before the Reveal, + Mapes' sword.
     assert revealed.players[0].combat_strength == 5
-    _decline, retreat = legal_reveal_troop_move_actions(revealed, 0)
+    (retreat,) = legal_reveal_troop_move_actions(revealed, 0)
     assert retreat == DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1),))
     retreated = UprisingRulesEngine().apply(revealed, retreat).state
     owner = retreated.players[0]
@@ -706,7 +754,6 @@ def test_shadout_mapes_offers_both_unit_kinds_in_each_zone() -> None:
     )
     actions = legal_reveal_troop_move_actions(revealed, 0)
     assert actions == (
-        DomainAction("decline_reveal_troop_move", 0),
         DomainAction("deploy_reveal_card_troop", 0),
         DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1),)),
         DomainAction("retreat_reveal_card_troop", 0),
@@ -1390,39 +1437,54 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
             _owner((surgeon,), troops_garrison=2, troops_conflict=2, troops_supply=8)
         )
     )
-    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    # "May" makes the sacrifice optional [FAQ p. 3]: the Reveal frame offers
+    # the three zone pairs and no refusal.
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
     actions = legal_reveal_troop_sacrifice_actions(revealed, 0)
     assert [(a.action_id, dict(a.arguments).get("zones")) for a in actions] == [
-        ("decline_reveal_troop_sacrifice", None),
         ("lose_reveal_troops_for_specimens", "garrison,garrison"),
         ("lose_reveal_troops_for_specimens", "garrison,conflict"),
         ("lose_reveal_troops_for_specimens", "conflict,conflict"),
     ]
-    garrison = apply_reveal_troop_sacrifice(revealed, actions[1]).state.players[0]
+    assert "decline_reveal_troop_sacrifice" not in _offered_ids(revealed)
+    assert "finish_reveal" in _offered_ids(revealed)
+    garrison = apply_reveal_troop_sacrifice(revealed, actions[0]).state.players[0]
     assert garrison.troops_garrison == 0 and garrison.specimens == 2
     assert garrison.troops_supply == 8  # two lost, two into the tanks
-    conflict = apply_reveal_troop_sacrifice(revealed, actions[3])
+    conflict = apply_reveal_troop_sacrifice(revealed, actions[2])
     owner = conflict.state.players[0]
     assert owner.troops_conflict == 0 and owner.specimens == 2
     assert dict(conflict.state.decision_stack[-1].context)["strength"] == 0
     # One from each zone (OQ-053, user ruling): the Conflict troop's two
     # strength leaves with it.
-    mixed = apply_reveal_troop_sacrifice(revealed, actions[2])
+    mixed = apply_reveal_troop_sacrifice(revealed, actions[1])
     owner = mixed.state.players[0]
     assert owner.troops_garrison == 1 and owner.troops_conflict == 1
     assert owner.specimens == 2
     assert dict(mixed.state.decision_stack[-1].context)["strength"] == 2
+    # Keeping the troops means pressing ``finish_reveal``: the choice lapses.
+    finished = _finish_reveal(revealed)
+    assert _lapsed(finished) == [
+        {
+            "card_id": surgeon,
+            "effect": "may_lose_two_troops_for_two_specimens",
+            "player": 0,
+        }
+    ]
+    owner = finished.state.players[0]
+    assert owner.troops_garrison == 2 and owner.troops_conflict == 2
+    assert owner.specimens == 0
     one_each = _reveal(
         _state(
             _owner((surgeon,), troops_garrison=1, troops_conflict=1, troops_supply=10)
         )
     )
     # A troop in each zone still makes two (OQ-053).
-    assert one_each.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    assert one_each.decision_stack[-1].kind == FrameKind.REVEAL
     assert [
         dict(a.arguments).get("zones")
         for a in legal_reveal_troop_sacrifice_actions(one_each, 0)
-    ] == [None, "garrison,conflict"]
+    ] == ["garrison,conflict"]
 
 
 def test_tleilaxu_surgeon_still_refuses_sardaukar_commanders() -> None:
@@ -1461,7 +1523,7 @@ def test_tleilaxu_surgeon_still_refuses_sardaukar_commanders() -> None:
     assert [
         dict(a.arguments).get("zones")
         for a in legal_reveal_troop_sacrifice_actions(mixed, 0)
-    ] == [None, "garrison,conflict"]
+    ] == ["garrison,conflict"]
 
 
 def test_tleilaxu_surgeon_offers_no_payment_at_the_tleilaxu_track_end() -> None:

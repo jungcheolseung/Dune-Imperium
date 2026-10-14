@@ -487,6 +487,98 @@ IMMORTALITY_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = (
     )
 )
 
+# Which Reveal choices the owner may leave unused (OQ-095 (7) addition, user
+# ruling 2026-10-14). An optional effect is one with "may", an arrow cost or
+# a black trash icon [FAQ p. 3] ("You do not have to pay such a cost on a
+# card" [Main p. 20]): it offers no refusal, does not hold ``finish_reveal``
+# back, and lapses when the Reveal ends. Every other choice is mandatory and
+# holds the Reveal's end while it offers something. Each member with the
+# reason it is one or the other; the two maps partition the enum
+# (``tests/unit/rules/test_reveal_choices.py``).
+_Choice = PersonalCardRevealChoiceEffect
+OPTIONAL_REVEAL_CHOICES: dict[PersonalCardRevealChoiceEffect, str] = {
+    _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
+        "Spy Network: [recall Spy] -> Intrigue card, an arrow cost"
+    ),
+    _Choice.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: (
+        "In High Places: [recall Spy] [recall Spy] -> 3 Persuasion, an arrow cost"
+    ),
+    _Choice.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE: (
+        "Captured Mentat: lose one Influence -> one Influence, an arrow cost"
+    ),
+    _Choice.MAY_PAY_THREE_SPICE_FOR_INFLUENCE: (
+        "Spacing Guild's Favor: 3 spice -> one Influence, an arrow cost"
+    ),
+    _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH: (
+        "Calculus of Power: trash another Emperor card -> 3 swords, an arrow cost"
+    ),
+    _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: (
+        "Chani, Clever Tactician: retreat two troops -> 4 swords, an arrow cost"
+    ),
+    _Choice.COMMAND_MAY_TRASH_CARD: (
+        "Shrouded Counsel: Command: trash a card, a black trash icon"
+    ),
+    _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: (
+        "Command Center: retreat two troops -> 2 Persuasion, an arrow cost"
+    ),
+    _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON: (
+        "Disruption Tactics: trash this card -> Combat icon, an arrow cost"
+    ),
+    _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH: (
+        "Arrakis Observer: [recall Spy] -> 3 swords, an arrow cost"
+    ),
+    _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: (
+        "Engineered Miracle: Command: trash this card -> acquire, an arrow cost"
+    ),
+    _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: (
+        "CHOAM Demands: trash this card -> Influence with each Faction, an arrow"
+    ),
+    _Choice.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE: (
+        "For Humanity: lose two Influence -> 1 VP, an arrow cost"
+    ),
+    _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: (
+        "Shadout Mapes: 'You may deploy or retreat one troop'"
+    ),
+    _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: (
+        "Unswerving Loyalty: 'You may deploy or retreat one of your troops'"
+    ),
+    _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
+        "Tleilaxu Surgeon: lose two troops -> two specimens, an arrow cost"
+    ),
+}
+MANDATORY_REVEAL_CHOICES: dict[PersonalCardRevealChoiceEffect, str] = {
+    _Choice.PLACE_SPY: (
+        "a Spy icon: placing is mandatory with a Spy in supply (OQ-057 (14))"
+    ),
+    _Choice.PLACE_TWO_SPIES: (
+        "Covert Operation: two Spy icons, each mandatory (OQ-057 (14))"
+    ),
+    _Choice.COMMAND_PLACE_SPY: (
+        "Intelligence Training: Command: a Spy icon, mandatory (OQ-057 (14))"
+    ),
+    _Choice.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
+        "Undercover Asset: Spy -OR- 2 swords, one branch must be chosen"
+    ),
+    _Choice.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
+        "Corrinth City: 5 Solari -OR- the seat, one branch must be chosen"
+    ),
+    _Choice.MAY_PAY_WATER_FOR_SANDWORM: (
+        "Desert Power: 2 Persuasion -OR- the sandworm, chosen before the end (OQ-069)"
+    ),
+    _Choice.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS: (
+        "Priority Contracts / Delivery Agreement: spice -OR- the VP trash"
+    ),
+    _Choice.PERSUASION_OR_CONTRACT: (
+        "Delivery Logistics: 1 Persuasion -OR- a contract, one must be chosen"
+    ),
+    _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: (
+        "Pointing the Way: Command: gain one Influence, a gain without a cost"
+    ),
+    _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
+        "Ixian Ambassador: two Tech tiles: gain one Influence, a gain"
+    ),
+}
+
 
 class PersonalCardRevealAcquisitionEffect(StrEnum):
     """Typed effects triggered by an acquisition during the current Reveal."""

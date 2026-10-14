@@ -201,10 +201,39 @@ def revealed(
     return apply(state, find(state, "reveal_turn"))
 
 
-def defer_all(state: GameState) -> GameState:
-    while state.decision_stack[-1].kind == "reveal_choice":
-        state = apply(state, find(state, "defer_reveal_choice"))
-    return state
+def entry_of(state: GameState, effect: str) -> reveal._Entry:
+    """The pending choice of ``effect`` that offers rows (the only one)."""
+
+    entries = reveal._choice_entries(make_run(state))
+    assert entries is not None
+    (entry,) = [e for e in entries if e.effect == effect]
+    return entry
+
+
+def entry_run(state: GameState, effect: str) -> DecisionRun:
+    """A run over the rows of the pending choice of ``effect``."""
+
+    return reveal._entry_run(make_run(state), entry_of(state, effect))
+
+
+def key_of(
+    state: GameState, effect: str, constants: AIConstants = HARD
+) -> tuple[float, DomainAction | None]:
+    """The post-reveal key of the pending choice of ``effect``: its value
+    and the row its answer names."""
+
+    run = make_run(state, constants=constants)
+    (source,) = reveal._choice_sources(run, [entry_of(state, effect)], {})
+    assert source.evaluate is not None
+    return source.evaluate()
+
+
+def passed(memory: Memory) -> frozenset[tuple[str, str]]:
+    stored = memory.data.get(reveal._PASSED)
+    assert isinstance(stored, tuple)
+    choices = stored[1]
+    assert isinstance(choices, frozenset)
+    return choices
 
 
 def settle_gains(state: GameState) -> GameState:
@@ -232,17 +261,19 @@ def with_reveal_context(state: GameState, **changes: ActionValue) -> GameState:
     )
 
 
-def top_effect(state: GameState) -> str:
-    return str(dict(state.decision_stack[-1].context).get("reveal_choice_effect"))
-
-
 # ===========================================================================
-# Command (6+) choices: answered at their frame, before any buy (plan §11.5)
+# Command (6+) choices: automatic steps before any buy (plan §11.5)
 # ===========================================================================
+
+_GAIN_IDS = frozenset(
+    {"recruit_reveal_troops", "draw_reveal_intrigue", "gain_reveal_resources"}
+)
 
 
 @pytest.mark.parametrize("junk", [True, False])
-def test_shrouded_counsel_command_trash_is_answered_not_deferred(junk: bool) -> None:
+def test_shrouded_counsel_command_trash_is_answered_before_the_prompt(
+    junk: bool,
+) -> None:
     def starters_discarded(state: GameState, seat: int) -> GameState:
         # The starting hand (starter cards: junk to the app) in the discard.
         if not junk:
@@ -251,8 +282,8 @@ def test_shrouded_counsel_command_trash_is_answered_not_deferred(junk: bool) -> 
         return with_player(state, seat, discard_pile=hand, hand=())
 
     state = revealed(["imperium:shrouded_counsel:0", *RICH], prepare=starters_discarded)
-    assert top_effect(state) == "command_may_trash_card"
-    assert any(a.action_id == "defer_reveal_choice" for a in legal(state))
+    entry = entry_of(state, "command_may_trash_card")
+    assert entry.card == "imperium:shrouded_counsel:0"
     seat = owner(state)
     me = state.players[seat]
     targets = tuple(
@@ -261,19 +292,29 @@ def test_shrouded_counsel_command_trash_is_answered_not_deferred(junk: bool) -> 
     expected = ShroudedCounselCommandAbility(
         card_entity("imperium:shrouded_counsel:0", seat)
     ).evaluate(profile(state), Request((TargetInfo(entities=targets),)))
-    chosen = reveal.reveal_choice_window(make_run(state))
+    memory = Memory()
+    chosen = reveal.reveal_window(make_run(state, memory))
     picked = expected.response[0] if expected.response else ()
     if junk:
         assert expected.value > 0 and picked and picked[0] in me.discard_pile
-        assert chosen == find(state, "trash_reveal_card", card_id=picked[0])
-    else:  # "use, trash nothing" (``((),)``) is the decline
+        assert chosen == find(
+            state, "trash_reveal_card", card_id=picked[0], source="shrouded_counsel"
+        )
+        assert reveal._PASSED not in memory.data
+    else:
+        # "use, trash nothing" (``((),)``): not used, never asked again.
         assert picked == ()
-        assert chosen == find(state, "decline_reveal_card_trash")
+        assert chosen is not None and chosen not in entry.rows
+        assert passed(memory) == {(entry.card, entry.effect)}
+        state = apply(state, chosen)
+        again = reveal.reveal_window(make_run(state, memory))
+        assert again is not None and again not in entry.rows
 
 
-def test_command_choices_resolve_in_card_order_at_their_frames() -> None:
+def test_command_choices_resolve_in_card_order_before_the_prompt() -> None:
     """Pointing the Way's track, Intelligence Training's best post and
-    Engineered Miracle's best Row card, each at its own frame."""
+    Engineered Miracle's best Row card, each as an automatic step in card
+    order."""
 
     hand = [
         "imperium:pointing_the_way:0",
@@ -284,51 +325,48 @@ def test_command_choices_resolve_in_card_order_at_their_frames() -> None:
     state = revealed(hand)
     seat = owner(state)
     # Pointing the Way (Explicit, +100 per track): GainAnyInfluence's track.
-    assert top_effect(state) == "command_gain_chosen_influence"
     tracks = tuple(track_entity(f) for f in FACTIONS)
     gain = PointingTheWayCommandAbility(card_entity(hand[0], seat)).evaluate(
         profile(state), Request((TargetInfo(entities=tracks),))
     )
     assert gain.response is not None
-    chosen = reveal.reveal_choice_window(make_run(state))
+    chosen = reveal.reveal_window(make_run(state))
     assert chosen == find(state, "gain_reveal_influence", faction=gain.response[0][0])
     state = apply(state, chosen)
     # Intelligence Training: the Spy on the app's best post.
-    assert top_effect(state) == "command_place_spy"
     run = make_run(state)
-    chosen = reveal.reveal_choice_window(run)
+    chosen = reveal.reveal_window(run)
     assert chosen is not None and chosen.action_id == "place_reveal_spy"
-    assert chosen == best_place_action(make_run(state), run.by_id("place_reveal_spy"))
+    places = entry_run(state, "command_place_spy").by_id("place_reveal_spy")
+    assert chosen == best_place_action(make_run(state), places)
     state = apply(state, chosen)
     # Engineered Miracle (Optional): the best Row card by AcquireValue.
-    assert top_effect(state) == "command_may_trash_self_to_acquire_row_card"
+    entry = entry_of(state, "command_may_trash_self_to_acquire_row_card")
     row = tuple(card_entity(i) for i in state.imperium_row)
     miracle = EngineeredMiracleCommandAbility(card_entity(hand[2], seat)).evaluate(
         profile(state), Request((TargetInfo(entities=row),))
     )
-    chosen = reveal.reveal_choice_window(make_run(state))
+    memory = Memory()
+    chosen = reveal.reveal_window(make_run(state, memory))
     if miracle.value > 0 and miracle.response:
-        expected = find(
+        assert chosen == find(
             state, "command_acquire_row_card", instance_id=miracle.response[0][0]
         )
     else:
-        expected = find(state, "decline_command_acquisition")
-    assert chosen == expected
+        assert chosen is not None and chosen not in entry.rows
+        assert passed(memory) == {(entry.card, entry.effect)}
 
 
-def test_a_waiting_command_choice_is_resumed_before_the_prompt() -> None:
+def test_a_waiting_command_choice_runs_once_it_opens() -> None:
     """A Command choice that opens after the Reveal began (the sixth
-    Persuasion came later) is resumed as an automatic step, before buys."""
+    Persuasion came later) is answered as an automatic step, before buys."""
 
     state = settle_gains(
-        defer_all(revealed(["imperium:shrouded_counsel:0", PLAIN], troops_garrison=0))
+        revealed(["imperium:shrouded_counsel:0", PLAIN], troops_garrison=0)
     )
-    assert not any(a.action_id == "resume_reveal_choice" for a in legal(state))
+    assert not any(a.action_id == "trash_reveal_card" for a in legal(state))
     state = with_reveal_context(state, persuasion_generated=6)
-    resume = find(state, "resume_reveal_choice", effect="command_may_trash_card")
-    assert reveal.reveal_window(make_run(state)) == resume
-    state = apply(state, resume)
-    assert top_effect(state) == "command_may_trash_card"
+    entry = entry_of(state, "command_may_trash_card")
     seat = owner(state)
     me = state.players[seat]
     targets = tuple(
@@ -338,16 +376,18 @@ def test_a_waiting_command_choice_is_resumed_before_the_prompt() -> None:
         card_entity("imperium:shrouded_counsel:0", seat)
     ).evaluate(profile(state), Request((TargetInfo(entities=targets),)))
     picked = expected.response[0] if expected.response else ()
-    chosen = reveal.reveal_choice_window(make_run(state))
+    memory = Memory()
+    chosen = reveal.reveal_window(make_run(state, memory))
     if expected.value > 0 and picked:
         assert chosen == find(state, "trash_reveal_card", card_id=picked[0])
     else:
-        assert chosen == find(state, "decline_reveal_card_trash")
+        assert chosen not in entry.rows
+        assert passed(memory) == {(entry.card, entry.effect)}
 
 
 @pytest.mark.parametrize("command_first", [True, False])
 def test_a_late_command_choice_runs_at_its_cards_reveal_position(
-    command_first: bool,
+    command_first: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A Command choice that opens late is a state-300 step ranked by its
     card's reveal position among the automatic gains (module rule 7):
@@ -355,11 +395,37 @@ def test_a_late_command_choice_runs_at_its_cards_reveal_position(
 
     cards = ["imperium:shrouded_counsel:0", "imperium:price_is_no_object:0"]
     hand = cards if command_first else cards[::-1]
-    state = defer_all(revealed(hand, troops_garrison=0))
+    state = revealed(hand, troops_garrison=0)
     gain = find(state, "gain_reveal_resources", solari=2, spice=0, water=0)
     state = with_reveal_context(state, persuasion_generated=6)
-    resume = find(state, "resume_reveal_choice", effect="command_may_trash_card")
-    assert reveal.reveal_window(make_run(state)) == (resume if command_first else gain)
+    trash = find(state, "trash_reveal_card", card_id="imperium:price_is_no_object:0")
+    monkeypatch.setattr(
+        ShroudedCounselCommandAbility,
+        "evaluate",
+        lambda s, p, r: Answer(5.0, (("imperium:price_is_no_object:0",),)),
+    )
+    assert reveal.reveal_window(make_run(state)) == (trash if command_first else gain)
+
+
+def test_a_passed_mark_of_another_reveal_is_ignored() -> None:
+    """``_PASSED`` holds this Reveal's choices only: another Reveal's mark
+    does not keep a Command choice from being answered."""
+
+    state = settle_gains(
+        revealed(["imperium:shrouded_counsel:0", PLAIN], troops_garrison=0)
+    )
+    state = with_reveal_context(state, persuasion_generated=6)
+    entry = entry_of(state, "command_may_trash_card")
+    stale = Memory()
+    stale.data[reveal._PASSED] = (
+        (state.round_number - 1, owner(state)),
+        frozenset({(entry.card, entry.effect)}),
+    )
+    fresh = Memory()
+    assert reveal.reveal_window(make_run(state, stale)) == reveal.reveal_window(
+        make_run(state, fresh)
+    )
+    assert stale.data.get(reveal._PASSED) == fresh.data.get(reveal._PASSED)
 
 
 def test_an_automatic_command_reward_is_a_state_400_gain() -> None:
@@ -382,12 +448,12 @@ def test_an_automatic_command_reward_is_a_state_400_gain() -> None:
 
 
 # ===========================================================================
-# Deferred Bloodlines choices (valued in the prompt, realised at the frame)
+# Bloodlines choices as prompt keys (valued and realised in the prompt)
 # ===========================================================================
 
 
 def test_command_center_retreats_a_commander_only_for_the_missing_troop() -> None:
-    state = defer_all(
+    state = settle_gains(
         revealed(
             ["imperium:command_center:0", PLAIN],
             troops_conflict=1,
@@ -396,28 +462,25 @@ def test_command_center_retreats_a_commander_only_for_the_missing_troop() -> Non
             combat_strength=4,
         )
     )
-    state = settle_gains(state)
     effect = "may_retreat_two_troops_for_two_persuasion"
-    state = apply(state, find(state, "resume_reveal_choice", effect=effect))
-    run = make_run(state)
+    run = entry_run(state, effect)
     forms = {arg(a, "commanders") for a in run.by_id("retreat_two_troops_for_reveal")}
     assert forms == {1}  # one troop and one Commander fight
-    realised = reveal._realise(
-        run, "may_retreat_two_troops_for_two_persuasion", Answer(1.0, ())
+    realised = reveal._realise(run, effect, Answer(1.0, ()))
+    assert realised == find(
+        state, "retreat_two_troops_for_reveal", commanders=1, source="command_center"
     )
-    assert realised == find(state, "retreat_two_troops_for_reveal", commanders=1)
     expected = CommandCenterRevealAbility(
         card_entity("imperium:command_center:0", owner(state))
     ).evaluate(profile(state), Request())
-    chosen = reveal.reveal_choice_window(make_run(state))
-    if expected.value > 0:
-        assert chosen == realised
-    else:
-        assert chosen == find(state, "decline_reveal_troop_retreat")
+    value, action = key_of(state, effect)
+    assert value == expected.value
+    if expected.response is not None:
+        assert action == realised
 
 
 def test_chani_retreat_takes_troops_first_with_commanders() -> None:
-    state = defer_all(
+    state = settle_gains(
         revealed(
             ["imperium:chani_clever_tactician:0", PLAIN],
             troops_conflict=1,
@@ -425,19 +488,14 @@ def test_chani_retreat_takes_troops_first_with_commanders() -> None:
             combat_strength=4,
         )
     )
-    state = settle_gains(state)
-    state = apply(
+    effect = "may_retreat_two_troops_for_four_strength"
+    realised = reveal._realise(entry_run(state, effect), effect, Answer(1.0, ()))
+    assert realised == find(
         state,
-        find(
-            state,
-            "resume_reveal_choice",
-            effect="may_retreat_two_troops_for_four_strength",
-        ),
+        "retreat_two_troops_for_reveal",
+        commanders=1,
+        source="chani_clever_tactician",
     )
-    realised = reveal._realise(
-        make_run(state), "may_retreat_two_troops_for_four_strength", Answer(1.0, ())
-    )
-    assert realised == find(state, "retreat_two_troops_for_reveal", commanders=1)
 
 
 def test_disruption_tactics_trash_carries_its_deployment(
@@ -449,27 +507,19 @@ def test_disruption_tactics_trash_carries_its_deployment(
         Profile, "units_to_deploy", lambda self, units, most: min(units, most, 2)
     )
     state = settle_gains(
-        defer_all(revealed(["imperium:disruption_tactics:0", PLAIN], troops_garrison=3))
+        revealed(["imperium:disruption_tactics:0", PLAIN], troops_garrison=3)
     )
+    effect = "may_trash_self_for_combat_icon"
+    trash = find(state, "trash_reveal_card", source="disruption_tactics")
     run = make_run(state)
-    answers: dict[str, Answer] = {}
-    resumes = reveal._resume_sources(run, answers)
-    assert resumes is not None and len(resumes) == 1
-    assert resumes[0].evaluate is not None
-    value, _action = resumes[0].evaluate()
-    assert value == 0.5  # DeployUnitsAbility's ordering value
-    answer = answers["may_trash_self_for_combat_icon"]
-    assert answer.response == ((0, 1),)
-    resume = find(
-        state, "resume_reveal_choice", effect="may_trash_self_for_combat_icon"
-    )
-    state = apply(state, resume)
+    used: dict[DomainAction, tuple[reveal._Entry, Answer]] = {}
+    (source,) = reveal._choice_sources(run, [entry_of(state, effect)], used)
+    assert source.evaluate is not None
+    assert source.evaluate() == (0.5, trash)  # DeployUnitsAbility's value
+    assert used[trash][1].response == ((0, 1),)
     memory = Memory()
-    memory.intents[
-        reveal._intent_key(make_run(state), "may_trash_self_for_combat_icon")
-    ] = answer
-    chosen = reveal.reveal_choice_window(make_run(state, memory))
-    assert chosen == find(state, "trash_reveal_card")
+    chosen = reveal.reveal_window(make_run(state, memory, constants=NO_BUYS))
+    assert chosen == trash
     key = (reveal._DEPLOY_INTENT, state.round_number, owner(state))
     assert memory.intents[key] == 2
     state = apply(state, chosen)
@@ -479,22 +529,21 @@ def test_disruption_tactics_trash_carries_its_deployment(
     assert key not in memory.intents
 
 
-def test_disruption_tactics_is_declined_with_nothing_to_deploy() -> None:
-    state = revealed(["imperium:disruption_tactics:0", PLAIN], troops_garrison=0)
-    seat = owner(state)
-    state = apply(state, find(state, "defer_reveal_choice"))
-    state = settle_gains(state)
-    state = apply(
-        state,
-        find(state, "resume_reveal_choice", effect="may_trash_self_for_combat_icon"),
+def test_disruption_tactics_is_not_used_with_nothing_to_deploy() -> None:
+    state = settle_gains(
+        revealed(["imperium:disruption_tactics:0", PLAIN], troops_garrison=0)
     )
+    seat = owner(state)
     ability = DisruptionTacticsRevealAbility(
         card_entity("imperium:disruption_tactics:0", seat)
     )
     assert ability.evaluate(profile(state), Request((TargetInfo(),))).response is None
-    assert reveal.reveal_choice_window(make_run(state)) == find(
-        state, "decline_reveal_card_trash"
+    assert key_of(state, "may_trash_self_for_combat_icon")[0] <= 0.0
+    memory = Memory()
+    assert reveal.reveal_window(make_run(state, memory, constants=NO_BUYS)) == find(
+        state, "finish_reveal"
     )
+    assert memory.intents == {}
 
 
 def test_disruption_tactics_keeps_the_card_when_an_icon_is_already_open() -> None:
@@ -508,26 +557,24 @@ def test_disruption_tactics_keeps_the_card_when_an_icon_is_already_open() -> Non
     state = revealed(
         ["imperium:disruption_tactics:0", "imperium:holy_war:0"], troops_garrison=3
     )
-    state = settle_gains(defer_all(state))
+    state = settle_gains(state)
     assert dict(state.decision_stack[-1].context)["combat_deployment"] is True
+    effect = "may_trash_self_for_combat_icon"
     run = make_run(state)
-    answers: dict[str, Answer] = {}
-    resumes = reveal._resume_sources(run, answers)
-    assert resumes is not None and len(resumes) == 1
-    assert resumes[0].evaluate is not None
-    assert resumes[0].evaluate()[0] == 0.0
-    assert answers["may_trash_self_for_combat_icon"].response is None
+    used: dict[DomainAction, tuple[reveal._Entry, Answer]] = {}
+    (source,) = reveal._choice_sources(run, [entry_of(state, effect)], used)
+    assert source.evaluate is not None
+    assert source.evaluate()[0] == 0.0
+    assert used == {}  # no answer names the trash
     (deploy,) = reveal._deploy_sources(run, {})
     assert deploy.evaluate is not None
     value, action = deploy.evaluate()
     assert value == 0.5 and action is not None  # GetUnitsToDeploy wants units
     assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == action
-    # After the deployment the resumed frame still declines the trash.
+    # After the deployment the trash still is not used: the turn ends.
     state = apply(state, action)
-    effect = "may_trash_self_for_combat_icon"
-    state = apply(state, find(state, "resume_reveal_choice", effect=effect))
-    assert reveal.reveal_choice_window(make_run(state)) == find(
-        state, "decline_reveal_card_trash"
+    assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == find(
+        state, "finish_reveal"
     )
 
 
@@ -536,12 +583,9 @@ def test_arrakis_observer_recalls_the_worst_post_spy() -> None:
         return with_player(state, seat, spy_post_ids=POSTS, spies_supply=1)
 
     state = settle_gains(
-        defer_all(revealed(["imperium:arrakis_observer:0", PLAIN], prepare=spies))
+        revealed(["imperium:arrakis_observer:0", PLAIN], prepare=spies)
     )
-    state = apply(
-        state,
-        find(state, "resume_reveal_choice", effect="may_recall_spy_for_three_strength"),
-    )
+    effect = "may_recall_spy_for_three_strength"
     seat = owner(state)
     expected = ArrakisObserverRevealAbility(
         card_entity("imperium:arrakis_observer:0", seat)
@@ -549,13 +593,17 @@ def test_arrakis_observer_recalls_the_worst_post_spy() -> None:
         profile(state),
         Request((TargetInfo(entities=tuple(spy_entity(p, seat) for p in POSTS)),)),
     )
-    chosen = reveal.reveal_choice_window(make_run(state))
+    chosen = reveal.reveal_window(make_run(state, constants=NO_BUYS))
     if expected.value > 0 and expected.response:
         assert chosen == find(
-            state, "recall_spy_for_reveal", post_id=expected.response[0][0]
+            state,
+            "recall_spy_for_reveal",
+            post_id=expected.response[0][0],
+            source="arrakis_observer",
         )
     else:
-        assert chosen == find(state, "decline_reveal_spy_recall")
+        assert key_of(state, effect)[0] == expected.value
+        assert chosen == find(state, "finish_reveal")
 
 
 def test_choam_demands_trashes_itself_for_four_influence() -> None:
@@ -564,27 +612,27 @@ def test_choam_demands_trashes_itself_for_four_influence() -> None:
         state = with_state(state, contract_bank=state.contract_bank[4:])
         return with_player(state, seat, completed_contract_ids=four)
 
-    state = revealed(["imperium:choam_demands:0", PLAIN], prepare=contracts)
+    state = settle_gains(
+        revealed(["imperium:choam_demands:0", PLAIN], prepare=contracts)
+    )
     effect = "may_trash_self_for_four_influence_if_four_contracts"
-    assert top_effect(state) == effect
-    state = settle_gains(apply(state, find(state, "defer_reveal_choice")))
-    state = apply(state, find(state, "resume_reveal_choice", effect=effect))
     expected = CHOAMDemandsRevealAbility(
         card_entity("imperium:choam_demands:0", owner(state))
     ).evaluate(profile(state), Request())
     assert expected.response == () and expected.value > 0
-    assert reveal.reveal_choice_window(make_run(state)) == find(
-        state, "trash_reveal_card", card_id="imperium:choam_demands:0"
+    trash = find(
+        state,
+        "trash_reveal_card",
+        card_id="imperium:choam_demands:0",
+        source="choam_demands",
     )
+    assert key_of(state, effect) == (expected.value, trash)
+    assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == trash
 
 
 def test_delivery_logistics_takes_the_better_of_persuasion_and_contract() -> None:
-    state = revealed(["imperium:delivery_logistics:0", PLAIN])
-    assert top_effect(state) == "persuasion_or_contract"
-    state = settle_gains(apply(state, find(state, "defer_reveal_choice")))
-    state = apply(
-        state, find(state, "resume_reveal_choice", effect="persuasion_or_contract")
-    )
+    state = settle_gains(revealed(["imperium:delivery_logistics:0", PLAIN]))
+    assert make_run(state).first("finish_reveal") is None  # mandatory
     expected = DeliveryLogisticsRevealAbility(
         card_entity("imperium:delivery_logistics:0", owner(state))
     ).evaluate(profile(state), Request((TargetInfo(options=(0, 1)),)))
@@ -594,29 +642,27 @@ def test_delivery_logistics_takes_the_better_of_persuasion_and_contract() -> Non
         if expected.response[0][0] == 1
         else "gain_reveal_persuasion"
     )
-    assert reveal.reveal_choice_window(make_run(state)) == find(state, wanted)
+    assert key_of(state, "persuasion_or_contract") == (
+        expected.value,
+        find(state, wanted),
+    )
 
 
 def test_ixian_ambassador_gains_gainanyinfluences_track() -> None:
     def tiles(state: GameState, seat: int) -> GameState:
         return give_tech(state, seat, "glowglobes", "suspensor_suits")
 
-    state = revealed(["imperium:ixian_ambassador:0", PLAIN], prepare=tiles)
-    assert top_effect(state) == "gain_chosen_influence_if_two_tech"
-    run = make_run(state)
-    assert reveal.reveal_choice_window(run) == find(state, "defer_reveal_choice")
-    state = settle_gains(apply(state, find(state, "defer_reveal_choice")))
-    state = apply(
-        state,
-        find(state, "resume_reveal_choice", effect="gain_chosen_influence_if_two_tech"),
+    state = settle_gains(
+        revealed(["imperium:ixian_ambassador:0", PLAIN], prepare=tiles)
     )
     tracks = tuple(track_entity(f) for f in FACTIONS)
     expected = IxianAmbassadorRevealAbility(
         card_entity("imperium:ixian_ambassador:0", owner(state))
     ).evaluate(profile(state), Request((TargetInfo(entities=tracks),)))
     assert expected.response is not None
-    assert reveal.reveal_choice_window(make_run(state)) == find(
-        state, "gain_reveal_influence", faction=expected.response[0][0]
+    assert key_of(state, "gain_chosen_influence_if_two_tech") == (
+        expected.value,
+        find(state, "gain_reveal_influence", faction=expected.response[0][0]),
     )
 
 
@@ -624,7 +670,7 @@ def test_corrinth_city_uses_the_scouts_ability_only_in_scouts_games() -> None:
     card = "imperium:corrinth_city:0"
     effect = "gain_five_solari_or_take_high_council"
     scouts = revealed([card, PLAIN], config=SCOUTS)
-    assert top_effect(scouts) == effect
+    assert entry_of(scouts, effect).card == card
     ability = reveal._choice_ability(make_run(scouts), effect, card)
     assert isinstance(ability, CorrinthCityRevealScoutsAbility)
     plain = revealed([card, PLAIN])
@@ -889,15 +935,29 @@ def test_the_reveal_subcommittee_offer_is_a_key_and_its_decline_ends_the_turn() 
         assert memory.data[reveal._END_TURN] == (state.round_number, seat)
 
 
-def test_the_subcommittee_decline_follows_an_end_turn() -> None:
+def test_the_subcommittee_decline_is_followed_by_the_end_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The declined offer was the prompt's empty answer: ``finish_reveal``
+    follows without a second ``MakeChoice``."""
+
     state = settle_gains(revealed([PLAIN], config=SCOUTS))
     seat = owner(state)
-    state = with_state(state, scouts_subcommittee_offers=((seat, "test", ""),))
-    memory = Memory()
-    memory.data[reveal._END_TURN] = (state.round_number, seat)
-    assert reveal.reveal_window(make_run(state, memory)) == find(
-        state, "decline_subcommittee"
+    offered = with_state(state, scouts_subcommittee_offers=((seat, "test", ""),))
+    monkeypatch.setattr(
+        SubcommitteeOfferAbility, "evaluate", lambda s, p, r: Answer(0.0, None)
     )
+    memory = Memory()
+    decline = find(offered, "decline_subcommittee")
+    assert reveal.reveal_window(make_run(offered, memory, constants=NO_BUYS)) == decline
+    assert memory.data[reveal._END_TURN] == (state.round_number, seat)
+
+    def no_prompt(*args: object, **kwargs: object) -> DomainAction | None:
+        raise AssertionError("the empty answer is not asked again")
+
+    monkeypatch.setattr(reveal, "decide", no_prompt)
+    assert reveal.reveal_window(make_run(state, memory)) == find(state, "finish_reveal")
+    assert reveal._END_TURN not in memory.data
 
 
 def test_market_opening_values_the_discounted_reserve_card() -> None:

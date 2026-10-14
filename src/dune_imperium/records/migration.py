@@ -33,6 +33,21 @@ engine's active box through the turn (``_GraftSlot``): it drops each
 switch and tags the steps the partner's box took. A dropped switch is
 counted as ``graft_switch``, a tagged step as ``graft_box``.
 
+A record before codec v147 resolved its Reveal choices on stacked
+``REVEAL_CHOICE`` frames, which ``defer_reveal_choice`` and
+``resume_reveal_choice`` reordered, and refused an optional one with its own
+``decline_*``. This engine offers every pending choice on the Reveal frame at
+once and lapses an unused optional one at ``finish_reveal`` (OQ-095 (7)
+addition), and seven ids name their card with ``source``. ``migrate_record``
+follows the recording engine's choice frames through the Reveal
+(``_RevealSlot``): it drops each defer and resume (``reveal_choice_defer``,
+``reveal_choice_resume``) and each refusal of an optional choice
+(``reveal_optional_refusal``; ``reveal_optional_refusal_by_order`` for an
+optional recall's ``decline_reveal_spy_recall`` this engine would read as a
+plain Spy icon's), and gives a step of a sourced id the one card that offers
+it (``reveal_source``) or, when several do, the card of the top frame
+(``reveal_source_by_order``).
+
 Adding a bridge: when an engine change makes a recorded game stop, compare
 the record with the engine's pending decision (``dune-imperium-records
 check`` names both). If the new engine merely asks something the old one
@@ -44,14 +59,17 @@ the divergence is the right answer.
 
 from collections import Counter
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Final
 
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     personal_card_for_instance,
 )
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import (
     FIXED_OUTCOME_SUFFIX,
@@ -69,12 +87,18 @@ from dune_imperium.rules.agent_effect_frame import (
     route_box_action,
 )
 from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
     pending_agent_icons,
 )
-from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, FrameKind
+from dune_imperium.rules.frames import (
+    OWED_CARD,
+    OWED_INTRIGUE,
+    FrameKind,
+    replace_player,
+)
 from dune_imperium.rules.graft_boxes import (
     BOX_ACTION_IDS,
     active_box,
@@ -88,7 +112,15 @@ from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
 from dune_imperium.rules.pauses import SCOUTS_REWARD
-from dune_imperium.rules.reveal_turn import reveal_pending_gains
+from dune_imperium.rules.reveal_turn import (
+    GENERATED_PERSUASION_KEY,
+    REVEAL_CHOICE_EFFECT_ACTIONS,
+    SOURCE_ARGUMENT,
+    SOURCED_REVEAL_ACTION_IDS,
+    reveal_card_identity,
+    reveal_choice_effect_is_available,
+    reveal_pending_gains,
+)
 from dune_imperium.rules.scouts_effects import reward_was_chosen
 
 # A round's end can need a handful of bridges in a row before the next
@@ -149,6 +181,10 @@ class MigratedStep:
     # For a record before codec v143, the grafted box the recording engine
     # had active when the step was taken (``_GraftSlot``); 0 otherwise.
     graft_box: int = 0
+    # For a record before codec v147, the card (definition id) of the Reveal
+    # choice frame the recording engine had on top when the step was taken
+    # (``_RevealSlot``); None otherwise.
+    reveal_source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +256,9 @@ def migrate_record(
         _GraftSlot() if replay.action_codec_version < GRAFT_BOXES_CODEC else None
     )
     drops_refusals = replay.action_codec_version < OPTIONAL_REFUSALS_CODEC
+    reveal = (
+        _RevealSlot() if replay.action_codec_version < REVEAL_CHOICES_CODEC else None
+    )
 
     def ended(divergence: Divergence | None, at: GameState) -> MigratedRecord:
         return MigratedRecord(
@@ -230,9 +269,19 @@ def migrate_record(
         if graft is not None and graft.drops(recorded):
             dropped.append((index, GRAFT_SWITCH_DROPPED))
             continue
+        if reveal is not None:
+            reveal.sync(state)
+            refused = reveal.refuses_optional_recall(engine, state, recorded)
+            if refused is not None:
+                dropped.append((index, refused))
+                continue
         step, rewritten_by = recorded, None
         box = 0 if graft is None else graft.box
+        reveal_source = None if reveal is None else reveal.top_source(recorded)
         for _ in range(MAX_BRIDGES_PER_STEP):
+            if reveal is not None and rewritten_by in (None, *REVEAL_SOURCE_NAMES):
+                named = reveal.named(engine, state, recorded)
+                step, rewritten_by = named if named is not None else (recorded, None)
             if graft is not None and rewritten_by in (None, GRAFT_BOX_TAGGED):
                 boxed = graft.boxed(engine, state, recorded)
                 step, rewritten_by = (
@@ -278,6 +327,11 @@ def migrate_record(
                 ):
                     dropped.append((index, REPEATED_MISSION_DROPPED))
                     break
+                if bridged is None and reveal is not None:
+                    gone = reveal.without_counterpart(state, recorded)
+                    if gone is not None:
+                        dropped.append((index, gone))
+                        break
                 if bridged is None:
                     divergence = Divergence(
                         recorded_index=index,
@@ -294,9 +348,13 @@ def migrate_record(
                 migrated.append(MigratedStep(answer, None, bridge.name))
                 continue
             before, mark = state, len(migrated)
-            migrated.append(MigratedStep(step, index, rewritten_by, box))
+            migrated.append(
+                MigratedStep(step, index, rewritten_by, box, reveal_source)
+            )
             if graft is not None:
                 graft.applied(after, step)
+            if reveal is not None:
+                reveal.applied(before, after, recorded)
             followed = _follow(engine, after, step, bridges, migrated)
             if followed is None:
                 del migrated[mark:]
@@ -471,6 +529,394 @@ def graft_box_held(
     )
 
 
+# Codec v147 (user ruling 2026-10-14, OQ-095 (7) addition): a Reveal choice no
+# longer opens its own frame. Every choice of a revealed card waits on the
+# Reveal frame and is offered there in any order; an optional one offers no
+# refusal and lapses at ``finish_reveal``. A recording engine before v147
+# stacked the choices as ``REVEAL_CHOICE`` frames and let the owner put the
+# top one off (``defer_reveal_choice``) and bring a deferred one back
+# (``resume_reveal_choice``); neither has a counterpart here, nor has its
+# refusal of an optional choice: this engine keeps that choice pending and
+# the recorded ``finish_reveal`` lapses it, which leaves the same game state.
+# Seven ids name their card with ``source`` here (``SOURCED_REVEAL_ACTION_IDS``):
+# a recorded one is given the card the recording engine had on top.
+REVEAL_CHOICES_CODEC: Final = 147
+REVEAL_DEFER_DROPPED: Final = "reveal_choice_defer"
+REVEAL_RESUME_DROPPED: Final = "reveal_choice_resume"
+REVEAL_REFUSAL_DROPPED: Final = "reveal_optional_refusal"
+# An optional recall's refusal (``decline_reveal_spy_recall``) this engine
+# would read as a plain Spy icon's empty-supply refusal: dropped by the
+# recording engine's frame order.
+REVEAL_REFUSAL_BY_ORDER: Final = "reveal_optional_refusal_by_order"
+# A recorded step given its ``source``: the one card that offers it, or, when
+# several do, the card of the recording engine's top frame.
+REVEAL_SOURCE_NAMED: Final = "reveal_source"
+REVEAL_SOURCE_BY_ORDER: Final = "reveal_source_by_order"
+REVEAL_SOURCE_NAMES: Final = (REVEAL_SOURCE_NAMED, REVEAL_SOURCE_BY_ORDER)
+
+_DEFER: Final = "defer_reveal_choice"
+_RESUME: Final = "resume_reveal_choice"
+_RECALL_REFUSAL: Final = "decline_reveal_spy_recall"
+# The refusals each optional choice offered before v147, by the refused id.
+_Choice = PersonalCardRevealChoiceEffect
+_OPTIONAL_REVEAL_REFUSALS: Final[dict[str, frozenset[_Choice]]] = {
+    _RECALL_REFUSAL: frozenset(
+        {
+            _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+            _Choice.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
+            _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH,
+        }
+    ),
+    "decline_reveal_influence_exchange": frozenset(
+        {_Choice.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE}
+    ),
+    "decline_reveal_spice_influence": frozenset(
+        {_Choice.MAY_PAY_THREE_SPICE_FOR_INFLUENCE}
+    ),
+    "decline_reveal_card_trash": frozenset(
+        {
+            _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH,
+            _Choice.COMMAND_MAY_TRASH_CARD,
+            _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON,
+            _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        }
+    ),
+    "decline_reveal_troop_retreat": frozenset(
+        {
+            _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH,
+            _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION,
+        }
+    ),
+    "decline_command_acquisition": frozenset(
+        {_Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD}
+    ),
+    "decline_reveal_influence_loss": frozenset(
+        {_Choice.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE}
+    ),
+    "decline_reveal_troop_move": frozenset(
+        {
+            _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
+            _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
+        }
+    ),
+    "decline_reveal_troop_sacrifice": frozenset(
+        {_Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS}
+    ),
+}
+# Covert Operation's first icon gave way to a plain Spy frame of the same card.
+_SECOND_SPY_STEPS: Final = frozenset({"place_reveal_spy", _RECALL_REFUSAL})
+
+type _Entry = tuple[str, str]
+
+
+def _answers(effect: str, action_id: str) -> bool:
+    """Whether a recording engine's ``effect`` frame offered ``action_id``."""
+
+    choice = PersonalCardRevealChoiceEffect(effect)
+    return action_id in REVEAL_CHOICE_EFFECT_ACTIONS[choice] or choice in (
+        _OPTIONAL_REVEAL_REFUSALS.get(action_id, frozenset())
+    )
+
+
+@dataclass
+class _RevealSlot:
+    """The Reveal choice frames a recording engine before codec v147 had.
+
+    That engine pushed one ``REVEAL_CHOICE`` frame per choice whose
+    condition held at the Reveal's start, in hand order with the first on
+    top, and queued the others; a late arrival's frames went directly above
+    the Reveal frame, its unavailable ones to the queue's end. A recorded
+    ``defer_reveal_choice`` moved the top frame to the queue's end, a
+    ``resume_reveal_choice`` brought the oldest queued entry of that kind
+    whose condition held back on top, and Covert Operation's first icon gave
+    way to a plain Spy frame of the same card. Each recorded choice answered
+    the top frame. This engine offers every pending choice at once, so a
+    recorded id several cards offer here takes the top frame's card as its
+    ``source``, and a refusal is dropped or applied by the frame it answered.
+    A frame stays while this engine keeps the choice on top (a Spy recalled
+    for its placement). Conditions are judged on this engine's state, which
+    the trace keeps equal to the recording engine's; a late arrival's on the
+    state before the next recorded step.
+    """
+
+    player: int | None = None
+    # Bottom to top, above the Reveal frame.
+    frames: list[_Entry] = field(default_factory=list)
+    queue: list[_Entry] = field(default_factory=list)
+    # How much of the event log the slot has read.
+    seen: int = 0
+
+    def sync(self, state: GameState) -> None:
+        """Read the late arrivals since the last step."""
+
+        for event in state.event_log[self.seen :]:
+            payload = dict(event.payload)
+            if self.player is None or payload.get("player") != self.player:
+                continue
+            if event.kind == "personal_card_late_revealed":
+                card_id = payload.get("card_id")
+                if isinstance(card_id, str):
+                    self._arrive(state, card_id)
+        self.seen = len(state.event_log)
+
+    def _arrive(self, state: GameState, card_id: str) -> None:
+        assert self.player is not None
+        owner = state.players[self.player]
+        persuasion = _reveal_generated(state, self.player)
+        framed: list[_Entry] = []
+        for effect in personal_card_for_instance(card_id).reveal_choice_effects:
+            entry = (card_id, effect.value)
+            if reveal_choice_effect_is_available(
+                state,
+                self.player,
+                owner,
+                counted_in_play(owner),
+                card_id,
+                effect,
+                persuasion=persuasion,
+            ):
+                framed.append(entry)
+            else:
+                self.queue.append(entry)
+        self.frames[0:0] = reversed(framed)
+
+    def _frame_for(self, action_id: str) -> int | None:
+        """The topmost frame that offered ``action_id`` (normally the top)."""
+
+        for index in range(len(self.frames) - 1, -1, -1):
+            if _answers(self.frames[index][1], action_id):
+                return index
+        return None
+
+    def top_source(self, step: ReplayStep) -> str | None:
+        """The card of the frame a recorded choice ``step`` answered."""
+
+        if not isinstance(step, DomainAction) or step.actor != self.player:
+            return None
+        index = self._frame_for(step.action_id)
+        return None if index is None else reveal_card_identity(self.frames[index][0])
+
+    def refuses_optional_recall(
+        self, engine: UprisingRulesEngine, state: GameState, step: ReplayStep
+    ) -> str | None:
+        """Drop a recorded optional recall's refusal this engine would apply.
+
+        ``decline_reveal_spy_recall`` also passes up a plain Spy icon's
+        recall-first with an empty supply, which this engine still offers:
+        the frame it answered tells the two apart.
+        """
+
+        if not (
+            isinstance(step, DomainAction)
+            and step.action_id == _RECALL_REFUSAL
+            and step.actor == self.player
+        ):
+            return None
+        index = self._frame_for(_RECALL_REFUSAL)
+        if index is None or PersonalCardRevealChoiceEffect(
+            self.frames[index][1]
+        ) not in (_OPTIONAL_REVEAL_REFUSALS[_RECALL_REFUSAL]):
+            return None
+        del self.frames[index]
+        return (
+            REVEAL_REFUSAL_BY_ORDER
+            if step in engine.legal_actions(state, step.actor)
+            else REVEAL_REFUSAL_DROPPED
+        )
+
+    def without_counterpart(self, state: GameState, step: ReplayStep) -> str | None:
+        """Drop a refused recorded step this engine has no counterpart for.
+
+        A defer or a resume, or an optional choice's refusal: the slot moves
+        the frames as the recording engine did.
+        """
+
+        if not isinstance(step, DomainAction) or step.actor != self.player:
+            return None
+        if step.action_id == _DEFER:
+            if self.frames:
+                self.queue.append(self.frames.pop())
+            return REVEAL_DEFER_DROPPED
+        if step.action_id == _RESUME:
+            self._resume(state, str(dict(step.arguments).get("effect")))
+            return REVEAL_RESUME_DROPPED
+        if step.action_id in _OPTIONAL_REVEAL_REFUSALS:
+            index = self._frame_for(step.action_id)
+            if index is not None:
+                del self.frames[index]
+            return REVEAL_REFUSAL_DROPPED
+        return None
+
+    def _resume(self, state: GameState, effect: str) -> None:
+        assert self.player is not None
+        owner = state.players[self.player]
+        persuasion = _reveal_generated(state, self.player)
+        for position, (card_id, queued) in enumerate(self.queue):
+            if queued == effect and reveal_choice_effect_is_available(
+                state,
+                self.player,
+                owner,
+                counted_in_play(owner),
+                card_id,
+                PersonalCardRevealChoiceEffect(queued),
+                persuasion=persuasion,
+            ):
+                self.frames.append(self.queue.pop(position))
+                return
+
+    def named(
+        self, engine: UprisingRulesEngine, state: GameState, step: ReplayStep
+    ) -> tuple[DomainAction, str] | None:
+        """A recorded ``step`` of a sourced id with the card that took it."""
+
+        if not (
+            isinstance(step, DomainAction)
+            and step.action_id in SOURCED_REVEAL_ACTION_IDS
+            and all(key != SOURCE_ARGUMENT for key, _ in step.arguments)
+        ):
+            return None
+        return _with_source(engine, state, step, self.top_source(step))
+
+    def applied(self, before: GameState, after: GameState, step: ReplayStep) -> None:
+        """Follow the recording engine's frames through an applied step."""
+
+        if not isinstance(step, DomainAction):
+            return
+        if step.action_id == "reveal_turn":
+            self._begin(before, after, step.actor)
+            return
+        if step.actor != self.player:
+            return
+        if step.action_id == "finish_reveal":
+            self.player, self.frames, self.queue = None, [], []
+            return
+        index = self._frame_for(step.action_id)
+        if index is None:
+            return
+        top = after.decision_stack[-1] if after.decision_stack else None
+        if (
+            top is not None
+            and top.kind == FrameKind.REVEAL_CHOICE
+            and isinstance(top.decision, PlayerDecision)
+            and top.decision.owner == step.actor
+        ):
+            # A step that must be followed at once keeps its frame on top.
+            return
+        card_id, effect = self.frames.pop(index)
+        if (
+            effect == PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES.value
+            and step.action_id in _SECOND_SPY_STEPS
+        ):
+            self.frames.insert(
+                index, (card_id, PersonalCardRevealChoiceEffect.PLACE_SPY.value)
+            )
+
+    def _begin(self, before: GameState, after: GameState, player: int) -> None:
+        """The frames the recording engine opened when ``player`` revealed."""
+
+        frame = next(
+            (
+                frame
+                for frame in reversed(after.decision_stack)
+                if frame.kind == FrameKind.REVEAL
+            ),
+            None,
+        )
+        self.player, self.frames, self.queue = player, [], []
+        self.seen = len(after.event_log)
+        if frame is None:
+            return
+        context = dict(frame.context)
+        count = context.get("revealed_card_count")
+        persuasion = context.get(GENERATED_PERSUASION_KEY)
+        if not isinstance(count, int) or not isinstance(persuasion, int):
+            return
+        revealed = tuple(
+            str(context[f"revealed_card_{index:03d}"]) for index in range(count)
+        )
+        # The hand as that engine judged it: Chairdog's returned card is in
+        # it, the revealed cards are not yet in play.
+        owner = replace(
+            before.players[player],
+            hand=revealed,
+            in_play=tuple(
+                card_id
+                for card_id in before.players[player].in_play
+                if card_id not in revealed
+            ),
+        )
+        judged = replace(before, players=replace_player(before.players, owner))
+        cards_in_play = (*counted_in_play(owner), *revealed)
+        framed: list[_Entry] = []
+        for card_id in revealed:
+            for effect in personal_card_for_instance(card_id).reveal_choice_effects:
+                entry = (card_id, effect.value)
+                if reveal_choice_effect_is_available(
+                    judged,
+                    player,
+                    owner,
+                    cards_in_play,
+                    card_id,
+                    effect,
+                    persuasion=persuasion,
+                ):
+                    framed.append(entry)
+                else:
+                    self.queue.append(entry)
+        self.frames = list(reversed(framed))
+
+
+def _reveal_generated(state: GameState, player: int) -> int | None:
+    """The Persuasion ``player``'s open Reveal has generated, if one is open."""
+
+    for frame in reversed(state.decision_stack):
+        if (
+            frame.kind == FrameKind.REVEAL
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            value = dict(frame.context).get(GENERATED_PERSUASION_KEY)
+            return value if isinstance(value, int) else None
+    return None
+
+
+def _with_source(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    step: DomainAction,
+    hint: str | None,
+) -> tuple[DomainAction, str] | None:
+    """``step`` with the ``source`` this engine offers it with (codec v147).
+
+    The one card that offers it, or the ``hint`` (the card of the recording
+    engine's top frame) among several; None when none does, or several do
+    and the hint is not one of them.
+    """
+
+    decision = engine.current_decision(state)
+    if not isinstance(decision, PlayerDecision) or decision.owner != step.actor:
+        return None
+    offered = [
+        action
+        for action in engine.legal_actions(state, step.actor)
+        if action.action_id == step.action_id
+        and tuple(
+            (key, value) for key, value in action.arguments if key != SOURCE_ARGUMENT
+        )
+        == step.arguments
+    ]
+    if len(offered) == 1:
+        return offered[0], REVEAL_SOURCE_NAMED
+    chosen = [
+        action
+        for action in offered
+        if dict(action.arguments).get(SOURCE_ARGUMENT) == hint
+    ]
+    if hint is not None and len(chosen) == 1:
+        return chosen[0], REVEAL_SOURCE_BY_ORDER
+    return None
+
+
 def walk(
     record: MigratedRecord, engine: UprisingRulesEngine | None = None
 ) -> Iterator[tuple[GameState, MigratedStep]]:
@@ -489,6 +935,7 @@ def rewrite_step(
     step: ReplayStep,
     codec: int,
     graft_box: int = 0,
+    reveal_source: str | None = None,
 ) -> ReplayStep | None:
     """``step`` in this engine's terms by a rewrite bridge open to ``codec``.
 
@@ -499,12 +946,27 @@ def rewrite_step(
     box 1's step is its tagged row (``_GraftSlot``). A
     ``switch_graft_card`` has no counterpart (codec v143), nor has a box's
     step this engine holds back behind the other box's bundled selection
-    (``graft_box_held``).
+    (``graft_box_held``). Before codec v147 a Reveal choice id that names
+    its card here takes the one card that offers it, or ``reveal_source``
+    (``MigratedStep.reveal_source``, the card of that engine's top choice
+    frame) among several; a defer, a resume and an optional choice's refusal
+    have no counterpart.
     """
 
     decision = engine.current_decision(state)
     if decision is None:
         return None
+    if codec < REVEAL_CHOICES_CODEC and isinstance(step, DomainAction):
+        if step.action_id in (_DEFER, _RESUME) or (
+            step.action_id in _OPTIONAL_REVEAL_REFUSALS
+            and step not in engine.legal_actions(state, step.actor)
+        ):
+            return None
+        if step.action_id in SOURCED_REVEAL_ACTION_IDS and all(
+            key != SOURCE_ARGUMENT for key, _ in step.arguments
+        ):
+            named = _with_source(engine, state, step, reveal_source)
+            return None if named is None else named[0]
     if codec < GRAFT_BOXES_CODEC:
         if isinstance(step, DomainAction) and step.action_id == GRAFT_SWITCH:
             return None

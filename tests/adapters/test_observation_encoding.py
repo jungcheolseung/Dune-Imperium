@@ -649,21 +649,37 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # either way, and the first different choice is at 749 (round 10, seat 3),
 # where Litany comes with the turn's usual choices and the seat places an
 # Agent. The other five games never met the window and keep their pins.
+# Re-pinned for codec v147 (observation still v32): a Reveal choice no
+# longer opens its own frame; every pending choice is a row of the Reveal
+# frame beside the purchases, an optional one without its refusal (OQ-095
+# (7) addition, user ruling 2026-10-14). A scratch export of the previous
+# commit's source (fc8d65ba, ``git archive``) reproduces all six previous
+# pins exactly on the same games, and each game's decision trace (round,
+# seat, frame kind, offered action ids, choice) equals that export's up to
+# its first Reveal choice, where the random seat now draws from the Reveal
+# frame's list: base at decision 254 (round 4, seat 0, Spacing Guild's
+# Favor; 2,400 -> 2,868 vectors), choam at 315 (round 4, seat 3, Captured
+# Mentat; 2,880 -> 2,964), promo_bloodlines_tech at 521 (round 7, seat 1,
+# Spy Network; 3,232 -> 3,160), everything at 369 (round 5, seat 2, Shadout
+# Mapes; 3,556 -> 3,580), draft at 224 (round 4, seat 0, a plain Reveal Spy;
+# 2,972 -> 2,728) and scouts at 459 (round 7, seat 3, Captured Mentat;
+# 2,872 -> 3,028). ``adapters/observation_encoding.py`` and
+# ``core/observation.py`` are unchanged.
 _GOLDEN_DIGESTS = {
-    "base": ("e6baf5e50aabc0aba8f90913fd81aa06861569c9fd06d035de9676b730970c5a", 2400),
-    "choam": ("a5461ae6884cf8dab8513963469caafb8509a0e84be6e338d77c4f5ac40af830", 2880),
+    "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
+    "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
     "promo_bloodlines_tech": (
-        "6d98c686649896eaa48cf3ff6f926f668c41d467c0419364541337d796f4866d",
-        3232,
+        "375622d5489d956b10c8e73ff7df1f0f3b5bf7eaffb9c2ebf8072d89e9096a89",
+        3160,
     ),
     "everything": (
-        "f568f095c74608b9ec4bc928cd25766a37d1cc57daeb10d1921e86bebd9d0542",
-        3556,
+        "5823f7ba81a8863c205489d33ecbc0eaf254254093c78dec6240d7b0f8b0c2bb",
+        3580,
     ),
-    "draft": ("2a153fbe3373170c41b19cb5a88eeaef99c1dc288fbe45796f25ebad4685d98c", 2972),
+    "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),
     "scouts": (
-        "3fe7cd08f5054adf52ac536d872307de3fe94ab50b83f39bfcd7cc55f9dae841",
-        2872,
+        "8af0f0e6c1b3297e146d044a4cfd592a6720745d3e8735c22a13c5089d1f087a",
+        3028,
     ),
 }
 _GOLDEN_CONFIGS = {

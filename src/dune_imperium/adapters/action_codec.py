@@ -1,7 +1,9 @@
 """Stable integer encoding for structured Uprising actions."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from numbers import Integral
+from typing import Final
 
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
@@ -53,7 +55,11 @@ from dune_imperium.content.uprising.leaders import (
     leaders_for_choam,
 )
 from dune_imperium.content.uprising.objectives import objectives_for_players
-from dune_imperium.content.uprising.personal_cards import card_is_graft, card_is_usurp
+from dune_imperium.content.uprising.personal_cards import (
+    card_is_graft,
+    card_is_usurp,
+    personal_card_for_instance,
+)
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
     ReserveStackDefinition,
@@ -76,6 +82,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
+from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -453,7 +460,30 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # of the turn. Imperial Privilege's trade and recall are now separate icons
 # offered together. No template change; recorded step sequences change, so
 # saves and replays from v145 are refused by the version check.
-ACTION_CODEC_VERSION = 146
+# v147 (user ruling 2026-10-14, "그래 그 구조로 진행하자"; OQ-095 (7) addition,
+# [Main p. 12], [FAQ p. 3]): a Reveal choice no longer opens its own frame. Every
+# choice effect of a revealed card waits on the Reveal frame and is offered
+# there, beside the purchases and gains, whenever its condition holds; an
+# optional one ("may", an arrow cost, a black trash icon) offers no refusal and
+# lapses at ``finish_reveal`` (event ``reveal_choice_lapsed``), a mandatory one
+# holds the end. ``defer_reveal_choice``, ``resume_reveal_choice`` and the
+# optional choices' refusals (``decline_reveal_card_trash``,
+# ``decline_reveal_influence_exchange``, ``decline_reveal_influence_loss``,
+# ``decline_reveal_spice_influence``, ``decline_reveal_troop_move``,
+# ``decline_reveal_troop_retreat``, ``decline_reveal_troop_sacrifice``,
+# ``decline_command_acquisition``; ``decline_reveal_spy_recall`` stays for a
+# Spy icon's recall-first with an empty supply) are never offered again but keep
+# their rows. With every choice offered at once, seven ids that different cards
+# produce with different outcomes name their card with ``source`` (its
+# definition id): ``trash_reveal_card``, ``recall_spy_for_reveal``,
+# ``retreat_two_troops_for_reveal``, ``place_reveal_spy``,
+# ``recall_spy_for_reveal_placement``, ``keep_contract_reveal_spice`` and
+# ``trash_contract_reveal_for_vp`` (``_reveal_source_templates``, one per card of
+# the catalog's decks). Their source-less rows stay as never-legal rows, and a
+# checkpoint's ``source`` row starts from the source-less one
+# (``training.checkpoint._alias``). Recorded step sequences change, so saves and
+# replays from v146 are refused by the version check.
+ACTION_CODEC_VERSION = 147
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1130,6 +1160,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "trash_card_for_desert_tactics"))
     templates.extend(_trash_templates(config, "select_corrinth_city_discard"))
     templates.extend(_trash_templates(config, "pay_corrinth_city"))
+    templates.extend(_reveal_source_templates(config))
     if config.immortality:
         # v143: a grafted turn offers both Agent boxes from the start, box
         # 1's rows tagged ``box=1`` (docs/graft-boxes-plan.md 4.6). Every
@@ -2181,6 +2212,134 @@ def _endgame_wild_templates(
         for second in sorted_wild[index + 1 :]
     )
     return tuple(templates)
+
+
+# The ids each Reveal choice effect offers with ``source`` (codec v147,
+# ``rules.reveal_turn.SOURCED_REVEAL_ACTION_IDS``), with what else names the
+# row: an observation post, the Commander share of a retreat, or nothing.
+_SOURCED_SPY_PLACEMENT: Final = (
+    "place_reveal_spy",
+    "recall_spy_for_reveal_placement",
+)
+_Choice = PersonalCardRevealChoiceEffect
+_SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
+    _Choice.PLACE_SPY: _SOURCED_SPY_PLACEMENT,
+    _Choice.PLACE_TWO_SPIES: _SOURCED_SPY_PLACEMENT,
+    _Choice.COMMAND_PLACE_SPY: _SOURCED_SPY_PLACEMENT,
+    _Choice.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
+        _SOURCED_SPY_PLACEMENT
+    ),
+    _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
+        "recall_spy_for_reveal",
+    ),
+    _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH: (
+        "recall_spy_for_reveal",
+    ),
+    _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: (
+        "retreat_two_troops_for_reveal",
+    ),
+    _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: (
+        "retreat_two_troops_for_reveal",
+    ),
+    _Choice.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS: (
+        "keep_contract_reveal_spice",
+        "trash_contract_reveal_for_vp",
+    ),
+    _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH: (
+        "trash_reveal_card",
+    ),
+    _Choice.COMMAND_MAY_TRASH_CARD: ("trash_reveal_card",),
+    _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON: (
+        "trash_reveal_card",
+    ),
+    _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: (
+        "trash_reveal_card",
+    ),
+}
+
+
+def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """The ``source``-named Reveal choice rows of the catalog's cards (v147).
+
+    One per card of the catalog's Imperium deck whose choice effect offers
+    such an id, with every value its other arguments can take: a post for
+    the Spy rows, the Commander share of a retreat (Bloodlines), the trashed
+    card (any personal card for Shrouded Counsel, another Emperor card for
+    Calculus of Power, the card itself for a self-trash).
+    """
+
+    personal = _personal_card_instance_ids(config)
+    post_ids = tuple(post.post_id for post in OBSERVATION_POSTS)
+    shares: tuple[tuple[tuple[str, ActionValue], ...], ...] = (
+        ((), (("commanders", 1),), (("commanders", 2),))
+        if config.bloodlines
+        else ((),)
+    )
+    templates: dict[ActionTemplate, None] = {}
+    for entry in imperium_cards_for_choam(
+        config.choam_module,
+        config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+        immortality=config.immortality,
+    ):
+        source = entry.card.card_id
+        own = tuple(
+            instance_id
+            for instance_id in personal
+            if instance_id.startswith(f"imperium:{source}:")
+        )
+        for effect in entry.reveal_choice_effects:
+            for action_id in _SOURCED_REVEAL_ROWS.get(effect, ()):
+                variants: tuple[tuple[tuple[str, ActionValue], ...], ...]
+                if action_id in _SOURCED_SPY_PLACEMENT or (
+                    action_id == "recall_spy_for_reveal"
+                ):
+                    variants = tuple((("post_id", post_id),) for post_id in post_ids)
+                elif action_id == "retreat_two_troops_for_reveal":
+                    variants = shares
+                elif action_id == "trash_reveal_card":
+                    variants = tuple(
+                        (("card_id", card_id),)
+                        for card_id in _reveal_trash_targets(effect, personal, own)
+                    )
+                else:
+                    variants = ((),)
+                templates.update(
+                    (
+                        ActionTemplate(
+                            action_id=action_id,
+                            arguments=tuple(
+                                sorted((*arguments, (SOURCE_ARGUMENT, source)))
+                            ),
+                        ),
+                        None,
+                    )
+                    for arguments in variants
+                )
+    return tuple(templates)
+
+
+def _reveal_trash_targets(
+    effect: PersonalCardRevealChoiceEffect,
+    personal: tuple[str, ...],
+    own: tuple[str, ...],
+) -> tuple[str, ...]:
+    """The cards a Reveal choice's ``trash_reveal_card`` may name."""
+
+    if effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD:
+        return personal
+    if effect is _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH:
+        # A starter's catalog id drops its seat prefix (``_normalize_arguments``).
+        return tuple(
+            card_id
+            for card_id in personal
+            if Faction.EMPEROR
+            in personal_card_for_instance(
+                f"player:0:{card_id}" if card_id.startswith("starter:") else card_id
+            ).factions
+        )
+    return own
 
 
 def _trash_templates(

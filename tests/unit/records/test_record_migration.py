@@ -974,7 +974,10 @@ def test_records_of_older_engines_replay_to_their_end(
     # an optional effect this engine no longer offers: the effect stays
     # pending and the recorded turn end lapses it; and (OQ-019) the empty
     # second Scouts mission collection Reverend Mother's repeat queued.
-    # Every other recorded step applies.
+    # Codec v147 (OQ-095 (7) addition) drops a Reveal choice's defer and
+    # resume and an optional Reveal choice's refusal: every pending choice is
+    # offered at once and the recorded ``finish_reveal`` lapses one left
+    # unused. Every other recorded step applies.
     switches = [
         index
         for index, step in enumerate(replay.steps)
@@ -990,6 +993,13 @@ def test_records_of_older_engines_replay_to_their_end(
                 for refusal in migration._OPTIONAL_REFUSALS
             ),
             ("scouts_collect_mission", migration.REPEATED_MISSION_DROPPED),
+            ("defer_reveal_choice", migration.REVEAL_DEFER_DROPPED),
+            ("resume_reveal_choice", migration.REVEAL_RESUME_DROPPED),
+            *(
+                (refusal, migration.REVEAL_REFUSAL_DROPPED)
+                for refusal in migration._OPTIONAL_REVEAL_REFUSALS
+            ),
+            ("decline_reveal_spy_recall", migration.REVEAL_REFUSAL_BY_ORDER),
         ), (index, step, reason)
     assert [
         index
@@ -1870,3 +1880,63 @@ def test_a_repeat_s_empty_mission_collection_is_dropped() -> None:
         and earlier.action_id == "pay_leader_board_repeat"
         for earlier in replay.steps[540:555]
     )
+
+
+@pytest.mark.parametrize(
+    ("name", "ordered"),
+    [
+        (
+            "v141-no-immortality-no-go_to_11-heuristic-1211",
+            # Calculus of Power's trash of Sardaukar Coordination, which
+            # Shrouded Counsel's Command trash offered too.
+            {830: "calculus_of_power"},
+        ),
+        (
+            "v145-no-immortality-no-go_to_11-heuristic-208",
+            # A Public Spectacle placement beside Intelligence Training's,
+            # and Intelligence Training's recall-first beside another icon's.
+            {600: "public_spectacle", 891: "intelligence_training"},
+        ),
+    ],
+)
+def test_a_reveal_choice_takes_the_card_the_recording_engine_had_on_top(
+    name: str, ordered: dict[int, str]
+) -> None:
+    """Codec v147 (OQ-095 (7) addition) offers every pending Reveal choice at
+    once and names the card of seven ids with ``source``. A recorded step of
+    such an id gets the one card that offers it here, or -- when several
+    pending cards do -- the card of the frame the recording engine had on
+    top (``_RevealSlot``: its frames in hand order, defers to the queue's
+    end, resumes back on top). Every other choice step applies as recorded,
+    and the game ends in the recorded state."""
+
+    document = json.loads((DATA / f"{name}.json").read_text(encoding="utf-8"))
+    replay = parse_save_document(document, check_versions=False).replay
+
+    record = migrate_record(replay)
+
+    assert record.complete, record.divergence
+    by_order = {
+        migrated.recorded_index: dict(migrated.step.arguments)["source"]
+        for migrated in record.steps
+        if migrated.bridge == migration.REVEAL_SOURCE_BY_ORDER
+        and isinstance(migrated.step, DomainAction)
+    }
+    assert by_order == ordered
+    for migrated in record.steps:
+        if migrated.bridge in migration.REVEAL_SOURCE_NAMES:
+            assert isinstance(migrated.step, DomainAction)
+            recorded = replay.steps[migrated.recorded_index or 0]
+            assert isinstance(recorded, DomainAction)
+            source = dict(migrated.step.arguments).pop("source")
+            assert source == migrated.reveal_source
+            assert tuple(
+                item for item in migrated.step.arguments if item[0] != "source"
+            ) == recorded.arguments
+    # Stamped v147 the record claims this engine's flow: no v147 step runs.
+    stamped = migrate_record(replace(replay, action_codec_version=147))
+    assert not {
+        name
+        for name in stamped.bridge_counts()
+        if name.startswith("reveal_")
+    }

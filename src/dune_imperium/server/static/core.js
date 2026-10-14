@@ -1309,11 +1309,35 @@ const DETAIL_REPLACES_LABEL = new Set(["pay_agent_card_spice"]);
    belongs to (display/actions.py agent_box_row_title): a row with effect
    text always does; one without (a payment, a pick) does on a grafted
    turn's box 1 (box=1), and under its card's header (`boxed`), where the
-   name is only for screen readers (rowTitleNode). */
+   name is only for screen readers (rowTitleNode). A Reveal choice's row
+   (`reveal_choice`, codec v147) names its revealed card the same way
+   (server/sessions.py, display/actions.py reveal_choice_of_rows). */
 function rowLeadsWithCard(action, boxed = false) {
   if (!action.detail_title) return false;
   if (action.detail) return true;
-  return Boolean(boxed) || Boolean(action.arguments && "box" in action.arguments);
+  return Boolean(boxed) || Boolean(action.reveal_choice)
+    || Boolean(action.arguments && "box" in action.arguments);
+}
+
+/* The revealed card a Reveal choice's step names with `source` (codec
+   v147: the card's definition id, which several cards' choices share an
+   action id with, rules/reveal_turn.py SOURCED_REVEAL_ACTION_IDS), or
+   null. The id itself never reaches the screen: a live row is led by its
+   card (`detail_title`), a logged step by the card's name. */
+const REVEAL_SOURCE_ACTIONS = new Set([
+  "trash_reveal_card",
+  "recall_spy_for_reveal",
+  "retreat_two_troops_for_reveal",
+  "place_reveal_spy",
+  "recall_spy_for_reveal_placement",
+  "keep_contract_reveal_spice",
+  "trash_contract_reveal_for_vp",
+]);
+
+function revealSourceEntry(action) {
+  if (!REVEAL_SOURCE_ACTIONS.has(action.action_id)) return null;
+  const source = action.arguments && action.arguments.source;
+  return typeof source === "string" ? lookup(source, "cards") : null;
 }
 
 /* "<card>: " before a box row's words. Under its card's header (`boxed`,
@@ -1368,13 +1392,20 @@ function describeAction(action, options = {}) {
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
   }
+  const source = revealSourceEntry(action);
   if (rowLeadsWithCard(action, options.boxed)) {
     /* A grafted turn's box 1 row with no effect text of its own (a payment,
        a pick): the card whose box it is leads, then the usual label
        (display/actions.py agent_box_row_title). Both cards' boxes are
        offered at once (codec v143); box 1's rows carry box=1. Under its
-       card's header any box row with a title keeps it for screen readers. */
+       card's header any box row with a title keeps it for screen readers.
+       A Reveal choice's row is led by its revealed card the same way. */
     fragment.appendChild(rowTitleNode(action, options.boxed));
+  } else if (source) {
+    /* A logged Reveal choice step (no title): the card its `source` names
+       leads, its picture on hover in the log (options.cardNames). */
+    fragment.appendChild(options.cardNames ? cardNameNode(source) : document.createTextNode(source.name));
+    fragment.append(": ");
   }
   const factionChoice = action.action_id === "choose_intrigue_faction";
   let label = ACTION_LABELS[action.action_id] || prettify(action.action_id);
@@ -1406,6 +1437,9 @@ function describeAction(action, options = {}) {
     if (value === "") continue;
     /* A grafted turn's box 1 row: its card already leads (detail_title). */
     if (key === "box") continue;
+    /* A Reveal choice's card: it already leads (detail_title, or the
+       logged step's source above). */
+    if (key === "source" && REVEAL_SOURCE_ACTIONS.has(action.action_id)) continue;
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     if (key === "effect" && typeof value === "string") {
       /* action.detail is the server's English effect fragment; it is printed
@@ -1413,17 +1447,12 @@ function describeAction(action, options = {}) {
          logged step) only a keyed icon has a label: a Reveal choice's
          effect id is the engine's name for what the events then say. */
       if (action.detail) {
-        /* Some details are an engine prompt (resume_reveal_choice), which
-           Korean translates; the rest is generated effect text (action.
-           detail_ko is its Korean twin, server/sessions.py, undefined
-           until a later step's generator fills it in — effectNode() then
-           falls back to iconize(action.detail) exactly as before). */
-        const translated = promptText(action.detail);
-        parts.push(
-          translated !== action.detail
-            ? document.createTextNode(translated)
-            : effectNode(action.detail, action.detail_ko),
-        );
+        /* Generated effect text (action.detail_ko is its Korean twin,
+           server/sessions.py; without one effectNode() falls back to
+           iconize(action.detail)). A waiting Reveal choice's row, which
+           once carried an engine prompt here, is led by its card with the
+           card's words (detail_title, above) since codec v147. */
+        parts.push(effectNode(action.detail, action.detail_ko));
       }
       else if (EFFECT_ICON_LABELS[value]) parts.push(phrase(EFFECT_ICON_LABELS[value]));
     } else if (SEAT_PAYLOAD_KEYS.has(key) && typeof value === "number") {

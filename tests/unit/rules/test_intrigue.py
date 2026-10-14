@@ -60,6 +60,7 @@ from dune_imperium.rules.intrigue import (
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_spy_action,
     legal_reveal_spy_actions,
+    pending_reveal_choices,
 )
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -2657,10 +2658,14 @@ def test_inspire_awe_to_hand_immediately_reveals_during_the_owners_reveal_turn()
     assert legal_intrigue_play_actions(shown, 0) == (_play(shown, card),)
 
 
-def test_inspire_awe_late_reveal_choice_does_not_bury_the_intrigue_choice() -> None:
-    # The acquired card's own REVEAL_CHOICE frame [FAQ p. 3] must slot in
-    # above the Reveal frame without burying Inspire Awe's still-resolving
-    # Intrigue choice frame, which sits above the Reveal frame too.
+def test_inspire_awe_late_reveal_choice_opens_no_frame_over_the_intrigue_choice() -> (
+    None
+):
+    # The acquired card's own Reveal choice [FAQ p. 3] is a pending entry of
+    # the Reveal frame (OQ-095 (7) addition, user ruling 2026-10-14): it opens
+    # no frame, so it cannot bury Inspire Awe's still-resolving Intrigue choice
+    # frame, which stays on top and is answered first. The Reveal frame offers
+    # the Spy once it is on top again.
     card = _intrigue("inspire_awe")
     wheels = _imperium_instance("wheels_within_wheels")
     owner = PlayerState(player_id=0, intrigue_cards=(card,), sandworms_conflict=1)
@@ -2676,24 +2681,43 @@ def test_inspire_awe_late_reveal_choice_does_not_bury_the_intrigue_choice() -> N
         state, DomainAction(action_id="reveal_turn", actor=0)
     ).state
     opened = engine.apply(revealed, _play(revealed, card)).state
-    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert [frame.kind for frame in opened.decision_stack[-2:]] == [
+        "reveal",
+        "intrigue_choice",
+    ]
+    assert pending_reveal_choices(dict(opened.decision_stack[-2].context)) == ()
 
     done = engine.apply(opened, _acquire_imperium(wheels)).state
 
-    # Inspire Awe fully resolved (discarded) in the same step, and the
-    # acquired card's PLACE_SPY choice is now the only frame above Reveal.
+    # Inspire Awe fully resolved (discarded) in the same step; no frame was
+    # inserted for the acquired card, whose PLACE_SPY choice now waits on the
+    # Reveal frame, the top frame again.
     assert done.intrigue_discard == (card,)
     assert done.players[0].in_play == (wheels,)
-    assert done.decision_stack[-1].kind == "reveal_choice"
-    assert done.decision_stack[-2].kind == "reveal"
+    assert len(done.decision_stack) == len(opened.decision_stack) - 1
+    assert done.decision_stack[-1].kind == "reveal"
+    assert pending_reveal_choices(dict(done.decision_stack[-1].context)) == (
+        (wheels, "place_spy"),
+    )
 
     spy_actions = legal_reveal_spy_actions(done, 0)
     assert spy_actions
+    assert all(
+        dict(action.arguments)["source"] == "wheels_within_wheels"
+        for action in spy_actions
+    )
+    assert set(spy_actions) <= set(engine.legal_actions(done, 0))
+    # A Spy icon is mandatory with a Spy in supply (OQ-057 (14)): the Reveal
+    # cannot end until it is placed.
+    assert "finish_reveal" not in {
+        action.action_id for action in engine.legal_actions(done, 0)
+    }
     resolved = apply_reveal_spy_action(done, spy_actions[0]).state
     assert resolved.decision_stack[-1].kind == "reveal"
     assert resolved.players[0].spy_post_ids == (
         dict(spy_actions[0].arguments)["post_id"],
     )
+    assert pending_reveal_choices(dict(resolved.decision_stack[-1].context)) == ()
 
 
 def test_impress_adds_strength_and_acquires_during_combat() -> None:

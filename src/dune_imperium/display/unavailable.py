@@ -38,7 +38,8 @@ Display only, under four rules:
   block predicate the legal provider itself uses (``AcquireBlock``,
   ``option_unplayable_reason``, ``rewards_with_no_effect``,
   ``intrigue_play_block``,
-  ``waiting_deferred_choices``, ``agent_box_is_waiting``,
+  ``waiting_deferred_choices``, ``reveal_choice_effect_is_available``,
+  ``agent_box_is_waiting``,
   ``joinable_subcommittees``, ``reveal_sandworm_block``,
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
   ``research_bonus_block``, ``research_influence_factions``,
@@ -132,6 +133,7 @@ from dune_imperium.content.uprising.intrigue import (
     intrigue_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
+    OPTIONAL_REVEAL_CHOICES,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -189,6 +191,7 @@ from dune_imperium.rules.board_effects import (
     legal_shipping_actions,
     shipping_influence_factions,
 )
+from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
     ConflictEndTriggerBlock,
@@ -258,9 +261,14 @@ from dune_imperium.rules.leader_abilities import (
 )
 from dune_imperium.rules.owed_draws import legal_owed_draw_actions
 from dune_imperium.rules.reveal_turn import (
+    COMMAND_PERSUASION,
+    GENERATED_PERSUASION_KEY,
     RevealSandwormBlock,
+    pending_choice_entries,
+    reveal_choice_effect_is_available,
     reveal_influence_choice_blocked,
     reveal_sandworm_block,
+    waiting_choice_action,
     waiting_deferred_choices,
 )
 from dune_imperium.rules.sardaukar import (
@@ -272,7 +280,10 @@ from dune_imperium.rules.scouts_effects import legal_subcommittee_choice_actions
 from dune_imperium.rules.spies import (
     legal_gather_intelligence_actions,
 )
-from dune_imperium.rules.spy_placement import solo_occupied_post_ids
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    solo_occupied_post_ids,
+)
 from dune_imperium.rules.tech import landsraad_tech_block, tech_candidates
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
@@ -1083,7 +1094,15 @@ class _Found:
         *,
         card_id: str | None = None,
         dim: str | None = None,
+        title_card: str | None = None,
+        reveal_choice: str | None = None,
     ) -> None:
+        """One candidate row. ``title_card``: a revealed card that leads the
+        row's words (its ``detail_title``), for a row whose action names no
+        card; ``reveal_choice``: the pending Reveal choice the row belongs
+        to (``display.actions.reveal_choice_key``), whose header the page
+        sets it under."""
+
         english, korean, code = reason
         row: dict[str, object] = {
             "key": f"{surface}:{key}",
@@ -1098,6 +1117,10 @@ class _Found:
             row["card_id"] = card_id
         if dim is not None:
             row["dim"] = dim
+        if title_card is not None:
+            row["title_card"] = title_card
+        if reveal_choice is not None:
+            row["reveal_choice"] = reveal_choice
         self.rows.append((action, row))
 
 
@@ -1308,35 +1331,249 @@ def _turn_start_card(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
-def _deferred(state: GameState, seat: int, found: _Found) -> None:
-    """Deferred Reveal choices whose printed condition fails now.
+# --- A Reveal's pending choices that offer nothing now -------------------------
+#
+# Every choice of a revealed card waits on the Reveal frame and is offered
+# there while it can be taken (OQ-095 (7) addition, user ruling 2026-10-14,
+# codec v147). One that offers nothing now is shown greyed out as that card's
+# choice, with what keeps it closed: its printed condition, judged by the
+# engine's own gate (``reveal_choice_effect_is_available``) on the facts it
+# reads, or nothing to choose. When the Reveal ends every choice still
+# pending lapses (``reveal_choice_lapsed``): an optional one ("may", an arrow
+# cost or a black trash icon [FAQ p. 3]) unused, a mandatory one unmet.
 
-    Known limitation: ``resume_reveal_choice`` is keyed by the effect kind
-    alone, so while another card's deferred choice of the same kind is
-    offered, a waiting one's action equals that legal action and the
-    legality filter drops the waiting row. It only hides a row, never greys
-    out a legal one; showing it would need the resume action to name its
-    card.
+_Choice = PersonalCardRevealChoiceEffect
+_REVEAL_LAPSES_UNUSED: Final = (
+    "; it lapses unused when the Reveal turn ends",
+    " — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+)
+_REVEAL_LAPSES_UNMET: Final = (
+    "; it lapses if still unmet when the Reveal turn ends",
+    " — {reveal_turn}를 끝낼 때까지 못 채우면 사라짐",
+)
+# "Command (6+ Persuasion)" choices, judged on the Persuasion the Reveal
+# turn generates [Bloodlines pp. 5, 12].
+_COMMAND_CHOICES: Final = frozenset(
+    {
+        _Choice.COMMAND_PLACE_SPY,
+        _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE,
+        _Choice.COMMAND_MAY_TRASH_CARD,
+        _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
+    }
+)
+_RETREAT_TWO: Final = frozenset(
+    {
+        _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH,
+        _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION,
+    }
+)
+_TWO_SPY_RECALLS: Final = frozenset(
+    {
+        _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+        _Choice.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
+    }
+)
+_SPY_ICONS: Final = frozenset(
+    {
+        _Choice.PLACE_SPY,
+        _Choice.PLACE_TWO_SPIES,
+        _Choice.COMMAND_PLACE_SPY,
+        _Choice.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+    }
+)
+# The cards whose choice trashes the card itself.
+_SELF_TRASH: Final = frozenset(
+    {
+        _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON,
+        _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
+        _Choice.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
+    }
+)
+_NOT_IN_PLAY: Final[Reason] = (
+    "This card is no longer in play",
+    "이 카드가 더는 {in_play}에 없음",
+    "waiting",
+)
+_NOTHING_TO_CHOOSE: Final[Reason] = (
+    "Nothing it could choose now",
+    "지금 고를 수 있는 것이 없음",
+    "waiting",
+)
+
+
+def _spies_reason(needed: int, held: int) -> Reason:
+    en, ko = held_text(held)
+    spies = "Spy" if needed == 1 else "Spies"
+    return (
+        f"Needs {needed} {spies} of yours on the board{en}",
+        f"보드에 내 {{spy:{needed}}} 필요{ko}",
+        "waiting",
+    )
+
+
+def _reveal_generated_persuasion(state: GameState) -> int:
+    """The Persuasion the open Reveal turn has generated so far (Command)."""
+
+    context = dict(state.decision_stack[-1].context)
+    value = context.get(GENERATED_PERSUASION_KEY, context.get("persuasion"))
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _reveal_choice_block(
+    state: GameState, seat: int, card_id: str, effect: PersonalCardRevealChoiceEffect
+) -> Reason:
+    """What keeps one pending Reveal choice from offering anything now.
+
+    In the order its card prints it: Command (6+) first, then the line's
+    own condition, the facts ``_reveal_choice_effect_is_available`` reads.
+    A choice whose condition holds offers nothing only when nothing can be
+    chosen (a Spy icon with no empty post, a self-trash whose card left
+    play).
     """
 
     owner = state.players[seat]
+    in_play = counted_in_play(owner)
+    generated = _reveal_generated_persuasion(state)
+    if effect in _COMMAND_CHOICES and generated < COMMAND_PERSUASION:
+        return (
+            f"Command: needs {COMMAND_PERSUASION} Persuasion generated this"
+            f" Reveal turn (you have {generated})",
+            f"{{command}}: 이번 {{reveal_turn}}에 만든"
+            f" {{persuasion:{COMMAND_PERSUASION}}} 필요 (지금 {generated})",
+            "waiting",
+        )
+    open_now = reveal_choice_effect_is_available(
+        state, seat, owner, in_play, card_id, effect, persuasion=generated
+    )
+    if open_now:
+        if effect in _SPY_ICONS and not empty_observation_post_ids(state):
+            return (
+                "No empty observation post for your Spy",
+                "{spy}를 놓을 빈 {observation_post} 없음",
+                "waiting",
+            )
+        if effect in _SELF_TRASH and card_id not in owner.in_play:
+            return _NOT_IN_PLAY
+        return _NOTHING_TO_CHOOSE
+    units_conflict = owner.troops_conflict + owner.commanders_conflict
+    match effect:
+        case _Choice.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE:
+            if Faction.BENE_GESSERIT.value not in owner.alliance_faction_ids:
+                return (
+                    "Needs the Bene Gesserit Alliance",
+                    "베네 게세리트 {alliance} 필요",
+                    "waiting",
+                )
+            return (
+                "Needs 2 Influence with one Faction to lose",
+                "한 {faction}에 잃을 {influence_any} 2 필요",
+                "waiting",
+            )
+        case _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND if (
+            not has_faction_bond(in_play, card_id, Faction.FREMEN)
+        ):
+            return (
+                "Fremen Bond: needs another Fremen card in play",
+                "프레멘의 유대감: {in_play}에 다른 프레멘 카드 필요",
+                "waiting",
+            )
+        case (
+            _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+            | _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND
+        ):
+            return (
+                "No troop of yours in the garrison or the Conflict",
+                "{garrison}에도 {conflict}에도 내 {troop} 없음",
+                "waiting",
+            )
+        case _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS:
+            en, ko = held_text(owner.troops_garrison + owner.troops_conflict)
+            return (
+                f"Needs 2 troops in your garrison or the Conflict{en}",
+                f"{{garrison}}·{{conflict}}에 {{troop:2}} 필요{ko}",
+                "waiting",
+            )
+        case _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH if len(owner.tech_ids) < 2:
+            en, ko = held_text(len(owner.tech_ids))
+            return (
+                f"Needs 2 Tech tiles{en}",
+                f"{{tech_tile}} 2개 필요{ko}",
+                "waiting",
+            )
+        case _Choice.MAY_PAY_THREE_SPICE_FOR_INFLUENCE if owner.resources.spice < 3:
+            english, korean, _ = resource_reason("spice", 3, owner.resources.spice)
+            return english, korean, "waiting"
+        case choice if reveal_influence_choice_blocked(owner, choice):
+            return _ALL_AT_THE_TOP[0], _ALL_AT_THE_TOP[1], "waiting"
+        case choice if choice in _RETREAT_TWO:
+            english, korean, _ = _in_conflict_reason(2, units_conflict)
+            return english, korean, "waiting"
+        case _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
+            return _spies_reason(1, len(owner.spy_post_ids))
+        case choice if choice in _TWO_SPY_RECALLS:
+            return _spies_reason(2, len(owner.spy_post_ids))
+        case _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS if (
+            len(owner.completed_contract_ids) < 4
+        ):
+            en, ko = held_text(len(owner.completed_contract_ids))
+            return (
+                f"Needs 4 completed Contracts{en}",
+                f"완수한 {{contract}} 4개 필요{ko}",
+                "waiting",
+            )
+        case _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD if (
+            not state.imperium_row
+        ):
+            return ("The Imperium Row is empty", "{imperium_row}가 비었음", "waiting")
+        case choice if choice in _SELF_TRASH and card_id not in in_play:
+            return _NOT_IN_PLAY
+        case _Choice.COMMAND_MAY_TRASH_CARD:
+            return (
+                "No card in hand, discard pile or play to trash",
+                "{hand}·{discard_pile}·{in_play}에 {trash}할 카드 없음",
+                "waiting",
+            )
+        case _Choice.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE:
+            return ("No Influence to lose", "잃을 {influence_any} 없음", "waiting")
+        case _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH:
+            return (
+                "No other Emperor card in play to trash",
+                "{in_play}에 {trash}할 다른 황제 카드 없음",
+                "waiting",
+            )
+    return _NOTHING_TO_CHOOSE
+
+
+def _deferred(state: GameState, seat: int, found: _Found) -> None:
+    """Pending Reveal choices that offer nothing now (their printed
+    condition fails, or nothing can be chosen).
+
+    Every choice of a revealed card waits on the Reveal frame and is offered
+    there while it can be taken (OQ-095 (7) addition, codec v147); one that
+    cannot shows here greyed out, as the never-legal
+    ``waiting_choice_action`` row, led by its card and worded as the card's
+    choice (``display.actions.reveal_choice_text``), with what keeps it
+    closed (``_reveal_choice_block``) and that it lapses when the Reveal
+    ends: unused for an optional one, unmet for a mandatory one.
+    """
+
     for card_id, effect in waiting_deferred_choices(state, seat):
+        choice = PersonalCardRevealChoiceEffect(effect)
+        english, korean, code = _reveal_choice_block(state, seat, card_id, choice)
+        tail_en, tail_ko = (
+            _REVEAL_LAPSES_UNUSED
+            if choice in OPTIONAL_REVEAL_CHOICES
+            else _REVEAL_LAPSES_UNMET
+        )
         found.row(
             "waiting",
             f"{card_id}:{effect}",
-            DomainAction(
-                action_id="resume_reveal_choice",
-                actor=seat,
-                arguments=(("effect", effect),),
-            ),
-            # A "choose a Faction" gain with every cube at the top (OQ-060),
-            # whatever else it waits on.
-            _ALL_AT_THE_TOP_WAITING
-            if reveal_influence_choice_blocked(
-                owner, PersonalCardRevealChoiceEffect(effect)
-            )
-            else _WAITING,
+            waiting_choice_action(seat, effect),
+            (english + tail_en, korean + tail_ko, code),
             card_id=card_id,
+            title_card=card_id,
+            reveal_choice=f"{card_id}:{effect}",
         )
 
 
@@ -1356,29 +1593,33 @@ def _sandworm_reason(state: GameState, seat: int, block: RevealSandwormBlock) ->
 def _reveal_choice(state: GameState, seat: int, found: _Found) -> None:
     """Desert Power's sandworm branch while it cannot be taken.
 
-    The choice opens for every seat, which may always take the Persuasion
-    branch (option (B), user ruling 2026-09-30: "REVEAL_CHOICE 창을 열어
-    '설득 2'만 고르게, 모래벌레 줄은 '메이커 작살 없음' 회색"); the sandworm
-    branch is offered exactly when ``reveal_sandworm_block`` is None, and
-    otherwise shows greyed out with that block.
+    The choice is offered to every seat, which may always take the
+    Persuasion branch (option (B), user ruling 2026-09-30: "REVEAL_CHOICE
+    창을 열어 '설득 2'만 고르게, 모래벌레 줄은 '메이커 작살 없음' 회색"); the
+    sandworm branch is offered exactly when ``reveal_sandworm_block`` is
+    None, and otherwise shows greyed out with that block, beside the pending
+    choice's rows on the Reveal frame (codec v147), under its card's header
+    (``reveal_choice``: the first copy's choice, which a shared row takes).
     """
 
-    context = dict(state.decision_stack[-1].context)
-    if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value
-    ):
+    desert_power = PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value
+    card_ids = tuple(
+        card_id
+        for (card_id, effect), rows in pending_choice_entries(state, seat) or ()
+        if effect == desert_power and rows
+    )
+    if not card_ids:
         return
     block = reveal_sandworm_block(state, seat)
     if block is None:
         return
-    card_id = context.get("reveal_card_id")
     found.row(
         "choice",
         "pay_reveal_water_for_sandworm",
         DomainAction(action_id="pay_reveal_water_for_sandworm", actor=seat),
         _sandworm_reason(state, seat, block),
-        card_id=card_id if isinstance(card_id, str) else None,
+        card_id=card_ids[0],
+        reveal_choice=f"{card_ids[0]}:{desert_power}",
     )
 
 
@@ -2615,8 +2856,13 @@ def _each_box(
 
 
 _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ...]]] = {
-    FrameKind.REVEAL: (_shop, _deferred, _subcommittee_choice, _intrigue),
-    FrameKind.REVEAL_CHOICE: (_reveal_choice,),
+    FrameKind.REVEAL: (
+        _shop,
+        _reveal_choice,
+        _deferred,
+        _subcommittee_choice,
+        _intrigue,
+    ),
     FrameKind.AGENT_EFFECTS: (
         _each_box(_agent_box),
         _each_box(_optional_agent_box),
@@ -2754,7 +3000,16 @@ def unavailable_choices(
         # read the card of whichever box acted last.
         box = row.get("box")
         described = state_with_active_box(state, box) if isinstance(box, int) else state
-        rows.append({**row, "action": shadow_action(described, action)})
+        shadow = shadow_action(described, action)
+        title_card = row.pop("title_card", None)
+        if isinstance(title_card, str):
+            # Imported here, as in ``shadow_action``.
+            from dune_imperium.display.actions import reveal_card_names
+
+            shadow["detail_title"], shadow["detail_title_ko"] = reveal_card_names(
+                title_card
+            )
+        rows.append({**row, "action": shadow})
     for ref, reason in found.refs.items():
         if ref not in named and ref not in refs:
             refs[ref] = _why(reason)

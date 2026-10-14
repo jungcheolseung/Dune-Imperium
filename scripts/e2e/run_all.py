@@ -48,6 +48,8 @@ SECONDS = {
     "save_delete": 11,
     # 2026-10-14 alone: two servers, six pages.
     "turn_start_window": 18,
+    # 2026-10-14 alone, with pytest running beside it: two saves, two pages.
+    "reveal_choices": 10,
     "staged_turn": 8,
     "trash_zone": 7,
     "remote": 6,

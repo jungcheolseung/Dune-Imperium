@@ -67,6 +67,7 @@ from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import OptionBlock
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import advance_research
+from dune_imperium.rules.reveal_turn import pending_reveal_choices
 
 ENGINE = UprisingRulesEngine()
 BASE = RulesetConfig()
@@ -1027,11 +1028,12 @@ def test_finishing_a_lines_card_is_greyed_until_one_line_is_used() -> None:
 # --- Effects waiting on their condition ---
 
 
-def test_a_deferred_reveal_choice_waits_greyed_out_until_its_condition_holds() -> None:
+def test_a_pending_reveal_choice_waits_greyed_out_until_its_condition_holds() -> None:
     """In High Places' two-Spy recall waits while one Spy is out; once Wheels
-    Within Wheels' Reveal Spy is placed it becomes an ordinary resume row
-    (the fixture of test_reveal_turn.py's
-    test_an_unavailable_choice_opens_once_its_condition_holds) [Main p. 12]."""
+    Within Wheels' Reveal Spy is placed its own rows are offered (the fixture
+    of test_reveal_turn.py's unavailable-choice test) [Main p. 12]. Every
+    choice waits on the Reveal frame (OQ-095 (7) addition, codec v147), so the
+    waiting row sits beside the legal Spy placement."""
 
     def instance(card_id: str) -> str:
         return next(i for i in imperium_deck_instance_ids(False) if f":{card_id}:" in i)
@@ -1047,42 +1049,113 @@ def test_a_deferred_reveal_choice_waits_greyed_out_until_its_condition_holds() -
         )
     )
     revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
-    assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
-    deferred = ENGINE.apply(
-        revealed.state, DomainAction(action_id="defer_reveal_choice", actor=0)
-    ).state
-    assert deferred.decision_stack[-1].kind == FrameKind.REVEAL
+    pending = revealed.state
+    assert pending.decision_stack[-1].kind == FrameKind.REVEAL
 
-    rows = _rows(_found(deferred), "waiting")
+    rows = _rows(_found(pending), "waiting")
     recall = "may_recall_two_spies_for_three_persuasion"
     assert list(rows) == [f"waiting:{in_high_places}:{recall}"]
     row = rows[f"waiting:{in_high_places}:{recall}"]
+    # The never-legal row that names the waiting choice's effect, led by its
+    # card and worded as the card's choice (display.actions
+    # reveal_choice_text), not "미룬 선택 재개".
     assert row["action"]["action_id"] == "resume_reveal_choice"
     assert row["action"]["arguments"] == {"effect": recall}
-    assert row["action"]["detail"]  # the engine's prompt, as on a legal row
+    assert row["action"]["detail"] == "You may recall 2 Spies → +3 Persuasion"
+    assert row["action"]["detail_ko"] == (
+        "{spy} 2 소환 가능 {arrow_right} {persuasion:3}"
+    )
+    assert (row["action"]["detail_title"], row["action"]["detail_title_ko"]) == (
+        "In High Places",
+        "높은 자리에서",
+    )
     assert row["card_id"] == in_high_places
-    assert row["code"] == "waiting"
-    assert "lapses" in row["reason"]
-    assert {"effect": "place_spy"} in _legal(deferred, "resume_reveal_choice")
+    assert row["reveal_choice"] == f"{in_high_places}:{recall}"
+    assert "title_card" not in row
+    # What keeps it closed, and that an optional choice lapses unused.
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 2 Spies of yours on the board (you have 1);"
+        " it lapses unused when the Reveal turn ends",
+        "보드에 내 {spy:2} 필요 (보유 1) — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+        "waiting",
+    )
+    assert _legal(pending, "recall_spies_for_reveal") == []
 
-    resumed = ENGINE.apply(
-        deferred,
-        DomainAction(
-            action_id="resume_reveal_choice",
-            actor=0,
-            arguments=(("effect", "place_spy"),),
-        ),
-    ).state
     placement = next(
         action
-        for action in ENGINE.legal_actions(resumed, 0)
+        for action in ENGINE.legal_actions(pending, 0)
         if action.action_id == "place_reveal_spy"
     )
-    placed = ENGINE.apply(resumed, placement).state
+    placed = ENGINE.apply(pending, placement).state
     assert placed.decision_stack[-1].kind == FrameKind.REVEAL
-    assert _legal(placed, "resume_reveal_choice") == [{"effect": recall}]
+    assert _legal(placed, "recall_spies_for_reveal")
     found = unavailable_choices(placed, 0, ENGINE.legal_actions(placed, 0))
     assert found is None or not _rows(found, "waiting")
+
+
+def _waiting_reveal_row(owner: PlayerState) -> dict[str, Any]:
+    """Seat 0 reveals ``owner``'s hand (Bloodlines with CHOAM): the one
+    waiting Reveal choice's greyed-out row."""
+
+    state = _state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
+    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL
+    (row,) = _rows(_found(revealed.state), "waiting").values()
+    return row
+
+
+def test_a_command_choice_waits_with_the_persuasion_generated_so_far() -> None:
+    """Pointing the Way's "Command (6+ Persuasion)" gain [Bloodlines p. 5] is
+    judged on the Persuasion the Reveal turn generates [Bloodlines p. 12]:
+    below six it waits greyed out with that figure, and a mandatory choice
+    lapses only if still unmet when the Reveal ends (OQ-095 (7) addition)."""
+
+    pointing = "imperium:pointing_the_way:0"
+    row = _waiting_reveal_row(PlayerState(player_id=0, hand=(pointing,)))
+    assert row["key"] == f"waiting:{pointing}:command_gain_chosen_influence"
+    assert (row["action"]["detail_title"], row["action"]["detail_title_ko"]) == (
+        "Pointing the Way",
+        "길을 가리키다",
+    )
+    assert row["action"]["detail"] == (
+        "Command (6+ Persuasion): Gain 1 Influence with a chosen Faction"
+    )
+    assert (row["reason"], row["reason_ko"]) == (
+        "Command: needs 6 Persuasion generated this Reveal turn (you have 1);"
+        " it lapses if still unmet when the Reveal turn ends",
+        "{command}: 이번 {reveal_turn}에 만든 {persuasion:6} 필요 (지금 1)"
+        " — {reveal_turn}를 끝낼 때까지 못 채우면 사라짐",
+    )
+
+
+def test_a_fremen_bond_choice_waits_for_another_fremen_card() -> None:
+    """Unswerving Loyalty: "Fremen Bond: You may deploy or retreat one of your
+    troops" [Unswerving Loyalty card], an optional choice: without another
+    Fremen card in play it waits, and lapses unused when the Reveal ends."""
+
+    loyalty = "imperium:unswerving_loyalty:0"
+    row = _waiting_reveal_row(
+        PlayerState(player_id=0, hand=(loyalty,), troops_supply=10, troops_garrison=2)
+    )
+    assert (row["reason"], row["reason_ko"]) == (
+        "Fremen Bond: needs another Fremen card in play;"
+        " it lapses unused when the Reveal turn ends",
+        "프레멘의 유대감: {in_play}에 다른 프레멘 카드 필요"
+        " — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+    )
+
+
+def test_a_spice_payment_choice_waits_for_the_spice() -> None:
+    """Spacing Guild's Favor's "3 spice -> Influence" arrow, short of spice."""
+
+    favor = "imperium:spacing_guild_s_favor:0"
+    row = _waiting_reveal_row(
+        PlayerState(player_id=0, hand=(favor,), resources=Resources(spice=1))
+    )
+    assert (row["reason"], row["reason_ko"]) == (
+        "Needs 3 spice (you have 1); it lapses unused when the Reveal turn ends",
+        "{spice:3} 필요 (보유 1) — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+    )
 
 
 def test_a_withheld_agent_box_waits_greyed_out_until_its_condition_holds() -> None:
@@ -1428,7 +1501,7 @@ def test_tleilaxu_agent_payments_grey_out_at_the_track_end() -> None:
 def _desert_power(
     *, owner_fields: dict[str, Any] | None = None, **fields: Any
 ) -> GameState:
-    """Seat 0 reveals Desert Power: its choice window is on top."""
+    """Seat 0 reveals Desert Power: its choice waits on the Reveal frame."""
 
     desert_power = next(
         i for i in imperium_deck_instance_ids(False) if ":desert_power:" in i
@@ -1444,23 +1517,32 @@ def _desert_power(
     )
     state = _state(owner, **{"current_conflict_ids": ("propaganda",), **fields})
     revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
-    assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL
+    assert pending_reveal_choices(dict(revealed.state.decision_stack[-1].context)) == (
+        (desert_power, "may_pay_water_for_sandworm"),
+    )
     return revealed.state
 
 
 def test_desert_power_without_maker_hooks_greys_out_the_sandworm_branch() -> None:
     """Option (B), user ruling 2026-09-30: "REVEAL_CHOICE 창을 열어 '설득 2'만
     고르게, 모래벌레 줄은 '메이커 작살 없음' 회색". The row sits on the new
-    "choice" surface and names the card; the Persuasion branch is legal."""
+    "choice" surface and names the card; the Persuasion branch is legal. The
+    choice is a row of the Reveal frame (OQ-095 (7) addition, codec v147)."""
 
     state = _desert_power(owner_fields={"maker_hooks": False})
     found = _found(state)
-    assert found["frame"] == FrameKind.REVEAL_CHOICE
+    assert found["frame"] == FrameKind.REVEAL
     assert [row["surface"] for row in found["rows"]] == ["choice"]
     row = _rows(found, "choice")["choice:pay_reveal_water_for_sandworm"]
     assert row["action"]["action_id"] == "pay_reveal_water_for_sandworm"
     assert row["action"]["arguments"] == {}
-    assert row["card_id"] == dict(state.decision_stack[-1].context)["reveal_card_id"]
+    ((desert_power, _),) = pending_reveal_choices(
+        dict(state.decision_stack[-1].context)
+    )
+    assert row["card_id"] == desert_power
+    # Under its card's header on the page (codec v147).
+    assert row["reveal_choice"] == f"{desert_power}:may_pay_water_for_sandworm"
     assert (row["reason"], row["reason_ko"], row["code"]) == (
         "No Maker Hooks",
         "{maker_hooks} 없음",
@@ -1504,21 +1586,14 @@ def test_no_sandworm_row_while_the_sandworm_branch_is_legal() -> None:
     assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
 
 
-def test_a_deferred_desert_power_shows_no_waiting_row() -> None:
-    """The old "waiting" row (a deferred choice whose condition could still
-    come true) is gone: without Maker Hooks the choice is always resumable,
-    since its Persuasion branch can always be taken."""
+def test_desert_power_without_maker_hooks_shows_no_waiting_row() -> None:
+    """The old "waiting" row (a choice whose condition could still come true)
+    is not shown: without Maker Hooks the choice is still offered, since its
+    Persuasion branch can always be taken."""
 
-    deferred = ENGINE.apply(
-        _desert_power(owner_fields={"maker_hooks": False}),
-        DomainAction(action_id="defer_reveal_choice", actor=0),
-    ).state
-    assert deferred.decision_stack[-1].kind == FrameKind.REVEAL
-    assert _legal(deferred, "resume_reveal_choice") == [
-        {"effect": "may_pay_water_for_sandworm"}
-    ]
-    found = unavailable_choices(deferred, 0, ENGINE.legal_actions(deferred, 0))
-    assert found is None or not _rows(found, "waiting")
+    state = _desert_power(owner_fields={"maker_hooks": False})
+    assert _legal(state, "decline_reveal_sandworm") == [{}]
+    assert not _rows(_found(state), "waiting")
 
 
 # --- A recall with no other Agent to recall ---

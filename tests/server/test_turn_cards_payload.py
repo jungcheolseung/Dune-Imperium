@@ -434,7 +434,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 111 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 243 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -443,12 +443,17 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     2026-10-14), which moved seed 23's random walk off this position, and
     Other Memories without a refusal (same day) moved its replacement seed
     43 off it again; re-searched, seeds 111 and 223 are the only ones of
-    0-299.)"""
+    0-299. v147: personal-card Reveal choices are rows on the Reveal frame
+    beside the purchases, with no defer/resume and no refusal, so a random
+    walk picks from a different list at such a Reveal; neither 111 nor 223
+    reaches the position any more, and searched on from
+    112, seed 243 is the first that does: seat 3 (Lady Jessica), round 6,
+    Research c7r5.)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 111, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 243, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:7", "reserve:prepare_the_way:2")
+    assert (card, earlier) == ("reserve:prepare_the_way:1", "reserve:prepare_the_way:7")
     session = manager._get(game_id)
     before = (
         session.state,

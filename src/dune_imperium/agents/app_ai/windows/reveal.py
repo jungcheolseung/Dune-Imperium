@@ -18,50 +18,61 @@ answer (End Turn) exists only while no Explicit ability is pending, and a
 forced prompt with nothing positive goes to ``DefaultRandomChoice`` over the
 whole list.
 
-Our engine splits the same turn (scratchpad R2): one ``reveal_choice`` frame
-per card choice is pushed above the ``reveal`` frame, the automatic gains wait
-on the ``reveal`` frame as owner actions, and the turn ends with an explicit
-``finish_reveal``. This adapter rebuilds the app's order:
+Our engine has the same shape since codec v147 (OQ-095 (7) addition, user
+ruling 2026-10-14; ``rules/reveal_turn.py``): every card choice waits as a
+pending entry on the ``reveal`` frame, and the rows of each entry that can be
+taken now are offered there beside the purchases, the automatic gains (owner
+actions), Plots and ``finish_reveal``, in any order [Main p. 12]. An Optional
+choice ("may", an arrow cost, a black trash icon [FAQ p. 3]) offers no
+refusal and lapses at ``finish_reveal``; a mandatory one holds
+``finish_reveal`` while it offers something. The app's Explicit choices are
+exactly our mandatory ones and its Optional choices our optional ones
+(``content.uprising.types.OPTIONAL_REVEAL_CHOICES``). This adapter answers:
 
-1. **``reveal_choice``: defer first.** An initial (deferrable) choice frame is
-   always answered with ``defer_reveal_choice``: in the app no card choice is
-   asked before the automatic gains have run and every choice competes by
-   value with the buys in the post-reveal prompt. Exceptions: a choice whose
-   ability ``CanRunImmediately`` (Corrinth City when already seated) is
-   answered at once, like the app's state-400 run; a frame that cannot be
-   deferred (resumed, or a Spy already recalled for it) is answered.
-2. **``reveal``: automatic gains first** (``Stage.REVEAL_AUTO``):
+1. **``reveal``: automatic gains first** (``Stage.REVEAL_AUTO``):
    ``recruit_reveal_troops``, ``draw_reveal_intrigue``,
    ``gain_reveal_resources`` (and a non-Shishakli
    ``gain_reveal_faction_influence``) are taken in the app's order: state 300
    printed reveal gains before state 400 immediates (Treacherous Maneuver's
    ``RevealGainIntrigueAbility``, ``SmugglersHavenRevealAbility``), each by
    its source card's reveal position. No AI decision depends on this order.
-3. **``reveal``: the post-reveal prompt** over PROMPT sources: one per buyable
+   A pending choice whose ability ``CanRunImmediately`` (Corrinth City when
+   already seated) is a state-400 step of the same list, answered as the
+   app's forced single-key prompt (``MakeChoice`` on its ability, else
+   ``DefaultRandomChoice`` over its rows).
+2. **``reveal``: the post-reveal prompt** over PROMPT sources: one per buyable
    card (its ``AcquireAbility.Evaluate`` = ``AcquireValue``, zeroed below
    ``MinimumAcquireValue``; the economy port's ``reserve:<card_id>`` refs are
    our ``acquire_reserve(card_id)``), one per Plot (``intrigue_play_sources``),
-   one per deferred choice kind (``resume_reveal_choice(effect)``, valued by
-   that card's choice ability), Shishakli's Fremen Influence
-   (``CrysknifeAbility``: Explicit, DeferValue 2), Feyd's Devious Strength and
-   Amber's Desert Scouts (only while their app ``Cost`` holds) and the
-   Emperor-track Spy (``place_track_spy``: ``PlaceSpyCustomAbility``, Explicit,
-   ``SpyValue``). The skip is ``finish_reveal``. When it is not legal and no
-   Explicit key blocks it, the app would end the turn: the adapter resumes the
-   first Optional blocker to decline it (intent ``"decline"``) and marks the
-   End Turn in ``run.memory.data`` (``_END_TURN``); the next Reveal decisions
-   decline the other Optional blockers and take ``finish_reveal`` without
-   evaluating or shuffling again (the app's single empty answer, 12 §4.3).
-   When an Explicit key blocks it, the prompt is forced (``decide``'s random
-   fallback).
-4. **Intents.** A resumed choice comes back on top of the stack; the answer
-   computed for its key is stored in ``run.memory.intents`` under
-   ``("reveal_choice", round, effect)`` and consumed at that frame (an
-   ``Answer``, ``"decline"`` or ``"random"`` for the forced random pick). A
-   resumed frame with a single legal action never reaches the handler, so the
-   Reveal window drops any such intent left behind. A resumed frame without
-   an intent is answered as ``MakeChoice`` would: its value > 0 uses it, else
-   an Optional choice declines and an Explicit one (forced) is random.
+   one per pending choice entry that offers rows now (``_choice_sources``:
+   valued by that card's choice ability; its answer is the entry's row that
+   carries it, ``_realise``; the seven shared action ids carry the card's
+   ``source``, so a key only ever names its own card's rows), Shishakli's
+   Fremen Influence (``CrysknifeAbility``: Explicit, DeferValue 2), Feyd's
+   Devious Strength and Amber's Desert Scouts (only while their app ``Cost``
+   holds) and the Emperor-track Spy (``place_track_spy``:
+   ``PlaceSpyCustomAbility``, Explicit, ``SpyValue``). The skip (the app's
+   empty answer, End Turn) is ``finish_reveal``: the Optional choices left
+   unused lapse there, as the app's End Turn leaves its Optional keys. When
+   it is not legal because an Explicit key offers an action (a mandatory
+   choice, an Explicit gain, a Tech tile, the track Spy), the prompt is
+   forced: nothing positive goes to ``DefaultRandomChoice`` over the keys,
+   and a choice key picked so runs with a random row of its own
+   (``_random_option``). The only Optional blocker left is Corrinth City's
+   subcommittee offer (below).
+3. **``reveal_choice``** stays on top only after a Spy recalled for a
+   placement (empty supply): the placement must follow at once, on the
+   app's ``PlaceSpy`` prompt (``PlaceSpyEvaluator``, best post). Our engine
+   leaves no other choice frame on top; one would not be mirrored (None).
+4. **Memory.** ``run.memory.data`` keeps, per Reveal turn: the Command (6+)
+   and ``CanRunImmediately`` choices already answered with nothing
+   (``_PASSED``: the app runs them once, outside the prompt, so an Optional
+   one it leaves unused is not asked again), and the End Turn mark of a
+   declined subcommittee offer (``_END_TURN``: ``finish_reveal`` follows
+   without evaluating or shuffling again, the app's single empty answer, 12
+   §4.3). ``run.memory.intents`` carries an answer our engine takes in
+   several steps (a Return Specimen batch, a split deployment, a research
+   space, a subcommittee).
 5. **``acquisition_spy``**: ``spy_answer`` (best post; with an empty supply
    recall the worst-post Spy first; never decline).
 6. **Immortality** (``spec/immortality.md`` §3.4-§3.6, §5, §8):
@@ -80,23 +91,25 @@ on the ``reveal`` frame as owner actions, and the turn ends with an explicit
    Tleilaxu step), Family Atomics and Return Specimen (playmat; one Return
    Specimen answer returns the whole troop shortfall, which our engine takes
    one ``return_specimen`` at a time: ``_RETURN_BATCH``). The Reveal
-   choices of For Humanity, Shadout Mapes and Tleilaxu Surgeon are deferred
-   and valued like the Uprising ones.
+   choices of For Humanity, Shadout Mapes and Tleilaxu Surgeon are prompt
+   keys valued like the Uprising ones.
 7. **Bloodlines, the Tech Module and Arrakeen Scouts** (app-style keys:
    docs/app-ai-plan.md §11.4-11.8, bloodlines-cards.md §2.1-2.2 and §8,
    bloodlines-systems.md §1.3-1.4, §2.3, §3.4, scouts.md §3.3, §4.7):
 
    - **Command (6+) choices are answered before buying** (plan §11.5): a
-     Command choice frame (Shrouded Counsel, Intelligence Training, Pointing
-     the Way, Engineered Miracle; ``_COMMAND_EFFECTS``) is never deferred
-     but answered at once by its ability's ``Evaluate``, in the engine's
-     card order; a waiting Command choice that opens later is resumed as an
-     automatic step before the prompt. The other Bloodlines choices (Arrakis
+     Command choice (Shrouded Counsel, Intelligence Training, Pointing the
+     Way, Engineered Miracle; ``_COMMAND_EFFECTS``) is no prompt key but an
+     automatic state-300 step ranked by its card's reveal position among the
+     gains, answered by its ability's ``Evaluate`` as soon as it offers rows
+     (at the Reveal's start, or later once the sixth Persuasion is
+     generated); an Optional one answered with nothing is not asked again
+     (``_PASSED``) and lapses. The other Bloodlines choices (Arrakis
      Observer, Command Center, Disruption Tactics, CHOAM Demands, Delivery
-     Logistics, Ixian Ambassador) are deferred and valued in the prompt like
-     the Uprising ones. The automatic Command rewards (Bombast, I Believe,
-     Southern Faith: ``AS.CommandRevealAbility``, ``AlwaysRunImmediately``)
-     are state-400 gains (``_immediate_command``).
+     Logistics, Ixian Ambassador) are prompt keys valued like the Uprising
+     ones. The automatic Command rewards (Bombast, I Believe, Southern
+     Faith: ``AS.CommandRevealAbility``, ``AlwaysRunImmediately``) are
+     state-400 gains (``_immediate_command``).
    - The Reveal-turn Combat icon (Ruthless Leadership, Holy War, Disruption
      Tactics, …): one ``DeployUnitsAbility`` key at 0.5 (D5, D61) with
      ``GetUnitsToDeploy`` over the garrison troops and Commanders; the count
@@ -119,24 +132,31 @@ on the ``reveal`` frame as owner actions, and the turn ends with an explicit
      ``CorrinthCityRevealScoutsAbility`` (plan §11.8); its seat's
      subcommittee offer is a ``SubcommitteeOfferAbility`` key whose pick is
      kept for the ``scouts_subcommittee`` window (``_SUBCOMMITTEE_INTENT``)
-     and whose decline is the End Turn path's; the Reserve The Spice Must
-     Flow is Market Opening's discounted card (scouts.md §4.7).
+     and whose decline is the End Turn when ``finish_reveal`` waits on it
+     (``_END_TURN``); the Reserve The Spice Must Flow is Market Opening's
+     discounted card (scouts.md §4.7).
 
 Judgements (our engine vs the app):
 
 - A card whose archetype lacks the app ability class its key or choice
   effect maps to (``_card_ability``: a catalog gap) is not mirrored: both
   windows answer None rather than value it as another card's ability.
-- Two deferred copies of one choice kind are one ``resume_reveal_choice``
-  action (the engine resumes the oldest openable entry); its value is that
-  entry's card ability (Delivery Agreement and Priority Contracts share a
-  kind).
+- Each pending entry is its own key, as each card's ability is in the app
+  (two copies of one card are two keys with the same rows; taking one opens
+  the oldest entry that offers it). A few rows carry no ``source`` because
+  only interchangeable choices share them (Pointing the Way's and Ixian
+  Ambassador's ``gain_reveal_influence``, Shadout Mapes' and Unswerving
+  Loyalty's troop move, the plain Spy icons' empty-supply decline): the
+  engine may open the other card's entry for such a row, with the same
+  outcome.
+- An Optional key whose answer no row carries (a target our engine does not
+  offer, e.g. Unswerving Loyalty's retreat index with no troop deployed) is
+  no candidate of ``MakeChoice``: the app would use it to no effect.
 - Corrinth City option 1 for a seated owner and Desert Power's worm option
   when our engine blocks it (the gates differ) are not realisable: the
   option-0 action is taken.
 - In the forced random path a leader key's random target is approximated by
-  its first legal action; a resumed choice picks a random non-decline option
-  at its frame.
+  its first legal action; a choice key picks a random row of its own.
 - The Guild Spy / The Spice Must Flow timing difference (R2 §8) is accepted:
   buys and Spy placements follow the app's value order.
 - A Research / Tleilaxu / In The Shadows gain whose app ``Cost`` fails (no
@@ -153,6 +173,7 @@ Judgements (our engine vs the app):
 
 import functools
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 
 from dune_imperium.agents.app_ai.abilities import (
     Ability,
@@ -275,9 +296,10 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.frames import REVEAL_COMMANDERS_RECRUITED_KEY
 from dune_imperium.rules.reveal_turn import (
+    REVEAL_CHOICE_ACTION_IDS,
     REVEAL_COMMANDERS_DEPLOYED_KEY,
+    pending_choice_entries,
     reveal_pending_gains,
-    waiting_deferred_choices,
 )
 
 # ---------------------------------------------------------------------------
@@ -321,40 +343,11 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     "gain_chosen_influence_if_two_tech": IxianAmbassadorRevealAbility,
 }
 
-#: The decline action of each choice whose app ability is Optional (and of the
-#: plain Spy icon, whose decline only passes an empty supply's recall).
-_DECLINES: Mapping[str, str] = {
-    "may_lose_influence_for_vp_if_bene_gesserit_alliance": (
-        "decline_reveal_influence_loss"
-    ),
-    "may_deploy_or_retreat_one_troop": "decline_reveal_troop_move",
-    "may_lose_two_troops_for_two_specimens": "decline_reveal_troop_sacrifice",
-    "place_spy": "decline_reveal_spy_recall",
-    "place_two_spies": "decline_reveal_spy_recall",
-    "recall_spy_to_draw_intrigue_if_two_placed": "decline_reveal_spy_recall",
-    "may_recall_two_spies_for_three_persuasion": "decline_reveal_spy_recall",
-    "may_lose_influence_to_gain_influence": "decline_reveal_influence_exchange",
-    "may_pay_three_spice_for_influence": "decline_reveal_spice_influence",
-    "may_trash_other_emperor_for_three_strength": "decline_reveal_card_trash",
-    "may_retreat_two_troops_for_four_strength": "decline_reveal_troop_retreat",
-    "may_deploy_or_retreat_one_troop_if_fremen_bond": "decline_reveal_troop_move",
-    # Bloodlines.
-    "command_may_trash_card": "decline_reveal_card_trash",
-    "command_place_spy": "decline_reveal_spy_recall",
-    "command_may_trash_self_to_acquire_row_card": "decline_command_acquisition",
-    "may_retreat_two_troops_for_two_persuasion": "decline_reveal_troop_retreat",
-    "may_trash_self_for_combat_icon": "decline_reveal_card_trash",
-    "may_recall_spy_for_three_strength": "decline_reveal_spy_recall",
-    "may_trash_self_for_four_influence_if_four_contracts": (
-        "decline_reveal_card_trash"
-    ),
-}
-
 _SPY_EFFECTS = frozenset({"place_spy", "place_two_spies", "command_place_spy"})
 
-#: Bloodlines "Command (6+)" choices: answered at their frame, before any buy,
-#: in the engine's card order (docs/app-ai-plan.md §11.5; bloodlines-cards.md
-#: §2.1 "Ordering"), never deferred into the post-reveal prompt.
+#: Bloodlines "Command (6+)" choices: automatic steps answered before any buy,
+#: by their card's reveal position (docs/app-ai-plan.md §11.5;
+#: bloodlines-cards.md §2.1 "Ordering"), never keys of the post-reveal prompt.
 _COMMAND_EFFECTS = frozenset(
     {
         "command_may_trash_card",
@@ -373,8 +366,9 @@ _INFLUENCE_GAIN_EFFECTS = frozenset(
 #: Arrakeen Scouts games (plan §11.8; scouts.md §2.3, §4.5).
 _CORRINTH_CITY = "gain_five_solari_or_take_high_council"
 
-#: Our REVEAL-window action ids this adapter mirrors (core Uprising ± CHOAM).
-_REVEAL_ACTIONS = frozenset(
+#: Our REVEAL-window action ids this adapter mirrors (core Uprising ± CHOAM),
+#: with the rows of every pending card choice (``REVEAL_CHOICE_ACTION_IDS``).
+_REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
     {
         "acquire_imperium",
         "acquire_reserve",
@@ -385,7 +379,6 @@ _REVEAL_ACTIONS = frozenset(
         "gain_reveal_faction_influence",
         "retreat_leader_troop",
         "recall_spy_for_leader",
-        "resume_reveal_choice",
         "place_track_spy",
         "finish_reveal",
         "play_intrigue",
@@ -472,24 +465,34 @@ _REVEAL_GARRISON_EXTRA = 2
 
 _SHISHAKLI = "shishakli"
 
-type Intent = Answer | str
-
-
-def _intent_key(run: DecisionRun, effect: str) -> tuple[object, ...]:
-    """``run.memory.intents`` key of a resumed choice's app answer."""
-
-    return ("reveal_choice", run.ctx.round_number, effect)
-
-
 #: ``run.memory.data`` key: the post-reveal prompt gave its empty answer (End
-#: Turn) in this seat's Reveal; its value is ``_end_turn_mark``.
+#: Turn) by declining Corrinth City's subcommittee offer, which holds
+#: ``finish_reveal`` back; its value is ``_reveal_mark``. The next decision
+#: takes ``finish_reveal`` without a second ``MakeChoice``.
 _END_TURN = "reveal_end_turn"
 
+#: ``run.memory.data`` key: the pending choices of this Reveal that the app
+#: runs outside the prompt (Command (6+), ``CanRunImmediately``) and that were
+#: answered with nothing (an Optional one not worth using): ``(_reveal_mark,
+#: frozenset of (card instance, effect))``. The app asks them once; our
+#: engine keeps offering such a choice until ``finish_reveal`` lapses it.
+_PASSED = "reveal_passed_choices"
 
-def _end_turn_mark(run: DecisionRun) -> tuple[int, int]:
+
+def _reveal_mark(run: DecisionRun) -> tuple[int, int]:
     """Identifies one Reveal turn: (round, seat)."""
 
     return (run.ctx.round_number, run.ctx.seat)
+
+
+@dataclass(frozen=True, slots=True)
+class _Entry:
+    """One pending Reveal choice that offers rows now: the card instance, its
+    choice effect and the legal rows that resolve it (``source`` included)."""
+
+    card: str
+    effect: str
+    rows: tuple[DomainAction, ...]
 
 
 # ---------------------------------------------------------------------------
@@ -517,32 +520,60 @@ def _revealed_cards(context: Mapping[str, ActionValue]) -> list[str]:
     return cards
 
 
-def _deferred_entries(context: Mapping[str, ActionValue]) -> list[tuple[str, str]]:
-    """The Reveal frame's deferred ``(card, effect)`` queue, oldest first."""
+def _choice_entries(run: DecisionRun) -> list[_Entry] | None:
+    """The pending choices of the seat's Reveal that offer rows now.
 
-    value = context.get("deferred_reveal_choices", "")
-    if not isinstance(value, str):
-        return []
-    entries: list[tuple[str, str]] = []
-    for item in value.split(","):
-        if item:
-            card, _, effect = item.partition("|")
-            entries.append((card, effect))
+    The engine's own split (``pending_choice_entries``: each pending entry
+    with the actions its ``REVEAL_CHOICE`` frame would offer, empty while
+    its printed condition fails), kept to the legal rows. None when an
+    entry with rows is not mirrored (an effect without an app class, a card
+    without an archetype) or a legal choice row belongs to no entry.
+    """
+
+    legal = frozenset(run.legal)
+    entries: list[_Entry] = []
+    covered: set[DomainAction] = set()
+    pending = pending_choice_entries(run.ctx.state, run.ctx.seat) or ()
+    for (card, effect), rows in pending:
+        offered = tuple(a for a in rows if a in legal)
+        if not offered:
+            continue
+        if effect not in _CHOICE_ABILITIES or card_id(card) not in CARD_ARCHETYPES:
+            return None
+        entries.append(_Entry(card, effect, offered))
+        covered.update(offered)
+    if any(
+        a.action_id in REVEAL_CHOICE_ACTION_IDS and a not in covered for a in run.legal
+    ):
+        return None
     return entries
 
 
-def _resumed_card(run: DecisionRun, effect: str) -> str | None:
-    """The card ``resume_reveal_choice(effect)`` would bring back.
+def _entry_run(run: DecisionRun, entry: _Entry) -> DecisionRun:
+    """``run`` restricted to one entry's rows: what its choice frame offers."""
 
-    The engine resumes the oldest entry of that kind whose condition holds
-    now: the queue minus ``waiting_deferred_choices``.
-    """
+    return replace(run, legal=entry.rows)
 
-    waiting = set(waiting_deferred_choices(run.ctx.state, run.ctx.seat))
-    for card, kind in _deferred_entries(_reveal_context(run)):
-        if kind == effect and (card, kind) not in waiting:
-            return card
-    return None
+
+def _passed(run: DecisionRun) -> frozenset[tuple[str, str]]:
+    """This Reveal's ``_PASSED`` choices (empty for another Reveal's mark)."""
+
+    stored = run.memory.data.get(_PASSED)
+    if (
+        isinstance(stored, tuple)
+        and len(stored) == 2
+        and stored[0] == _reveal_mark(run)
+        and isinstance(stored[1], frozenset)
+    ):
+        return stored[1]
+    return frozenset()
+
+
+def _pass(run: DecisionRun, entry: _Entry) -> None:
+    run.memory.data[_PASSED] = (
+        _reveal_mark(run),
+        _passed(run) | {(entry.card, entry.effect)},
+    )
 
 
 def _own_spies(run: DecisionRun) -> tuple[Entity, ...]:
@@ -630,8 +661,8 @@ def _choice_ability(run: DecisionRun, effect: str, card_ref: str) -> DeferredAbi
 def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
     """The ability's target infos, built from the state (R2 §5).
 
-    Built the same way at the Reveal frame (to value a ``resume`` key) and at
-    the choice frame, so both see one candidate list:
+    The candidates the app's ``Targets`` would list; ``_realise`` maps the
+    answer back to the entry's rows:
 
     - Spy Network / In High Places: the own spies (``Targets``: P's spies);
     - Captured Mentat: the "lose" tracks (influence > 0) then all tracks;
@@ -952,10 +983,13 @@ def _spy_placement(run: DecisionRun, *, may_decline: bool) -> DomainAction | Non
 
 
 def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | None:
-    """Our legal action that carries the app's ``answer`` to a choice.
+    """The row that carries the app's ``answer`` to one pending choice.
 
-    A response the frame cannot realise falls back to the decline of an
-    Optional choice, or to option 0 of an Explicit one (judgement).
+    ``run`` offers only that choice's rows (``_entry_run``, or the choice
+    frame itself). A response no row realises takes option 0 of an Explicit
+    choice (judgement); an Optional choice then realises nothing (None: it
+    is not used, and lapses at ``finish_reveal`` unless a later prompt uses
+    it). Pure: the chosen key's side intents are ``_note_choice``'s.
     """
 
     if effect in _SPY_EFFECTS:
@@ -999,7 +1033,6 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             None if chosen_track is None else with_arg(gains, "faction", chosen_track)
         )
         return gain if gain is not None else (gains[0] if gains else None)
-    decline = run.first(_DECLINES[effect])
     action: DomainAction | None = None
     chosen = _option(answer)
     if effect == "recall_spy_to_draw_intrigue_if_two_placed":
@@ -1033,7 +1066,7 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
         "may_trash_other_emperor_for_three_strength",
         "command_may_trash_card",
     ):
-        # Shrouded Counsel's "use, trash nothing" (``((),)``) is the decline.
+        # Shrouded Counsel's "use, trash nothing" (``((),)``) trashes nothing.
         if chosen is not None:
             action = with_arg(run.by_id("trash_reveal_card"), "card_id", chosen)
     elif effect == "may_retreat_two_troops_for_four_strength":
@@ -1050,8 +1083,6 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
         # Disruption Tactics / CHOAM Demands trash the card itself.
         if answer.response is not None:
             action = run.first("trash_reveal_card")
-            if action is not None and effect == "may_trash_self_for_combat_icon":
-                _keep_deploy_answer(run, answer)
     elif effect == "may_recall_spy_for_three_strength":
         if chosen is not None:
             action = with_arg(run.by_id("recall_spy_for_reveal"), "post_id", chosen)
@@ -1089,22 +1120,27 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             action = with_arg(
                 run.by_id("lose_reveal_troops_for_specimens"), "zones", zones
             )
-    return action if action is not None else decline
+    return action
+
+
+def _note_choice(run: DecisionRun, effect: str, answer: Answer) -> None:
+    """Keep what a used choice's app answer says beyond our row: Disruption
+    Tactics' trash *is* its ``DeployUnitsAbility`` answer (plan §4.6), whose
+    unit count waits for the deployment the trash opens (``_DEPLOY_INTENT``)."""
+
+    if effect == "may_trash_self_for_combat_icon":
+        _keep_deploy_answer(run, answer)
 
 
 def _random_option(run: DecisionRun, effect: str) -> DomainAction | None:
-    """``DefaultRandomChoice`` on a choice: a random key with random targets.
-
-    The ability runs (an Optional one is not declined), so the decline and
-    the defer are left out unless nothing else is legal.
-    """
+    """``DefaultRandomChoice`` on a choice key: the ability runs with random
+    targets, a random row of ``run`` (one entry's rows). A Spy icon is
+    placed as the app's ``PlaceSpy`` prompt places it (best post, or the
+    worst-post recall first)."""
 
     if effect in _SPY_EFFECTS:
-        return _spy_placement(run, may_decline=False)
-    skip = {"defer_reveal_choice", _DECLINES.get(effect)}
-    pool = [a for a in run.legal if a.action_id not in skip]
-    if not pool:
-        pool = [a for a in run.legal if a.action_id != "defer_reveal_choice"]
+        return _spy_placement(run, may_decline=True)
+    pool = list(run.legal)
     return default_random_choice(pool, run.rng) if pool else None
 
 
@@ -1113,23 +1149,15 @@ def _random_option(run: DecisionRun, effect: str) -> DomainAction | None:
 # ---------------------------------------------------------------------------
 
 
-@_none_when_unmirrored
 def reveal_choice_window(run: DecisionRun) -> DomainAction | None:
-    """One card choice of our Reveal (FrameKind.REVEAL_CHOICE).
+    """A Reveal choice frame left on top (FrameKind.REVEAL_CHOICE).
 
-    The app never asks it on its own: the choice is a key of the post-reveal
-    prompt (``<ResolveDeferredAbilities>d__15 @0x4a1f490``), so a deferrable
-    frame is deferred and valued there (module rule 1), unless the ability
-    ``CanRunImmediately`` (``RevealTurnPhase/<ResolveImmediateDeferred
-    Abilities>d__15 @0x4a28ec0``, a forced single-key prompt). A frame that
-    comes back answers with the stored intent, or with the ability's
-    ``Evaluate`` as ``MakeChoice`` answers it (spec engine-order.md §0,
-    generic-abilities §0.2): a value > 0 with a response is used; otherwise
-    an Optional ability is declined (the empty answer) and an Explicit one,
-    whose prompt is forced, goes to ``DefaultRandomChoice``.
-
-    A Bloodlines Command (6+) choice is never deferred (module rule 7): it is
-    answered at its frame, before any buy (plan §11.5).
+    Every Reveal choice is a row of the Reveal frame (codec v147), answered
+    by the post-reveal prompt; the frame a row opens closes with it, except
+    after a Spy recalled for its placement (an empty supply): the placement
+    follows at once, the second half of the app's ``PlaceSpy`` prompt
+    (``PlaceSpyEvaluator``: the best post; ``common.spy_answer``). Any other
+    frame left on top is not one our engine makes: not mirrored (None).
     """
 
     context = run.ctx.top_frame_context
@@ -1139,36 +1167,9 @@ def reveal_choice_window(run: DecisionRun) -> DomainAction | None:
         return None  # a non-core choice: not mirrored
     if not isinstance(card_ref, str) or card_id(card_ref) not in CARD_ARCHETYPES:
         return None
-    if context.get("reveal_spy_recalled") is True:
-        # The recall of the app's ``PlaceSpy`` is done; the move is mandatory.
-        return _spy_placement(run, may_decline=False)
-    p = run.profile
-    ability = _choice_ability(run, effect, card_ref)
-    defer = run.first("defer_reveal_choice")
-    if (
-        defer is not None
-        and effect not in _COMMAND_EFFECTS
-        and not ability.can_run_immediately(p)
-    ):
-        return defer
-    intent = run.memory.intents.pop(_intent_key(run, effect), None)
-    if intent == "decline":
-        decline = run.first(_DECLINES.get(effect, ""))
-        if decline is not None:
-            return decline
-        intent = None
-    if intent == "random":
-        return _random_option(run, effect)
-    if isinstance(intent, Answer):
-        return _realise(run, effect, intent)
-    answer = ability.evaluate(p, _choice_request(run, effect, card_ref))
-    if answer.value > 0.0 and answer.response is not None:
-        return _realise(run, effect, answer)
-    if ability.selection_mode(p) == SelectionMode.EXPLICIT:
-        # Forced prompt, nothing > 0 (or no response):
-        # ``PlayerEntity::DefaultRandomChoice`` (engine-order.md §0, 12 §3.3).
-        return _random_option(run, effect)
-    return run.first(_DECLINES[effect])
+    if context.get("reveal_spy_recalled") is not True:
+        return None
+    return _spy_placement(run, may_decline=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1203,19 +1204,21 @@ def _immediate_command(source: str) -> bool:
 
 
 def _auto_rank(kind: str, source: str, revealed: Sequence[str]) -> int:
-    """App order of an automatic Reveal gain: state 300 printed reveal
+    """App order of an automatic Reveal step: state 300 printed reveal
     abilities before state 400 immediates, then the source card's reveal
     position. State 300 runs ``OrderByDescending(ab => ab.Owner.Specimens)``
     (stable): the cards with a printed specimen (Experimentation, Spiritual
     Fervor, Twisted Mentat, Usurp; immortality.md §8) before the others, a
-    no-op without Immortality (engine-order.md §7)."""
+    no-op without Immortality (engine-order.md §7). ``kind`` is a pending
+    gain's kind, ``"command"`` for a Command (6+) choice or ``"immediate"``
+    for a choice whose ability ``CanRunImmediately`` (state 400)."""
 
     # UNTRACED: when the Bond ``TriggeredAbility`` gains (Southern Elders,
     # Ecological Testing Station, Northern Watermaster, Stillsuit
     # Manufacturer) fire (state 200 or 500); taken with the state-300 gains
     # by card position.
     immediate = (
-        kind == "intrigue"
+        kind in ("intrigue", "immediate")
         or card_id(source) in _IMMEDIATE_GAIN_CARDS
         or _immediate_command(source)
     )
@@ -1651,82 +1654,98 @@ def _leader_evaluate(
     return evaluate
 
 
-def _resume_sources(
-    run: DecisionRun, answers: dict[str, Answer]
-) -> list[Source] | None:
-    """One key per deferred choice kind that can open now; None when a kind
-    is not mirrored. Each evaluate stores its answer in ``answers``. A
-    Command choice is no key: ``_command_resume_sources`` runs it first."""
+def _choice_sources(
+    run: DecisionRun,
+    entries: Sequence[_Entry],
+    used: dict[DomainAction, tuple[_Entry, Answer]],
+) -> list[Source]:
+    """One prompt key per pending choice entry (the app's Optional/Explicit
+    Reveal ``DeferredAbility`` of each revealed card), valued by its card's
+    choice ability (``_choice_ability``) over ``_choice_request``. An
+    Explicit key is blocking: our engine's mandatory choice holds
+    ``finish_reveal`` while it offers rows. Each evaluate records the entry
+    and answer behind the row it realises in ``used``."""
 
     p = run.profile
     sources: list[Source] = []
-    for action in run.by_id("resume_reveal_choice"):
-        effect = str_arg(action, "effect")
-        if effect is None or effect not in _CHOICE_ABILITIES:
-            return None
-        if effect in _COMMAND_EFFECTS:
-            continue
-        card_ref = _resumed_card(run, effect)
-        if card_ref is None:
-            return None
-        ability = _choice_ability(run, effect, card_ref)
+    for entry in entries:
+        ability = _choice_ability(run, entry.effect, entry.card)
+        explicit = ability.selection_mode(p) == SelectionMode.EXPLICIT
         sources.append(
             Source(
-                f"Resume {effect}",
+                f"Choice {entry.effect} {entry.card}",
                 Stage.PROMPT,
-                (action,),
-                _resume_evaluate(run, action, effect, card_ref, ability, answers),
-                extra={
-                    "blocking": True,
-                    "explicit": ability.selection_mode(p) == SelectionMode.EXPLICIT,
-                    "effect": effect,
-                },
+                entry.rows,
+                _choice_evaluate(run, entry, ability, used),
+                extra={"blocking": explicit, "explicit": explicit},
             )
         )
     return sources
 
 
-def _resume_evaluate(
+def _choice_evaluate(
     run: DecisionRun,
-    action: DomainAction,
-    effect: str,
-    card_ref: str,
+    entry: _Entry,
     ability: DeferredAbility,
-    answers: dict[str, Answer],
+    used: dict[DomainAction, tuple[_Entry, Answer]],
 ) -> Callable[[], tuple[float, DomainAction | None]]:
+    """A choice key's value and the row its answer names (``_realise``).
+
+    An answer no row carries is no ``MakeChoice`` candidate; worth 0 or
+    less, the key still stands in the forced prompt's random pool by its
+    first row (``DefaultRandomChoice`` then picks a random row of its own).
+    """
+
     def evaluate() -> tuple[float, DomainAction | None]:
-        answer = ability.evaluate(run.profile, _choice_request(run, effect, card_ref))
-        answers[effect] = answer
+        request = _choice_request(run, entry.effect, entry.card)
+        answer = ability.evaluate(run.profile, request)
+        action = _realise(_entry_run(run, entry), entry.effect, answer)
+        if action is None:
+            return answer.value, (None if answer.value > 0.0 else entry.rows[0])
+        used[action] = (entry, answer)
         return answer.value, action
 
     return evaluate
 
 
-def _command_resume_sources(run: DecisionRun) -> list[Source] | None:
-    """A Command (6+) choice that opened after the Reveal began (it waited for
-    the sixth Persuasion): resumed before anything is valued, like the other
-    Reveal effects in card order (plan §11.5; module rule 7); its frame then
-    answers it by ``Evaluate``. None when the card is not mirrored."""
+def _outside_prompt(run: DecisionRun, entry: _Entry) -> bool:
+    """A choice the app runs without the post-reveal prompt: a Command (6+)
+    choice (plan §11.5) or one whose ability ``CanRunImmediately`` (state
+    400: Corrinth City with the seat held)."""
 
-    revealed = _revealed_cards(_reveal_context(run))
-    sources: list[Source] = []
-    for action in run.by_id("resume_reveal_choice"):
-        effect = str_arg(action, "effect")
-        if effect not in _COMMAND_EFFECTS:
-            continue
-        card_ref = _resumed_card(run, effect)
-        if card_ref is None or card_id(card_ref) not in CARD_ARCHETYPES:
-            return None
-        _choice_ability(run, effect, card_ref)  # _Unmirrored without the class
-        sources.append(
-            Source(
-                f"Command {effect}",
-                Stage.REVEAL_AUTO,
-                (action,),
-                order=_auto_rank("command", card_ref, revealed),
-            )
-        )
-    return sources
+    if entry.effect in _COMMAND_EFFECTS:
+        return True
+    ability = _choice_ability(run, entry.effect, entry.card)
+    return ability.can_run_immediately(run.profile)
+
+
+def _immediate_rank(entry: _Entry, revealed: Sequence[str]) -> int:
+    kind = "command" if entry.effect in _COMMAND_EFFECTS else "immediate"
+    return _auto_rank(kind, entry.card, revealed)
+
+
+def _immediate_answer(run: DecisionRun, entry: _Entry) -> DomainAction | None:
+    """A choice run outside the prompt: ``MakeChoice`` on its single key.
+
+    Its ``Evaluate`` worth more than 0 uses it (the row ``_realise`` names);
+    otherwise an Explicit ability (a forced prompt) goes to
+    ``DefaultRandomChoice`` over its rows and an Optional one is not used
+    (None: the caller records it in ``_PASSED``).
+    """
+
+    ability = _choice_ability(run, entry.effect, entry.card)
+    answer = ability.evaluate(
+        run.profile, _choice_request(run, entry.effect, entry.card)
+    )
+    entry_run = _entry_run(run, entry)
+    if answer.value > 0.0 and answer.response is not None:
+        action = _realise(entry_run, entry.effect, answer)
+        if action is not None:
+            _note_choice(run, entry.effect, answer)
+            return action
+    if ability.selection_mode(run.profile) == SelectionMode.EXPLICIT:
+        return _random_option(entry_run, entry.effect)
+    return None
 
 
 def _use_evaluate(
@@ -1956,43 +1975,6 @@ def _track_spy_source(run: DecisionRun) -> list[Source]:
     ]
 
 
-def _end_turn(run: DecisionRun, finish: DomainAction | None) -> DomainAction | None:
-    """The rest of an End Turn the post-reveal prompt already answered.
-
-    ``12-turn-structure.md`` §4.3: ``elif !forced: empty answer ->
-    SkipRunPlayerTurnSelection(false)``: one ``MakeChoice``, then the turn
-    ends and every Optional ability left pending is simply not used. Our
-    engine needs each such choice declined before ``finish_reveal``, so the
-    next Optional blocker is resumed with a ``"decline"`` intent, without
-    evaluating or shuffling again. None when the state no longer fits (an
-    Explicit or unmirrored blocker): the caller evaluates as usual. Corrinth
-    City's subcommittee offer (Optional) is declined directly.
-    """
-
-    if finish is not None:
-        return finish
-    subcommittee = run.first("decline_subcommittee")
-    if subcommittee is not None:
-        return subcommittee
-    blockers: list[tuple[DomainAction, str]] = []
-    for action in run.by_id("resume_reveal_choice"):
-        effect = str_arg(action, "effect")
-        if effect is None or effect not in _DECLINES:
-            return None
-        card_ref = _resumed_card(run, effect)
-        if card_ref is None:
-            return None
-        ability = _choice_ability(run, effect, card_ref)
-        if ability.selection_mode(run.profile) == SelectionMode.EXPLICIT:
-            return None
-        blockers.append((action, effect))
-    if not blockers:
-        return None
-    action, effect = blockers[0]
-    run.memory.intents[_intent_key(run, effect)] = "decline"
-    return action
-
-
 def _note_answer(
     run: DecisionRun, choice: DomainAction, answers: dict[str, Answer]
 ) -> None:
@@ -2028,15 +2010,54 @@ def _note_answer(
             run.memory.intents.pop(key, None)
 
 
+def _automatic_step(
+    run: DecisionRun, automatic: Sequence[Source], entries: Sequence[_Entry]
+) -> tuple[DomainAction | None, list[_Entry]]:
+    """States 300/400, before the prompt is built: the first automatic step.
+
+    The automatic gains (``automatic``, ranked by stage and ``order``) and
+    the choices run outside the prompt (``_outside_prompt``, ranked among
+    the gains by ``_auto_rank``) in one order; a choice is answered only
+    when its turn comes. An Optional one answered with nothing is recorded
+    in ``_PASSED`` and the next step is taken. Returns the step's action (or
+    None when no automatic step is left) and the entries left for the prompt.
+    """
+
+    passed = _passed(run)
+    revealed = _revealed_cards(_reveal_context(run))
+    prompt: list[_Entry] = []
+    outside: list[tuple[tuple[int, int], _Entry]] = []
+    for entry in entries:
+        if not _outside_prompt(run, entry):
+            prompt.append(entry)
+        elif (entry.card, entry.effect) not in passed:
+            rank = (Stage.REVEAL_AUTO.value, _immediate_rank(entry, revealed))
+            outside.append((rank, entry))
+    steps: list[tuple[tuple[int, int], Source | _Entry]] = [
+        ((s.stage.value, s.order), s)
+        for s in automatic
+        if s.stage < Stage.PROMPT and s.actions
+    ]
+    steps.extend(outside)
+    for _rank, step in sorted(steps, key=lambda item: item[0]):
+        if isinstance(step, Source):
+            return step.actions[0], prompt
+        action = _immediate_answer(run, step)
+        if action is not None:
+            return action, prompt
+        _pass(run, step)
+    return None, prompt
+
+
 @_none_when_unmirrored
 def reveal_window(run: DecisionRun) -> DomainAction | None:
-    """Our REVEAL frame: automatic gains, then the app's post-reveal prompt.
+    """Our REVEAL frame: automatic steps, then the app's post-reveal prompt.
 
     ``PlayerTurnPhase/<ResolveDeferredAbilities>d__15::MoveNext @0x4a1f490``
     with ``turnType = Reveal`` (spec engine-order.md §5.4, 12 §4.2-4.3):
     ``forced = sel.Any(DeferredAbility && SelectionMode == Explicit)``
     (b__5 @0x4a0fe10); ``MakeChoice``; empty answer = End Turn
-    (``finish_reveal``).
+    (``finish_reveal``; the Optional choices left unused lapse there).
     """
 
     drawn = triggered_draw(run)
@@ -2044,10 +2065,6 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         return drawn
     if any(a.action_id not in _REVEAL_ACTIONS for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
-    # A resumed choice frame has been answered by now; an intent left behind
-    # (the frame had a single legal action, so no handler ran) is stale.
-    for key in [k for k in run.memory.intents if k[:1] == ("reveal_choice",)]:
-        del run.memory.intents[key]
     batch = _return_batch(run)
     if batch is not None:
         return batch
@@ -2055,36 +2072,24 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     if deployment is not None:
         return deployment
     finish = run.first("finish_reveal")
+    entries = _choice_entries(run)
     gain_answers: dict[str, Answer] = {}
     gains = _gain_sources(run, gain_answers)
     owed = tech_acquire_effect_sources(run)
-    commands = _command_resume_sources(run)
-    if gains is None or owed is None or commands is None:
+    if entries is None or gains is None or owed is None:
         return None
-    automatic = [*owed, *gains, *commands]
-    if any(s.stage < Stage.PROMPT for s in automatic):
-        # States 300/400 run before the prompt is built: nothing is valued.
-        return decide(run, automatic, skip=finish)
-    if run.memory.data.get(_END_TURN) == _end_turn_mark(run):
-        ending = _end_turn(run, finish)
-        if ending is not None:
-            if ending is finish:
-                del run.memory.data[_END_TURN]
-            return ending
-    run.memory.data.pop(_END_TURN, None)  # stale, or the state moved on
-    answers: dict[str, Answer] = {}
-    resumes = _resume_sources(run, answers)
+    step, prompt_entries = _automatic_step(run, [*owed, *gains], entries)
+    if step is not None:
+        return step
+    mark = run.memory.data.pop(_END_TURN, None)
+    if mark == _reveal_mark(run) and finish is not None:
+        return finish  # the rest of the empty answer the prompt already gave
+    used: dict[DomainAction, tuple[_Entry, Answer]] = {}
     commanders = _commander_sources(run)
     tiles = _tech_reveal_sources(run)
     flips = tech_flip_sources(run)
     subcommittee = _subcommittee_sources(run, gain_answers)
-    if (
-        resumes is None
-        or commanders is None
-        or tiles is None
-        or flips is None
-        or subcommittee is None
-    ):
+    if commanders is None or tiles is None or flips is None or subcommittee is None:
         return None
     rests: dict[DomainAction, tuple[str, int]] = {}
     sources: list[Source] = [
@@ -2093,7 +2098,7 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         *_tleilaxu_sources(run),
         *_reclaimed_forces_source(run),
         *_leader_sources(run),
-        *resumes,
+        *_choice_sources(run, prompt_entries, used),
         *_track_spy_source(run),
         *_family_atomics_source(run),
         *_return_specimen_source(run, gain_answers),
@@ -2107,48 +2112,45 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     plots = run.by_id("play_intrigue")
     if plots:
         sources.extend(intrigue_play_sources(run, plots, combat=False))
-    blocking = [s for s in sources if s.extra.get("blocking")]
     skip: DomainAction | None
     if finish is not None:
         skip, forced = finish, False
-    elif any(s.extra.get("explicit") for s in blocking):
+    elif any(s.extra.get("explicit") for s in sources):
         skip, forced = None, True
     else:
-        optional = [s for s in blocking if "effect" in s.extra or "decline" in s.extra]
-        if not optional:
+        declines = [s.extra.get("decline") for s in sources]
+        decline = next((d for d in declines if isinstance(d, DomainAction)), None)
+        if decline is None:
             return None  # finish blocked by something the app has no key for
-        # The app would End Turn: our engine needs the Optional choice
-        # declined first (resumed, then answered ``"decline"``; the
-        # subcommittee offer is declined directly).
-        declined = optional[0].extra.get("decline")
-        skip = (
-            declined if isinstance(declined, DomainAction) else optional[0].actions[0]
-        )
-        forced = False
-    choice = decide(run, sources, skip=skip, forced=forced)
-    if choice is not None:
-        _note_answer(run, choice, gain_answers)
-        rest = rests.get(choice)
-        if rest is not None:
-            run.memory.intents[_deploy_key(run)] = rest
-        if choice.action_id == "decline_subcommittee" and choice is skip:
-            # The empty answer (End Turn): the other Optional blockers follow.
-            run.memory.data[_END_TURN] = _end_turn_mark(run)
-    if choice is not None and choice.action_id == "resume_reveal_choice":
-        effect = str_arg(choice, "effect")
-        if effect is not None:
-            stored = answers.get(effect)
-            intent: Intent
-            if stored is not None and stored.value > 0.0:
-                intent = stored  # ``MakeChoice`` picked this key
-            elif not forced:
-                # The empty answer (End Turn) stand-in: the app asks nothing
-                # more, so the other Optional blockers follow via _end_turn.
-                intent = "decline"
-                run.memory.data[_END_TURN] = _end_turn_mark(run)
-            else:
-                intent = "random"  # ``DefaultRandomChoice`` picked it
-            run.memory.intents[_intent_key(run, effect)] = intent
+        # The app would End Turn: our engine needs the subcommittee offer
+        # declined first; ``finish_reveal`` follows (``_END_TURN``).
+        skip, forced = decline, False
+    random_pick = False
+
+    def forced_now() -> bool:
+        nonlocal random_pick
+        random_pick = forced
+        return forced
+
+    choice = decide(run, sources, skip=skip, forced=forced_now)
+    if choice is None:
+        return None
+    if random_pick:
+        # ``DefaultRandomChoice`` picked a key: a choice key runs with a
+        # random row of its own.
+        picked = next((e for e in prompt_entries if choice in e.rows), None)
+        if picked is not None:
+            return _random_option(_entry_run(run, picked), picked.effect)
+    elif choice is skip and choice.action_id == "decline_subcommittee":
+        # The empty answer (End Turn): ``finish_reveal`` follows unasked.
+        run.memory.data[_END_TURN] = _reveal_mark(run)
+    _note_answer(run, choice, gain_answers)
+    chosen = used.get(choice)
+    if chosen is not None:
+        _note_choice(run, chosen[0].effect, chosen[1])
+    rest = rests.get(choice)
+    if rest is not None:
+        run.memory.intents[_deploy_key(run)] = rest
     return choice
 
 

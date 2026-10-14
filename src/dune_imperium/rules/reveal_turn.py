@@ -1,19 +1,25 @@
 """Start and score the basic portion of an Uprising Reveal turn.
 
 Reveal effects resolve in any order the owner likes, with Persuasion usable
-before, between and after them [Main p. 12]. Choice effects are queued as
-serial ``REVEAL_CHOICE`` frames in card order; the owner may defer the frame
-on top (``defer_reveal_choice``) to reach the ones below or the Reveal frame
-itself, and later bring a deferred choice back with ``resume_reveal_choice``.
-A resumed choice cannot be deferred again, so the Reveal cannot cycle. A
-choice whose printed condition does not hold (too few Spies, not enough
-Spice) also waits in the deferred queue instead of lapsing, because the
-owner's later Reveal choices (a Spy placed, Spice gained) can still open it;
-the Reveal turn cannot finish while a deferred choice is currently available,
-and the ones still unavailable at the end simply never happen.
+before, between and after them [Main p. 12]. Every choice effect of a
+revealed card -- at the Reveal's start in hand order, a late arrival's after
+it -- waits as a pending entry on the Reveal frame (OQ-095 (7) addition, user
+ruling 2026-10-14). The Reveal frame offers each entry whose printed
+condition holds now with the actions its ``REVEAL_CHOICE`` frame offers,
+beside the purchases, gains and Plots (``legal_pending_reveal_choice_actions``);
+taking one takes the entry off the list and runs it on its own
+``REVEAL_CHOICE`` frame (``open_pending_reveal_choice``), which closes when
+the choice is done. Only a step that must be followed at once keeps that
+frame on top (a Spy recalled for its placement). An optional choice ("may",
+an arrow cost, a black trash icon [FAQ p. 3]) offers no refusal and lapses
+at ``finish_reveal``; a mandatory one holds ``finish_reveal`` while it offers
+something (``content.uprising.types.OPTIONAL_REVEAL_CHOICES``). An entry
+whose condition fails now (too few Spies, not enough Spice, Command (6+) not
+reached) waits, because a later Reveal choice can still open it, and lapses
+at the end if it never does (``reveal_choice_lapsed``).
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from copy import replace
 from enum import StrEnum
 from typing import Final
@@ -30,6 +36,7 @@ from dune_imperium.content.uprising.personal_cards import (
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
+    MANDATORY_REVEAL_CHOICES,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
@@ -113,6 +120,126 @@ SURGEON_ZONE_PAIRS = (
     ("conflict,conflict", 0, 2),
 )
 
+# What each Reveal choice effect's frame can offer (the ``REVEAL_CHOICE``
+# providers below and ``acquisition.legal_reveal_command_acquisition_actions``),
+# by action id. The Reveal frame offers them for its pending entries (codec
+# v147), and taking one opens that entry's own frame
+# (``open_pending_reveal_choice``). ``tests/unit/rules/test_reveal_choices.py``
+# checks the providers against it.
+_SPY_ICON_ACTIONS: Final = frozenset(
+    {"place_reveal_spy", "recall_spy_for_reveal_placement", "decline_reveal_spy_recall"}
+)
+_TRASH_ACTIONS: Final = frozenset({"trash_reveal_card"})
+_RETREAT_ACTIONS: Final = frozenset({"retreat_two_troops_for_reveal"})
+_TROOP_MOVE_ACTIONS: Final = frozenset(
+    {"deploy_reveal_card_troop", "retreat_reveal_card_troop"}
+)
+_INFLUENCE_GAIN_ACTIONS: Final = frozenset({"gain_reveal_influence"})
+_Choice = PersonalCardRevealChoiceEffect
+REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
+    _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: frozenset(
+        {"recall_spy_for_reveal"}
+    ),
+    _Choice.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: frozenset(
+        {"recall_spies_for_reveal"}
+    ),
+    _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH: frozenset({"recall_spy_for_reveal"}),
+    _Choice.PLACE_SPY: _SPY_ICON_ACTIONS,
+    _Choice.PLACE_TWO_SPIES: _SPY_ICON_ACTIONS,
+    _Choice.COMMAND_PLACE_SPY: _SPY_ICON_ACTIONS,
+    _Choice.PLACE_SPY_OR_GAIN_TWO_STRENGTH: frozenset(
+        {
+            "gain_two_reveal_strength",
+            "place_reveal_spy",
+            "recall_spy_for_reveal_placement",
+        }
+    ),
+    _Choice.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE: frozenset(
+        {"exchange_reveal_influence"}
+    ),
+    _Choice.MAY_PAY_THREE_SPICE_FOR_INFLUENCE: frozenset(
+        {"pay_reveal_spice_influence"}
+    ),
+    _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH: _TRASH_ACTIONS,
+    _Choice.COMMAND_MAY_TRASH_CARD: _TRASH_ACTIONS,
+    _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON: _TRASH_ACTIONS,
+    _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: _TRASH_ACTIONS,
+    _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: _RETREAT_ACTIONS,
+    _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: _RETREAT_ACTIONS,
+    _Choice.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: frozenset(
+        {"gain_five_reveal_solari", "take_high_council_from_reveal"}
+    ),
+    _Choice.MAY_PAY_WATER_FOR_SANDWORM: frozenset(
+        {"decline_reveal_sandworm", "pay_reveal_water_for_sandworm"}
+    ),
+    _Choice.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS: frozenset(
+        {"keep_contract_reveal_spice", "trash_contract_reveal_for_vp"}
+    ),
+    _Choice.PERSUASION_OR_CONTRACT: frozenset(
+        {"gain_reveal_persuasion", "take_reveal_contract"}
+    ),
+    _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: _INFLUENCE_GAIN_ACTIONS,
+    _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: _INFLUENCE_GAIN_ACTIONS,
+    _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: frozenset(
+        {"command_acquire_row_card"}
+    ),
+    _Choice.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE: frozenset(
+        {"lose_reveal_influence_for_vp"}
+    ),
+    _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _TROOP_MOVE_ACTIONS,
+    _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _TROOP_MOVE_ACTIONS,
+    _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: frozenset(
+        {"lose_reveal_troops_for_specimens"}
+    ),
+}
+REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
+    *REVEAL_CHOICE_EFFECT_ACTIONS.values()
+)
+
+# The argument naming the revealed card (its definition id; copies of one
+# card are interchangeable) whose choice an action resolves. With every
+# pending choice offered at once (codec v147), these ids are produced by
+# different cards with different outcomes: Calculus of Power's, Shrouded
+# Counsel's, Disruption Tactics' and CHOAM Demands' trash; Spy Network's and
+# Arrakis Observer's recall; Chani's and Command Center's retreat; a plain
+# Spy icon's and Undercover Asset's placement (and recall-first); Priority
+# Contracts' 2 spice and Delivery Agreement's 1. They always carry it.
+SOURCE_ARGUMENT: Final = "source"
+SOURCED_REVEAL_ACTION_IDS: Final = frozenset(
+    {
+        "trash_reveal_card",
+        "recall_spy_for_reveal",
+        "retreat_two_troops_for_reveal",
+        "place_reveal_spy",
+        "recall_spy_for_reveal_placement",
+        "keep_contract_reveal_spice",
+        "trash_contract_reveal_for_vp",
+    }
+)
+
+
+def reveal_card_identity(card_id: str) -> str:
+    """The definition id of a revealed card instance (``source``'s value)."""
+
+    return personal_card_for_instance(card_id).card.card_id
+
+
+def _sourced(
+    action_id: str,
+    player: int,
+    card_id: str,
+    arguments: tuple[tuple[str, ActionValue], ...] = (),
+) -> DomainAction:
+    """``action_id`` of the Reveal choice of ``card_id``, naming its card."""
+
+    return DomainAction(
+        action_id=action_id,
+        actor=player,
+        arguments=tuple(
+            sorted((*arguments, (SOURCE_ARGUMENT, reveal_card_identity(card_id))))
+        ),
+    )
+
 
 def legal_reveal_spy_actions(
     state: GameState,
@@ -120,6 +247,9 @@ def legal_reveal_spy_actions(
 ) -> tuple[DomainAction, ...]:
     """Return Spy choices for the current serial Reveal effect."""
 
+    pending = pending_choice_rows(state, player, legal_reveal_spy_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -130,6 +260,9 @@ def legal_reveal_spy_actions(
     if not isinstance(effect_value, str):
         return ()
     effect = _resolved_choice_effect(effect_value)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal Spy frame has invalid card ID")
     owner = state.players[player]
     if effect in (
         PersonalCardRevealChoiceEffect.PLACE_SPY,
@@ -155,10 +288,8 @@ def legal_reveal_spy_actions(
             return (
                 *strength_choice,
                 *(
-                    DomainAction(
-                        action_id="place_reveal_spy",
-                        actor=player,
-                        arguments=(("post_id", post_id),),
+                    _sourced(
+                        "place_reveal_spy", player, card_id, (("post_id", post_id),)
                     )
                     for post_id in empty_observation_post_ids(state)
                 ),
@@ -178,10 +309,11 @@ def legal_reveal_spy_actions(
             *strength_choice,
             *decline,
             *(
-                DomainAction(
-                    action_id="recall_spy_for_reveal_placement",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
+                _sourced(
+                    "recall_spy_for_reveal_placement",
+                    player,
+                    card_id,
+                    (("post_id", post_id),),
                 )
                 for post_id in owner.spy_post_ids
             ),
@@ -190,60 +322,44 @@ def legal_reveal_spy_actions(
     post_ids = tuple(
         post.post_id for post in OBSERVATION_POSTS if post.post_id in occupied
     )
+    # The three recalls below are arrow costs, and "You do not have to pay
+    # such a cost on a card" [Main p. 20] [FAQ p. 3]: none offers a refusal;
+    # one left unused lapses when the Reveal ends (OQ-095 (7) addition, user
+    # ruling 2026-10-14).
     if (
         effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
     ):
         # Spy Network: "If you have two or more Spies on the board: [recall
-        # Spy] -> [Intrigue card]" [Spy Network card]. The recall is an arrow
-        # cost, and "You do not have to pay such a cost on a card" [Main p.
-        # 20] [FAQ p. 3], so declining is always offered. The two-Spy
-        # condition is judged again when this queued choice resolves in the
-        # owner's chosen Reveal order [Main p. 12]; a freely ordered recall
-        # (for example In High Places) can leave fewer than two, and only the
-        # decline remains.
-        return (
-            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_reveal",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in (post_ids if len(post_ids) >= 2 else ())
-            ),
+        # Spy] -> [Intrigue card]" [Spy Network card]. The two-Spy condition
+        # is judged when the owner takes the choice, in the owner's chosen
+        # Reveal order [Main p. 12]; a freely ordered recall (for example In
+        # High Places) can leave fewer than two.
+        return tuple(
+            _sourced("recall_spy_for_reveal", player, card_id, (("post_id", post_id),))
+            for post_id in (post_ids if len(post_ids) >= 2 else ())
         )
     if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
-        # Arrakis Observer: "[recall a Spy] -> 3 swords", an arrow cost.
-        return (
-            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_reveal",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in post_ids
-            ),
+        # Arrakis Observer: "[recall a Spy] -> 3 swords".
+        return tuple(
+            _sourced("recall_spy_for_reveal", player, card_id, (("post_id", post_id),))
+            for post_id in post_ids
         )
     if (
         effect
         is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION
     ):
-        return (
-            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
-            *(
-                DomainAction(
-                    action_id="recall_spies_for_reveal",
-                    actor=player,
-                    arguments=(
-                        ("first_post_id", first_post_id),
-                        ("second_post_id", second_post_id),
-                    ),
-                )
-                for index, first_post_id in enumerate(post_ids)
-                for second_post_id in post_ids[index + 1 :]
-            ),
+        return tuple(
+            DomainAction(
+                action_id="recall_spies_for_reveal",
+                actor=player,
+                arguments=(
+                    ("first_post_id", first_post_id),
+                    ("second_post_id", second_post_id),
+                ),
+            )
+            for index, first_post_id in enumerate(post_ids)
+            for second_post_id in post_ids[index + 1 :]
         )
     return ()
 
@@ -252,8 +368,17 @@ def legal_reveal_influence_exchange_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return optional Influence cost-and-reward choices for a Reveal card."""
+    """Return optional Influence cost-and-reward choices for a Reveal card.
 
+    An arrow cost: no refusal is offered, and the choice lapses at
+    ``finish_reveal`` when it is left unused (OQ-095 (7) addition).
+    """
+
+    pending = pending_choice_rows(
+        state, player, legal_reveal_influence_exchange_actions
+    )
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -265,9 +390,7 @@ def legal_reveal_influence_exchange_actions(
         != PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE.value
     ):
         return ()
-    actions: list[DomainAction] = [
-        DomainAction(action_id="decline_reveal_influence_exchange", actor=player)
-    ]
+    actions: list[DomainAction] = []
     owner = state.players[player]
     for lost_faction in Faction:
         if influence_amount(owner.influence, lost_faction) == 0:
@@ -355,6 +478,11 @@ def legal_reveal_persuasion_or_contract_actions(
 ) -> tuple[DomainAction, ...]:
     """Delivery Logistics: "1 Persuasion OR a contract"."""
 
+    pending = pending_choice_rows(
+        state, player, legal_reveal_persuasion_or_contract_actions
+    )
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -378,6 +506,7 @@ def apply_reveal_persuasion_or_contract(
 ) -> RuleResult:
     """Add one Persuasion to the Reveal, or open the Contract market."""
 
+    state = _open_pending(state, action, legal_reveal_persuasion_or_contract_actions)
     if action not in legal_reveal_persuasion_or_contract_actions(state, action.actor):
         raise ValueError("action is not a legal Persuasion-or-Contract choice")
     context = dict(state.decision_stack[-1].context)
@@ -417,6 +546,9 @@ def legal_reveal_influence_gain_actions(
 ) -> tuple[DomainAction, ...]:
     """Return the Faction choices of a "gain 1 Influence of your choice" Reveal."""
 
+    pending = pending_choice_rows(state, player, legal_reveal_influence_gain_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -448,6 +580,7 @@ def apply_reveal_influence_gain(
 ) -> RuleResult:
     """Gain one Influence with the chosen Faction (Pointing the Way's Command)."""
 
+    state = _open_pending(state, action, legal_reveal_influence_gain_actions)
     if action not in legal_reveal_influence_gain_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence choice")
     frame = state.decision_stack[-1]
@@ -565,8 +698,14 @@ def legal_reveal_spice_influence_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return optional three-Spice payments for Reveal Influence."""
+    """Return optional three-Spice payments for Reveal Influence.
 
+    An arrow cost: no refusal is offered (OQ-095 (7) addition).
+    """
+
+    pending = pending_choice_rows(state, player, legal_reveal_spice_influence_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -578,26 +717,19 @@ def legal_reveal_spice_influence_actions(
         != PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE.value
     ):
         return ()
-    decline = DomainAction(
-        action_id="decline_reveal_spice_influence",
-        actor=player,
-    )
     owner = state.players[player]
     if owner.resources.spice < 3:
-        return (decline,)
+        return ()
     # Three spice for Influence no cube can take is not offered (OQ-060,
     # OQ-071).
-    return (
-        decline,
-        *(
-            DomainAction(
-                action_id="pay_reveal_spice_influence",
-                actor=player,
-                arguments=(("faction", faction.value),),
-            )
-            for faction in Faction
-            if influence_can_rise(owner, faction)
-        ),
+    return tuple(
+        DomainAction(
+            action_id="pay_reveal_spice_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+        if influence_can_rise(owner, faction)
     )
 
 
@@ -607,6 +739,9 @@ def legal_reveal_sandworm_actions(
 ) -> tuple[DomainAction, ...]:
     """Return Desert Power's mutually exclusive Reveal choices."""
 
+    pending = pending_choice_rows(state, player, legal_reveal_sandworm_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -637,6 +772,7 @@ def apply_reveal_sandworm_action(
 ) -> RuleResult:
     """Resolve Desert Power's Persuasion-or-sandworm Reveal choice."""
 
+    state = _open_pending(state, action, legal_reveal_sandworm_actions)
     if action not in legal_reveal_sandworm_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal sandworm choice")
     frame = state.decision_stack[-1]
@@ -748,8 +884,17 @@ def legal_reveal_card_trash_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return optional Emperor-card trash payments for the current Reveal."""
+    """Return the optional trash choices of the current Reveal card.
 
+    Calculus of Power's other Emperor card, Shrouded Counsel's Command
+    trash, Disruption Tactics' and CHOAM Demands' self-trash: arrows or a
+    black trash icon, so no refusal is offered (OQ-095 (7) addition), and
+    ``source`` names the card whose choice the trash pays.
+    """
+
+    pending = pending_choice_rows(state, player, legal_reveal_card_trash_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -791,16 +936,9 @@ def legal_reveal_card_trash_actions(
             if card_id != source_card_id
             and Faction.EMPEROR in personal_card_for_instance(card_id).factions
         )
-    return (
-        DomainAction(action_id="decline_reveal_card_trash", actor=player),
-        *(
-            DomainAction(
-                action_id="trash_reveal_card",
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            for card_id in candidates
-        ),
+    return tuple(
+        _sourced("trash_reveal_card", player, source_card_id, (("card_id", card_id),))
+        for card_id in candidates
     )
 
 
@@ -808,8 +946,15 @@ def legal_reveal_troop_retreat_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return the optional two-troop Reveal retreat payment."""
+    """Return the optional two-troop Reveal retreat payment.
 
+    Chani's and Command Center's arrow: no refusal is offered (OQ-095 (7)
+    addition), and ``source`` names the card the retreat pays for.
+    """
+
+    pending = pending_choice_rows(state, player, legal_reveal_troop_retreat_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -821,22 +966,22 @@ def legal_reveal_troop_retreat_actions(
         PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value,
     ):
         return ()
-    decline = DomainAction(action_id="decline_reveal_troop_retreat", actor=player)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal troop-retreat frame has invalid card ID")
     owner = state.players[player]
     # Sardaukar Commanders are troops for the retreat [Bloodlines p. 4];
     # ``commanders`` names their share of the two.
-    return (
-        decline,
-        *(
-            DomainAction(
-                action_id="retreat_two_troops_for_reveal",
-                actor=player,
-                arguments=(() if commanders == 0 else (("commanders", commanders),)),
-            )
-            for commanders in range(3)
-            if owner.troops_conflict >= 2 - commanders
-            and owner.commanders_conflict >= commanders
-        ),
+    return tuple(
+        _sourced(
+            "retreat_two_troops_for_reveal",
+            player,
+            card_id,
+            () if commanders == 0 else (("commanders", commanders),),
+        )
+        for commanders in range(3)
+        if owner.troops_conflict >= 2 - commanders
+        and owner.commanders_conflict >= commanders
     )
 
 
@@ -846,6 +991,9 @@ def legal_corrinth_city_reveal_actions(
 ) -> tuple[DomainAction, ...]:
     """Return Corrinth City's mutually exclusive Reveal choices."""
 
+    pending = pending_choice_rows(state, player, legal_corrinth_city_reveal_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -880,6 +1028,7 @@ def apply_corrinth_city_reveal(
 ) -> RuleResult:
     """Gain five Solari or pay five for a High Council seat."""
 
+    state = _open_pending(state, action, legal_corrinth_city_reveal_actions)
     if action not in legal_corrinth_city_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Corrinth City Reveal choice")
     context = dict(state.decision_stack[-1].context)
@@ -944,8 +1093,15 @@ def legal_contract_reveal_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return the CHOAM choice between Spice and a self-trash VP."""
+    """Return the CHOAM choice between Spice and a self-trash VP.
 
+    ``source`` names the card: Priority Contracts' spice is 2, Delivery
+    Agreement's 1.
+    """
+
+    pending = pending_choice_rows(state, player, legal_contract_reveal_choice_actions)
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -959,17 +1115,18 @@ def legal_contract_reveal_choice_actions(
         )
     ):
         return ()
-    actions = [DomainAction(action_id="keep_contract_reveal_spice", actor=player)]
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Contract-count Reveal choice has invalid card ID")
+    actions = [_sourced("keep_contract_reveal_spice", player, card_id)]
     # The self-trash is the cost of the Victory Point, so it is adjudicated
     # at resolution time [Main pp. 9, 20]: a card another effect already
     # trashed while this choice was pending can no longer pay it.
     if (
         len(state.players[player].completed_contract_ids) >= 4
-        and context.get("reveal_card_id") in state.players[player].in_play
+        and card_id in state.players[player].in_play
     ):
-        actions.append(
-            DomainAction(action_id="trash_contract_reveal_for_vp", actor=player)
-        )
+        actions.append(_sourced("trash_contract_reveal_for_vp", player, card_id))
     return tuple(actions)
 
 
@@ -979,6 +1136,7 @@ def apply_contract_reveal_choice(
 ) -> RuleResult:
     """Gain printed Spice or trash the card for one VP."""
 
+    state = _open_pending(state, action, legal_contract_reveal_choice_actions)
     if action not in legal_contract_reveal_choice_actions(state, action.actor):
         raise ValueError("action is not a legal Contract-count Reveal choice")
     context = dict(state.decision_stack[-1].context)
@@ -1054,8 +1212,9 @@ def apply_reveal_troop_retreat(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, or retreat two troops for four swords or two Persuasion."""
+    """Retreat two troops for four swords or two Persuasion."""
 
+    state = _open_pending(state, action, legal_reveal_troop_retreat_actions)
     if action not in legal_reveal_troop_retreat_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop-retreat choice")
     context = dict(state.decision_stack[-1].context)
@@ -1063,18 +1222,6 @@ def apply_reveal_troop_retreat(
     if not isinstance(card_id, str):
         raise RuntimeError("Reveal troop-retreat frame has invalid card ID")
     source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
-    if action.action_id == "decline_reveal_troop_retreat":
-        return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:troop_retreat_declined",
-                    kind="reveal_troop_retreat_declined",
-                    payload=(("card_id", card_id), ("player", action.actor)),
-                ),
-            ),
-        )
-
     owner = state.players[action.actor]
     commanders = dict(action.arguments).get("commanders", 0)
     if isinstance(commanders, bool) or not isinstance(commanders, int):
@@ -1281,15 +1428,17 @@ def legal_reveal_influence_loss_actions(
     """For Humanity: "Bene Gesserit Alliance: lose two Influence -> 1 VP".
 
     The arrow cost is paid in full or not at all [Main p. 20], so only a
-    Faction with two or more Influence can pay it.
+    Faction with two or more Influence can pay it; it offers no refusal
+    (OQ-095 (7) addition).
     """
 
+    pending = pending_choice_rows(state, player, legal_reveal_influence_loss_actions)
+    if pending is not None:
+        return pending
     context = _reveal_choice_frame_context(state, player, _LOSE_INFLUENCE_FOR_VP)
     if context is None:
         return ()
-    actions: list[DomainAction] = [
-        DomainAction(action_id="decline_reveal_influence_loss", actor=player)
-    ]
+    actions: list[DomainAction] = []
     owner = state.players[player]
     for faction in Faction:
         if influence_amount(owner.influence, faction) < _FOR_HUMANITY_INFLUENCE_COST:
@@ -1320,8 +1469,9 @@ def apply_reveal_influence_loss(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, or lose two Influence with one Faction for a Victory Point."""
+    """Lose two Influence with one Faction for a Victory Point."""
 
+    state = _open_pending(state, action, legal_reveal_influence_loss_actions)
     if action not in legal_reveal_influence_loss_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence loss")
     context = dict(state.decision_stack[-1].context)
@@ -1329,17 +1479,6 @@ def apply_reveal_influence_loss(
         state, action.actor, context, "influence_loss"
     )
     popped = state.pop_decision()
-    if action.action_id == "decline_reveal_influence_loss":
-        return RuleResult(
-            state=popped,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="reveal_influence_loss_declined",
-                    payload=(("card_id", card_id), ("player", action.actor)),
-                ),
-            ),
-        )
     arguments = dict(action.arguments)
     faction_value = arguments.get("faction")
     recipient = arguments.get("alliance_recipient")
@@ -1387,37 +1526,38 @@ def legal_reveal_troop_move_actions(
     A Sardaukar Commander "is a 'troop' that's worth 2 strength in the
     Conflict" [Bloodlines p. 4], so a garrison or Conflict Commander is a
     legal unit too; ``commanders`` 1 names it, as the other troop retreats do.
+    "May": no refusal is offered (OQ-095 (7) addition).
     """
 
+    pending = pending_choice_rows(state, player, legal_reveal_troop_move_actions)
+    if pending is not None:
+        return pending
     context = _reveal_choice_frame_context(
         state, player, PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
     )
     if context is None:
         return ()
     owner = state.players[player]
-    return (
-        DomainAction(action_id="decline_reveal_troop_move", actor=player),
-        *(
-            DomainAction(
-                action_id=action_id,
-                actor=player,
-                arguments=(("commanders", 1),) if commander else (),
-            )
-            for action_id, troops, commanders in (
-                (
-                    "deploy_reveal_card_troop",
-                    owner.troops_garrison,
-                    owner.commanders_garrison,
-                ),
-                (
-                    "retreat_reveal_card_troop",
-                    owner.troops_conflict,
-                    owner.commanders_conflict,
-                ),
-            )
-            for commander, available in ((False, troops), (True, commanders))
-            if available >= 1
-        ),
+    return tuple(
+        DomainAction(
+            action_id=action_id,
+            actor=player,
+            arguments=(("commanders", 1),) if commander else (),
+        )
+        for action_id, troops, commanders in (
+            (
+                "deploy_reveal_card_troop",
+                owner.troops_garrison,
+                owner.commanders_garrison,
+            ),
+            (
+                "retreat_reveal_card_troop",
+                owner.troops_conflict,
+                owner.commanders_conflict,
+            ),
+        )
+        for commander, available in ((False, troops), (True, commanders))
+        if available >= 1
     )
 
 
@@ -1425,26 +1565,14 @@ def apply_reveal_troop_move(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, deploy one garrison unit, or retreat one Conflict unit."""
+    """Deploy one garrison unit, or retreat one Conflict unit."""
 
+    state = _open_pending(state, action, legal_reveal_troop_move_actions)
     if action not in legal_reveal_troop_move_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop move")
     context = dict(state.decision_stack[-1].context)
-    card_id, source = _reveal_choice_card_source(
-        state, action.actor, context, "troop_move"
-    )
+    _, source = _reveal_choice_card_source(state, action.actor, context, "troop_move")
     popped = state.pop_decision()
-    if action.action_id == "decline_reveal_troop_move":
-        return RuleResult(
-            state=popped,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="reveal_troop_move_declined",
-                    payload=(("card_id", card_id), ("player", action.actor)),
-                ),
-            ),
-        )
     commanders = 1 if dict(action.arguments).get("commanders") == 1 else 0
     if action.action_id == "deploy_reveal_card_troop":
         counted = add_units_to_reveal(
@@ -1487,24 +1615,25 @@ def legal_reveal_troop_sacrifice_actions(
     """Tleilaxu Surgeon: "Lose two troops -> two specimens" (OQ-053).
 
     The owner picks the zone of each troop: both from the garrison, both
-    from the Conflict, or one from each.
+    from the Conflict, or one from each. An arrow cost: no refusal is
+    offered (OQ-095 (7) addition).
     """
 
+    pending = pending_choice_rows(state, player, legal_reveal_troop_sacrifice_actions)
+    if pending is not None:
+        return pending
     context = _reveal_choice_frame_context(state, player, _LOSE_TROOPS_FOR_SPECIMENS)
     if context is None:
         return ()
     owner = state.players[player]
-    return (
-        DomainAction(action_id="decline_reveal_troop_sacrifice", actor=player),
-        *(
-            DomainAction(
-                action_id="lose_reveal_troops_for_specimens",
-                actor=player,
-                arguments=(("zones", zones),),
-            )
-            for zones, garrison, conflict in SURGEON_ZONE_PAIRS
-            if owner.troops_garrison >= garrison and owner.troops_conflict >= conflict
-        ),
+    return tuple(
+        DomainAction(
+            action_id="lose_reveal_troops_for_specimens",
+            actor=player,
+            arguments=(("zones", zones),),
+        )
+        for zones, garrison, conflict in SURGEON_ZONE_PAIRS
+        if owner.troops_garrison >= garrison and owner.troops_conflict >= conflict
     )
 
 
@@ -1512,26 +1641,16 @@ def apply_reveal_troop_sacrifice(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, or return two troops of one zone to the supply for two specimens."""
+    """Return two troops of one zone to the supply for two specimens."""
 
+    state = _open_pending(state, action, legal_reveal_troop_sacrifice_actions)
     if action not in legal_reveal_troop_sacrifice_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop sacrifice")
     context = dict(state.decision_stack[-1].context)
-    card_id, source = _reveal_choice_card_source(
+    _, source = _reveal_choice_card_source(
         state, action.actor, context, "troop_sacrifice"
     )
     popped = state.pop_decision()
-    if action.action_id == "decline_reveal_troop_sacrifice":
-        return RuleResult(
-            state=popped,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="reveal_troop_sacrifice_declined",
-                    payload=(("card_id", card_id), ("player", action.actor)),
-                ),
-            ),
-        )
     zones = str(dict(action.arguments)["zones"]).split(",")
     before = popped.players[action.actor].combat_strength
     working = popped
@@ -1573,8 +1692,13 @@ def apply_reveal_card_trash(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or trash another Emperor card for three Reveal strength."""
+    """Trash the chosen card for the Reveal card's reward.
 
+    Calculus of Power's three swords, Shrouded Counsel's trash alone,
+    Disruption Tactics' Combat icon or CHOAM Demands' four Influence.
+    """
+
+    state = _open_pending(state, action, legal_reveal_card_trash_actions)
     if action not in legal_reveal_card_trash_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal card trash choice")
     context = dict(state.decision_stack[-1].context)
@@ -1584,18 +1708,6 @@ def apply_reveal_card_trash(
     source = (
         f"round:{state.round_number}:player:{action.actor}:reveal_card:{source_card_id}"
     )
-    if action.action_id == "decline_reveal_card_trash":
-        return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:trash_declined",
-                    kind="reveal_card_trash_declined",
-                    payload=(("card_id", source_card_id), ("player", action.actor)),
-                ),
-            ),
-        )
-
     card_id = dict(action.arguments).get("card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Reveal trash choice has invalid card ID")
@@ -1692,8 +1804,9 @@ def apply_reveal_spice_influence(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or pay three Spice and gain one chosen Faction Influence."""
+    """Pay three Spice and gain one chosen Faction Influence."""
 
+    state = _open_pending(state, action, legal_reveal_spice_influence_actions)
     if action not in legal_reveal_spice_influence_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Spice payment")
     frame = state.decision_stack[-1]
@@ -1705,18 +1818,6 @@ def apply_reveal_spice_influence(
         f"round:{state.round_number}:player:{action.actor}:"
         f"reveal_card:{card_id}:spice_influence"
     )
-    if action.action_id == "decline_reveal_spice_influence":
-        return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="reveal_spice_influence_declined",
-                    payload=(("card_id", card_id), ("player", action.actor)),
-                ),
-            ),
-        )
-
     faction_value = dict(action.arguments).get("faction")
     if not isinstance(faction_value, str):
         raise RuntimeError("Reveal Spice payment has invalid Faction")
@@ -1758,8 +1859,9 @@ def apply_reveal_influence_exchange(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or atomically pay and resolve a Reveal Influence exchange."""
+    """Atomically pay and resolve a Reveal Influence exchange."""
 
+    state = _open_pending(state, action, legal_reveal_influence_exchange_actions)
     if action not in legal_reveal_influence_exchange_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence exchange")
     frame = state.decision_stack[-1]
@@ -1771,18 +1873,6 @@ def apply_reveal_influence_exchange(
         f"round:{state.round_number}:player:{action.actor}:"
         f"reveal_card:{card_id}:influence_exchange"
     )
-    if action.action_id == "decline_reveal_influence_exchange":
-        return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="reveal_influence_exchange_declined",
-                    payload=(("card_id", card_id), ("player", action.actor)),
-                ),
-            ),
-        )
-
     arguments = dict(action.arguments)
     lost_value = arguments.get("lost_faction")
     gained_value = arguments.get("gained_faction")
@@ -1823,6 +1913,7 @@ def apply_reveal_spy_action(
 ) -> RuleResult:
     """Resolve the current Reveal effect's Spy placement or recall choice."""
 
+    state = _open_pending(state, action, legal_reveal_spy_actions)
     if action not in legal_reveal_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Spy choice")
     frame = state.decision_stack[-1]
@@ -2028,28 +2119,24 @@ def _after_reveal_spy_icon(
     player: int,
     effect: PersonalCardRevealChoiceEffect,
 ) -> tuple[DecisionFrame, ...]:
-    """Close a resolved Reveal Spy frame; Covert Operation opens its second icon.
+    """Close a resolved Reveal Spy frame; Covert Operation queues its second icon.
 
     Covert Operation prints two Spy icons [Covert Operation card]. Its frame
-    resolves the first like any plain Spy icon [Main pp. 11, 20] and is then
-    replaced by a plain ``PLACE_SPY`` frame of the same card for the second,
-    which the owner may put off like any other Reveal choice [Main p. 12].
+    resolves the first like any plain Spy icon [Main pp. 11, 20]; the second
+    then waits as a plain ``PLACE_SPY`` entry of the same card on the Reveal
+    frame's pending list, offered with the other Reveal choices in any
+    order [Main p. 12] (OQ-095 (7) addition).
     """
 
+    del player
     remaining = state.decision_stack[:-1]
     if effect is not PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES:
         return remaining
     card_id = context_str(
         frame_context(state.decision_stack[-1]), "reveal_card_id", owner=_CHOICE_FRAME
     )
-    return (
-        *remaining,
-        _build_reveal_choice_frame(
-            state.round_number,
-            player,
-            card_id,
-            PersonalCardRevealChoiceEffect.PLACE_SPY,
-        ),
+    return _queue_pending_choices(
+        remaining, ((card_id, PersonalCardRevealChoiceEffect.PLACE_SPY.value),)
     )
 
 
@@ -3359,29 +3446,29 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
 
     effect = _RESOLVES_AS.get(effect, effect)
     return (
-        "Bene Gesserit Alliance: lose two Influence with one Faction for a "
-        "Victory Point, or decline"
+        "Bene Gesserit Alliance: you may lose two Influence with one Faction "
+        "for a Victory Point"
         if effect
         is _LOSE_INFLUENCE_FOR_VP
-        else "Deploy or retreat one troop, or decline"
+        else "You may deploy or retreat one troop"
         if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-        else "Lose two troops for two specimens, or decline"
+        else "You may lose two troops for two specimens"
         if effect is _LOSE_TROOPS_FOR_SPECIMENS
-        else "Trash this card for one Influence with each Faction, or decline"
+        else "You may trash this card for one Influence with each Faction"
         if effect
         is (
             PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
         )
         else "Choose one Persuasion or a Contract"
         if effect is PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
-        else "Recall a Spy for three swords or decline"
+        else "You may recall a Spy for three swords"
         if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH
-        else "Command: trash this card to acquire an Imperium Row card, or decline"
+        else "Command: you may trash this card to acquire an Imperium Row card"
         if effect
         is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD
-        else "Trash this card for the Combat icon or decline"
+        else "You may trash this card for the Combat icon"
         if effect is PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON
-        else "Command: trash a card or decline"
+        else "Command: you may trash a card"
         if effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD
         else "Command: choose where to place a Spy"
         if effect is PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY
@@ -3389,24 +3476,24 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
         else "Two or more Tech tiles: choose a Faction to gain one Influence with"
         if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
-        else "Retreat two troops for two Persuasion or decline"
+        else "You may retreat two troops for two Persuasion"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
-        else "Choose Influence to lose and gain or decline this Reveal effect"
+        else "You may lose one Influence to gain one Influence"
         if effect is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
-        else "Pay three Spice for Influence or decline this Reveal effect"
+        else "You may pay three Spice for one Influence"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
-        else "Choose a Spy placement or gain two strength"
+        else "Choose where to place the Spy you chose over two strength"
         if effect is PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH
         else "Choose where to place a Spy for this Reveal effect"
         if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
-        else "Choose two Spies to recall or decline this Reveal effect"
+        else "You may recall two Spies for three Persuasion"
         if effect
         is (PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION)
-        else "Trash another Emperor card or decline this Reveal effect"
+        else "You may trash another Emperor card for three swords"
         if effect
         is (PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH)
-        else "Retreat two troops for four strength or decline"
+        else "You may retreat two troops for four strength"
         if effect
         is (PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH)
         else "Gain five Solari or pay five for a High Council seat"
@@ -3419,7 +3506,7 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is (
             PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
         )
-        else "Recall a Spy to draw an Intrigue card, or decline"
+        else "You may recall a Spy to draw an Intrigue card"
         if effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
         else "Choose a Spy to recall for this Reveal effect"
@@ -3628,6 +3715,28 @@ def _reveal_choice_effect_is_available(
     )
 
 
+def reveal_choice_effect_is_available(
+    state: GameState,
+    player: int,
+    owner: PlayerState,
+    cards_in_play: tuple[str, ...],
+    card_id: str,
+    effect: PersonalCardRevealChoiceEffect,
+    *,
+    persuasion: int | None = None,
+) -> bool:
+    """Whether one revealed card's choice effect can be taken on these facts.
+
+    The gate a pending entry is offered by (``_available_pending_choices``),
+    for a caller that judges it on another snapshot: ``records.migration``
+    follows an older engine's choice frames, which it opened by this gate.
+    """
+
+    return _reveal_choice_effect_is_available(
+        state, player, owner, cards_in_play, card_id, effect, persuasion=persuasion
+    )
+
+
 def _build_reveal_choice_frame(
     round_number: int,
     player: int,
@@ -3650,20 +3759,27 @@ def _build_reveal_choice_frame(
     )
 
 
-_DEFERRED_CHOICES_KEY = "deferred_reveal_choices"
-_RESUMED_KEY = "reveal_choice_resumed"
+# The Reveal frame's pending choices: one ``card|effect`` entry per choice
+# effect of a revealed card, in hand order, with late arrivals and Covert
+# Operation's second Spy appended (OQ-095 (7) addition, user ruling
+# 2026-10-14; codec v147). The key keeps the name of the queue it replaced,
+# which held the deferred choices.
+_PENDING_CHOICES_KEY = "deferred_reveal_choices"
 _CHOICE_FRAME = "Reveal choice frame"
 
+type PendingChoice = tuple[str, str]
+type ChoiceProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
 
-def _deferred_reveal_choices(
-    context: dict[str, ActionValue],
-) -> tuple[tuple[str, str], ...]:
-    """Decode the Reveal frame's deferred (card, effect) queue, oldest first."""
 
-    value = context.get(_DEFERRED_CHOICES_KEY, "")
+def pending_reveal_choices(
+    context: Mapping[str, ActionValue],
+) -> tuple[PendingChoice, ...]:
+    """Decode the Reveal frame's pending (card, effect) choices, oldest first."""
+
+    value = context.get(_PENDING_CHOICES_KEY, "")
     if not isinstance(value, str):
-        raise RuntimeError("Reveal frame has invalid deferred choices")
-    entries: list[tuple[str, str]] = []
+        raise RuntimeError("Reveal frame has invalid pending choices")
+    entries: list[PendingChoice] = []
     for item in value.split(","):
         if not item:
             continue
@@ -3672,7 +3788,7 @@ def _deferred_reveal_choices(
     return tuple(entries)
 
 
-def _encode_deferred(entries: tuple[tuple[str, str], ...]) -> str:
+def _encode_pending(entries: tuple[PendingChoice, ...]) -> str:
     return ",".join(f"{card_id}|{effect}" for card_id, effect in entries)
 
 
@@ -3683,18 +3799,18 @@ def _reveal_frame_position(frames: tuple[DecisionFrame, ...]) -> int:
     raise RuntimeError("Reveal choice is missing its Reveal frame")
 
 
-def _queue_deferred_choices(
+def _queue_pending_choices(
     frames: tuple[DecisionFrame, ...],
-    entries: tuple[tuple[str, str], ...],
+    entries: tuple[PendingChoice, ...],
 ) -> tuple[DecisionFrame, ...]:
-    """Append (card, effect) entries to the Reveal frame's deferred queue."""
+    """Append (card, effect) entries to the Reveal frame's pending choices."""
 
     if not entries:
         return frames
     position = _reveal_frame_position(frames)
     context = frame_context(frames[position])
-    context[_DEFERRED_CHOICES_KEY] = _encode_deferred(
-        (*_deferred_reveal_choices(context), *entries)
+    context[_PENDING_CHOICES_KEY] = _encode_pending(
+        (*pending_reveal_choices(context), *entries)
     )
     return (
         *frames[:position],
@@ -3703,25 +3819,26 @@ def _queue_deferred_choices(
     )
 
 
-def _available_deferred_choices(
+def _available_pending_choices(
     state: GameState,
     player: int,
-    context: dict[str, ActionValue],
-) -> tuple[tuple[str, str], ...]:
-    """Return the deferred entries whose printed condition holds right now."""
+    context: Mapping[str, ActionValue],
+) -> frozenset[PendingChoice]:
+    """Return the pending entries whose printed condition holds right now."""
 
     owner = state.players[player]
     # Command (6+) is judged on the Persuasion generated this Reveal turn
     # [Bloodlines pp. 5, 12], so a purchase does not close it again.
     persuasion = _generated_persuasion(context)
-    return tuple(
+    cards_in_play = counted_in_play(owner)
+    return frozenset(
         (card_id, effect_value)
-        for card_id, effect_value in _deferred_reveal_choices(context)
+        for card_id, effect_value in pending_reveal_choices(context)
         if _reveal_choice_effect_is_available(
             state,
             player,
             owner,
-            counted_in_play(owner),
+            cards_in_play,
             card_id,
             PersonalCardRevealChoiceEffect(effect_value),
             persuasion=persuasion,
@@ -3729,153 +3846,252 @@ def _available_deferred_choices(
     )
 
 
-def waiting_deferred_choices(
-    state: GameState,
-    player: int,
-) -> tuple[tuple[str, str], ...]:
-    """Return ``player``'s deferred Reveal choices whose condition fails now.
+def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
+    """The providers of a ``REVEAL_CHOICE`` frame's actions, in offer order.
 
-    Each is a ``(card instance, effect)`` entry of the open Reveal frame's
-    deferred queue that ``_available_deferred_choices`` leaves out, so it has
-    no ``resume_reveal_choice`` action; a later choice of the owner can still
-    meet its condition, and it lapses at ``finish_reveal`` if it never does
-    [Main p. 12]. The page shows these greyed out (``display.unavailable``,
-    user request 2026-09-29). Empty unless ``player``'s Reveal is on top.
+    Engineered Miracle's lives in ``rules.acquisition``, which imports this
+    module, so it is read at call time.
     """
 
-    frame = owned_top_frame(state, FrameKind.REVEAL, player)
-    if frame is None:
-        return ()
-    context = frame_context(frame)
-    available = _available_deferred_choices(state, player, context)
-    return tuple(
-        entry for entry in _deferred_reveal_choices(context) if entry not in available
+    from dune_imperium.rules.acquisition import (
+        legal_reveal_command_acquisition_actions,
+    )
+
+    return (
+        legal_reveal_command_acquisition_actions,
+        legal_reveal_persuasion_or_contract_actions,
+        legal_corrinth_city_reveal_actions,
+        legal_contract_reveal_choice_actions,
+        legal_reveal_card_trash_actions,
+        legal_reveal_spy_actions,
+        legal_reveal_influence_exchange_actions,
+        legal_reveal_influence_gain_actions,
+        legal_reveal_sandworm_actions,
+        legal_reveal_spice_influence_actions,
+        legal_reveal_troop_retreat_actions,
+        legal_reveal_influence_loss_actions,
+        legal_reveal_troop_move_actions,
+        legal_reveal_troop_sacrifice_actions,
     )
 
 
-def legal_defer_reveal_choice_actions(
-    state: GameState,
-    player: int,
-) -> tuple[DomainAction, ...]:
-    """Return the choice to put the current Reveal choice off until later.
+def _entry_state(state: GameState, player: int, entry: PendingChoice) -> GameState:
+    """``state`` with the entry's ``REVEAL_CHOICE`` frame on top of the stack.
 
-    Reveal effects may be resolved in any order [Main p. 12]; deferring the
-    frame on top uncovers the next choice or the Reveal frame's acquisitions.
-    A choice that already started (a Spy recalled for its placement) and a
-    choice brought back by ``resume_reveal_choice`` cannot be deferred.
+    The frame its choice opens on (``_build_reveal_choice_frame``), so the
+    frame's own providers say what the entry offers, as
+    ``graft_boxes.state_with_active_box`` does for a grafted box.
     """
 
-    frame = owned_top_frame(state, FrameKind.REVEAL_CHOICE, player)
-    if frame is None:
-        return ()
-    context = frame_context(frame)
-    if context.get("reveal_spy_recalled") is True or context.get(_RESUMED_KEY) is True:
-        return ()
-    return (DomainAction(action_id="defer_reveal_choice", actor=player),)
-
-
-def apply_defer_reveal_choice(state: GameState, action: DomainAction) -> RuleResult:
-    """Move the current Reveal choice to the Reveal frame's deferred queue."""
-
-    if action not in legal_defer_reveal_choice_actions(state, action.actor):
-        raise ValueError("action is not a legal Reveal choice deferral")
-    frame = state.decision_stack[-1]
-    context = frame_context(frame)
-    card_id = context_str(context, "reveal_card_id", owner=_CHOICE_FRAME)
-    effect = context_str(context, "reveal_choice_effect", owner=_CHOICE_FRAME)
-    frames = _queue_deferred_choices(state.decision_stack[:-1], ((card_id, effect),))
-    return RuleResult(
-        state=replace(state, decision_stack=frames),
-        events=(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"reveal_card:{card_id}:{effect}:deferred"
-                ),
-                kind="reveal_choice_deferred",
-                payload=(
-                    ("card_id", card_id),
-                    ("effect", effect),
-                    ("player", action.actor),
-                ),
-            ),
-        ),
+    card_id, effect = entry
+    frame = _build_reveal_choice_frame(
+        state.round_number, player, card_id, PersonalCardRevealChoiceEffect(effect)
     )
+    return replace(state, decision_stack=(*state.decision_stack, frame))
 
 
-def legal_resume_reveal_choice_actions(
+type EntryRows = tuple[tuple[PendingChoice, tuple[DomainAction, ...]], ...]
+
+# The last few states' pending rows, by identity: the Reveal frame's
+# providers, ``finish_reveal`` and the page ask for the same state's rows
+# several times in one step.
+_ROWS_CACHE: list[tuple[GameState, int, EntryRows]] = []
+_ROWS_CACHE_SIZE: Final = 8
+
+
+def pending_choice_entries(state: GameState, player: int) -> EntryRows | None:
+    """Each pending choice of ``player``'s Reveal with the actions it offers now.
+
+    None unless ``player``'s Reveal frame is on top. An entry whose printed
+    condition fails now (``_reveal_choice_effect_is_available``) offers
+    nothing; so does one whose condition holds with nothing to choose (a
+    Spy icon with no free post).
+    """
+
+    if owned_top_frame(state, FrameKind.REVEAL, player) is None:
+        return None
+    for cached, seat, rows in _ROWS_CACHE:
+        if cached is state and seat == player:
+            return rows
+    context = frame_context(state.decision_stack[-1])
+    entries = pending_reveal_choices(context)
+    result: EntryRows = ()
+    if entries:
+        available = _available_pending_choices(state, player, context)
+        providers = reveal_choice_providers()
+        found: list[tuple[PendingChoice, tuple[DomainAction, ...]]] = []
+        for entry in entries:
+            if entry not in available:
+                found.append((entry, ()))
+                continue
+            virtual = _entry_state(state, player, entry)
+            found.append(
+                (
+                    entry,
+                    tuple(
+                        action
+                        for provider in providers
+                        for action in provider(virtual, player)
+                    ),
+                )
+            )
+        result = tuple(found)
+    _ROWS_CACHE.append((state, player, result))
+    if len(_ROWS_CACHE) > _ROWS_CACHE_SIZE:
+        del _ROWS_CACHE[0]
+    return result
+
+
+def pending_choice_rows(
+    state: GameState, player: int, provider: ChoiceProvider
+) -> tuple[DomainAction, ...] | None:
+    """``provider``'s actions for ``player``'s pending Reveal choices.
+
+    None unless ``player``'s Reveal frame is on top: the provider then reads
+    its own ``REVEAL_CHOICE`` frame. With the Reveal frame on top, each
+    pending entry that is available now is asked on its own frame
+    (``_entry_state``); an action two interchangeable entries offer appears
+    once.
+    """
+
+    if owned_top_frame(state, FrameKind.REVEAL, player) is None:
+        return None
+    context = frame_context(state.decision_stack[-1])
+    available = _available_pending_choices(state, player, context)
+    rows: dict[DomainAction, None] = {}
+    for entry in pending_reveal_choices(context):
+        if entry in available:
+            rows.update(
+                dict.fromkeys(provider(_entry_state(state, player, entry), player))
+            )
+    return tuple(rows)
+
+
+def legal_pending_reveal_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return one resume action per kind of deferred choice that can open now.
+    """Offer every pending Reveal choice that can be taken now, on the Reveal frame.
 
-    A deferred choice whose printed condition currently fails stays queued
-    without an action: a later Reveal choice of the owner (a Spy placed,
-    Spice gained) can still satisfy it [Main p. 12].
+    "You may resolve Reveal effects in any order you like", and Persuasion
+    may be used to acquire before, between or after them [Main p. 12]: each
+    entry offers what its ``REVEAL_CHOICE`` frame would, beside the
+    purchases, gains and Plots, in pending order (OQ-095 (7) addition, user
+    ruling 2026-10-14). An optional choice offers no refusal; leaving it
+    unused lapses it at ``finish_reveal``. Identical actions of
+    interchangeable entries (two copies of one card) appear once.
     """
 
-    frame = owned_top_frame(state, FrameKind.REVEAL, player)
-    if frame is None:
+    by_entry = pending_choice_entries(state, player)
+    if not by_entry:
         return ()
-    kinds: list[str] = []
-    for _, effect in _available_deferred_choices(state, player, frame_context(frame)):
-        if effect not in kinds:
-            kinds.append(effect)
-    return tuple(
-        DomainAction(
-            action_id="resume_reveal_choice",
-            actor=player,
-            arguments=(("effect", effect),),
+    return tuple(dict.fromkeys(action for _, rows in by_entry for action in rows))
+
+
+def _open_pending(
+    state: GameState, action: DomainAction, provider: ChoiceProvider
+) -> GameState:
+    """``state`` with the pending choice ``action`` takes open on its frame.
+
+    Unchanged unless the actor's Reveal frame is on top. The first pending
+    entry (in pending order) whose frame offers ``action`` leaves the list
+    and its ``REVEAL_CHOICE`` frame is pushed, so the frame's own handler
+    resolves the action and closes it, or keeps it on top for a step that
+    must follow at once (a Spy recalled for its placement).
+    """
+
+    frame = owned_top_frame(state, FrameKind.REVEAL, action.actor)
+    if frame is None or action.action_id not in REVEAL_CHOICE_ACTION_IDS:
+        return state
+    context = frame_context(frame)
+    entries = pending_reveal_choices(context)
+    available = _available_pending_choices(state, action.actor, context)
+    for index, entry in enumerate(entries):
+        if entry not in available:
+            continue
+        opened = _entry_state(state, action.actor, entry)
+        if action not in provider(opened, action.actor):
+            continue
+        context[_PENDING_CHOICES_KEY] = _encode_pending(
+            (*entries[:index], *entries[index + 1 :])
         )
-        for effect in kinds
-    )
-
-
-def apply_resume_reveal_choice(state: GameState, action: DomainAction) -> RuleResult:
-    """Bring the oldest openable deferred choice of the named kind back on top.
-
-    Availability is judged now, in the owner's chosen order [Main p. 12]
-    [Main pp. 9, 20]; the action is only offered while some entry of that
-    kind can open.
-    """
-
-    if action not in legal_resume_reveal_choice_actions(state, action.actor):
-        raise ValueError("action is not a legal Reveal choice resumption")
-    frame = state.decision_stack[-1]
-    context = frame_context(frame)
-    effect_value = str(dict(action.arguments)["effect"])
-    player = action.actor
-    available = _available_deferred_choices(state, player, context)
-    card_id = next(
-        entry_card for entry_card, effect in available if effect == effect_value
-    )
-    entries = list(_deferred_reveal_choices(context))
-    entries.remove((card_id, effect_value))
-    context[_DEFERRED_CHOICES_KEY] = _encode_deferred(tuple(entries))
-    reveal_frame = with_context(frame, context)
-    effect = PersonalCardRevealChoiceEffect(effect_value)
-    source = (
-        f"round:{state.round_number}:player:{player}:"
-        f"reveal_card:{card_id}:{effect_value}"
-    )
-    resumed_event = GameEvent(
-        event_id=f"{source}:resumed",
-        kind="reveal_choice_resumed",
-        payload=(("card_id", card_id), ("effect", effect_value), ("player", player)),
-    )
-    choice = _build_reveal_choice_frame(state.round_number, player, card_id, effect)
-    choice_context = frame_context(choice)
-    choice_context[_RESUMED_KEY] = True
-    return RuleResult(
-        state=replace(
+        return replace(
             state,
             decision_stack=(
                 *state.decision_stack[:-1],
-                reveal_frame,
-                with_context(choice, choice_context),
+                with_context(frame, context),
+                opened.decision_stack[-1],
             ),
-        ),
-        events=(resumed_event,),
+        )
+    return state
+
+
+def _every_choice_action(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    return tuple(
+        action
+        for provider in reveal_choice_providers()
+        for action in provider(state, player)
+    )
+
+
+def open_pending_reveal_choice(state: GameState, action: DomainAction) -> GameState:
+    """``state`` with the pending Reveal choice ``action`` takes on top.
+
+    The step every Reveal choice handler takes first (``_open_pending``):
+    unchanged unless the actor's Reveal frame is on top and a pending entry
+    offers ``action``.
+    """
+
+    return _open_pending(state, action, _every_choice_action)
+
+
+def mandatory_choice_is_pending(state: GameState, player: int) -> bool:
+    """Whether a mandatory pending Reveal choice offers something now.
+
+    A Spy icon with a Spy in supply (OQ-057 (14)), a printed "-OR-" choice
+    (Desert Power before its branch, OQ-069) or an Influence gain must be
+    answered before the Reveal ends (``MANDATORY_REVEAL_CHOICES``); one
+    whose condition fails now, or that has nothing to choose, does not hold
+    the end and lapses with it.
+    """
+
+    by_entry = pending_choice_entries(state, player) or ()
+    return any(
+        rows and PersonalCardRevealChoiceEffect(effect) in MANDATORY_REVEAL_CHOICES
+        for (_, effect), rows in by_entry
+    )
+
+
+def waiting_deferred_choices(
+    state: GameState,
+    player: int,
+) -> tuple[PendingChoice, ...]:
+    """Return ``player``'s pending Reveal choices that offer nothing now.
+
+    Each is a ``(card instance, effect)`` entry of the open Reveal frame's
+    pending choices whose printed condition fails now (or that has nothing
+    to choose); a later choice of the owner can still open it, and it lapses
+    at ``finish_reveal`` if it never does [Main p. 12]. The page shows these
+    greyed out (``display.unavailable``, user request 2026-09-29). Empty
+    unless ``player``'s Reveal is on top.
+    """
+
+    by_entry = pending_choice_entries(state, player) or ()
+    return tuple(entry for entry, rows in by_entry if not rows)
+
+
+def waiting_choice_action(player: int, effect: str) -> DomainAction:
+    """The row that stands for a waiting pending Reveal choice on the page.
+
+    Never legal: ``resume_reveal_choice`` brought a deferred choice back
+    before codec v147, and its catalog row stays as a never-legal one. The
+    page greys it out with its prompt (``display.unavailable``).
+    """
+
+    return DomainAction(
+        action_id="resume_reveal_choice",
+        actor=player,
+        arguments=(("effect", effect),),
     )
 
 
@@ -3928,23 +4144,6 @@ def _apply_late_reveal_frame_update(
     raise RuntimeError("late-reveal card is missing its Reveal frame")
 
 
-def _insert_after_reveal_frame(
-    frames: tuple[DecisionFrame, ...],
-    new_frames: tuple[DecisionFrame, ...],
-) -> tuple[DecisionFrame, ...]:
-    """Insert frames directly above the Reveal frame, wherever it sits.
-
-    A pending Intrigue choice frame above the Reveal frame must stay on top
-    so the card that caused this late reveal is not buried mid-resolution;
-    the new frames slot in between it and the Reveal frame instead.
-    """
-
-    for index in range(len(frames) - 1, -1, -1):
-        if frames[index].kind == FrameKind.REVEAL:
-            return (*frames[: index + 1], *new_frames, *frames[index + 1 :])
-    raise RuntimeError("late-reveal choice is missing its Reveal frame")
-
-
 def _late_reveal_one_card(
     state: GameState,
     player: int,
@@ -3957,8 +4156,9 @@ def _late_reveal_one_card(
     to ``in_play``, grants its own Reveal contribution evaluated over the
     now-larger revealed set, adds the increment its arrival causes to other
     already-revealed cards' cross-scaling effects (those still in play), and
-    opens its own choice effects. Amounts already granted to other cards are
-    final and are never recomputed here, only added to.
+    adds its own choice effects to the Reveal's pending choices. Amounts
+    already granted to other cards are final and are never recomputed here,
+    only added to.
     """
 
     owner = state.players[player]
@@ -4117,40 +4317,20 @@ def _late_reveal_one_card(
             ),
         )
     ]
-    latest_owner = next_state.players[player]
-    choice_frames: list[DecisionFrame] = []
-    late_deferred: list[tuple[str, str]] = []
-    for choice_effect in card.reveal_choice_effects:
-        if _reveal_choice_effect_is_available(
-            next_state,
-            player,
-            latest_owner,
-            cards_in_play,
-            card_id,
-            choice_effect,
-            persuasion=_frame_generated_persuasion(next_state.decision_stack),
-        ):
-            choice_frames.append(
-                _build_reveal_choice_frame(
-                    state.round_number, player, card_id, choice_effect
-                )
-            )
-        else:
-            late_deferred.append((card_id, choice_effect.value))
-    if choice_frames:
-        next_state = replace(
-            next_state,
-            decision_stack=_insert_after_reveal_frame(
-                next_state.decision_stack, tuple(reversed(choice_frames))
+    # Its choice effects join the Reveal's pending choices after the ones
+    # already there, offered with them whenever their condition holds
+    # (OQ-095 (7) addition): no frame opens, so a frame above the Reveal
+    # frame (the Intrigue choice that drew the card) stays on top.
+    next_state = replace(
+        next_state,
+        decision_stack=_queue_pending_choices(
+            next_state.decision_stack,
+            tuple(
+                (card_id, choice_effect.value)
+                for choice_effect in card.reveal_choice_effects
             ),
-        )
-    if late_deferred:
-        next_state = replace(
-            next_state,
-            decision_stack=_queue_deferred_choices(
-                next_state.decision_stack, tuple(late_deferred)
-            ),
-        )
+        ),
+    )
     # The card is used this turn like a card revealed at the start [FAQ p. 3],
     # so its recorded effects also trash it or open the Combat icon, as in
     # begin_reveal_turn (after Leadership has counted it, as in
@@ -4520,30 +4700,19 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
         context=tuple(sorted(context)),
     )
-    choice_frames: list[DecisionFrame] = []
-    deferred: list[tuple[str, str]] = []
-    for card_id, card in zip(revealed, cards, strict=True):
-        for choice_effect in card.reveal_choice_effects:
-            if _reveal_choice_effect_is_available(
-                state,
-                action.actor,
-                owner,
-                cards_in_play,
-                card_id,
-                choice_effect,
-                persuasion=persuasion,
-            ):
-                choice_frames.append(
-                    _build_reveal_choice_frame(
-                        state.round_number, action.actor, card_id, choice_effect
-                    )
-                )
-            else:
-                # Queued rather than skipped: a later Reveal choice of the
-                # owner can still satisfy its printed condition [Main p. 12].
-                deferred.append((card_id, choice_effect.value))
+    # Every choice effect of the revealed cards waits on the Reveal frame in
+    # hand order, offered there with the purchases and gains whenever its
+    # printed condition holds (OQ-095 (7) addition, user ruling 2026-10-14):
+    # Reveal effects resolve in any order the owner likes [Main p. 12], and
+    # one whose condition fails now can still open after a later choice.
     reveal_context = frame_context(reveal_frame)
-    reveal_context[_DEFERRED_CHOICES_KEY] = _encode_deferred(tuple(deferred))
+    reveal_context[_PENDING_CHOICES_KEY] = _encode_pending(
+        tuple(
+            (card_id, choice_effect.value)
+            for card_id, card in zip(revealed, cards, strict=True)
+            for choice_effect in card.reveal_choice_effects
+        )
+    )
     reveal_frame = with_context(reveal_frame, reveal_context)
     # Forbidden Weapons' "Reveal Turn: You must choose" and Panopticon's Spy
     # wait on the Reveal frame for the owner's order (OQ-044).
@@ -4561,11 +4730,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     next_state = replace(
         state,
         players=players,
-        decision_stack=(
-            *state.decision_stack[:-1],
-            reveal_frame,
-            *reversed(choice_frames),
-        ),
+        decision_stack=(*state.decision_stack[:-1], reveal_frame),
     )
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:reveal",
@@ -4665,9 +4830,10 @@ def legal_finish_reveal_actions(
     owner = context["turn_owner"]
     if isinstance(owner, bool) or not isinstance(owner, int) or owner != player:
         return ()
-    if _available_deferred_choices(state, player, context):
-        # A deferred choice that can open now still has to be resolved; the
-        # ones whose condition fails simply lapse when the Reveal ends.
+    if mandatory_choice_is_pending(state, player):
+        # A mandatory Reveal choice that offers something now must be
+        # answered; an optional one, or one whose condition fails now,
+        # lapses when the Reveal ends (OQ-095 (7) addition).
         return ()
     if reveal_pending_gains(context):
         # Every troop recruit and Intrigue draw must be taken (OQ-045).
@@ -4711,21 +4877,23 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         raise RuntimeError("a Reveal turn cannot end over a waiting draw")
     if action not in legal_finish_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal cleanup")
-    # Deferred choices whose printed condition never came back lapse here.
+    # Every choice still pending lapses here: an optional one left unused,
+    # one whose printed condition never came true (OQ-095 (7) addition, user
+    # ruling 2026-10-14).
     lapsed_events = tuple(
         GameEvent(
             event_id=(
                 f"round:{state.round_number}:player:{action.actor}:"
-                f"reveal_card:{card_id}:{effect}:unavailable"
+                f"reveal_card:{card_id}:{effect}:lapsed"
             ),
-            kind="reveal_choice_unavailable",
+            kind="reveal_choice_lapsed",
             payload=(
                 ("card_id", card_id),
                 ("effect", effect),
                 ("player", action.actor),
             ),
         )
-        for card_id, effect in _deferred_reveal_choices(
+        for card_id, effect in pending_reveal_choices(
             frame_context(state.decision_stack[-1])
         )
     )
