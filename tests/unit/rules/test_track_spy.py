@@ -212,6 +212,10 @@ def _change_allegiances_to_four(
 
     card = CHANGE_ALLEGIANCES
     state = _turn_state(owner, config)
+    if "decline_turn_start" in _ids(state):
+        # A held Litany Against Fear or Withdrawn is asked first and alone
+        # (OQ-095 (6), user ruling 2026-10-14); leave it unplayed.
+        state = _apply(state, DomainAction("decline_turn_start", 0))
     state = _apply(
         state, DomainAction("play_intrigue", 0, (("card_id", card), ("option", 0)))
     )
@@ -412,6 +416,10 @@ def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None
     # turn" cards are gone before the Spy is owed and stay gone once it is
     # placed (OQ-095 (6), user ruling 2026-10-04). Until then the cards had
     # their own hold for an owed Spy (user ruling 2026-10-04, OQ-057 (15)).
+    # Since the user ruling of 2026-10-14 the start is asked first and
+    # alone: the window offers the two cards and ``decline_turn_start`` and
+    # nothing that could owe a Spy, and its refusal ends the start before
+    # the Plot.
     litany = "imperium:litany_against_fear:0"
     withdrawn = "intrigue:twisted_withdrawn:0"
     owner = PlayerState(
@@ -424,10 +432,14 @@ def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None
     )
     bloodlines = RulesetConfig(bloodlines=True)
     free = _turn_state(owner, bloodlines)
-    assert "play_turn_start_card" in _ids(free)
-    assert DomainAction(
-        "play_intrigue", 0, (("card_id", withdrawn), ("option", 0))
-    ) in ENGINE.legal_actions(free, 0)
+    assert ENGINE.legal_actions(free, 0) == (
+        DomainAction("play_turn_start_card", 0, (("card_id", litany),)),
+        DomainAction("play_intrigue", 0, (("card_id", withdrawn), ("option", 0))),
+        DomainAction("decline_turn_start", 0),
+    )
+    # The window and an owed Spy never meet: the invariant refuses one.
+    with pytest.raises(InvariantViolation, match="turn start"):
+        check_track_spy_queue(_owed(free, 0))
 
     owing = _change_allegiances_to_four(owner, bloodlines)
     assert owing.decision_stack[-1].kind == FrameKind.TURN
@@ -436,6 +448,7 @@ def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None
     offered = {action.action_id for action in legal}
     assert "place_track_spy" in offered
     assert "play_turn_start_card" not in offered
+    assert "decline_turn_start" not in offered
     assert "play_intrigue" not in offered
     # The page greys both out: the turn's start is over.
     greyed = unavailable_choices(owing, 0, legal)
@@ -450,7 +463,11 @@ def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None
     placed = _place_on(_apply(owing, PLACE), IMPERIAL_PRIVILEGE_POST)
     assert placed.decision_stack[-1].kind == FrameKind.TURN
     assert not owes_track_spy(placed, 0)
-    assert not {"play_turn_start_card", "play_intrigue"} & set(_ids(placed))
+    assert not {
+        "play_turn_start_card",
+        "play_intrigue",
+        "decline_turn_start",
+    } & set(_ids(placed))
 
 
 def test_the_turn_closing_paths_refuse_an_owed_spy() -> None:

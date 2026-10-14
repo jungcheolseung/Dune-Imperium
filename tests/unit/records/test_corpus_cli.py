@@ -149,7 +149,24 @@ def test_pick_options_reach_the_pick(
     out = pick("--mix", "rhra")
     assert "1 of 4 records match" in out and _picked(out) == ["no-tech.rhra.1"]
 
-    key = "action_ids:agent_turn"
+    # A key whose top count only some of the records reach, so that
+    # ``--min-count`` narrows what ``--has`` alone picks. It was
+    # ``action_ids:agent_turn`` until codec v146 (OQ-095 (2): an optional
+    # Agent-turn effect offers no refusal), whose flow change made every
+    # round-1 record of the tiny corpus place all eight Agents
+    # (no-tech.rhra.1 had placed seven), so the key is now found in the
+    # corpus rather than named.
+    def narrows(key: str) -> bool:
+        most = max(row.count(key) for row in corpus.rows())
+        return most > 1 and 0 < len(corpus.pick([key], min_count=most)) < len(
+            corpus.pick([key])
+        )
+
+    key = next(
+        key
+        for key in sorted({key for row in corpus.rows() for key in row.keys})
+        if key.startswith("action_ids:") and narrows(key)
+    )
     most = max(row.count(key) for row in corpus.rows())
     expected = [row.id for row in corpus.pick([key], min_count=most)]
     assert 0 < len(expected) < 4

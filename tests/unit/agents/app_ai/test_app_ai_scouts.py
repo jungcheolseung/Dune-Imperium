@@ -1403,7 +1403,10 @@ def test_imperial_reserve_collect_in_a_real_frame() -> None:
     ``solari``; the ability is Explicit, its Cost holds, and its answer is the
     first strict best of ``Spi(1)``, ``Sol(2)`` in that order."""
 
-    state = _first_with("scouts_collect_mission", 2, 3)
+    # Seed 3 reached this until the user ruling of 2026-10-14 (an optional
+    # effect of the Agent turn lapses at the turn's end, OQ-095 (2)) moved
+    # the heuristic games; 5 is the first seed from 3 that reaches it again.
+    state = _first_with("scouts_collect_mission", 2, 5)
     seat = owner(state)
     choices = {
         dict(a.arguments)["choice"] for a in _legal(state, "scouts_collect_mission")

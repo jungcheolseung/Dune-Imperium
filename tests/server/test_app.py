@@ -742,44 +742,47 @@ def test_a_picture_replaced_in_place_gets_a_new_url(tmp_path: Path) -> None:
 def test_undo_and_log_over_http(client: TestClient) -> None:
     # The scripted revisions follow the AI seats' moves, so they play the
     # registry's pinned 2026-09-10 table rather than the retunable
-    # ``heuristic`` (see tests/server/test_undo.py).
+    # ``heuristic`` (see tests/server/test_undo.py). Seed 14's revisions
+    # moved one step earlier with v146: optional Agent-turn effects offer no
+    # refusal (OQ-095 (2), 2026-10-14), so seat 3 no longer declines its
+    # optional Signet Ring step (tests/server/test_undo.py, HUMAN_FIRST).
     summary = _create(
         client,
         game_seed=14,
         seats=["human"] + ["heuristic_uprising_table"] * 3,
     )
     game_id = str(summary["game_id"])
-    while int(str(summary["revision"])) < 13:
+    while int(str(summary["revision"])) < 12:
         response = client.post(
             f"/games/{game_id}/actions",
             json={"seat": 0, "revision": summary["revision"], "index": 0},
         )
         assert response.status_code == 200, response.text
         summary = response.json()
-    assert summary["revision"] == 13
+    assert summary["revision"] == 12
     assert summary["undo"] == [{"seat": 0, "steps": 2}]
 
     stale = client.post(
-        f"/games/{game_id}/undo", json={"seat": 0, "revision": 12, "steps": 1}
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 11, "steps": 1}
     )
     assert stale.status_code == 409, stale.text
     too_many = client.post(
-        f"/games/{game_id}/undo", json={"seat": 0, "revision": 13, "steps": 3}
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 12, "steps": 3}
     )
     assert too_many.status_code == 400, too_many.text
 
     undone = client.post(
         f"/games/{game_id}/undo",
-        json={"seat": 0, "revision": 13, "steps": 1, "undo_count": 0},
+        json={"seat": 0, "revision": 12, "steps": 1, "undo_count": 0},
     )
     assert undone.status_code == 200, undone.text
-    assert undone.json()["revision"] == 12
+    assert undone.json()["revision"] == 11
     assert undone.json()["undo"] == [{"seat": 0, "steps": 1}]
     assert undone.json()["undo_count"] == 1
     # A stale client still sending undo generation 0 is refused.
     stale_generation = client.post(
         f"/games/{game_id}/actions",
-        json={"seat": 0, "revision": 12, "index": 0, "undo_count": 0},
+        json={"seat": 0, "revision": 11, "index": 0, "undo_count": 0},
     )
     assert stale_generation.status_code == 409, stale_generation.text
 

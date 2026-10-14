@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from copy import replace
 from dataclasses import dataclass
 from dataclasses import replace as replace_card
+from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
@@ -367,6 +369,97 @@ BOARD_ICON_COMMANDER = "sardaukar_commander"
 # Landsraad board space" [Bloodlines pp. 7, 12]; like the Commander it is an
 # effect of the visit, not a printed icon.
 BOARD_ICON_TECH = "tech"
+# The visit's optional effects -- "may", an arrow cost or a black trash icon
+# [FAQ p. 3]: Desert Tactics' trash ("원하면 card 1장 trash", [Board Guide
+# p. 1] [Main p. 20]), Imperial Privilege's Intrigue trade (an arrow cost,
+# [Main p. 20]), the Sardaukar Commander's purchase ("2 Solari를 지불해 …
+# recruit할 수 있다" [Bloodlines p. 4]), the Ixian Embassy's Acquire Tech
+# [Bloodlines pp. 7, 12] and an Arrakeen Scouts subcommittee seat (OQ-076).
+# They hold no turn end back; the press lapses one left unused (OQ-095 (2),
+# user ruling 2026-10-14). The values are ``board_effects.BOARD_ICON_TRASH``
+# and ``BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE`` and
+# ``scouts_offers.BOARD_ICON_SUBCOMMITTEE``, spelled here so this module
+# keeps importing none of them (a test checks they agree).
+OPTIONAL_BOARD_ICONS: Final = frozenset(
+    {
+        "trash",
+        "imperial_privilege_intrigue",
+        BOARD_ICON_COMMANDER,
+        BOARD_ICON_TECH,
+        "scouts_subcommittee",
+    }
+)
+
+
+class OptionalBlockKind(StrEnum):
+    """Why an optional effect of the owner's Agent turn offers nothing now.
+
+    Such an effect offers no refusal (OQ-095 (2), user ruling 2026-10-14),
+    so one that cannot be used now offers no row at all; each provider gates
+    it with a block function returning ``OptionalEffectBlock`` (None when it
+    can be used), and the page greys the effect out with the same answer
+    (``display.unavailable``).
+    """
+
+    # A cost short of ``needed`` (``held`` now).
+    SPICE = "spice"
+    WATER = "water"
+    SOLARI = "solari"
+    SPECIMENS = "specimens"
+    HAND = "hand"  # cards in hand
+    INTRIGUE = "intrigue"  # an Intrigue card in hand to trash
+    ALLIANCE = "alliance"  # ``faction``'s Alliance
+    INFLUENCE = "influence"  # ``needed`` ``faction`` Influence
+    GENETIC_MARKERS = "genetic_markers"
+    NO_UNIT = "no_unit"  # a troop or Commander to lose
+    NO_UNIT_IN_CONFLICT = "no_unit_in_conflict"
+    NO_COMMANDER_IN_CONFLICT = "no_commander_in_conflict"
+    NO_CARD_TO_TRASH = "no_card_to_trash"
+    NO_SPY_POST = "no_spy_post"  # no Spy to place where the ability needs one
+    NO_EMPEROR_CARD = "no_emperor_card"  # another Emperor card in hand
+    # Nothing in reach of the acquisition (``needed``: its cost cap, 0 when
+    # it is paid in Solari, ``held`` of them).
+    NOTHING_TO_ACQUIRE = "nothing_to_acquire"
+    MAKER_HOOKS = "maker_hooks"
+    # The reward would do nothing (OQ-071).
+    NO_CARD_TO_DRAW = "no_card_to_draw"
+    TECH_UNAFFORDABLE = "tech_unaffordable"  # ``needed``: cheapest tile
+    TECH_NEEDS_SPY = "tech_needs_spy"  # Advanced Data Analysis only
+    # Never again in this turn.
+    TLEILAXU_TRACK_END = "tleilaxu_track_end"
+    NO_PARTNER = "no_partner"  # the other grafted card left play
+    NOT_IN_PLAY = "not_in_play"  # "Trash this card" once it left play
+    NO_FACTION_GAIN = "no_faction_gain"  # the visit's Influence is not pending
+    FACTION_NEAR_TOP = "faction_near_top"  # two would end where one does
+    NO_CONFLICT = "no_conflict"
+    DEPLOYMENT_BARRED = "deployment_barred"
+    AGENT_LEFT = "agent_left"  # the Agent sent this turn left its space
+    COMMANDER_GONE = "commander_gone"  # no Commander waits on the space
+    TECH_STACKS_EMPTY = "tech_stacks_empty"
+    # Waits for the visit's mandatory effects (Reverend Mother's repeat).
+    AFTER_THE_SPACE = "after_the_space"
+
+
+@dataclass(frozen=True, slots=True)
+class OptionalEffectBlock:
+    """One optional effect's block: its kind, the amount it needs and what
+    the owner has, and a Faction where one is named."""
+
+    kind: OptionalBlockKind
+    needed: int = 0
+    held: int = 0
+    faction: str = ""
+    # A second block the effect also has (Chani's Fedaykin Maneuver: no
+    # unit to retreat and a water draw it cannot pay).
+    also: OptionalEffectBlock | None = None
+
+
+def short_of(
+    kind: OptionalBlockKind, needed: int, held: int
+) -> OptionalEffectBlock | None:
+    """``kind``'s block when ``held`` is below ``needed``, else None."""
+
+    return OptionalEffectBlock(kind, needed, held) if held < needed else None
 
 
 def is_grafted(context: Mapping[str, ActionValue]) -> bool:
@@ -421,15 +514,34 @@ def active_agent_card(context: Mapping[str, ActionValue]) -> PersonalCardDefinit
 
 
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:
-    """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
+    """Queue every printed icon of the visit again (Reverend Mother's repeat).
 
-    icons = tuple(
+    An optional effect of the visit still unused stays queued once: the
+    repeat may come before it (it waits only for the mandatory icons,
+    ``mandatory_board_icons_pending``).
+    """
+
+    printed = printed_board_icons(context)
+    icons = (
+        *printed,
+        *(key for key in pending_board_icons(context) if key not in printed),
+    )
+    context["pending_board_icons"] = ",".join(icons)
+    context["pending_board_effect"] = bool(icons)
+
+
+def printed_board_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """The visit's printed icons, the ones a repeat queues again.
+
+    ``board_icons`` without the Commander and Tech offers: effects of the
+    visit, not printed on the space.
+    """
+
+    return tuple(
         key
         for key in _icon_keys(context, "board_icons")
         if key not in (BOARD_ICON_COMMANDER, BOARD_ICON_TECH)
     )
-    context["pending_board_icons"] = ",".join(icons)
-    context["pending_board_effect"] = bool(icons)
 
 
 def _icon_keys(context: Mapping[str, ActionValue], name: str) -> tuple[str, ...]:
@@ -525,6 +637,20 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
     )
 
 
+def mandatory_board_icons_pending(context: Mapping[str, ActionValue]) -> bool:
+    """Whether a mandatory effect of the visited space still waits.
+
+    The visit's optional icons (``OPTIONAL_BOARD_ICONS``) do not count: an
+    unused one lapses when the turn ends (OQ-095 (2), user ruling
+    2026-10-14).
+    """
+
+    if context.get("pending_board_effect") is not True:
+        return False
+    icons = pending_board_icons(context)
+    return not icons or any(key not in OPTIONAL_BOARD_ICONS for key in icons)
+
+
 def agent_turn_has_other_pending_effects(
     context: dict[str, ActionValue],
     players: tuple[PlayerState, ...],
@@ -534,18 +660,22 @@ def agent_turn_has_other_pending_effects(
     """Return whether a mandatory group of the turn is still pending.
 
     The Combat deployment window is not one: it stays open until the owner
-    finishes the turn (OQ-029, OQ-095). With ``ignore_agent_effect`` a
-    pending Agent box is left out — the explicit turn end asks this when
-    that box can only fizzle (OQ-057).
+    finishes the turn (OQ-029, OQ-095); nor is an optional effect left
+    unused (OQ-095 (2), user ruling 2026-10-14). With
+    ``ignore_agent_effect`` a pending Agent box is left out — the explicit
+    turn end asks this when every pending box is optional or can only
+    fizzle (OQ-057).
     """
 
     regular_pending = (
         context.get("pending_gather_intelligence", False),
-        context.get("pending_leader_ability", False),
-        context.get("pending_leader_board_repeat", False),
+        # Other Memories ("you may") and Reverend Mother's paid repeat (an
+        # arrow, "1 water -> repeat") are optional: the press lapses them
+        # (user ruling 2026-10-14).
         False if ignore_agent_effect else context["pending_agent_effect"],
         False if ignore_agent_effect else context.get("graft_pending_effect", False),
-        context["pending_board_effect"],
+        # The visit's optional icons do not count (``OPTIONAL_BOARD_ICONS``).
+        mandatory_board_icons_pending(context),
         context["pending_faction_influence"],
         # Urgent Shigawire's added draw is offered whatever the box does
         # (user ruling 2026-10-10, OQ-106).

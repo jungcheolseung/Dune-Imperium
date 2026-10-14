@@ -434,17 +434,21 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 23 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 111 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
     the owner's view says so, and working that out leaves the session as it
-    was."""
+    was. (v146: optional Agent-turn effects offer no refusal (OQ-095 (2),
+    2026-10-14), which moved seed 23's random walk off this position, and
+    the turn-start window and Other Memories without a refusal (same day)
+    moved its replacement seed 43 off it again; re-searched, seeds 111 and
+    223 are the only ones of 0-299.)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 23, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 111, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:6", "reserve:prepare_the_way:1")
+    assert (card, earlier) == ("reserve:prepare_the_way:7", "reserve:prepare_the_way:2")
     session = manager._get(game_id)
     before = (
         session.state,

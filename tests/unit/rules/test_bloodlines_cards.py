@@ -3000,19 +3000,23 @@ def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     assert frame.kind == "turn"
     assert dict(frame.context)["turn_owner"] == 1
 
-    # "At the start of your turn": only the turn's first action, so not
-    # after a Plot, though the turn frame is still open (OQ-095 (6), user
-    # ruling 2026-10-04).
+    # "At the start of your turn": only the turn's first action (OQ-095
+    # (6), user ruling 2026-10-04), asked first and alone (user ruling
+    # 2026-10-14): the turn opens with the card and ``decline_turn_start``
+    # only, the Plot waiting behind them. Once refused, the card is not
+    # offered though the turn frame is still open, and the Plot is.
+    engine = UprisingRulesEngine()
     plot = "intrigue:contingency_plan:0"
+    plot_play = DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0)))
     with_plot = _state(_owner(hand=(card,), intrigue_cards=(plot,)))
-    plotted = (
-        UprisingRulesEngine()
-        .apply(
-            with_plot,
-            DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0))),
-        )
-        .state
-    )
+    refuse = DomainAction("decline_turn_start", 0)
+    assert engine.legal_actions(with_plot, 0) == (actions[0], refuse)
+    declined = engine.apply(with_plot, refuse)
+    assert [event.kind for event in declined.events] == ["turn_start_declined"]
+    assert declined.state.decision_stack[-1].kind == "turn"
+    assert legal_turn_start_card_actions(declined.state, 0) == ()
+    assert plot_play in engine.legal_actions(declined.state, 0)
+    plotted = engine.apply(declined.state, plot_play).state
     assert plotted.decision_stack[-1].kind == "turn"
     assert legal_turn_start_card_actions(plotted, 0) == ()
 
@@ -4257,6 +4261,7 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 1  # v142: draw_planetologist_intrigue (OQ-106)
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 1  # v142: draw_owed_card (OQ-106)
+        + 1  # v146: decline_turn_start (user ruling 2026-10-14)
     )
     action = DomainAction(
         action_id="trash_agent_card",

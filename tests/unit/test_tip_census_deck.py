@@ -481,23 +481,31 @@ def test_base_seed_3_seat_2_matches_the_hand_trace(tip_census: ModuleType) -> No
     # 13 later rounds. An independent replay (no census import) recounted
     # these from the acquire and trash events and the hands, step by step;
     # the previous commit's engine gives the values pinned before.
+    # Re-traced 2026-10-14 -- v146: optional Agent-turn effects offer no
+    # refusal (OQ-095 (2), 2026-10-14): the game first diverges at round 1's
+    # second decision, seat 0's Signet Ring at Arrakeen, whose legal list no
+    # longer holds ``decline_leader_signet_payment``. Seat 2 (still Irulan)
+    # now buys 5, 6 and 6 cards in rounds 1-3, 4-6 and 7+, all 17 with
+    # Persuasion; Seek Allies trashes itself in round 1, and the one chosen
+    # trash is Tread in Darkness's trash icon taking a Maula Pistol at
+    # Imperial Privilege in round 8 (no Signet Ring trash any more); the 17
+    # bought cards come back to hand in 23 later rounds. An independent
+    # replay (no census import) recounted these from the acquire and trash
+    # events and the hands, step by step; the previous commit's engine (a
+    # ``git archive`` export) gives the values pinned before.
     census = tip_census.play(_spec(False, 3), ("deck",))
     row = census["seats"][2]
-    assert row["deck.buys"] == 9
-    assert row["deck.buys_r1_3"] == 4
-    assert row["deck.buys_r4_6"] == 3
-    assert row["deck.buys_r7p"] == 2
-    assert row["deck.buys_by_payment"] == {"persuasion": 9}
-    assert row["deck.trash_chosen"] == 3
-    assert row["deck.trash_starters"] == 2
+    assert row["deck.buys"] == 17
+    assert row["deck.buys_r1_3"] == 5
+    assert row["deck.buys_r4_6"] == 6
+    assert row["deck.buys_r7p"] == 6
+    assert row["deck.buys_by_payment"] == {"persuasion": 17}
+    assert row["deck.trash_chosen"] == 1
+    assert row["deck.trash_starters"] == 0
     assert row["deck.self_trashes"] == 1
-    assert row["deck.first_trash_round"] == 4
-    assert row["deck.trashed"] == {
-        "reconnaissance": 1,
-        "dune_the_desert_planet": 1,
-        "prepare_the_way": 1,
-    }
-    assert row["deck.exposure"] == pytest.approx(13 / 9)
+    assert row["deck.first_trash_round"] == 8
+    assert row["deck.trashed"] == {"maula_pistol": 1}
+    assert row["deck.exposure"] == pytest.approx(23 / 17)
 
 
 # ---------------------------------------------------------------------------

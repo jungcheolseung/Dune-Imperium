@@ -96,7 +96,6 @@ TURN_KEYS: Final = frozenset(
         "finish_deployment_window",
         "finish_recruited_units",
         "finishing",
-        "imperial_privilege_intrigue_resolved",
         "pending_board_effect",
         "pending_board_icons",
         "pending_combat_deployment",

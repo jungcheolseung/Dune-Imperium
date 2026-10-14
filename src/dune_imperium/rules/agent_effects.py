@@ -54,6 +54,8 @@ from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
+    OptionalBlockKind,
+    OptionalEffectBlock,
     active_agent_card,
     advance_after_effect,
     agent_card_source,
@@ -70,6 +72,7 @@ from dune_imperium.rules.effects import (
     recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
+    short_of,
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
@@ -125,6 +128,7 @@ from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
     place_spy,
     recall_spy,
+    solo_occupied_post_ids,
 )
 from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
@@ -362,21 +366,16 @@ def legal_agent_card_discard_actions(
     # you exhaust the Intrigue deck, shuffle the discarded Intrigue cards to
     # form a new deck." [FAQ p. 2]) or stops short when both piles are
     # empty, while the card draw still pays out.
+    decline = (
+        (DomainAction(action_id="decline_agent_card_discard", actor=player),)
+        if effect in _OPTIONAL_DISCARDS
+        else ()
+    )
+    if agent_card_cost_block(state, player) is not None:
+        # An optional discard with no card in hand.
+        return decline
     return (
-        *(
-            (DomainAction(action_id="decline_agent_card_discard", actor=player),)
-            if effect
-            in (
-                PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-                PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-                PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-                PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-                PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
-                PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-                PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
-            )
-            else ()
-        ),
+        *decline,
         *(
             DomainAction(
                 action_id="discard_agent_card",
@@ -1397,10 +1396,17 @@ def legal_agent_card_spy_actions(
             for post_id in placements
         )
     recall_post_ids = owner.spy_post_ids
-    if not placements and allowed_post_ids is not None:
+    if not placements and (deep_cover or double_agent):
         recall_post_ids = tuple(
-            post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
+            post_id
+            for post_id in owner.spy_post_ids
+            if allowed_post_ids is None or post_id in allowed_post_ids
         )
+    elif not placements:
+        # Only a recall that leaves its post empty opens a placement: a post
+        # shared with another player's Spy (Deep Cover) stays occupied
+        # [Main pp. 11, 20] (``solo_occupied_post_ids``).
+        recall_post_ids = solo_occupied_post_ids(state, player, allowed_post_ids)
     recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_agent_card",
@@ -1856,67 +1862,13 @@ def legal_agent_card_trash_actions(
         # The Beast's Spoils resolves its automatic rewards first; only the
         # Crysknife trashes it counted are then offered one at a time.
         return ()
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
-        and state.players[player].commanders_conflict < 1
-    ):
+    block = agent_card_trash_block(state, player)
+    if block is not None and block.kind is OptionalBlockKind.NO_COMMANDER_IN_CONFLICT:
         # Ruthless Leadership: "If you have one or more Sardaukar Commanders
         # in the Conflict" is judged when the box resolves (OQ-028); without
         # one, neither trash icon is offered and the box resolves without
         # effect.
         return ()
-
-    owner = state.players[player]
-    # A Row card borrowed with Usurp is not "in play" ("A grafted card in
-    # the Imperium Row isn't considered to be 'in play.'" [Immortality
-    # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
-    eligible = (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
-    ):
-        # Elite Forces: "a card from your hand".
-        eligible = owner.hand
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
-    ):
-        # "Trash this card" is the arrow cost (OQ-022: a card already trashed
-        # by another effect expired before this choice was offered).
-        eligible = (source_card_id,) if source_card_id in owner.in_play else ()
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
-    ):
-        # "Gain two Influence instead of one" [Treacherous Maneuver card]
-        # replaces the visited space's own single gain, "기본 1 대신 총 2"
-        # [Main p. 9] (docs/rules/player-turns.md). The arrow is offered
-        # only while that gain is still pending: an Agent infiltrated onto
-        # a space without a Faction [Main p. 11] has no Influence to gain
-        # (OQ-046), and once the space's 1 is gained there is nothing left
-        # to replace. With the visited Faction at 5 or 6 the track's top
-        # (``MAX_INFLUENCE``) makes two instead of one end where the 1
-        # would, so the two trashed cards would buy nothing: "비용이 있는
-        # 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071,
-        # user decision 2026-09-29).
-        space_id = context.get("space_id")
-        visited_faction = (
-            BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
-        )
-        eligible = (
-            tuple(
-                card_id
-                for card_id in owner.hand
-                if card_id != source_card_id
-                and Faction.EMPEROR in personal_card_for_instance(card_id).factions
-            )
-            if context.get("pending_faction_influence") is True
-            and visited_faction is not None
-            and influence_amount(owner.influence, visited_faction)
-            <= MAX_INFLUENCE - 2
-            else ()
-        )
     return (
         DomainAction(action_id="decline_agent_card_trash", actor=player),
         *(
@@ -1925,9 +1877,135 @@ def legal_agent_card_trash_actions(
                 actor=player,
                 arguments=(("card_id", card_id),),
             )
-            for card_id in eligible
+            for card_id in _agent_card_trash_targets(state, player, context)
         ),
     )
+
+
+# The Agent boxes whose optional trash ``legal_agent_card_trash_actions``
+# offers card by card (Tread in Darkness's trash icon is a choice icon of
+# its own, ``agent_icon_block``).
+_TRASH_BOXES: Final = frozenset(
+    {
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
+        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
+    }
+)
+_TREACHEROUS_MANEUVER = (
+    PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+)
+_PIVOTAL_GAMBIT = (
+    PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
+)
+
+
+def _treacherous_maneuver_block(
+    owner: PlayerState, context: Mapping[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """Treacherous Maneuver's arrow without the Influence it would replace.
+
+    "Gain two Influence instead of one" [Treacherous Maneuver card]
+    replaces the visited space's own single gain, "기본 1 대신 총 2"
+    [Main p. 9] (docs/rules/player-turns.md). The arrow is offered only
+    while that gain is still pending: an Agent infiltrated onto a space
+    without a Faction [Main p. 11] has no Influence to gain (OQ-046), and
+    once the space's 1 is gained there is nothing left to replace. With the
+    visited Faction at 5 or 6 the track's top (``MAX_INFLUENCE``) makes two
+    instead of one end where the 1 would, so the two trashed cards would
+    buy nothing: "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을
+    때만 제시한다" (OQ-071, user decision 2026-09-29).
+    """
+
+    space_id = context.get("space_id")
+    visited_faction = (
+        BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
+    )
+    if context.get("pending_faction_influence") is not True or visited_faction is None:
+        return OptionalEffectBlock(OptionalBlockKind.NO_FACTION_GAIN)
+    held = influence_amount(owner.influence, visited_faction)
+    if held > MAX_INFLUENCE - 2:
+        return OptionalEffectBlock(
+            OptionalBlockKind.FACTION_NEAR_TOP, held=held, faction=visited_faction.value
+        )
+    return None
+
+
+def _agent_card_trash_targets(
+    state: GameState, player: int, context: dict[str, ActionValue]
+) -> tuple[str, ...]:
+    """The cards the active Agent box's trash may take now."""
+
+    owner = state.players[player]
+    effect = active_agent_card(context).agent_effect
+    if effect is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
+        # Elite Forces: "a card from your hand".
+        return owner.hand
+    if effect is _PIVOTAL_GAMBIT:
+        # "Trash this card" is the arrow cost (OQ-022: a card already trashed
+        # by another effect expired before this choice was offered).
+        _, source_card_id, _ = _effect_subject(context)
+        return (source_card_id,) if source_card_id in owner.in_play else ()
+    if effect is _TREACHEROUS_MANEUVER:
+        if _treacherous_maneuver_block(owner, context) is not None:
+            return ()
+        _, source_card_id, _ = _effect_subject(context)
+        return tuple(
+            card_id
+            for card_id in owner.hand
+            if card_id != source_card_id
+            and Faction.EMPEROR in personal_card_for_instance(card_id).factions
+        )
+    # A Row card borrowed with Usurp is not "in play" ("A grafted card in
+    # the Imperium Row isn't considered to be 'in play.'" [Immortality
+    # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
+    return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+
+
+def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why the active Agent box's optional trash offers no card now, or None.
+
+    ``legal_agent_card_trash_actions`` offers Ruthless Leadership's trashes
+    only with a Sardaukar Commander in the Conflict, and every box's trash
+    for exactly the cards ``_agent_card_trash_targets`` names: none for
+    Elite Forces with an empty hand, Pivotal Gambit once it left play, or
+    Treacherous Maneuver without the Influence it replaces
+    (``_treacherous_maneuver_block``) or another Emperor card in hand. None
+    for a box with no such trash. The page greys an optional box that
+    offers nothing out with it (``display.unavailable``, OQ-095 (2)).
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    effect = active_agent_card(context).agent_effect
+    if effect not in _TRASH_BOXES:
+        return None
+    owner = state.players[player]
+    kind = OptionalBlockKind
+    if (
+        effect is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
+        and owner.commanders_conflict < 1
+    ):
+        return OptionalEffectBlock(kind.NO_COMMANDER_IN_CONFLICT)
+    if effect is _TREACHEROUS_MANEUVER:
+        block = _treacherous_maneuver_block(owner, context)
+        if block is not None:
+            return block
+    if _agent_card_trash_targets(state, player, context):
+        return None
+    if effect is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
+        return OptionalEffectBlock(kind.HAND, 1, 0)
+    if effect is _PIVOTAL_GAMBIT:
+        return OptionalEffectBlock(kind.NOT_IN_PLAY)
+    if effect is _TREACHEROUS_MANEUVER:
+        return OptionalEffectBlock(kind.NO_EMPEROR_CARD)
+    return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
 
 
 def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult:
@@ -2171,7 +2249,8 @@ def legal_agent_card_intrigue_payment_actions(
         # a Faction step of this turn may still grant it, so only declining
         # is offered until then (OQ-028).
         owner = state.players[player]
-        if Faction.BENE_GESSERIT.value not in owner.alliance_faction_ids:
+        if agent_card_cost_block(state, player) is not None:
+            # No Bene Gesserit Alliance, or no Intrigue card to trash.
             return (decline,)
         return (
             decline,
@@ -2192,11 +2271,7 @@ def legal_agent_card_intrigue_payment_actions(
     ):
         return ()
     owner = state.players[player]
-    if (
-        Faction.SPACING_GUILD.value not in owner.alliance_faction_ids
-        or owner.resources.spice < 2
-        or not owner.intrigue_cards
-    ):
+    if agent_card_cost_block(state, player) is not None:
         # The Alliance condition and the full arrow cost are judged again when
         # the player resolves the pending payment in their chosen effect order
         # [Main pp. 9, 20]; once they no longer hold, only skipping remains.
@@ -2379,6 +2454,127 @@ def agent_card_payment_block(
     return None
 
 
+_JUNCTION_HEADQUARTERS = (
+    PersonalCardAgentEffect
+    .MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+)
+_ARRAKIS_REVOLT = (
+    PersonalCardAgentEffect
+    .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+)
+# The Agent boxes whose optional discard any hand card pays; each offers its
+# refusal beside the discards (``legal_agent_card_discard_actions``).
+_OPTIONAL_DISCARDS: Final = frozenset(
+    {
+        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
+    }
+)
+
+
+def _alliance_block(owner: PlayerState, faction: Faction) -> OptionalEffectBlock | None:
+    if faction.value in owner.alliance_faction_ids:
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.ALLIANCE, faction=faction.value)
+
+
+def _intrigue_block(owner: PlayerState) -> OptionalEffectBlock | None:
+    if owner.intrigue_cards:
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.INTRIGUE)
+
+
+def _arrakis_revolt_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Arrakis Revolt's gate: Maker Hooks, the two spice, a Conflict, and a
+    paid option left (``_arrakis_revolt_options``)."""
+
+    owner = state.players[player]
+    if not owner.maker_hooks:
+        return OptionalEffectBlock(OptionalBlockKind.MAKER_HOOKS)
+    spice = short_of(OptionalBlockKind.SPICE, 2, owner.resources.spice)
+    if spice is not None:
+        return spice
+    if not state.current_conflict_ids:
+        return OptionalEffectBlock(OptionalBlockKind.NO_CONFLICT)
+    if not _arrakis_revolt_options(state, player):
+        # No Shield Wall to remove, and no sandworm may deploy.
+        return OptionalEffectBlock(OptionalBlockKind.DEPLOYMENT_BARRED)
+    return None
+
+
+def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why the active Agent box's optional cost cannot be paid now, or None.
+
+    The gate the box's own provider applies before it offers the payment
+    (``legal_agent_card_payment_actions``, ``legal_corrinth_city_payment_actions``,
+    ``legal_agent_card_intrigue_payment_actions``,
+    ``legal_agent_card_discard_actions``): each offers the payment exactly
+    when this is None. Judged now, in the owner's chosen order (OQ-028): a
+    freely ordered effect of the same turn may still pay it. None for a box
+    with no such gate. The page greys an optional box that offers nothing
+    out with it (``display.unavailable``, OQ-095 (2)).
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    owner = state.players[player]
+    resources = owner.resources
+    effect = active_agent_card(context).agent_effect
+    kind = OptionalBlockKind
+    if effect is _ARRAKIS_REVOLT:
+        return _arrakis_revolt_block(state, player)
+    if effect is PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI:
+        return short_of(kind.SPECIMENS, 1, owner.specimens)
+    if effect is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU:
+        return short_of(kind.SPECIMENS, 2, owner.specimens)
+    if effect is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
+        partner = other_grafted_card_id(context)
+        if not partner or partner not in owner.in_play:
+            return OptionalEffectBlock(kind.NO_PARTNER)
+        return None
+    if effect is _RESEARCH_AND_TRASH_FOR_VP:
+        return short_of(
+            kind.GENETIC_MARKERS, 2, genetic_markers_reached(owner.research_space)
+        )
+    if effect is _LOSE_TROOP_FOR_CARDS:
+        if (
+            owner.troops_garrison
+            + owner.commanders_garrison
+            + owner.troops_conflict
+            + owner.commanders_conflict
+        ) < 1:
+            return OptionalEffectBlock(kind.NO_UNIT)
+        return None
+    if effect is _SPICE_FOR_TRASH_AND_TROOP:
+        return short_of(kind.SPICE, CONTROL_THE_SPICE_PRICE, resources.spice)
+    if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:
+        return short_of(kind.WATER, 2, resources.water)
+    if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
+        return short_of(kind.SPICE, 4, resources.spice)
+    if effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
+        return short_of(kind.SOLARI, 5, resources.solari) or short_of(
+            kind.HAND, 2, len(owner.hand)
+        )
+    if effect is _BRANCHING_PATH:
+        return _alliance_block(owner, Faction.BENE_GESSERIT) or _intrigue_block(owner)
+    if effect is _JUNCTION_HEADQUARTERS:
+        return (
+            _alliance_block(owner, Faction.SPACING_GUILD)
+            or short_of(kind.SPICE, 2, resources.spice)
+            or _intrigue_block(owner)
+        )
+    if effect in _OPTIONAL_DISCARDS:
+        return short_of(kind.HAND, 1, len(owner.hand))
+    return None
+
+
 def legal_agent_card_payment_actions(
     state: GameState,
     player: int,
@@ -2409,7 +2605,7 @@ def legal_agent_card_payment_actions(
     ):
         # Organ Merchants: "specimen -> 4 Solari" [card face].
         decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if state.players[player].specimens < 1:
+        if agent_card_cost_block(state, player) is not None:
             return (decline,)
         return (
             decline,
@@ -2423,7 +2619,7 @@ def legal_agent_card_payment_actions(
         # not offered once the advances would do nothing (OQ-071).
         decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
         if (
-            state.players[player].specimens < 2
+            agent_card_cost_block(state, player) is not None
             or agent_card_payment_block(state, player, source_card.agent_effect)
             is not None
         ):
@@ -2438,8 +2634,7 @@ def legal_agent_card_payment_actions(
     ):
         # Dissecting Kit: "Trash the other grafted card -> a specimen"
         # [card face]; without a partner still in play the box does nothing.
-        partner = other_grafted_card_id(context)
-        if not partner or partner not in state.players[player].in_play:
+        if agent_card_cost_block(state, player) is not None:
             return ()
         return (
             DomainAction(action_id="decline_agent_card_payment", actor=player),
@@ -2465,7 +2660,7 @@ def legal_agent_card_payment_actions(
         # Research, resolved first, may reach the second marker [Main p. 9].
         # Before the Research, the plain resolution is the Research; after
         # it, the line is an arrow cost the owner may decline.
-        if genetic_markers_reached(owner.research_space) < 2:
+        if agent_card_cost_block(state, player) is not None:
             return ()
         return (
             DomainAction(
@@ -2520,6 +2715,9 @@ def legal_agent_card_payment_actions(
         # (OQ-105, user ruling 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼
         # 수 있게 해야지"). In each zone the troop comes first.
         actions = [DomainAction(action_id="decline_agent_card_payment", actor=player)]
+        if agent_card_cost_block(state, player) is not None:
+            # No troop or Commander anywhere to lose.
+            return tuple(actions)
         for zone in ("garrison", "conflict"):
             if getattr(owner, f"troops_{zone}") >= 1:
                 actions.append(
@@ -2556,7 +2754,7 @@ def legal_agent_card_payment_actions(
         # judged when the owner resolves the box in their chosen order
         # (OQ-028), so a spice gained first (Imperial Basin) pays it.
         decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if owner.resources.spice < CONTROL_THE_SPICE_PRICE:
+        if agent_card_cost_block(state, player) is not None:
             return (decline,)
         return (
             decline,
@@ -2567,18 +2765,9 @@ def legal_agent_card_payment_actions(
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
     ):
         return ()
-    owner = state.players[player]
     if (
-        (
-            source_card.agent_effect
-            is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-            and owner.resources.water < 2
-        )
-        or (
-            source_card.agent_effect
-            is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
-            and owner.resources.spice < 4
-        )
+        # Ecological Testing Station's 2 water, Smuggler's Haven's 4 spice.
+        agent_card_cost_block(state, player) is not None
         # Ecological Testing Station's draw with no card in the deck or the
         # discard pile would buy nothing (OQ-071).
         or agent_card_payment_block(state, player, source_card.agent_effect)
@@ -2626,13 +2815,12 @@ def legal_corrinth_city_payment_actions(
     ):
         return ()
     owner = state.players[player]
-    if owner.resources.solari < 5 or len(owner.hand) < 2:
-        # The full cost must still be payable when the player resolves the
-        # pending payment in their chosen effect order [Main pp. 9, 20]; once
-        # it is unaffordable, only skipping remains.
-        return (
-            DomainAction(action_id="decline_corrinth_city_payment", actor=player),
-        )
+    if agent_card_cost_block(state, player) is not None:
+        # The full cost (5 Solari, two cards in hand) must still be payable
+        # when the player resolves the pending payment in their chosen
+        # effect order [Main pp. 9, 20]; once it is unaffordable, only
+        # skipping remains.
+        return (DomainAction(action_id="decline_corrinth_city_payment", actor=player),)
     first_card_id = context.get("corrinth_first_card_id")
     if first_card_id is not None and not isinstance(first_card_id, str):
         raise RuntimeError("pending Corrinth City payment has invalid first card")
@@ -3125,14 +3313,17 @@ def _arrakis_revolt_payment_actions(
     """
 
     decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-    owner = state.players[player]
-    if (
-        not owner.maker_hooks
-        or owner.resources.spice < 2
-        or not state.current_conflict_ids
-    ):
+    if agent_card_cost_block(state, player) is not None:
         return (decline,)
-    actions = [decline]
+    return (decline, *_arrakis_revolt_options(state, player))
+
+
+def _arrakis_revolt_options(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Arrakis Revolt's paid options: none without the Shield Wall while
+    Emperor of the Known Universe bars deployment (``_arrakis_revolt_block``)."""
+
+    owner = state.players[player]
+    actions: list[DomainAction] = []
     if state.shield_wall_present:
         actions.append(
             DomainAction(
@@ -4156,6 +4347,247 @@ def graft_boxes_are_stalled(state: GameState) -> bool:
         agent_card_effect_is_unavailable(state_with_active_box(state, box))
         for box in pending
     )
+
+
+# Agent boxes printed as an optional effect -- "you may", an arrow cost or a
+# black trash icon [FAQ p. 3] (docs/rules/official-rulings-index.md
+# "optional effects"). Until the owner uses one it offers no refusal: the
+# turn's end is offered once every mandatory effect is done (OQ-095 (2)),
+# and the press lapses an optional box left unused (user ruling 2026-10-14,
+# "선택행동의 경우 거절 버튼이 왜 따로 있는거야 그럼?"). Once its cost is paid,
+# an arrow's queued rewards are mandatory like any printed effect.
+OPTIONAL_AGENT_BOXES: Final = frozenset(
+    {
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE,
+        PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
+        PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
+        PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
+        PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
+        PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
+        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
+        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
+        PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
+        PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
+        PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+        PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
+        PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
+    }
+)
+# The optional icons of boxes resolved icon by icon (OQ-027): Tread in
+# Darkness's black trash icon beside its mandatory draw, and Twisted Mentat's
+# "You may recall the Agent you sent this turn".
+OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = (
+    MappingProxyType(
+        {
+            _TRASH_TO_DRAW_IF_BOND: frozenset({AGENT_ICON_TRASH}),
+            PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: frozenset(
+                {AGENT_ICON_RECALL}
+            ),
+        }
+    )
+)
+# Progress an optional box drops when it lapses.
+_OPTIONAL_PROGRESS_KEYS: Final = (
+    "trashes_remaining",
+    "corrinth_first_card_id",
+    "feyd_track_stage",
+    "staban_bonus_post",
+    "listeners_paid",
+    "leader_spy_recalled",
+)
+# Signet Ring abilities that are optional as a whole: Spice Agony and Water
+# of Life ("1 Spice ->", an arrow) [Lady Jessica card] [Reverend Mother
+# Jessica card], Chronicler's Insight ("acquire … or trash …, or neither")
+# [Princess Irulan card], Fedaykin Maneuver ("Retreat any number" -- zero
+# included [FAQ p. 3] -- or water -> two cards) [Chani card] and Into the
+# Fray ("may") [Duncan Idaho card].
+_OPTIONAL_SIGNETS: Final = frozenset(
+    {"lady_jessica", "princess_irulan", "chani", "duncan_idaho"}
+)
+
+
+def box_is_optional(state: GameState) -> bool:
+    """Whether the active pending Agent box holds only optional effects now.
+
+    An untouched optional box (``OPTIONAL_AGENT_BOXES``), a box whose
+    remaining icons are all optional (``OPTIONAL_AGENT_ICONS``), the optional
+    trashes Ruthless Leadership and The Beast's Spoils still owe, and
+    Scientific Breakthrough's "Trash this card -> 1 VP" line once its
+    Research is done. Not once an arrow's cost is paid (its rewards are
+    queued as mandatory icons) nor while Arrakis Observer owes the Spy its
+    paid discard bought (a Spy placement is mandatory, OQ-057 (14)).
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get("pending_agent_effect") is not True:
+        return False
+    effect = active_agent_card(context).agent_effect
+    icons = pending_agent_icons(context)
+    if icons:
+        optional_icons = (
+            frozenset()
+            if effect is None
+            else OPTIONAL_AGENT_ICONS.get(effect, frozenset())
+        )
+        return set(icons) <= optional_icons
+    if context.get("agent_card_spy_pending") is True:
+        return False
+    if "trashes_remaining" in context:
+        return True
+    if effect is _RESEARCH_AND_TRASH_FOR_VP:
+        _, card_instance_id, _ = _effect_subject(context)
+        return _box_researched(context, card_instance_id)
+    if effect is PersonalCardAgentEffect.LEADER_SIGNET:
+        return _signet_is_optional(state, context)
+    return effect in OPTIONAL_AGENT_BOXES
+
+
+def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bool:
+    """Whether the Signet Ring box's Leader ability is optional at this stage.
+
+    ``_OPTIONAL_SIGNETS`` throughout; Staban Tuek's paid follow-up once its
+    Spy is placed (an arrow) [Staban Tuek card]; Count Hasimir Fenring's and
+    Gaius Helen Mohiam's "— OR —" until a Spy is recalled for the Spy half
+    (a Spy is then owed, OQ-057 (14)) -- their refusal was offered before
+    and stays the reading; Feyd-Rautha's trash stages (a black trash icon,
+    and "1 Solari -> trash") [Feyd-Rautha Harkonnen card]. The Spy stages,
+    Esmar Tuek's choose-one and the other Leaders' abilities are mandatory.
+    """
+
+    from dune_imperium.content.uprising.leaders import (
+        FEYD_TRACK_BY_ID,
+        FeydTrackReward,
+    )
+
+    leader_id = state.players[context_int(context, "turn_owner")].leader_id
+    if leader_id in _OPTIONAL_SIGNETS:
+        return True
+    if leader_id == "staban_tuek":
+        return isinstance(context.get("staban_bonus_post"), str)
+    if leader_id in ("count_hasimir_fenring", "gaius_helen_mohiam"):
+        return (
+            context.get("leader_spy_recalled") is not True
+            and context.get("listeners_paid") is not True
+        )
+    stage_id = context.get("feyd_track_stage")
+    return isinstance(stage_id, str) and FEYD_TRACK_BY_ID[stage_id].reward in (
+        FeydTrackReward.PAY_SOLARI_TO_TRASH,
+        FeydTrackReward.OPTIONAL_TRASH,
+    )
+
+
+def box_has_optional_icon(state: GameState) -> bool:
+    """Whether the active box still queues an optional icon (Tread in
+    Darkness's trash, Twisted Mentat's recall) beside any mandatory one."""
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get("pending_agent_effect") is not True:
+        return False
+    effect = active_agent_card(context).agent_effect
+    if effect is None:
+        return False
+    optional_icons = OPTIONAL_AGENT_ICONS.get(effect, frozenset())
+    return any(key in optional_icons for key in pending_agent_icons(context))
+
+
+def box_refusal_needed(state: GameState) -> bool:
+    """Whether the active optional box keeps its refusal row.
+
+    Only part way through a bundled selection -- Corrinth City between its
+    discards, Ruthless Leadership's second trash, The Beast's Spoils' owed
+    Crysknife trashes -- while the other grafted box waits for it
+    (``box_in_progress``, docs/graft-boxes-plan.md 4.3): the refusal is then
+    how the owner turns to the other card. Anywhere else an unused optional
+    box simply lapses when the turn ends.
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if not is_grafted_turn(context) or not box_is_pending(
+        context, 1 - active_box(context)
+    ):
+        return False
+    return _box_selection_under_way(state, context)
+
+
+def pending_boxes_hold_the_end(state: GameState) -> bool:
+    """Whether a pending Agent box of the turn still holds its end back.
+
+    A box holds it unless it is optional now (``box_is_optional``) or a
+    mandatory box that can only fizzle (OQ-057 (1)); with a graft each box
+    is judged with itself active.
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    for box in (0, 1):
+        if not box_is_pending(context, box):
+            continue
+        view = state_with_active_box(state, box)
+        if not box_is_optional(view) and not agent_card_effect_is_unavailable(view):
+            return True
+    return False
+
+
+def lapse_optional_boxes(state: GameState) -> RuleResult:
+    """Lapse every Agent box of the turn that is optional now (the turn end).
+
+    The owner's press of the turn's end is their answer to every optional
+    effect still unused (user ruling 2026-10-14); a box with only optional
+    icons left retires them. Each lapsed box is logged.
+    """
+
+    working = state
+    events: list[GameEvent] = []
+    for box in (0, 1):
+        _, context = current_agent_effect_context(working)
+        if not box_is_pending(context, box):
+            continue
+        view = state_with_active_box(working, box)
+        if not box_is_optional(view):
+            continue
+        _, context = current_agent_effect_context(view)
+        player, card_instance_id, _ = _effect_subject(context)
+        for key in pending_agent_icons(context):
+            finish_agent_icon(context, key)
+        context["pending_agent_effect"] = False
+        for key in _OPTIONAL_PROGRESS_KEYS:
+            context.pop(key, None)
+        working = advance_after_effect(view, context)
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"agent_card:{card_instance_id}:lapsed"
+                ),
+                kind="agent_card_effect_lapsed",
+                payload=(("card_id", card_instance_id), ("player", player)),
+            )
+        )
+    return RuleResult(state=working, events=tuple(events))
 
 
 # The Leader Signet stages a Signet Ring's box holds while its ability is

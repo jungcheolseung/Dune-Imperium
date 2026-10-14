@@ -343,11 +343,14 @@ def test_slot_rows_name_what_the_view_shows() -> None:
     # its seed 51 until the Intrigue effect gate of 2026-10-06: the
     # heuristic plays its Plot Intrigue after sending the Agent, where an
     # Agent icon no longer changes anything and is not offered, while the
-    # app AI plays them on its turn frame first).
+    # app AI plays them on its turn frame first). The app AI game was seed
+    # 58 until codec v146 (optional Agent-turn effects offer no refusal,
+    # OQ-095 (2), 2026-10-14) moved it: seats 2 and 3 no longer gain an
+    # Agent icon there; seed 51 is the first from 40 that covers every row.
     # The opening of a Leader draft game covers the draft pool (v32).
     views = (
         _game_views(21, _FORCED_LEADERS)
-        + _game_views(58, _FORCED_LEADERS, agent="app_ai")
+        + _game_views(51, _FORCED_LEADERS, agent="app_ai")
         + _game_views(21, (), config=replace(_FULL, leader_draft=True), limit=40)
     )
     observations = np.stack(

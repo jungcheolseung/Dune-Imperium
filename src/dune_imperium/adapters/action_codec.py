@@ -438,7 +438,26 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # added draw, which an older engine lapsed. No template change; recorded
 # step sequences change, so saves and replays from v144 are refused by the
 # version check.
-ACTION_CODEC_VERSION = 145
+# v146 (user ruling 2026-10-14, "선택행동의 경우 거절 버튼이 왜 따로 있는거야
+# 그럼?"; OQ-095 (2), [FAQ p. 3]): an optional effect of the Agent turn --
+# a "may", arrow or black-trash Agent box, a Leader Signet's optional stage,
+# the visit's optional icons (Desert Tactics' trash, Imperial Privilege's
+# Intrigue trade, a Sardaukar Commander, the Ixian Embassy's Tech, a
+# subcommittee seat) and Reverend Mother's repeat -- holds no turn end back
+# and offers no refusal; the press of ``finish_agent_turn`` lapses one left
+# unused (events ``agent_card_effect_lapsed``, ``board_effect_lapsed``,
+# ``leader_ability_lapsed``). A refusal stays where it is still needed: a
+# bundled selection part way through while the other grafted box waits, a
+# Spy placement passed up with an empty supply (OQ-057 (14)), the
+# confirmations of mandatory effects with no target, and every frame on top
+# of the turn. Imperial Privilege's trade and recall are now separate icons
+# offered together. Also in v146 (user ruling 2026-10-14, "그렇게 하자"):
+# Litany Against Fear and Withdrawn ("At the start of your turn") are asked
+# first and alone -- while the seat can play one, its turn opens with just
+# those plays and the new ``decline_turn_start`` (one template in the
+# Bloodlines catalogs, where both cards are). Recorded step sequences
+# change, so saves and replays from v145 are refused by the version check.
+ACTION_CODEC_VERSION = 146
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1151,6 +1170,10 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # A bank Commander with no choosable Skill is confirmed
             # (OQ-031, OQ-035 (b), user ruling 2026-10-02).
             "resolve_commander_without_skill",
+            # Leaving Litany Against Fear or Withdrawn (both Bloodlines)
+            # unplayed in the turn's start window (user ruling 2026-10-14;
+            # codec v146).
+            "decline_turn_start",
         )
     ]
     for action_id in (

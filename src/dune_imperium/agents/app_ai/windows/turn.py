@@ -39,7 +39,16 @@ bloodlines-cards.md §3.18 and §8, bloodlines-systems.md §1.7, §3.3-3.4):
 
 - ``play_turn_start_card`` (Litany Against Fear): one key per card,
   ``LitanyTurnStartAbility::Evaluate`` (draw value + the reveal penalty;
-  D11), competing with the placements and Plots of this prompt.
+  D11), competing with the placements and Plots of this prompt. Our engine
+  asks the turn's start on its own first (OQ-095 (6), user ruling
+  2026-10-14): while Litany or Withdrawn can be played, the TURN frame
+  offers just those plays and ``decline_turn_start``, and the turn's usual
+  choices follow the refusal. The app has no such step, so the window is
+  answered by the app's one ``DetermineTurn`` (``_turn_start_window``):
+  the prompt is rebuilt from the plays and the choices the engine offers
+  once the start is declined, and a play is taken only when that prompt
+  picks it; otherwise the refusal, after which the usual choices are asked
+  as ever.
 - ``flip_tech`` (Advanced Data Analysis, Spy Drones): the tile's Flip ability
   is a key of the turn-start prompt (D25), E 100 (D23).
 - ``resolve_tech_acquire_effect`` (a tile bought by a Plot at the turn
@@ -82,6 +91,7 @@ kind missing here (or a handler returning None) falls back to a random legal
 action (``DefaultRandomChoice``), counted in ``AppAIAgent.fallbacks``.
 """
 
+import copy
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 
@@ -139,11 +149,12 @@ from dune_imperium.agents.app_ai.windows.common import (
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
-from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
+from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, Memory, arg
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_turn import apply_agent_action
+from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.graft import legal_graft_partner_actions
 
 #: The board set of a 4-player Uprising game (``SetupPhase/<BeginSetup>``).
@@ -170,8 +181,23 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "play_turn_start_card",
         "flip_tech",
         "resolve_tech_acquire_effect",
+        # The turn's start window (``_turn_start_window``).
+        "decline_turn_start",
     }
 )
+#: The plays the turn's start window offers beside ``decline_turn_start``:
+#: Litany Against Fear and Withdrawn (``rules/engine.turn_start_window_actions``).
+_TURN_START_PLAYS: frozenset[str] = frozenset({"play_turn_start_card", "play_intrigue"})
+#: The order our engine listed the TURN frame's choices in before the start
+#: window (codec 145): the placements, the turn-start cards, the Reveal, the
+#: Plots in held order (Withdrawn among them), then the rest in the order the
+#: engine still gives them.
+_PROMPT_ORDER: dict[str, int] = {
+    "agent_turn": 0,
+    "play_turn_start_card": 1,
+    "reveal_turn": 2,
+    "play_intrigue": 3,
+}
 #: Navigation Chamber's discount variants of one space, in our legal order
 #: (``rules/agent_turn.py`` ``_actions_for_affordable_costs``): the plain
 #: cost, then the spice cut, then the Solari cut. The cut is mandatory
@@ -1001,7 +1027,98 @@ def _acquire_effect_action(
 
 
 def turn_window(run: DecisionRun) -> DomainAction | None:
-    """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer)."""
+    """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer).
+
+    The turn's start window (``decline_turn_start`` offered) is answered by
+    the same prompt (``_turn_start_window``).
+    """
+
+    decline = run.first("decline_turn_start")
+    if decline is not None:
+        return _turn_start_window(run, decline)
+    return _determine_turn(run)
+
+
+def _turn_start_window(run: DecisionRun, decline: DomainAction) -> DomainAction | None:
+    """The turn's start asked on its own, answered by the app's one prompt.
+
+    Our engine offers Litany Against Fear (``play_turn_start_card``) and
+    Withdrawn (``play_intrigue`` of its turn-start option) first and alone,
+    with ``decline_turn_start`` (OQ-095 (6), user ruling 2026-10-14); the app
+    has them as keys of ``DetermineTurn`` beside the placements, the Plots
+    and the Reveal. So ``DetermineTurn`` is run here, on this state, over
+    the plays and the choices the engine offers once the start is declined
+    (``_prompt_with_start``): the window's answer is the play that prompt
+    picks, else the refusal. The prompt's RNG draws and memory writes are
+    kept with a play (the app's prompt ends there) and undone with the
+    refusal, so the turn's usual choices that follow are asked afresh from
+    the same RNG position, as the app's one prompt would have been asked.
+
+    Exact against the earlier engine (one TURN frame offering everything):
+    this is that decision, on the same state, with the same legal actions in
+    the same order. After the refusal the usual choices are evaluated again
+    without the plays, so a tie the shuffle broke may fall otherwise there.
+    """
+
+    plays = tuple(action for action in run.legal if action != decline)
+    if not plays or any(a.action_id not in _TURN_START_PLAYS for a in plays):
+        return None  # a window play with no app key: fall back
+    prompt = _prompt_with_start(run, plays, decline)
+    rng_state = run.rng.getstate()
+    memory = copy.deepcopy(run.memory)
+    chosen = _determine_turn(replace(run, legal=prompt))
+    if chosen is None:
+        return None
+    if chosen in plays:
+        return chosen
+    run.rng.setstate(rng_state)
+    _restore(run.memory, memory)
+    return decline
+
+
+def _prompt_with_start(
+    run: DecisionRun, plays: tuple[DomainAction, ...], decline: DomainAction
+) -> tuple[DomainAction, ...]:
+    """``DetermineTurn``'s choices: ``plays`` and what follows the refusal.
+
+    The engine declines the start on a copy of the state and lists the
+    seat's choices there; only the seat's own state decides them (its hand,
+    held Intrigue, resources, Agents and the board), the very list the seat
+    is offered next, so the answer reads nothing the seat may not see. The
+    merged list keeps the order our engine gave the one TURN frame
+    (``_PROMPT_ORDER``): within an action id that order is the app's target
+    and key order here (the Plots' keys in held order).
+    """
+
+    engine = UprisingRulesEngine()
+    seat = run.ctx.seat
+    after = engine.apply(run.ctx.state, decline).state
+    usual = engine.legal_actions(after, seat)
+    held = run.ctx.intrigue_cards
+
+    def order(action: DomainAction) -> tuple[int, int, int]:
+        rank = _PROMPT_ORDER.get(action.action_id, len(_PROMPT_ORDER))
+        if action.action_id != "play_intrigue":
+            return rank, 0, 0
+        card = str_arg(action, "card_id")
+        index = held.index(card) if card in held else len(held)
+        return rank, index, int_arg(action, "option") or 0
+
+    return tuple(sorted((*usual, *plays), key=order))
+
+
+def _restore(memory: Memory, saved: Memory) -> None:
+    """Put ``memory`` back to ``saved`` (in place: the agent holds it)."""
+
+    memory.intents.clear()
+    memory.intents.update(saved.intents)
+    memory.data.clear()
+    memory.data.update(saved.data)
+
+
+def _determine_turn(run: DecisionRun) -> DomainAction | None:
+    """``DetermineTurn`` over the turn's usual choices (and, rebuilt by
+    ``_turn_start_window``, the turn-start plays among them)."""
 
     drawn = triggered_draw(run)
     if drawn is not None:

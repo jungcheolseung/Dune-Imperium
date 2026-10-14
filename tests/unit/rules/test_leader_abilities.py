@@ -945,11 +945,10 @@ def test_other_memories_flips_and_draws_per_memory() -> None:
     placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
     assert dict(placed.decision_stack[-1].context)["pending_leader_ability"] is True
 
+    # "you may" [Lady Jessica card]: optional, so no refusal row; left
+    # unused it lapses at the turn end (OQ-095 (2), user ruling 2026-10-14).
     actions = legal_leader_placement_ability_actions(placed, 0)
-    assert {action.action_id for action in actions} == {
-        "use_other_memories",
-        "decline_other_memories",
-    }
+    assert {action.action_id for action in actions} == {"use_other_memories"}
     use = next(action for action in actions if action.action_id == "use_other_memories")
     result = apply_leader_placement_ability(placed, use)
     resolved = result.state.players[0]
@@ -984,23 +983,38 @@ def test_other_memories_with_no_memories_still_flips() -> None:
     assert dict(result.events[0].payload)["memories_returned"] == 0
 
 
-def test_other_memories_declining_keeps_the_lady_jessica_face() -> None:
+def test_other_memories_left_unused_lapses_and_keeps_the_lady_jessica_face() -> (
+    None
+):
+    # "you may return all your memories" [Lady Jessica card] is used at any
+    # point of the turn (user ruling 2026-10-14: "기존대로 턴 중에 원할 때").
+    # Before codec v146 it offered ``decline_other_memories`` and held the
+    # turn end until answered; now it offers no refusal, stays offered
+    # beside the turn end, and the press lapses it (OQ-095 (2)).
     owner = _jessica_owner(spice=1, memories=1, hand=(_diplomacy_instance(),))
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+    engine = UprisingRulesEngine()
+    use = DomainAction(action_id="use_other_memories", actor=0)
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
 
-    decline = next(
-        action
-        for action in legal_leader_placement_ability_actions(placed, 0)
-        if action.action_id == "decline_other_memories"
-    )
-    result = apply_leader_placement_ability(placed, decline)
+    while finish not in (legal := engine.legal_actions(placed, 0)):
+        assert use in legal
+        assert "decline_other_memories" not in {action.action_id for action in legal}
+        placed = engine.apply(
+            placed, next(action for action in legal if action != use)
+        ).state
+    assert set(legal) == {use, finish}
 
+    result = engine.apply(placed, finish)
+
+    (lapsed,) = [
+        event for event in result.events if event.kind == "leader_ability_lapsed"
+    ]
+    assert lapsed.event_id.endswith(":other_memories:lapsed")
+    assert lapsed.payload == (("player", 0),)
     assert result.state.players[0].leader_face_id == "lady_jessica"
     assert result.state.players[0].memories == 1
-    assert (
-        dict(result.state.decision_stack[-1].context)["pending_leader_ability"] is False
-    )
 
 
 def test_other_memories_is_not_pending_outside_bene_gesserit_spaces() -> None:
@@ -1033,11 +1047,10 @@ def test_reverend_mother_repeats_a_board_space_for_one_water() -> None:
     first = resolve_board_effect(placed, _board_icon_action(placed, "cards"))
     assert first.state.players[0].hand[-1] == dagger
 
+    # The repeat is an arrow (water -> repeat): no refusal row, the turn end
+    # lapses it (OQ-095 (2), user ruling 2026-10-14; codec v146).
     actions = legal_leader_board_repeat_actions(first.state, 0)
-    assert {action.action_id for action in actions} == {
-        "decline_leader_board_repeat",
-        "pay_leader_board_repeat",
-    }
+    assert {action.action_id for action in actions} == {"pay_leader_board_repeat"}
     pay = next(
         action for action in actions if action.action_id == "pay_leader_board_repeat"
     )
@@ -1055,7 +1068,11 @@ def test_reverend_mother_repeats_a_board_space_for_one_water() -> None:
     assert legal_leader_board_repeat_actions(second_pass.state, 0) == ()
 
 
-def test_reverend_mother_repeat_without_water_only_declines() -> None:
+def test_reverend_mother_repeat_without_water_lapses_at_the_turn_end() -> None:
+    # Before codec v146 only ``decline_leader_board_repeat`` was offered and
+    # the turn waited on it; since the user ruling of 2026-10-14 (OQ-095
+    # (2)) the optional repeat offers nothing it cannot pay and the owner's
+    # press lapses it with ``leader_ability_lapsed``.
     owner = _jessica_owner(
         face="reverend_mother_jessica",
         water=0,
@@ -1064,22 +1081,38 @@ def test_reverend_mother_repeat_without_water_only_declines() -> None:
     )
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
-    first = resolve_board_effect(placed, _board_icon_action(placed, "cards"))
+    first = resolve_board_effect(placed, _board_icon_action(placed, "cards")).state
 
-    actions = legal_leader_board_repeat_actions(first.state, 0)
-
-    assert [action.action_id for action in actions] == ["decline_leader_board_repeat"]
-    result = apply_leader_board_repeat(first.state, actions[0])
-    assert (
-        dict(result.state.decision_stack[-1].context)["pending_leader_board_repeat"]
-        is False
-    )
+    assert legal_leader_board_repeat_actions(first, 0) == ()
+    engine = UprisingRulesEngine()
+    while steps := [
+        action
+        for action in engine.legal_actions(first, 0)
+        if action.action_id
+        in ("resolve_faction_influence", "resolve_agent_card_effect")
+    ]:
+        first = engine.apply(first, steps[0]).state
+    assert dict(first.decision_stack[-1].context)["pending_leader_board_repeat"]
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in engine.legal_actions(first, 0)
+    result = engine.apply(first, finish)
+    # The two abilities' lapses differ by their event ids only.
+    assert [
+        (event.event_id.rsplit(":", 2)[-2], dict(event.payload))
+        for event in result.events
+        if event.kind == "leader_ability_lapsed"
+    ] == [("board_repeat", {"player": 0})]
 
 
 def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
     # Desert Tactics prints a troop icon and an optional trash icon, each its
     # own freely ordered effect [Main p. 9] (OQ-027); the paid repeat queues
-    # both again and waits until the first pass has resolved both.
+    # both again. It waits only for the mandatory troop: the optional trash
+    # left unused holds it back no more than it holds the turn end (OQ-095
+    # (2), user ruling 2026-10-14; before codec v146 the trash had to be
+    # declined first). Paying the repeat lapses that unused trash
+    # (``board_effect_lapsed``) before arming the printed icons again, as
+    # declining it before the repeat did in the old engine.
     owner = _jessica_owner(
         face="reverend_mother_jessica",
         water=2,
@@ -1094,20 +1127,36 @@ def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
 
     recruited = resolve_board_effect(placed, _board_icon_action(placed, "troops")).state
     assert recruited.players[0].troops_garrison == 4
-    assert legal_leader_board_repeat_actions(recruited, 0) == ()
-    decline = next(
-        action
-        for action in legal_desert_tactics_actions(recruited, 0)
-        if action.action_id == "resolve_desert_tactics_without_trash"
-    )
-    first = apply_desert_tactics_action(recruited, decline).state
+    assert dict(recruited.decision_stack[-1].context)["pending_board_icons"] == "trash"
+    pay = DomainAction(action_id="pay_leader_board_repeat", actor=0)
+    assert legal_leader_board_repeat_actions(recruited, 0) == (pay,)
 
-    pay = next(
-        action
-        for action in legal_leader_board_repeat_actions(first, 0)
-        if action.action_id == "pay_leader_board_repeat"
-    )
-    paid = apply_leader_board_repeat(first, pay).state
+    def lapsed(result: RuleResult) -> list[tuple[str, dict[str, object]]]:
+        return [
+            (event.event_id, dict(event.payload))
+            for event in result.events
+            if event.kind == "board_effect_lapsed"
+        ]
+
+    # Used first, the trash is armed again by the repeat; nothing lapses.
+    trash = legal_desert_tactics_actions(recruited, 0)[0]
+    trashed = apply_desert_tactics_action(recruited, trash).state
+    repeated_result = apply_leader_board_repeat(trashed, pay)
+    assert lapsed(repeated_result) == []
+    rearmed = dict(repeated_result.state.decision_stack[-1].context)
+    assert rearmed["pending_board_icons"] == "troops,trash"
+
+    # Unused, it lapses with the payment and the repeat arms it anew: one
+    # trash queued beside the repeated troop.
+    paid_result = apply_leader_board_repeat(recruited, pay)
+    assert lapsed(paid_result) == [
+        (
+            "round:1:player:0:leader_board_repeat:trash:lapsed",
+            {"effect": "trash", "player": 0, "space_id": "desert_tactics"},
+        )
+    ]
+    assert paid_result.events[-1].kind == "leader_board_repeat_paid"
+    paid = paid_result.state
     paid_context = dict(paid.decision_stack[-1].context)
     assert paid_context["pending_board_icons"] == "troops,trash"
     assert paid_context["pending_board_effect"] is True

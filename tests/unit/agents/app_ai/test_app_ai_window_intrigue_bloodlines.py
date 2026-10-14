@@ -126,10 +126,19 @@ def _give_tech(state: GameState, seat: int, *tech_ids: str) -> GameState:
 
 def _turn(*instances: str) -> GameState:
     """The first turn-start prompt of a Bloodlines game, the seat holding
-    ``instances``."""
+    ``instances``.
+
+    Holding Withdrawn opens the turn's start window first (its play and
+    ``decline_turn_start`` alone, OQ-095 (6), user ruling 2026-10-14); it is
+    declined here, so the prompt is the turn's usual one with the Plots.
+    """
 
     state = first_decision("turn", config=BLOODLINES, seed=3)
-    return _holding(state, _seat(state), *instances)
+    state = _holding(state, _seat(state), *instances)
+    decline = next(
+        (a for a in _legal(state) if a.action_id == "decline_turn_start"), None
+    )
+    return state if decline is None else _apply(state, decline)
 
 
 def _combat(*instances: str) -> GameState:
@@ -573,16 +582,18 @@ def _endgame(seat_cards: Sequence[str], *instances: str) -> GameState:
     """The first Endgame window, its seat holding ``instances`` and exactly
     ``seat_cards`` face up (Objectives face down).
 
-    Seed 208. Seed 3 served until 5654d7f8 (a Combat Intrigue pass right
+    Seed 311. Seed 3 served until 5654d7f8 (a Combat Intrigue pass right
     after a card play no longer counts as a consecutive pass, 2026-10-07)
     moved its game: its Endgame now opens with Test of Loyalty unwon on the
     Conflict stack, so no seat can hold it face up. Most seeds set some of
     these tests' five Conflict cards aside at setup or leave one in the
-    deck or on the stack; 208 is the first from 3 where none is in a shared
-    zone.
+    deck or on the stack; 208 was the first from 3 where none is in a shared
+    zone, until the user ruling of 2026-10-14 (an optional effect of the
+    Agent turn lapses at the turn's end, OQ-095 (2)) moved the heuristic
+    games; 311 is the first from 208.
     """
 
-    state = first_decision("endgame_intrigue", config=BLOODLINES, seed=208)
+    state = first_decision("endgame_intrigue", config=BLOODLINES, seed=311)
     seat = _seat(state)
     for other in state.players:
         if other.player_id == seat:

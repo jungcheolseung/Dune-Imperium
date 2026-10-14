@@ -1126,7 +1126,10 @@ def test_imperial_privilege_trash_then_draw_is_not_warned_short() -> None:
 
     shown = warnings(state)
     assert shown["trash_intrigue_for_imperial_privilege"] == (None, None)
-    assert shown["decline_imperial_privilege_intrigue"] == (None, None)
+    # The optional trade offers no refusal (OQ-095 (2), user ruling
+    # 2026-10-14); the recall's confirm stands beside it, unwarned.
+    assert "decline_imperial_privilege_intrigue" not in shown
+    assert shown["resolve_imperial_privilege_without_recall"] == (None, None)
     for seed in range(3):
         assert warnings(determinize(state, 0, random.Random(seed))) == shown
 
@@ -1161,6 +1164,7 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
     )
     from dune_imperium.core import (
         DecisionFrame,
+        DomainAction,
         GamePhase,
         GameState,
         Influence,
@@ -1200,6 +1204,9 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
             ),
         ),
     )
+    # Withdrawn is playable, so the turn opens with its start window first
+    # (OQ-095 (6), user ruling 2026-10-14); leave it unplayed.
+    turn = engine.apply(turn, DomainAction("decline_turn_start", 0)).state
     place = next(
         action
         for action in engine.legal_actions(turn, 0)
@@ -1226,7 +1233,10 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
         " (버림 더미의 뒤틀린 책략 1장은 섞지 않음)",
         [{"kind": "intrigue", "requested": 1, "made": 0, "twisted": 1}],
     )
-    assert shown["decline_imperial_privilege_intrigue"] == (None, None)
+    # The optional trade offers no refusal (OQ-095 (2), user ruling
+    # 2026-10-14); the recall's confirm stands beside it, unwarned.
+    assert "decline_imperial_privilege_intrigue" not in shown
+    assert shown["resolve_imperial_privilege_without_recall"] == (None, None)
     for seed in range(3):
         assert warnings(determinize(state, 0, random.Random(seed))) == shown
 
@@ -1531,5 +1541,6 @@ def test_serialized_control_the_spice_payment_says_what_it_buys() -> None:
             "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
             "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
         ),
-        "decline_agent_card_payment": (None, None),
+        # No refusal row: the unpaid arrow lapses at the turn end (OQ-095
+        # (2), user ruling 2026-10-14).
     }

@@ -216,6 +216,19 @@ def _ids(actions: list[DomainAction]) -> list[str]:
     return [a.action_id + "".join(f":{v}" for _, v in a.arguments) for a in actions]
 
 
+def _lapsed(state: GameState, seat: int) -> list[str]:
+    """The kinds of the lapse events of ``seat``'s optional effects left
+    unused: an optional effect of the Agent turn offers no refusal and the
+    press of ``finish_agent_turn`` lapses it (OQ-095 (2), user ruling
+    2026-10-14)."""
+
+    return [
+        event.kind
+        for event in state.event_log
+        if event.kind.endswith("_lapsed") and dict(event.payload).get("player") == seat
+    ]
+
+
 def _sources(
     state: GameState, seat: int, patches: Patches | None = None
 ) -> Iterator[Source]:
@@ -642,7 +655,9 @@ def test_shipping_takes_its_5_solari_then_the_best_influence() -> None:
 
 @pytest.mark.parametrize("junk", [True, False])
 def test_desert_tactics_trash(junk: bool) -> None:
-    """``TrashAgentAbility``: the junk card, or "trash nothing" at 1.0."""
+    """``TrashAgentAbility``: the junk card, or "trash nothing" at 1.0, which
+    leaves the optional trash unused: the turn's end lapses it (OQ-095 (2),
+    user ruling 2026-10-14)."""
 
     state, seat, _ = _place("diplomacy", "desert_tactics")
     dagger = next(c for c in state.players[seat].hand if ":dagger:" in c)
@@ -656,18 +671,15 @@ def test_desert_tactics_trash(junk: bool) -> None:
         return None, 1.0
 
     patches: Patches = {**NO_DEPLOY, "card_to_trash": card_to_trash}
-    taken, _ = _drive(state, seat, patches)
-    expected = (
-        f"trash_card_for_desert_tactics:{dagger}"
-        if junk
-        else "resolve_desert_tactics_without_trash"
-    )
+    taken, after = _drive(state, seat, patches)
+    trash = [f"trash_card_for_desert_tactics:{dagger}"] if junk else []
     assert _ids(taken) == [
         "resolve_board_effect:troops",
         "resolve_faction_influence",
-        expected,
+        *trash,
         "finish_agent_turn",
     ]
+    assert _lapsed(after, seat) == ([] if junk else ["board_effect_lapsed"])
 
 
 def _privilege(**changes: Any) -> tuple[GameState, int]:
@@ -686,8 +698,9 @@ _PRIVILEGE_DRAW = "resolve_board_effect"
 def test_imperial_privilege_trashes_a_bad_intrigue() -> None:
     """The space's draw is its own icon (user ruling 2026-10-10, OQ-027
     (d)), the app's ``DrawAbility`` at 600: it goes first, then
-    ``ImperialPrivilegeAbility`` trashes the bad Intrigue card or
-    declines."""
+    ``ImperialPrivilegeAbility`` trashes the bad Intrigue card, or leaves the
+    trade unused: with no Agent to recall the confirm (a chore) and End Turn
+    follow, and the turn's end lapses the trade (user ruling 2026-10-14)."""
 
     held = ("intrigue:buy_access:0", "intrigue:impress:0")
     state, seat = _privilege(intrigue_cards=held)
@@ -704,9 +717,12 @@ def test_imperial_privilege_trashes_a_bad_intrigue() -> None:
         seat, "trash_intrigue_for_imperial_privilege", card_id=held[1]
     )
     patches = {**NO_DEPLOY, "bad_intrigue_cards_in_hand": lambda: []}
-    assert _must(state, seat, patches) == _a(
-        seat, "decline_imperial_privilege_intrigue"
-    )
+    taken, after = _drive(state, seat, patches)
+    assert _ids(taken) == [
+        "resolve_imperial_privilege_without_recall",
+        "finish_agent_turn",
+    ]
+    assert _lapsed(after, seat) == ["board_effect_lapsed"]
 
 
 def test_imperial_privilege_recall_uses_get_recall_agent() -> None:
@@ -721,10 +737,10 @@ def test_imperial_privilege_recall_uses_get_recall_agent() -> None:
         "recall_agent_value": _const(2.0),
     }
     taken, _ = _drive(state, seat, patches)
-    # The draw at 600 first, then the Intrigue slot and the recall alone.
+    # The draw at 600 first, then the recall (the Intrigue trade, offered
+    # beside it since the user ruling of 2026-10-14, has no card to trade).
     assert _ids(taken) == [
         "resolve_board_effect:cards",
-        "decline_imperial_privilege_intrigue",
         "recall_agent_for_imperial_privilege:sardaukar",
         "finish_agent_turn",
     ]
@@ -735,8 +751,7 @@ def test_imperial_privilege_without_a_recall_is_a_chore() -> None:
     chore taken when the app would End Turn, and the draw is the space's
     ``DrawAbility`` through ``_board_icons`` (user ruling 2026-10-10)."""
 
-    state, seat = _privilege()
-    state = _apply(state, seat, _a(seat, "decline_imperial_privilege_intrigue"))
+    state, seat = _privilege(intrigue_cards=())
     turn = ae._turn(_run(state, seat))
     ae._imperial_privilege(turn)
     assert turn.sources == []
@@ -777,8 +792,9 @@ def _trash(
 def test_calculus_of_power_trash_beats_the_deferred_draw() -> None:
     """Calculus of Power (DeferValue 2) at Arrakeen (1) reaches the
     threshold: the draw waits in the prompt at 1.0 and the junk trash (5.0)
-    goes first; without junk ``TrashAbility`` answers "nothing" at 1.0, our
-    decline."""
+    goes first; without junk ``TrashAbility`` answers "nothing" at 1.0: the
+    optional trash is left unused (no candidate, and the key no longer forces
+    the prompt; the turn's end lapses it, user ruling 2026-10-14)."""
 
     state, seat, _ = _place("calculus_of_power", "arrakeen")
     dagger = _hand_card(state, seat, "dagger")
@@ -789,13 +805,15 @@ def test_calculus_of_power_trash_beats_the_deferred_draw() -> None:
     nothing: Patches = {**NO_DEPLOY, "card_to_trash": _trash(None, 1.0)}
     trash = next(s for s in _sources(state, seat, nothing) if s.label.endswith("trash"))
     assert trash.evaluate is not None
-    assert trash.evaluate() == (1.0, _a(seat, "decline_agent_card_trash"))
+    assert trash.extra["explicit"] is True
+    assert trash.evaluate() == (1.0, None)
+    assert trash.extra["explicit"] is False
 
 
 @pytest.mark.parametrize(("trash_value", "used"), [(3.0, True), (-5.0, False)])
 def test_shishakli_is_optional(trash_value: float, used: bool) -> None:
     """``ShishakliAgentAbility`` (Optional): Trash Value + one draw; unused
-    when not positive, then declined at End Turn."""
+    when not positive: End Turn lapses it (user ruling 2026-10-14)."""
 
     state, seat, _ = _place("shishakli", "arrakeen")
     dagger = _hand_card(state, seat, "dagger")
@@ -804,11 +822,10 @@ def test_shishakli_is_optional(trash_value: float, used: bool) -> None:
         "card_to_trash": _trash(dagger, trash_value),
         "card_draw_value_with_buy_gains": _const(1.0),
     }
-    taken, _ = _drive(state, seat, patches)
-    trash = f"trash_agent_card:{dagger}" if used else "decline_agent_card_trash"
-    assert trash in _ids(taken)
-    if not used:
-        assert _ids(taken)[-2:] == ["decline_agent_card_trash", "finish_agent_turn"]
+    taken, after = _drive(state, seat, patches)
+    assert (f"trash_agent_card:{dagger}" in _ids(taken)) is used
+    assert _ids(taken)[-1] == "finish_agent_turn"
+    assert _lapsed(after, seat) == ([] if used else ["agent_card_effect_lapsed"])
 
 
 def test_shishakli_targets_are_hand_then_in_play_then_discard() -> None:
@@ -850,6 +867,10 @@ def test_treacherous_maneuver_trashes_a_cheap_emperor_card() -> None:
 
 @pytest.mark.parametrize("junk", [True, False])
 def test_tread_in_darkness_trash_is_explicit(junk: bool) -> None:
+    """``BeneGesseritTrashAbility`` (Explicit) trashes the junk card; its
+    "nothing" leaves the black trash icon unused, lapsed at End Turn (user
+    ruling 2026-10-14)."""
+
     state, seat, _ = _place(
         "tread_in_darkness", "arrakeen", in_play=("imperium:bene_gesserit_operative:1",)
     )
@@ -858,9 +879,10 @@ def test_tread_in_darkness_trash_is_explicit(junk: bool) -> None:
         **NO_DEPLOY,
         "card_to_trash": _trash(dagger if junk else None, 4.0 if junk else 1.0),
     }
-    taken, _ = _drive(state, seat, patches)
-    expected = f"trash_agent_card:{dagger}" if junk else "decline_agent_card_trash"
-    assert expected in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert (f"trash_agent_card:{dagger}" in _ids(taken)) is junk
+    assert _ids(taken)[-1] == "finish_agent_turn"
+    assert _lapsed(after, seat) == ([] if junk else ["agent_card_effect_lapsed"])
     # The draw is its own icon (``BeneGesseritDrawAbility``).
     assert "resolve_agent_card_effect:cards" in _ids(taken)
 
@@ -902,7 +924,10 @@ def test_captured_mentat_rewards_follow_the_discard() -> None:
     ]
 
 
-def test_space_time_folding_unused_is_declined() -> None:
+def test_space_time_folding_unused_lapses() -> None:
+    """``SpacetimeFoldingAbility`` (Optional) not worth it: End Turn, whose
+    press lapses the discard (user ruling 2026-10-14)."""
+
     state, seat, _ = _place("space_time_folding", "deliver_supplies")
     patches: Patches = {
         **NO_DEPLOY,
@@ -910,8 +935,10 @@ def test_space_time_folding_unused_is_declined() -> None:
         "card_draw_value": _const(1.0),
         "buy_gains": _const(0.0),
     }
-    taken, _ = _drive(state, seat, patches)
-    assert _ids(taken)[-2:] == ["decline_agent_card_discard", "finish_agent_turn"]
+    taken, after = _drive(state, seat, patches)
+    assert not any(a.action_id == "discard_agent_card" for a in taken)
+    assert _ids(taken)[-1] == "finish_agent_turn"
+    assert _lapsed(after, seat) == ["agent_card_effect_lapsed"]
 
 
 def test_corrinth_city_two_discards_from_one_answer() -> None:
@@ -943,15 +970,19 @@ def test_corrinth_city_two_discards_from_one_answer() -> None:
     ]
 
 
-def test_corrinth_city_not_worth_it_is_declined() -> None:
+def test_corrinth_city_not_worth_it_lapses() -> None:
+    """``CorrinthCityAgentAbility`` (Optional) not worth it: End Turn lapses
+    it (user ruling 2026-10-14)."""
+
     state, seat, _ = _place(
         "corrinth_city",
         "assembly_hall",
         resources=Resources(solari=6, spice=0, water=1),
     )
     patches: Patches = {**NO_DEPLOY, "victory_point_value": _const(-20.0)}
-    taken, _ = _drive(state, seat, patches)
-    assert _ids(taken)[-2:] == ["decline_corrinth_city_payment", "finish_agent_turn"]
+    taken, after = _drive(state, seat, patches)
+    assert _ids(taken) == ["resolve_board_effect:intrigue", "finish_agent_turn"]
+    assert _lapsed(after, seat) == ["agent_card_effect_lapsed"]
 
 
 def test_branching_path_always_trashes_an_intrigue() -> None:
@@ -971,13 +1002,13 @@ def test_branching_path_always_trashes_an_intrigue() -> None:
     assert _ids(taken)[at + 1].startswith("resolve_agent_card_effect:")
 
 
-@pytest.mark.parametrize(
-    ("water", "expected"),
-    [(5.0, "decline_agent_card_payment"), (0.1, "pay_agent_card_water")],
-)
+@pytest.mark.parametrize(("water", "pays"), [(5.0, False), (0.1, True)])
 def test_ecological_testing_station_pays_when_positive(
-    water: float, expected: str
+    water: float, pays: bool
 ) -> None:
+    """``EcologicalTestingStationAbility`` (Optional) pays when positive;
+    otherwise End Turn lapses it (user ruling 2026-10-14)."""
+
     state, seat, _ = _place(
         "ecological_testing_station",
         "arrakeen",
@@ -989,8 +1020,9 @@ def test_ecological_testing_station_pays_when_positive(
         "card_draw_value": _const(1.0),
         "buy_gains": _const(0.0),
     }
-    taken, _ = _drive(state, seat, patches)
-    assert expected in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert ("pay_agent_card_water" in _ids(taken)) is pays
+    assert _lapsed(after, seat) == ([] if pays else ["agent_card_effect_lapsed"])
 
 
 def test_smuggler_s_haven_always_pays() -> None:
@@ -1003,7 +1035,12 @@ def test_smuggler_s_haven_always_pays() -> None:
     assert "pay_agent_card_spice" in _ids(taken)
 
 
-def test_price_is_no_object_buys_the_best_card_or_declines() -> None:
+def test_price_is_no_object_buys_the_best_card_or_leaves_it() -> None:
+    """``PriceIsNoObjectAbility`` (Optional) buys the best card; with nothing
+    worth it End Turn lapses it (user ruling 2026-10-14). Lady Jessica's
+    Other Memories, kept unused here, lapses with it: its refusal is no
+    longer offered (OQ-095 (2), same ruling)."""
+
     state, seat, _ = _place(
         "price_is_no_object", "secrets", resources=Resources(solari=5, spice=0, water=1)
     )
@@ -1025,8 +1062,9 @@ def test_price_is_no_object_buys_the_best_card_or_declines() -> None:
     taken, _ = _drive(state, seat, patches)
     assert "acquire_reserve_with_solari:prepare_the_way" in _ids(taken)
     patches = {**patches, "acquire_value": acquire({})}
-    taken, _ = _drive(state, seat, patches)
-    assert "decline_agent_card_acquisition" in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert not any(a.action_id.startswith("acquire_") for a in taken)
+    assert _lapsed(after, seat) == ["agent_card_effect_lapsed", "leader_ability_lapsed"]
 
 
 def test_steersman_card_draw_runs_before_the_space_draw_then_recalls() -> None:
@@ -1447,9 +1485,10 @@ def test_feyd_personal_training_picks_the_best_next_space(
 
 
 @pytest.mark.parametrize("junk", [True, False])
-def test_feyd_pay_to_trash_empty_pick_is_the_decline(junk: bool) -> None:
+def test_feyd_pay_to_trash_empty_pick_leaves_it_unused(junk: bool) -> None:
     """``PersonalTrainingPayToTrashAbility`` answers "nothing" at 1.0: our
-    engine cannot pay the Solari for nothing, so the decline (plan §10)."""
+    engine cannot pay the Solari for nothing (plan §10), so the trash stage
+    is left unused and End Turn lapses it (user ruling 2026-10-14)."""
 
     state, seat = _signet(
         "feyd_rautha_harkonnen", resources=Resources(solari=2, spice=0, water=1)
@@ -1462,18 +1501,16 @@ def test_feyd_pay_to_trash_empty_pick_is_the_decline(junk: bool) -> None:
         **NO_DEPLOY,
         "card_to_trash": _trash(dagger if junk else None, 3.0 if junk else 1.0),
     }
-    state = _until(
-        state,
-        seat,
-        "decline_leader_card_trash" if not junk else "trash_leader_card",
-        trash,
-    )
-    expected = (
-        _a(seat, "trash_leader_card", card_id=dagger)
-        if junk
-        else _a(seat, "decline_leader_card_trash")
-    )
-    assert _must(state, seat, trash) == expected
+    if junk:
+        state = _until(state, seat, "trash_leader_card", trash)
+        assert _must(state, seat, trash) == _a(
+            seat, "trash_leader_card", card_id=dagger
+        )
+        return
+    taken, after = _drive(state, seat, trash)
+    assert not any(a.action_id == "trash_leader_card" for a in taken)
+    assert _ids(taken)[-1] == "finish_agent_turn"
+    assert _lapsed(after, seat) == ["agent_card_effect_lapsed"]
 
 
 def test_feyd_spy_stage_places_with_place_spy_custom() -> None:
@@ -1527,7 +1564,10 @@ def test_staban_uses_the_unseen_network_post_value_then_pays() -> None:
     assert _ids(taken)[at + 1] == "pay_leader_signet_spice"
 
 
-def test_staban_landsraad_trade_not_worth_it_is_declined() -> None:
+def test_staban_landsraad_trade_not_worth_it_lapses() -> None:
+    """Staban's paid follow-up after the Spy (an arrow) not worth it: End
+    Turn lapses it (user ruling 2026-10-14)."""
+
     state, seat = _signet(
         "staban_tuek", resources=Resources(solari=0, spice=2, water=1)
     )
@@ -1542,8 +1582,10 @@ def test_staban_landsraad_trade_not_worth_it_is_declined() -> None:
         "spice_value": lambda n: 5.0 * n,
         "solari_value": lambda n: 0.1 * n,
     }
-    taken, _ = _drive(state, seat, patches)
-    assert "decline_leader_signet_payment" in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert f"place_leader_spy:{landsraad}" in _ids(taken)
+    assert not any(a.action_id.startswith("pay_leader_signet") for a in taken)
+    assert _lapsed(after, seat) == ["agent_card_effect_lapsed"]
 
 
 def test_irulan_trashes_a_junk_starter() -> None:
@@ -1597,12 +1639,15 @@ def test_shaddam_signet(bonus: float, expected: tuple[str, dict[str, str]]) -> N
 def test_lady_jessica_spice_agony_pays_only_above_one_spice(
     spice: int, pays: bool
 ) -> None:
+    """Spice Agony (an arrow): unpaid, End Turn lapses it (user ruling
+    2026-10-14)."""
+
     state, seat = _signet(
         "lady_jessica", resources=Resources(solari=0, spice=spice, water=1)
     )
-    taken, _ = _drive(state, seat, NO_DEPLOY)
-    expected = "pay_leader_signet_spice" if pays else "decline_leader_signet_payment"
-    assert expected in _ids(taken)
+    taken, after = _drive(state, seat, NO_DEPLOY)
+    assert ("pay_leader_signet_spice" in _ids(taken)) is pays
+    assert _lapsed(after, seat) == ([] if pays else ["agent_card_effect_lapsed"])
 
 
 @pytest.mark.parametrize(("water", "pays"), [(3.0, True), (0.1, False)])
@@ -1617,18 +1662,30 @@ def test_water_of_life_pays_when_positive(water: float, pays: bool) -> None:
         "water_value": lambda n: water * n,
         "spice_value": lambda n: 1.0 * n,
     }
-    taken, _ = _drive(state, seat, patches)
-    expected = "pay_leader_signet_spice" if pays else "decline_leader_signet_payment"
-    assert expected in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert ("pay_leader_signet_spice" in _ids(taken)) is pays
+    assert _lapsed(after, seat) == ([] if pays else ["agent_card_effect_lapsed"])
 
 
 @pytest.mark.parametrize("returns", [True, False])
 def test_other_memories(returns: bool) -> None:
+    """``OtherMemoriesAbility`` (Optional): used when it answers; otherwise
+    left unused and End Turn lapses it, as our engine offers no refusal
+    (OQ-095 (2), user ruling 2026-10-14). Used, it opens Reverend Mother's
+    repeat, whose own lapse is told apart by its event id."""
+
     state, seat, _ = _place("diplomacy", "secrets")
     patches: Patches = {**NO_DEPLOY, "lady_jessica_return_memories": lambda: returns}
-    taken, _ = _drive(state, seat, patches)
-    expected = "use_other_memories" if returns else "decline_other_memories"
-    assert expected in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert ("use_other_memories" in _ids(taken)) is returns
+    assert taken[-1].action_id == "finish_agent_turn"
+    lapsed = [
+        event.event_id
+        for event in after.event_log
+        if event.kind == "leader_ability_lapsed"
+        and dict(event.payload).get("player") == seat
+    ]
+    assert any(i.endswith(":other_memories:lapsed") for i in lapsed) is not returns
 
 
 @pytest.mark.parametrize(("intrigue", "pays"), [(9.0, True), (0.0, False)])
@@ -1644,9 +1701,9 @@ def test_reverend_mother_repeat(intrigue: float, pays: bool) -> None:
         "water_value": lambda n: 1.0 * n,
         "intrigue_value": _const(intrigue),
     }
-    taken, _ = _drive(state, seat, patches)
-    expected = "pay_leader_board_repeat" if pays else "decline_leader_board_repeat"
-    assert expected in _ids(taken)
+    taken, after = _drive(state, seat, patches)
+    assert ("pay_leader_board_repeat" in _ids(taken)) is pays
+    assert _lapsed(after, seat) == ([] if pays else ["leader_ability_lapsed"])
 
 
 # ---------------------------------------------------------------------------
@@ -1921,8 +1978,9 @@ def test_power_play_box_makes_the_influence_step_clear_undo(
 
 def test_additional_space_influence_follows_the_turn() -> None:
     """The flag is false until the PowerPlay box resolves; Treacherous
-    Maneuver sets it only when used (it then trashes itself), not when
-    declined; any other card leaves it false."""
+    Maneuver sets it only when used (it then trashes itself), not while it
+    is left unused (End Turn lapses it, user ruling 2026-10-14); any other
+    card leaves it false."""
 
     def flag(state: GameState, seat: int) -> bool:
         return ae._turn(_run(state, seat)).additional_space_influence
@@ -1942,8 +2000,8 @@ def test_additional_space_influence_follows_the_turn() -> None:
     spymaster = _hand_card(tm, seat, "imperial_spymaster")
     used = _apply(tm, seat, _a(seat, "trash_agent_card", card_id=spymaster))
     assert flag(used, seat) is True
-    declined = _apply(tm, seat, _a(seat, "decline_agent_card_trash"))
-    assert flag(declined, seat) is False
+    unused = _apply(tm, seat, _a(seat, "resolve_board_effect", effect="troops"))
+    assert flag(unused, seat) is False
 
     state, seat, _ = _place("diplomacy", "deliver_supplies")
     assert flag(state, seat) is False

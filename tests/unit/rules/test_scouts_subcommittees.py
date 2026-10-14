@@ -9,7 +9,11 @@ OQ-076 alternative C (user ruling 2026-09-30, a project convention): the
 join is one more effect of the turn the seat was taken in, taken whenever
 the seat likes: "You may carry out all these effects in any order."
 [Main p. 9]. The turn's frame offers ``choose_subcommittee`` (only when one
-can be joined now) and ``decline_subcommittee``; choosing opens the list.
+can be joined now); choosing opens the list, which keeps
+``decline_subcommittee``. An Agent turn's frame offers no refusal: the
+optional offer left unused lapses at the owner's turn end press (OQ-095 (2),
+user ruling 2026-10-14; codec v146). A Reveal's frame still offers
+``decline_subcommittee`` and waits on it.
 """
 
 import random
@@ -33,7 +37,10 @@ from dune_imperium.rules.frames import FrameKind
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
-from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
+    finish_agent_turn,
+    finish_agent_turn_result,
+)
 
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
 STARTERS = starting_deck_instance_ids(0)
@@ -153,11 +160,13 @@ def _turn_count(state: GameState, key: str) -> int:
 def test_taking_the_high_council_seat_offers_the_payable_subcommittees() -> None:
     state = _visit_high_council(_state(_owner()))
     assert state.players[0].high_council
-    # One more effect of the visit: the turn's frame stays open for it.
+    # One more effect of the visit: the turn's frame stays open for it. It is
+    # optional, so it needs no refusal and holds no turn end back (OQ-095
+    # (2), user ruling 2026-10-14).
     assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert _options(state) == {
         ("choose_subcommittee", ""),
-        ("decline_subcommittee", ""),
+        ("finish_agent_turn", ""),
     }
     state = _choose(state)
     offered = _options(state)
@@ -429,40 +438,51 @@ def test_declining_in_the_list_ends_the_chance_and_a_claimed_one_is_gone() -> No
     assert ("join_subcommittee", "readiness") not in offered
 
 
-def test_declining_at_the_turn_frame_ends_the_chance() -> None:
-    """Joining is optional ("may", OQ-076): the decline sits beside the
-    visit's other effects, and it retires the icon like any other."""
+def test_an_unused_offer_at_the_turn_frame_lapses_at_the_turn_end() -> None:
+    """Joining is optional ("may", OQ-076). Since the user ruling of
+    2026-10-14 (OQ-095 (2)) the Agent turn's frame offers no
+    ``decline_subcommittee``: the owner's turn end press lapses the unused
+    offer with a ``board_effect_lapsed`` event, ending the chance."""
     state = _visit_high_council(_state(_owner()))
-    state = _act(state, "decline_subcommittee")
-    assert not state.scouts_subcommittee_members
-    assert _scouts_frames_done(state)
-    declined = [e for e in state.event_log if e.kind == "scouts_subcommittee_declined"]
-    assert [dict(e.payload)["player"] for e in declined] == [0]
+    assert ("decline_subcommittee", "") not in _options(state)
+    result = finish_agent_turn_result(state)
+    assert not result.state.scouts_subcommittee_members
+    assert not result.state.scouts_subcommittee_offers
+    lapsed = [e for e in result.events if e.kind == "board_effect_lapsed"]
+    assert [dict(e.payload) for e in lapsed] == [
+        {"effect": "scouts_subcommittee", "player": 0, "space_id": "high_council"}
+    ]
+    assert "scouts_subcommittee_declined" not in {e.kind for e in result.events}
+    top = result.state.decision_stack[-1]
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.kind == FrameKind.TURN and top.decision.owner == 1
 
 
-def test_nothing_joinable_now_offers_only_the_decline() -> None:
+def test_nothing_joinable_now_offers_only_the_turn_end() -> None:
     """Every subcommittee left is open but none can be joined now (their
-    costs are unpaid): no ``choose_subcommittee``, the decline stays, and
-    the turn waits on it rather than dropping the chance."""
+    costs are unpaid): no ``choose_subcommittee``. Before codec v146 the
+    decline stayed and the turn waited on it; since the user ruling of
+    2026-10-14 (OQ-095 (2)) the unused offer lapses at the turn end."""
     poor = _owner(resources=Resources(solari=5, spice=0, water=1), hand=(DAGGER,))
     state = _visit_high_council(
         _state(poor, scouts_subcommittees=("oversight", "relations", "leverage"))
     )
     assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert _options(state) == {("decline_subcommittee", "")}
-    state = _act(state, "decline_subcommittee")
+    assert _options(state) == {("finish_agent_turn", "")}
     assert _scouts_frames_done(state)
 
 
-def test_an_offer_with_every_subcommittee_taken_offers_only_the_decline() -> None:
+def test_an_offer_with_every_subcommittee_taken_greys_out_the_choice() -> None:
     """User ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
     창을 연다" (OQ-076 (c)): with every subcommittee already taken the new
-    seat's offer is still armed, the turn waits on it, and only the decline
-    is offered; the page greys the choice out as "claimed" among the choices
-    that cannot be taken. It used to lapse with the event
-    ``scouts_subcommittee_unavailable``. Unreachable with four players (five
-    subcommittees on display, at most three other members), so a synthetic
-    three-strong display stands in."""
+    seat's offer is still armed; the page greys the choice out as "claimed"
+    among the choices that cannot be taken. It used to lapse with the event
+    ``scouts_subcommittee_unavailable``. In an Agent turn only the turn end
+    is offered, which lapses it (OQ-095 (2), user ruling 2026-10-14; before
+    codec v146 the turn waited on the decline); a Reveal still waits on the
+    decline. Unreachable with four players (five subcommittees on display,
+    at most three other members), so a synthetic three-strong display
+    stands in."""
     from dune_imperium.display.unavailable import unavailable_choices
 
     # A seat joins once, so three other seats can hold a three-strong display.
@@ -475,7 +495,7 @@ def test_an_offer_with_every_subcommittee_taken_offers_only_the_decline() -> Non
         )
     )
     assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert _options(state) == {("decline_subcommittee", "")}
+    assert _options(state) == {("finish_agent_turn", "")}
     found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
     assert found is not None
     listed = found["rows"]
@@ -483,8 +503,9 @@ def test_an_offer_with_every_subcommittee_taken_offers_only_the_decline() -> Non
     [row] = listed
     assert row["surface"] == "choice"
     assert row["code"] == "claimed"
-    assert row["reason_ko"] == "모든 소위원회에 가입한 플레이어가 있음"
-    state = _act(state, "decline_subcommittee")
+    # The page may add that the unused offer lapses at the turn end (the
+    # wording is ``display.unavailable``'s); the reason itself leads.
+    assert str(row["reason_ko"]).startswith("모든 소위원회에 가입한 플레이어가 있음")
     assert _scouts_frames_done(state)
 
     # Corrinth City's seat taken in a Reveal: the Reveal waits the same way.
@@ -719,17 +740,18 @@ def test_contingencies_is_not_offered_without_another_agent_to_recall() -> None:
     cannot happen cannot be paid for, and joining a subcommittee with a cost
     means paying it (docs/rules/arrakeen-scouts.md 4, OQ-075). The seat's
     only Agent out is the one that took the seat, so Contingencies is not
-    joinable; with nothing else joinable only declining is offered."""
+    joinable; with nothing else joinable only the turn end is offered, which
+    lapses the offer (OQ-095 (2), user ruling 2026-10-14; before codec v146
+    only declining was offered)."""
     owner = _owner(intrigue_cards=("intrigue:9",))
     state = _visit_high_council(
         _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
     )
     assert ("join_subcommittee", "contingencies") not in _options(_choose(state))
     alone = _visit_high_council(_state(owner, scouts_subcommittees=("contingencies",)))
-    assert _options(alone) == {("decline_subcommittee", "")}
-    declined = _act(alone, "decline_subcommittee")
-    assert _scouts_frames_done(declined)
-    assert declined.players[0].intrigue_cards == ("intrigue:9",)
+    assert _options(alone) == {("finish_agent_turn", "")}
+    assert _scouts_frames_done(alone)
+    assert finish_agent_turn(alone).players[0].intrigue_cards == ("intrigue:9",)
 
 
 def test_contingencies_is_offered_for_an_into_the_fray_agent_alone() -> None:
@@ -828,7 +850,10 @@ def test_the_seat_buys_a_tech_tile_at_its_discount_then_joins() -> None:
 
     state = _tech_visit(spice=4)
     assert ("choose_subcommittee", "") in _options(state)
-    assert ("decline_tech", "") in _options(state)
+    # Both are optional effects of the visit: no refusal, the turn end is
+    # offered beside them (OQ-095 (2), user ruling 2026-10-14).
+    assert ("decline_tech", "") not in _options(state)
+    assert ("finish_agent_turn", "") in _options(state)
     state = ENGINE.apply(
         state, DomainAction(action_id="acquire_tech", actor=0, arguments=GLOWGLOBES)
     ).state
@@ -838,7 +863,6 @@ def test_the_seat_buys_a_tech_tile_at_its_discount_then_joins() -> None:
     # The choice waited for its turn; Relations' 2 spice is still payable.
     assert _options(state) == {
         ("choose_subcommittee", ""),
-        ("decline_subcommittee", ""),
         ("resolve_tech_acquire_effect", "influence"),
     }
     state = _act(_choose(state), "join_subcommittee", subcommittee_id="relations")
@@ -892,9 +916,9 @@ def _steersman_visit(display: tuple[str, ...]) -> GameState:
 
 def test_the_card_effect_first_then_the_subcommittee() -> None:
     state = _steersman_visit(DISPLAY)
-    assert {("choose_subcommittee", ""), ("decline_subcommittee", "")} <= _options(
-        state
-    )
+    assert ("choose_subcommittee", "") in _options(state)
+    # No refusal in the Agent turn (OQ-095 (2), user ruling 2026-10-14).
+    assert ("decline_subcommittee", "") not in _options(state)
     state = _act(state, "resolve_agent_card_effect", effect="cards")
     assert state.players[0].hand == (DAGGER,)
     state = _act(_choose(state), "join_subcommittee", subcommittee_id="readiness")
@@ -924,7 +948,8 @@ def test_a_subcommittee_becomes_choosable_once_the_turn_pays_for_it() -> None:
     assert state.players[0].hand == ()
     offered = _options(state)
     assert ("choose_subcommittee", "") not in offered
-    assert ("decline_subcommittee", "") in offered
+    # No refusal in the Agent turn (OQ-095 (2), user ruling 2026-10-14).
+    assert ("decline_subcommittee", "") not in offered
     assert _waiting_rows(state)["waiting:choose_subcommittee"]["code"] == (
         "subcommittee"
     )
@@ -952,16 +977,19 @@ def _coordination_visit() -> GameState:
     return _visit_high_council(state, SARDAUKAR_COORDINATION)
 
 
-def test_the_turn_cannot_end_while_the_choice_is_pending() -> None:
-    """The turn ends only once the choice is made or declined: the explicit
-    turn end waits like it does for every other pending effect."""
+def test_the_turn_may_end_while_the_choice_is_unused() -> None:
+    """The choice is optional: the explicit turn end is offered beside it
+    and its press lapses the unused offer (OQ-095 (2), user ruling
+    2026-10-14). Before codec v146 the end waited until the choice was made
+    or declined."""
     state = _coordination_visit()
     assert _options(state) == {
         ("choose_subcommittee", ""),
-        ("decline_subcommittee", ""),
+        ("finish_agent_turn", ""),
     }
-    declined = _act(state, "decline_subcommittee")
-    assert _options(declined) == {("finish_agent_turn", "")}
+    result = finish_agent_turn_result(state)
+    assert "board_effect_lapsed" in {e.kind for e in result.events}
+    assert not result.state.scouts_subcommittee_offers
 
 
 def test_a_readiness_troop_joins_the_still_open_turn() -> None:

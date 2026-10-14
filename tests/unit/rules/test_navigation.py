@@ -280,7 +280,8 @@ def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
 
     state = act(state, "agent_turn", card_id=ambassador, space_id="assembly_hall")
     state = act(state, "resolve_board_effect")
-    state = act(state, "decline_tech")
+    # The visit's optional Acquire Tech needs no refusal and lapses at the
+    # turn end (OQ-095 (2), user ruling 2026-10-14).
     # Ixian Ambassador's box, one spice [Ixian Ambassador card], is the
     # turn's last step: two before it, three with it.
     resolved = act(state, "resolve_agent_card_effect")

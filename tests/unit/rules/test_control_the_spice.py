@@ -51,7 +51,10 @@ from dune_imperium.rules.reveal_turn import (
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
-from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
+    finish_agent_turn,
+    finish_agent_turn_result,
+)
 
 EPIC = RulesetConfig(epic_game=True)
 ENGINE = UprisingRulesEngine()
@@ -194,10 +197,9 @@ def test_paying_one_spice_trashes_a_card_and_recruits_a_troop(target: str) -> No
         resources=Resources(spice=2),
     )
     placed = _place(_state(owner), "accept_contract")
-    assert _payment_ids(placed) == {
-        "pay_agent_card_spice",
-        "decline_agent_card_payment",
-    }
+    # The arrow is optional: no refusal row, the turn end lapses it when
+    # unpaid (OQ-095 (2), user ruling 2026-10-14; codec v146).
+    assert _payment_ids(placed) == {"pay_agent_card_spice"}
 
     paid = _apply(placed, "pay_agent_card_spice")
 
@@ -239,26 +241,39 @@ def test_paying_then_declining_the_trash_still_recruits() -> None:
     assert _context(declined)["pending_agent_effect"] is False
 
 
-def test_declining_the_payment_pays_and_gains_nothing() -> None:
+def test_an_unpaid_box_lapses_at_the_turn_end_and_gains_nothing() -> None:
+    # "비용을 지불하지 않으면 효과를 얻지 못하며" [Main p. 9] [FAQ p. 3]. The
+    # arrow is optional, so since the user ruling of 2026-10-14 (OQ-095 (2))
+    # it offers no ``decline_agent_card_payment``: the end is offered once
+    # the space's own icons are done and its press lapses the unpaid box.
     owner = _owner((CONTROL, DAGGER), resources=Resources(spice=3))
     placed = _place(_state(owner), "accept_contract")
+    while "resolve_board_effect" in _ids(placed):
+        placed = _apply(placed, "resolve_board_effect")
+    assert "pay_agent_card_spice" in _ids(placed)
+    assert "finish_agent_turn" in _ids(placed)
 
-    declined = _apply(placed, "decline_agent_card_payment")
+    finished = finish_agent_turn_result(placed)
 
-    seat = declined.players[0]
+    seat = finished.state.players[0]
     assert seat.resources.spice == 3
     assert seat.troops_garrison == owner.troops_garrison
     assert seat.trashed == ()
-    assert declined.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert _context(declined)["pending_agent_effect"] is False
-    assert _context(declined)["troops_recruited"] == 0
+    assert [
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "agent_card_effect_lapsed"
+    ] == [{"card_id": CONTROL, "player": 0}]
+    assert finished.state.decision_stack[-1].kind == FrameKind.TURN
 
 
-def test_without_spice_only_declining_remains_until_a_spice_arrives() -> None:
+def test_without_spice_no_payment_is_offered_until_a_spice_arrives() -> None:
+    # No refusal either way (OQ-095 (2), user ruling 2026-10-14): before
+    # codec v146 the unaffordable box offered only its refusal.
     owner = _owner((CONTROL,), resources=Resources())
     placed = _place(_state(owner), "imperial_basin")
 
-    assert _payment_ids(placed) == {"decline_agent_card_payment"}
+    assert _payment_ids(placed) == set()
 
     # The cost is judged when the box resolves in the owner's chosen order
     # (OQ-028): Imperial Basin's own spice, resolved first, pays it.
@@ -272,10 +287,7 @@ def test_without_spice_only_declining_remains_until_a_spice_arrives() -> None:
                 if action.action_id in ("resolve_board_effect", "harvest_maker_spice")
             ),
         ).state
-    assert _payment_ids(gained) == {
-        "pay_agent_card_spice",
-        "decline_agent_card_payment",
-    }
+    assert _payment_ids(gained) == {"pay_agent_card_spice"}
 
 
 def _deploy_counts(state: GameState) -> list[int]:

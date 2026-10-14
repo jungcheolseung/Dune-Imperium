@@ -60,6 +60,8 @@ from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
+from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
+from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import active_box
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
@@ -181,9 +183,22 @@ def _this_engine_game(seed: int) -> GameReplay:
 
 @pytest.fixture(scope="module")
 def game() -> GameReplay:
-    """A whole heuristic game on this engine with every module on."""
+    """A whole heuristic game on this engine with every module on.
 
-    return _this_engine_game(1)
+    Seed 102, seed 1 until codec v146: optional Agent-turn effects no longer
+    offer a refusal (OQ-095 (2), user ruling 2026-10-14), which moved seed
+    1's game off these tests' preconditions -- a seat now deploys troops
+    before drawing the Intrigue card a Research owes it (an older engine
+    drew it inside the Research, so the bridge takes it first), and no seat
+    places with Navigation Chamber's discount any more. Of seeds 1-200,
+    95, 96, 102, 141, 149, 154, 182, 186, 187 and 194 meet every test on
+    this fixture but the triggered-draw one, which needs a game whose only
+    split steps are owed draws and has a seed of its own; 102's game also
+    holds an Imperial Privilege draw and an Arrakeen Scouts line draw, so
+    the older records built from it take those bridges too.
+    """
+
+    return _this_engine_game(102)
 
 
 def _states(replay: GameReplay) -> list[GameState]:
@@ -260,6 +275,19 @@ def _held_steps(replay: GameReplay) -> dict[int, str]:
             oldest_intrigue == "leader_reveal:unpredictable_foe"
         ):
             held[index] = "unpredictable_foe_draw"
+        elif (
+            step.action_id == "resolve_board_effect"
+            and effect == "cards"
+            and top.kind == FrameKind.AGENT_EFFECTS
+            and context.get("space_id") == "imperial_privilege"
+            and not board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
+        ):
+            # Before v142 the recall (or its confirm) drew the card, so only
+            # a draw taken once the recall is done was made inside it; one
+            # this engine's seat took before the recall stays recorded (no
+            # older engine recorded that order, and the bridge, which
+            # follows the recall, then finds nothing left to draw).
+            held[index] = "imperial_privilege_draw"
     return held
 
 
@@ -717,13 +745,13 @@ class _StartingAt(UprisingRulesEngine):
         return self._start
 
 
-def _v142_record(start: GameState, *steps: ReplayStep) -> GameReplay:
+def _v142_record(start: GameState, *steps: ReplayStep, codec: int = 142) -> GameReplay:
     return GameReplay(
         ruleset=start.config,
         seed=1,
         steps=steps,
         expected_state_hash="unused",
-        action_codec_version=142,
+        action_codec_version=codec,
     )
 
 
@@ -813,14 +841,19 @@ def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
     assert [migrated.step for migrated in record.steps] == _steps(game.steps[:index])
 
 
-def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger(
-    game: GameReplay,
-) -> None:
+def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> None:
     # Codec v142 (user ruling 2026-10-10, OQ-106) holds a triggered draw as
     # the owner's own ``draw_owed_*`` step; an older engine drew it inside
     # the trigger, so its record has no such step. Dropped from this
     # engine's record (whose heuristic takes each at once), each is taken
     # right after its trigger again, so the game comes back step for step.
+    # Seed 10's game, whose only split steps are its three owed draws: this
+    # test ran on the fixture's seed 1 until codec v146 (OQ-095 (2), user
+    # ruling 2026-10-14), whose game then also held an Imperial Privilege
+    # draw and a Scouts reward pause and drew one owed Intrigue card a step
+    # late. Of seeds 1-200 only 2, 10 and 88 split nothing but owed draws,
+    # and seed 2 takes one late.
+    game = _this_engine_game(10)
     owed = {
         index
         for index, step in enumerate(game.steps)
@@ -844,11 +877,14 @@ def test_a_scouts_line_draw_an_older_engine_drew_at_once_follows_its_choice() ->
     # Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw printed after
     # one of an Arrakeen Scouts line's reward choices as the line's own
     # ``scouts_rewards_first``, then its only action; an older engine drew
-    # it in the choice's step, so its record has no such step. Seed 3's
-    # heuristic game holds one (round 6, Leverage's Intrigue card). Dropped
-    # from this engine's record with the game's other held steps, it is
-    # taken right after the same choice again.
-    game = _this_engine_game(3)
+    # it in the choice's step, so its record has no such step. Seed 5's
+    # heuristic game holds two (round 4, Water Discipline's card after its
+    # trash; round 8, Leverage's Intrigue card). Dropped from this engine's
+    # record with the game's other held steps, each is taken right after
+    # the same choice again. (Seed 3 until codec v146: optional Agent-turn
+    # effects offer no refusal since then, OQ-095 (2), and seed 3's game no
+    # longer holds such a draw; seed 5 is the first of 1-200 that does.)
+    game = _this_engine_game(5)
     held = _held_steps(game)
     scouts = [index for index, name in held.items() if name == "scouts_held_draw"]
     assert scouts
@@ -928,14 +964,32 @@ def test_records_of_older_engines_replay_to_their_end(
     assert bridges <= set(record.bridge_counts())
     recorded = [m.recorded_index for m in record.steps if m.recorded_index is not None]
     # Codec v143 drops every recorded ``switch_graft_card`` (both grafted
-    # boxes are offered at once); every other recorded step applies.
+    # boxes are offered at once). Codec v146 (OQ-095 (2)) drops a refusal of
+    # an optional effect this engine no longer offers: the effect stays
+    # pending and the recorded turn end lapses it. Every other recorded step
+    # applies.
     switches = [
         index
         for index, step in enumerate(replay.steps)
         if isinstance(step, DomainAction) and step.action_id == "switch_graft_card"
     ]
-    assert [index for index, _ in record.dropped] == switches
-    assert sorted((*recorded, *switches)) == list(range(len(replay.steps)))
+    for index, reason in record.dropped:
+        step = replay.steps[index]
+        assert isinstance(step, DomainAction)
+        assert (step.action_id, reason) in (
+            (migration.GRAFT_SWITCH, migration.GRAFT_SWITCH_DROPPED),
+            *(
+                (refusal, migration.OPTIONAL_REFUSAL_DROPPED)
+                for refusal in migration._OPTIONAL_REFUSALS
+            ),
+        ), (index, step, reason)
+    assert [
+        index
+        for index, reason in record.dropped
+        if reason == migration.GRAFT_SWITCH_DROPPED
+    ] == switches
+    dropped = [index for index, _ in record.dropped]
+    assert sorted((*recorded, *dropped)) == list(range(len(replay.steps)))
 
 
 @pytest.mark.parametrize(
@@ -1490,37 +1544,77 @@ def test_a_card_s_own_trash_keeps_its_draw_for_the_recorded_end() -> None:
     assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(145)) is None
 
 
+_KIT = "imperium:dissecting_kit:0"
+
+
 @pytest.mark.parametrize(
-    ("placed", "partner", "box"),
+    ("partner", "lapsed"),
     [
-        ("imperium:dissecting_kit:0", "player:0:starter:dagger:0", 0),
-        # Ghola's copy of Dissecting Kit, box 1, after the Kit's own refusal.
-        ("imperium:dissecting_kit:0", "tleilaxu:ghola:0", 1),
+        ("player:0:starter:dagger:0", (_KIT,)),
+        # Ghola copies Dissecting Kit's box as box 1: both boxes lapse.
+        ("tleilaxu:ghola:0", (_KIT, "tleilaxu:ghola:0")),
     ],
 )
-def test_an_optional_box_is_refused_right_before_the_recorded_end(
-    placed: str, partner: str, box: int
+def test_an_optional_box_lapses_at_an_older_record_s_turn_end(
+    partner: str, lapsed: tuple[str, ...]
 ) -> None:
-    # Codec v144 (OQ-057 (1)) holds the turn end while Dissecting Kit can
-    # still trash its partner for a specimen. An older engine offered the
-    # end beside it and the press fizzled the box: the refusal's result. So
-    # the refusal comes right before that recorded press.
-    state = _arrakeen_graft(placed, partner)
-    refusal = DomainAction("decline_agent_card_payment", 0)
-    if box == 1:
-        state = ENGINE.apply(state, refusal).state
-        refusal = DomainAction(
-            "decline_agent_card_payment", 0, (("box", 1),)
+    """Codec v144 (OQ-057 (1)) held the turn end while Dissecting Kit could
+    still trash its partner for a specimen. An older engine offered the end
+    beside the box and its press fizzled it, so a record before v144 had the
+    box refused right before that press (``box_refused_at_turn_end``).
+    Codec v146 (user ruling 2026-10-14, OQ-095 (2)) offers the end beside
+    the optional box again and the press lapses it unused: the recorded
+    press applies as it is, no bridge refuses anything, and the turn ends
+    as the refusal left it -- nothing trashed, no specimen gained, both
+    cards still in play. A record whose seat refused the boxes itself
+    (codec v143 to v145) loses those refusals (``optional_refusal``) and
+    ends in the same state."""
+
+    state = _arrakeen_graft(_KIT, partner)
+    owner = state.players[0]
+    assert _PRESS in ENGINE.legal_actions(state, 0)
+    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(143)) is None
+    pressed = ENGINE.apply(state, _PRESS)
+    assert [
+        dict(event.payload)["card_id"]
+        for event in pressed.events
+        if event.kind == "agent_card_effect_lapsed"
+    ] == list(lapsed)
+    ended = pressed.state
+    assert ended.decision_stack[-1].kind == FrameKind.TURN
+    after = ended.players[0]
+    assert (after.specimens, after.trashed) == (owner.specimens, owner.trashed)
+    assert {_KIT, partner} <= set(after.in_play)
+
+    record = migrate_record(_v142_record(state, _PRESS, codec=143), _StartingAt(state))
+
+    assert record.complete, record.divergence
+    assert not record.bridge_counts()
+    assert [migrated.step for migrated in record.steps] == [_PRESS]
+    assert canonical_state_hash(record.state) == canonical_state_hash(ended)
+
+    refusals = (
+        DomainAction("decline_agent_card_payment", 0),
+        DomainAction("decline_agent_card_payment", 0, (("box", 1),)),
+    )[: len(lapsed)]
+    for codec in (143, 145):
+        refused = migrate_record(
+            _v142_record(state, *refusals, _PRESS, codec=codec), _StartingAt(state)
         )
-    assert _PRESS not in ENGINE.legal_actions(state, 0)
-    older = _bridges_for(143)
-
-    bridged = migration._bridge(ENGINE, state, _PRESS, older)
-
-    assert bridged is not None
-    assert (bridged[0].name, bridged[1]) == ("box_refused_at_turn_end", refusal)
-    assert _PRESS in ENGINE.legal_actions(ENGINE.apply(state, refusal).state, 0)
-    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(144)) is None
+        assert refused.complete, refused.divergence
+        assert refused.dropped == tuple(
+            (index, migration.OPTIONAL_REFUSAL_DROPPED)
+            for index in range(len(refusals))
+        )
+        assert [migrated.step for migrated in refused.steps] == [_PRESS]
+        assert canonical_state_hash(refused.state) == canonical_state_hash(ended)
+    # Stamped v146 the refusals are this engine's own steps, which it no
+    # longer offers: the record stops on the first.
+    current = migrate_record(
+        _v142_record(state, *refusals, _PRESS, codec=146), _StartingAt(state)
+    )
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == 0
 
 
 @pytest.mark.parametrize(
@@ -1735,4 +1829,114 @@ def test_a_record_ending_on_a_split_step_ends_with_what_that_step_did(
     assert not (
         isinstance(decision, ChanceDecision)
         and decision.decision_id.endswith(":scouts_reward:pause")
+    )
+
+
+_LITANY = "imperium:litany_against_fear:0"
+_WITHDRAWN = "intrigue:twisted_withdrawn:0"
+_DECLINE_START = DomainAction("decline_turn_start", 0)
+
+
+def _turn_start_window_turn() -> GameState:
+    """Seat 0's Bloodlines turn holding Litany Against Fear and Withdrawn,
+    with Contingency Plan (a Plot) beside them."""
+
+    starters = starting_deck_instance_ids(0)
+    imperium = imperium_deck_instance_ids(False, bloodlines=True)
+    seat_zero = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=(_LITANY, *starters[:4]),
+        deck=starters[4:],
+        intrigue_cards=(_WITHDRAWN, "intrigue:contingency_plan:0"),
+    )
+    return GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False, bloodlines=True)[:6],
+        imperium_row=tuple(card for card in imperium if card != _LITANY)[:5],
+        imperium_deck=tuple(card for card in imperium if card != _LITANY)[5:20],
+        players=(
+            seat_zero,
+            *(PlayerState(player_id=player) for player in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.TURN,
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_a_turn_start_card_left_unplayed_migrates_through_the_refusal() -> None:
+    # Codec v146 (user ruling 2026-10-14, OQ-095 (6)): while a seat can play
+    # Litany Against Fear or Withdrawn, its turn opens with just those plays
+    # and ``decline_turn_start``. An older engine offered them among the
+    # turn's other choices, so a v145 record whose first turn action is
+    # anything else left them unplayed: the ``turn_start_window`` bridge
+    # refuses the start right before that step, which then applies as
+    # recorded.
+    start = _turn_start_window_turn()
+    window = ENGINE.legal_actions(start, 0)
+    assert window[-1] == _DECLINE_START and len(window) == 3
+    plot = DomainAction(
+        "play_intrigue", 0, (("card_id", "intrigue:contingency_plan:0"), ("option", 0))
+    )
+    reveal = DomainAction("reveal_turn", 0)
+    for first in (plot, reveal):
+        assert first not in window
+        record = migrate_record(
+            _v142_record(start, first, codec=145), _StartingAt(start)
+        )
+
+        assert record.complete, record.divergence
+        assert [(m.step, m.recorded_index, m.bridge) for m in record.steps] == [
+            (_DECLINE_START, None, "turn_start_window"),
+            (first, 0, None),
+        ]
+        direct = ENGINE.apply(ENGINE.apply(start, _DECLINE_START).state, first)
+        assert canonical_state_hash(record.state) == canonical_state_hash(
+            direct.state
+        )
+
+    # A recorded play of either card is the window's own answer: no bridge.
+    for play in (window[0], window[1]):
+        played = migrate_record(
+            _v142_record(start, play, codec=145), _StartingAt(start)
+        )
+        assert played.complete, played.divergence
+        assert not played.bridge_counts()
+        assert [m.step for m in played.steps] == [play]
+
+    # Once the start is over the bridge answers nothing more: the recorded
+    # Agent turn after the Plot applies as it is.
+    declined = ENGINE.apply(start, _DECLINE_START).state
+    agent = next(
+        action
+        for action in ENGINE.legal_actions(declined, 0)
+        if action.action_id == "agent_turn"
+    )
+    later = migrate_record(
+        _v142_record(start, plot, agent, codec=145), _StartingAt(start)
+    )
+    assert later.complete, later.divergence
+    assert later.bridge_counts() == Counter({"turn_start_window": 1})
+
+    # Stamped v146 the refusal is the record's own step: a record skipping
+    # the window stops at once.
+    current = migrate_record(_v142_record(start, plot, codec=146), _StartingAt(start))
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == 0
+    assert migration._bridge(ENGINE, start, plot, _bridges_for(146)) is None
+    window_bridge = next(
+        bridge for bridge in migration.BRIDGES if bridge.name == "turn_start_window"
+    )
+    assert migration._bridge(ENGINE, start, plot, _bridges_for(145)) == (
+        window_bridge,
+        _DECLINE_START,
     )

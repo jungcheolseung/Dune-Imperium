@@ -685,18 +685,14 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     )
     state = _play(_turn_state(owner), DAGGER, "imperial_privilege")
     assert state.players[0].units_in_conflict == 1
-    decline = next(
-        action
-        for action in legal_imperial_privilege_actions(state, 0)
-        if action.action_id == "decline_imperial_privilege_intrigue"
-    )
-    declined = apply_imperial_privilege_action(state, decline).state
-    recalls = legal_imperial_privilege_actions(declined, 0)
+    # The optional Intrigue trade (nothing to trade here) no longer gates
+    # the recall (OQ-095 (2), user ruling 2026-10-14).
+    recalls = legal_imperial_privilege_actions(state, 0)
     assert [action.action_id for action in recalls] == [
         "recall_conflict_agent_for_imperial_privilege"
     ]
 
-    result = apply_imperial_privilege_action(declined, recalls[0])
+    result = apply_imperial_privilege_action(state, recalls[0])
     seat = result.state.players[0]
     assert seat.agent_in_conflict == 0
     assert seat.units_in_conflict == 0
@@ -725,10 +721,9 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
 
 
 def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> GameState:
-    from dune_imperium.rules.board_effects import (
-        apply_imperial_privilege_action,
-        legal_imperial_privilege_actions,
-    )
+    """Duncan's Signet sends this turn's Agent Into the Fray at Imperial
+    Privilege; the recall step is offered at once (the optional Intrigue
+    trade no longer comes first, OQ-095 (2), user ruling 2026-10-14)."""
 
     owner = PlayerState(
         player_id=0,
@@ -749,12 +744,7 @@ def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> Gam
     fighting = apply_leader_agent_deploy(state, deploy).state
     assert fighting.players[0].agent_locations == ()
     assert fighting.players[0].agent_in_conflict == earlier_in_conflict + 1
-    decline = next(
-        action
-        for action in legal_imperial_privilege_actions(fighting, 0)
-        if action.action_id == "decline_imperial_privilege_intrigue"
-    )
-    return apply_imperial_privilege_action(fighting, decline).state
+    return fighting
 
 
 def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> None:
@@ -773,11 +763,11 @@ def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> No
         legal_imperial_privilege_actions,
     )
 
-    declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=0)
+    fighting = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=0)
 
     confirm = DomainAction("resolve_imperial_privilege_without_recall", 0)
-    assert legal_imperial_privilege_actions(declined, 0) == (confirm,)
-    confirmed = apply_imperial_privilege_action(declined, confirm).state
+    assert legal_imperial_privilege_actions(fighting, 0) == (confirm,)
+    confirmed = apply_imperial_privilege_action(fighting, confirm).state
     seat = confirmed.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
@@ -797,12 +787,12 @@ def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> Non
         legal_imperial_privilege_actions,
     )
 
-    declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=1)
-    recalls = legal_imperial_privilege_actions(declined, 0)
+    fighting = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=1)
+    recalls = legal_imperial_privilege_actions(fighting, 0)
     assert [action.action_id for action in recalls] == [
         "recall_conflict_agent_for_imperial_privilege"
     ]
-    seat = apply_imperial_privilege_action(declined, recalls[0]).state.players[0]
+    seat = apply_imperial_privilege_action(fighting, recalls[0]).state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
 
@@ -889,18 +879,12 @@ def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -
     )
     state = _play(_turn_state(owner), DAGGER, "imperial_privilege")
     assert units_strength(state.players[0]) == 3 + 3
-    decline = next(
-        action
-        for action in legal_imperial_privilege_actions(state, 0)
-        if action.action_id == "decline_imperial_privilege_intrigue"
-    )
-    declined = apply_imperial_privilege_action(state, decline).state
     recall = next(
         action
-        for action in legal_imperial_privilege_actions(declined, 0)
+        for action in legal_imperial_privilege_actions(state, 0)
         if action.action_id == "recall_conflict_agent_for_imperial_privilege"
     )
-    seat = apply_imperial_privilege_action(declined, recall).state.players[0]
+    seat = apply_imperial_privilege_action(state, recall).state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
     assert units_strength(seat) == 3

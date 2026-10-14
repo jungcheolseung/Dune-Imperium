@@ -74,7 +74,10 @@ from dune_imperium.simulation.sweep import run_checked_game
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
-from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
+    finish_agent_turn,
+    finish_agent_turn_result,
+)
 
 TECH = RulesetConfig(bloodlines=True, tech_module=True)
 TECH_CHOAM = RulesetConfig(bloodlines=True, tech_module=True, choam_module=True)
@@ -366,8 +369,10 @@ def test_a_landsraad_visit_offers_the_face_up_tiles_the_owner_can_afford() -> No
 
     offered = _tech_actions(state)
     # Reward choices wait until after purchase (OQ-098). Advanced Data
-    # Analysis still needs a placed Spy as part of its purchase cost.
-    assert "decline_tech" in offered
+    # Analysis still needs a placed Spy as part of its purchase cost. The
+    # visit's "may acquire" offers no refusal: left unused it lapses at the
+    # turn end (OQ-095 (2), user ruling 2026-10-14; codec v146).
+    assert "decline_tech" not in offered
     assert "glowglobes" in offered
     assert "gene_locked_vault" in offered
     assert not any(key.startswith("advanced_data_analysis") for key in offered)
@@ -392,9 +397,12 @@ def test_a_non_landsraad_visit_offers_no_tile() -> None:
     ("space_id", "printed_key"),
     [
         ("high_council", "high_council"),
-        # The written-sentence key and its own card draw (user ruling
-        # 2026-10-10, OQ-027 (d)).
-        ("imperial_privilege", "imperial_privilege,cards"),
+        # The optional Intrigue trade, the recall and its own card draw (user
+        # rulings 2026-10-10, OQ-027 (d), and 2026-10-14, OQ-095 (2)).
+        (
+            "imperial_privilege",
+            "imperial_privilege_intrigue,imperial_privilege,cards",
+        ),
         ("swordmaster", "swordmaster"),
     ],
 )
@@ -421,7 +429,7 @@ def test_every_landsraad_visit_offers_acquire_tech(
     icons = dict(placed.decision_stack[-1].context)["pending_board_icons"]
     assert icons == f"{printed_key},tech"
     offered = _tech_actions(placed)
-    assert "decline_tech" in offered
+    assert "decline_tech" not in offered  # OQ-095 (2), user ruling 2026-10-14
     assert "glowglobes" in offered
 
 
@@ -470,12 +478,24 @@ def test_a_high_council_seat_discounts_every_tile_by_one_spice() -> None:
     assert len(seat.hand) == 4 + 1  # one card played, one drawn
 
 
-def test_declining_keeps_the_stacks_and_closes_the_offer() -> None:
+def test_an_unused_offer_keeps_the_stacks_and_lapses_at_the_turn_end() -> None:
+    # The visit's Acquire Tech is optional [Bloodlines p. 7]: since the user
+    # ruling of 2026-10-14 (OQ-095 (2)) it offers no ``decline_tech`` row,
+    # holds no turn end back, and the owner's press lapses it.
     state = _visit(_turn_state(_owner()), "assembly_hall")
-    declined = _purchase_and_resolve(state, _tech_actions(state)["decline_tech"])
-    assert declined.events[0].kind == "tech_declined"
-    assert declined.state.tech_stacks == STACKS
-    assert legal_tech_acquisition_actions(declined.state, 0) == ()
+    engine = UprisingRulesEngine()
+    assert DomainAction("finish_agent_turn", 0) in engine.legal_actions(state, 0)
+    finished = finish_agent_turn_result(state)
+    lapsed = [
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "board_effect_lapsed"
+    ]
+    assert lapsed == [{"effect": "tech", "player": 0, "space_id": "assembly_hall"}]
+    assert "tech_declined" not in {event.kind for event in finished.events}
+    assert finished.state.tech_stacks == STACKS
+    assert finished.state.players[0].tech_ids == ()
+    assert legal_tech_acquisition_actions(finished.state, 0) == ()
 
 
 def test_an_emptied_stack_simply_offers_fewer_choices() -> None:
@@ -499,7 +519,6 @@ def test_advanced_data_analysis_trashes_a_placed_spy_to_the_box() -> None:
     )
     offered = _tech_actions(state)
     assert set(offered) == {
-        "decline_tech",
         f"advanced_data_analysis:post_id={LANDSRAAD_POST}",
         f"advanced_data_analysis:post_id={SIETCH_POST}",
     }
@@ -591,7 +610,7 @@ def test_without_the_wall_the_detonation_variant_disappears() -> None:
         ),
         "assembly_hall",
     )
-    assert set(_tech_actions(state)) == {"decline_tech", "forbidden_weapons"}
+    assert set(_tech_actions(state)) == {"forbidden_weapons"}
 
 
 # --- Servo-Receivers: the Signet Ring icon ------------------------------------
@@ -646,7 +665,7 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
     state = _servo_visit("gurney_halleck")
     # No Shield Wall variant, though the wall stands.
     assert state.shield_wall_present
-    assert set(_tech_actions(state)) == {"decline_tech", "servo_receivers"}
+    assert set(_tech_actions(state)) == {"servo_receivers"}
     result = _purchase_and_resolve(state, _tech_actions(state)["servo_receivers"])
     seat = result.state.players[0]
     # Warmaster: recruit one troop [Gurney Halleck card].
@@ -774,15 +793,14 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
         for action in engine.legal_actions(opened, 0)
         if action.action_id == "deploy_leader_agent"
     )
-    fighting = engine.apply(opened, deploy).state
+    deployed = engine.apply(opened, deploy)
+    fighting = deployed.state
     assert fighting.players[0].agent_in_conflict == 1
     hand_before = len(fighting.players[0].hand)
-    declined = engine.apply(
-        fighting,
-        DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0),
-    )
 
-    legal = {action.action_id for action in engine.legal_actions(declined.state, 0)}
+    # The optional Intrigue trade no longer gates the recall (OQ-095 (2),
+    # user ruling 2026-10-14), so the recall step is offered at once.
+    legal = {action.action_id for action in engine.legal_actions(fighting, 0)}
     assert "recall_conflict_agent_for_imperial_privilege" not in legal
     # With no other Agent the owner confirms the skipped recall (user ruling
     # 2026-09-30); the card is still drawn (OQ-023), by the space's own icon
@@ -791,7 +809,7 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     # nothing more.
     assert "resolve_imperial_privilege_without_recall" in legal
     confirmed = engine.apply(
-        declined.state,
+        fighting,
         DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
     )
 
@@ -2643,7 +2661,9 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
     # Designer ruling (Message from designer, OQ-057): Battlefield Research
     # and Rapid Engineering must acquire a tile once played; only an
     # unaffordable offer may be declined. The Landsraad visit's own Acquire
-    # Tech stays a "may" [Bloodlines p. 7].
+    # Tech stays a "may" [Bloodlines p. 7], which since the user ruling of
+    # 2026-10-14 (OQ-095 (2)) lapses at the turn end instead of being
+    # declined.
     from dune_imperium.rules.intrigue import (
         apply_intrigue_choice,
         apply_intrigue_play,
@@ -2678,8 +2698,13 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
     broke = push_tech_acquisition(poor, 0, discount=1, source="test").state
     assert list(_tech_actions(broke)) == ["decline_tech"]
 
+    # The visit's own offer needs no refusal either: left unused it lapses
+    # at the turn end (OQ-095 (2), user ruling 2026-10-14).
     visit = _visit(_turn_state(_owner()), "assembly_hall")
-    assert "decline_tech" in _tech_actions(visit)
+    assert "decline_tech" not in _tech_actions(visit)
+    assert DomainAction("finish_agent_turn", 0) in UprisingRulesEngine().legal_actions(
+        visit, 0
+    )
 
 def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None:
     from dune_imperium.rules.combat import begin_combat_intrigue

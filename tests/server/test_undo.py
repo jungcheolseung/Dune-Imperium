@@ -47,6 +47,11 @@ HUMAN_FIRST = (
     "heuristic_uprising_table",
     "heuristic_uprising_table",
 )
+# Seed 14's scripted revisions moved one step earlier with codec v146:
+# optional Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), so
+# seat 3 no longer declines its optional Signet Ring step before ending its
+# first turn; the press lapses it. Seat 0's first Agent turn now opens at
+# revision 10 and its Dutiful Service visit is served at revision 11.
 
 
 def _obj(value: object) -> dict[str, object]:
@@ -498,7 +503,7 @@ def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
+    summary = _play_until_revision(manager, summary, 11)
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
 
     # Dutiful Service's Solari icon and the Emperor Influence reveal nothing.
@@ -634,28 +639,28 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
+    summary = _play_until_revision(manager, summary, 11)
     view_before = manager.view(game_id, 0)
     actions_before = manager.legal_actions(game_id, 0)
     steps_before = list(manager._get(game_id).steps)
     summary = _play(manager, summary)
-    assert summary["revision"] == 13
+    assert summary["revision"] == 12
     assert summary["undo"] == [{"seat": 0, "steps": 2}]
     undone_step = manager._get(game_id).steps[-1]
 
     with pytest.raises(StaleRevisionError):
-        manager.undo(game_id, seat=0, revision=12, steps=1)
+        manager.undo(game_id, seat=0, revision=11, steps=1)
     with pytest.raises(SessionError, match="at most 2"):
-        manager.undo(game_id, seat=0, revision=13, steps=3)
+        manager.undo(game_id, seat=0, revision=12, steps=3)
     with pytest.raises(SessionError, match="at most"):
-        manager.undo(game_id, seat=0, revision=13, steps=0)
+        manager.undo(game_id, seat=0, revision=12, steps=0)
     with pytest.raises(SeatAccessError):
-        manager.undo(game_id, seat=1, revision=13, steps=1)
+        manager.undo(game_id, seat=1, revision=12, steps=1)
 
     assert summary["undo_count"] == 0
-    rewound = manager.undo(game_id, seat=0, revision=13, steps=1, undo_count=0)
+    rewound = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=0)
 
-    assert rewound["revision"] == 12
+    assert rewound["revision"] == 11
     assert rewound["undo_count"] == 1
     assert rewound["undo"] == [{"seat": 0, "steps": 1}]
     assert manager.view(game_id, 0) == view_before
@@ -673,7 +678,7 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     # A different choice continues the game from the rewound decision.
     assert len(_rows(actions_before["actions"])) >= 2
     resumed = _play(manager, rewound, index=1)
-    assert _int(resumed["revision"]) >= 13
+    assert _int(resumed["revision"]) >= 12
     assert manager._get(game_id).steps[len(steps_before)] != undone_step
 
     # The undo generation guards a stale client: a request carrying the
@@ -698,8 +703,8 @@ def test_the_log_is_served_per_seat_with_undo_markers() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
-    summary = manager.undo(game_id, seat=0, revision=12, steps=1)
+    summary = _play_until_revision(manager, summary, 11)
+    summary = manager.undo(game_id, seat=0, revision=11, steps=1)
 
     log = manager.log(game_id, 0)
     entries = _rows(log["entries"])
@@ -780,8 +785,8 @@ def test_log_entries_redact_hidden_arguments_and_private_events() -> None:
 def _game_with_an_undo(manager: GameSessionManager) -> JsonObject:
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
-    summary = manager.undo(game_id, seat=0, revision=12, steps=1)
+    summary = _play_until_revision(manager, summary, 11)
+    summary = manager.undo(game_id, seat=0, revision=11, steps=1)
     return _play(manager, summary, index=1)
 
 
@@ -816,7 +821,7 @@ def test_saves_carry_the_undo_history_and_restore_the_same_log() -> None:
 def _game_with_two_single_step_undos(
     manager: GameSessionManager,
 ) -> tuple[JsonObject, list[ReplayStep]]:
-    """Seed 14 at revision 13: seat 0 takes back its two steps one at a time.
+    """Seed 14 at revision 12: seat 0 takes back its two steps one at a time.
 
     The second undo flags a step logged before the first undo's marker, so
     the log ends ``A(undone), B(undone), undo(1), undo(1)``: a marker takes
@@ -826,12 +831,12 @@ def _game_with_two_single_step_undos(
 
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
+    summary = _play_until_revision(manager, summary, 11)
     summary = _play(manager, summary)
     assert summary["undo"] == [{"seat": 0, "steps": 2}]
     taken_back = list(manager._get(game_id).steps[-2:])
-    summary = manager.undo(game_id, seat=0, revision=13, steps=1, undo_count=0)
-    summary = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=1)
+    summary = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=0)
+    summary = manager.undo(game_id, seat=0, revision=11, steps=1, undo_count=1)
     return summary, taken_back
 
 
@@ -850,7 +855,7 @@ def test_two_single_step_undos_in_a_row_save_and_restore() -> None:
     document = manager.save_game(game_id)
     restored = manager.restore_game(document)
     restored_id = str(restored["game_id"])
-    assert restored["revision"] == summary["revision"] == 11
+    assert restored["revision"] == summary["revision"] == 10
     assert restored["undo_count"] == summary["undo_count"] == 2
     assert restored["undo"] == summary["undo"]
     assert manager._get(restored_id).log == manager._get(game_id).log
@@ -866,11 +871,11 @@ def test_undo_history_names_each_single_step_undo_separately() -> None:
     summary, (first, second) = _game_with_two_single_step_undos(manager)
     history = undo_history(manager._get(str(summary["game_id"])).log)
 
-    # Both undos rewound the timeline that stands to its eleventh live step:
+    # Both undos rewound the timeline that stands to its tenth live step:
     # the first took back the later step, the second the earlier one.
     assert [(position, marker.count) for position, marker, _ in history] == [
-        (11, 1),
-        (11, 1),
+        (10, 1),
+        (10, 1),
     ]
     assert [[entry.step for entry in undone] for _, _, undone in history] == [
         [second],
@@ -885,10 +890,10 @@ def test_an_undo_across_a_new_step_restores_with_its_own_steps() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
+    summary = _play_until_revision(manager, summary, 11)
     summary = _play(manager, summary)
     first = manager._get(game_id).steps[-2]
-    summary = manager.undo(game_id, seat=0, revision=13, steps=1, undo_count=0)
+    summary = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=0)
     summary = _play_raw(manager, summary, index=1)
     replacement = manager._get(game_id).steps[-1]
     assert summary["undo"] == [{"seat": 0, "steps": 2}]
@@ -973,12 +978,12 @@ def test_review_reports_where_steps_were_taken_back() -> None:
     assert len(history) == 1
     assert history[0]["seat"] == 0
     assert history[0]["count"] == 1
-    # The undo rewound to live step 11 (revision 11 = eleven steps applied).
-    assert history[0]["step"] == 11
+    # The undo rewound to live step 10 (revision 10 = ten steps applied).
+    assert history[0]["step"] == 10
     undone = _rows(history[0]["undone"])
     assert len(undone) == 1
     assert undone[0]["type"] == "action" and undone[0]["actor"] == 0
-    assert _rows(review["steps"])[11] != undone[0]
+    assert _rows(review["steps"])[10] != undone[0]
 
 
 # ------------------------------------------------- a confirmed hand-over
@@ -1066,7 +1071,7 @@ def _play_seat0_to_imperial_privilege(
             continue
         actions = _rows(manager.legal_actions(game_id, 0)["actions"])
         if any(
-            row["action_id"] == "decline_imperial_privilege_intrigue" for row in actions
+            row["action_id"] == "recall_agent_for_imperial_privilege" for row in actions
         ):
             return summary
         index = 0
@@ -1090,11 +1095,13 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     recall is a step of its own, which reveals nothing and so stays in the
     seat's undo window, while the card draw beside it comes from the hidden
     deck and closes the window (OQ-010). Before the split the recall drew
-    the card in the same step and could never be taken back.
+    the card in the same step and could never be taken back. Since codec
+    v146 the recall is offered at once beside the optional Intrigue trade,
+    with no slot to decline first (OQ-095 (2), user ruling 2026-10-14).
 
-    Seed 0: seat 0, playing its first action, reaches Imperial Privilege in
-    round 7 with another Agent on Accept Contract; the placement itself is
-    the one step its undo window holds there.
+    Seed 0: seat 0, playing its first action, reaches Imperial Privilege
+    with another Agent on the board; the placement itself is the one step
+    its undo window holds there.
     """
 
     manager = GameSessionManager()
@@ -1112,15 +1119,9 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     draw = rows["resolve_board_effect"]
     assert draw["arguments"] == {"effect": "cards"}
     assert draw["undoable"] is False
-    assert rows["decline_imperial_privilege_intrigue"]["undoable"] is True
+    assert "decline_imperial_privilege_intrigue" not in rows
     assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
 
-    summary = _play_raw(
-        manager,
-        summary,
-        index=_int(rows["decline_imperial_privilege_intrigue"]["index"]),
-    )
-    rows = served()
     recall = rows["recall_agent_for_imperial_privilege"]
     assert recall["undoable"] is True
     assert rows["resolve_board_effect"]["undoable"] is False
@@ -1132,8 +1133,8 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     owner = manager._get(game_id).state.players[0]
     assert space not in owner.agent_locations
     assert owner.hand == hand_before  # the recall draws nothing
-    # The placement, the declined slot and the recall.
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    # The placement and the recall.
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
 
     rewound = manager.undo(
         game_id,
@@ -1143,7 +1144,7 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     )
     assert space in manager._get(game_id).state.players[0].agent_locations
     assert manager.legal_actions(game_id, 0) == actions_before
-    assert _rows(rewound["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(rewound["undo"]) == [{"seat": 0, "steps": 1}]
 
     # Recalled again, then drawn: the draw seals the window.
     rows = served()

@@ -43,9 +43,12 @@ HUMAN_FIRST_SEED = 0  # seat 0 opens the first round
 SEARCH_FIRST_SEED = 5  # seat 1 opens it
 # Base rules, seat 0 taking action 0 against three search seats that answer
 # their first legal action (``quick_search``): seat 3 plays Covert Operation,
-# seat 0 discards for it first (step 338), and seat 1 is asked to discard
-# next while seat 0's discard is still in seat 0's undo window.
-COVERT_OPERATION_SEED = 7
+# seat 0 discards for it first, and seat 1 is asked to discard next while
+# seat 0's discard is still in seat 0's undo window. v146: optional
+# Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which moved
+# seed 7's first-action games off this position; re-searched then, seed 26
+# is the only one of 0-29.
+COVERT_OPERATION_SEED = 26
 # With the leader draft, seat 0 picks first; its press hands the draft to the
 # heuristic seats 3 and 2 and then to the search seat 1 (``_draft_pick``).
 DRAFT_HAND_OVER_SEED = 5

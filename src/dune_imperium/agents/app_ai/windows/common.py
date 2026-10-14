@@ -95,15 +95,17 @@ def decide(
     sources: Sequence[Source],
     *,
     skip: DomainAction | None,
-    forced: bool | None = None,
+    forced: bool | Callable[[], bool] | None = None,
 ) -> DomainAction | None:
     """The app's answer among ``sources``; ``skip`` is the empty answer.
 
     Automatic stages go first (lowest stage, then ``order``; its first
     action). Otherwise prompt sources are evaluated and ranked with
-    ``make_choice``. ``forced`` defaults to "no skip action is legal". With
-    no source at all, return ``skip`` (None if there is none either, which
-    makes the agent fall back).
+    ``make_choice``. ``forced`` defaults to "no skip action is legal"; a
+    callable is asked only once the sources are evaluated and none is worth
+    more than 0 (an evaluation may settle whether its key still forces the
+    prompt). With no source at all, return ``skip`` (None if there is none
+    either, which makes the agent fall back).
     """
 
     automatic = [s for s in sources if s.stage < Stage.PROMPT and s.actions]
@@ -123,6 +125,8 @@ def decide(
         return choice.action
     if forced is None:
         forced = skip is None
+    elif callable(forced):
+        forced = forced()
     if not forced:
         return skip
     pool = [c.action for c in candidates] or [a for s in sources for a in s.actions]

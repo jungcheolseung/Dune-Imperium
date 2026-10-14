@@ -2,7 +2,9 @@
 post-action prompt.
 
 Our engine offers every pending effect of the Agent turn in free order (OQ-027,
-scratchpad R1 §2) and asks for each optional effect explicitly. The app runs
+scratchpad R1 §2); an optional effect ("may", an arrow cost, a black trash
+icon) offers no refusal and lapses unused when the turn ends (OQ-095 (2),
+user ruling 2026-10-14, codec v146). The app runs
 the turn in fixed ``AgentTurnPhase`` states and asks the AI only what is left
 afterwards (``spec/engine-order.md`` §3.1-3.6, §4; ``12-turn-structure.md``
 §2.3, §6):
@@ -38,13 +40,18 @@ afterwards (``spec/engine-order.md`` §3.1-3.6, §4; ``12-turn-structure.md``
 those stages and calls ``common.decide``. A PROMPT source is valued by its
 port's ``evaluate`` on a ``Request`` built from our legal targets, and the
 app's answer is mapped back to the legal action that realises it. The empty
-answer (End Turn) needs, in our engine, every Optional effect declined first:
-the skip action is the first pending decline, then the end-of-turn chores
-(``TrashSelfAbility``, Implicit: the app runs it after End Turn; no-op
-confirmations with no app question), then ``finish_agent_turn``. With an
-Explicit source pending and nothing worth more than 0 the prompt is forced and
-``decide`` answers at random (``DefaultRandomChoice``). ``withdraw_troops`` is
-never used (the app never withdraws).
+answer is End Turn: the end-of-turn chores (``TrashSelfAbility``, Implicit:
+the app runs it after End Turn; no-op confirmations with no app question),
+then ``finish_agent_turn``, whose press lapses every Optional effect left
+unused, as the app's End Turn leaves its Optional keys. A refusal our engine
+still offers in the turn (an effect part way through a bundled selection
+while the other grafted box waits) is taken before them. An answer that uses
+a key on nothing (an Explicit trash's empty pick, "no Commander", "no
+tile": ``LEFT_UNUSED``) leaves the effect unused: the key is no candidate
+and no longer forces the prompt. With an Explicit source pending and nothing
+worth more than 0 the prompt is forced and ``decide`` answers at random
+(``DefaultRandomChoice``). ``withdraw_troops`` is never used (the app never
+withdraws).
 
 Action table: our action -> app ability (owner) -> stage -> how the answer maps
 back. (E) Explicit: forces the prompt; (O) Optional. "Follow-up": the rest of
@@ -83,12 +90,11 @@ The space:
   recall is a follow-up; ``without_spy`` alone is a chore.
 - ``choose_shipping_influence(faction)``: ``GainAnyInfluenceAgentAbility``
   (E); the chosen track.
-- ``trash_card_for_desert_tactics(card)`` /
-  ``resolve_desert_tactics_without_trash``: ``TrashAgentAbility`` (E); card ->
-  trash, empty pick -> without trash.
-- ``trash_intrigue_for_imperial_privilege(card)`` /
-  ``decline_imperial_privilege_intrigue``: ``ImperialPrivilegeAbility`` (O);
-  card -> trash, unused -> decline.
+- ``trash_card_for_desert_tactics(card)``: ``TrashAgentAbility`` (E); card ->
+  trash, empty pick -> left unused.
+- ``trash_intrigue_for_imperial_privilege(card)``:
+  ``ImperialPrivilegeAbility`` (O), offered beside the recall (user ruling
+  2026-10-14); card -> trash.
 - ``recall_agent_for_imperial_privilege(space)``: ``RecallAgentAbility`` (E);
   the space's draw is its own ``resolve_board_effect(cards)``, the
   ``DrawAbility`` (600 or E), as in the app (user ruling 2026-10-10, OQ-027
@@ -128,15 +134,18 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   ``BeneGesseritTrashAbility`` (Tread in Darkness; E; its draw is its own
   ``cards`` icon, ``BeneGesseritDrawAbility``),
   ``ShishakliAgentAbility`` (O; targets hand, in play, discard),
-  ``TreacherousManeuverAbility`` (O); card -> trash, empty pick or unused ->
-  decline.
+  ``TreacherousManeuverAbility`` (O); card -> trash, an empty pick or an
+  unused key -> left unused (``decline_agent_card_trash`` where our engine
+  still offers it: a trash owed part way through while the other grafted box
+  waits).
 - ``discard_agent_card(card)`` / ``decline_agent_card_discard``:
   ``CapturedMentatAgentAbility`` (O), ``GuildSpyAgentAbility`` (O),
   ``SpacetimeFoldingAbility`` (O), ``GuildEnvoyAbility`` (E),
-  ``DeliveryAgreementAgentAbility`` (O); card -> discard, unused -> decline.
+  ``DeliveryAgreementAgentAbility`` (O); card -> discard, unused -> left
+  unused.
 - ``pay_agent_card_water`` / ``pay_agent_card_spice`` /
   ``decline_agent_card_payment``: ``EcologicalTestingStationAbility`` (O),
-  ``SmugglersHavenAgentAbility`` (O); used -> pay, unused -> decline.
+  ``SmugglersHavenAgentAbility`` (O); used -> pay, unused -> left unused.
 - ``select_corrinth_city_discard(card)`` / ``pay_corrinth_city(card)`` /
   ``decline_corrinth_city_payment``: ``CorrinthCityAgentAbility`` (O); its one
   answer names both cards: the first now, the second (memory intent
@@ -167,8 +176,8 @@ The leader (Signet Ring box and leader abilities):
 - ``advance_feyd_track(space)``: ``PersonalTrainingAbility`` (E); Feyd's
   ``trash_leader_card`` / ``decline_leader_card_trash``:
   ``PersonalTrainingPayToTrashAbility`` / ``PersonalTrainingTrashAbility``
-  (O, ``TrashAbility`` E): card -> trash, empty pick -> decline (the app pays
-  Pay-to-Trash's Solari for nothing; ours cannot, plan §10).
+  (O, ``TrashAbility`` E): card -> trash, empty pick -> left unused (the app
+  pays Pay-to-Trash's Solari for nothing; ours cannot, plan §10).
 - ``place_leader_spy`` / ``recall_spy_for_leader_placement`` /
   ``decline_leader_spy_placement``: ``PlaceSpyCustomAbility`` (Feyd),
   ``ArrakisInformantAbility`` (Margot), ``UnseenNetworkAbility`` (Staban,
@@ -184,9 +193,8 @@ The leader (Signet Ring box and leader abilities):
   ``ChroniclersInsightAcquireAbility``'s E picks.
 - ``gain_leader_signet_troop`` / ``choose_leader_signet_influence``
   (Shaddam): ``EmperorOfTheKnownUniverseSignetAbility`` (E).
-- ``use_other_memories`` / ``decline_other_memories``:
-  ``OtherMemoriesAbility`` (O); ``pay_leader_board_repeat`` /
-  ``decline_leader_board_repeat``: ``ReverendMotherAbility`` (O).
+- ``use_other_memories``: ``OtherMemoriesAbility`` (O; unused, End Turn
+  lapses it); ``pay_leader_board_repeat``: ``ReverendMotherAbility`` (O).
 
 The rest:
 
@@ -238,8 +246,9 @@ Immortality, Epic Game Mode and the promos (``spec/immortality.md`` §4-§8,
   one as the turn (``_turn``) and the other on the state with it active
   (``_partner_box``), and competes both: the played card's 500 box before
   the partner's (``rank``), the card row in that order at 600, values in
-  the prompt. A partner winner is its own row. The empty answer takes the
-  partner's Optional keys' decline when the active box has none. Ghola's
+  the prompt. A partner winner is its own row. The empty answer takes a
+  refusal or chore of the partner's box when the active box has none.
+  Ghola's
   box is the partner's (valued by the partner's abilities) and runs at
   state 210 like the ``SpecimenAgentAbility`` box (Bene Tleilax Lab).
 - Single boxes (``_expansion_box``): Research (Experimentation, Bene
@@ -279,21 +288,20 @@ Bloodlines, the Tech Module and Arrakeen Scouts (app-style extensions,
 ``docs/app-ai-plan.md`` §11; ``docs/app-ai/bloodlines-cards.md`` §8,
 ``bloodlines-systems.md`` §2.3, §3.4, §4, §6, ``scouts.md`` §3.3, §3.5):
 
-- The space: ``acquire_sardaukar_commander`` / ``decline_sardaukar_commander``
-  is ``AcquireCommanderAbility`` (E; the empty answer at 0.5 declines; no
-  purchase offered: the refusal is a chore); the Landsraad visit's
-  ``acquire_tech`` / ``decline_tech`` is the RoI ``AcquireTechAbility`` (E,
-  likewise; Advanced Data Analysis boxes the worst-post Spy); a bought
-  tile's ``resolve_tech_acquire_effect`` keys are follow-ups in the engine's
-  key order (Memocorders' track, Gene-Locked Vault's choice,
-  ``ShouldBlowWall``; D15); ``take_tuek_sietch_*`` is
+- The space: ``acquire_sardaukar_commander`` is ``AcquireCommanderAbility``
+  (E; the empty answer at 0.5 leaves it unused; no purchase offered: no
+  key); the Landsraad visit's ``acquire_tech`` is the RoI
+  ``AcquireTechAbility`` (E, likewise; Advanced Data Analysis boxes the
+  worst-post Spy); a bought tile's ``resolve_tech_acquire_effect`` keys are
+  follow-ups in the engine's key order (Memocorders' track, Gene-Locked
+  Vault's choice, ``ShouldBlowWall``; D15); ``take_tuek_sietch_*`` is
   ``TueksSietchDeferredAbility`` (E); Hagga Basin's ``DesertRidingAbility``
   answers option 2 with ``take_desert_riding_hooks``;
   ``scouts_collect_mission`` is ``MissionPiecesSpaceAbility``, automatic at
   state 400 in its icon's place; ``choose_subcommittee`` is
   ``SubcommitteeOfferAbility`` (O; its pick kept for the
-  ``scouts_subcommittee`` window, ``SUBCOMMITTEE_INTENT``),
-  ``decline_subcommittee`` the unused key.
+  ``scouts_subcommittee`` window, ``SUBCOMMITTEE_INTENT``); an unused key
+  lapses.
 - The card: ``_BLOODLINES_BOX_ABILITY`` boxes gated by their ``Cost``,
   Ixian Ambassador and Quash Rebellion the generic box (500), the Bond
   choices of Southern Faith and Possible Futures (``_bond_choice``),
@@ -337,6 +345,7 @@ action (``DefaultRandomChoice``), counted in ``AppAIAgent.fallbacks``.
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Final
 
 from dune_imperium.agents.app_ai.abilities.base import (
     Ability,
@@ -554,13 +563,15 @@ _TRASH_ABILITY: Mapping[str, str] = {
     "shishakli": "ShishakliAgentAbility",
     "tread_in_darkness": "BeneGesseritTrashAbility",
     "treacherous_maneuver": "TreacherousManeuverAbility",
-    # Immortality / promo: Optional (an unused key is the decline) and the
-    # Crysknife ``TrashAbility`` (Explicit: "nothing" is the decline).
+    # Immortality / promo: Optional (an unused key is left unused) and the
+    # Crysknife ``TrashAbility`` (Explicit: "nothing" leaves it unused, or
+    # takes the decline while the other grafted box waits).
     "replacement_eyes": "ReplacementEyesAgentAbility",
     "the_beast_s_spoils": "TheBeastsSpoilsCrysknifeAbility",
     # Bloodlines (bloodlines-cards.md §3.1, §3.9, §3.10): Ruthless
     # Leadership's two keys (one per trash, both ``TrashAbility``: an empty
-    # pick is the decline), Eliminate Allies' generic ``TrashAgentAbility``,
+    # pick leaves it unused, or takes the decline while the other grafted
+    # box waits), Eliminate Allies' generic ``TrashAgentAbility``,
     # Elite Forces' Optional hand trash.
     "ruthless_leadership": "RuthlessLeadershipTrashAbility",
     "eliminate_allies": "TrashAgentAbility",
@@ -573,7 +584,7 @@ _DISCARD_ABILITY: Mapping[str, str] = {
     "guild_envoy": "GuildEnvoyAbility",
     "delivery_agreement": "DeliveryAgreementAgentAbility",
     # Bloodlines (bloodlines-cards.md §2.4): ``DiscardForRewardAgentAbility``
-    # (Optional; the unused key is the decline).
+    # (Optional; an unused key is left unused).
     "arrakis_observer": "ArrakisObserverAgentAbility",
     "engineered_miracle": "EngineeredMiracleAgentAbility",
     "i_believe": "IBelieveAgentAbility",
@@ -805,12 +816,9 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "decline_agent_card_trash",
         "decline_corrinth_city_payment",
         "decline_gather_intelligence",
-        "decline_imperial_privilege_intrigue",
-        "decline_leader_board_repeat",
         "decline_leader_card_trash",
         "decline_leader_signet_payment",
         "decline_leader_spy_placement",
-        "decline_other_memories",
         "deploy_troops",
         "discard_agent_card",
         "finish_agent_turn",
@@ -842,7 +850,6 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "recall_spy_for_leader_placement",
         "resolve_agent_card_effect",
         "resolve_board_effect",
-        "resolve_desert_tactics_without_trash",
         "resolve_espionage_place_spy",
         "resolve_espionage_without_spy",
         "resolve_faction_influence",
@@ -875,8 +882,6 @@ _BLOODLINES_ACTION_IDS: frozenset[str] = frozenset(
         "acquire_sardaukar_commander",
         "acquire_tech",
         "complete_contract_by_card",
-        "decline_sardaukar_commander",
-        "decline_tech",
         "deploy_commanders",
         "deploy_leader_agent",
         "flip_tech",
@@ -902,13 +907,31 @@ _BLOODLINES_ACTION_IDS: frozenset[str] = frozenset(
 _SCOUTS_ACTION_IDS: frozenset[str] = frozenset(
     {
         "choose_subcommittee",
-        "decline_subcommittee",
         "scouts_collect_mission",
         "take_desert_riding_hooks",
     }
 )
 
-type Evaluation = Callable[[], tuple[float, DomainAction | None]]
+
+class _LeftUnused:
+    """The type of ``LEFT_UNUSED``."""
+
+    def __repr__(self) -> str:
+        return "LEFT_UNUSED"
+
+
+#: An app answer that uses its key without effect: an Explicit trash's
+#: empty pick, "no Commander", "no tile". Our engine realised it with the
+#: effect's refusal until the user ruling of 2026-10-14 (OQ-095 (2), codec
+#: v146): an optional effect of the Agent turn now offers none and lapses
+#: unused when the turn ends. The key just leaves the prompt: it is no
+#: candidate and no longer forces the prompt (``_prompt``), so the app's
+#: next answer -- another key, or End Turn -- follows as it would after the
+#: app ran the key on nothing.
+LEFT_UNUSED: Final = _LeftUnused()
+
+type Answered = DomainAction | _LeftUnused | None
+type Evaluation = Callable[[], tuple[float, Answered]]
 
 
 # ---------------------------------------------------------------------------
@@ -1195,13 +1218,25 @@ def _prompt(
     *,
     explicit: bool,
 ) -> None:
+    """A prompt key; an answer ``LEFT_UNUSED`` is no candidate and stops the
+    key forcing the prompt (``_explicit_pending`` reads ``extra``)."""
+
+    extra: dict[str, object] = {"explicit": explicit}
+
+    def answered() -> tuple[float, DomainAction | None]:
+        value, action = evaluate()
+        if isinstance(action, _LeftUnused):
+            extra["explicit"] = False
+            return value, None
+        return value, action
+
     t.sources.append(
         Source(
             label,
             Stage.PROMPT,
             tuple(actions),
-            evaluate=evaluate,
-            extra={"explicit": explicit},
+            evaluate=answered,
+            extra=extra,
         )
     )
 
@@ -1248,14 +1283,17 @@ def _choice_source(
     found: tuple[Ability, int] | None,
     uses: Sequence[DomainAction],
     request: Request,
-    answer: Callable[[Answer], DomainAction | None],
+    answer: Callable[[Answer], Answered],
     decline: DomainAction | None,
 ) -> None:
     """A prompt key whose ``Evaluate`` picks among ``uses`` (or nothing).
 
-    An Optional key the app leaves unused needs our ``decline`` before End
-    Turn; with no ``uses`` at all the app has no such key (its ``Cost`` or
-    targets fail) and the decline is a chore. Uses with no app ability to
+    An Optional key the app leaves unused is left unused here too: the turn's
+    end lapses it (OQ-095 (2), user ruling 2026-10-14). Only where our
+    engine still offers a ``decline`` (an effect part way through a bundled
+    selection while the other grafted box waits, a frame on top of the
+    turn) is it taken before End Turn. With no ``uses`` at all the app has
+    no such key (its ``Cost`` or targets fail). Uses with no app ability to
     rank them are not guessed: the window falls back (``t.unmapped``).
     """
 
@@ -1269,7 +1307,7 @@ def _choice_source(
     ability, _index = found
     p = t.p
 
-    def evaluate() -> tuple[float, DomainAction | None]:
+    def evaluate() -> tuple[float, Answered]:
         ans = ability.evaluate(p, request)
         if ans.response is None:
             return ans.value, None
@@ -1342,12 +1380,12 @@ def _arg_refs(actions: Sequence[DomainAction], name: str) -> list[str]:
 
 
 def _ref_or(
-    actions: Sequence[DomainAction], name: str, fallback: DomainAction | None
-) -> Callable[[Answer], DomainAction | None]:
+    actions: Sequence[DomainAction], name: str, fallback: Answered
+) -> Callable[[Answer], Answered]:
     """Map the first response ref to the action with that argument; an empty
     pick to ``fallback``."""
 
-    def answer(ans: Answer) -> DomainAction | None:
+    def answer(ans: Answer) -> Answered:
         ref = _response_ref(ans)
         if ref is None:
             return fallback
@@ -1573,11 +1611,13 @@ def _influence_choice(
 
 
 def _desert_tactics(t: _Turn) -> None:
+    """Desert Tactics' black trash icon: ``TrashAgentAbility`` (Explicit)
+    over the offered cards; its empty pick leaves the trash unused (the turn
+    end lapses it, OQ-095 (2), user ruling 2026-10-14)."""
+
     trash = t.by_id("trash_card_for_desert_tactics")
-    without = t.run.first("resolve_desert_tactics_without_trash")
-    if not trash and without is None:
+    if not trash:
         return
-    uses = (*trash, *((without,) if without is not None else ()))
     request = Request(
         infos=(TargetInfo(entities=_cards(t, _arg_refs(trash, "card_id"))),)
     )
@@ -1585,17 +1625,20 @@ def _desert_tactics(t: _Turn) -> None:
         t,
         "Desert Tactics trash",
         _find(t.space, "TrashAgentAbility"),
-        uses,
+        trash,
         request,
-        _ref_or(trash, "card_id", without),
+        _ref_or(trash, "card_id", LEFT_UNUSED),
         None,
     )
 
 
 def _imperial_privilege(t: _Turn) -> None:
+    """Imperial Privilege's Intrigue trade and its recall, offered together
+    since the user ruling of 2026-10-14 (the trade gated the recall before):
+    two prompt keys; an unused trade lapses at the turn's end."""
+
     trash = t.by_id("trash_intrigue_for_imperial_privilege")
-    decline = t.run.first("decline_imperial_privilege_intrigue")
-    if trash or decline is not None:
+    if trash:
         intrigues = tuple(
             intrigue_entity(ref, t.seat) for ref in _arg_refs(trash, "card_id")
         )
@@ -1606,7 +1649,7 @@ def _imperial_privilege(t: _Turn) -> None:
             trash,
             Request(infos=(TargetInfo(entities=intrigues),)),
             _ref_or(trash, "card_id", None),
-            decline,
+            None,
         )
     recall = t.by_id("recall_agent_for_imperial_privilege")
     conflict = t.run.first("recall_conflict_agent_for_imperial_privilege")
@@ -1665,16 +1708,13 @@ def _commander_acquire(t: _Turn) -> None:
     """The space's Sardaukar Commander: ``AcquireCommanderAbility``
     (Explicit; bloodlines-systems.md §2.2-2.3, D3) over the offered Skills in
     face-up order: ``((skill,),)`` -> ``acquire_sardaukar_commander(skill)``,
-    ``((),)`` -> the Commander without a Skill, the empty answer at 0.5 ->
-    ``decline_sardaukar_commander``. With no purchase offered (the cost
-    cannot be paid, the Commander is gone) the app has no key: the refusal
-    is a chore."""
+    ``((),)`` -> the Commander without a Skill, the empty answer at 0.5
+    leaves the purchase unused (``LEFT_UNUSED``: the turn end lapses it,
+    OQ-095 (2), user ruling 2026-10-14). With no purchase offered (the cost
+    cannot be paid, the Commander is gone) the app has no key."""
 
     acquire = t.by_id("acquire_sardaukar_commander")
-    decline = t.run.first("decline_sardaukar_commander")
     if not acquire:
-        if decline is not None:
-            t.chores.append(decline)
         return
     found = _find(t.space, "AcquireCommanderAbility")
     if found is None:
@@ -1686,19 +1726,20 @@ def _commander_acquire(t: _Turn) -> None:
     request = Request(infos=(TargetInfo(entities=skills),))
     plain = next((a for a in acquire if str_arg(a, "skill_id") is None), None)
 
-    def evaluate() -> tuple[float, DomainAction | None]:
+    def evaluate() -> tuple[float, Answered]:
         ans = ability.evaluate(p, request)
         if ans.response is None:
             return ans.value, None
         if not ans.response:
-            return ans.value, decline  # the empty answer: no Commander
+            return ans.value, LEFT_UNUSED  # the empty answer: no Commander
         ref = _response_ref(ans)
         if ref is None:
             return ans.value, plain
         return ans.value, with_arg(acquire, "skill_id", skill_id_of(str(ref)))
 
-    uses = (*acquire, *((decline,) if decline is not None else ()))
-    _prompt(t, "Sardaukar Commander", uses, evaluate, explicit=_explicit(ability, p))
+    _prompt(
+        t, "Sardaukar Commander", acquire, evaluate, explicit=_explicit(ability, p)
+    )
 
 
 def _recruit_commander(t: _Turn) -> None:
@@ -1717,16 +1758,14 @@ def _tech_acquire(t: _Turn) -> None:
     """The Landsraad visit's Acquire Tech (bloodlines-systems.md §3.1, §3.4):
     the space's ``AcquireTechAbility`` (Explicit; TechDiscount 0) over the
     offered tiles (stack order, then the own Secret Project): ``((tile,),)``
-    -> ``acquire_tech(tile)``, the empty answer at 0.5 -> ``decline_tech``.
-    Advanced Data Analysis boxes the Spy on the worst post
-    (``RecallSpyEvaluator``, D14). Nothing affordable: no app key (its
-    ``Cost`` fails), the refusal is a chore."""
+    -> ``acquire_tech(tile)``, the empty answer at 0.5 leaves the visit's
+    Acquire Tech unused (``LEFT_UNUSED``: the turn end lapses it, OQ-095 (2),
+    user ruling 2026-10-14). Advanced Data Analysis boxes the Spy on the
+    worst post (``RecallSpyEvaluator``, D14). Nothing affordable: no app key
+    (its ``Cost`` fails)."""
 
     acquire = t.by_id("acquire_tech")
-    decline = t.run.first("decline_tech")
     if not acquire:
-        if decline is not None:
-            t.chores.append(decline)
         return
     found = _find(t.space, "AcquireTechAbility")
     if found is None:
@@ -1738,20 +1777,19 @@ def _tech_acquire(t: _Turn) -> None:
     tech_ids = list(dict.fromkeys(_arg_refs(acquire, "tech_id")))
     request = Request(infos=(TargetInfo(entities=tuple(map(tech_entity, tech_ids))),))
 
-    def evaluate() -> tuple[float, DomainAction | None]:
+    def evaluate() -> tuple[float, Answered]:
         ans = ability.evaluate(p, request)
         if ans.response is None:
             return ans.value, None
         ref = _response_ref(ans)
         if ref is None:
-            return ans.value, decline  # the empty answer: no tile
+            return ans.value, LEFT_UNUSED  # the empty answer: no tile
         variants = [a for a in acquire if str_arg(a, "tech_id") == ref]
         if len(variants) > 1:  # Advanced Data Analysis: one per own Spy
             return ans.value, worst_recall_action(run, variants)
         return ans.value, (variants[0] if variants else None)
 
-    uses = (*acquire, *((decline,) if decline is not None else ()))
-    _prompt(t, "Acquire Tech", uses, evaluate, explicit=_explicit(ability, p))
+    _prompt(t, "Acquire Tech", acquire, evaluate, explicit=_explicit(ability, p))
 
 
 def _tech_acquire_effects(t: _Turn) -> None:
@@ -1846,14 +1884,10 @@ def _subcommittee(t: _Turn) -> None:
     ``SubcommitteeOfferAbility`` (Optional) realised by
     ``choose_subcommittee``; the picked id is kept for the
     ``scouts_subcommittee`` window (``(SUBCOMMITTEE_INTENT, round, seat)``).
-    ``decline_subcommittee`` is the unused key."""
+    An unused key lapses at the turn's end (OQ-095 (2), user ruling
+    2026-10-14)."""
 
     choose = t.run.first("choose_subcommittee")
-    decline = t.run.first("decline_subcommittee")
-    if choose is None and decline is None:
-        return
-    if decline is not None:
-        t.declines.append(decline)
     if choose is None:
         return
     found = _find(t.space, "SubcommitteeOfferAbility")
@@ -2153,14 +2187,19 @@ def _card_trash(t: _Turn, short: str) -> None:
         refs = [ref for zone in zones for ref in zone if ref in refs]
     request = Request(infos=(TargetInfo(entities=_cards(t, refs)),))
     explicit = found is not None and _explicit(found[0], t.p)
-    # Explicit trashes (TrashAbility) answer "nothing" with our decline.
+    # An Explicit trash (TrashAbility) answers "nothing" with the refusal
+    # where our engine still offers one (a trash owed part way through while
+    # the other grafted box waits), else by leaving the trash unused.
+    empty: Answered = None
+    if explicit:
+        empty = decline if decline is not None else LEFT_UNUSED
     _choice_source(
         t,
         f"{short} trash",
         found,
         trash,
         request,
-        _ref_or(trash, "card_id", decline if explicit else None),
+        _ref_or(trash, "card_id", empty),
         decline,
     )
 
@@ -2235,8 +2274,9 @@ def _card_payment(t: _Turn, short: str) -> None:
 
 def _optional_payment(t: _Turn, name: str, pay_id: str) -> None:
     """An Optional rider realised by one pay action: "use" pays, an unused
-    key is ``decline_agent_card_payment``. A failing ``Cost`` means the app
-    has no key (Tleilaxu Surgeon past Tleilaxu rank 7, …): only the decline."""
+    key is left unused (the turn end lapses it, OQ-095 (2), user ruling
+    2026-10-14). A failing ``Cost`` means the app has no key (Tleilaxu
+    Surgeon past Tleilaxu rank 7, …)."""
 
     pay = t.run.first(pay_id)
     decline = t.run.first("decline_agent_card_payment")
@@ -2277,7 +2317,7 @@ def _scientific_breakthrough(t: _Turn) -> None:
     markers): trash the card for 1 VP. Its ``GainResearchAgentAbility`` is a
     separate key: before the research our engine offers it as the plain
     resolution (``_expansion_box``) and the trash keeps the research owed;
-    after it the unused key is ``decline_agent_card_payment``."""
+    after it an unused key is left unused."""
 
     _optional_payment(
         t, "ScientificBreakthroughAbility", "trash_agent_card_self_for_vp"
@@ -2291,7 +2331,7 @@ def _control_the_spice(t: _Turn) -> None:
     trashing the sum names it and the app pays; our engine then asks the
     trash as ``optional_trash``, so the card is stored for that window as
     ``(CONTROL_THE_SPICE_TRASH_INTENT, round, card) -> ref`` when the payment
-    is chosen. Without one nothing is stored: the unused key is the decline.
+    is chosen. Without one nothing is stored and the key is left unused.
     """
 
     pay = t.run.first("pay_agent_card_spice")
@@ -2327,7 +2367,7 @@ def _arrakis_revolt(t: _Turn) -> None:
     stands and the app blows it, else the sandworm variant. Judgement
     (OQ-026): when the app would pay and keep the wall but our engine offers
     no sandworm line (the worm could do nothing), no action realises the
-    answer, so the key is not taken (the decline).
+    answer, so the key is not taken (left unused).
     """
 
     wall = t.run.first("pay_agent_card_spice_for_sandworm_and_shield_wall")
@@ -2723,7 +2763,7 @@ def _recall_answer(
 def _twisted_mentat(t: _Turn) -> None:
     """``TwistedMentatAbility`` (Optional, E 100, no targets): recall the
     Agent sent this turn (from its space, or from the Conflict after Into the
-    Fray, OQ-068); an unused key is ``decline_agent_card_recall``."""
+    Fray, OQ-068); an unused key is left unused."""
 
     board = t.by_id("recall_agent_for_agent_card")
     conflict = t.run.first("recall_conflict_agent_for_agent_card")
@@ -3013,7 +3053,7 @@ def _acquisition_choice(
 def _tleilaxu_master(t: _Turn) -> None:
     """``TleilaxuMasterAbility`` (Optional; spec immortality.md §5.19): each
     offered card at its ``AcquireValue``, first strictly best; an unused key
-    is ``decline_agent_card_acquisition``. Our engine sends the card to the
+    is left unused. Our engine sends the card to the
     hand with two markers by itself, so no destination picker is offered
     (``infos[1]`` absent: option 0)."""
 
@@ -3104,15 +3144,18 @@ def _feyd(t: _Turn) -> None:
             infos=(TargetInfo(entities=_cards(t, _arg_refs(trash, "card_id"))),)
         )
         # TrashAbility E: an empty pick at 1.0. Our engine cannot pay
-        # Pay-to-Trash's Solari for nothing: the empty pick is the decline
-        # (docs/app-ai-plan.md §10).
+        # Pay-to-Trash's Solari for nothing: the empty pick leaves the trash
+        # unused (docs/app-ai-plan.md §10) -- its refusal where our engine
+        # still offers one (part way through while the other grafted box
+        # waits, the Signet frame on top of the turn), else the turn end
+        # lapses it (OQ-095 (2), user ruling 2026-10-14).
         _choice_source(
             t,
             f"Personal Training {stage}",
             _find(t.leader, name),
             trash,
             request,
-            _ref_or(trash, "card_id", decline),
+            _ref_or(trash, "card_id", decline or LEFT_UNUSED),
             decline,
         )
     place = t.by_id("place_leader_spy")
@@ -3237,36 +3280,40 @@ def _shaddam(t: _Turn) -> None:
 
 
 def _other_memories(t: _Turn) -> None:
+    """``OtherMemoriesAbility`` (Optional): our engine offers no refusal; an
+    unused key is left unused and the press of ``finish_agent_turn`` lapses
+    it (OQ-095 (2), user ruling 2026-10-14)."""
+
     use = t.run.first("use_other_memories")
-    decline = t.run.first("decline_other_memories")
-    if use is None and decline is None:
+    if use is None:
         return
-    uses = (use,) if use is not None else ()
     _choice_source(
         t,
         "Other Memories",
         _find(t.leader, "OtherMemoriesAbility"),
-        uses,
+        (use,),
         Request(),
         lambda _a: use,
-        decline,
+        None,
     )
 
 
 def _board_repeat(t: _Turn) -> None:
+    """``ReverendMotherAbility`` (Optional): water for the space's printed
+    effects again; an unused key lapses at the turn's end (OQ-095 (2), user
+    ruling 2026-10-14)."""
+
     pay = t.run.first("pay_leader_board_repeat")
-    decline = t.run.first("decline_leader_board_repeat")
-    if pay is None and decline is None:
+    if pay is None:
         return
-    uses = (pay,) if pay is not None else ()
     _choice_source(
         t,
         "Reverend Mother",
         _find(t.leader, "ReverendMotherAbility"),
-        uses,
+        (pay,),
         Request(),
         lambda _a: pay,
-        decline,
+        None,
     )
 
 
@@ -3274,9 +3321,11 @@ def _board_repeat(t: _Turn) -> None:
 #
 # Each Signet is one key of the leader's ``SignetAbility`` port: its branches
 # (the ``ClassVar`` option constants) in ``infos[0].options``, the branch's
-# targets in ``infos[1]``; Optional signets take the unused key as
-# ``decline_leader_signet_payment``, Explicit ones (Smuggle Spice, Reverse
-# Engineering) force the prompt (D29).
+# targets in ``infos[1]``; an Optional signet's unused key is left unused in
+# the Agent turn (the turn end lapses it, OQ-095 (2), user ruling
+# 2026-10-14) and is ``decline_leader_signet_payment`` where our engine still
+# offers that refusal; Explicit ones (Smuggle Spice, Reverse Engineering)
+# force the prompt (D29).
 
 
 def _branches(*offered: tuple[int, bool]) -> tuple[int, ...]:
@@ -4010,7 +4059,7 @@ def _decide_both(
     view: _BoxView,
     partner: _Partner | None,
     skip: DomainAction | None,
-    forced: bool,
+    forced: Callable[[], bool],
 ) -> DomainAction | None:
     """``decide`` over both boxes' sources, answering with legal rows.
 
@@ -4098,8 +4147,12 @@ def agent_effects_window(run: DecisionRun) -> DomainAction | None:
             return None
         finish = run.first("finish_agent_turn")
         skip = next(iter((*t.declines, *t.chores)), None)
-        forced = _explicit_pending(t.sources)
-        chosen = decide(run, t.sources, skip=skip or finish, forced=forced)
+        chosen = decide(
+            run,
+            t.sources,
+            skip=skip or finish,
+            forced=lambda: _explicit_pending(t.sources),
+        )
         _store_on_choose(t, chosen)
         return chosen
     view, partner_view = views
@@ -4110,19 +4163,22 @@ def agent_effects_window(run: DecisionRun) -> DomainAction | None:
         return None
     finish = run.first("finish_agent_turn")
     skip = next((view.to_real(a) for a in (*t.declines, *t.chores)), None)
-    forced = _explicit_pending(t.sources)
-    if partner is not None:
-        if skip is None:
-            # The empty answer (End Turn) needs the partner's box settled
-            # first: its Optional keys declined.
-            skip = next(
-                (
-                    partner.view.to_real(a)
-                    for a in (*partner.turn.declines, *partner.turn.chores)
-                ),
-                None,
-            )
-        forced = forced or _explicit_pending(partner.sources)
+    if partner is not None and skip is None:
+        # The empty answer (End Turn) needs the partner's box settled first:
+        # a refusal it still offers, or its chores.
+        skip = next(
+            (
+                partner.view.to_real(a)
+                for a in (*partner.turn.declines, *partner.turn.chores)
+            ),
+            None,
+        )
+
+    def forced() -> bool:
+        return _explicit_pending(t.sources) or (
+            partner is not None and _explicit_pending(partner.sources)
+        )
+
     return _decide_both(t, view, partner, skip or finish, forced)
 
 

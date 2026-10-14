@@ -20,7 +20,7 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.sessions import GameSessionManager, JsonObject
 
 # The AI seats play the table pinned in the registry, as in
-# tests/server/test_turn_end.py, whose seed-0 walk this reuses.
+# tests/server/test_turn_end.py, whose seed-2 walk this reuses.
 HUMAN_FIRST = (
     "human",
     "heuristic_uprising_table",
@@ -50,16 +50,18 @@ def _int(value: object) -> int:
 
 
 def test_a_human_defender_answers_before_the_draw_and_may_take_it_back() -> None:
-    # Same walk as test_turn_end's restore test: seed 0 reaches a seat-0
-    # Control defense (round 7) under an rng.Random(0).choice policy.
+    # Same walk as test_turn_end's restore test: seed 2 reaches a seat-0
+    # Control defense under an rng.Random(2).choice policy.
     # (Re-searched 2026-10-01: every Agent turn now waits for its owner's
     # finish_agent_turn (OQ-095), which moved seed 13 off it; 0, 7, 12, 22
-    # and 23 of 0-39 reach it.)
+    # and 23 of 0-39 reached it. Re-searched 2026-10-14 -- v146: optional
+    # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
+    # moved seed 0 off it; 2, 20, 26, 35, 43 and 46 of 0-59 reach it.)
     manager = GameSessionManager()
-    summary: JsonObject = manager.create_game(HUMAN_FIRST, game_seed=0)
+    summary: JsonObject = manager.create_game(HUMAN_FIRST, game_seed=2)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(0)
+    rng = random.Random(2)
 
     found = False
     for _ in range(40_000):

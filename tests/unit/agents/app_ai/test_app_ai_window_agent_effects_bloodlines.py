@@ -317,18 +317,22 @@ def test_commander_acquire_takes_the_best_skill(
     )
 
 
-def test_commander_acquire_declines_at_half_when_nothing_pays(
+def test_commander_acquire_leaves_it_unused_at_half_when_nothing_pays(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The empty answer at 0.5 leaves the purchase unused: no candidate, and
+    the key no longer forces the prompt; the turn's end lapses the offer
+    (user ruling 2026-10-14)."""
+
     state, seat = _commander_space()
     monkeypatch.setattr(
         Profile, "commander_acquire_net", lambda self, skill, with_entities=(): -1.0
     )
     t = _turn(state, seat)
-    assert _evaluate(_source(t, "Sardaukar Commander")) == (
-        0.5,
-        _a(seat, "decline_sardaukar_commander"),
-    )
+    source = _source(t, "Sardaukar Commander")
+    assert source.extra["explicit"] is True
+    assert _evaluate(source) == (0.5, None)
+    assert source.extra["explicit"] is False
 
 
 def test_commander_acquire_without_a_skill(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -350,13 +354,18 @@ def test_commander_acquire_without_a_skill(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
-def test_unaffordable_commander_refusal_is_a_chore() -> None:
+def test_unaffordable_commander_offers_no_key() -> None:
+    """An unaffordable Commander offers no row, not even a refusal (user
+    ruling 2026-10-14): the app has no key and the window no chore."""
+
     state, seat = _commander_space()
     state = with_player(state, seat, resources=Resources(solari=0, spice=8, water=2))
-    assert _ids(state, seat) >= {"decline_sardaukar_commander"}
-    assert "acquire_sardaukar_commander" not in _ids(state, seat)
+    assert not _ids(state, seat) & {
+        "acquire_sardaukar_commander",
+        "decline_sardaukar_commander",
+    }
     t = _turn(state, seat)
-    assert _a(seat, "decline_sardaukar_commander") in t.chores
+    assert t.chores == [] and t.unmapped == []
     assert not [s for s in t.sources if s.label == "Sardaukar Commander"]
 
 
@@ -511,24 +520,27 @@ def test_landsraad_acquire_tech_buys_the_answered_tile(
     assert action.action_id == "acquire_tech" and arg(action, "tech_id") == tiles[-1]
 
 
-def test_landsraad_acquire_tech_empty_answer_declines(
+def test_landsraad_acquire_tech_empty_answer_leaves_it_unused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The empty answer leaves the visit's Acquire Tech unused; the turn's
+    end lapses it (user ruling 2026-10-14)."""
+
     state, seat = _landsraad(resources=RICH)
     monkeypatch.setattr(
         AcquireTechAbility, "evaluate", lambda self, p, r: Answer(0.5, ())
     )
-    assert _evaluate(_source(_turn(state, seat), "Acquire Tech")) == (
-        0.5,
-        _a(seat, "decline_tech"),
-    )
+    source = _source(_turn(state, seat), "Acquire Tech")
+    assert _evaluate(source) == (0.5, None)
+    assert source.extra["explicit"] is False
 
 
-def test_unaffordable_tech_refusal_is_a_chore() -> None:
+def test_unaffordable_tech_offers_no_key() -> None:
     state, seat = _landsraad(resources=Resources(solari=8, spice=0, water=2))
-    assert "acquire_tech" not in _ids(state, seat)
+    assert not _ids(state, seat) & {"acquire_tech", "decline_tech"}
     t = _turn(state, seat)
-    assert _a(seat, "decline_tech") in t.chores
+    assert t.chores == [] and t.unmapped == []
+    assert not [s for s in t.sources if s.label == "Acquire Tech"]
 
 
 def test_advanced_data_analysis_boxes_the_worst_spy(
@@ -816,9 +828,12 @@ def test_a_gated_icon_whose_cost_fails_is_a_chore(
     assert not [s for s in t.sources if s.label == "fremen_war_name troops"]
 
 
-def test_ruthless_leadership_trash_and_empty_pick_declines(
+def test_ruthless_leadership_trash_and_empty_pick_leaves_it_unused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """``TrashAbility``'s empty pick leaves the optional trash unused (user
+    ruling 2026-10-14)."""
+
     state, seat, _ref = _place(
         BL_PROMO, "ruthless_leadership", resources=RICH, commanders_conflict=1
     )
@@ -828,10 +843,9 @@ def test_ruthless_leadership_trash_and_empty_pick_declines(
         lambda self, p, r: Answer(1.0, ((),)),
     )
     t = _turn(state, seat)
-    assert _evaluate(_source(t, "ruthless_leadership trash")) == (
-        1.0,
-        _a(seat, "decline_agent_card_trash"),
-    )
+    source = _source(t, "ruthless_leadership trash")
+    assert _evaluate(source) == (1.0, None)
+    assert source.extra["explicit"] is False
 
 
 def test_eliminate_allies_trash_uses_the_generic_trash_agent_ability() -> None:
@@ -847,10 +861,7 @@ def test_eliminate_allies_trash_uses_the_generic_trash_agent_ability() -> None:
     source = _source(t, "eliminate_allies trash")
     assert source.extra["explicit"] is True
     _value, action = _evaluate(source)
-    assert action is not None and action.action_id in (
-        "trash_agent_card",
-        "decline_agent_card_trash",
-    )
+    assert action is not None and action.action_id == "trash_agent_card"
 
 
 def test_elite_forces_trash_is_optional(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -864,7 +875,9 @@ def test_elite_forces_trash_is_optional(monkeypatch: pytest.MonkeyPatch) -> None
     )
     t = _turn(state, seat)
     assert _evaluate(_source(t, "elite_forces trash")) == (0.0, None)
-    assert _a(seat, "decline_agent_card_trash") in t.declines
+    # Unused, it needs no refusal: the turn's end lapses it (user ruling
+    # 2026-10-14).
+    assert t.declines == []
 
 
 def test_arrakis_observer_discard_then_spy_follow_up(
@@ -880,7 +893,7 @@ def test_arrakis_observer_discard_then_spy_follow_up(
     t = _turn(state, seat)
     _value, action = _evaluate(_source(t, "arrakis_observer discard"))
     assert action == _a(seat, "discard_agent_card", card_id=hand[0])
-    assert _a(seat, "decline_agent_card_discard") in t.declines
+    assert t.declines == []
     state = _apply(state, seat, action)
     assert "place_agent_card_spy" in _ids(state, seat)
     follow = _source(_turn(state, seat), "Arrakis Observer spy")
@@ -893,7 +906,8 @@ def test_discard_for_reward_boxes(card: str) -> None:
     state, seat, _ref = _place(BL, card, resources=RICH)
     t = _turn(state, seat)
     _source(t, f"{card} discard")
-    assert _a(seat, "decline_agent_card_discard") in t.declines
+    # Optional: an unused key needs no refusal (user ruling 2026-10-14).
+    assert t.declines == []
 
 
 def test_choam_demands_completes_the_answered_contract(
@@ -983,7 +997,9 @@ def test_fedaykin_retreat_troops_first(monkeypatch: pytest.MonkeyPatch) -> None:
     t = _turn(state, seat)
     _value, action = _evaluate(_source(t, "Fedaykin Maneuver"))
     assert action == _a(seat, "retreat_leader_troops", commanders=1, count=2)
-    assert _a(seat, "decline_leader_signet_payment") in t.declines
+    # Optional ("any number", zero included): no refusal (user ruling
+    # 2026-10-14).
+    assert t.declines == []
     monkeypatch.setattr(
         bs.FedaykinManeuverSignetAbility,
         "evaluate",
@@ -1020,7 +1036,7 @@ def test_into_the_fray(monkeypatch: pytest.MonkeyPatch) -> None:
         0.5,
         _a(seat, "deploy_leader_agent"),
     )
-    assert _a(seat, "decline_leader_signet_payment") in t.declines
+    assert t.declines == []
 
 
 def test_smuggle_spice_and_tueks_sietch(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1165,9 +1181,8 @@ def test_imperial_privilege_recalls_the_conflict_agent_without_falling_back(
         agent_in_conflict=1,
         influence=Influence(emperor=2),
     )
-    state = _apply(
-        state, seat, _first(state, seat, "decline_imperial_privilege_intrigue")
-    )
+    # The recall is offered beside the Intrigue trade (user ruling
+    # 2026-10-14).
     assert "recall_conflict_agent_for_imperial_privilege" in _ids(state, seat)
     t = _turn(state, seat)
     assert t.unmapped == []

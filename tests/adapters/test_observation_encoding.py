@@ -614,21 +614,48 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # draft e8e7e54f, everything a63b5a28, promo_bloodlines_tech 2a4e10aa, scouts
 # f6b5fc5e), so no older column and no trajectory moved. The new columns are
 # nonzero in every vector: every seat always holds a deck or a hand.
+# v146: optional Agent-turn effects offer no refusal (OQ-095 (2),
+# 2026-10-14); observation still v32. All six games move at their first
+# optional effect of an Agent turn, where the random seat now draws from a
+# list without the refusal row: base at decision 11 (round 1, seat 3,
+# Desert Tactics' trash; 3,052 -> 2,692 vectors), choam at 30 (round 1,
+# seat 2, Desert Tactics; 2,816 -> 3,440), scouts at 30 (round 1, seat 2,
+# Desert Tactics; 3,532 -> 3,080), promo_bloodlines_tech at 5 (round 1,
+# seat 1, Gather Support's unaffordable Sardaukar Commander and Acquire
+# Tech; 3,164 -> 3,580), everything at 1 (round 1, seat 0, the same two at
+# Gather Support; 3,544 -> 3,800) and draft at 70 (round 2, seat 0, a
+# Signet Ring step at Hagga Basin; 2,864 -> 2,972). A scratch export of the
+# previous commit's source (``git archive``) reproduces all six pins above
+# exactly on the same games; ``adapters/observation_encoding.py`` and
+# ``core/observation.py`` are unchanged.
+# Re-pinned the same day (codec v146 still, observation v32): Lady Jessica's
+# Other Memories offers no refusal either and lapses at the turn end (OQ-095
+# (2), user ruling 2026-10-14 "기존대로 턴 중에 원할 때"), and the turn-start
+# window asks Litany Against Fear and Withdrawn first and alone (OQ-095 (6),
+# 2026-10-14). Five games move at their first Other Memories decision, where
+# the random seat now draws from a list without ``decline_other_memories``:
+# base at decision 111 (round 2, seat 3; 2,692 -> 2,400 vectors), choam at
+# 137 (round 3, seat 3; 3,440 -> 2,880), promo_bloodlines_tech at 64 (round
+# 2, seat 3; 3,580 -> 3,388), everything at 351 (round 5, seat 3; 3,800 ->
+# 3,556) and scouts at 510 (round 8, seat 3; 3,080 -> 2,872). Each game's
+# decision trace (round, seat, offered action ids, choice) before that point
+# equals the previous pins' trace exactly, so no turn-start window came
+# first; draft meets no Other Memories decision and keeps its pin.
 _GOLDEN_DIGESTS = {
-    "base": ("30837bf1b0271bd8bae0be51b505cafd783911a9fb7507720472e94664039355", 3052),
-    "choam": ("7d83bbb5377584afecfdfce7106942cc2ff0d13a6adc04011d4243bfa26d9387", 2816),
+    "base": ("e6baf5e50aabc0aba8f90913fd81aa06861569c9fd06d035de9676b730970c5a", 2400),
+    "choam": ("a5461ae6884cf8dab8513963469caafb8509a0e84be6e338d77c4f5ac40af830", 2880),
     "promo_bloodlines_tech": (
-        "3b7acb4f7be6823100163b62c6e4a6a7cd270eb08043734c4e6ce4a31544e230",
-        3164,
+        "ccc02716fc8868d73787284ab65e9145567974211d544a9d7f2f6ccfe1497b14",
+        3388,
     ),
     "everything": (
-        "6f48c933926c15e67bd17614e863837e26666f6b64421f983dc0f1c78e7e5295",
-        3544,
+        "f568f095c74608b9ec4bc928cd25766a37d1cc57daeb10d1921e86bebd9d0542",
+        3556,
     ),
-    "draft": ("1e888be1d633723a518caf88efe997271b0dfae5549ad3a8604e3ac6ccb792c5", 2864),
+    "draft": ("2a153fbe3373170c41b19cb5a88eeaef99c1dc288fbe45796f25ebad4685d98c", 2972),
     "scouts": (
-        "6685cfb79851038e38e0e56e7b5b258c71691670f0abdbdb527aa4ea66e8daa9",
-        3532,
+        "3fe7cd08f5054adf52ac536d872307de3fe94ab50b83f39bfcd7cc55f9dae841",
+        2872,
     ),
 }
 _GOLDEN_CONFIGS = {

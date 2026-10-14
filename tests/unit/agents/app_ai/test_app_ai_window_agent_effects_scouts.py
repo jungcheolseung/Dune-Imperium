@@ -204,7 +204,10 @@ def _high_council() -> tuple[GameState, int]:
     state, seat = _place(SCOUTS, "high_council", resources=RICH)
     seat_effect = _a(seat, "resolve_board_effect", effect="high_council")
     state = _apply(state, seat, seat_effect)  # the seat taken arms the offer
-    assert "decline_subcommittee" in _ids(state, seat)
+    # Optional: offered without a refusal (user ruling 2026-10-14), and
+    # joinable in this state.
+    assert "choose_subcommittee" in _ids(state, seat)
+    assert "decline_subcommittee" not in _ids(state, seat)
     return state, seat
 
 
@@ -212,8 +215,6 @@ def test_subcommittee_choice_keeps_the_pick_for_its_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state, seat = _high_council()
-    if "choose_subcommittee" not in _ids(state, seat):
-        pytest.skip("nothing joinable in this state")
     joinable = make_profile(state, seat).ctx.joinable_subcommittees("high_council")
     pick = joinable[0]
     monkeypatch.setattr(
@@ -228,29 +229,42 @@ def test_subcommittee_choice_keeps_the_pick_for_its_window(
     assert _evaluate(source) == (3.0, _a(seat, "choose_subcommittee"))
     key = (ae.SUBCOMMITTEE_INTENT, state.round_number, seat)
     assert t.on_choose[_a(seat, "choose_subcommittee")] == [(key, pick)]
-    assert _a(seat, "decline_subcommittee") in t.declines
+    assert t.declines == []
     assert key not in memory.intents  # evaluating alone writes nothing
 
 
-def test_subcommittee_unused_key_is_the_decline(
+def test_subcommittee_unused_key_lapses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The unused key needs no refusal: End Turn, whose press lapses the
+    offer (OQ-095 (2), user ruling 2026-10-14)."""
+
     state, seat = _high_council()
     monkeypatch.setattr(
         sc.SubcommitteeOfferAbility, "evaluate", lambda self, p, r: Answer(0.0, None)
     )
     t = _turn(state, seat)
-    if "choose_subcommittee" in _ids(state, seat):
-        assert _evaluate(_source(t, "Subcommittee")) == (0.0, None)
-    assert _a(seat, "decline_subcommittee") in t.declines
+    assert _evaluate(_source(t, "Subcommittee")) == (0.0, None)
+    assert t.declines == []
+    for _ in range(20):
+        action = ae.agent_effects_window(_run(state, seat))
+        assert action is not None and action.action_id != "choose_subcommittee"
+        state = _apply(state, seat, action)
+        if action.action_id == "finish_agent_turn":
+            break
+    else:
+        raise AssertionError("never ended the turn")
+    assert any(
+        event.kind == "board_effect_lapsed"
+        and dict(event.payload).get("effect") == "scouts_subcommittee"
+        for event in state.event_log
+    )
 
 
 def test_subcommittee_choice_is_written_when_chosen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state, seat = _high_council()
-    if "choose_subcommittee" not in _ids(state, seat):
-        pytest.skip("nothing joinable in this state")
     pick = make_profile(state, seat).ctx.joinable_subcommittees("high_council")[0]
     monkeypatch.setattr(
         sc.SubcommitteeOfferAbility,

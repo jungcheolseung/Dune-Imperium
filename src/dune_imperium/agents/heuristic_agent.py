@@ -57,6 +57,14 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Keep placing Agents before revealing.
     "agent_turn": 4.0,
     "reveal_turn": 1.0,
+    # The turn's start window (user ruling 2026-10-14): Litany Against Fear
+    # or Withdrawn, or this refusal, before the turn's usual choices. Before
+    # it the plays competed with every placement and the Reveal (1.0, always
+    # offered), so the refusal ranks as that Reveal: Litany Against Fear
+    # (0.0) stays unplayed as before; Withdrawn (3.0) is now played at the
+    # first start where it is held, where before a placement above 3.0
+    # could still come first.
+    "decline_turn_start": 1.0,
     # Combat presence.
     "summon_maker_sandworms": 4.0,
     "deploy_control_defense": 2.0,
@@ -69,7 +77,8 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # confirmed as soon as offered, like the icon resolutions. Its card draw
     # is the space's own ``resolve_board_effect(cards)`` (user ruling
     # 2026-10-10, OQ-027 (d)), which at 2.0 the agent takes before the
-    # Intrigue slot and the recall (1.0 each, or a decline).
+    # Intrigue trade and the recall (1.0 each; offered together since the
+    # user ruling of 2026-10-14, the trade first before).
     "resolve_imperial_privilege_without_recall": 2.0,
     # Liet Kynes' replacement Intrigue card, its own step beside the trash
     # (user ruling 2026-10-10, OQ-106): taken first, like an icon.
@@ -270,6 +279,69 @@ _SCOUTS_CALL_SCORES: Final[dict[int, float]] = {0: 0.0, 1: 0.5, 2: 0.6, 3: 0.7}
 _SCOUTS_CALL_TOO_HIGH: Final = -1.0
 _SCOUTS_BID: Final = 2
 _RETREAT_SCORE: Final = -1.0
+
+# The rows of the Agent turn's optional effects -- "may", an arrow cost or a
+# black trash icon [FAQ p. 3]. Since the user ruling of 2026-10-14 (OQ-095
+# (2), codec v146) such an effect offers no refusal row, does not hold
+# ``finish_agent_turn`` back, and lapses unused when the turn ends. Before,
+# the turn's end was not legal while one was pending and the agent weighed
+# its rows against its refusal (``_DECLINE_SCORE``); the turn's end (0.5)
+# would now skip every such row scoring between the two, so while one of
+# these rows is offered beside it the end ranks as that refusal did
+# (``turn_end_as_decline``). The end is legal only once every mandatory
+# effect is done, so a row of this set beside it belongs to an optional
+# effect: the Agent boxes' trash, discard, payment, acquisition and recall
+# rows (``rules.agent_effects.OPTIONAL_AGENT_BOXES``, ``OPTIONAL_AGENT_ICONS``
+# and the boxes part way through), the Leader Signet's optional stages
+# (Lady Jessica / Reverend Mother, Princess Irulan, Chani, Duncan Idaho,
+# Staban Tuek's paid follow-up, Fenring's and Mohiam's Spy half before its
+# recall, Feyd-Rautha's trash stages), the visit's optional effects
+# (``rules.effects.OPTIONAL_BOARD_ICONS``) and Reverend Mother's repeat.
+_OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
+    {
+        # Agent boxes.
+        "trash_agent_card",
+        "discard_agent_card",
+        "recall_agent_for_agent_card",
+        "recall_conflict_agent_for_agent_card",
+        "pay_agent_card_water",
+        "pay_agent_card_spice",
+        "pay_agent_card_spice_for_sandworm",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+        "pay_agent_card_specimen",
+        "pay_agent_card_two_specimens",
+        "trash_grafted_card_for_specimen",
+        "trash_agent_card_self_for_vp",
+        "lose_agent_card_troop",
+        "pay_corrinth_city",
+        "select_corrinth_city_discard",
+        "pay_agent_card_intrigue_and_spice",
+        "trash_intrigue_for_agent_card",
+        "acquire_imperium_with_solari",
+        "acquire_reserve_with_solari",
+        "acquire_imperium_by_card",
+        "acquire_reserve_by_card",
+        # The Leader Signet's optional stages.
+        "pay_leader_signet_spice",
+        "pay_leader_signet_solari",
+        "pay_leader_signet_water",
+        "acquire_leader_imperium",
+        "acquire_leader_reserve",
+        "trash_leader_card",
+        "retreat_leader_troops",
+        "deploy_leader_agent",
+        "place_leader_spy",
+        "recall_spy_for_leader_placement",
+        # The visit's optional effects and Reverend Mother's repeat.
+        "trash_card_for_desert_tactics",
+        "trash_intrigue_for_imperial_privilege",
+        "acquire_sardaukar_commander",
+        "acquire_tech",
+        "choose_subcommittee",
+        "pay_leader_board_repeat",
+        "use_other_memories",
+    }
+)
 
 # Board space preference. Only Swordmaster and High Council were ranked
 # before 2026-09-10, so the other 21 spaces tied at ``agent_turn``'s base and
@@ -1133,6 +1205,29 @@ def _garrison_units(view: PlayerView) -> int:
     return me.troops_garrison + me.commanders_garrison
 
 
+def turn_end_as_decline(
+    legal_actions: tuple[DomainAction, ...],
+    scored: tuple[float, ...],
+) -> tuple[float, ...]:
+    """``scored`` with the turn's end ranked as a refusal beside an optional
+    effect of the Agent turn (``_OPTIONAL_AGENT_TURN_ROWS``).
+
+    Since the user ruling of 2026-10-14 (OQ-095 (2)) the press of
+    ``finish_agent_turn`` is how the seat leaves such an effect unused, where
+    before it chose the effect's refusal at ``_DECLINE_SCORE``; ranking the
+    end there keeps every choice the agent made against that refusal.
+    """
+
+    if not any(
+        action.action_id in _OPTIONAL_AGENT_TURN_ROWS for action in legal_actions
+    ):
+        return scored
+    return tuple(
+        _DECLINE_SCORE if action.action_id == "finish_agent_turn" else score
+        for action, score in zip(legal_actions, scored, strict=True)
+    )
+
+
 def demote_pointless_actions(
     observation: PlayerView,
     legal_actions: tuple[DomainAction, ...],
@@ -1142,9 +1237,12 @@ def demote_pointless_actions(
 
     Applied after ``score_action`` and before the tie set is fixed, so each
     demoted action falls below every other offer; the scratch variants under
-    ``scripts/ab`` call it too, so they keep tracking this agent.
+    ``scripts/ab`` call it too, so they keep tracking this agent. The turn's
+    end beside an optional Agent-turn effect is ranked as a refusal first
+    (``turn_end_as_decline``): ending the turn there wastes that effect.
     """
 
+    scored = turn_end_as_decline(legal_actions, scored)
     if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
         # A specimen may be returned at Combat Intrigue priority too
         # (OQ-050), but nothing then refills from the supply, so it only

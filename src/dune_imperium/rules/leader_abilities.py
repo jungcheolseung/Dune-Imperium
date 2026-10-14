@@ -47,13 +47,20 @@ from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
+    OPTIONAL_BOARD_ICONS,
+    OptionalBlockKind,
+    OptionalEffectBlock,
     active_agent_card,
     advance_after_effect,
     agent_turn_space_id,
     current_agent_effect_context,
+    mandatory_board_icons_pending,
+    pending_board_icons,
+    printed_board_icons,
     rearm_board_icons,
     recruit_shortfall_events,
     recruit_troops,
+    short_of,
 )
 from dune_imperium.rules.frames import (
     OWED_CARD,
@@ -81,6 +88,7 @@ from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
     place_spy,
     recall_spy,
+    solo_occupied_post_ids,
 )
 from dune_imperium.rules.units import retreat_units
 
@@ -633,10 +641,7 @@ def legal_feyd_track_actions(
             # The trash icon targets a card in hand, discard pile, or in play
             # [Main p. 20]; the paid space additionally needs its one Solari.
             # A Row card borrowed with Usurp is not in play (OQ-054).
-            can_trash = (
-                stage.reward is FeydTrackReward.OPTIONAL_TRASH
-                or owner.resources.solari >= 1
-            )
+            can_trash = _feyd_trash_payment_block(owner, stage.reward) is None
             return (
                 DomainAction(action_id="decline_leader_card_trash", actor=player),
                 *(
@@ -961,8 +966,10 @@ def _leader_spy_placement_actions(
     player "may first recall one of your Spies for no effect" [Main pp. 11,
     20], so ``decline_leader_spy_placement`` is offered beside the recalls
     until one is made (``offer_decline`` is off where the Signet's own
-    "— OR —" choice already has a way out). When no restricted post is
-    empty, only recalls from restricted posts can open one. The supply is
+    "— OR —" choice already has a way out). When no allowed post is empty,
+    only a recall that empties an allowed post can open one: a post the
+    owner's Spy holds alone (with ``deep_cover`` any of the owner's allowed
+    posts). The supply is
     judged now, not when an earlier recall happened: a freely ordered effect
     of the same turn (a Distraction trigger, say) may have spent the
     recalled Spy, and then the recall is offered again instead of a
@@ -992,10 +999,16 @@ def _leader_spy_placement_actions(
             for post_id in placements
         )
     recall_post_ids = owner.spy_post_ids
-    if not placements and allowed_post_ids is not None:
+    if not placements and deep_cover and allowed_post_ids is not None:
         recall_post_ids = tuple(
             post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
         )
+    elif not placements:
+        # Only a recall that leaves its post empty opens a placement: a post
+        # shared with another player's Spy (Deep Cover) stays occupied
+        # [Main pp. 11, 20] (``solo_occupied_post_ids``), and recalling from
+        # it would leave a placement that cannot happen.
+        recall_post_ids = solo_occupied_post_ids(state, player, allowed_post_ids)
     recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_leader_placement",
@@ -1057,7 +1070,7 @@ def legal_leader_signet_actions(
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
             *(
                 (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
-                if owner.resources.spice >= 1
+                if _spice_agony_block(owner) is None
                 else ()
             ),
         )
@@ -1074,14 +1087,17 @@ def legal_leader_signet_actions(
             # for three Solari next to the Landsraad, or two Solari for an
             # Intrigue card next to a Faction [Staban Tuek card].
             payment: tuple[DomainAction, ...] = ()
-            if bonus_post in LANDSRAAD_POST_IDS and owner.resources.spice >= 1:
-                payment = (
-                    DomainAction(action_id="pay_leader_signet_spice", actor=player),
-                )
-            elif bonus_post in FACTION_POST_IDS and owner.resources.solari >= 2:
-                payment = (
-                    DomainAction(action_id="pay_leader_signet_solari", actor=player),
-                )
+            if _unseen_network_block(owner, bonus_post) is None:
+                if bonus_post in LANDSRAAD_POST_IDS:
+                    payment = (
+                        DomainAction(action_id="pay_leader_signet_spice", actor=player),
+                    )
+                elif bonus_post in FACTION_POST_IDS:
+                    payment = (
+                        DomainAction(
+                            action_id="pay_leader_signet_solari", actor=player
+                        ),
+                    )
             return (
                 DomainAction(action_id="decline_leader_signet_payment", actor=player),
                 *payment,
@@ -1118,40 +1134,10 @@ def legal_leader_signet_actions(
         # [Princess Irulan card]. The face puts no condition on the Imperium
         # Deck: once it is exhausted the Row keeps operating with fewer cards
         # (OQ-004), so its one-cost cards stay acquirable.
-        actions: list[DomainAction] = [
-            DomainAction(action_id="decline_leader_signet_payment", actor=player)
-        ]
-        actions.extend(
-            DomainAction(
-                action_id="acquire_leader_imperium",
-                actor=player,
-                arguments=(("instance_id", instance_id),),
-            )
-            # The Row's one-cost cards and the owner's own Manipulate
-            # set-aside one, at its printed cost [FAQ p. 3].
-            for instance_id in acquirable_imperium_instance_ids(
-                state, 1, player=player
-            )
-            if imperium_card_for_instance(instance_id).acquisition_cost == 1
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *_chroniclers_insight_choices(state, player),
         )
-        actions.extend(
-            DomainAction(
-                action_id="acquire_leader_reserve",
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            for card_id, count in state.reserve_stacks
-            if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost == 1
-        )
-        actions.extend(
-            DomainAction(
-                action_id="trash_leader_card",
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            for card_id in owner.hand
-        )
-        return tuple(actions)
 
     if owner.leader_id == "chani":
         # Fedaykin Maneuver: retreat any number of troops (Commanders are
@@ -1176,7 +1162,7 @@ def legal_leader_signet_actions(
             *retreats,
             *(
                 (DomainAction(action_id="pay_leader_signet_water", actor=player),)
-                if owner.influence.fremen >= 2 and owner.resources.water >= 1
+                if _fedaykin_draw_block(owner) is None
                 else ()
             ),
         )
@@ -1253,15 +1239,11 @@ def legal_leader_signet_actions(
         # [Duncan Idaho card]. Once it has left its space (Ghola's copy of
         # the Signet box after the original already deployed it; soak seed
         # 5006) there is nothing to deploy.
-        space_id = context.get("space_id")
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
             *(
                 (DomainAction(action_id="deploy_leader_agent", actor=player),)
-                if state.current_conflict_ids
-                and not units_deployment_blocked(state, player)
-                and isinstance(space_id, str)
-                and space_id in owner.agent_locations
+                if _into_the_fray_block(state, player, context) is None
                 else ()
             ),
         )
@@ -1298,12 +1280,10 @@ def legal_leader_signet_actions(
         if context.get("listeners_paid") is True:
             return _leader_spy_placement_actions(state, player, context, None)
         listeners = (
-            *_leader_spy_placement_actions(
-                state, player, context, LANDSRAAD_POST_IDS, offer_decline=False
-            ),
+            *_listeners_spies(state, player, context),
             *(
                 (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
-                if owner.resources.spice >= 1
+                if _listeners_payment_block(owner) is None
                 else ()
             ),
         )
@@ -1321,6 +1301,214 @@ def legal_leader_signet_actions(
         )
 
     return ()
+
+
+def _spice_agony_block(owner: PlayerState) -> OptionalEffectBlock | None:
+    """Spice Agony's and Water of Life's one spice [Lady Jessica card]."""
+
+    return short_of(OptionalBlockKind.SPICE, 1, owner.resources.spice)
+
+
+def _unseen_network_block(
+    owner: PlayerState, bonus_post: str
+) -> OptionalEffectBlock | None:
+    """Unseen Network's paid follow-up for the chosen post: one spice next
+    to the Landsraad, two Solari next to a Faction [Staban Tuek card]."""
+
+    if bonus_post in LANDSRAAD_POST_IDS:
+        return short_of(OptionalBlockKind.SPICE, 1, owner.resources.spice)
+    if bonus_post in FACTION_POST_IDS:
+        return short_of(OptionalBlockKind.SOLARI, 2, owner.resources.solari)
+    return None
+
+
+def _chroniclers_insight_choices(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Chronicler's Insight's acquisitions and trashes [Princess Irulan card]."""
+
+    owner = state.players[player]
+    return (
+        *(
+            DomainAction(
+                action_id="acquire_leader_imperium",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            # The Row's one-cost cards and the owner's own Manipulate
+            # set-aside one, at its printed cost [FAQ p. 3].
+            for instance_id in acquirable_imperium_instance_ids(state, 1, player=player)
+            if imperium_card_for_instance(instance_id).acquisition_cost == 1
+        ),
+        *(
+            DomainAction(
+                action_id="acquire_leader_reserve",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id, count in state.reserve_stacks
+            if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost == 1
+        ),
+        *(
+            DomainAction(
+                action_id="trash_leader_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.hand
+        ),
+    )
+
+
+def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
+    """Fedaykin Maneuver's draw: two Fremen Influence and one water [Chani
+    card]."""
+
+    if owner.influence.fremen < 2:
+        return OptionalEffectBlock(
+            OptionalBlockKind.INFLUENCE,
+            needed=2,
+            held=owner.influence.fremen,
+            faction=Faction.FREMEN.value,
+        )
+    return short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
+
+
+def _into_the_fray_block(
+    state: GameState, player: int, context: Mapping[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """Into the Fray: the Agent sent this turn may join the Conflict [Duncan
+    Idaho card], not once it has left its space, nor while Emperor of the
+    Known Universe bars deployment."""
+
+    if not state.current_conflict_ids:
+        return OptionalEffectBlock(OptionalBlockKind.NO_CONFLICT)
+    if units_deployment_blocked(state, player):
+        return OptionalEffectBlock(OptionalBlockKind.DEPLOYMENT_BARRED)
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str) or (
+        space_id not in state.players[player].agent_locations
+    ):
+        return OptionalEffectBlock(OptionalBlockKind.AGENT_LEFT)
+    return None
+
+
+def _listeners_spies(
+    state: GameState, player: int, context: dict[str, ActionValue]
+) -> tuple[DomainAction, ...]:
+    """Listeners' Spy next to the Landsraad [Gaius Helen Mohiam card].
+
+    With the supply empty the recall-first serves either half: a recall
+    that opens a Landsraad post, and -- while the spice for "1 spice -> a
+    Spy anywhere" is there -- one that opens any post. A Spy on a Landsraad
+    post shared with another player's stays a recall for the paid half.
+    """
+
+    landsraad = _leader_spy_placement_actions(
+        state, player, context, LANDSRAAD_POST_IDS, offer_decline=False
+    )
+    owner = state.players[player]
+    if owner.spies_supply > 0 or _listeners_payment_block(owner) is not None:
+        return landsraad
+    anywhere = _leader_spy_placement_actions(
+        state, player, context, None, offer_decline=False
+    )
+    return tuple(dict.fromkeys((*landsraad, *anywhere)))
+
+
+def _listeners_payment_block(owner: PlayerState) -> OptionalEffectBlock | None:
+    """Listeners' "1 spice -> a Spy anywhere" [Gaius Helen Mohiam card]."""
+
+    return short_of(OptionalBlockKind.SPICE, 1, owner.resources.spice)
+
+
+def _feyd_trash_payment_block(
+    owner: PlayerState, reward: FeydTrackReward
+) -> OptionalEffectBlock | None:
+    """Personal Training's paid trash: one Solari [Feyd-Rautha Harkonnen
+    card]; the free trash stage needs none."""
+
+    if reward is FeydTrackReward.OPTIONAL_TRASH:
+        return None
+    return short_of(OptionalBlockKind.SOLARI, 1, owner.resources.solari)
+
+
+def signet_optional_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why an optional Signet Ring ability offers nothing now, or None.
+
+    The gate ``legal_leader_signet_actions`` (and ``legal_feyd_track_actions``
+    for Personal Training's trash stages) applies to each optional ability
+    (``agent_effects.box_is_optional``): Spice Agony's and Water of Life's
+    spice, Unseen Network's paid follow-up, Chronicler's Insight with
+    nothing to acquire or trash, Fedaykin Maneuver with no unit in the
+    Conflict and its draw unaffordable, Into the Fray without a Conflict to
+    join, Listeners' Spy and spice before a Spy is recalled, Corrino
+    Liaison with nothing to trash or spy on, and Personal Training's trash
+    stages. None while the ability can be used, or for a mandatory one. The
+    page greys an optional ability that offers nothing out with it
+    (``display.unavailable``, OQ-095 (2)).
+    """
+
+    context = _leader_signet_context(state, player)
+    if context is None:
+        return None
+    owner = state.players[player]
+    kind = OptionalBlockKind
+    match owner.leader_id:
+        case "lady_jessica":
+            return _spice_agony_block(owner)
+        case "staban_tuek":
+            bonus_post = context.get("staban_bonus_post")
+            if isinstance(bonus_post, str):
+                return _unseen_network_block(owner, bonus_post)
+        case "princess_irulan":
+            if not _chroniclers_insight_choices(state, player):
+                return OptionalEffectBlock(
+                    kind.NOTHING_TO_ACQUIRE,
+                    needed=1,
+                    also=OptionalEffectBlock(kind.HAND, 1, 0),
+                )
+        case "chani":
+            draw = _fedaykin_draw_block(owner)
+            units = owner.troops_conflict + owner.commanders_conflict
+            if draw is not None and units < 1:
+                return OptionalEffectBlock(kind.NO_UNIT_IN_CONFLICT, also=draw)
+        case "duncan_idaho":
+            return _into_the_fray_block(state, player, context)
+        case "gaius_helen_mohiam" if (
+            context.get("listeners_paid") is not True
+            and context.get("leader_spy_recalled") is not True
+        ):
+            payment = _listeners_payment_block(owner)
+            if payment is not None and not _listeners_spies(state, player, context):
+                return OptionalEffectBlock(kind.NO_SPY_POST, also=payment)
+        case "count_hasimir_fenring" if context.get("leader_spy_recalled") is not True:
+            spies = _leader_spy_placement_actions(
+                state,
+                player,
+                context,
+                EMPEROR_POST_IDS,
+                deep_cover=True,
+                offer_decline=False,
+            )
+            if not counted_in_play(owner) and not spies:
+                return OptionalEffectBlock(
+                    kind.NO_CARD_TO_TRASH, also=OptionalEffectBlock(kind.NO_SPY_POST)
+                )
+        case "feyd_rautha_harkonnen":
+            stage_id = context.get("feyd_track_stage")
+            if isinstance(stage_id, str):
+                reward = FEYD_TRACK_BY_ID[stage_id].reward
+                if reward in (
+                    FeydTrackReward.PAY_SOLARI_TO_TRASH,
+                    FeydTrackReward.OPTIONAL_TRASH,
+                ):
+                    payment = _feyd_trash_payment_block(owner, reward)
+                    if payment is not None:
+                        return payment
+                    if not (owner.hand or owner.discard_pile or counted_in_play(owner)):
+                        return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
+    return None
 
 
 def apply_leader_signet_payment(
@@ -2207,7 +2395,13 @@ def legal_leader_placement_ability_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Other Memories' use-or-decline choice after a placement."""
+    """Return Other Memories' use after a Bene Gesserit placement.
+
+    "you may return all your memories …" [Lady Jessica card] is optional and
+    may be used at any point of the turn (user ruling 2026-10-14: "기존대로
+    턴 중에 원할 때"); like every optional effect of the Agent turn it offers
+    no refusal and lapses when the turn ends unused (OQ-095 (2)).
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -2219,17 +2413,14 @@ def legal_leader_placement_ability_actions(
         return ()
     if context.get("pending_leader_ability") is not True:
         return ()
-    return (
-        DomainAction(action_id="use_other_memories", actor=player),
-        DomainAction(action_id="decline_other_memories", actor=player),
-    )
+    return (DomainAction(action_id="use_other_memories", actor=player),)
 
 
 def apply_leader_placement_ability(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Use or decline Other Memories on a Bene Gesserit placement.
+    """Use Other Memories on a Bene Gesserit placement.
 
     Using it returns every memory to the supply, draws one card per memory,
     and flips the Leader to Reverend Mother Jessica [Lady Jessica card]. The
@@ -2244,18 +2435,6 @@ def apply_leader_placement_ability(
     context["pending_leader_ability"] = False
     source = f"round:{state.round_number}:player:{player}:other_memories"
 
-    if action.action_id == "decline_other_memories":
-        next_state = advance_after_effect(state, context, state.players)
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="leader_ability_declined",
-                    payload=(("player", player),),
-                ),
-            ),
-        )
 
     owner = state.players[player]
     memories = owner.memories
@@ -2300,7 +2479,10 @@ def legal_leader_board_repeat_actions(
     The repeat choice waits until the printed board effect has resolved once,
     then offers spending one water to repeat it [Reverend Mother Jessica
     card]. The Agent-send Influence is a Faction rule, not a printed space
-    effect [Main p. 7], so it is not repeated.
+    effect [Main p. 7], so it is not repeated. The visit's optional icons
+    need not be used first, and the repeat itself is an arrow (water ->
+    repeat), so it offers no refusal: left unused it lapses when the turn
+    ends (OQ-095 (2), user ruling 2026-10-14).
     """
 
     if not 0 <= player < state.config.players:
@@ -2313,24 +2495,57 @@ def legal_leader_board_repeat_actions(
         return ()
     if context.get("pending_leader_board_repeat") is not True:
         return ()
-    if context.get("pending_board_effect") is True:
+    if _board_repeat_block(state.players[player], context) is not None:
         return ()
-    owner = state.players[player]
-    return (
-        DomainAction(action_id="decline_leader_board_repeat", actor=player),
-        *(
-            (DomainAction(action_id="pay_leader_board_repeat", actor=player),)
-            if owner.resources.water >= 1
-            else ()
-        ),
-    )
+    return (DomainAction(action_id="pay_leader_board_repeat", actor=player),)
+
+
+def _board_repeat_block(
+    owner: PlayerState, context: Mapping[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """The repeat waits for the visit's mandatory effects, then costs one
+    water [Reverend Mother Jessica card]."""
+
+    if mandatory_board_icons_pending(context):
+        return OptionalEffectBlock(OptionalBlockKind.AFTER_THE_SPACE)
+    return short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
+
+
+def leader_board_repeat_block(
+    state: GameState, player: int
+) -> OptionalEffectBlock | None:
+    """Why Reverend Mother's pending repeat is not offered now, or None.
+
+    ``legal_leader_board_repeat_actions`` offers ``pay_leader_board_repeat``
+    exactly when this is None while the repeat is pending: it waits for the
+    visit's mandatory effects, then needs one water. None when no repeat is
+    pending for ``player``. The page greys it out with this
+    (``display.unavailable``, OQ-095 (2)).
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if context.get("pending_leader_board_repeat") is not True:
+        return None
+    return _board_repeat_block(state.players[player], context)
 
 
 def apply_leader_board_repeat(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Pay one water to repeat the printed space effects, or decline."""
+    """Pay one water to repeat the printed space effects.
+
+    The repeat comes once the first resolution is done, so a printed
+    optional icon of the visit still unused then (Desert Tactics' trash) is
+    passed up: it lapses, logged, and the repeat queues the printed icons
+    afresh -- as an older engine's refusal before the repeat did (user
+    ruling 2026-10-14, OQ-095 (2)).
+    """
 
     if action not in legal_leader_board_repeat_actions(state, action.actor):
         raise ValueError("action is not a legal Leader board-repeat choice")
@@ -2339,25 +2554,19 @@ def apply_leader_board_repeat(
     context["pending_leader_board_repeat"] = False
     source = f"round:{state.round_number}:player:{player}:leader_board_repeat"
 
-    if action.action_id == "decline_leader_board_repeat":
-        next_state = advance_after_effect(state, context, state.players)
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="leader_ability_declined",
-                    payload=(("player", player),),
-                ),
-            ),
-        )
-
     owner = state.players[player]
     if owner.resources.water < 1:
         raise RuntimeError("the board repeat requires one water")
     next_owner = replace(
         owner,
         resources=replace(owner.resources, water=owner.resources.water - 1),
+    )
+    # A printed optional icon still unused is passed up by the repeat.
+    printed = set(printed_board_icons(context))
+    passed_up = tuple(
+        key
+        for key in pending_board_icons(context)
+        if key in printed and key in OPTIONAL_BOARD_ICONS
     )
     # Every printed icon of the space is queued again, each for its own
     # freely ordered action (OQ-027).
@@ -2369,15 +2578,28 @@ def apply_leader_board_repeat(
         context,
         replace_player(state.players, next_owner),
     )
+    space_id = context.get("space_id", "")
     return RuleResult(
         state=next_state,
         events=(
+            *(
+                GameEvent(
+                    event_id=f"{source}:{key}:lapsed",
+                    kind="board_effect_lapsed",
+                    payload=(
+                        ("effect", key),
+                        ("player", player),
+                        ("space_id", space_id if isinstance(space_id, str) else ""),
+                    ),
+                )
+                for key in passed_up
+            ),
             GameEvent(
                 event_id=source,
                 kind="leader_board_repeat_paid",
                 payload=(
                     ("player", player),
-                    ("space_id", context.get("space_id", "")),
+                    ("space_id", space_id),
                     ("water", 1),
                 ),
             ),

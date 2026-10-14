@@ -909,11 +909,10 @@ def test_a_held_icon_reopens_when_the_turn_brings_an_intrigue_card() -> None:
 def test_a_held_icon_fizzles_at_the_turn_end_press() -> None:
     engine = UprisingRulesEngine()
     held = engine.apply(_accept_contract_icon(), HOLD).state
-    declined = engine.apply(
-        held, DomainAction(action_id="decline_agent_card_discard", actor=0)
-    ).state
+    # Captured Mentat's optional discard needs no refusal: the press lapses
+    # it too (OQ-095 (2), user ruling 2026-10-14).
     drawn = engine.apply(
-        declined,
+        held,
         DomainAction(
             action_id="resolve_board_effect",
             actor=0,
@@ -926,6 +925,7 @@ def test_a_held_icon_fizzles_at_the_turn_end_press() -> None:
 
     kinds = [event.kind for event in finished.events]
     assert kinds.index("contract_icons_fizzled") < kinds.index("agent_turn_finished")
+    assert kinds.index("agent_card_effect_lapsed") < kinds.index("agent_turn_finished")
     fizzled = next(
         event for event in finished.events if event.kind == "contract_icons_fizzled"
     )

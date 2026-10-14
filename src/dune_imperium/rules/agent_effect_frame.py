@@ -25,7 +25,10 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
+    box_has_optional_icon,
     box_in_progress,
+    box_is_optional,
+    box_refusal_needed,
     legal_agent_card_boost_actions,
     legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
@@ -263,7 +266,9 @@ def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     """
 
     choice_actions = _box_choice_actions(state, player)
-    if choice_actions:
+    if choice_actions or box_is_optional(state):
+        # An optional box resolves only through its choices; with none
+        # offered now it waits, unused, and lapses at the turn's end.
         return choice_actions
     if agent_card_effect_is_unavailable(state):
         return ()
@@ -281,14 +286,38 @@ def _active_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         # automatic ones through their keyed resolution and the choice icons
         # (Steersman's recall, Dangerous Rhetoric's Faction, Tread in
         # Darkness's trash) through their own providers (OQ-027).
-        return (
+        rows = (
             *legal_agent_card_icon_actions(state, player),
             *legal_agent_card_recall_actions(state, player),
             *legal_agent_card_influence_actions(state, player),
             *legal_agent_card_trash_actions(state, player),
         )
-    # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
-    return _single_box_actions(state, player)
+    else:
+        # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
+        rows = _single_box_actions(state, player)
+    return _without_refusal(state, rows)
+
+
+def _without_refusal(
+    state: GameState, rows: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """``rows`` without the refusal of a box that is optional now.
+
+    An unused optional effect needs no refusal: the turn's end lapses it
+    (OQ-095 (2), user ruling 2026-10-14). The refusal stays where it is
+    still needed (``agent_effects.box_refusal_needed``) and for mandatory
+    boxes, such as a Spy placement passed up with an empty supply (OQ-057
+    (14)).
+    """
+
+    if not rows or box_refusal_needed(state):
+        return rows
+    # A box resolved icon by icon offers refusals only for its optional
+    # icons (Tread in Darkness's trash beside its draw), so they go even
+    # while a mandatory icon remains.
+    if not box_is_optional(state) and not box_has_optional_icon(state):
+        return rows
+    return tuple(row for row in rows if row.action_id not in _REFUSALS)
 
 
 def active_box_can_act(state: GameState, player: int) -> bool:

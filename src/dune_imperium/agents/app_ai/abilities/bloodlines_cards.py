@@ -1750,8 +1750,12 @@ class IxianAmbassadorRevealAbility(g.GainAnyInfluenceRevealAbility):
 @port(_AS + "LitanyTurnStartAbility")
 class LitanyTurnStartAbility(g.DeferredAbility):
     """``AS.LitanyTurnStartAbility`` (spec §3.18, D11): "turn start: play
-    this -> draw 1 and pass". Timing None; offered only in the ``turn``
-    window (``play_turn_start_card``), competing with the placements."""
+    this -> draw 1 and pass". Timing None; a key of the app's turn-start
+    prompt, competing with the placements, Plots and Reveal. Our engine asks
+    the start first and alone (``play_turn_start_card`` beside
+    ``decline_turn_start``, OQ-095 (6), user ruling 2026-10-14); the ``turn``
+    window answers it with that one prompt, rebuilt from the choices that
+    follow the refusal (``windows/turn._turn_start_window``)."""
 
     def selection_mode(self, p: Profile) -> SelectionMode:
         return SelectionMode.OPTIONAL
@@ -2882,7 +2886,8 @@ class TwistedUnnaturalAbility(IntrigueAbility):
 @port(_AS + "TwistedWithdrawnAbility")
 class TwistedWithdrawnAbility(IntrigueAbility):
     """``AS.TwistedWithdrawnAbility`` (spec §5, D22): at turn start, pass. A
-    pass has no app value (E 0); always junk (the preferred
+    pass has no app value (E 0), so the turn's start window is declined for
+    it (``windows/turn._turn_start_window``); always junk (the preferred
     ``junk_intrigue_pick`` card)."""
 
     def is_bad_intrigue(self, p: Profile) -> bool:

@@ -152,11 +152,19 @@ def test_human_decisions_are_the_recorded_actions_of_human_seats(
 
     decisions = list(human_decisions(game, record))
 
-    recorded = [
+    # A recorded step the migration drops has no counterpart on this engine,
+    # so it is no decision this engine asks. Since codec v146 (OQ-095 (2))
+    # that includes a refusal of an optional effect, which this engine no
+    # longer offers (``optional_refusal``): four of the human seats' steps
+    # of this v135 record (``decline_sardaukar_commander``, ``decline_tech``).
+    dropped = {index for index, _ in record.dropped}
+    humans = [
         index
         for index, step in enumerate(game.parsed.replay.steps)
         if isinstance(step, DomainAction) and step.actor in (0, 3)
     ]
+    assert dropped & set(humans)
+    recorded = [index for index in humans if index not in dropped]
     assert [decision.recorded_index for decision in decisions] == recorded
     for decision in decisions:
         assert decision.seat in (0, 3)

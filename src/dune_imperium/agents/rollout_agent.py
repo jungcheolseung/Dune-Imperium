@@ -25,6 +25,7 @@ from dune_imperium.agents.heuristic_agent import (
     HeuristicAgent,
     card_printed_value,
     score_action,
+    turn_end_as_decline,
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.immortality.board import RESEARCH_SPACES_BY_ID
@@ -293,8 +294,13 @@ class RolloutAgent:
         # at random instead of by enumeration order.
         shuffled = list(legal_actions)
         self._rng.shuffle(shuffled)
-        ranked = sorted(shuffled, key=score_action, reverse=True)
-        return tuple(ranked[: self.candidates])
+        # The turn's end beside an optional Agent-turn effect ranks as that
+        # effect's refusal did before the user ruling of 2026-10-14.
+        scores = turn_end_as_decline(
+            tuple(shuffled), tuple(score_action(action) for action in shuffled)
+        )
+        order = sorted(range(len(shuffled)), key=scores.__getitem__, reverse=True)
+        return tuple(shuffled[index] for index in order[: self.candidates])
 
     def _heuristic_choice(
         self,

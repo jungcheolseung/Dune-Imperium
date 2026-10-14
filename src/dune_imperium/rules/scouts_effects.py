@@ -1651,7 +1651,13 @@ def legal_subcommittee_choice_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
     """The turn frame's subcommittee choice: choose (when one can be joined
-    now) or decline; the seat may also leave it for later in the turn."""
+    now) or, in a Reveal, decline; the seat may also leave it for later in
+    the turn.
+
+    Joining is optional (OQ-076). In an Agent turn the visit's offer needs
+    no refusal: left unused it lapses when the turn ends (OQ-095 (2), user
+    ruling 2026-10-14).
+    """
 
     excluded = pending_subcommittee_exclude(state, player)
     if excluded is None:
@@ -1661,6 +1667,8 @@ def legal_subcommittee_choice_actions(
         if joinable_subcommittees(state, player, exclude_space=excluded)
         else ()
     )
+    if state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS:
+        return choose
     return (*choose, DomainAction(action_id="decline_subcommittee", actor=player))
 
 

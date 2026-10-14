@@ -4773,7 +4773,9 @@ def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
     engine = UprisingRulesEngine()
     legal = engine.legal_actions(placed, 0)
     assert _trash_choice(placed, trashed_card) in legal
-    assert DomainAction(action_id="decline_agent_card_trash", actor=0) in legal
+    # The optional trash offers no refusal, even beside the mandatory draw
+    # (OQ-095 (2), user ruling 2026-10-14).
+    assert DomainAction(action_id="decline_agent_card_trash", actor=0) not in legal
 
     result = apply_agent_card_trash(placed, _trash_choice(placed, trashed_card))
 
@@ -4788,16 +4790,26 @@ def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
     assert drawn.players[0].in_play == (bond_card, tread)
     assert dict(drawn.decision_stack[-1].context)["pending_agent_effect"] is False
 
-    # Declining the optional trash ("검은색 trash 아이콘에 의한 trash는
-    # 선택이지만" [Main p. 20]) still leaves the draw (OQ-058).
-    kept = apply_agent_card_trash(placed, _trash_choice(placed, None))
-    assert kept.events[-1].kind == "agent_card_trash_declined"
-    assert kept.state.players[0].trashed == ()
-    assert kept.state.players[0].hand == (trashed_card,)
-    kept_drawn = resolve_agent_card_icon(
-        kept.state, _icon_action(kept.state, "cards")
-    ).state
-    assert kept_drawn.players[0].hand == (trashed_card, drawn_card)
+    # Leaving the optional trash unused ("검은색 trash 아이콘에 의한 trash는
+    # 선택이지만" [Main p. 20]) still leaves the draw (OQ-058); the turn's
+    # end lapses the trash (OQ-095 (2), user ruling 2026-10-14).
+    kept = engine.apply(placed, _icon_action(placed, "cards")).state
+    assert kept.players[0].hand == (trashed_card, drawn_card)
+    for effect in ("troops", "cards"):  # Arrakeen's own mandatory effects
+        kept = engine.apply(
+            kept,
+            DomainAction("resolve_board_effect", 0, (("effect", effect),)),
+        ).state
+    legal = engine.legal_actions(kept, 0)
+    assert _trash_choice(kept, trashed_card) in legal
+    assert DomainAction(action_id="decline_agent_card_trash", actor=0) not in legal
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in legal
+    lapsed = engine.apply(kept, finish)
+    assert ("agent_card_effect_lapsed", tread) in {
+        (event.kind, dict(event.payload).get("card_id")) for event in lapsed.events
+    }
+    assert lapsed.state.players[0].trashed == ()
 
 
 def test_tread_in_darkness_draws_first_and_may_trash_the_drawn_card() -> None:

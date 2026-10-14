@@ -2157,9 +2157,10 @@ def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_the_other_box()
     # A card that leaves play by its own printed icon still pays its other
     # icons (OQ-022 "자기 효과" exception, docs/rules/open-questions.md):
     # Tread in Darkness's trash icon trashes Tread itself, then the owner
-    # resolves Ghola's box (box 1). Moving to the other box used to drop the
-    # self-trash flag, so Tread's draw expired as if another effect had
-    # trashed it.
+    # resolves Ghola's box (box 1) -- its draw, since the optional trash
+    # beside it offers no refusal (OQ-095 (2), user ruling 2026-10-14).
+    # Moving to the other box used to drop the self-trash flag, so Tread's
+    # draw expired as if another effect had trashed it.
     ghola = _tleilaxu("ghola")
     grafted = _graft(
         _state(_owner((TREAD, ghola), in_play=(TRUTHTRANCE,))),
@@ -2170,17 +2171,20 @@ def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_the_other_box()
     trashed, _ = _engine_step(grafted, "trash_agent_card", card_id=TREAD)
     assert TREAD in trashed.players[0].trashed
 
-    other, kinds = _engine_step(trashed, "decline_agent_card_trash", box=1)
+    hand = len(trashed.players[0].hand)
+    other, kinds = _engine_step(
+        trashed, "resolve_agent_card_effect", box=1, effect="cards"
+    )
 
     assert "agent_card_effect_expired" not in kinds
+    assert len(other.players[0].hand) == hand + 1
     _, context = current_agent_effect_context(other)
     assert context["card_id"] == ghola
     assert context["graft_pending_effect"] is True
     assert context["graft_pending_icons"] == "cards"
-    hand = len(other.players[0].hand)
     drawn, kinds = _engine_step(other, "resolve_agent_card_effect", effect="cards")
     assert "agent_card_effect_expired" not in kinds
-    assert len(drawn.players[0].hand) == hand + 1
+    assert len(drawn.players[0].hand) == hand + 2
 
 
 def test_ghola_copy_trashing_itself_keeps_its_draw_across_the_other_box() -> None:
@@ -2197,18 +2201,19 @@ def test_ghola_copy_trashing_itself_keeps_its_draw_across_the_other_box() -> Non
     trashed, _ = _engine_step(grafted, "trash_agent_card", box=1, card_id=ghola)
     assert ghola in trashed.players[0].trashed
 
-    declined, kinds = _engine_step(trashed, "decline_agent_card_trash")
+    # Tread's own draw in between (its optional trash offers no refusal,
+    # OQ-095 (2), user ruling 2026-10-14).
+    tread_drew, kinds = _engine_step(
+        trashed, "resolve_agent_card_effect", effect="cards"
+    )
 
     assert "agent_card_effect_expired" not in kinds
-    _, context = current_agent_effect_context(declined)
+    _, context = current_agent_effect_context(tread_drew)
     assert context["card_id"] == TREAD
     assert context["graft_pending_icons"] == "cards"
-    tread_drew, kinds = _engine_step(
-        declined, "resolve_agent_card_effect", effect="cards"
-    )
-    assert "agent_card_effect_expired" not in kinds
     hand = len(tread_drew.players[0].hand)
-    ghola_drew, _ = _engine_step(
+    ghola_drew, kinds = _engine_step(
         tread_drew, "resolve_agent_card_effect", box=1, effect="cards"
     )
+    assert "agent_card_effect_expired" not in kinds
     assert len(ghola_drew.players[0].hand) == hand + 1

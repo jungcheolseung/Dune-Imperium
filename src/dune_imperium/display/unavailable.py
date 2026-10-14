@@ -20,7 +20,13 @@ option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
 seat has no Intrigue card to trash for, Litany Against Fear once the seat
 already acted in its turn, a separate-lines Intrigue card's finish before
-one of its lines is used).
+one of its lines is used). An optional effect of the Agent turn offers no
+refusal, and the turn's end lapses it (OQ-095 (2), user ruling
+2026-10-14), so one that cannot be used now offers no row at all: it shows
+greyed out with its block and says it lapses (Smuggler's Haven short of
+spice, a Signet Ring payment, a Sardaukar Commander short of Solari, a
+Landsraad visit's Tech with no tile in reach, among them), under
+"waiting" while another effect of the turn could still enable it.
 
 Display only, under four rules:
 
@@ -43,7 +49,13 @@ Display only, under four rules:
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
   ``contract_take_block``, ``turn_start_is_open``,
-  ``intrigue_effects_finish_is_open``), so the two cannot drift.
+  ``intrigue_effects_finish_is_open``, and for an optional effect of the
+  Agent turn that offers nothing ``agent_card_cost_block``,
+  ``agent_card_trash_block``, ``agent_card_acquisition_block``,
+  ``signet_optional_block``, ``imperial_privilege_trade_block``,
+  ``desert_tactics_block``, ``sardaukar_commander_block``,
+  ``landsraad_tech_block`` and ``leader_board_repeat_block``), so the two
+  cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
   (``shadow_action``). The one dry run is the provider's own:
   ``agent_box_is_waiting`` asks ``agent_card_effect_is_unavailable``, which
@@ -140,6 +152,7 @@ from dune_imperium.display.effect_dsl_text_ko import (
 from dune_imperium.display.leaders_ko import LEADER_FACE_TEXTS_KO
 from dune_imperium.rules.acquisition import (
     AcquireBlock,
+    agent_card_acquisition_block,
     imperium_acquisition_block,
     manipulated_acquisition_block,
     manipulated_cost,
@@ -147,7 +160,10 @@ from dune_imperium.rules.acquisition import (
     reserve_cost,
     revealer_persuasion,
 )
-from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
+from dune_imperium.rules.agent_effect_frame import (
+    active_box_can_act,
+    agent_box_is_waiting,
+)
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
@@ -155,14 +171,21 @@ from dune_imperium.rules.agent_effects import (
     AgentIconCondition,
     AgentPaymentBlock,
     agent_box_influence_blocked,
+    agent_card_cost_block,
     agent_card_payment_block,
     agent_card_recall_targets,
+    agent_card_trash_block,
     agent_icon_block,
     box_in_progress,
+    box_is_optional,
 )
 from dune_imperium.rules.agent_turn import turn_start_cards
 from dune_imperium.rules.board_effects import (
+    BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
+    BOARD_ICON_TRASH,
+    desert_tactics_block,
     imperial_privilege_recall_targets,
+    imperial_privilege_trade_block,
     legal_shipping_actions,
     shipping_influence_factions,
 )
@@ -193,14 +216,23 @@ from dune_imperium.rules.effect_interpreter import (
     spy_placement_targets,
 )
 from dune_imperium.rules.effects import (
+    BOARD_ICON_COMMANDER,
+    BOARD_ICON_TECH,
+    OPTIONAL_BOARD_ICONS,
+    OptionalBlockKind,
+    OptionalEffectBlock,
     active_agent_card,
     agent_turn_space_id,
     current_agent_effect_context,
+    eligible_agent_contract_ids,
     pending_agent_icons,
+    pending_board_icons,
+    pending_boost_draws,
 )
 from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
 from dune_imperium.rules.graft_boxes import (
     active_box,
+    box_is_pending,
     is_grafted_turn,
     state_with_active_box,
     tagged,
@@ -219,9 +251,12 @@ from dune_imperium.rules.intrigue import (
     intrigue_window,
 )
 from dune_imperium.rules.leader_abilities import (
+    leader_board_repeat_block,
     signet_influence_withheld,
+    signet_optional_block,
     units_deployment_blocked,
 )
+from dune_imperium.rules.owed_draws import legal_owed_draw_actions
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
     reveal_influence_choice_blocked,
@@ -230,13 +265,15 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.sardaukar import (
     face_up_skill_identities,
+    sardaukar_commander_block,
     skill_choice_block,
 )
+from dune_imperium.rules.scouts_effects import legal_subcommittee_choice_actions
 from dune_imperium.rules.spies import (
     legal_gather_intelligence_actions,
 )
 from dune_imperium.rules.spy_placement import solo_occupied_post_ids
-from dune_imperium.rules.tech import tech_candidates
+from dune_imperium.rules.tech import landsraad_tech_block, tech_candidates
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     reclaimed_forces_block,
@@ -435,11 +472,12 @@ _TURN_START: Final[Reason] = (
     "timing",
 )
 # "At the start of your turn" (Withdrawn, Litany Against Fear) on the turn
-# frame once the seat already acted in the turn (OQ-095 (6), user ruling
-# 2026-10-04, ``frames.turn_start_is_open``).
+# frame once the seat already acted in the turn or refused the turn-start
+# window (OQ-095 (6), user rulings 2026-10-04 and 2026-10-14,
+# ``frames.turn_start_is_open``).
 _TURN_STARTED: Final[Reason] = (
-    "Only at the start of your turn: you already acted this turn",
-    "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
+    "Only at the start of your turn: this turn's start has passed",
+    "차례를 시작할 때만 사용 — 이번 차례의 시작이 지났음",
     "turn_started",
 )
 
@@ -1959,6 +1997,9 @@ def _agent_box_payment(state: GameState, seat: int, found: _Found) -> None:
         context
     ):
         return
+    if box_is_optional(state):
+        # Its own row says why it offers nothing (``_optional_agent_box``).
+        return
     effect = active_agent_card(context).agent_effect
     block = agent_card_payment_block(state, seat, effect)
     if block is None or effect is None:
@@ -1998,10 +2039,11 @@ def _agent_box(state: GameState, seat: int, found: _Found) -> None:
     """A mandatory Agent box withheld until its condition holds (OQ-057).
 
     ``agent_box_is_waiting`` is the very test the legal list makes before
-    offering ``resolve_agent_card_effect``.
+    offering ``resolve_agent_card_effect``. An optional box that offers
+    nothing has its own row (``_optional_agent_box``).
     """
 
-    if not agent_box_is_waiting(state, seat):
+    if not agent_box_is_waiting(state, seat) or box_is_optional(state):
         return
     _, context = current_agent_effect_context(state)
     card_id = context.get("card_id")
@@ -2015,6 +2057,473 @@ def _agent_box(state: GameState, seat: int, found: _Found) -> None:
         if agent_box_influence_blocked(state, seat)
         else _WAITING,
         card_id=card_id if isinstance(card_id, str) else None,
+    )
+
+
+# --- Optional effects of the Agent turn that offer nothing now ---------------
+#
+# An optional effect -- "may", an arrow cost or a black trash icon [FAQ p. 3]
+# -- offers no refusal in its owner's Agent turn, and the turn's end lapses
+# it unused (OQ-095 (2), user ruling 2026-10-14). One that cannot be used
+# now therefore offers no row at all; it shows greyed out with the block its
+# provider gates it on, and says that it lapses. One that another effect of
+# the turn could still enable sits with the waiting ones, in the plan's free
+# order wording (docs/unavailable-options-plan.md 1: only whether another
+# effect is left is asked, not whether it would help).
+
+_LAPSES_UNUSED: Final = (
+    "; it lapses unused when the turn ends",
+    " — 차례가 끝나면 쓰지 않은 채 사라짐",
+)
+_FREE_ORDER: Final = (
+    "; another effect of this turn can still meet it, and unused it lapses"
+    " when the turn ends",
+    " — 이번 차례의 다른 효과로 채우면 가능, 쓰지 않으면 차례가 끝날 때 사라짐",
+)
+_AFTER_THE_SPACE_LAPSES: Final = (
+    "; unused, it lapses when the turn ends",
+    " — 쓰지 않으면 차례가 끝날 때 사라짐",
+)
+# ``scouts_offers.BOARD_ICON_SUBCOMMITTEE`` (``effects.OPTIONAL_BOARD_ICONS``
+# spells it the same way).
+_SUBCOMMITTEE_ICON: Final = "scouts_subcommittee"
+_FACTION_EN: Final[Mapping[str, str]] = {
+    faction.value: faction.value.replace("_", " ").title() for faction in Faction
+}
+# docs/rules/glossary-ko.md "팩션과 영향력" [Main p. 20].
+_FACTION_KO: Final[Mapping[str, str]] = {
+    Faction.EMPEROR.value: "황제",
+    Faction.SPACING_GUILD.value: "우주 항행 길드",
+    Faction.BENE_GESSERIT.value: "베네 게세리트",
+    Faction.FREMEN.value: "프레멘",
+}
+# Blocks no other effect of the same turn can lift.
+_NEVER_THIS_TURN: Final = frozenset(
+    {
+        OptionalBlockKind.TLEILAXU_TRACK_END,
+        OptionalBlockKind.NO_PARTNER,
+        OptionalBlockKind.NOT_IN_PLAY,
+        OptionalBlockKind.NO_FACTION_GAIN,
+        OptionalBlockKind.FACTION_NEAR_TOP,
+        OptionalBlockKind.NO_CONFLICT,
+        OptionalBlockKind.DEPLOYMENT_BARRED,
+        OptionalBlockKind.AGENT_LEFT,
+        OptionalBlockKind.COMMANDER_GONE,
+        OptionalBlockKind.TECH_STACKS_EMPTY,
+    }
+)
+_OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
+    OptionalBlockKind.INTRIGUE: _NO_INTRIGUE_TO_TRASH,
+    OptionalBlockKind.NO_UNIT: _NO_UNIT_TO_LOSE,
+    OptionalBlockKind.NO_UNIT_IN_CONFLICT: (
+        "No unit of yours in the Conflict to retreat",
+        "{conflict}에 후퇴할 내 유닛 없음",
+        "no_unit",
+    ),
+    OptionalBlockKind.NO_COMMANDER_IN_CONFLICT: (
+        "Needs a Sardaukar Commander of yours in the Conflict",
+        "{conflict}에 내 {commander} 필요",
+        "condition",
+    ),
+    OptionalBlockKind.NO_CARD_TO_TRASH: (
+        "No card in hand, discard pile or play to trash",
+        "{hand}·{discard_pile}·{in_play}에 {trash}할 카드 없음",
+        "empty",
+    ),
+    OptionalBlockKind.NO_SPY_POST: (
+        "No observation post where it could place your Spy",
+        "{spy}를 놓을 {observation_post} 없음",
+        "no_target",
+    ),
+    OptionalBlockKind.NO_EMPEROR_CARD: (
+        "No other Emperor card in hand to trash",
+        "{hand}에 {trash}할 다른 황제 카드 없음",
+        "cost",
+    ),
+    OptionalBlockKind.MAKER_HOOKS: _NO_MAKER_HOOKS,
+    OptionalBlockKind.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
+    OptionalBlockKind.TECH_NEEDS_SPY: (
+        "Advanced Data Analysis needs a Spy of yours on the board to trash",
+        "고급 데이터 분석은 보드에 있는 내 {spy}를 폐기해야 함",
+        "cost",
+    ),
+    OptionalBlockKind.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
+    OptionalBlockKind.NO_PARTNER: (
+        "The other grafted card is no longer in play",
+        "{graft}한 다른 카드가 더 이상 {in_play}에 없음",
+        "condition",
+    ),
+    OptionalBlockKind.NOT_IN_PLAY: (
+        "This card is no longer in play",
+        "이 카드가 더 이상 {in_play}에 없음",
+        "condition",
+    ),
+    OptionalBlockKind.NO_FACTION_GAIN: (
+        "No Influence of the visited space left for it to replace",
+        "대신할 이 공간의 {influence_any} 획득이 남아 있지 않음",
+        "condition",
+    ),
+    OptionalBlockKind.NO_CONFLICT: _NO_CONFLICT,
+    OptionalBlockKind.DEPLOYMENT_BARRED: _DEPLOYMENT_BARRED,
+    OptionalBlockKind.AGENT_LEFT: (
+        "The Agent sent this turn already left its space",
+        "이번 차례에 보낸 {agent}가 이미 공간을 떠났음",
+        "condition",
+    ),
+    OptionalBlockKind.COMMANDER_GONE: (
+        "No Sardaukar Commander is left on this space",
+        "이 공간에 남은 {commander} 없음",
+        "empty",
+    ),
+    OptionalBlockKind.TECH_STACKS_EMPTY: _TECH_STACKS_EMPTY,
+    OptionalBlockKind.AFTER_THE_SPACE: (
+        "Only after the space's own effects are resolved",
+        "이 공간의 효과를 모두 해결한 뒤에만",
+        "timing",
+    ),
+}
+
+
+def _optional_block_reason(block: OptionalEffectBlock) -> Reason:
+    """Word an optional effect's block (``OptionalEffectBlock``), with a
+    second block it also has joined as ``_no_effect_reason`` joins two."""
+
+    reason = _one_optional_reason(block)
+    if block.also is None:
+        return reason
+    other = _one_optional_reason(block.also)
+    return f"{reason[0]}; {other[0]}", f"{reason[1]} · {other[1]}", reason[2]
+
+
+def _one_optional_reason(block: OptionalEffectBlock) -> Reason:
+    kind, needed, held = block.kind, block.needed, block.held
+    match kind:
+        case (
+            OptionalBlockKind.SPICE
+            | OptionalBlockKind.WATER
+            | OptionalBlockKind.SOLARI
+        ):
+            return resource_reason(kind.value, needed, held)
+        case OptionalBlockKind.SPECIMENS:
+            return _specimen_cost_reason(needed, held)
+        case OptionalBlockKind.HAND:
+            en, ko = held_text(held)
+            return (
+                f"Needs {needed} card{plural_s(needed)} in hand{en}",
+                f"{{hand}}에 카드 {needed}장 필요{ko}",
+                "cost",
+            )
+        case OptionalBlockKind.ALLIANCE:
+            return (
+                f"Needs the {_FACTION_EN[block.faction]} Alliance",
+                f"{_FACTION_KO[block.faction]} {{alliance}} 필요",
+                "condition",
+            )
+        case OptionalBlockKind.INFLUENCE:
+            en, ko = held_text(held)
+            return (
+                f"Needs {needed} {_FACTION_EN[block.faction]} Influence{en}",
+                f"{{influence_{block.faction}}} {needed} 필요{ko}",
+                "condition",
+            )
+        case OptionalBlockKind.GENETIC_MARKERS:
+            return (
+                f"Needs {needed} genetic marker{plural_s(needed)}"
+                f" (you have {held})",
+                f"유전자 마커 {needed}개 필요 (보유 {held})",
+                "condition",
+            )
+        case OptionalBlockKind.NOTHING_TO_ACQUIRE if needed:
+            return (
+                f"No card costing {needed} or less to acquire",
+                f"획득할 수 있는 비용 {needed} 이하 카드 없음",
+                "reward",
+            )
+        case OptionalBlockKind.NOTHING_TO_ACQUIRE:
+            en, ko = held_text(held)
+            return (
+                f"No card you can acquire with your Solari{en}",
+                f"{{solari}}로 획득할 수 있는 카드 없음{ko}",
+                "cost",
+            )
+        case OptionalBlockKind.TECH_UNAFFORDABLE:
+            en, ko = held_text(held)
+            return (
+                f"No Tech tile you can afford: the cheapest costs {needed}"
+                f" spice{en}",
+                f"살 수 있는 {{tech_tile}} 없음: 가장 싼 타일 {{spice:{needed}}}{ko}",
+                "cost",
+            )
+        case OptionalBlockKind.FACTION_NEAR_TOP:
+            name = _FACTION_EN[block.faction]
+            return (
+                f"{name} Influence is already {held}: two would end where one"
+                " does",
+                f"{{influence_{block.faction}}}이 이미 {held} — 2를 얻어도 1을 얻는"
+                " 것과 같음",
+                "top",
+            )
+    return _OPTIONAL_REASONS.get(kind, NOT_NOW)
+
+
+def _board_icon_offered(state: GameState, seat: int, key: str) -> bool:
+    """Whether the visit's optional icon ``key`` offers a row now."""
+
+    if key == BOARD_ICON_TRASH:
+        return desert_tactics_block(state, seat) is None
+    if key == BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE:
+        return imperial_privilege_trade_block(state, seat) is None
+    if key == BOARD_ICON_COMMANDER:
+        return sardaukar_commander_block(state, seat) is None
+    if key == BOARD_ICON_TECH:
+        return landsraad_tech_block(state, seat) is None
+    return bool(legal_subcommittee_choice_actions(state, seat))
+
+
+def _another_effect_offered(
+    state: GameState,
+    seat: int,
+    *,
+    box: int | None = None,
+    icon: str | None = None,
+    repeat: bool = False,
+) -> bool:
+    """Whether another effect of the seat's Agent turn offers a row now.
+
+    The other Agent box, the visit's other icons (an optional one only
+    while it offers a row), the Faction Influence of the visit, a Leader's
+    placement ability, Reverend Mother's repeat, Urgent Shigawire's draw, a
+    Contract completed by the visit and a held draw. Every one is public,
+    or the seat's own (its held draws).
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    for other in (0, 1) if is_grafted_turn(context) else (0,):
+        if other == box or not box_is_pending(context, other):
+            continue
+        if active_box_can_act(state_with_active_box(state, other), seat):
+            return True
+    for key in pending_board_icons(context):
+        if key == icon:
+            continue
+        if key not in OPTIONAL_BOARD_ICONS or _board_icon_offered(state, seat, key):
+            return True
+    if (
+        context.get("pending_faction_influence") is True
+        or context.get("pending_leader_ability") is True
+        or pending_boost_draws(context)
+        or eligible_agent_contract_ids(context, state.players)
+        or legal_owed_draw_actions(state, seat)
+    ):
+        return True
+    return (
+        not repeat
+        and context.get("pending_leader_board_repeat") is True
+        and leader_board_repeat_block(state, seat) is None
+    )
+
+
+def _optional_row(
+    found: _Found,
+    state: GameState,
+    seat: int,
+    key: str,
+    action: DomainAction,
+    reason: Reason,
+    *,
+    meetable: bool,
+    box: int | None = None,
+    icon: str | None = None,
+    repeat: bool = False,
+    card_id: str | None = None,
+) -> None:
+    """One optional effect's greyed row: under "waiting", with the free
+    order wording, when its block could still be lifted (``meetable``) and
+    another effect of the turn offers a row; otherwise under "choice". Both
+    say that it lapses unused when the turn ends."""
+
+    english, korean, code = reason
+    waiting = meetable and _another_effect_offered(
+        state, seat, box=box, icon=icon, repeat=repeat
+    )
+    tail_en, tail_ko = _FREE_ORDER if waiting else _LAPSES_UNUSED
+    found.row(
+        "waiting" if waiting else "choice",
+        key,
+        action,
+        (english + tail_en, korean + tail_ko, code),
+        card_id=card_id,
+    )
+
+
+def _optional_box_reason(
+    state: GameState, seat: int
+) -> tuple[Reason, bool] | None:
+    """The active optional Agent box's reason, and whether another effect
+    of the turn could lift its block, from its provider's own gate."""
+
+    effect = active_agent_card(current_agent_effect_context(state)[1]).agent_effect
+    cost = agent_card_cost_block(state, seat)
+    payment = agent_card_payment_block(state, seat, effect)
+    if cost is None and payment is not None:
+        # Ecological Testing Station's draw with empty piles (a discard of
+        # the turn refills them), Tleilaxu Surgeon at the track's end.
+        return (
+            _PAYMENT_BLOCK_REASONS[payment],
+            payment is AgentPaymentBlock.NO_CARD_TO_DRAW,
+        )
+    block = (
+        cost
+        or agent_card_trash_block(state, seat)
+        or agent_card_acquisition_block(state, seat)
+        or signet_optional_block(state, seat)
+    )
+    if block is None:
+        return None
+    meetable = block.kind not in _NEVER_THIS_TURN and (
+        block.also is None or block.also.kind not in _NEVER_THIS_TURN
+    )
+    return _optional_block_reason(block), meetable
+
+
+def _optional_agent_box(state: GameState, seat: int, found: _Found) -> None:
+    """An optional Agent box that offers nothing now (OQ-095 (2)).
+
+    ``box_is_optional`` says the box holds only optional effects now, and
+    ``active_box_can_act`` that it offers no row (the legal list offers the
+    box's rows through the same ``agent_effect_frame._active_box_actions``).
+    The reason is the gate its provider applies: ``agent_card_cost_block``
+    (payments, discards, Corrinth City, the Intrigue payments, Piter,
+    Dissecting Kit, Scientific Breakthrough's line, Arrakis Revolt),
+    ``agent_card_payment_block`` (OQ-071), ``agent_card_trash_block``,
+    ``agent_card_acquisition_block`` (Tleilaxu Master, Price is No Object)
+    and ``signet_optional_block``. The row is the box's resolution, led by
+    its card like a waiting box's (``agent_box_row_title``). A box resolved
+    icon by icon (Tread in Darkness's trash, Twisted Mentat's recall) is
+    ``_agent_icons``'.
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return
+    if (
+        context.get("pending_agent_effect") is not True
+        or pending_agent_icons(context)
+        or not box_is_optional(state)
+        or active_box_can_act(state, seat)
+    ):
+        return
+    answer = _optional_box_reason(state, seat)
+    reason, meetable = answer if answer is not None else (NOT_NOW, False)
+    card_id = context.get("card_id")
+    _optional_row(
+        found,
+        state,
+        seat,
+        f"optional_box:{card_id}",
+        DomainAction(action_id="resolve_agent_card_effect", actor=seat),
+        reason,
+        meetable=meetable,
+        box=active_box(context),
+        card_id=card_id if isinstance(card_id, str) else None,
+    )
+
+
+# The visit's optional effects, each with its provider's block function and
+# the candidate it would offer (an argument-less one, never legal).
+_OPTIONAL_BOARD_EFFECTS: Final[
+    tuple[
+        tuple[
+            str,
+            str,
+            Callable[[GameState, int], OptionalEffectBlock | None],
+            str,
+        ],
+        ...,
+    ]
+] = (
+    (
+        BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
+        "imperial_privilege_intrigue",
+        imperial_privilege_trade_block,
+        "trash_intrigue_for_imperial_privilege",
+    ),
+    (
+        BOARD_ICON_TRASH,
+        "desert_tactics_trash",
+        desert_tactics_block,
+        "trash_card_for_desert_tactics",
+    ),
+    (
+        BOARD_ICON_COMMANDER,
+        "sardaukar_commander",
+        sardaukar_commander_block,
+        "acquire_sardaukar_commander",
+    ),
+    (BOARD_ICON_TECH, "landsraad_tech", landsraad_tech_block, "acquire_tech"),
+)
+
+
+def _optional_board_effects(state: GameState, seat: int, found: _Found) -> None:
+    """The visit's optional effects that offer nothing now (OQ-095 (2)).
+
+    Imperial Privilege's Intrigue trade with no Intrigue card in hand
+    (``imperial_privilege_trade_block``), Desert Tactics' trash with no
+    card (``desert_tactics_block``), a Sardaukar Commander gone or short of
+    its Solari (``sardaukar_commander_block``), a Landsraad visit's Acquire
+    Tech with no tile in reach (``landsraad_tech_block``), and Reverend
+    Mother's repeat before the space's effects or without its water
+    (``leader_board_repeat_block``): each provider offers its rows exactly
+    when its block is None. The subcommittee seat is
+    ``_subcommittee_choice``'s.
+    """
+
+    for icon, key, block_of, action_id in _OPTIONAL_BOARD_EFFECTS:
+        block = block_of(state, seat)
+        if block is None:
+            continue
+        _optional_row(
+            found,
+            state,
+            seat,
+            key,
+            DomainAction(action_id=action_id, actor=seat),
+            _optional_block_reason(block),
+            meetable=block.kind not in _NEVER_THIS_TURN,
+            icon=icon,
+        )
+    repeat = leader_board_repeat_block(state, seat)
+    if repeat is None:
+        return
+    action = DomainAction(action_id="pay_leader_board_repeat", actor=seat)
+    if repeat.kind is OptionalBlockKind.AFTER_THE_SPACE:
+        english, korean, code = _optional_block_reason(repeat)
+        found.row(
+            "waiting",
+            "leader_board_repeat",
+            action,
+            (
+                english + _AFTER_THE_SPACE_LAPSES[0],
+                korean + _AFTER_THE_SPACE_LAPSES[1],
+                code,
+            ),
+        )
+        return
+    _optional_row(
+        found,
+        state,
+        seat,
+        "leader_board_repeat",
+        action,
+        _optional_block_reason(repeat),
+        meetable=True,
+        repeat=True,
     )
 
 
@@ -2041,10 +2550,25 @@ def _subcommittee_choice(state: GameState, seat: int, found: _Found) -> None:
     reason = choose_subcommittee_reason(state, seat)
     if reason is None:
         return
+    action = DomainAction(action_id="choose_subcommittee", actor=seat)
+    if state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS:
+        # An optional effect of the visit: left unused it lapses when the
+        # turn ends (OQ-095 (2), user ruling 2026-10-14).
+        _optional_row(
+            found,
+            state,
+            seat,
+            "choose_subcommittee",
+            action,
+            reason,
+            meetable=reason != SUBCOMMITTEES_CLAIMED,
+            icon=_SUBCOMMITTEE_ICON,
+        )
+        return
     found.row(
         "choice" if reason == SUBCOMMITTEES_CLAIMED else "waiting",
         "choose_subcommittee",
-        DomainAction(action_id="choose_subcommittee", actor=seat),
+        action,
         reason,
     )
 
@@ -2096,11 +2620,13 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.REVEAL_CHOICE: (_reveal_choice,),
     FrameKind.AGENT_EFFECTS: (
         _each_box(_agent_box),
+        _each_box(_optional_agent_box),
         _each_box(_agent_box_payment),
         _each_box(_signet_influence),
         _shipping_influence,
         _each_box(_agent_icons),
         _imperial_privilege_recall,
+        _optional_board_effects,
         _subcommittee_choice,
         _intrigue,
     ),
