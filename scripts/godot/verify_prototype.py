@@ -35,13 +35,14 @@ def main() -> int:
         parser.error("--seeds requires one to eight nonnegative integers")
     binary = ensure_godot(args.godot)
     env = dict(os.environ, PYTHONPATH=str(PROJECT_ROOT / "src"))
-    checked = subprocess.run(
-        [str(binary), "--headless", "--path", str(PROJECT),
-         "--script", "model_test.gd"],
-        cwd=PROJECT_ROOT, env=env, timeout=30, check=False,
-    )
-    if checked.returncode:
-        return checked.returncode
+    for script in ("model_test.gd", "display_scale_test.gd"):
+        checked = subprocess.run(
+            [str(binary), "--headless", "--path", str(PROJECT),
+             "--script", script],
+            cwd=PROJECT_ROOT, env=env, timeout=30, check=False,
+        )
+        if checked.returncode:
+            return checked.returncode
     # Fail promptly on native script errors instead of waiting for a UI watchdog
     # that cannot start when the main scene does not parse.
     for script in ("board.gd", "main.gd"):

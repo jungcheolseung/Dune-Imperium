@@ -17,6 +17,7 @@ var expansions = ExpansionPresenter.new()
 var model = Model.new()
 var log_ui = preload("res://log_presenter.gd").new()
 var layout_ui = preload("res://layout_preferences.gd").new()
+var display_ui = preload("res://display_scale.gd").new()
 var effects = preload("res://table_effects.gd").new()
 var game_id = ""
 var busy = false
@@ -91,6 +92,8 @@ func _ready() -> void:
 				credentials = data
 	choices.table = self
 	log_ui.table = self
+	add_child(display_ui)
+	display_ui.setup(get_window())
 	_build_theme()
 	_build_table()
 	add_child(api)
@@ -116,7 +119,6 @@ func _ready() -> void:
 	timer.timeout.connect(_poll)
 	add_child(timer)
 	timer.start()
-	get_window().min_size = Vector2i(1100, 740)
 	get_tree().auto_accept_quit = false
 	var catalog = await api.call_json(HTTPClient.METHOD_GET, "/catalog")
 	if catalog.ok:
@@ -374,7 +376,7 @@ func _fit_columns() -> void:
 	market_scroll.custom_minimum_size.x = widths.market
 	for window in find_children("*", "Window", true, false):
 		if window.visible and not window.is_queued_for_deletion():
-			var extent = Vector2i(get_window().size) - window.size
+			var extent = Vector2i(size) - window.size
 			window.position = Vector2i(clampi(window.position.x, 8, maxi(8, extent.x - 8)), clampi(window.position.y, 32, maxi(32, extent.y - 8)))
 	_hide_preview()
 
@@ -1523,6 +1525,7 @@ func _check_layout() -> bool:
 func _check_hover(ref: String, source: Control) -> bool:
 	await _move_pointer(source.get_global_rect().get_center())
 	if not preview.visible or inspect_ref != ref or inspector_image.texture == null:
+		print("GODOT_HOVER_DIAGNOSTIC ", JSON.stringify({"expected": ref, "actual": inspect_ref, "visible": preview.visible, "rect": str(source.get_global_rect()), "pointer": str(get_global_mouse_position()), "scale": get_window().content_scale_factor}))
 		_smoke_fail("native hover did not show the matching large card")
 		return false
 	if not Rect2(Vector2.ZERO, size).encloses(preview.get_global_rect()) or preview.get_global_rect().intersects(source.get_global_rect()):
@@ -1538,6 +1541,16 @@ func _check_hover(ref: String, source: Control) -> bool:
 
 
 func _run_capture() -> void:
+	# Native mouse movement must not overwrite injected test input on Windows.
+	# Normal play keeps the default mouse handling.
+	get_window().mouse_passthrough = true
+	var watchdog = Timer.new()
+	watchdog.wait_time = 180
+	watchdog.one_shot = true
+	watchdog.timeout.connect(func(): _smoke_fail("capture timeout"))
+	add_child(watchdog)
+	watchdog.start()
+	tools_ui.prefs.sound = false
 	if not await _create_game(11):
 		_smoke_fail("capture create")
 		return
@@ -1586,7 +1599,8 @@ func _run_capture() -> void:
 	var wheel = InputEventMouseButton.new()
 	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
 	wheel.pressed = true
-	wheel.position = board.get_global_transform() * point
+	wheel.position = get_viewport().get_final_transform() * (board.get_global_transform() * point)
+	wheel.global_position = wheel.position
 	Input.parse_input_event(wheel)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -1730,13 +1744,73 @@ func _run_capture() -> void:
 		_smoke_fail("English native chrome or layout")
 		return
 	await _capture("table-en")
+	if not await _capture_scaled_tables():
+		return
 	model.language = "ko"
 	_render()
 	print("GODOT_CAPTURE_OK")
 	await _quit_cleanly()
 
 
+func _capture_scaled_tables() -> bool:
+	# Exercise native rendering and input at FHD, QHD and 4K without changing
+	# the user's desktop resolution or relying on the test monitor's DPI.
+	display_ui.set_process(false)
+	for pixels in [Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160)]:
+		display_ui.monitor_scale = display_ui.preferred_scale(pixels)
+		get_window().size = pixels
+		display_ui._apply_scale()
+		await _wait_images()
+		if not is_equal_approx(get_window().content_scale_factor, display_ui.monitor_scale):
+			_smoke_fail("native resolution did not acquire its automatic UI scale")
+			return false
+		for language in ["ko", "en"]:
+			model.language = language
+			_render()
+			await _wait_images()
+			if not _check_layout():
+				return false
+			var name = "scaled-%dx%d-%s" % [pixels.x, pixels.y, language]
+			await _capture(name)
+			var ref = str(model.view().get("imperium_row", [])[0])
+			var card = _ref_button(market_content, ref)
+			if card == null or not await _check_hover(ref, card):
+				return false
+			await _capture(name + "-hover")
+			_hide_preview()
+			await _click(new_button.get_global_rect().get_center())
+			var dialog: Window
+			for child in get_children():
+				if child is ConfirmationDialog and child.visible:
+					dialog = child
+			if dialog == null:
+				_smoke_fail("scaled click did not open the new-game dialog")
+				return false
+			await get_tree().process_frame
+			if not Rect2(Vector2.ZERO, size).encloses(Rect2(Vector2(dialog.position), Vector2(dialog.size))):
+				_smoke_fail("scaled popup outside the logical viewport")
+				return false
+			await _capture(name + "-dialog")
+			dialog.queue_free()
+			await get_tree().process_frame
+			var pile = _open_pile("Cards", model.view().get("imperium_row", []))
+			await get_tree().process_frame
+			await get_tree().process_frame
+			pile.position = Vector2i(size) - pile.size + Vector2i(80, 80)
+			_fit_columns()
+			await get_tree().process_frame
+			if not Rect2(Vector2.ZERO, size).encloses(Rect2(Vector2(pile.position), Vector2(pile.size))):
+				_smoke_fail("scaled information popup was clamped against physical pixels")
+				return false
+			await _capture(name + "-pile")
+			pile.queue_free()
+			await get_tree().process_frame
+	return true
+
+
 func _drag(start: Vector2, end: Vector2) -> void:
+	start = get_viewport().get_final_transform() * start
+	end = get_viewport().get_final_transform() * end
 	var press = InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true

@@ -86,7 +86,7 @@ func _fit_after_layout() -> void:
 	await table.get_tree().process_frame
 	await table.get_tree().process_frame
 	if is_instance_valid(dialog) and not dialog.is_queued_for_deletion():
-		dialog.popup_centered(Vector2i(980, mini(600, table.get_window().size.y - 64)))
+		dialog.popup_centered(Vector2i(980, mini(600, int(table.size.y) - 64)))
 		table._fit_columns()
 
 
