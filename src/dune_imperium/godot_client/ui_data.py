@@ -36,6 +36,15 @@ def build_ui_data(static: Path = STATIC) -> dict[str, Any]:
         (static / "labels_en.js").read_text(encoding="utf-8"), "LABELS_EN"
     ))
     core = (static / "core.js").read_text(encoding="utf-8")
+    kinds = re.search(r"const SEAT_KINDS = \[(.*?)\n\];", core, re.DOTALL)
+    if kinds is None:
+        raise ValueError("missing seat kind names")
+    korean["SEAT_KINDS"] = {
+        key: json.loads(text)
+        for key, text in re.findall(
+            r'\["([a-z_]+)",\s*("(?:[^"\\]|\\.)*")\]', kinds[1]
+        )
+    }
     groups = re.search(r"const AGENT_ICON_GROUPS = \[(.*?)\n\];", core, re.DOTALL)
     if groups is None:
         raise ValueError("missing Agent icon names")
@@ -67,7 +76,15 @@ def build_ui_data(static: Path = STATIC) -> dict[str, Any]:
     prompts = json.loads(_block(
         (static / "prompts_ko.js").read_text(encoding="utf-8"), "PROMPT_KO"
     ))
-    return {"ko": korean, "en": english, "terms": terms, "prompts": prompts}
+    ui = json.loads(_block(
+        (static / "ui_text.js").read_text(encoding="utf-8"), "UI_TEXT"
+    ))
+    if not all(set(pair) == {"ko", "en"} for pair in ui.values()):
+        raise ValueError("incomplete UI translation")
+    return {
+        "ko": korean, "en": english, "terms": terms, "prompts": prompts,
+        "ui": ui,
+    }
 
 
 def write_ui_data(path: Path) -> None:

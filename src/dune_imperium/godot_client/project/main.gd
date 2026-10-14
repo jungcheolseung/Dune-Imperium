@@ -3,8 +3,12 @@ extends Control
 const Api = preload("res://api.gd")
 const Model = preload("res://model.gd")
 const Board = preload("res://board.gd")
+const Doorbell = preload("res://doorbell.gd")
+const SessionTools = preload("res://session_tools.gd")
 
 var api = Api.new()
+var doorbell = Doorbell.new()
+var tools_ui = SessionTools.new()
 var model = Model.new()
 var game_id = ""
 var busy = false
@@ -66,6 +70,12 @@ func _ready() -> void:
 	_build_theme()
 	_build_table()
 	add_child(api)
+	doorbell.api = api
+	add_child(doorbell)
+	doorbell.changed.connect(_poll)
+	doorbell.closed.connect(func(): tools_ui.leave_game())
+	add_child(tools_ui)
+	await tools_ui.setup(self)
 	api.texture_ready.connect(_texture_ready)
 	var timer = Timer.new()
 	poll_timer = timer
@@ -78,8 +88,8 @@ func _ready() -> void:
 	var catalog = await api.call_json(HTTPClient.METHOD_GET, "/catalog")
 	if catalog.ok:
 		model.catalog = catalog.data
-		new_button.disabled = false
-		load_button.disabled = false
+		new_button.disabled = not model.server_info.get("admin", true)
+		load_button.disabled = not model.server_info.get("admin", true)
 		status.text = "새 게임을 눌러 출발하세요"
 		if model.catalog.get("board_image") != null:
 			board.board_texture = api.texture(str(model.catalog.board_image))
@@ -393,35 +403,19 @@ func _clear(node: Node) -> void:
 
 
 func _new_game() -> void:
-	if busy:
-		return
-	var dialog = ConfirmationDialog.new()
-	dialog.title = "새 기본 봉기 게임"
-	dialog.dialog_text = ""
-	dialog.ok_button_text = "게임 시작"
-	dialog.cancel_button_text = "취소"
-	dialog.theme = theme
-	var body = VBoxContainer.new()
-	body.custom_minimum_size = Vector2(420, 110)
-	dialog.add_child(body)
-	_label(body, "나 + 앱 AI 어려움 3명으로 시작합니다.", 16)
-	var draft = CheckBox.new()
-	draft.text = "지도자 공개 드래프트"
-	body.add_child(draft)
-	add_child(dialog)
-	dialog.confirmed.connect(func(): _create_game(null, draft.button_pressed); dialog.queue_free())
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.popup_centered(Vector2i(420, 180))
+	tools_ui.new_game()
 
 
-func _create_game(seed: Variant, draft = false, pace = "fast") -> bool:
+func _create_game(seed: Variant, draft = false, pace = "fast", options: Dictionary = {}) -> bool:
 	if busy or model.catalog.is_empty():
 		return false
 	busy = true
 	generation += 1
 	status.text = "아라키스로 떠나는 중…"
 	_lock_controls()
-	var result = await api.call_json(HTTPClient.METHOD_POST, "/games", {"seats": ["human", "app_ai", "app_ai", "app_ai"], "game_seed": seed, "ai_pace": pace, "leader_draft": draft})
+	var config = {"seats": ["human", "app_ai", "app_ai", "app_ai"], "game_seed": seed, "ai_pace": pace, "leader_draft": draft}
+	config.merge(options, true)
+	var result = await api.call_json(HTTPClient.METHOD_POST, "/games", config)
 	if not _accept(result):
 		busy = false
 		_render()
@@ -434,11 +428,20 @@ func _create_game(seed: Variant, draft = false, pace = "fast") -> bool:
 
 func _adopt_game(id: String) -> bool:
 	game_id = id
+	tools_ui.review.clear()
+	tools_ui.playback = false
 	model.adopt({})
+	doorbell.start(id)
 	inspect_ref = ""
 	tab = "choices"
 	board.reset_view()
-	return await _sync()
+	var accepted = await _sync()
+	if accepted and model.active_seat < 0:
+		if model.summary().get("finished", false):
+			await tools_ui._review_meta(0, 0, true)
+		elif model.server_info.get("access") == "remote":
+			tools_ui.lobby()
+	return accepted
 
 
 func _accept(reply: Dictionary) -> bool:
@@ -454,7 +457,7 @@ func _poll() -> void:
 		_sync()
 
 
-func _sync() -> bool:
+func _sync(preferred_seat = -2) -> bool:
 	while refreshing:
 		await get_tree().process_frame
 	if game_id.is_empty():
@@ -462,13 +465,46 @@ func _sync() -> bool:
 	refreshing = true
 	var requested_game = game_id
 	var requested_generation = generation
-	var reply = await api.call_json(HTTPClient.METHOD_GET, "/games/" + game_id + "/snapshot?seat=0")
+	var seat = model.active_seat if preferred_seat == -2 else preferred_seat
+	var reply: Dictionary = {}
+	for attempt in range(4):
+		var path = "/games/" + requested_game + "/snapshot"
+		if seat >= 0:
+			path += "?seat=" + str(seat)
+			var known = model.snapshot.get("log")
+			if known is Dictionary and int(known.get("seat", -1)) == seat:
+				path += "&log_after=%d&log_epoch=%s" % [int(known.get("count", 0)), str(known.get("epoch", "")).uri_encode()]
+		reply = await api.call_json(HTTPClient.METHOD_GET, path)
+		if int(reply.code) == 403 and seat >= 0:
+			seat = -1
+			continue
+		if not reply.ok:
+			break
+		var wanted = model.pick_seat(reply.data)
+		if wanted == seat:
+			break
+		seat = wanted
 	refreshing = false
 	if requested_game != game_id or requested_generation != generation:
 		return false
 	if not _accept(reply):
 		return false
-	var changed = model.adopt(reply.data)
+	if not tools_ui.review.is_empty():
+		return true
+	var data = reply.data
+	if data.get("log") is Dictionary and int(data.log.get("from", 0)) > 0:
+		var known = model.snapshot.get("log", {})
+		if not known is Dictionary or int(known.get("seat", -1)) != int(data.log.seat) or known.get("entries", []).size() != int(data.log.from):
+			return await _sync(-1)
+		data.log.entries = known.entries + data.log.entries
+	tools_ui.anchor_clock(data)
+	var previous_owned = model.owned_seats.duplicate()
+	var changed = model.adopt(data)
+	for removed_seat in previous_owned:
+		if removed_seat not in model.owned_seats:
+			tools_ui.close_game_dialogs()
+			inspect_ref = ""
+			break
 	if changed:
 		if model.summary().get("finished", false):
 			tab = "choices"
@@ -480,14 +516,14 @@ func _render() -> void:
 	_hide_preview()
 	var summary = model.summary()
 	var view = model.view()
-	new_button.disabled = busy
-	load_button.disabled = busy
-	save_button.disabled = busy or game_id.is_empty()
+	new_button.disabled = busy or not model.server_info.get("admin", true)
+	load_button.disabled = busy or not model.server_info.get("admin", true)
+	save_button.disabled = busy or game_id.is_empty() or not model.server_info.get("admin", true)
 	undo_button.disabled = busy
 	if not busy:
 		undo_button.disabled = true
 		for item in summary.get("undo", []):
-			if int(item.seat) == 0 and int(item.steps) > 0:
+			if int(item.seat) == model.active_seat and int(item.steps) > 0 and tools_ui.review.is_empty():
 				undo_button.disabled = false
 	round_label.text = "%d 라운드  /  %s" % [int(summary.get("round_number", 0)), model.label("PHASE_LABELS", summary.get("phase", ""))]
 	_render_seats()
@@ -507,7 +543,7 @@ func _render() -> void:
 		hand.add_child(separator)
 		for ref in intrigues:
 			_card(hand, ref, 98, 156)
-	hand_panel.visible = not summary.get("finished", false)
+	hand_panel.visible = not summary.get("finished", false) or not tools_ui.review.is_empty()
 	_render_market()
 	_render_log(log_content)
 	board.refresh()
@@ -524,9 +560,9 @@ func _render() -> void:
 		status.text = "게임이 끝났습니다. 승점과 최종 순위는 오른쪽에서 확인하세요."
 	elif summary.get("thinking") != null:
 		status.text = "앱 AI %d의 차례입니다…" % int(summary.thinking)
-	elif summary.get("confirmation") == 0:
+	elif summary.get("confirmation") == model.active_seat:
 		status.text = "남은 선택을 해결했습니다. 턴 종료로 확정하세요."
-	elif decision is Dictionary and int(decision.get("owner", -1)) == 0:
+	elif decision is Dictionary and int(decision.get("owner", -1)) == model.active_seat:
 		status.text = "내 차례 · " + model.prompt()
 	else:
 		status.text = "카드를 고르고 보드의 칸을 선택하세요. 배치 후 남은 효과를 해결하면 턴을 끝낼 수 있습니다."
@@ -534,6 +570,7 @@ func _render() -> void:
 
 func _render_seats() -> void:
 	_clear(seats)
+	tools_ui.seat_clock_labels.clear()
 	for player in model.view().get("players", []):
 		var seat = int(player.player)
 		var panel = _panel(seats, 8)
@@ -550,7 +587,10 @@ func _render_seats() -> void:
 		if turn == null and decision is Dictionary:
 			turn = decision.get("owner")
 		_label(header, model.seat_name(seat) + (" · 선" if int(model.summary().get("first_player", -1)) == seat else "") + (" · 차례" if turn != null and int(turn) == seat else ""), 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_label(header, "%d점" % int(player.victory_points), 19).add_theme_color_override("font_color", Color("e8c78a"))
+		var points = _button(header, "%d점" % int(player.victory_points), tools_ui.vp_ledger.bind(seat))
+		points.custom_minimum_size.y = 26
+		points.add_theme_font_size_override("font_size", 17)
+		points.set_meta("vp_seat", seat)
 		var portrait = HBoxContainer.new()
 		stack.add_child(portrait)
 		if player.leader_id != null:
@@ -575,7 +615,14 @@ func _render_seats() -> void:
 			_amount(resources, key, int(player.get("resources", {}).get(key, 0)))
 		_label(info, "에이전트 %d · 책략 %d" % [int(player.agents_available), int(player.intrigue_card_count)], 12)
 		_label(stack, "수비대 %d  /  교전 병력 %d · 벌레 %d" % [int(player.troops_garrison), int(player.troops_conflict), int(player.sandworms_conflict)], 12)
+		tools_ui.seat_clock_labels[seat] = _label(header, "", 11)
 		_label(stack, "전투력 %d%s" % [int(player.combat_strength), " · 공개 완료" if player.has_revealed else ""], 13)
+		if tools_ui.prefs.get("seat_details", false):
+			var tracks_words: PackedStringArray = []
+			for faction in player.get("influence", {}):
+				tracks_words.append("%s %d" % [model.name_of(faction), int(player.influence[faction])])
+			_label(stack, " · ".join(tracks_words), 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			_label(stack, "스파이 %d · 보드 %d" % [int(player.spies_supply), player.spy_post_ids.size()], 12)
 		var piles = HBoxContainer.new()
 		piles.add_theme_constant_override("separation", 4)
 		stack.add_child(piles)
@@ -763,7 +810,7 @@ func _render_choices(filtered: Array = []) -> void:
 	var held = model.held_action()
 	if not held.is_empty():
 		finish_button.disabled = busy
-	elif model.summary().get("confirmation") == 0:
+	elif model.summary().get("confirmation") == model.active_seat:
 		finish_button.disabled = busy
 	else:
 		finish_button.disabled = busy or model.finish_action().is_empty()
@@ -773,12 +820,15 @@ func _render_choices(filtered: Array = []) -> void:
 	if tab == "table":
 		_render_table()
 		return
-	if model.summary().get("finished", false):
+	if model.summary().get("finished", false) and tools_ui.review.is_empty():
 		_render_results()
+		return
+	if not tools_ui.review.is_empty():
+		tools_ui.render_review(content)
 		return
 	var prompt = _label(content, model.prompt() if not model.prompt().is_empty() else "다른 플레이어의 차례입니다", 18)
 	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	if model.summary().get("confirmation") == 0:
+	if model.summary().get("confirmation") == model.active_seat:
 		_label(content, "선택을 바꾸려면 되돌리기를, 마치려면 턴 종료를 누르세요.", 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if not filtered.is_empty():
 		for action in filtered:
@@ -879,7 +929,7 @@ func _render_table() -> void:
 		for group in [["in_play", "플레이한 카드"], ["discard_pile", "버린 카드"], ["trashed", "폐기한 카드"], ["intrigue_faceup", "공개된 책략"], ["objective_ids", "목표"], ["won_conflict_ids", "승리한 교전"], ["face_down_battle_card_ids", "뒤집힌 전투 카드"]]:
 			var refs = player.get(group[0], [])
 			_button(content, "%s · %d장" % [group[1], refs.size()], _open_pile.bind(who + " · " + group[1], refs))
-		if int(player.player) == 0:
+		if int(player.player) == model.active_seat:
 			var deck = model.view().get("private", {}).get("deck_cards", [])
 			_button(content, "내 덱 구성 · %d장" % deck.size(), _open_pile.bind("내 덱 구성 · 순서 비공개", deck))
 		else:
@@ -892,6 +942,7 @@ func _open_pile(title: String, refs: Array) -> AcceptDialog:
 	dialog.title = title
 	dialog.ok_button_text = "닫기"
 	dialog.theme = theme
+	dialog.set_meta("game_dialog", game_id)
 	var root = VBoxContainer.new()
 	root.custom_minimum_size = Vector2(620, 460)
 	dialog.add_child(root)
@@ -916,18 +967,19 @@ func _render_log(parent: VBoxContainer = null) -> void:
 		parent = content
 	_clear(parent)
 	var entries = model.snapshot.get("log", {}).get("entries", [])
-	for index in range(entries.size() - 1, maxi(-1, entries.size() - 31), -1):
+	for index in range(entries.size() - 1, maxi(-1, (-1 if parent == content else entries.size() - 31)), -1):
 		var entry = entries[index]
 		if entry.get("undone", false):
 			continue
 		var text = ""
 		if entry.get("type") == "action":
-			text = "%s · %s" % ["나" if int(entry.get("actor", -1)) == 0 else "앱 AI %d" % int(entry.get("actor", -1)), model.describe(entry)]
+			text = "%s · %s" % [model.seat_name(int(entry.get("actor", -1))), model.describe(entry)]
 		else:
 			for event in entry.get("events", []):
 				text += model.label("EVENT_LABELS", str(event.get("kind", ""))) + "\n"
 		if not text.is_empty():
 			var line = _label(parent, text, 12)
+			line.set_meta("log_index", int(entry.get("index", -1)))
 			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			for value in entry.get("arguments", {}).values():
 				if value is String and not _image_path(model.entry(value)).is_empty():
@@ -1000,6 +1052,7 @@ func _open_details(ref: String) -> void:
 	dialog.dialog_text = ""
 	dialog.ok_button_text = "닫기"
 	dialog.theme = theme
+	dialog.set_meta("game_dialog", game_id)
 	var row = HBoxContainer.new()
 	row.custom_minimum_size = Vector2(620, 460)
 	dialog.add_child(row)
@@ -1023,6 +1076,8 @@ func _open_details(ref: String) -> void:
 
 func _choose_action(action: Dictionary, expected: String) -> void:
 	_hide_preview()
+	if not tools_ui.review.is_empty() or model.active_seat not in model.owned_seats:
+		return
 	if busy or expected != model.signature():
 		return
 	if action.get("sent_by_turn_end", false):
@@ -1036,7 +1091,7 @@ func _choose_action(action: Dictionary, expected: String) -> void:
 
 
 func _send_action(action: Dictionary) -> bool:
-	if busy:
+	if busy or not tools_ui.review.is_empty() or model.active_seat not in model.owned_seats:
 		return false
 	busy = true
 	generation += 1
@@ -1056,7 +1111,7 @@ func _finish() -> void:
 	var held = model.held_action()
 	if not held.is_empty():
 		await _send_action(held)
-	elif model.summary().get("confirmation") == 0:
+	elif model.summary().get("confirmation") == model.active_seat:
 		await _mutate("confirm", {})
 	else:
 		var action = model.finish_action()
@@ -1070,7 +1125,7 @@ func _mutate(path: String, extra: Dictionary) -> bool:
 	busy = true
 	generation += 1
 	_lock_controls()
-	var data = {"seat": 0, "revision": int(model.summary().revision), "undo_count": int(model.summary().undo_count)}
+	var data = {"seat": model.active_seat, "revision": int(model.summary().revision), "undo_count": int(model.summary().undo_count)}
 	data.merge(extra)
 	var reply = await api.call_json(HTTPClient.METHOD_POST, "/games/" + game_id + "/" + path, data)
 	var accepted = _accept(reply)
@@ -1084,18 +1139,22 @@ func _undo() -> void:
 	await _mutate("undo", {"steps": 1})
 
 
-func _save() -> void:
+func _save_now() -> void:
 	var reply = await _save_game()
 	if reply.get("ok", false):
 		status.text = "현재 판을 저장했습니다. 이어하기에서 다시 열 수 있습니다."
 
 
-func _save_game() -> Dictionary:
+func _save() -> void:
+	tools_ui.save_dialog()
+
+
+func _save_game(name: Variant = "Godot 시제품") -> Dictionary:
 	if game_id.is_empty() or busy:
 		return {"ok": false}
 	busy = true
 	_lock_controls()
-	var reply = await api.call_json(HTTPClient.METHOD_POST, "/games/" + game_id + "/save", {"name": "Godot 시제품"})
+	var reply = await api.call_json(HTTPClient.METHOD_POST, "/games/" + game_id + "/save", {"name": name})
 	busy = false
 	_accept(reply)
 	_render()
@@ -1113,26 +1172,32 @@ func _show_saves() -> AcceptDialog:
 	if not _accept(reply) or not reply.data is Array:
 		return null
 	var dialog = AcceptDialog.new()
-	dialog.title = "저장한 기본 봉기 게임 이어하기"
+	dialog.title = "저장한 게임 이어하기"
 	dialog.ok_button_text = "닫기"
 	dialog.theme = theme
+	dialog.set_meta("game_dialog", game_id)
 	var root = VBoxContainer.new()
 	root.custom_minimum_size = Vector2(600, 440)
 	dialog.add_child(root)
 	var body = _scroll(root)
-	_label(body, "사람 1명(첫 좌석) + AI 3명의 기본판 저장을 열 수 있습니다.", 15).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_label(body, "저장된 판의 좌석과 규칙 옵션을 그대로 복원합니다.", 15).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var count = 0
 	for saved in reply.data:
 		if not model.supported_save(saved):
 			continue
 		count += 1
 		var title = "자동 저장" if saved.get("autosave", false) else str(saved.get("name", "저장한 게임"))
-		var button = _button(body, "%s · %d 라운드 · %s\n%s" % [title, int(saved.get("round_number", 0)), "종료" if saved.get("finished", false) else model.label("PHASE_LABELS", str(saved.get("phase", ""))), str(saved.get("saved_at", ""))], func():
+		var row = HBoxContainer.new()
+		body.add_child(row)
+		var button = _button(row, "%s · %d 라운드 · %s\n%s" % [title, int(saved.get("round_number", 0)), "종료" if saved.get("finished", false) else model.label("PHASE_LABELS", str(saved.get("phase", ""))), str(saved.get("saved_at", ""))], func():
 			dialog.hide()
 			_load_game(str(saved.save_id))
 			dialog.queue_free()
 		)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.set_meta("save_id", str(saved.save_id))
+		tools_ui.save_delete_button(row, str(saved.save_id), dialog)
 	if count == 0:
 		_label(body, "이 시제품에서 이어할 저장이 없습니다.", 18)
 	add_child(dialog)
@@ -1161,11 +1226,22 @@ func _load_game(save_id: String) -> bool:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
-		model.selected_card = ""
-		model.selected_space = ""
-		model.held.clear()
-		_render()
+	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	var focus = get_viewport().gui_get_focus_owner()
+	if focus is LineEdit or focus is TextEdit or focus is OptionButton or event.ctrl_pressed or event.alt_pressed or event.meta_pressed:
+		return
+	match event.physical_keycode:
+		KEY_C: tools_ui.toggle_market()
+		KEY_S: tools_ui.toggle_seats()
+		KEY_SLASH:
+			if event.shift_pressed:
+				tools_ui.help()
+		KEY_ESCAPE:
+			model.selected_card = ""
+			model.selected_space = ""
+			model.held.clear()
+			_render()
 
 
 func _smoke_fail(message: String) -> void:
@@ -1182,6 +1258,8 @@ func _notification(what: int) -> void:
 
 func _quit_cleanly() -> void:
 	closing = true
+	doorbell.stop()
+	tools_ui.playback = false
 	if poll_timer != null:
 		poll_timer.stop()
 	while busy or refreshing or api.image_workers > 0:
@@ -1213,7 +1291,7 @@ func _run_smoke() -> void:
 		_smoke_fail("undo generation")
 		return
 	for step in range(30):
-		var has_end = model.summary().get("confirmation") == 0
+		var has_end = model.summary().get("confirmation") == model.active_seat
 		for action in model.actions():
 			if action.action_id in Model.END_ACTIONS:
 				has_end = true
@@ -1233,7 +1311,7 @@ func _run_smoke() -> void:
 		await get_tree().create_timer(0.1).timeout
 		await _sync()
 		var decision = model.summary().get("decision")
-		if decision is Dictionary and int(decision.get("owner", -1)) == 0 and model.summary().get("thinking") == null:
+		if decision is Dictionary and int(decision.get("owner", -1)) == model.active_seat and model.summary().get("thinking") == null:
 			print("GODOT_SMOKE_OK ", JSON.stringify({"revision": model.summary().revision, "undo_count": model.summary().undo_count, "legal_actions": model.actions().size()}))
 			smoke_done = true
 			await _quit_cleanly()
@@ -1442,7 +1520,8 @@ func _run_capture() -> void:
 		return
 	var draft: CheckBox
 	for child in draft_dialog.find_children("*", "CheckBox", true, false):
-		draft = child
+		if child.get_meta("game_option", "") == "leader_draft":
+			draft = child
 	if draft == null:
 		_smoke_fail("draft setting absent")
 		return
