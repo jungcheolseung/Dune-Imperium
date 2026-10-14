@@ -2628,9 +2628,11 @@ def leader_reveal_block(state: GameState, player: int) -> OptionalEffectBlock | 
     Commander in the Conflict [Bloodlines p. 4]; Feyd-Rautha's Devious
     Strength, "Reveal Turn: recall one of your Spies for two swords", an
     arrow cost usable once per Reveal turn [Main p. 20] [FAQ p. 3], needs a
-    Spy of the seat's on the board. ``legal_leader_reveal_actions`` offers
-    the ability exactly when this is None, and the page's greyed-out rows
-    read the same block (``display.unavailable``). Every input is public.
+    Spy of the seat's on the board. While the Reveal is open and the
+    ability unused, ``legal_leader_reveal_actions`` offers it exactly when
+    this is None (a None for the other reasons above offers nothing), and
+    the page's greyed-out rows read the same block (``display.unavailable``).
+    Every input is public.
     """
 
     if not _leader_reveal_is_open(state, player):

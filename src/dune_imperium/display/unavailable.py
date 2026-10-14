@@ -1695,9 +1695,12 @@ def _maker_space(state: GameState, seat: int, found: _Found) -> None:
     exactly when ``desert_riding_block`` is None. Each shows greyed out
     beside the spice with its block, worded as Desert Power's sandworm is
     (``reveal_sandworm_block``). Imperial Basin prints no sandworm and gets
-    no row. The Maker icon is the visit's own choice, so a block no other
-    effect of the turn lifts (the Hooks, the Conflict, the Shield Wall come
-    from outside the turn) sits among the choices, with no lapse wording.
+    no row. The Maker icon is the visit's own choice, so the block sits
+    among the choices with no lapse wording. The Hooks and the Conflict
+    cannot change within the turn, but a Plot can destroy the Shield Wall
+    (Detonation, Special Mission, Unexpected Allies), after which the
+    sandworm is offered on the next decision (independent review
+    2026-10-14).
     """
 
     space_id = pending_maker_space(state, seat)
