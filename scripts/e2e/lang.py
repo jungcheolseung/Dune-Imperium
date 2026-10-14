@@ -210,15 +210,15 @@ KOREAN_LATIN_JS = r"""({keep, scoped}) => {
     });
 }"""
 
-# Chrome English on purpose: the uv extra the checkpoint field needs, the AI
-# of the seat kinds and the Esc key the turn guide names. Leaders are named
-# by their Korean print since 2026-09-23 (Shaddam and Kota Odax were short
-# English names here before). The product title is the Korean edition's,
-# 듄 임페리움: 봉기 (2026-09-22). The Epic Game Mode box names the Conflict
-# tiers by the Roman numerals printed on the card backs, which the Korean
-# edition keeps too (2026-09-28): "교전 I 없이 II·III 5장씩".
+# Chrome English on purpose: the AI of the seat kinds and the Esc key the
+# turn guide names (since 2026-10-14 the checkpoint field no longer names the
+# uv extra it needs). Leaders are named by their Korean print since
+# 2026-09-23 (Shaddam and Kota Odax were short English names here before).
+# The product title is the Korean edition's, 듄 임페리움: 봉기 (2026-09-22).
+# The Epic Game Mode box names the Conflict tiers by the Roman numerals
+# printed on the card backs, which the Korean edition keeps too (2026-09-28):
+# "교전 I 없이 II·III 5장씩".
 KOREAN_CHROME_ENGLISH = (
-    "train extra",
     "AI",
     "Esc",
     "II·III",

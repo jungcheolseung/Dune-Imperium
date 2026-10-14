@@ -20,6 +20,7 @@ import ast
 import json
 import re
 from collections.abc import Iterator
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -756,3 +757,60 @@ def test_every_person_facing_prompt_has_korean() -> None:
     assert not missing, f"{len(missing)} prompts with no Korean: {missing[:8]}"
     stray = sorted(key for key, text in korean.items() if not _HANGUL.search(text))
     assert not stray, f"PROMPT_KO entries that are not Korean: {stray[:5]}"
+
+
+# What a player is never shown (user decision 2026-10-14): "플레이하는 사람
+# 입장에서는 OQ가 뭔지 상관 없으니까 그런 문구는 플레이 ui에서 빼자". An
+# open-question number, a repository path and a command-line argument mean
+# nothing at the table; comments and docs keep them.
+_DEVELOPER_TALK = re.compile(
+    r"\bOQ-?\d+|\b(?:docs|src|saves|checkpoints|scripts|tmp)/"
+    r"|(?<![\w-])--[a-z]|\.(?:py|md|pt)\b|\buv\b|\bextras?\b"
+)
+
+
+class _PageText(HTMLParser):
+    """The text and the readable attributes of index.html, scripts apart."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in ("script", "style"):
+            self._skip += 1
+        for name, value in attrs:
+            if value and name in ("title", "placeholder", "aria-label", "alt"):
+                self.found.append(value)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style"):
+            self._skip -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip and data.strip():
+            self.found.append(" ".join(data.split()))
+
+
+def test_no_open_question_number_path_or_command_argument_reaches_a_player() -> None:
+    texts: list[tuple[str, str]] = []
+    for key, entry in _ui_text().items():
+        texts += [(f"UI_TEXT.{key}.ko", entry["ko"]), (f"UI_TEXT.{key}.en", entry["en"])]
+    for table, rows in _korean_tables().items():
+        texts += [(f"{table}.{key}", text) for key, text in rows.items()]
+    for table, rows in _json_const("LABELS_EN", "labels_en.js").items():
+        texts += [(f"LABELS_EN.{table}.{key}", text) for key, text in rows.items()]
+    korean = _json_const("PROMPT_KO", "prompts_ko.js")
+    texts += [(f"PROMPT_KO.{key}", text) for key, text in korean.items()]
+    page = _PageText()
+    page.feed((_STATIC / "index.html").read_text())
+    texts += [("index.html", text) for text in page.found]
+    assert len(texts) > 1000, "the tables were not read"
+    # A hole's or a term's name is code, not what the player reads.
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in texts
+        if _DEVELOPER_TALK.search(re.sub(r"\{\{?[A-Za-z0-9_:]+\}?\}", " ", text))
+    ]
+    assert not leaks, "; ".join(leaks[:10])
