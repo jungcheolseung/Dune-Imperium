@@ -113,7 +113,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Delivery Bay | 3 | draw 1 | Reveal Turn: Command (6+): Solari 2 |
 | Forbidden Weapons | 2 | Shield Wall 파괴(선택) + troop 1 | Reveal Turn: 반드시 선택 — 검 3(+ Influence 1 이상인 진영에서 Influence 1 잃기, 가능하면) 또는 spice 전부 잃고 이 tile trash |
 | Gene-Locked Vault | 2 | Intrigue 1 또는 draw 1 | 자신의 Intrigue 카드는 5장 이상일 때만 도둑맞는다 |
-| Glowglobes | 2 | Influence 1 선택 | 언제든 자기 덱 맨 위 카드를 볼 수 있다 |
+| Glowglobes | 2 | Influence 1 선택 | 언제든 자기 덱 맨 위 카드를 볼 수 있다. 덱이 비면 볼 카드가 없고, 보기는 뽑기가 아니라 버림 더미를 섞지 않는다(`[Main p. 6]`의 재구성은 뽑을 때만; 2026-10-14 사용자 판정 "덱이 없으면 볼 게 없으니까 뭐 아무것도 안 보이는거지") |
 | Navigation Chamber | 5 | Influence 1 선택 | board space 비용이 spice 1 또는 Solari 1 줄어든다 |
 | Ornithopter Fleet | 4 | troop 2 | 자신의 모든 battle icon은 Ornithopter |
 | Panopticon | 5 | — | Reveal Turn: Spy 배치 + troop 1. Endgame: Influence 1 이하인 진영마다 Influence 1 |

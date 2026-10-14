@@ -560,6 +560,7 @@
 - 필요한 답: 반복 대상의 정확한 범위에 대한 공식 판정.
 - 구현 convention(2026-08-29): Influence는 "Faction의 board space에 Agent를 보내면" 얻는 Faction 규칙이지 space의 인쇄 효과가 아니므로 반복하지 않는다 `[Main p. 7]`. space 비용도 효과가 아니므로 재지불하지 않고, 반복은 인쇄 효과 상자(board 효과 경로)만 다시 해결한다. `tests/unit/rules/test_leader_abilities.py`로 고정한다.
 - 확정(2026-09-01): 위 convention을 최종 판정으로 채택한다.
+- 보강(2026-10-14, 사용자 판정 "당연히 스카웃 임무 효과는 복사에서 빼는게 맞지"): Arrakeen Scouts 임무 조각 받기(`scouts_collect_mission`)도 칸에 인쇄된 효과가 아니라 방문의 효과다(arrakeen-scouts.md 5절, Bloodlines Commander 선례). 그래서 Sardaukar 지휘관 획득·Tech 획득처럼 반복이 다시 걸지 않는다(`rules/effects.UNPRINTED_VISIT_ICONS`). 이 두 칸에 조각을 두는 임무는 Fedaykin Assistance(Desert Tactics)와 Weirding Warfare(Espionage)이고, 조각은 반복 전에 모두 받으므로, 전에는 반복이 받을 것 없는 의무 단계를 하나 더 걸어 턴 종료가 그 빈 누름을 기다렸다(2026-10-14 독립 리뷰가 찾음). 옛 기보의 그 빈 단계는 지운다(`repeated_mission_collection`, codec 146 미만). 테스트: `tests/unit/rules/test_optional_effects.py::test_the_repeat_leaves_the_scouts_mission_pieces_collected_once`.
 
 ## OQ-020 — Always Smiling 부여 뒤 strength가 내려간 경우
 

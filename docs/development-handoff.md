@@ -29,7 +29,7 @@
 | 항목 | 값 |
 | --- | --- |
 | master | optional-effects 병합 (2026-10-14) |
-| pytest | 7,616개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| pytest | 7,620개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 497파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 64종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 optional-effects 병합 전(64 통과) |
 | action codec | **v146** (다음 번호 v147) |
