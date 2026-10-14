@@ -53,6 +53,10 @@
 
 **학습·AI**
 
+- **readapt-v147(준비됨, 사용자가 시작):** 플레이 망(`recipe-mlp-1e5-800.pt`)을 codec v147·관측 v32 엔진에서 같은 레시피
+  (PPO lr 1e-5)로 3,600 iteration 더 학습하고, 끝에 시작 망과 1,400판 비교한다. 코드는 worktree `.claude/worktrees/train-v147`
+  (master `33ffd905`)에 고정 — 실행이 끝날 때까지 지우거나 고치지 않는다. 시작 `zsh checkpoints/2026-10-14/readapt-v147/start.sh`,
+  판정 규칙과 결과는 같은 폴더의 README. 플레이 서버 교체는 탐색 좌석 측정 뒤 사용자 결정.
 - **개체 기반 망(진행 중):** 망이 카드·칸·행동을 뜻(특성)으로 읽고 행동 점수를 조합으로 계산하게 다시 설계한다. 관측 v31·codec은
   그대로 두고 망만 바꾸며, 기존 망 파일로 플레이하는 길은 유지한다. 평가 도구(AI 실수 문제집, `scripts/ab/network_probes.py`)와
   X·Y·A·B 기준값, P1(`entity` 망), P2(Y 증류, 규칙상 불통과), P3(강화학습), P4 탐색 좌석 측정이 끝났다. 엔티티 E2v@800
