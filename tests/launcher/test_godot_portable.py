@@ -126,9 +126,12 @@ def test_runtime_dependencies_reject_linux_and_training_extras(tmp_path: Path) -
     with pytest.raises(ValueError, match="Windows binary"):
         package.check_windows_dependencies(tmp_path)
     wrong.unlink()
+    metadata_stat = tmp_path.stat()
     metadata = tmp_path / "torch-1.0.dist-info" / "METADATA"
     metadata.parent.mkdir()
     metadata.write_text("Name: torch\nVersion: 1.0\n")
+    # Reproduce filesystems whose timestamp does not change during an install.
+    os.utime(tmp_path, ns=(metadata_stat.st_atime_ns, metadata_stat.st_mtime_ns))
     with pytest.raises(ValueError, match="training"):
         package.check_windows_dependencies(tmp_path)
 
