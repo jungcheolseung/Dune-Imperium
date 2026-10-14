@@ -20,7 +20,12 @@ must replay to their end:
   seat with only Commanders) and ``v141-no-immortality-no-go_to_11-app_ai-6005``
   (Prison Planet, a seat with a troop and a Commander, asked by both);
 - a02e802a (v141, the same engine as 21eccca4): the eleven records of
-  ``OQ106_FIXTURES``, one or more for each OQ-106 bridge.
+  ``OQ106_FIXTURES``, one or more for each OQ-106 bridge;
+- afea63de (v145): ``v145-no-immortality-no-go_to_11-heuristic-208`` from
+  the v145-afea63de corpus (``no-immortality.h4.208``): Reverend Mother's
+  repeat on Desert Tactics after its Fedaykin Assistance troops, whose
+  empty second mission collection codec v146 drops, and the v146 optional
+  refusals.
 Replayed on their own engines, the v141 ones match the migrated public
 state at every recorded step (all seat fields), except the one step after
 a Deep Desert summon for Arrakis Planetologist that sees the second
@@ -949,6 +954,7 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
             {"prison_planet_commanders_only", "scouts_held_draw", "owed_draw"},
         ),
         *((name, 141, set(fired)) for name, fired in OQ106_FIXTURES.items()),
+        ("v145-no-immortality-no-go_to_11-heuristic-208", 145, set()),
     ],
 )
 def test_records_of_older_engines_replay_to_their_end(
@@ -966,8 +972,9 @@ def test_records_of_older_engines_replay_to_their_end(
     # Codec v143 drops every recorded ``switch_graft_card`` (both grafted
     # boxes are offered at once). Codec v146 (OQ-095 (2)) drops a refusal of
     # an optional effect this engine no longer offers: the effect stays
-    # pending and the recorded turn end lapses it. Every other recorded step
-    # applies.
+    # pending and the recorded turn end lapses it; and (OQ-019) the empty
+    # second Scouts mission collection Reverend Mother's repeat queued.
+    # Every other recorded step applies.
     switches = [
         index
         for index, step in enumerate(replay.steps)
@@ -982,6 +989,7 @@ def test_records_of_older_engines_replay_to_their_end(
                 (refusal, migration.OPTIONAL_REFUSAL_DROPPED)
                 for refusal in migration._OPTIONAL_REFUSALS
             ),
+            ("scouts_collect_mission", migration.REPEATED_MISSION_DROPPED),
         ), (index, step, reason)
     assert [
         index
@@ -1829,4 +1837,36 @@ def test_a_record_ending_on_a_split_step_ends_with_what_that_step_did(
     assert not (
         isinstance(decision, ChanceDecision)
         and decision.decision_id.endswith(":scouts_reward:pause")
+    )
+
+
+def test_a_repeat_s_empty_mission_collection_is_dropped() -> None:
+    """Reverend Mother's repeat on Desert Tactics, after the seat collected
+    its Fedaykin Assistance troops there, queued the Scouts collection
+    again on a recording engine before codec v146; the second collection
+    took nothing. This engine does not queue it (OQ-019, user ruling
+    2026-10-14), so that one recorded step is dropped and the game still
+    ends in the recorded state."""
+
+    name = "v145-no-immortality-no-go_to_11-heuristic-208"
+    document = json.loads((DATA / f"{name}.json").read_text(encoding="utf-8"))
+    replay = parse_save_document(document, check_versions=False).replay
+
+    record = migrate_record(replay)
+
+    assert record.complete, record.divergence
+    drops = [
+        index
+        for index, reason in record.dropped
+        if reason == migration.REPEATED_MISSION_DROPPED
+    ]
+    assert drops == [555]
+    step = replay.steps[555]
+    assert isinstance(step, DomainAction)
+    assert step.action_id == "scouts_collect_mission"
+    # The repeat was paid earlier in the same turn.
+    assert any(
+        isinstance(earlier, DomainAction)
+        and earlier.action_id == "pay_leader_board_repeat"
+        for earlier in replay.steps[540:555]
     )
