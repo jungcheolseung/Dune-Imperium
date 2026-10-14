@@ -46,6 +46,8 @@ SECONDS = {
     "remote_fresh": 14,
     "recovery": 14,
     "save_delete": 11,
+    # 2026-10-14 alone: two servers, six pages.
+    "turn_start_window": 18,
     "staged_turn": 8,
     "trash_zone": 7,
     "remote": 6,

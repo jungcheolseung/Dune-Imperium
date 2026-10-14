@@ -2098,6 +2098,22 @@ const UI_TEXT = {
     "ko": "{spy} 소환 없이",
     "en": "No {spy} recall"
   },
+  "turn.start_window_hint": {
+    "ko": "쓰지 않아도 이번 차례에 다른 행동을 하기 전까지는 행동 목록에서 쓸 수 있습니다.",
+    "en": "If you keep it, you can still play it from the action list until you take another action this turn."
+  },
+  "turn.start_window_keep": {
+    "ko": "턴 시작 카드 쓰지 않음",
+    "en": "Keep the turn-start card"
+  },
+  "turn.start_window_pick_row": {
+    "ko": "{{name}}: 창에 있는 줄을 눌러 사용합니다.",
+    "en": "{{name}}: use its row in the window to play it."
+  },
+  "turn.start_window_prompt": {
+    "ko": "턴 시작 카드 사용, 또는 쓰지 않고 차례 시작",
+    "en": "Play a turn-start card, or keep it and start your turn"
+  },
   "turn.step3_hint": {
     "ko": "③ 남은 선택을 고르세요.",
     "en": "③ Make the remaining choices."

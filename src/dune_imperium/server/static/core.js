@@ -11,6 +11,9 @@ const state = {
   gameId: null,
   summary: null,
   view: null,
+  /* The seat's legal actions as the server sent them, or, while the
+     turn-start window is up, only its turn-start plays (turn.js
+     turnStartWindowOf), so nothing else on the page can be taken then. */
   actions: null,
   viewSeat: null,
   busy: false,
