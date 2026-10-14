@@ -605,6 +605,9 @@ const EFFECT_ICON_LABELS = {
   cards_second: "{draw}",
   contract: "{contract} 획득",
   high_council: "원로회 자리",
+  /* The optional board icons a turn end can leave unused
+     (board_effect_lapsed; rules/effects.py OPTIONAL_BOARD_ICONS). */
+  imperial_privilege_intrigue: "{trash_intrigue} → {intrigue} (제국 특권)",
   intrigue: "{intrigue}",
   pledge: "1위 보상에 {influence_any} 선택 추가",
   resources: "자원 획득",
@@ -613,6 +616,9 @@ const EFFECT_ICON_LABELS = {
   swordmaster: "소드마스터 획득",
   research: "{research}",
   return_self: "이 카드를 핸드로",
+  sardaukar_commander: "{commander} 획득",
+  scouts_subcommittee: "소위원회 가입",
+  tech: "{tech_tile} 획득",
   trash: "{trash}",
   trash_self: "이 카드 폐기",
   troops: "{troop} {recruit} ({garrison})",
