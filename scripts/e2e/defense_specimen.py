@@ -165,11 +165,13 @@ def scenario_defense(browser, base: str, seat: int, specimens: int) -> None:
     )
 
     offered = rows(page)
-    check.ok(
+    if not check.ok(
         [r["action_id"] for r in offered] == [DECLINE, RETURN],
         "A1: the page offers declining and returning a specimen, no deploy row",
         [r["action_id"] for r in offered],
-    )
+    ):
+        finish_page(context, rec, "A")
+        return
     check.ok(
         all(r["undoable"] and not r["sent_by_turn_end"] for r in offered)
         and page.locator("#actions .irreversible-badge").count() == 0,
