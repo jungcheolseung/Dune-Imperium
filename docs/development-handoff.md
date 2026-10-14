@@ -91,8 +91,8 @@
   기존 웹 기능 대응으로 세션/좌석·cookie/SSE·설정/저장/관전/시계에 이어 확장 시장·연구 보드·지도자/
   Scouts 상태·선택 이유/예고·정보 창·두 언어·개인 드래그/접힘·연출/합성음·호스트 설정을 연결했다.
   모델 45항목, 실제 open 36 / remote 39항목과 native 두 언어/1440×900·1100×740 입력 검사를 통과했고,
-  전 옵션 seed 22(10R/1128)·33(9R/1041)도 중간 복원과 함께 완주했다. Windows 전체/작은 업데이트의
-  마지막 생성·overlay hash 검증을 이어 간다. 새 Windows IME·소리·그래픽/LAN 실기와 전수 조합은
+  전 옵션 seed 22(10R/1128)·33(9R/1041)도 중간 복원과 함께 완주했다. v3 Windows 전체
+  243.73 MiB/작은 업데이트 222.36 KiB를 만들고 v1/v2 overlay의 2,383파일 hash를 검증했다. 새 Windows IME·소리·그래픽/LAN 실기와 전수 조합은
   후속 피드백/감사 범위다. [기능 대응 표](godot-feature-parity.md)에 검증 범위를 구분한다.
   release export/설치 프로그램·전수 카드/지도자 감사는 후속 범위다.
   [설치 없는 ZIP](godot-windows-package.md), [개발용 실행](godot-prototype-guide.md), [전체 계획](godot-client-plan.md)
