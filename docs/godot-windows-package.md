@@ -66,6 +66,17 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 ## 개발자 빌드
 
 빌드 머신은 저장소와 uv를 사용한다. 플레이 머신은 사용하지 않는다.
+`docs/godot-client-plan` 브랜치의 저장소 루트에서 실행한다. Windows PowerShell에서도
+아래 한 줄로 같은 Windows x64 ZIP을 만든다(Linux/WSL에서도 교차 빌드 가능).
+
+```powershell
+uv run --inexact --extra ui python -m dune_imperium.godot_client.package_windows --output tmp/godot/dune-windows.zip
+```
+
+완료하면 `tmp/godot/dune-windows.zip` 전체를 플레이 컴퓨터에 옮겨 압축을 풀고
+`Dune-Uprising-Prototype/Play Dune.cmd`를 더블클릭한다. 동봉한 Windows `.exe`들과
+Python 규칙 서버를 함께 시작하는 진입점이므로 배포 폴더 전체를 유지한다.
+아래는 같은 명령의 Bash 표기다.
 
 ```bash
 uv run --inexact --extra ui python -m dune_imperium.godot_client.package_windows \
