@@ -20,6 +20,17 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 문제 기록은 같은 폴더의 `tmp/godot/start.log`, `process.log`, `client.log`, `import.log`, `server/`에 있다.
 플레이 조작은 [시제품 안내](godot-prototype-guide.md)의 조작 절을 따른다.
 
+## 작은 플레이 업데이트
+
+`dune-uprising-windows-play-update-20261014.zip`은 이전 개인용 v1/v2/v3의 프로그램을 갱신한다.
+실행 중인 창을 닫고 ZIP 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의 **상위 폴더**에
+복사해 같은 파일을 덮어쓴다. 기존 `Play Dune.cmd`로 다시 실행한다.
+`Dune-Uprising-Prototype` 안에 같은 이름 폴더를 한 번 더 만들지 않는다.
+
+이번 업데이트는 카드/칸 선택의 즉시 배치·접목 두 장 선택·전체 행동 목록·확정 대기 클릭과
+할인 후 지불 비용 표시를 웹 흐름에 맞춘다. `runtime/`, `assets/`, `saves/`, `local/`은 포함하지
+않는다. 처음 설치할 때는 전체 v3를 먼저 풀고 이 업데이트를 적용한다.
+
 ## 새 기능 사용
 
 **메뉴 → 플레이 설정**에서 한국어/영어, AI 속도, 연출·효과음·음량을 고른다.
