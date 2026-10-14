@@ -254,6 +254,7 @@ func test_choice_zones() -> void:
 	check(model.own_card_zone("imperium:dagger:8").is_empty(), "unowned and unseen cards have no personal zone")
 	var zones = model.choice_zones(rows)
 	check(zones == {0: "hand", 1: "discard_pile", 2: "turn_pending", 3: "earlier_turn", 4: "turn_pending"}, "current-turn, earlier-turn and card-less graft trash warnings come from the server dry run")
+	model.snapshot.view.pending_box_card_ids = [refs[2]]
 	model.snapshot.view.box_losing_trash = []
 	check(model.choice_zones(rows)[2] == "turn", "a pending box alone never invents a lost-box warning for a self-trash")
 	model.snapshot.view.turn_card_ids = []
