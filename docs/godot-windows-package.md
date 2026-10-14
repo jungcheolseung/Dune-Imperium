@@ -67,7 +67,10 @@ Pythonw 진입점은 시작 로그를 열고 동봉 Godot 경로를 명시하므
 Linux에서는 배포본과 같은 프로그램 복사본을 한글·공백 경로에 두고, 서버 의존성 13개만 설치한
 별도 환경에서 실제 Godot 시작과 한 판 완주·중간 저장 복원·서버 종료를 확인한다.
 이 결과는 **Windows PE 실행·더블클릭·그래픽 드라이버·한글 경로의 실기 검증을 대신하지 않는다**.
-Windows 실기 확인은 사용자의 이번 시제품 실행으로 남는다.
+사용자가 이전 ZIP으로 Windows 시작·플레이 가능을 확인했다(2026-10-14).
+이번 UI 변경의 Windows 조작감·완주와 그래픽 드라이버/한글 경로별 확인은 남았다.
+화면은 웹의 플레이어·보드/손패·공용 카드·선택/기록 배치를 기준으로 조정했다.
+카드 hover 확대, 직접 시장 구매, 1440×900·1100×740의 버튼 가시성은 Linux의 실제 입력으로 확인한다.
 
 근거: [Python 공식 내장 배포 안내](https://docs.python.org/3.14/using/windows.html#the-embeddable-package),
 [Python 3.14.7 배포 파일과 체크섬](https://www.python.org/downloads/release/python-3147/),
