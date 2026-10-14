@@ -3727,9 +3727,10 @@ def reveal_choice_effect_is_available(
 ) -> bool:
     """Whether one revealed card's choice effect can be taken on these facts.
 
-    The gate a pending entry is offered by (``_available_pending_choices``),
-    for a caller that judges it on another snapshot: ``records.migration``
-    follows an older engine's choice frames, which it opened by this gate.
+    The gate a pending entry is offered by (``_available_pending_choices``,
+    which also needs the card still in play, OQ-022), for a caller that
+    judges it on another snapshot: ``records.migration`` follows an older
+    engine's choice frames, which it opened by this gate alone.
     """
 
     return _reveal_choice_effect_is_available(
@@ -3824,7 +3825,18 @@ def _available_pending_choices(
     player: int,
     context: Mapping[str, ActionValue],
 ) -> frozenset[PendingChoice]:
-    """Return the pending entries whose printed condition holds right now."""
+    """Return the pending entries whose card is in play and whose printed
+    condition holds right now.
+
+    "You can't receive or activate an effect from a card that is already
+    trashed" (designer ruling, OQ-022), which applies to the Reveal's freely
+    ordered choices too (its 2026-09-07 addition), as a late Reveal effect
+    is paid only while its card is still in play (OQ-028 re-ruling
+    2026-10-04): an entry whose card another effect trashed (Calculus of
+    Power's or Shrouded Counsel's trash) offers nothing, does not hold
+    ``finish_reveal`` and lapses there. A card that trashes itself through
+    its own choice uses up that entry when it opens.
+    """
 
     owner = state.players[player]
     # Command (6+) is judged on the Persuasion generated this Reveal turn
@@ -3834,7 +3846,8 @@ def _available_pending_choices(
     return frozenset(
         (card_id, effect_value)
         for card_id, effect_value in pending_reveal_choices(context)
-        if _reveal_choice_effect_is_available(
+        if card_id in owner.in_play
+        and _reveal_choice_effect_is_available(
             state,
             player,
             owner,
@@ -3902,7 +3915,8 @@ _ROWS_CACHE_SIZE: Final = 8
 def pending_choice_entries(state: GameState, player: int) -> EntryRows | None:
     """Each pending choice of ``player``'s Reveal with the actions it offers now.
 
-    None unless ``player``'s Reveal frame is on top. An entry whose printed
+    None unless ``player``'s Reveal frame is on top. An entry whose card
+    left play (trashed by another effect, OQ-022) or whose printed
     condition fails now (``_reveal_choice_effect_is_available``) offers
     nothing; so does one whose condition holds with nothing to choose (a
     Spy icon with no free post).
@@ -4051,8 +4065,9 @@ def mandatory_choice_is_pending(state: GameState, player: int) -> bool:
     A Spy icon with a Spy in supply (OQ-057 (14)), a printed "-OR-" choice
     (Desert Power before its branch, OQ-069) or an Influence gain must be
     answered before the Reveal ends (``MANDATORY_REVEAL_CHOICES``); one
-    whose condition fails now, or that has nothing to choose, does not hold
-    the end and lapses with it.
+    whose condition fails now, that has nothing to choose, or whose card
+    another effect trashed (OQ-022), does not hold the end and lapses with
+    it.
     """
 
     by_entry = pending_choice_entries(state, player) or ()
@@ -4071,7 +4086,8 @@ def waiting_deferred_choices(
     Each is a ``(card instance, effect)`` entry of the open Reveal frame's
     pending choices whose printed condition fails now (or that has nothing
     to choose); a later choice of the owner can still open it, and it lapses
-    at ``finish_reveal`` if it never does [Main p. 12]. The page shows these
+    at ``finish_reveal`` if it never does [Main p. 12]. One whose card
+    another effect trashed never opens again (OQ-022). The page shows these
     greyed out (``display.unavailable``, user request 2026-09-29). Empty
     unless ``player``'s Reveal is on top.
     """

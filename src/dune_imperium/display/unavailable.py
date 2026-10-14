@@ -1381,19 +1381,17 @@ _SPY_ICONS: Final = frozenset(
         _Choice.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
     }
 )
-# The cards whose choice trashes the card itself.
-_SELF_TRASH: Final = frozenset(
-    {
-        _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON,
-        _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
-        _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
-        _Choice.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
-    }
-)
+# A choice whose card another effect trashed: "you can't receive or
+# activate an effect from a card that is already trashed" (designer ruling,
+# OQ-022). It never opens again, so it simply lapses when the Reveal ends.
 _NOT_IN_PLAY: Final[Reason] = (
     "This card is no longer in play",
     "이 카드가 더는 {in_play}에 없음",
     "waiting",
+)
+_REVEAL_LAPSES_GONE: Final = (
+    "; it lapses when the Reveal turn ends",
+    " — {reveal_turn}를 끝내면 사라짐",
 )
 _NOTHING_TO_CHOOSE: Final[Reason] = (
     "Nothing it could choose now",
@@ -1425,14 +1423,16 @@ def _reveal_choice_block(
 ) -> Reason:
     """What keeps one pending Reveal choice from offering anything now.
 
-    In the order its card prints it: Command (6+) first, then the line's
-    own condition, the facts ``_reveal_choice_effect_is_available`` reads.
-    A choice whose condition holds offers nothing only when nothing can be
-    chosen (a Spy icon with no empty post, a self-trash whose card left
-    play).
+    A card another effect trashed first: its choice never opens again
+    (OQ-022). Then in the order its card prints it: Command (6+) first, then
+    the line's own condition, the facts ``_reveal_choice_effect_is_available``
+    reads. A choice whose condition holds offers nothing only when nothing
+    can be chosen (a Spy icon with no empty post).
     """
 
     owner = state.players[seat]
+    if card_id not in owner.in_play:
+        return _NOT_IN_PLAY
     in_play = counted_in_play(owner)
     generated = _reveal_generated_persuasion(state)
     if effect in _COMMAND_CHOICES and generated < COMMAND_PERSUASION:
@@ -1453,8 +1453,6 @@ def _reveal_choice_block(
                 "{spy}를 놓을 빈 {observation_post} 없음",
                 "waiting",
             )
-        if effect in _SELF_TRASH and card_id not in owner.in_play:
-            return _NOT_IN_PLAY
         return _NOTHING_TO_CHOOSE
     units_conflict = owner.troops_conflict + owner.commanders_conflict
     match effect:
@@ -1526,8 +1524,6 @@ def _reveal_choice_block(
             not state.imperium_row
         ):
             return ("The Imperium Row is empty", "{imperium_row}가 비었음", "waiting")
-        case choice if choice in _SELF_TRASH and card_id not in in_play:
-            return _NOT_IN_PLAY
         case _Choice.COMMAND_MAY_TRASH_CARD:
             return (
                 "No card in hand, discard pile or play to trash",
@@ -1547,7 +1543,7 @@ def _reveal_choice_block(
 
 def _deferred(state: GameState, seat: int, found: _Found) -> None:
     """Pending Reveal choices that offer nothing now (their printed
-    condition fails, or nothing can be chosen).
+    condition fails, nothing can be chosen, or their card left play).
 
     Every choice of a revealed card waits on the Reveal frame and is offered
     there while it can be taken (OQ-095 (7) addition, codec v147); one that
@@ -1555,14 +1551,17 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
     ``waiting_choice_action`` row, led by its card and worded as the card's
     choice (``display.actions.reveal_choice_text``), with what keeps it
     closed (``_reveal_choice_block``) and that it lapses when the Reveal
-    ends: unused for an optional one, unmet for a mandatory one.
+    ends: unused for an optional one, unmet for a mandatory one, and
+    without condition for one whose card another effect trashed (OQ-022).
     """
 
     for card_id, effect in waiting_deferred_choices(state, seat):
         choice = PersonalCardRevealChoiceEffect(effect)
         english, korean, code = _reveal_choice_block(state, seat, card_id, choice)
         tail_en, tail_ko = (
-            _REVEAL_LAPSES_UNUSED
+            _REVEAL_LAPSES_GONE
+            if card_id not in state.players[seat].in_play
+            else _REVEAL_LAPSES_UNUSED
             if choice in OPTIONAL_REVEAL_CHOICES
             else _REVEAL_LAPSES_UNMET
         )

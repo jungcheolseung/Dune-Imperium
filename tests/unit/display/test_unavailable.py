@@ -1158,6 +1158,45 @@ def test_a_spice_payment_choice_waits_for_the_spice() -> None:
     )
 
 
+def test_a_choice_whose_card_another_effect_trashed_says_it_left_play() -> None:
+    """"You can't receive or activate an effect from a card that is already
+    trashed" (designer ruling, OQ-022; the Reveal's choices too, its
+    2026-09-07 addition): once Calculus of Power trashes Corrinth City, the
+    City's mandatory "-OR-" offers nothing and greys out with why, and that
+    it simply lapses when the Reveal ends -- no later effect can meet it."""
+
+    calculus = "imperium:calculus_of_power:0"
+    corrinth = "imperium:corrinth_city:0"
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(calculus, corrinth),
+            resources=Resources(solari=9),
+            troops_supply=8,
+            troops_conflict=1,
+        ),
+        config=RulesetConfig(bloodlines=True, choam_module=True),
+    )
+    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    trash = next(
+        action
+        for action in ENGINE.legal_actions(revealed.state, 0)
+        if action.action_id == "trash_reveal_card"
+        and dict(action.arguments)["card_id"] == corrinth
+    )
+    trashed = ENGINE.apply(revealed.state, trash).state
+    rows = _rows(_found(trashed), "waiting")
+    choice = "gain_five_solari_or_take_high_council"
+    assert list(rows) == [f"waiting:{corrinth}:{choice}"]
+    row = rows[f"waiting:{corrinth}:{choice}"]
+    assert row["reveal_choice"] == f"{corrinth}:{choice}"
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "This card is no longer in play; it lapses when the Reveal turn ends",
+        "이 카드가 더는 {in_play}에 없음 — {reveal_turn}를 끝내면 사라짐",
+        "waiting",
+    )
+
+
 def test_a_withheld_agent_box_waits_greyed_out_until_its_condition_holds() -> None:
     """Prepare the Way's "draw a card with 2 Bene Gesserit Influence" is
     withheld while the Influence is short (OQ-057) and offered once it holds."""

@@ -12,6 +12,8 @@ holds the end while it offers something.
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
@@ -26,6 +28,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    IllegalActionError,
     Influence,
     PlayerDecision,
     PlayerState,
@@ -468,6 +471,116 @@ def test_source_tells_chani_from_command_center() -> None:
     assert _pending(retreated) == (
         (chani, "may_retreat_two_troops_for_four_strength"),
     )
+
+
+# --- a card another effect trashed -------------------------------------------
+#
+# "you can't receive or activate an effect from a card that is already
+# trashed" (designer ruling, OQ-022), applied to the Reveal's freely ordered
+# choices (its 2026-09-07 addition); "늦게 성립한 Reveal 효과는 그 출처 카드가
+# 아직 in play일 때만 지급한다 — trash된 카드의 효과는 받지 못한다(OQ-022)"
+# (OQ-028 re-ruling 2026-10-04). A pending choice whose card another effect
+# trashed offers nothing, does not hold the end and lapses there.
+
+
+def test_corrinth_city_trashed_by_calculus_of_power_offers_nothing() -> None:
+    calculus = _card("calculus_of_power")
+    corrinth = _card("corrinth_city")
+    owner = PlayerState(
+        player_id=0,
+        hand=(calculus, corrinth),
+        resources=Resources(solari=9),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    revealed = _reveal(_state(owner))
+    assert "finish_reveal" not in _ids(revealed)
+    trash = _first(
+        revealed, "trash_reveal_card", card_id=corrinth, source="calculus_of_power"
+    )
+    trashed = ENGINE.apply(revealed, trash).state
+    assert corrinth not in trashed.players[0].in_play
+    assert _pending(trashed) == ((corrinth, "gain_five_solari_or_take_high_council"),)
+    ids = _ids(trashed)
+    # Corrinth City's mandatory "-OR-" no longer holds the end (OQ-022).
+    assert "gain_five_reveal_solari" not in ids
+    assert "take_high_council_from_reveal" not in ids
+    assert "finish_reveal" in ids
+    with pytest.raises(IllegalActionError):
+        ENGINE.apply(
+            trashed, DomainAction(action_id="gain_five_reveal_solari", actor=0)
+        )
+    finished = ENGINE.apply(trashed, FINISH)
+    assert [
+        dict(e.payload)["card_id"]
+        for e in finished.events
+        if e.kind == "reveal_choice_lapsed"
+    ] == [corrinth]
+    assert finished.state.players[0].resources.solari == 9
+
+
+def test_pointing_the_way_trashed_by_shrouded_counsel_no_longer_holds_the_end() -> (
+    None
+):
+    pointing = _card("pointing_the_way")
+    counsel = _card("shrouded_counsel")
+    owner = PlayerState(
+        player_id=0,
+        hand=(
+            pointing,
+            counsel,
+            _starter("convincing_argument"),
+            _starter("convincing_argument", 1),
+        ),
+    )
+    revealed = _reveal(_state(owner))
+    ids = _ids(revealed)
+    assert "gain_reveal_influence" in ids
+    assert "finish_reveal" not in ids
+    trash = _first(
+        revealed, "trash_reveal_card", card_id=pointing, source="shrouded_counsel"
+    )
+    trashed = ENGINE.apply(revealed, trash).state
+    assert pointing not in trashed.players[0].in_play
+    ids = _ids(trashed)
+    assert "gain_reveal_influence" not in ids
+    assert "finish_reveal" in ids
+    finished = ENGINE.apply(trashed, FINISH)
+    assert [
+        (dict(e.payload)["card_id"], dict(e.payload)["effect"])
+        for e in finished.events
+        if e.kind == "reveal_choice_lapsed"
+    ] == [(pointing, "command_gain_chosen_influence")]
+    assert finished.state.players[0].influence == Influence()
+
+
+def test_a_calculus_of_power_its_twin_trashed_cannot_trash_back() -> None:
+    first = _card("calculus_of_power")
+    second = _card("calculus_of_power", 1)
+    owner = PlayerState(
+        player_id=0, hand=(first, second), troops_supply=8, troops_conflict=1
+    )
+    revealed = _reveal(_state(owner))
+    trashes = [a for a in _legal(revealed) if a.action_id == "trash_reveal_card"]
+    assert {dict(a.arguments)["card_id"] for a in trashes} == {first, second}
+    strength = revealed.players[0].combat_strength
+    trashed = ENGINE.apply(
+        revealed, _first(revealed, "trash_reveal_card", card_id=second)
+    ).state
+    assert trashed.players[0].combat_strength == strength + 3
+    # The first copy's entry is used up; the second copy's is the trashed
+    # card's and offers nothing.
+    assert _pending(trashed) == (
+        (second, "may_trash_other_emperor_for_three_strength"),
+    )
+    assert "trash_reveal_card" not in _ids(trashed)
+    assert first in trashed.players[0].in_play
+    finished = ENGINE.apply(trashed, FINISH)
+    assert [
+        dict(e.payload)["card_id"]
+        for e in finished.events
+        if e.kind == "reveal_choice_lapsed"
+    ] == [second]
 
 
 # --- continuations stay modal -------------------------------------------------

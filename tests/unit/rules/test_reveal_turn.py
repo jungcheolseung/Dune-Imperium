@@ -2903,10 +2903,12 @@ def test_four_contract_reveal_can_keep_spice_or_trash_the_card_for_vp() -> None:
     assert trashed.state.players[0].trashed == (priority,)
 
 
-def test_four_contract_trash_for_vp_is_withheld_once_the_card_is_gone() -> None:
-    # The self-trash is the Victory Point's cost, adjudicated at resolution
-    # time [Main pp. 9, 20]: once another effect trashed the card while this
-    # choice was pending, only the Spice branch remains.
+def test_four_contract_choice_offers_nothing_once_the_card_is_gone() -> None:
+    # "you can't receive or activate an effect from a card that is already
+    # trashed" (designer ruling, OQ-022; the Reveal's freely ordered choices
+    # too, its 2026-09-07 addition): once another effect trashed the card
+    # while this choice was pending, neither branch remains -- not the
+    # Victory Point, whose self-trash cost cannot be paid, nor the Spice.
     priority = _imperium_instance(
         "priority_contracts",
         choam_module=True,
@@ -2934,8 +2936,9 @@ def test_four_contract_trash_for_vp_is_withheld_once_the_card_is_gone() -> None:
 
     actions = legal_contract_reveal_choice_actions(gone, 0)
 
-    assert tuple(action.action_id for action in actions) == (
-        "keep_contract_reveal_spice",
+    assert actions == ()
+    assert waiting_deferred_choices(gone, 0) == (
+        (priority, "keep_spice_or_trash_self_for_vp_if_four_contracts"),
     )
 
 
