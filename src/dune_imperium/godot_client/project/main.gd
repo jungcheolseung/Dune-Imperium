@@ -897,7 +897,7 @@ func _reset_board() -> void:
 	board.reset_view()
 
 
-func _action_button(action: Dictionary, description = "") -> void:
+func _action_button(action: Dictionary, description = "", zone = "") -> void:
 	var ref = ""
 	if Model.DECK_TOP_CHOICES.has(action.action_id):
 		ref = model.top_choice_card()
@@ -911,30 +911,57 @@ func _action_button(action: Dictionary, description = "") -> void:
 	if not ref.is_empty() and not _image_path(model.entry(ref)).is_empty():
 		_picture(row, _image_path(model.entry(ref)), Vector2(44, 62))
 	var apply = _apply_placement if action.action_id == "agent_turn" else _choose_action
-	var button = _button(row, description if not description.is_empty() else model.live_description(action), apply.bind(action, model.signature()))
+	var button = _button(row, (description if not description.is_empty() else model.live_description(action)) + model.choice_suffix(zone), apply.bind(action, model.signature()))
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button.set_meta("action_index", int(action.index))
+	button.set_meta("choice_suffix", model.choice_suffix(zone))
+	if action.get("box") != null:
+		button.set_meta("agent_box", int(action.box))
+	if zone == "turn_pending":
+		button.add_theme_color_override("font_color", Color("f1c379"))
 	button.disabled = busy
 	if not ref.is_empty():
 		_bind_preview(button, ref)
 	if int(model.held_action().get("index", -1)) == int(action.index):
 		button.add_theme_stylebox_override("normal", _style(Color("53442f"), Color("e1bd7c")))
-	if not ref.is_empty() or action.get("subcommittee_preview") is Dictionary:
+	if not model.preview_refs(action).is_empty() or not ref.is_empty() or action.get("subcommittee_preview") is Dictionary:
 		var details = _button(row, "ⓘ", _action_details.bind(action, ref))
 		details.custom_minimum_size = Vector2(28, 28)
 		details.tooltip_text = model.ui("render.effect_preview_title")
+		details.set_meta("action_detail_index", int(action.index))
 
 
 func _action_details(action: Dictionary, ref: String) -> void:
 	if not model.offered(action):
 		return
 	var parts = tools_ui._dialog(model.ui("render.effect_preview_title"))
-	_label(parts[1], model.describe(action), 18).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	if not ref.is_empty():
-		_picture(parts[1], _image_path(model.entry(ref)), Vector2(260, 290))
-		_label(parts[1], _entry_words(model.entry(ref), ref), 16).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parts[0].set_meta("action_detail_index", int(action.index))
+	var zone = str(model.choice_zones(model.actions()).get(int(action.index), ""))
+	_label(parts[1], model.live_description(action) + model.choice_suffix(zone), 18).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var refs = model.preview_refs(action)
+	if not ref.is_empty() and ref not in refs:
+		refs.push_front(ref)
+	for target in refs:
+		var entry = model.entry(target)
+		var heading = _label(parts[1], model.name_of(target), 18)
+		heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		heading.set_meta("action_preview_ref", target)
+		if entry.get("options") is Array:
+			var option_index = int(action.arguments.get("cost_option", 0))
+			if option_index >= 0 and option_index < entry.options.size():
+				entry = entry.duplicate(true)
+				entry.options = [entry.options[option_index]]
+		elif action.action_id == "play_intrigue" and action.arguments.get("option") != null:
+			var lines = model.localized(entry, "text")
+			var option_index = int(action.arguments.option)
+			if lines is Array and option_index >= 0 and option_index < lines.size():
+				entry = entry.duplicate(true)
+				entry.text = [lines[option_index]]
+				entry.erase("text_ko")
+		_picture(parts[1], _image_path(entry), Vector2(260, 290))
+		_label(parts[1], _entry_words(entry, target), 16).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var preview = action.get("subcommittee_preview")
 	if preview is Dictionary:
 		for line in preview.get("lines", []):
@@ -1389,6 +1416,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	var focus = get_viewport().gui_get_focus_owner()
 	if focus is LineEdit or focus is TextEdit or focus is OptionButton or event.ctrl_pressed or event.alt_pressed or event.meta_pressed:
+		return
+	# Embedded information/settings windows own their keyboard interaction.
+	for window in find_children("*", "Window", true, false):
+		if window.visible and not window.is_queued_for_deletion():
+			return
+	if game_id.is_empty():
 		return
 	match event.physical_keycode:
 		KEY_C: tools_ui.toggle_market()

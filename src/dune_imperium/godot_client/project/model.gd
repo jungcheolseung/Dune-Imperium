@@ -454,6 +454,81 @@ func live_description(action: Dictionary) -> String:
 	return describe(action)
 
 
+# Read only the viewing seat's authorized projection. Public logs use describe().
+func own_card_zone(ref: String) -> String:
+	if ref in view().get("private", {}).get("hand", []):
+		return "hand"
+	for player in view().get("players", []):
+		if int(player.player) == active_seat:
+			for zone in ["discard_pile", "in_play"]:
+				if ref in player.get(zone, []):
+					return zone
+	return ""
+
+
+func loses_box(action: Dictionary) -> bool:
+	var ref = action.get("arguments", {}).get("card_id")
+	for row in view().get("box_losing_trash", []):
+		if row.action_id == action.action_id and (not ref is String or row.get("card_id") == ref):
+			return true
+	return false
+
+
+func choice_zones(rows: Array) -> Dictionary:
+	var groups: Dictionary = {}
+	var result: Dictionary = {}
+	for action in rows:
+		var ref = action.get("arguments", {}).get("card_id")
+		if not ref is String:
+			if loses_box(action):
+				result[int(action.index)] = "turn_pending"
+			continue
+		var zone = own_card_zone(ref)
+		if zone.is_empty():
+			continue
+		var key = str(action.action_id) + ":" + ":".join(section_id(ref))
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append({"action": action, "zone": zone})
+	var turn = view().get("turn_card_ids", [])
+	for entries in groups.values():
+		var zones: Dictionary = {}
+		var has_turn = false
+		for row in entries:
+			zones[row.zone] = true
+			has_turn = has_turn or row.action.arguments.card_id in turn
+		for row in entries:
+			var action = row.action
+			var zone = row.zone if zones.size() >= 2 else ""
+			if has_turn and str(action.action_id).contains("trash"):
+				if action.arguments.card_id in turn:
+					zone = "turn_pending" if loses_box(action) else "turn"
+				elif row.zone == "in_play":
+					zone = "earlier_turn"
+			if not zone.is_empty():
+				result[int(action.index)] = zone
+	return result
+
+
+func choice_suffix(zone: String) -> String:
+	if zone.is_empty():
+		return ""
+	var keys = {"turn_pending": "render.turn_card_pending_suffix", "turn": "render.turn_card_suffix", "earlier_turn": "render.earlier_turn_card_suffix"}
+	return " (" + (ui(keys[zone]) if keys.has(zone) else phrase("{" + zone + "}")) + ")"
+
+
+func preview_refs(action: Dictionary) -> Array:
+	var refs: Dictionary = {}
+	_collect_refs(action.get("arguments", {}), refs)
+	# Whole-box actions may have no card argument; the server supplies its owner.
+	var payload = snapshot.get("actions")
+	var boxes = payload.get("agent_boxes") if payload is Dictionary else null
+	for box in boxes if boxes is Array else []:
+		if action.get("box") == box.get("box") and box.get("card_id") is String and box.card_id not in refs:
+			refs[box.card_id] = true
+	return refs.keys().filter(func(ref): return not entry(str(ref)).is_empty())
+
+
 func pile_groups(refs: Array, top = "") -> Array:
 	var groups: Dictionary = {}
 	for ref in refs:
