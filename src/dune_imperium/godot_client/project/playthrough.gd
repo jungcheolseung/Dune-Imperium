@@ -34,12 +34,19 @@ func buttons(node: Node) -> Array[Button]:
 
 
 func press_action(action: Dictionary) -> void:
+	var before = table.model.signature()
 	if action.action_id == "agent_turn":
 		table._choose_ref(action.arguments.card_id)
 		table._choose_ref(action.arguments.space_id)
 	else:
 		table._set_tab("choices")
 	await get_tree().process_frame
+	if action.action_id == "agent_turn" and (table.busy or table.model.signature() != before):
+		if table.busy and (not table.new_button.disabled or not table.undo_button.disabled or not table.finish_button.disabled):
+			fail("inputs unlocked during automatic placement")
+			return
+		await ready_frame()
+		return
 	if action.action_id in table.Model.END_ACTIONS:
 		if table.finish_button.disabled:
 			fail("finish control disabled: " + str(action.action_id))

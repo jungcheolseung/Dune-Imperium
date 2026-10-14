@@ -219,5 +219,7 @@ const EN = {
 	"효과음 들어보기": "Preview sound",
 	"경매 공개 카드": "Auction cards",
 	"로그 자동 따라가기": "Follow the latest log",
-	"현재 선택을 처리하고 있습니다. 잠시 후 연결하세요.": "Processing the current choice. Please connect after it finishes."
+	"현재 선택을 처리하고 있습니다. 잠시 후 연결하세요.": "Processing the current choice. Please connect after it finishes.",
+	"인쇄 비용: ": "Printed cost: ",
+	"지불 비용: ": "Paid cost: "
 }

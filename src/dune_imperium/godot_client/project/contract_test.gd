@@ -68,9 +68,12 @@ func action_buttons(node: Node) -> Array:
 
 func play_first() -> bool:
 	var action = table.model.actions()[0]
+	var before = table.model.signature()
 	if action.action_id == "agent_turn":
-		table._choose_ref(action.arguments.card_id)
-		table._choose_ref(action.arguments.space_id)
+		await table._choose_ref(action.arguments.card_id)
+		await table._choose_ref(action.arguments.space_id)
+		if table.model.signature() != before:
+			return true
 	await process_frame
 	if action.action_id in table.Model.END_ACTIONS:
 		table.finish_button.pressed.emit()
