@@ -225,8 +225,8 @@ AS.AcquireCommanderAbility : DeferredAbility                       # owner = one
       s.add("Sardaukar Commander", max(0.0, best))
   evaluate(P, request):                                            # precedent AcquireTechAbility::Evaluate (D3)
       for k in request skills (face-up order) or [None]: UST(CommanderAcquireNet(k, [Owner]), k)
-      if not (stored.value > 0): UST-replace with Answer(0.5, ())  # empty answer = decline
-  -> acquire_sardaukar_commander(skill_id=k) | acquire_sardaukar_commander() | decline_sardaukar_commander
+      if not (stored.value > 0): UST-replace with Answer(0.5, ())  # empty answer = left unused
+  -> acquire_sardaukar_commander(skill_id=k) | acquire_sardaukar_commander() | left unused (codec v146: no refusal; finish_agent_turn lapses it)
 
 AS.RecruitCommanderAbility : DeferredAbility                       # owner = the playmat custom row; timing None
   SelectionMode Optional; meets_cost: our engine offers recruit_sardaukar_commander (rules/sardaukar.py:604)
@@ -243,7 +243,7 @@ AS.RecruitCommanderAbility : DeferredAbility                       # owner = the
 
 | window: id (args) | census bl/tech/promo | answer |
 |---|---|---|
-| agent_effects: `acquire_sardaukar_commander(skill_id?)` / `decline_sardaukar_commander` | 259/276/241 ; 1536/1659/1654 | `AS.AcquireCommanderAbility` (E) in the post-action list |
+| agent_effects: `acquire_sardaukar_commander(skill_id?)` (`decline_sardaukar_commander` until codec v145; since v146 an unused key lapses at the turn end) | 259/276/241 ; 1536/1659/1654 | `AS.AcquireCommanderAbility` (E) in the post-action list |
 | agent_effects, reveal: `recruit_sardaukar_commander` | 1515/1631/1269 ; reveal 125/117/60 | `AS.RecruitCommanderAbility` (O) in the post-Agent / post-Reveal list |
 | agent_effects: `deploy_commanders(count)` / `withdraw_commanders(count)` | 2124/2313/1914 ; 845/930/797 | §1.3 split; withdraw never |
 | reveal: `deploy_troops` / `deploy_commanders` (Combat icon) | 38/35/38 ; 14/7/14 | `DeployUnitsAbility` key at 0.5, §1.3 split (D61) |
@@ -409,7 +409,7 @@ HeldTileValue(t) = AcquireValue(t) x [EarlyMod(t,1.0), 1.0, LateMod(t,1.0)][game
 
 | window: id (args) | census (tech) | answer |
 |---|---|---|
-| agent_effects: `acquire_tech(tech_id[, post_id])` / `decline_tech` | 490 / 2242 | Landsraad `AcquireTechAbility` (E) in the post-action list, §3.1 |
+| agent_effects: `acquire_tech(tech_id[, post_id])` (`decline_tech` until codec v145; since v146 the Landsraad visit has no refusal and an unused key lapses at the turn end) | 490 / 2242 | Landsraad `AcquireTechAbility` (E) in the post-action list, §3.1 |
 | agent_effects, tech_acquisition: `resolve_tech_acquire_effect(effect, tech_id[, faction\|choice\|destroy_shield_wall])` | 974 ; 15 (absent from R8's census, post-OQ-098) | follow-up right after the purchase, §3.1 key table |
 | tech_acquisition: `acquire_tech` / `decline_tech` (card Tech Discount; Combat for Battlefield Research) | 42 / 24 | `AcquireTechAbilityDiscount1` E, D13 |
 | turn, agent_effects, reveal: `flip_tech(tech_id)` | turn 99, agent_effects 760, reveal 0 (legal there for Advanced Data Analysis and Spy Drones, `rtech.py:658`, but never offered in the census) | the tile's activation E (§3.3) as a source in the turn-start prompt / post-action lists |
