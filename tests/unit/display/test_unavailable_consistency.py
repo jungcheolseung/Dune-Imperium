@@ -27,6 +27,10 @@ rule change to one of them should update or drop the copy on purpose.
 (2026-10-14, a Conflict reward's resource or Spies payment) are pinned by
 copies of the providers here too, over the seeded games and a sweep of every
 optional arrow (``test_the_conflict_reward_payment_blocks_are_the_old_comparisons``).
+``board_effects.maker_sandworm_block`` and ``desert_riding_block``
+(2026-10-14, a Maker space's sandworm and Desert Riding token) likewise, over
+the seeded games and a sweep of the Maker spaces
+(``test_the_maker_space_blocks_are_the_old_conditions``).
 ``combat.conflict_end_trigger_block`` (2026-10-09, the Conflict-end
 window's Harvest Cells) has no copy here: the window tests of
 ``tests/unit/rules/test_immortality_intrigue.py`` pin what it offers.
@@ -35,6 +39,7 @@ recall confirms (2026-10-02) rely on: a recall's targets never come back
 while it waits.
 """
 
+import itertools
 import json
 import random
 import re
@@ -46,6 +51,7 @@ import pytest
 from tests.unit.display.test_unavailable import (
     HARVEST_CELLS,
     _conflict_end_window,
+    _maker_visit,
     _play_conflict_end,
     reward_window,
 )
@@ -147,12 +153,18 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
+    BOARD_ICON_MAKER,
+    MAKER_SANDWORM_SPACE_IDS,
+    desert_riding_block,
+    desert_riding_offered_at,
     desert_tactics_block,
     imperial_privilege_recall_targets,
     imperial_privilege_trade_block,
     legal_board_effect_actions,
     legal_desert_tactics_actions,
     legal_imperial_privilege_actions,
+    legal_maker_space_actions,
+    maker_sandworm_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
@@ -241,6 +253,7 @@ from dune_imperium.rules.sardaukar import (
     legal_skill_choice_actions,
     sardaukar_commander_block,
 )
+from dune_imperium.rules.scouts_missions import desert_riding_token
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.tech import (
@@ -1180,6 +1193,64 @@ def _old_combat_reward_spy_recall(
     return tuple(actions)
 
 
+def _old_maker_space(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``board_effects.legal_maker_space_actions`` before
+    ``maker_sandworm_block`` and ``desert_riding_block`` (2026-10-14): the
+    Maker Hooks, Conflict, Shield Wall and deployment conditions were inline."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    space_id = context.get("space_id")
+    if space_id not in (
+        "deep_desert",
+        "hagga_basin",
+        "imperial_basin",
+    ) or not board_icon_is_pending(context, BOARD_ICON_MAKER):
+        return ()
+    actions = [
+        DomainAction(
+            action_id="harvest_maker_spice",
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+    ]
+    owner = state.players[player]
+    if (
+        space_id == "hagga_basin"
+        and not owner.maker_hooks
+        and desert_riding_token(state) is not None
+    ):
+        actions.append(
+            DomainAction(
+                action_id="take_desert_riding_hooks",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+        )
+    if (
+        space_id != "imperial_basin"
+        and owner.maker_hooks
+        and state.current_conflict_ids
+        and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
+        and not units_deployment_blocked(state, player)
+    ):
+        actions.append(
+            DomainAction(
+                action_id="summon_maker_sandworms",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+        )
+    return tuple(actions)
+
+
 def _old_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
     """``unit_loss._loss_options`` before it became ``unit_loss_options``
     over ``unit_loss_block`` (2026-10-02)."""
@@ -1592,6 +1663,7 @@ _PAIRS: list[
     (legal_agent_card_icon_actions, _old_agent_card_icons),
     (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),
     (legal_combat_reward_spy_recall_actions, _old_combat_reward_spy_recall),
+    (legal_maker_space_actions, _old_maker_space),
 ]
 _OPTIONS = tuple(
     option
@@ -2359,3 +2431,89 @@ def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
                         blocked += 1
                     state = ENGINE.apply(state, decline).state
     assert blocked > 0 and open_windows > 0 and recalls > 0
+
+
+# --- The Maker spaces before their blocks (2026-10-14) -----------------------
+#
+# ``maker_sandworm_block`` and ``desert_riding_block`` replaced the inline
+# conditions of ``legal_maker_space_actions``; the provider now asks
+# ``block is None``. ``_old_maker_space`` is the provider as it was written.
+
+
+def _expected_sandworm_block(
+    hooks: bool, conflict_ids: tuple[str, ...], barred: bool, walled: bool
+) -> OptionalBlockKind | None:
+    """The first condition that fails, in the block's documented order."""
+
+    if not hooks:
+        return OptionalBlockKind.MAKER_HOOKS
+    if not conflict_ids:
+        return OptionalBlockKind.NO_CONFLICT
+    if barred:
+        return OptionalBlockKind.DEPLOYMENT_BARRED
+    return OptionalBlockKind.SHIELD_WALL if walled else None
+
+
+def test_the_maker_space_blocks_are_the_old_conditions() -> None:
+    """Over every Maker space, with and without Maker Hooks, with no
+    Conflict, an unprotected one, a Shield-Wall-protected one with and
+    without the Wall, for Arrakis Planetologist, the deployment ban and the
+    Desert Riding token, the provider offers what its old copy did, the
+    sandworm and the token exactly where their blocks are None (the sandworm
+    at the two spaces that print one), and each block names the first
+    condition that fails."""
+
+    conflicts = (
+        ((), False),
+        (("propaganda",), False),
+        (("siege_of_arrakeen",), False),
+        (("siege_of_arrakeen",), True),
+    )
+    cases = list(
+        itertools.product(
+            ("deep_desert", "hagga_basin", "imperial_basin"),
+            (False, True),
+            conflicts,
+            ("atreides", "liet_kynes"),
+            (False, True),
+            (False, True),
+        )
+    )
+    kinds: set[OptionalBlockKind | None] = set()
+    for space_id, hooks, (conflict_ids, wall), leader, barred, token in cases:
+        state = _maker_visit(
+            space_id,
+            owner_fields={"maker_hooks": hooks, "leader_id": leader},
+            barred=barred,
+            token=token,
+            current_conflict_ids=conflict_ids,
+            shield_wall_present=wall,
+        )
+        legal = legal_maker_space_actions(state, 0)
+        assert legal == _old_maker_space(state, 0)
+        ids = {action.action_id for action in legal}
+        sandworm = maker_sandworm_block(state, 0)
+        riding = desert_riding_block(state, 0)
+        assert ("summon_maker_sandworms" in ids) == (
+            space_id in MAKER_SANDWORM_SPACE_IDS and sandworm is None
+        )
+        assert ("take_desert_riding_hooks" in ids) == (
+            desert_riding_offered_at(state, space_id) and riding is None
+        )
+        # The Wall protects only "Siege of Arrakeen"; Liet's sandworms ignore it.
+        walled = wall and leader != "liet_kynes"
+        expected = _expected_sandworm_block(hooks, conflict_ids, barred, walled)
+        assert (sandworm.kind if sandworm else None) is expected
+        assert (riding is not None) == hooks
+        kinds.add(expected)
+        # Only the seat deciding has a Maker choice.
+        for seat in range(1, 4):
+            assert legal_maker_space_actions(state, seat) == ()
+    assert len(cases) == 3 * 2 * 4 * 2 * 2 * 2
+    assert kinds == {
+        None,
+        OptionalBlockKind.MAKER_HOOKS,
+        OptionalBlockKind.NO_CONFLICT,
+        OptionalBlockKind.DEPLOYMENT_BARRED,
+        OptionalBlockKind.SHIELD_WALL,
+    }

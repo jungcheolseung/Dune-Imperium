@@ -446,6 +446,8 @@ class OptionalBlockKind(StrEnum):
     FACTION_NEAR_TOP = "faction_near_top"  # two would end where one does
     NO_CONFLICT = "no_conflict"
     DEPLOYMENT_BARRED = "deployment_barred"
+    SHIELD_WALL = "shield_wall"  # the Shield Wall protects the Conflict
+    MAKER_HOOKS_HELD = "maker_hooks_held"  # a second Maker Hooks cannot be taken
     AGENT_LEFT = "agent_left"  # the Agent sent this turn left its space
     COMMANDER_GONE = "commander_gone"  # no Commander waits on the space
     TECH_STACKS_EMPTY = "tech_stacks_empty"

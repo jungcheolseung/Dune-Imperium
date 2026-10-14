@@ -3522,3 +3522,240 @@ def test_the_payment_rows_read_nothing_hidden() -> None:
             other = determinize(state, seat, rng)
             other_legal = ENGINE.legal_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Maker space's sandworm and Desert Riding branches (plan 4, row 8) ----
+#
+# Deep Desert and Hagga Basin print "spice, or with Maker Hooks summon
+# sandworms" [Board Guide pp. 1-2]; ``legal_maker_space_actions`` offers
+# ``summon_maker_sandworms`` exactly when ``maker_sandworm_block`` is None
+# and Desert Riding's ``take_desert_riding_hooks`` (Hagga Basin, token on the
+# board) exactly when ``desert_riding_block`` is None. Each shows greyed out
+# on the "choice" surface beside the spice, worded as Desert Power's
+# sandworm is.
+
+DESERT_PLANET = "player:0:starter:dune_the_desert_planet:0"
+_DESERT_RIDING_TOKEN = ("desert_riding", "hagga_basin", "maker_hooks", 1, -1)
+# The token is Arrakeen Scouts' mission piece (state.scouts_goods).
+_SCOUTS = RulesetConfig(arrakeen_scouts=True)
+_NO_HOOKS = ("No Maker Hooks", "{maker_hooks} 없음", "maker_hooks")
+_WALL = (
+    "The Shield Wall protects this Conflict",
+    "{shield_wall}이 이번 교전을 보호함",
+    "shield_wall",
+)
+
+
+def _maker_visit(
+    space_id: str,
+    *,
+    owner_fields: dict[str, Any] | None = None,
+    barred: bool = False,
+    token: bool = False,
+    **fields: Any,
+) -> GameState:
+    """Seat 0 sends its Agent to a Maker space (one water for Hagga Basin,
+    three for Deep Desert); the harvest is still to choose. ``token``: the
+    Desert Riding token waits beside Hagga Basin."""
+
+    owner_values: dict[str, Any] = {
+        "hand": (DESERT_PLANET,),
+        "resources": Resources(water=3),
+        "maker_hooks": True,
+    }
+    owner_values.update(owner_fields or {})
+    owner = PlayerState(player_id=0, **owner_values)
+    values: dict[str, Any] = {
+        "current_conflict_ids": ("propaganda",),
+        "maker_bonus_spice": (
+            ("deep_desert", 2),
+            ("hagga_basin", 1),
+            ("imperial_basin", 0),
+        ),
+    }
+    if token:
+        values.update(config=_SCOUTS, scouts_goods=(_DESERT_RIDING_TOKEN,))
+    values.update(fields)
+    state = _agent_turn(_state(owner, **values), DESERT_PLANET, space_id)
+    if barred:
+        frame = state.decision_stack[-1]
+        context = {**dict(frame.context), "units_deploy_blocked": True}
+        frame = replace(frame, context=tuple(sorted(context.items())))
+        state = replace(state, decision_stack=(*state.decision_stack[:-1], frame))
+    return state
+
+
+def _maker_rows(state: GameState) -> dict[str, dict[str, Any]]:
+    raw = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    if raw is None:
+        return {}
+    found = cast(dict[str, Any], raw)
+    assert found["frame"] == FrameKind.AGENT_EFFECTS
+    assert found["refs"] == {}
+    rows = {row["key"].split(":", 1)[1]: row for row in found["rows"]}
+    assert all(row["surface"] == "choice" for row in rows.values())
+    return rows
+
+
+def _sandworm_row(state: GameState, space_id: str) -> dict[str, Any]:
+    rows = _maker_rows(state)
+    assert list(rows) == ["summon_maker_sandworms"]
+    row = rows["summon_maker_sandworms"]
+    assert row["action"]["action_id"] == "summon_maker_sandworms"
+    assert row["action"]["arguments"] == {"space_id": space_id}
+    return row
+
+
+_MAKER_IDS = frozenset(
+    {"harvest_maker_spice", "summon_maker_sandworms", "take_desert_riding_hooks"}
+)
+
+
+def _legal_ids(state: GameState) -> list[str]:
+    """The Maker choice's legal actions (the turn's other rows left out)."""
+
+    return [
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id in _MAKER_IDS
+    ]
+
+
+def test_a_maker_space_without_maker_hooks_greys_out_the_sandworm() -> None:
+    for space_id in ("hagga_basin", "deep_desert"):
+        state = _maker_visit(space_id, owner_fields={"maker_hooks": False})
+        assert _legal_ids(state) == ["harvest_maker_spice"]
+        assert _why(_sandworm_row(state, space_id)) == _NO_HOOKS
+
+
+def test_each_maker_sandworm_block_has_its_own_reason() -> None:
+    """A Conflict, Emperor of the Known Universe's deployment ban and the
+    Shield Wall, in the block's order (Maker Hooks first)."""
+
+    cases = [
+        (
+            "hagga_basin",
+            _maker_visit("hagga_basin", current_conflict_ids=()),
+            ("No Conflict this round", "이번 라운드에 교전 없음", "no_conflict"),
+        ),
+        (
+            "deep_desert",
+            _maker_visit("deep_desert", barred=True),
+            (
+                "Emperor of the Known Universe bars deploying units this turn",
+                "알려진 우주의 황제: 이번 차례에는 유닛을 배치할 수 없음",
+                "reward",
+            ),
+        ),
+        (
+            "hagga_basin",
+            _maker_visit(
+                "hagga_basin",
+                current_conflict_ids=("siege_of_arrakeen",),
+                shield_wall_present=True,
+            ),
+            _WALL,
+        ),
+    ]
+    for space_id, state, reason in cases:
+        assert "summon_maker_sandworms" not in _legal_ids(state)
+        assert _why(_sandworm_row(state, space_id)) == reason
+    # Several blocks at once name the first: no Maker Hooks before no Conflict.
+    both = _maker_visit(
+        "hagga_basin", owner_fields={"maker_hooks": False}, current_conflict_ids=()
+    )
+    assert _why(_sandworm_row(both, "hagga_basin")) == _NO_HOOKS
+
+
+def test_the_shield_wall_does_not_withhold_arrakis_planetologist() -> None:
+    """Liet Kynes replaces the sandworms "even when the Conflict is protected
+    by the Shield Wall" [Liet Kynes card]: the summon stays legal, no row."""
+
+    state = _maker_visit(
+        "hagga_basin",
+        owner_fields={"leader_id": "liet_kynes"},
+        current_conflict_ids=("siege_of_arrakeen",),
+        shield_wall_present=True,
+    )
+    assert "summon_maker_sandworms" in _legal_ids(state)
+    assert _maker_rows(state) == {}
+
+
+def test_a_sandworm_the_seat_can_summon_is_legal_and_greys_nothing() -> None:
+    for space_id in ("hagga_basin", "deep_desert"):
+        state = _maker_visit(space_id)
+        assert _legal_ids(state) == ["harvest_maker_spice", "summon_maker_sandworms"]
+        assert _maker_rows(state) == {}
+
+
+def test_imperial_basin_prints_no_sandworm_and_gets_no_row() -> None:
+    state = _maker_visit("imperial_basin", owner_fields={"maker_hooks": False})
+    assert _legal_ids(state) == ["harvest_maker_spice"]
+    assert _maker_rows(state) == {}
+
+
+def test_a_seat_holding_maker_hooks_cannot_take_the_desert_riding_token() -> None:
+    """OQ-079 (b): the token is one of the four Maker Hooks, and a seat that
+    holds Maker Hooks gets no second one; it keeps its spice or its sandworm."""
+
+    state = _maker_visit("hagga_basin", token=True)
+    assert _legal_ids(state) == ["harvest_maker_spice", "summon_maker_sandworms"]
+    rows = _maker_rows(state)
+    assert list(rows) == ["take_desert_riding_hooks"]
+    row = rows["take_desert_riding_hooks"]
+    assert row["action"]["arguments"] == {"space_id": "hagga_basin"}
+    assert _why(row) == (
+        "You already hold Maker Hooks",
+        "이미 가진 {maker_hooks}",
+        "held",
+    )
+    # Both branches blocked at once: the sandworm and the token each show.
+    both = _maker_visit(
+        "hagga_basin", token=True, current_conflict_ids=()
+    )
+    assert list(_maker_rows(both)) == [
+        "summon_maker_sandworms",
+        "take_desert_riding_hooks",
+    ]
+
+
+def test_the_desert_riding_token_is_offered_without_maker_hooks() -> None:
+    state = _maker_visit(
+        "hagga_basin",
+        owner_fields={"maker_hooks": False},
+        token=True,
+    )
+    assert _legal_ids(state) == ["harvest_maker_spice", "take_desert_riding_hooks"]
+    # Only the sandworm (no Maker Hooks) is greyed out; the token is legal.
+    assert list(_maker_rows(state)) == ["summon_maker_sandworms"]
+
+
+def test_no_desert_riding_row_without_the_token_or_off_hagga_basin() -> None:
+    """The token waits beside Hagga Basin alone, and only while it is on the
+    board: otherwise the option does not exist, so nothing greys out."""
+
+    assert _maker_rows(_maker_visit("hagga_basin")) == {}
+    elsewhere = _maker_visit("deep_desert", token=True)
+    assert _maker_rows(elsewhere) == {}
+
+
+def test_the_maker_rows_read_nothing_hidden() -> None:
+    states = (
+        _maker_visit("hagga_basin", owner_fields={"maker_hooks": False}),
+        _maker_visit("deep_desert", current_conflict_ids=()),
+        _maker_visit("hagga_basin", token=True),
+    )
+    rng = random.Random(8)
+    for state in states:
+        legal = ENGINE.legal_actions(state, 0)
+        found = unavailable_choices(state, 0, legal)
+        assert found is not None and found["rows"]
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            other_legal = ENGINE.legal_actions(other, seat)
+            assert unavailable_choices(other, seat, other_legal) is None

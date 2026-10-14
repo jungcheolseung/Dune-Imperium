@@ -15,7 +15,8 @@ sandworm, a recall with no Agent to recall, a research bonus whose cost
 cannot be paid or whose reward would change nothing, an Agent box's arrow
 whose reward would change nothing (OQ-071), a Conflict reward's, a research
 space's or Shipping's Faction already at the top, a Conflict reward's payment
-(resource or Spies) the seat is short of, a Holy War unit the
+(resource or Spies) the seat is short of, a Maker space's sandworm or Desert
+Riding token it cannot take, a Holy War unit the
 seat does not have, a Skill the seat already holds, a Navigation card's
 option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
@@ -48,6 +49,7 @@ Display only, under four rules:
   ``unit_loss_block``, ``conflict_end_trigger_block``,
   ``skill_choice_block``, ``tech_candidates``,
   ``combat_reward_payment_block``, ``combat_reward_spy_recall_block``,
+  ``maker_sandworm_block``, ``desert_riding_block``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
@@ -187,10 +189,15 @@ from dune_imperium.rules.agent_turn import turn_start_cards
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
     BOARD_ICON_TRASH,
+    MAKER_SANDWORM_SPACE_IDS,
+    desert_riding_block,
+    desert_riding_offered_at,
     desert_tactics_block,
     imperial_privilege_recall_targets,
     imperial_privilege_trade_block,
     legal_shipping_actions,
+    maker_sandworm_block,
+    pending_maker_space,
     shipping_influence_factions,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -402,6 +409,13 @@ _SHIELD_WALL: Final[Reason] = (
     "The Shield Wall protects this Conflict",
     "{shield_wall}이 이번 교전을 보호함",
     "shield_wall",
+)
+# Desert Riding's token is one of the four Maker Hooks, so a seat that holds
+# Maker Hooks cannot take it (OQ-079 (b)).
+_MAKER_HOOKS_HELD: Final[Reason] = (
+    "You already hold Maker Hooks",
+    "이미 가진 {maker_hooks}",
+    "held",
 )
 _NO_OTHER_AGENT: Final[Reason] = (
     "No other Agent of yours to recall (not the one sent this turn)",
@@ -1626,6 +1640,53 @@ def _reveal_choice(state: GameState, seat: int, found: _Found) -> None:
     )
 
 
+def _maker_space(state: GameState, seat: int, found: _Found) -> None:
+    """A Maker space's sandworm and Desert Riding branches while they cannot
+    be taken.
+
+    Deep Desert, Hagga Basin and Imperial Basin always offer their spice
+    (``harvest_maker_spice``); the sandworm (Deep Desert, Hagga Basin) is
+    offered exactly when ``maker_sandworm_block`` is None and Arrakeen
+    Scouts' Desert Riding token (Hagga Basin, while it waits on the board)
+    exactly when ``desert_riding_block`` is None. Each shows greyed out
+    beside the spice with its block, worded as Desert Power's sandworm is
+    (``reveal_sandworm_block``). Imperial Basin prints no sandworm and gets
+    no row. The Maker icon is the visit's own choice, so a block no other
+    effect of the turn lifts (the Hooks, the Conflict, the Shield Wall come
+    from outside the turn) sits among the choices, with no lapse wording.
+    """
+
+    space_id = pending_maker_space(state, seat)
+    if space_id is None:
+        return
+    if space_id in MAKER_SANDWORM_SPACE_IDS:
+        block = maker_sandworm_block(state, seat)
+        if block is not None:
+            found.row(
+                "choice",
+                "summon_maker_sandworms",
+                DomainAction(
+                    action_id="summon_maker_sandworms",
+                    actor=seat,
+                    arguments=(("space_id", space_id),),
+                ),
+                _optional_block_reason(block),
+            )
+    if desert_riding_offered_at(state, space_id):
+        block = desert_riding_block(state, seat)
+        if block is not None:
+            found.row(
+                "choice",
+                "take_desert_riding_hooks",
+                DomainAction(
+                    action_id="take_desert_riding_hooks",
+                    actor=seat,
+                    arguments=(("space_id", space_id),),
+                ),
+                _optional_block_reason(block),
+            )
+
+
 def _imperial_privilege_recall(state: GameState, seat: int, found: _Found) -> None:
     """Imperial Privilege's recall when no other Agent can be recalled.
 
@@ -2438,6 +2499,8 @@ _OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
     ),
     OptionalBlockKind.NO_CONFLICT: _NO_CONFLICT,
     OptionalBlockKind.DEPLOYMENT_BARRED: _DEPLOYMENT_BARRED,
+    OptionalBlockKind.SHIELD_WALL: _SHIELD_WALL,
+    OptionalBlockKind.MAKER_HOOKS_HELD: _MAKER_HOOKS_HELD,
     OptionalBlockKind.AGENT_LEFT: (
         "The Agent sent this turn already left its space",
         "이번 차례에 보낸 {agent}가 이미 공간을 떠났음",
@@ -2906,6 +2969,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _shipping_influence,
         _each_box(_agent_icons),
         _imperial_privilege_recall,
+        _maker_space,
         _optional_board_effects,
         _subcommittee_choice,
         _intrigue,
