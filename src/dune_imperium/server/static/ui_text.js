@@ -352,6 +352,10 @@ const UI_TEXT = {
     "ko": "플레이어{{seat}}",
     "en": "Player {{seat}}"
   },
+  "core.server_unreachable": {
+    "ko": "서버에 연결하지 못했습니다",
+    "en": "Could not reach the server"
+  },
   "core.card_cost": {
     "ko": "비용 {{cost}}",
     "en": "Cost {{cost}}"
@@ -529,8 +533,8 @@ const UI_TEXT = {
     "en": "Game board"
   },
   "html.checkpoint_path_label": {
-    "ko": "체크포인트 경로 (플레이어 유형에서 \"학습 체크포인트\"를 고르면 사용; train extra 필요)",
-    "en": "Checkpoint path (used when a player selects \"Training Checkpoint\"; requires the train extra)"
+    "ko": "체크포인트 경로 (플레이어 유형에서 \"학습 체크포인트\"를 고르면 사용)",
+    "en": "Checkpoint path (used when a player selects \"Training Checkpoint\")"
   },
   "html.connection_note": {
     "ko": "서버 연결 끊김 — 다시 연결하는 중…",
@@ -625,8 +629,8 @@ const UI_TEXT = {
     "en": "Arrakeen Scouts (companion app mode: subcommittees · missions · events · auctions · sales; no official rulebook)"
   },
   "html.opt_leader_draft": {
-    "ko": "지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)",
-    "en": "Open draft from 6 revealed Leaders (OQ-007, not an official rule)"
+    "ko": "지도자 6종 공개 드래프트 (공식 규칙 아님)",
+    "en": "Open draft from 6 revealed Leaders (not an official rule)"
   },
   "html.page_title": {
     "ko": "듄 임페리움: 봉기",
@@ -1959,8 +1963,8 @@ const UI_TEXT = {
     "en": "Saves — autosaved every turn"
   },
   "screens.saves_heading_manual": {
-    "ko": "저장 — 자동 저장이 꺼져 있습니다 (--no-autosave)",
-    "en": "Saves — autosave is off (--no-autosave)"
+    "ko": "저장 — 자동 저장이 꺼져 있습니다",
+    "en": "Saves — autosave is off"
   },
   "screens.seat_left": {
     "ko": "참여를 종료했습니다. 다시 참여하려면 플레이어를 고르세요.",

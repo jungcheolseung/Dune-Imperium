@@ -623,10 +623,7 @@ class GameSessionManager:
         if assignment != SEARCH_SEAT:
             return assignment
         if self._search_checkpoint is None:
-            raise SessionError(
-                "this server has no search AI: start it with "
-                "--search-checkpoint PATH"
-            )
+            raise SessionError("this server has no search AI")
         return f"{SEARCH_PREFIX}{self._search_checkpoint}"
 
     def list_games(self, *, credentials: Credentials = ANONYMOUS) -> list[JsonObject]:

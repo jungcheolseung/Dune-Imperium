@@ -129,6 +129,31 @@ function promptText(prompt) {
   return prompt;
 }
 
+/* ---------- the server's error messages ---------- */
+
+/* An HTTP error's `detail` is English text from the server. Korean maps the
+   exact sentence (SERVER_ERROR_KO) or a pattern (SERVER_ERROR_KO_PATTERNS:
+   $N a group as written, #N a group plus one, a seat's visible number); the
+   rest stays as the server wrote it, JSON-quoted as before. The server's
+   messages and the status codes are untouched, so nothing that reads
+   error.status changes. */
+function serverErrorText(detail) {
+  if (typeof detail === "string" && TERM_LANGUAGE === "ko") {
+    if (Object.prototype.hasOwnProperty.call(SERVER_ERROR_KO, detail)) {
+      return SERVER_ERROR_KO[detail];
+    }
+    for (const [pattern, korean] of SERVER_ERROR_KO_PATTERNS) {
+      const match = detail.match(new RegExp(pattern));
+      if (match) {
+        return korean.replace(/([$#])(\d)/g, (whole, sign, group) =>
+          sign === "#" ? String(Number(match[Number(group)]) + 1) : match[Number(group)],
+        );
+      }
+    }
+  }
+  return JSON.stringify(detail);
+}
+
 /* ---------- the catalog's names and pictures ---------- */
 
 /* An entry carries its English name and picture (name, image) and, where

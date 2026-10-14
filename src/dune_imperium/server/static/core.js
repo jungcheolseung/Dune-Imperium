@@ -110,12 +110,20 @@ function hideGameError() {
 }
 
 async function api(path, options) {
-  const response = await fetch(path, options);
+  let response;
+  try {
+    response = await fetch(path, options);
+  } catch (error) {
+    /* No answer at all (a TypeError with no status): the browser words it in
+       its own English ("Failed to fetch"). */
+    if (error instanceof TypeError) error.message = t("core.server_unreachable");
+    throw error;
+  }
   if (!response.ok) {
     let detail = `${response.status}`;
     try {
       const body = await response.json();
-      if (body.detail) detail = `${response.status}: ${JSON.stringify(body.detail)}`;
+      if (body.detail) detail = `${response.status}: ${serverErrorText(body.detail)}`;
     } catch {
       /* keep the status code */
     }

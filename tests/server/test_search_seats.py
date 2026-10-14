@@ -393,7 +393,7 @@ def test_a_bare_search_seat_is_refused_without_a_checkpoint() -> None:
     manager = GameSessionManager()
     assert manager.search_checkpoint is None
 
-    with pytest.raises(SessionError, match="--search-checkpoint"):
+    with pytest.raises(SessionError, match="no search AI"):
         manager.create_game(("human", "search", "heuristic", "heuristic"))
     assert manager.list_games() == []
 

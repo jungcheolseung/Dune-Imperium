@@ -38,8 +38,8 @@
           <label id="opt-shuffle-seats-row"><input type="checkbox" id="opt-shuffle-seats">
             <span data-i18n="html.opt_shuffle_seats">자리 무작위 배치</span></label>
           <p id="opt-shuffle-seats-note" class="muted" hidden data-i18n="html.shuffle_seats_note">시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.</p>
-          <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (플레이어 유형에서 "학습 체크포인트"를 고르면 사용; train extra 필요)</span>
-            <input type="text" id="opt-checkpoint" placeholder="checkpoints/2026-09-06/champion_iter200.pt"></label>
+          <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (플레이어 유형에서 "학습 체크포인트"를 고르면 사용)</span>
+            <input type="text" id="opt-checkpoint"></label>
           <p id="opt-search-note" class="muted" hidden data-i18n="html.search_ai_note">탐색 AI는 학습한 망으로 몇 수 앞을 두어 보고 고릅니다. 한 결정에 보통 1–3초 걸리고, 생각하는 동안에도 화면은 움직입니다.</p>
           <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">시드 (빈칸 = 무작위)</span>
             <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>
@@ -50,7 +50,7 @@
           <legend data-i18n="html.rule_options_legend">규칙 옵션</legend>
           <div id="rule-options">
           <label><input type="checkbox" id="opt-leader-draft" checked>
-            <span data-i18n="html.opt_leader_draft">지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)</span></label>
+            <span data-i18n="html.opt_leader_draft">지도자 6종 공개 드래프트 (공식 규칙 아님)</span></label>
           <label><input type="checkbox" id="opt-choam" checked>
             <span data-i18n="html.opt_choam">초암 모듈</span></label>
           <label><input type="checkbox" id="opt-promo" checked>
@@ -238,6 +238,7 @@
   <script src="/static/labels.js"></script>
   <script src="/static/labels_en.js"></script>
   <script src="/static/prompts_ko.js"></script>
+  <script src="/static/errors_ko.js"></script>
   <script src="/static/ui_text.js"></script>
   <script src="/static/core.js"></script>
   <script src="/static/space_text.js"></script>

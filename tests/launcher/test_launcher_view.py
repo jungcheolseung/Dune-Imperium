@@ -1,5 +1,9 @@
 """What the launcher window enables and says in each state (no display)."""
 
+import ast
+import re
+from pathlib import Path
+
 import pytest
 
 from dune_imperium.launcher.command import Problem
@@ -10,6 +14,7 @@ from dune_imperium.launcher.view import (
     address_from_choice,
     close_question,
     controls,
+    log_line,
     problem_lines,
     status,
     window_geometry,
@@ -149,3 +154,196 @@ def test_closing_says_what_is_lost_and_which_button_saves() -> None:
     # Without autosave nothing survives the server but what was saved by hand.
     unsaved = close_question(1, mode="local", autosave=False)
     assert "자동 저장이 꺼져" in unsaved and "모두 사라집니다" in unsaved
+
+
+# --- the server log pane in Korean (user decision 2026-10-14) ----------------
+
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def test_the_servers_own_lines_read_in_korean() -> None:
+    # What `dune-imperium-server --remote` prints before and while uvicorn runs.
+    assert log_line(
+        "Remote multiplayer access is on. Host admin link (keep it private):"
+    ) == "원격 멀티플레이가 켜져 있습니다. 호스트 관리자 링크 (남에게 보이지 마세요):"
+    assert log_line(
+        "Autosave is on: every game keeps one current save in /games/saves"
+    ) == "자동 저장이 켜져 있습니다: 게임마다 현재 저장본 하나를 /games/saves에 둡니다"
+    assert log_line("Autosave is off: a game lives only as long as this process.") == (
+        "자동 저장이 꺼져 있습니다: 게임은 이 서버가 켜져 있는 동안만 남습니다."
+    )
+    assert log_line(
+        "INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)"
+    ) == "정보:     서버가 http://127.0.0.1:8000에서 실행 중 (끄려면 CTRL+C)"
+    assert log_line("INFO:     Started server process [9095]") == (
+        "정보:     서버 프로세스 시작 [9095]"
+    )
+    assert log_line("INFO:     Application startup complete.") == (
+        "정보:     서버 앱 시작 완료"
+    )
+    assert log_line("INFO:     Shutting down") == "정보:     서버를 끄는 중"
+    assert log_line("INFO:     Finished server process [9095]") == (
+        "정보:     서버 프로세스 끝 [9095]"
+    )
+
+
+def test_a_request_line_keeps_its_request_and_names_its_level_in_korean() -> None:
+    line = 'INFO:     127.0.0.1:57091 - "GET /whoami HTTP/1.1" 200 OK'
+    assert log_line(line) == '정보:     127.0.0.1:57091 - "GET /whoami HTTP/1.1" 200 OK'
+    assert log_line("WARNING:  Invalid HTTP request received.") == (
+        "경고:  Invalid HTTP request received."
+    )
+    assert log_line("ERROR:    Exception in ASGI application") == (
+        "오류:    Exception in ASGI application"
+    )
+
+
+def test_a_line_with_no_entry_stays_as_the_server_printed_it() -> None:
+    for line in (
+        "  http://127.0.0.1:8000/#admin=***",
+        "Traceback (most recent call last):",
+        '  File "app.py", line 3, in <module>',
+        "ValueError: something new",
+        "[launcher] 설정을 저장하지 못했습니다: disk full",
+        "",
+    ):
+        assert log_line(line) == line
+
+
+def test_the_admin_link_is_never_read_into_a_translation() -> None:
+    # The supervisor masks the key before the line reaches the pane; nothing
+    # here may bring it back or move it.
+    assert log_line("  http://127.0.0.1:8000/#admin=***") == (
+        "  http://127.0.0.1:8000/#admin=***"
+    )
+
+
+def _search_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, str]:
+    """Every startup line `resolve_search_checkpoint` can print, as the server
+    itself words it (not retyped here)."""
+
+    from argparse import Namespace
+
+    from dune_imperium.cli import server as server_cli
+
+    def line(named: str | None = None) -> str:
+        arguments = Namespace(search_checkpoint=named)
+        return server_cli.resolve_search_checkpoint(arguments, {})[1]
+
+    network = tmp_path / "search.pt"
+    network.write_bytes(b"x")
+    missing = tmp_path / "missing.pt"
+    lines = {"no file": line(str(missing))}
+    monkeypatch.setattr(server_cli, "DEFAULT_SEARCH_CHECKPOINT", missing)
+    lines["no checkpoint"] = line()
+    monkeypatch.setattr(server_cli, "DEFAULT_SEARCH_CHECKPOINT", network)
+    lines["on"] = line()
+    monkeypatch.setattr(
+        server_cli, "find_spec", lambda name: None if name == "torch" else object()
+    )
+    lines["no torch"] = line()
+    monkeypatch.setattr(
+        server_cli,
+        "find_spec",
+        lambda name: None if name in ("numpy", "pettingzoo") else object(),
+    )
+    lines["no rl"] = line()
+    return lines
+
+
+def test_every_search_ai_startup_line_reads_in_korean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lines = _search_lines(tmp_path, monkeypatch)
+    assert len(lines) == 5
+    for name, line in lines.items():
+        korean = log_line(line)
+        assert korean.startswith("탐색 AI: "), (name, line, korean)
+        assert "search AI" not in korean, (name, korean)
+    assert "꺼짐" in log_line(lines["no file"])
+    assert log_line(lines["no torch"]) == (
+        "탐색 AI: 꺼짐 (torch가 설치되어 있지 않음: uv sync --extra train)"
+    )
+    assert log_line(lines["no rl"]) == (
+        "탐색 AI: 꺼짐 (numpy, pettingzoo 미설치: uv sync --extra rl --extra train)"
+    )
+    assert "꺼짐" not in log_line(lines["on"])
+
+
+def test_the_bind_problems_the_server_prints_read_in_korean() -> None:
+    import socket
+
+    from dune_imperium.cli.server import bind_problem
+
+    problems = []
+    problems.append(bind_problem("no-such-host.invalid", 8000))
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        problems.append(bind_problem("127.0.0.1", taken.getsockname()[1]))
+    # An address this machine does not have: the Tailscale hint is appended.
+    problems.append(bind_problem("203.0.113.9", 8000))
+    seen = [problem for problem in problems if problem]
+    assert len(seen) == 3, problems
+    for problem in seen:
+        korean = log_line(f"dune-imperium-server: {problem}")
+        assert _HANGUL.search(korean), problem
+        assert "cannot" not in korean and "usable" not in korean, korean
+        assert "Tailscale address only exists" not in korean, korean
+
+
+def test_the_stdin_watch_lines_read_in_korean() -> None:
+    assert log_line(
+        "dune-imperium-server: cannot read standard input ([Errno 9] Bad file "
+        "descriptor); --exit-when-stdin-closes stops the server"
+    ) == (
+        "dune-imperium-server: 표준 입력을 읽을 수 없어 서버를 끕니다 "
+        "([Errno 9] Bad file descriptor)"
+    )
+    assert _HANGUL.search(
+        log_line(
+            "dune-imperium-server: no standard input to watch; "
+            "--exit-when-stdin-closes is ignored"
+        )
+    )
+
+
+def test_every_line_the_server_prints_has_a_korean_form() -> None:
+    """The `print(...)` literals of cli/server.py, f-string holes read as 3."""
+
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "dune_imperium"
+        / "cli"
+        / "server.py"
+    )
+    lines = []
+    for node in ast.walk(ast.parse(source.read_text())):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "print"
+            and node.args
+        ):
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            lines.append(first.value)
+        elif isinstance(first, ast.JoinedStr):
+            lines.append(
+                "".join(
+                    str(piece.value) if isinstance(piece, ast.Constant) else "3"
+                    for piece in first.values
+                )
+            )
+    # The admin link itself is a URL, not a sentence, and "dune-imperium-server:
+    # {problem}" wraps a bind problem (its own test); both stay as they are.
+    wrappers = ("3", "dune-imperium-server: 3")
+    lines = [line for line in lines if line.strip() not in wrappers]
+    assert len(lines) >= 6, lines
+    for line in lines:
+        korean = log_line(line)
+        assert korean != line and _HANGUL.search(korean), line
