@@ -13,7 +13,8 @@ seats takes a few seconds, long enough to watch.
 
 [N] A server whose --search-checkpoint names no file says so at startup,
     answers search_ai false, offers no "탐색 AI" row, and refuses a raw
-    "search" seat with a pointer to the flag.
+    "search" seat (the message names no command-line flag: a player never
+    needs one, 2026-10-14).
 [S] With a network: the startup line names the file the link points at,
     the row "탐색 AI" / "Search AI" follows the three app AI rows (the
     defaults stay human + three app AI), picking it shows the note under the
@@ -317,8 +318,8 @@ def scenario_without(browser, workdir: Path) -> None:
         check.ok(
             refused is not None
             and refused[0] == 400
-            and "--search-checkpoint" in refused[1],
-            "a raw 'search' seat is refused with a pointer to the flag",
+            and refused[1] == "this server has no search AI",
+            "a raw 'search' seat is refused, naming no command-line flag",
             refused,
         )
         page.context.close()
