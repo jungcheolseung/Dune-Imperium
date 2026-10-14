@@ -123,6 +123,7 @@ func _initialize() -> void:
 	check(Effects.changes(earlier, later, false).is_empty(), "undo produces no false acquisition or resource cue")
 	test_staged_picks()
 	test_private_deck()
+	test_quantities()
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)
@@ -194,3 +195,47 @@ func test_private_deck() -> void:
 	model.snapshot.view.private.peeked_card_id = "imperium:dagger:99"
 	check(model.known_deck_top().is_empty(), "a stale peek outside the current deck is never marked")
 	check(model.pile_groups([other, top]).size() == 1 and int(model.pile_groups([other, top])[0].count) == 2, "an unknown top keeps all equivalent copies grouped")
+
+
+func test_quantities() -> void:
+	var model = Model.new()
+	var deploy = [
+		{"index": 4, "action_id": "deploy_troops", "arguments": {"count": 2}},
+		{"index": 3, "action_id": "deploy_troops", "arguments": {"count": 1}},
+		{"index": 5, "action_id": "deploy_troops", "arguments": {"count": 3}},
+	]
+	model.adopt({"summary": {"game_id": "quantities", "revision": 1}, "view": {"player": 0, "private": {}}, "actions": {"actions": deploy}})
+	check(int(model.selected_quantity(deploy).index) == 5, "sending units defaults to the largest legal quantity, independent of DTO order")
+	check(model.stage_quantity(deploy[1]) and int(model.selected_quantity(deploy).index) == 3 and int(model.summary().revision) == 1, "staging changes only the local selected legal quantity")
+	var clock = model.snapshot.duplicate(true)
+	clock.summary.clock = {"elapsed_ms": 2}
+	model.adopt(clock)
+	check(int(model.selected_quantity(deploy).index) == 3, "an unrelated clock render retains the staged amount")
+	var newer = model.snapshot.duplicate(true)
+	newer.summary.revision = 2
+	model.adopt(newer)
+	check(model.local_counts.is_empty() and int(model.selected_quantity(deploy).index) == 5, "a new engine generation cannot reuse a previous amount")
+	var one = {"action_id": "deploy_troops", "arguments": {"count": 1, "box": 0}}
+	var other = {"action_id": "deploy_troops", "arguments": {"box": 1, "count": 1}}
+	check(model.quantity_key(one, "count") != model.quantity_key(other, "count"), "independent effect boxes never share a quantity")
+	var bids = [
+		{"index": 0, "action_id": "scouts_bid", "arguments": {"count": 0}},
+		{"index": 1, "action_id": "scouts_bid", "arguments": {"count": 1}},
+		{"index": 2, "action_id": "scouts_bid", "arguments": {"count": 2}},
+	]
+	model.snapshot.actions.actions = bids
+	model.snapshot.view.private.scouts_bid = 2
+	check(int(model.selected_quantity(bids).index) == 2, "a sealed auction starts at its own recorded bid")
+	model.snapshot.view.private.scouts_bid = -1
+	check(int(model.selected_quantity(bids).index) == 0, "an unrecorded sealed bid starts at zero")
+	check(not model.stage_quantity({"index": 99, "action_id": "scouts_bid", "arguments": {"count": 99}}), "an unoffered quantity cannot be staged")
+	var held = deploy[0].duplicate(true)
+	held.sent_by_turn_end = true
+	model.snapshot.actions.actions = [held, deploy[1]]
+	model.hold(held)
+	model.stage_quantity(deploy[1])
+	check(model.held_action().is_empty(), "changing a held quantity clears the old hold without sending or replacing it")
+	var calls = [{"index": 8, "action_id": "scouts_call", "arguments": {"count": 0}}, {"index": 9, "action_id": "scouts_call", "arguments": {"count": 1}}]
+	model.snapshot.actions.actions = calls
+	model.stage_quantity(calls[1])
+	check(int(model.finish_action().index) == 9, "the open call uses the staged DTO as the single turn-end action")

@@ -6,7 +6,9 @@ const NativeText = preload("res://native_text.gd")
 func native(text: String) -> String:
 	return str(NativeText.EN.get(text, text)) if language == "en" else text
 
-const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft", "pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue"]
+const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft", "pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue", "confirm_scouts_bid", "scouts_call"]
+const AUCTION_AMOUNTS = ["scouts_bid", "scouts_call"]
+const FORCE_AMOUNTS = ["deploy_troops", "withdraw_troops", "deploy_commanders", "withdraw_commanders"]
 const SEAT_COLORS = [Color("438bde"), Color("d66063"), Color("42ac87"), Color("e4b955")]
 const SECTIONS = ["cards", "intrigue", "leaders", "spaces", "conflicts", "objectives", "contracts", "skills", "tech", "scouts_items"]
 const EXPANSIONS = ["choam_module", "promo_cards", "bloodlines", "tech_module", "immortality", "go_to_11", "epic_game", "arrakeen_scouts"]
@@ -20,6 +22,7 @@ var selected_card = ""
 var selected_space = ""
 var selected_partner = ""
 var held: Dictionary = {}
+var local_counts: Dictionary = {}
 var active_seat = 0
 var owned_seats: Array = [0]
 var server_info: Dictionary = {}
@@ -57,6 +60,7 @@ func adopt(data: Dictionary) -> bool:
 	var changed = before != signature()
 	if changed:
 		held.clear()
+		local_counts.clear()
 		clear_pick()
 	# Confirmation and AI activity may change without an engine revision.
 	var old_summary = previous.get("summary", {}).duplicate()
@@ -102,7 +106,7 @@ func pick_seat(data: Dictionary) -> int:
 func finish_action() -> Dictionary:
 	for action in actions():
 		if action.action_id in END_ACTIONS:
-			return action
+			return selected_quantity(actions().filter(func(row): return row.action_id == "scouts_call")) if action.action_id == "scouts_call" else action
 	return {}
 
 
@@ -110,7 +114,55 @@ func finish_text() -> String:
 	if not held_action().is_empty():
 		return native("선택 확정 ▶")
 	var action = finish_action()
+	var currency = scouts_currency()
+	if not action.is_empty() and not currency.is_empty() and action.action_id in ["confirm_scouts_bid", "scouts_call"]:
+		var amount = selected_quantity(actions().filter(func(row): return row.action_id == "scouts_bid")) if action.action_id == "confirm_scouts_bid" else action
+		var count = int(amount.get("arguments", {}).get("count", 0))
+		var key = "render.turn_end_bid" if action.action_id == "confirm_scouts_bid" else "render.turn_end_pass_call" if count == 0 else "render.turn_end_call"
+		return ui(key, {"resource": phrase("{" + currency + "}"), "count": count})
 	return label("ACTION_LABELS", action.action_id) + " ▶" if not action.is_empty() else native("턴 종료 ▶")
+
+
+func scouts_currency() -> String:
+	var payload = snapshot.get("actions")
+	var item = view().get("scouts_item", "")
+	if payload is Dictionary and payload.get("scouts_lines") is Dictionary:
+		item = payload.scouts_lines.get("item_id", item)
+	return str(catalog.get("scouts_items", {}).get(str(item), {}).get("currency", ""))
+
+
+func quantity_key(action: Dictionary, field: String) -> String:
+	var keys = action.get("arguments", {}).keys()
+	keys.erase(field)
+	keys.sort()
+	var fixed: Array = []
+	for key in keys:
+		fixed.append([key, action.arguments[key]])
+	return str(action.action_id) + ":" + field + ":" + JSON.stringify(fixed)
+
+
+func selected_quantity(family: Array, field = "count") -> Dictionary:
+	if family.is_empty():
+		return {}
+	var sorted = family.duplicate()
+	sorted.sort_custom(func(a, b): return int(a.arguments[field]) < int(b.arguments[field]))
+	var id = str(sorted[0].action_id)
+	var key = quantity_key(sorted[0], field)
+	var count = local_counts.get(key, max(0, int(view().get("private", {}).get("scouts_bid", 0))) if id == "scouts_bid" else null)
+	for action in sorted:
+		if count != null and int(action.arguments[field]) == int(count):
+			return action
+	return sorted[-1] if id.begins_with("deploy") else sorted[0]
+
+
+func stage_quantity(action: Dictionary, field = "count") -> bool:
+	if not offered(action):
+		return false
+	local_counts[quantity_key(action, field)] = int(action.arguments[field])
+	var picked = held_action()
+	if not picked.is_empty() and picked.action_id == action.action_id and int(picked.index) != int(action.index):
+		held.clear()
+	return true
 
 
 func supported_save(saved: Dictionary) -> bool:

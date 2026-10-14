@@ -63,18 +63,31 @@ func open(owner_table: Control, title: String, cards: Array, order = false, sour
 	row.add_child(side)
 	heading = table._label(side, "", 20)
 	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	heading.size.x = 385
 	picture = table._picture(side, "", Vector2(240, 280))
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var description = table._scroll(side)
 	words = table._label(description, "", 16)
 	words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.size.x = 365
 	filter.text_changed.connect(func(_text): render())
 	table._attach_dialog(dialog)
 	dialog.confirmed.connect(dialog.queue_free)
 	dialog.canceled.connect(dialog.queue_free)
 	render()
-	dialog.popup_centered()
+	dialog.popup_centered(Vector2i(980, 600))
+	_fit_after_layout()
 	return dialog
+
+
+func _fit_after_layout() -> void:
+	# Text measures correctly after its scroll pane has acquired a width.
+	# Avoid keeping the initial, unwrapped minimum as a huge popup size.
+	await table.get_tree().process_frame
+	await table.get_tree().process_frame
+	if is_instance_valid(dialog) and not dialog.is_queued_for_deletion():
+		dialog.popup_centered(Vector2i(980, mini(600, table.get_window().size.y - 64)))
+		table._fit_columns()
 
 
 func _find(value: Variant, target: Array) -> Array:

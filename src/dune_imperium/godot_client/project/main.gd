@@ -372,6 +372,10 @@ func _fit_columns() -> void:
 	seat_scroll.custom_minimum_size.x = widths.seats
 	side_stack.custom_minimum_size.x = widths.choices
 	market_scroll.custom_minimum_size.x = widths.market
+	for window in find_children("*", "Window", true, false):
+		if window.visible and not window.is_queued_for_deletion():
+			var extent = Vector2i(get_window().size) - window.size
+			window.position = Vector2i(clampi(window.position.x, 8, maxi(8, extent.x - 8)), clampi(window.position.y, 32, maxi(32, extent.y - 8)))
 	_hide_preview()
 
 
@@ -1009,7 +1013,7 @@ func _render_choices(filtered: Array = []) -> void:
 				_button(content, model.name_of(card), _choose_ref.bind(card))
 		else:
 			_label(content, model.native("손패의 카드를 고르면 보드에서 갈 수 있는 칸이 빛납니다."), 15).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	choices.render(model.actions().filter(func(action): return action.action_id != "agent_turn" and action.action_id not in Model.END_ACTIONS))
+	choices.render(model.actions().filter(func(action): return action.action_id != "agent_turn" and (action.action_id not in Model.END_ACTIONS or action.action_id == "scouts_call")))
 
 
 func _render_market() -> void:
@@ -1245,6 +1249,21 @@ func _send_action(action: Dictionary) -> bool:
 
 func _finish() -> void:
 	if busy:
+		return
+	var bid = model.selected_quantity(model.actions().filter(func(action): return action.action_id == "scouts_bid"))
+	if not bid.is_empty() and not model.finish_action().is_empty() and model.finish_action().action_id == "confirm_scouts_bid":
+		var game = game_id
+		var seat = model.active_seat
+		var count = int(bid.arguments.count)
+		if count != max(0, int(model.view().get("private", {}).get("scouts_bid", 0))):
+			if not await _send_action(bid):
+				return
+		if game != game_id or seat != model.active_seat or max(0, int(model.view().get("private", {}).get("scouts_bid", -1))) != count:
+			return
+		for confirm in model.actions():
+			if confirm.action_id == "confirm_scouts_bid":
+				await _send_action(confirm)
+				return
 		return
 	var held = model.held_action()
 	if not held.is_empty():

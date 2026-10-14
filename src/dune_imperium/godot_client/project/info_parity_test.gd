@@ -49,8 +49,11 @@ func run() -> void:
 			var matches = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(expected.index))
 			if not check(matches.size() == 1 and matches[0].text.split("\n")[0] == expected.text, "the actual private choice button matches the browser label"):
 				print("DECK_LABEL_DIFFERENCE ", JSON.stringify([matches[0].text if not matches.is_empty() else "missing", expected.text]))
+		await capture_evidence("deck-" + str(scenario.language) + "-" + ("controlled" if not scenario.labels.is_empty() else "glowglobes"))
 		pile.confirmed.emit()
 		await process_frame
+		if not scenario.labels.is_empty():
+			await capture_evidence("peek-choice-" + str(scenario.language))
 	if failed:
 		quit(1)
 		return
