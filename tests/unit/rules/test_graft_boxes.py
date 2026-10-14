@@ -756,8 +756,9 @@ def test_a_partner_box_with_a_choice_stays_reachable(
     take. The engine before codec v143 hid its switch once a dry run called
     both boxes unavailable, which misread such choice boxes, so the
     partner's box could only fizzle at the turn's end; now its rows are
-    offered, and the turn end waits for them (codec v144,
-    ``test_a_box_with_a_choice_holds_the_turn_end``)."""
+    offered. They are optional, so since the user ruling of 2026-10-14
+    (OQ-095 (2), codec v146) they come without a refusal and the turn end
+    lapses them (``test_an_optional_box_with_a_choice_stands_beside_the_turn_end``)."""
 
     state = _settle_all_but_box_one(
         _graft(_state((placed, partner), troops_supply=9), placed, "arrakeen", partner)
@@ -767,7 +768,8 @@ def test_a_partner_box_with_a_choice_stays_reachable(
         for action in ENGINE.legal_actions(state, 0)
         if row_box(action) == 1
     }
-    assert {taken, "decline_agent_card_payment"} <= offered
+    assert taken in offered
+    assert "decline_agent_card_payment" not in offered
     row = next(
         action
         for action in ENGINE.legal_actions(state, 0)
@@ -784,7 +786,8 @@ def test_a_partner_box_with_a_choice_stays_reachable(
         assert placed in after.trashed
 
 
-# A box that offers a choice holds the turn end (codec v144)
+# A mandatory box that offers a choice holds the turn end (codec v144); an
+# optional one stands beside it (codec v146, OQ-095 (2))
 # ---------------------------------------------------------------------------
 
 SURGEON = "imperium:tleilaxu_surgeon:0"
@@ -921,68 +924,79 @@ def _arrow_box(case: str) -> GameState:
     )
 
 
-_PAY = "decline_agent_card_payment"
-_ACQUIRE = "decline_agent_card_acquisition"
+_REFUSALS = {"decline_agent_card_payment", "decline_agent_card_acquisition"}
 
 
 @pytest.mark.parametrize(
-    ("case", "rows", "refusal"),
+    ("case", "card", "row"),
     [
-        ("piter", {_PAY, "lose_agent_card_troop"}, _PAY),
-        ("surgeon", {_PAY, "pay_agent_card_two_specimens"}, _PAY),
-        ("dissecting_kit", {_PAY, "trash_grafted_card_for_specimen"}, _PAY),
-        ("tleilaxu_master", {_ACQUIRE, "acquire_imperium_by_card"}, _ACQUIRE),
+        ("piter", PITER, "lose_agent_card_troop"),
+        ("surgeon", SURGEON, "pay_agent_card_two_specimens"),
+        ("dissecting_kit", DISSECTING, "trash_grafted_card_for_specimen"),
+        ("tleilaxu_master", MASTER, "acquire_imperium_by_card"),
     ],
 )
-def test_a_box_with_a_choice_holds_the_turn_end(
-    case: str, rows: set[str], refusal: str
+def test_an_optional_box_with_a_choice_stands_beside_the_turn_end(
+    case: str, card: str, row: str
 ) -> None:
     """Effects are mandatory unless they say "may", pay an arrow's cost or
     show the black trash icon [FAQ p. 3] (docs/rules/official-rulings-
-    index.md), and "화살표(→) 비용 효과는 어디서나 선택이다 ... Intrigue 밖의
-    화살표 효과는 이미 거절 행동을 가진다: ... Tleilaxu(Surgeon·Slig
-    Farmer·Scientific Breakthrough·Dissecting Kit)" (OQ-058). Piter's "Lose
-    a troop -> draw two cards and Research", Tleilaxu Surgeon's "2
-    specimens -> Tleilaxu Tleilaxu", Dissecting Kit's "Trash the other
-    grafted card -> a specimen" and Tleilaxu Master's "[one genetic marker]:
-    you may acquire a card costing 6 or less" can still resolve while the
-    cost can be paid (the card acquired), so the box is answered, paying or
-    refusing, before the turn ends. Before codec v144 the turn end's dry run
-    misread these four as unavailable and offered the end beside their
-    rows. The refusal answers the box; the end follows."""
+    index.md). Piter's "Lose a troop -> draw two cards and Research",
+    Tleilaxu Surgeon's "2 specimens -> Tleilaxu Tleilaxu", Dissecting Kit's
+    "Trash the other grafted card -> a specimen" and Tleilaxu Master's
+    "[one genetic marker]: you may acquire a card costing 6 or less" are
+    optional. User ruling 2026-10-14 (OQ-095 (2)): an optional box offers
+    its rows without a refusal, holds no turn end back, and the owner's
+    press lapses it (``agent_card_effect_lapsed``). Codec v144 had made
+    these boxes hold the end until paid or refused; before v144 the end's
+    dry run misread them as unavailable. The box still can resolve, so it
+    is not one that only fizzles."""
 
     state = _arrow_box(case)
     legal = ENGINE.legal_actions(state, 0)
-    assert {
-        action.action_id for action in legal if action.action_id in rows
-    } == rows
-    assert FINISH not in legal
+    offered = {action.action_id for action in legal}
+    assert row in offered
+    assert not offered & _REFUSALS
+    assert FINISH in legal
     assert not agent_effects.agent_card_effect_is_unavailable(state)
-    declined = _apply(state, refusal)
-    assert FINISH in ENGINE.legal_actions(declined, 0)
+    finished = ENGINE.apply(state, FINISH)
+    assert [
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "agent_card_effect_lapsed"
+    ] == [{"card_id": card, "player": 0}]
 
 
-@pytest.mark.parametrize("case", ["piter_no_unit", "surgeon_one_specimen"])
+@pytest.mark.parametrize(
+    ("case", "card"),
+    [("piter_no_unit", PITER), ("surgeon_one_specimen", SURGEON)],
+)
 def test_an_arrow_whose_cost_cannot_be_paid_still_lets_the_turn_end(
-    case: str,
+    case: str, card: str
 ) -> None:
     """With no unit to lose (Piter) or one specimen short of two (Tleilaxu
-    Surgeon) the box offers only its refusal: its effect cannot happen
-    this turn, so it is a box that can only fizzle (OQ-057 (1)) and the
-    turn end is offered beside the refusal, as before codec v144. The press
-    fizzles it with the refusal's result: nothing."""
+    Surgeon) the box's effect cannot happen this turn (OQ-057 (1)). Since
+    the user ruling of 2026-10-14 (OQ-095 (2)) the optional box offers no
+    row at all -- before codec v146 it offered only its refusal -- and the
+    turn end lapses it, with nothing gained."""
 
     state = _arrow_box(case)
     legal = ENGINE.legal_actions(state, 0)
-    assert {action.action_id for action in legal if action.action_id == _PAY} == {
-        _PAY
-    }
+    assert not {action.action_id for action in legal} & _REFUSALS
     assert agent_effects.agent_card_effect_is_unavailable(state)
     assert FINISH in legal
     finished = ENGINE.apply(state, FINISH)
-    assert "agent_card_effect_unavailable" in {
-        event.kind for event in finished.events
-    }
+    assert [
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "agent_card_effect_lapsed"
+    ] == [{"card_id": card, "player": 0}]
+    owner, before = finished.state.players[0], state.players[0]
+    assert (owner.troops_garrison, owner.specimens, owner.tleilaxu_space) == (
+        before.troops_garrison,
+        before.specimens,
+        before.tleilaxu_space,
+    )
 
 
 def test_beguiling_pheromones_holds_the_turn_end_on_a_faction_space() -> None:
@@ -1035,9 +1049,13 @@ def test_dissecting_kit_without_its_partner_in_play_can_only_fizzle() -> None:
 def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
     """Ghola "copies the entire Agent box of the card it's grafted to"
     [Immortality p. 14]: the copy is a box of its own (OQ-057 (12)).
-    Corrinth City selects its first discard and declines; the copy then
-    selects its own first discard. Before codec v143 the two boxes shared
-    the selection, so the copy could only pay with the first box's card."""
+    Corrinth City selects its first discard and declines -- the refusal
+    stays part way through the selection while the copy waits, so the
+    owner can turn to it (OQ-095 (2), user ruling 2026-10-14); the copy
+    then selects its own first discard, offered without a refusal like any
+    optional box not yet begun (codec v146). Before codec v143 the two
+    boxes shared the selection, so the copy could only pay with the first
+    box's card."""
 
     other = next(card for card in STARTERS if card != DAGGER)
     state = _state((CORRINTH, GHOLA, DAGGER, other), troops_supply=9)
@@ -1059,10 +1077,7 @@ def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
         for action in ENGINE.legal_actions(declined, 0)
         if row_box(action) == 1
     }
-    assert copy_rows == {
-        ("decline_corrinth_city_payment", None),
-        *(("select_corrinth_city_discard", card) for card in hand),
-    }
+    assert copy_rows == {("select_corrinth_city_discard", card) for card in hand}
 
 
 def test_box_one_s_own_card_draw_leaves_the_placed_card_s_added_draw() -> None:

@@ -30,10 +30,13 @@ from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     BOARD_ICON_TECH,
+    OPTIONAL_BOARD_ICONS,
     AutomaticEffect,
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
     GainResourcesEffect,
+    OptionalBlockKind,
+    OptionalEffectBlock,
     RecruitTroopsEffect,
     ResearchEffect,
     add_board_icon,
@@ -114,6 +117,10 @@ BOARD_ICON_INFLUENCE: Final = "influence"  # Shipping: Influence with a chosen F
 BOARD_ICON_SIETCH_TABR: Final = "sietch_tabr"  # one printed choose-one row
 BOARD_ICON_MAKER: Final = "maker"  # bonus spice, then spice or sandworms
 BOARD_ICON_IMPERIAL_PRIVILEGE: Final = "imperial_privilege"  # written sentences
+# Imperial Privilege's optional Intrigue trade, "Trash an Intrigue card" ->
+# an Intrigue card [Main p. 20], an arrow cost and its own icon beside the
+# recall (user ruling 2026-10-14: "따로 인쇄된 효과는 따로", OQ-027 (d)).
+BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE: Final = "imperial_privilege_intrigue"
 BOARD_ICON_TUEK_SIETCH: Final = "tuek_sietch"  # bonus spice, then spice or a card
 # ``BOARD_ICON_COMMANDER`` (Bloodlines) is defined in ``effects`` and resolved
 # by ``rules.sardaukar``.
@@ -304,9 +311,10 @@ def board_icons_for(
     actions. A printed choose-one row (Sietch Tabr, the Maker spaces' spice or
     sandworms) stays a single key, and Secrets' random steal is text that
     follows its Intrigue draw (OQ-027). Imperial Privilege's optional
-    Intrigue trade and its recall share one key, the trade first, while the
-    card draw printed beside the recall is its own ``cards`` icon: "소환과
-    뽑기가 당연히 두 단계로 나눠야지" (user ruling 2026-10-10, OQ-027 (d)).
+    Intrigue trade, its recall and the card draw printed beside the recall
+    are three keys: "소환과 뽑기가 당연히 두 단계로 나눠야지" (user ruling
+    2026-10-10, OQ-027 (d)), and the optional trade no longer gates the
+    recall (user ruling 2026-10-14).
     Those single printed keys still take the Bloodlines additions
     every visit gets: a waiting Sardaukar Commander [Bloodlines p. 4] and,
     on a Landsraad space, the Ixian Embassy's Acquire Tech -- a first High
@@ -328,6 +336,7 @@ def board_icons_for(
             icons = [BOARD_ICON_MAKER]
         case "imperial_privilege":
             icons = [
+                BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
                 BOARD_ICON_IMPERIAL_PRIVILEGE,
                 *(
                     board_icon_for_effect(effect)
@@ -1035,11 +1044,69 @@ def apply_shipping_action(
     return RuleResult(state=next_state, events=(*gained.events, event))
 
 
+def lapse_optional_board_effects(state: GameState, player: int) -> RuleResult:
+    """Lapse the visit's optional effects left unused when the turn ends.
+
+    The owner's press of the turn's end answers every optional effect still
+    unused (OQ-095 (2), user ruling 2026-10-14): the visit's optional icons
+    (``effects.OPTIONAL_BOARD_ICONS``), Lady Jessica's Other Memories ("you
+    may return all your memories" [Lady Jessica card]) and Reverend Mother's
+    paid repeat of the printed effects ("Once during each turn" … water 1 →
+    repeat [Reverend Mother Jessica card], an arrow). Each is logged.
+    """
+
+    _, context = current_agent_effect_context(state)
+    space_id = context.get("space_id")
+    source = f"round:{state.round_number}:player:{player}:board:{space_id}"
+    events: list[GameEvent] = []
+    for key in pending_board_icons(context):
+        if key not in OPTIONAL_BOARD_ICONS:
+            continue
+        finish_board_icon(context, key)
+        events.append(
+            GameEvent(
+                event_id=f"{source}:{key}:lapsed",
+                kind="board_effect_lapsed",
+                payload=(
+                    ("effect", key),
+                    ("player", player),
+                    ("space_id", space_id if isinstance(space_id, str) else ""),
+                ),
+            )
+        )
+    if context.get("pending_leader_ability") is True:
+        context["pending_leader_ability"] = False
+        events.append(
+            GameEvent(
+                event_id=f"{source}:other_memories:lapsed",
+                kind="leader_ability_lapsed",
+                payload=(("player", player),),
+            )
+        )
+    if context.get("pending_leader_board_repeat") is True:
+        context["pending_leader_board_repeat"] = False
+        events.append(
+            GameEvent(
+                event_id=f"{source}:board_repeat:lapsed",
+                kind="leader_ability_lapsed",
+                payload=(("player", player),),
+            )
+        )
+    if not events:
+        return RuleResult(state=state, events=())
+    return RuleResult(state=advance_after_effect(state, context), events=tuple(events))
+
+
 def legal_desert_tactics_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Desert Tactics' decline-or-trash choices for its optional trash."""
+    """Return Desert Tactics' optional trash choices.
+
+    The black trash icon is optional [Main p. 20]; left unused it lapses
+    when the turn ends (OQ-095 (2), user ruling 2026-10-14), so no refusal
+    is offered.
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -1053,54 +1120,75 @@ def legal_desert_tactics_actions(
         context, BOARD_ICON_TRASH
     ):
         return ()
-    owner = state.players[player]
-    return (
-        DomainAction(action_id="resolve_desert_tactics_without_trash", actor=player),
-        *(
-            DomainAction(
-                action_id="trash_card_for_desert_tactics",
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            # A Row card borrowed with Usurp is not "in play" (OQ-054,
-            # ``counted_in_play``), so it is no trash target.
-            for card_id in (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
-        ),
+    return tuple(
+        DomainAction(
+            action_id="trash_card_for_desert_tactics",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in _desert_tactics_targets(state.players[player])
     )
+
+
+def _desert_tactics_targets(owner: PlayerState) -> tuple[str, ...]:
+    # A Row card borrowed with Usurp is not "in play" (OQ-054,
+    # ``counted_in_play``), so it is no trash target.
+    return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+
+
+def desert_tactics_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why Desert Tactics' pending optional trash offers no card, or None.
+
+    ``legal_desert_tactics_actions`` offers one trash per card
+    ``_desert_tactics_targets`` names; with none there is no card to trash.
+    None when the trash is not pending for ``player``. The page greys it
+    out with this (``display.unavailable``, OQ-095 (2)).
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if context.get("space_id") != "desert_tactics" or not board_icon_is_pending(
+        context, BOARD_ICON_TRASH
+    ):
+        return None
+    if _desert_tactics_targets(state.players[player]):
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_TRASH)
 
 
 def apply_desert_tactics_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve Desert Tactics' optional card trash, or decline it."""
+    """Resolve Desert Tactics' optional card trash."""
 
     if action not in legal_desert_tactics_actions(state, action.actor):
         raise ValueError("action is not a legal Desert Tactics choice")
     _, context = current_agent_effect_context(state)
     # The printed troop is a separate icon with its own
     # ``resolve_board_effect`` action, ordered by the owner (OQ-027).
-    effect_state = state
-    events: list[GameEvent] = []
-    if action.action_id == "trash_card_for_desert_tactics":
-        card_value = dict(action.arguments)["card_id"]
-        if not isinstance(card_value, str):
-            raise RuntimeError("Desert Tactics trash choice has invalid card ID")
-        trashed = trash_personal_card(
-            effect_state,
-            action.actor,
-            card_value,
-            source=(
-                f"round:{state.round_number}:player:{action.actor}:board:desert_tactics"
-            ),
-        )
-        # Eliminate Allies' "2 troops" lands in this AGENT_EFFECTS frame's
-        # own context (``_with_recruited_troops``), which the write-back
-        # below would otherwise overwrite with the box's context read
-        # before the trash, discarding the credit [Main p. 10] [FAQ p. 4].
-        keep_trash_recruits(context, trashed)
-        effect_state = trashed.state
-        events.extend(trashed.events)
+    card_value = dict(action.arguments)["card_id"]
+    if not isinstance(card_value, str):
+        raise RuntimeError("Desert Tactics trash choice has invalid card ID")
+    trashed = trash_personal_card(
+        state,
+        action.actor,
+        card_value,
+        source=(
+            f"round:{state.round_number}:player:{action.actor}:board:desert_tactics"
+        ),
+    )
+    # Eliminate Allies' "2 troops" lands in this AGENT_EFFECTS frame's own
+    # context (``_with_recruited_troops``), which the write-back below would
+    # otherwise overwrite with the box's context read before the trash,
+    # discarding the credit [Main p. 10] [FAQ p. 4].
+    keep_trash_recruits(context, trashed)
+    effect_state = trashed.state
+    events: list[GameEvent] = list(trashed.events)
 
     finish_board_icon(context, BOARD_ICON_TRASH)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
@@ -1126,11 +1214,15 @@ def legal_imperial_privilege_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Imperial Privilege's optional Intrigue slot, then its recall.
+    """Return Imperial Privilege's optional Intrigue trade and its recall.
 
-    The space prints the Trash-an-Intrigue-card icon and an arrow to an
-    Intrigue card: "Trash an Intrigue card of your choice from your hand"
-    [Main p. 20], optional like every arrow cost. The Board Space Guide words
+    The two are separate printed effects, each its own icon, offered
+    together in any order [Main p. 9] (user ruling 2026-10-14; the trade
+    gated the recall before). The space prints the Trash-an-Intrigue-card
+    icon and an arrow to an Intrigue card: "Trash an Intrigue card of your
+    choice from your hand" [Main p. 20], optional like every arrow cost, so
+    it offers no refusal: left unused it lapses when the turn ends (OQ-095
+    (2)). The Board Space Guide words
     the same line "You may discard an Intrigue card to draw an Intrigue
     card" [Board Guide p. 2]. The action stays a trash, but Intrigue cards
     have no trash pile: the card joins the shared Intrigue discard and is
@@ -1153,31 +1245,34 @@ def legal_imperial_privilege_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    context = _imperial_privilege_context(state, player)
-    if context is None:
-        return ()
-
     owner = state.players[player]
-    if context.get("imperial_privilege_intrigue_resolved") is not True:
-        return (
-            DomainAction(action_id="decline_imperial_privilege_intrigue", actor=player),
-            *(
-                DomainAction(
-                    action_id="trash_intrigue_for_imperial_privilege",
-                    actor=player,
-                    arguments=(("card_id", card_id),),
-                )
-                for card_id in owner.intrigue_cards
-            ),
+    trades: tuple[DomainAction, ...] = ()
+    if (
+        _imperial_privilege_context(
+            state, player, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE
         )
-    targets = imperial_privilege_recall_targets(state, player) or ()
+        is not None
+        and imperial_privilege_trade_block(state, player) is None
+    ):
+        trades = tuple(
+            DomainAction(
+                action_id="trash_intrigue_for_imperial_privilege",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.intrigue_cards
+        )
+    targets = imperial_privilege_recall_targets(state, player)
+    if targets is None:
+        return trades
     if not targets:
         return (
+            *trades,
             DomainAction(
                 action_id="resolve_imperial_privilege_without_recall", actor=player
             ),
         )
-    return tuple(
+    return trades + tuple(
         # Duncan Idaho's Into the Fray Agent is still "one of your Agents"
         # [Board Guide p. 2]: the designer confirmed Imperial Privilege may
         # recall it from the Conflict (OQ-037(d)).
@@ -1195,11 +1290,34 @@ def legal_imperial_privilege_actions(
     )
 
 
-def _imperial_privilege_context(
+def imperial_privilege_trade_block(
     state: GameState, player: int
+) -> OptionalEffectBlock | None:
+    """Why Imperial Privilege's pending Intrigue trade is not offered, or None.
+
+    "Trash an Intrigue card" -> an Intrigue card [Main p. 20]:
+    ``legal_imperial_privilege_actions`` offers one trade per Intrigue card
+    in hand while the trade's icon is pending, exactly when this is None.
+    None when the trade is not pending for ``player``. The page greys it
+    out with this (``display.unavailable``, OQ-095 (2)).
+    """
+
+    if (
+        _imperial_privilege_context(
+            state, player, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE
+        )
+        is None
+        or state.players[player].intrigue_cards
+    ):
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.INTRIGUE)
+
+
+def _imperial_privilege_context(
+    state: GameState, player: int, icon: str
 ) -> dict[str, ActionValue] | None:
-    """``player``'s own Agent-effect context while Imperial Privilege's icon
-    is pending, else None."""
+    """``player``'s own Agent-effect context while Imperial Privilege's
+    ``icon`` is pending, else None."""
 
     try:
         frame, context = current_agent_effect_context(state)
@@ -1208,7 +1326,7 @@ def _imperial_privilege_context(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return None
     if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
-        context, BOARD_ICON_IMPERIAL_PRIVILEGE
+        context, icon
     ):
         return None
     return context
@@ -1219,8 +1337,8 @@ def imperial_privilege_recall_targets(
 ) -> tuple[str, ...] | None:
     """Where ``player``'s pending Imperial Privilege recall may take an Agent.
 
-    None unless that recall is the step left: the icon is pending on the
-    seat's own Agent-effect frame and its Intrigue slot has resolved. The
+    None unless the recall's icon is pending on the seat's own Agent-effect
+    frame. The
     targets are the seat's other board spaces ("Recall one of your other
     Agents from the board" [Board Guide p. 2]) and "conflict" for an earlier
     turn's Into the Fray Agent (OQ-037 (d)). The provider offers one recall
@@ -1230,11 +1348,8 @@ def imperial_privilege_recall_targets(
     a board Agent -- so confirming as soon as none is left gives up nothing.
     """
 
-    context = _imperial_privilege_context(state, player)
-    if (
-        context is None
-        or context.get("imperial_privilege_intrigue_resolved") is not True
-    ):
+    context = _imperial_privilege_context(state, player, BOARD_ICON_IMPERIAL_PRIVILEGE)
+    if context is None:
         return None
     owner = state.players[player]
     return (
@@ -1271,7 +1386,7 @@ def apply_imperial_privilege_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve Imperial Privilege's optional Intrigue trade, then its recall.
+    """Resolve Imperial Privilege's optional Intrigue trade or its recall.
 
     The recall (or its confirm without a target) is the icon's last step and
     draws nothing: the card draw is the space's ``cards`` icon (user ruling
@@ -1398,9 +1513,7 @@ def apply_imperial_privilege_action(
         effect_state = drawn.state
         events.extend(drawn.events)
 
-    # The recall's target is judged once the slot has resolved (OQ-023,
-    # [Main pp. 9, 20]); with none, the provider offers the confirm.
-    context["imperial_privilege_intrigue_resolved"] = True
+    finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
     return RuleResult(state=next_state, events=tuple(events))
 

@@ -63,6 +63,121 @@ function clearHeldChoice() {
   return true;
 }
 
+/* ---------- the turn-start window ----------
+
+   "At the start of your turn: ..." [Litany Against Fear card] [Withdrawn
+   card]: either play is only the turn's first action (OQ-095 (6)), and the
+   engine offers it among the turn's usual actions until the seat takes any
+   other one. A person is asked for it first and alone (user decision
+   2026-10-14): while the seat's own legal actions hold such a play (the
+   server tags its row `turn_start`, sessions.py _serialize_action), the
+   page offers those plays and "턴 시작 카드 쓰지 않음", nothing else. A play
+   is posted as it always was. The other button sends nothing: it puts the
+   window aside on this page alone, and the turn's usual view follows, the
+   plays still in it until the seat's first other action.
+
+   The window is a view of the seat's own rows and no more: no request, no
+   engine step, no log line, so no other seat, no spectator and no AI can
+   tell that it was up, or that the seat holds such a card (an engine-side
+   window did both, and was taken out).
+
+   While it is up, state.actions holds only those plays (turnStartWindowOf),
+   so the board, the hand and every other control offer nothing else; the
+   full payload rides along in it (`turnStartWindow.full`) and comes back
+   when the window is put aside. Put aside, it stays aside for that turn
+   through a re-render, a poll or a reload: the turn's key
+   (turnStartWindowKey) is kept in this page and in localStorage, whose
+   every access may throw (a private window, blocked site data) and is
+   caught (screens.js storageGet). The seat's next turn asks again while
+   the card is still playable. */
+const TURN_START_KEPT_KEY = "dune.turnStartKept";
+/* Turns put aside, as remembered across reloads. A turn's end seals it, so
+   an old turn never comes back and a short list is plenty. */
+const TURN_START_KEPT_LIMIT = 24;
+const turnStartKeptHere = new Set();
+
+/* The turn a payload belongs to: its game, its seat and the state's
+   revision. While the start of the seat's turn is open the seat has taken
+   no step (any step of its own ends the start, and a turn-start play ends
+   the turn), so the revision stands still as long as the plays are
+   offered, and each later turn of the seat comes after a step of its own.
+   An undo back to this point rebuilds the same state, revision and all. */
+function turnStartWindowKey(payload) {
+  return `${payload.game_id}:${payload.seat}:${payload.revision}`;
+}
+
+function storedTurnStartKept() {
+  try {
+    const kept = JSON.parse(storageGet(TURN_START_KEPT_KEY) || "[]");
+    return Array.isArray(kept) ? kept.filter((key) => typeof key === "string") : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function turnStartKept(key) {
+  return turnStartKeptHere.has(key) || storedTurnStartKept().includes(key);
+}
+
+/* The seat's payload as the page offers it: only its turn-start plays
+   while the window is up, else the payload as the server sent it. */
+function turnStartWindowOf(payload) {
+  if (!payload || !Array.isArray(payload.actions)) return payload;
+  const plays = payload.actions.filter((action) => action.turn_start === true);
+  if (!plays.length || turnStartKept(turnStartWindowKey(payload))) return payload;
+  return {
+    ...payload,
+    actions: plays,
+    scouts_lines: null,
+    unavailable: null,
+    agent_boxes: null,
+    turnStartWindow: { full: payload },
+  };
+}
+
+function turnStartWindowOpen() {
+  return Boolean(state.actions && state.actions.turnStartWindow);
+}
+
+/* "턴 시작 카드 쓰지 않음": the window goes for this turn, and nothing is
+   sent anywhere. */
+function keepTurnStartCard() {
+  if (state.busy || !turnStartWindowOpen()) return;
+  const full = state.actions.turnStartWindow.full;
+  const key = turnStartWindowKey(full);
+  turnStartKeptHere.add(key);
+  const kept = storedTurnStartKept().filter((other) => other !== key);
+  kept.push(key);
+  storageSet(TURN_START_KEPT_KEY, JSON.stringify(kept.slice(-TURN_START_KEPT_LIMIT)));
+  state.actions = full;
+  render();
+}
+
+/* The banner's prompt while the window is up, else null (render.js
+   renderBanner). */
+function turnStartWindowPrompt() {
+  return turnStartWindowOpen() ? t("turn.start_window_prompt") : null;
+}
+
+/* The window in the decision panel: the plays as ordinary action rows,
+   then the row that puts them aside. */
+function renderTurnStartWindow(box) {
+  const hint = document.createElement("div");
+  hint.className = "pick-hint muted";
+  hint.textContent = t("turn.start_window_hint");
+  box.appendChild(hint);
+  appendActionItems(box, state.actions.actions);
+  const keep = document.createElement("div");
+  keep.className = "action-item turn-start-keep";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = t("turn.start_window_keep");
+  button.disabled = state.busy;
+  button.addEventListener("click", keepTurnStartCard);
+  keep.appendChild(button);
+  box.appendChild(keep);
+}
+
 /* ---------- staged Agent turn ----------
 
    The server offers an Agent turn as one flat list: every legal
@@ -409,6 +524,10 @@ function pickStepNode(number, label, ref, part) {
    out here so it never doubles as an item in any of the lists below. An
    open call's amount stays in its stepper, which sets what the press sends. */
 function renderActionPanel(box, turnEnd) {
+  if (turnStartWindowOpen()) {
+    renderTurnStartWindow(box);
+    return;
+  }
   const actions = state.actions.actions.filter(
     (action) => !turnEnd || action.index !== turnEnd.index
       || AUCTION_AMOUNT_IDS.has(action.action_id)
@@ -553,6 +672,15 @@ function tableClick(ref, entry, anchor, offered = null) {
   if (state.busy) return;
   if (stagedTurn() && pickStep(ref, entry, anchor)) return;
   const legal = offered || legalActionsFor(ref);
+  if (legal.length && turnStartWindowOpen()) {
+    /* A turn-start play draws or passes the turn at once, and outside the
+       window the same click on a hand card only picks it for an Agent
+       turn: in the window the card points at its row instead
+       (independent review 2026-10-14). */
+    focusActions(ref, entry ? entry.name : ref);
+    note(t("turn.start_window_pick_row", { name: entry ? entry.name : ref }));
+    return;
+  }
   if (legal.length === 1) {
     /* A second click on the held object keeps it held; the list row or
        Escape lets it go. */

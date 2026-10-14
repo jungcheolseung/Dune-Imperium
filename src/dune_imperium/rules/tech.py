@@ -39,6 +39,8 @@ from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_TECH,
+    OptionalBlockKind,
+    OptionalEffectBlock,
     advance_after_effect,
     board_icon_is_pending,
     current_agent_effect_context,
@@ -361,11 +363,50 @@ def tech_acquisition_possible(
     )
 
 
+def landsraad_tech_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why a Landsraad visit's pending Acquire Tech offers no tile, or None.
+
+    ``legal_tech_acquisition_actions`` offers exactly the tiles
+    ``_affordable_acquisitions`` names (the visit's offer has no refusal,
+    OQ-095 (2)); with none, every stack is empty and no Secret Project is
+    kept, or Advanced Data Analysis is the only tile the spice reaches and
+    no Spy of the owner's is on the board to trash, or no tile is
+    affordable (``needed``: the cheapest one's cost now). None when no
+    visit's offer is pending for ``player``. The page greys the offer out
+    with this (``display.unavailable``).
+    """
+
+    if not state.config.tech_module or _pending_board_context(state, player) is None:
+        return None
+    owner = state.players[player]
+    if _affordable_acquisitions(state, owner, 0):
+        return None
+    candidates = tech_candidates(state, owner)
+    if not candidates:
+        return OptionalEffectBlock(OptionalBlockKind.TECH_STACKS_EMPTY)
+    costs = [
+        tech_cost(owner, tile, secret_project=secret) for tile, secret in candidates
+    ]
+    if any(cost <= owner.resources.spice for cost in costs):
+        # Only tiles that need a Spy to trash are in reach.
+        return OptionalEffectBlock(OptionalBlockKind.TECH_NEEDS_SPY)
+    return OptionalEffectBlock(
+        OptionalBlockKind.TECH_UNAFFORDABLE,
+        needed=min(costs),
+        held=owner.resources.spice,
+    )
+
+
 def legal_tech_acquisition_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer every affordable face-up tile (and the Secret Project), or a refusal."""
+    """Offer every affordable face-up tile (and the Secret Project).
+
+    A card's Tech Discount frame offers its refusal only when no tile is
+    affordable; a Landsraad visit's offer never does (it lapses at the turn
+    end when left unused).
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -385,11 +426,16 @@ def legal_tech_acquisition_actions(
         )
         for tile, variant in _affordable_acquisitions(state, owner, discount)
     )
-    if len(actions) > 1 and _pending_board_context(state, player) is None:
+    if _pending_board_context(state, player) is not None:
+        # The Landsraad visit's "may acquire" [Bloodlines p. 7] is an
+        # optional effect of the visit: it needs no refusal, and left unused
+        # it lapses when the turn ends (OQ-095 (2), user ruling 2026-10-14).
+        actions = actions[1:]
+    elif len(actions) > 1:
         # A card's Tech Discount icon (Battlefield Research, Rapid
         # Engineering) must be used once the card is played and a tile is
-        # affordable (designer ruling, OQ-057); only the Landsraad visit's
-        # "may acquire" keeps its refusal [Bloodlines p. 7].
+        # affordable (designer ruling, OQ-057); its own frame keeps the
+        # refusal only when no tile is affordable.
         actions = actions[1:]
     return tuple(actions)
 

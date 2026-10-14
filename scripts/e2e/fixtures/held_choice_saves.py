@@ -6,18 +6,23 @@ hold is confirmed at once: the walk of tests/server/test_round_start_defense.py
 and tests/server/test_turn_end.py (``_walk_to_held_end_before_chance``), base
 game, no edited state.
 
-- ``held-defense`` (seed 0, round 7): seat 0's Control defense in Round
+- ``held-defense`` (seed 2, round 9): seat 0's Control defense in Round
   Start, both answers undoable: the engine pauses before the round's draw
-  (rules/pauses.py), where the server holds the answer for the press;
+  (rules/pauses.py), where the server holds the answer for the press. Seed 0
+  (round 7) until codec v146 (an Agent turn's optional effects lapse at the
+  turn-end press instead of being declined, so the table heuristic's games
+  moved); a walk of seeds 0-39 finds seed 2 first (20, 26 and 35 also do);
 - ``held-acquire`` (seed 32, round 3): an Intrigue card's acquisition
   outside the turns, every Row offer marked ``sent_by_turn_end`` (the
   acquisition refills the Imperium Row, a reveal inside the step itself)
   and every Reserve offer undoable. Seed 0's walk reached one in round 7
   until a triggered draw became its owner's own step (user ruling
   2026-10-10, OQ-106) moved its game; 32 is the first seed whose walk does;
-- ``held-reward-spy`` (seed 19, round 4): a Conflict reward Spy whose posts
+- ``held-reward-spy`` (seed 20, round 4): a Conflict reward Spy whose posts
   can be taken back, saved right before seat 0 places it; placing it holds
-  the seat's unit end before the next round (the engine's pause).
+  the seat's unit end before the next round (the engine's pause). Seed 19
+  until codec v146 moved its game; the same walk of seeds 0-39 finds seed 20
+  first (23, 26 and 35 also do).
 
 Prints {name: save_id} as JSON.
 """
@@ -63,8 +68,8 @@ def seat_0_decision(manager, gid, summary):
     return summary
 
 
-# Seed 0: the Control defense held by the server.
-manager, gid, summary, rng = start(0)
+# Seed 2: the Control defense held by the server.
+manager, gid, summary, rng = start(2)
 for _step in range(STEPS):
     summary = seat_0_decision(manager, gid, summary)
     if summary["finished"]:
@@ -105,10 +110,10 @@ for _step in range(STEPS):
     choice = rng.choice(actions)
     summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])
 
-# Seed 19: the reward Spy held before the next round's reshuffle. The game
+# Seed 20: the reward Spy held before the next round's reshuffle. The game
 # is saved before each candidate placement and kept once the policy's own
 # placement left the hold before a chance outcome.
-manager, gid, summary, rng = start(19)
+manager, gid, summary, rng = start(20)
 session = manager._get(gid)
 for _step in range(STEPS):
     summary = seat_0_decision(manager, gid, summary)

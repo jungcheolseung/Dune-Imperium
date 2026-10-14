@@ -97,8 +97,14 @@ def _seat_points(session: GameSession) -> list[int]:
 
 
 def _finished(
-    seed: int = 1, *, arrakeen_scouts: bool = False
+    seed: int = 3, *, arrakeen_scouts: bool = False
 ) -> tuple[GameSessionManager, str]:
+    # The default seed's AI table passes an Alliance on, scores Conflict
+    # rewards and Battle icons, and matches a wild Battle icon at the
+    # Endgame. v146: optional Agent-turn effects offer no refusal (OQ-095
+    # (2), 2026-10-14), which moved seed 1 off the Endgame wild match;
+    # re-searched then, seed 3 is the first of 0-39 with all of them (4, 8,
+    # 14, 19, 24, 29, 31, 32 and 34 too).
     manager = GameSessionManager()
     summary = manager.create_game(
         TABLE, game_seed=seed, arrakeen_scouts=arrakeen_scouts
@@ -162,7 +168,7 @@ def test_an_alliance_passing_on_moves_one_point_between_the_two_seats() -> None:
         for index, payload in _events(session, "alliance_transferred")
         if _int(payload["from_player"]) >= 0 and _int(payload["to_player"]) >= 0
     ]
-    assert transfers, "seed 1 passes an Alliance on"
+    assert transfers, "seed 3 passes an Alliance on"
     index, payload = transfers[0]
     assert not any(
         event.kind == "victory_points_gained"
@@ -195,7 +201,7 @@ def test_rewards_battle_icons_and_endgame_matches_score_in_their_step() -> None:
         assert deltas[index][_int(payload["player"])] >= 1
 
     endgame = _events(session, "endgame_wild_matched")
-    assert endgame, "seed 1 matches a wild Battle icon at the Endgame"
+    assert endgame, "seed 3 matches a wild Battle icon at the Endgame"
     for index, payload in endgame:
         assert deltas[index][_int(payload["player"])] >= 1
 

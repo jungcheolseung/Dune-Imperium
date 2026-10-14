@@ -740,8 +740,12 @@ def _uprising_signet(run: DecisionRun) -> DomainAction | None:
     if any(a not in covered for a in run.legal):
         return None  # a legal row the leader's sources do not rank
     skip = next(iter(declines), None)
-    forced = agent_effects._explicit_pending(t.sources) or skip is None
-    return decide(run, t.sources, skip=skip, forced=forced)
+    return decide(
+        run,
+        t.sources,
+        skip=skip,
+        forced=lambda: agent_effects._explicit_pending(t.sources) or skip is None,
+    )
 
 
 def _signet_prompt(

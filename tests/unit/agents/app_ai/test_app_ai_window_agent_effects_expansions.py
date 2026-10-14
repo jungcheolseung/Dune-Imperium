@@ -263,16 +263,20 @@ def test_control_the_spice_pays_and_keeps_its_trash_card() -> None:
     assert stored_key == key
     me = state.players[seat]
     assert card in (*me.hand, *me.in_play, *me.discard_pile)
-    assert _a(seat, "decline_agent_card_payment") in t.declines
+    # Optional: an unused key needs no refusal (user ruling 2026-10-14).
+    assert t.declines == []
 
     chosen, _state, memory = _drive_until(
-        state, seat, ("pay_agent_card_spice", "decline_agent_card_payment"), worth_it
+        state, seat, ("pay_agent_card_spice", "finish_agent_turn"), worth_it
     )
     assert chosen == _a(seat, "pay_agent_card_spice")
     assert isinstance(memory.intents[key], str)
 
 
-def test_control_the_spice_without_a_card_worth_trashing_declines() -> None:
+def test_control_the_spice_without_a_card_worth_trashing_lapses() -> None:
+    """Nothing worth trashing: the key is unused, End Turn lapses it (user
+    ruling 2026-10-14) and no trash card is stored."""
+
     state, seat, ref, _ = _place(
         EPIC, "control_the_spice", resources=Resources(solari=0, spice=2, water=1)
     )
@@ -280,9 +284,9 @@ def test_control_the_spice_without_a_card_worth_trashing_declines() -> None:
     t = _turn(state, seat, patches)
     assert _evaluate(_source(t, "Control the Spice")) == (0.0, None)
     chosen, _state, memory = _drive_until(
-        state, seat, ("pay_agent_card_spice", "decline_agent_card_payment"), patches
+        state, seat, ("pay_agent_card_spice", "finish_agent_turn"), patches
     )
-    assert chosen == _a(seat, "decline_agent_card_payment")
+    assert chosen == _a(seat, "finish_agent_turn")
     assert (ae.CONTROL_THE_SPICE_TRASH_INTENT, state.round_number, ref) not in (
         memory.intents
     )
@@ -318,7 +322,7 @@ def test_arrakis_revolt_blows_the_wall_when_should_blow_wall(
         5.0,
         _a(seat, "pay_agent_card_spice_for_sandworm_and_shield_wall"),
     )
-    assert _a(seat, "decline_agent_card_payment") in t.declines
+    assert t.declines == []
 
 
 def test_arrakis_revolt_keeps_the_wall_otherwise(
@@ -331,9 +335,12 @@ def test_arrakis_revolt_keeps_the_wall_otherwise(
     )
 
 
-def test_arrakis_revolt_unused_key_is_the_decline(
+def test_arrakis_revolt_unused_key_lapses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Not worth it: no candidate, so End Turn, whose press lapses it (user
+    ruling 2026-10-14)."""
+
     t, _seat = _arrakis_revolt(monkeypatch, Answer(0.0, None), True)
     assert _evaluate(_source(t, "Arrakis Revolt")) == (0.0, None)
 
@@ -343,7 +350,7 @@ def test_pivotal_gambit_trashes_itself_then_its_icons_follow() -> None:
     t = _turn(state, seat)
     source = _source(t, "pivotal_gambit trash")
     assert _evaluate(source) == (100.0, _a(seat, "trash_agent_card", card_id=ref))
-    assert _a(seat, "decline_agent_card_trash") in t.declines
+    assert t.declines == []
     state = _apply(state, seat, _a(seat, "trash_agent_card", card_id=ref))
     # Troop and pledge are the rest of the one app answer: before the board.
     answer = _answer(state, seat)
@@ -382,7 +389,9 @@ def test_the_beasts_spoils_crysknife_only_is_the_generic_box_then_a_trash() -> N
     t = _turn(state, seat)
     trash = _source(t, "the_beast_s_spoils trash")
     assert trash.extra["explicit"] is True  # TrashAbility: Explicit
-    assert _a(seat, "decline_agent_card_trash") in t.declines
+    # The trashes still owed are optional: no refusal outside a graft whose
+    # other box waits (user ruling 2026-10-14).
+    assert t.declines == []
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +409,7 @@ def test_organ_merchants_key_is_its_specimen_for_solari_e() -> None:
     )
     assert value == expected.value
     assert action == _a(seat, "pay_agent_card_specimen")
-    assert t.declines == [_a(seat, "decline_agent_card_payment")]
+    assert t.declines == []
 
 
 def test_tleilaxu_surgeon_never_pays_past_tleilaxu_rank_seven() -> None:
@@ -415,7 +424,8 @@ def test_tleilaxu_surgeon_never_pays_past_tleilaxu_rank_seven() -> None:
     # the app drops it there.
     assert "pay_agent_card_two_specimens" not in _ids(t)
     assert "TleilaxuSurgeonAgentAbility" not in [s.label for s in t.sources]
-    assert t.declines == [_a(seat, "decline_agent_card_payment")]
+    # Nothing to offer, not even a refusal (user ruling 2026-10-14).
+    assert t.declines == [] and t.chores == []
 
 
 def test_dissecting_kit_always_trashes_its_partner() -> None:
@@ -556,7 +566,7 @@ def test_piter_loses_the_troop_the_app_names() -> None:
     value, action = _evaluate(_source(t, "Piter"))
     assert value > 0
     assert action == _a(seat, "lose_agent_card_troop", zone="garrison")
-    assert t.declines == [_a(seat, "decline_agent_card_payment")]
+    assert t.declines == []
 
 
 def test_piter_rewards_follow_the_lost_troop() -> None:
@@ -642,7 +652,7 @@ def test_twisted_mentat_recalls_the_agent_it_sent() -> None:
         100.0,
         _a(seat, "recall_agent_for_agent_card", space_id="assembly_hall"),
     )
-    assert t.declines == [_a(seat, "decline_agent_card_recall")]
+    assert t.declines == []
 
 
 def test_long_reach_names_both_tracks_at_once() -> None:
@@ -708,7 +718,7 @@ def test_tleilaxu_master_acquires_the_best_card_by_acquire_value() -> None:
         "acquire_imperium_by_card",
         "acquire_reserve_by_card",
     )
-    assert _a(seat, "decline_agent_card_acquisition") in t.declines
+    assert t.declines == []
 
 
 def test_replacement_eyes_trashes_the_card_its_e_names() -> None:
@@ -718,7 +728,7 @@ def test_replacement_eyes_trashes_the_card_its_e_names() -> None:
     assert source.extra["explicit"] is False
     _value, action = _evaluate(source)
     assert action is not None and action.action_id == "trash_agent_card"
-    assert _a(seat, "decline_agent_card_trash") in t.declines
+    assert t.declines == []
 
 
 def test_sardaukar_quartermaster_icons_map_to_their_riders() -> None:
@@ -1045,7 +1055,7 @@ def test_corrinth_city_keeps_its_second_discard_only_when_chosen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Regression: the second discard was written into Memory.intents on every
-    # evaluation, so a key that lost (declined) left a stale plan behind.
+    # evaluation, so a key that lost (left unused) left a stale plan behind.
     from dune_imperium.agents.app_ai.abilities import imperium_a
 
     state, seat, ref, _ = _place(
@@ -1071,7 +1081,7 @@ def test_corrinth_city_keeps_its_second_discard_only_when_chosen(
         chosen, at, memory = _drive_until(
             state,
             seat,
-            ("select_corrinth_city_discard", "decline_corrinth_city_payment"),
+            ("select_corrinth_city_discard", "finish_agent_turn"),
             memory=memory,
         )
         assert (chosen.action_id == "select_corrinth_city_discard") is kept

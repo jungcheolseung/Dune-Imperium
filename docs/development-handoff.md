@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-14 (master, 관측 v32 병합 뒤)
+기준일: 2026-10-14 (master, 선택 효과 정리 codec v146 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,11 +28,11 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | obs-v32 병합 (2026-10-14) |
-| pytest | 7,565개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 494파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 63종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 obs-v32 병합 전(63 통과) |
-| action codec | **v145** (다음 번호 v146) |
+| master | optional-effects 병합 (2026-10-14) |
+| pytest | 7,616개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| Ruff · mypy | `src tests` 통과, mypy 497파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 64종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 optional-effects 병합 전(64 통과) |
+| action codec | **v146** (다음 번호 v147) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,413 · CHOAM 4,704 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 35,972 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
@@ -47,8 +47,11 @@
 
 - **효과 조각 엔진 전환(진행 중):** 카드 효과를 능력 기록(공통 조각의 조합)과 실행기로 옮긴다. A단계는 행동·관측·사건을
   그대로 두고 단계마다 `scripts/ab/engine_equivalence.py` 200판 same을 관문으로 한다. 학습은 A단계 끝에 한 번(사용자: 병행
-  학습 안 함). 지금은 그 앞의 따로 작업: 자기 차례 안의 선택 효과가 턴 종료를 막지 않게 하고 거절 버튼을 정리한다(분류표를
-  사용자에게 보인 뒤 진행). [composed-effects-plan.md](composed-effects-plan.md) [2026-10-14 효과 조각 엔진 전환 계획]
+  학습 안 함). 그 앞의 따로 작업 둘: Agent 차례 안의 선택 효과 정리는 끝났다(codec v146). **다음은 Reveal 단계의 선택
+  효과**다(사용자 "5.reveal은 바로 다음으로 가자"): 같은 원칙으로 거절 없이 `finish_reveal`에 사라지게 하고, 단독으로 먼저
+  골라야 하는 것이 있는지 본다(여는 조건이 손패 같은 숨은 정보에 달리면 엔진 frame이 아니라 주인 화면의 보기로 —
+  Litany·Withdrawn 창이 그 예, 교훈 2026-10-14). 그 뒤 A0. [composed-effects-plan.md](composed-effects-plan.md)
+  [2026-10-14 효과 조각 엔진 전환 계획, 2026-10-14 자기 차례 안의 선택 효과]
 
 **학습·AI**
 
@@ -114,8 +117,9 @@
 **도구·인프라**
 
 - **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v143-944bb1b7이고 v144·v145 묶음은 없다. v145의 새 다리
-  `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 없다. [2026-10-12 Ghola, [`human-records.md`](human-records.md)]
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v145-afea63de(2026-10-14, 2,000판; v146 다리 대조에 씀)이고
+  v144·v146 묶음은 없다. v145의 새 다리 `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 있는지는 아직 세지 않았다.
+  [2026-10-12 Ghola, 2026-10-14 자기 차례 안의 선택 효과, [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
   (`test_a_local_server_stops_on_its_closed_input_with_a_stream_open`). 둘 다 혼자 돌리면 통과한다.
 

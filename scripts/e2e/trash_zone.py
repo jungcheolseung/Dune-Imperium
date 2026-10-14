@@ -91,8 +91,8 @@ pending. A row of the same action naming an earlier copy in play says "앞
 mark. Two real positions (`fixtures/turn_card_trash_saves.py`, four human
 seats with Immortality, seeded random play) rest on the optional trash the
 user met (`trash_optional_card`, here a Research track space's bonus)
-offering both copies: seed 23 with this turn's Prepare the Way still to
-resolve its box, seed 2 with this turn's Experimentation done.
+offering both copies: seed 111 with this turn's Prepare the Way still to
+resolve its box, seed 6 with this turn's Experimentation done.
 The expected lists come from that script's own reading of the effect
 frame, and the expected words are reconstructed here, not read off the
 client's tables.

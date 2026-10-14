@@ -390,16 +390,20 @@ def legal_agent_turn_finish_actions(
 
     Every Agent turn ends only here, whether or not anything optional is
     left (user ruling OQ-095); the Combat deployment window stays open until
-    the press (OQ-029). The end is also offered when the only other pending
-    group is a mandatory Agent box that can only fizzle (its condition is
-    false and nothing else of the turn remains to meet it): the box waits
-    for the turn's end rather than fizzling on demand (designer ruling,
-    OQ-057). An Emperor track Spy the owner still owes holds the end back:
-    it is placed in any order but before the turn ends (user ruling
+    the press (OQ-029). An optional effect left unused does not hold the end
+    back -- "'턴 종료'는 의무 효과가 모두 끝났을 때만 제시된다" (OQ-095 (2)), and
+    "may", an arrow cost or a black trash icon is optional [FAQ p. 3] --
+    and the press lapses it (user ruling 2026-10-14). The end is also offered
+    when the only other pending group is a mandatory Agent box that can only
+    fizzle (its condition is false and nothing else of the turn remains to
+    meet it): the box waits for the turn's end rather than fizzling on
+    demand (designer ruling, OQ-057). An Emperor track Spy the owner still
+    owes holds the end back: it is placed in any order but before the turn
+    ends (user ruling
     2026-10-04, "엄연히 agent턴 내에 순서를 정해서 할 수 있는 의무 행동").
     """
 
-    from dune_imperium.rules.agent_effects import graft_boxes_are_stalled
+    from dune_imperium.rules.agent_effects import pending_boxes_hold_the_end
 
     try:
         frame, context = current_agent_effect_context(state)
@@ -416,10 +420,12 @@ def legal_agent_turn_finish_actions(
         # turn ends (user ruling 2026-10-10, OQ-106).
         return ()
     # Every Agent box still pending -- both of a graft, each judged with
-    # itself active -- can only fizzle (OQ-057 (1)).
-    stalled_box = graft_boxes_are_stalled(state)
+    # itself active -- is optional now (the press lapses it, user ruling
+    # 2026-10-14) or can only fizzle (OQ-057 (1)).
     if agent_turn_has_other_pending_effects(
-        context, state.players, ignore_agent_effect=stalled_box
+        context,
+        state.players,
+        ignore_agent_effect=not pending_boxes_hold_the_end(state),
     ):
         return ()
     return (DomainAction(action_id="finish_agent_turn", actor=player),)
@@ -723,7 +729,8 @@ def apply_agent_turn_finish(
 ) -> RuleResult:
     """End the Agent turn: the owner's one press (user ruling OQ-095).
 
-    In order: a mandatory Agent box that could only fizzle fizzles (OQ-057),
+    In order: optional effects left unused lapse (user ruling 2026-10-14),
+    a mandatory Agent box that could only fizzle fizzles (OQ-057),
     a held Contract icon fizzles (OQ-059), the turn's end is announced, the
     Combat deployment window closes, and a Usurped Row card is trashed
     ("trash that card at the end of your turn.", OQ-054). The frame then waits
@@ -735,8 +742,10 @@ def apply_agent_turn_finish(
     from dune_imperium.rules.agent_effects import (
         agent_card_effect_is_unavailable,
         fizzle_pending_agent_icons,
+        lapse_optional_boxes,
         resolve_agent_card_effect,
     )
+    from dune_imperium.rules.board_effects import lapse_optional_board_effects
     from dune_imperium.rules.contracts import fizzle_held_contract_icons
     from dune_imperium.rules.effects import pending_agent_icons
     from dune_imperium.rules.graft import trash_usurped_card
@@ -745,8 +754,13 @@ def apply_agent_turn_finish(
     if action not in legal_agent_turn_finish_actions(state, action.actor):
         raise ValueError("the Agent turn cannot be finished yet")
     player = action.actor
-    working = state
-    events: list[GameEvent] = []
+    # Optional effects the owner left unused lapse with the press (user
+    # ruling 2026-10-14, OQ-095 (2)): the turn's Agent boxes, then the
+    # visited space's optional icons and the Leader's optional repeat.
+    lapsed = lapse_optional_boxes(state)
+    lapsed_board = lapse_optional_board_effects(lapsed.state, player)
+    working = lapsed_board.state
+    events: list[GameEvent] = [*lapsed.events, *lapsed_board.events]
     for _ in range(4):
         # Mandatory boxes that could not be met by the turn's end fizzle now
         # (OQ-057), the grafted partner's with its box made active.

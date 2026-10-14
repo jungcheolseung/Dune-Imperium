@@ -256,8 +256,18 @@ def test_app_reward_run_pending_vp_doubles_the_vp_value() -> None:
     assert W.app_reward_run(run).profile.victory_point_value(1) == 18.0
 
 
+def _pay_state() -> GameState:
+    # Base seed 10, round 8: seat 0 (Feyd-Rautha Harkonnen) wins Battle for
+    # Imperial Basin beside a face-down desert mouse pair and may pay 4 spice
+    # for a Victory Point. (Seed 1 reached the pay prompt until the user
+    # ruling of 2026-10-14 -- an optional effect of the Agent turn offers no
+    # refusal and lapses at the turn's end, OQ-095 (2) -- moved the
+    # heuristic games; 10 is the first seed from 1 that reaches it again.)
+    return _reach("combat_reward_optional", choam=False, seed=10, want="pay")
+
+
 def test_app_reward_run_adds_an_unpaired_icon_without_vp() -> None:
-    state = _reach("combat_reward_optional", choam=False, seed=1, want="pay")
+    state = _pay_state()
     seat = _seat(state)
     me = state.players[seat]
     assert state.current_conflict_ids[-1] == "battle_for_imperial_basin"
@@ -280,7 +290,7 @@ def test_app_reward_run_without_a_sole_winner_is_the_same_run() -> None:
 
 
 def test_optional_reward_pays_whenever_affordable() -> None:
-    state = _reach("combat_reward_optional", choam=False, seed=1, want="pay")
+    state = _pay_state()
     run = _run(state)
     assert dict(run.ctx.top_frame_context)["cost"] == 4
     ability = W._reward_ability(run, PayAttributeToGainVPAbility)
@@ -289,7 +299,7 @@ def test_optional_reward_pays_whenever_affordable() -> None:
 
 
 def test_optional_reward_declines_when_unaffordable() -> None:
-    state = _reach("combat_reward_optional", choam=False, seed=1, want="pay")
+    state = _pay_state()
     seat = _seat(state)
     me = state.players[seat]
     poor = with_player(state, seat, resources=replace(me.resources, spice=3))
@@ -299,7 +309,7 @@ def test_optional_reward_declines_when_unaffordable() -> None:
 
 
 def test_optional_reward_with_no_matching_app_ability_falls_back() -> None:
-    state = _reach("combat_reward_optional", choam=False, seed=1, want="pay")
+    state = _pay_state()
     frame = state.decision_stack[-1]
     context = {**dict(frame.context), "cost": 5}
     odd = replace(frame, context=tuple(sorted(context.items())))
@@ -417,13 +427,17 @@ def test_trash_reward_trashes_nothing_without_junk() -> None:
 
 
 def test_influence_reward_takes_the_best_track() -> None:
-    # Base seed 2, round 6: seat 0 wins Spice Freighters with Bene Gesserit
-    # and Fremen at 3, every track offered; Bene Gesserit is worth by far the
-    # most. (Until 5654d7f8 moved this game, 2026-10-07, seat 2 won it with
-    # Emperor at 6 and Bene Gesserit was the best of three; until Imperial
-    # Privilege's card draw became its own icon, 2026-10-10, OQ-027 (d),
-    # which moved the game at round 3 seat 2's Imperial Privilege visit,
-    # seat 0 won it with only Fremen at 3 and Fremen was worth the most.)
+    # Base seed 2, round 6: seat 2 (Lady Amber Metulli) wins Spice
+    # Freighters with Bene Gesserit at 3, every track offered; Bene Gesserit
+    # is worth by far the most. (Until 5654d7f8 moved this game, 2026-10-07,
+    # seat 2 won it with Emperor at 6 and Bene Gesserit was the best of
+    # three; until Imperial Privilege's card draw became its own icon,
+    # 2026-10-10, OQ-027 (d), which moved the game at round 3 seat 2's
+    # Imperial Privilege visit, seat 0 won it with only Fremen at 3 and
+    # Fremen was worth the most; until the user ruling of 2026-10-14 (an
+    # optional effect of the Agent turn lapses at the turn's end, OQ-095
+    # (2)) moved the heuristic games, seat 0 won it with Bene Gesserit and
+    # Fremen at 3.)
     state = _reach("combat_reward_influence", choam=False, seed=2)
     run = _run(state)
     factions = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
@@ -434,10 +448,10 @@ def test_influence_reward_takes_the_best_track() -> None:
     }
     assert values == pytest.approx(
         {
-            "emperor": 2.8125,
-            "spacing_guild": 2.7,
-            "bene_gesserit": 6.24,
-            "fremen": 3.915,
+            "emperor": 3.45,
+            "spacing_guild": 3.0,
+            "bene_gesserit": 6.125,
+            "fremen": 1.875,
         }
     )
     assert _args(W.combat_reward_influence(run)) == (
@@ -547,16 +561,21 @@ def test_sandworm_spice_freighters_values_each_copy_after_the_previous_one(
 # -- combat_reward_distinct_influence ------------------------------------------------
 
 
+_PROPAGANDA_BEST = {"bene_gesserit", "spacing_guild"}
+
+
 def _propaganda_state() -> GameState:
-    # Base seed 31, round 7: seat 0 (Feyd-Rautha Harkonnen) wins Propaganda;
-    # Bene Gesserit (7.375) and Fremen (4.28125) are the two best, Emperor
-    # and Spacing Guild 2.7. (Seed 1 reached the same shape until the
-    # 2026-10-06 card-comparison batch moved its game, then seed 25 until
-    # Imperial Privilege's card draw became its own icon, 2026-10-10,
-    # OQ-027 (d), moved that game at round 5 seat 2's Imperial Privilege
-    # visit: its winner now has three tracks tied at 3.45. Seed 31 is the
-    # first from 25 with two strictly best tracks.)
-    return _reach("combat_reward_distinct_influence", choam=False, seed=31)
+    # Base seed 32, round 7: seat 1 (Gurney Halleck) wins Propaganda; Bene
+    # Gesserit (3.375) and Spacing Guild (2.7) are the two best, Emperor and
+    # Fremen 2.25. (Seed 1 reached the same shape until the 2026-10-06
+    # card-comparison batch moved its game, then seed 25 until Imperial
+    # Privilege's card draw became its own icon, 2026-10-10, OQ-027 (d),
+    # moved that game at round 5 seat 2's Imperial Privilege visit, then
+    # seed 31 until the user ruling of 2026-10-14 (an optional effect of the
+    # Agent turn lapses at the turn's end, OQ-095 (2)) moved the heuristic
+    # games: its winner now has three tracks tied at 2.7. Seed 32 is the
+    # first from 31 with two strictly best tracks.)
+    return _reach("combat_reward_distinct_influence", choam=False, seed=32)
 
 
 def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
@@ -570,17 +589,17 @@ def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
     }
     assert values == pytest.approx(
         {
-            "emperor": 2.7,
+            "emperor": 2.25,
             "spacing_guild": 2.7,
-            "bene_gesserit": 7.375,
-            "fremen": 4.28125,
+            "bene_gesserit": 3.375,
+            "fremen": 2.25,
         }
     )
     first = W.combat_reward_distinct_influence(run)
     key = (W.DISTINCT_INFLUENCE_INTENT, state.round_number, run.ctx.seat, 0)
     plan = memory.intents[key]
     assert isinstance(plan, tuple)
-    assert set(plan) == {"bene_gesserit", "fremen"}
+    assert set(plan) == _PROPAGANDA_BEST
     assert _args(first) == (
         "choose_distinct_combat_reward_influence",
         {"faction": plan[0]},
@@ -603,8 +622,8 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
     named = arg(first, "faction")
     second_state = ENGINE.apply(state, first).state
     second = W.combat_reward_distinct_influence(_run(second_state, memory=Memory()))
-    assert named in {"bene_gesserit", "fremen"}
-    other = ({"bene_gesserit", "fremen"} - {named}).pop()
+    assert named in _PROPAGANDA_BEST
+    other = (_PROPAGANDA_BEST - {named}).pop()
     assert _args(second) == (
         "choose_distinct_combat_reward_influence",
         {"faction": other},
@@ -612,15 +631,18 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
 
 
 def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> None:
-    # Base seed 1, round 9, everyone passing: seat 1 (Gurney Halleck) wins
-    # Propaganda with a sandworm. Copy 1 asks frames of group 0, copy 2
-    # frames of group 2; the app runs copy 2's Evaluate once copy 1's two
-    # gains are applied. (Seed 0 reached the same shape until the 2026-10-06
-    # Intrigue effect gate moved its game: a seat no longer plays Call to
-    # Arms in a Reveal with nothing left to acquire. Until 5654d7f8 seat 1 won
-    # it here, then seat 3 (Lady Jessica) until Imperial Privilege's card
-    # draw became its own icon, 2026-10-10, OQ-027 (d), which moved the game
-    # at round 4 seat 0's Imperial Privilege visit.)
+    # Base seed 1, round 9, everyone passing: seat 0 (Feyd-Rautha Harkonnen,
+    # Emperor 5, Bene Gesserit 1) wins Propaganda with a sandworm. Copy 1
+    # asks frames of group 0, copy 2 frames of group 2; the app runs copy
+    # 2's Evaluate once copy 1's two gains are applied. (Seed 0 reached the
+    # same shape until the 2026-10-06 Intrigue effect gate moved its game: a
+    # seat no longer plays Call to Arms in a Reveal with nothing left to
+    # acquire. Until 5654d7f8 seat 1 won it here, then seat 3 (Lady Jessica)
+    # until Imperial Privilege's card draw became its own icon, 2026-10-10,
+    # OQ-027 (d), which moved the game at round 4 seat 0's Imperial
+    # Privilege visit, then seat 1 (Gurney Halleck) until the user ruling of
+    # 2026-10-14, an optional effect of the Agent turn lapsing at the turn's
+    # end (OQ-095 (2)), moved the heuristic games.)
     state = _sandworm_rewards("propaganda", 1)
     seat, round_number = _seat(state), state.round_number
     assert round_number == 9
@@ -655,52 +677,61 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
     assert isinstance(first, tuple)
     assert isinstance(second, tuple)
     assert taken == [*first, *second]
-    # Copy 1: Bene Gesserit best, then Fremen; Emperor and Spacing Guild tie
+    # Copy 1: Bene Gesserit best, then Fremen; Spacing Guild and Emperor
     # below them.
     assert values[0] == pytest.approx(
         {
-            "emperor": 2.7,
-            "spacing_guild": 2.7,
+            "emperor": 1.485,
+            "spacing_guild": 2.25,
             "bene_gesserit": 3.7125,
-            "fremen": 3.375,
+            "fremen": 2.5,
         }
     )
     assert first == ("bene_gesserit", "fremen")
-    # Copy 2 sees copy 1's gains: Bene Gesserit at 2 and Fremen at 5 are
-    # worth less, leaving Emperor, Spacing Guild and Bene Gesserit tied; the
-    # Evaluate's shuffle (rng seed 0) puts Bene Gesserit and Emperor first.
+    # Copy 2 sees copy 1's gains: Bene Gesserit at 2 is worth less and
+    # Fremen at 1 more, so Fremen now leads Bene Gesserit.
     assert values[2] == pytest.approx(
         {
-            "emperor": 2.7,
-            "spacing_guild": 2.7,
+            "emperor": 1.485,
+            "spacing_guild": 2.25,
             "bene_gesserit": 2.7,
-            "fremen": 1.485,
+            "fremen": 3.9625,
         }
     )
-    assert second == ("bene_gesserit", "emperor")
-    assert state.players[seat].influence.fremen == 5
+    assert second == ("fremen", "bene_gesserit")
+    influence = state.players[seat].influence
+    assert (influence.bene_gesserit, influence.fremen) == (3, 2)
 
 
 # -- combat_reward_spy ---------------------------------------------------------------
 
 
 def _spy_state() -> GameState:
-    # Base seed 1, round 5: seat 0 wins Seize Spice Refinery with 3 spies in
-    # supply; Fremkit and Sardaukar posts value 3.0, High Council 2.0.
-    return _reach("combat_reward_spy", choam=False, seed=1)
+    # Base seed 36, round 4: seat 1 wins Test of Loyalty with 3 spies in
+    # supply; the Sardaukar and Fremkit posts value 4.0, the next ones 3.0.
+    # (Seed 1, where seat 0 won Seize Spice Refinery, reached it until the
+    # user ruling of 2026-10-14 -- an optional effect of the Agent turn
+    # lapses at the turn's end, OQ-095 (2) -- moved the heuristic games; 36
+    # is the first seed from 2 that passes both tests below.)
+    return _reach("combat_reward_spy", choam=False, seed=36)
 
 
 def test_reward_spy_goes_to_the_best_free_post() -> None:
     state = _spy_state()
-    other = state.players[1]
-    state = with_player(
-        state,
-        1,
-        spy_post_ids=(*other.spy_post_ids, "fremen-desert-tactics-fremkit"),
-        spies_supply=other.spies_supply - 1,
-    )
+    fremkit = "fremen-desert-tactics-fremkit"
+    winner = _seat(state)
+    others = [s for s in range(4) if s != winner]
+    if not any(fremkit in state.players[s].spy_post_ids for s in others):
+        # Another seat's Spy takes Fremkit.
+        other = state.players[others[0]]
+        state = with_player(
+            state,
+            others[0],
+            spy_post_ids=(*other.spy_post_ids, fremkit),
+            spies_supply=other.spies_supply - 1,
+        )
     run = _run(state)
-    assert "fremen-desert-tactics-fremkit" not in {arg(a, "post_id") for a in run.legal}
+    assert fremkit not in {arg(a, "post_id") for a in run.legal}
     assert _args(W.combat_reward_spy(run)) == (
         "place_combat_reward_spy",
         {"post_id": "emperor-sardaukar-dutiful-service"},
@@ -734,7 +765,7 @@ def test_reward_spy_with_an_empty_supply_recalls_the_worst_post() -> None:
 
 
 def test_endgame_plays_first_then_matches_then_passes() -> None:
-    # Base seed 103: seat 1 holds Shadow Alliance (offered), and a face-up
+    # Base seed 280: seat 0 holds Shadow Alliance (offered), and a face-up
     # Battle for Arrakeen beside Propaganda. (Seed 18, where seat 2 also held
     # an unplayable Secure Spice Trade, reached this until Imperial
     # Privilege's card draw became its own icon, 2026-10-10, OQ-027 (d),
@@ -746,9 +777,12 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
     # unplayable Buy Access and a face-up desert mouse Objective beside
     # Propaganda, until a triggered Intrigue draw became the owner's own
     # step, 2026-10-10, OQ-106, which moved its game at round 3 seat 0's
-    # trash of Sardaukar Soldier; 103 is the first seed from 61 that offers a
-    # play and a match together and takes them in that order.)
-    state = _reach("endgame_intrigue", choam=False, seed=103, want="play_and_match")
+    # trash of Sardaukar Soldier; then seed 103, until the user ruling of
+    # 2026-10-14 (an optional effect of the Agent turn lapses at the turn's
+    # end, OQ-095 (2)) moved the heuristic games. 280, seat 0 (Feyd-Rautha
+    # Harkonnen), is the first seed from 103 that offers a play and a match
+    # together and takes them in that order.)
+    state = _reach("endgame_intrigue", choam=False, seed=280, want="play_and_match")
     seat = _seat(state)
     taken: list[tuple[str, dict[str, object]]] = []
     while state.decision_stack and state.decision_stack[-1].kind == "endgame_intrigue":
@@ -773,15 +807,18 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
 
 
 def test_endgame_plays_secure_spice_trade() -> None:
-    # CHOAM seed 9: seat 1 holds Secure Spice Trade and Mercenaries. (Seed 1
+    # CHOAM seed 20: seat 3 holds Secure Spice Trade alone. (Seed 1
     # until Imperial Privilege's card draw became its own icon, 2026-10-10,
     # OQ-027 (d), moved its game at round 4 seat 0's Imperial Privilege
     # visit; its seat now holds no Intrigue card and takes a wild match. Then
     # seed 3, where seat 2 held Secure Spice Trade and Inspire Awe, until the
     # Bene Gesserit Influence 4 card became the owner's own step, 2026-10-10,
-    # OQ-106, which moved its game at round 6 seat 3's Secrets visit; 9 is the
-    # first seed from 3 whose seat plays it.)
-    state = _reach("endgame_intrigue", choam=True, seed=9, want="several")
+    # OQ-106, which moved its game at round 6 seat 3's Secrets visit; then
+    # seed 9, where seat 1 held it beside Mercenaries, until the user ruling
+    # of 2026-10-14 (an optional effect of the Agent turn lapses at the
+    # turn's end, OQ-095 (2)) moved the heuristic games; 20 is the first seed
+    # from 9 whose seat plays it.)
+    state = _reach("endgame_intrigue", choam=True, seed=20, want="several")
     assert _args(W.endgame_intrigue(_run(state))) == (
         "play_intrigue",
         {"card_id": "intrigue:secure_spice_trade:0", "option": 0},
@@ -789,18 +826,21 @@ def test_endgame_plays_secure_spice_trade() -> None:
 
 
 def test_endgame_never_takes_a_match_the_app_would_not_score() -> None:
-    # Base seed 19: seat 2 holds Propaganda (wild) beside Battle for Imperial
-    # Basin and Skirmish (crysknife); the engine offers both matches, and the
-    # app's own pair order takes Skirmish. (Until the 2026-10-06
+    # Base seed 31: seat 0 holds Propaganda (wild) beside Test of Loyalty and
+    # Skirmish (crysknife); the engine offers both matches, and the app's own
+    # pair order takes Skirmish. (Until the 2026-10-06
     # card-comparison batch moved seed 1's game, the seat paired a crysknife
     # Objective there; until 5654d7f8 seed 1 paired Secure Imperial Basin.
     # Seed 12 then held Propaganda beside Battle for Imperial Basin and a
     # crysknife Objective until Imperial Privilege's card draw became its
     # own icon, 2026-10-10, OQ-027 (d), moved its game at round 6 seat 2's
-    # Imperial Privilege visit; it now offers one match. 19 is the first
-    # seed from 12 with exactly two, both for Propaganda, neither of them
-    # Battle for Arrakeen.)
-    state = _reach("endgame_intrigue", choam=False, seed=19, want="several")
+    # Imperial Privilege visit; it now offers one match. Seed 19, where
+    # seat 2 held them, followed until the user ruling of 2026-10-14 (an
+    # optional effect of the Agent turn lapses at the turn's end, OQ-095
+    # (2)) moved the heuristic games. 31 is the first seed from 19 with
+    # exactly two matches, both for Propaganda, neither of them Battle for
+    # Arrakeen.)
+    state = _reach("endgame_intrigue", choam=False, seed=31, want="several")
     seat = _seat(state)
     stray = DomainAction(
         "match_endgame_wild_icon",

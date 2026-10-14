@@ -44,10 +44,13 @@ from dune_imperium.rules.card_trash import (
 )
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
+    OptionalBlockKind,
+    OptionalEffectBlock,
     advance_after_effect,
     board_icon_is_pending,
     current_agent_effect_context,
     finish_board_icon,
+    short_of,
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
@@ -185,40 +188,66 @@ def legal_sardaukar_commander_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the visited space's Commander for 2 Solari, or its refusal."""
+    """Offer the visited space's Commander for 2 Solari.
+
+    Buying it is optional [Bloodlines p. 4]: it needs no refusal, and left
+    unused the offer lapses when the turn ends (OQ-095 (2), user ruling
+    2026-10-14).
+    """
 
     if not state.config.bloodlines:
         return ()
     context = _owned_effect_context(state, player)
     if context is None or not board_icon_is_pending(context, BOARD_ICON_COMMANDER):
         return ()
-    decline = DomainAction(action_id="decline_sardaukar_commander", actor=player)
-    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
     owner = state.players[player]
-    if (
-        space_id not in state.sardaukar_commander_space_ids
-        or owner.resources.solari < commander_cost(owner)
-    ):
-        return (decline,)
+    if _commander_offer_block(state, owner, context) is not None:
+        return ()
     skills = eligible_face_up_skill_ids(state, owner)
     if not skills:
         # OQ-031 (user decision 2026-09-07): every face-up Skill is one the
         # owner already holds, so the Commander is bought without a Skill.
-        return (
-            decline,
-            DomainAction(action_id="acquire_sardaukar_commander", actor=player),
+        return (DomainAction(action_id="acquire_sardaukar_commander", actor=player),)
+    return tuple(
+        DomainAction(
+            action_id="acquire_sardaukar_commander",
+            actor=player,
+            arguments=(("skill_id", skill_id),),
         )
-    return (
-        decline,
-        *(
-            DomainAction(
-                action_id="acquire_sardaukar_commander",
-                actor=player,
-                arguments=(("skill_id", skill_id),),
-            )
-            for skill_id in skills
-        ),
+        for skill_id in skills
     )
+
+
+def _commander_offer_block(
+    state: GameState, owner: PlayerState, context: dict[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """The visited space's Commander is gone, or its Solari are short."""
+
+    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
+    if space_id not in state.sardaukar_commander_space_ids:
+        return OptionalEffectBlock(OptionalBlockKind.COMMANDER_GONE)
+    cost = commander_cost(owner)
+    return short_of(OptionalBlockKind.SOLARI, cost, owner.resources.solari)
+
+
+def sardaukar_commander_block(
+    state: GameState, player: int
+) -> OptionalEffectBlock | None:
+    """Why the visit's pending Commander purchase is not offered, or None.
+
+    ``legal_sardaukar_commander_actions`` offers the purchase exactly when
+    this is None while the offer is pending: a Commander still on the
+    space and its Solari (``commander_cost``) [Bloodlines p. 4]. None when
+    no offer is pending for ``player``. The page greys the offer out with
+    this (``display.unavailable``, OQ-095 (2)).
+    """
+
+    if not state.config.bloodlines:
+        return None
+    context = _owned_effect_context(state, player)
+    if context is None or not board_icon_is_pending(context, BOARD_ICON_COMMANDER):
+        return None
+    return _commander_offer_block(state, state.players[player], context)
 
 
 def _take_face_up_skill(
@@ -260,19 +289,6 @@ def apply_sardaukar_commander_action(
     space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
     source = f"round:{state.round_number}:player:{player}:board:{space_id}"
     finish_board_icon(context, BOARD_ICON_COMMANDER)
-    if action.action_id == "decline_sardaukar_commander":
-        next_state = advance_after_effect(state, context)
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:{BOARD_ICON_COMMANDER}:declined",
-                    kind="sardaukar_commander_declined",
-                    payload=(("player", player), ("space_id", space_id)),
-                ),
-            ),
-        )
-
     owner = state.players[player]
     cost = commander_cost(owner)
     next_owner = replace(

@@ -35,6 +35,7 @@ import json
 import random
 import re
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from typing import Any, cast
 
 import pytest
@@ -55,7 +56,11 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     tleilaxu_card_for_instance,
 )
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+    Faction,
+)
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
     DestroyShieldWall,
@@ -84,15 +89,26 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
+from dune_imperium.content.uprising.leaders import FEYD_TRACK_BY_ID, FeydTrackReward
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.display import unavailable
 from dune_imperium.display.unavailable import NOT_NOW_CODE, unavailable_choices
-from dune_imperium.rules import UprisingRulesEngine, agent_effect_frame
+from dune_imperium.rules import (
+    UprisingRulesEngine,
+    agent_effect_frame,
+    leader_abilities,
+)
 from dune_imperium.rules.acquisition import (
+    acquirable_imperium_instance_ids,
+    acquirable_reserve_card_ids,
+    agent_card_acquisition_block,
     legal_imperium_acquisitions,
     legal_manipulated_acquisitions,
     legal_reserve_acquisitions,
@@ -108,9 +124,14 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TROOPS,
     AGENT_ICON_WATER,
     AUTOMATIC_AGENT_ICONS,
+    agent_card_cost_block,
     agent_card_effect_is_unavailable,
+    agent_card_trash_block,
     agent_icon_condition_holds,
+    box_has_optional_icon,
     box_in_progress,
+    box_is_optional,
+    box_refusal_needed,
     legal_agent_card_boost_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
@@ -120,8 +141,12 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
+    BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
+    desert_tactics_block,
     imperial_privilege_recall_targets,
+    imperial_privilege_trade_block,
     legal_board_effect_actions,
+    legal_desert_tactics_actions,
     legal_imperial_privilege_actions,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -154,25 +179,46 @@ from dune_imperium.rules.effect_interpreter import (
     trashable_discard_pile_ids,
 )
 from dune_imperium.rules.effects import (
+    BOARD_ICON_COMMANDER,
+    BOARD_ICON_TECH,
+    OptionalBlockKind,
     active_agent_card,
     agent_turn_space_id,
     board_icon_is_pending,
     current_agent_effect_context,
     is_grafted,
+    mandatory_board_icons_pending,
+    other_grafted_card_id,
     pending_agent_icons,
+    pending_board_icons,
     recallable_conflict_agents,
     turn_agent_in_conflict,
 )
-from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_start_is_open
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    replace_player,
+    turn_start_is_open,
+)
 from dune_imperium.rules.graft_boxes import (
     active_box,
     is_grafted_turn,
     other_box_state,
+    state_with_active_box,
     tagged,
 )
 from dune_imperium.rules.immortality import legal_research_bonus_actions
-from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.influence import MAX_INFLUENCE, influence_amount
 from dune_imperium.rules.intrigue import PLOT_FRAME_KINDS, legal_intrigue_play_actions
+from dune_imperium.rules.leader_abilities import (
+    EMPEROR_POST_IDS,
+    FACTION_POST_IDS,
+    LANDSRAAD_POST_IDS,
+    leader_board_repeat_block,
+    legal_leader_board_repeat_actions,
+    signet_optional_block,
+    units_deployment_blocked,
+)
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -181,9 +227,17 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.sardaukar import (
     PLASTEEL_BLADES_CARD_ID,
+    commander_cost,
+    legal_sardaukar_commander_actions,
     legal_skill_choice_actions,
+    sardaukar_commander_block,
 )
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.spies import legal_gather_intelligence_actions
+from dune_imperium.rules.tech import (
+    landsraad_tech_block,
+    legal_tech_acquisition_actions,
+)
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     legal_tleilaxu_acquisitions,
@@ -703,10 +757,26 @@ def _old_box_rows(state: GameState, player: int) -> tuple[DomainAction, ...]:
         )
         if choice_actions:
             actions.extend(choice_actions)
-        elif not agent_card_effect_is_unavailable(state):
+        elif not box_is_optional(state) and not agent_card_effect_is_unavailable(
+            state
+        ):
+            # 2026-10-14: an optional box resolves only through its choices.
             actions.append(
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )
+    if (
+        box_is_optional(state) or box_has_optional_icon(state)
+    ) and not box_refusal_needed(state):
+        # 2026-10-14 (OQ-095 (2), user ruling): an optional box offers no
+        # refusal; the turn's end lapses it. The refusal stays only as the
+        # way to the other grafted box during a bundled selection. Later
+        # the same day an optional icon's refusal went beside a mandatory
+        # icon too (Tread in Darkness's trash beside its draw).
+        actions = [
+            action
+            for action in actions
+            if action.action_id not in agent_effect_frame._REFUSALS
+        ]
     return tuple(actions)
 
 
@@ -778,7 +848,11 @@ def _old_can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
 def _old_imperial_privilege(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """``board_effects.legal_imperial_privilege_actions`` before the recall
     confirm (2026-10-02, user ruling 2026-09-30): with no target it offered
-    nothing, and the engine skipped the recall unasked."""
+    nothing, and the engine skipped the recall unasked.
+
+    Since the user ruling of 2026-10-14 (OQ-095 (2)) the optional Intrigue
+    trade is its own icon, offered beside the recall with no refusal (it
+    gated the recall before, with its decline)."""
 
     try:
         frame, context = current_agent_effect_context(state)
@@ -786,28 +860,29 @@ def _old_imperial_privilege(state: GameState, player: int) -> tuple[DomainAction
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
-        context, BOARD_ICON_IMPERIAL_PRIVILEGE
-    ):
+    if context.get("space_id") != "imperial_privilege":
         return ()
     owner = state.players[player]
-    if context.get("imperial_privilege_intrigue_resolved") is not True:
-        return (
-            DomainAction(action_id="decline_imperial_privilege_intrigue", actor=player),
-            *(
-                DomainAction(
-                    action_id="trash_intrigue_for_imperial_privilege",
-                    actor=player,
-                    arguments=(("card_id", card_id),),
-                )
-                for card_id in owner.intrigue_cards
-            ),
+    trades = (
+        tuple(
+            DomainAction(
+                action_id="trash_intrigue_for_imperial_privilege",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.intrigue_cards
         )
+        if board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE)
+        else ()
+    )
+    if not board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE):
+        return trades
     conflict = recallable_conflict_agents(
         owner,
         sent_this_turn=turn_agent_in_conflict(owner, context, "imperial_privilege"),
     )
     return (
+        *trades,
         *(
             DomainAction(
                 action_id="recall_agent_for_imperial_privilege",
@@ -1473,8 +1548,15 @@ def test_the_refactored_providers_offer_what_they_did(config: RulesetConfig) -> 
             for new, old, targets, confirm in _RECALLS:
                 expected = old(state, seat)
                 if targets(state, seat) == ():
-                    assert expected == ()
-                    expected = (DomainAction(action_id=confirm, actor=seat),)
+                    # Nothing to recall; Imperial Privilege's trade stays
+                    # beside the confirm (2026-10-14).
+                    assert not any(
+                        action.action_id.startswith("recall_") for action in expected
+                    )
+                    expected = (
+                        *expected,
+                        DomainAction(action_id=confirm, actor=seat),
+                    )
                 assert new(state, seat) == expected, (new.__name__, step)
             # A provider that gained a confirm offers what it did, and the
             # confirm exactly where its own frame, the seat's, offered nothing.
@@ -1609,3 +1691,527 @@ def test_recall_targets_never_grow_while_the_recall_waits(
     # 6-14 visits per ruleset, asked again 3-9 times, 2-7 of them after the
     # confirm was already offered.
     assert visits and compared > 0 and after_empty > 0
+
+
+# --- Optional effects of the Agent turn that offer nothing (2026-10-14) ------
+#
+# User ruling 2026-10-14 (OQ-095 (2)): an optional effect of the owner's
+# Agent turn offers no refusal, and the turn's end lapses it, so one that
+# cannot be used now offers no row at all. ``display.unavailable`` greys
+# each out with the block its provider gates it on.
+
+
+def _silent_optional_effects(
+    state: GameState, seat: int, legal: tuple[DomainAction, ...]
+) -> set[str]:
+    """The row keys (without their surface) of every optional effect of the
+    seat's own Agent turn that is pending and offers nothing in ``legal``.
+
+    Read from the legal list itself, not from the block functions the page
+    uses: an optional Agent box with no row of its own (each box judged
+    with itself active, as the frame offers it), Imperial Privilege's
+    Intrigue trade, Desert Tactics' trash, the visit's Sardaukar Commander
+    and Acquire Tech, Reverend Mother's repeat and a new High Council
+    seat's subcommittee.
+    """
+
+    top = state.decision_stack[-1]
+    if (
+        top.kind != FrameKind.AGENT_EFFECTS
+        or not isinstance(top.decision, PlayerDecision)
+        or top.decision.owner != seat
+        or legal_gather_intelligence_actions(state, seat)
+    ):
+        return set()
+    _, context = current_agent_effect_context(state)
+    if context.get("finishing") is True:
+        return set()
+    ids = {action.action_id for action in legal}
+    silent: set[str] = set()
+    grafted = is_grafted_turn(context)
+    locked = grafted and box_in_progress(state)
+    for box in (0, 1) if grafted else (0,):
+        view = state_with_active_box(state, box)
+        _, view_context = current_agent_effect_context(view)
+        if (
+            (locked and box != active_box(context))
+            or view_context.get("pending_agent_effect") is not True
+            or pending_agent_icons(view_context)
+            or not box_is_optional(view)
+        ):
+            continue
+        offered = agent_effect_frame.agent_box_rows(state, seat)[box]
+        if not offered:
+            key = f"optional_box:{view_context['card_id']}"
+            silent.add(f"{key}:box1" if box == 1 else key)
+    icons = set(pending_board_icons(context))
+    for icon, key, action_id in (
+        (
+            BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
+            "imperial_privilege_intrigue",
+            "trash_intrigue_for_imperial_privilege",
+        ),
+        ("trash", "desert_tactics_trash", "trash_card_for_desert_tactics"),
+        (BOARD_ICON_COMMANDER, "sardaukar_commander", "acquire_sardaukar_commander"),
+        (BOARD_ICON_TECH, "landsraad_tech", "acquire_tech"),
+        ("scouts_subcommittee", "choose_subcommittee", "choose_subcommittee"),
+    ):
+        if icon in icons and action_id not in ids:
+            silent.add(key)
+    if (
+        context.get("pending_leader_board_repeat") is True
+        and "pay_leader_board_repeat" not in ids
+    ):
+        silent.add("leader_board_repeat")
+    return silent
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_every_optional_effect_that_offers_nothing_is_greyed_out(
+    config: RulesetConfig,
+) -> None:
+    """At every decision of two seeded games per ruleset, each optional
+    effect of the seat's own Agent turn that is pending but offers nothing
+    has its greyed row, under "waiting" or "choice", whose reason says it
+    lapses when the turn ends; a "waiting" one says another effect of the
+    turn could still enable it. (The rows' legality, their specific
+    reasons and that they read nothing hidden are
+    ``test_greyed_out_rows_are_never_legal_and_never_leak``'s.)"""
+
+    met: set[str] = set()
+    for seed in range(2):
+        for step, (state, seat, legal) in enumerate(_decisions(config, seed)):
+            silent = _silent_optional_effects(state, seat, legal)
+            if not silent:
+                continue
+            found = cast(dict[str, Any] | None, unavailable_choices(state, seat, legal))
+            rows = {
+                str(row["key"]).split(":", 1)[1]: row
+                for row in (found["rows"] if found is not None else [])
+            }
+            for key in silent:
+                assert key in rows, (key, step, sorted(rows))
+                row = rows[key]
+                assert row["code"] != NOT_NOW_CODE, row
+                if key == "leader_board_repeat" and row["code"] == "timing":
+                    # It waits for the space's own effects first.
+                    assert row["surface"] == "waiting", row
+                    assert "사라짐" in row["reason_ko"], row
+                    continue
+                if row["surface"] == "waiting":
+                    assert "이번 차례의 다른 효과로 채우면 가능" in row["reason_ko"]
+                    assert "another effect of this turn" in row["reason"], row
+                else:
+                    assert row["surface"] == "choice", row
+                    assert row["reason_ko"].endswith(
+                        "차례가 끝나면 쓰지 않은 채 사라짐"
+                    ), row
+                assert "lapses" in row["reason"], row
+                met.add(key.split(":", 1)[0])
+    if config.bloodlines:
+        assert {"sardaukar_commander", "landsraad_tech"} <= met, met
+    assert met, "an optional effect offering nothing was met"
+
+
+def _own_effect_context(
+    state: GameState, seat: int
+) -> dict[str, Any] | None:
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return None
+    return cast(dict[str, Any], context)
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_the_optional_blocks_agree_with_their_providers(
+    config: RulesetConfig,
+) -> None:
+    """Each visit-level optional effect's block (``display.unavailable``
+    reads them) is None exactly when its provider offers it, at every
+    decision of two seeded games; and an optional Agent box that offers
+    nothing always has a block (``_optional_box_reason`` never falls back
+    to the generic reason)."""
+
+    compared = 0
+    for seed in range(2):
+        for step, (state, seat, _) in enumerate(_decisions(config, seed)):
+            context = _own_effect_context(state, seat)
+            if context is None:
+                continue
+            icons = set(pending_board_icons(context))
+            if BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE in icons:
+                trades = any(
+                    action.action_id == "trash_intrigue_for_imperial_privilege"
+                    for action in legal_imperial_privilege_actions(state, seat)
+                )
+                assert (imperial_privilege_trade_block(state, seat) is None) == trades
+                compared += 1
+            if "trash" in icons and context.get("space_id") == "desert_tactics":
+                assert (desert_tactics_block(state, seat) is None) == bool(
+                    legal_desert_tactics_actions(state, seat)
+                ), step
+            if BOARD_ICON_COMMANDER in icons:
+                assert (sardaukar_commander_block(state, seat) is None) == bool(
+                    legal_sardaukar_commander_actions(state, seat)
+                ), step
+                compared += 1
+            if BOARD_ICON_TECH in icons:
+                assert (landsraad_tech_block(state, seat) is None) == bool(
+                    legal_tech_acquisition_actions(state, seat)
+                ), step
+                compared += 1
+            if context.get("pending_leader_board_repeat") is True:
+                assert (leader_board_repeat_block(state, seat) is None) == bool(
+                    legal_leader_board_repeat_actions(state, seat)
+                ), step
+                compared += 1
+            for box in (0, 1) if is_grafted_turn(context) else (0,):
+                view = state_with_active_box(state, box)
+                if (
+                    box_is_optional(view)
+                    and not pending_agent_icons(current_agent_effect_context(view)[1])
+                    and not agent_effect_frame.active_box_can_act(view, seat)
+                ):
+                    assert unavailable._optional_box_reason(view, seat) is not None
+                    compared += 1
+    assert compared > 0
+
+
+# --- The optional gates before their block functions (2026-10-14) ----------
+#
+# The providers' inline gates became block functions the page reads
+# (``agent_card_cost_block``, ``agent_card_trash_block``,
+# ``agent_card_acquisition_block``, ``signet_optional_block``,
+# ``sardaukar_commander_block``, ``leader_board_repeat_block``); each
+# provider now asks ``block is None``. These copies are the gates as they
+# were written inline, so the refactor offers exactly what it did.
+
+_E = PersonalCardAgentEffect
+_OLD_OPTIONAL_DISCARDS = frozenset(
+    {
+        _E.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
+        _E.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
+        _E.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+        _E.MAY_DISCARD_TO_TAKE_CONTRACT,
+        _E.MAY_DISCARD_TO_DRAW_ONE,
+        _E.MAY_DISCARD_FOR_DEEP_COVER_SPY,
+        _E.MAY_DISCARD_FOR_WATER,
+    }
+)
+
+
+def _old_cost_gate(state: GameState, player: int) -> bool:
+    """The inline gates ``agent_card_cost_block`` replaced, by the box."""
+
+    _, context = current_agent_effect_context(state)
+    owner = state.players[player]
+    spice, solari = owner.resources.spice, owner.resources.solari
+    effect = active_agent_card(context).agent_effect
+    if effect is _E.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS:
+        if not owner.maker_hooks or spice < 2 or not state.current_conflict_ids:
+            return True
+        worm = not units_deployment_blocked(state, player) and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
+        return not state.shield_wall_present and not worm
+    if effect is _E.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI:
+        return owner.specimens < 1
+    if effect is _E.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU:
+        return owner.specimens < 2
+    if effect is _E.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
+        partner = other_grafted_card_id(context)
+        return not partner or partner not in owner.in_play
+    if effect is _E.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS:
+        return genetic_markers_reached(owner.research_space) < 2
+    if effect is _E.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH:
+        return not any(
+            getattr(owner, f"{unit}_{zone}") >= 1
+            for zone in ("garrison", "conflict")
+            for unit in ("troops", "commanders")
+        )
+    if effect is _E.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT:
+        return spice < 1
+    if effect is _E.PAY_TWO_WATER_TO_DRAW_TWO:
+        return owner.resources.water < 2
+    if effect is _E.MAY_PAY_FOUR_SPICE_FOR_VP:
+        return spice < 4
+    if effect is _E.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
+        return solari < 5 or len(owner.hand) < 2
+    if effect is _BRANCHING_PATH:
+        return (
+            Faction.BENE_GESSERIT.value not in owner.alliance_faction_ids
+            or not owner.intrigue_cards
+        )
+    if (
+        effect
+        is _E.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+    ):
+        return (
+            Faction.SPACING_GUILD.value not in owner.alliance_faction_ids
+            or spice < 2
+            or not owner.intrigue_cards
+        )
+    if effect in _OLD_OPTIONAL_DISCARDS:
+        return not owner.hand
+    return False
+
+
+_OLD_TRASH_BOXES = frozenset(
+    {
+        _E.TRASH_PERSONAL_CARD,
+        _E.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        _E.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        _E.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
+        _E.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        _E.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+        _E.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
+    }
+)
+
+
+def _old_trash_targets(state: GameState, player: int) -> tuple[str, ...] | None:
+    """``legal_agent_card_trash_actions``' eligible cards as computed
+    inline; None for Ruthless Leadership without a Commander in the
+    Conflict, whose provider offered nothing at all."""
+
+    _, context = current_agent_effect_context(state)
+    owner = state.players[player]
+    effect = active_agent_card(context).agent_effect
+    source_card_id = str(context["card_id"])
+    if (
+        effect is _E.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
+        and owner.commanders_conflict < 1
+    ):
+        return None
+    eligible = (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+    if effect is _E.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
+        eligible = owner.hand
+    if effect is _E.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE:
+        eligible = (source_card_id,) if source_card_id in owner.in_play else ()
+    if effect is _E.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE:
+        space_id = context.get("space_id")
+        visited = (
+            BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
+        )
+        eligible = (
+            tuple(
+                card_id
+                for card_id in owner.hand
+                if card_id != source_card_id
+                and Faction.EMPEROR in personal_card_for_instance(card_id).factions
+            )
+            if context.get("pending_faction_influence") is True
+            and visited is not None
+            and influence_amount(owner.influence, visited) <= MAX_INFLUENCE - 2
+            else ()
+        )
+    return eligible
+
+
+def _old_acquisition_gate(state: GameState, player: int) -> str | None:
+    """Tleilaxu Master's marker gate ("marker", offered nothing) and either
+    box's empty choice ("nothing", the refusal alone), as written inline."""
+
+    _, context = current_agent_effect_context(state)
+    owner = state.players[player]
+    effect = active_agent_card(context).agent_effect
+    if effect is _E.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
+        if genetic_markers_reached(owner.research_space) < 1:
+            return "marker"
+        if acquirable_reserve_card_ids(state, 6) or acquirable_imperium_instance_ids(
+            state, 6, player=player
+        ):
+            return None
+        return "nothing"
+    if effect is _E.ACQUIRE_WITH_SOLARI_TO_HAND:
+        solari = owner.resources.solari
+        if any(
+            count > 0 and reserve_cost(state, card_id) <= solari
+            for card_id, count in state.reserve_stacks
+        ) or acquirable_imperium_instance_ids(state, solari, player=player):
+            return None
+        return "nothing"
+    return None
+
+
+def _old_signet_offers_nothing(state: GameState, player: int) -> bool:
+    """The optional Signet Ring abilities' inline gates, true where the
+    ability offered its refusal alone."""
+
+    context = _own_effect_context(state, player)
+    assert context is not None
+    owner = state.players[player]
+    if owner.leader_id == "lady_jessica":
+        return owner.resources.spice < 1
+    if owner.leader_id == "staban_tuek":
+        post = context.get("staban_bonus_post")
+        if not isinstance(post, str):
+            return False
+        return not (
+            (post in LANDSRAAD_POST_IDS and owner.resources.spice >= 1)
+            or (post in FACTION_POST_IDS and owner.resources.solari >= 2)
+        )
+    if owner.leader_id == "princess_irulan":
+        return not (
+            any(
+                imperium_card_for_instance(instance_id).acquisition_cost == 1
+                for instance_id in acquirable_imperium_instance_ids(
+                    state, 1, player=player
+                )
+            )
+            or any(
+                count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost == 1
+                for card_id, count in state.reserve_stacks
+            )
+            or owner.hand
+        )
+    if owner.leader_id == "chani":
+        return owner.troops_conflict + owner.commanders_conflict < 1 and not (
+            owner.influence.fremen >= 2 and owner.resources.water >= 1
+        )
+    if owner.leader_id == "duncan_idaho":
+        space_id = context.get("space_id")
+        return not (
+            state.current_conflict_ids
+            and not units_deployment_blocked(state, player)
+            and isinstance(space_id, str)
+            and space_id in owner.agent_locations
+        )
+    if owner.leader_id == "gaius_helen_mohiam":
+        if context.get("listeners_paid") is True or context.get("leader_spy_recalled"):
+            return False
+        spies = leader_abilities._leader_spy_placement_actions(
+            state, player, context, LANDSRAAD_POST_IDS, offer_decline=False
+        )
+        return not spies and owner.resources.spice < 1
+    if owner.leader_id == "count_hasimir_fenring":
+        if context.get("leader_spy_recalled") is True:
+            return False
+        spies = leader_abilities._leader_spy_placement_actions(
+            state,
+            player,
+            context,
+            EMPEROR_POST_IDS,
+            deep_cover=True,
+            offer_decline=False,
+        )
+        return not counted_in_play(owner) and not spies
+    if owner.leader_id == "feyd_rautha_harkonnen":
+        stage_id = context.get("feyd_track_stage")
+        if not isinstance(stage_id, str):
+            return False
+        reward = FEYD_TRACK_BY_ID[stage_id].reward
+        if reward is FeydTrackReward.PAY_SOLARI_TO_TRASH:
+            return owner.resources.solari < 1 or not (
+                owner.hand or owner.discard_pile or counted_in_play(owner)
+            )
+        if reward is FeydTrackReward.OPTIONAL_TRASH:
+            return not (owner.hand or owner.discard_pile or counted_in_play(owner))
+    return False
+
+
+def _old_commander_gate(state: GameState, player: int) -> bool:
+    context = _own_effect_context(state, player)
+    assert context is not None
+    owner = state.players[player]
+    return context.get(
+        "space_id"
+    ) not in state.sardaukar_commander_space_ids or owner.resources.solari < (
+        commander_cost(owner)
+    )
+
+
+def _old_repeat_gate(state: GameState, player: int) -> bool:
+    context = _own_effect_context(state, player)
+    assert context is not None
+    return (
+        mandatory_board_icons_pending(context)
+        or state.players[player].resources.water < 1
+    )
+
+
+def _optional_states(
+    config: RulesetConfig, seed: int
+) -> Iterator[tuple[GameState, int, dict[str, Any]]]:
+    """Every own Agent-turn decision of a seeded game, with each grafted
+    box made active in turn, and its effect-frame context."""
+
+    for state, seat, _ in _decisions(config, seed):
+        context = _own_effect_context(state, seat)
+        if context is None:
+            continue
+        for box in (0, 1) if is_grafted_turn(context) else (0,):
+            view = state_with_active_box(state, box)
+            view_context = _own_effect_context(view, seat)
+            assert view_context is not None
+            yield view, seat, view_context
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_the_optional_block_functions_are_the_old_gates(
+    config: RulesetConfig,
+) -> None:
+    """At every own Agent-turn decision of three seeded games (each grafted
+    box made active in turn), each block function blocks exactly where the
+    gate it replaced did. The seeded games are also run synthetically
+    poorer: with no spice, Solari, water, cards in hand or Intrigue cards,
+    which is where the gates close."""
+
+    compared = 0
+    for seed in range(3):
+        for view, seat, context in _optional_states(config, seed):
+            owner = view.players[seat]
+            poor = replace(
+                owner,
+                resources=Resources(water=0),
+                hand=(),
+                intrigue_cards=(),
+                # A specimen is a troop out of the supply (12 in all).
+                troops_supply=owner.troops_supply + owner.specimens,
+                specimens=0,
+            )
+            poorer = replace(view, players=replace_player(view.players, poor))
+            for state in (view, poorer):
+                if context.get("pending_agent_effect") is True:
+                    assert (agent_card_cost_block(state, seat) is not None) == (
+                        _old_cost_gate(state, seat)
+                    ), seed
+                    effect = active_agent_card(context).agent_effect
+                    if effect in _OLD_TRASH_BOXES:
+                        old = _old_trash_targets(state, seat)
+                        block = agent_card_trash_block(state, seat)
+                        if old is None:
+                            assert block is not None
+                            assert block.kind is (
+                                OptionalBlockKind.NO_COMMANDER_IN_CONFLICT
+                            )
+                        else:
+                            assert (block is None) == bool(old), seed
+                    gate = _old_acquisition_gate(state, seat)
+                    acquisition = agent_card_acquisition_block(state, seat)
+                    assert (acquisition is None) == (gate is None), seed
+                    if gate == "marker":
+                        assert acquisition is not None
+                        assert acquisition.kind is OptionalBlockKind.GENETIC_MARKERS
+                    if effect is _E.LEADER_SIGNET:
+                        assert (signet_optional_block(state, seat) is not None) == (
+                            _old_signet_offers_nothing(state, seat)
+                        ), (seed, owner.leader_id)
+                    compared += 1
+                if state.config.bloodlines and board_icon_is_pending(
+                    context, BOARD_ICON_COMMANDER
+                ):
+                    assert (sardaukar_commander_block(state, seat) is not None) == (
+                        _old_commander_gate(state, seat)
+                    ), seed
+                    compared += 1
+                if context.get("pending_leader_board_repeat") is True:
+                    assert (leader_board_repeat_block(state, seat) is not None) == (
+                        _old_repeat_gate(state, seat)
+                    ), seed
+                    compared += 1
+    assert compared > 0

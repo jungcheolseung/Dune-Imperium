@@ -88,6 +88,7 @@ from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue import plays_turn_start_option
 from dune_imperium.server.access import (
     ANONYMOUS,
     AccessMode,
@@ -3047,6 +3048,14 @@ def _serialize_action(
     ``subcommittee_preview`` lists the Arrakeen Scouts subcommittees the
     seat could join once the step takes its High Council seat, and why the
     others cannot be (``subcommittee_preview``).
+
+    ``turn_start`` (present and true only then) marks a play of an "At the
+    start of your turn" card: Litany Against Fear's ``play_turn_start_card``
+    and Withdrawn's turn-start ``play_intrigue`` option
+    (``rules.intrigue.plays_turn_start_option``). The page asks for those
+    first and alone, in a window of the seat's own page that sends nothing
+    when it is put aside (static/turn.js, user decision 2026-10-14). It is
+    read off the action alone, and only the seat's own rows carry it.
     """
 
     outcome = _dry_run(session, action)
@@ -3083,6 +3092,8 @@ def _serialize_action(
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
+    if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
+        serialized["turn_start"] = True
     title = agent_box_row_title(session.state, action)
     if title is not None:
         serialized["detail_title"], serialized["detail_title_ko"] = title

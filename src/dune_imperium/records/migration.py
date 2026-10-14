@@ -219,6 +219,7 @@ def migrate_record(
     graft = (
         _GraftSlot() if replay.action_codec_version < GRAFT_BOXES_CODEC else None
     )
+    drops_refusals = replay.action_codec_version < OPTIONAL_REFUSALS_CODEC
 
     def ended(divergence: Divergence | None, at: GameState) -> MigratedRecord:
         return MigratedRecord(
@@ -261,6 +262,14 @@ def migrate_record(
                     else step
                 )
                 bridged = _bridge(engine, state, asked, bridges)
+                if (
+                    bridged is None
+                    and drops_refusals
+                    and isinstance(recorded, DomainAction)
+                    and recorded.action_id in _OPTIONAL_REFUSALS
+                ):
+                    dropped.append((index, OPTIONAL_REFUSAL_DROPPED))
+                    break
                 if bridged is None:
                     divergence = Divergence(
                         recorded_index=index,
@@ -313,6 +322,37 @@ GRAFT_BOXES_CODEC: Final = 143
 GRAFT_SWITCH: Final = "switch_graft_card"
 GRAFT_SWITCH_DROPPED: Final = "graft_switch"
 GRAFT_BOX_TAGGED: Final = "graft_box"
+
+# Codec v146 (user ruling 2026-10-14, OQ-095 (2)): an optional effect of the
+# Agent turn ("may", an arrow cost, a black trash icon [FAQ p. 3]) offers no
+# refusal and lapses when the turn ends. A recording engine's refusal of one
+# has no counterpart: this engine keeps the effect pending and the recorded
+# ``finish_agent_turn`` lapses it, which leaves the same game state. Such a
+# step is dropped once the engine refuses it and no bridge answers instead
+# (a refusal this engine still offers -- a bundled selection part way
+# through while the other grafted box waits -- is applied as recorded).
+OPTIONAL_REFUSALS_CODEC: Final = 146
+OPTIONAL_REFUSAL_DROPPED: Final = "optional_refusal"
+_OPTIONAL_REFUSALS: Final = frozenset(
+    {
+        "decline_agent_card_acquisition",
+        "decline_agent_card_discard",
+        "decline_agent_card_intrigue_payment",
+        "decline_agent_card_payment",
+        "decline_agent_card_recall",
+        "decline_agent_card_trash",
+        "decline_corrinth_city_payment",
+        "decline_imperial_privilege_intrigue",
+        "decline_leader_board_repeat",
+        "decline_leader_card_trash",
+        "decline_leader_signet_payment",
+        "decline_other_memories",
+        "decline_sardaukar_commander",
+        "decline_subcommittee",
+        "decline_tech",
+        "resolve_desert_tactics_without_trash",
+    }
+)
 
 
 @dataclass

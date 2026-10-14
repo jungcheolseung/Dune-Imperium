@@ -197,7 +197,9 @@ def test_visiting_a_commander_space_offers_the_purchase_with_face_up_skills() ->
     state = _visit(state, "dutiful_service")
 
     actions = _commander_actions(state)
-    assert "decline_sardaukar_commander:" in actions
+    # Buying is optional [Bloodlines p. 4]: no refusal row, the turn end
+    # lapses an unused offer (OQ-095 (2), user ruling 2026-10-14; codec v146).
+    assert "decline_sardaukar_commander:" not in actions
     offered = {key.split(":")[1] for key in actions if key.startswith("acquire")}
     assert offered == {
         skill_for_instance(skill).skill_id for skill in state.skill_face_up
@@ -270,10 +272,7 @@ def test_without_a_choosable_skill_the_commander_is_bought_without_one() -> None
     )
     state = _visit(state, "dutiful_service")
 
-    assert set(_commander_actions(state)) == {
-        "decline_sardaukar_commander:",
-        "acquire_sardaukar_commander:",
-    }
+    assert set(_commander_actions(state)) == {"acquire_sardaukar_commander:"}
     with pytest.raises(ValueError, match="not a legal Sardaukar Commander choice"):
         apply_sardaukar_commander_action(
             state,
@@ -290,16 +289,37 @@ def test_without_a_choosable_skill_the_commander_is_bought_without_one() -> None
     assert [event.kind for event in bought.events] == ["sardaukar_commander_acquired"]
 
 
-def test_without_two_solari_only_the_refusal_is_offered() -> None:
+def test_without_two_solari_nothing_is_offered_and_the_turn_end_lapses_it() -> None:
+    # Before codec v146 only ``decline_sardaukar_commander`` was offered and
+    # the turn waited on it; since the user ruling of 2026-10-14 (OQ-095
+    # (2)) the optional purchase offers nothing it cannot pay, holds no turn
+    # end back, and the owner's press lapses it. The Commander stays.
     state = _turn_state(_owner(resources=Resources(solari=1, water=1)))
     state = _visit(state, "deliver_supplies")
 
-    assert set(_commander_actions(state)) == {"decline_sardaukar_commander:"}
-    declined = apply_sardaukar_commander_action(
-        state, DomainAction(action_id="decline_sardaukar_commander", actor=0)
-    )
-    assert declined.events[0].kind == "sardaukar_commander_declined"
-    assert "deliver_supplies" in declined.state.sardaukar_commander_space_ids
+    assert set(_commander_actions(state)) == set()
+    engine = UprisingRulesEngine()
+    while steps := [
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id
+        in ("resolve_faction_influence", "resolve_agent_card_effect")
+    ]:
+        state = engine.apply(state, steps[0]).state
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in engine.legal_actions(state, 0)
+    finished = engine.apply(state, finish)
+    assert [
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "board_effect_lapsed"
+    ] == [
+        {"effect": "sardaukar_commander", "player": 0, "space_id": "deliver_supplies"}
+    ]
+    assert "sardaukar_commander_declined" not in {
+        event.kind for event in finished.events
+    }
+    assert "deliver_supplies" in finished.state.sardaukar_commander_space_ids
 
 
 def test_a_space_without_a_commander_offers_nothing() -> None:

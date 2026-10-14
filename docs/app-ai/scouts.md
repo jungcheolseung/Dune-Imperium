@@ -314,9 +314,9 @@ No value threshold applies: the line was chosen already (its value was > 0 or it
 - **`agent_effects`** (High Council seat taken; `legal_subcommittee_choice_actions`, `rules/scouts_effects.py:1370`):
   one PROMPT source "Subcommittee" (Optional, `explicit=False`) realised by `choose_subcommittee` = 
   `SubcommitteeOfferAbility.E` with `excl = pending_subcommittee_exclude` (:1337); it stores the picked id in
-  `memory.intents[("subcommittee", round, seat)]` (plan §4.6). `decline_subcommittee` joins `t.declines`, so it is taken
-  only when no prompt source is worth > 0 (the existing `skip` order, before `finish_agent_turn`). With nothing joinable
-  now only the decline is legal; because joinability is recomputed at every decision, a line that becomes affordable
+  `memory.intents[("subcommittee", round, seat)]` (plan §4.6). Until codec v145 `decline_subcommittee` joined `t.declines`
+  and was taken only when no prompt source was worth > 0; since v146 (OQ-095 (2) addition) the turn offers no refusal and
+  an unused key lapses at `finish_agent_turn`. With nothing joinable now no row is offered; because joinability is recomputed at every decision, a line that becomes affordable
   later in the turn reappears as a key (the free order of OQ-076 C needs no extra term).
 - **`reveal`** (Corrinth City's seat; `queue_reveal_subcommittee_offer`, `rules/scouts_offers.py:70`): the same PROMPT
   source in the post-reveal prompt (`excl = ""`); on the End Turn path `decline_subcommittee` is one of the Optional

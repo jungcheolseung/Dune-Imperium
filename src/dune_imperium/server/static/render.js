@@ -1026,7 +1026,9 @@ function renderBanner() {
       meta.textContent = promptText(decision.prompt);
       info.append(prompt, meta);
     } else {
-      prompt.textContent = promptText(decision.prompt);
+      /* The turn-start window asks its own question (turn.js); the engine's
+         prompt is the turn's, which follows once it is put aside. */
+      prompt.textContent = turnStartWindowPrompt() || promptText(decision.prompt);
       meta.textContent = t("render.seat_you", { seat: decision.owner });
       info.append(prompt, meta);
 

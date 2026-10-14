@@ -525,3 +525,25 @@ sandworm 3, 마지막 라운드 보유 4)가 복원되지 않았다. 5081 포지
 `s1613/p3`·`s1904/p3`), 새것 4(Endgame `s652/p3`, 마지막 라운드 보유 `s2/p2`·`s369/p1`·`s449/p2`)다. 같은 codec v144의 Urgent Shigawire 변경
 ([OQ-107](../rules/open-questions.md))은 이 문제집을 움직이지 않는다(그 변경까지 넣은 엔진에서도 131/131). 채점은 하지 않았다.
 `tests/unit/test_problem_set.py`는 고칠 것이 없었다.
+
+## 재채굴 (2026-10-14, 선택 효과는 거절 없이 턴 종료로 사라짐, codec v146)
+
+Agent turn의 선택 효과("may", 화살표 비용, 검은 trash 아이콘 `[FAQ p. 3]`)가 거절 없이 제시되고 턴 종료를 막지 않게 되자([OQ-095](../rules/open-questions.md)
+(2)의 2026-10-14 보강, 사용자 판정 "선택행동의 경우 거절 버튼이 왜 따로 있는거야 그럼?") heuristic이 고르는 수순이 달라져(거절 대신 턴 종료,
+Imperial Privilege의 교환과 회수가 함께 제시됨) 커밋된 131개가 모두 복원되지 않았다(heuristic 90, 5081 41). 위 "다시 캐는 명령" 세 줄을 그
+브랜치의 트리에서 worker 4로 실행했고(5081은 메인 체크아웃의 `checkpoints/2026-09-22/exploit/champion-5081.pt`), `check`가 123개 모두 복원했다
+(sandworm 80, 마지막 라운드 보유 34, Endgame 9).
+
+같은 날 뒤이은 판정 둘이 문제집을 다시 건드렸다: Lady Jessica의 Other Memories·Tread in Darkness의 trash(의무 draw 옆)에서도 거절을 없앤
+것과, Litany Against Fear·Withdrawn을 차례 시작에 단독으로 묻는 엔진 창(`decline_turn_start`)이다. 그 창은 그 카드를 든 좌석에서만 열려
+다른 좌석에게 숨은 카드를 알려 주었으므로(결정 창과 공개 이벤트가 나타나는지는 공개 사실로만 정해진다, [lessons](../lessons.md)) 엔진에서
+다시 뺐다 — 창이 있던 동안 캔 문제집은 131개(sandworm 80, 마지막 라운드 보유 37, Endgame 14)였고, 창을 뺀 엔진에서는 그 가운데 34개
+(heuristic 30, 5081 4)가 복원되지 않는다. 창을 뺀 엔진에서 같은 세 줄과 `check`를 다시 실행했다(worker 4, 5081은 위와 같은 파일). 최종
+결과는 **123개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 34(heuristic 33 + 5081 1), Endgame 9(heuristic)이며 `check`가
+**123/123** 복원을 확인했다. 포지션 id는 첫 재채굴의 123개와 모두 같다: 109개는 선택 번호까지 같고, 14개(heuristic)는 Other Memories나
+Tread in Darkness의 trash가 제시된 자리에서 거절 행이 빠져 선택 번호가 하나씩 밀렸을 뿐 지문과 길이가 같다. 판의 흐름을 바꾼 것은 차례
+시작 창이었다. 창이 있던 131개와 포지션 id로 견주면 그대로 110(선택 번호와 지문까지 같은 것 97, 지문은 같고 선택 번호만 바뀐 것 8 — 수가
+1~5 줄어든 것 7, 수는 같은 것 1, 5081의 4개 포함 —, 지문까지 바뀐 것 5), 빠진 것 21(Endgame 9, 마지막 라운드 보유 8, sandworm 4), 새것
+13(마지막 라운드 보유 5, sandworm 4, Endgame 4)이다. 수가 줄어든 7개 가운데 3개(5081 `s9/p2`·`s11/p3`, heuristic `s12/p1`)는 옛 선택
+목록이 이 목록에서 차례 시작마다 창의 거절을 끼운 것과 정확히 같다. 문항의 탐지 조건과 정답은 그대로다; 개수가 오르내린 것은 heuristic
+판의 흐름이 바뀌어 그런 장면이 나오는 판이 달라진 탓이다. 채점은 하지 않았다.

@@ -236,8 +236,10 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
         for action in legal
     }
     assert rows["choose_subcommittee"]["undoable"] is True
-    assert rows["decline_subcommittee"]["undoable"] is True
-    # Neither is the seat taking its seat: no preview on either.
+    # The Agent turn offers no refusal: the unused offer lapses at the turn
+    # end (OQ-095 (2), user ruling 2026-10-14; codec v146).
+    assert "decline_subcommittee" not in rows
+    # Opening the list is not the seat taking its seat: no preview on it.
     assert "subcommittee_preview" not in rows["choose_subcommittee"]
     chosen = ENGINE.apply(
         seated, DomainAction(action_id="choose_subcommittee", actor=0)

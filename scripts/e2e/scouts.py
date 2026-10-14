@@ -89,8 +89,15 @@ check = Check()
 # triggered draw held as the owner's own step (user ruling 2026-10-10,
 # OQ-106) moves seed 84 off its three-card market (the previous commit's
 # engine still gives it); the same scan from 85 finds seed 87 first with
-# all three.
-SEEDS = (21, 58, 87)
+# all three. Codec v146 (an Agent turn's optional effects lapse at the
+# turn-end press instead of being declined; Litany Against Fear and Withdrawn
+# get a turn-start window) moves seed 21 off its two-card market. The browser
+# walk of seeds 1-48 (this script's own `create` and `play`, one game per
+# seed) finds seed 9 first with the two-card market and the secret pick (its
+# four buttons and the seat's own waiting pick) together, so it replaces 87,
+# which now shows the pick but no market: 21 keeps the grey lines, the skipped
+# choice and the sealed bid, 58 the three-card market and the open call.
+SEEDS = (21, 58, 9)
 # COUNCIL_JS's walk takes a council seat with a subcommittee still to join
 # (round 4; the list then offers two joins and the decline). Seed 21 until
 # OQ-095's explicit Agent-turn end moved its seat to round 7, when every
@@ -999,14 +1006,23 @@ def check_face_down(page, base: str, saves: Path, label: str) -> bool:
 # all.
 # Six games cover all sixteen missions; seat 0 joins every mission it can,
 # so each parking mission has troops on the board.
+# Codec v146 (an Agent turn's optional effects lapse at the turn-end press
+# instead of being declined, so the heuristic seats play differently) moved
+# the base pool's seed 19 off Planetary Exploration and the Immortality
+# pool's seed 4 off CHOAM Escort (2026-10-14). Both pools mix their missions,
+# so a search of seeds 1-40 of both pools (a game's coverage read through
+# check_pieces, seat 0 playing CHOOSE_JS as here) replaced them with
+# Immortality-pool seed 19 (Planetary Exploration, Security Detail, Weirding
+# Warfare) and seed 40 (CHOAM Escort, Desert Riding, Tleilaxu Offering); the
+# other four games are unchanged.
 UPRISING_POOL = ("choam",)
 IMMORTALITY_POOL = ("choam", "immortality")
 PIECE_GAMES: tuple[tuple[tuple[str, ...], int, int], ...] = (
     (UPRISING_POOL, 2, 3),  # CHOAM Research, Prison Planet, Urban Surveillance
     (UPRISING_POOL, 7, 3),  # Desert Riding, Imperial Reserve, Send for Aid
-    (UPRISING_POOL, 19, 3),  # Planetary Exploration, Security Detail,
-    # Send for Aid
-    (IMMORTALITY_POOL, 4, 3),  # CHOAM Escort, Tleilaxu Offering, Weirding Warfare
+    (IMMORTALITY_POOL, 19, 3),  # Planetary Exploration, Security Detail,
+    # Weirding Warfare
+    (IMMORTALITY_POOL, 40, 3),  # CHOAM Escort, Desert Riding, Tleilaxu Offering
     (IMMORTALITY_POOL, 16, 3),  # Emperor's Schemes, Fedaykin Assistance
     (IMMORTALITY_POOL, 36, 3),  # Back Room Deal, Coordinate With The Emperor,
     # Sponsored Research

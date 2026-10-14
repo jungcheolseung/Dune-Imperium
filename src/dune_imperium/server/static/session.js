@@ -205,7 +205,9 @@ function adoptSnapshot(snapshot, seat) {
      arriving meanwhile must not put the live table back under it. */
   if (!state.review) {
     state.view = snapshot.view || null;
-    state.actions = snapshot.actions || null;
+    /* At a turn start that offers a turn-start card, only those plays
+       (turn.js turnStartWindowOf). */
+    state.actions = turnStartWindowOf(snapshot.actions || null);
     state.log = snapshot.log ? mergeLog(state.log, snapshot.log) : null;
     if (snapshot.log && !state.log) refreshAgain = true;
   }

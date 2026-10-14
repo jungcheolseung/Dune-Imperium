@@ -30,11 +30,14 @@ from dune_imperium.rules.contracts import (
     contract_gain_opens_market,
 )
 from dune_imperium.rules.effects import (
+    OptionalBlockKind,
+    OptionalEffectBlock,
     active_agent_card,
     advance_after_effect,
     current_agent_effect_context,
     recruit_shortfall_events,
     recruit_troops,
+    short_of,
 )
 from dune_imperium.rules.frames import (
     OWED_INTRIGUE,
@@ -272,10 +275,31 @@ def legal_agent_card_acquisitions(
     ):
         # Tleilaxu Master: "[one genetic marker]: you may acquire a card
         # costing 6 or less" [card face], judged now (OQ-028).
-        if genetic_markers_reached(state.players[player].research_space) < 1:
+        if _tleilaxu_master_marker_block(state.players[player]) is not None:
             return ()
+    elif (
+        source.agent_effect
+        is not PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
+    ):
+        return ()
+    return (
+        DomainAction(action_id="decline_agent_card_acquisition", actor=player),
+        *_agent_card_acquisition_targets(state, player, source.agent_effect),
+    )
+
+
+def _tleilaxu_master_marker_block(owner: PlayerState) -> OptionalEffectBlock | None:
+    markers = genetic_markers_reached(owner.research_space)
+    return short_of(OptionalBlockKind.GENETIC_MARKERS, 1, markers)
+
+
+def _agent_card_acquisition_targets(
+    state: GameState, player: int, effect: PersonalCardAgentEffect | None
+) -> tuple[DomainAction, ...]:
+    """The acquisitions Tleilaxu Master's or Price is No Object's box offers."""
+
+    if effect is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
         return (
-            DomainAction(action_id="decline_agent_card_acquisition", actor=player),
             *(
                 DomainAction(
                     action_id="acquire_reserve_by_card",
@@ -295,12 +319,6 @@ def legal_agent_card_acquisitions(
                 )
             ),
         )
-    if (
-        source.agent_effect
-        is not PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
-    ):
-        return ()
-
     solari = state.players[player].resources.solari
     reserve_actions = tuple(
         DomainAction(
@@ -323,10 +341,44 @@ def legal_agent_card_acquisitions(
             state, solari, player=player
         )
     )
-    return (
-        DomainAction(action_id="decline_agent_card_acquisition", actor=player),
-        *reserve_actions,
-        *imperium_actions,
+    return (*reserve_actions, *imperium_actions)
+
+
+def agent_card_acquisition_block(
+    state: GameState, player: int
+) -> OptionalEffectBlock | None:
+    """Why Tleilaxu Master's or Price is No Object's box acquires nothing now.
+
+    ``legal_agent_card_acquisitions`` offers Tleilaxu Master's acquisition
+    only with one genetic marker reached (``_tleilaxu_master_marker_block``)
+    and either box's cards exactly as ``_agent_card_acquisition_targets``
+    names them; with none, nothing is in reach (``needed``: Tleilaxu
+    Master's cost cap, 0 for Price is No Object's Solari, ``held`` of them).
+    None for any other box. The page greys an optional box that offers
+    nothing out with it (``display.unavailable``, OQ-095 (2)).
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    effect = active_agent_card(context).agent_effect
+    owner = state.players[player]
+    if effect is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
+        marker = _tleilaxu_master_marker_block(owner)
+        if marker is not None:
+            return marker
+        needed = TLEILAXU_MASTER_COST
+    elif effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND:
+        needed = 0
+    else:
+        return None
+    if _agent_card_acquisition_targets(state, player, effect):
+        return None
+    return OptionalEffectBlock(
+        OptionalBlockKind.NOTHING_TO_ACQUIRE,
+        needed=needed,
+        held=owner.resources.solari,
     )
 
 

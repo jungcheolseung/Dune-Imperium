@@ -58,7 +58,7 @@ from dune_imperium.rules.combat import (
 )
 from dune_imperium.rules.combat_deployment import FINISHING_KEY
 from dune_imperium.rules.engine import UprisingRulesEngine, _advance_automatic
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind
 from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.persistence import SaveError
@@ -732,16 +732,18 @@ def test_a_usurp_trash_after_the_press_is_part_of_that_press(
 
 
 def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
-    # Seed 12 (bloodlines, three "random" AI opponents): a Holy War-like
+    # Seed 22 (bloodlines, three "random" AI opponents): a Holy War-like
     # effect from an AI seat forces seat 0 to lose one unit while that AI's
     # own turn is still open. Answering it is not a turn end of seat 0's.
     # (Re-searched 2026-09-26: the card-transcription audit's rules fixes
     # moved the old seed 12 off this shape. Re-searched again 2026-10-01:
     # every Agent turn now waits for its owner's finish_agent_turn (OQ-095),
-    # which moved seed 7 off it; seed 12 is the only one of 0-39 reaching
-    # it under this index-0 walk.)
+    # which moved seed 7 off it; seed 12 was the only one of 0-39 reaching
+    # it under this index-0 walk. Re-searched 2026-10-14 -- v146: optional
+    # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
+    # moved seed 12 off it; of 0-79 seeds 22, 56 and 72 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=12, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=22, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
@@ -1098,6 +1100,68 @@ def test_an_owed_emperor_track_spy_holds_the_turn_end_ready_flag() -> None:
     assert agent_turn_end_ready(session.state) == 0
 
 
+def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
+    # A Tech tile's acquire effects wait in the turn for the owner's free
+    # order (OQ-098) and must be resolved before it ends
+    # (``combat_deployment.legal_agent_turn_finish_actions``): bought at an
+    # Assembly Hall visit with nothing else left, Glowglobes' Influence
+    # keeps the page from being told that only optional steps are left.
+    tech = RulesetConfig(bloodlines=True, tech_module=True)
+    starters = starting_deck_instance_ids(0)
+    owner = PlayerState(
+        player_id=0,
+        hand=starters[:5],
+        deck=starters[5:],
+        resources=Resources(spice=6),
+    )
+    state = GameState(
+        config=tech,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        tech_stacks=(
+            ("glowglobes", "training_depot", "panopticon"),
+            ("gene_locked_vault", "delivery_bay", "servo_receivers"),
+            ("advanced_data_analysis", "plasteel_blades", "spy_drones"),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    def take(state: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in _ENGINE.legal_actions(state, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return _ENGINE.apply(state, action).state
+
+    visited = take(
+        take(state, "agent_turn", space_id="assembly_hall"), "resolve_board_effect"
+    )
+    assert agent_turn_end_ready(visited) == 0
+    bought = take(visited, "acquire_tech", tech_id="glowglobes")
+    assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert dict(bought.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY]
+    assert {action.action_id for action in _ENGINE.legal_actions(bought, 0)} == {
+        "resolve_tech_acquire_effect"
+    }
+    assert agent_turn_end_ready(bought) is None
+
+    resolved = take(bought, "resolve_tech_acquire_effect", faction="emperor")
+    assert agent_turn_end_ready(resolved) == 0
+    assert DomainAction("finish_agent_turn", 0) in _ENGINE.legal_actions(resolved, 0)
+
+
 _ENGINE = UprisingRulesEngine()
 _SIGNET = "player:0:starter:signet_ring:0"
 _GHOLA = "tleilaxu:ghola:0"
@@ -1403,15 +1467,18 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # seed 21 was the first of 0-39 whose end is a finish_agent_turn. Seed
     # 21 stopped reaching it at 5654d7f8 (a Combat Intrigue pass right after
     # a card play no longer counts as a consecutive pass, 2026-10-07), which
-    # changes the random walk's games; re-searched then, seed 14 is the
-    # first of 0-39 (round 8; 16, 20, 23, 28 and 36 reach it too).
+    # changes the random walk's games; re-searched then, seed 14 was the
+    # first of 0-39 (round 8; 16, 20, 23, 28 and 36 reached it too). v146:
+    # optional Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14),
+    # which changes the random walk's legal lists; re-searched then, seed 2
+    # is the first of 0-59 (27 and 59 reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=14)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=2)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(14 * 9973 + 1)
+    rng = random.Random(2 * 9973 + 1)
 
     found = False
     for _ in range(6000):
@@ -1615,7 +1682,10 @@ def test_undoing_a_leader_pick_closes_its_unit_and_a_new_pick_holds_once() -> No
 # a held unit end comes before the chance outcomes that follow the unit, and a
 # unit end with nothing left to take back is not held at all. The seeds were
 # found by a scratch search under each test's own rng.Random(seed).choice
-# policy for seat 0.
+# policy for seat 0. v146: optional Agent-turn effects offer no refusal
+# (OQ-095 (2), 2026-10-14), which moved the reward-Spy seed 19 off its
+# shape; re-searched then, seed 20 is the first of 0-59 (23, 26, 35, 43
+# and 46 reach it too).
 
 
 def _walk_to_held_end_before_chance(
@@ -1659,16 +1729,16 @@ def _seat0_undo(summary: JsonObject) -> list[dict[str, object]]:
 
 
 def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
-    # Seed 19, base game: seat 0's Conflict reward Spy is its unit's last
+    # Seed 20, base game: seat 0's Conflict reward Spy is its unit's last
     # step, and the next round opens by reshuffling seat 0's discard pile
     # (the "1007" shape). The press comes before that reshuffle, so the Spy
     # can still be taken back and put on another post.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=19)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=20)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     summary, choice, logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 19, "place_combat_reward_spy"
+        manager, game_id, summary, 20, "place_combat_reward_spy"
     )
 
     # The row told the seat it could take the Spy back, and it can: nothing
@@ -1697,7 +1767,7 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
         if row["action_id"] == "place_combat_reward_spy"
         and row["arguments"] != choice["arguments"]
     ]
-    assert posts, "seed 19 offers the reward Spy another post"
+    assert posts, "seed 20 offers the reward Spy another post"
     assert all(row["strength_after"] is None for row in posts)
     summary = manager.apply_action(
         game_id, 0, _int(summary["revision"]), _int(posts[0]["index"])
@@ -1754,10 +1824,10 @@ def test_a_hold_before_a_chance_outcome_survives_save_and_restore() -> None:
     # hold, and pressing there plays on exactly as the live game does: the
     # reshuffle and every AI answer after it come out the same.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=19)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=20)
     game_id = str(summary["game_id"])
     summary, _choice, _logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 19, "place_combat_reward_spy"
+        manager, game_id, summary, 20, "place_combat_reward_spy"
     )
 
     restored = manager.restore_game(manager.save_game(game_id))
@@ -2075,15 +2145,18 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # control_defense decision; seed 13 does. Re-searched again 2026-10-01:
     # every Agent turn now waits for its owner's finish_agent_turn
     # (OQ-095), which moved seed 13 off it and seed 0 back on (round 7; 7,
-    # 12, 22 and 23 of 0-39 reach it too). Since the engine pauses before
-    # the Round Start draw (rules/pauses.py, codec v140) the answer is held
-    # there for the defender's press, as every unit end with something left
-    # to take back. Live and restored sessions must agree.
+    # 12, 22 and 23 of 0-39 reached it too). Re-searched 2026-10-14 -- v146:
+    # optional Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14),
+    # which moved seed 0 off it; seed 2 is the first of 0-59 (20, 26, 35,
+    # 43 and 46 reach it too). Since the engine pauses before the Round
+    # Start draw (rules/pauses.py, codec v140) the answer is held there for
+    # the defender's press, as every unit end with something left to take
+    # back. Live and restored sessions must agree.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=2)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(0)
+    rng = random.Random(2)
 
     found = False
     choice: dict[str, object] = {}
@@ -3143,13 +3216,16 @@ def test_a_holder_sees_its_play_beside_the_decline() -> None:
 
 
 def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
-    # Seed 33, one human seat: in round 4 seat 0 plays its Harvest Cells and
-    # still holds another Intrigue card, so the window stays open with only
+    # Seed 11, one human seat: seat 0 plays its Harvest Cells and still
+    # holds another Intrigue card, so the window stays open with only
     # "쓰지 않음" (a public fact, OQ-103). The play can still be taken back,
     # so the server does not answer the window: the seat's own decline is
-    # the press that confirms the play, and seals it.
+    # the press that confirms the play, and seals it. (v146: optional
+    # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
+    # moved seed 33 off this shape; re-searched then, seed 11 is the first
+    # of 0-79 under this first-action walk.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=33, immortality=True)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=11, immortality=True)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     sent: set[int] = set()

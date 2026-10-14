@@ -77,18 +77,21 @@ VIEWPORT = {"width": 1440, "height": 900}
 
 # heuristic seed 7 with every expansion is the same game log_words.py already
 # verified reaches a Combat/Endgame Intrigue pass (check_coverage there); the
-# base game reuses it with every expansion box off. Of 60 seeds scanned with
-# every expansion (2026-10-09, codec v141), 16, 36 and 41 have a seat's
+# base game reuses it with every expansion box off. Of 360 seeds scanned with
+# every expansion and the Leader draft on, as the setup page opens
+# (2026-10-14, codec v146; 2026-10-09 it was seeds 16, 36 and 41 of 60, but the
+# Agent turn's decline actions went away and the heuristic's games moved), 8,
+# 10, 17, 90, 104, 164, 173, 216, 229, 235, 240 and 328 have a seat's
 # Conflict reward choice followed by the CONFLICT_END pause, which shows
 # nothing, and then by that seat's own decline (reward_then_decline): the
-# decline must start a fold, not join the reward card. 36 also folds two
-# seats' declines (16 does not).
+# decline must start a fold, not join the reward card. 235 also folds two
+# seats' declines (240 does not).
 GAMES = (
     {"label": "base game", "seed": 7, "expansions": ()},
     {"label": "all-expansion game", "seed": 7, "expansions": RULE_OPTIONS},
     {
         "label": "all-expansion game, a decline after its own reward",
-        "seed": 36,
+        "seed": 235,
         "expansions": RULE_OPTIONS,
         "reward_then_decline": True,
     },
@@ -284,7 +287,17 @@ COLLECT_JS = """(words) => {
       passCards.push({ domSeats, text: card.textContent });
     } else if (!card.classList.contains("neutral")) {
       const lines = card.querySelectorAll(".turn-line");
-      const text = lines.length === 1 ? lines[0].textContent : "";
+      // The unused-effect lines of a turn-end press (agent_card_effect_lapsed
+      // and its kin, v146) say "쓰지 않음" in Korean too, but they are not a
+      // pass; leave them out of the text this check reads.
+      let text = "";
+      if (lines.length === 1) {
+        const copy = lines[0].cloneNode(true);
+        copy.querySelectorAll('[data-event-kind$="_lapsed"]').forEach(
+          (node) => node.remove()
+        );
+        text = copy.textContent;
+      }
       if (words.some((word) => text.includes(word))) {
         lonelyPasses.push(lines[0].textContent);
       }

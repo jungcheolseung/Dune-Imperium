@@ -47,7 +47,12 @@ from dune_imperium.rules.combat_deployment import (
     legal_agent_turn_finish_actions,
 )
 from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
-from dune_imperium.rules.frames import FrameKind, owes_held_draw, owes_track_spy
+from dune_imperium.rules.frames import (
+    TECH_ACQUIRE_PENDING_KEY,
+    FrameKind,
+    owes_held_draw,
+    owes_track_spy,
+)
 
 # Engine actions whose whole meaning is "I am done": pressing one is the
 # seat's turn end itself, so no second press follows it.
@@ -231,33 +236,36 @@ def finishing_seat(state: GameState) -> int | None:
     return None
 
 
-def _only_blocked_icons_wait(
+def _only_skippable_boxes_wait(
     state: GameState, context: dict[str, ActionValue], owner: int
 ) -> bool:
-    """Whether the only Agent boxes left are icon boxes the turn end fizzles.
+    """Whether the only Agent boxes left are boxes the turn end lets go.
 
-    A box that resolves icon by icon (OQ-027) and keeps only icons whose
-    printed condition is false (Lady Amber's Signet spice with no Alliance,
-    Cargo Runner's four-contract line, Industrial Espionage's ungrafted
-    Research) offers nothing and waits for the press (OQ-057). Its icons'
-    conditions are all public (Influence, Alliances, contracts, Bonds, the
-    graft), and so is the engine's verdict on them: ``finish_agent_turn``
-    is legal beside such a box exactly when every pending box offers
-    nothing. A single-effect box is left out -- its stall is a dry run that
+    Two kinds, both judged from public facts: a box that is optional now
+    (``agent_effects.box_is_optional`` -- the card in play and the box's
+    public stage; the press lapses it, user ruling 2026-10-14), and a box
+    that resolves icon by icon (OQ-027) keeping only icons whose printed
+    condition is false (Lady Amber's Signet spice with no Alliance, Cargo
+    Runner's four-contract line, Industrial Espionage's ungrafted Research),
+    which offers nothing and waits for the press (OQ-057). Their conditions
+    are all public (Influence, Alliances, contracts, Bonds, the graft), and
+    so is the engine's verdict on them: ``finish_agent_turn`` is legal
+    beside such boxes exactly when nothing else holds the end. A
+    single-effect mandatory box is left out -- its stall is a dry run that
     can depend on the owner's hand.
     """
 
-    boxes = (
-        ("pending_agent_effect", "pending_agent_icons"),
-        ("graft_pending_effect", "graft_pending_icons"),
-    )
-    pending = [
-        context.get(icons_key)
-        for flag_key, icons_key in boxes
-        if context.get(flag_key) is True
-    ]
-    if not pending or not all(isinstance(icons, str) and icons for icons in pending):
+    from dune_imperium.rules.agent_effects import box_is_optional
+    from dune_imperium.rules.graft_boxes import box_is_pending, state_with_active_box
+
+    pending = [box for box in (0, 1) if box_is_pending(context, box)]
+    if not pending:
         return False
+    for box in pending:
+        view = state_with_active_box(state, box)
+        icons = dict(view.decision_stack[-1].context).get("pending_agent_icons")
+        if not box_is_optional(view) and not (isinstance(icons, str) and icons):
+            return False
     return bool(legal_agent_turn_finish_actions(state, owner))
 
 
@@ -270,8 +278,9 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     Emperor track Spy still owed (placed before the turn ends, user ruling
     2026-10-04) and a triggered draw still waiting (taken before the turn
     ends, user ruling 2026-10-10, OQ-106) -- so every seat may be told. A
-    box that keeps only icons whose conditions are false is ready too
-    (``_only_blocked_icons_wait``); a stalled single-effect Agent box
+    box that is optional now, or keeps only icons whose conditions are
+    false, is ready too (``_only_skippable_boxes_wait``); a stalled
+    single-effect mandatory Agent box
     (OQ-057), whose judgment can depend on the owner's hand, counts as not
     ready here.
     """
@@ -289,8 +298,12 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     owner = top.decision.owner
     if agent_turn_has_other_pending_effects(
         context, state.players
-    ) and not _only_blocked_icons_wait(state, context, owner):
+    ) and not _only_skippable_boxes_wait(state, context, owner):
         return None
     if owes_track_spy(state, owner) or owes_held_draw(state, owner):
+        return None
+    # A Tech tile's acquire effects still waiting hold the end back too
+    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``).
+    if context.get(TECH_ACQUIRE_PENDING_KEY):
         return None
     return owner

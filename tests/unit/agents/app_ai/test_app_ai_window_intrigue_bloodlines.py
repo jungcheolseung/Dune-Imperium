@@ -573,16 +573,18 @@ def _endgame(seat_cards: Sequence[str], *instances: str) -> GameState:
     """The first Endgame window, its seat holding ``instances`` and exactly
     ``seat_cards`` face up (Objectives face down).
 
-    Seed 208. Seed 3 served until 5654d7f8 (a Combat Intrigue pass right
+    Seed 311. Seed 3 served until 5654d7f8 (a Combat Intrigue pass right
     after a card play no longer counts as a consecutive pass, 2026-10-07)
     moved its game: its Endgame now opens with Test of Loyalty unwon on the
     Conflict stack, so no seat can hold it face up. Most seeds set some of
     these tests' five Conflict cards aside at setup or leave one in the
-    deck or on the stack; 208 is the first from 3 where none is in a shared
-    zone.
+    deck or on the stack; 208 was the first from 3 where none is in a shared
+    zone, until the user ruling of 2026-10-14 (an optional effect of the
+    Agent turn lapses at the turn's end, OQ-095 (2)) moved the heuristic
+    games; 311 is the first from 208.
     """
 
-    state = first_decision("endgame_intrigue", config=BLOODLINES, seed=208)
+    state = first_decision("endgame_intrigue", config=BLOODLINES, seed=311)
     seat = _seat(state)
     for other in state.players:
         if other.player_id == seat:

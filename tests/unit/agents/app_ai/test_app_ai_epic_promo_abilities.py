@@ -706,7 +706,11 @@ def _es_reward_frame(seed: int) -> GameState:
     )
 
 
-@pytest.mark.parametrize("seed", [1, 3])  # seed 3: the winner has a sandworm
+# Seed 4: the winner has a sandworm. (Seed 3 had one until the user ruling of
+# 2026-10-14 -- an optional effect of the Agent turn lapses at the turn's end,
+# OQ-095 (2) -- moved the heuristic games; 4 is the first seed from 3 whose
+# winner has one.)
+@pytest.mark.parametrize("seed", [1, 4])
 def test_economic_supremacy_charges_in_the_engine_reward_frames(seed: int) -> None:
     # The charges' Cost (IsRewardPlace(1), HasCustomAbility, the resource) is
     # read where the window will read it: on the engine's own reward frames,

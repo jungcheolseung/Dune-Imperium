@@ -404,22 +404,19 @@ def test_imperial_privilege_recalls_the_fray_agent_after_a_mentat_recall() -> No
     home = apply_agent_card_recall(grafted, mentat_recall).state
     assert home.players[0].agent_locations == ()
     assert home.players[0].agents_available == 1
-    decline = next(
-        action
-        for action in legal_imperial_privilege_actions(home, 0)
-        if action.action_id == "decline_imperial_privilege_intrigue"
-    )
-    declined = apply_imperial_privilege_action(home, decline)
-    assert "imperial_privilege_recall_skipped" not in {
-        event.kind for event in declined.events
-    }
 
-    recalls = legal_imperial_privilege_actions(declined.state, 0)
+    # The optional Intrigue trade no longer gates the recall (OQ-095 (2),
+    # user ruling 2026-10-14): the recall is offered straight away.
+    recalls = legal_imperial_privilege_actions(home, 0)
     assert [action.action_id for action in recalls] == [
         "recall_conflict_agent_for_imperial_privilege"
     ]
-    hand_before = len(declined.state.players[0].hand)
-    seat = apply_imperial_privilege_action(declined.state, recalls[0]).state.players[0]
+    hand_before = len(home.players[0].hand)
+    recalled = apply_imperial_privilege_action(home, recalls[0])
+    assert "imperial_privilege_recall_skipped" not in {
+        event.kind for event in recalled.events
+    }
+    seat = recalled.state.players[0]
     assert seat.agent_in_conflict == 0
     assert seat.agents_available == 2
     # The recall only recalls; the card is the space's own icon ("4번은
