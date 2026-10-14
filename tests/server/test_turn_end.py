@@ -2724,15 +2724,22 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
     # walk meets a grafted Agent turn (walk step 235, no switch row any
     # more) before its case (step 363 on the previous commit's engine) and
     # no longer meets one; 87 is the first seed after it whose walk does.
+    # Seed 96 since personal-card Reveal choices are rows on the Reveal frame
+    # beside the purchases (codec v147): 87's walk first differs at walk
+    # step 315, seat 1's round-7 Reveal, whose Spy placement is now offered
+    # beside its purchases instead of in a frame of its own, and no longer
+    # meets a case (on the previous commit's engine it does at step 374,
+    # round 8, seat 0's reward beside seat 2); 96 is the first seed after it
+    # whose walk does (step 368, round 8, seat 0's reward beside seat 2).
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
-        game_seed=87,
+        game_seed=96,
         immortality=True,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(87)
+    rng = random.Random(96)
     compared = 0
     for _ in range(9000):
         if summary["finished"]:

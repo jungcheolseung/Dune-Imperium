@@ -519,6 +519,7 @@ def resolve(
                 migrated.step,
                 replay.action_codec_version,
                 migrated.graft_box,
+                migrated.reveal_source,
             )
         dropped = dict(record.dropped)
         for problem in problems:
@@ -549,6 +550,7 @@ def _position(
     migrated: ReplayStep,
     codec: int,
     graft_box: int = 0,
+    reveal_source: str | None = None,
 ) -> Resolved | str:
     decision = engine.current_decision(state)
     if getattr(decision, "owner", None) != problem.seat:
@@ -573,7 +575,9 @@ def _position(
         and tagged(network, 1) in legal
     )
     if network not in legal or boxed:
-        rewritten = rewrite_step(engine, state, network, codec, graft_box)
+        rewritten = rewrite_step(
+            engine, state, network, codec, graft_box, reveal_source
+        )
         if isinstance(rewritten, DomainAction):
             network = rewritten
     right, wrong = (

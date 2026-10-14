@@ -170,8 +170,9 @@ class _Taken:
     """Moves a seat already made at an identical decision this round.
 
     The greedy ``NetworkAgent`` keeps the same guard (``torch_policy``):
-    reversible pairs such as ``defer_reveal_choice``/``resume_reveal_choice``
-    return a seat to an identical observation and legal set, and an argmax
+    reversible pairs (before codec v147, ``defer_reveal_choice`` and
+    ``resume_reveal_choice``) return a seat to an identical observation and
+    legal set, and an argmax
     -- or a search that keeps preferring the same move there -- never
     finishes the turn. The key is the observation *and* the legal set, so
     two different decisions that happen to share an observation never mask

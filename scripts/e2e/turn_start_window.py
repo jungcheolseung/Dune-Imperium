@@ -10,10 +10,10 @@ only those plays and "턴 시작 카드 쓰지 않음" / "Keep the turn-start ca
 with the plays still in it. The window is a view of the owner's page alone:
 no request, no log line, nothing another seat sees.
 
-The position is real: ``fixtures/turn_start_window_saves.py`` saves seat 2's
-turn start in round 6 of a seeded four-human game, holding Litany Against
-Fear and Withdrawn with a Plot it may play instead, and records the steps to
-seat 2's next turn start, where both plays are legal again.
+The position is real: ``fixtures/turn_start_window_saves.py`` saves seat 0's
+turn start in round 8 of a seeded four-human game (seed 28), holding Litany
+Against Fear and Withdrawn with a Plot it may play instead, and records the
+steps to seat 0's next turn start, where Withdrawn is legal again.
 
 - [A] Korean, one page holding every seat (open server): the window shows
   exactly the two plays and the button, the board, the hand and the rest
@@ -26,11 +26,12 @@ seat 2's next turn start, where both plays are legal again.
 - [D] Korean: put aside, then the Plot first: no window, both plays greyed
   out with "이번 차례에 이미 다른 행동을 했음"; a reload keeps it so; the
   undo goes back to the turn start, where the window stays aside; the
-  recorded steps lead to seat 2's next turn, where the window opens again.
+  recorded steps lead to the seat's next turn, where the window opens again.
 - [E] Blocked site data (localStorage throws): the window still works and
   stays aside through re-renders and polls of the same page.
-- [F] Remote server: seat 2's owner and seat 0's player in two browsers, a
-  seatless visitor in a third. Seat 0's page shows the plain turn-start
+- [F] Remote server: the fixture seat's owner and another seat's player
+  (seat 0, or seat 1 when the fixture seat is 0) in two browsers, a
+  seatless visitor in a third. The other seat's page shows the plain turn-start
   wait (the engine's own prompt, no actions, no window); putting the window
   aside makes no request from any page and changes nothing on the others;
   the play itself then reaches every page as before.
@@ -165,7 +166,7 @@ def panel(page) -> dict:
 
 def open_save(browser, base: str, save_id: str, label: str, init_js: str = ""):
     """A fresh game from the save, on a page holding every seat (open
-    server): the page follows the seat to move, seat 2 here."""
+    server): the page follows the seat to move, the fixture's seat here."""
 
     context, page, rec = open_context(browser, label)
     if init_js:
@@ -501,7 +502,7 @@ def scenario_other_action(browser, base: str, fixture: dict) -> None:
     else:
         check.ok(False, "D4: the fixture's Plot can be taken back", plot)
 
-    # The recorded steps to seat 2's next turn start.
+    # The recorded steps to the seat's next turn start.
     for kind, seat, *rest in fixture["steps"]:
         assert wait_for(page, "state.summary")
         if kind == "confirm":
@@ -522,7 +523,7 @@ def scenario_other_action(browser, base: str, fixture: dict) -> None:
         and sorted(shown["offered"]) == nexts
         and sorted(shown["rows"]) == nexts
         and shown["keep"] == [KEEP_TEXT["ko"]],
-        "D5: seat 2's next turn, the cards still playable, opens the window again",
+        "D5: the seat's next turn, a card still playable, opens the window again",
         shown,
     )
     stored = page.evaluate(f"JSON.parse(localStorage.getItem('{KEPT_KEY}') || '[]')")

@@ -822,11 +822,12 @@ def test_retracing_refuses_an_answer_the_seat_could_not_have_given(
         action for action in entry.result.candidates if action != entry.result.chosen
     )
     assert not refused(index, other)
-    # A decision the greedy network answers: anything but its answer.
+    # A decision the greedy network answers: anything but its answer (the
+    # first such decision with another action to refuse).
     index, entry = next(
         (index, entry)
         for index, entry in enumerate(decided)
-        if entry.kind == "effect order"
+        if entry.kind == "effect order" and len(entry.actions) > 1
     )
     wrong = next(action for action in entry.actions if action != entry.result.chosen)
     assert refused(index, wrong)

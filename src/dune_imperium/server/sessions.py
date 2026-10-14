@@ -82,6 +82,8 @@ from dune_imperium.display import (
     agent_box_row_title,
     effect_action_text,
     effect_action_text_ko,
+    reveal_choice_headers,
+    reveal_choice_of_rows,
 )
 from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
 from dune_imperium.display.unavailable import unavailable_choices
@@ -1396,6 +1398,20 @@ class GameSessionManager:
         docs/graft-boxes-plan.md 4.11). None, and no ``box`` on any row,
         for any other decision; display only like ``unavailable``, so a
         failure is logged and leaves them out.
+
+        ``reveal_choices`` does the same for the seat's open Reveal: every
+        choice of a revealed card waits on the Reveal frame and is offered
+        there beside the purchases and gains (codec v147, OQ-095 (7)
+        addition), and the page sets each one's rows under a header naming
+        its card and what the choice does
+        (``display.actions.reveal_choice_headers``: one entry per pending
+        choice, with whether it is optional and whether it offers a row
+        now). Each row of a pending choice carries ``reveal_choice`` (the
+        entry's ``key``, ``reveal_choice_of_rows``) and its card as
+        ``detail_title``/``detail_title_ko``, so no row needs the
+        ``source`` argument's definition id to say whose it is. None, and
+        no ``reveal_choice`` on any row, for any other decision; display
+        only, a failure is logged and leaves them out.
         """
 
         actions = (
@@ -1407,6 +1423,8 @@ class GameSessionManager:
         unavailable: dict[str, object] | None = None
         boxes: tuple[int | None, ...] = (None,) * len(actions)
         headers: list[dict[str, object]] | None = None
+        choices: list[dict[str, object]] | None = None
+        choice_of: tuple[str | None, ...] = (None,) * len(actions)
         if actions:
             try:
                 unavailable = unavailable_choices(session.state, seat, actions)
@@ -1426,11 +1444,31 @@ class GameSessionManager:
                     seat,
                 )
                 headers, boxes = None, (None,) * len(actions)
+            try:
+                choices = reveal_choice_headers(session.state, seat)
+                choice_of = reveal_choice_of_rows(session.state, seat, actions)
+            except Exception:
+                _LOGGER.exception(
+                    "Reveal choice groups failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
+                choices, choice_of = None, (None,) * len(actions)
+        names = {
+            str(entry["key"]): (str(entry["name"]), str(entry["name_ko"]))
+            for entry in choices or ()
+        }
         serialized: list[JsonValue] = []
-        for index, (action, box) in enumerate(zip(actions, boxes, strict=True)):
+        for index, (action, box, choice) in enumerate(
+            zip(actions, boxes, choice_of, strict=True)
+        ):
             row = _serialize_action(index, action, session)
             if box is not None:
                 row["box"] = box
+            if choice is not None and choice in names:
+                row["reveal_choice"] = choice
+                if "detail_title" not in row:
+                    row["detail_title"], row["detail_title_ko"] = names[choice]
             serialized.append(row)
         return {
             "game_id": session.game_id,
@@ -1440,6 +1478,7 @@ class GameSessionManager:
             "scouts_lines": None if lines is None else _jsonify(lines),
             "unavailable": None if unavailable is None else _jsonify(unavailable),
             "agent_boxes": None if headers is None else _jsonify(headers),
+            "reveal_choices": None if choices is None else _jsonify(choices),
         }
 
     def _online_seats_locked(self, session: GameSession) -> frozenset[int]:

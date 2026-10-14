@@ -191,13 +191,19 @@ def check_layout(page, what: str, lang: str) -> None:
         )
 
 
+def row_button(index: int) -> str:
+    """A row's own button, not its effect preview's "ⓘ" (``.action-info``)."""
+
+    return f"#actions .action-item[data-index='{index}'] > button:not(.action-info)"
+
+
 def check_order(page, what: str) -> None:
     """Tab walks the rows in the order they are drawn."""
 
     drawn = [
         c["index"] for c in page.evaluate(LAYOUT_JS) if c["kind"] == "row"
     ]
-    page.locator(f"#actions .action-item[data-index='{drawn[0]}'] > button").focus()
+    page.locator(row_button(drawn[0])).focus()
     walked = [drawn[0]]
     for _ in range(4 * len(drawn)):
         page.keyboard.press("Tab")
@@ -287,7 +293,7 @@ def click_row(page, index: int) -> dict:
     with page.expect_request(
         lambda r: r.method == "POST" and r.url.endswith("/actions")
     ) as sent:
-        page.locator(f"#actions .action-item[data-index='{index}'] > button").click()
+        page.locator(row_button(index)).click()
     assert settled(page, 20)
     return sent.value.post_data_json
 

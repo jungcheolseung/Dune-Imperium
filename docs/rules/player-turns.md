@@ -195,7 +195,7 @@
 1. 남은 Agent가 없거나 남은 Agent를 더 사용하지 않기로 하면 Reveal turn을 시작한다. [Main p. 8] [Main p. 12]
 2. hand에 남은 card를 모두 face-up으로 reveal해 play 영역에 놓고, 이전 Agent turn에 낸 card와 구분한다. [Main p. 12]
 3. 방금 reveal한 card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸 card의 Reveal box 효과는 얻지 않는다. [Main p. 12]
-4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12] 선택형 Reveal 효과는 미루기/재개로 순서를 고르고(OQ-027), troop recruit·Intrigue draw·자원·고정 진영 Influence 획득은 각각 소유자의 행동(`recruit_reveal_troops`·`draw_reveal_intrigue`·`gain_reveal_resources`·`gain_reveal_faction_influence`)으로 시점을 고르며(OQ-045; Persuasion·검만 시작 시 합산), 조건이 있는 Reveal 효과는 같은 Reveal 안의 뒤 선택(Spy 배치, High Council 구매, 늦게 도착한 카드, 획득으로 완료된 contract)으로 조건이 성립하면 그때 지급된다(OQ-028).
+4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12] 선택형 Reveal 효과는 Reveal 목록의 줄로 구매·이득과 함께 제시돼 원하는 순서로 고르고, 선택 효과("may"·화살표·검은 trash `[FAQ p. 3]`)는 쓰지 않으면 `finish_reveal`에 사라지며 의무 효과는 답할 때까지 Reveal을 끝낼 수 없고(OQ-095 (7) 보강, 2026-10-14; 그 전에는 카드별 창을 미루기/재개로 순서를 골랐다, OQ-027), troop recruit·Intrigue draw·자원·고정 진영 Influence 획득은 각각 소유자의 행동(`recruit_reveal_troops`·`draw_reveal_intrigue`·`gain_reveal_resources`·`gain_reveal_faction_influence`)으로 시점을 고르며(OQ-045; Persuasion·검만 시작 시 합산), 조건이 있는 Reveal 효과는 같은 Reveal 안의 뒤 선택(Spy 배치, High Council 구매, 늦게 도착한 카드, 획득으로 완료된 contract)으로 조건이 성립하면 그때 지급된다(OQ-028).
    - 조건이 거짓인 의무 Agent box(예: 유일한 손패인 Guild Envoy의 discard)는 소유자가 골라 불발시킬 수 없고, turn 종료까지 보류돼 그 사이 조건이 성립하면 해결해야 한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09); OQ-028(a) 재판정). Interstellar Trade는 같은 Reveal 안에서 나중에 완료한 contract마다 Persuasion 1을 더 받는다(2026-10-04 사용자 재판정, OQ-057 (2)·OQ-028 (c) 복원 — 아래 Cargo Runner·Interstellar Trade 항목; 디자이너의 "한 번만" 판정은 넘어섰다). Guild Spy는 Reveal마다 한 번 발동하고 늦게 공개된 Guild Spy도 이미 산 The Spice Must Flow에 반응한다.
 5. Reveal 효과를 처리하는 동안 strength를 설정하고, strength가 바뀌면 갱신한다. strength 설정은 Reveal 효과 처리와 Clean Up 사이의 별도 고정 단계가 아니다. [Main p. 12] [Main p. 13]
 6. Clean Up 때 Agent turn과 Reveal turn에 face-up으로 낸 card를 모두 자신의 discard pile에 놓는다. [Main p. 12]
@@ -221,7 +221,7 @@
   Water 1을 지불해 sandworm 1개를 소환하고 현재 Conflict에 즉시 배치한다.
   Maker Hooks는 소비하지 않으며 Shield Wall이 현재 Conflict를 보호하면
   sandworm 선택을 할 수 없다. 이 선택은 Maker Hooks가 있든 없든 다른 Reveal
-  선택처럼 열리고 미룰 수 있으며(defer_reveal_choice), Persuasion 2는 실제로
+  선택처럼 Reveal 목록의 줄로 제시되며(2026-10-14 전에는 미룰 수 있는 창), Persuasion 2는 실제로
   Persuasion 갈래를 선택한 순간부터만 지출과 Command (6+) 판정에 들어간다 —
   sandworm 갈래를 고르면 그 2는 끝내 생성되지 않는다. Maker Hooks가 없으면
   sandworm 갈래는 이유("메이커 작살 없음")와 함께 회색으로만 보이고 Persuasion

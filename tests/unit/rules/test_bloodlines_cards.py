@@ -27,6 +27,7 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
     Resources,
+    Transition,
 )
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.acquisition import apply_reserve_acquisition
@@ -54,19 +55,17 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.reveal_turn import (
-    apply_defer_reveal_choice,
-    apply_resume_reveal_choice,
     apply_reveal_card_trash,
     apply_reveal_influence_gain,
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     legal_finish_reveal_actions,
-    legal_resume_reveal_choice_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_gain_actions,
     legal_reveal_sandworm_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
+    pending_reveal_choices,
     reveal_pending_gains,
 )
 from dune_imperium.simulation.sweep import run_checked_game
@@ -155,6 +154,35 @@ def _reveal_context(state: GameState) -> dict[str, object]:
     }
 
 
+def _pending(state: GameState) -> tuple[tuple[str, str], ...]:
+    """The Reveal frame's pending (card, effect) choices, oldest first."""
+
+    frame = next(f for f in state.decision_stack if f.kind == FrameKind.REVEAL)
+    return pending_reveal_choices(dict(frame.context))
+
+
+def _offered(state: GameState) -> set[str]:
+    """The ids the engine offers the owner (seat 0) in ``state``."""
+
+    return {a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)}
+
+
+def _finish(state: GameState) -> Transition:
+    return UprisingRulesEngine().apply(
+        state, DomainAction(action_id="finish_reveal", actor=0)
+    )
+
+
+def _lapsed(result: Transition) -> list[dict[str, object]]:
+    """The ``reveal_choice_lapsed`` payloads of a ``finish_reveal``."""
+
+    return [
+        dict(event.payload)
+        for event in result.events
+        if event.kind == "reveal_choice_lapsed"
+    ]
+
+
 # --- Quash Rebellion -------------------------------------------------------
 
 
@@ -189,22 +217,26 @@ def test_shrouded_counsel_command_trash_opens_at_six_persuasion() -> None:
     card = _card("shrouded_counsel")
     revealed = _reveal(_state(_six_persuasion_hand(card)))
     assert _reveal_context(revealed)["persuasion"] == 2 + 2 + 2 + 1
-    frame = revealed.decision_stack[-1]
-    assert frame.kind == "reveal_choice"
-    assert dict(frame.context)["reveal_choice_effect"] == "command_may_trash_card"
+    # The choice waits on the Reveal frame (codec v147): no frame on top of it.
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "command_may_trash_card") in _pending(revealed)
     actions = legal_reveal_card_trash_actions(revealed, 0)
-    assert actions[0].action_id == "decline_reveal_card_trash"
-    targets = {dict(a.arguments)["card_id"] for a in actions[1:]}
+    # An optional choice offers no refusal; it lapses at finish_reveal.
+    assert {a.action_id for a in actions} == {"trash_reveal_card"}
+    targets = {dict(a.arguments)["card_id"] for a in actions}
     assert targets == set(revealed.players[0].in_play)
-    trashed = apply_reveal_card_trash(revealed, actions[1]).state
+    assert {dict(a.arguments)["source"] for a in actions} == {"shrouded_counsel"}
+    trashed = apply_reveal_card_trash(revealed, actions[0]).state
     assert len(trashed.players[0].trashed) == 1
     assert trashed.decision_stack[-1].kind == "reveal"
+    assert (card, "command_may_trash_card") not in _pending(trashed)
 
 
 def test_shrouded_counsel_command_trash_of_eliminate_allies_joins_the_reveal() -> None:
     # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
     # Allies card]. Shrouded Counsel's Command trash runs from its own
-    # "reveal_choice" frame, not a Reveal or Agent-turn effect frame, so
+    # "reveal_choice" frame (pushed for its pending entry, codec v147), not a
+    # Reveal or Agent-turn effect frame, so
     # ``trash_personal_card``'s own AGENT_EFFECTS-only crediting never ran
     # for it: "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
     # deploy할 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:
@@ -218,8 +250,8 @@ def test_shrouded_counsel_command_trash_of_eliminate_allies_joins_the_reveal() -
         _six_persuasion_hand(card, eliminate_allies), combat_icon_turn=True
     )
     revealed = _reveal(_state(owner))
-    frame = revealed.decision_stack[-1]
-    assert dict(frame.context)["reveal_choice_effect"] == "command_may_trash_card"
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "command_may_trash_card") in _pending(revealed)
     action = next(
         a
         for a in legal_reveal_card_trash_actions(revealed, 0)
@@ -243,11 +275,17 @@ def test_command_choices_wait_below_six_persuasion() -> None:
     revealed = _reveal(_state(_owner(hand=(card, _card("sandwalk")))))
     assert _reveal_context(revealed)["persuasion"] == 2
     assert revealed.decision_stack[-1].kind == "reveal"
-    # The Command choice is queued, and lapses when the Reveal ends.
-    assert "command_may_trash_card" in str(
-        _reveal_context(revealed)["deferred_reveal_choices"]
-    )
+    # The Command choice is queued, offers nothing below 6 Persuasion and does
+    # not block the end; it lapses when the Reveal ends (codec v147).
+    assert _pending(revealed) == ((card, "command_may_trash_card"),)
+    assert legal_reveal_card_trash_actions(revealed, 0) == ()
+    assert "trash_reveal_card" not in _offered(revealed)
     assert legal_finish_reveal_actions(revealed, 0) != ()
+    finished = _finish(revealed)
+    assert _lapsed(finished) == [
+        {"card_id": card, "effect": "command_may_trash_card", "player": 0}
+    ]
+    assert finished.state.players[0].trashed == ()
 
 
 def test_i_believe_discards_to_draw_and_recruits_two_on_command() -> None:
@@ -330,10 +368,11 @@ def test_ruthless_leadership_drawn_mid_reveal_still_commands_the_combat_icon() -
 def test_intelligence_training_command_places_a_spy() -> None:
     card = _card("intelligence_training")
     revealed = _reveal(_state(_six_persuasion_hand(card)))
-    frame = revealed.decision_stack[-1]
-    assert dict(frame.context)["reveal_choice_effect"] == "command_place_spy"
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "command_place_spy") in _pending(revealed)
     actions = legal_reveal_spy_actions(revealed, 0)
     assert {a.action_id for a in actions} == {"place_reveal_spy"}
+    assert {dict(a.arguments)["source"] for a in actions} == {"intelligence_training"}
     # Its own sword plus the two Sandwalks' swords.
     assert _reveal_context(revealed)["sword_strength"] == 1 + 2
 
@@ -341,22 +380,24 @@ def test_intelligence_training_command_places_a_spy() -> None:
 _RESERVE = (("prepare_the_way", 7), ("the_spice_must_flow", 10))
 
 
-def test_a_deferred_command_choice_survives_persuasion_spent_below_six() -> None:
+def test_a_command_choice_survives_persuasion_spent_on_a_purchase() -> None:
     # "Command (6+) — You may use this effect only in a Reveal turn in which
     # you generate 6 Persuasion or more" [Bloodlines p. 12] [Bloodlines p. 5]
     # (docs/rules/bloodlines.md: "그 Reveal turn에 Persuasion을 6 이상 생성했을
     # 때"). Persuasion spent on a purchase was still generated, so buying
     # Prepare the Way (2) out of 7 does not close Intelligence Training's
     # Command Spy again; before the fix the choice lapsed at 5 left.
+    # "Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수
+    # 있다" [Main p. 12]: the choice waits on the Reveal frame beside the
+    # purchase (codec v147), so buying first needs no deferring.
     card = _card("intelligence_training")
     state = replace(_state(_six_persuasion_hand(card)), reserve_stacks=_RESERVE)
     revealed = _reveal(state)
     assert _reveal_context(revealed)["persuasion"] == 7
-    deferred = apply_defer_reveal_choice(
-        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
-    ).state
+    assert "place_reveal_spy" in _offered(revealed)
+    assert "acquire_reserve" in _offered(revealed)
     bought = apply_reserve_acquisition(
-        deferred,
+        revealed,
         DomainAction(
             action_id="acquire_reserve",
             actor=0,
@@ -365,13 +406,14 @@ def test_a_deferred_command_choice_survives_persuasion_spent_below_six() -> None
     ).state
     assert _reveal_context(bought)["persuasion"] == 5
     assert _reveal_context(bought)["persuasion_generated"] == 7
+    assert _pending(bought) == ((card, "command_place_spy"),)
+    # The Spy placement is mandatory (OQ-057 (14)) and still offered.
     assert legal_finish_reveal_actions(bought, 0) == ()
-    (resume,) = legal_resume_reveal_choice_actions(bought, 0)
-    resumed = apply_resume_reveal_choice(bought, resume).state
-    place = legal_reveal_spy_actions(resumed, 0)[0]
+    place = legal_reveal_spy_actions(bought, 0)[0]
     assert place.action_id == "place_reveal_spy"
-    placed = UprisingRulesEngine().apply(resumed, place).state
+    placed = UprisingRulesEngine().apply(bought, place).state
     assert len(placed.players[0].spy_post_ids) == 1
+    assert _pending(placed) == ()
 
 
 def test_a_late_command_counts_persuasion_spent_before_it() -> None:
@@ -390,25 +432,25 @@ def test_a_late_command_counts_persuasion_spent_before_it() -> None:
     engine = UprisingRulesEngine()
     revealed = _reveal(replace(_state(owner), reserve_stacks=_RESERVE))
     assert _reveal_context(revealed)["persuasion"] == 4
-    deferred = engine.apply(
-        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
-    ).state
+    # The retreat waits on the Reveal frame beside the purchase (codec v147):
+    # buy first, then retreat, without deferring anything.
+    assert _pending(revealed) == (
+        (_card("command_center"), "may_retreat_two_troops_for_two_persuasion"),
+    )
     bought = engine.apply(
-        deferred,
+        revealed,
         DomainAction(
             action_id="acquire_reserve",
             actor=0,
             arguments=(("card_id", "prepare_the_way"),),
         ),
     ).state
-    (resume,) = legal_resume_reveal_choice_actions(bought, 0)
-    resumed = engine.apply(bought, resume).state
     retreat = next(
         a
-        for a in legal_reveal_troop_retreat_actions(resumed, 0)
+        for a in legal_reveal_troop_retreat_actions(bought, 0)
         if a.action_id == "retreat_two_troops_for_reveal"
     )
-    retreated = engine.apply(resumed, retreat).state
+    retreated = engine.apply(bought, retreat).state
     context = _reveal_context(retreated)
     assert context["persuasion"] == 4
     assert context["persuasion_generated"] == 6
@@ -438,12 +480,13 @@ def _desert_power_state(**owner_overrides: object) -> GameState:
     )
 
 
-def test_desert_power_defers_i_believes_command_below_six_persuasion() -> None:
+def test_desert_power_keeps_i_believes_command_closed_below_six_persuasion() -> None:
     # OQ-069 (user ruling 2026-09-26): "(A)가 맞지 ... 근데 설득력을 선택하기
     # 전에 총 설득력이 6 미만이라면 당연히 통솔(+6)도 발동되면 안 되겠지. 그러다
     # 설득력으로 최종 선택했고 그때 총 설득력이 6 이상이면 효과 발동되게 해야지".
     # "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
-    # [Main pp. 10, 20]: with Maker Hooks the choice may be deferred, so the
+    # [Main pp. 10, 20]: with Maker Hooks the choice waits on the Reveal frame
+    # (codec v147; it used to be deferrable), so the
     # 2 Persuasion do not count until it is resolved. I Believe (1) +
     # Diplomacy (1) + High Council (2) is 4 without them, below Command's 6,
     # so I Believe's "Command (6+): recruit two troops" [I Believe card]
@@ -455,9 +498,8 @@ def test_desert_power_defers_i_believes_command_below_six_persuasion() -> None:
     (reveal,) = (f for f in revealed.decision_stack if f.kind == FrameKind.REVEAL)
     pending = reveal_pending_gains(dict(reveal.context))
     assert not any(entry[2] == _card("i_believe") for entry in pending)
-    frame = revealed.decision_stack[-1]
-    assert frame.kind == "reveal_choice"
-    assert dict(frame.context)["reveal_choice_effect"] == "may_pay_water_for_sandworm"
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (_card("desert_power"), "may_pay_water_for_sandworm") in _pending(revealed)
 
 
 def test_desert_power_sandworm_branch_never_commands_i_believe() -> None:
@@ -496,23 +538,32 @@ def test_desert_power_persuasion_branch_commands_i_believe() -> None:
     assert ("troops", "2", _card("i_believe")) in pending
 
 
-def test_desert_power_deferred_choice_still_commands_i_believe_once_resumed() -> None:
-    # Deferring the choice and resuming it later reaches the same result as
-    # deciding immediately (the resumed choice always opens with Maker
-    # Hooks, so it cannot lapse).
-    revealed = _reveal(_desert_power_state())
+def test_desert_power_branch_chosen_after_a_purchase_still_commands_i_believe() -> None:
+    # Picking the branch later reaches the same result as deciding at once:
+    # "Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수
+    # 있다" [Main p. 12], so the owner may buy Prepare the Way (2) out of the 4
+    # Persuasion first (the choice waits on the Reveal frame, codec v147), and
+    # the Persuasion branch then lifts the generated Persuasion to 6.
+    state = replace(_desert_power_state(), reserve_stacks=_RESERVE)
+    revealed = _reveal(state)
     engine = UprisingRulesEngine()
-    deferred = engine.apply(
-        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
     ).state
-    assert deferred.decision_stack[-1].kind == "reveal"
-    (resume,) = legal_resume_reveal_choice_actions(deferred, 0)
-    resumed = engine.apply(deferred, resume).state
+    assert _reveal_context(bought)["persuasion"] == 2
+    assert bought.decision_stack[-1].kind == FrameKind.REVEAL
+    assert "decline_reveal_sandworm" in _offered(bought)
     declined = engine.apply(
-        resumed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+        bought, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     context = _reveal_context(declined)
     assert context["persuasion_generated"] == 6
+    assert context["persuasion"] == 4
     pending = reveal_pending_gains(dict(declined.decision_stack[-1].context))
     assert ("troops", "2", _card("i_believe")) in pending
 
@@ -524,11 +575,16 @@ def test_desert_power_without_maker_hooks_commands_i_believe_once_chosen() -> No
     # now holds without Maker Hooks too: I Believe (1) + Diplomacy (1) + High
     # Council (2) is 4 at the Reveal start, below Command (6+) [Bloodlines
     # pp. 5, 12], and Desert Power's 2 reach 6 only at the Persuasion branch,
-    # when I Believe's troops pay through the late grant.
+    # when I Believe's troops pay through the late grant. Since codec v147
+    # that choice is a row of the Reveal frame, not a window of its own.
     revealed = _reveal(_desert_power_state(maker_hooks=False))
     context = _reveal_context(revealed)
     assert context["persuasion_generated"] == 4
-    assert revealed.decision_stack[-1].kind == "reveal_choice"
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (_card("desert_power"), "may_pay_water_for_sandworm") in _pending(revealed)
+    assert {a.action_id for a in legal_reveal_sandworm_actions(revealed, 0)} == {
+        "decline_reveal_sandworm"
+    }
     assert revealed.players[0].troops_garrison == 3
     (reveal,) = (f for f in revealed.decision_stack if f.kind == FrameKind.REVEAL)
     pending = reveal_pending_gains(dict(reveal.context))
@@ -545,13 +601,13 @@ def test_desert_power_without_maker_hooks_commands_i_believe_once_chosen() -> No
     assert ("troops", "2", _card("i_believe")) in pending
 
 
-def test_desert_power_persuasion_branch_reopens_pointing_the_ways_command() -> None:
-    # OQ-069 counterpart for a Command *choice* frame, not an automatic
-    # effect: Pointing the Way's "Command: choose a Faction to gain one
-    # Influence with" [Pointing the Way card] queues deferred below 6
-    # Persuasion (Command (6+) [Bloodlines pp. 5, 12]); Pointing the Way (1)
-    # + Diplomacy (1) + High Council (2) is 4 without Desert Power's 2, so
-    # the choice cannot open until the owner picks the Persuasion branch.
+def test_desert_power_persuasion_branch_opens_pointing_the_ways_command() -> None:
+    # OQ-069 counterpart for a Command *choice*, not an automatic effect:
+    # Pointing the Way's "Command: choose a Faction to gain one Influence
+    # with" [Pointing the Way card] waits pending below 6 Persuasion (Command
+    # (6+) [Bloodlines pp. 5, 12]); Pointing the Way (1) + Diplomacy (1) +
+    # High Council (2) is 4 without Desert Power's 2, so the choice is not
+    # offered until the owner picks the Persuasion branch.
     diplomacy = next(instance for instance in STARTERS if ":diplomacy:" in instance)
     owner = _owner(
         hand=(_card("desert_power"), _card("pointing_the_way"), diplomacy),
@@ -563,25 +619,34 @@ def test_desert_power_persuasion_branch_reopens_pointing_the_ways_command() -> N
     revealed = _reveal(state)
     context = _reveal_context(revealed)
     assert context["persuasion_generated"] == 4
+    assert (
+        _card("pointing_the_way"),
+        "command_gain_chosen_influence",
+    ) in _pending(revealed)
     assert legal_reveal_influence_gain_actions(revealed, 0) == ()
+    assert "gain_reveal_influence" not in _offered(revealed)
 
     engine = UprisingRulesEngine()
     declined = engine.apply(
         revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
-    resume = next(
-        action
-        for action in legal_resume_reveal_choice_actions(declined, 0)
-        if dict(action.arguments)["effect"] == "command_gain_chosen_influence"
-    )
-    resumed = engine.apply(declined, resume).state
-    assert legal_reveal_influence_gain_actions(resumed, 0) != ()
-    assert legal_finish_reveal_actions(resumed, 0) == ()
+    # No resuming step: the choice's rows are offered as soon as the
+    # generated Persuasion reaches 6 (codec v147).
+    assert declined.decision_stack[-1].kind == FrameKind.REVEAL
+    assert legal_reveal_influence_gain_actions(declined, 0) != ()
+    assert "gain_reveal_influence" in _offered(declined)
+    # Pointing the Way's gain is mandatory once it can be taken.
+    assert legal_finish_reveal_actions(declined, 0) == ()
+    gained = engine.apply(
+        declined, legal_reveal_influence_gain_actions(declined, 0)[0]
+    ).state
+    assert gained.players[0].influence.emperor == 1
+    assert legal_finish_reveal_actions(gained, 0) != ()
 
 
-def test_desert_power_sandworm_branch_never_reopens_pointing_the_ways_command() -> None:
+def test_desert_power_sandworm_branch_never_opens_pointing_the_ways_command() -> None:
     # Counterpart: paying Water for the sandworm keeps the total at 4 for
-    # good, so Pointing the Way's Command choice never resumes this Reveal.
+    # good, so Pointing the Way's Command choice is never offered this Reveal.
     diplomacy = next(instance for instance in STARTERS if ":diplomacy:" in instance)
     owner = _owner(
         hand=(_card("desert_power"), _card("pointing_the_way"), diplomacy),
@@ -601,11 +666,25 @@ def test_desert_power_sandworm_branch_never_reopens_pointing_the_ways_command() 
     paid = engine.apply(revealed, sandworm).state
     context = _reveal_context(paid)
     assert context["persuasion_generated"] == 4
-    assert legal_resume_reveal_choice_actions(paid, 0) == ()
-    # Pointing the Way's Command choice must stay correctly deferred (never
-    # forced open) rather than sitting unresolved on the stack, so nothing
-    # blocks finishing the Reveal turn.
+    assert legal_reveal_influence_gain_actions(paid, 0) == ()
+    assert "gain_reveal_influence" not in _offered(paid)
+    # Pointing the Way's Command choice must stay pending (never forced open)
+    # rather than sitting unresolved on the stack, so nothing blocks
+    # finishing the Reveal turn, and it lapses there.
+    assert paid.decision_stack[-1].kind == FrameKind.REVEAL
+    assert _pending(paid) == (
+        (_card("pointing_the_way"), "command_gain_chosen_influence"),
+    )
     assert legal_finish_reveal_actions(paid, 0) != ()
+    finished = _finish(paid)
+    assert _lapsed(finished) == [
+        {
+            "card_id": _card("pointing_the_way"),
+            "effect": "command_gain_chosen_influence",
+            "player": 0,
+        }
+    ]
+    assert finished.state.players[0].influence == paid.players[0].influence
 
 
 def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
@@ -636,8 +715,8 @@ def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
 
 def test_pointing_the_way_command_never_offers_a_faction_at_the_top() -> None:
     """OQ-060: a gain on a cube at 6 is lost, so the Command's picker leaves
-    it out; with every cube there the choice does not open but waits
-    deferred like an unmet condition and lapses with the Reveal [Main
+    it out; with every cube there the choice is not offered but waits
+    pending like an unmet condition and lapses with the Reveal [Main
     p. 12], instead of offering a gain that does nothing."""
 
     from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
@@ -668,8 +747,12 @@ def test_pointing_the_way_command_never_offers_a_faction_at_the_top() -> None:
     assert reveal_influence_choice_blocked(
         waiting.players[0], PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
     )
-    assert legal_resume_reveal_choice_actions(waiting, 0) == ()
+    assert legal_reveal_influence_gain_actions(waiting, 0) == ()
+    assert "gain_reveal_influence" not in _offered(waiting)
     assert legal_finish_reveal_actions(waiting, 0) != ()
+    assert _lapsed(_finish(waiting)) == [
+        {"card_id": card, "effect": "command_gain_chosen_influence", "player": 0}
+    ]
 
 
 # --- Command Center ----------------------------------------------------------
@@ -703,6 +786,19 @@ def test_command_center_retreats_two_troops_for_two_persuasion() -> None:
     assert result.events[1].kind == "reveal_persuasion_gained"
 
 
+def _retreat_two_troops(card_name: str, commanders: int) -> DomainAction:
+    """A Reveal "Retreat two troops" row; it names the card it belongs to."""
+
+    return DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(
+            *((("commanders", commanders),) if commanders else ()),
+            ("source", card_name),
+        ),
+    )
+
+
 @pytest.mark.parametrize("commanders", [0, 1])
 def test_command_center_retreat_takes_the_two_units_strength(commanders: int) -> None:
     # "Retreat two troops -> +2 [Persuasion]" [Command Center card] gives no
@@ -722,11 +818,7 @@ def test_command_center_retreat_takes_the_two_units_strength(commanders: int) ->
     )
     engine = UprisingRulesEngine()
     revealed = _reveal(_state(owner))
-    retreat = DomainAction(
-        action_id="retreat_two_troops_for_reveal",
-        actor=0,
-        arguments=(("commanders", commanders),) if commanders else (),
-    )
+    retreat = _retreat_two_troops("command_center", commanders)
     assert retreat in legal_reveal_troop_retreat_actions(revealed, 0)
     retreated = engine.apply(revealed, retreat).state
     player = retreated.players[0]
@@ -768,11 +860,8 @@ def test_reveal_two_troop_retreats_advance_chanis_tactics_token(
         combat_strength=6,
     )
     revealed = _reveal(_state(owner))
-    retreat = DomainAction(
-        action_id="retreat_two_troops_for_reveal",
-        actor=0,
-        arguments=(("commanders", commanders),) if commanders else (),
-    )
+    retreat = _retreat_two_troops(card_name, commanders)
+    assert retreat in legal_reveal_troop_retreat_actions(revealed, 0)
     result = apply_reveal_troop_retreat(revealed, retreat)
     player = result.state.players[0]
     assert player.tactics_track_space == space
@@ -2061,16 +2150,19 @@ def test_disruption_tactics_forces_an_enemy_unit_back_and_trashes_for_the_icon()
     assert pushed.players[1].combat_strength == 2
 
     revealed = _reveal(_state(_owner(hand=(card,), troops_garrison=3)))
-    frame = revealed.decision_stack[-1]
-    assert (
-        dict(frame.context)["reveal_choice_effect"] == "may_trash_self_for_combat_icon"
-    )
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "may_trash_self_for_combat_icon") in _pending(revealed)
     trash_actions = legal_reveal_card_trash_actions(revealed, 0)
-    assert [a.action_id for a in trash_actions] == [
-        "decline_reveal_card_trash",
-        "trash_reveal_card",
+    # The black trash icon is optional [FAQ p. 3]: no refusal row, the choice
+    # simply lapses at finish_reveal.
+    assert [a.action_id for a in trash_actions] == ["trash_reveal_card"]
+    assert dict(trash_actions[0].arguments)["source"] == "disruption_tactics"
+    unused = _finish(revealed)
+    assert _lapsed(unused) == [
+        {"card_id": card, "effect": "may_trash_self_for_combat_icon", "player": 0}
     ]
-    trashed = apply_reveal_card_trash(revealed, trash_actions[1]).state
+    assert card not in unused.state.players[0].trashed
+    trashed = apply_reveal_card_trash(revealed, trash_actions[0]).state
     assert card in trashed.players[0].trashed
     assert [
         dict(a.arguments)["count"] for a in legal_reveal_deployments(trashed, 0)
@@ -2193,17 +2285,21 @@ def test_arrakis_observer_recalls_a_spy_for_three_swords() -> None:
         combat_strength=2,
     )
     revealed = _reveal(_state(owner))
-    frame = revealed.decision_stack[-1]
-    assert (
-        dict(frame.context)["reveal_choice_effect"]
-        == "may_recall_spy_for_three_strength"
-    )
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "may_recall_spy_for_three_strength") in _pending(revealed)
     actions = legal_reveal_spy_actions(revealed, 0)
-    assert [a.action_id for a in actions] == [
-        "decline_reveal_spy_recall",
-        "recall_spy_for_reveal",
+    # An arrow cost is optional [FAQ p. 3]: the recall is the only row (no
+    # ``decline_reveal_spy_recall``), and leaving it lapses it at finish_reveal.
+    assert [a.action_id for a in actions] == ["recall_spy_for_reveal"]
+    assert dict(actions[0].arguments)["source"] == "arrakis_observer"
+    assert "decline_reveal_spy_recall" not in _offered(revealed)
+    unused = _finish(revealed)
+    assert _lapsed(unused) == [
+        {"card_id": card, "effect": "may_recall_spy_for_three_strength", "player": 0}
     ]
-    recalled = apply_reveal_spy_action(revealed, actions[1]).state
+    assert unused.state.players[0].spy_post_ids == revealed.players[0].spy_post_ids
+    assert unused.state.players[0].combat_strength == 2
+    recalled = apply_reveal_spy_action(revealed, actions[0]).state
     assert recalled.players[0].spy_post_ids == ()
     assert recalled.players[0].combat_strength == 2 + 3
     assert _reveal_context(recalled)["strength"] == 2 + 3
@@ -2211,6 +2307,7 @@ def test_arrakis_observer_recalls_a_spy_for_three_swords() -> None:
     # No Spy on the board: the arrow cost cannot be paid, no choice opens.
     none = _reveal(_state(_owner(hand=(card,), spies_supply=3)))
     assert none.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_spy_actions(none, 0) == ()
 
 
 def test_bombast_command_pays_three_solari_and_trashes_itself() -> None:
@@ -2246,15 +2343,15 @@ def test_engineered_miracle_discards_for_water_and_commands_a_row_card() -> None
     row = (_card("guild_envoy"), _card("sandwalk", 1))
     base = replace(_state(_six_persuasion_hand(card)), imperium_row=row)
     revealed = _reveal(base)
-    frame = revealed.decision_stack[-1]
-    assert (
-        dict(frame.context)["reveal_choice_effect"]
-        == "command_may_trash_self_to_acquire_row_card"
-    )
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "command_may_trash_self_to_acquire_row_card") in _pending(revealed)
     actions = legal_reveal_command_acquisition_actions(revealed, 0)
-    assert actions[0].action_id == "decline_command_acquisition"
-    assert {dict(a.arguments)["instance_id"] for a in actions[1:]} == set(row)
-    acquired = apply_reveal_command_acquisition(revealed, actions[1]).state
+    # "Trash this card" is optional [FAQ p. 3]: no refusal row, only the
+    # acquisitions; leaving them lapses the choice at finish_reveal.
+    assert {a.action_id for a in actions} == {"command_acquire_row_card"}
+    assert "decline_command_acquisition" not in _offered(revealed)
+    assert {dict(a.arguments)["instance_id"] for a in actions} == set(row)
+    acquired = apply_reveal_command_acquisition(revealed, actions[0]).state
     owner = acquired.players[0]
     assert card in owner.trashed
     assert row[0] in owner.discard_pile
@@ -2262,13 +2359,23 @@ def test_engineered_miracle_discards_for_water_and_commands_a_row_card() -> None
     assert acquired.decision_stack[-1].kind == "reveal"
     # Persuasion is untouched: the card came for free.
     assert _reveal_context(acquired)["persuasion"] == 7
-    declined = apply_reveal_command_acquisition(revealed, actions[0]).state
-    assert card in declined.players[0].in_play
+    unused = _finish(revealed)
+    assert _lapsed(unused) == [
+        {
+            "card_id": card,
+            "effect": "command_may_trash_self_to_acquire_row_card",
+            "player": 0,
+        }
+    ]
+    assert card not in unused.state.players[0].trashed
+    assert row[0] not in unused.state.players[0].discard_pile
     # Below Command the choice waits; an empty Row offers nothing.
-    assert _reveal(_state(_owner(hand=(card,)))).decision_stack[-1].kind == "reveal"
-    assert _reveal(_state(_six_persuasion_hand(card))).decision_stack[-1].kind == (
-        "reveal"
-    )
+    below = _reveal(_state(_owner(hand=(card,))))
+    assert below.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_command_acquisition_actions(below, 0) == ()
+    empty = _reveal(_state(_six_persuasion_hand(card)))
+    assert empty.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_command_acquisition_actions(empty, 0) == ()
 
 
 def test_engineered_miracle_command_troop_joins_the_reveals_allowance() -> None:
@@ -2430,9 +2537,9 @@ def test_call_to_arms_follows_a_commanded_spy_post_before_another_reveal_choice(
     # OQ-012 (user ruling 2026-10-04, "선택 뒤로 맞춤"): Call to Arms' troop
     # comes after the acquired card's own acquisition effects and the
     # decisions they open, not after unrelated choices. Engineered Miracle's
-    # Command takes Spy Network while Shrouded Counsel's Command choice
-    # already waits below it: the troop follows the Spy post at once, and
-    # Shrouded Counsel's choice still waits after it.
+    # Command takes Spy Network while Shrouded Counsel's Command choice is
+    # still pending beside it: the troop follows the Spy post at once, and
+    # Shrouded Counsel's choice is still pending after it.
     call = _intrigue("call_to_arms")
     miracle = _card("engineered_miracle")
     spy_network = _card("spy_network")
@@ -2441,10 +2548,12 @@ def test_call_to_arms_follows_a_commanded_spy_post_before_another_reveal_choice(
         intrigue_faceup=(call,),
     )
     revealed = _reveal(replace(_state(owner), imperium_row=(spy_network,)))
-    assert [
-        dict(frame.context).get("reveal_choice_effect")
-        for frame in revealed.decision_stack
-    ] == [None, "command_may_trash_card", "command_may_trash_self_to_acquire_row_card"]
+    shrouded = _card("shrouded_counsel")
+    assert [frame.kind for frame in revealed.decision_stack] == [FrameKind.REVEAL]
+    assert _pending(revealed) == (
+        (miracle, "command_may_trash_self_to_acquire_row_card"),
+        (shrouded, "command_may_trash_card"),
+    )
     garrison = revealed.players[0].troops_garrison
     engine = UprisingRulesEngine()
 
@@ -2473,8 +2582,8 @@ def test_call_to_arms_follows_a_commanded_spy_post_before_another_reveal_choice(
     payload = dict(placed.events[-1].payload)
     assert payload == {"card_id": call, "player": 0, "troops": 1}
     assert placed.state.players[0].troops_garrison == garrison + 1
-    top = placed.state.decision_stack[-1]
-    assert dict(top.context)["reveal_choice_effect"] == "command_may_trash_card"
+    assert placed.state.decision_stack[-1].kind == FrameKind.REVEAL
+    assert _pending(placed.state) == ((shrouded, "command_may_trash_card"),)
     context = _reveal_context(placed.state)
     assert context["reveal_troops_recruited"] == 1
     assert "deferred_acquisition_triggers" not in context
@@ -3043,8 +3152,10 @@ def test_delivery_logistics_borrows_its_contract_icons() -> None:
             face_up_contract_ids=("contract:heighliner_i",),
         )
     )
-    frame = revealed.decision_stack[-1]
-    assert dict(frame.context)["reveal_choice_effect"] == "persuasion_or_contract"
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert (card, "persuasion_or_contract") in _pending(revealed)
+    # A printed "-OR-" choice is mandatory: it holds the end of the Reveal.
+    assert "finish_reveal" not in _offered(revealed)
     actions = legal_reveal_persuasion_or_contract_actions(revealed, 0)
     assert [a.action_id for a in actions] == [
         "gain_reveal_persuasion",
@@ -3104,17 +3215,27 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     revealed = _reveal(
         _state(_owner(hand=(card,), completed_contract_ids=four), CHOAM_BLOODLINES)
     )
-    frame = revealed.decision_stack[-1]
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
     assert (
-        dict(frame.context)["reveal_choice_effect"]
-        == "may_trash_self_for_four_influence_if_four_contracts"
-    )
+        card,
+        "may_trash_self_for_four_influence_if_four_contracts",
+    ) in _pending(revealed)
     actions = legal_reveal_card_trash_actions(revealed, 0)
-    assert [a.action_id for a in actions] == [
-        "decline_reveal_card_trash",
-        "trash_reveal_card",
+    # The black trash icon is optional [FAQ p. 3]: no refusal row, and an
+    # unused choice lapses at finish_reveal.
+    assert [a.action_id for a in actions] == ["trash_reveal_card"]
+    assert dict(actions[0].arguments)["source"] == "choam_demands"
+    unused = _finish(revealed)
+    assert _lapsed(unused) == [
+        {
+            "card_id": card,
+            "effect": "may_trash_self_for_four_influence_if_four_contracts",
+            "player": 0,
+        }
     ]
-    trashed = apply_reveal_card_trash(revealed, actions[1]).state
+    assert card not in unused.state.players[0].trashed
+    assert unused.state.players[0].influence == Influence()
+    trashed = apply_reveal_card_trash(revealed, actions[0]).state
     owner = trashed.players[0]
     assert card in owner.trashed
     assert owner.influence == Influence(
@@ -3124,6 +3245,7 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
         _state(_owner(hand=(card,), completed_contract_ids=four[:3]), CHOAM_BLOODLINES)
     )
     assert below.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_card_trash_actions(below, 0) == ()
 
 
 @pytest.mark.parametrize(
@@ -4042,22 +4164,32 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
 def test_engineered_miracle_command_lapses_once_the_card_left_play() -> None:
     # The Command choice waits in the freely ordered Reveal; if another
     # effect trashes Engineered Miracle first, its box can't be activated
-    # any more (OQ-022), so only the refusal remains (soak seed 901).
+    # any more (OQ-022), so nothing is offered and the entry lapses at
+    # finish_reveal (soak seed 901; before codec v147 only the refusal
+    # remained).
     from dune_imperium.rules.acquisition import (
-        apply_reveal_command_acquisition,
         legal_reveal_command_acquisition_actions,
     )
 
     card = _card("engineered_miracle")
     row = (_card("guild_envoy"),)
     revealed = _reveal(replace(_state(_six_persuasion_hand(card)), imperium_row=row))
-    assert len(legal_reveal_command_acquisition_actions(revealed, 0)) == 2
+    assert len(legal_reveal_command_acquisition_actions(revealed, 0)) == 1
     gone = trash_personal_card(revealed, 0, card, source="test").state
-    actions = legal_reveal_command_acquisition_actions(gone, 0)
-    assert [a.action_id for a in actions] == ["decline_command_acquisition"]
-    declined = apply_reveal_command_acquisition(gone, actions[0]).state
-    assert declined.decision_stack[-1].kind == "reveal"
-    assert declined.imperium_row == row
+    assert legal_reveal_command_acquisition_actions(gone, 0) == ()
+    assert "command_acquire_row_card" not in _offered(gone)
+    assert gone.decision_stack[-1].kind == "reveal"
+    assert gone.imperium_row == row
+    assert legal_finish_reveal_actions(gone, 0) != ()
+    finished = _finish(gone)
+    assert _lapsed(finished) == [
+        {
+            "card_id": card,
+            "effect": "command_may_trash_self_to_acquire_row_card",
+            "player": 0,
+        }
+    ]
+    assert finished.state.imperium_row == row
 
 
 # --- Ruthless Leadership (Bloodlines promo, card face) ------------------------
@@ -4257,6 +4389,19 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 1  # v142: draw_planetologist_intrigue (OQ-106)
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 1  # v142: draw_owed_card (OQ-106)
+        # v147: the ``source``-named Reveal rows of this catalog's cards
+        # (``_reveal_source_templates``): Shrouded Counsel's 122 trash targets,
+        # Calculus of Power's 29 and Disruption Tactics' 1, 13 posts for each of
+        # Spy Network's and Arrakis Observer's recall and for each of Covert
+        # Operation's, Public Spectacle's, Undercover Asset's, Wheels within
+        # Wheels' and Intelligence Training's place and recall-for-placement,
+        # 3 Commander shares for each of Chani's and Command Center's retreat,
+        # the four plain Spy icons' pass of their recall-first (Covert
+        # Operation's, Public Spectacle's, Wheels within Wheels' and
+        # Intelligence Training's), Pointing the Way's Influence with each
+        # Faction and Unswerving Loyalty's deploy and retreat of a troop or a
+        # Commander.
+        + 122 + 29 + 1 + 2 * 13 + 5 * 2 * 13 + 2 * 3 + 4 + 4 + 2 * 2
     )
     action = DomainAction(
         action_id="trash_agent_card",

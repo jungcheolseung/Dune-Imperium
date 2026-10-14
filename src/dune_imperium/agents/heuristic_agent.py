@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.reserve import (
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.rules.influence import MAX_INFLUENCE
+from dune_imperium.rules.reveal_turn import REVEAL_CHOICE_ACTION_IDS
 
 # Strategy weights, largest first: direct victory points, then permanent
 # upgrades, then cards, units, and resources. Declines and passes sit below
@@ -118,13 +119,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "resolve_contract_icons_without_contract": 0.0,
     "gain_leader_signet_troop": 2.0,
     "use_other_memories": 1.0,
-    # Reveal choice reordering never changes what the rule-based agent
-    # would gain; it resolves choices in card order and finishes.
-    "defer_reveal_choice": -5.0,
-    "resume_reveal_choice": -5.0,
-    # Likewise a Scouts line's later rewards taken ahead of its pending
-    # choice (OQ-100): the agent keeps the printed order. A draw waiting
-    # after the choice (OQ-106) is this action alone, so it is taken then.
+    # A Scouts line's later rewards taken ahead of its pending choice
+    # (OQ-100): the agent keeps the printed order. A draw waiting after the
+    # choice (OQ-106) is this action alone, so it is taken then.
     "scouts_rewards_first": -5.0,
     # Deploy everything the engine allows, then close the turn. Taking
     # troops back (OQ-029) ranks below every decline and pass so the agent
@@ -173,12 +170,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "keep_peeked_intrigue": 2.0,
     "acquire_reserve_by_card": 2.0,
     "lose_reveal_influence_for_vp": 3.0,
-    "decline_reveal_influence_loss": 0.5,
     "deploy_reveal_card_troop": 2.0,
     "retreat_reveal_card_troop": 0.2,
-    "decline_reveal_troop_move": 0.5,
     "lose_reveal_troops_for_specimens": 0.4,
-    "decline_reveal_troop_sacrifice": 0.6,
     # Tleilaxu deck boxes: a Victory Point for a card, five Solari for a
     # track step, and Piter's troop for two cards are all worth taking;
     # trashing a grafted card for one Influence is not.
@@ -334,6 +328,39 @@ _OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
         "use_other_memories",
     }
 )
+
+# The rows of the Reveal's optional choices -- "may", an arrow cost or a
+# black trash icon [FAQ p. 3] -- with the score of the refusal each choice
+# offered before the user ruling of 2026-10-14 (OQ-095 (7) addition, codec
+# v147). Each choice opened its own frame then, and the agent weighed its rows
+# against that refusal alone; now every pending choice is a row of the Reveal
+# frame, offers no refusal and lapses at ``finish_reveal``
+# (``turn_end_as_decline``): a row scoring below its refusal is never taken,
+# and the end ranks as the lowest refusal beside the rows still worth taking.
+_OPTIONAL_REVEAL_ROWS: Final[dict[str, float]] = {
+    # ``decline_reveal_spy_recall``: Spy Network, Arrakis Observer, In High
+    # Places.
+    "recall_spy_for_reveal": _DECLINE_SCORE,
+    "recall_spies_for_reveal": _DECLINE_SCORE,
+    # ``decline_reveal_influence_exchange`` (Captured Mentat).
+    "exchange_reveal_influence": _DECLINE_SCORE,
+    # ``decline_reveal_spice_influence`` (Spacing Guild's Favor).
+    "pay_reveal_spice_influence": _DECLINE_SCORE,
+    # ``decline_reveal_card_trash``: Calculus of Power, Shrouded Counsel,
+    # Disruption Tactics, CHOAM Demands.
+    "trash_reveal_card": _DECLINE_SCORE,
+    # ``decline_reveal_troop_retreat`` (Chani, Command Center).
+    "retreat_two_troops_for_reveal": _DECLINE_SCORE,
+    # ``decline_command_acquisition`` (Engineered Miracle).
+    "command_acquire_row_card": _DECLINE_SCORE,
+    # ``decline_reveal_influence_loss`` (For Humanity).
+    "lose_reveal_influence_for_vp": 0.5,
+    # ``decline_reveal_troop_move`` (Shadout Mapes, Unswerving Loyalty).
+    "deploy_reveal_card_troop": 0.5,
+    "retreat_reveal_card_troop": 0.5,
+    # ``decline_reveal_troop_sacrifice`` (Tleilaxu Surgeon).
+    "lose_reveal_troops_for_specimens": 0.6,
+}
 
 # Board space preference. Only Swordmaster and High Council were ranked
 # before 2026-09-10, so the other 21 spaces tied at ``agent_turn``'s base and
@@ -1202,21 +1229,71 @@ def turn_end_as_decline(
     scored: tuple[float, ...],
 ) -> tuple[float, ...]:
     """``scored`` with the turn's end ranked as a refusal beside an optional
-    effect of the Agent turn (``_OPTIONAL_AGENT_TURN_ROWS``).
+    effect of the Agent turn (``_OPTIONAL_AGENT_TURN_ROWS``) or the Reveal
+    (``_OPTIONAL_REVEAL_ROWS``), and the Reveal's choices taken first.
 
-    Since the user ruling of 2026-10-14 (OQ-095 (2)) the press of
-    ``finish_agent_turn`` is how the seat leaves such an effect unused, where
-    before it chose the effect's refusal at ``_DECLINE_SCORE``; ranking the
-    end there keeps every choice the agent made against that refusal.
+    Since the user rulings of 2026-10-14 (OQ-095 (2) and its (7) addition)
+    the press of ``finish_agent_turn`` or ``finish_reveal`` is how the seat
+    leaves such an effect unused, where before it chose the effect's
+    refusal; ranking the end there keeps every choice the agent made against
+    that refusal. A Reveal choice's row scoring below its own refusal was
+    never taken and is ranked last, and the Reveal's end ranks as the lowest
+    refusal of the rows still worth taking, never above its own score.
+
+    Before codec v147 every Reveal choice was a frame of its own above the
+    Reveal frame, so the agent answered each one before any purchase, gain
+    or Plot. Now the choices are rows of the Reveal frame beside those, and
+    the rows it would take rank above every other row, in their own order:
+    without that it bought first with the Persuasion a choice had not added
+    yet (Desert Power's 2, In High Places' 3, Command Center's 2; 88 of 1,115
+    choice Reveals in a 200-record replay of the v145 corpus, 2026-10-14).
     """
 
-    if not any(
-        action.action_id in _OPTIONAL_AGENT_TURN_ROWS for action in legal_actions
-    ):
+    if any(action.action_id in _OPTIONAL_AGENT_TURN_ROWS for action in legal_actions):
+        scored = tuple(
+            _DECLINE_SCORE if action.action_id == "finish_agent_turn" else score
+            for action, score in zip(legal_actions, scored, strict=True)
+        )
+    refusals = tuple(
+        _OPTIONAL_REVEAL_ROWS.get(action.action_id) for action in legal_actions
+    )
+    left = tuple(
+        refusal is not None and score <= refusal
+        for refusal, score in zip(refusals, scored, strict=True)
+    )
+    if any(refusal is not None for refusal in refusals):
+        floor = min(scored) - 1.0
+        worth = [
+            refusal
+            for refusal, unused in zip(refusals, left, strict=True)
+            if refusal is not None and not unused
+        ]
+        end = min(worth, default=None)
+        scored = tuple(
+            floor
+            if unused
+            else min(score, end)
+            if end is not None and action.action_id == "finish_reveal"
+            else score
+            for action, unused, score in zip(
+                legal_actions, left, scored, strict=True
+            )
+        )
+    taken = tuple(
+        action.action_id in REVEAL_CHOICE_ACTION_IDS and not unused
+        for action, unused in zip(legal_actions, left, strict=True)
+    )
+    others = [score for score, choice in zip(scored, taken, strict=True) if not choice]
+    if not any(taken) or not others:
+        return scored
+    lift = max(others) - min(
+        score for score, choice in zip(scored, taken, strict=True) if choice
+    ) + 1.0
+    if lift <= 0:
         return scored
     return tuple(
-        _DECLINE_SCORE if action.action_id == "finish_agent_turn" else score
-        for action, score in zip(legal_actions, scored, strict=True)
+        score + lift if choice else score
+        for score, choice in zip(scored, taken, strict=True)
     )
 
 

@@ -14,8 +14,10 @@ carry ``box=1``, codec v143); each row is read with its own box active
 (``rules.agent_effect_frame.route_box_action``), as the engine resolves it.
 The decision panel groups the rows under a header per card
 (``agent_box_of_rows``, ``agent_box_headers``; docs/graft-boxes-plan.md
-4.11). It is derived from the same engine tables and card data the rules
-execute.
+4.11). A Reveal's card choices are rows of the Reveal frame (codec v147),
+grouped the same way under a header per revealed card
+(``reveal_choice_of_rows``, ``reveal_choice_headers``). It is derived from
+the same engine tables and card data the rules execute.
 """
 
 import re
@@ -25,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluen
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
+    OPTIONAL_REVEAL_CHOICES,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -38,6 +41,8 @@ from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
 )
+from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT
+from dune_imperium.display.tokens_ko import REVEAL_CHOICE_EFFECT_TEXT_KO
 from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
 from dune_imperium.rules.agent_effects import (
     boost_draw_card,
@@ -60,7 +65,7 @@ from dune_imperium.rules.graft_boxes import (
 )
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.owed_draws import next_owed_draw
-from dune_imperium.rules.reveal_turn import reveal_choice_prompt
+from dune_imperium.rules.reveal_turn import pending_choice_entries
 
 _BOX = PersonalCardAgentEffect
 # The card whose added Agent-box draw ``resolves_boost_draw`` names, by its
@@ -490,6 +495,109 @@ def agent_box_headers(state: GameState, seat: int) -> list[dict[str, object]] | 
     return headers
 
 
+# --- The Reveal's card choices ------------------------------------------------
+#
+# Every choice effect of a revealed card waits on the Reveal frame and is
+# offered there beside the purchases, gains and Plots, in any order (codec
+# v147; OQ-095 (7) addition, user ruling 2026-10-14; [Main p. 12]). The
+# decision panel sets each pending choice's rows under a header naming its
+# card and what the choice does, as it does an Agent turn's boxes, so no row
+# has to name its card itself (the shared ids name it with ``source``, a
+# definition id the page never prints).
+
+# The never-legal row that stands for a pending choice offering nothing now
+# (``reveal_turn.waiting_choice_action``), greyed out with its reason.
+WAITING_REVEAL_CHOICE = "resume_reveal_choice"
+
+
+def reveal_choice_key(card_id: str, effect: str) -> str:
+    """One pending Reveal choice: its revealed card instance and effect."""
+
+    return f"{card_id}:{effect}"
+
+
+def reveal_choice_text(effect: str) -> tuple[str, str]:
+    """What one Reveal choice does, in the card's own words.
+
+    English for ``iconize`` and Korean with ``{term}`` tokens
+    (``display.tokens`` / ``display.tokens_ko``, the card popover's lines),
+    a card's trash written as the word as on a button.
+    """
+
+    choice = PersonalCardRevealChoiceEffect(effect)
+    return (
+        REVEAL_CHOICE_EFFECT_TEXT[choice],
+        _one_icon_per_effect_ko(REVEAL_CHOICE_EFFECT_TEXT_KO[choice]),
+    )
+
+
+def reveal_card_names(card_id: str) -> tuple[str, str]:
+    """A revealed card's English name and its Korean print name."""
+
+    return _card_names(card_id)
+
+
+def reveal_choice_headers(
+    state: GameState, seat: int
+) -> list[dict[str, object]] | None:
+    """The pending choices of ``seat``'s open Reveal, for the panel's headers.
+
+    None unless ``seat``'s Reveal frame is on top, or when nothing is
+    pending. Otherwise one entry per pending choice in pending order (the
+    order the engine resolves a shared row in): ``key``
+    (``reveal_choice_key``), ``card_id``, the card's English ``name`` and
+    Korean ``name_ko``, ``effect``, what it does (``text``/``text_ko``,
+    ``reveal_choice_text``), ``optional`` (it offers no refusal and lapses
+    unused when the Reveal ends; ``content.uprising.types``
+    ``OPTIONAL_REVEAL_CHOICES``) and ``offered`` (it offers a row now; one
+    that does not is a greyed-out waiting row, ``display.unavailable``).
+    Public: the Reveal lays the hand face up, and only the seat itself is
+    sent its own decision's rows.
+    """
+
+    entries = pending_choice_entries(state, seat)
+    if not entries:
+        return None
+    headers: list[dict[str, object]] = []
+    for (card_id, effect), rows in entries:
+        name, name_ko = _card_names(card_id)
+        text, text_ko = reveal_choice_text(effect)
+        headers.append(
+            {
+                "key": reveal_choice_key(card_id, effect),
+                "card_id": card_id,
+                "name": name,
+                "name_ko": name_ko,
+                "effect": effect,
+                "text": text,
+                "text_ko": text_ko,
+                "optional": PersonalCardRevealChoiceEffect(effect)
+                in OPTIONAL_REVEAL_CHOICES,
+                "offered": bool(rows),
+            }
+        )
+    return headers
+
+
+def reveal_choice_of_rows(
+    state: GameState, seat: int, actions: tuple[DomainAction, ...]
+) -> tuple[str | None, ...]:
+    """The pending Reveal choice each of ``seat``'s legal rows takes, in order.
+
+    The first pending entry that offers the row, as the engine opens it
+    (``reveal_turn._open_pending``): two copies of one card offer one row
+    once, and it takes the older copy's choice. None for any other row (a
+    purchase, a gain, a Plot), and for every row unless ``seat``'s Reveal
+    frame is on top.
+    """
+
+    owner: dict[DomainAction, str] = {}
+    for (card_id, effect), rows in pending_choice_entries(state, seat) or ():
+        for action in rows:
+            owner.setdefault(action, reveal_choice_key(card_id, effect))
+    return tuple(owner.get(action) for action in actions)
+
+
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
     """Describe one queued Tech reward and its currently chosen branch."""
 
@@ -645,8 +753,10 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
         return None
     if action.action_id == "resolve_board_effect":
         return board_effect_action_text(state, action)
-    if action.action_id == "resume_reveal_choice":
-        return reveal_choice_prompt(PersonalCardRevealChoiceEffect(key))
+    if action.action_id == WAITING_REVEAL_CHOICE:
+        # The never-legal row of a pending Reveal choice that offers nothing
+        # now (display.unavailable): the choice in its card's words.
+        return reveal_choice_text(key)[0]
     if action.action_id != "resolve_agent_card_effect":
         return None
     if _servo_signet_frame(state):
@@ -681,12 +791,11 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
 
     ``resolve_agent_card_effect`` (Step K2) resolves through
     ``agent_card_icon_text_ko``; ``resolve_board_effect`` (Step K4) now
-    resolves through ``spaces.py``'s ``board_effect_action_text_ko``.
-    ``resume_reveal_choice``'s detail is an engine prompt, already
-    translated client-side by ``promptText()`` (``i18n.js``) rather than
-    through this field, so it stays ``None`` here regardless; the client's
-    ``detail_ko`` falls back to the English ``detail`` whenever this
-    returns ``None`` (``static/render.js`` ``effectNode``).
+    resolves through ``spaces.py``'s ``board_effect_action_text_ko``; a
+    waiting Reveal choice (``resume_reveal_choice``) through
+    ``reveal_choice_text``. The client's ``detail_ko`` falls back to the
+    English ``detail`` whenever this returns ``None`` (``static/render.js``
+    ``effectNode``).
     """
 
     faction = intrigue_faction_choice_text(state, action)
@@ -713,6 +822,8 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
         return None
     if action.action_id == "resolve_board_effect":
         return board_effect_action_text_ko(state, action)
+    if action.action_id == WAITING_REVEAL_CHOICE:
+        return reveal_choice_text(key)[1]
     if action.action_id != "resolve_agent_card_effect":
         return None
     if _servo_signet_frame(state):

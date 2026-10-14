@@ -3,7 +3,7 @@
 import pytest
 
 from dune_imperium.agents import HeuristicAgent
-from dune_imperium.agents.heuristic_agent import score_action
+from dune_imperium.agents.heuristic_agent import score_action, turn_end_as_decline
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.core import GamePhase
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -1106,3 +1106,22 @@ def _argument_count(action: DomainAction) -> int:
     count = dict(action.arguments)["count"]
     assert isinstance(count, int)
     return count
+
+
+def test_the_reveal_choices_it_takes_come_before_a_purchase() -> None:
+    """Codec v147 offers the Reveal's choices beside its purchases. The
+    choices the agent takes rank above every other row, in their own order,
+    as when each was a frame of its own; a choice left below its old refusal
+    stays last, and the end ranks as that refusal."""
+
+    buy = DomainAction("acquire_imperium", 0, (("instance_id", "imperium:x:0"),))
+    persuasion = DomainAction("decline_reveal_sandworm", 0)
+    sandworm = DomainAction("pay_reveal_water_for_sandworm", 0)
+    unused = DomainAction("pay_reveal_spice_influence", 0, (("faction", "emperor"),))
+    end = DomainAction("finish_reveal", 0)
+    legal = (buy, persuasion, sandworm, unused, end)
+
+    ranked = turn_end_as_decline(legal, (7.0, -2.0, 1.0, -2.0, -3.0))
+
+    order = sorted(range(len(legal)), key=lambda i: ranked[i], reverse=True)
+    assert [legal[i] for i in order] == [sandworm, persuasion, buy, end, unused]

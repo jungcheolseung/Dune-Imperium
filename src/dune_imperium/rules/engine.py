@@ -33,7 +33,6 @@ from dune_imperium.rules.acquisition import (
     legal_imperium_acquisitions,
     legal_manipulated_acquisitions,
     legal_reserve_acquisitions,
-    legal_reveal_command_acquisition_actions,
 )
 from dune_imperium.rules.agent_effect_frame import (
     legal_agent_effect_frame_actions,
@@ -256,8 +255,6 @@ from dune_imperium.rules.phases import (
 from dune_imperium.rules.reveal_turn import (
     apply_contract_reveal_choice,
     apply_corrinth_city_reveal,
-    apply_defer_reveal_choice,
-    apply_resume_reveal_choice,
     apply_reveal_card_trash,
     apply_reveal_deployment,
     apply_reveal_gain,
@@ -274,25 +271,12 @@ from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     finish_reveal_turn,
     grant_late_reveal_effects,
-    legal_contract_reveal_choice_actions,
-    legal_corrinth_city_reveal_actions,
-    legal_defer_reveal_choice_actions,
     legal_finish_reveal_actions,
-    legal_resume_reveal_choice_actions,
+    legal_pending_reveal_choice_actions,
     legal_reveal_actions,
-    legal_reveal_card_trash_actions,
     legal_reveal_deployments,
     legal_reveal_gain_actions,
-    legal_reveal_influence_exchange_actions,
-    legal_reveal_influence_gain_actions,
-    legal_reveal_influence_loss_actions,
-    legal_reveal_persuasion_or_contract_actions,
-    legal_reveal_sandworm_actions,
-    legal_reveal_spice_influence_actions,
-    legal_reveal_spy_actions,
-    legal_reveal_troop_move_actions,
-    legal_reveal_troop_retreat_actions,
-    legal_reveal_troop_sacrifice_actions,
+    reveal_choice_providers,
 )
 from dune_imperium.rules.sardaukar import (
     apply_commander_recruit,
@@ -511,7 +495,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_commander_recruit_actions,
         legal_skill_trash_actions,
         legal_reveal_deployments,
-        legal_resume_reveal_choice_actions,
+        # Every pending Reveal choice that can be taken now, beside the
+        # purchases and gains (OQ-095 (7) addition, codec v147).
+        legal_pending_reveal_choice_actions,
         # The owner's waiting Emperor track Spy, placed in any order before
         # the Reveal ends (user ruling 2026-10-04).
         legal_track_spy_actions,
@@ -530,23 +516,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # Arrakeen Scouts: Corrinth City's seat's subcommittee (OQ-076).
         legal_subcommittee_choice_actions,
     ),
-    FrameKind.REVEAL_CHOICE: (
-        legal_defer_reveal_choice_actions,
-        legal_reveal_command_acquisition_actions,
-        legal_reveal_persuasion_or_contract_actions,
-        legal_corrinth_city_reveal_actions,
-        legal_contract_reveal_choice_actions,
-        legal_reveal_card_trash_actions,
-        legal_reveal_spy_actions,
-        legal_reveal_influence_exchange_actions,
-        legal_reveal_influence_gain_actions,
-        legal_reveal_sandworm_actions,
-        legal_reveal_spice_influence_actions,
-        legal_reveal_troop_retreat_actions,
-        legal_reveal_influence_loss_actions,
-        legal_reveal_troop_move_actions,
-        legal_reveal_troop_sacrifice_actions,
-    ),
+    # A Reveal choice opened from the Reveal frame's pending list, on top
+    # only while a step must follow at once (a Spy recalled for its
+    # placement); the rows of every pending choice are the Reveal frame's.
+    FrameKind.REVEAL_CHOICE: reveal_choice_providers(),
     # Each frame a Scouts line's reward may open also offers the line's
     # later automatic rewards first (OQ-100).
     FrameKind.CONTRACT_MARKET: (
@@ -853,8 +826,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_leader_commander": apply_leader_reveal_action,
     "recall_spy_for_leader": apply_leader_reveal_action,
     "finish_reveal": finish_reveal_turn,
-    "defer_reveal_choice": apply_defer_reveal_choice,
-    "resume_reveal_choice": apply_resume_reveal_choice,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,
     "decline_acquisition_spy": apply_acquisition_spy_action,
@@ -864,7 +835,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "keep_contract_reveal_spice": apply_contract_reveal_choice,
     "trash_contract_reveal_for_vp": apply_contract_reveal_choice,
     "trash_reveal_card": apply_reveal_card_trash,
-    "decline_reveal_card_trash": apply_reveal_card_trash,
     "place_reveal_spy": apply_reveal_spy_action,
     "recall_spy_for_reveal": apply_reveal_spy_action,
     "recall_spy_for_reveal_placement": apply_reveal_spy_action,
@@ -888,23 +858,16 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "lose_unit": apply_unit_loss,
     "resolve_unit_loss_without_unit": apply_unit_loss,
     "take_trigger_contract": apply_trigger_contract_action,
-    "decline_command_acquisition": apply_reveal_command_acquisition,
-    "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
     "decline_reveal_sandworm": apply_reveal_sandworm_action,
     "pay_reveal_spice_influence": apply_reveal_spice_influence,
-    "decline_reveal_spice_influence": apply_reveal_spice_influence,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
-    "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)
     "lose_reveal_influence_for_vp": apply_reveal_influence_loss,
-    "decline_reveal_influence_loss": apply_reveal_influence_loss,
     "deploy_reveal_card_troop": apply_reveal_troop_move,
     "retreat_reveal_card_troop": apply_reveal_troop_move,
-    "decline_reveal_troop_move": apply_reveal_troop_move,
     "lose_reveal_troops_for_specimens": apply_reveal_troop_sacrifice,
-    "decline_reveal_troop_sacrifice": apply_reveal_troop_sacrifice,
     # Contracts
     "take_contract": apply_contract_action,
     # Nothing in a non-empty market can be taken: the icons wait (OQ-059).

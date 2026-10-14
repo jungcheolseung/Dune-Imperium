@@ -57,6 +57,6 @@ def test_for_humanity_shows_the_two_influence_alliance_cost() -> None:
     assert reveal_choice_prompt(
         PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE
     ) == (
-        "Bene Gesserit Alliance: lose two Influence with one Faction for a "
-        "Victory Point, or decline"
+        "Bene Gesserit Alliance: you may lose two Influence with one Faction "
+        "for a Victory Point"
     )

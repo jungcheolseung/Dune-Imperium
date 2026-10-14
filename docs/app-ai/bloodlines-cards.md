@@ -557,7 +557,9 @@ Tail: `AS.EngineeredMiracleAgentAbility` (§2.4, `Reward = water_value(1)`, `SgB
 E: for c in targets (row cards): Upd(acquire_value(c).Sum, [c])          # used iff > 0; card loss not priced
 Reward(P) = max over ImperiumRowCards of acquire_value(c).Sum (empty if none)
 ```
-Windows: `discard_agent_card`/decline; `command_acquire_row_card(c)` / `decline_command_acquisition`.
+Windows: `discard_agent_card`/decline; `command_acquire_row_card(c)` iff E > 0. Since codec v147 the Reveal choice offers
+no refusal (OQ-095 (7) addition): a Command choice answered with nothing is not asked again and lapses at
+`finish_reveal` (`windows/reveal.py`, `_PASSED`).
 
 ### 3.12 Fremen War Name
 
@@ -683,7 +685,8 @@ precedent). The `skill_choice` it opens is answered by `bloodlines-systems.md` (
 Printed: Agent "draw an Intrigue"; Reveal P1, "Command: may trash a card" (`:1542–1544`).
 Tail: `W.ActivatedAbilities.AgentGainIntrigueAbility` and `AS.ShroudedCounselCommandAbility : W.ActivatedAbilities.TrashAbility`
 (timing Reveal, Optional). Its V is `CommandReached ? trash_card_value() + trash_mod() : empty`, and its E is
-`TrashAbility.Evaluate`. An answer with no card maps to declining. Window: `trash_reveal_card` (junk only).
+`TrashAbility.Evaluate`. An answer with no card leaves the choice unused (it lapses at `finish_reveal`; no refusal since
+codec v147). Window: `trash_reveal_card(source=shrouded_counsel)` (junk only).
 
 ### 3.26 Southern Faith
 
@@ -881,6 +884,12 @@ token's `contract_intrigue_trash` is answered by `JunkIntriguePick` (§2.10). It
 
 ## 8. Decision windows answered (summary)
 
+Since codec v147 (OQ-095 (7) addition) every Reveal choice row is offered on the `reveal` frame itself, carrying the
+card's `source` wherever several cards share an action id (the Spy icons' recall-first pass and Unswerving Loyalty's
+troop move too); an Optional choice offers no refusal and lapses at
+`finish_reveal` (`windows/reveal.py` docstring). The Reveal rows below are keys of the post-reveal prompt, except the
+Command (6+) choices, which are answered before it.
+
 | window / id | items | answer |
 |---|---|---|
 | `agent_effects` `trash_agent_card`/decline | Ruthless Leadership ×2, Eliminate Allies, Elite Forces | TrashAbility E / Elite Forces E; decline when no card |
@@ -896,10 +905,10 @@ token's `contract_intrigue_trash` is answered by `JunkIntriguePick` (§2.10). It
 | `intrigue_choice` (lose/give/peek/trash/retreat/faction/discard, Grasp Arrakis `flip_battle_card`) | §4, §5 | `Memory.intents` from E; `LoseUnitPick`, `JunkIntriguePick` |
 | `intrigue_trigger_contract` | Coercive Negotiation | `best_contract(forced=True)` |
 | `tech_acquisition` | Battlefield Research, Rapid Engineering | AcquireTechAbilityDiscount1 E |
-| `reveal_choice` `trash_reveal_card` | CHOAM Demands, Disruption Tactics, Shrouded Counsel | item E |
-| `recall_spy_for_reveal` / `retreat_two_troops_for_reveal(commanders)` | Arrakis Observer / Command Center | item E; Commanders only for the troops missing (§3.5) |
-| `command_acquire_row_card`/decline | Engineered Miracle | §3.11 E |
-| `gain_reveal_influence` | Pointing the Way, Ixian Ambassador | GainAnyInfluence E |
+| `reveal` `trash_reveal_card(source)` | CHOAM Demands, Disruption Tactics, Shrouded Counsel | item E |
+| `recall_spy_for_reveal(source)` / `retreat_two_troops_for_reveal(commanders, source)` | Arrakis Observer / Command Center | item E; Commanders only for the troops missing (§3.5) |
+| `command_acquire_row_card` | Engineered Miracle | §3.11 E |
+| `gain_reveal_influence(faction, source)` | Pointing the Way, Ixian Ambassador | GainAnyInfluence E |
 | `gain_reveal_persuasion`/`take_reveal_contract` | Delivery Logistics | §3.7 E |
 | `reveal` `deploy_troops`/`deploy_commanders` | Ruthless Leadership, Holy War, Disruption Tactics | §2.2 |
 | `contract_market`, `contract_intrigue_trash`, `contract_reward_*` | tokens, Corrupt Bureaucrat, Mercantile Affairs, Delivery Logistics | §7 |

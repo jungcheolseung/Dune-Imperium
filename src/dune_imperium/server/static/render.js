@@ -1166,6 +1166,9 @@ function actionPreviewEntries(action) {
   }
   for (const [key, value] of Object.entries(args)) {
     if (key === "space_id" || typeof value !== "string") continue;
+    /* A Reveal choice's own card (core.js revealSourceEntry): its header
+       already names it, and it lies face up in play. */
+    if (key === "source" && revealSourceEntry(action)) continue;
     const entry = entryOf(value);
     if (entry && !entries.includes(entry)) entries.push(entry);
   }
@@ -1957,6 +1960,64 @@ function acquireCostNode(action) {
   return cost;
 }
 
+/* ---------- a Reveal's card choices ----------
+
+   Every choice of a revealed card waits on the Reveal frame and is offered
+   there beside the purchases, gains and Plots, in any order (codec v147,
+   OQ-095 (7) addition, user ruling 2026-10-14, [Main p. 12]). The server
+   lists the pending choices (state.actions.reveal_choices, display/
+   actions.py reveal_choice_headers: the card, what the choice does, whether
+   it is optional) and says which one each row takes (`reveal_choice`); the
+   panel sets each card's rows under a header naming the card and its
+   choice, as an Agent turn's boxes are (appendDecisionItems), with a line
+   saying whether the choice may be left (it then lapses unused when the
+   Reveal ends) or must be made before it ends. A choice that offers
+   nothing now is a greyed-out row of its own under "waiting", led by its
+   card, with the reason (display/unavailable.py _deferred). */
+function revealChoiceGroups(effects) {
+  const entries = (state.actions && state.actions.reveal_choices) || [];
+  const greyed = (state.actions.unavailable && state.actions.unavailable.rows) || [];
+  const groups = new Map();
+  for (const entry of entries) {
+    const rows = effects.filter((action) => action.reveal_choice === entry.key);
+    if (!rows.length) continue;
+    const waiting = greyed.filter(
+      (row) => row.reveal_choice === entry.key && row.surface === "choice",
+    );
+    groups.set(entry.key, { entry, rows, greyed: waiting });
+  }
+  return groups;
+}
+
+/* "<card> — <what its choice does>": the card is plain text, never
+   iconized; the choice is the card's own words. A heading for a screen
+   reader, not a control, like agentBoxHeading. */
+function revealChoiceHeading(entry) {
+  const heading = document.createElement("div");
+  heading.className = "agent-box-heading reveal-choice-heading";
+  heading.dataset.choice = entry.key;
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "4");
+  const name = TERM_LANGUAGE === "ko" && entry.name_ko ? entry.name_ko : entry.name;
+  heading.append(name, " — ");
+  heading.appendChild(effectNode(entry.text, entry.text_ko));
+  return heading;
+}
+
+/* Whether the choice may be left: an optional one offers no refusal and
+   lapses unused when the Reveal ends; a mandatory one keeps the Reveal's
+   end away until it is made. */
+function revealChoiceNote(entry) {
+  const note = document.createElement("div");
+  note.className = "agent-box-note muted reveal-choice-note";
+  note.dataset.choice = entry.key;
+  note.dataset.optional = entry.optional ? "true" : "false";
+  note.appendChild(
+    tNode(entry.optional ? "render.reveal_choice_optional" : "render.reveal_choice_mandatory"),
+  );
+  return note;
+}
+
 function renderRevealPanel(box, actions) {
   const decision = state.summary.decision;
   const status = document.createElement("div");
@@ -1992,15 +2053,29 @@ function renderRevealPanel(box, actions) {
      row by renderBanner. */
   const buys = actions.filter(isAcquire);
   const effects = actions.filter((action) => !isAcquire(action));
-  if (effects.length) {
+  const groups = revealChoiceGroups(effects);
+  const others = effects.filter((action) => !action.reveal_choice || !groups.has(action.reveal_choice));
+  if (others.length) {
     heading(t("render.reveal_effects_heading"));
-    appendActionItems(box, effects);
+    appendActionItems(box, others);
+  }
+  /* Each revealed card's choice under its own header (revealChoiceGroups),
+     with a branch it cannot take now (Desert Power's sandworm) greyed out
+     under it. */
+  const placed = new Set();
+  for (const group of groups.values()) {
+    box.appendChild(revealChoiceHeading(group.entry));
+    box.appendChild(revealChoiceNote(group.entry));
+    appendActionItems(box, group.rows, { boxed: true });
+    for (const row of group.greyed) {
+      box.appendChild(unavailableRow(row, true));
+      placed.add(row.key);
+    }
   }
   /* What the seat cannot take now, under what it can (server's
-     `unavailable`): a deferred Reveal choice still waiting on its
-     condition, an Intrigue card it cannot play, the cards it cannot
-     afford. */
-  appendUnavailableRows(box, ["choice", "waiting", "intrigue"]);
+     `unavailable`): a card's choice still waiting on its condition, an
+     Intrigue card it cannot play, the cards it cannot afford. */
+  appendUnavailableRows(box, ["choice", "waiting", "intrigue"], placed);
   if (buys.length) {
     heading(t("render.buyable_cards_heading"));
     for (const action of buys) {
@@ -2157,6 +2232,7 @@ function actionItem(action, onApply, zone, boxed = false) {
 function actionCardEntry(action) {
   for (const [key, value] of Object.entries(action.arguments)) {
     if (key === "space_id" || typeof value !== "string") continue;
+    if (key === "source" && revealSourceEntry(action)) continue;
     const card = cardEntryOf(value);
     if (card) return card;
   }

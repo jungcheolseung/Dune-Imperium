@@ -161,11 +161,14 @@ def test_a_student_learns_the_teacher_and_keeps_its_best_epoch(
         )
     else:
         student = PolicyValueNetwork(data.action_size, hidden=(32,))
+    # Four epochs: with three the entity student's distance only fell to
+    # 0.43 of the teacher's, and to 0.66 once codec v147 named every shared
+    # Reveal choice's card (the teacher's rows moved, so did its games).
     config = StudentConfig(
         learning_rate=3e-3,
         warmup_steps=5,
         minibatch_size=64,
-        epochs=3,
+        epochs=4,
         heldout_modulus=2,
         threads=1,
     )
@@ -173,7 +176,7 @@ def test_a_student_learns_the_teacher_and_keeps_its_best_epoch(
     before = score_student(student, data, train_rows)
     history = train_student(student, data, config)
     after = score_student(student, data, train_rows)
-    assert [record.epoch for record in history] == [1, 2, 3]
+    assert [record.epoch for record in history] == [1, 2, 3, 4]
     # The distance to the teacher (cross-entropy above its entropy) halves.
     assert after.teacher_entropy < 0.5 * before.cross_entropy
     distance = after.cross_entropy - after.teacher_entropy

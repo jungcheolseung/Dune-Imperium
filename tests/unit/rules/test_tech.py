@@ -2561,6 +2561,7 @@ def test_ixian_ambassador_gains_spice_and_influence_with_two_tiles() -> None:
     from dune_imperium.rules.reveal_turn import (
         apply_reveal_influence_gain,
         legal_reveal_influence_gain_actions,
+        pending_reveal_choices,
     )
 
     card = "imperium:ixian_ambassador:0"
@@ -2571,20 +2572,39 @@ def test_ixian_ambassador_gains_spice_and_influence_with_two_tiles() -> None:
     resolved = resolve_agent_card_effect(placed).state
     assert resolved.players[0].resources.spice == 6 + 1
 
-    # Reveal: two tiles open the Influence choice; one tile defers it.
+    # Reveal: two tiles make the Influence choice a row of the Reveal frame; with
+    # one tile it waits as a pending entry that offers nothing (and so does not
+    # hold the end of the Reveal) until a second tile makes its condition true.
     revealed = _reveal(_turn_state(replace(owner, hand=(card,)), stacks=((), (), ())))
     frame = revealed.state.decision_stack[-1]
-    assert frame.kind == "reveal_choice"
+    assert frame.kind == "reveal"
+    assert pending_reveal_choices(dict(frame.context)) == (
+        (card, "gain_chosen_influence_if_two_tech"),
+    )
     choices = legal_reveal_influence_gain_actions(revealed.state, 0)
     assert len(choices) == 4
+    assert set(choices) <= set(UprisingRulesEngine().legal_actions(revealed.state, 0))
     gained = apply_reveal_influence_gain(revealed.state, choices[3]).state
     assert gained.players[0].influence.fremen == 1
+    assert pending_reveal_choices(dict(gained.decision_stack[-1].context)) == ()
     single = _reveal(
         _turn_state(
             replace(owner, hand=(card,), tech_ids=("glowglobes",)), stacks=((), (), ())
         )
     )
     assert single.state.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_influence_gain_actions(single.state, 0) == ()
+    single_actions = UprisingRulesEngine().legal_actions(single.state, 0)
+    assert "gain_reveal_influence" not in {a.action_id for a in single_actions}
+    # A second tile arriving later makes the waiting choice offer its rows.
+    second = replace(
+        single.state,
+        players=(
+            replace(single.state.players[0], tech_ids=("glowglobes", "training_depot")),
+            *single.state.players[1:],
+        ),
+    )
+    assert len(legal_reveal_influence_gain_actions(second, 0)) == 4
 
 
 def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> None:

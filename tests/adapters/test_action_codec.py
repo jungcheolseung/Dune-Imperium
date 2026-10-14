@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 146
+    assert ACTION_CODEC_VERSION == 147
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -111,10 +111,18 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
+        # v147 (OQ-095 (7) addition): the ``source``-named Reveal choice
+        # rows of the base deck's cards -- Spy Network's recall (13), the
+        # placement and recall-first of Public Spectacle, Wheels within
+        # Wheels, Covert Operation and Undercover Asset (4 x 26), Chani's
+        # retreat (1), Calculus of Power's trash of an Emperor card (17),
+        # the plain Spy icons' pass of their recall-first (3) and Unswerving
+        # Loyalty's deploy and retreat (2).
+        + 140
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged.
-    assert first.size == 4413
+    assert first.size == 4553
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -138,8 +146,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4413
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4413 + len(
+    assert ActionCodec(RulesetConfig()).size == 4553
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4553 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -250,6 +258,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
             + 1  # v142: draw_owed_intrigue (OQ-106)
+        # v147: the base catalog's 140 ``source``-named Reveal rows plus
+        # Priority Contracts' and Delivery Agreement's spice-or-VP (2 x 2).
+        + 144
     )
 
     try:
@@ -375,6 +386,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1  # v142: draw_planetologist_intrigue (OQ-106)
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 1  # v142: draw_owed_card (OQ-106)
+        # v147: the ``source``-named Reveal choice rows of the CHOAM and
+        # Bloodlines decks' cards (Shrouded Counsel's trash of any personal
+        # card alone is one per instance).
+        + 334
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

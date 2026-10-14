@@ -55,6 +55,7 @@ from dune_imperium.adapters.observation_encoding import (
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
 from dune_imperium.rules.graft_boxes import BOX_ARGUMENT
+from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT, SOURCED_REVEAL_ACTION_IDS
 from dune_imperium.training.network import (
     MlpSlotsNetwork,
     PolicyValueNetwork,
@@ -712,12 +713,24 @@ def _alias(key: TemplateKey) -> TemplateKey | None:
     with ``box=1`` (docs/graft-boxes-plan.md 4.8): the same Agent-box choice
     of the other grafted card, so its row starts from the untagged one's
     weights and Adam moments (``_gather_rows`` reads one old row twice).
+    Codec v147 names the Reveal card of eleven Reveal choice ids with
+    ``source`` (``rules.reveal_turn.SOURCED_REVEAL_ACTION_IDS``): each card's
+    row is the same choice the source-less row stood for, so it starts from
+    that row.
     """
 
     action_id, arguments = key
-    if (BOX_ARGUMENT, 1) not in arguments:
-        return None
-    return action_id, tuple(item for item in arguments if item != (BOX_ARGUMENT, 1))
+    if (BOX_ARGUMENT, 1) in arguments:
+        return action_id, tuple(
+            item for item in arguments if item != (BOX_ARGUMENT, 1)
+        )
+    if action_id in SOURCED_REVEAL_ACTION_IDS and any(
+        name == SOURCE_ARGUMENT for name, _ in arguments
+    ):
+        return action_id, tuple(
+            item for item in arguments if item[0] != SOURCE_ARGUMENT
+        )
+    return None
 
 
 def _gather_rows(tensor: torch.Tensor, source: torch.Tensor) -> torch.Tensor:

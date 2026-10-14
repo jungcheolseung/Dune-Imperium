@@ -4,18 +4,21 @@
 page asks for such a play first and alone (static/turn.js, user decision
 2026-10-14), so turn_start_window.py needs a seat whose turn opens with both
 plays legal, a Plot it may play instead (a first other action, after which
-the plays are greyed out), and that seat's next turn opening with them
-again.
+the plays are greyed out), and that seat's next turn opening with a
+turn-start play again.
 
 Four human seats, Bloodlines and the Leader draft on (Withdrawn is a Twisted
 Intrigue card, dealt to Piter De Vries, whom the draft can seat); every seat
 plays ``random.Random(SEED).choice`` over its legal actions but never a
-turn-start play, and every hold is confirmed at once. Seed 185 is the first
-of 0-199 whose walk meets such a turn start: seat 2 in round 6, holding
-Litany Against Fear and Withdrawn, with a Plot that leaves it on its turn
-frame. The walk saves there, plays that Plot, goes on, and records every
-step up to seat 2's next turn start (both plays legal again), so the page
-can replay them and must open the window once more.
+turn-start play, and every hold is confirmed at once. Seed 28 is the first
+of 0-199 whose walk meets such a turn start: seat 0 in round 8, holding
+Litany Against Fear and Withdrawn, with a Plot (Crysknife) that leaves it on
+its turn frame. The walk saves there, plays that Plot, goes on, and records
+every step (50, 48 of them actions) up to seat 0's next turn start
+(Withdrawn legal again), so the page can replay them and must open the
+window once more. (Seed 185 until codec v147 moved the AI-free walks: a
+Reveal choice became a row of the Reveal, so every seat's legal list
+changed; seed 185 then had both plays at that next turn too.)
 
 Prints {"turn-start": {save_id, seat, round, revision, plays, plot, steps,
 next_revision, next_plays}} as JSON. ``plays`` and ``next_plays`` are the
@@ -35,7 +38,7 @@ from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
 
 SEATS = ("human", "human", "human", "human")
-SEED = 185
+SEED = 28
 STEPS = 6_000
 
 store = SaveStore(Path(sys.argv[1]))

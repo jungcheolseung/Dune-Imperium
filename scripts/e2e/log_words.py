@@ -33,6 +33,11 @@ the space's own step since the user ruling of 2026-10-10 ("4번은 소환과
 뽑기가 당연히 두 단계로 나눠야지", OQ-027 (d)). A Sardaukar Commander paying
 a troop cost (Piter, Genius Advisor; Bene Gesserit Treachery's garrison unit;
 Prison Planet's Commander way in; OQ-105) reads as words in both languages.
+Since codec v147 a Reveal choice left unused lapses with the Reveal
+(``reveal_choice_lapsed``, the card's name in the line), and a choice id
+several cards share names its card with ``source``, a definition id the log
+prints as the card's name ("대중의 구경거리: 스파이 배치 — …"); the games
+must reach both.
 
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
@@ -63,6 +68,23 @@ PASS_ACTION_IDS = {
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
     "decline_conflict_end_intrigue",
+}
+
+# The Reveal choice ids that name their card with ``source`` (codec v147,
+# rules/reveal_turn.py SOURCED_REVEAL_ACTION_IDS; static/core.js
+# REVEAL_SOURCE_ACTIONS).
+REVEAL_SOURCE_ACTIONS = {
+    "trash_reveal_card",
+    "recall_spy_for_reveal",
+    "retreat_two_troops_for_reveal",
+    "place_reveal_spy",
+    "recall_spy_for_reveal_placement",
+    "keep_contract_reveal_spice",
+    "trash_contract_reveal_for_vp",
+    "gain_reveal_influence",
+    "deploy_reveal_card_troop",
+    "retreat_reveal_card_troop",
+    "decline_reveal_spy_recall",
 }
 
 GAMES = (
@@ -108,7 +130,13 @@ GAMES = (
     # (again with Family Atomics, the Feyd track and research, and with the
     # three events of v146: an unused card effect, board effect and Leader
     # ability; check_coverage).
-    {"seats": ["random"] * 4, "game_seed": 22, "policy_seed": 22, **EVERY_EXPANSION},
+    # Codec v147 offers a Reveal's card choices as rows of the Reveal list
+    # (no refusal, no defer), so random seats choose from yet another list
+    # and seed 22 loses its Secrets steal. The same scan over random seeds
+    # 1-299 finds seed 20 first (again with Family Atomics, the Feyd track,
+    # research and the three v146 events, and with v147's unused Reveal
+    # choice and Reveal choice rows naming their card with ``source``).
+    {"seats": ["random"] * 4, "game_seed": 20, "policy_seed": 20, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -378,6 +406,12 @@ def check_coverage(records: list[dict]) -> None:
         "an unused card effect": lambda s: s == "event agent_card_effect_lapsed",
         "an unused board effect": lambda s: s == "event board_effect_lapsed",
         "an unused Leader ability": lambda s: s == "event leader_ability_lapsed",
+        # Codec v147: a Reveal choice left unused lapses at "턴 종료 ▶", and
+        # an id several cards' choices share names its card with ``source``
+        # (a definition id the log must print as the card's name).
+        "an unused Reveal choice": lambda s: s == "event reveal_choice_lapsed",
+        "a Reveal choice naming its card": lambda s: s
+        in {f"action {action_id}" for action_id in REVEAL_SOURCE_ACTIONS},
     }
     missing = [label for label, test in wanted.items() if not any(map(test, sources))]
     check.ok(not missing, "the games reach every surface this guards", missing)

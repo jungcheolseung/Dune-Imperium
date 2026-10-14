@@ -78,7 +78,8 @@ hook으로 두되 그 수를 세어 줄여 간다.
 - 열린 차례(Agent 차례, Reveal, Combat 우선권, Endgame…)마다 **대기 능력 목록**을 둔다. 지금의 Agent 효과 frame이
   여러 묶음(카드 효과, 칸 효과, 영향력, 계약, 배치)을 한 번에 들고 "아무 순서로나" 내는 것을 일반화한 것이다.
 - 제시는 지금 엔진의 방식을 차례 종류별 정책으로 둔다. Agent 차례는 대기 능력마다 첫 선택의 행을 한꺼번에 낸다.
-  Reveal은 선택 하나씩 frame을 쌓고 미루기·다시 열기를 둔다. 책략은 비용 슬롯 뒤 보상 슬롯을 인쇄 순서로 낸다. 의무
+  Reveal도 2026-10-14(codec v147)부터 대기 선택의 행을 구매·이득과 함께 한꺼번에 낸다(그 전에는 선택 하나씩 frame을 쌓고
+  미루기·다시 열기를 두었다). 책략은 비용 슬롯 뒤 보상 슬롯을 인쇄 순서로 낸다. 의무
   능력이 남으면 차례 종료가 보류된다(OQ-057, 한 번 누르는 턴 종료). 선택이 없는 자동 능력은 결정 없이 실행된다.
 - 해결: 요건 확인 → 비용 선택 → 보상 선택(인쇄 순서) → 적용. 책략 해석기(`effect_interpreter.choice_slots`)의 순서를
   그대로 쓴다.
@@ -114,8 +115,8 @@ hook으로 두되 그 수를 세어 줄여 간다.
   Beguiling Pheromones, Chairdog).
 - Reveal 선택 26개(카드 28장), Reveal 자동 이득 25칸, 획득 12·폐기 4·버림 2·차례 시작 1·아이콘 조건 2: **특이 흐름 21**
   (Desert Power의 설득 보류, Priority Contracts의 자동 spice 억제, Covert Operation의 frame 교체, 빈 첩자 공급의 회수 후
-  배치, Spy Network의 즉시 뽑기, Command (6+)의 두 번 계산, 미루기·효과 종류별 다시 열기, 소유자가 시점을 정하는 이득
-  묶음 등).
+  배치, Spy Network의 즉시 뽑기, Command (6+)의 두 번 계산, 미루기·효과 종류별 다시 열기(codec v147에서 없어짐), 소유자가
+  시점을 정하는 이득 묶음 등).
 - 책략 90 identity는 이미 데이터다. 그중 약 20장이 카드 하나만 쓰는 조각에 기댄다(Call to Arms, Harvest Cells, Coercive
   Negotiation, Manipulate, Twisted 카드들, Navigation 등).
 - 특이 흐름은 A단계에서 전용 hook으로 옮긴다. 둘 이상의 카드가 같은 모양을 쓰면 실행기의 모양으로 올린다.

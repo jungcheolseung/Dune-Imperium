@@ -1416,6 +1416,14 @@ const UI_TEXT = {
     "ko": "{reveal_turn} 효과",
     "en": "{reveal_turn} effects"
   },
+  "render.reveal_choice_optional": {
+    "ko": "선택 효과 — 쓰지 않아도 됨, {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+    "en": "Optional — you may leave it; it lapses unused when the {reveal_turn} ends"
+  },
+  "render.reveal_choice_mandatory": {
+    "ko": "꼭 고를 효과 — 고르기 전에는 {reveal_turn}를 끝낼 수 없음",
+    "en": "Must be chosen — the {reveal_turn} cannot end before you choose"
+  },
   "render.reveal_preview_title": {
     "ko": "지금 손패를 공개하면 바로 얻는 {persuasion}과 {strength} ({reveal_turn} 중의 선택 효과는 제외)",
     "en": "The {persuasion} and {strength} gained immediately by revealing your hand now (excludes optional effects during the {reveal_turn})"

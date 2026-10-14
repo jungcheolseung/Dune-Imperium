@@ -58,6 +58,8 @@ from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrig
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
     fire_guild_spy_on_spice_must_flow,
+    open_pending_reveal_choice,
+    pending_choice_rows,
     reveal_late_arrivals,
 )
 from dune_imperium.rules.scouts_modifiers import (
@@ -1615,8 +1617,17 @@ def legal_reveal_command_acquisition_actions(
     player: int,
 ) -> tuple[DomainAction, ...]:
     """Engineered Miracle: "Command: Trash this card -> Acquire a card from
-    the Imperium Row" (any cost, no Persuasion), or decline the arrow."""
+    the Imperium Row" (any cost, no Persuasion).
 
+    An arrow cost: no refusal is offered, and the choice lapses at
+    ``finish_reveal`` when it is left unused (OQ-095 (7) addition).
+    """
+
+    pending = pending_choice_rows(
+        state, player, legal_reveal_command_acquisition_actions
+    )
+    if pending is not None:
+        return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
@@ -1630,18 +1641,15 @@ def legal_reveal_command_acquisition_actions(
     if source_card_id not in state.players[player].in_play:
         # The card already left play (another effect trashed it while this
         # choice waited): an effect of a trashed card can't be activated
-        # (OQ-022), so only the refusal remains.
-        return (DomainAction(action_id="decline_command_acquisition", actor=player),)
-    return (
-        DomainAction(action_id="decline_command_acquisition", actor=player),
-        *(
-            DomainAction(
-                action_id="command_acquire_row_card",
-                actor=player,
-                arguments=(("instance_id", instance_id),),
-            )
-            for instance_id in state.imperium_row
-        ),
+        # (OQ-022), so nothing remains.
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="command_acquire_row_card",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in state.imperium_row
     )
 
 
@@ -1651,6 +1659,7 @@ def apply_reveal_command_acquisition(
 ) -> RuleResult:
     """Trash the revealed card and take the chosen Imperium Row card."""
 
+    state = open_pending_reveal_choice(state, action)
     if action not in legal_reveal_command_acquisition_actions(state, action.actor):
         raise ValueError("action is not a legal Command acquisition choice")
     frame = state.decision_stack[-1]
@@ -1663,17 +1672,6 @@ def apply_reveal_command_acquisition(
         f"reveal_card:{source_card_id}:command_acquisition"
     )
     popped = replace(state, decision_stack=state.decision_stack[:-1])
-    if action.action_id == "decline_command_acquisition":
-        return RuleResult(
-            state=popped,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="reveal_card_trash_declined",
-                    payload=(("card_id", source_card_id), ("player", action.actor)),
-                ),
-            ),
-        )
     instance_id = str(dict(action.arguments)["instance_id"])
     trashed = trash_personal_card(popped, action.actor, source_card_id, source=source)
     # The Reveal frame, not an AGENT_EFFECTS one, is below: the self-trash's
