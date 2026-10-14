@@ -25,8 +25,8 @@
 | 항목 | 값 |
 | --- | --- |
 | `rules/` | 45,518줄. `agent_effects.py` 5,533, `reveal_turn.py` 4,904, `leader_abilities.py` 2,719, `intrigue.py` 2,430, `combat.py` 2,337, `acquisition.py` 1,796, `scouts_effects.py` 1,798, `board_effects.py` 1,702, `effect_interpreter.py` 1,646, `contracts.py` 1,565, `tech.py` 1,211 |
-| 개인 카드 Agent 칸 효과 | `PersonalCardAgentEffect` 104개, 카드 118곳이 쓰고 둘 이상의 카드가 쓰는 것은 9개, `rules/`에서 219번 참조 |
-| 개인 카드 Reveal 선택 효과 | `PersonalCardRevealChoiceEffect` 26개(41곳, 15개가 여러 카드) |
+| 개인 카드 Agent 칸 효과 | `PersonalCardAgentEffect` 104개, 카드 116장이 쓰고 둘 이상의 카드가 쓰는 것은 9개, `rules/`에서 219번 참조 |
+| 개인 카드 Reveal 선택 효과 | `PersonalCardRevealChoiceEffect` 26개(카드 28장, 둘 이상의 카드가 쓰는 것은 2개) |
 | 개인 카드 기타 효과 | 획득 12, 폐기 4, 버림 2, 차례 시작 1, 아이콘 조건 2, Reveal 중 획득 1 |
 | 개인 카드 Reveal 자동 이득 | `PersonalCardRevealEffect` 데이터(이미 조각 모양) |
 | 책략 | 90 identity가 `effect_dsl.py`의 조건 × 비용 × 보상 × 구역 × 선택지로 적혀 있다(2026-08-29 전사 완료) |
