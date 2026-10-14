@@ -239,6 +239,24 @@ def test_checks_logs_and_an_unexpected_stop_are_shown(
         window.root.destroy()
 
 
+def test_the_title_and_the_servers_log_lines_are_in_korean(
+    tk_root: tk.Tk, tmp_path: Path
+) -> None:
+    window = _window(tk_root, tmp_path)
+    try:
+        assert window.root.title() == "듄 임페리움: 봉기 서버"
+        window.apply(LogLine("INFO:     Application startup complete."))
+        window.apply(LogLine('INFO:     127.0.0.1:1 - "GET /whoami HTTP/1.1" 200 OK'))
+        window.apply(LogLine("Traceback (most recent call last):"))
+        assert window.log.get("1.0", "end-1c").splitlines() == [
+            "정보:     서버 앱 시작 완료",
+            '정보:     127.0.0.1:1 - "GET /whoami HTTP/1.1" 200 OK',
+            "Traceback (most recent call last):",
+        ]
+    finally:
+        window.root.destroy()
+
+
 def test_the_log_keeps_the_last_lines_only(tk_root: tk.Tk, tmp_path: Path) -> None:
     window = _window(tk_root, tmp_path)
     try:

@@ -61,6 +61,7 @@ from dune_imperium.launcher.view import (
     close_question,
     controls,
     game_rows,
+    log_line,
     problem_lines,
     room_link,
     status,
@@ -68,7 +69,7 @@ from dune_imperium.launcher.view import (
 )
 from dune_imperium.paths import LOCAL_DIR, PROJECT_ROOT
 
-TITLE: Final = "Dune Imperium 서버"
+TITLE: Final = "듄 임페리움: 봉기 서버"
 LAUNCHER_LOG: Final = LOG_DIR / "launcher.log"
 _LOG_LIMIT: Final = 2000
 _LAUNCHER_LOG_BYTES: Final = 1_000_000
@@ -843,7 +844,7 @@ class LauncherWindow:
 
     def _append_log(self, text: str) -> None:
         self.log.configure(state="normal")
-        self.log.insert("end", text + "\n")
+        self.log.insert("end", log_line(text) + "\n")
         lines = int(self.log.index("end-1c").split(".")[0])
         if lines > _LOG_LIMIT:
             self.log.delete("1.0", f"{lines - _LOG_LIMIT}.0")

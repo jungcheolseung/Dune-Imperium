@@ -4,6 +4,7 @@ The window asks these functions what to enable and what to say, so the
 rules are tested without a display (docs/server-launcher-plan.md 7).
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -77,6 +78,140 @@ def status(phase: Phase, *, error: str | None = None) -> tuple[str, Tone]:
     if phase is Phase.RUNNING:
         return "● 켜짐", "good"
     return "… 서버를 끄는 중", "busy"
+
+
+# The server prints English (cli/server.py, uvicorn); the log pane shows the
+# lines below in Korean. Python's `\1` is a group of the match. The server's
+# own log file keeps what it wrote, and a line with no entry (an access line's
+# request, a traceback) stays as it was. Each entry is a whole line, so a
+# server that words a line differently is shown as it printed it.
+_AFTER_CRASH: Final = "서버가 죽으면: 서버를 다시 띄우고 "
+_ADDRESS_UP: Final = (
+    " (is that address up on this machine? a Tailscale address only exists "
+    "while Tailscale is connected)"
+)
+_LOG_LINES: Final = tuple(
+    (re.compile(pattern), korean)
+    for pattern, korean in (
+        (
+            r"^Remote multiplayer access is on\. "
+            r"Host admin link \(keep it private\):$",
+            "원격 멀티플레이가 켜져 있습니다. "
+            "호스트 관리자 링크 (남에게 보이지 마세요):",
+        ),
+        (
+            r"^Autosave is on: every game keeps one current save in (.+)$",
+            r"자동 저장이 켜져 있습니다: 게임마다 현재 저장본 하나를 \1에 둡니다",
+        ),
+        (
+            r"^  \(after a crash: restart, open the admin link, load that save and "
+            r"share the new room link\)$",
+            f"  ({_AFTER_CRASH}관리자 링크로 들어가 자동 저장을 불러온 뒤, "
+            "새 방 링크를 보내세요)",
+        ),
+        (
+            r"^  \(after a crash: restart and load that save\)$",
+            f"  ({_AFTER_CRASH}자동 저장을 불러오세요)",
+        ),
+        (
+            r"^Autosave is off: a game lives only as long as this process\.$",
+            "자동 저장이 꺼져 있습니다: 게임은 이 서버가 켜져 있는 동안만 남습니다.",
+        ),
+        (r"^search AI: off \(no file at (.+)\)$", r"탐색 AI: 꺼짐 (\1에 파일이 없음)"),
+        (
+            r"^search AI: off \(no checkpoint; --search-checkpoint or (.+)\)$",
+            r"탐색 AI: 꺼짐 (체크포인트가 없음: 설정에서 파일을 고르거나 \1에 두세요)",
+        ),
+        (
+            r"^search AI: off \(torch not installed: (.+)\)$",
+            r"탐색 AI: 꺼짐 (torch가 설치되어 있지 않음: \1)",
+        ),
+        (
+            r"^search AI: off \((.+?) not installed: (.+)\)$",
+            r"탐색 AI: 꺼짐 (\1 미설치: \2)",
+        ),
+        (r"^search AI: (.+)$", r"탐색 AI: \1"),
+        (
+            r"^INFO:( +)Started server process \[(\d+)\]$",
+            r"정보:\1서버 프로세스 시작 [\2]",
+        ),
+        (
+            r"^INFO:( +)Waiting for application startup\.$",
+            r"정보:\1서버 앱 시작을 기다리는 중",
+        ),
+        (r"^INFO:( +)Application startup complete\.$", r"정보:\1서버 앱 시작 완료"),
+        (
+            r"^INFO:( +)Uvicorn running on (.+) \(Press CTRL\+C to quit\)$",
+            r"정보:\1서버가 \2에서 실행 중 (끄려면 CTRL+C)",
+        ),
+        (r"^INFO:( +)Shutting down$", r"정보:\1서버를 끄는 중"),
+        (
+            r"^INFO:( +)Waiting for application shutdown\.$",
+            r"정보:\1서버 앱 종료를 기다리는 중",
+        ),
+        (
+            r"^INFO:( +)Application shutdown complete\.$",
+            r"정보:\1서버 앱 종료 완료",
+        ),
+        (
+            r"^INFO:( +)Finished server process \[(\d+)\]$",
+            r"정보:\1서버 프로세스 끝 [\2]",
+        ),
+        (
+            r"^\[launcher\] could not run (.+?): (.*)$",
+            r"[launcher] 실행하지 못했습니다 (\1): \2",
+        ),
+        (
+            r"^dune-imperium-server: cannot listen on (\S+): (.*)$",
+            r"dune-imperium-server: \1에서 연결을 받을 수 없습니다: \2",
+        ),
+        (
+            r"^dune-imperium-server: cannot resolve --host (\S+): (.*)$",
+            r"dune-imperium-server: 주소를 찾을 수 없습니다 (\1): \2",
+        ),
+        (
+            r"^dune-imperium-server: no usable address for --host (\S+)(.*)$",
+            r"dune-imperium-server: 쓸 수 있는 주소가 없습니다 (\1)\2",
+        ),
+        (
+            r"^dune-imperium-server: cannot read standard input \((.*)\); "
+            r"--exit-when-stdin-closes stops the server$",
+            r"dune-imperium-server: 표준 입력을 읽을 수 없어 서버를 끕니다 (\1)",
+        ),
+        (
+            r"^dune-imperium-server: no standard input to watch; "
+            r"--exit-when-stdin-closes is ignored$",
+            "dune-imperium-server: 감시할 표준 입력이 없어, "
+            "입력이 닫혀도 서버를 끄지 않습니다",
+        ),
+    )
+)
+# uvicorn's level word at the start of any other line of its (an access line).
+_LEVEL_WORDS: Final = {
+    "INFO": "정보",
+    "WARNING": "경고",
+    "ERROR": "오류",
+    "CRITICAL": "치명",
+}
+_LEVEL_LINE: Final = re.compile(r"^(INFO|WARNING|ERROR|CRITICAL):( +)(.*)$")
+_ADDRESS_UP_KO: Final = (
+    " (이 컴퓨터에서 그 주소가 켜져 있나요? Tailscale 주소는 Tailscale이 "
+    "연결된 동안에만 있습니다)"
+)
+
+
+def log_line(text: str) -> str:
+    """One line of the server's output as the log pane shows it: Korean for
+    the lines the server and uvicorn print themselves, any other line as is."""
+
+    for pattern, korean in _LOG_LINES:
+        match = pattern.match(text)
+        if match:
+            return match.expand(korean).replace(_ADDRESS_UP, _ADDRESS_UP_KO)
+    level = _LEVEL_LINE.match(text)
+    if level:
+        return f"{_LEVEL_WORDS[level[1]]}:{level[2]}{level[3]}"
+    return text
 
 
 _PROBLEM_WORDS: Final = {"error": "오류", "warning": "주의", "note": "참고"}
