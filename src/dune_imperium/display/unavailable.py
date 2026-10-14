@@ -9,12 +9,16 @@ change anything now among them, user ruling 2026-10-06; Call to Arms in a
 Reveal with nothing left to acquire; a Harvest Cells its Conflict-end
 window does not offer) and effects waiting on their
 condition (a new High Council seat's subcommittee choice, an Agent-box
-icon below its printed threshold and held Contract icons among them), and
+icon below its printed threshold, held Contract icons and a Leader's Reveal
+ability with nothing to act on yet among them), and
 for the branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
 cannot be paid or whose reward would change nothing, an Agent box's arrow
 whose reward would change nothing (OQ-071), a Conflict reward's, a research
-space's or Shipping's Faction already at the top, a Holy War unit the
+space's or Shipping's Faction already at the top, a Conflict reward's payment
+(resource or Spies) the seat is short of, a Maker space's sandworm or Desert
+Riding token it cannot take, Sietch Tabr's detonation once the Shield Wall is
+destroyed, a Holy War unit the
 seat does not have, a Skill the seat already holds, a Navigation card's
 option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
@@ -46,6 +50,9 @@ Display only, under four rules:
   ``shipping_influence_factions``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``conflict_end_trigger_block``,
   ``skill_choice_block``, ``tech_candidates``,
+  ``combat_reward_payment_block``, ``combat_reward_spy_recall_block``,
+  ``maker_sandworm_block``, ``desert_riding_block``,
+  ``sietch_tabr_wall_block``, ``leader_reveal_block``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
@@ -185,17 +192,26 @@ from dune_imperium.rules.agent_turn import turn_start_cards
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
     BOARD_ICON_TRASH,
+    MAKER_SANDWORM_SPACE_IDS,
+    desert_riding_block,
+    desert_riding_offered_at,
     desert_tactics_block,
     imperial_privilege_recall_targets,
     imperial_privilege_trade_block,
     legal_shipping_actions,
+    maker_sandworm_block,
+    pending_maker_space,
+    pending_sietch_tabr,
     shipping_influence_factions,
+    sietch_tabr_wall_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
     ConflictEndTriggerBlock,
     combat_reward_influence_block,
+    combat_reward_payment_block,
+    combat_reward_spy_recall_block,
     conflict_end_trigger_block,
 )
 from dune_imperium.rules.contracts import (
@@ -255,6 +271,7 @@ from dune_imperium.rules.intrigue import (
 )
 from dune_imperium.rules.leader_abilities import (
     leader_board_repeat_block,
+    leader_reveal_block,
     signet_influence_withheld,
     signet_optional_block,
     units_deployment_blocked,
@@ -398,6 +415,18 @@ _SHIELD_WALL: Final[Reason] = (
     "The Shield Wall protects this Conflict",
     "{shield_wall}이 이번 교전을 보호함",
     "shield_wall",
+)
+# Desert Riding's token is one of the four Maker Hooks, so a seat that holds
+# Maker Hooks cannot take it (OQ-079 (b)).
+_MAKER_HOOKS_HELD: Final[Reason] = (
+    "You already hold Maker Hooks",
+    "이미 가진 {maker_hooks}",
+    "held",
+)
+_WALL_DESTROYED: Final[Reason] = (
+    "The Shield Wall is already destroyed",
+    "{shield_wall}이 이미 파괴됨",
+    "condition",
 )
 _NO_OTHER_AGENT: Final[Reason] = (
     "No other Agent of yours to recall (not the one sent this turn)",
@@ -964,11 +993,7 @@ def _condition_reason(state: GameState, seat: int, option: IntrigueOption) -> Re
                 f"{condition_text_ko(condition)} 사용 가능",
                 "condition",
             )
-    return (
-        "The Shield Wall is already destroyed",
-        "{shield_wall}이 이미 파괴됨",
-        "condition",
-    )
+    return _WALL_DESTROYED
 
 
 def _resource_short_reason(owner: PlayerState, cost: PayResources | None) -> Reason:
@@ -1400,13 +1425,13 @@ _NOTHING_TO_CHOOSE: Final[Reason] = (
 )
 
 
-def _spies_reason(needed: int, held: int) -> Reason:
+def _spies_reason(needed: int, held: int, code: str = "waiting") -> Reason:
     en, ko = held_text(held)
     spies = "Spy" if needed == 1 else "Spies"
     return (
         f"Needs {needed} {spies} of yours on the board{en}",
         f"보드에 내 {{spy:{needed}}} 필요{ko}",
-        "waiting",
+        code,
     )
 
 
@@ -1576,6 +1601,43 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+def _leader_reveal(state: GameState, seat: int, found: _Found) -> None:
+    """A Leader's Reveal-turn ability that has nothing to act on yet.
+
+    Lady Amber's Desert Scouts (retreat a troop) needs a unit in the Conflict
+    and Feyd-Rautha's Devious Strength (recall a Spy for two swords) a Spy on
+    the board; ``legal_leader_reveal_actions`` offers the ability exactly
+    when ``leader_reveal_block`` is None. Otherwise its actions show greyed
+    out under "waiting", with the block: Reveal effects are carried out in
+    any order [Main p. 12], so another effect of the Reveal can still meet
+    it (a deployment into the Conflict, a Spy placed), and the ability is an
+    optional one that lapses unused when the Reveal turn ends, as a card's
+    optional Reveal choice does (``_deferred``). Amber's Commander retreat
+    shows only for a seat that owns a Sardaukar Commander.
+    """
+
+    block = leader_reveal_block(state, seat)
+    if block is None:
+        return
+    english, korean, code = _optional_block_reason(block)
+    tail_en, tail_ko = _REVEAL_LAPSES_UNUSED
+    owner = state.players[seat]
+    if owner.leader_id == "feyd_rautha_harkonnen":
+        action_ids = ("recall_spy_for_leader",)
+    else:
+        action_ids = (
+            "retreat_leader_troop",
+            *(("retreat_leader_commander",) if owner.commanders_total else ()),
+        )
+    for action_id in action_ids:
+        found.row(
+            "waiting",
+            f"leader_reveal:{action_id}",
+            DomainAction(action_id=action_id, actor=seat),
+            (english + tail_en, korean + tail_ko, code),
+        )
+
+
 def _sandworm_reason(state: GameState, seat: int, block: RevealSandwormBlock) -> Reason:
     match block:
         case RevealSandwormBlock.MAKER_HOOKS:
@@ -1619,6 +1681,78 @@ def _reveal_choice(state: GameState, seat: int, found: _Found) -> None:
         _sandworm_reason(state, seat, block),
         card_id=card_ids[0],
         reveal_choice=f"{card_ids[0]}:{desert_power}",
+    )
+
+
+def _maker_space(state: GameState, seat: int, found: _Found) -> None:
+    """A Maker space's sandworm and Desert Riding branches while they cannot
+    be taken.
+
+    Deep Desert, Hagga Basin and Imperial Basin always offer their spice
+    (``harvest_maker_spice``); the sandworm (Deep Desert, Hagga Basin) is
+    offered exactly when ``maker_sandworm_block`` is None and Arrakeen
+    Scouts' Desert Riding token (Hagga Basin, while it waits on the board)
+    exactly when ``desert_riding_block`` is None. Each shows greyed out
+    beside the spice with its block, worded as Desert Power's sandworm is
+    (``reveal_sandworm_block``). Imperial Basin prints no sandworm and gets
+    no row. The Maker icon is the visit's own choice, so the block sits
+    among the choices with no lapse wording. The Hooks and the Conflict
+    cannot change within the turn, but a Plot can destroy the Shield Wall
+    (Detonation, Special Mission, Unexpected Allies), after which the
+    sandworm is offered on the next decision (independent review
+    2026-10-14).
+    """
+
+    space_id = pending_maker_space(state, seat)
+    if space_id is None:
+        return
+    if space_id in MAKER_SANDWORM_SPACE_IDS:
+        block = maker_sandworm_block(state, seat)
+        if block is not None:
+            found.row(
+                "choice",
+                "summon_maker_sandworms",
+                DomainAction(
+                    action_id="summon_maker_sandworms",
+                    actor=seat,
+                    arguments=(("space_id", space_id),),
+                ),
+                _optional_block_reason(block),
+            )
+    if desert_riding_offered_at(state, space_id):
+        block = desert_riding_block(state, seat)
+        if block is not None:
+            found.row(
+                "choice",
+                "take_desert_riding_hooks",
+                DomainAction(
+                    action_id="take_desert_riding_hooks",
+                    actor=seat,
+                    arguments=(("space_id", space_id),),
+                ),
+                _optional_block_reason(block),
+            )
+
+
+def _sietch_tabr(state: GameState, seat: int, found: _Found) -> None:
+    """Sietch Tabr's "water and destroy the Shield Wall" once the Wall is gone.
+
+    Supplies and plain water stay on offer; the detonation branch is offered
+    exactly when ``sietch_tabr_wall_block`` is None, and otherwise shows
+    greyed out beside them. A Shield Wall destroyed is gone for good, so
+    nothing in the turn lifts the block.
+    """
+
+    if not pending_sietch_tabr(state, seat):
+        return
+    block = sietch_tabr_wall_block(state)
+    if block is None:
+        return
+    found.row(
+        "choice",
+        "take_sietch_tabr_water_and_destroy_wall",
+        DomainAction(action_id="take_sietch_tabr_water_and_destroy_wall", actor=seat),
+        _optional_block_reason(block),
     )
 
 
@@ -1903,6 +2037,36 @@ def _combat_reward_influence(state: GameState, seat: int, found: _Found) -> None
             if block is CombatInfluenceBlock.TOP
             else _NAMED_FOR_THIS_REWARD,
         )
+
+
+def _combat_reward_payment(state: GameState, seat: int, found: _Found) -> None:
+    """An optional Conflict reward's arrow the seat cannot pay now.
+
+    "Each optional cost is its own arrow" [Main p. 9] [FAQ p. 3]: the window
+    always offers the refusal, and the payment (a resource, or Arrakeen's two
+    Spies recalled from the board) exactly when its block is None
+    (``combat_reward_payment_block``, ``combat_reward_spy_recall_block``);
+    otherwise it shows greyed out beside the refusal with what the seat is
+    short of. The window's terms are fixed, so a shortfall cannot be made up
+    inside it and the row sits among the choices that cannot be taken.
+    """
+
+    frame = state.decision_stack[-1]
+    owner = state.players[seat]
+    if frame.kind == FrameKind.COMBAT_REWARD_SPY_RECALL:
+        action_id = "recall_spies_for_combat_reward"
+        block = combat_reward_spy_recall_block(frame, owner)
+    else:
+        action_id = "pay_combat_reward"
+        block = combat_reward_payment_block(frame, owner)
+    if block is None:
+        return
+    found.row(
+        "choice",
+        action_id,
+        DomainAction(action_id=action_id, actor=seat),
+        _optional_block_reason(block),
+    )
 
 
 def _unit_loss_reason(zone: str, block: UnitLossBlock) -> Reason:
@@ -2404,6 +2568,9 @@ _OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
     ),
     OptionalBlockKind.NO_CONFLICT: _NO_CONFLICT,
     OptionalBlockKind.DEPLOYMENT_BARRED: _DEPLOYMENT_BARRED,
+    OptionalBlockKind.SHIELD_WALL: _SHIELD_WALL,
+    OptionalBlockKind.NO_SHIELD_WALL: _WALL_DESTROYED,
+    OptionalBlockKind.MAKER_HOOKS_HELD: _MAKER_HOOKS_HELD,
     OptionalBlockKind.AGENT_LEFT: (
         "The Agent sent this turn already left its space",
         "이번 차례에 보낸 {agent}가 이미 공간을 떠났음",
@@ -2445,6 +2612,8 @@ def _one_optional_reason(block: OptionalEffectBlock) -> Reason:
             return resource_reason(kind.value, needed, held)
         case OptionalBlockKind.SPECIMENS:
             return _specimen_cost_reason(needed, held)
+        case OptionalBlockKind.SPIES_ON_BOARD:
+            return _spies_reason(needed, held, "cost")
         case OptionalBlockKind.HAND:
             en, ko = held_text(held)
             return (
@@ -2859,6 +3028,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _shop,
         _reveal_choice,
         _deferred,
+        _leader_reveal,
         _subcommittee_choice,
         _intrigue,
     ),
@@ -2870,6 +3040,8 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _shipping_influence,
         _each_box(_agent_icons),
         _imperial_privilege_recall,
+        _maker_space,
+        _sietch_tabr,
         _optional_board_effects,
         _subcommittee_choice,
         _intrigue,
@@ -2881,6 +3053,8 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.RESEARCH_BONUS: (_research_bonus,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (_combat_reward_influence,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (_combat_reward_influence,),
+    FrameKind.COMBAT_REWARD_OPTIONAL: (_combat_reward_payment,),
+    FrameKind.COMBAT_REWARD_SPY_RECALL: (_combat_reward_payment,),
     FrameKind.OPPONENT_UNIT_LOSS: (_unit_loss,),
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),

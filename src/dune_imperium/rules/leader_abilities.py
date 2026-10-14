@@ -2607,6 +2607,46 @@ def apply_leader_board_repeat(
     )
 
 
+def _leader_reveal_is_open(state: GameState, player: int) -> bool:
+    """Whether ``player``'s Reveal turn is open and its Leader's Reveal-turn
+    ability is still unused (it is used at most once per Reveal turn)."""
+
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    return (
+        frame is not None
+        and dict(frame.context).get("leader_reveal_ability_used") is not True
+    )
+
+
+def leader_reveal_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why ``player``'s Leader Reveal ability offers nothing now, or None.
+
+    None also when no ability is left to withhold: the seat's Reveal turn is
+    not open, its Leader has no Reveal-turn ability, or the ability was
+    already used this Reveal turn. Lady Amber's Desert Scouts, "Reveal Turn:
+    You may retreat one of your troops", needs a troop or Sardaukar
+    Commander in the Conflict [Bloodlines p. 4]; Feyd-Rautha's Devious
+    Strength, "Reveal Turn: recall one of your Spies for two swords", an
+    arrow cost usable once per Reveal turn [Main p. 20] [FAQ p. 3], needs a
+    Spy of the seat's on the board. While the Reveal is open and the
+    ability unused, ``legal_leader_reveal_actions`` offers it exactly when
+    this is None (a None for the other reasons above offers nothing), and
+    the page's greyed-out rows read the same block (``display.unavailable``).
+    Every input is public.
+    """
+
+    if not _leader_reveal_is_open(state, player):
+        return None
+    owner = state.players[player]
+    if owner.leader_id == "lady_amber_metulli":
+        if owner.troops_conflict >= 1 or owner.commanders_conflict >= 1:
+            return None
+        return OptionalEffectBlock(OptionalBlockKind.NO_UNIT_IN_CONFLICT)
+    if owner.leader_id == "feyd_rautha_harkonnen":
+        return short_of(OptionalBlockKind.SPIES_ON_BOARD, 1, len(owner.spy_post_ids))
+    return None
+
+
 def legal_leader_reveal_actions(
     state: GameState,
     player: int,
@@ -2615,15 +2655,12 @@ def legal_leader_reveal_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    frame = owned_top_frame(state, FrameKind.REVEAL, player)
-    if frame is None:
+    if not _leader_reveal_is_open(state, player):
         return ()
-    if dict(frame.context).get("leader_reveal_ability_used") is True:
+    if leader_reveal_block(state, player) is not None:
         return ()
     owner = state.players[player]
-    if owner.leader_id == "lady_amber_metulli" and (
-        owner.troops_conflict >= 1 or owner.commanders_conflict >= 1
-    ):
+    if owner.leader_id == "lady_amber_metulli":
         # Desert Scouts: "Reveal Turn: You may retreat one of your troops."
         # A Sardaukar Commander is a troop for this purpose [Bloodlines p. 4].
         return (
@@ -2638,7 +2675,7 @@ def legal_leader_reveal_actions(
                 else ()
             ),
         )
-    if owner.leader_id == "feyd_rautha_harkonnen" and owner.spy_post_ids:
+    if owner.leader_id == "feyd_rautha_harkonnen":
         # Devious Strength: "Reveal Turn: recall one of your Spies for two
         # swords" — an arrow cost usable once per Reveal turn [Main p. 20]
         # [FAQ p. 3].

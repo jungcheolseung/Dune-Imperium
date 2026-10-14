@@ -27,7 +27,13 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
-from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.effects import (
+    OptionalBlockKind,
+    OptionalEffectBlock,
+    recruit_shortfall_events,
+    recruit_troops,
+    short_of,
+)
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -683,6 +689,33 @@ def _pay_next_combat_reward(
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def combat_reward_payment_block(
+    frame: DecisionFrame, owner: PlayerState
+) -> OptionalEffectBlock | None:
+    """Return why ``owner`` cannot pay an optional Conflict reward's cost, or None.
+
+    "Each optional cost is its own arrow" [Main p. 9] [FAQ p. 3]: the
+    reward's printed resource (``solari`` or ``spice``, in the frame's
+    context) is short when the owner holds less than its cost.
+    ``legal_combat_reward_optional_payment_actions`` offers
+    ``pay_combat_reward`` exactly when this is None, and the page's greyed-out
+    row reads the same block (``display.unavailable``), so the reason shown
+    can never disagree with the legal list. Reads only the frame's printed
+    terms and the owner's own resources.
+    """
+
+    context = dict(frame.context)
+    cost = context_int(context, "cost")
+    resource = context.get("resource")
+    if resource not in ("solari", "spice"):
+        raise RuntimeError("optional Combat reward has invalid resource")
+    return short_of(
+        OptionalBlockKind.SOLARI if resource == "solari" else OptionalBlockKind.SPICE,
+        cost,
+        getattr(owner.resources, resource),
+    )
+
+
 def legal_combat_reward_optional_payment_actions(
     state: GameState,
     player: int,
@@ -697,13 +730,8 @@ def legal_combat_reward_optional_payment_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    context = dict(frame.context)
-    cost = context_int(context, "cost")
-    resource = context.get("resource")
-    if resource not in ("solari", "spice"):
-        raise RuntimeError("optional Combat reward has invalid resource")
     actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
-    if getattr(state.players[player].resources, resource) >= cost:
+    if combat_reward_payment_block(frame, state.players[player]) is None:
         actions.append(DomainAction(action_id="pay_combat_reward", actor=player))
     return tuple(actions)
 
@@ -760,6 +788,26 @@ def apply_combat_reward_optional_payment(
     return RuleResult(state=next_state, events=(event,))
 
 
+def combat_reward_spy_recall_block(
+    frame: DecisionFrame, owner: PlayerState
+) -> OptionalEffectBlock | None:
+    """Return why ``owner`` cannot recall the Spies an optional reward costs, or None.
+
+    Arrakeen's "recall 2 Spies" arrow [Main p. 9] needs that many of the
+    owner's Spies on the board (``spy_post_ids``). Only the two-Spy cost
+    exists, so any other raises as the provider always has.
+    ``legal_combat_reward_spy_recall_actions`` offers a pair of posts exactly
+    when this is None, and the page's greyed-out row reads the same block
+    (``display.unavailable``). Reads only the frame's printed terms and the
+    owner's own Spies.
+    """
+
+    count = context_int(dict(frame.context), "spy_count")
+    if count != 2:
+        raise NotImplementedError("only a two-Spy Combat reward cost is supported")
+    return short_of(OptionalBlockKind.SPIES_ON_BOARD, count, len(owner.spy_post_ids))
+
+
 def legal_combat_reward_spy_recall_actions(
     state: GameState,
     player: int,
@@ -774,11 +822,11 @@ def legal_combat_reward_spy_recall_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    count = context_int(dict(frame.context), "spy_count")
-    posts = state.players[player].spy_post_ids
+    owner = state.players[player]
+    posts = owner.spy_post_ids
     actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
-    if count != 2:
-        raise NotImplementedError("only a two-Spy Combat reward cost is supported")
+    if combat_reward_spy_recall_block(frame, owner) is not None:
+        return tuple(actions)
     actions.extend(
         DomainAction(
             action_id="recall_spies_for_combat_reward",

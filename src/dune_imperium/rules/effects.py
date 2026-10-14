@@ -408,7 +408,12 @@ class OptionalBlockKind(StrEnum):
     so one that cannot be used now offers no row at all; each provider gates
     it with a block function returning ``OptionalEffectBlock`` (None when it
     can be used), and the page greys the effect out with the same answer
-    (``display.unavailable``).
+    (``display.unavailable``). The branches of other choices that a provider
+    withholds are the same kind of block, worded the same: a Conflict
+    reward's optional arrow (``combat.combat_reward_payment_block``), a Maker
+    space's sandworm (``board_effects.maker_sandworm_block``), Sietch Tabr's
+    detonation (``sietch_tabr_wall_block``) and a Leader's Reveal ability
+    (``leader_abilities.leader_reveal_block``).
     """
 
     # A cost short of ``needed`` (``held`` now).
@@ -426,6 +431,8 @@ class OptionalBlockKind(StrEnum):
     NO_COMMANDER_IN_CONFLICT = "no_commander_in_conflict"
     NO_CARD_TO_TRASH = "no_card_to_trash"
     NO_SPY_POST = "no_spy_post"  # no Spy to place where the ability needs one
+    # Spies of the owner's on the board to recall (``needed``, ``held``).
+    SPIES_ON_BOARD = "spies_on_board"
     NO_EMPEROR_CARD = "no_emperor_card"  # another Emperor card in hand
     # Nothing in reach of the acquisition (``needed``: its cost cap, 0 when
     # it is paid in Solari, ``held`` of them).
@@ -443,6 +450,9 @@ class OptionalBlockKind(StrEnum):
     FACTION_NEAR_TOP = "faction_near_top"  # two would end where one does
     NO_CONFLICT = "no_conflict"
     DEPLOYMENT_BARRED = "deployment_barred"
+    SHIELD_WALL = "shield_wall"  # the Shield Wall protects the Conflict
+    NO_SHIELD_WALL = "no_shield_wall"  # the Shield Wall is already destroyed
+    MAKER_HOOKS_HELD = "maker_hooks_held"  # a second Maker Hooks cannot be taken
     AGENT_LEFT = "agent_left"  # the Agent sent this turn left its space
     COMMANDER_GONE = "commander_gone"  # no Commander waits on the space
     TECH_STACKS_EMPTY = "tech_stacks_empty"

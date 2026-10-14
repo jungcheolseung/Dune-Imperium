@@ -11,7 +11,7 @@ engine's, untouched (``test_unavailable_consistency.py`` guards that).
 
 import random
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from tests.unit.rules.test_immortality_intrigue import (
     _combat_state,
@@ -3295,6 +3295,713 @@ def test_the_optional_rows_read_nothing_hidden() -> None:
         _council_seat(0, ("oversight", "relations", "leverage")),
     )
     rng = random.Random(11)
+    for state in states:
+        legal = ENGINE.legal_actions(state, 0)
+        found = unavailable_choices(state, 0, legal)
+        assert found is not None and found["rows"]
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            other_legal = ENGINE.legal_actions(other, seat)
+            assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Conflict reward's payment the seat cannot make (plan 4, row 1) --------
+#
+# "Each optional cost is its own arrow" [Main p. 9] [FAQ p. 3]: the window
+# always offers the refusal; the payment (a resource, or Arrakeen's two
+# Spies recalled from the board) is legal exactly when
+# ``combat_reward_payment_block`` / ``combat_reward_spy_recall_block`` are
+# None, and otherwise shows greyed out on the "choice" surface beside it.
+
+_PAY = DomainAction(action_id="pay_combat_reward", actor=0)
+_DECLINE_REWARD = DomainAction(action_id="decline_combat_reward", actor=0)
+_RECALL_SPIES = "recall_spies_for_combat_reward"
+_EPIC = RulesetConfig(epic_game=True)
+
+
+def reward_window(
+    conflict_id: str,
+    *,
+    config: RulesetConfig = BASE,
+    sandworm: bool = False,
+    **owner_fields: Any,
+) -> GameState:
+    """Seat 0 alone wins ``conflict_id`` and its first payment window is open
+    (a "choose a Faction" Influence in front of it is answered)."""
+
+    owner = PlayerState(
+        player_id=0,
+        combat_strength=8,
+        sandworms_conflict=1 if sandworm else 0,
+        **owner_fields,
+    )
+    state = _state(
+        owner,
+        config=config,
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        decision_stack=(),
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        intrigue_deck=("intrigue:0", "intrigue:1"),
+    )
+    state = resolve_combat_rewards(state).state
+    while state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
+        state = ENGINE.apply(state, ENGINE.legal_actions(state, 0)[0]).state
+    return state
+
+
+def _reward_payment_row(state: GameState, action_id: str) -> dict[str, Any]:
+    found = _found(state)
+    assert found["refs"] == {}
+    row = _rows(found, "choice")[f"choice:{action_id}"]
+    assert [r["key"] for r in found["rows"]] == [f"choice:{action_id}"]
+    assert row["action"]["action_id"] == action_id
+    assert row["action"]["arguments"] == {}
+    return row
+
+
+def test_a_spice_payment_short_of_spice_greys_out_beside_the_refusal() -> None:
+    """Spice Freighters: "pay 3 spice for 1 VP" with 1 spice, the case that
+    showed only the refusal (79% of these windows)."""
+
+    state = reward_window("spice_freighters", resources=Resources(spice=1))
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+    row = _reward_payment_row(state, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 3 spice (you have 1)",
+        "{spice:3} 필요 (보유 1)",
+        "cost",
+    )
+    assert "card_id" not in row and row["refs"] == []
+
+
+def test_a_solari_payment_short_of_solari_names_the_solari() -> None:
+    state = reward_window("battle_for_spice_refinery", resources=Resources(solari=5))
+    assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+    row = _reward_payment_row(state, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 6 solari (you have 5)",
+        "{solari:6} 필요 (보유 5)",
+        "cost",
+    )
+    state = reward_window("battle_for_imperial_basin", resources=Resources(spice=2))
+    row = _reward_payment_row(state, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"]) == (
+        "Needs 4 spice (you have 2)",
+        "{spice:4} 필요 (보유 2)",
+    )
+
+
+def test_a_payment_the_seat_can_make_is_legal_and_greys_nothing() -> None:
+    for conflict_id, resources in (
+        ("spice_freighters", Resources(spice=3)),
+        ("battle_for_imperial_basin", Resources(spice=9)),
+        ("battle_for_spice_refinery", Resources(solari=6)),
+    ):
+        state = reward_window(conflict_id, resources=resources)
+        assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD, _PAY)
+        assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+
+
+def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
+    """Economic Supremacy prints 6 Solari then 4 spice, each its own arrow:
+    paying the first leaves the second window to be judged on what is left,
+    and a sandworm offers an arrow a second time [Main p. 14]."""
+
+    ready = reward_window(
+        "economic_supremacy", config=_EPIC, resources=Resources(solari=6, spice=3)
+    )
+    assert dict(ready.decision_stack[-1].context)["resource"] == "solari"
+    assert ENGINE.legal_actions(ready, 0) == (_DECLINE_REWARD, _PAY)
+    assert unavailable_choices(ready, 0, ENGINE.legal_actions(ready, 0)) is None
+    paid = ENGINE.apply(ready, _PAY).state
+    assert dict(paid.decision_stack[-1].context)["resource"] == "spice"
+    assert ENGINE.legal_actions(paid, 0) == (_DECLINE_REWARD,)
+    row = _reward_payment_row(paid, "pay_combat_reward")
+    assert (row["reason"], row["reason_ko"]) == (
+        "Needs 4 spice (you have 3)",
+        "{spice:4} 필요 (보유 3)",
+    )
+    declined = ENGINE.apply(ready, _DECLINE_REWARD).state
+    assert (
+        _reward_payment_row(declined, "pay_combat_reward")["reason_ko"]
+        == "{spice:4} 필요 (보유 3)"
+    )
+
+    twice = reward_window(
+        "spice_freighters", sandworm=True, resources=Resources(spice=3)
+    )
+    assert ENGINE.legal_actions(twice, 0) == (_DECLINE_REWARD, _PAY)
+    again = ENGINE.apply(twice, _PAY).state
+    while again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
+        again = ENGINE.apply(again, ENGINE.legal_actions(again, 0)[0]).state
+    assert again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    assert ENGINE.legal_actions(again, 0) == (_DECLINE_REWARD,)
+    assert _reward_payment_row(again, "pay_combat_reward")["reason_ko"] == (
+        "{spice:3} 필요 (보유 0)"
+    )
+
+
+def _post_ids(count: int) -> tuple[str, ...]:
+    return tuple(post.post_id for post in OBSERVATION_POSTS[:count])
+
+
+def test_arrakeen_s_spy_recall_short_of_spies_greys_out_the_recall() -> None:
+    """"Recall 2 Spies" needs two of the seat's Spies on the board: with one
+    (or none) only the refusal is legal and the recall greys out, "게임판에
+    스파이 2 필요"."""
+
+    for count, held_en, held_ko in ((1, "1", "1"), (0, "0", "0")):
+        state = reward_window(
+            "battle_for_arrakeen",
+            spies_supply=3 - count,
+            spy_post_ids=_post_ids(count),
+        )
+        assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_SPY_RECALL
+        assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+        row = _reward_payment_row(state, _RECALL_SPIES)
+        assert (row["reason"], row["reason_ko"], row["code"]) == (
+            f"Needs 2 Spies of yours on the board (you have {held_en})",
+            f"보드에 내 {{spy:2}} 필요 (보유 {held_ko})",
+            "cost",
+        )
+
+
+def test_a_spy_recall_with_two_spies_on_the_board_is_legal_and_greys_nothing() -> None:
+    state = reward_window(
+        "battle_for_arrakeen", spies_supply=0, spy_post_ids=_post_ids(3)
+    )
+    legal = ENGINE.legal_actions(state, 0)
+    assert legal[0] == _DECLINE_REWARD and len(legal) == 4
+    assert {action.action_id for action in legal[1:]} == {_RECALL_SPIES}
+    assert unavailable_choices(state, 0, legal) is None
+
+
+def test_no_payment_row_for_a_seat_that_does_not_decide_it() -> None:
+    for state in (
+        reward_window("spice_freighters", resources=Resources(spice=1)),
+        reward_window(
+            "battle_for_arrakeen", spies_supply=2, spy_post_ids=_post_ids(1)
+        ),
+    ):
+        for seat in range(1, 4):
+            legal = ENGINE.legal_actions(state, seat)
+            assert unavailable_choices(state, seat, legal) is None
+
+
+def test_the_payment_rows_read_nothing_hidden() -> None:
+    """Resources and Spies on the board are public: re-dealing every zone
+    the seat cannot see leaves the legal list and the rows as they are."""
+
+    states = (
+        reward_window("spice_freighters", resources=Resources(spice=1)),
+        reward_window("battle_for_spice_refinery", resources=Resources(solari=2)),
+        reward_window(
+            "battle_for_arrakeen", spies_supply=2, spy_post_ids=_post_ids(1)
+        ),
+    )
+    rng = random.Random(5)
+    for state in states:
+        legal = ENGINE.legal_actions(state, 0)
+        found = cast(dict[str, Any] | None, unavailable_choices(state, 0, legal))
+        assert found is not None and len(found["rows"]) == 1
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            other_legal = ENGINE.legal_actions(other, seat)
+            assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Maker space's sandworm and Desert Riding branches (plan 4, row 8) ----
+#
+# Deep Desert and Hagga Basin print "spice, or with Maker Hooks summon
+# sandworms" [Board Guide pp. 1-2]; ``legal_maker_space_actions`` offers
+# ``summon_maker_sandworms`` exactly when ``maker_sandworm_block`` is None
+# and Desert Riding's ``take_desert_riding_hooks`` (Hagga Basin, token on the
+# board) exactly when ``desert_riding_block`` is None. Each shows greyed out
+# on the "choice" surface beside the spice, worded as Desert Power's
+# sandworm is.
+
+DESERT_PLANET = "player:0:starter:dune_the_desert_planet:0"
+_DESERT_RIDING_TOKEN = ("desert_riding", "hagga_basin", "maker_hooks", 1, -1)
+# The token is Arrakeen Scouts' mission piece (state.scouts_goods).
+_SCOUTS = RulesetConfig(arrakeen_scouts=True)
+_NO_HOOKS = ("No Maker Hooks", "{maker_hooks} 없음", "maker_hooks")
+_WALL = (
+    "The Shield Wall protects this Conflict",
+    "{shield_wall}이 이번 교전을 보호함",
+    "shield_wall",
+)
+
+
+def _maker_visit(
+    space_id: str,
+    *,
+    owner_fields: dict[str, Any] | None = None,
+    barred: bool = False,
+    token: bool = False,
+    **fields: Any,
+) -> GameState:
+    """Seat 0 sends its Agent to a Maker space (one water for Hagga Basin,
+    three for Deep Desert); the harvest is still to choose. ``token``: the
+    Desert Riding token waits beside Hagga Basin."""
+
+    owner_values: dict[str, Any] = {
+        "hand": (DESERT_PLANET,),
+        "resources": Resources(water=3),
+        "maker_hooks": True,
+    }
+    owner_values.update(owner_fields or {})
+    owner = PlayerState(player_id=0, **owner_values)
+    values: dict[str, Any] = {
+        "current_conflict_ids": ("propaganda",),
+        "maker_bonus_spice": (
+            ("deep_desert", 2),
+            ("hagga_basin", 1),
+            ("imperial_basin", 0),
+        ),
+    }
+    if token:
+        values.update(config=_SCOUTS, scouts_goods=(_DESERT_RIDING_TOKEN,))
+    values.update(fields)
+    state = _agent_turn(_state(owner, **values), DESERT_PLANET, space_id)
+    if barred:
+        frame = state.decision_stack[-1]
+        context = {**dict(frame.context), "units_deploy_blocked": True}
+        frame = replace(frame, context=tuple(sorted(context.items())))
+        state = replace(state, decision_stack=(*state.decision_stack[:-1], frame))
+    return state
+
+
+def _maker_rows(state: GameState) -> dict[str, dict[str, Any]]:
+    raw = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    if raw is None:
+        return {}
+    found = cast(dict[str, Any], raw)
+    assert found["frame"] == FrameKind.AGENT_EFFECTS
+    assert found["refs"] == {}
+    rows = {row["key"].split(":", 1)[1]: row for row in found["rows"]}
+    assert all(row["surface"] == "choice" for row in rows.values())
+    return rows
+
+
+def _sandworm_row(state: GameState, space_id: str) -> dict[str, Any]:
+    rows = _maker_rows(state)
+    assert list(rows) == ["summon_maker_sandworms"]
+    row = rows["summon_maker_sandworms"]
+    assert row["action"]["action_id"] == "summon_maker_sandworms"
+    assert row["action"]["arguments"] == {"space_id": space_id}
+    return row
+
+
+_MAKER_IDS = frozenset(
+    {"harvest_maker_spice", "summon_maker_sandworms", "take_desert_riding_hooks"}
+)
+
+
+def _legal_ids(state: GameState) -> list[str]:
+    """The Maker choice's legal actions (the turn's other rows left out)."""
+
+    return [
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id in _MAKER_IDS
+    ]
+
+
+def test_a_maker_space_without_maker_hooks_greys_out_the_sandworm() -> None:
+    for space_id in ("hagga_basin", "deep_desert"):
+        state = _maker_visit(space_id, owner_fields={"maker_hooks": False})
+        assert _legal_ids(state) == ["harvest_maker_spice"]
+        assert _why(_sandworm_row(state, space_id)) == _NO_HOOKS
+
+
+def test_each_maker_sandworm_block_has_its_own_reason() -> None:
+    """A Conflict, Emperor of the Known Universe's deployment ban and the
+    Shield Wall, in the block's order (Maker Hooks first)."""
+
+    cases = [
+        (
+            "hagga_basin",
+            _maker_visit("hagga_basin", current_conflict_ids=()),
+            ("No Conflict this round", "이번 라운드에 교전 없음", "no_conflict"),
+        ),
+        (
+            "deep_desert",
+            _maker_visit("deep_desert", barred=True),
+            (
+                "Emperor of the Known Universe bars deploying units this turn",
+                "알려진 우주의 황제: 이번 차례에는 유닛을 배치할 수 없음",
+                "reward",
+            ),
+        ),
+        (
+            "hagga_basin",
+            _maker_visit(
+                "hagga_basin",
+                current_conflict_ids=("siege_of_arrakeen",),
+                shield_wall_present=True,
+            ),
+            _WALL,
+        ),
+    ]
+    for space_id, state, reason in cases:
+        assert "summon_maker_sandworms" not in _legal_ids(state)
+        assert _why(_sandworm_row(state, space_id)) == reason
+    # Several blocks at once name the first: no Maker Hooks before no Conflict.
+    both = _maker_visit(
+        "hagga_basin", owner_fields={"maker_hooks": False}, current_conflict_ids=()
+    )
+    assert _why(_sandworm_row(both, "hagga_basin")) == _NO_HOOKS
+
+
+def test_the_shield_wall_does_not_withhold_arrakis_planetologist() -> None:
+    """Liet Kynes replaces the sandworms "even when the Conflict is protected
+    by the Shield Wall" [Liet Kynes card]: the summon stays legal, no row."""
+
+    state = _maker_visit(
+        "hagga_basin",
+        owner_fields={"leader_id": "liet_kynes"},
+        current_conflict_ids=("siege_of_arrakeen",),
+        shield_wall_present=True,
+    )
+    assert "summon_maker_sandworms" in _legal_ids(state)
+    assert _maker_rows(state) == {}
+
+
+def test_a_sandworm_the_seat_can_summon_is_legal_and_greys_nothing() -> None:
+    for space_id in ("hagga_basin", "deep_desert"):
+        state = _maker_visit(space_id)
+        assert _legal_ids(state) == ["harvest_maker_spice", "summon_maker_sandworms"]
+        assert _maker_rows(state) == {}
+
+
+def test_imperial_basin_prints_no_sandworm_and_gets_no_row() -> None:
+    state = _maker_visit("imperial_basin", owner_fields={"maker_hooks": False})
+    assert _legal_ids(state) == ["harvest_maker_spice"]
+    assert _maker_rows(state) == {}
+
+
+def test_a_seat_holding_maker_hooks_cannot_take_the_desert_riding_token() -> None:
+    """OQ-079 (b): the token is one of the four Maker Hooks, and a seat that
+    holds Maker Hooks gets no second one; it keeps its spice or its sandworm."""
+
+    state = _maker_visit("hagga_basin", token=True)
+    assert _legal_ids(state) == ["harvest_maker_spice", "summon_maker_sandworms"]
+    rows = _maker_rows(state)
+    assert list(rows) == ["take_desert_riding_hooks"]
+    row = rows["take_desert_riding_hooks"]
+    assert row["action"]["arguments"] == {"space_id": "hagga_basin"}
+    assert _why(row) == (
+        "You already hold Maker Hooks",
+        "이미 가진 {maker_hooks}",
+        "held",
+    )
+    # Both branches blocked at once: the sandworm and the token each show.
+    both = _maker_visit(
+        "hagga_basin", token=True, current_conflict_ids=()
+    )
+    assert list(_maker_rows(both)) == [
+        "summon_maker_sandworms",
+        "take_desert_riding_hooks",
+    ]
+
+
+def test_the_desert_riding_token_is_offered_without_maker_hooks() -> None:
+    state = _maker_visit(
+        "hagga_basin",
+        owner_fields={"maker_hooks": False},
+        token=True,
+    )
+    assert _legal_ids(state) == ["harvest_maker_spice", "take_desert_riding_hooks"]
+    # Only the sandworm (no Maker Hooks) is greyed out; the token is legal.
+    assert list(_maker_rows(state)) == ["summon_maker_sandworms"]
+
+
+def test_no_desert_riding_row_without_the_token_or_off_hagga_basin() -> None:
+    """The token waits beside Hagga Basin alone, and only while it is on the
+    board: otherwise the option does not exist, so nothing greys out."""
+
+    assert _maker_rows(_maker_visit("hagga_basin")) == {}
+    elsewhere = _maker_visit("deep_desert", token=True)
+    assert _maker_rows(elsewhere) == {}
+
+
+def test_the_maker_rows_read_nothing_hidden() -> None:
+    states = (
+        _maker_visit("hagga_basin", owner_fields={"maker_hooks": False}),
+        _maker_visit("deep_desert", current_conflict_ids=()),
+        _maker_visit("hagga_basin", token=True),
+    )
+    rng = random.Random(8)
+    for state in states:
+        legal = ENGINE.legal_actions(state, 0)
+        found = unavailable_choices(state, 0, legal)
+        assert found is not None and found["rows"]
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            other_legal = ENGINE.legal_actions(other, seat)
+            assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- Sietch Tabr's detonation once the Shield Wall is gone (plan 4, row 13) --
+#
+# Sietch Tabr prints a choose-one row; the "water and destroy the Shield
+# Wall" branch destroys a token that a detonation may already have removed
+# for good. ``legal_sietch_tabr_actions`` offers it exactly when
+# ``sietch_tabr_wall_block`` is None, and it shows greyed out otherwise.
+
+_WALL_GONE = (
+    "The Shield Wall is already destroyed",
+    "{shield_wall}이 이미 파괴됨",
+    "condition",
+)
+_DETONATE = "take_sietch_tabr_water_and_destroy_wall"
+
+
+RECONNAISSANCE = "player:0:starter:reconnaissance:0"  # a City icon
+
+
+def _sietch_tabr_visit(**fields: Any) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        hand=(RECONNAISSANCE,),
+        influence=Influence(fremen=2),
+    )
+    return _agent_turn(_state(owner, **fields), RECONNAISSANCE, "sietch_tabr")
+
+
+def _sietch_ids(state: GameState) -> list[str]:
+    return [
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id.startswith("take_sietch_tabr")
+    ]
+
+
+def test_sietch_tabr_greys_out_the_detonation_once_the_wall_is_destroyed() -> None:
+    gone = _sietch_tabr_visit(shield_wall_present=False)
+    assert _sietch_ids(gone) == ["take_sietch_tabr_supplies", "take_sietch_tabr_water"]
+    found = _found(gone)
+    assert found["frame"] == FrameKind.AGENT_EFFECTS and found["refs"] == {}
+    row = _rows(found, "choice")[f"choice:{_DETONATE}"]
+    assert [r["key"] for r in found["rows"]] == [f"choice:{_DETONATE}"]
+    assert row["action"]["action_id"] == _DETONATE
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _WALL_GONE
+
+
+def test_sietch_tabr_with_the_wall_in_place_offers_the_detonation() -> None:
+    present = _sietch_tabr_visit(shield_wall_present=True)
+    assert _sietch_ids(present) == [
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+        _DETONATE,
+    ]
+    assert unavailable_choices(present, 0, ENGINE.legal_actions(present, 0)) is None
+
+
+def test_the_detonation_row_goes_once_the_choice_is_taken() -> None:
+    gone = _sietch_tabr_visit(shield_wall_present=False)
+    taken = ENGINE.apply(
+        gone, DomainAction(action_id="take_sietch_tabr_water", actor=0)
+    ).state
+    assert _sietch_ids(taken) == []
+    found = unavailable_choices(taken, 0, ENGINE.legal_actions(taken, 0))
+    assert found is None or all(
+        _DETONATE not in row["key"] for row in cast(dict[str, Any], found)["rows"]
+    )
+
+
+def test_the_detonation_row_reads_nothing_hidden() -> None:
+    state = _sietch_tabr_visit(shield_wall_present=False)
+    legal = ENGINE.legal_actions(state, 0)
+    found = cast(dict[str, Any] | None, unavailable_choices(state, 0, legal))
+    assert found is not None and len(found["rows"]) == 1
+    rng = random.Random(13)
+    for _ in range(20):
+        hidden = determinize(state, 0, rng)
+        hidden_legal = ENGINE.legal_actions(hidden, 0)
+        assert hidden_legal == legal
+        assert unavailable_choices(hidden, 0, hidden_legal) == found
+    for seat in range(1, 4):
+        other = determinize(state, seat, rng)
+        other_legal = ENGINE.legal_actions(other, seat)
+        assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Leader's Reveal ability with nothing to act on (plan 4, row 17) -------
+#
+# Lady Amber's Desert Scouts ("Reveal Turn: You may retreat one of your
+# troops") needs a unit in the Conflict, Feyd-Rautha's Devious Strength
+# ("Reveal Turn: recall one of your Spies for two swords") a Spy on the
+# board. ``legal_leader_reveal_actions`` offers them exactly when
+# ``leader_reveal_block`` is None; otherwise their actions sit under
+# "waiting" with the block and the Reveal tail of a card's optional choice.
+
+_AMBER = "lady_amber_metulli"
+_FEYD = "feyd_rautha_harkonnen"
+_REVEAL_TAIL = (
+    "; it lapses unused when the Reveal turn ends",
+    " — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+)
+_NO_UNIT_TO_RETREAT = (
+    "No unit of yours in the Conflict to retreat",
+    "{conflict}에 후퇴할 내 유닛 없음",
+    "no_unit",
+)
+_NO_SPY = (
+    "Needs 1 Spy of yours on the board (you have 0)",
+    "보드에 내 {spy:1} 필요 (보유 0)",
+    "cost",
+)
+
+
+_BLOODLINES = RulesetConfig(bloodlines=True)
+
+
+def _leader_reveal(
+    leader_id: str, *, config: RulesetConfig = BASE, **owner_fields: Any
+) -> GameState:
+    """Seat 0 of ``leader_id`` opens its Reveal turn."""
+
+    owner = PlayerState(
+        player_id=0, leader_id=leader_id, hand=(DAGGER,), **owner_fields
+    )
+    revealed = ENGINE.apply(
+        _state(owner, config=config), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    return revealed
+
+
+def _ability_ids(state: GameState) -> list[str]:
+    return [
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id
+        in ("retreat_leader_troop", "retreat_leader_commander", "recall_spy_for_leader")
+    ]
+
+
+def _ability_rows(state: GameState) -> dict[str, dict[str, Any]]:
+    raw = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    if raw is None:
+        return {}
+    found = cast(dict[str, Any], raw)
+    assert found["frame"] == FrameKind.REVEAL and found["refs"] == {}
+    rows = {row["key"]: row for row in found["rows"]}
+    assert all(row["surface"] == "waiting" for row in rows.values())
+    # The ability names no card and sits under no revealed card's header.
+    assert not any("reveal_choice" in row or "card_id" in row for row in rows.values())
+    return rows
+
+
+def _reveal_lapsing(reason: tuple[str, str, str]) -> tuple[str, str, str]:
+    return reason[0] + _REVEAL_TAIL[0], reason[1] + _REVEAL_TAIL[1], reason[2]
+
+
+def test_lady_amber_with_no_unit_in_the_conflict_waits_greyed_out() -> None:
+    state = _leader_reveal(_AMBER, troops_garrison=3, troops_conflict=0)
+    assert _ability_ids(state) == []
+    rows = _ability_rows(state)
+    assert list(rows) == ["waiting:leader_reveal:retreat_leader_troop"]
+    row = rows["waiting:leader_reveal:retreat_leader_troop"]
+    assert row["action"]["action_id"] == "retreat_leader_troop"
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _reveal_lapsing(_NO_UNIT_TO_RETREAT)
+
+
+def test_lady_amber_with_a_unit_in_the_conflict_is_offered_the_retreat() -> None:
+    state = _leader_reveal(_AMBER, troops_garrison=2, troops_conflict=1)
+    assert _ability_ids(state) == ["retreat_leader_troop"]
+    assert _ability_rows(state) == {}
+    # A Sardaukar Commander counts as a troop for the retreat [Bloodlines p. 4].
+    commander = _leader_reveal(_AMBER, config=_BLOODLINES, commanders_conflict=1)
+    assert _ability_ids(commander) == ["retreat_leader_commander"]
+    assert _ability_rows(commander) == {}
+
+
+def test_a_commander_owner_sees_the_commander_retreat_greyed_out_too() -> None:
+    """Only a seat that owns a Sardaukar Commander is shown its retreat."""
+
+    state = _leader_reveal(
+        _AMBER, config=_BLOODLINES, commanders_garrison=1, troops_garrison=3
+    )
+    assert _ability_ids(state) == []
+    rows = _ability_rows(state)
+    assert list(rows) == [
+        "waiting:leader_reveal:retreat_leader_troop",
+        "waiting:leader_reveal:retreat_leader_commander",
+    ]
+    for row in rows.values():
+        assert _why(row) == _reveal_lapsing(_NO_UNIT_TO_RETREAT)
+
+
+def test_feyd_rautha_without_a_spy_on_the_board_waits_greyed_out() -> None:
+    state = _leader_reveal(_FEYD)
+    assert _ability_ids(state) == []
+    rows = _ability_rows(state)
+    assert list(rows) == ["waiting:leader_reveal:recall_spy_for_leader"]
+    row = rows["waiting:leader_reveal:recall_spy_for_leader"]
+    assert row["action"]["action_id"] == "recall_spy_for_leader"
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _reveal_lapsing(_NO_SPY)
+    # With a Spy on the board the ability is legal, one recall per post.
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:2])
+    spied = _leader_reveal(_FEYD, spies_supply=1, spy_post_ids=posts)
+    assert _ability_ids(spied) == ["recall_spy_for_leader"] * 2
+    assert _ability_rows(spied) == {}
+
+
+def test_the_ability_row_goes_once_it_is_used_and_for_other_leaders() -> None:
+    """The ability is used at most once per Reveal turn: once used there is
+    nothing left to grey out. A Leader without a Reveal-turn ability, or a
+    seat that is not revealing, shows no row."""
+
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:1])
+    spied = _leader_reveal(_FEYD, spies_supply=2, spy_post_ids=posts)
+    used = ENGINE.apply(
+        spied,
+        DomainAction(
+            action_id="recall_spy_for_leader",
+            actor=0,
+            arguments=(("post_id", posts[0]),),
+        ),
+    ).state
+    assert _ability_ids(used) == []
+    assert _ability_rows(used) == {}
+    assert _ability_rows(_leader_reveal("paul_atreides")) == {}
+    turn = _state(PlayerState(player_id=0, leader_id=_AMBER))
+    assert _ability_rows(turn) == {}
+
+
+def test_the_leader_reveal_rows_read_nothing_hidden() -> None:
+    states = (
+        _leader_reveal(_AMBER, troops_garrison=3),
+        _leader_reveal(_FEYD),
+        _leader_reveal(
+            _AMBER, config=_BLOODLINES, commanders_garrison=1, troops_garrison=3
+        ),
+    )
+    rng = random.Random(17)
     for state in states:
         legal = ENGINE.legal_actions(state, 0)
         found = unavailable_choices(state, 0, legal)

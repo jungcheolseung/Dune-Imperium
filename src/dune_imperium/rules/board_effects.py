@@ -837,6 +837,36 @@ def apply_espionage_action(
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def pending_sietch_tabr(state: GameState, player: int) -> bool:
+    """Whether ``player`` decides Sietch Tabr's unresolved choice-one row."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return False
+    return context.get("space_id") == "sietch_tabr" and board_icon_is_pending(
+        context, BOARD_ICON_SIETCH_TABR
+    )
+
+
+def sietch_tabr_wall_block(state: GameState) -> OptionalEffectBlock | None:
+    """Why Sietch Tabr's "water and destroy the Shield Wall" cannot be taken.
+
+    The branch destroys the Shield Wall, so it needs the token still on the
+    board: once a detonation has destroyed it for good, the branch does
+    nothing and is not offered. ``legal_sietch_tabr_actions`` offers
+    ``take_sietch_tabr_water_and_destroy_wall`` exactly when this is None,
+    and the page's greyed-out row reads the same block
+    (``display.unavailable``). Public: the Shield Wall lies on the board.
+    """
+
+    if state.shield_wall_present:
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.NO_SHIELD_WALL)
+
+
 def legal_sietch_tabr_actions(
     state: GameState,
     player: int,
@@ -845,21 +875,13 @@ def legal_sietch_tabr_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("space_id") != "sietch_tabr" or not board_icon_is_pending(
-        context, BOARD_ICON_SIETCH_TABR
-    ):
+    if not pending_sietch_tabr(state, player):
         return ()
     actions = [
         DomainAction(action_id="take_sietch_tabr_supplies", actor=player),
         DomainAction(action_id="take_sietch_tabr_water", actor=player),
     ]
-    if state.shield_wall_present:
+    if sietch_tabr_wall_block(state) is None:
         actions.append(
             DomainAction(
                 action_id="take_sietch_tabr_water_and_destroy_wall",
@@ -1622,6 +1644,90 @@ def apply_tuek_sietch_action(
     return RuleResult(state=drawn.state, events=(event, *drawn.events))
 
 
+# The Maker spaces [Main p. 15]; Imperial Basin's printed row is spice alone
+# [Board Guide p. 2], so only the other two print a sandworm choice.
+MAKER_SPACE_IDS: Final = ("deep_desert", "hagga_basin", "imperial_basin")
+MAKER_SANDWORM_SPACE_IDS: Final = ("deep_desert", "hagga_basin")
+
+
+def pending_maker_space(state: GameState, player: int) -> str | None:
+    """The Maker space whose spice-or-sandworm choice ``player`` has pending.
+
+    None unless ``player`` decides the Agent turn's effect frame of a Maker
+    space whose icon is still unresolved.
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    space_id = context.get("space_id")
+    if (
+        isinstance(space_id, str)
+        and space_id in MAKER_SPACE_IDS
+        and board_icon_is_pending(context, BOARD_ICON_MAKER)
+    ):
+        return space_id
+    return None
+
+
+def maker_sandworm_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why a Maker space's sandworm choice cannot be taken now, or None.
+
+    Deep Desert and Hagga Basin print "with Maker Hooks, summon sandworms"
+    [Board Guide pp. 1-2]: it needs Maker Hooks, a Conflict to deploy into
+    (a summoned sandworm is immediately deployed [Main p. 20], so Emperor of
+    the Known Universe's deployment ban withholds it) and no Shield Wall
+    protecting that Conflict -- except that Arrakis Planetologist replaces
+    the sandworms "even when the Conflict is protected by the Shield Wall"
+    [Liet Kynes card]. Checked in that order.
+    ``legal_maker_space_actions`` offers ``summon_maker_sandworms`` at Deep
+    Desert and Hagga Basin exactly when this is None, and the page's
+    greyed-out row reads the same block (``display.unavailable``). Every
+    input is public.
+    """
+
+    owner = state.players[player]
+    if not owner.maker_hooks:
+        return OptionalEffectBlock(OptionalBlockKind.MAKER_HOOKS)
+    if not state.current_conflict_ids:
+        return OptionalEffectBlock(OptionalBlockKind.NO_CONFLICT)
+    if units_deployment_blocked(state, player):
+        return OptionalEffectBlock(OptionalBlockKind.DEPLOYMENT_BARRED)
+    if not replaces_sandworms(owner) and current_conflict_is_shield_wall_protected(
+        state
+    ):
+        return OptionalEffectBlock(OptionalBlockKind.SHIELD_WALL)
+    return None
+
+
+def desert_riding_offered_at(state: GameState, space_id: str) -> bool:
+    """Whether Arrakeen Scouts' Desert Riding token is on offer at ``space_id``.
+
+    The token waits beside Hagga Basin until a visitor takes it in place of
+    the space's own 2 spice (docs/rules/arrakeen-scouts.md 5).
+    """
+
+    return space_id == "hagga_basin" and desert_riding_token(state) is not None
+
+
+def desert_riding_block(state: GameState, player: int) -> OptionalEffectBlock | None:
+    """Why ``player`` cannot take the Desert Riding token, or None.
+
+    The token is one of the four Maker Hooks, and a seat holding Maker Hooks
+    gets no second one [Main p. 20] (OQ-079 (b)). ``legal_maker_space_actions``
+    offers ``take_desert_riding_hooks`` where ``desert_riding_offered_at``
+    exactly when this is None, and the page's greyed-out row reads the same
+    block (``display.unavailable``).
+    """
+
+    if state.players[player].maker_hooks:
+        return OptionalEffectBlock(OptionalBlockKind.MAKER_HOOKS_HELD)
+    return None
+
+
 def legal_maker_space_actions(
     state: GameState,
     player: int,
@@ -1630,18 +1736,8 @@ def legal_maker_space_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    space_id = context.get("space_id")
-    if space_id not in (
-        "deep_desert",
-        "hagga_basin",
-        "imperial_basin",
-    ) or not board_icon_is_pending(context, BOARD_ICON_MAKER):
+    space_id = pending_maker_space(state, player)
+    if space_id is None:
         return ()
     actions = [
         DomainAction(
@@ -1650,15 +1746,13 @@ def legal_maker_space_actions(
             arguments=(("space_id", space_id),),
         )
     ]
-    owner = state.players[player]
     if (
-        space_id == "hagga_basin"
-        and not owner.maker_hooks
-        and desert_riding_token(state) is not None
-    ):
+        desert_riding_offered_at(state, space_id)
         # Arrakeen Scouts' Desert Riding: the token in place of the space's
         # own 2 spice (docs/rules/arrakeen-scouts.md 5); a seat holding Maker
         # Hooks gets no second one [Main p. 20] (OQ-079).
+        and desert_riding_block(state, player) is None
+    ):
         actions.append(
             DomainAction(
                 action_id="take_desert_riding_hooks",
@@ -1667,18 +1761,8 @@ def legal_maker_space_actions(
             )
         )
     if (
-        space_id != "imperial_basin"
-        and owner.maker_hooks
-        and state.current_conflict_ids
-        # Arrakis Planetologist replaces the sandworms "even when the
-        # Conflict is protected by the Shield Wall" [Liet Kynes card].
-        and (
-            replaces_sandworms(owner)
-            or not current_conflict_is_shield_wall_protected(state)
-        )
-        # A summoned sandworm is immediately deployed [Main p. 20], so the
-        # Emperor of the Known Universe restriction withholds it.
-        and not units_deployment_blocked(state, player)
+        space_id in MAKER_SANDWORM_SPACE_IDS
+        and maker_sandworm_block(state, player) is None
     ):
         actions.append(
             DomainAction(

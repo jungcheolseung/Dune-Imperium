@@ -23,6 +23,19 @@ rows read (``AcquireBlock``, ``option_unplayable_reason``,
 ``test_the_refactored_providers_offer_what_they_did`` pins that refactor
 against copies of the providers as they were before it (2026-09-29): a later
 rule change to one of them should update or drop the copy on purpose.
+``combat_reward_payment_block`` and ``combat_reward_spy_recall_block``
+(2026-10-14, a Conflict reward's resource or Spies payment) are pinned by
+copies of the providers here too, over the seeded games and a sweep of every
+optional arrow (``test_the_conflict_reward_payment_blocks_are_the_old_comparisons``).
+``board_effects.maker_sandworm_block`` and ``desert_riding_block``
+(2026-10-14, a Maker space's sandworm and Desert Riding token) likewise, over
+the seeded games and a sweep of the Maker spaces
+(``test_the_maker_space_blocks_are_the_old_conditions``).
+``board_effects.sietch_tabr_wall_block`` (2026-10-14, Sietch Tabr's
+detonation) likewise (``test_the_sietch_tabr_block_is_the_old_condition``).
+``leader_abilities.leader_reveal_block`` (2026-10-14, Lady Amber's and
+Feyd-Rautha's Reveal abilities) likewise, over the seeded games and a sweep
+(``test_the_leader_reveal_block_is_the_old_condition``).
 ``combat.conflict_end_trigger_block`` (2026-10-09, the Conflict-end
 window's Harvest Cells) has no copy here: the window tests of
 ``tests/unit/rules/test_immortality_intrigue.py`` pin what it offers.
@@ -31,6 +44,7 @@ recall confirms (2026-10-02) rely on: a recall's targets never come back
 while it waits.
 """
 
+import itertools
 import json
 import random
 import re
@@ -42,7 +56,11 @@ import pytest
 from tests.unit.display.test_unavailable import (
     HARVEST_CELLS,
     _conflict_end_window,
+    _leader_reveal,
+    _maker_visit,
     _play_conflict_end,
+    _sietch_tabr_visit,
+    reward_window,
 )
 
 from dune_imperium import RulesetConfig
@@ -142,17 +160,30 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
+    BOARD_ICON_MAKER,
+    BOARD_ICON_SIETCH_TABR,
+    MAKER_SANDWORM_SPACE_IDS,
+    desert_riding_block,
+    desert_riding_offered_at,
     desert_tactics_block,
     imperial_privilege_recall_targets,
     imperial_privilege_trade_block,
     legal_board_effect_actions,
     legal_desert_tactics_actions,
     legal_imperial_privilege_actions,
+    legal_maker_space_actions,
+    legal_sietch_tabr_actions,
+    maker_sandworm_block,
+    sietch_tabr_wall_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
+    combat_reward_payment_block,
+    combat_reward_spy_recall_block,
     legal_combat_reward_influence_actions,
+    legal_combat_reward_optional_payment_actions,
     legal_combat_reward_spy_actions,
+    legal_combat_reward_spy_recall_actions,
     legal_distinct_combat_reward_influence_actions,
 )
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
@@ -215,7 +246,9 @@ from dune_imperium.rules.leader_abilities import (
     FACTION_POST_IDS,
     LANDSRAAD_POST_IDS,
     leader_board_repeat_block,
+    leader_reveal_block,
     legal_leader_board_repeat_actions,
+    legal_leader_reveal_actions,
     signet_optional_block,
     units_deployment_blocked,
 )
@@ -232,6 +265,7 @@ from dune_imperium.rules.sardaukar import (
     legal_skill_choice_actions,
     sardaukar_commander_block,
 )
+from dune_imperium.rules.scouts_missions import desert_riding_token
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.tech import (
@@ -306,6 +340,7 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
     config: RulesetConfig,
 ) -> None:
     surfaces: set[str] = set()
+    keys: set[str] = set()
     checked = 0
     for seed in range(2):
         rng = random.Random(1000 + seed)
@@ -321,6 +356,7 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
                 }
                 for row in found["rows"]:
                     surfaces.add(row["surface"])
+                    keys.add(row["key"])
                     assert not _is_legal(row, legal), row
                     assert row["code"] != NOT_NOW_CODE, row
                     assert row["reason"] and row["reason_ko"], row
@@ -337,6 +373,16 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
             assert unavailable_choices(hidden, seat, hidden_legal) == found
     assert checked > 0
     assert "acquire" in surfaces and "intrigue" in surfaces
+    if config == RulesetConfig():
+        # Plan 4 rows 8, 13 and 17 turn up in every few games: a Maker
+        # space's sandworm, Sietch Tabr's detonation, a Leader Reveal
+        # ability (row 1 is rarer; the display tests pin it).
+        for wanted in (
+            "summon_maker_sandworms",
+            "take_sietch_tabr_water_and_destroy_wall",
+            "leader_reveal",
+        ):
+            assert any(wanted in key for key in keys), (wanted, sorted(keys))
 
 
 def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
@@ -1112,6 +1158,193 @@ def _old_combat_reward_spy(state: GameState, player: int) -> tuple[DomainAction,
     return ()
 
 
+def _old_combat_reward_payment(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``combat.legal_combat_reward_optional_payment_actions`` before
+    ``combat_reward_payment_block`` (2026-10-14): the resource comparison
+    was inline."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_OPTIONAL:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    context = dict(frame.context)
+    cost = context["cost"]
+    resource = context.get("resource")
+    assert isinstance(cost, int) and resource in ("solari", "spice")
+    actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
+    if getattr(state.players[player].resources, resource) >= cost:
+        actions.append(DomainAction(action_id="pay_combat_reward", actor=player))
+    return tuple(actions)
+
+
+def _old_combat_reward_spy_recall(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``combat.legal_combat_reward_spy_recall_actions`` before
+    ``combat_reward_spy_recall_block`` (2026-10-14): every pair of placed
+    Spies, which is none with fewer than two."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_SPY_RECALL:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    count = dict(frame.context)["spy_count"]
+    posts = state.players[player].spy_post_ids
+    actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
+    assert count == 2
+    actions.extend(
+        DomainAction(
+            action_id="recall_spies_for_combat_reward",
+            actor=player,
+            arguments=(
+                ("first_post_id", posts[first]),
+                ("second_post_id", posts[second]),
+            ),
+        )
+        for first in range(len(posts))
+        for second in range(first + 1, len(posts))
+    )
+    return tuple(actions)
+
+
+def _old_maker_space(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``board_effects.legal_maker_space_actions`` before
+    ``maker_sandworm_block`` and ``desert_riding_block`` (2026-10-14): the
+    Maker Hooks, Conflict, Shield Wall and deployment conditions were inline."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    space_id = context.get("space_id")
+    if space_id not in (
+        "deep_desert",
+        "hagga_basin",
+        "imperial_basin",
+    ) or not board_icon_is_pending(context, BOARD_ICON_MAKER):
+        return ()
+    actions = [
+        DomainAction(
+            action_id="harvest_maker_spice",
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+    ]
+    owner = state.players[player]
+    if (
+        space_id == "hagga_basin"
+        and not owner.maker_hooks
+        and desert_riding_token(state) is not None
+    ):
+        actions.append(
+            DomainAction(
+                action_id="take_desert_riding_hooks",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+        )
+    if (
+        space_id != "imperial_basin"
+        and owner.maker_hooks
+        and state.current_conflict_ids
+        and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
+        and not units_deployment_blocked(state, player)
+    ):
+        actions.append(
+            DomainAction(
+                action_id="summon_maker_sandworms",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+        )
+    return tuple(actions)
+
+
+def _old_sietch_tabr(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``board_effects.legal_sietch_tabr_actions`` before
+    ``sietch_tabr_wall_block`` (2026-10-14): the Shield Wall test was inline."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("space_id") != "sietch_tabr" or not board_icon_is_pending(
+        context, BOARD_ICON_SIETCH_TABR
+    ):
+        return ()
+    actions = [
+        DomainAction(action_id="take_sietch_tabr_supplies", actor=player),
+        DomainAction(action_id="take_sietch_tabr_water", actor=player),
+    ]
+    if state.shield_wall_present:
+        actions.append(
+            DomainAction(
+                action_id="take_sietch_tabr_water_and_destroy_wall",
+                actor=player,
+            )
+        )
+    return tuple(actions)
+
+
+def _old_leader_reveal(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``leader_abilities.legal_leader_reveal_actions`` before
+    ``leader_reveal_block`` (2026-10-14): each ability's prerequisite was
+    inline in its leader's branch."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if frame is None:
+        return ()
+    if dict(frame.context).get("leader_reveal_ability_used") is True:
+        return ()
+    owner = state.players[player]
+    if owner.leader_id == "lady_amber_metulli" and (
+        owner.troops_conflict >= 1 or owner.commanders_conflict >= 1
+    ):
+        return (
+            *(
+                (DomainAction(action_id="retreat_leader_troop", actor=player),)
+                if owner.troops_conflict >= 1
+                else ()
+            ),
+            *(
+                (DomainAction(action_id="retreat_leader_commander", actor=player),)
+                if owner.commanders_conflict >= 1
+                else ()
+            ),
+        )
+    if owner.leader_id == "feyd_rautha_harkonnen" and owner.spy_post_ids:
+        return tuple(
+            DomainAction(
+                action_id="recall_spy_for_leader",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in owner.spy_post_ids
+        )
+    return ()
+
+
 def _old_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
     """``unit_loss._loss_options`` before it became ``unit_loss_options``
     over ``unit_loss_block`` (2026-10-02)."""
@@ -1522,6 +1755,11 @@ _PAIRS: list[
     (legal_research_bonus_actions, _old_research_bonus),
     (legal_agent_card_recall_actions, _old_agent_card_recall),
     (legal_agent_card_icon_actions, _old_agent_card_icons),
+    (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),
+    (legal_combat_reward_spy_recall_actions, _old_combat_reward_spy_recall),
+    (legal_maker_space_actions, _old_maker_space),
+    (legal_sietch_tabr_actions, _old_sietch_tabr),
+    (legal_leader_reveal_actions, _old_leader_reveal),
 ]
 _OPTIONS = tuple(
     option
@@ -2215,3 +2453,258 @@ def test_the_optional_block_functions_are_the_old_gates(
                     ), seed
                     compared += 1
     assert compared > 0
+
+
+# --- The Conflict reward payments before their blocks (2026-10-14) -----------
+#
+# ``combat_reward_payment_block`` and ``combat_reward_spy_recall_block``
+# replaced the providers' inline comparisons (a resource against the arrow's
+# cost, two Spies on the board); each provider now asks ``block is None``.
+# ``_old_combat_reward_payment`` and ``_old_combat_reward_spy_recall`` are the
+# comparisons as they were written inline. The seeded games above compare the
+# providers wherever one is met (``_PAIRS``); the optional windows are rare
+# in a random game, so this sweeps every optional arrow of every Conflict
+# over what the seat holds.
+
+_ARROW_CONFLICTS = (
+    ("spice_freighters", RulesetConfig()),
+    ("battle_for_imperial_basin", RulesetConfig()),
+    ("battle_for_arrakeen", RulesetConfig()),
+    ("battle_for_spice_refinery", RulesetConfig()),
+    ("economic_supremacy", RulesetConfig(epic_game=True)),
+)
+
+
+def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
+    """Over every optional arrow of every Conflict, with 0-8 of each
+    resource and 0-3 Spies on the board, each provider offers what its old
+    copy did, the payment exactly where its block is None, and the block
+    names what the seat is short of."""
+
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS)
+    decline = DomainAction(action_id="decline_combat_reward", actor=0)
+    blocked = open_windows = recalls = 0
+    for conflict_id, config in _ARROW_CONFLICTS:
+        for held in range(9):
+            for spies in range(4):
+                state = reward_window(
+                    conflict_id,
+                    config=config,
+                    resources=Resources(solari=held, spice=(held + 3) % 9),
+                    spies_supply=3 - spies,
+                    spy_post_ids=posts[:spies],
+                )
+                # Economic Supremacy's second arrow follows the first.
+                while state.decision_stack[-1].kind in (
+                    FrameKind.COMBAT_REWARD_OPTIONAL,
+                    FrameKind.COMBAT_REWARD_SPY_RECALL,
+                ):
+                    frame = state.decision_stack[-1]
+                    owner = state.players[0]
+                    legal = ENGINE.legal_actions(state, 0)
+                    if frame.kind == FrameKind.COMBAT_REWARD_SPY_RECALL:
+                        assert legal == _old_combat_reward_spy_recall(state, 0)
+                        spy_block = combat_reward_spy_recall_block(frame, owner)
+                        assert (spy_block is None) == (spies >= 2)
+                        assert (len(legal) > 1) == (spy_block is None)
+                        if spy_block is not None:
+                            assert (spy_block.needed, spy_block.held) == (2, spies)
+                        recalls += 1
+                        break
+                    assert legal == _old_combat_reward_payment(state, 0)
+                    block = combat_reward_payment_block(frame, owner)
+                    context = dict(frame.context)
+                    resource, cost = str(context["resource"]), int(str(context["cost"]))
+                    have = getattr(owner.resources, resource)
+                    pay = DomainAction(action_id="pay_combat_reward", actor=0)
+                    assert (block is None) == (pay in legal)
+                    if block is None:
+                        assert have >= cost
+                        open_windows += 1
+                    else:
+                        assert block.kind.value == resource
+                        assert (block.needed, block.held) == (cost, have)
+                        blocked += 1
+                    state = ENGINE.apply(state, decline).state
+    assert blocked > 0 and open_windows > 0 and recalls > 0
+
+
+# --- The Maker spaces before their blocks (2026-10-14) -----------------------
+#
+# ``maker_sandworm_block`` and ``desert_riding_block`` replaced the inline
+# conditions of ``legal_maker_space_actions``; the provider now asks
+# ``block is None``. ``_old_maker_space`` is the provider as it was written.
+
+
+def _expected_sandworm_block(
+    hooks: bool, conflict_ids: tuple[str, ...], barred: bool, walled: bool
+) -> OptionalBlockKind | None:
+    """The first condition that fails, in the block's documented order."""
+
+    if not hooks:
+        return OptionalBlockKind.MAKER_HOOKS
+    if not conflict_ids:
+        return OptionalBlockKind.NO_CONFLICT
+    if barred:
+        return OptionalBlockKind.DEPLOYMENT_BARRED
+    return OptionalBlockKind.SHIELD_WALL if walled else None
+
+
+def test_the_maker_space_blocks_are_the_old_conditions() -> None:
+    """Over every Maker space, with and without Maker Hooks, with no
+    Conflict, an unprotected one, a Shield-Wall-protected one with and
+    without the Wall, for Arrakis Planetologist, the deployment ban and the
+    Desert Riding token, the provider offers what its old copy did, the
+    sandworm and the token exactly where their blocks are None (the sandworm
+    at the two spaces that print one), and each block names the first
+    condition that fails."""
+
+    conflicts = (
+        ((), False),
+        (("propaganda",), False),
+        (("siege_of_arrakeen",), False),
+        (("siege_of_arrakeen",), True),
+    )
+    cases = list(
+        itertools.product(
+            ("deep_desert", "hagga_basin", "imperial_basin"),
+            (False, True),
+            conflicts,
+            ("atreides", "liet_kynes"),
+            (False, True),
+            (False, True),
+        )
+    )
+    kinds: set[OptionalBlockKind | None] = set()
+    for space_id, hooks, (conflict_ids, wall), leader, barred, token in cases:
+        state = _maker_visit(
+            space_id,
+            owner_fields={"maker_hooks": hooks, "leader_id": leader},
+            barred=barred,
+            token=token,
+            current_conflict_ids=conflict_ids,
+            shield_wall_present=wall,
+        )
+        legal = legal_maker_space_actions(state, 0)
+        assert legal == _old_maker_space(state, 0)
+        ids = {action.action_id for action in legal}
+        sandworm = maker_sandworm_block(state, 0)
+        riding = desert_riding_block(state, 0)
+        assert ("summon_maker_sandworms" in ids) == (
+            space_id in MAKER_SANDWORM_SPACE_IDS and sandworm is None
+        )
+        assert ("take_desert_riding_hooks" in ids) == (
+            desert_riding_offered_at(state, space_id) and riding is None
+        )
+        # The Wall protects only "Siege of Arrakeen"; Liet's sandworms ignore it.
+        walled = wall and leader != "liet_kynes"
+        expected = _expected_sandworm_block(hooks, conflict_ids, barred, walled)
+        assert (sandworm.kind if sandworm else None) is expected
+        assert (riding is not None) == hooks
+        kinds.add(expected)
+        # Only the seat deciding has a Maker choice.
+        for seat in range(1, 4):
+            assert legal_maker_space_actions(state, seat) == ()
+    assert len(cases) == 3 * 2 * 4 * 2 * 2 * 2
+    assert kinds == {
+        None,
+        OptionalBlockKind.MAKER_HOOKS,
+        OptionalBlockKind.NO_CONFLICT,
+        OptionalBlockKind.DEPLOYMENT_BARRED,
+        OptionalBlockKind.SHIELD_WALL,
+    }
+
+
+# --- Sietch Tabr before its block (2026-10-14) -----------------------------
+
+
+def test_the_sietch_tabr_block_is_the_old_condition() -> None:
+    """With the Shield Wall on the board and destroyed, while the choice is
+    pending and once it is taken, the provider offers what its old copy did
+    and the detonation exactly where ``sietch_tabr_wall_block`` is None."""
+
+    detonate = DomainAction(
+        action_id="take_sietch_tabr_water_and_destroy_wall", actor=0
+    )
+    compared = 0
+    for wall in (True, False):
+        pending = _sietch_tabr_visit(shield_wall_present=wall)
+        taken = ENGINE.apply(
+            pending, DomainAction(action_id="take_sietch_tabr_water", actor=0)
+        ).state
+        for state in (pending, taken):
+            for seat in range(4):
+                assert legal_sietch_tabr_actions(state, seat) == _old_sietch_tabr(
+                    state, seat
+                )
+        legal = legal_sietch_tabr_actions(pending, 0)
+        assert (detonate in legal) == (sietch_tabr_wall_block(pending) is None) == wall
+        assert legal_sietch_tabr_actions(taken, 0) == ()
+        compared += 1
+    assert compared == 2
+
+
+# --- The Leader Reveal abilities before their block (2026-10-14) -------------
+
+
+def test_the_leader_reveal_block_is_the_old_condition() -> None:
+    """For Lady Amber, Feyd-Rautha and a Leader without a Reveal-turn
+    ability, with 0-1 troops and Commanders in the Conflict and 0-2 Spies on
+    the board, before and after the ability is used, the provider offers
+    what its old copy did and the ability exactly where
+    ``leader_reveal_block`` is None; and nothing is offered, or blocked, for
+    a seat that is not revealing."""
+
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS)
+    bloodlines = RulesetConfig(bloodlines=True)
+    cases = list(
+        itertools.product(
+            ("lady_amber_metulli", "feyd_rautha_harkonnen", "paul_atreides"),
+            (0, 1),
+            (0, 1),
+            (0, 1, 2),
+            (False, True),
+        )
+    )
+    kinds: set[OptionalBlockKind | None] = set()
+    for leader, troops, commanders, spies, used in cases:
+        state = _leader_reveal(
+            leader,
+            config=bloodlines,
+            troops_garrison=3 - troops,
+            troops_conflict=troops,
+            commanders_garrison=1 - commanders,
+            commanders_conflict=commanders,
+            spies_supply=3 - spies,
+            spy_post_ids=posts[:spies],
+        )
+        if used:
+            frame = state.decision_stack[-1]
+            context = {**dict(frame.context), "leader_reveal_ability_used": True}
+            frame = replace(frame, context=tuple(sorted(context.items())))
+            state = replace(state, decision_stack=(*state.decision_stack[:-1], frame))
+        legal = legal_leader_reveal_actions(state, 0)
+        assert legal == _old_leader_reveal(state, 0)
+        block = leader_reveal_block(state, 0)
+        if used or leader == "paul_atreides":
+            assert block is None and legal == ()
+        elif leader == "lady_amber_metulli":
+            assert (block is None) == (troops + commanders >= 1) == bool(legal)
+        else:
+            assert (block is None) == (spies >= 1) == bool(legal)
+        if block is not None:
+            assert block.kind in (
+                OptionalBlockKind.NO_UNIT_IN_CONFLICT,
+                OptionalBlockKind.SPIES_ON_BOARD,
+            )
+        kinds.add(block.kind if block else None)
+        # Only the revealing seat has a Reveal-turn ability.
+        for seat in range(1, 4):
+            assert legal_leader_reveal_actions(state, seat) == ()
+            assert leader_reveal_block(state, seat) is None
+    assert len(cases) == 3 * 2 * 2 * 3 * 2
+    assert kinds == {
+        None,
+        OptionalBlockKind.NO_UNIT_IN_CONFLICT,
+        OptionalBlockKind.SPIES_ON_BOARD,
+    }
