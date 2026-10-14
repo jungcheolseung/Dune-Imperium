@@ -10,6 +10,7 @@ const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft"
 const SEAT_COLORS = [Color("438bde"), Color("d66063"), Color("42ac87"), Color("e4b955")]
 const SECTIONS = ["cards", "intrigue", "leaders", "spaces", "conflicts", "objectives", "contracts", "skills", "tech", "scouts_items"]
 const EXPANSIONS = ["choam_module", "promo_cards", "bloodlines", "tech_module", "immortality", "go_to_11", "epic_game", "arrakeen_scouts"]
+const DECK_TOP_CHOICES = {"put_back_top_card": "panels.deck_top_put_back", "discard_top_card": "panels.deck_top_discard", "draw_top_card_for_solari": "panels.deck_top_draw"}
 
 var catalog: Dictionary = {}
 var words: Dictionary = {}
@@ -376,6 +377,56 @@ func cost_text(cost: Dictionary) -> String:
 	return " · ".join(parts)
 
 
+func known_deck_top() -> Dictionary:
+	var private = view().get("private", {})
+	var ref = str(private.get("peeked_card_id", ""))
+	if ref.is_empty() or ref not in private.get("deck_cards", []):
+		return {}
+	var players = view().get("players", [])
+	var glowglobes = active_seat >= 0 and active_seat < players.size() and "glowglobes" in players[active_seat].get("tech_ids", [])
+	var source = catalog.get("tech" if glowglobes else "intrigue", {}).get("glowglobes" if glowglobes else "twisted_controlled", {})
+	return {"ref": ref, "source": str(localized(source, "name"))}
+
+
+func top_choice_card() -> String:
+	if not actions().any(func(action): return DECK_TOP_CHOICES.has(action.action_id)):
+		return ""
+	return str(view().get("private", {}).get("peeked_card_id", ""))
+
+
+func live_description(action: Dictionary) -> String:
+	var top = top_choice_card()
+	if not top.is_empty() and DECK_TOP_CHOICES.has(action.action_id):
+		var notes = action_notes(action)
+		return ui(DECK_TOP_CHOICES[action.action_id], {"card": name_of(top)}) + ("\n" + " · ".join(notes) if not notes.is_empty() else "")
+	return describe(action)
+
+
+func pile_groups(refs: Array, top = "") -> Array:
+	var groups: Dictionary = {}
+	for ref in refs:
+		var key = ":".join(section_id(str(ref)))
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append(str(ref))
+	var sorted: Array = []
+	for cards in groups.values():
+		cards.sort()
+		sorted.append(cards)
+	sorted.sort_custom(func(a, b):
+		var comparison = name_of(a[0]).naturalnocasecmp_to(name_of(b[0]))
+		return a[0] < b[0] if comparison == 0 else comparison < 0
+	)
+	var result: Array = []
+	for cards in sorted:
+		if not top.is_empty() and top in cards:
+			result.append({"ref": top, "count": 1, "top": true})
+			cards.erase(top)
+		if not cards.is_empty():
+			result.append({"ref": cards[0], "count": cards.size(), "top": false})
+	return result
+
+
 func describe(action: Dictionary) -> String:
 	var args = action.get("arguments", {})
 	var title = localized(action, "detail_title")
@@ -429,6 +480,12 @@ func describe(action: Dictionary) -> String:
 			if args.has("discount"):
 				paid = native("인쇄 비용: ") + cost_text(options[index].get("cost", {})) + " → " + native("지불 비용: ") + paid + " (" + phrase("{" + str(args.discount) + ":1}") + ui("turn.discount_suffix") + ")"
 			parts.append(paid + " → " + phrase(localized(options[index], "effect")))
+	parts.append_array(action_notes(action))
+	return heading + ("\n" + " · ".join(parts) if not parts.is_empty() else "")
+
+
+func action_notes(action: Dictionary) -> PackedStringArray:
+	var parts: PackedStringArray = []
 	if action.get("strength_after") != null:
 		parts.append(native("전투력 → %d") % int(action.strength_after))
 	if action.get("reveal_preview") is Dictionary:
@@ -446,7 +503,7 @@ func describe(action: Dictionary) -> String:
 		parts.append(phrase(action.warning))
 	if action.get("undoable") == false and not action.get("sent_by_turn_end", false):
 		parts.append(ui("render.irreversible_badge"))
-	return heading + ("\n" + " · ".join(parts) if not parts.is_empty() else "")
+	return parts
 
 
 func hold(action: Dictionary) -> void:

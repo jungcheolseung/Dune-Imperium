@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from parity_fixtures import ensure_extra_saves
+
 from dune_imperium.agents import HeuristicAgent
 from dune_imperium.godot_client.launch import PROJECT, ensure_godot, free_port
 from dune_imperium.godot_client.ui_data import write_ui_data
@@ -202,6 +204,45 @@ def browser_case(page: Any, base: str, game: str, kind: str,
     return case
 
 
+def info_case(page: Any, base: str, game: str, language: str) -> dict[str, Any]:
+    page.goto(base + '/#game=' + game)
+    page.wait_for_function('state.view !== null && refreshFlight === null')
+    page.evaluate('(language) => setLanguage(language)', language)
+    seat = page.evaluate('state.viewSeat')
+    page.locator('#private-zone .hand-counts .stat').first.click()
+    page.wait_for_function('!document.getElementById("pile-viewer").hidden')
+    case: dict[str, Any] = page.evaluate('''() => ({
+        kind: 'deck', top: state.view.private.peeked_card_id,
+        title: document.querySelector('#pile-viewer .popover-title').textContent,
+        notes: [...document.querySelectorAll('#pile-viewer .popover-note')]
+            .map(node => node.textContent),
+        groups: [...document.querySelectorAll('#pile-viewer .vcard')].map(node => ({
+            ref: node.dataset.instance, top: node.classList.contains('deck-top'),
+            count: Number((node.querySelector('.vcard-badge')?.textContent || '')
+                .replace('×', '')) || 1
+        })),
+        choice_picture: document.querySelectorAll('#actions .deck-top-choice-card')
+            .length,
+        labels: state.actions.actions.filter(a => DECK_TOP_CHOICES.has(a.action_id))
+            .map(a => {
+                const button = document.querySelector(
+                    `#actions .action-item[data-index="${a.index}"] button`);
+                const copy = button.cloneNode(true);
+                for (const n of copy.querySelectorAll(
+                    '.irreversible-badge, .shortfall-badge, .strength-preview'))
+                    n.remove();
+                for (const n of copy.querySelectorAll('.amount'))
+                    n.replaceWith(n.title);
+                for (const n of copy.querySelectorAll('img'))
+                    n.replaceWith(n.alt);
+                return {index: a.index, text: copy.textContent.trim()};
+            })
+    })''')
+    case.update(language=language, seat=seat)
+    case['expected'] = digest(request(base, f'/games/{game}/snapshot?seat={seat}'))
+    return case
+
+
 def main() -> int:
     from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -209,12 +250,15 @@ def main() -> int:
     parser.add_argument('--chromium', default=os.environ.get('E2E_CHROMIUM'))
     parser.add_argument('--baseline-project', type=Path,
                         help='Run old unique/held behavior to prove regressions')
+    parser.add_argument('--suite', choices=('core', 'info'), default='core')
     args = parser.parse_args()
     binary = ensure_godot(args.godot)
     directory = TMP_DIR / 'godot/parity'
     saves = directory / 'saves'
     saves.mkdir(parents=True, exist_ok=True)
     names = fixtures(saves)
+    if args.suite != 'core':
+        names.update(ensure_extra_saves(saves))
     labels = directory / 'labels.json'
     write_ui_data(labels)
     empty = directory / 'empty-assets'
@@ -248,14 +292,20 @@ def main() -> int:
                 ('graft', 'parity-graft', False), ('held', 'held-acquire', False)]
             if args.baseline_project:
                 scenarios = [scenarios[0], scenarios[-1]]
+            if args.suite == 'info':
+                scenarios = [('deck', name, False) for name in
+                             ('parity-glowglobes', 'parity-controlled')]
             for kind, name, space_first in scenarios:
                 print(f'Compare {kind} (space first: {space_first})', flush=True)
                 path = '/saves/' + names[name] + '/load'
-                browser_game = request(base, path, {})['game_id']
-                case = browser_case(page, base, browser_game, kind,
-                                    space_first=space_first)
-                case['game'] = request(base, path, {})['game_id']
-                cases.append(case)
+                for language in ('ko', 'en') if args.suite == 'info' else ('ko',):
+                    browser_game = request(base, path, {})['game_id']
+                    case = (info_case(page, base, browser_game, language)
+                            if args.suite == 'info' else browser_case(
+                                page, base, browser_game, kind,
+                                space_first=space_first))
+                    case['game'] = request(base, path, {})['game_id']
+                    cases.append(case)
             browser.close()
             if errors:
                 raise RuntimeError('browser script error: ' + errors[0])
@@ -267,10 +317,11 @@ def main() -> int:
                    XDG_DATA_HOME=str(directory / 'data'))
         log_file = directory / (
             'baseline.log' if args.baseline_project else 'native.log')
+        script = 'info_parity_test.gd' if args.suite == 'info' else 'parity_test.gd'
         with log_file.open('wb') as output:
             result = subprocess.run([
                 str(binary), '--headless', '--path', str(project),
-                '--script', 'parity_test.gd', '--log-file',
+                '--script', script, '--log-file',
                 str(directory / 'engine.log'), '--', f'--server={base}',
                 f'--labels={labels}', f'--scenarios={scenario_file}',
             ], cwd=PROJECT_ROOT, env=env, stdout=output,

@@ -50,8 +50,6 @@ func render() -> void:
 	var private = view.get("private")
 	if private is Dictionary:
 		var peeked: Array = []
-		if not str(private.get("peeked_card_id", "")).is_empty():
-			peeked.append(str(private.peeked_card_id))
 		peeked.append_array(private.get("peeked_intrigue_ids", []))
 		if not peeked.is_empty():
 			table._label(table.hand, table.model.native("엿본 카드"), 13)
@@ -283,6 +281,11 @@ func scouts_details() -> Window:
 
 
 func decision_header(parent: Node) -> void:
+	var top = table.model.top_choice_card()
+	if not top.is_empty():
+		table._label(parent, table.model.ui("panels.deck_top_badge"), 14)
+		var card = table._card(parent, top, 146, 210, false)
+		card.set_meta("deck_top_choice", true)
 	var cursor = str(table.model.view().get("scouts_item", ""))
 	if cursor.is_empty():
 		return

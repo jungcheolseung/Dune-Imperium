@@ -594,6 +594,7 @@ func review_goto(cursor: int) -> bool:
 	if not table._accept(response):
 		playback = false
 		return false
+	close_game_dialogs()
 	review.cursor = cursor
 	var data = live_snapshot.duplicate(true)
 	data.summary.round_number = response.data.round_number
@@ -720,9 +721,9 @@ func exit_review() -> void:
 	table._render()
 
 
-func close_game_dialogs() -> void:
-	for child in table.get_children():
-		if child is Window and child.has_meta("game_dialog"):
+func close_game_dialogs(keep_piles = false) -> void:
+	for child in table.find_children("*", "Window", true, false):
+		if child.has_meta("game_dialog") and not child.is_queued_for_deletion() and not (keep_piles and child.has_meta("pile_viewer")):
 			child.hide()
 			child.queue_free()
 

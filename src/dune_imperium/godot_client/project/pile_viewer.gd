@@ -15,16 +15,23 @@ var filter: LineEdit
 var count: Label
 var before = ""
 var preserve_order = false
+var game = ""
+var note: Label
+var top_note: Label
+var top: Dictionary = {}
 
 
-func open(owner_table: Control, title: String, cards: Array, order = false) -> AcceptDialog:
+func open(owner_table: Control, title: String, cards: Array, order = false, source_path: Array = []) -> AcceptDialog:
 	table = owner_table
+	game = table.game_id
 	seat = table.model.active_seat
 	refs = cards.duplicate()
 	preserve_order = order and table.model.view().get("disclosure") is Dictionary
 	path = _find(table.model.view().disclosure, cards) if preserve_order else _find(table.model.view(), cards)
 	if preserve_order and not path.is_empty():
 		path = ["disclosure"] + path
+	if not source_path.is_empty() and not preserve_order:
+		path = source_path.duplicate()
 	dialog = AcceptDialog.new()
 	dialog.title = title
 	dialog.theme = table.theme
@@ -41,6 +48,10 @@ func open(owner_table: Control, title: String, cards: Array, order = false) -> A
 	filter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(filter)
 	count = table._label(bar, "", 14)
+	note = table._label(root, "", 13)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	top_note = table._label(root, "", 13)
+	top_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var row = HBoxContainer.new()
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(row)
@@ -85,7 +96,7 @@ func _find(value: Variant, target: Array) -> Array:
 func refresh() -> void:
 	if not is_instance_valid(dialog):
 		return
-	if seat != table.model.active_seat:
+	if game != table.game_id or seat != table.model.active_seat:
 		dialog.hide()
 		dialog.queue_free()
 		return
@@ -99,28 +110,35 @@ func refresh() -> void:
 			else:
 				current = null
 		refs = current.duplicate() if current is Array else []
-	var key = JSON.stringify(refs) + table.model.language
+	var key = _stamp()
 	if key != before:
 		render()
 
 
+func _is_deck() -> bool:
+	return not preserve_order and path == ["private", "deck_cards"]
+
+
+func _stamp() -> String:
+	return JSON.stringify([refs, table.model.language, table.model.known_deck_top() if _is_deck() else {}])
+
+
 func render() -> void:
-	before = JSON.stringify(refs) + table.model.language
+	before = _stamp()
+	top = table.model.known_deck_top() if _is_deck() else {}
+	note.visible = _is_deck()
+	note.text = table.model.ui("panels.deck_list_note")
+	top_note.visible = not top.is_empty()
+	top_note.text = table.model.ui("panels.deck_list_top_note", {"source": top.get("source", "")})
+	if _is_deck():
+		dialog.title = table.model.ui("panels.my_deck", {"count": refs.size()})
 	table._clear(body)
-	var groups: Dictionary = {}
-	for ref in refs:
-		var id = table.model.section_id(str(ref))
-		var key = ":".join(id)
-		if not groups.has(key):
-			groups[key] = {"ref": str(ref), "count": 0}
-		groups[key].count += 1
 	shown = []
 	if preserve_order:
 		for index in refs.size():
 			shown.append({"ref": str(refs[index]), "count": 1, "ordinal": index + 1})
 	else:
-		shown = groups.values()
-		shown.sort_custom(func(a, b): return table.model.name_of(a.ref).naturalnocasecmp_to(table.model.name_of(b.ref)) < 0)
+		shown = table.model.pile_groups(refs, top.get("ref", ""))
 	shown = shown.filter(func(group): return filter.text.is_empty() or filter.text.to_lower() in table.model.name_of(group.ref).to_lower())
 	count.text = table.model.native("%d장") % refs.size()
 	if refs.is_empty():
@@ -139,7 +157,10 @@ func render() -> void:
 				card.disconnect(signal_name, connection.callable)
 		card.mouse_entered.connect(inspect.bind(group.ref))
 		card.pressed.connect(inspect.bind(group.ref))
-		table._label(cell, ("#%d" % int(group.ordinal)) if preserve_order else "×%d" % int(group.count), 13).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var caption = ("#%d" % int(group.ordinal)) if preserve_order else table.model.ui("panels.deck_list_top_badge") if group.get("top", false) else "×%d" % int(group.count)
+		table._label(cell, caption, 13).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		if group.get("top", false):
+			card.add_theme_stylebox_override("normal", table._style(Color("514330"), Color("ebc87e")))
 	if not refs.is_empty():
 		inspect(selected if selected in refs else str(refs[0]))
 	else:
