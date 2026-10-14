@@ -12,8 +12,19 @@ Four human seats, Immortality on, Leader draft off; every seat plays
 ``random.Random(seed).randrange`` over its engine legal actions and every
 hold is confirmed at once (the walk of turn_card_trash_saves.py). The seeds
 are tried in order, so a rule change that moves a game only moves the case
-to a later seed; seed 4 reaches Long Reach grafted to Planned Coupling in
+to a later seed; seed 4 reached Long Reach grafted to Planned Coupling in
 round 10 when this was written.
+
+A row of a box that names one of the boxes' cards as its target (a trash
+choice offering the Signet Ring itself or another copy of it) legitimately
+shows that card's name, and the e2e asserts that a box row does not repeat
+the card its header already names. So a case is skipped when such a row is
+offered, and a row that starts a bundled selection only counts as the lock
+when the rows it leads to name no box card either (a Feyd track trash
+offers the Signet Ring played this turn; since codec v146 the walk's first
+case, seed 3, locked with exactly that trash). A turn that offers a count
+(``deploy_troops`` one or two) is skipped too: the page folds a count's rows
+into one stepper, which the row-by-row layout check does not model.
 
 The expectations are read off the engine and the display helpers here
 (``agent_box_headers``, ``agent_box_of_rows``), the same ones the server
@@ -27,6 +38,7 @@ name, name_ko); ``box_one_index`` a box 1 row that holds nothing back;
 
 import json
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -35,11 +47,20 @@ from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
 
 SEATS = ("human", "human", "human", "human")
-SEEDS = range(0, 40)
+SEEDS = range(0, 80)
 STEPS = 6_000
 NAME = "graft-boxes"
 
 store = SaveStore(Path(sys.argv[1]))
+
+INSTANCE = re.compile(
+    r"^(?:player:\d+:starter|imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$"
+)
+
+
+def base_id(card_id: str) -> str:
+    match = INSTANCE.match(card_id)
+    return match.group(1) if match else card_id
 
 
 def locked_after(engine, state, owner, action) -> int | None:
@@ -50,6 +71,19 @@ def locked_after(engine, state, owner, action) -> int | None:
     return next((entry["box"] for entry in headers if entry["locked"]), None)
 
 
+def names_box_card(engine, state, owner, box_cards: set[str]) -> bool:
+    """Whether a row of a box names one of ``box_cards`` as its target."""
+
+    actions = engine.legal_actions(state, owner)
+    boxes = agent_box_of_rows(state, owner, actions)
+    return any(
+        box is not None
+        and isinstance(named := dict(action.arguments).get("card_id"), str)
+        and base_id(named) in box_cards
+        for action, box in zip(actions, boxes, strict=True)
+    )
+
+
 def graft_case(engine, state, owner) -> dict[str, object] | None:
     headers = agent_box_headers(state, owner)
     if not headers or len(headers) != 2 or any(e["locked"] for e in headers):
@@ -58,12 +92,23 @@ def graft_case(engine, state, owner) -> dict[str, object] | None:
     boxes = agent_box_of_rows(state, owner, actions)
     if 0 not in boxes or 1 not in boxes:
         return None
+    box_cards = {base_id(str(entry["card_id"])) for entry in headers}
+    if names_box_card(engine, state, owner, box_cards) or any(
+        "count" in dict(action.arguments) for action in actions
+    ):
+        return None
     lock_index = locked_box = box_one_index = None
     for index, (action, box) in enumerate(zip(actions, boxes, strict=True)):
         if box is None:
             continue
         held = locked_after(engine, state, owner, action)
-        if held is not None and lock_index is None:
+        if (
+            held is not None
+            and lock_index is None
+            and not names_box_card(
+                engine, engine.apply(state, action).state, owner, box_cards
+            )
+        ):
             lock_index, locked_box = index, held
         if held is None and box == 1 and box_one_index is None:
             box_one_index = index

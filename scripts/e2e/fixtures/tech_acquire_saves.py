@@ -50,6 +50,11 @@ for seed in range(30):
                     "resolve_faction_influence",
                 )
             ]
+            # Glowglobes shows the top card of the buyer's deck, so the save
+            # needs a deck with a card in it (since codec v146 the first
+            # purchase the heuristic made came with an empty deck).
+            if tech_id == "glowglobes" and not session.state.players[owner].deck:
+                continue
             if action and others:
                 meta = store.write(manager.save_game(gid, name=tech_id))
                 found[tech_id] = meta["save_id"]

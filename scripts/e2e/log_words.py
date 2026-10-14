@@ -101,7 +101,14 @@ GAMES = (
     # list of actions, e.g. Beguiling Pheromones' trash before the turn end)
     # moves seed 10 off its Secrets steal; the same scan from seed 1 finds
     # seed 24 first (again with Family Atomics, the Feyd track and research).
-    {"seats": ["random"] * 4, "game_seed": 24, "policy_seed": 24, **EVERY_EXPANSION},
+    # An Agent turn's optional effects have no decline action since codec
+    # v146 (they lapse at the turn-end press), so random seats choose from yet
+    # another list of actions and seed 24 loses its Secrets steal. A scan
+    # through GameSessionManager over random seeds 1-299 finds seed 22 first
+    # (again with Family Atomics, the Feyd track and research, and with the
+    # three events of v146: an unused card effect, board effect and Leader
+    # ability; check_coverage).
+    {"seats": ["random"] * 4, "game_seed": 22, "policy_seed": 22, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -120,10 +127,19 @@ GAMES = (
     # mission's pieces on posts and an auction won; seed 12: two round
     # modifiers, the Helix spice, Critical Moment's market, mission troops,
     # Mercenaries and the secret picks revealed.
+    # Codec v146 (an Agent turn's optional effects lapse instead of being
+    # declined, so random seats choose from a different list of actions) moves
+    # seed 86 off Clear the Market and Mating Season. A scan of the same games
+    # through GameSessionManager over seeds 1-299 finds seed 36 first that,
+    # with seed 22 below, reaches every Scouts surface again: Clear the
+    # Market, Mating Season, Mercenaries, the secret picks revealed, mission
+    # troops, a mission's pieces on posts and an auction won (no single seed of
+    # the 299 reaches them all with a round modifier too; seed 22 has the
+    # modifier).
     {
         "seats": ["random"] * 4,
-        "game_seed": 86,
-        "policy_seed": 86,
+        "game_seed": 36,
+        "policy_seed": 36,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -156,6 +172,8 @@ GAMES = (
         # 126 off its round modifier and Mating Season; the same scan from
         # seed 1 finds seed 22 first with a round modifier, Mating Season,
         # mission troops and an auction won.
+        # Codec v146 moves seed 22 off Mating Season (the game above has it);
+        # it keeps the round modifier, mission troops and an auction won.
         "game_seed": 22,
         "policy_seed": 22,
         "arrakeen_scouts": True,
@@ -354,6 +372,12 @@ def check_coverage(records: list[dict]) -> None:
         == "payload scouts_secret_revealed.event_round",
         "Mating Season's spaces": lambda s: s
         == "payload scouts_maker_spice_added.space_ids",
+        # Codec v146: an optional effect of the player's own Agent turn that
+        # was not used lapses at the "턴 종료 ▶" press. Each event is
+        # rendered with its real payload in both languages.
+        "an unused card effect": lambda s: s == "event agent_card_effect_lapsed",
+        "an unused board effect": lambda s: s == "event board_effect_lapsed",
+        "an unused Leader ability": lambda s: s == "event leader_ability_lapsed",
     }
     missing = [label for label, test in wanted.items() if not any(map(test, sources))]
     check.ok(not missing, "the games reach every surface this guards", missing)

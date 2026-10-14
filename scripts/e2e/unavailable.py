@@ -258,8 +258,10 @@ def play(page, seen: dict[str, bool], limit: int = 1500) -> None:
 # "choice" surface has more than one kind of row); that game is saved into
 # the server's saves directory. The seeds are tried in order, so a rule
 # change that moves a game only moves the case to a later seed: today seed
-# 5 of the base game reaches Desert Power without Maker Hooks, and seed 0
-# an Imperial Privilege with no other Agent to recall.
+# 12 of the base game reaches Desert Power without Maker Hooks (seed 5 until
+# codec v146, when an Agent turn's optional effects lapse at the turn-end
+# press instead of being declined and the heuristic's games moved), and seed
+# 2 an Imperial Privilege with no other Agent to recall.
 SAVE_AT_ROW_PY = """
 import json, sys
 from pathlib import Path
@@ -324,7 +326,7 @@ def save_at_row(saves: Path, key: str) -> dict | None:
             SAVE_AT_ROW_PY,
             str(saves),
             "0",
-            "8",
+            "40",
             key,
         ],
         capture_output=True,

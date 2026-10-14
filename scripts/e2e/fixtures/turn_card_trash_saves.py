@@ -12,10 +12,10 @@ Four human seats, Immortality on, Leader draft off; every seat plays
 ``random.Random(seed).randrange`` over its engine legal actions and every
 hold is confirmed at once (the walk of held_choice_saves.py, all seats):
 
-- ``turn-card-pending`` (seed 23, round 10, seat 1): the Research Station
+- ``turn-card-pending`` (seed 111, round 8, seat 0): the Research Station
   board space's Research offers the trash while this turn's Prepare the Way
   still has its Agent box to resolve;
-- ``turn-card-done`` (seed 2, round 5, seat 1): this turn's Experimentation
+- ``turn-card-done`` (seed 6, round 3, seat 3): this turn's Experimentation
   resolved its Agent box (Research), whose track space offers the trash.
 
 The expected lists are read off the Agent turn's effect frame here, not
@@ -42,7 +42,7 @@ from dune_imperium.server.sessions import GameSessionManager
 SEATS = ("human", "human", "human", "human")
 TRASH = "trash_optional_card"
 STEPS = 6_000
-CASES = (("turn-card-pending", 23, True), ("turn-card-done", 2, False))
+CASES = (("turn-card-pending", 111, True), ("turn-card-done", 6, False))
 
 STARTER_ID = re.compile(r"^player:\d+:starter:(.+):\d+$")
 SHARED_ID = re.compile(r"^(?:imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$")
