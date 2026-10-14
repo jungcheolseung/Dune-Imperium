@@ -1108,6 +1108,52 @@ def test_listeners_landsraad_pay_and_follow_up(
     assert follow.actions[0].action_id == "place_leader_spy"
 
 
+
+def test_listeners_free_half_recalls_only_a_landsraad_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the supply empty and a spice in hand the engine offers the
+    recall-first for either half (``_listeners_spies``). The free half
+    recalls only from a Landsraad post the seat holds alone; a recall that
+    opened no Landsraad post leaves the payment as the rest of the answer
+    (independent review 2026-10-14: the app AI fell back to random answers
+    after such a recall)."""
+
+    high_council = "landsraad-high-council-imperial-privilege-swordmaster"
+    assembly = "landsraad-assembly-hall-gather-support"
+    basin = "arrakis-imperial-basin"
+    state, seat = _signet(
+        "gaius_helen_mohiam",
+        space="hagga_basin",
+        resources=RICH,
+        spies_supply=0,
+        spy_post_ids=(high_council, assembly, basin),
+    )
+    recalls = {
+        arg(action, "post_id")
+        for action in ENGINE.legal_actions(state, seat)
+        if action.action_id == "recall_spy_for_leader_placement"
+    }
+    assert recalls == {high_council, assembly, basin}
+    monkeypatch.setattr(
+        bs.ListenersSignetAbility,
+        "evaluate",
+        lambda self, p, r: Answer(2.0, ((0,),)),
+    )
+    _value, action = _evaluate(_source(_turn(state, seat), "Listeners"))
+    assert action is not None
+    assert action.action_id == "recall_spy_for_leader_placement"
+    assert arg(action, "post_id") in {high_council, assembly}
+
+    recalled = _apply(
+        state, seat, _a(seat, "recall_spy_for_leader_placement", post_id=basin)
+    )
+    pay = _a(seat, "pay_leader_signet_spice")
+    follow = _source(_turn(recalled, seat), "Listeners payment")
+    assert follow.stage is Stage.COST_FIRST
+    assert follow.actions == (pay,)
+    assert ae.agent_effects_window(_run(recalled, seat)) == pay
+
 def test_reverse_engineering(monkeypatch: pytest.MonkeyPatch) -> None:
     state, seat = _signet("kota_odax_of_ix", resources=RICH)
     state = _give_tech(state, seat, "glowglobes")

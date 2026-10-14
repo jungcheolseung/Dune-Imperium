@@ -440,6 +440,8 @@ from dune_imperium.rules.graft_boxes import (
     state_with_active_box,
     tagged,
 )
+from dune_imperium.rules.leader_abilities import LANDSRAAD_POST_IDS
+from dune_imperium.rules.spy_placement import solo_occupied_post_ids
 
 _AU = "worm.canis.abilities.ActivatedAbilities.Uprising."
 _PLACE_SPY_CUSTOM = _AU + "PlaceSpyCustomAbility"
@@ -3488,7 +3490,13 @@ def _listeners(t: _Turn) -> None:
     """Gaius Helen Mohiam's Listeners (§4.5, D32, D39): a Spy next to the
     Landsraad, or ``pay_leader_signet_spice`` for a Spy anywhere. The Spy
     after the payment (``listeners_paid``) or after a recall-first is the
-    rest of the answer (a follow-up; ``spy_answer`` never declines)."""
+    rest of the answer (a follow-up; ``spy_answer`` never declines).
+
+    With the supply empty the engine offers the recall-first for either
+    half (``rules.leader_abilities._listeners_spies``): the free half
+    recalls only from a Landsraad post the seat holds alone, the one recall
+    that opens a Landsraad post. A recall that opened no Landsraad post
+    leaves the payment as the rest of the answer."""
 
     run = t.run
     place = t.by_id("place_leader_spy")
@@ -3503,12 +3511,23 @@ def _listeners(t: _Turn) -> None:
         elif spy_decline is not None:
             t.chores.append(spy_decline)
         return
+    if t.flag(_LEADER_SPY_RECALLED) and pay is not None:
+        _automatic(t, "Listeners payment", _FOLLOW_UP, pay, -1)
+        return
+    landsraad = frozenset(
+        solo_occupied_post_ids(run.ctx.state, run.ctx.seat, LANDSRAAD_POST_IDS)
+    )
+    free_recall = tuple(
+        action for action in recall if arg(action, "post_id") in landsraad
+    )
     if not place and not recall and pay is None and decline is None:
         return
     request = Request(
         infos=(
             TargetInfo(
-                options=_branches((0, bool(place or recall)), (1, pay is not None))
+                options=_branches(
+                    (0, bool(place or free_recall)), (1, pay is not None)
+                )
             ),
         )
     )
@@ -3516,7 +3535,7 @@ def _listeners(t: _Turn) -> None:
     def answer(ans: Answer) -> DomainAction | None:
         if _response_ref(ans) == 1:
             return pay
-        return spy_answer(run, place, recall, None)
+        return spy_answer(run, place, free_recall, None)
 
     _choice_source(
         t,
