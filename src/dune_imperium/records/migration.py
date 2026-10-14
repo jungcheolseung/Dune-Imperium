@@ -270,6 +270,14 @@ def migrate_record(
                 ):
                     dropped.append((index, OPTIONAL_REFUSAL_DROPPED))
                     break
+                if (
+                    bridged is None
+                    and drops_refusals
+                    and isinstance(recorded, DomainAction)
+                    and recorded.action_id == _REPEATED_MISSION_COLLECTION
+                ):
+                    dropped.append((index, REPEATED_MISSION_DROPPED))
+                    break
                 if bridged is None:
                     divergence = Divergence(
                         recorded_index=index,
@@ -353,6 +361,13 @@ _OPTIONAL_REFUSALS: Final = frozenset(
         "resolve_desert_tactics_without_trash",
     }
 )
+# Also from v146 (user ruling 2026-10-14, OQ-019): Reverend Mother's repeat
+# no longer queues the Arrakeen Scouts mission collection again, an effect
+# of the visit not printed on the space. The pieces were all collected
+# before the repeat, so a recording engine's second collection took nothing;
+# it is dropped once this engine refuses it.
+REPEATED_MISSION_DROPPED: Final = "repeated_mission_collection"
+_REPEATED_MISSION_COLLECTION: Final = "scouts_collect_mission"
 
 
 @dataclass

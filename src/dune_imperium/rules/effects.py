@@ -389,6 +389,16 @@ OPTIONAL_BOARD_ICONS: Final = frozenset(
         "scouts_subcommittee",
     }
 )
+# The visit's effects that are not printed on the space, which a repeat of
+# the printed effects never re-arms (Reverend Mother: "repeat the effects
+# printed on that space", OQ-019): the Commander and Tech offers above, and
+# the Arrakeen Scouts mission pieces the visiting seat collects, an effect of
+# the visit on the Commander's precedent (docs/rules/arrakeen-scouts.md 5;
+# user ruling 2026-10-14 "당연히 스카웃 임무 효과는 복사에서 빼는게 맞지").
+# ``scouts_missions.BOARD_ICON_SCOUTS`` is spelled here like the ids above.
+UNPRINTED_VISIT_ICONS: Final = frozenset(
+    {BOARD_ICON_COMMANDER, BOARD_ICON_TECH, "scouts_mission"}
+)
 
 
 class OptionalBlockKind(StrEnum):
@@ -533,14 +543,14 @@ def rearm_board_icons(context: dict[str, ActionValue]) -> None:
 def printed_board_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
     """The visit's printed icons, the ones a repeat queues again.
 
-    ``board_icons`` without the Commander and Tech offers: effects of the
-    visit, not printed on the space.
+    ``board_icons`` without the effects of the visit that are not printed
+    on the space (``UNPRINTED_VISIT_ICONS``).
     """
 
     return tuple(
         key
         for key in _icon_keys(context, "board_icons")
-        if key not in (BOARD_ICON_COMMANDER, BOARD_ICON_TECH)
+        if key not in UNPRINTED_VISIT_ICONS
     )
 
 

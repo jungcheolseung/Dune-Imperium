@@ -20,7 +20,11 @@ from dune_imperium.core import GameState, PlayerState
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
-from dune_imperium.core.observation import known_card_seats, observe_state
+from dune_imperium.core.observation import (
+    known_card_seats,
+    observe_state,
+    peeked_card_id,
+)
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -101,6 +105,29 @@ def test_a_peeked_deck_top_is_known_to_its_owner() -> None:
     glowglobes = known_card_seats(replace(_state(), players=tuple(players)))
     assert glowglobes["p3:a"] == frozenset({3})
     assert glowglobes["p3:b"] == frozenset()
+
+
+def test_glowglobes_shows_nothing_on_an_empty_deck() -> None:
+    """"You may look at the top card of your deck at any time." [Glowglobes
+    Tech tile]: an empty deck has no top card, and a look is no draw, so no
+    discard pile is shuffled for it ("카드를 뽑아야 하는데 deck이 비어 있으면
+    discard pile을 섞어 새 deck을 만든다" [Main p. 6],
+    setup-and-game-flow.md). User ruling 2026-10-14: "덱이 없으면 볼 게
+    없으니까 뭐 아무것도 안 보이는거지"."""
+
+    players = list(_state().players)
+    players[3] = replace(
+        players[3],
+        deck=(),
+        discard_pile=("p3:a", "p3:b"),
+        tech_ids=("glowglobes",),
+    )
+    state = replace(_state(), players=tuple(players))
+
+    assert peeked_card_id(state, 3) == ""
+    private = observe_state(state, 3).private
+    assert private is not None
+    assert (private.deck_size, private.peeked_card_id) == (0, "")
 
 
 def test_long_live_the_fighters_shows_its_owner_the_top_three() -> None:

@@ -33,8 +33,10 @@ from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     BOARD_ICON_TECH,
     OPTIONAL_BOARD_ICONS,
+    UNPRINTED_VISIT_ICONS,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.scouts_missions import BOARD_ICON_SCOUTS
 from dune_imperium.rules.scouts_offers import BOARD_ICON_SUBCOMMITTEE
 
 ENGINE = UprisingRulesEngine()
@@ -330,6 +332,57 @@ def test_the_repeat_lapses_an_unused_desert_tactics_trash_first() -> None:
     assert finished.state.players[0].trashed == ()
 
 
+def test_the_repeat_leaves_the_scouts_mission_pieces_collected_once() -> None:
+    """Reverend Mother repeats "the effects printed on that space"
+    [Reverend Mother Jessica card], only the printed boxes (OQ-019). The
+    Arrakeen Scouts mission pieces a seat collects on the space are an
+    effect of the visit, not printed (docs/rules/arrakeen-scouts.md 5, on
+    the Bloodlines Commander's precedent): the repeat does not queue them
+    again (user ruling 2026-10-14 "당연히 스카웃 임무 효과는 복사에서 빼는게
+    맞지"). Before, it queued an empty collection the turn end waited for."""
+
+    state = GameState(
+        config=RulesetConfig(arrakeen_scouts=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:6],
+        players=(
+            PlayerState(
+                player_id=0,
+                hand=starting_deck_instance_ids(0),
+                leader_id="lady_jessica",
+                leader_face_id="reverend_mother_jessica",
+                resources=Resources(water=2),
+                troops_supply=7,
+                troops_parked=2,
+            ),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        # Fedaykin Assistance's two troops wait on Desert Tactics for seat 0.
+        scouts_parked=(("fedaykin_assistance", 0, "desert_tactics", 2),),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    state = _send(state, "desert_tactics")
+    collect = DomainAction("scouts_collect_mission", 0, (("choice", ""),))
+    assert collect in ENGINE.legal_actions(state, 0)
+    collected = ENGINE.apply(state, collect)
+    assert [event.kind for event in collected.events] == ["scouts_mission_troops"]
+
+    repeated = ENGINE.apply(
+        collected.state, DomainAction("pay_leader_board_repeat", 0)
+    ).state
+    again = _send_steps(repeated)
+    assert "scouts_collect_mission" not in _ids(again)
+    assert FINISH.action_id in _ids(again)
+
+
 def _send_steps(state: GameState) -> GameState:
     """Resolve the space's own mandatory steps still pending."""
 
@@ -354,3 +407,8 @@ def test_the_optional_board_icons_name_their_modules_constants() -> None:
         BOARD_ICON_SUBCOMMITTEE,
     }
     assert BOARD_ICON_IMPERIAL_PRIVILEGE not in OPTIONAL_BOARD_ICONS
+    assert UNPRINTED_VISIT_ICONS == {
+        BOARD_ICON_COMMANDER,
+        BOARD_ICON_TECH,
+        BOARD_ICON_SCOUTS,
+    }
