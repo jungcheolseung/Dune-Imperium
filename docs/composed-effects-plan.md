@@ -137,19 +137,26 @@ Rise of Ix, 기본판 Imperium, Conspiracy 카드를 능력 기록으로 더하�
 
 ## 6. 같음을 확인하는 법 (A단계 관문)
 
-1. 단계를 시작하기 전 master로 기보 corpus를 만든다(`scripts/records/corpus_generate.py --standard`, AI 판 2,000개,
-   모든 옵션 조합). 단계 브랜치에서 `dune-imperium-records corpus check`가 **2,000판 모두 exact**여야 한다(매 단계의
-   상태·합법 행동·사건 digest가 같음).
-2. 기존 테스트의 기대값은 바꾸지 않는다. 기대값을 바꿔야 한다면 동작이 바뀐 것이므로 멈추고 원인을 본다. 테스트를
+1. `scripts/ab/engine_equivalence.py`: 단계를 시작한 master(`git archive`로 푼 옛 소스)에서 200판(무작위 120, 휴리스틱
+   40, 앱 AI·휴리스틱·무작위 섞음 40; 전 옵션·Immortality·CHOAM·기본)을 두어 기록하고, 단계 브랜치에서 같은 수순을
+   다시 두어 **매 단계** 비교한다: chance 결정, 결정 주인과 합법 행동(순서까지), 네 좌석의 `PlayerView`, 사건(내용·공개
+   범위까지), 결정 stack을 뺀 상태. **200판 모두 same**이어야 한다. 출력의 행동 id별 횟수로 그 단계의 효과가 실제로
+   불렸는지 본다(2026-10-14 시험: 20판에 229종; 합법 행동 순서·사건 내용을 바꾼 변이는 잡고, frame id만 바꾼 변이는
+   통과).
+2. 기보 corpus(`scripts/records/corpus_generate.py --standard`, AI 판 2,000개)를 단계 시작 master로 만들어
+   `dune-imperium-records corpus check`가 2,000판 모두 exact인지 본다.
+3. 결정 stack의 모양이 바뀐 단계는 저장본의 상태 hash가 달라지므로 `ACTION_CODEC_VERSION`만 올린다(행동 template은
+   그대로라 망은 그대로 쓰이고, 옛 저장본은 버전 검사에서 거절된다. 지금까지의 codec 올림과 같다).
+4. 기존 테스트의 기대값은 바꾸지 않는다. 기대값을 바꿔야 한다면 동작이 바뀐 것이므로 멈추고 원인을 본다. 테스트를
    옮기거나 새 단위 테스트를 더하는 것은 된다.
-3. pytest·ruff·mypy, `scripts/e2e/run_all.py`, 소크(soundness·privacy).
-4. 속도: `scripts/ab/profile_legal.py`로 합법 행동 계산 시간을 단계 전후에 잰다. 10% 넘게 느려지면 병합 전에 고친다
+5. pytest·ruff·mypy, `scripts/e2e/run_all.py`, 소크(soundness·privacy).
+6. 속도: `scripts/ab/profile_legal.py`로 합법 행동 계산 시간을 단계 전후에 잰다. 10% 넘게 느려지면 병합 전에 고친다
    (탐색 좌석이 매 결정 이것을 수천 번 부른다).
 
 ## 7. 플레이 유지
 
 - 지금: 레시피 MLP가 플레이 서버 망이다. 확인 측정(400판, X와 비교)이 끝나면 결과를 worklog에 적는다.
-- A단계: 병합마다 master가 그대로 플레이된다(망·저장·codec 그대로).
+- A단계: 병합마다 master가 그대로 플레이된다(망·행동·관측 그대로; 결정 stack 모양이 바뀐 단계만 옛 저장본이 거절된다, 6절 3번).
 - B단계: 관문을 넘을 때까지 브랜치에 둔다.
 - 다른 세션의 엔진 수정: A단계 동안 규칙 수정이 master에 들어오면 다음 단계 브랜치가 그것을 받아 실행기로 옮긴다.
   corpus는 단계 시작 때의 master로 다시 만든다.
@@ -165,6 +172,6 @@ Rise of Ix, 기본판 Imperium, Conspiracy 카드를 능력 기록으로 더하�
 
 - A단계는 `rules/`의 절반 남짓(약 25,000줄)을 지난다. 세션 10회 안팎으로 본다. 카드 묶음의 옮겨 적기는 subagent에
   맡기고, 실행기 설계·관문 판정·리뷰는 주 세션이 한다.
-- 위험: (1) 옛 결정 모양이 실행기와 안 맞는 곳 → 전용 hook으로 미루고 B단계에서 정리. (2) 속도 → 6절 4번.
+- 위험: (1) 옛 결정 모양이 실행기와 안 맞는 곳 → 전용 hook으로 미루고 B단계에서 정리. (2) 속도 → 6절 6번.
   (3) 같은 시기 다른 세션의 엔진 수정과의 충돌 → 7절. (4) B단계 망이 레시피 MLP보다 약할 수 있음 → 관문을 넘기 전에는
   플레이 서버를 바꾸지 않는다.
