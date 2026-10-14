@@ -97,8 +97,11 @@
 
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
-- **한국어 화면에 남은 영어:** ③ "AI", ⑤ 설정 화면의 OQ 번호·경로·명령 인자, ⑧ 서버 오류 문구, ⑨ 런처 로그·창 제목.
-  ⑥ 도움말 범례의 영어 병기는 사용자 결정으로 그대로 둔다. [2026-10-11 공식 한국어가 있는 남은 영어를 한국어로]
+- **한국어 화면에 남은 영어(작음):** ⑤⑧⑨는 2026-10-14에 끝났다(OQ 번호·경로·명령 인자는 플레이 화면에서 뺌, 서버 오류는
+  `static/errors_ko.js`로 한국어, 런처 창 제목·로그 줄 한국어; 가드 테스트 `tests/server/test_i18n.py`). 남은 것: 런처 설정의
+  안내 문구("비우면 checkpoints/play/search.pt", "Tailscale CLI 없음"), macOS 바로가기의 알림 제목 "Dune Imperium 서버"와 앱 이름
+  "Dune Imperium Server"(`launcher/shortcuts.py`). ③ "AI"와 ⑥ 도움말 범례의 영어 병기는 사용자 결정으로 그대로 둔다.
+  [2026-10-14 남은 영어·테스트 빈자리·선택 불가 표시]
 - **(사용자) 한글판 카드 그림:** 한국어 사진이 없는 Uprising 책략 34장과 Bloodlines·Twisted 책략 23장은 한국어
   화면에서도 영어 앞면이다. 사용자가 한글판을 찍어 주기로 했다. [2026-10-07 Steam 앱 그림, 2026-10-11 Bloodlines 책략·Twisted 책략 앞면]
 - 화면에 없는 정보: 빚진 Spy 수(관측·뷰에는 있음), Harvest Cells 선택 화면의 Reclaimed Forces specimen 비용(Reveal
