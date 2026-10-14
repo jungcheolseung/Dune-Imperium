@@ -17,6 +17,7 @@ stays in front of the text, and error.status is untouched.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from common import Check, chrome, open_context, server
 
@@ -191,7 +192,11 @@ def player_chain(base: str, browser) -> None:
 
 
 def main() -> None:
-    with server() as (base, _), chrome() as browser:
+    # The refusals above need a server with no search AI. A checkout with
+    # checkpoints/play/search.pt would give the default server one, so name
+    # a checkpoint that does not exist (as search_seats.py's [N] does).
+    missing = Path(__file__).resolve().parents[2] / "tmp" / "e2e" / "no-search-ai.pt"
+    with server("--search-checkpoint", str(missing)) as (base, _), chrome() as browser:
         api_messages(base, browser)
         player_chain(base, browser)
     check.finish()
