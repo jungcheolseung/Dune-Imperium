@@ -1940,3 +1940,76 @@ def test_a_reveal_choice_takes_the_card_the_recording_engine_had_on_top(
         for name in stamped.bridge_counts()
         if name.startswith("reveal_")
     }
+
+
+def _plain_spies_beside_spy_network(*plain: str) -> GameState:
+    """Seat 0 revealed the ``plain`` Spy icon cards and Spy Network with an
+    empty Spy supply and three Spies on the board: each plain Spy icon may
+    pass its recall-first (OQ-057 (14)), Spy Network may recall."""
+
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+
+    owner = PlayerState(
+        player_id=0,
+        hand=(
+            *(f"imperium:{card}:0" for card in plain),
+            "imperium:spy_network:0",
+        ),
+        spies_supply=0,
+        spy_post_ids=tuple(post.post_id for post in OBSERVATION_POSTS[:3]),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    return ENGINE.apply(state, DomainAction("reveal_turn", 0)).state
+
+
+def test_a_recorded_recall_pass_takes_the_plain_spy_icon_on_top() -> None:
+    """Codec v147 names the card of a plain Spy icon's pass of its
+    empty-supply recall-first (``decline_reveal_spy_recall``) with
+    ``source``. A recording engine's pass answered its top frame: a plain
+    icon's names that card here; Spy Network's refusal of its optional
+    recall has no counterpart, though a plain icon could pass beside it."""
+
+    state = _plain_spies_beside_spy_network("public_spectacle", "covert_operation")
+    recorded = DomainAction("decline_reveal_spy_recall", 0)
+    for source in ("public_spectacle", "covert_operation"):
+        assert migration.rewrite_step(
+            ENGINE, state, recorded, 146, reveal_source=source
+        ) == DomainAction("decline_reveal_spy_recall", 0, (("source", source),))
+    alone = _plain_spies_beside_spy_network("public_spectacle")
+    assert migration.rewrite_step(
+        ENGINE, alone, recorded, 146, reveal_source="public_spectacle"
+    ) == DomainAction("decline_reveal_spy_recall", 0, (("source", "public_spectacle"),))
+    for top in (state, alone):
+        assert (
+            migration.rewrite_step(
+                ENGINE, top, recorded, 146, reveal_source="spy_network"
+            )
+            is None
+        )
+
+    # Migrating, the slot drops Spy Network's refusal, by the recording
+    # engine's frame order where a plain icon's pass is offered beside it.
+    slot = migration._RevealSlot(
+        player=0,
+        frames=[
+            ("imperium:spy_network:0", "recall_spy_to_draw_intrigue_if_two_placed")
+        ],
+    )
+    assert (
+        slot.refuses_optional_recall(ENGINE, state, recorded)
+        == migration.REVEAL_REFUSAL_BY_ORDER
+    )
+    assert slot.frames == []

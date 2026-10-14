@@ -13,6 +13,9 @@ stay exactly the engine's, and a failure leaves the keys out.
 
 import json
 import logging
+import re
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -26,6 +29,7 @@ from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.reveal_turn import SOURCED_REVEAL_ACTION_IDS
 from dune_imperium.server import sessions
 from dune_imperium.server.sessions import GameSessionManager, JsonObject
 
@@ -50,9 +54,9 @@ def _rows(value: object) -> list[dict[str, Any]]:
     return [_obj(item) for item in value]
 
 
-def _turn(owner: PlayerState) -> GameState:
+def _turn(owner: PlayerState, config: RulesetConfig = CONFIG) -> GameState:
     return GameState(
-        config=CONFIG,
+        config=config,
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
@@ -68,9 +72,9 @@ def _turn(owner: PlayerState) -> GameState:
     )
 
 
-def _reveal(owner: PlayerState) -> GameState:
+def _reveal(owner: PlayerState, config: RulesetConfig = CONFIG) -> GameState:
     start = DomainAction(action_id="reveal_turn", actor=0)
-    revealed = ENGINE.apply(_turn(owner), start)
+    revealed = ENGINE.apply(_turn(owner, config), start)
     assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL
     return revealed.state
 
@@ -304,3 +308,60 @@ def test_a_rows_card_comes_from_the_server_not_the_source_id() -> None:
             "Arrakis Observer",
         ),
     }
+
+
+def test_two_cards_sharing_an_id_each_head_their_own_rows() -> None:
+    """Pointing the Way's Command and Ixian Ambassador both gain one
+    Influence of the owner's choice: each card's rows carry its ``source``,
+    so both headers show, each over its own four rows (before, the shared
+    rows sat under the first card and the second card's header was left
+    out while it offered them)."""
+
+    ambassador = "imperium:ixian_ambassador:0"
+    owner = PlayerState(
+        player_id=0,
+        hand=(
+            POINTING,
+            ambassador,
+            "player:0:starter:convincing_argument:0",
+            "player:0:starter:convincing_argument:1",
+        ),
+        tech_ids=("glowglobes", "training_depot"),
+    )
+    state = _reveal(owner, replace(CONFIG, tech_module=True))
+    payload = _payload(state)
+    entries = _rows(payload["reveal_choices"])
+    assert [(entry["card_id"], entry["offered"]) for entry in entries] == [
+        (POINTING, True),
+        (ambassador, True),
+    ]
+    gains = [
+        row
+        for row in _rows(payload["actions"])
+        if row["action_id"] == "gain_reveal_influence"
+    ]
+    by_choice: dict[str, set[str]] = {}
+    for row in gains:
+        by_choice.setdefault(row["reveal_choice"], set()).add(
+            row["arguments"]["source"]
+        )
+    assert by_choice == {
+        f"{POINTING}:command_gain_chosen_influence": {"pointing_the_way"},
+        f"{ambassador}:gain_chosen_influence_if_two_tech": {"ixian_ambassador"},
+    }
+    assert len(gains) == 8
+
+
+def test_the_page_knows_every_sourced_reveal_id() -> None:
+    """The page leaves a Reveal choice row's ``source`` out of its label and
+    leads a logged step with the card it names (core.js
+    REVEAL_SOURCE_ACTIONS); its list is the engine's."""
+
+    core_js = (
+        Path(__file__).resolve().parents[2] / "src/dune_imperium/server/static/core.js"
+    ).read_text(encoding="utf-8")
+    listed = re.search(
+        r"const REVEAL_SOURCE_ACTIONS = new Set\(\[(.*?)\]\);", core_js, re.S
+    )
+    assert listed is not None
+    assert set(re.findall(r'"(\w+)"', listed.group(1))) == SOURCED_REVEAL_ACTION_IDS

@@ -1332,6 +1332,10 @@ const REVEAL_SOURCE_ACTIONS = new Set([
   "recall_spy_for_reveal_placement",
   "keep_contract_reveal_spice",
   "trash_contract_reveal_for_vp",
+  "gain_reveal_influence",
+  "deploy_reveal_card_troop",
+  "retreat_reveal_card_troop",
+  "decline_reveal_spy_recall",
 ]);
 
 function revealSourceEntry(action) {

@@ -172,27 +172,6 @@ def test_removed_reveal_actions_have_no_handler() -> None:
 
 # --- which card's effect -----------------------------------------------------
 
-# Action ids two different cards produce with the same outcome, so they carry
-# no ``source``: either card's entry resolves the action the same way.
-INTERCHANGEABLE: dict[str, str] = {
-    "gain_reveal_influence": (
-        "Pointing the Way's Command and Ixian Ambassador both gain one Influence "
-        "of the owner's choice, both mandatory"
-    ),
-    "deploy_reveal_card_troop": (
-        "Unswerving Loyalty's Fremen Bond line is Shadout Mapes' troop move"
-    ),
-    "retreat_reveal_card_troop": (
-        "Unswerving Loyalty's Fremen Bond line is Shadout Mapes' troop move"
-    ),
-    "decline_reveal_spy_recall": (
-        "only a plain Spy icon (Public Spectacle, Wheels within Wheels, Covert "
-        "Operation, Intelligence Training) passes up its empty-supply "
-        "recall-first; each leaves the same Spy icons behind"
-    ),
-}
-
-
 def _probe_owners() -> tuple[PlayerState, ...]:
     """Owners that open every branch of every Reveal choice."""
 
@@ -263,11 +242,15 @@ def _produced_by_card() -> dict[str, dict[str, list[DomainAction]]]:
     return produced
 
 
-def test_an_id_two_cards_produce_names_its_card_unless_interchangeable() -> None:
+def test_an_id_two_cards_produce_always_names_its_card() -> None:
     # With every pending choice offered at once, an id that different cards
-    # produce with different outcomes must say which card's choice it takes
-    # (``source``, the card's definition id), or the engine could resolve it
-    # on the wrong card. Every such action carries it.
+    # produce must say which card's choice it takes (``source``, the card's
+    # definition id): the engine uses up that card's entry and its events
+    # name that card. Even where both cards' outcomes match (Pointing the
+    # Way's and Ixian Ambassador's Influence), the entry left behind differs
+    # (Unswerving Loyalty's troop move needs a Fremen Bond, Covert
+    # Operation's pass leaves its second icon), so no id two cards produce is
+    # left without it.
     produced = _produced_by_card()
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS
     for action_id, by_card in produced.items():
@@ -281,8 +264,7 @@ def test_an_id_two_cards_produce_names_its_card_unless_interchangeable() -> None
                 assert {dict(a.arguments)[SOURCE_ARGUMENT] for a in found} == {card}
             continue
         assert not sourced, action_id
-        if len(by_card) > 1:
-            assert action_id in INTERCHANGEABLE, (action_id, sorted(by_card))
+        assert len(by_card) == 1, (action_id, sorted(by_card))
     assert {
         action_id
         for action_id in SOURCED_REVEAL_ACTION_IDS
@@ -473,6 +455,97 @@ def test_source_tells_chani_from_command_center() -> None:
     )
 
 
+def test_source_tells_pointing_the_way_from_ixian_ambassador() -> None:
+    # Both gain one Influence of the owner's choice, both mandatory; the row
+    # says whose gain it is, that entry is used up and its event names it.
+    pointing = _card("pointing_the_way")
+    ambassador = _card("ixian_ambassador")
+    owner = PlayerState(
+        player_id=0,
+        hand=(
+            pointing,
+            ambassador,
+            _starter("convincing_argument"),
+            _starter("convincing_argument", 1),
+        ),
+        tech_ids=("glowglobes", "training_depot"),
+    )
+    revealed = _reveal(_state(owner, replace(CONFIG, tech_module=True)))
+    gains = [a for a in _legal(revealed) if a.action_id == "gain_reveal_influence"]
+    assert len(gains) == 8
+    assert {dict(a.arguments)[SOURCE_ARGUMENT] for a in gains} == {
+        "pointing_the_way",
+        "ixian_ambassador",
+    }
+    by_ambassador = _first(
+        revealed, "gain_reveal_influence", faction="fremen", source="ixian_ambassador"
+    )
+    gained = ENGINE.apply(revealed, by_ambassador)
+    assert gained.state.players[0].influence.fremen == 1
+    assert all(ambassador in event.event_id for event in gained.events)
+    assert _pending(gained.state) == ((pointing, "command_gain_chosen_influence"),)
+    assert {
+        dict(a.arguments)[SOURCE_ARGUMENT]
+        for a in _legal(gained.state)
+        if a.action_id == "gain_reveal_influence"
+    } == {"pointing_the_way"}
+
+
+def test_source_tells_shadout_mapes_from_unswerving_loyalty() -> None:
+    # Unswerving Loyalty's Fremen Bond line is Shadout Mapes' troop move, but
+    # only one of the two entries is used up by a move.
+    mapes = _card("shadout_mapes")
+    loyalty = _card("unswerving_loyalty")
+    owner = PlayerState(
+        player_id=0, hand=(mapes, loyalty), troops_garrison=2, troops_conflict=1
+    )
+    revealed = _reveal(_state(owner))
+    moves = {
+        (a.action_id, dict(a.arguments)[SOURCE_ARGUMENT])
+        for a in _legal(revealed)
+        if a.action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+    }
+    assert moves == {
+        (action_id, source)
+        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        for source in ("shadout_mapes", "unswerving_loyalty")
+    }
+    by_loyalty = _first(
+        revealed, "deploy_reveal_card_troop", source="unswerving_loyalty"
+    )
+    moved = ENGINE.apply(revealed, by_loyalty).state
+    assert moved.players[0].troops_conflict == 2
+    assert _pending(moved) == ((mapes, "may_deploy_or_retreat_one_troop"),)
+
+
+def test_source_tells_which_plain_spy_icon_passes_its_recall() -> None:
+    # With an empty supply each plain Spy icon may pass up its recall-first
+    # (OQ-057 (14)); passing Covert Operation's first icon leaves its second,
+    # passing Public Spectacle's leaves Covert Operation's two.
+    spectacle = _card("public_spectacle")
+    covert = _card("covert_operation")
+    owner = PlayerState(
+        player_id=0, hand=(spectacle, covert), spies_supply=0, spy_post_ids=POSTS[:3]
+    )
+    revealed = _reveal(_state(owner))
+    declines = [
+        a for a in _legal(revealed) if a.action_id == "decline_reveal_spy_recall"
+    ]
+    assert {dict(a.arguments)[SOURCE_ARGUMENT] for a in declines} == {
+        "public_spectacle",
+        "covert_operation",
+    }
+    by_covert = _first(
+        revealed, "decline_reveal_spy_recall", source="covert_operation"
+    )
+    passed = ENGINE.apply(revealed, by_covert)
+    assert all(covert in event.event_id for event in passed.events)
+    assert _pending(passed.state) == (
+        (spectacle, "place_spy"),
+        (covert, "place_spy"),
+    )
+
+
 # --- a card another effect trashed -------------------------------------------
 #
 # "you can't receive or activate an effect from a card that is already
@@ -614,9 +687,9 @@ def test_an_empty_supply_keeps_its_refusal_and_a_recall_commits_the_placement() 
         "wheels_within_wheels"
     }
 
-    passed = ENGINE.apply(
-        revealed, DomainAction(action_id="decline_reveal_spy_recall", actor=0)
-    )
+    decline = _first(revealed, "decline_reveal_spy_recall")
+    assert dict(decline.arguments)[SOURCE_ARGUMENT] == "wheels_within_wheels"
+    passed = ENGINE.apply(revealed, decline)
     assert passed.state.decision_stack[-1].kind == FrameKind.REVEAL
     assert [e.kind for e in passed.events] == ["reveal_spy_recall_declined"]
     assert "finish_reveal" in _ids(passed.state)

@@ -38,7 +38,7 @@ A record before codec v147 resolved its Reveal choices on stacked
 ``resume_reveal_choice`` reordered, and refused an optional one with its own
 ``decline_*``. This engine offers every pending choice on the Reveal frame at
 once and lapses an unused optional one at ``finish_reveal`` (OQ-095 (7)
-addition), and seven ids name their card with ``source``. ``migrate_record``
+addition), and eleven ids name their card with ``source``. ``migrate_record``
 follows the recording engine's choice frames through the Reveal
 (``_RevealSlot``): it drops each defer and resume (``reveal_choice_defer``,
 ``reveal_choice_resume``) and each refusal of an optional choice
@@ -538,7 +538,7 @@ def graft_box_held(
 # (``resume_reveal_choice``); neither has a counterpart here, nor has its
 # refusal of an optional choice: this engine keeps that choice pending and
 # the recorded ``finish_reveal`` lapses it, which leaves the same game state.
-# Seven ids name their card with ``source`` here (``SOURCED_REVEAL_ACTION_IDS``):
+# Eleven ids name their card with ``source`` here (``SOURCED_REVEAL_ACTION_IDS``):
 # a recorded one is given the card the recording engine had on top.
 REVEAL_CHOICES_CODEC: Final = 147
 REVEAL_DEFER_DROPPED: Final = "reveal_choice_defer"
@@ -720,7 +720,7 @@ class _RevealSlot:
         del self.frames[index]
         return (
             REVEAL_REFUSAL_BY_ORDER
-            if step in engine.legal_actions(state, step.actor)
+            if _offered(engine, state, step)
             else REVEAL_REFUSAL_DROPPED
         )
 
@@ -880,6 +880,25 @@ def _reveal_generated(state: GameState, player: int) -> int | None:
     return None
 
 
+def _offered(
+    engine: UprisingRulesEngine, state: GameState, step: DomainAction
+) -> list[DomainAction]:
+    """This engine's legal actions that are ``step`` with or without a ``source``."""
+
+    decision = engine.current_decision(state)
+    if not isinstance(decision, PlayerDecision) or decision.owner != step.actor:
+        return []
+    return [
+        action
+        for action in engine.legal_actions(state, step.actor)
+        if action.action_id == step.action_id
+        and tuple(
+            (key, value) for key, value in action.arguments if key != SOURCE_ARGUMENT
+        )
+        == step.arguments
+    ]
+
+
 def _with_source(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -893,18 +912,7 @@ def _with_source(
     and the hint is not one of them.
     """
 
-    decision = engine.current_decision(state)
-    if not isinstance(decision, PlayerDecision) or decision.owner != step.actor:
-        return None
-    offered = [
-        action
-        for action in engine.legal_actions(state, step.actor)
-        if action.action_id == step.action_id
-        and tuple(
-            (key, value) for key, value in action.arguments if key != SOURCE_ARGUMENT
-        )
-        == step.arguments
-    ]
+    offered = _offered(engine, state, step)
     if len(offered) == 1:
         return offered[0], REVEAL_SOURCE_NAMED
     chosen = [
@@ -957,15 +965,27 @@ def rewrite_step(
     if decision is None:
         return None
     if codec < REVEAL_CHOICES_CODEC and isinstance(step, DomainAction):
+        sourced = step.action_id in SOURCED_REVEAL_ACTION_IDS and all(
+            key != SOURCE_ARGUMENT for key, _ in step.arguments
+        )
         if step.action_id in (_DEFER, _RESUME) or (
             step.action_id in _OPTIONAL_REVEAL_REFUSALS
+            and not sourced
             and step not in engine.legal_actions(state, step.actor)
         ):
             return None
-        if step.action_id in SOURCED_REVEAL_ACTION_IDS and all(
-            key != SOURCE_ARGUMENT for key, _ in step.arguments
-        ):
+        if sourced:
             named = _with_source(engine, state, step, reveal_source)
+            if (
+                named is not None
+                and step.action_id == _RECALL_REFUSAL
+                and reveal_source is not None
+                and dict(named[0].arguments).get(SOURCE_ARGUMENT) != reveal_source
+            ):
+                # The recording engine's top frame was an optional recall,
+                # whose refusal has no counterpart here; a plain Spy icon's
+                # pass of its recall-first is another card's choice.
+                return None
             return None if named is None else named[0]
     if codec < GRAFT_BOXES_CODEC:
         if isinstance(step, DomainAction) and step.action_id == GRAFT_SWITCH:

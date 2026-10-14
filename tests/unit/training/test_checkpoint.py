@@ -369,7 +369,7 @@ def test_box_one_rows_start_from_their_untagged_twins(tmp_path: Path) -> None:
 
 
 def test_source_rows_start_from_their_source_less_rows(tmp_path: Path) -> None:
-    """Codec v147 names the Reveal card of seven Reveal choice ids with
+    """Codec v147 names the Reveal card of eleven Reveal choice ids with
     ``source`` (OQ-095 (7) addition). A file written before it starts each
     card's row from the source-less row of the same choice: the same weights
     and bias, counted as aliased (trained), so the play network keeps its
@@ -387,7 +387,7 @@ def test_source_rows_start_from_their_source_less_rows(tmp_path: Path) -> None:
         for i, t in enumerate(codec.catalog)
         if any(name == "source" for name, _ in t.arguments)
     ]
-    assert len(sourced) == 135
+    assert len(sourced) == 140
     keep = [i for i in range(codec.size) if i not in set(sourced)]
     rows = torch.tensor(keep)
     state = dict(document["state_dict"])

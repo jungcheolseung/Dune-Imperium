@@ -1120,8 +1120,8 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     assert not any(
         ("box", 1) in template.arguments for template in plain.catalog
     )
-    # v147 added the base catalog's ``source``-named Reveal rows (+135).
-    assert ActionCodec(RulesetConfig()).size == 4548
+    # v147 added the base catalog's ``source``-named Reveal rows (+140).
+    assert ActionCodec(RulesetConfig()).size == 4553
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)
     twins = {t for t in codec.catalog if ("box", 1) in t.arguments}

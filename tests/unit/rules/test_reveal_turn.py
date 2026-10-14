@@ -2306,7 +2306,11 @@ def test_unswerving_loyalty_may_deploy_the_troop_it_recruits() -> None:
     assert recruited.players[0].troops_garrison == 1
     assert waiting_deferred_choices(recruited, 0) == ()
     offered = engine.legal_actions(recruited, 0)
-    deploy = DomainAction(action_id="deploy_reveal_card_troop", actor=0)
+    deploy = DomainAction(
+        action_id="deploy_reveal_card_troop",
+        actor=0,
+        arguments=(("source", "unswerving_loyalty"),),
+    )
     assert deploy in offered
     # The move is optional ("may"), so it does not hold the Reveal's end.
     assert "finish_reveal" in {action.action_id for action in offered}

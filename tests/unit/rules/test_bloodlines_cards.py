@@ -4395,8 +4395,13 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # Spy Network's and Arrakis Observer's recall and for each of Covert
         # Operation's, Public Spectacle's, Undercover Asset's, Wheels within
         # Wheels' and Intelligence Training's place and recall-for-placement,
-        # and 3 Commander shares for each of Chani's and Command Center's retreat.
-        + 122 + 29 + 1 + 2 * 13 + 5 * 2 * 13 + 2 * 3
+        # 3 Commander shares for each of Chani's and Command Center's retreat,
+        # the four plain Spy icons' pass of their recall-first (Covert
+        # Operation's, Public Spectacle's, Wheels within Wheels' and
+        # Intelligence Training's), Pointing the Way's Influence with each
+        # Faction and Unswerving Loyalty's deploy and retreat of a troop or a
+        # Commander.
+        + 122 + 29 + 1 + 2 * 13 + 5 * 2 * 13 + 2 * 3 + 4 + 4 + 2 * 2
     )
     action = DomainAction(
         action_id="trash_agent_card",

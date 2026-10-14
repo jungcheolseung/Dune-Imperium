@@ -46,8 +46,8 @@ exactly our mandatory ones and its Optional choices our optional ones
    our ``acquire_reserve(card_id)``), one per Plot (``intrigue_play_sources``),
    one per pending choice entry that offers rows now (``_choice_sources``:
    valued by that card's choice ability; its answer is the entry's row that
-   carries it, ``_realise``; the seven shared action ids carry the card's
-   ``source``, so a key only ever names its own card's rows), Shishakli's
+   carries it, ``_realise``; every action id two cards share carries the
+   card's ``source``, so a key only ever names its own card's rows), Shishakli's
    Fremen Influence (``CrysknifeAbility``: Explicit, DeferValue 2), Feyd's
    Devious Strength and Amber's Desert Scouts (only while their app ``Cost``
    holds) and the Emperor-track Spy (``place_track_spy``:
@@ -143,12 +143,11 @@ Judgements (our engine vs the app):
   windows answer None rather than value it as another card's ability.
 - Each pending entry is its own key, as each card's ability is in the app
   (two copies of one card are two keys with the same rows; taking one opens
-  the oldest entry that offers it). A few rows carry no ``source`` because
-  only interchangeable choices share them (Pointing the Way's and Ixian
-  Ambassador's ``gain_reveal_influence``, Shadout Mapes' and Unswerving
-  Loyalty's troop move, the plain Spy icons' empty-supply decline): the
-  engine may open the other card's entry for such a row, with the same
-  outcome.
+  the oldest entry that offers it). Every row two different cards offer
+  carries its card's ``source`` (Pointing the Way's and Ixian Ambassador's
+  ``gain_reveal_influence``, Shadout Mapes' and Unswerving Loyalty's troop
+  move and the plain Spy icons' empty-supply decline too), so a key's row
+  always opens its own card's entry.
 - An Optional key whose answer no row carries (a target our engine does not
   offer, e.g. Unswerving Loyalty's retreat index with no troop deployed) is
   no candidate of ``MakeChoice``: the app would use it to no effect.
@@ -800,9 +799,12 @@ def _unit_form(
 ) -> DomainAction | None:
     """The troop or Commander form of a one-unit move (bloodlines-systems.md
     §1.3-1.4): the troop form unless ``commander_first`` or no troop form is
-    legal. Outside Bloodlines only the troop form exists."""
+    legal. Outside Bloodlines only the troop form exists. Both name the
+    card with ``source``."""
 
-    plain = next((a for a in run.by_id(action_id) if not a.arguments), None)
+    plain = next(
+        (a for a in run.by_id(action_id) if int_arg(a, "commanders") is None), None
+    )
     commander = next(
         (a for a in run.by_id(action_id) if int_arg(a, "commanders") == 1), None
     )

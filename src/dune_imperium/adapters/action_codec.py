@@ -473,12 +473,14 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # ``decline_reveal_troop_retreat``, ``decline_reveal_troop_sacrifice``,
 # ``decline_command_acquisition``; ``decline_reveal_spy_recall`` stays for a
 # Spy icon's recall-first with an empty supply) are never offered again but keep
-# their rows. With every choice offered at once, seven ids that different cards
-# produce with different outcomes name their card with ``source`` (its
-# definition id): ``trash_reveal_card``, ``recall_spy_for_reveal``,
+# their rows. With every choice offered at once, the eleven ids that different
+# cards produce name their card with ``source`` (its definition id):
+# ``trash_reveal_card``, ``recall_spy_for_reveal``,
 # ``retreat_two_troops_for_reveal``, ``place_reveal_spy``,
-# ``recall_spy_for_reveal_placement``, ``keep_contract_reveal_spice`` and
-# ``trash_contract_reveal_for_vp`` (``_reveal_source_templates``, one per card of
+# ``recall_spy_for_reveal_placement``, ``keep_contract_reveal_spice``,
+# ``trash_contract_reveal_for_vp``, ``gain_reveal_influence``,
+# ``deploy_reveal_card_troop``, ``retreat_reveal_card_troop`` and
+# ``decline_reveal_spy_recall`` (``_reveal_source_templates``, one per card of
 # the catalog's decks). Their source-less rows stay as never-legal rows, and a
 # checkpoint's ``source`` row starts from the source-less one
 # (``training.checkpoint._alias``). Recorded step sequences change, so saves and
@@ -2216,19 +2218,27 @@ def _endgame_wild_templates(
 
 # The ids each Reveal choice effect offers with ``source`` (codec v147,
 # ``rules.reveal_turn.SOURCED_REVEAL_ACTION_IDS``), with what else names the
-# row: an observation post, the Commander share of a retreat, or nothing.
+# row: an observation post, the Commander share of a retreat or a troop
+# move, a Faction, or nothing.
 _SOURCED_SPY_PLACEMENT: Final = (
     "place_reveal_spy",
     "recall_spy_for_reveal_placement",
 )
+# A plain Spy icon also passes up its empty-supply recall-first (OQ-057 (14)).
+_SOURCED_PLAIN_SPY: Final = (*_SOURCED_SPY_PLACEMENT, "decline_reveal_spy_recall")
+_SOURCED_TROOP_MOVE: Final = ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
 _Choice = PersonalCardRevealChoiceEffect
 _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
-    _Choice.PLACE_SPY: _SOURCED_SPY_PLACEMENT,
-    _Choice.PLACE_TWO_SPIES: _SOURCED_SPY_PLACEMENT,
-    _Choice.COMMAND_PLACE_SPY: _SOURCED_SPY_PLACEMENT,
+    _Choice.PLACE_SPY: _SOURCED_PLAIN_SPY,
+    _Choice.PLACE_TWO_SPIES: _SOURCED_PLAIN_SPY,
+    _Choice.COMMAND_PLACE_SPY: _SOURCED_PLAIN_SPY,
     _Choice.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
         _SOURCED_SPY_PLACEMENT
     ),
+    _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
+    _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: ("gain_reveal_influence",),
+    _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
+    _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),
@@ -2263,9 +2273,10 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
 
     One per card of the catalog's Imperium deck whose choice effect offers
     such an id, with every value its other arguments can take: a post for
-    the Spy rows, the Commander share of a retreat (Bloodlines), the trashed
-    card (any personal card for Shrouded Counsel, another Emperor card for
-    Calculus of Power, the card itself for a self-trash).
+    the Spy rows, the Commander share of a retreat or a troop move
+    (Bloodlines), a Faction for an Influence gain, the trashed card (any
+    personal card for Shrouded Counsel, another Emperor card for Calculus of
+    Power, the card itself for a self-trash).
     """
 
     personal = _personal_card_instance_ids(config)
@@ -2274,6 +2285,10 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
         ((), (("commanders", 1),), (("commanders", 2),))
         if config.bloodlines
         else ((),)
+    )
+    # A Sardaukar Commander is a troop [Bloodlines p. 4].
+    one_unit: tuple[tuple[tuple[str, ActionValue], ...], ...] = (
+        ((), (("commanders", 1),)) if config.bloodlines else ((),)
     )
     templates: dict[ActionTemplate, None] = {}
     for entry in imperium_cards_for_choam(
@@ -2298,6 +2313,12 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
                     variants = tuple((("post_id", post_id),) for post_id in post_ids)
                 elif action_id == "retreat_two_troops_for_reveal":
                     variants = shares
+                elif action_id in _SOURCED_TROOP_MOVE:
+                    variants = one_unit
+                elif action_id == "gain_reveal_influence":
+                    variants = tuple(
+                        (("faction", faction.value),) for faction in Faction
+                    )
                 elif action_id == "trash_reveal_card":
                     variants = tuple(
                         (("card_id", card_id),)

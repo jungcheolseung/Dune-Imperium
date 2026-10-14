@@ -735,9 +735,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
-        # v147: the base catalog's 135 ``source``-named Reveal rows, and
+        # v147: the base catalog's 140 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
-        + 136
+        + 141
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -756,9 +756,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
-        # v147: the CHOAM catalog's 139 ``source``-named Reveal rows, and
+        # v147: the CHOAM catalog's 144 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
-        + 140
+        + 145
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

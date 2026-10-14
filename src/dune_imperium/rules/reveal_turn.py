@@ -199,11 +199,16 @@ REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
 # The argument naming the revealed card (its definition id; copies of one
 # card are interchangeable) whose choice an action resolves. With every
 # pending choice offered at once (codec v147), these ids are produced by
-# different cards with different outcomes: Calculus of Power's, Shrouded
-# Counsel's, Disruption Tactics' and CHOAM Demands' trash; Spy Network's and
-# Arrakis Observer's recall; Chani's and Command Center's retreat; a plain
-# Spy icon's and Undercover Asset's placement (and recall-first); Priority
-# Contracts' 2 spice and Delivery Agreement's 1. They always carry it.
+# different cards: Calculus of Power's, Shrouded Counsel's, Disruption
+# Tactics' and CHOAM Demands' trash; Spy Network's and Arrakis Observer's
+# recall; Chani's and Command Center's retreat; a plain Spy icon's and
+# Undercover Asset's placement (and recall-first); Priority Contracts' 2
+# spice and Delivery Agreement's 1; Pointing the Way's and Ixian
+# Ambassador's Influence; Shadout Mapes' and Unswerving Loyalty's troop
+# move (the latter needs a Fremen Bond); and the plain Spy icons' pass of
+# their empty-supply recall-first. Whichever entry takes the row is used up
+# and the event names its card, so every id more than one card produces
+# always carries it.
 SOURCE_ARGUMENT: Final = "source"
 SOURCED_REVEAL_ACTION_IDS: Final = frozenset(
     {
@@ -214,6 +219,10 @@ SOURCED_REVEAL_ACTION_IDS: Final = frozenset(
         "recall_spy_for_reveal_placement",
         "keep_contract_reveal_spice",
         "trash_contract_reveal_for_vp",
+        "gain_reveal_influence",
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+        "decline_reveal_spy_recall",
     }
 )
 
@@ -301,7 +310,7 @@ def legal_reveal_spy_actions(
         # placement is mandatory again. "Spy -OR- 2 swords" keeps its printed
         # alternative instead.
         decline = (
-            (DomainAction(action_id="decline_reveal_spy_recall", actor=player),)
+            (_sourced("decline_reveal_spy_recall", player, card_id),)
             if plain_spy and not recalled
             else ()
         )
@@ -560,14 +569,15 @@ def legal_reveal_influence_gain_actions(
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH.value,
     ):
         return ()
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal Influence frame has invalid card ID")
     # Never a cube already at the top (OQ-060); with every cube there the
     # choice does not open (``reveal_influence_choice_blocked``).
     owner = state.players[player]
     return tuple(
-        DomainAction(
-            action_id="gain_reveal_influence",
-            actor=player,
-            arguments=(("faction", faction.value),),
+        _sourced(
+            "gain_reveal_influence", player, card_id, (("faction", faction.value),)
         )
         for faction in Faction
         if influence_can_rise(owner, faction)
@@ -1537,12 +1547,14 @@ def legal_reveal_troop_move_actions(
     )
     if context is None:
         return ()
+    card_id, _ = _reveal_choice_card_source(state, player, context, "troop_move")
     owner = state.players[player]
     return tuple(
-        DomainAction(
-            action_id=action_id,
-            actor=player,
-            arguments=(("commanders", 1),) if commander else (),
+        _sourced(
+            action_id,
+            player,
+            card_id,
+            (("commanders", 1),) if commander else (),
         )
         for action_id, troops, commanders in (
             (

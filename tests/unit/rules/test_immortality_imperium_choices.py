@@ -710,7 +710,9 @@ def test_shadout_mapes_deploys_a_garrison_commander() -> None:
     # The Commander alone offers the move (it used to need a plain troop).
     assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
     (deploy,) = legal_reveal_troop_move_actions(revealed, 0)
-    assert deploy == DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1),))
+    assert deploy == DomainAction(
+        "deploy_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
+    )
     assert "decline_reveal_troop_move" not in _offered_ids(revealed)
     result = UprisingRulesEngine().apply(revealed, deploy)
     owner = result.state.players[0]
@@ -734,7 +736,9 @@ def test_shadout_mapes_retreats_the_last_commander_and_its_skills() -> None:
     # Commander 2 + Loyal 2 before the Reveal, + Mapes' sword.
     assert revealed.players[0].combat_strength == 5
     (retreat,) = legal_reveal_troop_move_actions(revealed, 0)
-    assert retreat == DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1),))
+    assert retreat == DomainAction(
+        "retreat_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
+    )
     retreated = UprisingRulesEngine().apply(revealed, retreat).state
     owner = retreated.players[0]
     assert (owner.commanders_conflict, owner.commanders_garrison) == (0, 1)
@@ -753,11 +757,12 @@ def test_shadout_mapes_offers_both_unit_kinds_in_each_zone() -> None:
         commanders_conflict=1,
     )
     actions = legal_reveal_troop_move_actions(revealed, 0)
+    mapes = ("source", "shadout_mapes")
     assert actions == (
-        DomainAction("deploy_reveal_card_troop", 0),
-        DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1),)),
-        DomainAction("retreat_reveal_card_troop", 0),
-        DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1),)),
+        DomainAction("deploy_reveal_card_troop", 0, (mapes,)),
+        DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1), mapes)),
+        DomainAction("retreat_reveal_card_troop", 0, (mapes,)),
+        DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1), mapes)),
     )
     codec = ActionCodec(IMMORTALITY_BLOODLINES)
     for action in actions:
@@ -1596,8 +1601,8 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
             0,
             (("alliance_recipient", 2), ("faction", "fremen")),
         ),
-        DomainAction("deploy_reveal_card_troop", 0),
-        DomainAction("retreat_reveal_card_troop", 0),
+        DomainAction("deploy_reveal_card_troop", 0, (("source", "shadout_mapes"),)),
+        DomainAction("retreat_reveal_card_troop", 0, (("source", "shadout_mapes"),)),
         DomainAction(
             "lose_reveal_troops_for_specimens", 0, (("zones", "garrison,conflict"),)
         ),
@@ -1621,21 +1626,41 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         if template.action_id == "resume_reveal_choice"
     }
     # Mapes' Commander moves exist only where Commanders do [Bloodlines p. 4].
+    # Each card's move names it (``source``, codec v147); the source-less
+    # rows stay as never-legal ones.
     assert {
         (template.action_id, template.arguments)
         for template in ActionCodec(IMMORTALITY_BLOODLINES).catalog
         if template.action_id.endswith("_reveal_card_troop")
     } == {
-        ("deploy_reveal_card_troop", ()),
-        ("retreat_reveal_card_troop", ()),
-        ("deploy_reveal_card_troop", (("commanders", 1),)),
-        ("retreat_reveal_card_troop", (("commanders", 1),)),
+        (action_id, arguments)
+        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        for arguments in (
+            (),
+            (("commanders", 1),),
+            *(
+                unit
+                for source in ("shadout_mapes", "unswerving_loyalty")
+                for unit in (
+                    (("source", source),),
+                    (("commanders", 1), ("source", source)),
+                )
+            ),
+        )
     }
-    assert all(
-        template.arguments == ()
+    assert {
+        (template.action_id, template.arguments)
         for template in codec.catalog
         if template.action_id.endswith("_reveal_card_troop")
-    )
+    } == {
+        (action_id, arguments)
+        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        for arguments in (
+            (),
+            (("source", "shadout_mapes"),),
+            (("source", "unswerving_loyalty"),),
+        )
+    }
 
 
 def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:

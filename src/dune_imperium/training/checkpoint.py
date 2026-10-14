@@ -713,7 +713,7 @@ def _alias(key: TemplateKey) -> TemplateKey | None:
     with ``box=1`` (docs/graft-boxes-plan.md 4.8): the same Agent-box choice
     of the other grafted card, so its row starts from the untagged one's
     weights and Adam moments (``_gather_rows`` reads one old row twice).
-    Codec v147 names the Reveal card of seven Reveal choice ids with
+    Codec v147 names the Reveal card of eleven Reveal choice ids with
     ``source`` (``rules.reveal_turn.SOURCED_REVEAL_ACTION_IDS``): each card's
     row is the same choice the source-less row stood for, so it starts from
     that row.
