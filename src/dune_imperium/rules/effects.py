@@ -408,8 +408,12 @@ class OptionalBlockKind(StrEnum):
     so one that cannot be used now offers no row at all; each provider gates
     it with a block function returning ``OptionalEffectBlock`` (None when it
     can be used), and the page greys the effect out with the same answer
-    (``display.unavailable``). A Conflict reward's optional arrow is the same
-    kind of block, worded the same (``combat.combat_reward_payment_block``).
+    (``display.unavailable``). The branches of other choices that a provider
+    withholds are the same kind of block, worded the same: a Conflict
+    reward's optional arrow (``combat.combat_reward_payment_block``), a Maker
+    space's sandworm (``board_effects.maker_sandworm_block``), Sietch Tabr's
+    detonation (``sietch_tabr_wall_block``) and a Leader's Reveal ability
+    (``leader_abilities.leader_reveal_block``).
     """
 
     # A cost short of ``needed`` (``held`` now).

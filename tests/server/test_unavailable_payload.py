@@ -16,12 +16,18 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tests.unit.display.test_unavailable import (
+    _leader_reveal,
+    _maker_visit,
+    _sietch_tabr_visit,
+    reward_window,
+)
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
-from dune_imperium.core.player import PlayerState
+from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server import sessions
@@ -220,3 +226,51 @@ def test_a_live_reveal_greys_out_what_the_seat_cannot_buy() -> None:
         assert row["refs"] and row["refs"][0] in info["refs"]
     persuasion = decision["persuasion"]
     assert any(row["reason"].endswith(f"(you have {persuasion})") for row in acquire)
+
+
+def test_the_payload_carries_the_plan_4_rows_of_2026_10_14() -> None:
+    """A Conflict reward's payment, a Maker space's sandworm, Sietch Tabr's
+    detonation and a Leader's Reveal ability, each cannot be taken: the
+    payload greys it out beside the legal rows, described like a legal one,
+    for the deciding seat alone, and as JSON."""
+
+    cases = (
+        (
+            reward_window("spice_freighters", resources=Resources(spice=1)),
+            "combat_reward_optional",
+            "choice:pay_combat_reward",
+            "choice",
+        ),
+        (
+            _maker_visit("hagga_basin", owner_fields={"maker_hooks": False}),
+            "agent_effects",
+            "choice:summon_maker_sandworms",
+            "choice",
+        ),
+        (
+            _sietch_tabr_visit(shield_wall_present=False),
+            "agent_effects",
+            "choice:take_sietch_tabr_water_and_destroy_wall",
+            "choice",
+        ),
+        (
+            _leader_reveal("feyd_rautha_harkonnen"),
+            "reveal",
+            "waiting:leader_reveal:recall_spy_for_leader",
+            "waiting",
+        ),
+    )
+    for state, frame, key, surface in cases:
+        payload = _payload(state)
+        json.dumps(payload)
+        info = _obj(payload["unavailable"])
+        assert info["frame"] == frame
+        (row,) = [row for row in _rows(info["rows"]) if row["key"] == key]
+        assert row["surface"] == surface
+        action = row["action"]
+        assert set(action) == {"action_id", "arguments", "detail", "detail_ko"}
+        legal = [(a["action_id"], a["arguments"]) for a in _rows(payload["actions"])]
+        assert (action["action_id"], action["arguments"]) not in legal
+        assert row["reason"] and row["reason_ko"]
+        assert not HANGUL.search(row["reason"])
+        assert _payload(state, 1)["unavailable"] is None

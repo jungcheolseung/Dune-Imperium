@@ -43,6 +43,22 @@ languages, from the recall's own label: since the user ruling of 2026-10-10
 (OQ-027 (d)) the recall never draws, and the card draw is the space's own
 step offered beside the confirm, which draws nothing.
 
+Another case on that surface is a Maker space's sandworm (Hagga Basin or
+Deep Desert, plan 4 row 8, 2026-10-14): the seat's heuristic reaches the
+visit without the Maker Hooks, with no Conflict to deploy into, or with the
+Shield Wall over it, so the harvest is legal and the sandworm greys out with
+that reason ("메이커 작살 없음" and the like) beside it; taking the harvest
+drops the row. As with the others, the seeds are tried in order, so a rule
+change only moves the case to a later seed.
+
+A render-only case (`PAYMENTS_PY`, as the Conflict-end one is) shows the
+other three rows of plan 4 on the page: a Conflict reward's payment short of
+spice and Arrakeen's two-Spy recall with one Spy ("choice", "스파이스 3 필요
+(보유 1)" and the like), Sietch Tabr's detonation once the Shield Wall is
+destroyed ("choice"), and Feyd-Rautha's Reveal ability with no Spy on the
+board ("waiting", with the Reveal turn's lapse words), each in both
+languages, a disabled button no legal action names, nothing sent on a click.
+
 A fifth case covers the "intrigue" surface in the Conflict-end window,
 which opens on public facts (OQ-103), so a seat may sit in it holding a
 Harvest Cells it cannot play: one that lost only Sardaukar Commanders
@@ -535,6 +551,108 @@ def recall_case(page, base: str, saves: Path) -> bool:
     return ok
 
 
+# The reason a greyed-out Maker sandworm may carry, by code, in Korean and
+# English: the Hooks, a Conflict, the Shield Wall (rules/board_effects.py
+# maker_sandworm_block; Emperor of the Known Universe's ban needs his Signet
+# and does not turn up in a heuristic game).
+MAKER_REASONS = {
+    "maker_hooks": ("메이커 작살 없음", "No Maker Hooks"),
+    "no_conflict": ("이번 라운드에 교전 없음", "No Conflict this round"),
+    "shield_wall": (
+        "방어벽이 이번 교전을 보호함",
+        "The Shield Wall protects this Conflict",
+    ),
+}
+# The space the row names after the summon, in Korean and English.
+MAKER_SPACES = {
+    "hagga_basin": ("하가 분지", "Hagga Basin"),
+    "deep_desert": ("사막 심부", "Deep Desert"),
+}
+MAKER_KEY = "choice:summon_maker_sandworms"
+MAKER_ROW = f'#actions .unavailable-item[data-key="{MAKER_KEY}"]'
+
+
+def maker_case(page, base: str, saves: Path) -> bool:
+    """A Maker space's sandworm the seat cannot summon: the "choice" surface."""
+
+    print("[choice] A Maker space's sandworm the seat cannot summon")
+    found = save_at_row(saves, MAKER_KEY)
+    if not check.ok(found is not None, "a seed reaches a Maker space, no sandworm"):
+        return False
+    print(f"  .. seed {found['seed']}")
+    load_saved(page, base, found)
+    legal = page.evaluate("state.actions.actions.map((a) => a.action_id)")
+    ok = check.ok(
+        page.evaluate("state.summary.decision.kind") == "agent_effects"
+        and "harvest_maker_spice" in legal
+        and "summon_maker_sandworms" not in legal,
+        "Maker space: the harvest is legal and the sandworm is not",
+        legal,
+    )
+    rows = page.evaluate(
+        "state.actions.unavailable.rows.filter((r) => r.key === "
+        f"'{MAKER_KEY}').map((r) => [r.code, r.reason_ko, r.reason, r.action])"
+    )
+    code, _, reason, action = rows[0] if rows else ["", "", "", {"arguments": {}}]
+    expected = MAKER_REASONS.get(code, ("", ""))
+    space = MAKER_SPACES.get(action["arguments"].get("space_id"), ("", ""))
+    ok &= check.ok(
+        len(rows) == 1
+        and action.get("action_id") == "summon_maker_sandworms"
+        and action["arguments"].get("space_id") in ("hagga_basin", "deep_desert")
+        and reason == expected[1],
+        "Maker space: one greyed sandworm row, for the space, with a known reason",
+        rows,
+    )
+    badge = f"{MAKER_ROW} .unavailable-badge"
+    korean = (page.evaluate(HEADING_JS, "choice"), page.evaluate(WORDS_OF_JS, badge))
+    ok &= check.ok(
+        korean == ("지금 고를 수 없는 선택지", expected[0]),
+        "Maker space: under the choice heading, with its reason in Korean",
+        korean,
+    )
+    body = page.evaluate(WORDS_OF_JS, f"{MAKER_ROW} .unavailable-body")
+    ok &= check.ok(
+        body == f"모래벌레 부르기 — {space[0]}",
+        "Maker space: the greyed-out row reads as the summon, as its label does",
+        body,
+    )
+    ok &= inspect_surface(page, "choice", "Maker space")
+    page.evaluate("setLanguage('en')")
+    assert settled(page, 10)
+    english = (
+        page.evaluate(HEADING_JS, "choice"),
+        page.evaluate(WORDS_OF_JS, badge),
+        page.evaluate(WORDS_OF_JS, f"{MAKER_ROW} .unavailable-body"),
+    )
+    ok &= check.ok(
+        english
+        == (
+            "Choices you cannot take now",
+            expected[1],
+            f"Summon sandworm — {space[1]}",
+        ),
+        "Maker space: in English the heading, the reason and the row",
+        english,
+    )
+    page.evaluate("setLanguage('ko')")
+    assert settled(page, 10)
+    harvest = page.evaluate(
+        "state.actions.actions.findIndex((a) => a.action_id === 'harvest_maker_spice')"
+    )
+    page.evaluate(f"applyAction({harvest})")
+    assert settled(page, 20)
+    left = page.evaluate(
+        "(key) => document.querySelectorAll("
+        '`#actions .unavailable-item[data-key="${key}"]`).length',
+        MAKER_KEY,
+    )
+    ok &= check.ok(
+        left == 0, "Maker space: the row goes once the harvest is taken", left
+    )
+    return ok
+
+
 # The Conflict-end windows of test_immortality_intrigue.py's
 # test_harvest_cells_window_skips_a_copy_that_would_change_nothing (its
 # fixture lives in tests/unit/display/test_unavailable.py), described by
@@ -749,6 +867,175 @@ def conflict_end_case(browser, base: str) -> bool:
             f"Conflict end (lit, {language}): with a troop in the supply the copy"
             " is an ordinary, lit play",
             [lit["rows"], lit["items"], lit["hand"]],
+        )
+    page.evaluate("setLanguage('ko', false)")
+    return ok
+
+
+# The windows of plan 4 rows 1, 13 and 17 (2026-10-14), built from the unit
+# tests' fixtures (tests/unit/display/test_unavailable.py) and described by
+# the server's own payload code for seat 0 of an all-human game whose state
+# is swapped in; the page renders those payloads (render only, as the
+# Conflict-end case does): a Conflict reward payment short of spice and
+# Arrakeen's Spy recall with one Spy, Sietch Tabr's detonation with the
+# Shield Wall destroyed, and Feyd-Rautha's Reveal with no Spy on the board.
+PAYMENTS_PY = """
+import json
+from dune_imperium.core.player import Resources
+from dune_imperium.server.sessions import GameSessionManager
+from tests.unit.display.test_unavailable import (
+    _leader_reveal, _post_ids, _sietch_tabr_visit, reward_window,
+)
+states = {
+    "pay": reward_window("spice_freighters", resources=Resources(spice=1)),
+    "recall": reward_window(
+        "battle_for_arrakeen", spies_supply=2, spy_post_ids=_post_ids(1)
+    ),
+    "sietch": _sietch_tabr_visit(shield_wall_present=False),
+    "feyd": _leader_reveal("feyd_rautha_harkonnen"),
+}
+manager = GameSessionManager()
+created = manager.create_game(("human",) * 4, game_seed=1)
+game_id = str(created["game_id"])
+session = manager._get(game_id)
+fixtures = {}
+for name, state in states.items():
+    session.state = state
+    fixtures[name] = {
+        "summary": manager.summary(game_id),
+        "view": manager.view(game_id, 0),
+        "actions": manager.legal_actions(game_id, 0),
+    }
+print(json.dumps(fixtures))
+"""
+
+# What each window must show, by language: the greyed row's key and surface,
+# the heading over it, its words (the label) and its reason with the terms
+# substituted. The page's words are read with each icon as its name and its
+# count before it, so "{spice:3}" reads "3스파이스" and English "Spies" (an
+# icon on the page) reads "Spy".
+PAYMENTS_EXPECTED = {
+    "pay": {
+        "key": "choice:pay_combat_reward",
+        "ko": ("지금 고를 수 없는 선택지", "보상 비용 지불", "3스파이스 필요 (보유 1)"),
+        "en": (
+            "Choices you cannot take now",
+            "Pay reward cost",
+            "Needs 3spice (you have 1)",
+        ),
+    },
+    "recall": {
+        "key": "choice:recall_spies_for_combat_reward",
+        "ko": (
+            "지금 고를 수 없는 선택지",
+            "스파이 소환",
+            "보드에 내 2스파이 필요 (보유 1)",
+        ),
+        "en": (
+            "Choices you cannot take now",
+            "Recall Spy",
+            "Needs 2 Spy of yours on the board (you have 1)",
+        ),
+    },
+    "sietch": {
+        "key": "choice:take_sietch_tabr_water_and_destroy_wall",
+        "ko": ("지금 고를 수 없는 선택지", "물 + 방어벽 파괴", "방어벽이 이미 파괴됨"),
+        "en": (
+            "Choices you cannot take now",
+            "water + Destroy Shield Wall",
+            "The Shield Wall is already destroyed",
+        ),
+    },
+    "feyd": {
+        "key": "waiting:leader_reveal:recall_spy_for_leader",
+        "ko": (
+            "조건을 기다리는 효과",
+            "스파이 소환",
+            "보드에 내 1스파이 필요 (보유 0)"
+            " — 공개 차례를 끝내면 쓰지 않은 채 사라짐",
+        ),
+        "en": (
+            "Effects waiting on their condition",
+            "Recall Spy",
+            "Needs 1 Spy of yours on the board (you have 0);"
+            " it lapses unused when the Reveal turn ends",
+        ),
+    },
+}
+
+
+def same_action(action: dict) -> tuple[str, str]:
+    """An action as its id and arguments, to tell a row from a legal action."""
+
+    return action["action_id"], json.dumps(action["arguments"], sort_keys=True)
+
+
+def payments_case(browser, base: str) -> bool:
+    """The payment, Sietch Tabr and Leader Reveal rows as the page renders them."""
+
+    print("[choice] Conflict reward payment, Sietch Tabr, Leader Reveal ability")
+    result = subprocess.run(
+        [str(REPO / ".venv/bin/python"), "-c", PAYMENTS_PY],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO,
+    )
+    fixtures = json.loads(result.stdout.strip().splitlines()[-1])
+    _, page, _ = open_context(browser, "unavailable-payments")
+    posts: list[str] = []
+    page.on(
+        "request",
+        lambda request: posts.append(request.url) if request.method == "POST" else None,
+    )
+    page.goto(base)
+    page.wait_for_function("state.catalog !== null")
+    ok = True
+    for language in ("ko", "en"):
+        for name, expected in PAYMENTS_EXPECTED.items():
+            label = f"{name} ({language})"
+            fixture = fixtures[name]
+            page.evaluate(
+                CONFLICT_END_RENDER_JS, {"fixture": fixture, "language": language}
+            )
+            shown = page.evaluate(CONFLICT_END_READ_JS, "")
+            rows = [row for row in shown["rows"] if row["key"] == expected["key"]]
+            row = rows[0] if rows else {}
+            ok &= check.ok(
+                len(rows) == 1
+                and row["disabled"]
+                and (shown["heading"], row["body"], row["badge"]) == expected[language],
+                f"{label}: one greyed-out row, its heading, label and reason",
+                [shown["heading"], rows],
+            )
+            payload = fixture["actions"]["unavailable"]["rows"]
+            legal = [same_action(a) for a in fixture["actions"]["actions"]]
+            ok &= check.ok(
+                all(same_action(r["action"]) not in legal for r in payload),
+                f"{label}: no greyed-out row is a legal action",
+                legal,
+            )
+            if language == "en":
+                ok &= check.ok(
+                    not HANGUL.search(shown["english"]),
+                    f"{label}: in English the panel carries no Hangul",
+                    HANGUL.findall(shown["english"])[:10],
+                )
+        before = len(posts)
+        page.evaluate(
+            CONFLICT_END_RENDER_JS, {"fixture": fixtures["pay"], "language": language}
+        )
+        greyed = page.locator("#actions .unavailable-item")
+        clicked = greyed.count() > 0
+        if clicked:
+            greyed.first.click(force=True)
+            time.sleep(0.3)
+        ok &= check.ok(
+            clicked
+            and len(posts) == before
+            and page.evaluate("document.getElementById('game-error').hidden"),
+            f"payments ({language}): a click on the greyed row sends nothing",
+            posts[before:],
         )
     page.evaluate("setLanguage('ko', false)")
     return ok
@@ -1008,8 +1295,12 @@ def main() -> None:
         check.ok(seen["choice"], "met and checked: choice")
         seen["recall"] = recall_case(page, base, saves)
         check.ok(seen["recall"], "met and checked: the recall confirm")
+        seen["maker"] = maker_case(page, base, saves)
+        check.ok(seen["maker"], "met and checked: a Maker space's sandworm")
         seen["conflict_end"] = conflict_end_case(browser, base)
         check.ok(seen["conflict_end"], "met and checked: Harvest Cells, Conflict end")
+        seen["payments"] = payments_case(browser, base)
+        check.ok(seen["payments"], "met and checked: payment, Sietch Tabr, Reveal")
         with server("--remote", "--admin-key", KEY) as (remote, remote_log):
             for want in ("confirm", "single"):
                 saves = Path(remote_log).parent

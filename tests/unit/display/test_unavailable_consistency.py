@@ -340,6 +340,7 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
     config: RulesetConfig,
 ) -> None:
     surfaces: set[str] = set()
+    keys: set[str] = set()
     checked = 0
     for seed in range(2):
         rng = random.Random(1000 + seed)
@@ -355,6 +356,7 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
                 }
                 for row in found["rows"]:
                     surfaces.add(row["surface"])
+                    keys.add(row["key"])
                     assert not _is_legal(row, legal), row
                     assert row["code"] != NOT_NOW_CODE, row
                     assert row["reason"] and row["reason_ko"], row
@@ -371,6 +373,16 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
             assert unavailable_choices(hidden, seat, hidden_legal) == found
     assert checked > 0
     assert "acquire" in surfaces and "intrigue" in surfaces
+    if config == RulesetConfig():
+        # Plan 4 rows 8, 13 and 17 turn up in every few games: a Maker
+        # space's sandworm, Sietch Tabr's detonation, a Leader Reveal
+        # ability (row 1 is rarer; the display tests pin it).
+        for wanted in (
+            "summon_maker_sandworms",
+            "take_sietch_tabr_water_and_destroy_wall",
+            "leader_reveal",
+        ):
+            assert any(wanted in key for key in keys), (wanted, sorted(keys))
 
 
 def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
