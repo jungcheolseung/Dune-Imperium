@@ -121,6 +121,7 @@ func _initialize() -> void:
 	check(Effects.changes(earlier, later, true).is_empty(), "review cursor changes generate no live cue")
 	later.summary.undo_count = 1
 	check(Effects.changes(earlier, later, false).is_empty(), "undo produces no false acquisition or resource cue")
+	test_staged_picks()
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK")
 		quit(0)
@@ -128,3 +129,44 @@ func _initialize() -> void:
 		for failure in failures:
 			push_error(failure)
 		quit(1)
+
+
+func test_staged_picks() -> void:
+	var model = Model.new()
+	var first = "imperium:ordinary:0"
+	var second = "imperium:graft:0"
+	var invalid = "imperium:ordinary:1"
+	model.catalog = {"cards": {"ordinary": {}, "graft": {"graft": true}}, "spaces": {"a": {}, "b": {}}}
+	var rows = [
+		{"index": 0, "action_id": "agent_turn", "arguments": {"card_id": first, "space_id": "a", "graft": true}},
+		{"index": 1, "action_id": "agent_turn", "arguments": {"space_id": "a", "graft": true, "card_id": second}},
+		{"index": 2, "action_id": "agent_turn", "arguments": {"card_id": second, "space_id": "b", "graft": true}},
+		{"index": 3, "action_id": "agent_turn", "arguments": {"card_id": invalid, "space_id": "b"}},
+	]
+	model.adopt({"summary": {"game_id": "picks", "revision": 0}, "view": {"player": 0, "private": {"hand": [first, second, invalid]}}, "actions": {"actions": rows}})
+	check(model.pick_step("a") == "changed" and model.legal_refs().has(first) and not model.legal_refs().has(invalid), "space-first lights only matching physical cards")
+	check(model.pick_step(invalid) == "blocked" and model.selected_space == "a" and model.selected_card.is_empty(), "an invalid replacement preserves the selected space")
+	model.pick_step(first)
+	model.pick_step(second)
+	check(model.selected_card == first and model.selected_partner == second, "picking a graft card joins rather than replaces the first card")
+	check(model.picked_placements().size() == 1 and int(model.picked_placements()[0].index) == 0, "symmetric graft DTOs deduplicate and prefer the first card despite argument order")
+	check(model.legal_refs().has(first) and model.legal_refs().has(second), "both grafted cards stay lit even when the chooser deduplicates their moves")
+	model.clear_pick("space")
+	check(model.picked_placements().size() == 2 and model.legal_refs().has("a") and model.legal_refs().has("b"), "a graft pair reaches the union of both offered routes")
+	model.clear_pick("card")
+	check(model.selected_card == second and model.selected_partner.is_empty(), "removing the first card promotes its partner")
+	model.pick_step(second)
+	check(model.selected_card.is_empty(), "clicking a picked card cancels only its step")
+	check(not model.can_pair(first, first) and not model.can_pair(first, "imperium:graft:99"), "a pair requires distinct cards in the authorized hand")
+	model.selected_partner = second
+	var newer = model.snapshot.duplicate(true)
+	newer.summary.revision = 1
+	model.adopt(newer)
+	check(model.selected_partner.is_empty(), "a new revision clears both picked cards")
+	var nested = {"index": 4, "action_id": "trash", "arguments": {"card_ids": [first]}, "sent_by_turn_end": true}
+	model.snapshot.actions.actions = [nested]
+	model.hold(nested)
+	check(model.legal_refs().has(first) and model.picked_ref(first), "nested references light a held table object")
+	model.catalog.spaces.a.options = [{"cost": {"spice": 1, "water": 2}}]
+	var discounted = {"arguments": {"space_id": "a", "cost_option": 0, "discount": "spice"}}
+	check(model.paid_cost(discounted) == {"spice": 0, "water": 2} and model.catalog.spaces.a.options[0].cost.spice == 1, "paid cost applies only the offered discount without changing printed catalog cost")

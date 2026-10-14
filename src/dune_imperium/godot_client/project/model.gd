@@ -17,6 +17,7 @@ var snapshot: Dictionary = {}
 var language = "ko"
 var selected_card = ""
 var selected_space = ""
+var selected_partner = ""
 var held: Dictionary = {}
 var active_seat = 0
 var owned_seats: Array = [0]
@@ -55,8 +56,7 @@ func adopt(data: Dictionary) -> bool:
 	var changed = before != signature()
 	if changed:
 		held.clear()
-		selected_card = ""
-		selected_space = ""
+		clear_pick()
 	# Confirmation and AI activity may change without an engine revision.
 	var old_summary = previous.get("summary", {}).duplicate()
 	var new_summary = summary().duplicate()
@@ -216,13 +216,91 @@ func prompt() -> String:
 	return phrase(text)
 
 
-func placements(card: String = "", space: String = "") -> Array:
+func placements(card: String = "", space: String = "", partner: String = "") -> Array:
 	var result: Array = []
+	var options: Dictionary = {}
 	for action in actions():
 		var args = action.get("arguments", {})
-		if action.get("action_id") == "agent_turn" and (card.is_empty() or args.get("card_id") == card) and (space.is_empty() or args.get("space_id") == space):
-			result.append(action)
+		if action.get("action_id") != "agent_turn" or (not space.is_empty() and args.get("space_id") != space):
+			continue
+		if partner.is_empty():
+			if card.is_empty() or args.get("card_id") == card:
+				result.append(action)
+		elif args.get("graft", false) and args.get("card_id") in [card, partner]:
+			# The browser presents symmetric DTOs as one option, preferring
+			# the first picked card. Never manufacture a new action/index.
+			var keys = args.keys()
+			keys.erase("card_id")
+			keys.sort()
+			var option: Array = []
+			for key in keys:
+				option.append([key, args[key]])
+			var identity = JSON.stringify(option)
+			if not options.has(identity) or args.get("card_id") == card:
+				options[identity] = action
+	if not partner.is_empty():
+		result = options.values()
 	return result
+
+
+func picked_placements() -> Array:
+	return placements(selected_card, selected_space, selected_partner)
+
+
+func can_pair(card: String, other: String) -> bool:
+	var hand = view().get("private", {}).get("hand", [])
+	if card == other or card not in hand or other not in hand:
+		return false
+	if not entry(card).get("graft", false) and not entry(other).get("graft", false):
+		return false
+	return actions().any(func(action): return action.action_id == "agent_turn" and action.arguments.get("graft", false) and action.arguments.get("card_id") in [card, other])
+
+
+func clear_pick(part = "") -> void:
+	if part.is_empty():
+		selected_card = ""
+		selected_space = ""
+		selected_partner = ""
+	elif part == "space":
+		selected_space = ""
+	elif part == "partner":
+		selected_partner = ""
+	elif part == "card":
+		selected_card = selected_partner
+		selected_partner = ""
+
+
+func pick_step(ref: String) -> String:
+	var joins = not selected_card.is_empty() and can_pair(selected_card, ref)
+	var card_part = joins or not placements(ref).is_empty()
+	if not card_part and placements("", ref).is_empty():
+		return "unrelated"
+	if card_part and ref in [selected_card, selected_partner]:
+		clear_pick("partner" if ref == selected_partner else "card")
+		return "changed"
+	if not card_part and ref == selected_space:
+		clear_pick("space")
+		return "changed"
+	var card = selected_card
+	var space = selected_space
+	var partner = selected_partner
+	if not card_part:
+		space = ref
+	elif joins:
+		partner = ref
+	else:
+		card = ref
+		partner = ""
+	if placements(card, space, partner).is_empty():
+		return "blocked"
+	selected_card = card
+	selected_space = space
+	selected_partner = partner
+	return "changed"
+
+
+func picked_ref(ref: String) -> bool:
+	return ref in [selected_card, selected_partner, selected_space] or _contains_ref(held_action().get("arguments", {}), ref)
 
 
 func ref_actions(ref: String) -> Array:
@@ -255,12 +333,38 @@ func unavailable(ref: String) -> Dictionary:
 func legal_refs() -> Dictionary:
 	var result: Dictionary = {}
 	for action in actions():
-		if action.get("action_id") == "agent_turn" and not selected_card.is_empty() and action.arguments.get("card_id") != selected_card:
-			continue
-		for value in action.get("arguments", {}).values():
-			if value is String:
-				result[value] = true
+		if action.get("action_id") == "agent_turn":
+			var args = action.arguments
+			if not selected_space.is_empty() and args.get("space_id") != selected_space:
+				continue
+			if not selected_partner.is_empty():
+				if not args.get("graft", false) or args.get("card_id") not in [selected_card, selected_partner]:
+					continue
+			elif not selected_card.is_empty() and args.get("card_id") != selected_card:
+				continue
+		_collect_refs(action.get("arguments", {}), result)
 	return result
+
+
+func _collect_refs(value: Variant, refs: Dictionary) -> void:
+	if value is String:
+		refs[value] = true
+	elif value is Dictionary:
+		_collect_refs(value.values(), refs)
+	elif value is Array:
+		for part in value:
+			_collect_refs(part, refs)
+
+
+func paid_cost(action: Dictionary) -> Dictionary:
+	var args = action.get("arguments", {})
+	var options = entry(str(args.get("space_id", ""))).get("options", [])
+	var index = int(args.get("cost_option", 0))
+	var cost: Dictionary = options[index].get("cost", {}).duplicate() if index >= 0 and index < options.size() else {}
+	var discount = args.get("discount", "")
+	if int(cost.get(discount, 0)) > 0:
+		cost[discount] -= 1
+	return cost
 
 
 func cost_text(cost: Dictionary) -> String:
@@ -283,6 +387,8 @@ func describe(action: Dictionary) -> String:
 	for key in args:
 		var value = args[key]
 		if key in ["effect_key", "box", "cost_option"] or (value is String and value.is_empty()):
+			continue
+		if key == "discount" and args.has("cost_option") and args.has("space_id"):
 			continue
 		if key == "effect" and detail != null:
 			continue
@@ -317,7 +423,12 @@ func describe(action: Dictionary) -> String:
 		var options = entry(args.space_id).get("options", [])
 		var index = int(args.cost_option)
 		if index < options.size():
-			parts.append(cost_text(options[index].get("cost", {})) + " → " + phrase(localized(options[index], "effect")))
+			var paid = cost_text(paid_cost(action))
+			if paid.is_empty():
+				paid = ui("render.free")
+			if args.has("discount"):
+				paid = native("인쇄 비용: ") + cost_text(options[index].get("cost", {})) + " → " + native("지불 비용: ") + paid + " (" + phrase("{" + str(args.discount) + ":1}") + ui("turn.discount_suffix") + ")"
+			parts.append(paid + " → " + phrase(localized(options[index], "effect")))
 	if action.get("strength_after") != null:
 		parts.append(native("전투력 → %d") % int(action.strength_after))
 	if action.get("reveal_preview") is Dictionary:

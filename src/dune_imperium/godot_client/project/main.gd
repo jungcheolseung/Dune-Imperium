@@ -766,9 +766,12 @@ func _card(parent: Node, ref: String, width: int, height: int, playable = true) 
 	button.pressed.connect(_choose_ref.bind(ref) if playable else _open_details.bind(ref))
 	_bind_preview(button, ref)
 	var blocked = model.unavailable(ref)
-	var legal = playable and not model.ref_actions(ref).is_empty()
-	var selected = model.selected_card == ref
+	var legal = playable and model.legal_refs().has(ref)
+	var partner = playable and not model.selected_card.is_empty() and model.can_pair(model.selected_card, ref)
+	var selected = model.picked_ref(ref)
 	var style = _style(Color("24211c"), Color("ebc87e") if legal else Color("3d4141"))
+	if partner and not legal:
+		style.border_color = Color("84acbe")
 	if selected:
 		style.border_color = Color.WHITE
 		style.set_border_width_all(3)
@@ -819,19 +822,17 @@ func _choose_ref(ref: String) -> void:
 	if busy:
 		return
 	_inspect(ref)
-	var placements = model.placements()
-	if not placements.is_empty():
-		if not model.placements(ref).is_empty():
-			model.selected_card = "" if model.selected_card == ref else ref
-			if model.placements(model.selected_card, model.selected_space).is_empty():
-				model.selected_space = ""
-		elif not model.placements("", ref).is_empty():
-			if not model.selected_card.is_empty() and model.placements(model.selected_card, ref).is_empty():
-				status.text = model.native("선택한 카드로는 이 칸에 갈 수 없습니다. 다른 카드나 칸을 선택하세요.")
-				return
-			model.selected_space = "" if model.selected_space == ref else ref
-		else:
+	if not model.placements().is_empty() and not tools_ui.prefs.get("full_action_list", false):
+		var step = model.pick_step(ref)
+		if step == "blocked":
+			status.text = model.native("선택한 카드로는 이 칸에 갈 수 없습니다. 다른 카드나 칸을 선택하세요.")
+			return
+		if step == "unrelated":
 			_choose_ref_action(ref)
+			return
+		var candidates = model.picked_placements()
+		if not model.selected_card.is_empty() and not model.selected_space.is_empty() and candidates.size() == 1:
+			await _apply_placement(candidates[0], model.signature())
 			return
 		tab = "choices"
 		_render()
@@ -839,10 +840,31 @@ func _choose_ref(ref: String) -> void:
 		_choose_ref_action(ref)
 
 
+func _apply_placement(action: Dictionary, expected: String) -> void:
+	if expected != model.signature() or not model.offered(action):
+		return
+	var partner = ""
+	if not model.selected_partner.is_empty():
+		partner = model.selected_partner if action.arguments.card_id == model.selected_card else model.selected_card
+	var origin_game = game_id
+	var origin_seat = model.active_seat
+	if not await _send_action(action) or partner.is_empty():
+		return
+	var decision = model.summary().get("decision", {})
+	if game_id != origin_game or model.active_seat != origin_seat or decision.get("kind") != "graft_partner" or int(decision.get("owner", -1)) != origin_seat:
+		return
+	for candidate in model.actions():
+		if candidate.action_id == "choose_graft_partner" and candidate.arguments.get("card_id") == partner:
+			await _send_action(candidate)
+			return
+	status.text = model.ui("turn.partner_not_allowed", {"name": model.name_of(partner)})
+
+
 func _choose_ref_action(ref: String) -> void:
 	var candidates = model.ref_actions(ref)
 	if candidates.size() == 1:
-		_choose_action(candidates[0], model.signature())
+		if int(model.held_action().get("index", -1)) != int(candidates[0].index):
+			_choose_action(candidates[0], model.signature())
 	elif candidates.size() > 1:
 		tab = "choices"
 		_render_choices(candidates)
@@ -869,7 +891,8 @@ func _action_button(action: Dictionary, description = "") -> void:
 	content.add_child(row)
 	if not ref.is_empty() and not _image_path(model.entry(ref)).is_empty():
 		_picture(row, _image_path(model.entry(ref)), Vector2(44, 62))
-	var button = _button(row, description if not description.is_empty() else model.describe(action), _choose_action.bind(action, model.signature()))
+	var apply = _apply_placement if action.action_id == "agent_turn" else _choose_action
+	var button = _button(row, description if not description.is_empty() else model.describe(action), apply.bind(action, model.signature()))
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -905,7 +928,7 @@ func _render_choices(filtered: Array = []) -> void:
 	finish_button.text = model.finish_text()
 	selection.text = model.native("카드와 칸을 선택해 에이전트를 보내세요") if not model.placements().is_empty() else model.prompt()
 	if not model.selected_card.is_empty():
-		selection.text = model.name_of(model.selected_card) + "  →  " + (model.name_of(model.selected_space) if not model.selected_space.is_empty() else model.native("칸을 선택하세요"))
+		selection.text = model.name_of(model.selected_card) + (" + " + model.name_of(model.selected_partner) if not model.selected_partner.is_empty() else "") + "  →  " + (model.name_of(model.selected_space) if not model.selected_space.is_empty() else model.native("칸을 선택하세요"))
 	var held = model.held_action()
 	if not held.is_empty():
 		finish_button.disabled = busy
@@ -935,12 +958,32 @@ func _render_choices(filtered: Array = []) -> void:
 			_action_button(action)
 		return
 	if not model.placements().is_empty():
-		if not model.selected_card.is_empty() and not model.selected_space.is_empty():
-			for action in model.placements(model.selected_card, model.selected_space):
+		var full_list = tools_ui.prefs.get("full_action_list", false)
+		var list_toggle = _button(content, model.ui("turn.show_steps") if full_list else model.ui("turn.show_full_list", {"count": model.placements().size()}), func():
+			tools_ui.prefs.full_action_list = not full_list
+			tools_ui.save_preferences()
+			model.clear_pick()
+			_render()
+		)
+		list_toggle.set_meta("action_list_toggle", true)
+		var picked = HFlowContainer.new()
+		content.add_child(picked)
+		for part in ["card", "partner", "space"]:
+			var ref = model.get("selected_" + part)
+			if not str(ref).is_empty():
+				_button(picked, model.name_of(ref) + " ×", func():
+					model.clear_pick(part)
+					_render()
+				).text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		if full_list:
+			for action in model.placements():
+				_action_button(action)
+		elif not model.selected_card.is_empty() and not model.selected_space.is_empty():
+			for action in model.picked_placements():
 				_action_button(action)
 		elif not model.selected_card.is_empty():
 			var spaces: Dictionary = {}
-			for action in model.placements(model.selected_card):
+			for action in model.picked_placements():
 				spaces[action.arguments.space_id] = true
 			for space in spaces:
 				var button = _button(content, model.name_of(space), _choose_ref.bind(space))
@@ -1166,7 +1209,7 @@ func _choose_action(action: Dictionary, expected: String) -> void:
 			model.held.clear()
 		else:
 			model.hold(action)
-		_render_choices()
+		_render()
 		return
 	await _send_action(action)
 
@@ -1320,8 +1363,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if event.shift_pressed:
 				tools_ui.help()
 		KEY_ESCAPE:
-			model.selected_card = ""
-			model.selected_space = ""
+			model.clear_pick()
 			model.held.clear()
 			_render()
 
@@ -1356,14 +1398,12 @@ func _run_smoke() -> void:
 		_smoke_fail("create game")
 		return
 	var first = model.placements()[0]
-	_choose_ref(first.arguments.card_id)
-	_choose_ref(first.arguments.space_id)
-	if model.placements(model.selected_card, model.selected_space).is_empty():
-		_smoke_fail("card and board selection")
-		return
-	if not await _send_action(first):
-		_smoke_fail("place agent")
-		return
+	await _choose_ref(first.arguments.card_id)
+	await _choose_ref(first.arguments.space_id)
+	if int(model.summary().revision) == 0:
+		if not await _send_action(first):
+			_smoke_fail("place agent")
+			return
 	if int(model.summary().revision) <= 0:
 		_smoke_fail("server state did not advance")
 		return
@@ -1501,7 +1541,10 @@ func _run_capture() -> void:
 		return
 	var point = board._box(model.entry(first.arguments.space_id).box).get_center()
 	await _click(board.get_global_transform() * point)
-	if model.selected_space != first.arguments.space_id:
+	while busy or refreshing:
+		await get_tree().process_frame
+	var auto_placed = int(model.summary().revision) > int(revision)
+	if not auto_placed and model.selected_space != first.arguments.space_id:
 		_smoke_fail("native board click")
 		return
 	await _wait_images()
@@ -1521,16 +1564,24 @@ func _run_capture() -> void:
 	_reset_board()
 	await _wait_images()
 	var placement_button: Button
+	# After a unique placement there is no placement chooser. Hover another
+	# real card-bearing choice instead of requiring the old extra click.
 	for button in content.find_children("*", "Button", true, false):
-		if int(button.get_meta("action_index", -1)) == int(first.index):
+		if (not auto_placed and int(button.get_meta("action_index", -1)) == int(first.index)) or (auto_placed and button.has_meta("preview_ref")):
 			placement_button = button
-	if placement_button == null or not await _check_hover(first.arguments.card_id, placement_button):
-		return
-	if preview.get_global_rect().intersects(content.get_parent().get_global_rect()):
-		_smoke_fail("action hover covers the decision column")
-		return
-	await _capture("choice-hover")
+	if placement_button != null:
+		var hover_ref = str(placement_button.get_meta("preview_ref", first.arguments.card_id))
+		if not await _check_hover(hover_ref, placement_button):
+			return
+		if preview.get_global_rect().intersects(content.get_parent().get_global_rect()):
+			_smoke_fail("action hover covers the decision column")
+			return
+		await _capture("choice-hover")
 	_hide_preview()
+	if auto_placed:
+		if not await _mutate("undo", {"steps": 1}):
+			_smoke_fail("native automatic placement undo")
+			return
 	_set_tab("table")
 	await _capture("tableau")
 	var pile = _open_pile(model.native("내 손패 · 살펴보기"), model.view().get("private", {}).get("hand", []))

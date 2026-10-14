@@ -76,7 +76,7 @@ func _draw() -> void:
 			if tile != null:
 				draw_texture_rect(tile, _box(entry.tile_box), false)
 		var enabled = legal.has(id)
-		var active = id == hovered or id == model.selected_space
+		var active = id == hovered or model.picked_ref(id)
 		if enabled or active or board_texture == null:
 			var accent = Color("e5bf7d") if enabled else Color("72899d")
 			draw_rect(rect.grow(2), Color(accent, 0.15 if not active else 0.32))
@@ -88,7 +88,7 @@ func _draw() -> void:
 	for post in model.catalog.get("posts", {}):
 		var point = model.catalog.posts[post]
 		if legal.has(post):
-			draw_circle(_point(point[0], point[1]), side * 0.012, Color("e5bf7d"), false, 2.0, true)
+			draw_circle(_point(point[0], point[1]), side * 0.012, Color.WHITE if model.picked_ref(post) else Color("e5bf7d"), false, 3.0 if model.picked_ref(post) else 2.0, true)
 	for key in agents:
 		var marker = agents[key]
 		var entry = model.entry(marker.space)
