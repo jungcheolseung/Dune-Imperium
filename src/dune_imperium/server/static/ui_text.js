@@ -352,6 +352,10 @@ const UI_TEXT = {
     "ko": "플레이어{{seat}}",
     "en": "Player {{seat}}"
   },
+  "core.server_unreachable": {
+    "ko": "서버에 연결하지 못했습니다",
+    "en": "Could not reach the server"
+  },
   "core.card_cost": {
     "ko": "비용 {{cost}}",
     "en": "Cost {{cost}}"

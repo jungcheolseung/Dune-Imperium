@@ -36,7 +36,7 @@ _HOLE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 # Tables that hold Korean on purpose, by the name of their `const`.
 _KOREAN_TABLES = re.compile(
     r"^(?:[A-Z_]*LABELS|TERMS|UI_TEXT|PROMPT_KO|PROMPT_KO_PATTERNS|SEAT_KINDS"
-    r"|AGENT_ICON_GROUPS)$"
+    r"|AGENT_ICON_GROUPS|SERVER_ERROR_KO|SERVER_ERROR_KO_PATTERNS)$"
 )
 # The toggle names the other language in that language (i18n.js).
 _ALLOWED_LITERALS = {"i18n.js": {"한국어"}}
@@ -796,13 +796,22 @@ class _PageText(HTMLParser):
 def test_no_open_question_number_path_or_command_argument_reaches_a_player() -> None:
     texts: list[tuple[str, str]] = []
     for key, entry in _ui_text().items():
-        texts += [(f"UI_TEXT.{key}.ko", entry["ko"]), (f"UI_TEXT.{key}.en", entry["en"])]
+        texts += [
+            (f"UI_TEXT.{key}.ko", entry["ko"]),
+            (f"UI_TEXT.{key}.en", entry["en"]),
+        ]
     for table, rows in _korean_tables().items():
         texts += [(f"{table}.{key}", text) for key, text in rows.items()]
     for table, rows in _json_const("LABELS_EN", "labels_en.js").items():
         texts += [(f"LABELS_EN.{table}.{key}", text) for key, text in rows.items()]
     korean = _json_const("PROMPT_KO", "prompts_ko.js")
     texts += [(f"PROMPT_KO.{key}", text) for key, text in korean.items()]
+    errors = _json_const("SERVER_ERROR_KO", "errors_ko.js")
+    texts += [(f"SERVER_ERROR_KO.{key}", text) for key, text in errors.items()]
+    texts += [
+        (f"SERVER_ERROR_KO_PATTERNS.{source}", text)
+        for source, text in _json_const("SERVER_ERROR_KO_PATTERNS", "errors_ko.js")
+    ]
     page = _PageText()
     page.feed((_STATIC / "index.html").read_text())
     texts += [("index.html", text) for text in page.found]
@@ -814,3 +823,192 @@ def test_no_open_question_number_path_or_command_argument_reaches_a_player() -> 
         if _DEVELOPER_TALK.search(re.sub(r"\{\{?[A-Za-z0-9_:]+\}?\}", " ", text))
     ]
     assert not leaks, "; ".join(leaks[:10])
+
+
+# The server's error messages (HTTP 400/403/404/409 `detail`), in Korean on
+# the Korean page (errors_ko.js, i18n.js serverErrorText; user decision
+# 2026-10-14: "서버 오류 문구"). The Python below mirrors that function.
+_ERROR_RAISERS = {
+    "SessionError",
+    "SaveError",
+    "UnknownGameError",
+    "UnknownSaveError",
+    "SeatAccessError",
+    "AdminAccessError",
+    "SeatTakenError",
+    "StaleRevisionError",
+}
+_SERVER = _REPO / "src" / "dune_imperium" / "server"
+# What a `{field}` hole of a message names (persistence.py's version check).
+_ERROR_FIELDS = ("ruleset_version", "content_version", "action_codec_version")
+
+
+def _error_samples(
+    node: ast.expr, operations: tuple[str, ...] = ()
+) -> list[str]:
+    """The messages a literal or f-string can make, a hole read as 3.
+
+    ``[]`` for anything else (``str(error)`` passes another message on). The
+    hole named ``field`` is one of the stamps persistence.py compares, and
+    ``operation`` one of the words ``_require_remote`` is called with.
+    """
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if not isinstance(node, ast.JoinedStr):
+        return []
+    samples = [""]
+    for piece in node.values:
+        if isinstance(piece, ast.Constant):
+            samples = [sample + str(piece.value) for sample in samples]
+        elif isinstance(piece, ast.FormattedValue):
+            hole = piece.value
+            values: tuple[str, ...] = ("3",)
+            if isinstance(hole, ast.Name) and hole.id == "field":
+                values = _ERROR_FIELDS
+            elif isinstance(hole, ast.Name) and hole.id == "operation":
+                values = operations
+            samples = [sample + value for sample in samples for value in values]
+    return samples
+
+
+def _server_error_messages() -> set[str]:
+    """Every message the server answers a request with, as far as the source
+    shows it: the errors of sessions.py and persistence.py, a save step's
+    ``_step_error``, the Ruleset and replay checks they pass on."""
+
+    messages: set[str] = set()
+    sessions = ast.parse((_SERVER / "sessions.py").read_text())
+    operations = tuple(
+        node.args[0].value
+        for node in ast.walk(sessions)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_require_remote"
+        and isinstance(node.args[0], ast.Constant)
+    )
+    assert len(operations) == 2, operations
+    for path in (_SERVER / "sessions.py", _SERVER / "persistence.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.id if isinstance(node.func, ast.Name) else ""
+            if name in _ERROR_RAISERS and node.args:
+                messages.update(_error_samples(node.args[0], operations))
+            elif name == "_step_error" and len(node.args) == 2:
+                messages.update(
+                    f"save step 3: {text}" for text in _error_samples(node.args[1])
+                )
+    # The listing's per-save error entry, not a raise.
+    persistence = (_SERVER / "persistence.py").read_text()
+    assert '"unreadable save file"' in persistence
+    messages.add("unreadable save file")
+    # GameReplay's own checks, which a save passes on as a SaveError.
+    replay = _REPO / "src" / "dune_imperium" / "core" / "replay.py"
+    for node in ast.walk(ast.parse(replay.read_text())):
+        if (
+            isinstance(node, ast.Raise)
+            and isinstance(node.exc, ast.Call)
+            and isinstance(node.exc.func, ast.Name)
+            and node.exc.func.id == "ValueError"
+        ):
+            messages.update(_error_samples(node.exc.args[0]))
+    # RulesetConfig's, which a new game and a save pass on.
+    from dune_imperium.config import RulesetConfig
+
+    for options in ({"players": 3}, {"tech_module": True}, {"go_to_11": True}):
+        try:
+            RulesetConfig(**options)
+        except ValueError as error:
+            messages.add(str(error))
+        else:
+            raise AssertionError(f"{options} should be refused")
+    return messages
+
+
+def _fill_groups(korean: str, match: re.Match[str]) -> str:
+    """$N: group N as written; #N: group N plus one (a seat's visible number)."""
+
+    def group(token: re.Match[str]) -> str:
+        text = match[int(token[2])]
+        return str(int(text) + 1) if token[1] == "#" else text
+
+    return re.sub(r"([$#])(\d)", group, korean)
+
+
+def _korean_error(message: str) -> str | None:
+    """serverErrorText() for a Korean page: the sentence, or None if unknown."""
+
+    exact = _json_const("SERVER_ERROR_KO", "errors_ko.js")
+    if message in exact:
+        return str(exact[message])
+    for source, korean in _json_const("SERVER_ERROR_KO_PATTERNS", "errors_ko.js"):
+        match = re.search(source, message)
+        if match:
+            return _fill_groups(str(korean), match)
+    return None
+
+
+def test_every_server_error_message_has_korean() -> None:
+    messages = _server_error_messages()
+    assert len(messages) > 60, "the server's errors were not read"
+    missing = sorted(m for m in messages if _korean_error(m) is None)
+    assert not missing, f"{len(missing)} server errors with no Korean: {missing[:8]}"
+    english = sorted(
+        message
+        for message in messages
+        if not _HANGUL.search(_korean_error(message) or "")
+        or re.search(r"[$#]\d", _korean_error(message) or "")
+    )
+    assert not english, f"server errors not turned into Korean: {english[:8]}"
+
+
+def test_the_server_error_tables_hold_no_dead_or_foreign_entry() -> None:
+    messages = _server_error_messages()
+    exact = _json_const("SERVER_ERROR_KO", "errors_ko.js")
+    dead = sorted(key for key in exact if key not in messages)
+    assert not dead, f"SERVER_ERROR_KO entries no server error makes: {dead[:5]}"
+    patterns = _json_const("SERVER_ERROR_KO_PATTERNS", "errors_ko.js")
+    unused = [
+        source
+        for source, _ in patterns
+        if not any(re.search(source, message) for message in messages)
+    ]
+    assert not unused, f"SERVER_ERROR_KO_PATTERNS no server error matches: {unused}"
+    # Korean, with the numbers of the match and AI -- no other English word.
+    texts = list(exact.values()) + [korean for _, korean in patterns]
+    leaks = []
+    for text in texts:
+        if not _HANGUL.search(text):
+            leaks.append(f"not Korean: {text!r}")
+        found = set(re.findall(r"[A-Za-z]+", re.sub(r"[$#]\d", " ", text)))
+        if found - {"AI"}:
+            leaks.append(f"{sorted(found - {'AI'})} in {text!r}")
+    assert not leaks, "; ".join(leaks[:8])
+
+
+def test_a_seat_in_a_server_error_is_named_by_its_visible_number() -> None:
+    """The engine's seat 0 is 플레이어1 on the page (i18n.js seatNumber)."""
+
+    assert _korean_error("seat 0 is already taken") == (
+        "플레이어1: 이미 다른 사람이 참여했습니다"
+    )
+    assert _korean_error("seat 3 may take back at most 2 step(s) now") == (
+        "플레이어4: 지금은 최대 2단계까지만 되돌릴 수 있습니다"
+    )
+    assert _korean_error("this client does not hold seat 2") == (
+        "플레이어3: 이 접속은 그 자리를 갖고 있지 않습니다"
+    )
+    # A message the tables do not know stays as the server wrote it.
+    assert _korean_error("some new message") is None
+
+
+def test_the_page_reads_the_server_errors_through_the_one_function() -> None:
+    """api() is where an HTTP error's detail becomes the text the page shows,
+    and a network failure (no status) is worded by the page, not the browser."""
+
+    core = (_STATIC / "core.js").read_text()
+    assert "serverErrorText(body.detail)" in core
+    assert "JSON.stringify(body.detail)" not in core
+    assert 't("core.server_unreachable")' in core
+    assert "errors_ko.js" in (_STATIC / "index.html").read_text()
