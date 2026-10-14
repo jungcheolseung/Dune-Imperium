@@ -9,7 +9,8 @@ change anything now among them, user ruling 2026-10-06; Call to Arms in a
 Reveal with nothing left to acquire; a Harvest Cells its Conflict-end
 window does not offer) and effects waiting on their
 condition (a new High Council seat's subcommittee choice, an Agent-box
-icon below its printed threshold and held Contract icons among them), and
+icon below its printed threshold, held Contract icons and a Leader's Reveal
+ability with nothing to act on yet among them), and
 for the branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
 cannot be paid or whose reward would change nothing, an Agent box's arrow
@@ -51,7 +52,7 @@ Display only, under four rules:
   ``skill_choice_block``, ``tech_candidates``,
   ``combat_reward_payment_block``, ``combat_reward_spy_recall_block``,
   ``maker_sandworm_block``, ``desert_riding_block``,
-  ``sietch_tabr_wall_block``,
+  ``sietch_tabr_wall_block``, ``leader_reveal_block``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
@@ -270,6 +271,7 @@ from dune_imperium.rules.intrigue import (
 )
 from dune_imperium.rules.leader_abilities import (
     leader_board_repeat_block,
+    leader_reveal_block,
     signet_influence_withheld,
     signet_optional_block,
     units_deployment_blocked,
@@ -1596,6 +1598,43 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
             card_id=card_id,
             title_card=card_id,
             reveal_choice=f"{card_id}:{effect}",
+        )
+
+
+def _leader_reveal(state: GameState, seat: int, found: _Found) -> None:
+    """A Leader's Reveal-turn ability that has nothing to act on yet.
+
+    Lady Amber's Desert Scouts (retreat a troop) needs a unit in the Conflict
+    and Feyd-Rautha's Devious Strength (recall a Spy for two swords) a Spy on
+    the board; ``legal_leader_reveal_actions`` offers the ability exactly
+    when ``leader_reveal_block`` is None. Otherwise its actions show greyed
+    out under "waiting", with the block: Reveal effects are carried out in
+    any order [Main p. 12], so another effect of the Reveal can still meet
+    it (a deployment into the Conflict, a Spy placed), and the ability is an
+    optional one that lapses unused when the Reveal turn ends, as a card's
+    optional Reveal choice does (``_deferred``). Amber's Commander retreat
+    shows only for a seat that owns a Sardaukar Commander.
+    """
+
+    block = leader_reveal_block(state, seat)
+    if block is None:
+        return
+    english, korean, code = _optional_block_reason(block)
+    tail_en, tail_ko = _REVEAL_LAPSES_UNUSED
+    owner = state.players[seat]
+    if owner.leader_id == "feyd_rautha_harkonnen":
+        action_ids = ("recall_spy_for_leader",)
+    else:
+        action_ids = (
+            "retreat_leader_troop",
+            *(("retreat_leader_commander",) if owner.commanders_total else ()),
+        )
+    for action_id in action_ids:
+        found.row(
+            "waiting",
+            f"leader_reveal:{action_id}",
+            DomainAction(action_id=action_id, actor=seat),
+            (english + tail_en, korean + tail_ko, code),
         )
 
 
@@ -2986,6 +3025,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _shop,
         _reveal_choice,
         _deferred,
+        _leader_reveal,
         _subcommittee_choice,
         _intrigue,
     ),

@@ -33,6 +33,9 @@ the seeded games and a sweep of the Maker spaces
 (``test_the_maker_space_blocks_are_the_old_conditions``).
 ``board_effects.sietch_tabr_wall_block`` (2026-10-14, Sietch Tabr's
 detonation) likewise (``test_the_sietch_tabr_block_is_the_old_condition``).
+``leader_abilities.leader_reveal_block`` (2026-10-14, Lady Amber's and
+Feyd-Rautha's Reveal abilities) likewise, over the seeded games and a sweep
+(``test_the_leader_reveal_block_is_the_old_condition``).
 ``combat.conflict_end_trigger_block`` (2026-10-09, the Conflict-end
 window's Harvest Cells) has no copy here: the window tests of
 ``tests/unit/rules/test_immortality_intrigue.py`` pin what it offers.
@@ -53,6 +56,7 @@ import pytest
 from tests.unit.display.test_unavailable import (
     HARVEST_CELLS,
     _conflict_end_window,
+    _leader_reveal,
     _maker_visit,
     _play_conflict_end,
     _sietch_tabr_visit,
@@ -242,7 +246,9 @@ from dune_imperium.rules.leader_abilities import (
     FACTION_POST_IDS,
     LANDSRAAD_POST_IDS,
     leader_board_repeat_block,
+    leader_reveal_block,
     legal_leader_board_repeat_actions,
+    legal_leader_reveal_actions,
     signet_optional_block,
     units_deployment_blocked,
 )
@@ -1287,6 +1293,46 @@ def _old_sietch_tabr(state: GameState, player: int) -> tuple[DomainAction, ...]:
     return tuple(actions)
 
 
+def _old_leader_reveal(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``leader_abilities.legal_leader_reveal_actions`` before
+    ``leader_reveal_block`` (2026-10-14): each ability's prerequisite was
+    inline in its leader's branch."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if frame is None:
+        return ()
+    if dict(frame.context).get("leader_reveal_ability_used") is True:
+        return ()
+    owner = state.players[player]
+    if owner.leader_id == "lady_amber_metulli" and (
+        owner.troops_conflict >= 1 or owner.commanders_conflict >= 1
+    ):
+        return (
+            *(
+                (DomainAction(action_id="retreat_leader_troop", actor=player),)
+                if owner.troops_conflict >= 1
+                else ()
+            ),
+            *(
+                (DomainAction(action_id="retreat_leader_commander", actor=player),)
+                if owner.commanders_conflict >= 1
+                else ()
+            ),
+        )
+    if owner.leader_id == "feyd_rautha_harkonnen" and owner.spy_post_ids:
+        return tuple(
+            DomainAction(
+                action_id="recall_spy_for_leader",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in owner.spy_post_ids
+        )
+    return ()
+
+
 def _old_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
     """``unit_loss._loss_options`` before it became ``unit_loss_options``
     over ``unit_loss_block`` (2026-10-02)."""
@@ -1701,6 +1747,7 @@ _PAIRS: list[
     (legal_combat_reward_spy_recall_actions, _old_combat_reward_spy_recall),
     (legal_maker_space_actions, _old_maker_space),
     (legal_sietch_tabr_actions, _old_sietch_tabr),
+    (legal_leader_reveal_actions, _old_leader_reveal),
 ]
 _OPTIONS = tuple(
     option
@@ -2583,3 +2630,69 @@ def test_the_sietch_tabr_block_is_the_old_condition() -> None:
         assert legal_sietch_tabr_actions(taken, 0) == ()
         compared += 1
     assert compared == 2
+
+
+# --- The Leader Reveal abilities before their block (2026-10-14) -------------
+
+
+def test_the_leader_reveal_block_is_the_old_condition() -> None:
+    """For Lady Amber, Feyd-Rautha and a Leader without a Reveal-turn
+    ability, with 0-1 troops and Commanders in the Conflict and 0-2 Spies on
+    the board, before and after the ability is used, the provider offers
+    what its old copy did and the ability exactly where
+    ``leader_reveal_block`` is None; and nothing is offered, or blocked, for
+    a seat that is not revealing."""
+
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS)
+    bloodlines = RulesetConfig(bloodlines=True)
+    cases = list(
+        itertools.product(
+            ("lady_amber_metulli", "feyd_rautha_harkonnen", "paul_atreides"),
+            (0, 1),
+            (0, 1),
+            (0, 1, 2),
+            (False, True),
+        )
+    )
+    kinds: set[OptionalBlockKind | None] = set()
+    for leader, troops, commanders, spies, used in cases:
+        state = _leader_reveal(
+            leader,
+            config=bloodlines,
+            troops_garrison=3 - troops,
+            troops_conflict=troops,
+            commanders_garrison=1 - commanders,
+            commanders_conflict=commanders,
+            spies_supply=3 - spies,
+            spy_post_ids=posts[:spies],
+        )
+        if used:
+            frame = state.decision_stack[-1]
+            context = {**dict(frame.context), "leader_reveal_ability_used": True}
+            frame = replace(frame, context=tuple(sorted(context.items())))
+            state = replace(state, decision_stack=(*state.decision_stack[:-1], frame))
+        legal = legal_leader_reveal_actions(state, 0)
+        assert legal == _old_leader_reveal(state, 0)
+        block = leader_reveal_block(state, 0)
+        if used or leader == "paul_atreides":
+            assert block is None and legal == ()
+        elif leader == "lady_amber_metulli":
+            assert (block is None) == (troops + commanders >= 1) == bool(legal)
+        else:
+            assert (block is None) == (spies >= 1) == bool(legal)
+        if block is not None:
+            assert block.kind in (
+                OptionalBlockKind.NO_UNIT_IN_CONFLICT,
+                OptionalBlockKind.SPIES_ON_BOARD,
+            )
+        kinds.add(block.kind if block else None)
+        # Only the revealing seat has a Reveal-turn ability.
+        for seat in range(1, 4):
+            assert legal_leader_reveal_actions(state, seat) == ()
+            assert leader_reveal_block(state, seat) is None
+    assert len(cases) == 3 * 2 * 2 * 3 * 2
+    assert kinds == {
+        None,
+        OptionalBlockKind.NO_UNIT_IN_CONFLICT,
+        OptionalBlockKind.SPIES_ON_BOARD,
+    }

@@ -3845,3 +3845,173 @@ def test_the_detonation_row_reads_nothing_hidden() -> None:
         other = determinize(state, seat, rng)
         other_legal = ENGINE.legal_actions(other, seat)
         assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Leader's Reveal ability with nothing to act on (plan 4, row 17) -------
+#
+# Lady Amber's Desert Scouts ("Reveal Turn: You may retreat one of your
+# troops") needs a unit in the Conflict, Feyd-Rautha's Devious Strength
+# ("Reveal Turn: recall one of your Spies for two swords") a Spy on the
+# board. ``legal_leader_reveal_actions`` offers them exactly when
+# ``leader_reveal_block`` is None; otherwise their actions sit under
+# "waiting" with the block and the Reveal tail of a card's optional choice.
+
+_AMBER = "lady_amber_metulli"
+_FEYD = "feyd_rautha_harkonnen"
+_REVEAL_TAIL = (
+    "; it lapses unused when the Reveal turn ends",
+    " — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+)
+_NO_UNIT_TO_RETREAT = (
+    "No unit of yours in the Conflict to retreat",
+    "{conflict}에 후퇴할 내 유닛 없음",
+    "no_unit",
+)
+_NO_SPY = (
+    "Needs 1 Spy of yours on the board (you have 0)",
+    "보드에 내 {spy:1} 필요 (보유 0)",
+    "cost",
+)
+
+
+_BLOODLINES = RulesetConfig(bloodlines=True)
+
+
+def _leader_reveal(
+    leader_id: str, *, config: RulesetConfig = BASE, **owner_fields: Any
+) -> GameState:
+    """Seat 0 of ``leader_id`` opens its Reveal turn."""
+
+    owner = PlayerState(
+        player_id=0, leader_id=leader_id, hand=(DAGGER,), **owner_fields
+    )
+    revealed = ENGINE.apply(
+        _state(owner, config=config), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    return revealed
+
+
+def _ability_ids(state: GameState) -> list[str]:
+    return [
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id
+        in ("retreat_leader_troop", "retreat_leader_commander", "recall_spy_for_leader")
+    ]
+
+
+def _ability_rows(state: GameState) -> dict[str, dict[str, Any]]:
+    raw = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    if raw is None:
+        return {}
+    found = cast(dict[str, Any], raw)
+    assert found["frame"] == FrameKind.REVEAL and found["refs"] == {}
+    rows = {row["key"]: row for row in found["rows"]}
+    assert all(row["surface"] == "waiting" for row in rows.values())
+    # The ability names no card and sits under no revealed card's header.
+    assert not any("reveal_choice" in row or "card_id" in row for row in rows.values())
+    return rows
+
+
+def _reveal_lapsing(reason: tuple[str, str, str]) -> tuple[str, str, str]:
+    return reason[0] + _REVEAL_TAIL[0], reason[1] + _REVEAL_TAIL[1], reason[2]
+
+
+def test_lady_amber_with_no_unit_in_the_conflict_waits_greyed_out() -> None:
+    state = _leader_reveal(_AMBER, troops_garrison=3, troops_conflict=0)
+    assert _ability_ids(state) == []
+    rows = _ability_rows(state)
+    assert list(rows) == ["waiting:leader_reveal:retreat_leader_troop"]
+    row = rows["waiting:leader_reveal:retreat_leader_troop"]
+    assert row["action"]["action_id"] == "retreat_leader_troop"
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _reveal_lapsing(_NO_UNIT_TO_RETREAT)
+
+
+def test_lady_amber_with_a_unit_in_the_conflict_is_offered_the_retreat() -> None:
+    state = _leader_reveal(_AMBER, troops_garrison=2, troops_conflict=1)
+    assert _ability_ids(state) == ["retreat_leader_troop"]
+    assert _ability_rows(state) == {}
+    # A Sardaukar Commander counts as a troop for the retreat [Bloodlines p. 4].
+    commander = _leader_reveal(_AMBER, config=_BLOODLINES, commanders_conflict=1)
+    assert _ability_ids(commander) == ["retreat_leader_commander"]
+    assert _ability_rows(commander) == {}
+
+
+def test_a_commander_owner_sees_the_commander_retreat_greyed_out_too() -> None:
+    """Only a seat that owns a Sardaukar Commander is shown its retreat."""
+
+    state = _leader_reveal(
+        _AMBER, config=_BLOODLINES, commanders_garrison=1, troops_garrison=3
+    )
+    assert _ability_ids(state) == []
+    rows = _ability_rows(state)
+    assert list(rows) == [
+        "waiting:leader_reveal:retreat_leader_troop",
+        "waiting:leader_reveal:retreat_leader_commander",
+    ]
+    for row in rows.values():
+        assert _why(row) == _reveal_lapsing(_NO_UNIT_TO_RETREAT)
+
+
+def test_feyd_rautha_without_a_spy_on_the_board_waits_greyed_out() -> None:
+    state = _leader_reveal(_FEYD)
+    assert _ability_ids(state) == []
+    rows = _ability_rows(state)
+    assert list(rows) == ["waiting:leader_reveal:recall_spy_for_leader"]
+    row = rows["waiting:leader_reveal:recall_spy_for_leader"]
+    assert row["action"]["action_id"] == "recall_spy_for_leader"
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _reveal_lapsing(_NO_SPY)
+    # With a Spy on the board the ability is legal, one recall per post.
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:2])
+    spied = _leader_reveal(_FEYD, spies_supply=1, spy_post_ids=posts)
+    assert _ability_ids(spied) == ["recall_spy_for_leader"] * 2
+    assert _ability_rows(spied) == {}
+
+
+def test_the_ability_row_goes_once_it_is_used_and_for_other_leaders() -> None:
+    """The ability is used at most once per Reveal turn: once used there is
+    nothing left to grey out. A Leader without a Reveal-turn ability, or a
+    seat that is not revealing, shows no row."""
+
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:1])
+    spied = _leader_reveal(_FEYD, spies_supply=2, spy_post_ids=posts)
+    used = ENGINE.apply(
+        spied,
+        DomainAction(
+            action_id="recall_spy_for_leader",
+            actor=0,
+            arguments=(("post_id", posts[0]),),
+        ),
+    ).state
+    assert _ability_ids(used) == []
+    assert _ability_rows(used) == {}
+    assert _ability_rows(_leader_reveal("paul_atreides")) == {}
+    turn = _state(PlayerState(player_id=0, leader_id=_AMBER))
+    assert _ability_rows(turn) == {}
+
+
+def test_the_leader_reveal_rows_read_nothing_hidden() -> None:
+    states = (
+        _leader_reveal(_AMBER, troops_garrison=3),
+        _leader_reveal(_FEYD),
+        _leader_reveal(
+            _AMBER, config=_BLOODLINES, commanders_garrison=1, troops_garrison=3
+        ),
+    )
+    rng = random.Random(17)
+    for state in states:
+        legal = ENGINE.legal_actions(state, 0)
+        found = unavailable_choices(state, 0, legal)
+        assert found is not None and found["rows"]
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            other_legal = ENGINE.legal_actions(other, seat)
+            assert unavailable_choices(other, seat, other_legal) is None
