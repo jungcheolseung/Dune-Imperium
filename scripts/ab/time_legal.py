@@ -3,8 +3,9 @@
 ``scripts/ab/engine_equivalence.py record`` keeps every step of 200 seeded
 games. This replays the recorded steps of ``games`` of them (spread over the
 plan) on the importable engine and sums the wall time of ``legal_actions``
-at every player decision, ``repeats`` times each: overall, and where an
-Intrigue choice or lines frame is on top. Run it on the stage's start
+at every player decision, ``repeats`` times each: overall, where an
+Intrigue choice or lines frame is on top (stage A1), and where the
+Agent-turn effect frame is (stage A2). Run it on the stage's start
 master and on its branch in turn, a few times each, and compare the per-call
 times (docs/composed-effects-plan.md 6, item 6)::
 
@@ -27,14 +28,16 @@ from dune_imperium.rules import UprisingRulesEngine
 
 # Frames the stage A1 moved onto the executor; a later stage adds its own.
 INTRIGUE = {"intrigue_choice", "intrigue_effects"}
+# The Agent-turn effect frame, whose boxes stage A2 began to move.
+AGENT = {"agent_effects"}
 
 
 def main() -> None:
     trace_dir, games, repeats = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
     files = sorted(trace_dir.glob("*.pkl"))[:: max(1, 200 // games)][:games]
     engine = UprisingRulesEngine()
-    total = intrigue = 0.0
-    calls = intrigue_calls = 0
+    total = intrigue = agent = 0.0
+    calls = intrigue_calls = agent_calls = 0
     for path in files:
         data = pickle.loads(path.read_bytes())
         _name, options, seed, _kinds = data["spec"]
@@ -57,13 +60,18 @@ def main() -> None:
             if top in INTRIGUE:
                 intrigue += spent
                 intrigue_calls += repeats
+            if top in AGENT:
+                agent += spent
+                agent_calls += repeats
             action = DomainAction(action_id=step[1], actor=step[2], arguments=step[3])
             state = engine.apply(state, action, legal_actions=legal).state
     print(
         f"games={len(files)} calls={calls} total_s={total:.3f} "
         f"per_call_us={total / calls * 1e6:.1f} intrigue_calls={intrigue_calls} "
         f"intrigue_s={intrigue:.4f} "
-        f"intrigue_per_call_us={intrigue / max(1, intrigue_calls) * 1e6:.1f}"
+        f"intrigue_per_call_us={intrigue / max(1, intrigue_calls) * 1e6:.1f} "
+        f"agent_calls={agent_calls} "
+        f"agent_per_call_us={agent / max(1, agent_calls) * 1e6:.1f}"
     )
 
 

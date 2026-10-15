@@ -285,15 +285,6 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return bool(owner.alliance_faction_ids)
         case HasAlliance(faction=faction) if faction is not None:
             return faction.value in owner.alliance_faction_ids
-        case SpyRecalledThisTurn():
-            # Every recall counts: Infiltrate, Gather Intelligence, a card's
-            # icon or cost, the recall before a placement [Main pp. 11, 20].
-            return owner.spies_recalled_turn > 0
-        case UnitsInConflictAtLeast(count=count):
-            # Troops, sandworms, Commanders and an Agent in the Conflict.
-            return owner.units_in_conflict >= count
-        case ContractCompletedThisTurn():
-            return owner.contracts_completed_turn >= 1
         case InNavigationSlot(slot=slot):
             return owner.navigation_active_slot == slot
         case TriggeredByFaction(faction=faction):
@@ -338,9 +329,17 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
                 )
                 for faction in Faction
             )
-        case AtMakerSpace() | FactionBond() | Grafted():
-            # They read the Agent turn and its card: judged by
-            # ``agent_box_abilities.box_condition_holds``.
+        case (
+            AtMakerSpace()
+            | FactionBond()
+            | Grafted()
+            | SpyRecalledThisTurn()
+            | UnitsInConflictAtLeast()
+            | ContractCompletedThisTurn()
+        ):
+            # Printed only in Agent boxes so far: judged by
+            # ``agent_box_abilities.box_condition_holds`` (one place, so the
+            # two readings cannot drift apart).
             raise TypeError(f"{condition!r} is judged with its Agent box")
     raise TypeError(f"unsupported condition: {condition!r}")
 

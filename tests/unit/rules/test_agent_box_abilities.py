@@ -12,6 +12,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
@@ -110,6 +111,20 @@ def test_placement_requirements_are_fixed_by_the_placement() -> None:
     assert not opens_at_placement(elders, owner, city, elders_id)
     bonded = replace(owner, in_play=("imperium:weirding_woman:0",))
     assert opens_at_placement(elders, bonded, city, elders_id)
+
+
+def test_every_icon_condition_has_a_block() -> None:
+    """An icon's condition must say why it waits (``condition_block``): the
+    legal list and the page ask for it, and a condition with no block would
+    raise there (the dry run does not catch a TypeError). The genetic-marker
+    icons only exist with Immortality, where the research token is placed."""
+
+    owner = PlayerState(player_id=0, research_space=RESEARCH_START_ID)
+    context = {"card_id": "imperium:x:0", "graft_card_id": ""}
+    for ability in AGENT_BOX_ABILITIES.values():
+        for line in ability.sections if ability.icons else ():
+            if line.condition is not None:
+                condition_block(line.condition, owner, context)
 
 
 def test_condition_blocks_say_what_the_owner_has() -> None:
@@ -223,6 +238,20 @@ def test_one_action_box_puts_its_event_first_and_draws_by_card_name() -> None:
     assert resolved.events[0].event_id == agent_card_source(1, 0, card)
     assert resolved.events[0].kind == "agent_card_effect_resolved"
     assert resolved.state.players[0].hand == ("starting:0:dagger:0",)
+    # An empty deck shows the draw's source: the reshuffle is named after the
+    # card, whichever copy drew.
+    shuffling = _played(
+        card,
+        PlayerState(
+            player_id=0,
+            influence=Influence(bene_gesserit=2),
+            discard_pile=("starting:0:dagger:0",),
+        ),
+    )
+    reshuffle = resolve_agent_card_effect(shuffling).state.decision_stack[-1]
+    assert reshuffle.frame_id == (
+        "round:1:player:0:agent_card:prepare_the_way:discard_shuffle:personal_draw"
+    )
 
 
 def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> None:

@@ -737,11 +737,9 @@ def eligible_agent_contract_ids(
     # only from the placement left it out. ``spice_at_turn_start`` is
     # snapshotted when the owner's turn opens and every spend adds to
     # ``spice_spent_turn``, so spending later in the turn cannot undo a met
-    # threshold (the reading of ``agent_effects.spice_gained_this_turn``).
+    # threshold (``spice_gained_this_turn``).
     # Which Contracts may complete is still the placement snapshot below.
-    spice_gained = (
-        owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
-    )
+    spice_gained = spice_gained_this_turn(owner)
 
     eligible: list[str] = []
     for instance_id in pending_agent_contract_ids(context):
@@ -867,3 +865,14 @@ def next_unrevealed_player(state: GameState, owner: int) -> int:
         if not state.players[candidate].has_revealed:
             return candidate
     raise RuntimeError("no unrevealed player remains during Player Turns")
+
+
+def spice_gained_this_turn(owner: PlayerState) -> int:
+    """Return the spice the seat gained since its turn opened, before spending.
+
+    ``spice_at_turn_start`` is snapshotted when the turn frame opens and
+    every spend adds to ``spice_spent_turn``, so gains from any source count
+    (the same reading the Intrigue DSL uses for "gained N spice this turn").
+    """
+
+    return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn

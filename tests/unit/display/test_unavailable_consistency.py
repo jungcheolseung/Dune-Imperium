@@ -155,7 +155,6 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_trash_actions,
-    spice_gained_this_turn,
 )
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
@@ -223,6 +222,7 @@ from dune_imperium.rules.effects import (
     pending_agent_icons,
     pending_board_icons,
     recallable_conflict_agents,
+    spice_gained_this_turn,
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (

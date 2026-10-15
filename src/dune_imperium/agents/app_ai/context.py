@@ -41,7 +41,7 @@ from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import revealer_persuasion
-from dune_imperium.rules.agent_effects import spice_gained_this_turn
+from dune_imperium.rules.effects import spice_gained_this_turn
 from dune_imperium.rules.sardaukar import commander_cost, eligible_face_up_skill_ids
 from dune_imperium.rules.scouts_effects import (
     joinable_subcommittees as _joinable_subcommittees,

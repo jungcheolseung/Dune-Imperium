@@ -527,7 +527,8 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     # Cost (Fremen Alliance, card in play) holds; its water is the generic
     # ``AgentWater`` box (``_GENERIC_ICON_BOXES``).
     ("stillsuit_manufacturer", "return_self"): "StillsuitManufacturerAgentAbility",
-    # Immortality multi-icon boxes (``_PLACEMENT_ICONS`` of our engine).
+    # Immortality multi-icon boxes (their records' ``icons`` in our engine,
+    # ``content.uprising.agent_abilities``).
     ("sardaukar_quartermaster", "troops"): "SardaukarQuartermasterTroopAbility",
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",
     ("tleilaxu_infiltrator", "cards"): "DrawAbility",

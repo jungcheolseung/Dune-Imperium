@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
+from dune_imperium.content.uprising.effect_dsl import FactionBond
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     personal_card_for_instance,
@@ -35,10 +36,12 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_box_abilities import (
+    NOT_PRINTED_BLOCK,
     AgentIconBlock,
     AgentIconCondition,
     box_ability,
     box_icon_block,
+    condition_block,
     resolve_box,
     resolve_box_icon,
 )
@@ -80,6 +83,7 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
     short_of,
+    spice_gained_this_turn,
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
@@ -3758,21 +3762,7 @@ def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-_NOT_PRINTED: Final = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
-def _bond_block(
-    owner: PlayerState, context: Mapping[str, ActionValue], faction: Faction
-) -> AgentIconBlock | None:
-    """Another ``faction`` card in play, other than the box's own card.
-
-    A Row card borrowed with Usurp is not in play (OQ-054,
-    ``counted_in_play``) and so never provides the Bond.
-    """
-
-    card_id = context.get("card_id")
-    source_id = card_id if isinstance(card_id, str) else ""
-    if has_faction_bond(counted_in_play(owner), source_id, faction):
-        return None
-    return AgentIconBlock(AgentIconCondition.BOND, faction=faction)
+_NOT_PRINTED: Final = NOT_PRINTED_BLOCK
 
 
 def agent_icon_block(
@@ -3814,7 +3804,7 @@ def agent_icon_block(
         # Judged per icon when it resolves (OQ-028): the trash icon may take
         # the very card that gave the Bond, and the draw then waits for a
         # Bond that cannot come back this turn.
-        return _bond_block(owner, context, Faction.BENE_GESSERIT)
+        return condition_block(FactionBond(Faction.BENE_GESSERIT), owner, context)
     if key in (AGENT_ICON_CARDS_SECOND, AGENT_ICON_RETURN_SELF, AGENT_ICON_WATER):
         return _NOT_PRINTED
     if key == AGENT_ICON_RESEARCH:
@@ -3854,10 +3844,13 @@ def resolve_agent_card_icon(
 ) -> RuleResult:
     """Resolve one printed icon of the played card's Agent box.
 
-    Conditions printed on the box (Hidden Missive's, Maker Keeper's and
-    Wheels Within Wheels' Influence thresholds) are judged when the icon
-    resolves in the owner's order [Main pp. 7, 9]; an icon is offered only
-    while its condition holds (``agent_icon_condition_holds``). Urgent
+    A box written as an ability record resolves its icons in
+    ``agent_box_abilities.resolve_box_icon``; this resolves the others'
+    (Steersman's draw, Dangerous Rhetoric's "Trash this card.", Tread in
+    Darkness's draw, Fill Coffers' gains, and an arrow box's armed rewards).
+    An icon is offered only while its condition holds
+    (``agent_icon_condition_holds``), judged when it resolves in the owner's
+    order [Main pp. 7, 9]. Urgent
     Shigawire's added draw is bound to its card, not to a box's machinery:
     the engine routes it as no box's row (``agent_effect_frame.
     route_box_action``) and resolves it here; a row routed to box 1 is box
@@ -5164,17 +5157,6 @@ def resolve_faction_influence(state: GameState) -> RuleResult:
         gained.state.players,
     )
     return RuleResult(state=next_state, events=gained.events)
-
-
-def spice_gained_this_turn(owner: PlayerState) -> int:
-    """Return the spice the seat gained since its turn opened, before spending.
-
-    ``spice_at_turn_start`` is snapshotted when the turn frame opens and
-    every spend adds to ``spice_spent_turn``, so gains from any source count
-    (the same reading the Intrigue DSL uses for "gained N spice this turn").
-    """
-
-    return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
 
 
 def spy_recalled_this_turn(owner: PlayerState) -> bool:

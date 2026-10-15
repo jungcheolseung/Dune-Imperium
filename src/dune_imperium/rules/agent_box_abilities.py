@@ -30,9 +30,10 @@ The events follow two conventions, one per way a box resolves:
 when the box resolves (OQ-028); while it fails the single row is withheld
 (``agent_effects.agent_card_effect_is_unavailable`` reads the resolution's
 ``agent_card_effect_unavailable``) or the icon is not offered
-(``box_icon_block``, which the page also reads), and the turn's end fizzles
-it (OQ-057 (1)). A record's ``requirement`` is judged when the card is
-played (``opens_at_placement``).
+(``box_icon_block``, which ``agent_effects.agent_icon_block`` -- read by the
+page too -- answers with), and the turn's end fizzles it (OQ-057 (1)). A
+record's ``requirement`` is judged when the card is played
+(``opens_at_placement``).
 """
 
 from collections.abc import Mapping
@@ -92,6 +93,7 @@ from dune_imperium.rules.effects import (
     is_grafted,
     recruit_shortfall_events,
     recruit_troops,
+    spice_gained_this_turn,
 )
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
@@ -179,10 +181,6 @@ def opens_at_placement(
     return _requirement_holds(ability.requirement, owner, space, card_id)
 
 
-def _spice_gained_this_turn(owner: PlayerState) -> int:
-    return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
-
-
 def condition_block(
     condition: Condition, owner: PlayerState, context: Mapping[str, ActionValue]
 ) -> AgentIconBlock | None:
@@ -197,7 +195,7 @@ def condition_block(
                 AgentIconCondition.INFLUENCE, amount, held, faction=faction
             )
         case GainedSpiceThisTurn(amount=amount):
-            gained = _spice_gained_this_turn(owner)
+            gained = spice_gained_this_turn(owner)
             if gained >= amount:
                 return None
             return AgentIconBlock(AgentIconCondition.SPICE_GAINED, amount, gained)
@@ -235,10 +233,15 @@ def condition_block(
     raise TypeError(f"{condition!r} has no icon block")
 
 
-def condition_holds(
+def box_condition_holds(
     condition: Condition, owner: PlayerState, context: Mapping[str, ActionValue]
 ) -> bool:
-    """Whether a box's printed condition holds now (judged when it resolves)."""
+    """Whether a box's printed condition holds now (judged when it resolves).
+
+    The conditions with no icon block (none sits on an icon line; the
+    record table test keeps it so) are judged here, the rest through
+    ``condition_block``.
+    """
 
     match condition:
         case SpyRecalledThisTurn():
@@ -252,7 +255,9 @@ def condition_holds(
         case SandwormsInConflictAtLeast(count=count):
             return owner.sandworms_conflict >= count
         case AllConditions(conditions=conditions):
-            return all(condition_holds(item, owner, context) for item in conditions)
+            return all(
+                box_condition_holds(item, owner, context) for item in conditions
+            )
     return condition_block(condition, owner, context) is None
 
 
@@ -280,7 +285,9 @@ def _line_holds(
     if any(isinstance(reward, ReturnThisCardToHand) for reward in line.rewards):
         if context.get("card_id") not in counted_in_play(owner):
             return False
-    return line.condition is None or condition_holds(line.condition, owner, context)
+    return line.condition is None or box_condition_holds(
+        line.condition, owner, context
+    )
 
 
 def box_icon_block(

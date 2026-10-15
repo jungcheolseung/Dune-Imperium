@@ -47,10 +47,10 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
 )
-from dune_imperium.rules.agent_effects import spice_gained_this_turn
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effect_interpreter import OptionBlock, option_unplayable_reason
+from dune_imperium.rules.effects import spice_gained_this_turn
 from dune_imperium.rules.frames import FrameKind, end_turn_start
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
