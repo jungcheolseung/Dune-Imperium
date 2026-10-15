@@ -25,10 +25,14 @@ func setup(owner_table: Control, target: String, entry: Dictionary, small = fals
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 12)
 	add_child(body)
-	heading = table._label(body, table.model.name_of(ref), 20)
+	# Configure wrapping before adding real text to a visible dialog; an
+	# unwrapped ability can otherwise expand Window's minimum width first.
+	heading = table._label(body, "", 20)
 	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	words = table._label(body, table._entry_words(entry, ref), 16)
+	heading.text = table.model.name_of(ref)
+	words = table._label(body, "", 16)
 	words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.text = table._entry_words(entry, ref)
 	resized.connect(_fit)
 	table.api.texture_ready.connect(_texture_ready)
 	_fit.call_deferred()
@@ -45,12 +49,12 @@ func _fit() -> void:
 		return
 	picture.visible = not str(picture.get_meta("image_path", "")).is_empty()
 	var available = size.x if size.x > 0 else 680.0
-	vertical = available < 520
+	vertical = not compact and available < 520
 	var ratio = 0.7
 	if picture.texture != null:
 		ratio = float(picture.texture.get_width()) / picture.texture.get_height()
 	var maximum_height = 150.0 if compact else 350.0
-	var width = minf(available * 0.38, 170 if compact else 300 if ratio > 1.1 else 245)
+	var width = minf(available * (0.28 if compact else 0.38), 130 if compact else 300 if ratio > 1.1 else 245)
 	if vertical:
 		width = minf(available, maximum_height * ratio)
 	# Container allocation uses whole logical pixels. Keep the requested

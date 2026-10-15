@@ -96,6 +96,7 @@ func reset() -> void:
 func fold_header(parent: Node, title: String, key: String, inspect: Callable) -> bool:
 	var folded = table.tools_ui.prefs.get("folded_groups", {}).get(key, false)
 	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
 	parent.add_child(row)
 	var toggle = table._button(row, "▶" if folded else "▼", func():
 		var groups = table.tools_ui.prefs.get("folded_groups", {})
@@ -104,10 +105,13 @@ func fold_header(parent: Node, title: String, key: String, inspect: Callable) ->
 		table.tools_ui.save_preferences()
 		table._render()
 	)
-	toggle.custom_minimum_size = Vector2(25, 26)
+	toggle.custom_minimum_size = Vector2(25, 32)
+	table._compact_button(toggle)
 	var heading = table._button(row, title, inspect)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	heading.custom_minimum_size.y = 26
+	heading.custom_minimum_size.y = 32
+	heading.clip_text = true
+	table._compact_button(heading)
 	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	heading.add_theme_font_size_override("font_size", 12)
+	heading.add_theme_font_size_override("font_size", 13)
 	return folded
