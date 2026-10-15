@@ -48,6 +48,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
+    CompleteContract,
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
@@ -62,6 +63,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    ForceEnemyRetreat,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -242,6 +244,12 @@ def _place_spy_text_ko(spy: PlaceSpy) -> str:
     table, above).
     """
 
+    if spy.visited_space:
+        # Quotes ``tokens_ko.py``'s Double Agent line.
+        text = "이번 차례에 {agent}를 보낸 장소와 연결된 관측소에 {spy} 배치"
+        if spy.shared_post:
+            text += " (다른 플레이어의 {spy}와 공유 가능)"
+        return text
     if spy.shared_post:
         return "{spy} 배치 (다른 플레이어의 {spy}와 관측소 공유 가능)"
     if spy.factions is not None:
@@ -744,6 +752,12 @@ def reward_text_ko(reward: Reward) -> str:
                 f"{{intrigue}} 맨 위 {count}장 확인 후 1장 보관, 나머지는 맨"
                 " 위로 되돌림"
             )
+        case ForceEnemyRetreat():
+            # Quotes ``tokens_ko.py``'s Disruption Tactics line.
+            return "다른 플레이어의 {troop} 강제 {retreat}"
+        case CompleteContract():
+            # Quotes ``tokens_ko.py``'s CHOAM Demands line.
+            return "당신의 계약 하나 완수"
         case _:
             assert_never(reward)
 

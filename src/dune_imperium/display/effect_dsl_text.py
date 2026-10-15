@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
+    CompleteContract,
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
@@ -35,6 +36,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    ForceEnemyRetreat,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -164,6 +166,15 @@ def _gain_influence_text(gain: GainInfluence) -> str:
 
 
 def _place_spy_text(spy: PlaceSpy) -> str:
+    if spy.visited_space:
+        # Double Agent's card text (``tokens.py``).
+        text = (
+            "Place a Spy on a post connected to the space you sent an Agent to "
+            "this turn"
+        )
+        if spy.shared_post:
+            text += " (may share a post with another player's Spy)"
+        return text
     if spy.shared_post:
         return "Place a Spy (may share another player's Spy's post)"
     if spy.factions is not None:
@@ -463,6 +474,10 @@ def reward_text(reward: Reward) -> str:
                 f"Look at the top {count} Intrigue cards, keep 1 and put the"
                 f" {'other' if count == 2 else 'others'} back on top"
             )
+        case ForceEnemyRetreat():
+            return "Force an enemy troop to retreat"
+        case CompleteContract():
+            return "Complete one of your contracts"
         case _:
             assert_never(reward)
 

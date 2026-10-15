@@ -41,16 +41,18 @@ from collections.abc import Mapping
 from copy import replace
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
-from dune_imperium.content.uprising.board import BoardSpace, Faction
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, BoardSpace, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AllConditions,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
+    CompleteContract,
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
@@ -59,6 +61,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FactionBond,
+    ForceEnemyRetreat,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -70,6 +73,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
     PayResources,
+    PlaceSpy,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
@@ -86,6 +90,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
@@ -116,6 +121,11 @@ from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    observation_post_ids_for_factions,
+    solo_occupied_post_ids,
+)
 
 _RESOLVED = "agent_card_effect_resolved"
 _UNAVAILABLE = "agent_card_effect_unavailable"
@@ -444,6 +454,16 @@ def resolve_box(state: GameState) -> RuleResult:
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
     available = _line_holds(line, owner, context)
+    if (piece := target_piece(ability)) is not None:
+        # A target choice resolves through its rows; reached with one to make
+        # is a caller's error, and with none the box waits and fizzles
+        # (OQ-057 (1)) -- a Spy box dropping its recall-first marks.
+        if target_rows(state, player, ability):
+            raise target_choice_error(ability)
+        if isinstance(piece, PlaceSpy):
+            context.pop("agent_card_spy_pending", None)
+            context.pop("agent_card_spy_recalled", None)
+        available = False
 
     next_owner: PlayerState = owner
     shortfall: tuple[GameEvent, ...] = ()
@@ -782,3 +802,232 @@ def apply_payment(
             next_state = step.state
             events.extend(step.events)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+# --- A choice of target (stage A3c) --------------------------------------------
+#
+# A mandatory box whose line is one target choice -- a chosen Faction's
+# Influence, a Spy's post, an enemy unit to retreat, a Contract to complete:
+# its rows are offered while its condition holds; with none to choose it
+# offers no confirmation and waits, and the turn's end fizzles it with the
+# box's unavailable event (OQ-057 (1), OQ-060). The rows keep the Agent-box
+# rules, which differ from the A1 executor's for a Spy (the recall-first and
+# its pass-up below). The chosen Influence is answered here (its events are
+# the gain's alone); a Spy, a retreat and a Contract keep their handlers in
+# ``agent_effects``, named after their own actions.
+
+type TargetPiece = GainInfluence | PlaceSpy | ForceEnemyRetreat | CompleteContract
+
+_TARGET_CHOICE_ERRORS: Final[Mapping[type, tuple[type[Exception], str]]] = {
+    GainInfluence: (
+        RuntimeError,
+        "Agent-card Influence effect requires a player choice",
+    ),
+    PlaceSpy: (RuntimeError, "place-Spy Agent effect requires a player choice"),
+    ForceEnemyRetreat: (RuntimeError, "enemy retreat requires a player choice"),
+    CompleteContract: (
+        ValueError,
+        "CHOAM Demands resolves through complete_contract_by_card",
+    ),
+}
+
+
+def target_piece(ability: Ability | None) -> TargetPiece | None:
+    """The one target ``ability``'s mandatory line chooses, if it is one."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.MANDATORY
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+        or ability.sections[0].costs
+        or len(ability.sections[0].rewards) != 1
+    ):
+        return None
+    (piece,) = ability.sections[0].rewards
+    match piece:
+        case GainInfluence(requires_choice=True, times=1):
+            return piece
+        case PlaceSpy(agent_icons=None):
+            return piece
+        case ForceEnemyRetreat() | CompleteContract():
+            return piece
+    return None
+
+
+def target_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The box's choices now: none while its condition fails."""
+
+    piece = target_piece(ability)
+    if piece is None:
+        raise ValueError("the Agent box chooses no recorded target")
+    _, context = current_agent_effect_context(state)
+    (line,) = ability.sections
+    if not _line_holds(line, state.players[player], context):
+        return ()
+    match piece:
+        case GainInfluence():
+            return piece_rows(
+                state,
+                player,
+                piece,
+                Source.AGENT_CARD,
+                refusals=False,
+                empty_confirm=False,
+            )
+        case PlaceSpy():
+            return agent_spy_rows(state, player, piece, context)
+        case ForceEnemyRetreat():
+            return _enemy_retreat_rows(state, player)
+        case CompleteContract():
+            return tuple(
+                DomainAction(
+                    action_id="complete_contract_by_card",
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in state.players[player].active_contract_ids
+            )
+
+
+def _enemy_retreat_rows(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """One row per opponent with troops in the Conflict, then one per opponent
+    with Commanders there, in seat order (OQ-034)."""
+
+    rows: list[DomainAction] = []
+    for seat in state.players:
+        if seat.player_id == player:
+            continue
+        if seat.troops_conflict > 0:
+            rows.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("player", seat.player_id),),
+                )
+            )
+        if seat.commanders_conflict > 0:
+            rows.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("commanders", 1), ("player", seat.player_id)),
+                )
+            )
+    return tuple(rows)
+
+
+def agent_spy_rows(
+    state: GameState,
+    player: int,
+    piece: PlaceSpy,
+    context: Mapping[str, ActionValue],
+) -> tuple[DomainAction, ...]:
+    """An Agent box's Spy rows: placement, recall-first, or its pass-up.
+
+    Placing is mandatory while a Spy is in the supply (the erratum to
+    [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in your
+    supply when you need to place one, you may first recall one of your
+    Spies for no effect" [Main pp. 11, 20]: the owner may pass the icon up
+    (``decline_agent_card_spy``) when the box resolves -- the Agent box and
+    the space's effects resolve in any order [Main p. 9] -- and once the
+    recall is made the Spy has to be placed. An unlimited piece takes the
+    card's printed Faction marks (``agent_spy_factions``, which a Ghola copy
+    keeps from its partner).
+    """
+
+    owner = state.players[player]
+    card = active_agent_card(context)
+    allowed_post_ids: frozenset[str] | None = None
+    if piece.visited_space:
+        # Double Agent: "[Spy] spying on the board space you sent an Agent to
+        # this turn" -- a placement limit in the "[Spy] on [icon]" sense ("the
+        # observation post must connect to a ... board space" [Main p. 20]).
+        visited_space_id = context.get("space_id")
+        allowed_post_ids = frozenset(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if visited_space_id in post.connected_space_ids
+        )
+    elif piece.factions is not None:
+        allowed_post_ids = observation_post_ids_for_factions(piece.factions)
+    elif not piece.shared_post and card.agent_spy_factions:
+        allowed_post_ids = observation_post_ids_for_factions(card.agent_spy_factions)
+    if piece.shared_post:
+        # Another player's Spy may share the post, never the owner's own
+        # [Bloodlines pp. 5, 12; Double Agent card].
+        placements = tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if (allowed_post_ids is None or post.post_id in allowed_post_ids)
+            and post.post_id not in owner.spy_post_ids
+        )
+    else:
+        placements = empty_observation_post_ids(state, allowed_post_ids)
+    # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
+    # made earlier this turn may already have been consumed by another effect
+    # (e.g. the Espionage board space), in which case another recall is offered.
+    if owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_agent_card_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in placements
+        )
+    recall_post_ids = owner.spy_post_ids
+    if not placements and piece.shared_post:
+        recall_post_ids = tuple(
+            post_id
+            for post_id in owner.spy_post_ids
+            if allowed_post_ids is None or post_id in allowed_post_ids
+        )
+    elif not placements:
+        # Only a recall that leaves its post empty opens a placement: a post
+        # shared with another player's Spy (Deep Cover) stays occupied
+        # [Main pp. 11, 20] (``solo_occupied_post_ids``).
+        recall_post_ids = solo_occupied_post_ids(state, player, allowed_post_ids)
+    recalls = tuple(
+        DomainAction(
+            action_id="recall_spy_for_agent_card",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in recall_post_ids
+    )
+    if not recalls or context.get("agent_card_spy_recalled") is True:
+        # With nothing to recall the box waits for the turn's end like any
+        # box that can only fizzle (OQ-057 (1)); after a recall-first the
+        # placement is mandatory, even if another freely ordered effect
+        # (Espionage) spent that Spy meanwhile.
+        return recalls
+    return (DomainAction(action_id="decline_agent_card_spy", actor=player), *recalls)
+
+
+def target_choice_error(ability: Ability) -> Exception:
+    """What resolving the box as one action raises while it has a choice."""
+
+    piece = target_piece(ability)
+    if piece is None:
+        raise ValueError("the Agent box chooses no recorded target")
+    kind, message = _TARGET_CHOICE_ERRORS[type(piece)]
+    return kind(message)
+
+
+def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult:
+    """Gain the chosen Faction's Influence and close the box."""
+
+    _, context = current_agent_effect_context(state)
+    player, card_id = _subject(context)
+    faction = Faction(str(dict(action.arguments)["faction"]))
+    source = agent_card_source(state.round_number, player, card_id)
+    gained = gain_faction_influence(
+        state, player, faction, 1, event_prefix=f"{source}:influence:{faction.value}"
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(gained.state, context, gained.state.players)
+    return RuleResult(state=next_state, events=gained.events)

@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
+    CompleteContract,
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
@@ -50,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FactionBond,
+    ForceEnemyRetreat,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -233,6 +235,26 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 GainInfluence(factions=(Faction.SPACING_GUILD,)),
                 condition=GainedSpiceThisTurn(1),
             ),
+            # --- A choice of target (composed effects, A3c) ----------------------
+            # Interstellar Trade, For Humanity: "Gain 1 Influence with a chosen
+            # Faction".
+            _BOX.GAIN_CHOSEN_INFLUENCE: _box(GainInfluence()),
+            # Public Spectacle: "If you recalled a Spy this turn: ...".
+            _BOX.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN: _box(
+                GainInfluence(), condition=SpyRecalledThisTurn()
+            ),
+            # Bene Gesserit Operative, Reliable Informant: "Place a Spy"; the
+            # Faction marks printed beside the Spy icon (the card's
+            # ``agent_spy_factions``) limit the post.
+            _BOX.PLACE_SPY: _box(PlaceSpy()),
+            # Double Agent.
+            _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: _box(
+                PlaceSpy(shared_post=True, visited_space=True)
+            ),
+            # Disruption Tactics.
+            _BOX.FORCE_OPPONENT_TROOP_RETREAT: _box(ForceEnemyRetreat()),
+            # CHOAM Demands.
+            _BOX.COMPLETE_ONE_CONTRACT: _box(CompleteContract()),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.
             _BOX.PAY_TWO_WATER_TO_DRAW_TWO: _pay(

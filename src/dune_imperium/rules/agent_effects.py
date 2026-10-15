@@ -20,7 +20,13 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
-from dune_imperium.content.uprising.effect_dsl import FactionBond
+from dune_imperium.content.uprising.effect_dsl import (
+    CompleteContract,
+    FactionBond,
+    ForceEnemyRetreat,
+    GainInfluence,
+    PlaceSpy,
+)
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     personal_card_for_instance,
@@ -40,6 +46,8 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
     AgentPaymentBlock,
+    agent_spy_rows,
+    apply_chosen_influence,
     apply_payment,
     box_ability,
     box_icon_block,
@@ -50,6 +58,8 @@ from dune_imperium.rules.agent_box_abilities import (
     payment_rows,
     resolve_box,
     resolve_box_icon,
+    target_piece,
+    target_rows,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -138,11 +148,8 @@ from dune_imperium.rules.shield_wall import (
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame, turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
-    observation_post_ids_for_factions,
     place_spy,
     recall_spy,
-    solo_occupied_post_ids,
 )
 from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
@@ -177,6 +184,9 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
 # card] [troop]" [card face] [Rise of Ix p. 10].
+# Arrakis Observer's Spy after its paid discard: "Spy with Deep Cover"
+# [Bloodlines pp. 5, 12] may share another player's post.
+_DEEP_COVER_SPY: Final = PlaceSpy(shared_post=True)
 _SPICE_FOR_TRASH_AND_TROOP = (
     PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT
 )
@@ -889,6 +899,11 @@ def legal_agent_card_influence_actions(
     # resolution pays the rest (Southern Faith's draw, Possible Futures'
     # troops, Interstellar Conspiracy's spice), or else the box waits for
     # the turn's end (``resolve_agent_card_effect``, OQ-057 (1)).
+    recorded = box_ability(effect)
+    if isinstance(target_piece(recorded), GainInfluence):
+        # A chosen Faction's Influence, from its record (composed A3c).
+        assert recorded is not None
+        return target_rows(state, player, recorded)
     rising = tuple(
         faction
         for faction in Faction
@@ -969,22 +984,9 @@ def legal_agent_card_influence_actions(
             )
             for faction in rising
         )
-    if effect not in (
-        PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
-        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
-        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
-    ):
+    if effect is not PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE:
         return ()
-    if (
-        effect
-        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
-        and not spy_recalled_this_turn(state.players[player])
-    ):
-        return ()
-    if (
-        effect is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
-        and AGENT_ICON_INFLUENCE not in pending_agent_icons(context)
-    ):
+    if AGENT_ICON_INFLUENCE not in pending_agent_icons(context):
         return ()
     return tuple(
         DomainAction(
@@ -1054,6 +1056,9 @@ def apply_agent_card_influence(
     if action not in legal_agent_card_influence_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card Influence choice")
     _, context = current_agent_effect_context(state)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if isinstance(target_piece(recorded), GainInfluence):
+        return apply_chosen_influence(state, action)
     _, source_card_id, _ = _effect_subject(context)
     faction_value = dict(action.arguments).get("faction")
     if not isinstance(faction_value, str):
@@ -1195,18 +1200,10 @@ def legal_agent_card_contract_completion_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
-    _, source_card_id, _ = _effect_subject(context)
-    source_card = active_agent_card(context)
-    if source_card.agent_effect is not PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is None or not isinstance(target_piece(recorded), CompleteContract):
         return ()
-    return tuple(
-        DomainAction(
-            action_id="complete_contract_by_card",
-            actor=player,
-            arguments=(("instance_id", instance_id),),
-        )
-        for instance_id in state.players[player].active_contract_ids
-    )
+    return target_rows(state, player, recorded)
 
 
 def apply_agent_card_contract_completion(
@@ -1272,13 +1269,9 @@ def legal_agent_card_spy_actions(
 ) -> tuple[DomainAction, ...]:
     """Return placement, recall, or decline choices for an Agent-box Spy icon.
 
-    Placing is mandatory while a Spy is in the supply (the erratum to
-    [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in your
-    supply when you need to place one, you may first recall one of your
-    Spies for no effect" [Main pp. 11, 20]: the owner may pass the icon up
-    (``decline_agent_card_spy``) when the box resolves -- the Agent box and
-    the space's effects resolve in any order [Main p. 9] -- and once the
-    recall is made the Spy has to be placed.
+    The rows and their rules are ``agent_box_abilities.agent_spy_rows``'s:
+    a placement while a Spy is in the supply, else the recall-first and its
+    pass-up [Main pp. 11, 20], OQ-057 (14).
     """
 
     if not 0 <= player < state.config.players:
@@ -1291,94 +1284,21 @@ def legal_agent_card_spy_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
-    _, source_card_id, visited_space_id = _effect_subject(context)
     source_card = active_agent_card(context)
-    deep_cover = (
+    recorded = box_ability(source_card.agent_effect)
+    if recorded is not None and isinstance(target_piece(recorded), PlaceSpy):
+        # Bene Gesserit Operative, Reliable Informant, Double Agent: from
+        # their records (composed A3c).
+        return target_rows(state, player, recorded)
+    if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
         and context.get("agent_card_spy_pending") is True
-    )
-    double_agent = (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
-    )
-    if not deep_cover and not double_agent and (
-        source_card.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
     ):
-        return ()
-
-    owner = state.players[player]
-    allowed_post_ids = (
-        observation_post_ids_for_factions(source_card.agent_spy_factions)
-        if source_card.agent_spy_factions
-        else None
-    )
-    placements = empty_observation_post_ids(state, allowed_post_ids)
-    if deep_cover:
         # Spy with Deep Cover: opponents' Spies may be ignored, never one's
         # own [Bloodlines pp. 5, 12].
-        placements = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id not in owner.spy_post_ids
-        )
-    if double_agent:
-        # Double Agent: "[Spy] spying on the board space you sent an Agent to
-        # this turn. You may place this Spy on the same observation post as
-        # another player's Spy." [Double Agent card] -- a placement limit in
-        # the "[Spy] on [icon]" sense ("the observation post must connect to
-        # a ... board space" [Main p. 20]) whose post may already hold
-        # another player's Spy, never the owner's own.
-        allowed_post_ids = frozenset(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if visited_space_id in post.connected_space_ids
-        )
-        placements = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id in allowed_post_ids
-            and post.post_id not in owner.spy_post_ids
-        )
-    # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
-    # made earlier this turn may already have been consumed by another effect
-    # (e.g. the Espionage board space), in which case another recall is offered.
-    if owner.spies_supply > 0:
-        return tuple(
-            DomainAction(
-                action_id="place_agent_card_spy",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in placements
-        )
-    recall_post_ids = owner.spy_post_ids
-    if not placements and (deep_cover or double_agent):
-        recall_post_ids = tuple(
-            post_id
-            for post_id in owner.spy_post_ids
-            if allowed_post_ids is None or post_id in allowed_post_ids
-        )
-    elif not placements:
-        # Only a recall that leaves its post empty opens a placement: a post
-        # shared with another player's Spy (Deep Cover) stays occupied
-        # [Main pp. 11, 20] (``solo_occupied_post_ids``).
-        recall_post_ids = solo_occupied_post_ids(state, player, allowed_post_ids)
-    recalls = tuple(
-        DomainAction(
-            action_id="recall_spy_for_agent_card",
-            actor=player,
-            arguments=(("post_id", post_id),),
-        )
-        for post_id in recall_post_ids
-    )
-    if not recalls or context.get("agent_card_spy_recalled") is True:
-        # With nothing to recall the box waits for the turn's end like any
-        # box that can only fizzle (OQ-057 (1)); after a recall-first the
-        # placement is mandatory, even if another freely ordered effect
-        # (Espionage) spent that Spy meanwhile.
-        return recalls
-    return (DomainAction(action_id="decline_agent_card_spy", actor=player), *recalls)
+        return agent_spy_rows(state, player, _DEEP_COVER_SPY, context)
+    return ()
 
 
 def apply_agent_card_spy_action(
@@ -1704,33 +1624,10 @@ def legal_agent_card_opponent_retreat_actions(
         return ()
     if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
         return ()
-    _, source_card_id, _ = _effect_subject(context)
-    if (
-        active_agent_card(context).agent_effect
-        is not PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT
-    ):
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is None or not isinstance(target_piece(recorded), ForceEnemyRetreat):
         return ()
-    actions: list[DomainAction] = []
-    for seat in state.players:
-        if seat.player_id == player:
-            continue
-        if seat.troops_conflict > 0:
-            actions.append(
-                DomainAction(
-                    action_id="retreat_opponent_troop",
-                    actor=player,
-                    arguments=(("player", seat.player_id),),
-                )
-            )
-        if seat.commanders_conflict > 0:
-            actions.append(
-                DomainAction(
-                    action_id="retreat_opponent_troop",
-                    actor=player,
-                    arguments=(("commanders", 1), ("player", seat.player_id)),
-                )
-            )
-    return tuple(actions)
+    return target_rows(state, player, recorded)
 
 
 def apply_agent_card_opponent_retreat(
@@ -4436,15 +4333,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     ),
                 ),
             )
-    elif effect is PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT:
-        if any(
-            seat.player_id != player and seat.troops_conflict + seat.commanders_conflict
-            for seat in state.players
-        ):
-            raise RuntimeError("enemy retreat requires a player choice")
-        # No enemy unit in the Conflict: nothing to retreat (OQ-028).
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD:
         context["pending_agent_effect"] = False
         base_frame = replace(
@@ -4501,13 +4389,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # advanced (below).
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
-        # CHOAM Demands resolves through its own Contract choice; with no
-        # active Contract the box does nothing.
-        if owner.active_contract_ids:
-            raise ValueError("CHOAM Demands resolves through complete_contract_by_card")
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
         # Southern Faith's draw half; the draw follows the generic path.
         next_owner = owner
@@ -4629,35 +4510,20 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
-    elif effect in (
-        PersonalCardAgentEffect.PLACE_SPY,
-        PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
-    ) or (
+    elif (
         effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
         and context.get("agent_card_spy_pending") is True
     ):
-        # Placing is mandatory only with a Spy in supply (the erratum to
-        # [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in
-        # your supply when you need to place one, you may first recall one
-        # of your Spies for no effect" [Main pp. 11, 20]: the recall and its
-        # pass-up (``decline_agent_card_spy``) are the owner's choice, so
-        # the box fizzles here only when neither is possible, and then
-        # waits for the turn's end (OQ-057 (1)). Arrakis Observer's Deep
-        # Cover Spy after its paid discard follows the same rule.
+        # Arrakis Observer's Deep Cover Spy after its paid discard: placing
+        # is mandatory only with a Spy in supply (the erratum to [Main
+        # p. 11], OQ-057 (14)); the recall-first and its pass-up are the
+        # owner's choice [Main pp. 11, 20], so the box fizzles here only
+        # when neither is possible, and then waits for the turn's end
+        # (OQ-057 (1)) -- as a recorded Spy box does (``resolve_box``).
         if legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
         context.pop("agent_card_spy_pending", None)
         context.pop("agent_card_spy_recalled", None)
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
-    elif (
-        effect
-        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
-    ):
-        if spy_recalled_this_turn(owner) and _any_influence_can_rise(owner):
-            raise RuntimeError("Agent-card Influence effect requires a player choice")
-        # No Spy recalled yet, or every cube at the top (OQ-060): the box
-        # waits for the turn's end (OQ-057 (1)).
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON:
@@ -4723,14 +4589,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("Agent-card trash effect requires a player choice")
         # Ruthless Leadership without a Sardaukar Commander in the Conflict,
         # judged now (OQ-028): the box resolves without effect.
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
-        if _any_influence_can_rise(owner):
-            raise RuntimeError("Agent-card Influence effect requires a player choice")
-        # Every cube at the top: the gain would be lost (OQ-060), so the box
-        # waits for the turn's end, where it fizzles unless a later effect
-        # of the turn lowered a cube first (OQ-057 (1)).
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is _SPICE_FOR_TRASH_AND_TROOP:

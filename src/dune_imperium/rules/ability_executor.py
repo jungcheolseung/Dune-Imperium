@@ -386,6 +386,7 @@ def piece_rows(
     chosen: tuple[str, ...] = (),
     played_card_id: str | None = None,
     tag_value: ActionValue | None = None,
+    empty_confirm: bool = True,
 ) -> tuple[DomainAction, ...]:
     """The rows that answer ``piece`` for ``player``, named for ``source``.
 
@@ -393,9 +394,12 @@ def piece_rows(
     ``chosen`` holds the Factions an earlier step of a "distinct" gain took;
     ``played_card_id`` is the Intrigue card being played, still held while it
     resolves and never its own cost; ``tag_value`` tags a tagged template
-    (``action_shapes.Tag``). The targets and their order are the ones the
-    engine offered before the executor (``intrigue.legal_intrigue_choice_
-    actions`` up to codec v147, which offers these rows since stage A1).
+    (``action_shapes.Tag``). ``empty_confirm`` gives a gain or an
+    acquisition with nothing to take its confirmation row (a stacked
+    frame's, OQ-060, OQ-057); an Agent box offers none and waits instead.
+    The targets and their order are the ones the engine offered before the
+    executor (``intrigue.legal_intrigue_choice_actions`` up to codec v147,
+    which offers these rows since stage A1).
     """
 
     owner = state.players[player]
@@ -435,7 +439,7 @@ def piece_rows(
                 for faction in influence_gain_candidates(state, player, gain)
                 if not (distinct and faction in taken)
             )
-            if not rows:
+            if not rows and empty_confirm:
                 # Every Faction it may raise is at the top: the gain is lost
                 # and its owner confirms it (OQ-060, user ruling 2026-09-30).
                 rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.GAIN_INFLUENCE))
@@ -588,7 +592,7 @@ def piece_rows(
                     state, max_cost, player=player
                 )
             )
-            if not rows:
+            if not rows and empty_confirm:
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.ACQUIRE))
