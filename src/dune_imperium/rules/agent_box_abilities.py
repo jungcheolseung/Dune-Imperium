@@ -470,10 +470,10 @@ def resolve_box(state: GameState) -> RuleResult:
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
     if trash_box(ability):
-        # Ruthless Leadership: reached by the dry run and the turn's end only
-        # (``optional_arrow`` keeps the unconditioned trash boxes out); its
-        # Commander condition is judged now (OQ-028), and without it the box
-        # resolves without effect.
+        # Ruthless Leadership: reached by the dry run only (the press lapses
+        # the optional box first; ``optional_arrow`` keeps the unconditioned
+        # trash boxes out); its Commander condition is judged now (OQ-028),
+        # and without it the box resolves without effect.
         if _trash_conditions_hold(owner, ability):
             raise RuntimeError("Agent-card trash effect requires a player choice")
         available = False
@@ -1113,9 +1113,10 @@ def discard_box(ability: Ability | None) -> bool:
     ):
         return False
     if ability.armed_icons:
-        return all(
+        # Every line armed: a trailing line paid at once is not this shape.
+        return len(ability.armed_icons) == len(ability.sections) and all(
             line.rewards == (_ARMED_REWARDS.get(key),)
-            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+            for key, line in zip(ability.armed_icons, ability.sections, strict=False)
         )
     return all(
         isinstance(reward, _DISCARD_REWARDS)
@@ -1289,9 +1290,10 @@ def intrigue_box(ability: Ability | None) -> bool:
     if any(line.condition is not None for line in rest):
         return False
     if ability.armed_icons:
-        return all(
+        # Every line armed: a trailing line paid at once is not this shape.
+        return len(ability.armed_icons) == len(ability.sections) and all(
             line.rewards == (_ARMED_REWARDS.get(key),)
-            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+            for key, line in zip(ability.armed_icons, ability.sections, strict=False)
         )
     return not rest and all(
         isinstance(reward, (GainVictoryPoints, GainResources))
@@ -1614,9 +1616,9 @@ def apply_trash(
     trashed = trash_personal_card(state, player, card_id, source=source)
     keep_trash_recruits(context, trashed)
     cost = _trash_cost(ability)
-    if cost is None:
+    if cost is None and len(ability.sections) > 1:
         # Black trash icons: one counter for the ones still open.
-        remaining = _trashes_remaining(context, len(ability.sections)) - 1
+        remaining = trashes_remaining(context, len(ability.sections)) - 1
         if remaining > 0:
             context["pending_agent_effect"] = True
             context["trashes_remaining"] = remaining
@@ -1630,6 +1632,12 @@ def apply_trash(
                 events=trashed.events,
             )
         context.pop("trashes_remaining", None)
+        return RuleResult(
+            state=advance_after_effect(trashed.state, context, trashed.state.players),
+            events=trashed.events,
+        )
+    if cost is None:
+        # The one black trash icon.
         return RuleResult(
             state=advance_after_effect(trashed.state, context, trashed.state.players),
             events=trashed.events,
@@ -1679,7 +1687,14 @@ def apply_trash(
     return RuleResult(state=next_state, events=trashed.events)
 
 
-def _trashes_remaining(context: Mapping[str, ActionValue], default: int) -> int:
+def trashes_remaining(context: Mapping[str, ActionValue], default: int = 0) -> int:
+    """How many optional trash icons of the active box are still open.
+
+    The Beast's Spoils sets the counter to its Crysknife count when its
+    automatic rewards resolve; Ruthless Leadership's two printed icons start
+    from ``default`` on the first trash.
+    """
+
     remaining = context.get("trashes_remaining", default)
     if isinstance(remaining, bool) or not isinstance(remaining, int):
         raise RuntimeError("Agent-turn effect frame has invalid trash count")

@@ -72,6 +72,7 @@ from dune_imperium.rules.agent_box_abilities import (
     trash_block,
     trash_box,
     trash_rows,
+    trashes_remaining,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -1645,7 +1646,7 @@ def legal_agent_card_trash_actions(
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
-        and _trashes_remaining(context) == 0
+        and trashes_remaining(context) == 0
     ):
         # The Beast's Spoils resolves its automatic rewards first; only the
         # Crysknife trashes it counted are then offered one at a time.
@@ -1806,7 +1807,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         source_card.agent_effect
         is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
     ):
-        remaining = _trashes_remaining(context) - 1
+        remaining = trashes_remaining(context) - 1
         if remaining > 0:
             # More trash icons: keep the box pending for the next trash.
             context["pending_agent_effect"] = True
@@ -2639,20 +2640,6 @@ _ARRAKIS_REVOLT_ACTION_IDS = frozenset(
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
     }
 )
-
-
-def _trashes_remaining(context: dict[str, ActionValue], default: int = 0) -> int:
-    """Return how many optional trash icons of the current box are still open.
-
-    The Beast's Spoils sets the counter to its Crysknife count when its
-    automatic rewards resolve; Ruthless Leadership's two printed icons start
-    from ``default`` on the first offer.
-    """
-
-    remaining = context.get("trashes_remaining", default)
-    if isinstance(remaining, bool) or not isinstance(remaining, int):
-        raise RuntimeError("Agent-turn effect frame has invalid trash count")
-    return remaining
 
 
 def _arrakis_revolt_payment_actions(
