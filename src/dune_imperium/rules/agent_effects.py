@@ -329,18 +329,8 @@ def legal_agent_card_discard_actions(
         return discard_rows(state, player, recorded)
     if effect is not PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return ()
-    # Any hand card may pay the discard: neither Captured Mentat's nor Guild
-    # Spy's face conditions the cost on the Intrigue reward [Captured Mentat
-    # card] [Guild Spy card]. An empty Intrigue deck does not block it
-    # either: the draw reshuffles the discard pile ("In the rare case that
-    # you exhaust the Intrigue deck, shuffle the discarded Intrigue cards to
-    # form a new deck." [FAQ p. 2]) or stops short when both piles are
-    # empty, while the card draw still pays out.
-    decline = (
-        (DomainAction(action_id="decline_agent_card_discard", actor=player),)
-        if effect in _OPTIONAL_DISCARDS
-        else ()
-    )
+    # Arrakis Observer: any hand card pays its optional discard.
+    decline = (DomainAction(action_id="decline_agent_card_discard", actor=player),)
     if agent_card_cost_block(state, player) is not None:
         # An optional discard with no card in hand.
         return decline
@@ -2068,13 +2058,6 @@ _ARRAKIS_REVOLT = (
     PersonalCardAgentEffect
     .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
 )
-# The Agent boxes whose optional discard any hand card pays; each offers its
-# refusal beside the discards (``legal_agent_card_discard_actions``).
-_OPTIONAL_DISCARDS: Final = frozenset(
-    {
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-    }
-)
 
 
 def _arrakis_revolt_block(state: GameState, player: int) -> OptionalEffectBlock | None:
@@ -2150,7 +2133,7 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
         )
-    if effect in _OPTIONAL_DISCARDS:
+    if effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return short_of(kind.HAND, 1, len(owner.hand))
     return None
 

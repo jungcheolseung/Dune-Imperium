@@ -718,3 +718,24 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     for ability in intrigue_arrows:
         assert optional_arrow(ability)
         assert not discard_box(ability) and not payment_box(ability)
+
+
+def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
+    """The legacy icon path offers and pays an armed key per effect (Branching
+    Path's ``spice`` is its 2 spice), so a record arming a key elsewhere would
+    be refused there or paid wrong; a new one has to extend that path first."""
+
+    users: dict[str, set[PersonalCardAgentEffect]] = {}
+    for effect, ability in AGENT_BOX_ABILITIES.items():
+        for key in ability.armed_icons:
+            users.setdefault(key, set()).add(effect)
+    branching = (
+        _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+    )
+    mentat = _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
+    guild_spy = _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+    assert users == {
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching},
+        AGENT_ICON_CARDS: {mentat, guild_spy},
+        AGENT_ICON_SPICE: {branching},
+    }

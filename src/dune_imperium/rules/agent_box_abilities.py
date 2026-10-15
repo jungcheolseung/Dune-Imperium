@@ -1083,6 +1083,8 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 _DISCARD_SOURCE: Final = "agent_card_discard"
 _DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
+# That path offers and pays a key per effect (Branching Path's 2 spice), so
+# the record table test keeps each key to the boxes it serves.
 _ARMED_REWARDS: Final[Mapping[str, Reward]] = {
     "intrigue": DrawIntrigueCards(1),
     "cards": DrawPersonalCards(1),
@@ -1281,7 +1283,10 @@ def intrigue_box(ability: Ability | None) -> bool:
         for cost in first.costs
     ):
         return False
-    if first.condition is not None and not isinstance(first.condition, HasAlliance):
+    if first.condition is not None and not (
+        isinstance(first.condition, HasAlliance) and first.condition.faction is not None
+    ):
+        # A named Faction's Alliance, judged by ``intrigue_cost_block``.
         return False
     if any(line.condition is not None for line in rest):
         return False
@@ -1404,6 +1409,9 @@ def apply_intrigue_payment(
         )
     ]
     if ability.armed_icons:
+        # Every key: the Alliance printed over the whole arrow gated the cost
+        # line's rows (``intrigue_cost_block``), and no later line has a
+        # condition of its own (``intrigue_box``).
         arm_agent_icons(context, ability.armed_icons)
     else:
         if spice := _spice_cost(ability):
