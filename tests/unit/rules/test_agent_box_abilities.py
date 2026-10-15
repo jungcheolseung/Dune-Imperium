@@ -16,6 +16,11 @@ from dune_imperium.content.immortality.board import (
     RESEARCH_START_ID,
     TLEILAXU_TRACK_END,
 )
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
@@ -23,11 +28,16 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AdvanceTleilaxu,
     AtMakerSpace,
+    EffectSection,
     FactionBond,
     GainedSpiceThisTurn,
     HasAlliance,
     InfluenceAtLeast,
+    PayResources,
+    RecruitTroops,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core import (
@@ -47,6 +57,7 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentPaymentBlock,
     condition_block,
     opens_at_placement,
+    payment_box,
 )
 from dune_imperium.rules.agent_effects import (
     agent_card_cost_block,
@@ -395,3 +406,31 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
     assert legal_agent_card_payment_actions(finished, 0) == (
         DomainAction("decline_agent_card_payment", 0),
     )
+
+
+def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
+    """The payment shape takes the four records it was written for, and
+    refuses a record it would pay wrongly (a reward it does not give, a
+    cost no row names): such a box keeps its own code."""
+
+    payments = {
+        effect
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if payment_box(ability)
+    }
+    assert payments == {
+        _BOX.PAY_TWO_WATER_TO_DRAW_TWO,
+        _BOX.MAY_PAY_FOUR_SPICE_FOR_VP,
+        _BOX.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
+        _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+    }
+    for cost, rewards in (
+        (PayResources(spice=1), (TrashPersonalCard(), RecruitTroops(1))),
+        (PayResources(solari=5), (AdvanceTleilaxu(1),)),
+    ):
+        optional = Ability(
+            AbilityTiming.AGENT_BOX,
+            (EffectSection(rewards=rewards, costs=(cost,)),),
+            mark=AbilityMark.OPTIONAL,
+        )
+        assert not payment_box(optional)

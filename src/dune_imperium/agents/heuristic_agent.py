@@ -277,8 +277,8 @@ _RETREAT_SCORE: Final = -1.0
 # (``turn_end_as_decline``). The end is legal only once every mandatory
 # effect is done, so a row of this set beside it belongs to an optional
 # effect: the Agent boxes' trash, discard, payment, acquisition and recall
-# rows (``rules.agent_effects.OPTIONAL_AGENT_BOXES``, ``OPTIONAL_AGENT_ICONS``
-# and the boxes part way through), the Leader Signet's optional stages
+# rows (``rules.agent_effects.OPTIONAL_AGENT_BOXES`` and the records marked
+# optional, ``OPTIONAL_AGENT_ICONS`` and the boxes part way through), the Leader Signet's optional stages
 # (Lady Jessica / Reverend Mother, Princess Irulan, Chani, Duncan Idaho,
 # Staban Tuek's paid follow-up, Fenring's and Mohiam's Spy half before its
 # recall, Feyd-Rautha's trash stages), the visit's optional effects

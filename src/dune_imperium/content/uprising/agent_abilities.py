@@ -18,7 +18,9 @@ which names the record. The printed text is ``display/tokens.py``.
 - ``hook`` names a special flow kept as code in ``rules.agent_effects``
   (``_BOX_HOOKS``): a box with no event of its own, sources found nowhere
   else, or a frame rewritten mid-way. Its sections list the fragments it
-  gives where the DSL has them (the network's card features, plan 4.4).
+  gives where the DSL has them (the network's card features, plan 4.4);
+  they describe the box, the hook judges and pays it (editing a hook
+  record's condition changes no play).
 
 The boxes not here keep their own code in ``rules.agent_effects`` until a
 later stage moves them (plan 5).

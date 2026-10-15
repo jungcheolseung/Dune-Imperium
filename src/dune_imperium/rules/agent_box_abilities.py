@@ -605,6 +605,14 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
 # ``…:agent_card_payment:tleilaxu``.
 
 _PAYMENT_SOURCE = "round:{round}:player:{player}:agent_card_payment"
+# The rewards ``apply_payment`` gives; a record with any other is no payment
+# box (it keeps its own code until a stage moves it).
+_PAYMENT_REWARDS = (
+    GainResources,
+    GainVictoryPoints,
+    DrawPersonalCards,
+    AdvanceTleilaxu,
+)
 
 
 def payment_box(ability: Ability | None) -> bool:
@@ -618,8 +626,16 @@ def payment_box(ability: Ability | None) -> bool:
         or len(ability.sections) != 1
     ):
         return False
-    costs = ability.sections[0].costs
-    return len(costs) == 1 and isinstance(costs[0], PayResources | SpendSpecimens)
+    (section,) = ability.sections
+    if len(section.costs) != 1 or not all(
+        isinstance(reward, _PAYMENT_REWARDS) for reward in section.rewards
+    ):
+        return False
+    try:
+        _paid_resource(section.costs[0])
+    except ValueError:
+        return False
+    return True
 
 
 def _payment_cost(ability: Ability) -> PayResources | SpendSpecimens:
@@ -628,11 +644,12 @@ def _payment_cost(ability: Ability) -> PayResources | SpendSpecimens:
     return cost
 
 
-def _paid_resource(cost: PayResources | SpendSpecimens) -> tuple[str, int]:
-    """The resource the payment event names, and how much was spent."""
+def _paid_resource(cost: object) -> tuple[str, int]:
+    """The resource the payment event names, and how much was spent; a cost
+    no payment row pays raises ``ValueError``."""
 
     match cost:
-        case SpendSpecimens(count=count):
+        case SpendSpecimens(count=count) if count in (1, 2):
             return "specimen", count
         case PayResources(solari=0, spice=0, water=water) if water:
             return "water", water

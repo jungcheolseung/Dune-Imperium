@@ -4058,7 +4058,8 @@ _OPTIONAL_SIGNETS: Final = frozenset(
 def box_is_optional(state: GameState) -> bool:
     """Whether the active pending Agent box holds only optional effects now.
 
-    An untouched optional box (``OPTIONAL_AGENT_BOXES``), a box whose
+    An untouched optional box (``OPTIONAL_AGENT_BOXES``, or a record marked
+    optional), a box whose
     remaining icons are all optional (``OPTIONAL_AGENT_ICONS``), the optional
     trashes Ruthless Leadership and The Beast's Spoils still owe, and
     Scientific Breakthrough's "Trash this card -> 1 VP" line once its
