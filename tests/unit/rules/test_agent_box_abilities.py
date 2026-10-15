@@ -242,3 +242,29 @@ def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> Non
     assert frame.kind == FrameKind.OPTIONAL_TRASH
     assert dict(frame.context)["source"] == agent_card_source(1, 0, card)
     assert result.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_pointing_the_way_draws_its_intrigue_before_the_write_back() -> None:
+    """Pointing the Way waits for a sandworm in the Conflict, then draws its
+    Intrigue card under the box's ``:intrigue_draw`` source; the box's event
+    comes first. (The equivalence games never resolve it.)"""
+
+    card = "imperium:pointing_the_way:0"
+    config = RulesetConfig(bloodlines=True)
+    waiting = _played(card, PlayerState(player_id=0), config)
+    assert [event.kind for event in resolve_agent_card_effect(waiting).events] == [
+        "agent_card_effect_unavailable"
+    ]
+    owner = replace(waiting.players[0], sandworms_conflict=1)
+    ready = replace(
+        waiting,
+        players=(owner, *waiting.players[1:]),
+        intrigue_deck=("intrigue:bribery:0",),
+    )
+    result = resolve_agent_card_effect(ready)
+    source = agent_card_source(1, 0, card)
+    assert [(event.kind, event.event_id) for event in result.events] == [
+        ("agent_card_effect_resolved", source),
+        ("intrigue_card_drawn", f"{source}:intrigue_draw:intrigue_draw:1"),
+    ]
+    assert result.state.players[0].intrigue_cards == ("intrigue:bribery:0",)
