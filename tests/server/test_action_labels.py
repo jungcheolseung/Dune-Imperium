@@ -17,6 +17,7 @@ import ast
 import re
 from pathlib import Path
 
+from dune_imperium.rules.ability_executor import table_event_kinds
 from dune_imperium.rules.engine import ACTION_HANDLERS
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -87,6 +88,9 @@ def _engine_event_kinds() -> set[str]:
                 re.DOTALL,
             ):
                 kinds.update((first, second))
+    # The pending-ability executor names its refusal and "named for later"
+    # events through tables (composed effects, codec v148).
+    kinds.update(table_event_kinds())
     return kinds
 
 

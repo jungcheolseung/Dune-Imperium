@@ -279,12 +279,13 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules.ability_executor import entry_pieces, split_intrigue_ref
 from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
     acquirable_reserve_card_ids,
 )
 from dune_imperium.rules.card_bonds import counted_in_play
-from dune_imperium.rules.effect_interpreter import choice_slots
+from dune_imperium.rules.intrigue import intrigue_lines_used, pending_intrigue_ability
 from dune_imperium.rules.spy_placement import observation_post_ids_for_agent_icons
 
 HANDLERS: dict[str, Handler] = {}
@@ -931,10 +932,8 @@ def _frame_sections(run: DecisionRun) -> tuple[int, ...]:
     """The option sections the choice frame resolves (one printed line for
     the separate-line cards)."""
 
-    raw = run.ctx.top_frame_context.get("sections")
-    if not isinstance(raw, str):
-        return ()
-    return tuple(int(i) for i in raw.split(",") if i)
+    entry = pending_intrigue_ability(run.ctx.top_frame_context)
+    return entry.sections if entry is not None else ()
 
 
 def _gain_influence(
@@ -1461,26 +1460,19 @@ def _choice_frame(
 ) -> tuple[str, IntrigueOption, object, int] | None:
     """(card instance, played option, current slot, same-kind slots before it)."""
 
-    context = run.ctx.top_frame_context
-    instance = context.get("card_id")
-    option_index = context.get("option")
-    slot_index = context.get("slot")
-    raw = context.get("sections")
+    entry = pending_intrigue_ability(run.ctx.top_frame_context)
+    if entry is None:
+        return None
+    instance, option_index = split_intrigue_ref(entry.ref)
     if not (
-        isinstance(instance, str)
-        and isinstance(option_index, int)
-        and isinstance(slot_index, int)
-        and isinstance(raw, str)
-        and (
-            card_id(instance) in INTRIGUE_ARCHETYPES
-            or card_id(instance) in NAVIGATION_ARCHETYPES
-        )
+        card_id(instance) in INTRIGUE_ARCHETYPES
+        or card_id(instance) in NAVIGATION_ARCHETYPES
     ):
         return None
     option = intrigue_card_for_instance(instance).options[option_index]
-    sections = tuple(option.sections[int(i)] for i in raw.split(",") if i)
-    wall = context.get("shield_wall_at_play", True) is True
-    slots = choice_slots(sections, shield_wall_present=wall)
+    # The frame's pending ability: its step is the slot (codec v148).
+    slots = entry_pieces(entry)
+    slot_index = entry.step
     if not 0 <= slot_index < len(slots):
         return None
     slot = slots[slot_index]
@@ -1643,8 +1635,7 @@ def _effects_frame(run: DecisionRun) -> tuple[str, IntrigueOption, set[int]] | N
     if card_id(instance) not in INTRIGUE_ARCHETYPES:
         return None
     option = intrigue_card_for_instance(instance).options[option_index]
-    used = {int(i) for i in str(context.get("used", "")).split(",") if i}
-    return instance, option, used
+    return instance, option, set(intrigue_lines_used(context))
 
 
 def intrigue_effects(run: DecisionRun) -> DomainAction | None:

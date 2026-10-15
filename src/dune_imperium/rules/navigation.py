@@ -16,6 +16,8 @@ from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDe
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.ability_executor import PendingAbility, intrigue_ref
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.effect_interpreter import (
     applicable_sections,
     choice_slots,
@@ -30,7 +32,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
-from dune_imperium.rules.intrigue import finish_intrigue_play
+from dune_imperium.rules.intrigue import PENDING_ABILITY_KEY, finish_intrigue_play
 
 NAVIGATION_HAND = 5
 NAVIGATION_SLOTS = 4
@@ -353,12 +355,16 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
             ),
             context=(
                 ("card_id", card_id),
-                ("chosen_factions", ""),
-                ("option", option_index),
                 ("peeked_card_id", ""),
-                ("sections", ",".join(str(index) for index in section_indexes)),
-                ("shield_wall_at_play", state.shield_wall_present),
-                ("slot", 0),
+                (
+                    PENDING_ABILITY_KEY,
+                    PendingAbility(
+                        Source.INTRIGUE,
+                        intrigue_ref(card_id, option_index),
+                        section_indexes,
+                        shield_wall=state.shield_wall_present,
+                    ).encode(),
+                ),
                 ("source", source),
             ),
         )

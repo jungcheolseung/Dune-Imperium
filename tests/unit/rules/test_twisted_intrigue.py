@@ -33,11 +33,11 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.observation import observe_state
+from dune_imperium.rules.ability_executor import _trash_intrigue_hand_card
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.intrigue import (
-    _trash_intrigue_hand_card,
     legal_intrigue_choice_actions,
     legal_intrigue_play_actions,
 )

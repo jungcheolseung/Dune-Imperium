@@ -25,6 +25,8 @@ second card) and ``source`` for the revealed card whose choice it is.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import cache
+from types import MappingProxyType
 from typing import Final
 
 
@@ -252,7 +254,8 @@ def _row(
     return ActionShape(verb, source, target, of, also, variant, tag)
 
 
-ACTION_SHAPES: Final[Mapping[str, ActionShape]] = {
+# Read-only: ``template_id`` caches its answers on this table.
+ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # --- The turn ------------------------------------------------------------
     "agent_turn": _row(_V.PLACE_AGENT, _S.TURN, _T.CARD_AND_SPACE),
     "reveal_turn": _row(_V.START_REVEAL, _S.TURN),
@@ -741,7 +744,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = {
     "scouts_return_specimens": _row(_V.RETURN_SPECIMEN, _S.SCOUTS, _T.COUNT),
     # --- Endgame -------------------------------------------------------------
     "match_endgame_wild_icon": _row(_V.MATCH, _S.ENDGAME, _T.WILD_ICON),
-}
+})
 
 
 def action_shape(action_id: str) -> ActionShape:
@@ -750,6 +753,9 @@ def action_shape(action_id: str) -> ActionShape:
     return ACTION_SHAPES[action_id]
 
 
+# The executor names every row it offers through this table (once per row of
+# every legal-action call), and the table is read-only.
+@cache
 def template_id(
     verb: Verb,
     source: Source,

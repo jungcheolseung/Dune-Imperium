@@ -55,6 +55,7 @@ from dune_imperium.rules.frames import FrameKind, end_turn_start
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
+    intrigue_lines_used,
     legal_intrigue_play_actions,
 )
 from dune_imperium.rules.reveal_turn import (
@@ -445,7 +446,7 @@ def test_depart_for_arrakis_dead_draw_line_is_not_counted_as_used() -> None:
     opened = engine.apply(state, _play(state, card)).state
     assert opened.players[0].hand == ()
     assert opened.decision_stack[-1].kind == "intrigue_effects"
-    assert dict(opened.decision_stack[-1].context)["used"] == ""
+    assert intrigue_lines_used(dict(opened.decision_stack[-1].context)) == ()
     assert engine.legal_actions(opened, 0) == (_use_line(0),)
     with pytest.raises(IllegalActionError):
         engine.apply(opened, _finish_lines())
@@ -491,9 +492,9 @@ def test_a_played_lines_card_offers_a_line_before_it_can_be_finished(
                 break
             legal = engine.legal_actions(current, 0)
             assert legal
-            if frame.kind == FrameKind.INTRIGUE_EFFECTS and not dict(
-                frame.context
-            ).get("used"):
+            if frame.kind == FrameKind.INTRIGUE_EFFECTS and not intrigue_lines_used(
+                dict(frame.context)
+            ):
                 unused += 1
                 assert legal and all(
                     action.action_id == "use_intrigue_effect" for action in legal
