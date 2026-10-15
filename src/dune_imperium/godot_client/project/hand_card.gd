@@ -27,7 +27,7 @@ func arrange_face() -> void:
 			var text = str(child.get_meta("card_state"))
 			child.text = text
 			if child.get_minimum_size().x > marker_room:
-				child.text = text.left(1) if text.left(1) in ["✓", "+", "×"] else "•"
+				child.text = text.left(1) if text.left(1) in ["✓", "+", "×", "–", "●"] else "•"
 			child.reset_size()
 	if fallback != null:
 		fallback.position = Vector2(8, 30)

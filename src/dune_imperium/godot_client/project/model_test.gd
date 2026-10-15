@@ -129,6 +129,7 @@ func _initialize() -> void:
 	test_choice_zones()
 	test_choice_reading()
 	test_feedback_context()
+	test_reference_feedback()
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK %d" % checks)
 		quit(0)
@@ -315,3 +316,38 @@ func test_feedback_context() -> void:
 			"undo": invalid.summary.undo_count = 1
 			"revision": invalid.summary.revision = 3
 		check(not Feedback.current(context, invalid, false), "receipt is cleared by changed " + change)
+
+
+func test_reference_feedback() -> void:
+	var model = Model.new()
+	var first = "imperium:ordinary:0"
+	var other = "imperium:other:0"
+	var graft = "imperium:graft:0"
+	model.catalog = {"cards": {"ordinary": {"name": "First"}, "other": {"name": "Other"}, "graft": {"name": "Graft", "graft": true}}, "spaces": {"a": {"name": "A"}, "b": {"name": "B"}, "c": {"name": "C"}}, "post_spaces": {"post_a": ["a", "b"]}}
+	var rows = [{"index": 0, "action_id": "agent_turn", "arguments": {"card_id": first, "space_id": "a"}}, {"index": 1, "action_id": "agent_turn", "arguments": {"card_id": other, "space_id": "b"}}, {"index": 2, "action_id": "agent_turn", "arguments": {"card_id": graft, "space_id": "b", "graft": true}}]
+	model.adopt(JSON.parse_string(JSON.stringify({"summary": {"game_id": "pointer", "revision": 1}, "view": {"player": 0, "private": {"hand": [first, other, graft]}}, "actions": {"actions": rows, "unavailable": {"refs": {"blocked": {"reason": "server reason", "reason_ko": "서버 이유"}}}}})))
+	check(model.ref_feedback(first).kind == "available" and model.ref_feedback("a").kind == "available", "offered cards and spaces share the same available state")
+	check(model.ref_feedback("c").kind == "inspect" and model.ref_feedback("c").hint.is_empty(), "an absent legal action never invents an unavailable reason")
+	check(model.pick_step(first) == "changed" and model.ref_feedback(first).kind == "selected", "staged card selection is distinct from availability")
+	check(model.ref_feedback(first).hint == model.native("다시 누르면 선택을 해제합니다."), "only staged picks advertise deselection by a second click")
+	check(model.ref_feedback("b").kind == "filtered" and model.ref_feedback(other).kind == "filtered", "current card constraints mark incompatible offered targets as filtered, not server-forbidden")
+	check(model.ref_feedback("b").hint == model.native("현재 고른 카드·칸과 함께 사용할 수 없습니다."), "filtered guidance describes the existing local choice constraint")
+	check(model.ref_feedback(graft).kind == "partner", "an offered graft pairing has its own state")
+	model.selected_space = "a"
+	check(model.ref_feedback(graft).kind == "filtered", "a pairing absent from the selected space is not advertised as selectable")
+	model.clear_pick()
+	model.snapshot.actions.unavailable.refs[first] = {"reason": "a different option is unavailable"}
+	check(model.ref_feedback(first).kind == "available", "an actual offered action takes precedence over an unavailable alternate option")
+	for language in ["ko", "en"]:
+		model.language = language
+		check(model.ref_feedback("blocked").kind == "unavailable" and model.ref_feedback("blocked").hint == ("서버 이유" if language == "ko" else "server reason"), "unavailable guidance uses only the localized server reason in " + language)
+		check(model.ref_feedback("post_a").name == model.native("관측소 · ") + "A / B", "post guidance uses its visible board names in " + language)
+	var before = JSON.stringify(model.snapshot)
+	model.ref_feedback("b")
+	check(JSON.stringify(model.snapshot) == before and model.selected_card.is_empty(), "reading pointer guidance never changes the snapshot or stages a pick")
+	var held = {"index": 3, "action_id": "select_cards", "arguments": {"card_ids": [first]}, "sent_by_turn_end": true}
+	model.snapshot.actions.actions = [held]
+	model.hold(held)
+	check(model.ref_feedback(first).kind == "selected" and model.ref_feedback(first).hint == model.native("턴 종료로 선택을 확정합니다."), "a held table choice advertises turn-end confirmation, never false deselection")
+	model.adopt({"summary": {"game_id": "pointer", "revision": 2}, "view": {"player": 1}, "you": {"seats": []}, "actions": null})
+	check(model.ref_feedback(first).kind == "inspect" and model.ref_feedback(first).hint.is_empty(), "a changed readonly seat retains no private selection guidance")

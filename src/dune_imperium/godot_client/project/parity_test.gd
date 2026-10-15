@@ -53,13 +53,115 @@ func check_receipt(seat: int) -> void:
 		check(not table.feedback.visible and table.feedback.receipt.is_empty(), "changing to another seat drops the previous seat's receipt")
 
 
-func capture_evidence(name: String) -> void:
+func point_reference(ref: String) -> void:
+	var entry = table.model.entry(ref)
+	if entry.get("box") is Array:
+		await table._move_pointer(table.board.global_position + table.board._box(entry.box).get_center())
+	else:
+		var card = table._ref_button(table.hand, ref)
+		if card == null:
+			card = table._ref_button(table.market_content, ref)
+		if check(card != null, "pointer target has a visible card control"):
+			await table._move_pointer(card.get_global_rect().get_center())
+
+
+func pointer_key(code: int) -> void:
+	for pressed in [true, false]:
+		var event = InputEventKey.new()
+		event.physical_keycode = code
+		event.pressed = pressed
+		Input.parse_input_event(event)
+		await process_frame
+	await process_frame
+
+
+func pointer_probe(scenario: Dictionary) -> void:
+	var revision = int(table.model.summary().revision)
+	var card = str(scenario.card)
+	var space = str(scenario.space)
+	for language in ["ko", "en"]:
+		table.model.language = language
+		table._render()
+		await settled()
+		await point_reference(card)
+		check(table.preview.visible and table.pointer_hint.visible and table.pointer_hint.text.contains(table.model.native("● 가능")), "hand hover immediately names an offered card and its state in " + language)
+		# A native tooltip is a mouse-pass-through PopupPanel, not a dialog.
+		var tooltip = PopupPanel.new()
+		tooltip.mouse_passthrough = true
+		tooltip.unfocusable = true
+		table.add_child(tooltip)
+		tooltip.popup(Rect2i(8, 8, 160, 40))
+		await point_reference(card)
+		check(table._pointer_allowed() and table.preview.visible, "a mouse-pass-through tooltip does not suppress card inspection")
+		var folded = table.tools_ui.prefs.get("market_folded", false)
+		await pointer_key(KEY_C)
+		check(tooltip.visible and table.tools_ui.prefs.market_folded != folded, "a visible mouse-pass-through tooltip does not steal the table's physical C shortcut")
+		await pointer_key(KEY_C)
+		check(table.tools_ui.prefs.market_folded == folded, "the tooltip's shortcut probe restores the market")
+		tooltip.queue_free()
+		await process_frame
+		await capture_evidence("pointer-hand-" + language, card)
+		await point_reference(space)
+		check(table.board.hovered == space and table.board.hover_kind == "available" and table.preview.visible, "board hover has its own available state and details in " + language)
+		await capture_evidence("pointer-board-" + language, space)
+		var blank = Vector2.ZERO
+		for fraction in [Vector2(0.02, 0.98), Vector2(0.98, 0.98), Vector2(0.5, 0.98)]:
+			var point = table.board.size * fraction
+			if table.board._hit(point).is_empty():
+				blank = point
+				break
+		if check(blank != Vector2.ZERO, "fixture offers an empty board reading area"):
+			await table._move_pointer(table.board.global_position + blank)
+			check(table.board.hovered.is_empty() and not table.preview.visible and not table.pointer_hint.visible and table.pointer_hint.text.is_empty() and table.status.visible, "moving within the board to empty space clears both stale preview and hint")
+		await point_reference(space)
+		for pressed in [true, false]:
+			var event = InputEventMouseButton.new()
+			event.button_index = MOUSE_BUTTON_RIGHT
+			event.pressed = pressed
+			event.position = table.get_viewport().get_final_transform() * (table.board.global_position + table.board._box(table.model.entry(space).box).get_center())
+			event.global_position = event.position
+			Input.parse_input_event(event)
+			await process_frame
+		var dialogs = table.find_children("*", "Window", true, false).filter(func(window): return window.visible and window.get_meta("detail_ref", "") == space)
+		if check(dialogs.size() == 1, "right click on a board space opens that space's actual details"):
+			var folded_before_dialog = table.tools_ui.prefs.get("market_folded", false)
+			await pointer_key(KEY_C)
+			check(table.tools_ui.prefs.market_folded == folded_before_dialog, "an actual information window still owns the keyboard")
+			var source = table._ref_button(table.hand, card)
+			table._pointed(card, source)
+			await create_timer(0.3).timeout
+			check(not table.preview.visible and not table.pointer_hint.visible, "background hover cannot reappear over an information window")
+			dialogs[0].confirmed.emit()
+			await process_frame
+		var source = table._ref_button(table.hand, card)
+		table._pointed(card, source)
+		var parts = table.tools_ui._dialog("Pointer test", Vector2i(420, 180))
+		await create_timer(0.3).timeout
+		check(not table.preview.visible and table.preview_hint.text.is_empty(), "opening a dialog cancels an already pending card preview")
+		parts[0].confirmed.emit()
+		await process_frame
+		await table._click(table.board.global_position + table.board._box(table.model.entry(space).box).get_center())
+		await settled()
+		check(table.model.selected_space == space and table.model.ref_feedback(space).kind == "selected", "a board-first click stages a selected target without sending an action")
+		await capture_evidence("pointer-selected-" + language, space)
+		await table._click(table.board.global_position + table.board._box(table.model.entry(space).box).get_center())
+		await settled()
+		check(table.model.selected_space.is_empty(), "a second staged board click matches the deselection guidance")
+	check(int(table.model.summary().revision) == revision and table.model.held_action().is_empty(), "pointer reading, right-click inspection and board staging never send an action")
+	table.model.language = "ko"
+	table._render()
+	await settled()
+
+
+func capture_evidence(name: String, pointer_ref = "") -> void:
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--evidence="):
 			print("PARITY_CAPTURE_START ", name)
 			table.capture_dir = argument.trim_prefix("--evidence=")
 			DirAccess.make_dir_recursive_absolute(table.capture_dir)
 			await table._wait_images()
+			if not pointer_ref.is_empty():
+				await point_reference(pointer_ref)
 			print("PARITY_CAPTURE_IMAGES_READY ", name)
 			await table._capture(name)
 			print("PARITY_CAPTURE_WIDE_READY ", name)
@@ -67,6 +169,13 @@ func capture_evidence(name: String) -> void:
 			await process_frame
 			await process_frame
 			table._fit_columns()
+			if not pointer_ref.is_empty():
+				await point_reference(pointer_ref)
+				check(table.preview.visible and table.pointer_hint.visible, "pointing at the same reference after resize restores its preview and state hint")
+				var box = table.model.entry(pointer_ref).get("box")
+				if box is Array:
+					var region = table.board._box(box)
+					check(not table.preview.get_global_rect().intersects(Rect2(table.board.global_position + region.position, region.size)), "a narrow board preview does not cover the pointed space")
 			for window in table.find_children("*", "Window", true, false):
 				if window.visible and not window.is_queued_for_deletion():
 					check(Rect2(Vector2.ZERO, table.size).encloses(Rect2(Vector2(window.position), Vector2(window.size))), "open information window remains inside the narrow viewport")
@@ -102,6 +211,7 @@ func run() -> void:
 		var seat = table.model.active_seat
 		check(not table.feedback.visible and table.feedback.receipt.is_empty(), "loading a game never replays an old applied receipt")
 		if scenario.kind == "unique" and not scenario.get("space_first", false):
+			await pointer_probe(scenario)
 			# Feed only response states to the receipt component. The live game
 			# snapshot and actions are untouched by these error/unconfirmed checks.
 			var context = table.feedback.capture()
