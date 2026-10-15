@@ -72,6 +72,8 @@ from dune_imperium.rules.agent_box_abilities import (
     target_piece,
 )
 from dune_imperium.rules.agent_effects import (
+    AGENT_ICON_CARDS,
+    AGENT_ICON_INTRIGUE,
     agent_card_cost_block,
     agent_card_icons_at_placement,
     agent_card_payment_block,
@@ -104,7 +106,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 66
+    assert len(AGENT_BOX_ABILITIES) == 68
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -636,10 +638,12 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         resolve_agent_card_effect(demands)
 
 
-def test_five_discard_arrows_read_the_discarded_card() -> None:
+def test_seven_discard_arrows_read_the_discarded_card() -> None:
     """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
     the first line; a later line's condition reads the discarded card, which
-    only the Agent box knows (the generic interpreter refuses it)."""
+    only the Agent box knows (the generic interpreter refuses it). Captured
+    Mentat's and Guild Spy's rewards are armed as icons after the discard,
+    under the keys the icon path resolves."""
 
     discards = {
         effect: ability.mark
@@ -652,6 +656,24 @@ def test_five_discard_arrows_read_the_discarded_card() -> None:
         _BOX.MAY_DISCARD_FOR_WATER: AbilityMark.OPTIONAL,
         _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
+        _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,
+        _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD: (
+            AbilityMark.OPTIONAL
+        ),
+    }
+    assert {
+        effect: ability.armed_icons
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if ability.armed_icons
+    } == {
+        _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
+            AGENT_ICON_INTRIGUE,
+            AGENT_ICON_CARDS,
+        ),
+        _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD: (
+            AGENT_ICON_CARDS,
+            AGENT_ICON_INTRIGUE,
+        ),
     }
     for effect, mark in discards.items():
         ability = AGENT_BOX_ABILITIES[effect]

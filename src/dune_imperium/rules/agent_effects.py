@@ -323,11 +323,7 @@ def legal_agent_card_discard_actions(
     if recorded is not None and discard_box(recorded):
         # A discard arrow, from its record (composed A3d).
         return discard_rows(state, player, recorded)
-    if effect not in (
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-    ):
+    if effect is not PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return ()
     # Any hand card may pay the discard: neither Captured Mentat's nor Guild
     # Spy's face conditions the cost on the Intrigue reward [Captured Mentat
@@ -399,27 +395,6 @@ def apply_agent_card_discard(
     # ``active_agent_card``; reading the printed card here instead let a Ghola
     # take the discard and pay out nothing.
     source_card = active_agent_card(context)
-    if source_card.agent_effect in (
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-    ):
-        # The cost is paid; the printed reward icons (Intrigue draw, card
-        # draw) are independent effects queued for their own actions in the
-        # owner's order (OQ-027).
-        guild_discard = Faction.SPACING_GUILD in discarded_card.factions
-        rewards = (
-            (AGENT_ICON_INTRIGUE, AGENT_ICON_CARDS)
-            if source_card.agent_effect
-            is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
-            else (AGENT_ICON_CARDS, *((AGENT_ICON_INTRIGUE,) if guild_discard else ()))
-        )
-        arm_agent_icons(context, rewards)
-        armed = advance_after_effect(
-            discarded.state,
-            context,
-            discarded.state.players,
-        )
-        return RuleResult(state=armed, events=discarded.events)
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
@@ -2252,8 +2227,6 @@ _ARRAKIS_REVOLT = (
 # refusal beside the discards (``legal_agent_card_discard_actions``).
 _OPTIONAL_DISCARDS: Final = frozenset(
     {
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
     }
 )
@@ -3854,8 +3827,6 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,

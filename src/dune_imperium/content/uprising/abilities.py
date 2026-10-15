@@ -98,6 +98,11 @@ class Ability:
     # owner's order (OQ-027): one row key per line, ``sections[i]`` resolved
     # by ``resolve_agent_card_effect(effect=icons[i])``.
     icons: tuple[str, ...] = ()
+    # An arrow whose rewards resolve one action each once its cost is paid
+    # (OQ-027): one row key per line, armed by the cost's answer
+    # (``effects.arm_agent_icons``) instead of queued at placement; a line
+    # whose condition fails then is not armed.
+    armed_icons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, AbilityTiming):
@@ -127,6 +132,17 @@ class Ability:
                 raise ValueError("an icon-by-icon box keys every line")
             if len(set(self.icons)) != len(self.icons) or not all(self.icons):
                 raise ValueError("icon keys must be named and distinct")
+        if self.armed_icons:
+            if self.timing is not AbilityTiming.AGENT_BOX or self.icons:
+                raise ValueError("only an Agent box arrow arms its rewards as icons")
+            if len(self.armed_icons) != len(self.sections):
+                raise ValueError("an arrow arming its rewards keys every line")
+            if len(set(self.armed_icons)) != len(self.armed_icons) or not all(
+                self.armed_icons
+            ):
+                raise ValueError("icon keys must be named and distinct")
+            if not self.sections[0].costs:
+                raise ValueError("an arrow arms its rewards after its cost")
 
 
 _FROM_INTRIGUE = {

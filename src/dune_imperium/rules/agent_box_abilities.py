@@ -79,6 +79,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
+    Reward,
     SandwormsInConflictAtLeast,
     SpendSpecimens,
     SpyRecalledThisTurn,
@@ -105,6 +106,7 @@ from dune_imperium.rules.effects import (
     active_agent_card,
     advance_after_effect,
     agent_card_source,
+    arm_agent_icons,
     current_agent_effect_context,
     finish_agent_icon,
     is_grafted,
@@ -1054,10 +1056,19 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # whose condition the discarded card meets: resources with the write-back,
 # then a Contract named ``<that>:contract_reward``, then one draw named
 # ``<that>:<discarded card>:draw`` (Space-time Folding's second card, Guild
-# Envoy's two). The events are the discard's, then the follow-ups'.
+# Envoy's two). The events are the discard's, then the follow-ups'. An arrow
+# whose rewards are armed (``Ability.armed_icons``: Captured Mentat, Guild
+# Spy) pays nothing at once: the keys of the lines the discarded card meets
+# are queued in printed order (``effects.arm_agent_icons``), each resolved
+# on its own by the icon path (OQ-027), and the box is then mandatory.
 
 _DISCARD_SOURCE: Final = "agent_card_discard"
 _DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards)
+# The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
+_ARMED_REWARDS: Final[Mapping[str, Reward]] = {
+    "intrigue": DrawIntrigueCards(1),
+    "cards": DrawPersonalCards(1),
+}
 
 
 def discard_box(ability: Ability | None) -> bool:
@@ -1080,6 +1091,11 @@ def discard_box(ability: Ability | None) -> bool:
         for line in ability.sections
     ):
         return False
+    if ability.armed_icons:
+        return all(
+            line.rewards == (_ARMED_REWARDS.get(key),)
+            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+        )
     return all(
         isinstance(reward, _DISCARD_REWARDS)
         for line in ability.sections
@@ -1159,13 +1175,28 @@ def apply_discard(
         raise RuntimeError("Agent-card discard choice has invalid card ID")
     factions = personal_card_for_instance(card_id).factions
     discarded = discard_personal_card_from_hand(state, player, card_id, source=source)
-    lines = tuple(
-        line
-        for line in ability.sections
-        if not isinstance(line.condition, DiscardedCardHasFaction)
+    met = tuple(
+        not isinstance(line.condition, DiscardedCardHasFaction)
         or line.condition.faction in factions
+        for line in ability.sections
     )
-    rewards = tuple(reward for line in lines for reward in line.rewards)
+    if ability.armed_icons:
+        arm_agent_icons(
+            context,
+            tuple(key for key, ok in zip(ability.armed_icons, met, strict=True) if ok),
+        )
+        return RuleResult(
+            state=advance_after_effect(
+                discarded.state, context, discarded.state.players
+            ),
+            events=discarded.events,
+        )
+    rewards = tuple(
+        reward
+        for line, ok in zip(ability.sections, met, strict=True)
+        if ok
+        for reward in line.rewards
+    )
     owner = discarded.state.players[player]
     for reward in rewards:
         if isinstance(reward, GainResources):
