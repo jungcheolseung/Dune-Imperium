@@ -76,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     TakeContract,
+    TrashIntrigueCard,
     TrashPersonalCard,
     UnitsInConflictAtLeast,
 )
@@ -87,6 +88,12 @@ _BG_BOND = FactionBond(_BG)
 _BG_TWO = InfluenceAtLeast(_BG, 2)
 _TWO_SPICE = GainedSpiceThisTurn(2)
 _GUILD_DISCARD = DiscardedCardHasFaction(Faction.SPACING_GUILD)
+_BRANCHING_PATH = (
+    _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+)
+_JUNCTION_HEADQUARTERS = (
+    _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+)
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -308,6 +315,36 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: _discard(
                 _line(DrawPersonalCards(2), condition=_GUILD_DISCARD),
                 mark=AbilityMark.MANDATORY,
+            ),
+            # --- Intrigue arrows (composed effects, A3d) --------------------------
+            # Branching Path: "If Bene Gesserit Alliance: You may trash an
+            # Intrigue card -> Draw 1 Intrigue card, Gain 2 spice"; the Alliance
+            # is judged when the cost is paid, and the rewards are then armed.
+            _BRANCHING_PATH: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawIntrigueCards(1),),
+                        condition=HasAlliance(_BG),
+                        costs=(TrashIntrigueCard(),),
+                    ),
+                    _line(GainResources(spice=2)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("intrigue", "spice"),
+            ),
+            # Junction Headquarters: "If Spacing Guild Alliance: You may trash
+            # an Intrigue card and pay 2 spice -> Gain 1 VP".
+            _JUNCTION_HEADQUARTERS: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainVictoryPoints(1),),
+                        condition=HasAlliance(Faction.SPACING_GUILD),
+                        costs=(TrashIntrigueCard(), PayResources(spice=2)),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.

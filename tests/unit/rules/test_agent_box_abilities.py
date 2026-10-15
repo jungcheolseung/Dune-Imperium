@@ -66,6 +66,7 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentPaymentBlock,
     condition_block,
     discard_box,
+    intrigue_box,
     opens_at_placement,
     optional_arrow,
     payment_box,
@@ -74,6 +75,7 @@ from dune_imperium.rules.agent_box_abilities import (
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
     AGENT_ICON_INTRIGUE,
+    AGENT_ICON_SPICE,
     agent_card_cost_block,
     agent_card_icons_at_placement,
     agent_card_payment_block,
@@ -106,7 +108,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 68
+    assert len(AGENT_BOX_ABILITIES) == 70
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -664,7 +666,7 @@ def test_seven_discard_arrows_read_the_discarded_card() -> None:
     assert {
         effect: ability.armed_icons
         for effect, ability in AGENT_BOX_ABILITIES.items()
-        if ability.armed_icons
+        if ability.armed_icons and discard_box(ability)
     } == {
         _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
             AGENT_ICON_INTRIGUE,
@@ -688,3 +690,25 @@ def test_seven_discard_arrows_read_the_discarded_card() -> None:
     envoy = _played("imperium:guild_envoy:0", PlayerState(player_id=0))
     with pytest.raises(TypeError, match="judged with its Agent box"):
         condition_holds(envoy, 0, guild)
+
+
+def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
+    """Composed A3d: Branching Path and Junction Headquarters pay with an
+    Intrigue card under an Alliance judged when the cost is paid; Branching
+    Path's rewards are armed as icons, Junction's VP is paid at once."""
+
+    branching = AGENT_BOX_ABILITIES[
+        _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+    ]
+    junction = AGENT_BOX_ABILITIES[
+        _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+    ]
+    intrigue_arrows = [
+        ability for ability in AGENT_BOX_ABILITIES.values() if intrigue_box(ability)
+    ]
+    assert intrigue_arrows == [branching, junction]
+    assert branching.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE)
+    assert not junction.armed_icons
+    for ability in intrigue_arrows:
+        assert optional_arrow(ability)
+        assert not discard_box(ability) and not payment_box(ability)
