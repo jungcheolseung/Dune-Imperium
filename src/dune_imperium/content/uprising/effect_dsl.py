@@ -376,6 +376,22 @@ class PayResources:
 
 
 @dataclass(frozen=True, slots=True)
+class TrashCard:
+    """Trash one of the player's cards as an arrow's cost: one in hand, in
+    the discard pile or in play ("You may trash a card -> Draw 1 card"
+    [Shishakli card]; a Row card borrowed with Usurp is not in play, OQ-054).
+    ``hand_only``: "a card from your hand"; ``this_card``: "You may trash this
+    card ->" [Pivotal Gambit card]."""
+
+    hand_only: bool = False
+    this_card: bool = False
+
+    def __post_init__(self) -> None:
+        if self.hand_only and self.this_card:
+            raise ValueError("a trash cost names one place to take the card from")
+
+
+@dataclass(frozen=True, slots=True)
 class SpendSpecimens:
     """Spend ``count`` of the player's specimens: they return to the supply
     as troops [Immortality p. 8] ("You may spend 1 specimen" [Organ
@@ -541,6 +557,7 @@ type Cost = (
     | TrashDiscardPileCard
     | FlipFaceUpConflictCard
     | SpendSpecimens
+    | TrashCard
 )
 
 
@@ -1002,6 +1019,12 @@ class DrawPerSandwormInConflict:
 
 
 @dataclass(frozen=True, slots=True)
+class PledgeFirstPlaceInfluence:
+    """Add 1 Influence of the player's choice to this Conflict's first-place
+    reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
+
+
+@dataclass(frozen=True, slots=True)
 class ForceEnemyRetreat:
     """Force an enemy troop to retreat [Disruption Tactics card]: one unit of
     an opponent's in the Conflict goes back to its garrison. A Sardaukar
@@ -1068,6 +1091,7 @@ type Reward = (
     | LookAtIntrigueKeepOne
     | ForceEnemyRetreat
     | CompleteContract
+    | PledgeFirstPlaceInfluence
 )
 
 

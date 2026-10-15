@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
+    CommandersInConflictAtLeast,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -76,6 +77,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LookAtIntrigueKeepOne,
     PayResources,
     PlaceSpy,
+    PledgeFirstPlaceInfluence,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
@@ -84,6 +86,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     TakeContract,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
     UnitsInConflictAtLeast,
@@ -100,6 +103,7 @@ from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
@@ -457,13 +461,21 @@ def resolve_box(state: GameState) -> RuleResult:
         ability is None
         or ability.icons
         or ability.hook is not None
-        or len(ability.sections) != 1
+        or (len(ability.sections) != 1 and not trash_box(ability))
     ):
         raise ValueError("the active Agent box is not resolved as one recorded action")
-    (line,) = ability.sections
+    line = ability.sections[0]
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    if discard_box(ability):
+    if trash_box(ability):
+        # Ruthless Leadership: reached by the dry run and the turn's end only
+        # (``optional_arrow`` keeps the unconditioned trash boxes out); its
+        # Commander condition is judged now (OQ-028), and without it the box
+        # resolves without effect.
+        if _trash_conditions_hold(owner, ability):
+            raise RuntimeError("Agent-card trash effect requires a player choice")
+        available = False
+    elif discard_box(ability):
         # Guild Envoy's mandatory discard resolves through its rows; with an
         # empty hand the box waits and fizzles (OQ-057 (1), OQ-028).
         if discard_rows(state, player, ability):
@@ -1073,6 +1085,8 @@ _ARMED_REWARDS: Final[Mapping[str, Reward]] = {
     "intrigue": DrawIntrigueCards(1),
     "cards": DrawPersonalCards(1),
     "spice": GainResources(spice=2),
+    "troops": RecruitTroops(1),
+    "pledge": PledgeFirstPlaceInfluence(),
 }
 
 
@@ -1110,16 +1124,17 @@ def discard_box(ability: Ability | None) -> bool:
 
 def optional_arrow(ability: Ability | None) -> bool:
     """An optional arrow, resolved only through its rows: the generic
-    resolution keeps the dry-run answer it had before the record."""
+    resolution keeps the dry-run answer it had before the record (not
+    implemented, read as available). Ruthless Leadership's trash icons are
+    not one: its condition fails there into the unavailable event."""
 
+    if ability is None:
+        return False
     return (
         payment_box(ability)
         or intrigue_box(ability)
-        or (
-            discard_box(ability)
-            and ability is not None
-            and ability.mark is AbilityMark.OPTIONAL
-        )
+        or (trash_box(ability) and not _trash_conditions(ability))
+        or (discard_box(ability) and ability.mark is AbilityMark.OPTIONAL)
     )
 
 
@@ -1424,3 +1439,221 @@ def apply_intrigue_payment(
         replace_player(state.players, owner),
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+# --- Trash boxes (stage A3e) ----------------------------------------------------
+#
+# Black trash icons (Calculus of Power's one, Ruthless Leadership's two under
+# its Commander condition) and arrows paid by trashing a card (Shishakli's
+# draw, Pivotal Gambit's armed troop and pledge). Rows: the refusal, then one
+# per card the trash may take -- hand, discard pile and cards in play (a
+# Usurped Row card is not in play, OQ-054), the box's own card while in play
+# for "this card", the hand for "from your hand" -- and none while a printed
+# condition fails. The answer trashes with source ``round:R:player:P:
+# agent_card`` (no card id) and keeps the trash trigger's recruits in the
+# context written back; a box with icons left keeps its ``trashes_remaining``
+# counter on the frame. Shishakli's draw is named ``<that>:trash_draw``.
+
+_TRASH_SOURCE: Final = "agent_card"
+_TRASH_ICON: Final = TrashPersonalCard()
+
+
+def trash_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is an optional trash box (icons or a trash arrow)."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or not ability.sections
+    ):
+        return False
+    if all(
+        line.rewards == (_TRASH_ICON,)
+        and not line.costs
+        and (
+            line.condition is None
+            or isinstance(line.condition, CommandersInConflictAtLeast)
+        )
+        for line in ability.sections
+    ):
+        return not ability.armed_icons
+    first, *rest = ability.sections
+    if (
+        len(first.costs) != 1
+        or not isinstance(first.costs[0], TrashCard)
+        or any(line.costs for line in rest)
+        or any(line.condition is not None for line in ability.sections)
+    ):
+        return False
+    if ability.armed_icons:
+        return all(
+            line.rewards == (_ARMED_REWARDS.get(key),)
+            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+        )
+    return not rest and all(
+        isinstance(reward, DrawPersonalCards) for reward in first.rewards
+    )
+
+
+def _trash_cost(ability: Ability) -> TrashCard | None:
+    cost = ability.sections[0].costs[0] if ability.sections[0].costs else None
+    return cost if isinstance(cost, TrashCard) else None
+
+
+def _trash_conditions(ability: Ability) -> tuple[CommandersInConflictAtLeast, ...]:
+    return tuple(
+        line.condition
+        for line in ability.sections
+        if isinstance(line.condition, CommandersInConflictAtLeast)
+    )
+
+
+def _trash_conditions_hold(owner: PlayerState, ability: Ability) -> bool:
+    return all(
+        owner.commanders_conflict >= condition.count
+        for condition in _trash_conditions(ability)
+    )
+
+
+def trash_targets(
+    state: GameState, player: int, ability: Ability, context: Mapping[str, ActionValue]
+) -> tuple[str, ...]:
+    """The cards the box's trash may take now."""
+
+    owner = state.players[player]
+    cost = _trash_cost(ability)
+    if cost is not None and cost.this_card:
+        # "Trash this card" (OQ-022: a card already trashed by another
+        # effect expired before this choice was offered).
+        card_id = context.get("card_id")
+        if isinstance(card_id, str) and card_id in owner.in_play:
+            return (card_id,)
+        return ()
+    if cost is not None and cost.hand_only:
+        return owner.hand
+    # A Row card borrowed with Usurp is not "in play" ("A grafted card in
+    # the Imperium Row isn't considered to be 'in play.'" [Immortality
+    # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
+    return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+
+
+def trash_block(
+    state: GameState, player: int, ability: Ability, context: Mapping[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """Why the box's trash offers no card now: its condition, then no target."""
+
+    owner = state.players[player]
+    kind = OptionalBlockKind
+    if not _trash_conditions_hold(owner, ability):
+        return OptionalEffectBlock(kind.NO_COMMANDER_IN_CONFLICT)
+    if trash_targets(state, player, ability, context):
+        return None
+    cost = _trash_cost(ability)
+    if cost is not None and cost.this_card:
+        return OptionalEffectBlock(kind.NOT_IN_PLAY)
+    if cost is not None and cost.hand_only:
+        return OptionalEffectBlock(kind.HAND, 1, 0)
+    return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
+
+
+def trash_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal, then one row per target; none while a condition fails."""
+
+    _, context = current_agent_effect_context(state)
+    if not _trash_conditions_hold(state.players[player], ability):
+        return ()
+    return (
+        DomainAction(action_id="decline_agent_card_trash", actor=player),
+        *(
+            DomainAction(
+                action_id="trash_agent_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in trash_targets(state, player, ability, context)
+        ),
+    )
+
+
+def apply_trash(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Refuse the trash, or trash the chosen card and take what it buys."""
+
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:{_TRASH_SOURCE}"
+    context["pending_agent_effect"] = False
+    if action.action_id == "decline_agent_card_trash":
+        context.pop("trashes_remaining", None)
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:trash_declined",
+                    kind="agent_card_trash_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card trash choice has invalid card ID")
+    trashed = trash_personal_card(state, player, card_id, source=source)
+    keep_trash_recruits(context, trashed)
+    cost = _trash_cost(ability)
+    if cost is None:
+        # Black trash icons: one counter for the ones still open.
+        remaining = _trashes_remaining(context, len(ability.sections)) - 1
+        if remaining > 0:
+            context["pending_agent_effect"] = True
+            context["trashes_remaining"] = remaining
+            frame = trashed.state.decision_stack[-1]
+            next_frame = replace(frame, context=tuple(sorted(context.items())))
+            return RuleResult(
+                state=replace(
+                    trashed.state,
+                    decision_stack=(*trashed.state.decision_stack[:-1], next_frame),
+                ),
+                events=trashed.events,
+            )
+        context.pop("trashes_remaining", None)
+        return RuleResult(
+            state=advance_after_effect(trashed.state, context, trashed.state.players),
+            events=trashed.events,
+        )
+    if cost.this_card:
+        # The card trashed itself as its own cost, so its rewards still pay
+        # out (OQ-022).
+        context["agent_card_self_trashed"] = True
+    if ability.armed_icons:
+        arm_agent_icons(context, ability.armed_icons)
+    next_state = advance_after_effect(trashed.state, context, trashed.state.players)
+    draws = (
+        0
+        if ability.armed_icons
+        else sum(
+            reward.count
+            for reward in ability.sections[0].rewards
+            if isinstance(reward, DrawPersonalCards)
+        )
+    )
+    if draws:
+        drawn = draw_or_request_personal_cards(
+            next_state, player, draws, source=f"{source}:trash_draw"
+        )
+        return RuleResult(
+            state=drawn.state, events=(*trashed.events, *drawn.events)
+        )
+    return RuleResult(state=next_state, events=trashed.events)
+
+
+def _trashes_remaining(context: Mapping[str, ActionValue], default: int) -> int:
+    remaining = context.get("trashes_remaining", default)
+    if isinstance(remaining, bool) or not isinstance(remaining, int):
+        raise RuntimeError("Agent-turn effect frame has invalid trash count")
+    return remaining

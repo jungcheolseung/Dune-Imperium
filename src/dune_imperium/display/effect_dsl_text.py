@@ -70,6 +70,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
+    PledgeFirstPlaceInfluence,
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
@@ -90,6 +91,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SummonSandworm,
     TakeContract,
     TechTilesAtLeast,
+    TrashCard,
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
@@ -328,6 +330,12 @@ def cost_text(cost: Cost) -> str:
             return (
                 f"Trash a card from your discard pile that costs {minimum_cost} or more"
             )
+        case TrashCard(hand_only=True):
+            return "Trash a card from your hand"
+        case TrashCard(this_card=True):
+            return "Trash this card"
+        case TrashCard():
+            return "Trash a card"
         case SpendSpecimens(count=count):
             # "You may spend 1 specimen" [Organ Merchants card].
             return f"Spend {count} {_plural(count, 'specimen')}"
@@ -480,6 +488,11 @@ def reward_text(reward: Reward) -> str:
             )
         case ForceEnemyRetreat():
             return "Force an enemy troop to retreat"
+        case PledgeFirstPlaceInfluence():
+            return (
+                "Add 1 Influence of your choice to this Conflict's first-place"
+                " reward"
+            )
         case CompleteContract():
             return "Complete one of your contracts"
         case _:
