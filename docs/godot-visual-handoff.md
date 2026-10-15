@@ -2,7 +2,7 @@
 
 사용자 목표: Windows에서 설치 없이 게임을 완주하면서, 기존 웹과 익숙한 배치·조작을 유지하고
 카드를 읽고 선택하기 편한 화면을 만든다. 사용자는 현재 결과물의 완성도에 만족하지 않는다.
-Claude 토큰 대기 중 Codex가 기본 플레이 화면의 1차 시각 개선을 반영했다. 이후 화면 다듬기도
+Claude 토큰 대기 중 Codex가 기본 플레이 화면과 확장 패널/정보창의 1차 시각 개선을 반영했다. 이후 화면 다듬기도
 이 기준에서 이어 간다. 기능 검사 통과를 좋은 플레이 경험의 증거로 대신하지 않는다.
 
 ## 작업 위치와 지켜야 할 동작
@@ -44,9 +44,35 @@ DTO/확정 흐름은 유지한다. 저장된 개인 열 너비는 존중하며 �
 수량·경매 10사례/98과 선택창 16사례/404항목을 새 배치로 재실행했다.
 Windows 실제 GPU·IME·스피커·모니터 이동은 별도 확인 범위다.
 
-다음은 **확장 패널과 정보창**이다. 연구·계약·기술·지도자/Scouts의 가로 카드·긴 효과, 정보창의
-그림/설명 비율과 간격을 같은 방식으로 다듬는다. 기본 화면의 1차 개선을 전체 시각 마감이나
-모든 카드 조합 감사의 완료로 읽지 않는다.
+## 반영한 확장 패널과 정보창
+
+카드 상세와 관련 카드/칸 효과 미리보기는 공통 `detail_entry.gd`로 그림 옆에 이름/본문을
+배치한다. 그림의 실제 비율을 지키며 좁은 본문에서는 세로로 전환한다. 그림이 없으면 설명이
+열 전체를 쓴다. 긴 효과는 기존 창 스크롤 안에서 읽는다. 선택한 보드/책략 옵션의 본문만
+펼치는 동작과 영역/물리 복사본 표시는 유지한다. 긴 영어 지도자 능력이 popup 최소 너비를
+키우지 않도록 줄바꿈을 먼저 설정하고 내용을 넣는다.
+
+덱/버림 더미의 세로 카드를 키우고 계약·기술·스킬처럼 가로 카드만 있는 더미는 두 열로
+보여준다. 오른쪽 확대 그림도 실제 비율에 맞춰 설명 공간을 돌려준다. 장수·알려진 맨 위
+복사본·공개 순서와 개인 정보 갱신/닫기는 유지한다. 지도자 개인 슬롯과 확장 시장의 가로
+카드도 확대했다. 시장 카드는 열 너비에 맞추고 긴 영어 시장 제목은 줄바꿈한다.
+
+연구 창에는 보드 옆에 서버가 허용한 목적지 버튼과 네 플레이어의 공개 연구/표본 상태를
+붙였다. 보드와 버튼은 같은 기존 선택 경로를 쓴다. Scouts overlay는 그림/본문을 함께 읽고
+보드 경계 안에 머문다. 현황 창은 공개 정보와 허가된 자신의 비공개 선택을 구분한다.
+없는 그림 때문에 새 정보를 추측하거나 클라이언트에서 합법 목적지를 만들지 않는다.
+
+같은 저장본의 정보 4사례/32와 선택창 16사례/404를 새 상세 배치로 재검증했다. 새 확장
+패널 검사는 ko/en 6사례/86항목과 좁은 창 포함 캡처 36장, headless 76항목을 통과했다.
+연구 보드 클릭/텍스트 버튼 결과는 별도 복원본에서 서버가 실행한 같은 DTO와 hash가 같다.
+`tmp/godot/visual-polish/before-detail.png`와
+`tmp/godot/parity/screenshots/effect-detail-graft-boxes-ko.png`,
+`tmp/godot/visual-polish/before-pile.png`와 `tmp/godot/parity/screenshots/deck-ko-glowglobes.png`에
+같은 국면의 전후를 남겼다. 새 패널 화면은 `tmp/godot/panels/screenshots/`다.
+
+다음 시각 후보는 **선택 행의 비용·경고·예고 위계와 선택/실행 피드백**이다. 새 Windows
+업데이트의 실제 플레이 피드백도 확인해야 한다. 이번 개선을 전체 시각 마감이나 모든 카드
+조합 감사의 완료로 읽지 않는다.
 
 ## 시각 작업의 우선순위
 
@@ -76,7 +102,7 @@ Windows 실제 GPU·IME·스피커·모니터 이동은 별도 확인 범위다.
 | 합법 선택·개인 정보·번역·표시 모델 | `model.gd` |
 | 접목 효과·수량·폐기 영역 | `choices.gd` |
 | 계약/연구/기술/지도자/Scouts | `expansions.gd` |
-| 더미·큰 카드·검색 | `pile_viewer.gd`, `portrait.gd`, `hand_card.gd` |
+| 상세 그림/본문·더미·큰 카드·검색 | `detail_entry.gd`, `pile_viewer.gd`, `portrait.gd`, `hand_card.gd` |
 | 설정·좌석·팝업·다시보기·접힘 | `session_tools.gd` |
 | 모니터/DPI·논리 좌표 | `display_scale.gd` |
 | 공개 연출과 합성음 | `table_effects.gd` |
@@ -88,6 +114,7 @@ Windows 실제 GPU·IME·스피커·모니터 이동은 별도 확인 범위다.
 # 개발용: --godot에는 이 PC의 고정 Godot 실행 파일 절대 경로를 넣는다.
 PYTHONPATH=src .venv/bin/python scripts/godot/verify_prototype.py --godot /path/to/godot
 PYTHONPATH=src .venv/bin/python scripts/godot/verify_prototype.py --godot /path/to/godot --capture
+PYTHONPATH=src .venv/bin/python scripts/godot/verify_panels.py --godot /path/to/godot --capture
 PYTHONPATH=src .venv/bin/python scripts/godot/verify_prototype.py --godot /path/to/godot --full-game --rules all --seeds 22
 # 개발용 Playwright/Chromium이 있는 환경에서 같은 저장본 직접 대조
 PYTHONPATH=src .venv/bin/python scripts/godot/verify_parity.py --godot /path/to/godot --suite choices --chromium /path/to/chromium
@@ -96,6 +123,8 @@ PYTHONPATH=src .venv/bin/python scripts/godot/verify_parity.py --godot /path/to/
 `verify_parity.py`는 `core`, `info`, `quantity`, `choices`를 지원한다. `choices`는 실제
 접목 잠금/undo/다른 카드의 효과와 이번 턴·이전 턴 카드 폐기의 두 언어 대조다. `--evidence`는
 화면이 있는 개발 환경에서 캡처와 좁은 창 경계를 검사한다. Playwright는 배포 의존성이 아니다.
+`verify_panels.py`는 브라우저 없이 확장 저장본을 복원하고, `--capture`는 보드 클릭과 실제
+두 크기 화면을, headless는 텍스트 연구 버튼을 검사한다(`panel_test.gd`).
 실행 로그·합법 행 census·서버 결과 hash와 실제 캡처를 함께 확인한다. 현재 검증 범위와 남은
 조합은 `godot-feature-parity.md`에 있다.
 
