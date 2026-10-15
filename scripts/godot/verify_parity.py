@@ -394,10 +394,8 @@ def main() -> int:
     parser.add_argument('--suite', choices=('core', 'info', 'quantity', 'choices'),
                         default='core')
     parser.add_argument('--evidence', action='store_true',
-                        help='Capture information or quantity screens on a display')
+                        help='Capture native screens and check narrow layouts')
     args = parser.parse_args()
-    if args.evidence and args.suite == 'core':
-        parser.error('--evidence requires --suite info, quantity or choices')
     binary = ensure_godot(args.godot)
     directory = TMP_DIR / 'godot/parity'
     saves = directory / 'saves'

@@ -134,8 +134,9 @@ func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
 	if not held.is_empty() and int(held.index) in indices:
 		select.select(indices.find(int(held.index)))
 	var expected = table.model.signature()
-	var detail = table._label(body, "", 13)
-	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var detail = VBoxContainer.new()
+	detail.add_theme_constant_override("separation", 5)
+	body.add_child(detail)
 	var submit: Button
 	if not auction:
 		submit = table._button(row, table.model.native("선택 / Choose"), func(): table._choose_action(actions[select.selected], expected))
@@ -148,7 +149,8 @@ func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
 			submit.set_meta("action_indices", indices)
 			submit.set_meta("quantity_select", select)
 			submit.disabled = table.busy
-		detail.text = descriptions.get(int(action.index), table.model.describe(action))
+		table._clear(detail)
+		table.ActionChoice.populate(table, detail, table.model.choice_reading(action, descriptions.get(int(action.index), "")), descriptions.has(int(action.index)))
 		select.disabled = table.busy or actions.size() == 1
 	update.call()
 	select.item_selected.connect(func(_index):
@@ -162,12 +164,9 @@ func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
 
 
 func _unavailable_line(title: String, reason: String, refs: Array = []) -> void:
-	var button = table._button(table.content, title + "\n" + reason, func(): pass)
-	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	button.disabled = true
-	button.tooltip_text = reason
-	button.set_meta("unavailable_reason", reason)
+	var button = table.ActionChoice.new()
+	table.content.add_child(button)
+	button.setup_unavailable(table, title, reason)
 	for ref in refs:
 		if ref is String and not table.model.entry(ref).is_empty():
 			table._bind_preview(button, ref)

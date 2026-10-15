@@ -2,6 +2,14 @@ extends RefCounted
 
 # Native chrome only. Card names, player names and rule text use the catalog.
 const EN = {
+	"효과": "Effect",
+	"예상": "Preview",
+	"주의": "Caution",
+	"✓ 선택됨 · 턴 종료로 확정": "✓ Selected · End turn to confirm",
+	"선택 불가": "Unavailable",
+	"처리하지 못했습니다": "Could not apply action",
+	"서버 응답 수신 · 화면 확인 중": "Response received · Checking state",
+	"✓ 실행됨 · ": "✓ Applied · ",
 	"가능한 연구": "Available research",
 	"연구 현황": "Research status",
 	"공개 현황": "Public information",
