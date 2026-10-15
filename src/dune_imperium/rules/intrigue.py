@@ -8,104 +8,68 @@ printed on the card is mandatory once the card is played [FAQ p. 2].
 
 Cards whose text needs player choices (which Faction to lose or gain, which
 card to discard) open an ``INTRIGUE_CHOICE`` frame and resolve one choice slot
-per action; the card is discarded when the last slot completes.
+per action; the card is discarded when the last slot completes. The frame
+stores the option's pending ability and the composed-effects executor
+(``rules.ability_executor``, stage A1) offers and applies each slot; this
+module keeps the card's play, its frames and its finish.
 """
 
+from collections.abc import Mapping
 from copy import replace
 from enum import StrEnum
+from typing import Final
 
-from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
-from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
-    AcquireTleilaxuCard,
-    DeployFromGarrison,
-    DestroyShieldWall,
-    DiscardFromHand,
-    DrawIntrigueCards,
-    DrawPersonalCards,
     EffectSection,
-    FlipBattleCard,
-    FlipFaceUpConflictCard,
-    GainInfluence,
-    GiveIntrigueToOpponent,
     IntrigueOption,
     IntrigueTiming,
-    LoseInfluence,
-    LoseTroops,
     OnTroopsLostAtConflictEnd,
     PeekTopCard,
-    PlaceSpy,
-    RecallSpy,
-    RetreatTroops,
     RevealContractsTakeOne,
-    SetAsideImperiumRowCard,
-    TrashDiscardPileCard,
-    TrashIntrigueCard,
-    TrashPersonalCard,
     UnitsDeployedThisTurnAtLeast,
 )
-from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.acquisition import (
-    acquirable_imperium_instance_ids,
-    acquirable_reserve_card_ids,
-    acquire_imperium_for_intrigue,
-    acquire_reserve_for_intrigue,
-    acquisition_spy_frame,
-    take_imperium_row_card,
+from dune_imperium.rules.ability_executor import (
+    STACKED,
+    PendingAbility,
+    ability_rows,
+    acquire_by_piece,
+    acquires_to_hand,
+    apply_automatic_rewards,
+    apply_piece,
+    current_piece,
+    decode_pending,
+    encode_pending,
+    entry_sections,
+    intrigue_ref,
+    rewards_wait,
 )
-from dune_imperium.rules.card_bonds import counted_in_play
-from dune_imperium.rules.card_discard import (
-    discard_personal_card_from_hand,
-    resolve_personal_card_discard_trigger,
-)
-from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
+from dune_imperium.rules.acquisition import acquisition_spy_frame
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.combat import (
     COMBAT_INTRIGUE_PLAYED_KEY,
     refresh_combat_participants,
-)
-from dune_imperium.rules.combat_deployment import (
-    grant_combat_icon,
-    reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     OptionUnplayable,
     applicable_sections,
-    apply_rewards,
-    automatic_rewards,
     choice_slots,
     condition_holds,
-    cost_slots,
-    deployable_garrison_units,
-    face_up_conflict_card_ids,
-    flippable_battle_card_ids,
-    influence_gain_candidates,
     option_unplayable_reason,
     pay_cost,
     resource_cost,
     section_is_usable,
-    spy_placement_allowed_post_ids,
-    spy_placement_targets,
-    trashable_discard_pile_ids,
-)
-from dune_imperium.rules.effects import (
-    agent_turn_space_id,
-    open_next_turn,
-    recruit_shortfall_events,
-    recruit_troops,
 )
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -115,55 +79,13 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
     replace_top_frame,
-    reveal_is_open_for,
     top_frame,
-    turn_owner_of,
     turn_start_is_open,
-    update_turn_recruits,
     with_context,
 )
-from dune_imperium.rules.influence import (
-    alliance_recipients_after_influence_loss,
-    gain_faction_influence,
-    influence_amount,
-    lose_faction_influence,
-)
-from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.intrigue_triggers import (
     open_contract_reveal,
     waits_for_reveal_turn,
-)
-from dune_imperium.rules.planetologist import replace_sandworms
-from dune_imperium.rules.reveal_turn import (
-    add_reveal_persuasion,
-    add_reveal_strength,
-    add_units_to_reveal,
-)
-from dune_imperium.rules.shield_wall import destroy_shield_wall
-from dune_imperium.rules.spy_moves import (
-    connected_post_ids,
-    spy_placement_frame,
-    turn_space_spy_frames,
-)
-from dune_imperium.rules.spy_placement import (
-    place_spy,
-    recall_spy,
-    solo_occupied_post_ids,
-)
-from dune_imperium.rules.strength import reveal_in_progress
-from dune_imperium.rules.tactics import advance_tactics_token
-from dune_imperium.rules.tech import push_tech_acquisition
-from dune_imperium.rules.tleilaxu_row import (
-    RECLAIMED_FORCES_CHOICES,
-    acquire_reclaimed_forces,
-    acquire_tleilaxu_card,
-    reclaimed_forces_block,
-)
-from dune_imperium.rules.unit_loss import lose_unit
-from dune_imperium.rules.units import (
-    retreat_units,
-    unit_count_arguments,
-    unit_counts,
 )
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
@@ -172,6 +94,11 @@ PLOT_FRAME_KINDS = frozenset(
 )
 
 _CHOICE_FRAME = "Intrigue choice frame"
+# The keys the choice frame stores its pending ability under, and the lines
+# frame its lines not used yet, one pending entry each (codec v148;
+# ``ability_executor.PendingAbility.encode``, ``encode_pending``).
+PENDING_ABILITY_KEY: Final = "pending_ability"
+PENDING_LINES_KEY: Final = "pending_lines"
 
 
 class IntriguePlayBlock(StrEnum):
@@ -479,25 +406,33 @@ def _resolve_paid_option(
 ) -> RuleResult:
     """Open the option's choice frame, or finish it when nothing is chosen.
 
-    With ``separate`` the sections are lines of a card whose
-    ``intrigue_effects`` frame stays open beneath: finishing them applies
-    their rewards but leaves the card in play (OQ-058).
+    The frame stores the option's pending ability (``ability_executor``):
+    the lines that apply, judged now, and whether the Shield Wall stands,
+    which decides whether a detonation icon is a choice. With ``separate``
+    the sections are lines of a card whose ``intrigue_effects`` frame stays
+    open beneath: finishing them applies their rewards but leaves the card
+    in play (OQ-058).
     """
 
     state = played_state
     paid_owner = played_state.players[player]
-    section_indexes = tuple(
-        index for index, section in enumerate(option.sections) if section in sections
-    )
     if choice_slots(sections, shield_wall_present=state.shield_wall_present):
+        entry = PendingAbility(
+            Source.INTRIGUE,
+            intrigue_ref(card_id, option_index),
+            tuple(
+                index
+                for index, section in enumerate(option.sections)
+                if section in sections
+            ),
+            shield_wall=state.shield_wall_present,
+        )
         frame = DecisionFrame(
             kind=FrameKind.INTRIGUE_CHOICE,
             frame_id=f"{source}:choice",
             decision=PlayerDecision(owner=player, prompt="Resolve the Intrigue choice"),
             context=(
                 ("card_id", card_id),
-                ("chosen_factions", ""),
-                ("option", option_index),
                 # Controlled: the deck's top card, seen by the owner only
                 # (the observation's private view surfaces it).
                 (
@@ -511,10 +446,8 @@ def _resolve_paid_option(
                     )
                     else "",
                 ),
-                ("sections", ",".join(str(index) for index in section_indexes)),
+                (PENDING_ABILITY_KEY, entry.encode()),
                 ("separate_effect", separate),
-                ("shield_wall_at_play", state.shield_wall_present),
-                ("slot", 0),
                 ("source", source),
             ),
         )
@@ -531,18 +464,24 @@ def _resolve_paid_option(
 _EFFECTS_FRAME = "Intrigue effects frame"
 
 
-def _used_lines(context: dict[str, ActionValue]) -> tuple[int, ...]:
-    raw = str(context.get("used", ""))
-    return tuple(int(index) for index in raw.split(",") if index)
-
-
 def _effects_option(
     context: dict[str, ActionValue],
-) -> tuple[str, int, IntrigueOption]:
+) -> tuple[str, int, IntrigueOption, tuple[PendingAbility, ...]]:
+    """The card, its option and the pending entries of its unused lines."""
+
     card_id = context_str(context, "card_id", owner=_EFFECTS_FRAME)
     option_index = context_int(context, "option", owner=_EFFECTS_FRAME)
     option = intrigue_card_for_instance(card_id).options[option_index]
-    return card_id, option_index, option
+    lines = decode_pending(
+        context_str(context, PENDING_LINES_KEY, owner=_EFFECTS_FRAME)
+    )
+    return card_id, option_index, option, lines
+
+
+def _open_lines(lines: tuple[PendingAbility, ...]) -> tuple[int, ...]:
+    """The printed lines the pending entries still hold, in printed order."""
+
+    return tuple(index for entry in lines for index in entry.sections)
 
 
 def _play_separate_lines(
@@ -585,6 +524,14 @@ def _play_separate_lines(
         for index, section in enumerate(option.sections)
         if not section.costs and section_is_usable(working, player, section)
     )
+    # Each line not used yet waits as a pending entry of its own; the
+    # cost-free ones resolved now count as used, and finishing waits for one
+    # used line (``intrigue_effects_finish_is_open``).
+    lines = tuple(
+        PendingAbility(Source.INTRIGUE, intrigue_ref(card_id, option_index), (index,))
+        for index in range(len(option.sections))
+        if index not in automatic
+    )
     frame = DecisionFrame(
         kind=FrameKind.INTRIGUE_EFFECTS,
         frame_id=f"{source}:effects",
@@ -594,11 +541,9 @@ def _play_separate_lines(
         context=(
             ("card_id", card_id),
             ("option", option_index),
+            (PENDING_LINES_KEY, encode_pending(lines)),
             ("player", player),
             ("source", source),
-            # The lines used so far, cost-free ones resolved now included;
-            # finishing waits for one (``intrigue_effects_finish_is_open``).
-            ("used", ",".join(str(index) for index in automatic)),
         ),
     )
     working = working.push_decision(frame)
@@ -623,16 +568,14 @@ def _remaining_lines(
 ) -> tuple[int, ...]:
     """Unused arrow lines whose printed condition holds (cost aside)."""
 
-    _, _, option = _effects_option(context)
-    used = _used_lines(context)
+    _, _, option, lines = _effects_option(context)
     return tuple(
         index
-        for index, section in enumerate(option.sections)
-        if index not in used
-        and section.costs
+        for index in _open_lines(lines)
+        if option.sections[index].costs
         and (
-            section.condition is None
-            or condition_holds(state, player, section.condition)
+            (condition := option.sections[index].condition) is None
+            or condition_holds(state, player, condition)
         )
     )
 
@@ -657,15 +600,32 @@ def _usable_lines(
 ) -> tuple[int, ...]:
     """Unused arrow lines the owner can use now (condition and cost)."""
 
-    _, _, option = _effects_option(context)
-    used = _used_lines(context)
+    _, _, option, lines = _effects_option(context)
     return tuple(
         index
-        for index, section in enumerate(option.sections)
-        if index not in used
-        and section.costs
-        and section_is_usable(state, player, section)
+        for index in _open_lines(lines)
+        if option.sections[index].costs
+        and section_is_usable(state, player, option.sections[index])
     )
+
+
+def intrigue_lines_used(context: Mapping[str, ActionValue]) -> tuple[int, ...]:
+    """The lines a separate-lines card's frame has used so far (OQ-058).
+
+    In printed order; () for a context that is not such a frame's.
+    """
+
+    card_id, option_index = context.get("card_id"), context.get("option")
+    raw = context.get(PENDING_LINES_KEY)
+    if (
+        not isinstance(card_id, str)
+        or not isinstance(option_index, int)
+        or not isinstance(raw, str)
+    ):
+        return ()
+    count = len(intrigue_card_for_instance(card_id).options[option_index].sections)
+    open_lines = _open_lines(decode_pending(raw))
+    return tuple(index for index in range(count) if index not in open_lines)
 
 
 def intrigue_effects_finish_is_open(state: GameState, player: int) -> bool:
@@ -686,7 +646,9 @@ def intrigue_effects_finish_is_open(state: GameState, player: int) -> bool:
     if frame is None:
         return False
     context = frame_context(frame)
-    return bool(_used_lines(context)) or not _usable_lines(state, player, context)
+    return bool(intrigue_lines_used(context)) or not _usable_lines(
+        state, player, context
+    )
 
 
 def legal_intrigue_effect_actions(
@@ -725,7 +687,7 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     frame = state.decision_stack[-1]
     context = frame_context(frame)
-    card_id, option_index, option = _effects_option(context)
+    card_id, option_index, option, lines = _effects_option(context)
     source = context_str(context, "source", owner=_EFFECTS_FRAME)
     if action.action_id == "finish_intrigue_effects":
         finished = finish_intrigue_play(
@@ -747,7 +709,10 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
     cost = resource_cost((section,))
     owner = state.players[player]
     paid_owner = pay_cost(owner, cost)
-    context["used"] = ",".join(str(value) for value in (*_used_lines(context), index))
+    # The line's entry leaves the list and resolves (``_resolve_paid_option``).
+    context[PENDING_LINES_KEY] = encode_pending(
+        tuple(entry for entry in lines if entry.sections != (index,))
+    )
     working = replace_top_frame(
         replace(state, players=replace_player(state.players, paid_owner)),
         with_context(frame, context),
@@ -786,6 +751,32 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
+def pending_intrigue_ability(
+    context: Mapping[str, ActionValue],
+) -> PendingAbility | None:
+    """The pending ability an Intrigue choice frame stores, or None.
+
+    The entry is the option (or the one line) being resolved: its step is
+    the choice slot, its pieces the slots (``ability_executor``). None for a
+    context that holds no Intrigue entry.
+    """
+
+    raw = context.get(PENDING_ABILITY_KEY)
+    if not isinstance(raw, str):
+        return None
+    try:
+        entry = PendingAbility.decode(raw)
+    except ValueError:
+        return None
+    return entry if entry.source is Source.INTRIGUE else None
+
+
+def _choice_entry(context: dict[str, ActionValue]) -> PendingAbility:
+    return PendingAbility.decode(
+        context_str(context, PENDING_ABILITY_KEY, owner=_CHOICE_FRAME)
+    )
+
+
 def current_intrigue_choice_slot(state: GameState, player: int) -> ChoiceSlot | None:
     """Return the deciding player's current slot, including its gain/loss kind.
 
@@ -796,382 +787,39 @@ def current_intrigue_choice_slot(state: GameState, player: int) -> ChoiceSlot | 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, player)
     if frame is None:
         return None
-    context = frame_context(frame)
-    if _rewards_await_after_slots(context):
+    entry = _choice_entry(frame_context(frame))
+    if rewards_wait(entry):
         return None
-    return _current_slot(context)
+    piece = current_piece(entry)
+    if piece is None:
+        raise RuntimeError("Intrigue choice frame slot is out of range")
+    return piece
 
 
 def legal_intrigue_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return the choices for the current Intrigue choice slot."""
+    """Return the choices for the current Intrigue choice slot.
+
+    The executor's rows for a frame stacked on the turn (``STACKED``): the
+    slot's targets with an optional icon's refusal, then -- once every
+    arrow cost is paid -- the row that resolves the automatic rewards,
+    which is all a frame offers when the line's draw waits for its own
+    step (``rewards_wait``, OQ-106).
+    """
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, player)
     if frame is None:
         return ()
     context = frame_context(frame)
-    if _rewards_await_after_slots(context):
-        # Every slot is done and the line's card draw waits for its own
-        # step (``_rewards_wait_for_their_step``, OQ-106).
-        return (DomainAction(action_id="resolve_intrigue_rewards", actor=player),)
-    slot = _current_slot(context)
-    owner = state.players[player]
-    actions: list[DomainAction] = []
-    match slot:
-        case LoseInfluence():
-            for faction in Faction:
-                if influence_amount(owner.influence, faction) == 0:
-                    continue
-                recipients = alliance_recipients_after_influence_loss(
-                    state, player, faction
-                )
-                recipient_options: tuple[int | None, ...] = (
-                    tuple(recipients) if len(recipients) > 1 else (None,)
-                )
-                for recipient in recipient_options:
-                    arguments: tuple[tuple[str, ActionValue], ...] = (
-                        ("faction", faction.value),
-                    )
-                    if recipient is not None:
-                        arguments = (("alliance_recipient", recipient), *arguments)
-                    actions.append(
-                        DomainAction(
-                            action_id="choose_intrigue_faction",
-                            actor=player,
-                            arguments=arguments,
-                        )
-                    )
-        case GainInfluence(distinct=distinct) as gain:
-            chosen = _chosen_factions(context)
-            # Printed limits: Ambitious's "where an opponent leads",
-            # Navigation card 1's "different Faction where you have 2+";
-            # never a cube already at the top (OQ-060).
-            for faction in influence_gain_candidates(state, player, gain):
-                if distinct and faction in chosen:
-                    continue
-                actions.append(
-                    DomainAction(
-                        action_id="choose_intrigue_faction",
-                        actor=player,
-                        arguments=(("faction", faction.value),),
-                    )
-                )
-            if not actions:
-                # Every Faction it may raise is at the top: the gain is lost
-                # (OQ-060), and its owner confirms it as a Conflict reward's
-                # is (user ruling 2026-09-30); "Choose two" still pays the
-                # Faction already named.
-                actions.append(
-                    DomainAction(
-                        action_id="resolve_intrigue_influence_without_faction",
-                        actor=player,
-                    )
-                )
-        case DiscardFromHand():
-            actions.extend(
-                DomainAction(
-                    action_id="choose_intrigue_discard",
-                    actor=player,
-                    arguments=(("card_id", hand_card),),
-                )
-                for hand_card in owner.hand
-            )
-        case DestroyShieldWall():
-            # The detonation icon is a choice [Main pp. 10, 20].
-            actions.append(DomainAction(action_id="detonate_shield_wall", actor=player))
-            actions.append(DomainAction(action_id="keep_shield_wall", actor=player))
-        case DeployFromGarrison(up_to=up_to):
-            # "Deploy up to N troops" [card faces]: zero stays offered once
-            # the card is played. A Sardaukar Commander in the garrison is a
-            # troop for this purpose [Bloodlines p. 4]; ``commanders`` names
-            # its share. The play gate needs one of these units
-            # (``deployable_garrison_units``, user ruling 2026-10-06).
-            troops, commanders = deployable_garrison_units(state, player)
-            actions.extend(
-                DomainAction(
-                    action_id="deploy_intrigue_troops",
-                    actor=player,
-                    arguments=arguments,
-                )
-                for arguments in unit_count_arguments(
-                    minimum=0,
-                    maximum=up_to,
-                    troops=troops,
-                    commanders=commanders,
-                )
-            )
-        case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
-            # The black trash icon is optional [Main p. 20]; Devious's
-            # "Trash a card from your hand" is neither optional nor wider.
-            # A Row card borrowed with Usurp is not "in play" (OQ-054,
-            # ``counted_in_play``), so it is no trash target (Navigation
-            # card 5's spice included).
-            if not mandatory:
-                actions.append(
-                    DomainAction(action_id="decline_intrigue_trash", actor=player)
-                )
-            candidates = (
-                owner.hand
-                if hand_only
-                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
-            )
-            actions.extend(
-                DomainAction(
-                    action_id="trash_intrigue_card",
-                    actor=player,
-                    arguments=(("card_id", owned),),
-                )
-                for owned in candidates
-            )
-        case LoseTroops(from_conflict=from_conflict):
-            # The player picks the zone and, for a Sardaukar Commander, the
-            # kind [Bloodlines p. 4] (OQ-038).
-            zones = ("conflict",) if from_conflict else ("garrison", "conflict")
-            for zone in zones:
-                troops = getattr(owner, f"troops_{zone}")
-                commanders = getattr(owner, f"commanders_{zone}")
-                if troops:
-                    actions.append(
-                        DomainAction(
-                            action_id="lose_intrigue_troop",
-                            actor=player,
-                            arguments=(("zone", zone),),
-                        )
-                    )
-                if commanders:
-                    actions.append(
-                        DomainAction(
-                            action_id="lose_intrigue_troop",
-                            actor=player,
-                            arguments=(("commanders", 1), ("zone", zone)),
-                        )
-                    )
-        case GiveIntrigueToOpponent():
-            played = context_str(context, "card_id", owner=_CHOICE_FRAME)
-            actions.extend(
-                DomainAction(
-                    action_id="give_intrigue_card",
-                    actor=player,
-                    arguments=(("card_id", held), ("player", seat.player_id)),
-                )
-                for held in owner.intrigue_cards
-                if held != played
-                for seat in state.players
-                if seat.player_id != player
-            )
-        case TrashIntrigueCard():
-            played = context_str(context, "card_id", owner=_CHOICE_FRAME)
-            actions.extend(
-                DomainAction(
-                    action_id="trash_intrigue_hand_card",
-                    actor=player,
-                    arguments=(("card_id", held),),
-                )
-                for held in owner.intrigue_cards
-                if held != played
-            )
-        case AcquireTleilaxuCard():
-            # Harvest Cells: "You may also acquire a Tleilaxu card (paying
-            # its normal cost)" [card face].
-            deck_top_allowed = bool(owner.research_space) and (
-                genetic_markers_reached(owner.research_space) >= 1
-            )
-            for instance_id in state.tleilaxu_row:
-                if tleilaxu_card_for_instance(instance_id).specimen_cost > (
-                    owner.specimens
-                ):
-                    continue
-                actions.append(
-                    DomainAction(
-                        action_id="acquire_intrigue_tleilaxu",
-                        actor=player,
-                        arguments=(("instance_id", instance_id),),
-                    )
-                )
-                if deck_top_allowed:
-                    actions.append(
-                        DomainAction(
-                            action_id="acquire_intrigue_tleilaxu",
-                            actor=player,
-                            arguments=(
-                                ("instance_id", instance_id),
-                                ("to_deck_top", True),
-                            ),
-                        )
-                    )
-            # "The Tleilaxu Row must always have two cards plus Reclaimed
-            # Forces" [Immortality p. 9], so its "acquire" (one effect, the
-            # card left in place) is a Tleilaxu card to take here too, with
-            # the Reveal shop's blocks (user ruling 2026-10-06; OQ-066).
-            actions.extend(
-                DomainAction(
-                    action_id="acquire_intrigue_reclaimed_forces",
-                    actor=player,
-                    arguments=(("choice", choice),),
-                )
-                for choice in RECLAIMED_FORCES_CHOICES
-                if reclaimed_forces_block(owner, choice) is None
-            )
-            actions.append(
-                DomainAction(action_id="decline_intrigue_tleilaxu", actor=player)
-            )
-        case PeekTopCard():
-            if owner.deck:
-                actions.append(
-                    DomainAction(action_id="put_back_top_card", actor=player)
-                )
-                actions.append(DomainAction(action_id="discard_top_card", actor=player))
-                if owner.resources.solari >= 1:
-                    actions.append(
-                        DomainAction(action_id="draw_top_card_for_solari", actor=player)
-                    )
-        case RecallSpy():
-            actions.extend(
-                DomainAction(
-                    action_id="recall_spy_for_intrigue",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            )
-        case RetreatTroops(minimum=minimum, maximum=maximum):
-            # Commanders in the Conflict are troops for a retreat
-            # [Bloodlines p. 4]; ``commanders`` names its share.
-            actions.extend(
-                DomainAction(
-                    action_id="retreat_intrigue_troops",
-                    actor=player,
-                    arguments=arguments,
-                )
-                for arguments in unit_count_arguments(
-                    minimum=minimum,
-                    maximum=maximum,
-                    troops=owner.troops_conflict,
-                    commanders=owner.commanders_conflict,
-                )
-            )
-        case FlipBattleCard(icon=icon):
-            actions.extend(
-                DomainAction(
-                    action_id="flip_battle_card",
-                    actor=player,
-                    arguments=(("card_id", conflict_id),),
-                )
-                for conflict_id in flippable_battle_card_ids(owner, icon)
-            )
-        case FlipFaceUpConflictCard():
-            # Grasp Arrakis: any face-up won Conflict card, one per slot.
-            actions.extend(
-                DomainAction(
-                    action_id="flip_battle_card",
-                    actor=player,
-                    arguments=(("card_id", conflict_id),),
-                )
-                for conflict_id in face_up_conflict_card_ids(owner)
-            )
-        case TrashDiscardPileCard(minimum_cost=minimum_cost):
-            # Tenuous Bond: a discard-pile card costing 1 or more, as a cost
-            # (mandatory once the option is played [FAQ p. 3]).
-            actions.extend(
-                DomainAction(
-                    action_id="trash_intrigue_card",
-                    actor=player,
-                    arguments=(("card_id", owned),),
-                )
-                for owned in trashable_discard_pile_ids(owner, minimum_cost)
-            )
-        case SetAsideImperiumRowCard():
-            actions.extend(
-                DomainAction(
-                    action_id="manipulate_imperium_row",
-                    actor=player,
-                    arguments=(("instance_id", instance_id),),
-                )
-                for instance_id in state.imperium_row
-            )
-        case AcquireCardUpTo(max_cost=max_cost):
-            acquisitions = [
-                DomainAction(
-                    action_id="acquire_intrigue_reserve",
-                    actor=player,
-                    arguments=(("card_id", card_id),),
-                )
-                for card_id in acquirable_reserve_card_ids(state, max_cost)
-            ]
-            acquisitions.extend(
-                DomainAction(
-                    action_id="acquire_intrigue_imperium",
-                    actor=player,
-                    arguments=(("instance_id", instance_id),),
-                )
-                # The owner's own Manipulate set-aside card is within reach
-                # at its printed cost, never an opponent's [FAQ p. 3].
-                for instance_id in acquirable_imperium_instance_ids(
-                    state, max_cost, player=player
-                )
-            )
-            if not acquisitions:
-                # Nothing within the cap: the card is still played and the
-                # acquisition part alone fizzles (designer ruling, Impress;
-                # OQ-057).
-                acquisitions.append(
-                    DomainAction(action_id="skip_intrigue_acquisition", actor=player)
-                )
-            actions.extend(acquisitions)
-        case PlaceSpy():
-            targets = spy_placement_targets(state, player, slot)
-            if owner.spies_supply > 0:
-                actions.extend(
-                    DomainAction(
-                        action_id="place_intrigue_spy",
-                        actor=player,
-                        arguments=(("post_id", post_id),),
-                    )
-                    for post_id in targets
-                )
-            else:
-                # With an empty supply the owner may first recall one Spy
-                # [Main pp. 11, 20]. Only recalls that keep the placement
-                # reachable are offered: any Spy while a target post is
-                # free, otherwise a Spy that is the sole occupant of an
-                # allowed post (a shared post stays occupied).
-                allowed_posts = spy_placement_allowed_post_ids(slot)
-                recallable = (
-                    owner.spy_post_ids
-                    if targets
-                    else solo_occupied_post_ids(state, player, allowed_posts)
-                )
-                actions.extend(
-                    DomainAction(
-                        action_id="recall_spy_for_intrigue",
-                        actor=player,
-                        arguments=(("post_id", post_id),),
-                    )
-                    for post_id in recallable
-                )
-            # Placing is mandatory while a Spy is in the supply and a post
-            # can take it (the designer's erratum to [Main p. 11], adopted
-            # with OQ-057); only the recall an empty supply needs first is
-            # the owner's choice [Main pp. 11, 20].
-            if owner.spies_supply == 0 or not targets:
-                actions.append(
-                    DomainAction(action_id="decline_intrigue_spy", actor=player)
-                )
-    sections = _sections(context)
-    if (
-        context.get("rewards_applied") is not True
-        and context_int(context, "slot", owner=_CHOICE_FRAME)
-        >= len(cost_slots(sections))
-        and automatic_rewards(sections)
-    ):
-        # Icons on one Intrigue line are independent effects and the owner
-        # picks their order (OQ-015), so once every arrow cost is paid the
-        # pending automatic rewards may resolve before, between, or after
-        # the remaining reward slots.
-        actions.append(DomainAction(action_id="resolve_intrigue_rewards", actor=player))
-    return tuple(actions)
+    return ability_rows(
+        state,
+        player,
+        _choice_entry(context),
+        STACKED,
+        played_card_id=context_str(context, "card_id", owner=_CHOICE_FRAME),
+    )
 
 
 def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult:
@@ -1190,30 +838,35 @@ def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult
         raise RuntimeError("Intrigue rewards resolution requires its choice frame")
     context = frame_context(frame)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
-    if _rewards_await_after_slots(context):
+    entry = _choice_entry(context)
+    if rewards_wait(entry):
         # The last slot left the line's draw as its own step (OQ-106): the
         # rewards apply now and the card finishes, as the last slot used to.
         return finish_intrigue_play(
             state.pop_decision(),
             action.actor,
             context_str(context, "card_id", owner=_CHOICE_FRAME),
-            _sections(context),
+            entry_sections(entry),
             f"{source}:rewards",
             discard=context.get("separate_effect") is not True,
         )
     # The frame is marked before the rewards apply so a draw that pushes a
     # reshuffle chance frame stacks on the already-updated frame, exactly
     # like the acquisition slot's advance-before-move pattern.
-    context["rewards_applied"] = True
+    context[PENDING_ABILITY_KEY] = replace(entry, rewards_applied=True).encode()
     advanced = replace_top_frame(state, with_context(frame, context))
-    applied = _apply_section_rewards(
-        advanced, action.actor, _sections(context), f"{source}:rewards"
+    return apply_automatic_rewards(
+        advanced, action.actor, entry_sections(entry), f"{source}:rewards"
     )
-    return RuleResult(state=applied.state, events=applied.events)
 
 
 def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
-    """Resolve one choice slot and finish the card after the last slot."""
+    """Resolve one choice slot and finish the card after the last slot.
+
+    The executor applies the answer (``apply_piece``); this frame keeps the
+    card's bookkeeping: frames a slot pushes are lifted above the updated
+    choice frame, and the last slot finishes the card.
+    """
 
     if action not in legal_intrigue_choice_actions(state, action.actor):
         raise ValueError("action is not a legal Intrigue choice")
@@ -1222,409 +875,38 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
-    slot_index = context_int(context, "slot", owner=_CHOICE_FRAME)
-    slot = _current_slot(context)
-    arguments = dict(action.arguments)
-    step_source = f"{source}:slot:{slot_index}"
-
-    match slot:
-        case AcquireCardUpTo():
-            return _apply_intrigue_acquisition(
-                state, frame, context, player, slot, action, step_source
-            )
-        case SetAsideImperiumRowCard():
-            instance_id = str(arguments["instance_id"])
-            imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
-            owner = state.players[player]
-            keeper = replace(
-                owner,
-                imperium_set_aside=(*owner.imperium_set_aside, instance_id),
-            )
-            result = RuleResult(
-                state=replace(
-                    state,
-                    players=replace_player(state.players, keeper),
-                    imperium_deck=imperium_deck,
-                    imperium_row=imperium_row,
-                ),
-                events=(
-                    GameEvent(
-                        event_id=f"{step_source}:set_aside:{instance_id}",
-                        kind="imperium_row_card_set_aside",
-                        payload=(
-                            (
-                                "card_id",
-                                imperium_card_for_instance(instance_id).card.card_id,
-                            ),
-                            ("instance_id", instance_id),
-                            ("player", player),
-                        ),
-                    ),
-                ),
-            )
-        case TrashDiscardPileCard():
-            result = trash_personal_card(
-                state, player, str(arguments["card_id"]), source=step_source
-            )
-            # The Intrigue choice frame is on top here, not an AGENT_EFFECTS
-            # frame, so ``trash_personal_card`` credited no troop-on-trash
-            # trigger (Eliminate Allies) anywhere. A troop recruited during
-            # the owner's own turn "from any source" may be deployed
-            # [Main p. 10] [FAQ p. 4].
-            result = credit_trash_recruits(result, player)
-        case AcquireTleilaxuCard():
-            if action.action_id == "decline_intrigue_tleilaxu":
-                result = RuleResult(
-                    state=state,
-                    events=(
-                        GameEvent(
-                            event_id=f"{step_source}:tleilaxu_declined",
-                            kind="intrigue_tleilaxu_acquisition_declined",
-                            payload=(("player", player),),
-                        ),
-                    ),
-                )
-            elif action.action_id == "acquire_intrigue_reclaimed_forces":
-                result = acquire_reclaimed_forces(
-                    state, player, str(arguments["choice"]), source=step_source
-                )
-            else:
-                result = acquire_tleilaxu_card(
-                    state,
-                    player,
-                    str(arguments["instance_id"]),
-                    to_deck_top=arguments.get("to_deck_top") is True,
-                    source=step_source,
-                )
-        case FlipBattleCard() | FlipFaceUpConflictCard():
-            flipped_id = str(arguments["card_id"])
-            owner = state.players[player]
-            flipped_owner = replace(
-                owner,
-                face_down_battle_card_ids=(
-                    *owner.face_down_battle_card_ids,
-                    flipped_id,
-                ),
-            )
-            result = RuleResult(
-                state=replace(
-                    state, players=replace_player(state.players, flipped_owner)
-                ),
-                events=(
-                    GameEvent(
-                        event_id=f"{step_source}:flipped:{flipped_id}",
-                        kind="battle_card_flipped",
-                        payload=(("card_id", flipped_id), ("player", player)),
-                    ),
-                ),
-            )
-        case LoseInfluence():
-            faction = Faction(str(arguments["faction"]))
-            recipient = arguments.get("alliance_recipient")
-            assert recipient is None or isinstance(recipient, int)
-            result = lose_faction_influence(
-                state,
-                player,
-                faction,
-                1,
-                event_prefix=f"{step_source}:lost:{faction.value}",
-                alliance_recipient=recipient,
-            )
-        case GainInfluence() if (
-            action.action_id == "resolve_intrigue_influence_without_faction"
-        ):
-            # No Faction this gain may raise is below the top: it is lost
-            # (OQ-060), while a "Choose two" Faction named before it is still
-            # paid ("서로 다른 진영 둘"은 먼저 이름 붙인 진영을 그대로 지급).
-            deferred = tuple(
-                Faction(value)
-                for value in str(context.get("deferred_factions", "")).split(",")
-                if value
-            )
-            context["deferred_factions"] = ""
-            working = state
-            lost_events: list[GameEvent] = [
-                GameEvent(
-                    event_id=f"{step_source}:influence_unavailable",
-                    kind="intrigue_influence_unavailable",
-                    payload=(("player", player),),
-                )
-            ]
-            for pick in deferred:
-                gained = gain_faction_influence(
-                    working,
-                    player,
-                    pick,
-                    1,
-                    event_prefix=f"{step_source}:gained:{pick.value}",
-                )
-                working = gained.state
-                lost_events.extend(gained.events)
-            result = RuleResult(state=working, events=tuple(lost_events))
-        case GainInfluence(distinct=distinct):
-            faction = Faction(str(arguments["faction"]))
-            context["chosen_factions"] = ",".join(
-                (*(f.value for f in _chosen_factions(context)), faction.value)
-            )
-            deferred = tuple(
-                Faction(value)
-                for value in str(context.get("deferred_factions", "")).split(",")
-                if value
-            )
-            later_distinct = distinct and any(
-                isinstance(later, GainInfluence) and later.distinct
-                for later in _slots(context)[slot_index + 1 :]
-            )
-            if later_distinct:
-                # "Choose two" (Rapid Engineering): both Factions are named
-                # before either Influence moves (designer ruling, OQ-057).
-                context["deferred_factions"] = ",".join(
-                    pick.value for pick in (*deferred, faction)
-                )
-                result = RuleResult(
-                    state=state,
-                    events=(
-                        GameEvent(
-                            event_id=f"{step_source}:chosen:{faction.value}",
-                            kind="intrigue_influence_chosen",
-                            payload=(("faction", faction.value), ("player", player)),
-                        ),
-                    ),
-                )
-            else:
-                context["deferred_factions"] = ""
-                working = state
-                gained_events: list[GameEvent] = []
-                for pick in (*deferred, faction):
-                    gained = gain_faction_influence(
-                        working,
-                        player,
-                        pick,
-                        1,
-                        event_prefix=f"{step_source}:gained:{pick.value}",
-                    )
-                    working = gained.state
-                    gained_events.extend(gained.events)
-                result = RuleResult(state=working, events=tuple(gained_events))
-        case DiscardFromHand():
-            result = discard_personal_card_from_hand(
-                state, player, str(arguments["card_id"]), source=step_source
-            )
-        case DestroyShieldWall():
-            if action.action_id == "detonate_shield_wall":
-                result = destroy_shield_wall(
-                    state, event_id=f"{step_source}:shield_wall", source=source
-                )
-            else:
-                result = RuleResult(
-                    state=state,
-                    events=(
-                        GameEvent(
-                            event_id=f"{step_source}:shield_wall_kept",
-                            kind="shield_wall_kept",
-                            payload=(("player", player),),
-                        ),
-                    ),
-                )
-        case DeployFromGarrison():
-            count, commanders = unit_counts(arguments)
-            if count + commanders == 0:
-                # "Deploy up to N troops" chose zero: no unit moves.
-                result = RuleResult(state=state)
-            else:
-                result = _deploy_units(
-                    state, player, step_source, troops=count, commanders=commanders
-                )
-        case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
-            if action.action_id == "decline_intrigue_trash":
-                result = RuleResult(
-                    state=state,
-                    events=(
-                        GameEvent(
-                            event_id=f"{step_source}:trash_declined",
-                            kind="intrigue_trash_declined",
-                            payload=(("player", player),),
-                        ),
-                    ),
-                )
-            else:
-                trashed_id = str(arguments["card_id"])
-                result = trash_personal_card(
-                    state, player, trashed_id, source=step_source
-                )
-                # The Intrigue choice frame is on top here, not an
-                # AGENT_EFFECTS frame, so ``trash_personal_card`` credited no
-                # troop-on-trash trigger (Eliminate Allies) anywhere. A troop
-                # recruited during the owner's own turn "from any source" may
-                # be deployed [Main p. 10] [FAQ p. 4].
-                result = credit_trash_recruits(result, player)
-                cost = getattr(
-                    personal_card_for_instance(trashed_id), "acquisition_cost", None
-                )
-                if bonus_spice and isinstance(cost, int) and cost >= minimum:
-                    # Navigation card 5: spice for a card printed with a cost.
-                    paid = result.state.players[player]
-                    result = RuleResult(
-                        state=replace(
-                            result.state,
-                            players=replace_player(
-                                result.state.players,
-                                replace(
-                                    paid,
-                                    resources=replace(
-                                        paid.resources,
-                                        spice=paid.resources.spice + bonus_spice,
-                                    ),
-                                ),
-                            ),
-                        ),
-                        events=result.events,
-                    )
-        case RetreatTroops():
-            count, commanders = unit_counts(arguments)
-            if count + commanders == 0:
-                # Tactical Option's "any number" retreat chose zero [Main
-                # p. 20] [FAQ p. 3]: no unit moves.
-                result = RuleResult(state=state)
-            else:
-                result = _retreat_units(
-                    state, player, step_source, troops=count, commanders=commanders
-                )
-                result = _follow_reveal_strength(state, result, player)
-        case LoseTroops():
-            zone = str(arguments["zone"])
-            result = lose_unit(
-                state,
-                player,
-                zone,
-                commander=arguments.get("commanders") == 1,
-                source=step_source,
-                advance_tactics=False,
-            )
-            if zone == "conflict":
-                result = RuleResult(
-                    state=reconcile_deployment_after_retreat(
-                        result.state,
-                        player,
-                        troops=int(arguments.get("commanders") != 1),
-                        commanders=int(arguments.get("commanders") == 1),
-                    ),
-                    events=result.events,
-                )
-                result = _follow_reveal_strength(state, result, player)
-            result = _lose_troops_tactics(
-                result, context, player, slot_index, zone, source=step_source
-            )
-        case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
-            result = _give_intrigue_card(
-                state,
-                player,
-                str(arguments["card_id"]),
-                arguments["player"],
-                bonus,
-                step_source,
-            )
-        case TrashIntrigueCard(troops_if_not_twisted=troops_bonus):
-            result = _trash_intrigue_hand_card(
-                state, player, str(arguments["card_id"]), troops_bonus, step_source
-            )
-        case PeekTopCard():
-            result = _resolve_peek(state, player, action.action_id, step_source)
-        case PlaceSpy() if action.action_id == "decline_intrigue_spy":
-            # The Spy placement is optional [Main pp. 11, 20].
-            result = RuleResult(
-                state=state,
-                events=(
-                    GameEvent(
-                        event_id=f"{step_source}:spy_declined",
-                        kind="intrigue_spy_declined",
-                        payload=(("player", player),),
-                    ),
-                ),
-            )
-        case RecallSpy() | PlaceSpy():
-            post_id = str(arguments["post_id"])
-            owner = state.players[player]
-            if action.action_id == "recall_spy_for_intrigue":
-                next_owner = recall_spy(owner, post_id)
-                kind = "spy_recalled"
-            else:
-                next_owner = place_spy(owner, post_id)
-                kind = "spy_placed"
-            result = RuleResult(
-                state=replace(state, players=replace_player(state.players, next_owner)),
-                events=(
-                    GameEvent(
-                        event_id=f"{step_source}:{kind}:{post_id}",
-                        kind=kind,
-                        payload=(("player", player), ("post_id", post_id)),
-                    ),
-                ),
-            )
-            if isinstance(slot, PlaceSpy) and kind == "spy_recalled":
-                # The recall only prepared the placement; stay on this slot.
-                next_state = replace_top_frame(result.state, frame)
-                return RuleResult(state=next_state, events=result.events)
-        case _:
-            raise RuntimeError("Intrigue choice frame has an unsupported slot")
-
-    context["slot"] = slot_index + 1
+    entry = _choice_entry(context)
+    piece = current_piece(entry)
+    if isinstance(piece, AcquireCardUpTo):
+        return _apply_intrigue_acquisition(
+            state, frame, context, entry, player, piece, action
+        )
+    applied = apply_piece(state, player, entry, action, source=source)
+    result = applied.result
+    if applied.stays:
+        # The recall only prepared the placement; the frame stays as it was.
+        return RuleResult(
+            state=replace_top_frame(result.state, frame), events=result.events
+        )
+    entry = applied.entry
+    context[PENDING_ABILITY_KEY] = entry.encode()
     lifted, pushed = _lift_pushed_frames(frame.frame_id, result.state)
     next_state = replace_top_frame(lifted, with_context(frame, context))
-    if slot_index + 1 < len(_slots(context)) or _rewards_await_after_slots(context):
+    if current_piece(entry) is not None or rewards_wait(entry):
         return RuleResult(state=_restack(next_state, pushed), events=result.events)
 
     finished = finish_intrigue_play(
         next_state.pop_decision(),
         player,
         card_id,
-        _sections(context),
+        entry_sections(entry),
         source,
-        skip_rewards=context.get("rewards_applied") is True,
+        skip_rewards=entry.rewards_applied,
         discard=context.get("separate_effect") is not True,
     )
     return RuleResult(
         state=_restack(finished.state, pushed),
         events=(*result.events, *finished.events),
-    )
-
-
-def _lose_troops_tactics(
-    result: RuleResult,
-    context: dict[str, ActionValue],
-    player: int,
-    slot_index: int,
-    zone: str,
-    *,
-    source: str,
-) -> RuleResult:
-    """Advance Chani's Tactics token once for one "lose N troops" cost.
-
-    The cost is paid one troop per slot, but it is one source: "Each
-    different source of retreating or losing troops is handled separately"
-    [FAQ p. 1], and "If you lose or retreat enough troops that you would
-    pass the end of the Tactics track, you still reset at the starting
-    space (and do not advance for those extra troops)" [Bloodlines p. 12].
-    The Conflict losses are counted in the frame context and the token
-    moves once, on the cost's last slot.
-    """
-
-    lost = int(zone == "conflict")
-    if "tactics_lost" in context:
-        lost += context_int(context, "tactics_lost", owner=_CHOICE_FRAME)
-    slots = _slots(context)
-    if slot_index + 1 < len(slots) and slots[slot_index + 1] is slots[slot_index]:
-        context["tactics_lost"] = lost
-        return result
-    context.pop("tactics_lost", None)
-    tactician, events = advance_tactics_token(
-        result.state.players[player], lost, source=source
-    )
-    return RuleResult(
-        state=replace(
-            result.state, players=replace_player(result.state.players, tactician)
-        ),
-        events=(*result.events, *events),
     )
 
 
@@ -1666,10 +948,10 @@ def _apply_intrigue_acquisition(
     state: GameState,
     frame: DecisionFrame,
     context: dict[str, ActionValue],
+    entry: PendingAbility,
     player: int,
-    slot: AcquireCardUpTo,
+    piece: AcquireCardUpTo,
     action: DomainAction,
-    step_source: str,
 ) -> RuleResult:
     """Resolve an acquisition slot, finishing the card before follow-up frames.
 
@@ -1682,16 +964,18 @@ def _apply_intrigue_acquisition(
 
     card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
-    slot_index = context_int(context, "slot", owner=_CHOICE_FRAME)
-    # "Put that card in your hand" overrides the discard destination only
-    # while its printed condition holds at resolution time.
-    to_hand = slot.to_hand_if is not None and condition_holds(
-        state, player, slot.to_hand_if
-    )
-    context["slot"] = slot_index + 1
+    step_source = f"{source}:slot:{entry.step}"
+    to_hand = acquires_to_hand(state, player, piece)
+    taken = replace(entry, step=entry.step + 1)
+    last = current_piece(taken) is None
+    context[PENDING_ABILITY_KEY] = taken.encode()
     advanced = replace_top_frame(state, with_context(frame, context))
-    arguments = dict(action.arguments)
-    if action.action_id == "skip_intrigue_acquisition":
+    acquired = acquire_by_piece(
+        advanced, player, action, to_hand=to_hand, step_source=step_source
+    )
+    if acquired is None:
+        # Nothing within the cap: the card is still played and the
+        # acquisition part alone fizzles (designer ruling, Impress; OQ-057).
         skipped_events: tuple[GameEvent, ...] = (
             GameEvent(
                 event_id=f"{step_source}:acquisition_unavailable",
@@ -1699,49 +983,33 @@ def _apply_intrigue_acquisition(
                 payload=(("card_id", card_id), ("player", player)),
             ),
         )
-        if slot_index + 1 >= len(_slots(context)):
+        if last:
             finished = finish_intrigue_play(
                 advanced.pop_decision(),
                 player,
                 card_id,
-                _sections(context),
+                entry_sections(taken),
                 source,
-                skip_rewards=context.get("rewards_applied") is True,
+                skip_rewards=taken.rewards_applied,
                 discard=context.get("separate_effect") is not True,
             )
             return RuleResult(
                 state=finished.state, events=(*skipped_events, *finished.events)
             )
         return RuleResult(state=advanced, events=skipped_events)
-    if action.action_id == "acquire_intrigue_reserve":
-        acquired = acquire_reserve_for_intrigue(
-            advanced,
-            player,
-            str(arguments["card_id"]),
-            to_hand=to_hand,
-            source=step_source,
-        )
-    else:
-        acquired = acquire_imperium_for_intrigue(
-            advanced,
-            player,
-            str(arguments["instance_id"]),
-            to_hand=to_hand,
-            source=step_source,
-        )
     next_state, pushed = _lift_pushed_frames(frame.frame_id, acquired.result.state)
     events = acquired.result.events
     top = top_frame(next_state)
     if top is None or top.frame_id != frame.frame_id:
         raise RuntimeError("Intrigue acquisition buried its choice frame")
-    if slot_index + 1 >= len(_slots(context)):
+    if last:
         finished = finish_intrigue_play(
             next_state.pop_decision(),
             player,
             card_id,
-            _sections(context),
+            entry_sections(taken),
             source,
-            skip_rewards=context.get("rewards_applied") is True,
+            skip_rewards=taken.rewards_applied,
             discard=context.get("separate_effect") is not True,
         )
         next_state = finished.state
@@ -1758,300 +1026,6 @@ def _apply_intrigue_acquisition(
         next_state = contracts.state
         events = (*events, *contracts.events)
     return RuleResult(state=next_state, events=events)
-
-
-def _apply_section_rewards(
-    state: GameState,
-    player: int,
-    sections: tuple[EffectSection, ...],
-    source: str,
-) -> RuleResult:
-    """Apply the sections' automatic rewards and their turn bookkeeping.
-
-    ``update_turn_recruits`` finds whatever turn-family frame is nearest the
-    top regardless of whose it is, so the troop credit is guarded by
-    ``turn_owner_of`` against crediting a different seat's frame (a
-    Navigation card triggered outside its owner's turn) [Main p. 10]
-    [FAQ p. 4].
-    """
-
-    outcome = apply_rewards(state, player, automatic_rewards(sections), source=source)
-    next_state = _gain_reveal_persuasion_now(state, outcome.result.state, player)
-    events: list[GameEvent] = list(outcome.result.events)
-    if outcome.troops_recruited and turn_owner_of(next_state) == player:
-        next_state = update_turn_recruits(
-            next_state, troops_recruited=outcome.troops_recruited
-        )
-    if outcome.combat_icons:
-        next_state = grant_combat_icon(next_state, player)
-    if outcome.sandworms_replaced:
-        replacement = replace_sandworms(
-            next_state, player, outcome.sandworms_replaced, source=source
-        )
-        next_state = replacement.state
-        events.extend(replacement.events)
-    for reserve_card_id in outcome.reserve_acquisitions:
-        # Navigation card 4: acquire The Spice Must Flow (its acquisition
-        # Victory Point included) when a copy is left.
-        if dict(next_state.reserve_stacks).get(reserve_card_id, 0) < 1:
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:reserve_exhausted:{reserve_card_id}",
-                    kind="reserve_acquisition_unavailable",
-                    payload=(("card_id", reserve_card_id), ("player", player)),
-                )
-            )
-            continue
-        acquired = acquire_reserve_for_intrigue(
-            next_state,
-            player,
-            reserve_card_id,
-            to_hand=False,
-            source=source,
-        )
-        next_state = acquired.result.state
-        events.extend(acquired.result.events)
-    for discount in outcome.tech_acquisitions:
-        # Battlefield Research / Rapid Engineering: the Tech Discount icon
-        # opens its own Acquire Tech [Bloodlines pp. 7, 12].
-        opened = push_tech_acquisition(
-            next_state, player, discount=discount, source=source
-        )
-        next_state = opened.state
-        events.extend(opened.events)
-    if outcome.passes_turn:
-        # Withdrawn: the turn ends at once; the seat stays unrevealed.
-        next_state = open_next_turn(next_state, player)
-        events.append(
-            GameEvent(
-                event_id=f"{source}:turn_passed",
-                kind="turn_passed",
-                payload=(("player", player),),
-            )
-        )
-    if outcome.redirects_turn_space_spies:
-        # False Orders: the owner's placement waits beneath the opponents'
-        # forced moves so it resolves after them ("Then you place a Spy").
-        space_id = agent_turn_space_id(next_state, player)
-        if space_id is None:
-            raise RuntimeError("False Orders needs this turn's Agent placement")
-        next_state = spy_placement_frame(
-            next_state, player, connected_post_ids(space_id), source=source
-        )
-        moved = turn_space_spy_frames(next_state, player, space_id, source=source)
-        next_state = moved.state
-        events.extend(moved.events)
-    if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
-        # The interpreter moved the sandworms; during a Reveal turn their
-        # strength must also join the revealed total [Main p. 13].
-        owner = next_state.players[player]
-        rolled_back = replace(
-            next_state,
-            players=replace_player(
-                next_state.players,
-                replace(
-                    owner,
-                    sandworms_conflict=owner.sandworms_conflict
-                    - outcome.sandworms_deployed,
-                ),
-            ),
-        )
-        counted = add_units_to_reveal(
-            rolled_back, player, sandworms=outcome.sandworms_deployed
-        )
-        next_state = counted.state
-        events.extend(counted.events)
-    elif outcome.sandworms_deployed:
-        # A summoned sandworm is immediately deployed [Main p. 20], so it
-        # joins the owner's per-turn deployment count.
-        owner = next_state.players[player]
-        next_state = replace(
-            next_state,
-            players=replace_player(
-                next_state.players,
-                replace(
-                    owner,
-                    units_deployed_turn=owner.units_deployed_turn
-                    + outcome.sandworms_deployed,
-                ),
-            ),
-        )
-    return RuleResult(state=next_state, events=tuple(events))
-
-
-def _give_intrigue_card(
-    state: GameState,
-    player: int,
-    card_id: str,
-    recipient: ActionValue,
-    bonus_spice: int,
-    step_source: str,
-) -> RuleResult:
-    """Insidious: hand an Intrigue card to an opponent, extra spice if regular."""
-
-    if isinstance(recipient, bool) or not isinstance(recipient, int):
-        raise RuntimeError("Intrigue gift has an invalid recipient")
-    owner = state.players[player]
-    target = state.players[recipient]
-    twisted = intrigue_card_for_instance(card_id).twisted
-    extra = 0 if twisted else bonus_spice
-    giver = replace(
-        owner,
-        intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
-        resources=replace(owner.resources, spice=owner.resources.spice + extra),
-    )
-    receiver = replace(target, intrigue_cards=(*target.intrigue_cards, card_id))
-    players = replace_player(replace_player(state.players, giver), receiver)
-    return RuleResult(
-        state=replace(state, players=players),
-        events=(
-            # The table sees a card change hands; only the two seats
-            # involved learn which one [Main p. 7].
-            GameEvent(
-                event_id=f"{step_source}:given",
-                kind="intrigue_card_given",
-                payload=(
-                    ("bonus_spice", extra),
-                    ("player", player),
-                    ("recipient", recipient),
-                ),
-            ),
-            GameEvent(
-                event_id=f"{step_source}:given:card",
-                kind="intrigue_card_given_identity",
-                payload=(
-                    ("card_id", card_id),
-                    ("player", player),
-                    ("recipient", recipient),
-                ),
-                visible_to=(player, recipient),
-            ),
-        ),
-    )
-
-
-def _trash_intrigue_hand_card(
-    state: GameState,
-    player: int,
-    card_id: str,
-    troops_bonus: int,
-    step_source: str,
-) -> RuleResult:
-    """Trash an Intrigue card from hand [Bloodlines p. 11]; Unnatural's troop.
-
-    The troop joins the owner's open turn [Main p. 10] [FAQ p. 4], guarded
-    by ``turn_owner_of`` like ``_apply_section_rewards``: nothing is
-    credited outside the owner's own turn. The trashed card joins the
-    shared Intrigue discard (OQ-061, user ruling 2026-10-04), a Twisted one
-    included as a played Twisted card already does; a Twisted card stays
-    there when the discard is reshuffled (OQ-097, ``shufflable_intrigue_
-    discard``).
-    """
-
-    owner = state.players[player]
-    twisted = intrigue_card_for_instance(card_id).twisted
-    next_owner = replace(
-        owner,
-        intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
-    )
-    recruited = 0
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{step_source}:intrigue_trashed",
-            kind="intrigue_card_trashed",
-            payload=(("card_id", card_id), ("player", player)),
-        )
-    ]
-    if not twisted and troops_bonus:
-        next_owner, recruited = recruit_troops(next_owner, troops_bonus)
-        events.extend(
-            recruit_shortfall_events(step_source, player, troops_bonus, recruited)
-        )
-    next_state = with_trashed_intrigue(
-        replace(state, players=replace_player(state.players, next_owner)),
-        card_id,
-    )
-    if recruited and turn_owner_of(next_state) == player:
-        next_state = update_turn_recruits(next_state, troops_recruited=recruited)
-    return RuleResult(state=next_state, events=tuple(events))
-
-
-def _resolve_peek(
-    state: GameState,
-    player: int,
-    action_id: str,
-    step_source: str,
-) -> RuleResult:
-    """Controlled: put the top card back, discard it, or pay a Solari to draw it.
-
-    The discard branch fires the card's own "When this card is discarded"
-    trigger (OQ-013, user ruling 2026-10-04).
-    """
-
-    owner = state.players[player]
-    if not owner.deck:
-        raise RuntimeError("Controlled needs a card on top of the deck")
-    top = owner.deck[0]
-    if action_id == "put_back_top_card":
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{step_source}:put_back",
-                    kind="top_card_put_back",
-                    payload=(("player", player),),
-                ),
-            ),
-        )
-    if action_id == "discard_top_card":
-        discarded = replace(
-            state,
-            players=replace_player(
-                state.players,
-                replace(
-                    owner,
-                    deck=owner.deck[1:],
-                    discard_pile=(*owner.discard_pile, top),
-                ),
-            ),
-        )
-        # A deck discard fires the card's own "When this card is discarded"
-        # trigger as a project convention (OQ-013, user ruling 2026-10-04),
-        # although the official text reads "Only discarding it from your hand
-        # triggers the ability." [Main p. 17]. Putting the card back or paying
-        # to draw it is not a discard.
-        triggered = resolve_personal_card_discard_trigger(
-            discarded, player, top, source=step_source
-        )
-        return RuleResult(
-            state=triggered.state,
-            events=(
-                GameEvent(
-                    event_id=f"{step_source}:top_card_discarded",
-                    kind="top_card_discarded",
-                    payload=(("card_id", top), ("player", player)),
-                ),
-                *triggered.events,
-            ),
-        )
-    if owner.resources.solari < 1:
-        raise RuntimeError("drawing the peeked card costs one Solari")
-    next_owner = replace(
-        owner,
-        deck=owner.deck[1:],
-        hand=(*owner.hand, top),
-        resources=replace(owner.resources, solari=owner.resources.solari - 1),
-    )
-    return RuleResult(
-        state=replace(state, players=replace_player(state.players, next_owner)),
-        events=(
-            GameEvent(
-                event_id=f"{step_source}:top_card_drawn",
-                kind="top_card_drawn",
-                payload=(("player", player),),
-            ),
-        ),
-    )
 
 
 def finish_intrigue_play(
@@ -2076,7 +1050,7 @@ def finish_intrigue_play(
     applied = (
         RuleResult(state=state)
         if skip_rewards
-        else _apply_section_rewards(state, player, sections, source)
+        else apply_automatic_rewards(state, player, sections, source)
     )
     resolved = applied.state
     if not discard:
@@ -2155,104 +1129,6 @@ def finish_intrigue_play(
     )
 
 
-def _gain_reveal_persuasion_now(
-    before: GameState, after: GameState, player: int
-) -> GameState:
-    """Pay "Persuasion during your Reveal turn this round" into an open Reveal.
-
-    Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
-    round" [Tleilaxu Puppet card]. A Plot may be played at any time during
-    the owner's Agent or Reveal turn [Main p. 7] [Main p. 8]
-    (docs/rules/player-turns.md), so one played in the owner's own Reveal
-    turn gains the Persuasion in that Reveal; ``begin_reveal_turn`` only
-    adds the round bonus when a later Reveal starts. It is generated
-    Persuasion, so it counts toward Command (6+) [Bloodlines p. 5].
-    """
-
-    gained = (
-        after.players[player].reveal_persuasion_round_bonus
-        - before.players[player].reveal_persuasion_round_bonus
-    )
-    if gained <= 0 or not reveal_is_open_for(after, player):
-        return after
-    owner = after.players[player]
-    return replace(
-        after,
-        players=replace_player(
-            after.players,
-            replace(
-                owner,
-                reveal_persuasion_round_bonus=(
-                    owner.reveal_persuasion_round_bonus - gained
-                ),
-            ),
-        ),
-        decision_stack=add_reveal_persuasion(after.decision_stack, gained),
-    )
-
-
-def _follow_reveal_strength(
-    state: GameState, result: RuleResult, player: int
-) -> RuleResult:
-    """Keep the Reveal frame's counted strength in step with the seat's total.
-
-    A Plot Intrigue played during the owner's Reveal turn may pay a cost
-    that removes units from the Conflict (Twisted Ambitious's three troops).
-    ``retreat_units`` already sets the running ``combat_strength`` -- "마지막
-    unit이 제거되면 sword가 남아 있어도 strength는 0이 된다" [Main p. 12]
-    (docs/rules/player-turns.md 231) -- but the Reveal frame keeps its own
-    tally for the Desert Power mirror in ``add_units_to_reveal``, and a
-    stale tally made the next Combat-icon deployment count a negative
-    delta (2026-09-16 A/B, CHOAM+Bloodlines+Tech seed 262). The two Reveal
-    handlers that remove units (``apply_reveal_troop_sacrifice`` and the
-    card troop retreat) already do this; the Intrigue costs join them. The
-    RetreatTroops branch is defensive: today every Intrigue retreat is
-    Combat-timed, when no Reveal frame is open, so it is a no-op there.
-    """
-
-    if not reveal_in_progress(state, player):
-        return result
-    delta = (
-        result.state.players[player].combat_strength
-        - state.players[player].combat_strength
-    )
-    if not delta:
-        return result
-    return RuleResult(
-        state=replace(
-            result.state,
-            decision_stack=add_reveal_strength(result.state.decision_stack, delta),
-        ),
-        events=result.events,
-    )
-
-
-def _retreat_units(
-    state: GameState,
-    player: int,
-    step_source: str,
-    *,
-    troops: int,
-    commanders: int = 0,
-) -> RuleResult:
-    """Return Conflict units to the garrison (see ``rules.units``).
-
-    An Agent-turn retreat also shrinks the turn's withdrawal window so it
-    cannot underflow; the deployment allowance stays used (OQ-029,
-    ``combat_deployment.reconcile_deployment_after_retreat``).
-    """
-
-    retreated = retreat_units(
-        state, player, step_source, troops=troops, commanders=commanders
-    )
-    return RuleResult(
-        state=reconcile_deployment_after_retreat(
-            retreated.state, player, troops=troops, commanders=commanders
-        ),
-        events=retreated.events,
-    )
-
-
 def _reset_combat_passes(state: GameState, player: int) -> GameState:
     """A played Combat Intrigue restarts the consecutive-pass count.
 
@@ -2291,112 +1167,3 @@ def _reset_combat_passes(state: GameState, player: int) -> GameState:
             ),
         )
     return state
-
-
-def _deploy_units(
-    state: GameState,
-    player: int,
-    step_source: str,
-    *,
-    troops: int,
-    commanders: int = 0,
-) -> RuleResult:
-    """Move garrison units into the Conflict, counting strength mid-Reveal."""
-
-    owner = state.players[player]
-    if (
-        troops < 0
-        or commanders < 0
-        or troops + commanders < 1
-        or owner.troops_garrison < troops
-        or owner.commanders_garrison < commanders
-    ):
-        raise RuntimeError("Intrigue deployment exceeds the garrison")
-    event = GameEvent(
-        event_id=f"{step_source}:deploy",
-        kind="troops_deployed",
-        payload=(
-            *((("commanders", commanders),) if commanders else ()),
-            ("count", troops + commanders),
-            ("player", player),
-        ),
-    )
-    if reveal_is_open_for(state, player):
-        counted = add_units_to_reveal(
-            state, player, troops=troops, commanders=commanders
-        )
-        return RuleResult(state=counted.state, events=(event, *counted.events))
-    next_owner = replace(
-        owner,
-        troops_garrison=owner.troops_garrison - troops,
-        troops_conflict=owner.troops_conflict + troops,
-        commanders_garrison=owner.commanders_garrison - commanders,
-        commanders_conflict=owner.commanders_conflict + commanders,
-        units_deployed_turn=owner.units_deployed_turn + troops + commanders,
-    )
-    return RuleResult(
-        state=replace(state, players=replace_player(state.players, next_owner)),
-        events=(event,),
-    )
-
-
-def _sections(context: dict[str, ActionValue]) -> tuple[EffectSection, ...]:
-    card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
-    option_index = context_int(context, "option", owner=_CHOICE_FRAME)
-    option = intrigue_card_for_instance(card_id).options[option_index]
-    raw = context_str(context, "sections", owner=_CHOICE_FRAME)
-    return tuple(option.sections[int(index)] for index in raw.split(",") if index)
-
-
-def _rewards_draw_hidden_cards(sections: tuple[EffectSection, ...]) -> bool:
-    """Whether the sections' automatic rewards draw from a hidden deck."""
-
-    return any(
-        isinstance(reward, DrawPersonalCards | DrawIntrigueCards)
-        for reward in automatic_rewards(sections)
-    )
-
-
-def _rewards_await_after_slots(context: dict[str, ActionValue]) -> bool:
-    """Whether every slot is done and the automatic rewards wait for their step.
-
-    Icons on one Intrigue line are independent effects in the owner's order
-    (OQ-015 (d)), so the rewards may resolve before, between or after the
-    reward slots (``resolve_intrigue_rewards``). When they draw hidden cards
-    and the owner resolved the last reward slot first -- Cunning's and
-    Insider Information's trash before their draw -- the draw stays its own
-    step instead of riding on that slot, so the public choice stays undoable
-    and only the draw closes the undo window (OQ-010): "그 외에는 전부
-    나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
-    폐기하고 싶을 수 있잖아." (user ruling 2026-10-10, OQ-106). Rewards that
-    draw nothing still finish the card with its last slot, and so does a
-    line whose only slots are arrow costs ("discard -> draw"): the cost is
-    paid for that draw, one printed unit [Main pp. 9, 20].
-    """
-
-    sections = _sections(context)
-    slots = _slots(context)
-    return (
-        context.get("rewards_applied") is not True
-        and context_int(context, "slot", owner=_CHOICE_FRAME) >= len(slots)
-        and len(slots) > len(cost_slots(sections))
-        and _rewards_draw_hidden_cards(sections)
-    )
-
-
-def _slots(context: dict[str, ActionValue]) -> tuple[ChoiceSlot, ...]:
-    wall = context.get("shield_wall_at_play", True)
-    return choice_slots(_sections(context), shield_wall_present=wall is True)
-
-
-def _current_slot(context: dict[str, ActionValue]) -> ChoiceSlot:
-    slots = _slots(context)
-    index = context_int(context, "slot", owner=_CHOICE_FRAME)
-    if not 0 <= index < len(slots):
-        raise RuntimeError("Intrigue choice frame slot is out of range")
-    return slots[index]
-
-
-def _chosen_factions(context: dict[str, ActionValue]) -> tuple[Faction, ...]:
-    raw = context_str(context, "chosen_factions", owner=_CHOICE_FRAME)
-    return tuple(Faction(value) for value in raw.split(",") if value)

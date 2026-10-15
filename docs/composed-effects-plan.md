@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), 다음 A1. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), 다음 A2. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -127,7 +127,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | 단계 | 내용 |
 | --- | --- |
 | A0 | 능력 기록, 대기 능력 실행기, (모양, 출처) → template 표, 같음 확인 도구(6절) — 끝남(2026-10-15, 아래 "A0에서 만든 것") |
-| A1 | 책략 90 identity를 실행기로(이미 데이터라 실행기 검증용) |
+| A1 | 책략 90 identity를 실행기로(이미 데이터라 실행기 검증용) — 끝남(2026-10-16, codec v148, 아래 "A1에서 만든 것") |
 | A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 |
 | A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개 |
 | A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과 |
@@ -184,6 +184,44 @@ hook으로 두되 그 수를 세어 줄여 간다.
   옮긴다(사건 id·내용 그대로). 따로 쓰는 줄(`INTRIGUE_EFFECTS`)도 같은 항목으로. 이 단계부터 결정 stack 모양이 바뀌므로
   codec을 올린다(6절 3번).
 
+### A1에서 만든 것 (2026-10-16, codec v148)
+
+책략(Navigation 카드 포함)의 선택 해결을 실행기로 옮겼다. 제시하는 행동·사건·관측은 그대로이고 결정 stack의 꼴만 바뀌었다(관문 결과는
+6절 표 아래).
+
+- **frame이 들고 있는 것:** 책략 선택 frame(`INTRIGUE_CHOICE`)은 진행 상태 키(`option`·`sections`·`slot`·`chosen_factions`·
+  `rewards_applied`·`shield_wall_at_play`·`deferred_factions`·`tactics_lost`) 대신 `pending_ability` 하나(`PendingAbility`의 문자열
+  꼴)를 든다. 남은 키는 관측이 읽는 `card_id`·`peeked_card_id`와 `source`·`separate_effect`. 따로 쓰는 줄 frame(`INTRIGUE_EFFECTS`,
+  OQ-058)은 `used` 대신 **아직 쓰지 않은 줄마다 항목 하나**(그 줄 하나를 해결하는 항목)의 대기 목록 `pending_lines`를 든다
+  (`encode_pending`; `card_id`·`option`·`player`·`source`는 그대로). 낼 때 바로 해결한 비용 없는 줄은 쓴 줄이다. 줄 하나를 쓰면 그 항목이
+  목록에서 빠져 선택 frame을 연다. 그래서 저장된 항목은 어디서나 "그 줄들을 해결하는 항목"이라는 같은 뜻이다(처음엔 줄 frame에 남은 줄
+  전체를 항목 하나로 두었는데, 같은 칸이 frame마다 다른 뜻이 되어 리뷰 지적으로 바꿨다). 바깥에서 읽는 도우미는
+  `intrigue.pending_intrigue_ability`(선택 frame, 출처가 책략인 항목만)·`intrigue_lines_used`(줄 frame)이고 앱 AI와 테스트가 쓴다.
+- **`PendingAbility`에 더한 칸 둘:** `held`(나중 단계에서 효과가 나는 값: "Choose two"가 둘 다 고를 때까지 미뤄 둔 진영, OQ-057)와
+  `tally`(한 조각씩 내지만 출처 하나인 비용의 누계: "lose N troops"가 Conflict에서 뺀 병력, Chani의 Tactics 토큰은 마지막 조각에서 한 번
+  움직인다 `[FAQ p. 1]` `[Bloodlines p. 12]`). 문자열 꼴은 칸 9개(A0의 7칸 꼴은 거절한다).
+- **실행기의 적용 함수**(`rules/ability_executor.py`): `apply_piece`(조각 하나의 답을 적용하고 다음 항목을 돌려줌; 빈 supply에서 배치
+  전 회수처럼 조각을 준비만 한 답은 `stays`), `acquire_by_piece`(획득 조각은 카드가 끝난 뒤 따라오는 frame 때문에 frame 쪽이 순서를
+  쥔다; "손으로" 조건은 frame이 나아가기 전 상태에서 `acquires_to_hand`로 판정), `apply_automatic_rewards`(자동 보상과 차례 장부, 옛
+  `_apply_section_rewards`), `rewards_wait`(OQ-106의 draw 단계). 답이 무엇을 하는지는 행동 id가 아니라 모양 표로 읽는다(거절·빈 확인·
+  회수·대상). 거절과 빈 확인의 사건 이름은 행동 template별 표 `_PASSED_EVENTS`에 있다(다른 출처를 이 함수로 보내는 단계가 자기 template을
+  더한다; 페이지 이름표 테스트는 `table_event_kinds()`로 읽는다). 획득 조각의 빈 확인 사건은 카드를 함께 적으므로 frame 쪽이 낸다. 조각의
+  사건 id는 `<출처>:slot:<단계>:…` 그대로.
+- **`rules/intrigue.py`에 남은 것:** 카드 내기·비용, 두 frame 열기, 조각이 쌓은 frame을 들어 올렸다 다시 얹기, 획득 조각의 순서,
+  카드 끝내기(버림 더미·앞면 보관·Navigation). `legal_intrigue_choice_actions`는 `ability_rows(…, STACKED, played_card_id=…)`다.
+- **속도:** 실행기가 매 줄 `template_id`(표 279행 훑기)를 불러 책략 frame의 합법 행동 계산이 처음엔 2.3배 느렸다. `template_id`와 능력
+  찾기, 문자열 해독을 캐시해 시작 master보다 조금 빠르다(6절 표 아래). 캐시가 기대는 모양 표는 읽기 전용(`MappingProxyType`)이다.
+- **테스트:** 실행기 줄 == 엔진 줄 비교(책략 쪽)는 엔진이 실행기를 쓰게 되어 지웠다(Reveal 쪽은 A4까지 둔다). 대신 저장 꼴(`held`·`tally`
+  포함), "Choose two"의 미룸과 둘째 진영이 없을 때의 빈 확인, Tactics 토큰 한 번 이동, 거절 사건 이름을 실행기 단위로 지키고, 시드 판에서
+  두 frame의 저장 꼴을 본다. frame 키를 직접 읽던 테스트 둘은
+  `intrigue_lines_used`로 읽게 했다(기대값 그대로). 옮긴 도우미 하나(`_trash_intrigue_hand_card`)는 import 경로만 바꿨다.
+- **hook:** 0개 그대로.
+- **A2가 할 일:** 개인 카드 Agent 칸의 단순·조건부 이득 52개를 능력 기록(`AbilityTiming.AGENT_BOX`)으로 적고 Agent 효과 frame의 대기
+  항목으로 옮긴다. 설계는 A2를 시작할 때 정한다. A1까지 실행기에 있는 것: 자기 차례 제시 `IN_TURN`(거절 줄·자동 보상 줄 없음), 접합
+  둘째 칸의 꼬리표(`tag_value=1`), 대기 목록 정책(`pending_rows`·`entry_taking`·`holds_turn_end`), 거절·빈 확인 사건 이름 표. 아직 없는
+  것: Agent 칸은 인쇄된 아이콘마다 행동 하나(`resolve_agent_card_effect(effect=…)`, OQ-027)인데 실행기의 자동 보상은 한 줄로 한꺼번에
+  내므로, 아이콘별 줄을 내는 제시가 필요하다.
+
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
 - 내용: 행동을 `동사(대상, slot=k)`로 바꾸고 묶인 행동을 조각 행동으로 나눈다. `slot`은 대기 능력 목록의 자리다(지금
@@ -211,12 +249,21 @@ Rise of Ix, 기본판 Imperium, Conspiracy 카드를 능력 기록으로 더한�
    옮기거나 새 단위 테스트를 더하는 것은 된다.
 5. pytest·ruff·mypy, `scripts/e2e/run_all.py`, 소크(soundness·privacy).
 6. 속도: `scripts/ab/profile_legal.py`로 합법 행동 계산 시간을 단계 전후에 잰다. 10% 넘게 느려지면 병합 전에 고친다
-   (탐색 좌석이 매 결정 이것을 수천 번 부른다).
+   (탐색 좌석이 매 결정 이것을 수천 번 부른다). `profile_legal.py`는 기본 룰셋 10판이라 옮긴 효과가 거의 안 나오므로, 1번의 기록을 다시
+   두며 `legal_actions`만 재는 `scripts/ab/time_legal.py`(전체와 옮긴 frame만 따로, 시작 master와 번갈아)도 돌린다(A1부터).
 
 A0 관문(2026-10-15, 시작 master `8dcf302d`): 1번 200판 모두 same(191,836단계, 행동 241종 재생). 2번 v147 묶음
 (`local/records-corpus/v147-2af1d9f5`, 2,000판) 모두 exact(시작 master보다 앞선 `2af1d9f5`로 만든 묶음이고, 그 사이 엔진 변경은 선택 불가 표시 첫 묶음뿐). 3번 codec 그대로(v147, 결정 stack 그대로). 4번 기존 기대값
 바꾼 것 없음(옮긴 도우미의 import 한 줄만). 5번 pytest·ruff·mypy 통과. E2E·소크·6번 속도는 건너뛰었다: A0는 엔진에
 연결하지 않았고 바뀐 실행 경로는 옮긴 도우미 하나라, 1번의 매 단계 비교가 그보다 강한 증거다. A1부터는 모두 돈다.
+
+A1 관문(2026-10-16, 시작 master `259e8ee8`, 리뷰 반영 뒤 최종 코드로): 1번 200판 모두 same(191,836단계, 행동 241종). 같은 200판을 브랜치에서
+에이전트가 다시 두어도 기록과 수 하나까지 같다(앱 AI가 frame을 읽는 곳이 바뀌어 더 돌렸다). 2번 v147 묶음(`v147-2af1d9f5`) 2,000판 모두
+exact, 다리 0(로컬 사람 저장본 9판도 두 엔진에서 같은 결과). 브랜치로 만든 v148 묶음(`v148-02e203ce`)도 v147 묶음과 2,000판 모두 수순이
+같다. 3번 codec v148. 4번 기존 기대값 바꾼 것 없음(codec 번호 고정, frame 키 목록,
+frame 키를 직접 읽던 테스트 둘의 읽는 법, 옮긴 도우미의 import 경로만). 5번 pytest 7,738개·ruff·mypy 통과, E2E 67종 통과, 소크 360판 실패 0.
+6번 `time_legal.py` 100판 번갈아 세 번씩: 전체 호출당 48.3–48.9 µs(시작) 대 48.5 µs, 책략 frame 12.9–13.0 µs 대 12.4–12.6 µs;
+`profile_legal.py` 잡음 안. 독립 리뷰: 막는 문제 없음, 지적 7개 고침(worklog 2026-10-16).
 
 ## 7. 플레이 유지
 

@@ -485,7 +485,15 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # checkpoint's ``source`` row starts from the source-less one
 # (``training.checkpoint._alias``). Recorded step sequences change, so saves and
 # replays from v146 are refused by the version check.
-ACTION_CODEC_VERSION = 147
+# v148 (composed-effects stage A1, docs/composed-effects-plan.md): an Intrigue
+# card's choice frame and its separate-lines frame (OQ-058) store one pending
+# ability of the executor (``rules.ability_executor``, context key
+# ``pending_ability``) in place of their own progress keys, and the executor
+# offers and applies the slots. Nothing a seat is offered, sees or is told
+# changes (the engine equivalence gate: 200 games step by step); only the
+# decision stack's form does, so saves from v147 are refused by the version
+# check while a v147 record replays as it is.
+ACTION_CODEC_VERSION = 148
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
