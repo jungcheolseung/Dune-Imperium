@@ -67,6 +67,7 @@ from dune_imperium.rules.agent_box_abilities import (
     payment_rows,
     resolve_box,
     resolve_box_icon,
+    target_blocked,
     target_piece,
     target_rows,
     trash_block,
@@ -193,11 +194,11 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
     PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
-# Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
-# card] [troop]" [card face] [Rise of Ix p. 10].
 # Arrakis Observer's Spy after its paid discard: "Spy with Deep Cover"
 # [Bloodlines pp. 5, 12] may share another player's post.
 _DEEP_COVER_SPY: Final = PlaceSpy(shared_post=True)
+# Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
+# card] [troop]" [card face] [Rise of Ix p. 10].
 _SPICE_FOR_TRASH_AND_TROOP = (
     PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT
 )
@@ -332,18 +333,8 @@ def legal_agent_card_discard_actions(
         return discard_rows(state, player, recorded)
     if effect is not PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return ()
-    # Any hand card may pay the discard: neither Captured Mentat's nor Guild
-    # Spy's face conditions the cost on the Intrigue reward [Captured Mentat
-    # card] [Guild Spy card]. An empty Intrigue deck does not block it
-    # either: the draw reshuffles the discard pile ("In the rare case that
-    # you exhaust the Intrigue deck, shuffle the discarded Intrigue cards to
-    # form a new deck." [FAQ p. 2]) or stops short when both piles are
-    # empty, while the card draw still pays out.
-    decline = (
-        (DomainAction(action_id="decline_agent_card_discard", actor=player),)
-        if effect in _OPTIONAL_DISCARDS
-        else ()
-    )
+    # Arrakis Observer: any hand card pays its optional discard.
+    decline = (DomainAction(action_id="decline_agent_card_discard", actor=player),)
     if agent_card_cost_block(state, player) is not None:
         # An optional discard with no card in hand.
         return decline
@@ -934,10 +925,6 @@ def legal_agent_card_influence_actions(
     )
 
 
-def _any_influence_can_rise(owner: PlayerState) -> bool:
-    return any(influence_can_rise(owner, faction) for faction in Faction)
-
-
 def agent_box_influence_blocked(state: GameState, player: int) -> bool:
     """Whether the pending Agent box's "choose a Faction" has no cube to raise.
 
@@ -955,14 +942,10 @@ def agent_box_influence_blocked(state: GameState, player: int) -> bool:
     if context.get("pending_agent_effect") is not True:
         return False
     effect = active_agent_card(context).agent_effect
-    owner = state.players[player]
-    if effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
-        return not _any_influence_can_rise(owner)
-    if (
-        effect
-        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
-    ):
-        return spy_recalled_this_turn(owner) and not _any_influence_can_rise(owner)
+    recorded = box_ability(effect)
+    if recorded is not None and isinstance(target_piece(recorded), GainInfluence):
+        # Interstellar Trade, For Humanity, Public Spectacle: their records.
+        return target_blocked(state, player, recorded)
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
         return not legal_agent_card_influence_actions(state, player)
     return False
@@ -1999,13 +1982,6 @@ _ARRAKIS_REVOLT = (
     PersonalCardAgentEffect
     .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
 )
-# The Agent boxes whose optional discard any hand card pays; each offers its
-# refusal beside the discards (``legal_agent_card_discard_actions``).
-_OPTIONAL_DISCARDS: Final = frozenset(
-    {
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-    }
-)
 
 
 def _arrakis_revolt_block(state: GameState, player: int) -> OptionalEffectBlock | None:
@@ -2081,7 +2057,7 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
         )
-    if effect in _OPTIONAL_DISCARDS:
+    if effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return short_of(kind.HAND, 1, len(owner.hand))
     return None
 
