@@ -120,6 +120,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
@@ -455,6 +456,9 @@ def condition_text_ko(condition: Condition) -> str:
         case UnitsInConflictAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s "{conflict}에 부대가 3 이상 있다면:".
             return f"{{conflict}}에 부대가 {count} 이상 있다면"
+        case TrashedCardHasFaction(faction=faction):
+            # Quotes ``tokens_ko.py``'s "황제 카드를 {trash}했다면".
+            return f"{_faction_name_ko(faction)} 카드를 {{trash}}했다면"
         case DiscardedCardHasFaction(faction=faction):
             # Quotes ``tokens_ko.py``'s "버린 카드가 우주 항행 길드 카드이면".
             return f"버린 카드가 {_faction_name_ko(faction)} 카드이면"

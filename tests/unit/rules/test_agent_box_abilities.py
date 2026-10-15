@@ -45,6 +45,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PledgeFirstPlaceInfluence,
     RecruitTroops,
     TrashCard,
+    TrashedCardHasFaction,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -118,7 +119,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 74
+    assert len(AGENT_BOX_ABILITIES) == 75
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -724,10 +725,11 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
         assert not discard_box(ability) and not payment_box(ability)
 
 
-def test_four_trash_boxes_and_what_they_read_as() -> None:
+def test_five_trash_boxes_and_what_they_read_as() -> None:
     """Composed A3e: black trash icons (Calculus of Power's one, Ruthless
     Leadership's two under its Commander condition) and arrows paid by a
-    trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge). Only
+    trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge, Elite
+    Forces' armed draw and troop with the Combat paid at once). Only
     Ruthless Leadership resolves as one action -- its condition failing --
     the others through their rows alone."""
 
@@ -741,7 +743,15 @@ def test_four_trash_boxes_and_what_they_read_as() -> None:
         _BOX.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
+        _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
     }
+    elite = trash[_BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS]
+    assert elite.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS)
+    assert len(elite.sections) == 3
+    emperor = TrashedCardHasFaction(Faction.EMPEROR)
+    assert condition_text_ko(emperor) in AGENT_EFFECT_TEXT_KO[
+        _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    ]
     assert {e for e, a in trash.items() if not optional_arrow(a)} == {
         _BOX.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
     }

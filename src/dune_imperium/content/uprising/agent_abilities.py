@@ -79,6 +79,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     TakeContract,
     TrashCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     UnitsInConflictAtLeast,
@@ -92,6 +93,7 @@ _BG_TWO = InfluenceAtLeast(_BG, 2)
 _TWO_SPICE = GainedSpiceThisTurn(2)
 _GUILD_DISCARD = DiscardedCardHasFaction(Faction.SPACING_GUILD)
 _COMMANDER_IN_CONFLICT = CommandersInConflictAtLeast(1)
+_EMPEROR_TRASH = TrashedCardHasFaction(Faction.EMPEROR)
 _BRANCHING_PATH = (
     _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
 )
@@ -385,6 +387,19 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 _line(PledgeFirstPlaceInfluence()),
                 armed=("troops", "pledge"),
+            ),
+            # Elite Forces: "You may trash a card from your hand. If you trash an
+            # Emperor card: Draw 1 Intrigue card, Recruit 1 troop, Combat" -- the
+            # draw and the troop armed as icons, the Combat paid with the trash.
+            _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS: _trash(
+                EffectSection(
+                    rewards=(DrawIntrigueCards(1),),
+                    condition=_EMPEROR_TRASH,
+                    costs=(TrashCard(hand_only=True),),
+                ),
+                _line(RecruitTroops(1), condition=_EMPEROR_TRASH),
+                _line(GrantCombatDeployment(), condition=_EMPEROR_TRASH),
+                armed=("intrigue", "troops"),
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.

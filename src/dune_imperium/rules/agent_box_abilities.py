@@ -72,6 +72,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GrantCombatDeployment,
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
@@ -87,6 +88,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     TakeContract,
     TrashCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     UnitsInConflictAtLeast,
@@ -120,7 +122,7 @@ from dune_imperium.rules.effects import (
     short_of,
     spice_gained_this_turn,
 )
-from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.frames import context_int, replace_player
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -1484,16 +1486,22 @@ def trash_box(ability: Ability | None) -> bool:
         len(first.costs) != 1
         or not isinstance(first.costs[0], TrashCard)
         or any(line.costs for line in rest)
-        or any(line.condition is not None for line in ability.sections)
+        or any(
+            line.condition is not None
+            and not isinstance(line.condition, TrashedCardHasFaction)
+            for line in ability.sections
+        )
     ):
         return False
-    if ability.armed_icons:
-        return all(
-            line.rewards == (_ARMED_REWARDS.get(key),)
-            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
-        )
-    return not rest and all(
-        isinstance(reward, DrawPersonalCards) for reward in first.rewards
+    if any(
+        line.rewards != (_ARMED_REWARDS.get(key),)
+        for key, line in zip(ability.armed_icons, ability.sections, strict=False)
+    ):
+        return False
+    return all(
+        isinstance(reward, (DrawPersonalCards, GrantCombatDeployment))
+        for line in ability.sections[len(ability.armed_icons) :]
+        for reward in line.rewards
     )
 
 
@@ -1630,17 +1638,36 @@ def apply_trash(
         # The card trashed itself as its own cost, so its rewards still pay
         # out (OQ-022).
         context["agent_card_self_trashed"] = True
-    if ability.armed_icons:
-        arm_agent_icons(context, ability.armed_icons)
-    next_state = advance_after_effect(trashed.state, context, trashed.state.players)
-    draws = (
-        0
-        if ability.armed_icons
-        else sum(
-            reward.count
-            for reward in ability.sections[0].rewards
-            if isinstance(reward, DrawPersonalCards)
+    factions = personal_card_for_instance(card_id).factions
+    met = tuple(
+        not isinstance(line.condition, TrashedCardHasFaction)
+        or line.condition.faction in factions
+        for line in ability.sections
+    )
+    armed = len(ability.armed_icons)
+    if keys := tuple(
+        key for key, ok in zip(ability.armed_icons, met, strict=False) if ok
+    ):
+        arm_agent_icons(context, keys)
+    paid = tuple(
+        reward
+        for line, ok in zip(ability.sections[armed:], met[armed:], strict=True)
+        if ok
+        for reward in line.rewards
+    )
+    if any(isinstance(reward, GrantCombatDeployment) for reward in paid) and (
+        context.get("units_deploy_blocked") is not True
+    ):
+        # The Combat icon: this turn deploys as though at a Combat space,
+        # never more than two units from the garrison [Bloodlines p. 5].
+        context["pending_combat_deployment"] = True
+        limit = context_int(
+            context, "existing_troop_deployment_limit", owner="Agent-turn effect frame"
         )
+        context["existing_troop_deployment_limit"] = max(limit, 2)
+    next_state = advance_after_effect(trashed.state, context, trashed.state.players)
+    draws = sum(
+        reward.count for reward in paid if isinstance(reward, DrawPersonalCards)
     )
     if draws:
         drawn = draw_or_request_personal_cards(

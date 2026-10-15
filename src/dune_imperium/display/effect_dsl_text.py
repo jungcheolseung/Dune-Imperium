@@ -93,6 +93,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
@@ -258,6 +259,9 @@ def condition_text(condition: Condition) -> str:
             return "you recalled a Spy this turn"
         case UnitsInConflictAtLeast(count=count):
             return f"you have {count} or more units in the Conflict"
+        case TrashedCardHasFaction(faction=faction):
+            # Elite Forces (``tokens.py``).
+            return f"you trash an {_faction_name(faction)} card"
         case DiscardedCardHasFaction(faction=faction):
             # Space-time Folding, Guild Envoy (``tokens.py``).
             return f"the discarded card has {_faction_name(faction)} affiliation"

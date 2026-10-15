@@ -303,6 +303,15 @@ class DiscardedCardHasFaction:
 
 
 @dataclass(frozen=True, slots=True)
+class TrashedCardHasFaction:
+    """The card trashed for the arrow's cost has ``faction``'s affiliation
+    ("If you trash an Emperor card:" [Elite Forces card]): judged on that
+    card once the cost is paid."""
+
+    faction: Faction
+
+
+@dataclass(frozen=True, slots=True)
 class Grafted:
     """The card was played grafted with another ("If grafted:" [Corrupt
     Smuggler card]) [Immortality p. 10]."""
@@ -345,6 +354,7 @@ type Condition = (
     | UnitsInConflictAtLeast
     | ContractCompletedThisTurn
     | DiscardedCardHasFaction
+    | TrashedCardHasFaction
     | Grafted
     | AllConditions
 )

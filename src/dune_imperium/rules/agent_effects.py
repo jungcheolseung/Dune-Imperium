@@ -1640,7 +1640,6 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
     ):
         return ()
     if (
@@ -1671,7 +1670,6 @@ _TRASH_BOXES: Final = frozenset(
     {
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
     }
 )
 _TREACHEROUS_MANEUVER = (
@@ -1717,9 +1715,6 @@ def _agent_card_trash_targets(
 
     owner = state.players[player]
     effect = active_agent_card(context).agent_effect
-    if effect is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
-        # Elite Forces: "a card from your hand".
-        return owner.hand
     if effect is _TREACHEROUS_MANEUVER:
         if _treacherous_maneuver_block(owner, context) is not None:
             return ()
@@ -1767,8 +1762,6 @@ def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock
             return block
     if _agent_card_trash_targets(state, player, context):
         return None
-    if effect is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
-        return OptionalEffectBlock(kind.HAND, 1, 0)
     if effect is _TREACHEROUS_MANEUVER:
         return OptionalEffectBlock(kind.NO_EMPEROR_CARD)
     return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
@@ -1832,28 +1825,6 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             trashed.state,
             context,
             trashed.state.players,
-        )
-        return RuleResult(state=next_state, events=trashed.events)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
-    ):
-        # Elite Forces: an Emperor card trashed from hand pays an Intrigue
-        # draw and a troop (queued icons, OQ-027) and the Combat icon: this
-        # turn deploys as though at a Combat space, never more than two
-        # units from the garrison [Bloodlines p. 5].
-        if Faction.EMPEROR in personal_card_for_instance(card_id).factions:
-            arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS))
-            if context.get("units_deploy_blocked") is not True:
-                context["pending_combat_deployment"] = True
-                limit = context_int(
-                    context,
-                    "existing_troop_deployment_limit",
-                    owner="Agent-turn effect frame",
-                )
-                context["existing_troop_deployment_limit"] = max(limit, 2)
-        next_state = advance_after_effect(
-            trashed.state, context, trashed.state.players
         )
         return RuleResult(state=next_state, events=trashed.events)
     if (
@@ -3599,7 +3570,6 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
-        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
