@@ -329,13 +329,13 @@ func leader_detail(parent: Node, ref: String) -> void:
 	var remaining = int(player.get("navigation_remaining", 0))
 	if not played.is_empty() or remaining > 0:
 		table._label(parent, table.model.native("항행 카드"), 14)
-		var row = HBoxContainer.new()
+		var row = HFlowContainer.new()
 		parent.add_child(row)
 		for card in played:
-			table._card(row, str(card), 64, 90, false)
+			table._card(row, str(card), 128, 212, false)
 		if int(player.player) == table.model.active_seat:
 			for card in table.model.view().get("private", {}).get("navigation_slots", []):
-				table._card(row, str(card), 64, 90, false)
+				table._card(row, str(card), 128, 212, false)
 		elif remaining > 0:
 			table._label(parent, table.model.native("비공개 %d장") % remaining, 13)
 	if player.get("has_secret_project", false):
@@ -343,13 +343,13 @@ func leader_detail(parent: Node, ref: String) -> void:
 		if not secret.is_empty():
 			var row = HBoxContainer.new()
 			parent.add_child(row)
-			table._card(row, secret, 160, 112, false)
+			table._card(row, secret, 210, 180, false)
 		else:
 			table._label(parent, table.model.native("비밀 프로젝트 · 비공개"), 13)
 	if str(player.get("leader_id", "")) == "shaddam_corrino_iv":
 		var contracts = table.model.view().get("sardaukar_contract_ids", [])
 		if not contracts.is_empty():
-			var row = HBoxContainer.new()
+			var row = HFlowContainer.new()
 			parent.add_child(row)
 			for card in contracts:
-				table._card(row, str(card), 130, 94, false)
+				table._card(row, str(card), 210, 180, false)
