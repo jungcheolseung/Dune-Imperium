@@ -35,6 +35,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
+    DiscardedCardHasFaction,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -336,6 +337,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             | SpyRecalledThisTurn()
             | UnitsInConflictAtLeast()
             | ContractCompletedThisTurn()
+            | DiscardedCardHasFaction()
         ):
             # Printed only in Agent boxes so far: judged by
             # ``agent_box_abilities.box_condition_holds`` (one place, so the

@@ -56,6 +56,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
+    DiscardedCardHasFaction,
+    DiscardFromHand,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -77,13 +79,16 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
+    Reward,
     SandwormsInConflictAtLeast,
     SpendSpecimens,
     SpyRecalledThisTurn,
     TakeContract,
+    TrashIntrigueCard,
     TrashPersonalCard,
     UnitsInConflictAtLeast,
 )
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.engine import RuleResult
@@ -93,6 +98,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
@@ -101,6 +107,7 @@ from dune_imperium.rules.effects import (
     active_agent_card,
     advance_after_effect,
     agent_card_source,
+    arm_agent_icons,
     current_agent_effect_context,
     finish_agent_icon,
     is_grafted,
@@ -116,7 +123,10 @@ from dune_imperium.rules.immortality import (
     tleilaxu_track_finished,
 )
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_or_queue_intrigue_cards,
+    with_trashed_intrigue,
+)
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
@@ -453,7 +463,14 @@ def resolve_box(state: GameState) -> RuleResult:
     (line,) = ability.sections
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    available = _line_holds(line, owner, context)
+    if discard_box(ability):
+        # Guild Envoy's mandatory discard resolves through its rows; with an
+        # empty hand the box waits and fizzles (OQ-057 (1), OQ-028).
+        if discard_rows(state, player, ability):
+            raise RuntimeError("Agent-card discard effect requires a player choice")
+        available = False
+    else:
+        available = _line_holds(line, owner, context)
     if (piece := target_piece(ability)) is not None:
         # A target choice resolves through its rows; reached with one to make
         # is a caller's error, and with none the box waits and fizzles
@@ -1045,3 +1062,387 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(gained.state, context, gained.state.players)
     return RuleResult(state=next_state, events=gained.events)
+
+
+# --- Discard arrows (stage A3d) -------------------------------------------------
+#
+# "[You may] discard a card -> reward": the refusal of an optional arrow,
+# then one row per hand card; with an empty hand an optional arrow offers
+# only its refusal (``discard_cost_block``) and the mandatory one waits and
+# fizzles (OQ-057 (1)). The answer discards with source
+# ``round:R:player:P:agent_card_discard`` (no card id) and pays the lines
+# whose condition the discarded card meets: resources with the write-back,
+# then a Contract named ``<that>:contract_reward``, then one draw named
+# ``<that>:<discarded card>:draw`` (Space-time Folding's second card, Guild
+# Envoy's two). The events are the discard's, then the follow-ups'. An arrow
+# whose rewards are armed (``Ability.armed_icons``: Captured Mentat, Guild
+# Spy) pays nothing at once: the keys of the lines the discarded card meets
+# are queued in printed order (``effects.arm_agent_icons``), each resolved
+# on its own by the icon path (OQ-027), and the box is then mandatory.
+
+_DISCARD_SOURCE: Final = "agent_card_discard"
+_DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards)
+# The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
+# That path offers and pays a key per effect (Branching Path's 2 spice), so
+# the record table test keeps each key to the boxes it serves.
+_ARMED_REWARDS: Final[Mapping[str, Reward]] = {
+    "intrigue": DrawIntrigueCards(1),
+    "cards": DrawPersonalCards(1),
+    "spice": GainResources(spice=2),
+}
+
+
+def discard_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is a discard arrow (one hand card pays it)."""
+
+    if (
+        ability is None
+        or ability.icons
+        or ability.hook is not None
+        or ability.mark is AbilityMark.AUTOMATIC
+        or not ability.sections
+    ):
+        return False
+    first, *rest = ability.sections
+    if first.costs != (DiscardFromHand(),) or any(line.costs for line in rest):
+        return False
+    if any(
+        line.condition is not None
+        and not isinstance(line.condition, DiscardedCardHasFaction)
+        for line in ability.sections
+    ):
+        return False
+    if ability.armed_icons:
+        return all(
+            line.rewards == (_ARMED_REWARDS.get(key),)
+            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+        )
+    return all(
+        isinstance(reward, _DISCARD_REWARDS)
+        for line in ability.sections
+        for reward in line.rewards
+    )
+
+
+def optional_arrow(ability: Ability | None) -> bool:
+    """An optional arrow, resolved only through its rows: the generic
+    resolution keeps the dry-run answer it had before the record."""
+
+    return (
+        payment_box(ability)
+        or intrigue_box(ability)
+        or (
+            discard_box(ability)
+            and ability is not None
+            and ability.mark is AbilityMark.OPTIONAL
+        )
+    )
+
+
+def discard_cost_block(
+    owner: PlayerState, ability: Ability
+) -> OptionalEffectBlock | None:
+    """An optional discard with no card in hand; None for the mandatory one."""
+
+    if ability.mark is not AbilityMark.OPTIONAL:
+        return None
+    return short_of(OptionalBlockKind.HAND, 1, len(owner.hand))
+
+
+def discard_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal of an optional arrow, then one discard per hand card."""
+
+    owner = state.players[player]
+    decline = (
+        (DomainAction(action_id="decline_agent_card_discard", actor=player),)
+        if ability.mark is AbilityMark.OPTIONAL
+        else ()
+    )
+    if discard_cost_block(owner, ability) is not None:
+        return decline
+    return (
+        *decline,
+        *(
+            DomainAction(
+                action_id="discard_agent_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.hand
+        ),
+    )
+
+
+def apply_discard(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Refuse the arrow, or discard the chosen card and pay its lines."""
+
+    _, context = current_agent_effect_context(state)
+    context["pending_agent_effect"] = False
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:{_DISCARD_SOURCE}"
+    if action.action_id == "decline_agent_card_discard":
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="agent_card_discard_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card discard choice has invalid card ID")
+    factions = personal_card_for_instance(card_id).factions
+    discarded = discard_personal_card_from_hand(state, player, card_id, source=source)
+    met = tuple(
+        not isinstance(line.condition, DiscardedCardHasFaction)
+        or line.condition.faction in factions
+        for line in ability.sections
+    )
+    if ability.armed_icons:
+        arm_agent_icons(
+            context,
+            tuple(key for key, ok in zip(ability.armed_icons, met, strict=True) if ok),
+        )
+        return RuleResult(
+            state=advance_after_effect(
+                discarded.state, context, discarded.state.players
+            ),
+            events=discarded.events,
+        )
+    rewards = tuple(
+        reward
+        for line, ok in zip(ability.sections, met, strict=True)
+        if ok
+        for reward in line.rewards
+    )
+    owner = discarded.state.players[player]
+    for reward in rewards:
+        if isinstance(reward, GainResources):
+            owner = _gain(owner, reward)
+    next_state = advance_after_effect(
+        discarded.state, context, replace_player(discarded.state.players, owner)
+    )
+    events = list(discarded.events)
+    for reward in rewards:
+        if isinstance(reward, TakeContract):
+            contracts = begin_contract_gain(
+                next_state, player, reward.count, source=f"{source}:contract_reward"
+            )
+            next_state = contracts.state
+            events.extend(contracts.events)
+    if draws := sum(
+        reward.count for reward in rewards if isinstance(reward, DrawPersonalCards)
+    ):
+        drawn = draw_or_request_personal_cards(
+            next_state, player, draws, source=f"{source}:{card_id}:draw"
+        )
+        next_state = drawn.state
+        events.extend(drawn.events)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+# --- Intrigue arrows (stage A3d) ------------------------------------------------
+#
+# "If <Faction> Alliance: You may trash an Intrigue card [and pay N spice] ->
+# reward" (Branching Path, Junction Headquarters): the refusal, then one row
+# per Intrigue card in hand -- ``trash_intrigue_for_agent_card``, or
+# ``pay_agent_card_intrigue_and_spice`` when spice is paid too -- while the
+# Alliance, the spice and an Intrigue card are there (judged when the cost is
+# paid, OQ-028: ``intrigue_cost_block``), else the refusal alone. The trashed
+# card joins the Intrigue discard (OQ-061). Events are named
+# ``<box>:intrigue_payment``: the trash, then the spice paid; armed rewards
+# (Branching Path's Intrigue draw and 2 spice) wait as icons (OQ-027), other
+# rewards (Junction's VP, with no event of its own) are paid at once.
+
+_INTRIGUE_TRASH: Final = TrashIntrigueCard()
+
+
+def intrigue_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is an optional arrow paid by trashing an Intrigue card."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or not ability.sections
+    ):
+        return False
+    first, *rest = ability.sections
+    if _INTRIGUE_TRASH not in first.costs or any(line.costs for line in rest):
+        return False
+    if any(
+        cost != _INTRIGUE_TRASH and _intrigue_spice(cost) is None
+        for cost in first.costs
+    ):
+        return False
+    if first.condition is not None and not (
+        isinstance(first.condition, HasAlliance) and first.condition.faction is not None
+    ):
+        # A named Faction's Alliance, judged by ``intrigue_cost_block``.
+        return False
+    if any(line.condition is not None for line in rest):
+        return False
+    if ability.armed_icons:
+        return all(
+            line.rewards == (_ARMED_REWARDS.get(key),)
+            for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+        )
+    return not rest and all(
+        isinstance(reward, (GainVictoryPoints, GainResources))
+        for reward in first.rewards
+    )
+
+
+def _intrigue_spice(cost: object) -> int | None:
+    match cost:
+        case PayResources(solari=0, spice=spice, water=0) if spice:
+            return spice
+    return None
+
+
+def _spice_cost(ability: Ability) -> int:
+    return sum(
+        spice
+        for cost in ability.sections[0].costs
+        if (spice := _intrigue_spice(cost)) is not None
+    )
+
+
+def intrigue_cost_block(
+    owner: PlayerState, ability: Ability
+) -> OptionalEffectBlock | None:
+    """The Alliance, then the spice, then an Intrigue card to trash."""
+
+    condition = ability.sections[0].condition
+    if (
+        isinstance(condition, HasAlliance)
+        and condition.faction is not None
+        and condition.faction.value not in owner.alliance_faction_ids
+    ):
+        return OptionalEffectBlock(
+            OptionalBlockKind.ALLIANCE, faction=condition.faction.value
+        )
+    if spice := _spice_cost(ability):
+        block = short_of(OptionalBlockKind.SPICE, spice, owner.resources.spice)
+        if block is not None:
+            return block
+    if not owner.intrigue_cards:
+        return OptionalEffectBlock(OptionalBlockKind.INTRIGUE)
+    return None
+
+
+def intrigue_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal, then one row per Intrigue card while the cost is payable."""
+
+    owner = state.players[player]
+    decline = DomainAction(
+        action_id="decline_agent_card_intrigue_payment", actor=player
+    )
+    if intrigue_cost_block(owner, ability) is not None:
+        return (decline,)
+    action_id = (
+        "pay_agent_card_intrigue_and_spice"
+        if _spice_cost(ability)
+        else "trash_intrigue_for_agent_card"
+    )
+    return (
+        decline,
+        *(
+            DomainAction(
+                action_id=action_id,
+                actor=player,
+                arguments=(("intrigue_card_id", card_id),),
+            )
+            for card_id in owner.intrigue_cards
+        ),
+    )
+
+
+def apply_intrigue_payment(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Refuse the arrow, or trash the Intrigue card, pay and take the rewards."""
+
+    _, context = current_agent_effect_context(state)
+    # Paying or skipping spends the card's one arrow choice for this turn
+    # [Main p. 9] [FAQ p. 3].
+    context["pending_agent_effect"] = False
+    player, card_id = _subject(context)
+    box = agent_card_source(state.round_number, player, card_id)
+    source = f"{box}:intrigue_payment"
+    if action.action_id == "decline_agent_card_intrigue_payment":
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="agent_card_payment_declined",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+            ),
+        )
+    intrigue_card_id = dict(action.arguments).get("intrigue_card_id")
+    if not isinstance(intrigue_card_id, str):
+        raise RuntimeError("Agent-card Intrigue payment has invalid card ID")
+    owner = state.players[player]
+    owner = replace(
+        owner,
+        intrigue_cards=tuple(
+            held for held in owner.intrigue_cards if held != intrigue_card_id
+        ),
+    )
+    events = [
+        GameEvent(
+            event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
+            kind="intrigue_card_trashed",
+            payload=(("card_id", intrigue_card_id), ("player", player)),
+        )
+    ]
+    if ability.armed_icons:
+        # Every key: the Alliance printed over the whole arrow gated the cost
+        # line's rows (``intrigue_cost_block``), and no later line has a
+        # condition of its own (``intrigue_box``).
+        arm_agent_icons(context, ability.armed_icons)
+    else:
+        if spice := _spice_cost(ability):
+            owner = replace(
+                owner,
+                resources=replace(
+                    owner.resources, spice=owner.resources.spice - spice
+                ),
+                spice_spent_turn=owner.spice_spent_turn + spice,
+            )
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:paid",
+                    kind="agent_card_payment_resolved",
+                    payload=(
+                        ("card_id", card_id),
+                        ("player", player),
+                        ("resource", "spice"),
+                        ("spent", spice),
+                    ),
+                )
+            )
+        for reward in ability.sections[0].rewards:
+            match reward:
+                case GainVictoryPoints(amount=amount):
+                    owner = replace(owner, victory_points=owner.victory_points + amount)
+                case GainResources():
+                    owner = _gain(owner, reward)
+    next_state = advance_after_effect(
+        with_trashed_intrigue(state, intrigue_card_id),
+        context,
+        replace_player(state.players, owner),
+    )
+    return RuleResult(state=next_state, events=tuple(events))

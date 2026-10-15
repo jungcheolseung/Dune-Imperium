@@ -48,10 +48,19 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentPaymentBlock,
     agent_spy_rows,
     apply_chosen_influence,
+    apply_discard,
+    apply_intrigue_payment,
     apply_payment,
     box_ability,
     box_icon_block,
     condition_block,
+    discard_box,
+    discard_cost_block,
+    discard_rows,
+    intrigue_box,
+    intrigue_cost_block,
+    intrigue_rows,
+    optional_arrow,
     payment_box,
     payment_cost_block,
     payment_reward_block,
@@ -77,7 +86,6 @@ from dune_imperium.rules.combat_deployment import (
     reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.contracts import (
-    begin_contract_gain,
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
@@ -132,7 +140,6 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
-    with_trashed_intrigue,
 )
 from dune_imperium.rules.leader_abilities import (
     apply_kota_signet_action,
@@ -316,29 +323,14 @@ def legal_agent_card_discard_actions(
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
     effect = source_card.agent_effect
-    if effect not in (
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
-    ):
+    recorded = box_ability(effect)
+    if recorded is not None and discard_box(recorded):
+        # A discard arrow, from its record (composed A3d).
+        return discard_rows(state, player, recorded)
+    if effect is not PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return ()
-    # Any hand card may pay the discard: neither Captured Mentat's nor Guild
-    # Spy's face conditions the cost on the Intrigue reward [Captured Mentat
-    # card] [Guild Spy card]. An empty Intrigue deck does not block it
-    # either: the draw reshuffles the discard pile ("In the rare case that
-    # you exhaust the Intrigue deck, shuffle the discarded Intrigue cards to
-    # form a new deck." [FAQ p. 2]) or stops short when both piles are
-    # empty, while the card draw still pays out.
-    decline = (
-        (DomainAction(action_id="decline_agent_card_discard", actor=player),)
-        if effect in _OPTIONAL_DISCARDS
-        else ()
-    )
+    # Arrakis Observer: any hand card pays its optional discard.
+    decline = (DomainAction(action_id="decline_agent_card_discard", actor=player),)
     if agent_card_cost_block(state, player) is not None:
         # An optional discard with no card in hand.
         return decline
@@ -364,6 +356,9 @@ def apply_agent_card_discard(
     if action not in legal_agent_card_discard_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card discard choice")
     _, context = current_agent_effect_context(state)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is not None and discard_box(recorded):
+        return apply_discard(state, action, recorded)
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card_discard"
     if action.action_id == "decline_agent_card_discard":
@@ -388,52 +383,12 @@ def apply_agent_card_discard(
         card_id,
         source=source,
     )
-    prepared = advance_after_effect(
-        discarded.state,
-        context,
-        discarded.state.players,
-    )
     # Ghola "상대 카드의 Agent box 전체를 복사" `[Immortality p. 14]`, so the box
     # being resolved is the borrowed one, not Ghola's own empty face. The
     # provider (``legal_agent_card_discard_actions``) already reads it through
     # ``active_agent_card``; reading the printed card here instead let a Ghola
     # take the discard and pay out nothing.
     source_card = active_agent_card(context)
-    if source_card.agent_effect in (
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-    ):
-        # The cost is paid; the printed reward icons (Intrigue draw, card
-        # draw) are independent effects queued for their own actions in the
-        # owner's order (OQ-027).
-        guild_discard = Faction.SPACING_GUILD in discarded_card.factions
-        rewards = (
-            (AGENT_ICON_INTRIGUE, AGENT_ICON_CARDS)
-            if source_card.agent_effect
-            is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
-            else (AGENT_ICON_CARDS, *((AGENT_ICON_INTRIGUE,) if guild_discard else ()))
-        )
-        arm_agent_icons(context, rewards)
-        armed = advance_after_effect(
-            discarded.state,
-            context,
-            discarded.state.players,
-        )
-        return RuleResult(state=armed, events=discarded.events)
-    if source_card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER:
-        # Engineered Miracle: the discard pays one water.
-        owner = discarded.state.players[action.actor]
-        watered = replace(
-            owner, resources=replace(owner.resources, water=owner.resources.water + 1)
-        )
-        return RuleResult(
-            state=advance_after_effect(
-                discarded.state,
-                context,
-                replace_player(discarded.state.players, watered),
-            ),
-            events=discarded.events,
-        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
@@ -464,41 +419,8 @@ def apply_agent_card_discard(
             ),
             events=tuple(events),
         )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT
-    ):
-        contracts = begin_contract_gain(
-            prepared,
-            action.actor,
-            1,
-            source=f"{source}:contract_reward",
-        )
-        return RuleResult(
-            state=contracts.state,
-            events=(*discarded.events, *contracts.events),
-        )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
-    ):
-        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 0
-    elif source_card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE:
-        # I Believe (Bloodlines): "[discard a card] -> draw a card".
-        draw_count = 1
-    else:
-        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
-    if draw_count == 0:
-        return RuleResult(state=prepared, events=discarded.events)
-    drawn = draw_or_request_personal_cards(
-        prepared,
-        action.actor,
-        draw_count,
-        source=f"{source}:{card_id}:draw",
-    )
-    return RuleResult(
-        state=drawn.state,
-        events=(*discarded.events, *drawn.events),
+    raise RuntimeError(
+        f"Agent-card discard has no handler: {source_card.agent_effect}"
     )
 
 
@@ -2083,57 +2005,11 @@ def legal_agent_card_intrigue_payment_actions(
         # resolves in one action).
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    effect = active_agent_card(context).agent_effect
-    decline = DomainAction(
-        action_id="decline_agent_card_intrigue_payment", actor=player
-    )
-    if effect is _BRANCHING_PATH:
-        # "[Bene Gesserit] Alliance: Trash an Intrigue card of your choice
-        # from your hand" [Main p. 20]. The Intrigue-trash icon targets a
-        # card in hand, never a personal card [Main p. 20]
-        # (docs/rules/uprising-systems.md line 17), and no Spice is needed.
-        # The Alliance is judged when the payment resolves [Main pp. 9, 20];
-        # a Faction step of this turn may still grant it, so only declining
-        # is offered until then (OQ-028).
-        owner = state.players[player]
-        if agent_card_cost_block(state, player) is not None:
-            # No Bene Gesserit Alliance, or no Intrigue card to trash.
-            return (decline,)
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="trash_intrigue_for_agent_card",
-                    actor=player,
-                    arguments=(("intrigue_card_id", card_id),),
-                )
-                for card_id in owner.intrigue_cards
-            ),
-        )
-    if (
-        effect
-        is not (
-            PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
-        )
-    ):
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is None or not intrigue_box(recorded):
         return ()
-    owner = state.players[player]
-    if agent_card_cost_block(state, player) is not None:
-        # The Alliance condition and the full arrow cost are judged again when
-        # the player resolves the pending payment in their chosen effect order
-        # [Main pp. 9, 20]; once they no longer hold, only skipping remains.
-        return (decline,)
-    return (
-        decline,
-        *(
-            DomainAction(
-                action_id="pay_agent_card_intrigue_and_spice",
-                actor=player,
-                arguments=(("intrigue_card_id", card_id),),
-            )
-            for card_id in owner.intrigue_cards
-        ),
-    )
+    # From its record (composed A3d): Branching Path, Junction Headquarters.
+    return intrigue_rows(state, player, recorded)
 
 
 def apply_agent_card_intrigue_payment(
@@ -2150,110 +2026,9 @@ def apply_agent_card_intrigue_payment(
     if action not in legal_agent_card_intrigue_payment_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card Intrigue payment")
     _, context = current_agent_effect_context(state)
-    # Paying or skipping spends the card's one arrow choice for this turn
-    # [Main p. 9] [FAQ p. 3], so the pending effect is discharged either way.
-    context["pending_agent_effect"] = False
-    _, source_card_id, _ = _effect_subject(context)
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"agent_card:{source_card_id}:intrigue_payment"
-    )
-    if action.action_id == "decline_agent_card_intrigue_payment":
-        return RuleResult(
-            state=advance_after_effect(state, context),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="agent_card_payment_declined",
-                    payload=(("card_id", source_card_id), ("player", action.actor)),
-                ),
-            ),
-        )
-
-    intrigue_card_id = dict(action.arguments).get("intrigue_card_id")
-    if not isinstance(intrigue_card_id, str):
-        raise RuntimeError("Agent-card Intrigue payment has invalid card ID")
-    owner = state.players[action.actor]
-
-    if action.action_id == "trash_intrigue_for_agent_card":
-        # Branching Path: "Trash an Intrigue card of your choice from your
-        # hand" [Main p. 20] is the arrow cost; the Intrigue draw and the 2
-        # spice are independent reward icons queued for their own actions
-        # (OQ-027). Intrigue cards have no trash pile: the trashed card joins
-        # the shared Intrigue discard and is reshuffled with it (OQ-061,
-        # user ruling 2026-10-04).
-        next_owner = replace(
-            owner,
-            intrigue_cards=tuple(
-                card_id
-                for card_id in owner.intrigue_cards
-                if card_id != intrigue_card_id
-            ),
-        )
-        arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE))
-        next_state = advance_after_effect(
-            with_trashed_intrigue(state, intrigue_card_id),
-            context,
-            replace_player(state.players, next_owner),
-        )
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
-                    kind="intrigue_card_trashed",
-                    payload=(
-                        ("card_id", intrigue_card_id),
-                        ("player", action.actor),
-                    ),
-                ),
-            ),
-        )
-
-    next_owner = replace(
-        owner,
-        resources=replace(
-            owner.resources,
-            spice=owner.resources.spice - 2,
-        ),
-        spice_spent_turn=owner.spice_spent_turn + 2,
-        victory_points=owner.victory_points + 1,
-        intrigue_cards=tuple(
-            card_id
-            for card_id in owner.intrigue_cards
-            if card_id != intrigue_card_id
-        ),
-    )
-    # Junction Headquarters' trashed card joins the Intrigue discard too
-    # (OQ-061, user ruling 2026-10-04).
-    next_state = advance_after_effect(
-        with_trashed_intrigue(state, intrigue_card_id),
-        context,
-        replace_player(state.players, next_owner),
-    )
-    return RuleResult(
-        state=next_state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
-                kind="intrigue_card_trashed",
-                payload=(
-                    ("card_id", intrigue_card_id),
-                    ("player", action.actor),
-                ),
-            ),
-            GameEvent(
-                event_id=f"{source}:paid",
-                kind="agent_card_payment_resolved",
-                payload=(
-                    ("card_id", source_card_id),
-                    ("player", action.actor),
-                    ("resource", "spice"),
-                    ("spent", 2),
-                ),
-            ),
-        ),
-    )
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    assert recorded is not None and intrigue_box(recorded)
+    return apply_intrigue_payment(state, action, recorded)
 
 
 def agent_card_payment_block(
@@ -2279,39 +2054,10 @@ def agent_card_payment_block(
     return None
 
 
-_JUNCTION_HEADQUARTERS = (
-    PersonalCardAgentEffect
-    .MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
-)
 _ARRAKIS_REVOLT = (
     PersonalCardAgentEffect
     .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
 )
-# The Agent boxes whose optional discard any hand card pays; each offers its
-# refusal beside the discards (``legal_agent_card_discard_actions``).
-_OPTIONAL_DISCARDS: Final = frozenset(
-    {
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
-    }
-)
-
-
-def _alliance_block(owner: PlayerState, faction: Faction) -> OptionalEffectBlock | None:
-    if faction.value in owner.alliance_faction_ids:
-        return None
-    return OptionalEffectBlock(OptionalBlockKind.ALLIANCE, faction=faction.value)
-
-
-def _intrigue_block(owner: PlayerState) -> OptionalEffectBlock | None:
-    if owner.intrigue_cards:
-        return None
-    return OptionalEffectBlock(OptionalBlockKind.INTRIGUE)
 
 
 def _arrakis_revolt_block(state: GameState, player: int) -> OptionalEffectBlock | None:
@@ -2359,6 +2105,10 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
     if payment_box(ability):
         assert ability is not None
         return payment_cost_block(owner, ability)
+    if ability is not None and discard_box(ability):
+        return discard_cost_block(owner, ability)
+    if ability is not None and intrigue_box(ability):
+        return intrigue_cost_block(owner, ability)
     if effect is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
         partner = other_grafted_card_id(context)
         if not partner or partner not in owner.in_play:
@@ -2383,15 +2133,7 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
         )
-    if effect is _BRANCHING_PATH:
-        return _alliance_block(owner, Faction.BENE_GESSERIT) or _intrigue_block(owner)
-    if effect is _JUNCTION_HEADQUARTERS:
-        return (
-            _alliance_block(owner, Faction.SPACING_GUILD)
-            or short_of(kind.SPICE, 2, resources.spice)
-            or _intrigue_block(owner)
-        )
-    if effect in _OPTIONAL_DISCARDS:
+    if effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
         return short_of(kind.HAND, 1, len(owner.hand))
     return None
 
@@ -3890,21 +3632,13 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
     {
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
-        PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
-        PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
@@ -4213,13 +3947,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if ability is not None and ability.hook is not None:
         # A special flow kept as code (composed effects, A3).
         return _BOX_HOOKS[ability.hook](state)
-    if ability is not None and not payment_box(ability):
+    if ability is not None and not optional_arrow(ability):
         # A box written as an ability record (composed effects, stage A2).
         return resolve_box(state)
-    # An optional arrow resolves only through its payment row; the generic
-    # resolution below is reached only by the dry run, which keeps the
-    # answers it had before the record (Tleilaxu Surgeon: unavailable; the
-    # others: not implemented, read as available).
+    # An optional arrow resolves only through its payment or discard row;
+    # the generic resolution below is reached only by the dry run, which
+    # keeps the answers it had before the record (Tleilaxu Surgeon:
+    # unavailable; the others: not implemented, read as available).
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
         # Long Reach with no further Faction to name. A first pick made with
         # no second possible is paid at once (``apply_agent_card_influence``,
@@ -4588,13 +4322,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # Control the Spice resolves through its payment choice, which
         # always offers at least the decline.
         raise RuntimeError("Agent-card payment effect requires a player choice")
-    elif effect is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD:
-        if owner.hand:
-            raise RuntimeError("Agent-card discard effect requires a player choice")
-        # Guild Envoy's mandatory discard has no card to take when it
-        # resolves: the effect completes without a choice (OQ-028).
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

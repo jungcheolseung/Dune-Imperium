@@ -31,6 +31,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtMakerSpace,
     CompleteContract,
+    DiscardedCardHasFaction,
+    DiscardFromHand,
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
@@ -54,8 +56,8 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.display.effect_dsl_text import reward_text
-from dune_imperium.display.effect_dsl_text_ko import reward_text_ko
+from dune_imperium.display.effect_dsl_text import condition_text, reward_text
+from dune_imperium.display.effect_dsl_text_ko import condition_text_ko, reward_text_ko
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules.agent_box_abilities import (
@@ -63,11 +65,17 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentIconCondition,
     AgentPaymentBlock,
     condition_block,
+    discard_box,
+    intrigue_box,
     opens_at_placement,
+    optional_arrow,
     payment_box,
     target_piece,
 )
 from dune_imperium.rules.agent_effects import (
+    AGENT_ICON_CARDS,
+    AGENT_ICON_INTRIGUE,
+    AGENT_ICON_SPICE,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
@@ -86,7 +94,10 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.effect_interpreter import spy_placement_allowed_post_ids
+from dune_imperium.rules.effect_interpreter import (
+    condition_holds,
+    spy_placement_allowed_post_ids,
+)
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     agent_card_source,
@@ -98,7 +109,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 61
+    assert len(AGENT_BOX_ABILITIES) == 70
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -633,3 +644,98 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
     ] == ["contract:heighliner_ii"]
     with pytest.raises(ValueError, match="complete_contract_by_card"):
         resolve_agent_card_effect(demands)
+
+
+def test_seven_discard_arrows_read_the_discarded_card() -> None:
+    """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
+    the first line; a later line's condition reads the discarded card, which
+    only the Agent box knows (the generic interpreter refuses it). Captured
+    Mentat's and Guild Spy's rewards are armed as icons after the discard,
+    under the keys the icon path resolves."""
+
+    discards = {
+        effect: ability.mark
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if discard_box(ability)
+    }
+    assert discards == {
+        _BOX.MAY_DISCARD_TO_TAKE_CONTRACT: AbilityMark.OPTIONAL,
+        _BOX.MAY_DISCARD_TO_DRAW_ONE: AbilityMark.OPTIONAL,
+        _BOX.MAY_DISCARD_FOR_WATER: AbilityMark.OPTIONAL,
+        _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
+        _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
+        _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,
+        _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD: (
+            AbilityMark.OPTIONAL
+        ),
+    }
+    assert {
+        effect: ability.armed_icons
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if ability.armed_icons and discard_box(ability)
+    } == {
+        _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
+            AGENT_ICON_INTRIGUE,
+            AGENT_ICON_CARDS,
+        ),
+        _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD: (
+            AGENT_ICON_CARDS,
+            AGENT_ICON_INTRIGUE,
+        ),
+    }
+    for effect, mark in discards.items():
+        ability = AGENT_BOX_ABILITIES[effect]
+        assert ability.sections[0].costs == (DiscardFromHand(),)
+        assert not payment_box(ability) and target_piece(ability) is None
+        # An optional arrow resolves only through its rows.
+        assert optional_arrow(ability) is (mark is AbilityMark.OPTIONAL)
+    guild = DiscardedCardHasFaction(Faction.SPACING_GUILD)
+    folding = _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+    assert condition_text(guild) in AGENT_EFFECT_TEXT[folding]
+    assert condition_text_ko(guild) in AGENT_EFFECT_TEXT_KO[folding]
+    envoy = _played("imperium:guild_envoy:0", PlayerState(player_id=0))
+    with pytest.raises(TypeError, match="judged with its Agent box"):
+        condition_holds(envoy, 0, guild)
+
+
+def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
+    """Composed A3d: Branching Path and Junction Headquarters pay with an
+    Intrigue card under an Alliance judged when the cost is paid; Branching
+    Path's rewards are armed as icons, Junction's VP is paid at once."""
+
+    branching = AGENT_BOX_ABILITIES[
+        _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+    ]
+    junction = AGENT_BOX_ABILITIES[
+        _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+    ]
+    intrigue_arrows = [
+        ability for ability in AGENT_BOX_ABILITIES.values() if intrigue_box(ability)
+    ]
+    assert intrigue_arrows == [branching, junction]
+    assert branching.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE)
+    assert not junction.armed_icons
+    for ability in intrigue_arrows:
+        assert optional_arrow(ability)
+        assert not discard_box(ability) and not payment_box(ability)
+
+
+def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
+    """The legacy icon path offers and pays an armed key per effect (Branching
+    Path's ``spice`` is its 2 spice), so a record arming a key elsewhere would
+    be refused there or paid wrong; a new one has to extend that path first."""
+
+    users: dict[str, set[PersonalCardAgentEffect]] = {}
+    for effect, ability in AGENT_BOX_ABILITIES.items():
+        for key in ability.armed_icons:
+            users.setdefault(key, set()).add(effect)
+    branching = (
+        _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+    )
+    mentat = _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
+    guild_spy = _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+    assert users == {
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching},
+        AGENT_ICON_CARDS: {mentat, guild_spy},
+        AGENT_ICON_SPICE: {branching},
+    }
