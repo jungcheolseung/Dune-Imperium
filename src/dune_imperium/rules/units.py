@@ -1,7 +1,9 @@
 """Unit movements shared by several rule modules (leaf: no rule imports)."""
 
+from collections.abc import Mapping
 from copy import replace
 
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
@@ -70,3 +72,34 @@ def retreat_units(
             *tactics_events,
         ),
     )
+
+
+def unit_count_arguments(
+    *,
+    minimum: int,
+    maximum: int | None,
+    troops: int,
+    commanders: int,
+) -> tuple[tuple[tuple[str, ActionValue], ...], ...]:
+    """Enumerate ``count`` units split between troops and Commanders.
+
+    ``count`` is the total; ``commanders`` (omitted when zero) is the share
+    taken by Sardaukar Commanders [Bloodlines p. 4].
+    """
+
+    units = troops + commanders
+    limit = units if maximum is None else min(maximum, units)
+    return tuple(
+        (("count", count),) if share == 0 else (("commanders", share), ("count", count))
+        for count in range(minimum, limit + 1)
+        for share in range(max(0, count - troops), min(count, commanders) + 1)
+    )
+
+
+def unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
+    """Return (troops, commanders) from a unit-count action's arguments."""
+
+    count = arguments["count"]
+    commanders = arguments.get("commanders", 0)
+    assert isinstance(count, int) and isinstance(commanders, int)
+    return count - commanders, commanders
