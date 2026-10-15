@@ -99,9 +99,10 @@ class Ability:
     # by ``resolve_agent_card_effect(effect=icons[i])``.
     icons: tuple[str, ...] = ()
     # An arrow whose rewards resolve one action each once its cost is paid
-    # (OQ-027): one row key per line, armed by the cost's answer
-    # (``effects.arm_agent_icons``) instead of queued at placement; a line
-    # whose condition fails then is not armed.
+    # (OQ-027): one row key per line from the first, armed by the cost's
+    # answer (``effects.arm_agent_icons``) instead of queued at placement; a
+    # line whose condition fails then is not armed, and a line after the
+    # keyed ones is paid with the cost (Elite Forces' Combat).
     armed_icons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -135,8 +136,8 @@ class Ability:
         if self.armed_icons:
             if self.timing is not AbilityTiming.AGENT_BOX or self.icons:
                 raise ValueError("only an Agent box arrow arms its rewards as icons")
-            if len(self.armed_icons) != len(self.sections):
-                raise ValueError("an arrow arming its rewards keys every line")
+            if len(self.armed_icons) > len(self.sections):
+                raise ValueError("an arrow arming its rewards keys its own lines")
             if len(set(self.armed_icons)) != len(self.armed_icons) or not all(
                 self.armed_icons
             ):

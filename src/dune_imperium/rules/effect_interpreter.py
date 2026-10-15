@@ -92,6 +92,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TechTilesAtLeast,
     TrashDiscardPileCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     TriggeredByFaction,
@@ -338,6 +339,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             | UnitsInConflictAtLeast()
             | ContractCompletedThisTurn()
             | DiscardedCardHasFaction()
+            | TrashedCardHasFaction()
         ):
             # Printed only in Agent boxes so far: judged by
             # ``agent_box_abilities.box_condition_holds`` (one place, so the

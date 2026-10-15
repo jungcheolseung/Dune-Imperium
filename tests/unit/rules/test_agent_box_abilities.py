@@ -42,7 +42,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     PayResources,
     PlaceSpy,
+    PledgeFirstPlaceInfluence,
     RecruitTroops,
+    TrashCard,
+    TrashedCardHasFaction,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -56,8 +59,12 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.display.effect_dsl_text import condition_text, reward_text
-from dune_imperium.display.effect_dsl_text_ko import condition_text_ko, reward_text_ko
+from dune_imperium.display.effect_dsl_text import condition_text, cost_text, reward_text
+from dune_imperium.display.effect_dsl_text_ko import (
+    condition_text_ko,
+    cost_text_ko,
+    reward_text_ko,
+)
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules.agent_box_abilities import (
@@ -71,11 +78,14 @@ from dune_imperium.rules.agent_box_abilities import (
     optional_arrow,
     payment_box,
     target_piece,
+    trash_box,
 )
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
     AGENT_ICON_INTRIGUE,
+    AGENT_ICON_PLEDGE,
     AGENT_ICON_SPICE,
+    AGENT_ICON_TROOPS,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
@@ -90,6 +100,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_opponent_retreat_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
+    legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
 )
@@ -109,7 +120,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 70
+    assert len(AGENT_BOX_ABILITIES) == 75
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -720,6 +731,66 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
         assert not discard_box(ability) and not payment_box(ability)
 
 
+def test_five_trash_boxes_and_what_they_read_as() -> None:
+    """Composed A3e: black trash icons (Calculus of Power's one, Ruthless
+    Leadership's two under its Commander condition) and arrows paid by a
+    trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge, Elite
+    Forces' armed draw and troop with the Combat paid at once). Only
+    Ruthless Leadership resolves as one action -- its condition failing --
+    the others through their rows alone."""
+
+    trash = {
+        effect: ability
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if trash_box(ability)
+    }
+    assert set(trash) == {
+        _BOX.TRASH_PERSONAL_CARD,
+        _BOX.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
+        _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
+        _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+    }
+    elite = trash[_BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS]
+    assert elite.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS)
+    assert len(elite.sections) == 3
+    emperor = TrashedCardHasFaction(Faction.EMPEROR)
+    assert condition_text_ko(emperor) in AGENT_EFFECT_TEXT_KO[
+        _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    ]
+    assert {e for e, a in trash.items() if not optional_arrow(a)} == {
+        _BOX.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
+    }
+    gambit = _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
+    assert trash[gambit].armed_icons == (AGENT_ICON_TROOPS, AGENT_ICON_PLEDGE)
+    assert cost_text(TrashCard(this_card=True)) == "Trash this card"
+    assert cost_text_ko(TrashCard(this_card=True)) in AGENT_EFFECT_TEXT_KO[gambit]
+    pledge = PledgeFirstPlaceInfluence()
+    assert reward_text(pledge).lower() in AGENT_EFFECT_TEXT[gambit].lower()
+    assert reward_text_ko(pledge) in AGENT_EFFECT_TEXT_KO[gambit]
+    with pytest.raises(ValueError, match="one place"):
+        TrashCard(hand_only=True, this_card=True)
+
+
+def test_ruthless_leadership_waits_for_a_commander() -> None:
+    """Its condition is judged at each trash (OQ-028): no row without a
+    Commander in the Conflict, and the one-action resolution then reports
+    the box unavailable; with one, it refuses (the rows resolve it)."""
+
+    card = "imperium:ruthless_leadership:0"
+    config = RulesetConfig(bloodlines=True, promo_cards=True)
+    alone = _played(card, PlayerState(player_id=0), config)
+    assert legal_agent_card_trash_actions(alone, 0) == ()
+    events = resolve_agent_card_effect(alone).events
+    assert [e.kind for e in events] == ["agent_card_effect_unavailable"]
+    owner = replace(alone.players[0], commanders_garrison=0, commanders_conflict=1)
+    commanding = replace(alone, players=(owner, *alone.players[1:]))
+    rows = legal_agent_card_trash_actions(commanding, 0)
+    assert rows[0].action_id == "decline_agent_card_trash"
+    with pytest.raises(RuntimeError, match="trash effect requires"):
+        resolve_agent_card_effect(commanding)
+
+
 def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     """The legacy icon path offers and pays an armed key per effect (Branching
     Path's ``spice`` is its 2 spice), so a record arming a key elsewhere would
@@ -734,8 +805,12 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     )
     mentat = _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
     guild_spy = _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+    gambit = _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
+    elite = _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
         AGENT_ICON_CARDS: {mentat, guild_spy},
         AGENT_ICON_SPICE: {branching},
+        AGENT_ICON_TROOPS: {gambit, elite},
+        AGENT_ICON_PLEDGE: {gambit},
     }

@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
+    CommandersInConflictAtLeast,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -68,6 +69,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LookAtIntrigueKeepOne,
     PayResources,
     PlaceSpy,
+    PledgeFirstPlaceInfluence,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
@@ -76,6 +78,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     TakeContract,
+    TrashCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     UnitsInConflictAtLeast,
@@ -88,6 +92,8 @@ _BG_BOND = FactionBond(_BG)
 _BG_TWO = InfluenceAtLeast(_BG, 2)
 _TWO_SPICE = GainedSpiceThisTurn(2)
 _GUILD_DISCARD = DiscardedCardHasFaction(Faction.SPACING_GUILD)
+_COMMANDER_IN_CONFLICT = CommandersInConflictAtLeast(1)
+_EMPEROR_TRASH = TrashedCardHasFaction(Faction.EMPEROR)
 _BRANCHING_PATH = (
     _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
 )
@@ -155,6 +161,18 @@ def _discard(
         timing=AbilityTiming.AGENT_BOX,
         sections=(replace(first, costs=(DiscardFromHand(),)), *rest),
         mark=mark,
+        armed_icons=armed,
+    )
+
+
+def _trash(*lines: EffectSection, armed: tuple[str, ...] = ()) -> Ability:
+    """An optional trash box: black trash icons [FAQ p. 3], or an arrow whose
+    first line carries a ``TrashCard`` cost."""
+
+    return Ability(
+        timing=AbilityTiming.AGENT_BOX,
+        sections=lines,
+        mark=AbilityMark.OPTIONAL,
         armed_icons=armed,
     )
 
@@ -346,6 +364,43 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
                 mark=AbilityMark.OPTIONAL,
+            ),
+            # --- Trash boxes (composed effects, A3e) -----------------------------
+            # Calculus of Power, Desert Survival, Eliminate Allies: "You may trash
+            # a card" -- the black trash icon is the whole box.
+            _BOX.TRASH_PERSONAL_CARD: _trash(_line(TrashPersonalCard())),
+            # Ruthless Leadership: "If you have one or more Sardaukar Commanders
+            # in the Conflict: You may trash a card, You may trash a card", the
+            # condition judged at each trash (OQ-028).
+            _BOX.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: _trash(
+                _line(TrashPersonalCard(), condition=_COMMANDER_IN_CONFLICT),
+                _line(TrashPersonalCard(), condition=_COMMANDER_IN_CONFLICT),
+            ),
+            # Shishakli, Replacement Eyes: "You may trash a card -> Draw 1 card".
+            _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE: _trash(
+                EffectSection(rewards=(DrawPersonalCards(1),), costs=(TrashCard(),))
+            ),
+            # Pivotal Gambit: the card trashes itself as the cost, then its troop
+            # and the first-place pledge are armed as icons (OQ-022, OQ-027).
+            _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE: _trash(
+                EffectSection(
+                    rewards=(RecruitTroops(1),), costs=(TrashCard(this_card=True),)
+                ),
+                _line(PledgeFirstPlaceInfluence()),
+                armed=("troops", "pledge"),
+            ),
+            # Elite Forces: "You may trash a card from your hand. If you trash an
+            # Emperor card: Draw 1 Intrigue card, Recruit 1 troop, Combat" -- the
+            # draw and the troop armed as icons, the Combat paid with the trash.
+            _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS: _trash(
+                EffectSection(
+                    rewards=(DrawIntrigueCards(1),),
+                    condition=_EMPEROR_TRASH,
+                    costs=(TrashCard(hand_only=True),),
+                ),
+                _line(RecruitTroops(1), condition=_EMPEROR_TRASH),
+                _line(GrantCombatDeployment(), condition=_EMPEROR_TRASH),
+                armed=("intrigue", "troops"),
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.

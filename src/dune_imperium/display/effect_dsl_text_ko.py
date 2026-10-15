@@ -97,6 +97,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
+    PledgeFirstPlaceInfluence,
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
@@ -117,7 +118,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     SummonSandworm,
     TakeContract,
     TechTilesAtLeast,
+    TrashCard,
     TrashDiscardPileCard,
+    TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
@@ -453,6 +456,9 @@ def condition_text_ko(condition: Condition) -> str:
         case UnitsInConflictAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s "{conflict}에 부대가 3 이상 있다면:".
             return f"{{conflict}}에 부대가 {count} 이상 있다면"
+        case TrashedCardHasFaction(faction=faction):
+            # Quotes ``tokens_ko.py``'s "황제 카드를 {trash}했다면".
+            return f"{_faction_name_ko(faction)} 카드를 {{trash}}했다면"
         case DiscardedCardHasFaction(faction=faction):
             # Quotes ``tokens_ko.py``'s "버린 카드가 우주 항행 길드 카드이면".
             return f"버린 카드가 {_faction_name_ko(faction)} 카드이면"
@@ -562,6 +568,15 @@ def cost_text_ko(cost: Cost) -> str:
             # Korean print (`[KO card: Navigation Card 5]`, korean-card-style.md
             # row 49), reused here for "or more" on a cost.
             return f"{{discard_pile}}에서 비용이 {minimum_cost} 이상인 카드 {{trash}}"
+        case TrashCard(hand_only=True):
+            # Quotes ``tokens_ko.py``'s Elite Forces line.
+            return "핸드에서 카드 1장 {trash}"
+        case TrashCard(this_card=True):
+            # Quotes ``tokens_ko.py``'s Pivotal Gambit line.
+            return "이 카드 {trash}"
+        case TrashCard():
+            # Quotes ``tokens_ko.py``'s Shishakli line.
+            return "카드 1장 {trash}"
         case SpendSpecimens(count=count):
             # Quotes ``tokens_ko.py``'s "표본 1개 지불" (Organ Merchants).
             return f"표본 {count}개 지불"
@@ -759,6 +774,9 @@ def reward_text_ko(reward: Reward) -> str:
         case ForceEnemyRetreat():
             # Quotes ``tokens_ko.py``'s Disruption Tactics line.
             return "다른 플레이어의 {troop} 강제 {retreat}"
+        case PledgeFirstPlaceInfluence():
+            # Quotes ``tokens_ko.py``'s Pivotal Gambit line.
+            return "1등 보상에 {influence_any:1} 선택 추가"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

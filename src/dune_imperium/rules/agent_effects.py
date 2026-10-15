@@ -28,7 +28,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
 )
 from dune_imperium.content.uprising.personal_cards import (
-    PersonalCardDefinition,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
@@ -51,6 +50,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_discard,
     apply_intrigue_payment,
     apply_payment,
+    apply_trash,
     box_ability,
     box_icon_block,
     condition_block,
@@ -70,6 +70,10 @@ from dune_imperium.rules.agent_box_abilities import (
     target_blocked,
     target_piece,
     target_rows,
+    trash_block,
+    trash_box,
+    trash_rows,
+    trashes_remaining,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -1612,31 +1616,23 @@ def legal_agent_card_trash_actions(
         # Tread in Darkness's trash icon without the Bond, judged now
         # (OQ-028): it waits like any conditioned icon (OQ-057 (1)).
         return ()
+    recorded = box_ability(source_card.agent_effect)
+    if recorded is not None and trash_box(recorded):
+        # A trash box, from its record (composed A3e).
+        return trash_rows(state, player, recorded)
     if source_card.agent_effect not in (
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
-        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
     ):
         return ()
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
-        and _trashes_remaining(context) == 0
+        and trashes_remaining(context) == 0
     ):
         # The Beast's Spoils resolves its automatic rewards first; only the
         # Crysknife trashes it counted are then offered one at a time.
-        return ()
-    block = agent_card_trash_block(state, player)
-    if block is not None and block.kind is OptionalBlockKind.NO_COMMANDER_IN_CONFLICT:
-        # Ruthless Leadership: "If you have one or more Sardaukar Commanders
-        # in the Conflict" is judged when the box resolves (OQ-028); without
-        # one, neither trash icon is offered and the box resolves without
-        # effect.
         return ()
     return (
         DomainAction(action_id="decline_agent_card_trash", actor=player),
@@ -1656,20 +1652,12 @@ def legal_agent_card_trash_actions(
 # its own, ``agent_icon_block``).
 _TRASH_BOXES: Final = frozenset(
     {
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
-        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
     }
 )
 _TREACHEROUS_MANEUVER = (
     PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
-)
-_PIVOTAL_GAMBIT = (
-    PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
 )
 
 
@@ -1711,14 +1699,6 @@ def _agent_card_trash_targets(
 
     owner = state.players[player]
     effect = active_agent_card(context).agent_effect
-    if effect is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
-        # Elite Forces: "a card from your hand".
-        return owner.hand
-    if effect is _PIVOTAL_GAMBIT:
-        # "Trash this card" is the arrow cost (OQ-022: a card already trashed
-        # by another effect expired before this choice was offered).
-        _, source_card_id, _ = _effect_subject(context)
-        return (source_card_id,) if source_card_id in owner.in_play else ()
     if effect is _TREACHEROUS_MANEUVER:
         if _treacherous_maneuver_block(owner, context) is not None:
             return ()
@@ -1753,25 +1733,19 @@ def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock
     except ValueError:
         return None
     effect = active_agent_card(context).agent_effect
+    recorded = box_ability(effect)
+    if recorded is not None and trash_box(recorded):
+        return trash_block(state, player, recorded, context)
     if effect not in _TRASH_BOXES:
         return None
     owner = state.players[player]
     kind = OptionalBlockKind
-    if (
-        effect is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
-        and owner.commanders_conflict < 1
-    ):
-        return OptionalEffectBlock(kind.NO_COMMANDER_IN_CONFLICT)
     if effect is _TREACHEROUS_MANEUVER:
         block = _treacherous_maneuver_block(owner, context)
         if block is not None:
             return block
     if _agent_card_trash_targets(state, player, context):
         return None
-    if effect is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS:
-        return OptionalEffectBlock(kind.HAND, 1, 0)
-    if effect is _PIVOTAL_GAMBIT:
-        return OptionalEffectBlock(kind.NOT_IN_PLAY)
     if effect is _TREACHEROUS_MANEUVER:
         return OptionalEffectBlock(kind.NO_EMPEROR_CARD)
     return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
@@ -1788,6 +1762,9 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     source = f"round:{state.round_number}:player:{action.actor}:agent_card"
     if AGENT_ICON_TRASH in pending_agent_icons(context):
         return _resolve_trash_icon(state, action, context, source_card_id, source)
+    recorded = box_ability(source_card.agent_effect)
+    if recorded is not None and trash_box(recorded):
+        return apply_trash(state, action, recorded)
     context["pending_agent_effect"] = False
     if action.action_id == "decline_agent_card_trash":
         context.pop("trashes_remaining", None)
@@ -1809,13 +1786,11 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         source=source,
     )
     _keep_trash_recruits(context, trashed)
-    if source_card.agent_effect in (
-        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
     ):
-        remaining = (
-            _trashes_remaining(context, default=_pending_trash_icons(source_card)) - 1
-        )
+        remaining = trashes_remaining(context) - 1
         if remaining > 0:
             # More trash icons: keep the box pending for the next trash.
             context["pending_agent_effect"] = True
@@ -1834,43 +1809,6 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             trashed.state,
             context,
             trashed.state.players,
-        )
-        return RuleResult(state=next_state, events=trashed.events)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
-    ):
-        # Elite Forces: an Emperor card trashed from hand pays an Intrigue
-        # draw and a troop (queued icons, OQ-027) and the Combat icon: this
-        # turn deploys as though at a Combat space, never more than two
-        # units from the garrison [Bloodlines p. 5].
-        if Faction.EMPEROR in personal_card_for_instance(card_id).factions:
-            arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS))
-            if context.get("units_deploy_blocked") is not True:
-                context["pending_combat_deployment"] = True
-                limit = context_int(
-                    context,
-                    "existing_troop_deployment_limit",
-                    owner="Agent-turn effect frame",
-                )
-                context["existing_troop_deployment_limit"] = max(limit, 2)
-        next_state = advance_after_effect(
-            trashed.state, context, trashed.state.players
-        )
-        return RuleResult(state=next_state, events=trashed.events)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
-    ):
-        # Pivotal Gambit: the trashed card is the arrow cost; its troop and
-        # the "gain 1 Influence of your choice" pledge for this Conflict's
-        # first-place reward (OQ-025) are independent reward icons queued
-        # for their own actions (OQ-027). The card trashed itself as its
-        # own cost, so its rewards still pay out (OQ-022).
-        context["agent_card_self_trashed"] = True
-        arm_agent_icons(context, (AGENT_ICON_TROOPS, AGENT_ICON_PLEDGE))
-        next_state = advance_after_effect(
-            trashed.state, context, trashed.state.players
         )
         return RuleResult(state=next_state, events=trashed.events)
     if (
@@ -1921,20 +1859,6 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         context,
         trashed.state.players,
     )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE
-    ):
-        drawn = draw_or_request_personal_cards(
-            next_state,
-            action.actor,
-            1,
-            source=f"{source}:trash_draw",
-        )
-        return RuleResult(
-            state=drawn.state,
-            events=(*trashed.events, *drawn.events),
-        )
     return RuleResult(state=next_state, events=trashed.events)
 
 
@@ -2692,31 +2616,6 @@ _ARRAKIS_REVOLT_ACTION_IDS = frozenset(
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
     }
 )
-
-
-def _trashes_remaining(context: dict[str, ActionValue], default: int = 0) -> int:
-    """Return how many optional trash icons of the current box are still open.
-
-    The Beast's Spoils sets the counter to its Crysknife count when its
-    automatic rewards resolve; Ruthless Leadership's two printed icons start
-    from ``default`` on the first offer.
-    """
-
-    remaining = context.get("trashes_remaining", default)
-    if isinstance(remaining, bool) or not isinstance(remaining, int):
-        raise RuntimeError("Agent-turn effect frame has invalid trash count")
-    return remaining
-
-
-def _pending_trash_icons(card: PersonalCardDefinition) -> int:
-    """Return the printed optional trash icons a box offers before any counter."""
-
-    if (
-        getattr(card, "agent_effect", None)
-        is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
-    ):
-        return 2
-    return 0
 
 
 def _arrakis_revolt_payment_actions(
@@ -3630,16 +3529,11 @@ def graft_boxes_are_stalled(state: GameState) -> bool:
 # an arrow's queued rewards are mandatory like any printed effect.
 OPTIONAL_AGENT_BOXES: Final = frozenset(
     {
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
-        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
@@ -4311,13 +4205,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     *recruit_shortfall,
                 ),
             )
-    elif effect is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT:
-        if owner.commanders_conflict >= 1:
-            raise RuntimeError("Agent-card trash effect requires a player choice")
-        # Ruthless Leadership without a Sardaukar Commander in the Conflict,
-        # judged now (OQ-028): the box resolves without effect.
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
     elif effect is _SPICE_FOR_TRASH_AND_TROOP:
         # Control the Spice resolves through its payment choice, which
         # always offers at least the decline.
