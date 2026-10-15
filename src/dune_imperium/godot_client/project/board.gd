@@ -2,6 +2,7 @@ extends Control
 
 signal chosen(ref: String)
 signal inspected(ref: String)
+signal details_requested(ref: String)
 
 const Model = preload("res://model.gd")
 var model: RefCounted
@@ -11,6 +12,7 @@ var board_texture: Texture2D
 var conflict_texture: Texture2D
 var map_rect = Rect2()
 var hovered = ""
+var hover_kind = "inspect"
 var phase_time = 0.0
 var agents: Dictionary = {}
 var previous_agents: Dictionary = {}
@@ -24,10 +26,11 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
 	resized.connect(queue_redraw)
-	mouse_exited.connect(func(): hovered = ""; queue_redraw())
+	mouse_exited.connect(func(): _set_hover(""))
 
 
 func refresh() -> void:
+	_set_hover("")
 	previous_agents = agents.duplicate()
 	agents.clear()
 	for player in model.view().get("players", []):
@@ -76,19 +79,23 @@ func _draw() -> void:
 			if tile != null:
 				draw_texture_rect(tile, _box(entry.tile_box), false)
 		var enabled = legal.has(id)
-		var active = id == hovered or model.picked_ref(id)
+		var selected = model.picked_ref(id)
+		var active = id == hovered or selected
 		if enabled or active or board_texture == null:
-			var accent = Color("e5bf7d") if enabled else Color("72899d")
-			draw_rect(rect.grow(2), Color(accent, 0.15 if not active else 0.32))
-			draw_rect(rect.grow(2), accent, false, 2.5 if active else 1.4)
-			if board_texture == null or active or (enabled and not model.selected_card.is_empty()):
-				var caption = Rect2(rect.position + Vector2(-12, -22), Vector2(maxf(rect.size.x + 24, 90), 22))
-				draw_rect(caption, Color(0.045, 0.06, 0.075, 0.94))
-				draw_string(get_theme_default_font(), caption.position + Vector2(4, 16), model.name_of(id), HORIZONTAL_ALIGNMENT_LEFT, caption.size.x - 8, 13, Color("f1e4ce"))
+			var kind = "selected" if selected else "available" if enabled else hover_kind if id == hovered else "inspect"
+			_draw_space_state(rect, kind, id == hovered)
+			# Only the pointed/selected space needs a floating caption. Showing
+			# one above every legal space obscures the scanned board rewards.
+			if board_texture == null or active:
+				_draw_caption(rect, model.name_of(id))
 	for post in model.catalog.get("posts", {}):
 		var point = model.catalog.posts[post]
 		if legal.has(post):
-			draw_circle(_point(point[0], point[1]), side * 0.012, Color.WHITE if model.picked_ref(post) else Color("e5bf7d"), false, 3.0 if model.picked_ref(post) else 2.0, true)
+			var selected = model.picked_ref(post)
+			var center = _point(point[0], point[1])
+			draw_circle(center, side * 0.012, Model.REF_COLORS.selected if selected else Model.REF_COLORS.available, false, 3.0 if selected else 2.0, true)
+			if selected or hovered == post:
+				draw_circle(center, side * 0.017, Color("f3eee3"), false, 1.5, true)
 	for key in agents:
 		var marker = agents[key]
 		var entry = model.entry(marker.space)
@@ -113,6 +120,53 @@ func _draw() -> void:
 		var box = model.catalog.get("tracks", {}).get("conflict_slot")
 		if box is Array:
 			draw_texture_rect(conflict_texture, _box(box), false)
+
+
+func _draw_space_state(rect: Rect2, kind: String, pointed: bool) -> void:
+	var accent: Color = Model.REF_COLORS[kind]
+	var selected = kind == "selected"
+	draw_rect(rect.grow(2), Color(accent, 0.24 if selected else 0.1))
+	draw_rect(rect.grow(2), accent, false, 2.6 if selected else 1.4)
+	if selected:
+		draw_rect(rect.grow(5), accent, false, 1.0)
+	if pointed:
+		draw_rect(rect.grow(4), Color("f3eee3"), false, 1.8)
+	var symbol = {"selected": "✓", "unavailable": "×", "filtered": "–"}.get(kind, "")
+	if not symbol.is_empty():
+		var badge = Rect2(rect.end - Vector2(17, rect.size.y), Vector2(18, 18))
+		draw_rect(badge, Color("17222b"))
+		draw_string(get_theme_default_font(), badge.position + Vector2(3, 14), symbol, HORIZONTAL_ALIGNMENT_LEFT, 16, 14, accent)
+	elif kind == "available":
+		draw_circle(rect.position + Vector2(4, 4), 3, accent, true, -1, true)
+
+
+func _draw_caption(rect: Rect2, text: String) -> void:
+	var font = get_theme_default_font()
+	var width = minf(size.x - 8, maxf(90, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 12))
+	var caption = Rect2(Vector2(clampf(rect.position.x - 6, 4, maxf(4, size.x - width - 4)), maxf(4, rect.position.y - 24)), Vector2(width, 22))
+	draw_rect(caption, Color(0.045, 0.06, 0.075, 0.96))
+	draw_string(font, caption.position + Vector2(6, 16), text, HORIZONTAL_ALIGNMENT_LEFT, width - 12, 13, Color("f1e4ce"))
+
+
+func clear_hover() -> void:
+	var changed = not hovered.is_empty()
+	hovered = ""
+	hover_kind = "inspect"
+	mouse_default_cursor_shape = Control.CURSOR_ARROW
+	if changed:
+		queue_redraw()
+
+
+func _set_hover(ref: String) -> void:
+	if ref.is_empty():
+		mouse_default_cursor_shape = Control.CURSOR_ARROW
+	if hovered == ref:
+		return
+	hovered = ref
+	hover_kind = str(model.ref_feedback(ref).kind) if not ref.is_empty() else "inspect"
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if hover_kind in ["available", "selected", "partner"] else Control.CURSOR_FORBIDDEN if hover_kind in ["unavailable", "filtered"] else Control.CURSOR_ARROW
+	inspected.emit(ref)
+	queue_redraw()
 
 
 func _draw_tracks(side: float) -> void:
@@ -263,7 +317,7 @@ func _draw_public_markers() -> void:
 func _hit(position: Vector2) -> String:
 	for post in model.catalog.get("posts", {}):
 		var point = model.catalog.posts[post]
-		if model.legal_refs().has(post) and position.distance_to(_point(point[0], point[1])) < 15:
+		if position.distance_to(_point(point[0], point[1])) < 15 and model.legal_refs().has(post):
 			return post
 	for id in model.catalog.get("spaces", {}):
 		var entry = model.entry(id)
@@ -273,6 +327,7 @@ func _hit(position: Vector2) -> String:
 
 
 func reset_view() -> void:
+	_set_hover("")
 	zoom = 1.0
 	pan = Vector2.ZERO
 	queue_redraw()
@@ -281,24 +336,29 @@ func reset_view() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
+			_set_hover("")
+			mouse_default_cursor_shape = Control.CURSOR_DRAG
 			pan += event.relative
 			queue_redraw()
 			accept_event()
 			return
-		var hit = _hit(event.position)
-		if hit != hovered:
-			hovered = hit
-			if not hit.is_empty():
-				inspected.emit(hit)
-			queue_redraw()
+		_set_hover(_hit(event.position))
 	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 		var previous = zoom
 		zoom = clampf(zoom * (1.15 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.15), 1.0, 3.0)
 		var side = minf(size.x - 4, size.y - 4)
 		var origin = Vector2((size.x - side * zoom) / 2, 2)
 		pan = event.position - (event.position - map_rect.position) * zoom / previous - origin
+		_set_hover("")
 		queue_redraw()
 		accept_event()
+	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+		_set_hover(_hit(event.position))
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		var hit = _hit(event.position)
+		if not hit.is_empty() and not model.entry(hit).is_empty():
+			details_requested.emit(hit)
+			accept_event()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var hit = _hit(event.position)
 		if not hit.is_empty():

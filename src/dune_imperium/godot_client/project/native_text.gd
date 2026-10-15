@@ -2,6 +2,14 @@ extends RefCounted
 
 # Native chrome only. Card names, player names and rule text use the catalog.
 const EN = {
+	"살펴보기": "Inspect",
+	"● 가능": "● Ready",
+	"– 조합 불가": "– Incompatible",
+	"다시 누르면 선택을 해제합니다.": "Click again to deselect.",
+	"턴 종료로 선택을 확정합니다.": "Confirm this choice with End turn.",
+	"접목할 다른 카드로 선택할 수 있습니다.": "Choose this as the other graft card.",
+	"현재 고른 카드·칸과 함께 사용할 수 없습니다.": "Cannot use this with the current card/space selection.",
+	"클릭: 상세 보기": "Click: details",
 	"효과": "Effect",
 	"예상": "Preview",
 	"주의": "Caution",

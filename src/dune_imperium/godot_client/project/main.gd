@@ -38,6 +38,8 @@ var playthrough_rules = ""
 var poll_timer: Timer
 
 var status: Label
+var pointer_hint: Label
+var preview_hint: Label
 var round_label: Label
 var seats: VBoxContainer
 var hand: HBoxContainer
@@ -309,8 +311,8 @@ func _build_table() -> void:
 	board.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board.custom_minimum_size = Vector2(300, 280)
 	board.chosen.connect(_choose_ref)
-	board.inspected.connect(func(ref): _hover(ref, board))
-	board.mouse_exited.connect(_hide_preview)
+	board.inspected.connect(func(ref): _pointed(ref, board))
+	board.details_requested.connect(_open_details)
 	board_column.add_child(board)
 	hand_panel = _panel(board_column, 6)
 	var hand_stack = VBoxContainer.new()
@@ -379,6 +381,9 @@ func _build_table() -> void:
 	status = _label(root, model.native("테이블을 준비하고 있습니다…"), 12)
 	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status.add_theme_color_override("font_color", Color("9caebc"))
+	pointer_hint = _label(root, "", 12)
+	pointer_hint.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	pointer_hint.hide()
 	_build_preview()
 	resized.connect(_fit_columns)
 	_fit_columns()
@@ -436,17 +441,23 @@ func _build_preview() -> void:
 	inspector_image.custom_minimum_size = Vector2(265, 372)
 	inspector_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	inspector_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	inspector_image.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	row.add_child(inspector_image)
 	var body = VBoxContainer.new()
 	body.custom_minimum_size.x = 275
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(body)
 	inspector_title = _label(body, "", 20)
 	inspector_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inspector_title.max_lines_visible = 2
 	inspector_title.add_theme_color_override("font_color", Color("e8c78a"))
 	inspector_words = _label(body, "", 15)
 	inspector_words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inspector_words.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inspector_words.clip_text = true
+	preview_hint = _label(body, "", 13)
+	preview_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_hint.max_lines_visible = 3
 	_label(body, model.native("오른쪽 클릭: 상세 보기"), 12).add_theme_color_override("font_color", Color("a9a69b"))
 	_ignore_mouse(preview)
 	preview.hide()
@@ -463,44 +474,102 @@ func _bind_preview(control: Control, ref: String) -> void:
 	control.set_meta("preview_ref", ref)
 	if control is Label:
 		control.mouse_filter = Control.MOUSE_FILTER_PASS
-	control.mouse_entered.connect(_hover.bind(ref, control))
+	control.mouse_entered.connect(_pointed.bind(ref, control))
 	control.mouse_exited.connect(_hide_preview)
 	control.gui_input.connect(func(event):
+		if event is InputEventMouseMotion and event.button_mask == 0 and hover_source != control:
+			_pointed(ref, control)
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 			_open_details(ref)
 	)
+
+
+func _pointer_allowed() -> bool:
+	if busy or get_viewport().gui_is_dragging():
+		return false
+	# Godot's built-in tooltip is also a Window, but passes mouse input through.
+	return not find_children("*", "Window", true, false).any(func(window): return window.visible and not window.mouse_passthrough and not window.is_queued_for_deletion())
+
+
+func _pointed(ref: String, source: Control) -> void:
+	_hide_preview(source != board or ref.is_empty())
+	if ref.is_empty() or not is_instance_valid(source) or not _pointer_allowed():
+		return
+	hover_source = source
+	var reading = model.ref_feedback(ref)
+	if source.get_meta("inspect_only", false):
+		reading = {"kind": "inspect", "label": model.native("살펴보기"), "hint": model.native("클릭: 상세 보기"), "name": model.name_of(ref)}
+	pointer_hint.text = reading.name + " · " + reading.label + (" · " + reading.hint if not reading.hint.is_empty() else "")
+	pointer_hint.tooltip_text = pointer_hint.text
+	pointer_hint.add_theme_color_override("font_color", Model.REF_COLORS[reading.kind])
+	pointer_hint.show()
+	status.hide()
+	preview_hint.text = reading.label + ("\n" + reading.hint if not reading.hint.is_empty() else "")
+	preview_hint.add_theme_color_override("font_color", Model.REF_COLORS[reading.kind])
+	if not model.entry(ref).is_empty():
+		_hover(ref, source)
 
 
 func _hover(ref: String, source: Control) -> void:
 	hover_serial += 1
 	var serial = hover_serial
 	await get_tree().create_timer(0.22).timeout
-	if serial != hover_serial or not is_instance_valid(source) or not source.is_visible_in_tree():
+	if serial != hover_serial or not is_instance_valid(source) or not source.is_visible_in_tree() or not _pointer_allowed():
 		return
 	hover_source = source
 	_inspect(ref)
 	preview.show()
-	preview.size = Vector2(574, 400)
-	var bounds = source.get_global_rect()
-	if source == board:
-		bounds = Rect2(get_global_mouse_position(), Vector2(1, 1))
+	_place_preview()
+
+
+func _place_preview() -> void:
+	if not preview.visible or not is_instance_valid(hover_source):
+		return
+	var ratio = 0.7
+	if inspector_image.texture != null:
+		ratio = float(inspector_image.texture.get_width()) / inspector_image.texture.get_height()
+	var landscape = ratio > 1.1
+	inspector_image.custom_minimum_size = Vector2(265, floorf(minf(372, 265 / ratio)))
+	inspector_words.max_lines_visible = 4 if landscape else 6
+	preview.reset_size()
+	preview.size = Vector2(574, 240 if landscape else 400)
+	var bounds = hover_source.get_global_rect()
+	if hover_source == board:
+		var box = model.entry(inspect_ref).get("box")
+		if box is Array:
+			var region = board._box(box)
+			bounds = Rect2(board.global_position + region.position, region.size)
 	var point = Vector2(bounds.end.x + 12, bounds.position.y)
-	if content.is_ancestor_of(source) or log_content.is_ancestor_of(source):
+	if content.is_ancestor_of(hover_source) or log_content.is_ancestor_of(hover_source):
 		point.x = side_stack.get_global_rect().position.x - preview.size.x - 12
-	elif market_content.is_ancestor_of(source):
+	elif market_content.is_ancestor_of(hover_source):
 		point.x = market_scroll.get_global_rect().position.x - preview.size.x - 12
 	elif bounds.position.y > size.y * 0.65:
 		point = Vector2(bounds.position.x, bounds.position.y - preview.size.y - 12)
 	elif point.x + preview.size.x > size.x - 8:
 		point.x = bounds.position.x - preview.size.x - 12
-	preview.position = Vector2(clampf(point.x, 8, maxf(8, size.x - preview.size.x - 8)), clampf(point.y, 8, maxf(8, size.y - preview.size.y - 8)))
+	var candidates = [point, Vector2(bounds.end.x + 12, bounds.position.y), Vector2(bounds.position.x - preview.size.x - 12, bounds.position.y), Vector2(bounds.position.x, bounds.position.y - preview.size.y - 12), Vector2(bounds.position.x, bounds.end.y + 12)]
+	for candidate in candidates:
+		var fitted = Vector2(clampf(candidate.x, 8, maxf(8, size.x - preview.size.x - 8)), clampf(candidate.y, 8, maxf(8, size.y - preview.size.y - 8)))
+		preview.position = fitted
+		if not Rect2(fitted, preview.size).intersects(bounds.grow(4)):
+			return
 
 
-func _hide_preview() -> void:
+func _hide_preview(clear_board = true) -> void:
 	hover_serial += 1
+	if clear_board and board != null:
+		board.clear_hover()
 	if preview != null:
 		preview.hide()
 	hover_source = null
+	if pointer_hint != null:
+		pointer_hint.text = ""
+		pointer_hint.tooltip_text = ""
+		pointer_hint.hide()
+		status.show()
+	if preview_hint != null:
+		preview_hint.text = ""
 
 
 func _clear(node: Node) -> void:
@@ -839,39 +908,30 @@ func _card(parent: Node, ref: String, width: int, height: int, playable = true) 
 		button.pile = "intrigue_cards" if ref in model.view().get("private", {}).get("intrigue_cards", []) else "hand"
 	button.custom_minimum_size = Vector2(width, height)
 	button.set_meta("instance_ref", ref)
+	button.set_meta("inspect_only", not playable)
 	button.pressed.connect(_choose_ref.bind(ref) if playable else _open_details.bind(ref))
 	_bind_preview(button, ref)
-	var blocked = model.unavailable(ref)
-	var legal = playable and model.legal_refs().has(ref)
-	var partner = playable and not model.selected_card.is_empty() and model.can_pair(model.selected_card, ref)
-	var selected = model.picked_ref(ref)
-	var border = Color("c4a268") if legal else Color("3d4141")
-	var background = Color("222526")
-	var marker = ""
-	if legal:
-		marker = model.native("가능")
-	if partner and not legal:
-		border = Color("84acbe")
-		marker = model.native("+ 함께")
-	if not blocked.is_empty() and playable:
-		marker = model.native("× 불가")
-	if selected:
-		border = Color("f4d292")
-		background = Color("514330")
-		marker = model.native("✓ 선택")
+	var reading = model.ref_feedback(ref) if playable else {"kind": "inspect", "label": "", "hint": ""}
+	var kind = str(reading.kind)
+	var active = kind in ["selected", "available", "partner"]
+	var border = Model.REF_COLORS[kind] if kind != "inspect" else Color("3d4141")
+	var background = Color("293d35") if kind == "selected" else Color("222526")
+	var marker = str(reading.label) if kind != "inspect" else ""
+	button.set_meta("interaction_kind", kind)
+	button.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN if kind in ["unavailable", "filtered"] else Control.CURSOR_POINTING_HAND if active or not playable else Control.CURSOR_ARROW
 	for state in ["normal", "hover", "pressed", "focus"]:
-		var style = _style(background.lightened(0.12) if state in ["hover", "pressed"] else background, border.lightened(0.2) if state == "hover" else border)
-		style.set_border_width_all(3 if selected or state == "focus" else 2 if legal or partner else 1)
+		var style = _style(background.lightened(0.18 if state == "pressed" else 0.08) if state in ["hover", "pressed"] else background, Color("f3eee3") if state in ["hover", "focus"] else border)
+		style.set_border_width_all(3 if kind == "selected" or state == "focus" else 2 if active or state == "hover" else 1)
 		button.add_theme_stylebox_override(state, style)
 	parent.add_child(button)
 	var entry = model.entry(ref)
 	var path = _image_path(entry)
 	button.face = _picture(button, path, Vector2.ZERO)
-	if playable and not blocked.is_empty():
-		button.face.modulate.a = 0.65
-		button.tooltip_text = model.name_of(ref) + "\n" + model.phrase(model.localized(blocked, "reason"))
-	else:
-		button.tooltip_text = model.name_of(ref)
+	if kind in ["unavailable", "filtered"]:
+		button.face.modulate.a = 0.7
+	button.tooltip_text = model.name_of(ref) + ("\n" + reading.label if not reading.label.is_empty() else "") + ("\n" + reading.hint if not reading.hint.is_empty() else "")
+	button.accessibility_name = model.name_of(ref)
+	button.accessibility_description = button.tooltip_text
 	button.caption = _label(button, model.name_of(ref), 13 if width >= 90 else 12)
 	button.caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -887,7 +947,7 @@ func _card(parent: Node, ref: String, width: int, height: int, playable = true) 
 		button.fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.fallback.clip_text = true
 	if not marker.is_empty():
-		_card_badge(button, marker, false, Color("f4d292") if selected else Color("b6d3df") if partner and not legal else Color("e5dcc8"))
+		_card_badge(button, marker, false, Model.REF_COLORS[kind])
 	if model.section_id(ref)[0] == "cards" and entry.get("cost") != null:
 		var cost = _card_badge(button, str(int(entry.cost)), true, Color("bee3f5"))
 		cost.tooltip_text = model.native("인쇄 비용: ") + model.phrase("{persuasion:%d}" % int(entry.cost))
@@ -932,6 +992,7 @@ func _texture_ready(path: String, texture: Texture2D) -> void:
 		board.queue_redraw()
 	if inspector_image.get_meta("image_path", "") == path:
 		inspector_image.texture = texture
+		_place_preview()
 
 
 func _fit_picture(picture: TextureRect) -> void:
@@ -1234,6 +1295,7 @@ func _open_pile(title: String, refs: Array, order = false, source_path: Array = 
 
 
 func _attach_dialog(dialog: Window) -> void:
+	_hide_preview()
 	# A popup opened from another popup belongs to that exclusive window.
 	var parent: Node = self
 	for child in find_children("*", "Window", true, false):
@@ -1505,7 +1567,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	# Embedded information/settings windows own their keyboard interaction.
 	for window in find_children("*", "Window", true, false):
-		if window.visible and not window.is_queued_for_deletion():
+		if window.visible and not window.mouse_passthrough and not window.is_queued_for_deletion():
 			return
 	if game_id.is_empty():
 		return
@@ -1683,7 +1745,7 @@ func _check_layout() -> bool:
 func _check_hover(ref: String, source: Control) -> bool:
 	await _move_pointer(source.get_global_rect().get_center())
 	if not preview.visible or inspect_ref != ref or inspector_image.texture == null:
-		print("GODOT_HOVER_DIAGNOSTIC ", JSON.stringify({"expected": ref, "actual": inspect_ref, "visible": preview.visible, "rect": str(source.get_global_rect()), "pointer": str(get_global_mouse_position()), "scale": get_window().content_scale_factor}))
+		print("GODOT_HOVER_DIAGNOSTIC ", JSON.stringify({"expected": ref, "actual": inspect_ref, "visible": preview.visible, "rect": str(source.get_global_rect()), "pointer": str(get_global_mouse_position()), "scale": get_window().content_scale_factor, "allowed": _pointer_allowed(), "dragging": get_viewport().gui_is_dragging(), "source": str(hover_source), "hint": pointer_hint.text, "modal": find_children("*", "Window", true, false).filter(func(window): return window.visible and not window.is_queued_for_deletion()).map(func(window): return window.title)}))
 		_smoke_fail("native hover did not show the matching large card")
 		return false
 	if not Rect2(Vector2.ZERO, size).encloses(preview.get_global_rect()) or preview.get_global_rect().intersects(source.get_global_rect()):

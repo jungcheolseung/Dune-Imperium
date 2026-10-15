@@ -383,6 +383,42 @@ func unavailable(ref: String) -> Dictionary:
 	return {}
 
 
+const REF_COLORS = {"selected": Color("8bd8b5"), "available": Color("e4c280"), "partner": Color("a6d5ed"), "unavailable": Color("d6a6a0"), "filtered": Color("acb4bd"), "inspect": Color("acbac7")}
+
+
+func ref_feedback(ref: String, offered: Variant = null) -> Dictionary:
+	# Describe existing choices; this never changes or manufactures an action.
+	var legal = offered if offered is Dictionary else legal_refs()
+	var result = {"kind": "inspect", "label": native("살펴보기"), "hint": "", "name": name_of(ref)}
+	if catalog.get("post_spaces", {}).has(ref):
+		var names: PackedStringArray = []
+		for space in catalog.post_spaces[ref]:
+			names.append(name_of(str(space)))
+		result.name = native("관측소 · ") + " / ".join(names)
+	if picked_ref(ref):
+		result.kind = "selected"
+		result.label = native("✓ 선택")
+		result.hint = native("다시 누르면 선택을 해제합니다.") if ref in [selected_card, selected_partner, selected_space] else native("턴 종료로 선택을 확정합니다.")
+	elif legal.has(ref):
+		result.kind = "available"
+		result.label = native("● 가능")
+	elif not selected_card.is_empty() and can_pair(selected_card, ref) and not placements(selected_card, selected_space, ref).is_empty():
+		result.kind = "partner"
+		result.label = native("+ 함께")
+		result.hint = native("접목할 다른 카드로 선택할 수 있습니다.")
+	else:
+		var blocked = unavailable(ref)
+		if not blocked.is_empty():
+			result.kind = "unavailable"
+			result.label = native("× 불가")
+			result.hint = phrase(localized(blocked, "reason"))
+		elif (not selected_card.is_empty() or not selected_space.is_empty()) and (not placements(ref).is_empty() or not placements("", ref).is_empty()):
+			result.kind = "filtered"
+			result.label = native("– 조합 불가")
+			result.hint = native("현재 고른 카드·칸과 함께 사용할 수 없습니다.")
+	return result
+
+
 func legal_refs() -> Dictionary:
 	var result: Dictionary = {}
 	for action in actions():
