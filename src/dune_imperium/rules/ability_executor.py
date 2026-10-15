@@ -98,8 +98,8 @@ from dune_imperium.rules.units import unit_count_arguments
 
 # --- Pending entries ---------------------------------------------------------
 
-# Separators of the stored form: fields, list items, entries. A reference or
-# chosen value holding one of them is refused when encoded.
+# Separators of the stored form: fields, list items, entries. An entry whose
+# reference or chosen value holds one of them is refused when it is made.
 _FIELD: Final = "|"
 _ITEM: Final = ","
 _ENTRY: Final = ";"
