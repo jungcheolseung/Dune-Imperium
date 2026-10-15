@@ -144,3 +144,12 @@ def test_only_refusals_and_empty_confirmations_answer_a_verb() -> None:
     for shape in ACTION_SHAPES.values():
         if shape.verb is Verb.RESOLVE_EMPTY:
             assert shape.of is not None
+
+
+def test_every_verb_source_and_target_names_some_row() -> None:
+    shapes = ACTION_SHAPES.values()
+    verbs = {verb for shape in shapes for verb in (shape.verb, *shape.also)}
+    verbs |= {shape.of for shape in shapes if shape.of is not None}
+    assert set(Verb) == verbs
+    assert set(Source) == {shape.source for shape in shapes}
+    assert set(Target) == {shape.target for shape in shapes}
