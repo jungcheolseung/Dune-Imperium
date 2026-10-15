@@ -1427,10 +1427,10 @@ def test_every_reachable_unit_retreat_is_encodable() -> None:
         MAX_COMMANDER_DEPLOYMENT,
         MAX_DEPLOYMENT_COUNT,
     )
-    from dune_imperium.rules.intrigue import _unit_count_arguments
+    from dune_imperium.rules.units import unit_count_arguments
 
     codec = ActionCodec(BLOODLINES)
-    reachable = _unit_count_arguments(
+    reachable = unit_count_arguments(
         minimum=1,
         maximum=None,
         troops=MAX_DEPLOYMENT_COUNT,

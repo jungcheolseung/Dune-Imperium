@@ -1,6 +1,7 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **계획** (2026-10-14; 같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), 다음 A1. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
   구현되었어야 한다고 생각하는데"
@@ -63,7 +64,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | --- | --- | --- |
 | 시점 | Agent 칸, Reveal, 획득할 때, 폐기할 때, 버릴 때, 차례 시작, Plot, Combat, Endgame, 사건 유발 | Reveal |
 | 표시 | 의무 / 선택("you may") / 자동(선택이 없으면 바로) | 선택 |
-| 요건 | 조건 나무(그리고·또는·아님): 동맹, 영향력 n, 다른 진영 카드(Bond), 첩자 n, 계약 n, 표지 n… | Bene Gesserit Bond |
+| 요건 | 조건 나무(그리고·또는·아님; "또는·아님"은 처음 인쇄한 카드와 함께 더한다, A0): 동맹, 영향력 n, 다른 진영 카드(Bond), 첩자 n, 계약 n, 표지 n… | Bene Gesserit Bond |
 | 비용 | 지불(자원), 영향력 잃기, 버리기, 폐기, 병력 잃기, 첩자 회수, 에이전트 회수… | 스파이스 4 |
 | 효과 | 얻기(자원·VP·영향력·설득·검), 뽑기(카드·책략), 모집·배치·후퇴, 첩자 놓기·옮기기, 사기, 폐기, 계약 받기·완수, 연구·Tleilaxu·표본, 모래벌레·방패벽… | VP 1 |
 | 구조 | 순서대로 / 택일(—OR—) / 서로 다른 k개 / 개수만큼(for each) / 최대 n | 택일 |
@@ -125,7 +126,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 
 | 단계 | 내용 |
 | --- | --- |
-| A0 | 능력 기록, 대기 능력 실행기, (모양, 출처) → template 표, 같음 확인 도구(6절, 끝남: `2704b128`) |
+| A0 | 능력 기록, 대기 능력 실행기, (모양, 출처) → template 표, 같음 확인 도구(6절) — 끝남(2026-10-15, 아래 "A0에서 만든 것") |
 | A1 | 책략 90 identity를 실행기로(이미 데이터라 실행기 검증용) |
 | A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 |
 | A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개 |
@@ -139,6 +140,46 @@ hook으로 두되 그 수를 세어 줄여 간다.
   손대지 않는다.
 - A8의 관문: 탐색 좌석 1 대 앱 AI 어려움 3, play-mlp 측정과 같은 시드(`checkpoints/2026-10-14/play-mlp`)에서 레시피
   MLP보다 승리 몫이 판정상 나쁘지 않을 것.
+
+### A0에서 만든 것 (2026-10-15)
+
+엔진에 연결하지 않은 기반이다. 엔진이 내놓는 것·하는 것은 바뀌지 않았다(관문 결과는 6절 표 아래).
+
+- **능력 기록** `content/uprising/abilities.py`: `Ability(timing, sections, mark, structure, requirement, trigger,
+  at_turn_start, hook)`. 시점 10종(`AbilityTiming`), 표시 셋(의무·선택·자동), 구조 셋(순서대로·택일·따로 쓰는 줄,
+  OQ-058). "서로 다른 k개·개수만큼·최대 n"은 DSL처럼 보상에 남는다(`GainInfluence.distinct`/`times`,
+  `GainSolariPerUnitType`, `DeployFromGarrison.up_to`). 요건의 "또는·아님"은 넣지 않았다: 화면이 모든 조건을 두 언어로
+  읽어 주므로, 그런 카드가 없는 지금 넣으면 근거 없는 한국어 문구를 지어내야 한다. 처음 인쇄한 카드가 나올 때 그 문구와
+  함께 더한다. hook은 이름만 두었다(지금 0개). 책략·Navigation 선택지 124개는 `intrigue_ability`/`intrigue_option`으로
+  손실 없이 왕복한다(A1은 전사를 그대로 두고 실행기로 푼다).
+- **(모양, 출처) → template 표** `rules/action_shapes.py`: 전 옵션 카탈로그의 행동 279종마다 동사(45종)·출처(20종)·대상
+  (25종), 거절·빈 확인이 무엇에 답하는지(`of`), 한 id가 답하는 다른 동사(`also`: `choose_intrigue_faction`은 영향력을
+  내기도 얻기도 한다), 같은 동사·출처·대상의 갈래(`variant`), 위치 꼬리표(`box`·`source`). 양방향으로 쓴다:
+  `ACTION_SHAPES[id]`는 망의 행동 특성(4.4), `template_id(동사, 출처, …)`는 실행기가 낼 id(정확히 하나가 아니면
+  `LookupError`). 테스트가 id 집합을 전 옵션 카탈로그와, 인자 이름을 대상과, 꼬리표를 카탈로그와 맞댄다.
+- **실행기 핵심** `rules/ability_executor.py`:
+  - `PendingAbility(source, ref, sections, step, chosen, rewards_applied, shield_wall)`과 frame context에 넣는 문자열
+    꼴(`encode_pending`/`decode_pending`). 적용할 줄은 열 때 판정해 둔다(책략은 낼 때).
+  - 출처별 능력 찾기(`ability_of`, 지금은 책략만), 한 능력의 선택 순서는 해석기의 것(`choice_slots`: 비용 선택 전부,
+    그다음 보상 선택을 인쇄 순서로).
+  - 선택 조각(piece) 19종마다 줄을 만드는 `piece_rows(…, source, refusals, chosen, played_card_id, tag_value)`: 대상과
+    순서는 엔진의 것이고, id는 표에서 출처로 고른다. 같은 trash가 책략이면 `trash_intrigue_card`, Agent 칸이면
+    `trash_agent_card`(접합 둘째 카드면 `box=1`), 공개한 카드면 `trash_reveal_card`(`source=카드`).
+  - 제시 방식 `Presentation(refusals, rewards_row)`: 차례 위에 쌓인 frame(책략 선택)은 선택 조각의 거절 줄과 자동 보상
+    줄(OQ-015)을 내고(`STACKED`), 자기 차례(Agent·Reveal)는 둘 다 없다(`IN_TURN`, OQ-095 (2)·(7)). Spy 배치를 할 수
+    없을 때의 넘기기는 어느 차례든 남는다(OQ-057).
+  - 대기 목록 정책(항목 꼴을 가리지 않는 일반 함수): 모든 항목의 줄을 항목 순서로 한꺼번에(같은 줄은 한 번),
+    행동이 고르는 항목은 그 줄을 내는 첫 항목, 의무 항목이 무언가를 낼 때만 차례 종료가 보류된다.
+- **엔진과 맞댄 증거**: 시드 판의 매 상태에서 실행기가 연 책략 선택의 줄이 `legal_intrigue_choice_actions`와 같고,
+  대기 목록 정책이 Reveal frame의 줄·`finish_reveal` 보류·고른 항목과 같다. 무작위 200판·휴리스틱 40판에서 조각 19종이
+  모두 나왔고 차이 0(Reveal 상태 5,380개, 고르기 10,866번). pytest에는 무작위 12판을 둔다
+  (`tests/unit/rules/test_ability_executor.py`; 변이 8개를 잡는다). 책략 쪽 비교는 A1에서 엔진이 실행기를 쓰면 의미가
+  없어지므로 그때 같음 확인 관문으로 넘긴다. Reveal 쪽은 A4까지 둔다.
+- **A1이 할 일**: `INTRIGUE_CHOICE` frame의 진행 상태(`sections`·`slot`·`chosen_factions`·`rewards_applied`·
+  `shield_wall_at_play`)를 `PendingAbility` 하나로 바꾸고(관측이 읽는 `card_id`·`peeked_card_id` 키는 그대로),
+  `legal_intrigue_choice_actions`를 `ability_rows`로, `apply_intrigue_choice`의 조각별 처리를 실행기의 적용 함수로
+  옮긴다(사건 id·내용 그대로). 따로 쓰는 줄(`INTRIGUE_EFFECTS`)도 같은 항목으로. 이 단계부터 결정 stack 모양이 바뀌므로
+  codec을 올린다(6절 3번).
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
@@ -168,6 +209,11 @@ Rise of Ix, 기본판 Imperium, Conspiracy 카드를 능력 기록으로 더한�
 5. pytest·ruff·mypy, `scripts/e2e/run_all.py`, 소크(soundness·privacy).
 6. 속도: `scripts/ab/profile_legal.py`로 합법 행동 계산 시간을 단계 전후에 잰다. 10% 넘게 느려지면 병합 전에 고친다
    (탐색 좌석이 매 결정 이것을 수천 번 부른다).
+
+A0 관문(2026-10-15, 시작 master `8dcf302d`): 1번 200판 모두 same(191,836단계, 행동 241종 재생). 2번 v147 묶음
+(`local/records-corpus/v147-2af1d9f5`, 2,000판) 모두 exact(시작 master보다 앞선 `2af1d9f5`로 만든 묶음이고, 그 사이 엔진 변경은 선택 불가 표시 첫 묶음뿐). 3번 codec 그대로(v147, 결정 stack 그대로). 4번 기존 기대값
+바꾼 것 없음(옮긴 도우미의 import 한 줄만). 5번 pytest·ruff·mypy 통과. E2E·소크·6번 속도는 건너뛰었다: A0는 엔진에
+연결하지 않았고 바뀐 실행 경로는 옮긴 도우미 하나라, 1번의 매 단계 비교가 그보다 강한 증거다. A1부터는 모두 돈다.
 
 ## 7. 플레이 유지
 

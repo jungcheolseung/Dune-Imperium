@@ -11,7 +11,6 @@ card to discard) open an ``INTRIGUE_CHOICE`` frame and resolve one choice slot
 per action; the card is discarded when the last slot completes.
 """
 
-from collections.abc import Mapping
 from copy import replace
 from enum import StrEnum
 
@@ -161,7 +160,11 @@ from dune_imperium.rules.tleilaxu_row import (
     reclaimed_forces_block,
 )
 from dune_imperium.rules.unit_loss import lose_unit
-from dune_imperium.rules.units import retreat_units
+from dune_imperium.rules.units import (
+    retreat_units,
+    unit_count_arguments,
+    unit_counts,
+)
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
 PLOT_FRAME_KINDS = frozenset(
@@ -892,7 +895,7 @@ def legal_intrigue_choice_actions(
                     actor=player,
                     arguments=arguments,
                 )
-                for arguments in _unit_count_arguments(
+                for arguments in unit_count_arguments(
                     minimum=0,
                     maximum=up_to,
                     troops=troops,
@@ -1042,7 +1045,7 @@ def legal_intrigue_choice_actions(
                     actor=player,
                     arguments=arguments,
                 )
-                for arguments in _unit_count_arguments(
+                for arguments in unit_count_arguments(
                     minimum=minimum,
                     maximum=maximum,
                     troops=owner.troops_conflict,
@@ -1424,7 +1427,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     ),
                 )
         case DeployFromGarrison():
-            count, commanders = _unit_counts(arguments)
+            count, commanders = unit_counts(arguments)
             if count + commanders == 0:
                 # "Deploy up to N troops" chose zero: no unit moves.
                 result = RuleResult(state=state)
@@ -1478,7 +1481,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                         events=result.events,
                     )
         case RetreatTroops():
-            count, commanders = _unit_counts(arguments)
+            count, commanders = unit_counts(arguments)
             if count + commanders == 0:
                 # Tactical Option's "any number" retreat chose zero [Main
                 # p. 20] [FAQ p. 3]: no unit moves.
@@ -2150,37 +2153,6 @@ def finish_intrigue_play(
         state=final_state,
         events=(*applied.events, *kept_events, *refreshed.events),
     )
-
-
-def _unit_count_arguments(
-    *,
-    minimum: int,
-    maximum: int | None,
-    troops: int,
-    commanders: int,
-) -> tuple[tuple[tuple[str, ActionValue], ...], ...]:
-    """Enumerate ``count`` units split between troops and Commanders.
-
-    ``count`` is the total; ``commanders`` (omitted when zero) is the share
-    taken by Sardaukar Commanders [Bloodlines p. 4].
-    """
-
-    units = troops + commanders
-    limit = units if maximum is None else min(maximum, units)
-    return tuple(
-        (("count", count),) if share == 0 else (("commanders", share), ("count", count))
-        for count in range(minimum, limit + 1)
-        for share in range(max(0, count - troops), min(count, commanders) + 1)
-    )
-
-
-def _unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
-    """Return (troops, commanders) from a unit-count action's arguments."""
-
-    count = arguments["count"]
-    commanders = arguments.get("commanders", 0)
-    assert isinstance(count, int) and isinstance(commanders, int)
-    return count - commanders, commanders
 
 
 def _gain_reveal_persuasion_now(
