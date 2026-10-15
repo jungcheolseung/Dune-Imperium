@@ -344,7 +344,9 @@ def apply_agent_card_discard(
     recorded = box_ability(active_agent_card(context).agent_effect)
     if recorded is not None and discard_box(recorded):
         return apply_discard(state, action, recorded)
-    raise RuntimeError("the active Agent box has no recorded discard")
+    raise RuntimeError(
+        f"Agent-card discard has no handler: {active_agent_card(context).agent_effect}"
+    )
 
 
 def long_live_fighters_frame(
@@ -3759,7 +3761,11 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         return _BOX_HOOKS[ability.hook](state)
     if ability is not None and (
         not optional_arrow(ability)
-        or context.get("agent_card_spy_pending") is True
+        or (
+            context.get("agent_card_spy_pending") is True
+            and discard_box(ability)
+            and discard_spy(ability) is not None
+        )
     ):
         # A box written as an ability record (composed effects, stage A2),
         # or an optional arrow on the mandatory step its cost opened

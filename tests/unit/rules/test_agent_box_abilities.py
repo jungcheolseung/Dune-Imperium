@@ -854,7 +854,8 @@ def test_arrakis_observer_announces_its_spice_and_waits_on_its_spy() -> None:
     card = "imperium:arrakis_observer:0"
     guild = "imperium:guild_envoy:0"
     owner = PlayerState(player_id=0, hand=(guild,))
-    placed = _played(card, owner, RulesetConfig(bloodlines=True))
+    # The Tech Module lets a Spy be boxed (used below).
+    placed = _played(card, owner, RulesetConfig(bloodlines=True, tech_module=True))
     placed = replace(
         placed, players=(replace(placed.players[0], hand=(guild,)), *placed.players[1:])
     )
@@ -871,3 +872,16 @@ def test_arrakis_observer_announces_its_spice_and_waits_on_its_spy() -> None:
     assert context["pending_agent_effect"] is True
     spy_rows = legal_agent_card_spy_actions(paid.state, 0)
     assert spy_rows and {row.action_id for row in spy_rows} == {"place_agent_card_spy"}
+    # The one-action resolution of the Spy step: refused while it has rows,
+    # else the Spy marks go and the box is unavailable (OQ-057 (1)).
+    with pytest.raises(RuntimeError, match="place-Spy"):
+        resolve_agent_card_effect(paid.state)
+    seat = paid.state.players[0]
+    boxed = replace(seat, spies_supply=0, spy_post_ids=(), spies_boxed=3)
+    stuck = replace(paid.state, players=(boxed, *paid.state.players[1:]))
+    assert legal_agent_card_spy_actions(stuck, 0) == ()
+    fizzled = resolve_agent_card_effect(stuck)
+    assert [e.kind for e in fizzled.events] == ["agent_card_effect_unavailable"]
+    after = dict(fizzled.state.decision_stack[-1].context)
+    assert "agent_card_spy_pending" not in after
+    assert after["pending_agent_effect"] is False
