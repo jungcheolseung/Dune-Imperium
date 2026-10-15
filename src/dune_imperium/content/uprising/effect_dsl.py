@@ -294,6 +294,15 @@ class ContractCompletedThisTurn:
 
 
 @dataclass(frozen=True, slots=True)
+class DiscardedCardHasFaction:
+    """The card discarded for the arrow's cost has ``faction``'s affiliation
+    ("2 if the discarded card has Spacing Guild affiliation" [Space-time
+    Folding card]): judged on that card once the cost is paid."""
+
+    faction: Faction
+
+
+@dataclass(frozen=True, slots=True)
 class Grafted:
     """The card was played grafted with another ("If grafted:" [Corrupt
     Smuggler card]) [Immortality p. 10]."""
@@ -335,6 +344,7 @@ type Condition = (
     | SpyRecalledThisTurn
     | UnitsInConflictAtLeast
     | ContractCompletedThisTurn
+    | DiscardedCardHasFaction
     | Grafted
     | AllConditions
 )

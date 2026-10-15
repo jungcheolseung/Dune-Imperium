@@ -31,6 +31,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtMakerSpace,
     CompleteContract,
+    DiscardedCardHasFaction,
+    DiscardFromHand,
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
@@ -54,8 +56,8 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.display.effect_dsl_text import reward_text
-from dune_imperium.display.effect_dsl_text_ko import reward_text_ko
+from dune_imperium.display.effect_dsl_text import condition_text, reward_text
+from dune_imperium.display.effect_dsl_text_ko import condition_text_ko, reward_text_ko
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules.agent_box_abilities import (
@@ -63,7 +65,9 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentIconCondition,
     AgentPaymentBlock,
     condition_block,
+    discard_box,
     opens_at_placement,
+    optional_arrow,
     payment_box,
     target_piece,
 )
@@ -85,7 +89,10 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.effect_interpreter import spy_placement_allowed_post_ids
+from dune_imperium.rules.effect_interpreter import (
+    condition_holds,
+    spy_placement_allowed_post_ids,
+)
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     agent_card_source,
@@ -97,7 +104,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 61
+    assert len(AGENT_BOX_ABILITIES) == 66
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -627,3 +634,35 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
     ] == ["contract:heighliner_ii"]
     with pytest.raises(ValueError, match="complete_contract_by_card"):
         resolve_agent_card_effect(demands)
+
+
+def test_five_discard_arrows_read_the_discarded_card() -> None:
+    """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
+    the first line; a later line's condition reads the discarded card, which
+    only the Agent box knows (the generic interpreter refuses it)."""
+
+    discards = {
+        effect: ability.mark
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if discard_box(ability)
+    }
+    assert discards == {
+        _BOX.MAY_DISCARD_TO_TAKE_CONTRACT: AbilityMark.OPTIONAL,
+        _BOX.MAY_DISCARD_TO_DRAW_ONE: AbilityMark.OPTIONAL,
+        _BOX.MAY_DISCARD_FOR_WATER: AbilityMark.OPTIONAL,
+        _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
+        _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
+    }
+    for effect, mark in discards.items():
+        ability = AGENT_BOX_ABILITIES[effect]
+        assert ability.sections[0].costs == (DiscardFromHand(),)
+        assert not payment_box(ability) and target_piece(ability) is None
+        # An optional arrow resolves only through its rows.
+        assert optional_arrow(ability) is (mark is AbilityMark.OPTIONAL)
+    guild = DiscardedCardHasFaction(Faction.SPACING_GUILD)
+    folding = _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+    assert condition_text(guild) in AGENT_EFFECT_TEXT[folding]
+    assert condition_text_ko(guild) in AGENT_EFFECT_TEXT_KO[folding]
+    envoy = _played("imperium:guild_envoy:0", PlayerState(player_id=0))
+    with pytest.raises(TypeError, match="judged with its Agent box"):
+        condition_holds(envoy, 0, guild)

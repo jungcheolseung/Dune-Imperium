@@ -27,6 +27,7 @@ later stage moves them (plan 5).
 """
 
 from collections.abc import Mapping
+from copy import replace
 from types import MappingProxyType
 from typing import Final
 
@@ -46,6 +47,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     ContractCompletedThisTurn,
     Cost,
+    DiscardedCardHasFaction,
+    DiscardFromHand,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -83,6 +86,7 @@ _BG = Faction.BENE_GESSERIT
 _BG_BOND = FactionBond(_BG)
 _BG_TWO = InfluenceAtLeast(_BG, 2)
 _TWO_SPICE = GainedSpiceThisTurn(2)
+_GUILD_DISCARD = DiscardedCardHasFaction(Faction.SPACING_GUILD)
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -127,6 +131,20 @@ def _pay(cost: Cost, *rewards: Reward) -> Ability:
         timing=AbilityTiming.AGENT_BOX,
         sections=(EffectSection(rewards=rewards, costs=(cost,)),),
         mark=AbilityMark.OPTIONAL,
+    )
+
+
+def _discard(
+    *lines: EffectSection, mark: AbilityMark = AbilityMark.OPTIONAL
+) -> Ability:
+    """A discard arrow: "[You may] discard a card -> ...". The first line
+    carries the cost; a later line's condition reads the discarded card."""
+
+    first, *rest = lines
+    return Ability(
+        timing=AbilityTiming.AGENT_BOX,
+        sections=(replace(first, costs=(DiscardFromHand(),)), *rest),
+        mark=mark,
     )
 
 
@@ -255,6 +273,24 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.FORCE_OPPONENT_TROOP_RETREAT: _box(ForceEnemyRetreat()),
             # CHOAM Demands.
             _BOX.COMPLETE_ONE_CONTRACT: _box(CompleteContract()),
+            # --- Discard arrows (composed effects, A3d) ---------------------------
+            # Delivery Agreement.
+            _BOX.MAY_DISCARD_TO_TAKE_CONTRACT: _discard(_line(TakeContract(1))),
+            # I Believe.
+            _BOX.MAY_DISCARD_TO_DRAW_ONE: _discard(_line(DrawPersonalCards(1))),
+            # Engineered Miracle.
+            _BOX.MAY_DISCARD_FOR_WATER: _discard(_line(GainResources(water=1))),
+            # Space-time Folding: "Draw 1 card (2 if the discarded card has
+            # Spacing Guild affiliation)".
+            _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: _discard(
+                _line(DrawPersonalCards(1)),
+                _line(DrawPersonalCards(1), condition=_GUILD_DISCARD),
+            ),
+            # Guild Envoy: the discard is not optional.
+            _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: _discard(
+                _line(DrawPersonalCards(2), condition=_GUILD_DISCARD),
+                mark=AbilityMark.MANDATORY,
+            ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.
             _BOX.PAY_TWO_WATER_TO_DRAW_TWO: _pay(

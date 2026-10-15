@@ -28,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
+    DiscardedCardHasFaction,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
@@ -255,6 +256,9 @@ def condition_text(condition: Condition) -> str:
             return "you recalled a Spy this turn"
         case UnitsInConflictAtLeast(count=count):
             return f"you have {count} or more units in the Conflict"
+        case DiscardedCardHasFaction(faction=faction):
+            # Space-time Folding, Guild Envoy (``tokens.py``).
+            return f"the discarded card has {_faction_name(faction)} affiliation"
         case ContractCompletedThisTurn():
             return "you completed a Contract this turn"
         case Grafted():

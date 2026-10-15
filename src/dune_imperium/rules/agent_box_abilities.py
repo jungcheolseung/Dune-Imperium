@@ -56,6 +56,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
+    DiscardedCardHasFaction,
+    DiscardFromHand,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -84,6 +86,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
     UnitsInConflictAtLeast,
 )
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.engine import RuleResult
@@ -93,6 +96,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
@@ -453,7 +457,14 @@ def resolve_box(state: GameState) -> RuleResult:
     (line,) = ability.sections
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    available = _line_holds(line, owner, context)
+    if discard_box(ability):
+        # Guild Envoy's mandatory discard resolves through its rows; with an
+        # empty hand the box waits and fizzles (OQ-057 (1), OQ-028).
+        if discard_rows(state, player, ability):
+            raise RuntimeError("Agent-card discard effect requires a player choice")
+        available = False
+    else:
+        available = _line_holds(line, owner, context)
     if (piece := target_piece(ability)) is not None:
         # A target choice resolves through its rows; reached with one to make
         # is a caller's error, and with none the box waits and fizzles
@@ -1031,3 +1042,151 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(gained.state, context, gained.state.players)
     return RuleResult(state=next_state, events=gained.events)
+
+
+# --- Discard arrows (stage A3d) -------------------------------------------------
+#
+# "[You may] discard a card -> reward": the refusal of an optional arrow,
+# then one row per hand card; with an empty hand an optional arrow offers
+# only its refusal (``discard_cost_block``) and the mandatory one waits and
+# fizzles (OQ-057 (1)). The answer discards with source
+# ``round:R:player:P:agent_card_discard`` (no card id) and pays the lines
+# whose condition the discarded card meets: resources with the write-back,
+# then a Contract named ``<that>:contract_reward``, then one draw named
+# ``<that>:<discarded card>:draw`` (Space-time Folding's second card, Guild
+# Envoy's two). The events are the discard's, then the follow-ups'.
+
+_DISCARD_SOURCE: Final = "agent_card_discard"
+_DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards)
+
+
+def discard_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is a discard arrow (one hand card pays it)."""
+
+    if (
+        ability is None
+        or ability.icons
+        or ability.hook is not None
+        or ability.mark is AbilityMark.AUTOMATIC
+        or not ability.sections
+    ):
+        return False
+    first, *rest = ability.sections
+    if first.costs != (DiscardFromHand(),) or any(line.costs for line in rest):
+        return False
+    if any(
+        line.condition is not None
+        and not isinstance(line.condition, DiscardedCardHasFaction)
+        for line in ability.sections
+    ):
+        return False
+    return all(
+        isinstance(reward, _DISCARD_REWARDS)
+        for line in ability.sections
+        for reward in line.rewards
+    )
+
+
+def optional_arrow(ability: Ability | None) -> bool:
+    """An optional arrow, resolved only through its rows: the generic
+    resolution keeps the dry-run answer it had before the record."""
+
+    return payment_box(ability) or (
+        discard_box(ability)
+        and ability is not None
+        and ability.mark is AbilityMark.OPTIONAL
+    )
+
+
+def discard_cost_block(
+    owner: PlayerState, ability: Ability
+) -> OptionalEffectBlock | None:
+    """An optional discard with no card in hand; None for the mandatory one."""
+
+    if ability.mark is not AbilityMark.OPTIONAL:
+        return None
+    return short_of(OptionalBlockKind.HAND, 1, len(owner.hand))
+
+
+def discard_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal of an optional arrow, then one discard per hand card."""
+
+    owner = state.players[player]
+    decline = (
+        (DomainAction(action_id="decline_agent_card_discard", actor=player),)
+        if ability.mark is AbilityMark.OPTIONAL
+        else ()
+    )
+    if discard_cost_block(owner, ability) is not None:
+        return decline
+    return (
+        *decline,
+        *(
+            DomainAction(
+                action_id="discard_agent_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.hand
+        ),
+    )
+
+
+def apply_discard(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Refuse the arrow, or discard the chosen card and pay its lines."""
+
+    _, context = current_agent_effect_context(state)
+    context["pending_agent_effect"] = False
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:{_DISCARD_SOURCE}"
+    if action.action_id == "decline_agent_card_discard":
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="agent_card_discard_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card discard choice has invalid card ID")
+    factions = personal_card_for_instance(card_id).factions
+    discarded = discard_personal_card_from_hand(state, player, card_id, source=source)
+    lines = tuple(
+        line
+        for line in ability.sections
+        if not isinstance(line.condition, DiscardedCardHasFaction)
+        or line.condition.faction in factions
+    )
+    rewards = tuple(reward for line in lines for reward in line.rewards)
+    owner = discarded.state.players[player]
+    for reward in rewards:
+        if isinstance(reward, GainResources):
+            owner = _gain(owner, reward)
+    next_state = advance_after_effect(
+        discarded.state, context, replace_player(discarded.state.players, owner)
+    )
+    events = list(discarded.events)
+    for reward in rewards:
+        if isinstance(reward, TakeContract):
+            contracts = begin_contract_gain(
+                next_state, player, reward.count, source=f"{source}:contract_reward"
+            )
+            next_state = contracts.state
+            events.extend(contracts.events)
+    if draws := sum(
+        reward.count for reward in rewards if isinstance(reward, DrawPersonalCards)
+    ):
+        drawn = draw_or_request_personal_cards(
+            next_state, player, draws, source=f"{source}:{card_id}:draw"
+        )
+        next_state = drawn.state
+        events.extend(drawn.events)
+    return RuleResult(state=next_state, events=tuple(events))

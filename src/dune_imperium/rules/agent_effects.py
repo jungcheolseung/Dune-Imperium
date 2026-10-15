@@ -48,10 +48,15 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentPaymentBlock,
     agent_spy_rows,
     apply_chosen_influence,
+    apply_discard,
     apply_payment,
     box_ability,
     box_icon_block,
     condition_block,
+    discard_box,
+    discard_cost_block,
+    discard_rows,
+    optional_arrow,
     payment_box,
     payment_cost_block,
     payment_reward_block,
@@ -76,7 +81,6 @@ from dune_imperium.rules.combat_deployment import (
     reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.contracts import (
-    begin_contract_gain,
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
@@ -315,15 +319,14 @@ def legal_agent_card_discard_actions(
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
     effect = source_card.agent_effect
+    recorded = box_ability(effect)
+    if recorded is not None and discard_box(recorded):
+        # A discard arrow, from its record (composed A3d).
+        return discard_rows(state, player, recorded)
     if effect not in (
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
     ):
         return ()
     # Any hand card may pay the discard: neither Captured Mentat's nor Guild
@@ -363,6 +366,9 @@ def apply_agent_card_discard(
     if action not in legal_agent_card_discard_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card discard choice")
     _, context = current_agent_effect_context(state)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is not None and discard_box(recorded):
+        return apply_discard(state, action, recorded)
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card_discard"
     if action.action_id == "decline_agent_card_discard":
@@ -386,11 +392,6 @@ def apply_agent_card_discard(
         action.actor,
         card_id,
         source=source,
-    )
-    prepared = advance_after_effect(
-        discarded.state,
-        context,
-        discarded.state.players,
     )
     # Ghola "상대 카드의 Agent box 전체를 복사" `[Immortality p. 14]`, so the box
     # being resolved is the borrowed one, not Ghola's own empty face. The
@@ -419,20 +420,6 @@ def apply_agent_card_discard(
             discarded.state.players,
         )
         return RuleResult(state=armed, events=discarded.events)
-    if source_card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER:
-        # Engineered Miracle: the discard pays one water.
-        owner = discarded.state.players[action.actor]
-        watered = replace(
-            owner, resources=replace(owner.resources, water=owner.resources.water + 1)
-        )
-        return RuleResult(
-            state=advance_after_effect(
-                discarded.state,
-                context,
-                replace_player(discarded.state.players, watered),
-            ),
-            events=discarded.events,
-        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
@@ -463,41 +450,8 @@ def apply_agent_card_discard(
             ),
             events=tuple(events),
         )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT
-    ):
-        contracts = begin_contract_gain(
-            prepared,
-            action.actor,
-            1,
-            source=f"{source}:contract_reward",
-        )
-        return RuleResult(
-            state=contracts.state,
-            events=(*discarded.events, *contracts.events),
-        )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
-    ):
-        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 0
-    elif source_card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE:
-        # I Believe (Bloodlines): "[discard a card] -> draw a card".
-        draw_count = 1
-    else:
-        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
-    if draw_count == 0:
-        return RuleResult(state=prepared, events=discarded.events)
-    drawn = draw_or_request_personal_cards(
-        prepared,
-        action.actor,
-        draw_count,
-        source=f"{source}:{card_id}:draw",
-    )
-    return RuleResult(
-        state=drawn.state,
-        events=(*discarded.events, *drawn.events),
+    raise RuntimeError(
+        f"Agent-card discard has no handler: {source_card.agent_effect}"
     )
 
 
@@ -2298,13 +2252,9 @@ _ARRAKIS_REVOLT = (
 # refusal beside the discards (``legal_agent_card_discard_actions``).
 _OPTIONAL_DISCARDS: Final = frozenset(
     {
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
     }
 )
 
@@ -2366,6 +2316,8 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
     if payment_box(ability):
         assert ability is not None
         return payment_cost_block(owner, ability)
+    if ability is not None and discard_box(ability):
+        return discard_cost_block(owner, ability)
     if effect is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
         partner = other_grafted_card_id(context)
         if not partner or partner not in owner.in_play:
@@ -3902,16 +3854,12 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
@@ -4220,13 +4168,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if ability is not None and ability.hook is not None:
         # A special flow kept as code (composed effects, A3).
         return _BOX_HOOKS[ability.hook](state)
-    if ability is not None and not payment_box(ability):
+    if ability is not None and not optional_arrow(ability):
         # A box written as an ability record (composed effects, stage A2).
         return resolve_box(state)
-    # An optional arrow resolves only through its payment row; the generic
-    # resolution below is reached only by the dry run, which keeps the
-    # answers it had before the record (Tleilaxu Surgeon: unavailable; the
-    # others: not implemented, read as available).
+    # An optional arrow resolves only through its payment or discard row;
+    # the generic resolution below is reached only by the dry run, which
+    # keeps the answers it had before the record (Tleilaxu Surgeon:
+    # unavailable; the others: not implemented, read as available).
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
         # Long Reach with no further Faction to name. A first pick made with
         # no second possible is paid at once (``apply_agent_card_influence``,
@@ -4595,13 +4543,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # Control the Spice resolves through its payment choice, which
         # always offers at least the decline.
         raise RuntimeError("Agent-card payment effect requires a player choice")
-    elif effect is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD:
-        if owner.hand:
-            raise RuntimeError("Agent-card discard effect requires a player choice")
-        # Guild Envoy's mandatory discard has no card to take when it
-        # resolves: the effect completes without a choice (OQ-028).
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"
