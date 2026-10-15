@@ -972,6 +972,8 @@ def agent_spy_rows(
     elif piece.factions is not None:
         allowed_post_ids = observation_post_ids_for_factions(piece.factions)
     elif not piece.shared_post and card.agent_spy_factions:
+        # A shared-post Spy (Deep Cover) never reads the marks: only a
+        # place-Spy card prints them (the card tables refuse them elsewhere).
         allowed_post_ids = observation_post_ids_for_factions(card.agent_spy_factions)
     if piece.shared_post:
         # Another player's Spy may share the post, never the owner's own
@@ -1023,6 +1025,18 @@ def agent_spy_rows(
         # (Espionage) spent that Spy meanwhile.
         return recalls
     return (DomainAction(action_id="decline_agent_card_spy", actor=player), *recalls)
+
+
+def target_blocked(state: GameState, player: int, ability: Ability) -> bool:
+    """Whether the box's condition holds yet it has nothing to choose: every
+    Faction it may raise at the top (OQ-060), so it waits for the turn's
+    end (OQ-057 (1)); the page names this reason (``display.unavailable``)."""
+
+    _, context = current_agent_effect_context(state)
+    (line,) = ability.sections
+    return _line_holds(line, state.players[player], context) and not target_rows(
+        state, player, ability
+    )
 
 
 def target_choice_error(ability: Ability) -> Exception:
