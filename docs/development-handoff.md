@@ -57,9 +57,9 @@
   시작 망과 1,400판에서 +5.6%p [+0.6, +10.4](확정), 탐색 좌석(1 대 앱 AI 어려움 3)에서는 81.8% 대 78.0%, +3.7%p
   [−1.8, +9.2](규칙상 비김, 지표 모두 R 쪽). 사용자 결정으로 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`
   (되돌리기용 `recipe-mlp-1e5-800.pt`). 기록 `checkpoints/2026-10-14/readapt-v147/README.md`.
-- **readapt-v147b(돌고 있음 → 결과 확인):** R에서 1,500 iteration 더(5,900), 끝에 R2 대 R 1,400판. `checkpoints/2026-10-15/
-  readapt-v147b/chain.log` 마지막 줄을 읽는다. R2가 확정으로 나으면 탐색 좌석 측정(`readapt-v147/search-seat.sh`를 본떠
-  R2 대 R, 약 5시간) 뒤 교체 여부를 사용자에게 묻는다. 끝나면 고정 worktree `.claude/worktrees/train-v147`을 정리한다.
+- **readapt-v147b(끝남, 2026-10-15):** R에서 1,500 iteration 더 학습한 R2(5,900)는 R과 1,400판에서 −0.3%p [−5.1, +4.6]로 비김 →
+  플레이 망은 R 유지. 학습 중 평가도 추세 없음: 이 학습률에서 레시피가 정체했다. 다음 학습은 엔진 전환 A단계 끝의 재학습(구조 결정)으로.
+  `checkpoints/2026-10-15/readapt-v147b/README.md`. 고정 worktree `train-v147`은 정리했다.
 - **개체 기반 망(진행 중):** 망이 카드·칸·행동을 뜻(특성)으로 읽고 행동 점수를 조합으로 계산하게 다시 설계한다. 관측 v31·codec은
   그대로 두고 망만 바꾸며, 기존 망 파일로 플레이하는 길은 유지한다. 평가 도구(AI 실수 문제집, `scripts/ab/network_probes.py`)와
   X·Y·A·B 기준값, P1(`entity` 망), P2(Y 증류, 규칙상 불통과), P3(강화학습), P4 탐색 좌석 측정이 끝났다. 엔티티 E2v@800
