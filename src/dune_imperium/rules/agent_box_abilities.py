@@ -1134,8 +1134,13 @@ def discard_box(ability: Ability | None) -> bool:
 def optional_arrow(ability: Ability | None) -> bool:
     """An optional arrow, resolved only through its rows: the generic
     resolution keeps the dry-run answer it had before the record (not
-    implemented, read as available). Ruthless Leadership's trash icons are
-    not one: its condition fails there into the unavailable event."""
+    implemented, read as available) -- the payment, Intrigue, unconditioned
+    trash and optional discard boxes, and Price is No Object's acquisition
+    (the acquisition shape is ``rules.acquisition.agent_box_acquisition``,
+    kept there because this module imports the executor, which imports
+    acquisitions). Ruthless Leadership's trash icons and Tleilaxu Master's
+    conditioned acquisition are not one: their old answer is the
+    unavailable event."""
 
     if ability is None:
         return False

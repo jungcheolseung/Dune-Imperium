@@ -825,7 +825,8 @@ class AcquireCardUpTo:
 class AcquireCardForSolari:
     """Acquire an Imperium Row or Reserve card to hand, paying its cost in
     solari [Price is No Object card] -- the owner's own Manipulate set-aside
-    card too, at its printed cost [FAQ p. 3]."""
+    card too, at its printed cost [FAQ p. 3]. Only an Agent box offers it
+    (``rules.acquisition.agent_box_acquisition``); the A1 executor does not."""
 
 
 @dataclass(frozen=True, slots=True)
