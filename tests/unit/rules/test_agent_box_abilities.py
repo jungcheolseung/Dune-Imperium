@@ -68,6 +68,7 @@ from dune_imperium.rules.agent_box_abilities import (
     target_piece,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
     agent_card_payment_block,
@@ -477,6 +478,9 @@ def test_a_chosen_influence_offers_every_rising_faction_and_waits_without_one() 
     top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     stuck = _played(card, PlayerState(player_id=0, influence=top), config)
     assert legal_agent_card_influence_actions(stuck, 0) == ()
+    # The page names the reason it waits (``display.unavailable``).
+    assert agent_box_influence_blocked(stuck, 0)
+    assert not agent_box_influence_blocked(placed, 0)
     fizzled = resolve_agent_card_effect(stuck)
     assert [(e.kind, e.event_id) for e in fizzled.events] == [
         ("agent_card_effect_unavailable", source)
@@ -490,6 +494,8 @@ def test_public_spectacle_waits_for_a_recalled_spy() -> None:
     )
     placed = _played(card, spy)
     assert legal_agent_card_influence_actions(placed, 0) == ()
+    # Waiting for its condition, not for a cube to lower.
+    assert not agent_box_influence_blocked(placed, 0)
     recalled = replace(
         placed,
         players=(
