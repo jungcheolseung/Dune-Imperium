@@ -114,7 +114,6 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
-from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.leader_abilities import (
     apply_kota_signet_action,
     legal_leader_signet_actions,
@@ -148,10 +147,6 @@ _SPICE_AND_GRAFTED_INFLUENCE = (
     PersonalCardAgentEffect
     .GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
 )
-_DRAW_RESEARCH_SPECIMEN = (
-    PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
-)
-_STILLSUIT = PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
 _RESEARCH_AND_TRASH_FOR_VP = (
     PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
 )
@@ -233,62 +228,23 @@ AGENT_ICON_RECALL: Final = "recall"  # Steersman: one Agent to recall
 AGENT_ICON_TRASH: Final = "trash"
 
 # Agent boxes whose printed icons are all queued when the card is played,
-# in printed order. Arrow boxes queue their reward icons after the cost.
+# in printed order, besides the recorded ones (``agent_box_abilities``,
+# their record's ``icons``). Arrow boxes queue their reward icons after the
+# cost.
 _BOX = PersonalCardAgentEffect
 _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
     MappingProxyType(
         {
-            # Hidden Missive: troop and card draw at two Bene Gesserit Influence.
-            _BOX.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO: (
-                AGENT_ICON_TROOPS,
-                AGENT_ICON_CARDS,
-            ),
             # Steersman: card draw and an Agent recall.
             _BOX.DRAW_ONE_AND_RECALL_AGENT: (AGENT_ICON_CARDS, AGENT_ICON_RECALL),
-            # Maker Keeper: water at two Bene Gesserit, spice at two Fremen.
-            _BOX.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
-                AGENT_ICON_WATER,
-                AGENT_ICON_SPICE,
-            ),
-            # Wheels Within Wheels: two Solari at two Emperor, spice at two Guild.
-            _BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO: (
-                AGENT_ICON_SOLARI,
-                AGENT_ICON_SPICE,
-            ),
             # Dangerous Rhetoric: a chosen Faction's Influence and "Trash this card."
             _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: (
                 AGENT_ICON_INFLUENCE,
                 AGENT_ICON_TRASH_SELF,
             ),
-            # Fremen War Name (Bloodlines): troop and card draw once two spice
-            # were gained this turn.
-            _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
-                AGENT_ICON_TROOPS,
-                AGENT_ICON_CARDS,
-            ),
-            # Tleilaxu Infiltrator (Immortality): card draw and, at two
-            # genetic markers, an Intrigue card.
-            _BOX.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS: (
-                AGENT_ICON_CARDS,
-                AGENT_ICON_INTRIGUE,
-            ),
             # Twisted Mentat (Immortality): an optional recall of the Agent
             # sent this turn.
             _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: (AGENT_ICON_RECALL,),
-            # Sardaukar Quartermaster (Immortality): "If grafted: troop, draw
-            # a card".
-            _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED: (
-                AGENT_ICON_TROOPS,
-                AGENT_ICON_CARDS,
-            ),
-            # Cargo Runner: two printed lines, "If you have completed two or
-            # more contracts: [draw 1]" and "If you have completed four or
-            # more contracts: [draw 1]" [Cargo Runner card], each judged
-            # when it resolves (OQ-028).
-            _BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO: (
-                AGENT_ICON_CARDS,
-                AGENT_ICON_CARDS_SECOND,
-            ),
             # Tread in Darkness: "If you have another Bene Gesserit card in
             # play: [trash] [draw 1]" [Tread in Darkness card], two icons
             # with no arrow; the trash stays optional [Main p. 20] (OQ-058).
@@ -296,17 +252,6 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
                 AGENT_ICON_TRASH,
                 AGENT_ICON_CARDS,
             ),
-            # Industrial Espionage (Immortality): "[draw 1]" and, on its own
-            # line, "If grafted: [Research] [specimen]" [Industrial
-            # Espionage card]; the line resolves as one icon, so its
-            # Research (direction and bonus included) may come before the
-            # draw.
-            _DRAW_RESEARCH_SPECIMEN: (AGENT_ICON_CARDS, AGENT_ICON_RESEARCH),
-            # Stillsuit Manufacturer (Immortality): "[water] —AND— [Fremen]
-            # Alliance: Return this card from play to your hand."
-            # [Stillsuit Manufacturer card]; the return waits for the
-            # Alliance (OQ-028, OQ-057 (1)).
-            _STILLSUIT: (AGENT_ICON_WATER, AGENT_ICON_RETURN_SELF),
         }
     )
 )
@@ -3813,23 +3758,7 @@ def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-# The printed thresholds: two Influence, two spice this turn, two markers.
-_ICON_THRESHOLD: Final = 2
 _NOT_PRINTED: Final = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
-# Cargo Runner's two lines: two and four completed contracts.
-_CARGO_RUNNER = PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
-_CARGO_RUNNER_CONTRACTS: Final = MappingProxyType(
-    {AGENT_ICON_CARDS: 2, AGENT_ICON_CARDS_SECOND: 4}
-)
-
-
-def _contracts_block(owner: PlayerState, needed: int) -> AgentIconBlock | None:
-    held = len(owner.completed_contract_ids)
-    if held >= needed:
-        return None
-    return AgentIconBlock(AgentIconCondition.CONTRACTS_COMPLETED, needed, held)
-
-
 def _bond_block(
     owner: PlayerState, context: Mapping[str, ActionValue], faction: Faction
 ) -> AgentIconBlock | None:
@@ -3844,15 +3773,6 @@ def _bond_block(
     if has_faction_bond(counted_in_play(owner), source_id, faction):
         return None
     return AgentIconBlock(AgentIconCondition.BOND, faction=faction)
-
-
-def _influence_block(owner: PlayerState, faction: Faction) -> AgentIconBlock | None:
-    held = influence_amount(owner.influence, faction)
-    if held >= _ICON_THRESHOLD:
-        return None
-    return AgentIconBlock(
-        AgentIconCondition.INFLUENCE, _ICON_THRESHOLD, held, faction=faction
-    )
 
 
 def agent_icon_block(
@@ -3887,8 +3807,6 @@ def agent_icon_block(
         # A recorded box judges its printed icons from its record; a key it
         # does not print keeps the generic answer below.
         return box_icon_block(owner, context, ability, key)
-    if effect is _CARGO_RUNNER and key in _CARGO_RUNNER_CONTRACTS:
-        return _contracts_block(owner, _CARGO_RUNNER_CONTRACTS[key])
     if effect is _TRASH_TO_DRAW_IF_BOND and key in (
         AGENT_ICON_TRASH,
         AGENT_ICON_CARDS,
@@ -3897,72 +3815,17 @@ def agent_icon_block(
         # the very card that gave the Bond, and the draw then waits for a
         # Bond that cannot come back this turn.
         return _bond_block(owner, context, Faction.BENE_GESSERIT)
-    if key == AGENT_ICON_CARDS_SECOND:
+    if key in (AGENT_ICON_CARDS_SECOND, AGENT_ICON_RETURN_SELF, AGENT_ICON_WATER):
         return _NOT_PRINTED
     if key == AGENT_ICON_RESEARCH:
-        if effect is _LOSE_TROOP_FOR_CARDS:
-            # Piter, Genius Advisor's reward, armed once its cost is paid.
-            return None
-        if effect is not _DRAW_RESEARCH_SPECIMEN:
-            return _NOT_PRINTED
-        if is_grafted(context):
-            return None
-        return AgentIconBlock(AgentIconCondition.GRAFTED)
-    if key == AGENT_ICON_RETURN_SELF:
-        if effect is not _STILLSUIT:
-            return _NOT_PRINTED
-        card_id = context.get("card_id")
-        if card_id not in counted_in_play(owner):
-            # A Row card borrowed by Usurp is not "in play" and cannot
-            # return to a hand (designer ruling, OQ-054); it is trashed
-            # when the turn closes.
-            return AgentIconBlock(AgentIconCondition.NOT_IN_PLAY)
-        if Faction.FREMEN.value in owner.alliance_faction_ids:
-            return None
-        return AgentIconBlock(AgentIconCondition.ALLIANCE, faction=Faction.FREMEN)
-    if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
-        if effect is (
-            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
-        ):
-            return _influence_block(owner, Faction.BENE_GESSERIT)
-        if effect is (
-            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
-        ):
-            gained = spice_gained_this_turn(owner)
-            if gained >= _ICON_THRESHOLD:
-                return None
-            return AgentIconBlock(
-                AgentIconCondition.SPICE_GAINED, _ICON_THRESHOLD, gained
-            )
-        if effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED:
-            if is_grafted(context):
-                return None
-            return AgentIconBlock(AgentIconCondition.GRAFTED)
-        return None
-    if key == AGENT_ICON_INTRIGUE:
-        if effect is not PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS:
-            return None
-        markers = genetic_markers_reached(owner.research_space)
-        if markers >= _ICON_THRESHOLD:
-            return None
-        return AgentIconBlock(
-            AgentIconCondition.GENETIC_MARKERS, _ICON_THRESHOLD, markers
-        )
-    maker_keeper = (
-        effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
-    )
-    wheels = (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
-    )
+        # Piter, Genius Advisor's reward, armed once its cost is paid.
+        return None if effect is _LOSE_TROOP_FOR_CARDS else _NOT_PRINTED
     fill_coffers = (
         effect is PersonalCardAgentEffect.LEADER_SIGNET
         and owner.leader_id == _FILL_COFFERS_LEADER
     )
     if key == AGENT_ICON_SOLARI:
-        if fill_coffers:
-            return None
-        return _influence_block(owner, Faction.EMPEROR) if wheels else _NOT_PRINTED
+        return None if fill_coffers else _NOT_PRINTED
     if key == AGENT_ICON_SPICE:
         if effect is _BRANCHING_PATH:
             return None
@@ -3970,16 +3833,6 @@ def agent_icon_block(
             if owner.alliance_faction_ids:
                 return None
             return AgentIconBlock(AgentIconCondition.ALLIANCE)
-        if maker_keeper:
-            return _influence_block(owner, Faction.FREMEN)
-        if wheels:
-            return _influence_block(owner, Faction.SPACING_GUILD)
-        return _NOT_PRINTED
-    if key == AGENT_ICON_WATER:
-        if maker_keeper:
-            return _influence_block(owner, Faction.BENE_GESSERIT)
-        if effect is _STILLSUIT:
-            return None
         return _NOT_PRINTED
     return None
 
@@ -4067,7 +3920,7 @@ def resolve_agent_card_icon(
     personal_draw_count = 0
     intrigue_draw_count = 0
     match key:
-        case "cards" | "cards_second":
+        case "cards":
             if available:
                 # Piter, Genius Advisor's reward draws two cards.
                 personal_draw_count = 2 if effect is _LOSE_TROOP_FOR_CARDS else 1
@@ -4079,40 +3932,17 @@ def resolve_agent_card_icon(
                 next_owner = recruit(1)
         case "solari":
             if available:
-                # Wheels Within Wheels' 2 Solari; Fill Coffers' 1 (the
-                # Signet Ring's box).
-                next_owner = gain(
-                    solari=1 if effect is PersonalCardAgentEffect.LEADER_SIGNET else 2
-                )
+                # Fill Coffers' 1 Solari (the Signet Ring's box).
+                next_owner = gain(solari=1)
         case "spice":
             if available:
                 # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];
-                # Maker Keeper and Wheels Within Wheels pay 1 spice.
+                # Fill Coffers pays 1 spice.
                 next_owner = gain(spice=2 if effect is _BRANCHING_PATH else 1)
-        case "water":
-            if available:
-                next_owner = gain(water=1)
         case "research":
-            # The specimen and the Research follow the frame write-back
-            # below: the Research may open its direction choice and bonus
-            # frames above the turn.
+            # Piter's Research follows the frame write-back below: it may
+            # open its direction choice and bonus frames above the turn.
             pass
-        case "return_self":
-            if available:
-                # Stillsuit Manufacturer back to the hand, face up in play
-                # so far, so everyone keeps knowing it (OQ-010). It left
-                # play by its own icon, so an icon still queued pays out
-                # (OQ-022).
-                next_owner = replace(
-                    owner,
-                    hand=(*owner.hand, card_instance_id),
-                    hand_public=(*owner.hand_public, card_instance_id),
-                    in_play=tuple(
-                        candidate
-                        for candidate in owner.in_play
-                        if candidate != card_instance_id
-                    ),
-                )
         case "trash_self":
             if card_instance_id in owner.in_play:
                 # The card trashes itself by its own printed icon, so any
@@ -4164,17 +3994,6 @@ def resolve_agent_card_icon(
         researched = advance_research(next_state, player, source=f"{source}:research")
         next_state = researched.state
         research_events = researched.events
-    elif key == AGENT_ICON_RESEARCH and available:
-        # Industrial Espionage's grafted line: a specimen and a Research
-        # step, as one icon (the printed line) [Immortality pp. 6, 8].
-        generated = generate_specimens(
-            next_state, player, 1, source=f"{source}:specimen"
-        )
-        researched = advance_research(
-            generated.state, player, source=f"{source}:research"
-        )
-        next_state = researched.state
-        research_events = (*generated.events, *researched.events)
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(
@@ -4792,9 +4611,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     ),
                 ),
             )
-    elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
-        next_owner = owner
-        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT:
         if any(
             seat.player_id != player and seat.troops_conflict + seat.commanders_conflict
@@ -4804,115 +4620,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # No enemy unit in the Conflict: nothing to retreat (OQ-028).
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO:
-        # Command Center (Bloodlines): "Emperor 2 Influence: troop", judged
-        # when the box resolves (OQ-028).
-        if owner.influence.emperor >= 2:
-            next_owner, recruited = recruit_troops(owner, 1)
-            previous = context.get("troops_recruited")
-            if isinstance(previous, bool) or not isinstance(previous, int):
-                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-            context["troops_recruited"] = previous + recruited
-            recruit_shortfall = recruit_shortfall_events(
-                event_source, player, 1, recruited
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN:
-        # Sandwalk (Bloodlines): "If you gained 2 spice or more this turn:
-        # draw a card"; the draw follows the generic path below.
-        next_owner = owner
-        event_kind = (
-            "agent_card_effect_resolved"
-            if spice_gained_this_turn(owner) >= 2
-            else "agent_card_effect_unavailable"
-        )
-    elif effect in (
-        PersonalCardAgentEffect.DRAW_INTRIGUE_CARD,
-        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT,
-        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN,
-    ):
-        # Imperial Throneship / Shrouded Counsel: an Intrigue draw; Pointing
-        # the Way: "If you have one or more sandworms in the Conflict:
-        # Intrigue"; Mercantile Affairs: "If you completed a contract this
-        # turn: Intrigue" (Bloodlines card faces).
-        met = (
-            owner.sandworms_conflict >= 1
-            if effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT
-            else owner.contracts_completed_turn >= 1
-            if effect
-            is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN
-            else True
-        )
-        if not met:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-        else:
-            intrigue_draw = draw_or_queue_intrigue_cards(
-                state, player, 1, source=f"{event_source}:intrigue_draw"
-            )
-            context["pending_agent_effect"] = False
-            next_state = advance_after_effect(intrigue_draw.state, context)
-            return RuleResult(
-                state=next_state,
-                events=(
-                    GameEvent(
-                        event_id=event_source,
-                        kind="agent_card_effect_resolved",
-                        payload=(("card_id", card_instance_id), ("player", player)),
-                    ),
-                    *intrigue_draw.events,
-                ),
-            )
-    elif effect is PersonalCardAgentEffect.TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN:
-        # Corrupt Bureaucrat (Bloodlines): "If you recalled a Spy this turn:
-        # contract" (2 Solari without the CHOAM Module [Main p. 20]).
-        if not spy_recalled_this_turn(owner):
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-        else:
-            context["pending_agent_effect"] = False
-            resumed = advance_after_effect(state, context)
-            contracts = begin_contract_gain(
-                resumed, player, 1, source=event_source
-            )
-            return RuleResult(
-                state=contracts.state,
-                events=(
-                    GameEvent(
-                        event_id=event_source,
-                        kind="agent_card_effect_resolved",
-                        payload=(("card_id", card_instance_id), ("player", player)),
-                    ),
-                    *contracts.events,
-                ),
-            )
-    elif effect is PersonalCardAgentEffect.TAKE_CONTRACT:
-        context["pending_agent_effect"] = False
-        resumed = advance_after_effect(state, context)
-        contracts = begin_contract_gain(
-            resumed,
-            player,
-            1,
-            source=(
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card_instance_id}"
-            ),
-        )
-        event = GameEvent(
-            event_id=(
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card_instance_id}"
-            ),
-            kind="agent_card_effect_resolved",
-            payload=(("card_id", card_instance_id), ("player", player)),
-        )
-        return RuleResult(
-            state=contracts.state,
-            events=(event, *contracts.events),
-        )
     elif effect is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD:
         context["pending_agent_effect"] = False
         base_frame = replace(
@@ -4964,84 +4671,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 ),
             ),
         )
-    elif effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
-        # Judged when the effect resolves [Main pp. 7, 9]: a sandworm summoned
-        # earlier in this turn at a Maker space counts; with none it draws
-        # nothing (OQ-028).
-        next_owner = owner
-        event_kind = (
-            "agent_card_effect_resolved"
-            if owner.sandworms_conflict
-            else "agent_card_effect_unavailable"
-        )
-    elif effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
-        # The Influence condition is judged when the effect resolves in the
-        # player's chosen order, which can differ from the placement-time
-        # check [Main pp. 7, 9]; below two Bene Gesserit Influence the
-        # conditional draw simply does nothing.
-        next_owner = owner
-        event_kind = (
-            "agent_card_effect_resolved"
-            if owner.influence.bene_gesserit >= 2
-            else "agent_card_effect_unavailable"
-        )
-    elif (
-        effect
-        is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
-    ):
-        if owner.influence.bene_gesserit >= 2:
-            next_owner, recruited = recruit_troops(owner, 1)
-            previous = context.get("troops_recruited")
-            if isinstance(previous, bool) or not isinstance(previous, int):
-                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-            context["troops_recruited"] = previous + recruited
-            recruit_shortfall = recruit_shortfall_events(
-                event_source, player, 1, recruited
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE:
-        space_id = context.get("space_id")
-        if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                spice=owner.resources.spice + 1,
-            ),
-        )
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE:
-        space_id = context.get("space_id")
-        if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                spice=owner.resources.spice + 2,
-            ),
-        )
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE:
-        space_id = context.get("space_id")
-        if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner, recruited = recruit_troops(owner, 1)
-        previous = context.get("troops_recruited")
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-        recruit_shortfall = recruit_shortfall_events(event_source, player, 1, recruited)
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND:
-        # Urgent Shigawire arms the seat; the boost is spent by the next
-        # Bene Gesserit card played this round (``agent_turn``).
-        next_owner = replace(owner, bene_gesserit_boost_pending=True)
-        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
         # Holy War: the opponents' decisions are pushed once this frame has
         # advanced (below).
@@ -5058,10 +4687,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # Southern Faith's draw half; the draw follows the generic path.
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
-    elif effect in (
-        PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
-        PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND,
-    ):
+    elif effect is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND:
         # Possible Futures' two-troop half (the Bond case pays both through
         # the Influence choice instead).
         next_owner, recruited = recruit_troops(owner, 2)
@@ -5071,95 +4697,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         context["troops_recruited"] = previous + recruited
         recruit_shortfall = recruit_shortfall_events(event_source, player, 2, recruited)
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.GAIN_WATER:
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                water=owner.resources.water + 1,
-            ),
-        )
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.GAIN_TWO_SOLARI:
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + 2,
-            ),
-        )
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.GAIN_ONE_SPICE:
-        # Ixian Ambassador: "1 spice" [card face].
-        next_owner = replace(
-            owner,
-            resources=replace(owner.resources, spice=owner.resources.spice + 1),
-        )
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER:
-        # Unnatural Reflexes: "[one genetic marker]: draw two cards".
-        if genetic_markers_reached(owner.research_space) >= 1:
-            next_owner = owner
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-    elif effect in (
-        PersonalCardAgentEffect.ADVANCE_TLEILAXU,
-        PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER,
-        PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_GRAFTED,
-    ):
-        # Contaminator's Tleilaxu icon; Subject X-137 needs the first genetic
-        # marker, judged now (OQ-028) [Immortality pp. 6-7, 16].
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(state, context)
-        if (
-            effect is PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER
-            and genetic_markers_reached(owner.research_space) < 1
-        ) or (
-            # Corrino Genes: "If grafted: Tleilaxu" [Immortality p. 11].
-            effect is PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_GRAFTED
-            and not is_grafted(context)
-        ):
-            return RuleResult(
-                state=next_state,
-                events=(
-                    GameEvent(
-                        event_id=event_source,
-                        kind="agent_card_effect_unavailable",
-                        payload=(("card_id", card_instance_id), ("player", player)),
-                    ),
-                ),
-            )
-        advanced = advance_tleilaxu(next_state, player, 1, source=event_source)
-        return RuleResult(
-            state=advanced.state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *advanced.events,
-            ),
-        )
-    elif effect is PersonalCardAgentEffect.PEEK_TWO_INTRIGUE_KEEP_ONE:
-        # Imperium Ceremony: the keep-one choice opens once the box has
-        # resolved (OQ-052 for a short deck).
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(state, context)
-        peek = begin_intrigue_peek(next_state, player, source=event_source)
-        return RuleResult(
-            state=peek.state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *peek.events,
-            ),
-        )
     elif (
         effect
         is _DRAW_ONE_OR_COMBAT_ICON
@@ -5301,22 +4838,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.GENERATE_SPECIMEN:
-        # Bene Tleilax Lab: a specimen [Immortality p. 8].
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(state, context)
-        generated = generate_specimens(next_state, player, 1, source=event_source)
-        return RuleResult(
-            state=generated.state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *generated.events,
-            ),
-        )
     elif effect is PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE:
         # Clandestine Meeting: Bene Gesserit Influence and an Intrigue card.
         gained = gain_faction_influence(
@@ -5343,26 +4864,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 *drawn.events,
             ),
         )
-    elif effect in (
-        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_GRAFTED,
-        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO,
-    ):
-        # Corrupt Smuggler ("If grafted") and Keys to Power ("[Emperor] 2
-        # Influence"), judged when the box resolves (OQ-028).
-        met = (
-            is_grafted(context)
-            if effect is PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_GRAFTED
-            else owner.influence.emperor >= 2
-        )
-        if met:
-            next_owner = replace(
-                owner,
-                resources=replace(owner.resources, spice=owner.resources.spice + 2),
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND:
         # Lisan al Gaib: the Bond is judged when the effect resolves
         # [Main pp. 9, 20] (a grafted partner may provide it).
@@ -5411,55 +4912,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 *drawn.events,
             ),
         )
-    elif effect is PersonalCardAgentEffect.DRAW_TWO_CARDS:
-        # Show of Strength: draw two cards.
-        next_owner = owner
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH:
-        # Throne Room Politics: a troop and a black trash icon (optional
-        # [Main p. 20]); the trash opens after the recruit. Its source names
-        # this box, so trashing the card itself there is the card leaving
-        # play by its own icon (``optional_trash``, OQ-022).
-        next_owner, recruited = recruit_troops(owner, 1)
-        previous = context.get("troops_recruited")
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-        recruit_shortfall = recruit_shortfall_events(event_source, player, 1, recruited)
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(
-            state, context, replace_player(state.players, next_owner)
-        )
-        return RuleResult(
-            state=next_state.push_decision(
-                optional_trash_frame(player, event_source)
-            ),
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *recruit_shortfall,
-            ),
-        )
-    elif effect is PersonalCardAgentEffect.RESEARCH:
-        # Experimentation: the Research icon [Immortality pp. 6, 16]. The
-        # advance (and its direction choice) follows the frame bookkeeping.
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(state, context)
-        advanced = advance_research(next_state, player, source=event_source)
-        return RuleResult(
-            state=advanced.state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *advanced.events,
-            ),
-        )
     elif effect is PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE:
         space_id = context.get("space_id")
         if not isinstance(space_id, str):
@@ -5484,97 +4936,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             gained.state.players,
         )
         return RuleResult(state=next_state, events=gained.events)
-    elif (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
-    ):
-        # Both Influence conditions are judged when the effect resolves in the
-        # player's chosen order [Main pp. 7, 9]; a mid-frame Influence loss
-        # (for example an Intrigue cost) can leave the effect with nothing.
-        gains_water = owner.influence.bene_gesserit >= 2
-        gains_spice = owner.influence.fremen >= 2
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                spice=owner.resources.spice + int(gains_spice),
-                water=owner.resources.water + int(gains_water),
-            ),
-        )
-        event_kind = (
-            "agent_card_effect_resolved"
-            if gains_water or gains_spice
-            else "agent_card_effect_unavailable"
-        )
-    elif (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
-    ):
-        # Judged at resolution time like Maker Keeper's pair of conditions
-        # [Main pp. 7, 9]; with neither Influence the effect does nothing.
-        gains_solari = owner.influence.emperor >= 2
-        gains_spice = owner.influence.spacing_guild >= 2
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + 2 * int(gains_solari),
-                spice=owner.resources.spice + int(gains_spice),
-            ),
-        )
-        event_kind = (
-            "agent_card_effect_resolved"
-            if gains_solari or gains_spice
-            else "agent_card_effect_unavailable"
-        )
-    elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
-        # The Bond is judged when the effect resolves in the player's chosen
-        # order [Main pp. 9, 20]; trashing the bonded card mid-frame (for
-        # example through an Intrigue slot) forfeits the conditional gain.
-        if has_faction_bond(
-            counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
-        ):
-            next_owner, recruited = recruit_troops(owner, 2)
-            previous = context.get("troops_recruited")
-            if isinstance(previous, bool) or not isinstance(previous, int):
-                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-            context["troops_recruited"] = previous + recruited
-            recruit_shortfall = recruit_shortfall_events(
-                event_source, player, 2, recruited
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND:
-        # The Bond is judged when the effect resolves [Main pp. 9, 20]; a
-        # trashed card expires before this resolution is offered (OQ-022).
-        # A Row card borrowed with Usurp is not "in play" ("A grafted
-        # card in the Imperium Row isn't considered to be 'in play.'"
-        # [Immortality p. 14]) and cannot return to a hand, as for
-        # Stillsuit Manufacturer; the turn's end trashes it (OQ-054, user
-        # ruling 2026-10-04).
-        if card_instance_id in counted_in_play(owner) and has_faction_bond(
-            counted_in_play(owner),
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        ):
-            # The card was face up in play, so everyone keeps knowing it sits
-            # in the hand (OQ-010).
-            next_owner = replace(
-                owner,
-                hand=(*owner.hand, card_instance_id),
-                hand_public=(*owner.hand_public, card_instance_id),
-                in_play=tuple(
-                    candidate
-                    for candidate in owner.in_play
-                    if candidate != card_instance_id
-                ),
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND:
         # In High Places: "If you have another Bene Gesserit card in play:
         # [draw 1 card] [Spy]" [In High Places card]. The Bond is judged
@@ -5609,90 +4970,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         context.pop("agent_card_spy_recalled", None)
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:
-        if spy_recalled_this_turn(owner):
-            next_owner, recruited = recruit_troops(owner, 3)
-            previous = context.get("troops_recruited")
-            if isinstance(previous, bool) or not isinstance(previous, int):
-                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-            context["troops_recruited"] = previous + recruited
-            recruit_shortfall = recruit_shortfall_events(
-                event_source, player, 3, recruited
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN:
-        if spy_recalled_this_turn(owner):
-            next_owner, recruited = recruit_troops(owner, 2)
-            previous = context.get("troops_recruited")
-            if isinstance(previous, bool) or not isinstance(previous, int):
-                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-            context["troops_recruited"] = previous + recruited
-            recruit_shortfall = recruit_shortfall_events(
-                event_source, player, 2, recruited
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN:
-        if not spy_recalled_this_turn(owner):
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-        else:
-            source = (
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card_instance_id}"
-            )
-            intrigue_draw = draw_or_queue_intrigue_cards(
-                state, player, 1, source=f"{source}:intrigue_draw"
-            )
-            context["pending_agent_effect"] = False
-            next_state = advance_after_effect(intrigue_draw.state, context)
-            return RuleResult(
-                state=next_state,
-                events=(
-                    GameEvent(
-                        event_id=source,
-                        kind="agent_card_effect_resolved",
-                        payload=(
-                            ("card_id", card_instance_id),
-                            ("player", player),
-                        ),
-                    ),
-                    *intrigue_draw.events,
-                ),
-            )
-    elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT:
-        if owner.units_in_conflict < 3:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
-        else:
-            source = (
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card_instance_id}"
-            )
-            intrigue_draw = draw_or_queue_intrigue_cards(
-                state, player, 1, source=f"{source}:intrigue_draw"
-            )
-            context["pending_agent_effect"] = False
-            next_state = advance_after_effect(intrigue_draw.state, context)
-            return RuleResult(
-                state=next_state,
-                events=(
-                    GameEvent(
-                        event_id=source,
-                        kind="agent_card_effect_resolved",
-                        payload=(
-                            ("card_id", card_instance_id),
-                            ("player", player),
-                        ),
-                    ),
-                    *intrigue_draw.events,
-                ),
-            )
     elif (
         effect
         is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
@@ -5838,26 +5115,12 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             state=losses.state, events=(event, *moves.events, *losses.events)
         )
     if effect in (
-        PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
-        PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
-        PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
-        PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
-        PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN,
+        # Southern Faith's and High Priority Travel's draw half.
         PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
-        PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
-        PersonalCardAgentEffect.DRAW_TWO_CARDS,
         PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO,
     ):
-        if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
-            draw_count = owner.sandworms_conflict
-        elif effect in (
-            PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
-            PersonalCardAgentEffect.DRAW_TWO_CARDS,
-        ):
-            draw_count = 2
-        else:
-            draw_count = 1
-        if draw_count == 0 or event_kind == "agent_card_effect_unavailable":
+        draw_count = 1
+        if event_kind == "agent_card_effect_unavailable":
             return RuleResult(state=next_state, events=(event, *recruit_shortfall))
         draw = draw_or_request_personal_cards(
             next_state,
