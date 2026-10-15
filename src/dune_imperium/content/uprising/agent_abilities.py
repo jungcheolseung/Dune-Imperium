@@ -15,6 +15,10 @@ which names the record. The printed text is ``display/tokens.py``.
   turn can break it.
 - ``icons`` marks a box whose printed icons resolve one action each
   (OQ-027 card Agent box extensions); the others resolve as one action.
+- ``hook`` names a special flow kept as code in ``rules.agent_effects``
+  (``_BOX_HOOKS``): a box with no event of its own, sources found nowhere
+  else, or a frame rewritten mid-way. Its sections list the fragments it
+  gives where the DSL has them (the network's card features, plan 4.4).
 
 The boxes not here keep their own code in ``rules.agent_effects`` until a
 later stage moves them (plan 5).
@@ -43,13 +47,16 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     GainedSpiceThisTurn,
+    GainInfluence,
     GainResources,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GrantCombatDeployment,
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    PlaceSpy,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
@@ -84,6 +91,22 @@ def _box(
         timing=AbilityTiming.AGENT_BOX,
         sections=(_line(*rewards, condition=condition),),
         requirement=requirement,
+    )
+
+
+def _hook(
+    name: str,
+    *rewards: Reward,
+    condition: Condition | None = None,
+    requirement: Condition | None = None,
+) -> Ability:
+    """A box resolved by the named special flow (``agent_effects._BOX_HOOKS``)."""
+
+    return Ability(
+        timing=AbilityTiming.AGENT_BOX,
+        sections=(_line(*rewards, condition=condition),) if rewards else (),
+        requirement=requirement,
+        hook=name,
     )
 
 
@@ -186,6 +209,44 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             _BOX.GENERATE_SPECIMEN: _box(GenerateSpecimens(1)),
             _BOX.PEEK_TWO_INTRIGUE_KEEP_ONE: _box(LookAtIntrigueKeepOne(2)),
+            # Guild Impersonator: "If you gained spice this turn: [Spacing
+            # Guild Influence]".
+            _BOX.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN: _box(
+                GainInfluence(factions=(Faction.SPACING_GUILD,)),
+                condition=GainedSpiceThisTurn(1),
+            ),
+            # --- Special flows (hooks) -------------------------------------------
+            # Seek Allies: "Trash this card." -- the trash's events alone.
+            _BOX.TRASH_SELF: _hook("seek_allies"),
+            # Overthrow: one more Influence with the visited Faction, with no
+            # event of its own; reachable only on a Faction space (the
+            # placement code's rule, not a printed condition).
+            _BOX.GAIN_VISITED_FACTION_INFLUENCE: _hook("overthrow"),
+            # Lisan al Gaib: the Fremen Influence, its events alone.
+            _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _hook(
+                "lisan_al_gaib",
+                GainInfluence(factions=(Faction.FREMEN,)),
+                condition=_BG_BOND,
+            ),
+            # Clandestine Meeting: its Intrigue draw is named ``<box>:intrigue``.
+            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _hook(
+                "clandestine_meeting",
+                GainInfluence(factions=(_BG,)),
+                DrawIntrigueCards(1),
+            ),
+            # Occupation: the Combat grant rewrites the frame; the draw is
+            # named ``<box>:draw``.
+            _BOX.DRAW_ONE_AND_COMBAT_ICON: _hook(
+                "occupation", DrawPersonalCards(1), GrantCombatDeployment()
+            ),
+            # In High Places: the Spy frame under the draw, both named ``<box>``.
+            _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: _hook(
+                "in_high_places",
+                DrawPersonalCards(1),
+                PlaceSpy(),
+                condition=_BG_BOND,
+                requirement=_BG_BOND,
+            ),
             # --- Icon by icon (OQ-027) -------------------------------------------
             # Hidden Missive.
             _BOX.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO: _icons(

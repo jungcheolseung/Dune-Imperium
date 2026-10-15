@@ -896,11 +896,6 @@ def agent_effect_is_available(
         # 14] (OQ-054, user ruling 2026-10-04), so "Return this card to your
         # hand" can never happen: the box is not left waiting for it.
         return False
-    ability = box_ability(effect)
-    if ability is not None:
-        # A box written as an ability record judges its placement condition
-        # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
-        return opens_at_placement(ability, owner, space, card_instance_id)
     if effect in (
         PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
         # Reachable off a Faction space through a granted Spy or Agent icon
@@ -908,9 +903,14 @@ def agent_effect_is_available(
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
     ):
         return space.faction is not None
-    if effect in (
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
+    ability = box_ability(effect)
+    if ability is not None:
+        # A box written as an ability record judges its placement condition
+        # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
+        return opens_at_placement(ability, owner, space, card_instance_id)
+    if (
+        effect
+        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
     ):
         # A Row card borrowed with Usurp is not "in play" (OQ-054,
         # ``counted_in_play``), so it never provides another card's Bond.

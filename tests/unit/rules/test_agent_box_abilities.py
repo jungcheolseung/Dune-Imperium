@@ -47,6 +47,7 @@ from dune_imperium.rules.agent_box_abilities import (
 from dune_imperium.rules.agent_effects import (
     agent_card_icons_at_placement,
     agent_icon_block,
+    box_hook_names,
     legal_agent_card_icon_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
@@ -59,7 +60,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 44
+    assert len(AGENT_BOX_ABILITIES) == 51
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -297,3 +298,18 @@ def test_pointing_the_way_draws_its_intrigue_before_the_write_back() -> None:
         ("intrigue_card_drawn", f"{source}:intrigue_draw:intrigue_draw:1"),
     ]
     assert result.state.players[0].intrigue_cards == ("intrigue:bribery:0",)
+
+
+def test_every_hook_record_names_a_special_flow() -> None:
+    """A record's ``hook`` names a function of ``agent_effects._BOX_HOOKS``,
+    and every such function has its record (composed effects, A3)."""
+
+    named = {
+        ability.hook
+        for ability in AGENT_BOX_ABILITIES.values()
+        if ability.hook is not None
+    }
+    assert named == box_hook_names()
+    for ability in AGENT_BOX_ABILITIES.values():
+        if ability.hook is not None:
+            assert not ability.icons

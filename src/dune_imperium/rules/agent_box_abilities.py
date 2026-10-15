@@ -11,7 +11,8 @@ and the events keep their names, ids, payloads and order.
 The events follow two conventions, one per way a box resolves:
 
 - **One action** (``resolve_box``): the owner's gains (resources, troops,
-  the Bene Gesserit boost, the card back to hand) and an Intrigue draw
+  the Bene Gesserit boost, the card back to hand), a fixed Faction's
+  Influence (prefix ``<box>:influence:<faction>``) and an Intrigue draw
   (source ``<box>:intrigue_draw``) are applied before the frame is written
   back; then the box's event ``<box>`` (``agent_card_effect_resolved``, or
   ``agent_card_effect_unavailable`` when a printed condition fails); then the
@@ -59,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     GainedSpiceThisTurn,
+    GainInfluence,
     GainResources,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
@@ -97,7 +99,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
-from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
@@ -399,7 +401,12 @@ def resolve_box(state: GameState) -> RuleResult:
     player, card_id = _subject(context)
     card = active_agent_card(context)
     ability = box_ability(card.agent_effect)
-    if ability is None or ability.icons or len(ability.sections) != 1:
+    if (
+        ability is None
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
         raise ValueError("the active Agent box is not resolved as one recorded action")
     (line,) = ability.sections
     owner = state.players[player]
@@ -413,6 +420,21 @@ def resolve_box(state: GameState) -> RuleResult:
             owner, line, context, card_id, source, player
         )
     working = replace(state, players=replace_player(state.players, next_owner))
+    influence_events: tuple[GameEvent, ...] = ()
+    for reward in line.rewards if available else ():
+        if isinstance(reward, GainInfluence):
+            # A fixed Faction's Influence, prefix ``<box>:influence:<f>``.
+            assert reward.factions is not None and not reward.requires_choice
+            faction = reward.factions[0]
+            gained = gain_faction_influence(
+                working,
+                player,
+                faction,
+                reward.times,
+                event_prefix=f"{source}:influence:{faction.value}",
+            )
+            working = gained.state
+            influence_events = (*influence_events, *gained.events)
     intrigue_events: tuple[GameEvent, ...] = ()
     if available and (intrigue := _intrigue_draws(line)):
         drawn = draw_or_queue_intrigue_cards(
@@ -465,7 +487,8 @@ def resolve_box(state: GameState) -> RuleResult:
         next_state = drawn_cards.state
         follow_ups.extend(drawn_cards.events)
     return RuleResult(
-        state=next_state, events=(event, *intrigue_events, *follow_ups, *shortfall)
+        state=next_state,
+        events=(event, *influence_events, *intrigue_events, *follow_ups, *shortfall),
     )
 
 
