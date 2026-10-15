@@ -2,6 +2,23 @@ extends RefCounted
 
 # Native chrome only. Card names, player names and rule text use the catalog.
 const EN = {
+	"다시보기": "Review",
+	"게임 종료": "Game over",
+	"차례 대기": "Waiting",
+	"생각 중": "Thinking",
+	"확정 대기": "Confirm",
+	"선택 중": "Choosing",
+	"선": "1st",
+	"선 플레이어": "First player",
+	"내 좌석": "Your seat",
+	"보기": "View",
+	"보고 있는 좌석": "Viewing this seat",
+	"공개 완료": "Revealed",
+	"전체 기록": "Full log",
+	"최근": "Latest",
+	"되돌림": "Undone",
+	"게임 진행": "Game",
+	"아직 행동 기록이 없습니다.": "No actions yet.",
 	"살펴보기": "Inspect",
 	"● 가능": "● Ready",
 	"– 조합 불가": "– Incompatible",
