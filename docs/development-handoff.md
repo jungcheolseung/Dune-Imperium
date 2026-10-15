@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-15 (master, 효과 조각 엔진 전환 A0 병합 뒤)
+기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A1 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,11 +28,11 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | composed-a0 병합 (2026-10-15) |
-| pytest | 7,733개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| master | composed-a1 병합 (2026-10-16) |
+| pytest | 7,738개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 506파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-14 선택 불가 표시 첫 묶음 병합 뒤(66 통과, `server_errors`는 탐색 AI 없는 서버로 고친 뒤 혼자 통과) |
-| action codec | **v147** (다음 번호 v148) |
+| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
+| action codec | **v148** (다음 번호 v149) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,553 · CHOAM 4,848 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 36,379 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
@@ -47,10 +47,11 @@
 
 - **효과 조각 엔진 전환(진행 중):** 카드 효과를 능력 기록(공통 조각의 조합)과 실행기로 옮긴다. A단계는 행동·관측·사건을
   그대로 두고 단계마다 `scripts/ab/engine_equivalence.py` 200판 same을 관문으로 한다. 학습은 A단계 끝에 한 번(사용자: 병행
-  학습 안 함). 그 앞의 따로 작업 둘(Agent 차례 선택 효과 codec v146, Reveal 선택 효과 codec v147)과 A0(능력 기록, 행동 모양
-  표, 대기 능력 실행기 핵심; 엔진에 연결하지 않음)은 끝났다. **다음은 A1**: 책략 선택 frame(`INTRIGUE_CHOICE`·
-  `INTRIGUE_EFFECTS`)을 실행기로 옮긴다(결정 stack 모양이 바뀌어 codec을 올림). 계획서 5절 "A0에서 만든 것"의 "A1이 할 일".
-  [composed-effects-plan.md](composed-effects-plan.md) [2026-10-15 효과 조각 엔진 전환 A0]
+  학습 안 함). 그 앞의 따로 작업 둘(Agent 차례 선택 효과 codec v146, Reveal 선택 효과 codec v147), A0(능력 기록, 행동 모양
+  표, 대기 능력 실행기 핵심), A1(책략 선택 frame을 실행기로, codec v148)은 끝났다. **다음은 A2**: 개인 카드 Agent 칸의 단순·조건부
+  이득 52개(설계는 시작 때; Agent 칸은 아이콘마다 행동 하나라 실행기에 아이콘별 줄 제시가 필요). 계획서 5절 "A1에서 만든 것"의
+  "A2가 할 일". 같음 확인 기록은 A2 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`로도 잰다(6절 6번).
+  [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A1]
 
 **학습·AI**
 
@@ -126,7 +127,8 @@
 **도구·인프라**
 
 - **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v145-afea63de(2026-10-14, 2,000판; v146 다리 대조에 씀)이고
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v148-02e203ce(2026-10-16, 2,000판; A1의 Play 커밋으로 만듦,
+  v147-2af1d9f5와 판마다 수순이 같다)이고 A2 관문의 기준이다. 그 앞은 v147-2af1d9f5(A0·A1 관문), v145-afea63de(v146 다리 대조)이며
   v144·v146 묶음은 없다. v145의 새 다리 `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 있는지는 아직 세지 않았다.
   [2026-10-12 Ghola, 2026-10-14 자기 차례 안의 선택 효과, [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
