@@ -8,6 +8,7 @@ Claude 토큰 대기 중 Codex가 기본 플레이 화면과 확장 패널/정�
 ## 작업 위치와 지켜야 할 동작
 
 - `docs/godot-client-plan` 브랜치의 작업 트리에서만 작업한다. master에 커밋·병합하지 않는다.
+- 업데이트 ZIP/전체 패키지는 사용자가 요청할 때만 만든다(2026-10-15 사용자 결정).
 - 시작할 때 `AGENTS.md`, `README.md`, `development-handoff.md`와 이번 달 worklog를 읽는다.
   다른 PC의 변경은 fetch 후 비교하고, 기존 사용자 파일과 전달한 ZIP은 보존한다.
 - 게임 규칙·AI는 Python 서버의 책임이다. 클라이언트는 현재 서버가 제공한 합법 DTO의
@@ -70,9 +71,29 @@ Windows 실제 GPU·IME·스피커·모니터 이동은 별도 확인 범위다.
 `tmp/godot/visual-polish/before-pile.png`와 `tmp/godot/parity/screenshots/deck-ko-glowglobes.png`에
 같은 국면의 전후를 남겼다. 새 패널 화면은 `tmp/godot/panels/screenshots/`다.
 
-다음 시각 후보는 **선택 행의 비용·경고·예고 위계와 선택/실행 피드백**이다. 새 Windows
-업데이트의 실제 플레이 피드백도 확인해야 한다. 이번 개선을 전체 시각 마감이나 모든 카드
-조합 감사의 완료로 읽지 않는다.
+## 반영한 선택 위계와 실행 결과
+
+선택 행은 `action_choice.gd`의 한 버튼 안에서 제목·대상·지불/인쇄 비용·효과·예상·주의를
+구분한다. 비용이나 경고를 눌러도 같은 기존 DTO callback을 사용한다. 제목과 설명은
+접근성 이름/설명에도 넣는다. 수량 설명과 선택 불가 이유도 같은 구조를 쓴다.
+지불 비용은 기존 `paid_cost`, 예고/부족/비가역 경고는 서버 DTO, 이번 턴 남은 효과 소실은
+기존 `choice_zones`만 사용한다. 공개 기록의 `describe` 기본 결과는 바꾸지 않는다.
+
+확정 대기는 선택됨/턴 종료 표식으로 표시한다. `action_feedback.gd`는 행동 기록 위에 마지막
+실행 결과를 짧게 보인다. 서버 수락과 같은 좌석/게임/undo 세대의 새 snapshot을 확인해야
+실행됨으로 표시하며, 거절/상태 확인 중은 따로 표시한다. 공개 자원/승점 순변화는 확인 때
+고정하며 뒤의 poll/AI 변화를 이어 붙이지 않는다. 새 선택을 막거나 연출을 추가하지 않는다.
+undo·좌석/권한 상실·게임 변경·다시보기에서는 결과와 캐시 문구를 지운다. 비공개 덱/뽑기를
+추측하지 않는다. `_send_action`의 원래 응답/동기화 순서는 유지한다.
+
+모델 105항목, 같은 저장본의 기본 5사례/61·정보 4사례/32·수량/경매 10사례/98·선택창
+16사례/438항목을 통과했다. 기본 GUI에는 ko/en 비용·확정 대기·실행 결과 16캡처/60항목도
+포함한다. `tmp/godot/parity/screenshots/payment-options-en-narrow.png`, `held-choice.png`,
+`applied-multiple.png`와 수량/선택창 캡처에 새 화면을 남겼다(뒤 경로도 같은 screenshots 폴더).
+이전 선택 화면 3장은 `tmp/godot/choice-polish/before-*.png`에 보존했다.
+
+다음 시각 후보는 **보드·손패의 선택 안내와 hover/클릭 피드백**이다. Windows 실제 플레이
+피드백도 확인해야 한다. 이번 개선을 전체 시각 마감이나 모든 카드 조합 감사의 완료로 읽지 않는다.
 
 ## 시각 작업의 우선순위
 
@@ -100,7 +121,8 @@ Windows 실제 GPU·IME·스피커·모니터 이동은 별도 확인 범위다.
 | 전체 테이블·손패·시장·hover·선택 행 | `src/dune_imperium/godot_client/project/main.gd` |
 | 보드 칸·조각 | 같은 폴더 `board.gd` |
 | 합법 선택·개인 정보·번역·표시 모델 | `model.gd` |
-| 접목 효과·수량·폐기 영역 | `choices.gd` |
+| 선택 읽기 구조·접목 효과·수량·폐기 영역 | `action_choice.gd`, `choices.gd` |
+| 서버 확인 후 실행 결과 | `action_feedback.gd` |
 | 계약/연구/기술/지도자/Scouts | `expansions.gd` |
 | 상세 그림/본문·더미·큰 카드·검색 | `detail_entry.gd`, `pile_viewer.gd`, `portrait.gd`, `hand_card.gd` |
 | 설정·좌석·팝업·다시보기·접힘 | `session_tools.gd` |
@@ -118,6 +140,7 @@ PYTHONPATH=src .venv/bin/python scripts/godot/verify_panels.py --godot /path/to/
 PYTHONPATH=src .venv/bin/python scripts/godot/verify_prototype.py --godot /path/to/godot --full-game --rules all --seeds 22
 # 개발용 Playwright/Chromium이 있는 환경에서 같은 저장본 직접 대조
 PYTHONPATH=src .venv/bin/python scripts/godot/verify_parity.py --godot /path/to/godot --suite choices --chromium /path/to/chromium
+PYTHONPATH=src .venv/bin/python scripts/godot/verify_parity.py --godot /path/to/godot --suite core --evidence --chromium /path/to/chromium
 ```
 
 `verify_parity.py`는 `core`, `info`, `quantity`, `choices`를 지원한다. `choices`는 실제
