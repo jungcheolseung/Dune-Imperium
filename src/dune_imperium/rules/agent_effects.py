@@ -57,6 +57,7 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_box,
     discard_cost_block,
     discard_rows,
+    discard_spy,
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
@@ -194,9 +195,6 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
     PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
-# Arrakis Observer's Spy after its paid discard: "Spy with Deep Cover"
-# [Bloodlines pp. 5, 12] may share another player's post.
-_DEEP_COVER_SPY: Final = PlaceSpy(shared_post=True)
 # Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
 # card] [troop]" [card face] [Rise of Ix p. 10].
 _SPICE_FOR_TRASH_AND_TROOP = (
@@ -331,24 +329,7 @@ def legal_agent_card_discard_actions(
     if recorded is not None and discard_box(recorded):
         # A discard arrow, from its record (composed A3d).
         return discard_rows(state, player, recorded)
-    if effect is not PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
-        return ()
-    # Arrakis Observer: any hand card pays its optional discard.
-    decline = (DomainAction(action_id="decline_agent_card_discard", actor=player),)
-    if agent_card_cost_block(state, player) is not None:
-        # An optional discard with no card in hand.
-        return decline
-    return (
-        *decline,
-        *(
-            DomainAction(
-                action_id="discard_agent_card",
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            for card_id in state.players[player].hand
-        ),
-    )
+    return ()
 
 
 def apply_agent_card_discard(
@@ -363,69 +344,7 @@ def apply_agent_card_discard(
     recorded = box_ability(active_agent_card(context).agent_effect)
     if recorded is not None and discard_box(recorded):
         return apply_discard(state, action, recorded)
-    context["pending_agent_effect"] = False
-    source = f"round:{state.round_number}:player:{action.actor}:agent_card_discard"
-    if action.action_id == "decline_agent_card_discard":
-        return RuleResult(
-            state=advance_after_effect(state, context),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="agent_card_discard_declined",
-                    payload=(("player", action.actor),),
-                ),
-            ),
-        )
-
-    card_id = dict(action.arguments).get("card_id")
-    if not isinstance(card_id, str):
-        raise RuntimeError("Agent-card discard choice has invalid card ID")
-    discarded_card = personal_card_for_instance(card_id)
-    discarded = discard_personal_card_from_hand(
-        state,
-        action.actor,
-        card_id,
-        source=source,
-    )
-    # Ghola "상대 카드의 Agent box 전체를 복사" `[Immortality p. 14]`, so the box
-    # being resolved is the borrowed one, not Ghola's own empty face. The
-    # provider (``legal_agent_card_discard_actions``) already reads it through
-    # ``active_agent_card``; reading the printed card here instead let a Ghola
-    # take the discard and pay out nothing.
-    source_card = active_agent_card(context)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
-    ):
-        # Arrakis Observer: two spice for a Spacing Guild discard, then the
-        # Spy with Deep Cover placement stays pending for its own choice.
-        owner = discarded.state.players[action.actor]
-        events = list(discarded.events)
-        if Faction.SPACING_GUILD in discarded_card.factions:
-            owner = replace(
-                owner,
-                resources=replace(owner.resources, spice=owner.resources.spice + 2),
-            )
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:{card_id}:spice",
-                    kind="agent_card_effect_resolved",
-                    payload=(("player", action.actor), ("spice", 2)),
-                )
-            )
-        context["pending_agent_effect"] = True
-        context["agent_card_spy_pending"] = True
-        return RuleResult(
-            state=advance_after_effect(
-                discarded.state,
-                context,
-                replace_player(discarded.state.players, owner),
-            ),
-            events=tuple(events),
-        )
-    raise RuntimeError(
-        f"Agent-card discard has no handler: {source_card.agent_effect}"
-    )
+    raise RuntimeError("the active Agent box has no recorded discard")
 
 
 def long_live_fighters_frame(
@@ -1210,13 +1129,15 @@ def legal_agent_card_spy_actions(
         # their records (composed A3c).
         return target_rows(state, player, recorded)
     if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
+        recorded is not None
+        and discard_box(recorded)
         and context.get("agent_card_spy_pending") is True
+        and (spy := discard_spy(recorded)) is not None
     ):
-        # Spy with Deep Cover: opponents' Spies may be ignored, never one's
-        # own [Bloodlines pp. 5, 12].
-        return agent_spy_rows(state, player, _DEEP_COVER_SPY, context)
+        # Arrakis Observer's Spy with Deep Cover after its paid discard:
+        # opponents' Spies may be ignored, never one's own [Bloodlines
+        # pp. 5, 12].
+        return agent_spy_rows(state, player, spy, context)
     return ()
 
 
@@ -2057,8 +1978,6 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
         )
-    if effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY:
-        return short_of(kind.HAND, 1, len(owner.hand))
     return None
 
 
@@ -3532,7 +3451,6 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
-        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
         PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
@@ -3839,8 +3757,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if ability is not None and ability.hook is not None:
         # A special flow kept as code (composed effects, A3).
         return _BOX_HOOKS[ability.hook](state)
-    if ability is not None and not optional_arrow(ability):
-        # A box written as an ability record (composed effects, stage A2).
+    if ability is not None and (
+        not optional_arrow(ability)
+        or context.get("agent_card_spy_pending") is True
+    ):
+        # A box written as an ability record (composed effects, stage A2),
+        # or an optional arrow on the mandatory step its cost opened
+        # (Arrakis Observer's Spy, A3f).
         return resolve_box(state)
     # An optional arrow resolves only through its payment or discard row;
     # the generic resolution below is reached only by the dry run, which
@@ -4128,22 +4051,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
-    elif (
-        effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
-        and context.get("agent_card_spy_pending") is True
-    ):
-        # Arrakis Observer's Deep Cover Spy after its paid discard: placing
-        # is mandatory only with a Spy in supply (the erratum to [Main
-        # p. 11], OQ-057 (14)); the recall-first and its pass-up are the
-        # owner's choice [Main pp. 11, 20], so the box fizzles here only
-        # when neither is possible, and then waits for the turn's end
-        # (OQ-057 (1)) -- as a recorded Spy box does (``resolve_box``).
-        if legal_agent_card_spy_actions(state, player):
-            raise RuntimeError("place-Spy Agent effect requires a player choice")
-        context.pop("agent_card_spy_pending", None)
-        context.pop("agent_card_spy_recalled", None)
-        next_owner = owner
-        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON:
         # The Beast's Spoils: one reward per printed battle icon kind that is
         # face up in the owner's supply — immediate matching keeps at most

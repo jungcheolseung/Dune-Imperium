@@ -74,6 +74,7 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentPaymentBlock,
     condition_block,
     discard_box,
+    discard_spy,
     intrigue_box,
     opens_at_placement,
     optional_arrow,
@@ -92,10 +93,12 @@ from dune_imperium.rules.agent_effects import (
     agent_card_icons_at_placement,
     agent_card_payment_block,
     agent_icon_block,
+    apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_payment,
     box_hook_names,
     legal_agent_card_contract_completion_actions,
+    legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_opponent_retreat_actions,
@@ -121,7 +124,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 77
+    assert len(AGENT_BOX_ABILITIES) == 78
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -658,7 +661,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         resolve_agent_card_effect(demands)
 
 
-def test_seven_discard_arrows_read_the_discarded_card() -> None:
+def test_eight_discard_arrows_read_the_discarded_card() -> None:
     """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
     the first line; a later line's condition reads the discarded card, which
     only the Agent box knows (the generic interpreter refuses it). Captured
@@ -680,6 +683,7 @@ def test_seven_discard_arrows_read_the_discarded_card() -> None:
         _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD: (
             AbilityMark.OPTIONAL
         ),
+        _BOX.MAY_DISCARD_FOR_DEEP_COVER_SPY: AbilityMark.OPTIONAL,
     }
     assert {
         effect: ability.armed_icons
@@ -838,3 +842,32 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
         AGENT_ICON_TROOPS: {gambit, elite},
         AGENT_ICON_PLEDGE: {gambit},
     }
+
+
+def test_arrakis_observer_announces_its_spice_and_waits_on_its_spy() -> None:
+    """Composed A3f: Arrakis Observer's discard pays 2 spice for a Spacing
+    Guild card, announced as before, and leaves the box on its mandatory Deep
+    Cover Spy (OQ-057 (14)), whose rows the record's Spy gives."""
+
+    ability = AGENT_BOX_ABILITIES[_BOX.MAY_DISCARD_FOR_DEEP_COVER_SPY]
+    assert discard_spy(ability) == PlaceSpy(shared_post=True)
+    card = "imperium:arrakis_observer:0"
+    guild = "imperium:guild_envoy:0"
+    owner = PlayerState(player_id=0, hand=(guild,))
+    placed = _played(card, owner, RulesetConfig(bloodlines=True))
+    placed = replace(
+        placed, players=(replace(placed.players[0], hand=(guild,)), *placed.players[1:])
+    )
+    rows = legal_agent_card_discard_actions(placed, 0)
+    discard = next(row for row in rows if row.action_id == "discard_agent_card")
+    paid = apply_agent_card_discard(placed, discard)
+    source = "round:1:player:0:agent_card_discard"
+    assert [(e.kind, e.event_id) for e in paid.events][-1] == (
+        "agent_card_effect_resolved",
+        f"{source}:{guild}:spice",
+    )
+    context = dict(paid.state.decision_stack[-1].context)
+    assert context["agent_card_spy_pending"] is True
+    assert context["pending_agent_effect"] is True
+    spy_rows = legal_agent_card_spy_actions(paid.state, 0)
+    assert spy_rows and {row.action_id for row in spy_rows} == {"place_agent_card_spy"}

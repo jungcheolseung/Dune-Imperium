@@ -464,7 +464,11 @@ def resolve_box(state: GameState) -> RuleResult:
         ability is None
         or ability.icons
         or ability.hook is not None
-        or (len(ability.sections) != 1 and not trash_box(ability))
+        or (
+            len(ability.sections) != 1
+            and not trash_box(ability)
+            and not discard_box(ability)
+        )
     ):
         raise ValueError("the active Agent box is not resolved as one recorded action")
     line = ability.sections[0]
@@ -482,6 +486,19 @@ def resolve_box(state: GameState) -> RuleResult:
         # and without it the box resolves without effect.
         if _trash_conditions_hold(owner, ability):
             raise RuntimeError("Agent-card trash effect requires a player choice")
+        available = False
+    elif discard_box(ability) and context.get("agent_card_spy_pending") is True:
+        # Arrakis Observer's Deep Cover Spy after its paid discard: placing
+        # is mandatory only with a Spy in supply (the erratum to [Main
+        # p. 11], OQ-057 (14)); the recall-first and its pass-up are the
+        # owner's choice [Main pp. 11, 20], so the box fizzles here only
+        # when neither is possible, and then waits for the turn's end
+        # (OQ-057 (1)).
+        spy = discard_spy(ability)
+        if spy is not None and agent_spy_rows(state, player, spy, context):
+            raise RuntimeError("place-Spy Agent effect requires a player choice")
+        context.pop("agent_card_spy_pending", None)
+        context.pop("agent_card_spy_recalled", None)
         available = False
     elif discard_box(ability):
         # Guild Envoy's mandatory discard resolves through its rows; with an
@@ -1094,14 +1111,18 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # whose condition the discarded card meets: resources with the write-back,
 # then a Contract named ``<that>:contract_reward``, then one draw named
 # ``<that>:<discarded card>:draw`` (Space-time Folding's second card, Guild
-# Envoy's two). The events are the discard's, then the follow-ups'. An arrow
+# Envoy's two). A gain that depends on the discarded card announces itself
+# (``<that>:<discarded card>:<resource>``, Arrakis Observer's 2 spice), and a
+# Spy line leaves the box pending on its Spy step (``agent_card_spy_pending``,
+# the rows ``agent_spy_rows``; a Spy placement is mandatory, OQ-057 (14)).
+# The events are the discard's, then the follow-ups'. An arrow
 # whose rewards are armed (``Ability.armed_icons``: Captured Mentat, Guild
 # Spy) pays nothing at once: the keys of the lines the discarded card meets
 # are queued in printed order (``effects.arm_agent_icons``), each resolved
 # on its own by the icon path (OQ-027), and the box is then mandatory.
 
 _DISCARD_SOURCE: Final = "agent_card_discard"
-_DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards)
+_DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards, PlaceSpy)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
 # That path offers and pays a key per effect (Branching Path's 2 spice), so
 # the record table test keeps each key to the boxes it serves.
@@ -1145,6 +1166,16 @@ def discard_box(ability: Ability | None) -> bool:
         for line in ability.sections
         for reward in line.rewards
     )
+
+
+def discard_spy(ability: Ability) -> PlaceSpy | None:
+    """The Spy a discard arrow places once paid (Arrakis Observer's Deep Cover)."""
+
+    for line in ability.sections:
+        for reward in line.rewards:
+            if isinstance(reward, PlaceSpy):
+                return reward
+    return None
 
 
 def optional_arrow(ability: Ability | None) -> bool:
@@ -1254,13 +1285,32 @@ def apply_discard(
         for reward in line.rewards
     )
     owner = discarded.state.players[player]
-    for reward in rewards:
-        if isinstance(reward, GainResources):
+    events = list(discarded.events)
+    for line, ok in zip(ability.sections, met, strict=True):
+        for reward in line.rewards if ok else ():
+            if not isinstance(reward, GainResources):
+                continue
             owner = _gain(owner, reward)
+            if isinstance(line.condition, DiscardedCardHasFaction):
+                events.extend(
+                    GameEvent(
+                        event_id=f"{source}:{card_id}:{resource}",
+                        kind=_RESOLVED,
+                        payload=(("player", player), (resource, amount)),
+                    )
+                    for resource, amount in (
+                        ("solari", reward.solari),
+                        ("spice", reward.spice),
+                        ("water", reward.water),
+                    )
+                    if amount
+                )
+    if any(isinstance(reward, PlaceSpy) for reward in rewards):
+        context["pending_agent_effect"] = True
+        context["agent_card_spy_pending"] = True
     next_state = advance_after_effect(
         discarded.state, context, replace_player(discarded.state.players, owner)
     )
-    events = list(discarded.events)
     for reward in rewards:
         if isinstance(reward, TakeContract):
             contracts = begin_contract_gain(
