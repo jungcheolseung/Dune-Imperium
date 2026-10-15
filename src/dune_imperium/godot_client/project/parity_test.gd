@@ -43,6 +43,8 @@ func reading_lines(button: Button, kind: String) -> Array:
 
 
 func check_receipt(seat: int) -> void:
+	var turn = table.model.turn_reading(not table.tools_ui.review.is_empty())
+	check(table.turn_label.get_meta("turn_seat") == turn.seat and table.turn_label.get_meta("turn_kind") == turn.kind, "the turn heading follows the latest public decision/confirmation after execution")
 	if table.model.active_seat == seat and seat in table.model.owned_seats:
 		if not check(table.feedback.visible and table.feedback.get_meta("feedback_state", "") == "confirmed", "an accepted action with a fresh authorized snapshot shows an applied receipt"):
 			return
@@ -51,6 +53,97 @@ func check_receipt(seat: int) -> void:
 		check(table.feedback.receipt.delta == delta, "rerendering preserves the already confirmed resource change")
 	else:
 		check(not table.feedback.visible and table.feedback.receipt.is_empty(), "changing to another seat drops the previous seat's receipt")
+
+
+func status_probe() -> void:
+	var revision = int(table.model.summary().revision)
+	for language in ["ko", "en"]:
+		table.model.language = language
+		table._render()
+		await settled()
+		var owner = int(table.model.summary().decision.owner)
+		check(table.turn_label.text.contains(table.model.seat_name(owner)) and table.turn_label.get_meta("turn_seat") == owner, "the heading names the public acting seat in " + language)
+		var panels = table.seats.get_children()
+		check(panels.size() == 4 and panels.filter(func(panel): return panel.get_meta("seat_current", false)).size() == 1, "only one public owner receives the stronger seat treatment")
+		check(table.seats.find_children("*", "Label", true, false).filter(func(label): return label.get_meta("seat_view", "") == "owned").size() == 1, "a local four-human table does not label all four people as You")
+		for panel in panels:
+			var seat = int(panel.get_meta("seat_panel"))
+			var names = panel.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("seat_name"))
+			check(names.size() == 1 and names[0].text == table.model.seat_name(seat), "player identity is separate from first-player and turn markers")
+			var amounts = panel.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("resource_amount"))
+			check(amounts.size() == 3 and amounts.all(func(label): return int(label.text) == int(table.model.view().players[seat].resources.get(label.get_meta("resource_amount"), 0))), "the three larger resource counts come from that public player")
+		check(table._check_layout(), "turn heading and player readings stay inside their controls")
+		await capture_evidence("status-" + language)
+	check(int(table.model.summary().revision) == revision, "reading public player status sends no action")
+	table.model.language = "ko"
+	table._render()
+	await settled()
+
+
+func history_probe() -> void:
+	var revision = int(table.model.summary().revision)
+	for language in ["ko", "en"]:
+		table.model.language = language
+		table._render()
+		await settled()
+		var rows = table.log_content.get_children().filter(func(row): return row.has_meta("log_index"))
+		if not check(not rows.is_empty(), "a real executed action has a readable history row"):
+			continue
+		var row = rows[0]
+		var index = int(row.get_meta("log_index"))
+		var entry = table.model.snapshot.log.entries.filter(func(value): return int(value.index) == index)[0]
+		var body = row.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("history_body"))[0]
+		check(row is Button and row.layout_fits() and not row.accessibility_name.is_empty(), "history has a single accessible button with actor and body inside it")
+		if entry.type == "action":
+			check(body.text == table.model.describe(entry), "history preserves the existing authorized public description")
+		await capture_evidence("history-" + language)
+		await table._click(body.get_global_rect().get_center())
+		await process_frame
+		var dialogs = table.find_children("*", "Window", true, false).filter(func(window): return window.visible and int(window.get_meta("log_detail_index", -1)) == index)
+		if check(dialogs.size() == 1, "clicking the history body opens details of that exact log index"):
+			dialogs[0].confirmed.emit()
+			await process_frame
+		var buttons = table.find_children("*", "Button", true, false).filter(func(button): return button.has_meta("full_log"))
+		if check(buttons.size() == 1, "the compact history offers its full existing log"):
+			await table._click(buttons[0].get_global_rect().get_center())
+			await settled()
+			check(table.tab == "log" and table.content.get_children().any(func(child): return int(child.get_meta("log_index", -1)) == index), "full history retains the same index for ledger navigation")
+			await capture_evidence("history-full-" + language)
+			table._set_tab("choices")
+	check(int(table.model.summary().revision) == revision, "history inspection and full-log navigation send no action")
+	table.model.language = "ko"
+	table._render()
+	await settled()
+
+
+func history_anchor_probe() -> void:
+	var scroll = table.log_content.get_parent()
+	check(table.log_content.get_child_count() >= 5, "the legal graft fixture supplies a scrollable public history")
+	table.tools_ui.prefs.log_follow = false
+	scroll.scroll_vertical = 180
+	await process_frame
+	await process_frame
+	var rows = table.log_content.get_children().filter(func(row): return row.has_meta("log_index") and scroll.get_global_rect().intersects(row.get_global_rect()))
+	if check(not rows.is_empty(), "an older history row remains visible while reading"):
+		var index = int(rows[0].get_meta("log_index"))
+		var offset = rows[0].global_position.y - scroll.global_position.y
+		table._render_log(table.log_content)
+		for frame in range(4):
+			await process_frame
+		var restored = table.log_content.get_children().filter(func(row): return int(row.get_meta("log_index", -1)) == index)
+		check(restored.size() == 1 and absf(restored[0].global_position.y - scroll.global_position.y - offset) <= 2, "rebuilding wrapped history preserves the reader's row and offset when follow is off")
+	table.tools_ui.prefs.log_follow = true
+	table._render_log(table.log_content)
+	for frame in range(4):
+		await process_frame
+	check(scroll.scroll_vertical == 0, "enabling log follow returns to the newest row")
+	var old_index = int(table.log_content.get_children().filter(func(row): return row.has_meta("log_index"))[-1].get_meta("log_index"))
+	await table.tools_ui.focus_log(old_index)
+	for frame in range(4):
+		await process_frame
+	var targeted = table.content.get_children().filter(func(row): return int(row.get_meta("log_index", -1)) == old_index)
+	check(targeted.size() == 1 and table.content.get_parent().get_global_rect().intersects(targeted[0].get_global_rect()), "explicit ledger navigation to an older action wins over automatic log follow")
+	table._set_tab("choices")
 
 
 func point_reference(ref: String) -> void:
@@ -211,6 +304,7 @@ func run() -> void:
 		var seat = table.model.active_seat
 		check(not table.feedback.visible and table.feedback.receipt.is_empty(), "loading a game never replays an old applied receipt")
 		if scenario.kind == "unique" and not scenario.get("space_first", false):
+			await status_probe()
 			await pointer_probe(scenario)
 			# Feed only response states to the receipt component. The live game
 			# snapshot and actions are untouched by these error/unconfirmed checks.
@@ -222,6 +316,8 @@ func run() -> void:
 			check(int(table.model.summary().revision) == revision, "receipt response tests send no engine request")
 			table.feedback.reset()
 			check(table.feedback.receipt.is_empty() and table.feedback.heading.text.is_empty() and table.feedback.detail.text.is_empty(), "clearing feedback removes cached text as well as its visible state")
+		if scenario.kind == "graft":
+			await history_anchor_probe()
 		if scenario.kind == "held":
 			await table._choose_ref(str(scenario.card))
 			check(int(table.model.held_action().get("index", -1)) == int(scenario.index), "table holds the browser's exact choice")
@@ -327,6 +423,8 @@ func run() -> void:
 		check(int(table.model.summary().revision) == revision + int(scenario.steps), "expected actions reached the engine")
 		check_receipt(seat)
 		await capture_evidence("applied-" + str(scenario.kind) + ("-space-first" if scenario.get("space_first", false) else ""))
+		if scenario.kind == "unique" and not scenario.get("space_first", false):
+			await history_probe()
 		if scenario.has("partner"):
 			check(table.model.summary().get("decision", {}).get("kind") != "graft_partner", "the selected graft partner follows once")
 	if failed:

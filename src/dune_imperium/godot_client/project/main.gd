@@ -41,6 +41,7 @@ var status: Label
 var pointer_hint: Label
 var preview_hint: Label
 var round_label: Label
+var turn_label: Label
 var seats: VBoxContainer
 var hand: HBoxContainer
 var content: VBoxContainer
@@ -273,9 +274,17 @@ func _build_table() -> void:
 	var header = HBoxContainer.new()
 	root.add_child(header)
 	_label(header, "Dune: Imperium — Uprising", 18).add_theme_color_override("font_color", Color("d5b478"))
-	round_label = _label(header, "", 15)
-	round_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var context = VBoxContainer.new()
+	context.add_theme_constant_override("separation", 2)
+	context.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(context)
+	round_label = _label(context, "", 12)
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	round_label.add_theme_color_override("font_color", Color("a8b3bd"))
+	turn_label = _label(context, "", 15)
+	turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	turn_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	new_button = _button(header, model.native("새 게임"), _new_game)
 	new_button.disabled = true
 	load_button = _button(header, model.native("이어하기"), _show_saves)
@@ -373,9 +382,16 @@ func _build_table() -> void:
 	finish_button.disabled = true
 	var history = _panel(side_stack, 8)
 	var history_stack = VBoxContainer.new()
-	history_stack.custom_minimum_size.y = 132
+	history_stack.custom_minimum_size.y = 180
 	history.add_child(history_stack)
-	_label(history_stack, model.native("행동 기록"), 14)
+	var history_header = HBoxContainer.new()
+	history_stack.add_child(history_header)
+	_label(history_header, model.native("행동 기록"), 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var full_log = _button(history_header, model.native("전체 기록"), _set_tab.bind("log"))
+	full_log.custom_minimum_size.y = 24
+	full_log.add_theme_font_size_override("font_size", 11)
+	full_log.set_meta("full_log", true)
+	_compact_button(full_log)
 	feedback.setup(self, history_stack)
 	log_content = _scroll(history_stack)
 	status = _label(root, model.native("테이블을 준비하고 있습니다…"), 12)
@@ -721,6 +737,12 @@ func _render() -> void:
 			if int(item.seat) == model.active_seat and int(item.steps) > 0 and tools_ui.review.is_empty():
 				undo_button.disabled = false
 	round_label.text = model.native("%d 라운드  /  %s") % [int(summary.get("round_number", 0)), model.label("PHASE_LABELS", summary.get("phase", ""))]
+	var turn = model.turn_reading(not tools_ui.review.is_empty())
+	turn_label.text = str(turn.symbol) + " " + (model.seat_name(turn.seat) + " · " if turn.seat >= 0 else "") + str(turn.label)
+	turn_label.tooltip_text = turn_label.text
+	turn_label.set_meta("turn_kind", turn.kind)
+	turn_label.set_meta("turn_seat", turn.seat)
+	turn_label.add_theme_color_override("font_color", Model.SEAT_COLORS[turn.seat].lightened(0.35) if turn.seat >= 0 else Color("e4c280"))
 	_render_seats()
 	_clear(hand)
 	images = images.filter(func(image): return is_instance_valid(image))
@@ -774,25 +796,31 @@ func _render() -> void:
 func _render_seats() -> void:
 	_clear(seats)
 	tools_ui.seat_clock_labels.clear()
+	var turn = model.turn_reading(not tools_ui.review.is_empty())
+	var first = model.view().get("first_player")
+	if first == null and tools_ui.review.is_empty():
+		first = model.summary().get("first_player")
 	for player in model.view().get("players", []):
 		var seat = int(player.player)
 		var panel = _panel(seats, 6)
-		var style = _style(Color("1b1f21"), Model.SEAT_COLORS[seat])
-		style.border_width_left = 3
+		var current = turn.seat == seat
+		panel.set_meta("seat_panel", seat)
+		panel.set_meta("seat_current", current)
+		var style = _style(Model.SEAT_COLORS[seat].darkened(0.82) if current else Color("1b1f21"), Model.SEAT_COLORS[seat])
+		style.border_width_left = 4 if current else 2
+		style.border_width_top = 2 if current else 1
 		style.content_margin_left = 6
 		style.content_margin_right = 6
 		panel.add_theme_stylebox_override("panel", style)
 		var stack = VBoxContainer.new()
-		stack.add_theme_constant_override("separation", 4)
+		stack.add_theme_constant_override("separation", 3)
 		panel.add_child(stack)
 		var header = HBoxContainer.new()
 		stack.add_child(header)
-		var turn = model.summary().get("thinking")
-		var decision = model.summary().get("decision")
-		if turn == null and decision is Dictionary:
-			turn = decision.get("owner")
 		header.add_theme_constant_override("separation", 4)
-		var seat_name = _label(header, model.seat_name(seat) + (model.native(" · 선") if int(model.summary().get("first_player", -1)) == seat else "") + (model.native(" · 차례") if turn != null and int(turn) == seat else ""), 14)
+		var seat_name = _label(header, "", 14)
+		seat_name.text = model.seat_name(seat)
+		seat_name.set_meta("seat_name", seat)
 		seat_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		seat_name.clip_text = true
 		seat_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -802,15 +830,39 @@ func _render_seats() -> void:
 		points.add_theme_font_size_override("font_size", 17)
 		_compact_button(points)
 		points.set_meta("vp_seat", seat)
+		var badges = HBoxContainer.new()
+		badges.add_theme_constant_override("separation", 5)
+		stack.add_child(badges)
+		if current:
+			var badge = _label(badges, "", 11)
+			badge.text = str(turn.symbol) + " " + str(turn.label)
+			badge.set_meta("seat_turn", turn.kind)
+			badge.add_theme_color_override("font_color", Model.SEAT_COLORS[seat].lightened(0.45))
+		var marker = model.seat_marker(seat, not tools_ui.review.is_empty())
+		if not marker.is_empty():
+			var badge = _label(badges, model.native("나" if marker == "owned" else "보기"), 11)
+			badge.tooltip_text = model.native("내 좌석" if marker == "owned" else "보고 있는 좌석")
+			badge.set_meta("seat_view", marker)
+			badge.add_theme_color_override("font_color", Color("ced9e2"))
+		if first != null and int(first) == seat:
+			var badge = _label(badges, model.native("선"), 11)
+			badge.tooltip_text = model.native("선 플레이어")
+			badge.set_meta("seat_first", seat)
+		var clock_spacer = Control.new()
+		clock_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		badges.add_child(clock_spacer)
+		tools_ui.seat_clock_labels[seat] = _label(badges, "", 11)
+		tools_ui.seat_clock_labels[seat].tooltip_text = model.ui("clock.seat_title", {"name": model.seat_name(seat)})
+		tools_ui.seat_clock_labels[seat].set_meta("seat_clock", seat)
 		var portrait = HBoxContainer.new()
 		stack.add_child(portrait)
 		if player.leader_id != null:
 			var ref = str(player.get("leader_face_id") if player.get("leader_face_id") != null else player.leader_id)
 			var leader = Button.new()
-			leader.custom_minimum_size = Vector2(38, 52)
+			leader.custom_minimum_size = Vector2(42, 56)
 			leader.pressed.connect(_open_details.bind(ref))
 			portrait.add_child(leader)
-			var picture = _picture(leader, _image_path(model.entry(ref)), Vector2(34, 48))
+			var picture = _picture(leader, _image_path(model.entry(ref)), Vector2(38, 52))
 			picture.position = Vector2(2, 2)
 			picture.ref = ref
 			_bind_preview(leader, ref)
@@ -821,18 +873,18 @@ func _render_seats() -> void:
 		var name = model.name_of(str(player.leader_id)) if player.leader_id != null else model.native("지도자 선택 대기")
 		_label(info, name, 13).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var resources = HBoxContainer.new()
-		resources.add_theme_constant_override("separation", 7)
+		resources.add_theme_constant_override("separation", 8)
 		stack.add_child(resources)
 		for key in ["solari", "spice", "water"]:
 			_amount(resources, key, int(player.get("resources", {}).get(key, 0)))
 		_label(info, model.native("에이전트 %d · 책략 %d") % [int(player.agents_available), int(player.intrigue_card_count)], 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var spacer = Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		resources.add_child(spacer)
-		tools_ui.seat_clock_labels[seat] = _label(resources, "", 11)
 		var forces = _label(stack, model.native("수비대 %d · 교전 병력 %d") % [int(player.troops_garrison), int(player.troops_conflict)], 12)
 		forces.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_label(stack, model.native("벌레 %d · 전투력 %d%s") % [int(player.sandworms_conflict), int(player.combat_strength), model.native(" · 공개 완료") if player.has_revealed else ""], 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var strength = _label(stack, model.native("벌레 %d · 전투력 %d%s") % [int(player.sandworms_conflict), int(player.combat_strength), ""], 12)
+		strength.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		if player.has_revealed:
+			strength.text += " · " + model.native("공개 완료")
+		strength.set_meta("seat_strength", seat)
 		if tools_ui.prefs.get("seat_details", false):
 			var tracks_words: PackedStringArray = []
 			for faction in player.get("influence", {}):
@@ -857,11 +909,14 @@ func _amount(parent: Node, key: String, value: int) -> void:
 	parent.add_child(row)
 	var path = str(model.catalog.get("icons", {}).get(key, ""))
 	if not path.is_empty():
-		var picture = _picture(row, path, Vector2(17, 17))
+		var picture = _picture(row, path, Vector2(18, 18))
 		picture.tooltip_text = model.phrase("{" + key + "}")
 	else:
 		_label(row, model.phrase("{" + key + "}"), 12)
-	_label(row, str(value), 14)
+	var amount = _label(row, str(value), 16)
+	amount.set_meta("resource_amount", key)
+	amount.accessibility_name = model.phrase("{" + key + "}") + " " + str(value)
+	amount.add_theme_color_override("font_color", Color("f2e4c9") if value else Color("9ba8b2"))
 
 
 func _lock_controls() -> void:
@@ -1702,10 +1757,14 @@ func _check_layout() -> bool:
 		_smoke_fail("empty hand reserves card space or a populated hand is hidden")
 		return false
 	for panel in seats.get_children():
-		for button in panel.find_children("*", "Button", true, false):
-			if button.has_meta("vp_seat") and not panel.get_global_rect().encloses(button.get_global_rect()):
-				_smoke_fail("player name pushed the victory-point button outside its panel")
+		for item in panel.find_children("*", "Control", true, false):
+			if ["vp_seat", "seat_name", "seat_turn", "seat_view", "seat_clock", "resource_amount"].any(func(key): return item.has_meta(key)) and not panel.get_global_rect().grow(1).encloses(item.get_global_rect()):
+				_smoke_fail("player name, state, clock, resources or victory points leave their panel")
 				return false
+	for row in find_children("*", "Button", true, false):
+		if row.has_meta("history_row") and row.is_visible_in_tree() and not row.layout_fits():
+			_smoke_fail("history actor or action text leaves its row")
+			return false
 	for control in [board, market_scroll, content.get_parent(), finish_button, hand_panel]:
 		if not window_rect.encloses(control.get_global_rect()):
 			print("GODOT_LAYOUT_DIAGNOSTIC ", JSON.stringify({"control": str(control.name), "parent": str(control.get_parent().name), "rect": str(control.get_global_rect()), "viewport": str(size)}))

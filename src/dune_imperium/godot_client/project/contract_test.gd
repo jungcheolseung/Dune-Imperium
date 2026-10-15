@@ -151,6 +151,9 @@ func run() -> void:
 	await wait_ready()
 	if not check(table.model.active_seat == 1 and table.model.view().player == 1, "native perspective follows the actual human"):
 		return
+	var owner_badges = table.seats.find_children("*", "Label", true, false).filter(func(label): return label.get_meta("seat_view", "") == "owned")
+	if not check(owner_badges.size() == 1, "local hotseat and remote claims identify only this session's current own seat"):
+		return
 	for ref in table.model.view().get("private", {}).get("hand", []):
 		if not check(not str(ref).begins_with("player:3:"), "the other player's cards never render"):
 			return
@@ -243,6 +246,14 @@ func run() -> void:
 		check(false, "review cursor")
 		return
 	if not check(int(table.tools_ui.review.cursor) == 3 and table.model.actions().is_empty(), "review seeks without exposing live actions"):
+		return
+	if not check(table.turn_label.get_meta("turn_kind") == "review" and table.seats.get_children().all(func(panel): return not panel.get_meta("seat_current", false)), "a review never highlights the retained live summary's owner or finished state"):
+		return
+	var review_badges = table.seats.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("seat_view"))
+	if not check(review_badges.size() == 1 and review_badges[0].get_meta("seat_view") == "viewing", "an AI-only review names a viewed seat without claiming it"):
+		return
+	var first_badges = table.seats.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("seat_first"))
+	if not check(first_badges.size() == 1 and int(first_badges[0].get_meta("seat_first")) == int(table.model.view().first_player), "review's first-player badge uses the historical public view"):
 		return
 	pile = table._open_pile("Review private hand", table.model.view().get("private", {}).get("hand", []))
 	table._open_details(str(table.model.view().players[table.model.active_seat].leader_id))

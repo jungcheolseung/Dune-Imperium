@@ -130,6 +130,7 @@ func _initialize() -> void:
 	test_choice_reading()
 	test_feedback_context()
 	test_reference_feedback()
+	test_turn_reading()
 	if failures.is_empty():
 		print("GODOT_MODEL_TESTS_OK %d" % checks)
 		quit(0)
@@ -351,3 +352,41 @@ func test_reference_feedback() -> void:
 	check(model.ref_feedback(first).kind == "selected" and model.ref_feedback(first).hint == model.native("턴 종료로 선택을 확정합니다."), "a held table choice advertises turn-end confirmation, never false deselection")
 	model.adopt({"summary": {"game_id": "pointer", "revision": 2}, "view": {"player": 1}, "you": {"seats": []}, "actions": null})
 	check(model.ref_feedback(first).kind == "inspect" and model.ref_feedback(first).hint.is_empty(), "a changed readonly seat retains no private selection guidance")
+
+
+func test_turn_reading() -> void:
+	var model = Model.new()
+	model.adopt(JSON.parse_string(JSON.stringify({"summary": {"game_id": "turn", "revision": 0, "decision": {"owner": 0}}, "view": {"player": 2}, "you": {"seats": [2]}})))
+	check(model.turn_reading().seat == 0 and model.turn_reading().kind == "decision", "public decision owner is normalized from JSON, independently of the viewed seat")
+	model.snapshot.summary.thinking = 1.0
+	check(model.turn_reading().seat == 1 and model.turn_reading().kind == "thinking", "the public thinking seat is distinguished from a pending decision")
+	model.snapshot.summary.thinking = null
+	model.snapshot.summary.decision = null
+	model.snapshot.summary.confirmation = 3.0
+	check(model.turn_reading().seat == 3 and model.turn_reading().kind == "confirmation", "a server confirmation remains visible even without a decision")
+	for language in ["ko", "en"]:
+		model.language = language
+		check(model.turn_reading().label == ("확정 대기" if language == "ko" else "Confirm"), "confirmation chrome is localized in " + language)
+	model.snapshot.summary.finished = true
+	check(model.turn_reading().kind == "finished" and model.turn_reading().seat == -1, "a finished game does not highlight a stale live owner")
+	check(model.turn_reading(true).kind == "review" and model.turn_reading(true).seat == -1, "review never misrepresents retained live finished/decision fields as historical turn data")
+	model.snapshot.summary.finished = false
+	model.snapshot.summary.confirmation = null
+	check(model.turn_reading().kind == "idle" and model.turn_reading().seat == -1, "an absent public owner invents no active seat")
+	model.snapshot.summary.decision = {"owner": 9}
+	check(model.turn_reading().seat == -1, "an invalid public seat never indexes the seat palette")
+	var before = JSON.stringify(model.snapshot)
+	model.turn_reading()
+	check(before == JSON.stringify(model.snapshot) and model.active_seat == 2 and model.actions().is_empty(), "turn presentation cannot change the snapshot, view or legal choices")
+	model.owned_seats = [1, 2]
+	check(model.seat_marker(2) == "owned" and model.seat_marker(1).is_empty(), "a local multi-human table marks only the viewed seat as You")
+	model.server_info.access = "remote"
+	check(model.seat_marker(1) == "owned" and model.seat_marker(2) == "owned", "a remote table identifies every actually claimed seat")
+	check(model.seat_marker(2, true) == "viewing" and model.seat_marker(1, true).is_empty(), "review distinguishes the viewing perspective from live seat ownership")
+	model.owned_seats.clear()
+	check(model.seat_marker(2) == "viewing", "a readonly perspective is not labelled as an owned seat")
+	model.snapshot.summary.seats = ["human", "app_ai", "human", "app_ai"]
+	model.words = {"ui": {"common.seat": {"ko": "플레이어{{seat}}", "en": "Player {{seat}}"}}}
+	check(model.seat_name(2) == "Player 2", "viewing another human never renames that person You")
+	model.active_seat = 1
+	check(model.seat_name(1) == "AI 1", "an AI-only review does not rename its viewed AI You")

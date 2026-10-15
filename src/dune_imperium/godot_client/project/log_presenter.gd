@@ -1,10 +1,14 @@
 extends RefCounted
 
+const HistoryRow = preload("res://history_row.gd")
+const Model = preload("res://model.gd")
 var table: Control
 
 
 func render(parent: VBoxContainer) -> void:
 	var scroll = parent.get_parent()
+	var serial = int(parent.get_meta("log_render_serial", 0)) + 1
+	parent.set_meta("log_render_serial", serial)
 	var anchor = -1
 	var offset = 0.0
 	for child in parent.get_children():
@@ -14,12 +18,20 @@ func render(parent: VBoxContainer) -> void:
 			break
 	table._clear(parent)
 	var entries = table.model.snapshot.get("log", {}).get("entries", [])
+	var shown = 0
 	for index in range(entries.size() - 1, maxi(-1, -1 if parent == table.content else entries.size() - 41), -1):
 		var entry = entries[index]
 		var text = ""
+		var heading = table.model.native("게임 진행")
+		var actor = -1
 		match entry.get("type"):
-			"action": text = table.model.seat_name(int(entry.get("actor", -1))) + " · " + table.model.describe(entry)
-			"undo": text = table.model.ui("panels.undo_row", {"seat": int(entry.get("seat", -1)), "count": int(entry.get("count", 0))})
+			"action":
+				actor = int(entry.get("actor", -1))
+				heading = table.model.seat_name(actor)
+				text = table.model.describe(entry)
+			"undo":
+				heading = table.model.native("되돌리기")
+				text = table.model.ui("panels.undo_row", {"seat": int(entry.get("seat", -1)), "count": int(entry.get("count", 0))})
 			_:
 				var names: PackedStringArray = []
 				for event in entry.get("events", []):
@@ -27,38 +39,49 @@ func render(parent: VBoxContainer) -> void:
 				text = " · ".join(names)
 		if text.is_empty():
 			continue
+		var full_text = (heading + " · " if entry.get("type") == "action" else "") + text
 		if entry.get("undone", false):
-			text += table.model.ui("panels.undone_suffix")
-		var line = table._label(parent, text, 12)
+			full_text += table.model.ui("panels.undone_suffix")
+		var line = HistoryRow.new()
+		parent.add_child(line)
+		var color = Model.SEAT_COLORS[actor] if actor >= 0 and actor < Model.SEAT_COLORS.size() else Color("adbac5")
+		line.setup(table, heading, text, color, entry.get("undone", false), shown == 0, full_text)
+		line.set_meta("history_row", true)
+		line.set_meta("log_actor", actor)
 		line.set_meta("log_index", int(entry.get("index", -1)))
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		line.mouse_filter = Control.MOUSE_FILTER_STOP
-		line.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		if entry.get("undone", false):
-			line.modulate.a = 0.5
-		line.gui_input.connect(func(event):
-			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-				details(entry)
-		)
+		line.set_meta("log_undone", entry.get("undone", false))
+		line.pressed.connect(details.bind(entry))
+		shown += 1
 		for value in entry.get("arguments", {}).values():
 			if value is String and not table._image_path(table.model.entry(value)).is_empty():
 				table._bind_preview(line, value)
 				break
-	var restore = func():
-		if not is_instance_valid(scroll):
-			return
-		if table.tools_ui.prefs.get("log_follow", true):
-			scroll.scroll_vertical = 0
-		else:
-			for child in parent.get_children():
-				if int(child.get_meta("log_index", -2)) == anchor:
-					scroll.scroll_vertical += roundi(child.global_position.y - scroll.global_position.y - offset)
-					break
-	restore.call_deferred()
+	if shown == 0:
+		table._label(parent, table.model.native("아직 행동 기록이 없습니다."), 12).add_theme_color_override("font_color", Color("9eabb6"))
+	_restore_scroll(parent, scroll, serial, anchor, offset)
+
+
+func _restore_scroll(parent: VBoxContainer, scroll: ScrollContainer, serial: int, anchor: int, offset: float) -> void:
+	# Wrapped button labels set their heights during container layout, after
+	# deferred calls. Restore against settled rows, and discard older renders.
+	await table.get_tree().process_frame
+	await table.get_tree().process_frame
+	if not is_instance_valid(parent) or not is_instance_valid(scroll) or int(parent.get_meta("log_render_serial", -1)) != serial:
+		return
+	if parent == table.content and table.tab != "log":
+		return
+	if table.tools_ui.prefs.get("log_follow", true):
+		scroll.scroll_vertical = 0
+	else:
+		for child in parent.get_children():
+			if int(child.get_meta("log_index", -2)) == anchor:
+				scroll.scroll_vertical += roundi(child.global_position.y - scroll.global_position.y - offset)
+				break
 
 
 func details(entry: Dictionary) -> Window:
 	var parts = table.tools_ui._dialog(table.model.native("행동 기록"))
+	parts[0].set_meta("log_detail_index", int(entry.get("index", -1)))
 	if entry.get("type") == "action":
 		table._label(parts[1], table.model.seat_name(int(entry.get("actor", -1))) + "\n" + table.model.describe(entry), 18).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for event in entry.get("events", []):

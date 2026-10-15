@@ -557,7 +557,13 @@ func _event_names(entry: Dictionary) -> PackedStringArray:
 
 func focus_log(index: int) -> void:
 	table._set_tab("log")
+	# Explicit ledger navigation wins over the log's pending follow/restore.
+	var serial = int(table.content.get_meta("log_render_serial", 0)) + 1
+	table.content.set_meta("log_render_serial", serial)
 	await get_tree().process_frame
+	await get_tree().process_frame
+	if table.tab != "log" or int(table.content.get_meta("log_render_serial", -1)) != serial:
+		return
 	for line in table.content.get_children():
 		if int(line.get_meta("log_index", -1)) == index:
 			table.content.get_parent().ensure_control_visible(line)

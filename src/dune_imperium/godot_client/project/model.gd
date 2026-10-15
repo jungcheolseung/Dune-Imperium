@@ -37,6 +37,34 @@ func view() -> Dictionary:
 	return data if data is Dictionary else {}
 
 
+func turn_reading(reviewing = false) -> Dictionary:
+	# Review snapshots retain live summary fields; they cannot name a past owner.
+	if reviewing:
+		return {"seat": -1, "kind": "review", "label": native("다시보기"), "symbol": "◀"}
+	var state = summary()
+	if state.get("finished", false):
+		return {"seat": -1, "kind": "finished", "label": native("게임 종료"), "symbol": "✓"}
+	var seat = state.get("thinking")
+	var kind = "thinking"
+	if seat == null:
+		seat = state.get("confirmation")
+		kind = "confirmation"
+	if seat == null:
+		var decision = state.get("decision")
+		seat = decision.get("owner") if decision is Dictionary else null
+		kind = "decision"
+	if seat == null or int(seat) < 0 or int(seat) >= SEAT_COLORS.size():
+		return {"seat": -1, "kind": "idle", "label": native("차례 대기"), "symbol": "·"}
+	return {"seat": int(seat), "kind": kind, "label": native({"thinking": "생각 중", "confirmation": "확정 대기", "decision": "선택 중"}[kind]), "symbol": {"thinking": "●", "confirmation": "✓", "decision": "▶"}[kind]}
+
+
+func seat_marker(seat: int, reviewing = false) -> String:
+	# A local hotseat table owns several people, but views only one as "You".
+	if not reviewing and seat in owned_seats and (server_info.get("access", "open") == "remote" or seat == active_seat):
+		return "owned"
+	return "viewing" if seat == active_seat else ""
+
+
 func actions() -> Array:
 	var payload = snapshot.get("actions")
 	return payload.get("actions", []) if payload is Dictionary else []
@@ -77,9 +105,10 @@ func seat_name(seat: int) -> String:
 		if name != null and not str(name).is_empty():
 			return str(name)
 	var kinds = summary().get("seats", [])
+	var mine = seat == active_seat and seat in owned_seats
 	if kinds.size() > seat and seat >= 0 and kinds[seat] == "human":
-		return (native("나") if language == "ko" else "You") if seat == active_seat else ui("common.seat", {"seat": seat})
-	return (native("나") if language == "ko" else "You") if seat == active_seat else (native("앱 AI %d") if language == "ko" else "AI %d") % seat
+		return (native("나") if language == "ko" else "You") if mine else ui("common.seat", {"seat": seat})
+	return (native("나") if language == "ko" else "You") if mine else (native("앱 AI %d") if language == "ko" else "AI %d") % seat
 
 
 func ui(key: String, values: Dictionary = {}) -> String:
