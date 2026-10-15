@@ -16,7 +16,7 @@ func setup(owner_table: Control) -> void:
 	scouts_panel = table._panel(table.board, 10)
 	scouts_panel.z_index = 12
 	scouts_panel.hide()
-	scouts_button = table._button(table.board.get_parent().get_child(0), table.model.native("스카웃"), toggle_scouts)
+	scouts_button = table._button(table.board_tools, table.model.native("스카웃"), toggle_scouts)
 	scouts_button.custom_minimum_size.y = 28
 	scouts_button.hide()
 

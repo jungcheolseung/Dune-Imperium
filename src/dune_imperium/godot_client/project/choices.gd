@@ -112,10 +112,14 @@ func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
 	panel.add_child(body)
 	var title = table._label(body, table.model.label("ACTION_LABELS", str(actions[0].action_id)), 15)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var row = HBoxContainer.new()
+	# Stack amount and submit controls so long localized labels cannot force
+	# the entire decision column beyond the viewport's width.
+	var row = VBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
 	body.add_child(row)
 	var select = OptionButton.new()
 	select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	select.custom_minimum_size.y = 34
 	select.set_meta("quantity_actions", actions)
 	select.set_meta("quantity_field", field)
 	var indices: Array = []
@@ -135,6 +139,7 @@ func _quantity(actions: Array, field: String, descriptions: Dictionary) -> void:
 	var submit: Button
 	if not auction:
 		submit = table._button(row, table.model.native("선택 / Choose"), func(): table._choose_action(actions[select.selected], expected))
+		submit.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var update = func():
 		var action = actions[select.selected]
 		if submit != null:

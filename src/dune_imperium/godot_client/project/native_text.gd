@@ -2,6 +2,12 @@ extends RefCounted
 
 # Native chrome only. Card names, player names and rule text use the catalog.
 const EN = {
+	"수비대 %d · 교전 병력 %d": "Garrison %d · Troops %d",
+	"벌레 %d · 전투력 %d%s": "Worms %d · Strength %d%s",
+	"가능": "Ready",
+	"+ 함께": "+ Pair",
+	"× 불가": "× Unavailable",
+	"✓ 선택": "✓ Selected",
 	"새 게임을 눌러 출발하세요": "Choose New Game to begin",
 	"서버에 연결하지 못했습니다. 다시 실행해 주세요.": "Cannot connect to the server. Please restart.",
 	"새 게임": "New Game",

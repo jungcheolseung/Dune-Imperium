@@ -59,6 +59,8 @@ var preview: PanelContainer
 var hover_source: Control
 var hover_serial = 0
 var hand_panel: PanelContainer
+var hand_scroll: ScrollContainer
+var board_tools: HBoxContainer
 
 
 func _ready() -> void:
@@ -220,6 +222,14 @@ func _button(parent: Node, text: String, callback: Callable) -> Button:
 	return button
 
 
+func _compact_button(button: Button) -> void:
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var compact = button.get_theme_stylebox(state).duplicate()
+		compact.content_margin_left = 6
+		compact.content_margin_right = 6
+		button.add_theme_stylebox_override(state, compact)
+
+
 func _native_meta(node: Node, text: String) -> void:
 	if Model.NativeText.EN.has(text):
 		node.set_meta("native_text", text)
@@ -289,12 +299,6 @@ func _build_table() -> void:
 	var board_column = VBoxContainer.new()
 	board_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	center.add_child(board_column)
-	var tools = HBoxContainer.new()
-	board_column.add_child(tools)
-	_label(tools, model.native("아라키스"), 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var reset = _button(tools, model.native("전체 보기"), _reset_board)
-	reset.custom_minimum_size.y = 28
-	reset.tooltip_text = model.native("휠: 확대·축소 / 가운데 버튼 드래그: 이동")
 	board = Board.new()
 	board.model = model
 	board.api = api
@@ -314,15 +318,21 @@ func _build_table() -> void:
 	own_line = _label(hand_heading, model.native("내 손패"), 14)
 	own_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	own_line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	board_tools = HBoxContainer.new()
+	hand_heading.add_child(board_tools)
+	var reset = _button(board_tools, model.native("전체 보기"), _reset_board)
+	reset.custom_minimum_size.y = 28
+	reset.tooltip_text = model.native("휠: 확대·축소 / 가운데 버튼 드래그: 이동")
 	var deck_button = _button(hand_heading, model.native("덱"), func(): _open_pile(model.native("내 덱 구성 · 순서 비공개"), model.view().get("private", {}).get("deck_cards", []), false, ["private", "deck_cards"]))
 	deck_button.custom_minimum_size.y = 26
-	var hand_scroll = ScrollContainer.new()
+	hand_scroll = ScrollContainer.new()
 	hand_scroll.custom_minimum_size.y = 190
 	hand_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	hand_stack.add_child(hand_scroll)
 	hand = HBoxContainer.new()
 	hand.add_theme_constant_override("separation", 6)
 	hand_scroll.add_child(hand)
+	hand_scroll.resized.connect(_size_table_cards)
 	var shared_panel = _panel(center, 6)
 	market_scroll = ScrollContainer.new()
 	market_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -344,7 +354,7 @@ func _build_table() -> void:
 		var button = _button(tabs, item[1], _set_tab.bind(item[0]))
 		button.custom_minimum_size.y = 30
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	selection = _label(stack, model.native("카드를 선택하세요"), 14)
+	selection = _label(stack, model.native("카드를 선택하세요"), 18)
 	selection.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	selection.add_theme_color_override("font_color", Color("e8c78a"))
 	content = _scroll(stack)
@@ -353,10 +363,12 @@ func _build_table() -> void:
 	finish_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	finish_button.add_theme_font_size_override("font_size", 18)
 	finish_button.add_theme_stylebox_override("normal", _style(Color("514330"), Color("d7b178")))
+	finish_button.add_theme_stylebox_override("hover", _style(Color("705936"), Color("f1d39b")))
+	finish_button.add_theme_stylebox_override("pressed", _style(Color("8a6839"), Color("f1d39b")))
 	finish_button.disabled = true
 	var history = _panel(side_stack, 8)
 	var history_stack = VBoxContainer.new()
-	history_stack.custom_minimum_size.y = 168
+	history_stack.custom_minimum_size.y = 132
 	history.add_child(history_stack)
 	_label(history_stack, model.native("행동 기록"), 14)
 	log_content = _scroll(history_stack)
@@ -374,11 +386,31 @@ func _fit_columns() -> void:
 	seat_scroll.custom_minimum_size.x = widths.seats
 	side_stack.custom_minimum_size.x = widths.choices
 	market_scroll.custom_minimum_size.x = widths.market
+	_size_table_cards()
 	for window in find_children("*", "Window", true, false):
 		if window.visible and not window.is_queued_for_deletion():
 			var extent = Vector2i(size) - window.size
 			window.position = Vector2i(clampi(window.position.x, 8, maxi(8, extent.x - 8)), clampi(window.position.y, 32, maxi(32, extent.y - 8)))
 	_hide_preview()
+
+
+func _size_table_cards() -> void:
+	if hand_scroll == null:
+		return
+	var dimensions = Vector2(144, 238) if size.y >= 980 else Vector2(128, 214) if size.y >= 840 else Vector2(112, 184)
+	# Keep a normal five-card hand in view when the board column can fit it.
+	# Larger hands continue to scroll rather than shrinking below 112 pixels.
+	if hand_scroll.size.x > 0:
+		dimensions.x = clampf(floorf((hand_scroll.size.x - 24) / 5), 112, dimensions.x)
+	hand_scroll.visible = hand.get_child_count() > 0
+	hand_scroll.custom_minimum_size.y = dimensions.y + 12 if hand_scroll.visible else 0
+	for card in hand.get_children():
+		if card.has_meta("table_card"):
+			card.custom_minimum_size = dimensions if card.get_meta("table_card") == "hand" else dimensions * 0.9
+	var width = maxi(68, floori((market_scroll.custom_minimum_size.x - 12) / 2))
+	for card in market_content.find_children("*", "Button", true, false):
+		if card.get_meta("table_card", "") == "market":
+			card.custom_minimum_size = Vector2(width, width * 1.42 + 42)
 
 
 func _build_preview() -> void:
@@ -619,15 +651,16 @@ func _render() -> void:
 	if decision is Dictionary and decision.get("persuasion") != null:
 		own_line.text += model.native("    /    남은 설득력 %d") % int(decision.persuasion)
 	for ref in layout_ui.ordered(hand_cards, "hand"):
-		_card(hand, ref, 112, 180)
+		_card(hand, ref, 128, 214).set_meta("table_card", "hand")
 	if not intrigues.is_empty():
 		var separator = VSeparator.new()
 		hand.add_child(separator)
 		for ref in layout_ui.ordered(intrigues, "intrigue_cards"):
-			_card(hand, ref, 98, 156)
+			_card(hand, ref, 116, 192).set_meta("table_card", "intrigue")
 	hand_panel.visible = not summary.get("finished", false) or not tools_ui.review.is_empty()
 	_render_market()
 	expansions.render()
+	_size_table_cards()
 	_render_log(log_content)
 	board.animations = tools_ui.prefs.get("animations", true) and not tools_ui.prefs.get("reduced_motion", false)
 	board.refresh()
@@ -661,12 +694,14 @@ func _render_seats() -> void:
 	tools_ui.seat_clock_labels.clear()
 	for player in model.view().get("players", []):
 		var seat = int(player.player)
-		var panel = _panel(seats, 8)
+		var panel = _panel(seats, 6)
 		var style = _style(Color("1b1f21"), Model.SEAT_COLORS[seat])
 		style.border_width_left = 3
+		style.content_margin_left = 6
+		style.content_margin_right = 6
 		panel.add_theme_stylebox_override("panel", style)
 		var stack = VBoxContainer.new()
-		stack.add_theme_constant_override("separation", 5)
+		stack.add_theme_constant_override("separation", 4)
 		panel.add_child(stack)
 		var header = HBoxContainer.new()
 		stack.add_child(header)
@@ -674,20 +709,26 @@ func _render_seats() -> void:
 		var decision = model.summary().get("decision")
 		if turn == null and decision is Dictionary:
 			turn = decision.get("owner")
-		_label(header, model.seat_name(seat) + (model.native(" · 선") if int(model.summary().get("first_player", -1)) == seat else "") + (model.native(" · 차례") if turn != null and int(turn) == seat else ""), 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		header.add_theme_constant_override("separation", 4)
+		var seat_name = _label(header, model.seat_name(seat) + (model.native(" · 선") if int(model.summary().get("first_player", -1)) == seat else "") + (model.native(" · 차례") if turn != null and int(turn) == seat else ""), 14)
+		seat_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		seat_name.clip_text = true
+		seat_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		seat_name.tooltip_text = seat_name.text
 		var points = _button(header, model.native("%d점") % int(player.victory_points), tools_ui.vp_ledger.bind(seat))
 		points.custom_minimum_size.y = 26
 		points.add_theme_font_size_override("font_size", 17)
+		_compact_button(points)
 		points.set_meta("vp_seat", seat)
 		var portrait = HBoxContainer.new()
 		stack.add_child(portrait)
 		if player.leader_id != null:
 			var ref = str(player.get("leader_face_id") if player.get("leader_face_id") != null else player.leader_id)
 			var leader = Button.new()
-			leader.custom_minimum_size = Vector2(58, 82)
+			leader.custom_minimum_size = Vector2(38, 52)
 			leader.pressed.connect(_open_details.bind(ref))
 			portrait.add_child(leader)
-			var picture = _picture(leader, _image_path(model.entry(ref)), Vector2(54, 78))
+			var picture = _picture(leader, _image_path(model.entry(ref)), Vector2(34, 48))
 			picture.position = Vector2(2, 2)
 			picture.ref = ref
 			_bind_preview(leader, ref)
@@ -699,13 +740,17 @@ func _render_seats() -> void:
 		_label(info, name, 13).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var resources = HBoxContainer.new()
 		resources.add_theme_constant_override("separation", 7)
-		info.add_child(resources)
+		stack.add_child(resources)
 		for key in ["solari", "spice", "water"]:
 			_amount(resources, key, int(player.get("resources", {}).get(key, 0)))
-		_label(info, model.native("에이전트 %d · 책략 %d") % [int(player.agents_available), int(player.intrigue_card_count)], 12)
-		_label(stack, model.native("수비대 %d  /  교전 병력 %d · 벌레 %d") % [int(player.troops_garrison), int(player.troops_conflict), int(player.sandworms_conflict)], 12)
-		tools_ui.seat_clock_labels[seat] = _label(header, "", 11)
-		_label(stack, model.native("전투력 %d%s") % [int(player.combat_strength), model.native(" · 공개 완료") if player.has_revealed else ""], 13)
+		_label(info, model.native("에이전트 %d · 책략 %d") % [int(player.agents_available), int(player.intrigue_card_count)], 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var spacer = Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		resources.add_child(spacer)
+		tools_ui.seat_clock_labels[seat] = _label(resources, "", 11)
+		var forces = _label(stack, model.native("수비대 %d · 교전 병력 %d") % [int(player.troops_garrison), int(player.troops_conflict)], 12)
+		forces.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_label(stack, model.native("벌레 %d · 전투력 %d%s") % [int(player.sandworms_conflict), int(player.combat_strength), model.native(" · 공개 완료") if player.has_revealed else ""], 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if tools_ui.prefs.get("seat_details", false):
 			var tracks_words: PackedStringArray = []
 			for faction in player.get("influence", {}):
@@ -720,7 +765,8 @@ func _render_seats() -> void:
 			var button = _button(piles, "%s %d" % [group[1], refs.size()], _open_pile.bind(model.seat_name(seat) + " · " + group[1], refs))
 			button.custom_minimum_size.y = 25
 			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			button.add_theme_font_size_override("font_size", 12)
+			button.add_theme_font_size_override("font_size", 11)
+			_compact_button(button)
 
 
 func _amount(parent: Node, key: String, value: int) -> void:
@@ -786,36 +832,76 @@ func _card(parent: Node, ref: String, width: int, height: int, playable = true) 
 	var legal = playable and model.legal_refs().has(ref)
 	var partner = playable and not model.selected_card.is_empty() and model.can_pair(model.selected_card, ref)
 	var selected = model.picked_ref(ref)
-	var style = _style(Color("24211c"), Color("ebc87e") if legal else Color("3d4141"))
+	var border = Color("c4a268") if legal else Color("3d4141")
+	var background = Color("222526")
+	var marker = ""
+	if legal:
+		marker = model.native("가능")
 	if partner and not legal:
-		style.border_color = Color("84acbe")
+		border = Color("84acbe")
+		marker = model.native("+ 함께")
+	if not blocked.is_empty() and playable:
+		marker = model.native("× 불가")
 	if selected:
-		style.border_color = Color.WHITE
-		style.set_border_width_all(3)
-		style.bg_color = Color("514330")
-	button.add_theme_stylebox_override("normal", style)
+		border = Color("f4d292")
+		background = Color("514330")
+		marker = model.native("✓ 선택")
+	for state in ["normal", "hover", "pressed", "focus"]:
+		var style = _style(background.lightened(0.12) if state in ["hover", "pressed"] else background, border.lightened(0.2) if state == "hover" else border)
+		style.set_border_width_all(3 if selected or state == "focus" else 2 if legal or partner else 1)
+		button.add_theme_stylebox_override(state, style)
 	parent.add_child(button)
-	var path = _image_path(model.entry(ref))
-	var picture = _picture(button, path, Vector2(width - 8, height - (30 if width >= 90 else 8)))
-	picture.position = Vector2(4, 4)
+	var entry = model.entry(ref)
+	var path = _image_path(entry)
+	button.face = _picture(button, path, Vector2.ZERO)
 	if playable and not blocked.is_empty():
-		picture.modulate.a = 0.45
-		button.tooltip_text = model.phrase(model.localized(blocked, "reason"))
-	if width >= 90:
-		var caption = _label(button, model.name_of(ref), 12)
-		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		caption.position = Vector2(5, height - 25)
-		caption.size = Vector2(width - 10, 22)
-		caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		button.face.modulate.a = 0.65
+		button.tooltip_text = model.name_of(ref) + "\n" + model.phrase(model.localized(blocked, "reason"))
+	else:
+		button.tooltip_text = model.name_of(ref)
+	button.caption = _label(button, model.name_of(ref), 13 if width >= 90 else 12)
+	button.caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	button.caption.max_lines_visible = 2
+	button.caption.clip_text = true
+	button.caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	button.caption.set_meta("card_caption", ref)
 	if path.is_empty():
-		var fallback = _label(button, model.name_of(ref) + "\n" + _entry_words(model.entry(ref), ref), 12)
-		fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		fallback.position = Vector2(8, 12)
-		fallback.size = Vector2(width - 16, height - 42)
-		fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		fallback.clip_text = true
+		button.fallback = _label(button, _entry_words(entry, ref), 12)
+		button.fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.fallback.clip_text = true
+	if not marker.is_empty():
+		_card_badge(button, marker, false, Color("f4d292") if selected else Color("b6d3df") if partner and not legal else Color("e5dcc8"))
+	if model.section_id(ref)[0] == "cards" and entry.get("cost") != null:
+		var cost = _card_badge(button, str(int(entry.cost)), true, Color("bee3f5"))
+		cost.tooltip_text = model.native("인쇄 비용: ") + model.phrase("{persuasion:%d}" % int(entry.cost))
+		button.tooltip_text += "\n" + cost.tooltip_text
+	button.resized.connect(button.arrange_face)
+	button.arrange_face()
 	return button
+
+
+func _card_badge(parent: Button, text: String, right: bool, color: Color) -> Label:
+	var badge = _label(parent, text, 11)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_meta("card_cost" if right else "card_state", text)
+	badge.add_theme_color_override("font_color", color)
+	var style = _style(Color("17222bed"), color.darkened(0.55))
+	style.content_margin_left = 5
+	style.content_margin_right = 5
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	style.set_corner_radius_all(3)
+	badge.add_theme_stylebox_override("normal", style)
+	badge.position = Vector2(5, 5)
+	if right:
+		badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		badge.position += Vector2(-5, 5)
+	return badge
 
 
 func _texture_ready(path: String, texture: Texture2D) -> void:
@@ -912,6 +998,7 @@ func _action_button(action: Dictionary, description = "", zone = "") -> void:
 		_picture(row, _image_path(model.entry(ref)), Vector2(44, 62))
 	var apply = _apply_placement if action.action_id == "agent_turn" else _choose_action
 	var button = _button(row, (description if not description.is_empty() else model.live_description(action)) + model.choice_suffix(zone), apply.bind(action, model.signature()))
+	button.add_theme_font_size_override("font_size", 15)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -972,9 +1059,11 @@ func _render_choices(filtered: Array = []) -> void:
 	_clear(content)
 	finish_button.disabled = true
 	finish_button.text = model.finish_text()
-	selection.text = model.native("카드와 칸을 선택해 에이전트를 보내세요") if not model.placements().is_empty() else model.prompt()
+	selection.text = model.native("카드와 칸을 선택해 에이전트를 보내세요") if not model.placements().is_empty() else model.prompt() if not model.prompt().is_empty() else model.native("다른 플레이어의 차례입니다")
 	if not model.selected_card.is_empty():
 		selection.text = model.name_of(model.selected_card) + (" + " + model.name_of(model.selected_partner) if not model.selected_partner.is_empty() else "") + "  →  " + (model.name_of(model.selected_space) if not model.selected_space.is_empty() else model.native("칸을 선택하세요"))
+	elif not model.selected_space.is_empty():
+		selection.text = model.name_of(model.selected_space) + "  →  " + model.native("카드를 선택하세요")
 	var held = model.held_action()
 	if not held.is_empty():
 		finish_button.disabled = busy
@@ -994,8 +1083,6 @@ func _render_choices(filtered: Array = []) -> void:
 	if not tools_ui.review.is_empty():
 		tools_ui.render_review(content)
 		return
-	var prompt = _label(content, model.prompt() if not model.prompt().is_empty() else model.native("다른 플레이어의 차례입니다"), 18)
-	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	expansions.decision_header(content)
 	if model.summary().get("confirmation") == model.active_seat:
 		_label(content, model.native("선택을 바꾸려면 되돌리기를, 마치려면 턴 종료를 누르세요."), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1012,15 +1099,21 @@ func _render_choices(filtered: Array = []) -> void:
 			_render()
 		)
 		list_toggle.set_meta("action_list_toggle", true)
+		list_toggle.custom_minimum_size.y = 30
+		list_toggle.add_theme_font_size_override("font_size", 12)
+		list_toggle.flat = true
 		var picked = HFlowContainer.new()
 		content.add_child(picked)
 		for part in ["card", "partner", "space"]:
 			var ref = model.get("selected_" + part)
 			if not str(ref).is_empty():
-				_button(picked, model.name_of(ref) + " ×", func():
+				var chip = _button(picked, model.name_of(ref) + " ×", func():
 					model.clear_pick(part)
 					_render()
-				).text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+				)
+				chip.custom_minimum_size = Vector2(minf(230, maxf(90, chip.get_minimum_size().x)), 34)
+				chip.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+				chip.set_meta("clear_pick", part)
 		if full_list:
 			for action in model.placements():
 				_action_button(action)
@@ -1048,34 +1141,36 @@ func _render_choices(filtered: Array = []) -> void:
 func _render_market() -> void:
 	_clear(market_content)
 	var heading = HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 4)
 	market_content.add_child(heading)
-	_label(heading, model.native("공용 카드"), 16).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_label(heading, model.native("공용 카드"), 14).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var expand = _button(heading, model.native("크게"), func(): _open_pile(model.native("임페리움 열 · 살펴보기"), model.view().get("imperium_row", [])))
 	expand.custom_minimum_size.y = 26
 	expand.add_theme_font_size_override("font_size", 12)
+	_compact_button(expand)
+	expand.set_meta("market_expand", true)
 	var decision = model.summary().get("decision")
 	if decision is Dictionary and decision.get("persuasion") != null:
 		_label(market_content, model.native("설득력 %d 남음") % int(decision.persuasion), 14)
 	_label(market_content, model.native("임페리움 열"), 13)
 	var refs = model.view().get("imperium_row", [])
-	var width = 84 if size.x >= 1340 else 76
+	var width = maxi(68, floori((market_scroll.custom_minimum_size.x - 12) / 2))
 	for index in range(0, refs.size(), 2):
 		var row = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
 		market_content.add_child(row)
 		for offset in range(mini(2, refs.size() - index)):
-			_card(row, refs[index + offset], width, int(width * 1.4) + 8)
+			_card(row, refs[index + offset], width, int(width * 1.42) + 42).set_meta("table_card", "market")
 	_label(market_content, model.native("예비 더미"), 13)
 	for reserve in model.view().get("reserve_stacks", []):
 		var row = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 5)
 		market_content.add_child(row)
 		var ref = str(reserve[0])
-		_card(row, ref, width, int(width * 1.4) + 8)
+		_card(row, ref, width, int(width * 1.42) + 42).set_meta("table_card", "market")
 		var text = VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(text)
-		_label(text, model.name_of(ref), 12).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_label(text, model.native("%d장") % int(reserve[1]), 12)
 	_label(market_content, model.native("마우스를 올려 크게 보기"), 11)
 
@@ -1542,8 +1637,17 @@ func _move_pointer(point: Vector2) -> void:
 
 func _check_layout() -> bool:
 	var window_rect = Rect2(Vector2.ZERO, size)
+	if hand_scroll.visible != (hand.get_child_count() > 0):
+		_smoke_fail("empty hand reserves card space or a populated hand is hidden")
+		return false
+	for panel in seats.get_children():
+		for button in panel.find_children("*", "Button", true, false):
+			if button.has_meta("vp_seat") and not panel.get_global_rect().encloses(button.get_global_rect()):
+				_smoke_fail("player name pushed the victory-point button outside its panel")
+				return false
 	for control in [board, market_scroll, content.get_parent(), finish_button, hand_panel]:
 		if not window_rect.encloses(control.get_global_rect()):
+			print("GODOT_LAYOUT_DIAGNOSTIC ", JSON.stringify({"control": str(control.name), "parent": str(control.get_parent().name), "rect": str(control.get_global_rect()), "viewport": str(size)}))
 			_smoke_fail("table control outside the window")
 			return false
 	if board.size.x < 300 or board.map_rect.size.x < 300:
@@ -1552,6 +1656,28 @@ func _check_layout() -> bool:
 	if finish_button.get_global_rect().position.y < content.get_parent().get_global_rect().end.y:
 		_smoke_fail("turn end overlaps choices")
 		return false
+	for group in [hand, market_content]:
+		for card in group.find_children("*", "Button", true, false):
+			if card.has_meta("market_expand"):
+				var rect = card.get_global_rect()
+				var pane = market_scroll.get_global_rect()
+				if rect.position.x < pane.position.x or rect.end.x > pane.end.x:
+					_smoke_fail("shared-market expand button clipped horizontally")
+					return false
+			if not card.has_meta("instance_ref"):
+				continue
+			var bounds = Rect2(Vector2.ZERO, card.size)
+			if card.caption == null or card.caption.text != model.name_of(card.ref) or not bounds.encloses(card.caption.get_rect()) or not bounds.encloses(card.face.get_rect()) or card.face.get_rect().intersects(card.caption.get_rect()):
+				_smoke_fail("card name/face missing, overlapping or outside its control")
+				return false
+			var badges: Array[Rect2] = []
+			for child in card.get_children():
+				if child.has_meta("card_state") or child.has_meta("card_cost"):
+					var rect = child.get_rect()
+					if not bounds.encloses(rect) or badges.any(func(previous): return previous.intersects(rect)):
+						_smoke_fail("card state/cost badges overlap or escape the control")
+						return false
+					badges.append(rect)
 	return true
 
 
@@ -1591,6 +1717,23 @@ func _run_capture() -> void:
 	if not _check_layout():
 		return
 	await _capture("table")
+	# Missing artwork must still leave a named, readable, clickable hand card.
+	var original_catalog = model.catalog
+	model.catalog = model.catalog.duplicate(true)
+	var fallback_ref = str(model.view().private.hand[0])
+	var fallback_entry = model.entry(fallback_ref)
+	fallback_entry.image = null
+	fallback_entry.erase("image_ko")
+	_render()
+	await _wait_images()
+	var fallback_card = _ref_button(hand, fallback_ref)
+	if fallback_card == null or fallback_card.fallback == null or fallback_card.fallback.text.is_empty() or not _check_layout():
+		_smoke_fail("missing-art hand card lost its text or input control")
+		return
+	await _capture("table-no-art")
+	model.catalog = original_catalog
+	_render()
+	await _wait_images()
 	var native_hand = model.view().private.hand.duplicate()
 	var revision = model.summary().revision
 	if native_hand.size() >= 2:
@@ -1618,6 +1761,29 @@ func _run_capture() -> void:
 	if model.selected_card != first.arguments.card_id:
 		_smoke_fail("native card click with hover open")
 		return
+	await _wait_images()
+	var selected_card = _ref_button(hand, first.arguments.card_id)
+	var checked = false
+	for child in selected_card.get_children():
+		if child.has_meta("card_state") and child.text.begins_with("✓"):
+			checked = true
+	if not checked or not _check_layout():
+		_smoke_fail("selected card lacks a non-color state marker")
+		return
+	await _capture("card-selected")
+	var clear_card: Button
+	for button in content.find_children("*", "Button", true, false):
+		if button.get_meta("clear_pick", "") == "card":
+			clear_card = button
+	if clear_card == null or clear_card.size.x < 70:
+		_smoke_fail("selected card's clear control lost its readable name")
+		return
+	await _click(clear_card.get_global_rect().get_center())
+	if not model.selected_card.is_empty() or model.summary().revision != revision:
+		_smoke_fail("clear pick must only clear the local selection")
+		return
+	await _wait_images()
+	await _click(_ref_button(hand, first.arguments.card_id).get_global_rect().get_center())
 	var point = board._box(model.entry(first.arguments.space_id).box).get_center()
 	await _click(board.get_global_transform() * point)
 	while busy or refreshing:
@@ -1694,6 +1860,18 @@ func _run_capture() -> void:
 		return
 	await _wait_images()
 	await _capture("market")
+	# Exercise compact badges with English names while purchases are legal.
+	get_window().size = Vector2i(1100, 740)
+	model.language = "en"
+	_render()
+	await _wait_images()
+	if not _check_layout():
+		return
+	await _capture("market-en-narrow")
+	model.language = "ko"
+	get_window().size = Vector2i(1440, 900)
+	_render()
+	await _wait_images()
 	var purchase_ref = ""
 	for action in model.actions():
 		if str(action.action_id).begins_with("acquire_imperium"):
@@ -1789,6 +1967,9 @@ func _capture_scaled_tables() -> bool:
 	# Exercise native rendering and input at FHD, QHD and 4K without changing
 	# the user's desktop resolution or relying on the test monitor's DPI.
 	display_ui.set_process(false)
+	if not await _create_game(11):
+		_smoke_fail("scaled gameplay create")
+		return false
 	for pixels in [Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160)]:
 		display_ui.monitor_scale = display_ui.preferred_scale(pixels)
 		get_window().size = pixels
@@ -1886,6 +2067,8 @@ func _capture(name: String) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
+	if not _check_layout():
+		return
 	if name == "selected":
 		var pane = content.get_parent().get_global_rect()
 		var visible_actions = 0
