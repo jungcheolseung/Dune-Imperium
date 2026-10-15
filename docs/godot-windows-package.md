@@ -22,8 +22,24 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 
 ## 작은 플레이 업데이트
 
-`dune-uprising-windows-scaling-update-20261014.zip`은 이 PC에서 만든
-`dune-uprising-windows-personal-20261014.zip`에 적용하는 화면 배율 업데이트다.
+최신 `dune-uprising-windows-visual-update-20261015.zip`(253.13 KiB)은 카드 가독성과
+기본 테이블 배치를 개선한 누적 프로그램 업데이트다. 손패 크기·시장 이름/인쇄 비용·체크 표식,
+빈 손패 접기·현재 선택/턴 종료 강조와 이전 기능·정보·배율/선택창 보완을 포함한다.
+게임을 닫고 ZIP 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의 **상위 폴더**에 풀어
+병합/덮어쓴 뒤 기존 `Play Dune.cmd`로 실행한다. `runtime/assets/saves/local`은 포함하지 않는다.
+처음 설치할 때는 전체 v3 ZIP이 필요하다. 저장한 열 너비가 있으면 **메뉴 → 플레이 설정 →
+개인 배치 초기화**로 새 기본 배치를 적용한다(개인 손패 정렬도 초기화한다).
+
+이 PC의 v1/v2/v3 전체본과 플레이·정보 업데이트에 적용한 2,395파일 hash를 검증했다.
+소스 기준은 `1e1ee943`, ZIP SHA-256은 `2a1b68e6d8b910aa3abad26c54f4f6fe15c0d3f3cc515754994495d868b025c0`이다.
+`tmp/godot/visual-update-report.json`에 검증한 각 기준 ZIP의 SHA-256도 기록했다.
+다른 PC가 같은 파일명으로 다시 만든 전체본은 별도 기준이다. 이 결과를 그 ZIP의 전체
+manifest 일치 검증으로 읽지 않는다. 전체본의 런타임·그림을 새로 복사하거나 공개 배포하지 않았다.
+
+`dune-uprising-windows-scaling-update-20261014.zip`은 다른 PC에서 재빌드한
+`dune-uprising-windows-personal-20261014.zip`(SHA-256
+`2ca2e23e674ba8c09d1ad62bd260e28e2a2bb8e4fcedb410364b5c0c54fd8f53`)에 적용하는
+화면 배율 업데이트다. 이 PC의 동명 이전 전체본과 구별한다.
 모니터 해상도·시스템 배율에 따라 글씨·버튼·카드·팝업을 함께 확대한다.
 시스템 배율 100% 기준 FHD 100% / QHD 125% / 4K 200%이며, 창 크기와 모니터 변경에도
 다시 맞춘다. 게임을 닫고 업데이트 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의
