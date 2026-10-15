@@ -106,6 +106,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
     SolariAtLeast,
+    SpendSpecimens,
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
@@ -549,6 +550,9 @@ def cost_text_ko(cost: Cost) -> str:
             # Korean print (`[KO card: Navigation Card 5]`, korean-card-style.md
             # row 49), reused here for "or more" on a cost.
             return f"{{discard_pile}}에서 비용이 {minimum_cost} 이상인 카드 {{trash}}"
+        case SpendSpecimens(count=count):
+            # Quotes ``tokens_ko.py``'s "표본 1개 지불" (Organ Merchants).
+            return f"표본 {count}개 지불"
         case _:
             assert_never(cost)
 

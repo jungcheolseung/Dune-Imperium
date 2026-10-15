@@ -11,7 +11,8 @@ and the events keep their names, ids, payloads and order.
 The events follow two conventions, one per way a box resolves:
 
 - **One action** (``resolve_box``): the owner's gains (resources, troops,
-  the Bene Gesserit boost, the card back to hand) and an Intrigue draw
+  the Bene Gesserit boost, the card back to hand), a fixed Faction's
+  Influence (prefix ``<box>:influence:<faction>``) and an Intrigue draw
   (source ``<box>:intrigue_draw``) are applied before the frame is written
   back; then the box's event ``<box>`` (``agent_card_effect_resolved``, or
   ``agent_card_effect_unavailable`` when a printed condition fails); then the
@@ -42,7 +43,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.abilities import Ability
+from dune_imperium.content.uprising.abilities import Ability, AbilityMark
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import BoardSpace, Faction
 from dune_imperium.content.uprising.effect_dsl import (
@@ -59,17 +60,21 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     GainedSpiceThisTurn,
+    GainInfluence,
     GainResources,
+    GainVictoryPoints,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    PayResources,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
     SandwormsInConflictAtLeast,
+    SpendSpecimens,
     SpyRecalledThisTurn,
     TakeContract,
     TrashPersonalCard,
@@ -81,10 +86,13 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
+    OptionalBlockKind,
+    OptionalEffectBlock,
     active_agent_card,
     advance_after_effect,
     agent_card_source,
@@ -93,15 +101,21 @@ from dune_imperium.rules.effects import (
     is_grafted,
     recruit_shortfall_events,
     recruit_troops,
+    short_of,
     spice_gained_this_turn,
 )
 from dune_imperium.rules.frames import replace_player
-from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
-from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.immortality import (
+    advance_research,
+    advance_tleilaxu,
+    tleilaxu_track_finished,
+)
+from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
-from dune_imperium.rules.specimens import generate_specimens
+from dune_imperium.rules.specimens import generate_specimens, spend_specimens
+from dune_imperium.rules.spies import gather_intelligence_draw_available
 
 _RESOLVED = "agent_card_effect_resolved"
 _UNAVAILABLE = "agent_card_effect_unavailable"
@@ -139,6 +153,26 @@ class AgentIconBlock:
 
 
 NOT_PRINTED_BLOCK = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
+
+
+class AgentPaymentBlock(StrEnum):
+    """Why an Agent box's arrow is withheld because its reward does nothing.
+
+    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
+    제시한다" (OQ-071, user decision 2026-09-29, generalised from OQ-075;
+    precedent OQ-046): a cost that would buy nothing is not offered.
+    ``legal_agent_card_payment_actions`` withholds the payment exactly when
+    ``agent_card_payment_block`` is not None, and the page's greyed-out row
+    reads the same block (``display.unavailable``).
+    """
+
+    # Ecological Testing Station's draw: deck and discard pile both empty,
+    # so the 2 water would buy nothing (OQ-071). Gather Intelligence is not
+    # gated this way: its recall is offered with both piles empty (OQ-099).
+    NO_CARD_TO_DRAW = "no_card_to_draw"
+    # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
+    # track's last space, where it does nothing (OQ-048).
+    TLEILAXU_TRACK_END = "tleilaxu_track_end"
 
 
 def box_ability(effect: PersonalCardAgentEffect | None) -> Ability | None:
@@ -399,7 +433,12 @@ def resolve_box(state: GameState) -> RuleResult:
     player, card_id = _subject(context)
     card = active_agent_card(context)
     ability = box_ability(card.agent_effect)
-    if ability is None or ability.icons or len(ability.sections) != 1:
+    if (
+        ability is None
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
         raise ValueError("the active Agent box is not resolved as one recorded action")
     (line,) = ability.sections
     owner = state.players[player]
@@ -413,6 +452,21 @@ def resolve_box(state: GameState) -> RuleResult:
             owner, line, context, card_id, source, player
         )
     working = replace(state, players=replace_player(state.players, next_owner))
+    influence_events: tuple[GameEvent, ...] = ()
+    for reward in line.rewards if available else ():
+        if isinstance(reward, GainInfluence):
+            # A fixed Faction's Influence, prefix ``<box>:influence:<f>``.
+            assert reward.factions is not None and not reward.requires_choice
+            faction = reward.factions[0]
+            gained = gain_faction_influence(
+                working,
+                player,
+                faction,
+                reward.times,
+                event_prefix=f"{source}:influence:{faction.value}",
+            )
+            working = gained.state
+            influence_events = (*influence_events, *gained.events)
     intrigue_events: tuple[GameEvent, ...] = ()
     if available and (intrigue := _intrigue_draws(line)):
         drawn = draw_or_queue_intrigue_cards(
@@ -465,7 +519,8 @@ def resolve_box(state: GameState) -> RuleResult:
         next_state = drawn_cards.state
         follow_ups.extend(drawn_cards.events)
     return RuleResult(
-        state=next_state, events=(event, *intrigue_events, *follow_ups, *shortfall)
+        state=next_state,
+        events=(event, *influence_events, *intrigue_events, *follow_ups, *shortfall),
     )
 
 
@@ -536,3 +591,194 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
         state=next_state,
         events=(*shortfall, *intrigue_events, *track_events, *draw_events, event),
     )
+
+
+# --- Optional arrows with no target (stage A3b) ----------------------------------
+#
+# "You may pay X -> Y" with nothing to pick: one row naming the cost
+# (``pay_agent_card_<variant>``) beside the refusal the provider keeps for the
+# box's raw rows (the turn drops it, ``agent_effect_frame._without_refusal``).
+# The answer pays, gains, writes the frame back, names its event
+# ``round:R:player:P:agent_card_payment:paid`` (no card id) with the resource
+# and the amount spent, then runs the follow-ups that may push a frame: a
+# draw named ``…:agent_card_payment``, a Tleilaxu advance named
+# ``…:agent_card_payment:tleilaxu``.
+
+_PAYMENT_SOURCE = "round:{round}:player:{player}:agent_card_payment"
+# The rewards ``apply_payment`` gives; a record with any other is no payment
+# box (it keeps its own code until a stage moves it).
+_PAYMENT_REWARDS = (
+    GainResources,
+    GainVictoryPoints,
+    DrawPersonalCards,
+    AdvanceTleilaxu,
+)
+
+
+def payment_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is an optional arrow paid with no target to pick."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
+        return False
+    (section,) = ability.sections
+    if len(section.costs) != 1 or not all(
+        isinstance(reward, _PAYMENT_REWARDS) for reward in section.rewards
+    ):
+        return False
+    try:
+        _paid_resource(section.costs[0])
+    except ValueError:
+        return False
+    return True
+
+
+def _payment_cost(ability: Ability) -> PayResources | SpendSpecimens:
+    cost = ability.sections[0].costs[0]
+    assert isinstance(cost, PayResources | SpendSpecimens)
+    return cost
+
+
+def _paid_resource(cost: object) -> tuple[str, int]:
+    """The resource the payment event names, and how much was spent; a cost
+    no payment row pays raises ``ValueError``."""
+
+    match cost:
+        case SpendSpecimens(count=count) if count in (1, 2):
+            return "specimen", count
+        case PayResources(solari=0, spice=0, water=water) if water:
+            return "water", water
+        case PayResources(solari=0, spice=spice, water=0) if spice:
+            return "spice", spice
+    raise ValueError(f"no payment row pays {cost!r}")
+
+
+def _payment_template(cost: PayResources | SpendSpecimens) -> str:
+    resource, spent = _paid_resource(cost)
+    variant = "two_specimens" if resource == "specimen" and spent == 2 else resource
+    return template_id(Verb.PAY, Source.AGENT_CARD, variant=variant)
+
+
+def payment_cost_block(
+    owner: PlayerState, ability: Ability
+) -> OptionalEffectBlock | None:
+    """Why the arrow's cost cannot be paid now, or None."""
+
+    match _payment_cost(ability):
+        case SpendSpecimens(count=count):
+            return short_of(OptionalBlockKind.SPECIMENS, count, owner.specimens)
+        case PayResources(solari=solari, spice=spice, water=water):
+            return (
+                short_of(OptionalBlockKind.SOLARI, solari, owner.resources.solari)
+                if solari
+                else None
+            ) or (
+                short_of(OptionalBlockKind.SPICE, spice, owner.resources.spice)
+                if spice
+                else None
+            ) or (
+                short_of(OptionalBlockKind.WATER, water, owner.resources.water)
+                if water
+                else None
+            )
+    return None
+
+
+def payment_reward_block(
+    state: GameState, player: int, ability: Ability
+) -> AgentPaymentBlock | None:
+    """Why the arrow would buy nothing now (OQ-071), or None."""
+
+    for reward in ability.sections[0].rewards:
+        if isinstance(reward, DrawPersonalCards) and not (
+            gather_intelligence_draw_available(state, player)
+        ):
+            return AgentPaymentBlock.NO_CARD_TO_DRAW
+        if isinstance(reward, AdvanceTleilaxu) and tleilaxu_track_finished(
+            state.players[player]
+        ):
+            return AgentPaymentBlock.TLEILAXU_TRACK_END
+    return None
+
+
+def payment_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The box's raw rows: its refusal, then its payment while it can buy
+    something; the arrow cost is judged again whenever the box resolves, in
+    the owner's order [Main pp. 9, 20] (OQ-028)."""
+
+    decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
+    if (
+        payment_cost_block(state.players[player], ability) is not None
+        or payment_reward_block(state, player, ability) is not None
+    ):
+        return (decline,)
+    return (
+        decline,
+        DomainAction(action_id=_payment_template(_payment_cost(ability)), actor=player),
+    )
+
+
+def apply_payment(
+    state: GameState, player: int, ability: Ability, context: dict[str, ActionValue]
+) -> RuleResult:
+    """Pay the arrow and take what it buys (``context`` has its pending flag
+    already cleared by the caller)."""
+
+    source = _PAYMENT_SOURCE.format(round=state.round_number, player=player)
+    cost = _payment_cost(ability)
+    owner = state.players[player]
+    match cost:
+        case SpendSpecimens(count=count):
+            # The specimens return to the supply as they are spent
+            # [Immortality p. 8].
+            owner = spend_specimens(owner, count)
+        case PayResources(solari=solari, spice=spice, water=water):
+            owner = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari - solari,
+                    spice=owner.resources.spice - spice,
+                    water=owner.resources.water - water,
+                ),
+                spice_spent_turn=owner.spice_spent_turn + spice,
+            )
+    for reward in ability.sections[0].rewards:
+        match reward:
+            case GainResources():
+                owner = _gain(owner, reward)
+            case GainVictoryPoints(amount=amount):
+                owner = replace(owner, victory_points=owner.victory_points + amount)
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, owner)
+    )
+    resource, spent = _paid_resource(cost)
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:paid",
+            kind="agent_card_payment_resolved",
+            payload=(("player", player), ("resource", resource), ("spent", spent)),
+        )
+    ]
+    for reward in ability.sections[0].rewards:
+        step: RuleResult | None = None
+        match reward:
+            case AdvanceTleilaxu(count=count):
+                step = advance_tleilaxu(
+                    next_state, player, count, source=f"{source}:tleilaxu"
+                )
+            case DrawPersonalCards(count=count):
+                step = draw_or_request_personal_cards(
+                    next_state, player, count, source=source
+                )
+        if step is not None:
+            next_state = step.state
+            events.extend(step.events)
+    return RuleResult(state=next_state, events=tuple(events))

@@ -8,13 +8,13 @@ Rhetoric's Faction) keep their dedicated actions. Arrow boxes pay their cost
 first and then queue the reward icons the same way.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from copy import replace
-from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
+from dune_imperium.content.uprising.abilities import AbilityMark
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -39,9 +39,15 @@ from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     AgentIconBlock,
     AgentIconCondition,
+    AgentPaymentBlock,
+    apply_payment,
     box_ability,
     box_icon_block,
     condition_block,
+    payment_box,
+    payment_cost_block,
+    payment_reward_block,
+    payment_rows,
     resolve_box,
     resolve_box_icon,
 )
@@ -83,7 +89,6 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
     short_of,
-    spice_gained_this_turn,
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
@@ -130,8 +135,7 @@ from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
 )
-from dune_imperium.rules.specimens import generate_specimens, spend_specimens
-from dune_imperium.rules.spies import gather_intelligence_draw_available
+from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame, turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -162,9 +166,6 @@ _RESEARCHED_BOXES: Final = "research_resolved_card_ids"
 # visited space's own Influence (Subversive Advisor, Treacherous Maneuver):
 # the space's 1 never comes back after that (``_release_space_influence``).
 _SPACE_INFLUENCE_REPLACED: Final = "space_influence_replaced"
-_GUILD_INFLUENCE_IF_SPICE = (
-    PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
-)
 _SOLARI_PER_PARTNER_ICON = (
     PersonalCardAgentEffect
     .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
@@ -2365,26 +2366,6 @@ def apply_agent_card_intrigue_payment(
     )
 
 
-class AgentPaymentBlock(StrEnum):
-    """Why an Agent box's arrow is withheld because its reward does nothing.
-
-    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
-    제시한다" (OQ-071, user decision 2026-09-29, generalised from OQ-075;
-    precedent OQ-046): a cost that would buy nothing is not offered.
-    ``legal_agent_card_payment_actions`` withholds the payment exactly when
-    ``agent_card_payment_block`` is not None, and the page's greyed-out row
-    reads the same block (``display.unavailable``).
-    """
-
-    # Ecological Testing Station's draw: deck and discard pile both empty,
-    # so the 2 water would buy nothing (OQ-071). Gather Intelligence is not
-    # gated this way: its recall is offered with both piles empty (OQ-099).
-    NO_CARD_TO_DRAW = "no_card_to_draw"
-    # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
-    # track's last space, where it does nothing (OQ-048).
-    TLEILAXU_TRACK_END = "tleilaxu_track_end"
-
-
 def agent_card_payment_block(
     state: GameState,
     player: int,
@@ -2397,15 +2378,13 @@ def agent_card_payment_block(
     can still make the reward live.
     """
 
-    if (
-        effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-        and not gather_intelligence_draw_available(state, player)
+    ability = box_ability(effect)
+    if payment_box(ability):
+        assert ability is not None
+        return payment_reward_block(state, player, ability)
+    if effect is _SOLARI_PER_PARTNER_ICON and tleilaxu_track_finished(
+        state.players[player]
     ):
-        return AgentPaymentBlock.NO_CARD_TO_DRAW
-    if effect in (
-        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
-        _SOLARI_PER_PARTNER_ICON,
-    ) and tleilaxu_track_finished(state.players[player]):
         return AgentPaymentBlock.TLEILAXU_TRACK_END
     return None
 
@@ -2486,10 +2465,10 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
     kind = OptionalBlockKind
     if effect is _ARRAKIS_REVOLT:
         return _arrakis_revolt_block(state, player)
-    if effect is PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI:
-        return short_of(kind.SPECIMENS, 1, owner.specimens)
-    if effect is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU:
-        return short_of(kind.SPECIMENS, 2, owner.specimens)
+    ability = box_ability(effect)
+    if payment_box(ability):
+        assert ability is not None
+        return payment_cost_block(owner, ability)
     if effect is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
         partner = other_grafted_card_id(context)
         if not partner or partner not in owner.in_play:
@@ -2510,10 +2489,6 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return None
     if effect is _SPICE_FOR_TRASH_AND_TROOP:
         return short_of(kind.SPICE, CONTROL_THE_SPICE_PRICE, resources.spice)
-    if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:
-        return short_of(kind.WATER, 2, resources.water)
-    if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
-        return short_of(kind.SPICE, 4, resources.spice)
     if effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
@@ -2549,41 +2524,17 @@ def legal_agent_card_payment_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
+    recorded = box_ability(source_card.agent_effect)
+    if payment_box(recorded):
+        # An optional arrow with no target, from its record (composed A3b).
+        assert recorded is not None
+        return payment_rows(state, player, recorded)
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect
         .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
     ):
         return _arrakis_revolt_payment_actions(state, player)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI
-    ):
-        # Organ Merchants: "specimen -> 4 Solari" [card face].
-        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if agent_card_cost_block(state, player) is not None:
-            return (decline,)
-        return (
-            decline,
-            DomainAction(action_id="pay_agent_card_specimen", actor=player),
-        )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU
-    ):
-        # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu" [card face];
-        # not offered once the advances would do nothing (OQ-071).
-        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if (
-            agent_card_cost_block(state, player) is not None
-            or agent_card_payment_block(state, player, source_card.agent_effect)
-            is not None
-        ):
-            return (decline,)
-        return (
-            decline,
-            DomainAction(action_id="pay_agent_card_two_specimens", actor=player),
-        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN
@@ -2716,35 +2667,7 @@ def legal_agent_card_payment_actions(
             decline,
             DomainAction(action_id="pay_agent_card_spice", actor=player),
         )
-    if source_card.agent_effect not in (
-        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
-        PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
-    ):
-        return ()
-    if (
-        # Ecological Testing Station's 2 water, Smuggler's Haven's 4 spice.
-        agent_card_cost_block(state, player) is not None
-        # Ecological Testing Station's draw with no card in the deck or the
-        # discard pile would buy nothing (OQ-071).
-        or agent_card_payment_block(state, player, source_card.agent_effect)
-        is not None
-    ):
-        # The arrow cost is judged again when the player resolves the pending
-        # payment in their chosen effect order [Main pp. 9, 20]; once it is
-        # unaffordable, only skipping remains.
-        return (DomainAction(action_id="decline_agent_card_payment", actor=player),)
-    return (
-        DomainAction(action_id="decline_agent_card_payment", actor=player),
-        DomainAction(
-            action_id=(
-                "pay_agent_card_water"
-                if source_card.agent_effect
-                is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-                else "pay_agent_card_spice"
-            ),
-            actor=player,
-        ),
-    )
+    return ()
 
 
 def legal_corrinth_city_payment_actions(
@@ -2922,33 +2845,13 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
 
     if action.action_id in _ARRAKIS_REVOLT_ACTION_IDS:
         return _apply_arrakis_revolt_payment(state, action, context, source)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if payment_box(recorded):
+        # An optional arrow with no target, from its record (composed A3b).
+        assert recorded is not None
+        return apply_payment(state, action.actor, recorded, context)
 
     owner = state.players[action.actor]
-    if action.action_id == "pay_agent_card_two_specimens":
-        # Tleilaxu Surgeon: two specimens return to the supply as they are
-        # spent [Immortality p. 8]; the token advances twice.
-        paid_owner = spend_specimens(owner, 2)
-        next_state = advance_after_effect(
-            state, context, replace_player(state.players, paid_owner)
-        )
-        advanced = advance_tleilaxu(
-            next_state, action.actor, 2, source=f"{source}:tleilaxu"
-        )
-        return RuleResult(
-            state=advanced.state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("player", action.actor),
-                        ("resource", "specimen"),
-                        ("spent", 2),
-                    ),
-                ),
-                *advanced.events,
-            ),
-        )
     if action.action_id == "trash_grafted_card_for_specimen":
         # Dissecting Kit: the other grafted card leaves play; its
         # un-activated box expires with it (OQ-022 designer ruling).
@@ -3139,33 +3042,6 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         return RuleResult(state=next_state, events=lost.events)
     if action.action_id == "choose_agent_card_reward":
         return _apply_stitched_horror_reward(state, action, context, source)
-    if action.action_id == "pay_agent_card_specimen":
-        # Organ Merchants: the specimen returns to the supply as it is spent
-        # [Immortality p. 8].
-        paid_owner = spend_specimens(owner, 1)
-        paid_owner = replace(
-            paid_owner,
-            resources=replace(
-                paid_owner.resources, solari=paid_owner.resources.solari + 4
-            ),
-        )
-        next_state = advance_after_effect(
-            state, context, replace_player(state.players, paid_owner)
-        )
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("player", action.actor),
-                        ("resource", "specimen"),
-                        ("spent", 1),
-                    ),
-                ),
-            ),
-        )
     # The same borrowed box `[Immortality p. 14]`. The provider checks the
     # arrow's cost against the borrowed effect's own resource, so reading the
     # printed card here sent a Ghola down the other branch: it charged four
@@ -3175,42 +3051,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     source_card = active_agent_card(context)
     if source_card.agent_effect is _SPICE_FOR_TRASH_AND_TROOP:
         return _apply_control_the_spice_payment(state, action, context, source)
-    pays_water = (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-    )
-    resource = "water" if pays_water else "spice"
-    spent = 2 if pays_water else 4
-    next_owner = replace(
-        owner,
-        resources=replace(
-            owner.resources,
-            water=owner.resources.water - (spent if pays_water else 0),
-            spice=owner.resources.spice - (0 if pays_water else spent),
-        ),
-        spice_spent_turn=owner.spice_spent_turn + (0 if pays_water else spent),
-        victory_points=owner.victory_points + (0 if pays_water else 1),
-    )
-    players = replace_player(state.players, next_owner)
-    paid_state = advance_after_effect(state, context, players)
-    event = GameEvent(
-        event_id=f"{source}:paid",
-        kind="agent_card_payment_resolved",
-        payload=(
-            ("player", action.actor),
-            ("resource", resource),
-            ("spent", spent),
-        ),
-    )
-    if not pays_water:
-        return RuleResult(state=paid_state, events=(event,))
-    draw = draw_or_request_personal_cards(
-        paid_state,
-        action.actor,
-        2,
-        source=source,
-    )
-    return RuleResult(state=draw.state, events=(event, *draw.events))
+    raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
 
 
 _ARRAKIS_REVOLT_ACTION_IDS = frozenset(
@@ -4161,8 +4002,6 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
-        PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
@@ -4177,10 +4016,8 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
-        PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
-        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
         PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     }
@@ -4221,7 +4058,8 @@ _OPTIONAL_SIGNETS: Final = frozenset(
 def box_is_optional(state: GameState) -> bool:
     """Whether the active pending Agent box holds only optional effects now.
 
-    An untouched optional box (``OPTIONAL_AGENT_BOXES``), a box whose
+    An untouched optional box (``OPTIONAL_AGENT_BOXES``, or a record marked
+    optional), a box whose
     remaining icons are all optional (``OPTIONAL_AGENT_ICONS``), the optional
     trashes Ruthless Leadership and The Beast's Spoils still owe, and
     Scientific Breakthrough's "Trash this card -> 1 VP" line once its
@@ -4254,7 +4092,11 @@ def box_is_optional(state: GameState) -> bool:
         return _box_researched(context, card_instance_id)
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return _signet_is_optional(state, context)
-    return effect in OPTIONAL_AGENT_BOXES
+    if effect in OPTIONAL_AGENT_BOXES:
+        return True
+    # A recorded box says so itself (composed effects, A3b).
+    recorded = box_ability(effect)
+    return recorded is not None and recorded.mark is AbilityMark.OPTIONAL
 
 
 def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bool:
@@ -4477,27 +4319,17 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     recruit_shortfall: tuple[GameEvent, ...] = ()
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
-    if box_ability(effect) is not None:
+    ability = box_ability(effect)
+    if ability is not None and ability.hook is not None:
+        # A special flow kept as code (composed effects, A3).
+        return _BOX_HOOKS[ability.hook](state)
+    if ability is not None and not payment_box(ability):
         # A box written as an ability record (composed effects, stage A2).
         return resolve_box(state)
-    if effect is PersonalCardAgentEffect.TRASH_SELF:
-        # "Trash this card." (Seek Allies) is mandatory [Main p. 20]. A card
-        # trashed by a freely ordered effect expires before this resolution
-        # is offered (OQ-022), so the card is still in play here.
-        trashed = trash_personal_card(
-            state,
-            player,
-            card_instance_id,
-            source=f"round:{state.round_number}:player:{player}:agent_card",
-        )
-        _keep_trash_recruits(context, trashed)
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(
-            trashed.state,
-            context,
-            trashed.state.players,
-        )
-        return RuleResult(state=next_state, events=trashed.events)
+    # An optional arrow resolves only through its payment row; the generic
+    # resolution below is reached only by the dry run, which keeps the
+    # answers it had before the record (Tleilaxu Surgeon: unavailable; the
+    # others: not implemented, read as available).
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
         # Long Reach with no further Faction to name. A first pick made with
         # no second possible is paid at once (``apply_agent_card_influence``,
@@ -4787,40 +4619,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 *researched.events,
             ),
         )
-    elif effect is _GUILD_INFLUENCE_IF_SPICE:
-        # Guild Impersonator: judged when the box resolves (OQ-028), so a
-        # spice space resolved first counts.
-        context["pending_agent_effect"] = False
-        if spice_gained_this_turn(owner) < 1:
-            return RuleResult(
-                state=advance_after_effect(state, context),
-                events=(
-                    GameEvent(
-                        event_id=event_source,
-                        kind="agent_card_effect_unavailable",
-                        payload=(("card_id", card_instance_id), ("player", player)),
-                    ),
-                ),
-            )
-        gained = gain_faction_influence(
-            state,
-            player,
-            Faction.SPACING_GUILD,
-            1,
-            event_prefix=f"{event_source}:influence:spacing_guild",
-        )
-        next_state = advance_after_effect(gained.state, context, gained.state.players)
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *gained.events,
-            ),
-        )
     elif effect is _SOLARI_PER_PARTNER_ICON:
         # Slig Farmer without the payment: the per-icon Solari alone.
         gained_solari = _partner_icon_count(state, context)
@@ -4831,117 +4629,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE:
-        # Clandestine Meeting: Bene Gesserit Influence and an Intrigue card.
-        gained = gain_faction_influence(
-            state,
-            player,
-            Faction.BENE_GESSERIT,
-            1,
-            event_prefix=f"{event_source}:influence:bene_gesserit",
-        )
-        drawn = draw_or_queue_intrigue_cards(
-            gained.state, player, 1, source=f"{event_source}:intrigue"
-        )
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(drawn.state, context, drawn.state.players)
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *gained.events,
-                *drawn.events,
-            ),
-        )
-    elif effect is PersonalCardAgentEffect.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND:
-        # Lisan al Gaib: the Bond is judged when the effect resolves
-        # [Main pp. 9, 20] (a grafted partner may provide it).
-        context["pending_agent_effect"] = False
-        if not has_faction_bond(
-            counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
-        ):
-            return RuleResult(
-                state=advance_after_effect(state, context),
-                events=(
-                    GameEvent(
-                        event_id=event_source,
-                        kind="agent_card_effect_unavailable",
-                        payload=(("card_id", card_instance_id), ("player", player)),
-                    ),
-                ),
-            )
-        gained = gain_faction_influence(
-            state,
-            player,
-            Faction.FREMEN,
-            1,
-            event_prefix=f"{event_source}:influence:fremen",
-        )
-        next_state = advance_after_effect(gained.state, context, gained.state.players)
-        return RuleResult(state=next_state, events=gained.events)
-    elif effect is PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON:
-        # Occupation: draw a card and the Combat icon [Immortality p. 16].
-        # The grant writes the frame, so the context is re-read before the
-        # box closes.
-        with_icon = grant_combat_icon(state, player)
-        _, granted = current_agent_effect_context(with_icon)
-        granted["pending_agent_effect"] = False
-        next_state = advance_after_effect(with_icon, granted, with_icon.players)
-        drawn = draw_or_request_personal_cards(
-            next_state, player, 1, source=f"{event_source}:draw"
-        )
-        return RuleResult(
-            state=drawn.state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *drawn.events,
-            ),
-        )
-    elif effect is PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE:
-        space_id = context.get("space_id")
-        if not isinstance(space_id, str):
-            raise RuntimeError("Agent-turn effect frame has invalid space")
-        faction = BOARD_SPACES_BY_ID[space_id].faction
-        if faction is None:
-            raise RuntimeError("card effect requires a visited Faction space")
-        gained = gain_faction_influence(
-            state,
-            player,
-            faction,
-            1,
-            event_prefix=(
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card_instance_id}:influence:{faction.value}"
-            ),
-        )
-        context["pending_agent_effect"] = False
-        next_state = advance_after_effect(
-            gained.state,
-            context,
-            gained.state.players,
-        )
-        return RuleResult(state=next_state, events=gained.events)
-    elif effect is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND:
-        # In High Places: "If you have another Bene Gesserit card in play:
-        # [draw 1 card] [Spy]" [In High Places card]. The Bond is judged
-        # when the effect resolves [Main pp. 9, 20]; the card and the Spy
-        # follow below, once the effect frame has advanced.
-        next_owner = owner
-        event_kind = (
-            "agent_card_effect_resolved"
-            if has_faction_bond(
-                counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
-            )
-            else "agent_card_effect_unavailable"
-        )
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
@@ -5073,23 +4760,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         kind=event_kind,
         payload=(("card_id", card_instance_id), ("player", player)),
     )
-    if (
-        effect is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
-        and event_kind == "agent_card_effect_resolved"
-    ):
-        # The plain Spy icon opens the shared placement frame: any unoccupied
-        # post, mandatory with a Spy in supply, and with an empty supply "you
-        # may first recall one of your Spies" [Main pp. 11, 20] (OQ-057 (14)).
-        # The frame waits under the draw, whose discard shuffle (if any)
-        # resolves first, so the printed order holds.
-        with_spy = spy_placement_frame(
-            next_state,
-            player,
-            tuple(post.post_id for post in OBSERVATION_POSTS),
-            source=event_source,
-        )
-        draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
-        return RuleResult(state=draw.state, events=(event, *draw.events))
     if effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
         if not isinstance(space_id_value, str):
             raise RuntimeError("Agent-turn effect frame has invalid space")
@@ -5128,6 +4798,206 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             state=draw.state, events=(event, *draw.events, *recruit_shortfall)
         )
     return RuleResult(state=next_state, events=(event, *recruit_shortfall))
+
+
+# --- Special flows of recorded Agent boxes (``agent_abilities``'s hooks) -----
+
+
+def _box_subject(
+    state: GameState,
+) -> tuple[dict[str, ActionValue], int, str, PlayerState, str]:
+    """The active box's context, owner seat, card, owner and event source."""
+
+    _, context = current_agent_effect_context(state)
+    player, card_instance_id, _ = _effect_subject(context)
+    owner = state.players[player]
+    source = agent_card_source(state.round_number, player, card_instance_id)
+    return context, player, card_instance_id, owner, source
+
+
+def _hook_seek_allies(state: GameState) -> RuleResult:
+    """"Trash this card." (Seek Allies) is mandatory [Main p. 20]; the trash's
+    events alone. A card trashed by a freely ordered effect expires before
+    this resolution is offered (OQ-022), so the card is still in play here."""
+
+    context, player, card_instance_id, _, _ = _box_subject(state)
+    trashed = trash_personal_card(
+        state,
+        player,
+        card_instance_id,
+        source=f"round:{state.round_number}:player:{player}:agent_card",
+    )
+    _keep_trash_recruits(context, trashed)
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(trashed.state, context, trashed.state.players)
+    return RuleResult(state=next_state, events=trashed.events)
+
+
+def _hook_clandestine_meeting(state: GameState) -> RuleResult:
+    """Clandestine Meeting: Bene Gesserit Influence and an Intrigue card, the
+    draw named ``<box>:intrigue``; the box's event comes first."""
+
+    context, player, card_instance_id, _, event_source = _box_subject(state)
+    gained = gain_faction_influence(
+        state,
+        player,
+        Faction.BENE_GESSERIT,
+        1,
+        event_prefix=f"{event_source}:influence:bene_gesserit",
+    )
+    drawn = draw_or_queue_intrigue_cards(
+        gained.state, player, 1, source=f"{event_source}:intrigue"
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(drawn.state, context, drawn.state.players)
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=event_source,
+                kind="agent_card_effect_resolved",
+                payload=(("card_id", card_instance_id), ("player", player)),
+            ),
+            *gained.events,
+            *drawn.events,
+        ),
+    )
+
+
+def _hook_lisan_al_gaib(state: GameState) -> RuleResult:
+    """Lisan al Gaib: the Bond is judged when the effect resolves
+    [Main pp. 9, 20] (a grafted partner may provide it); the Influence's
+    events alone."""
+
+    context, player, card_instance_id, owner, event_source = _box_subject(state)
+    context["pending_agent_effect"] = False
+    if not has_faction_bond(
+        counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
+    ):
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_unavailable",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+            ),
+        )
+    gained = gain_faction_influence(
+        state,
+        player,
+        Faction.FREMEN,
+        1,
+        event_prefix=f"{event_source}:influence:fremen",
+    )
+    next_state = advance_after_effect(gained.state, context, gained.state.players)
+    return RuleResult(state=next_state, events=gained.events)
+
+
+def _hook_occupation(state: GameState) -> RuleResult:
+    """Occupation: draw a card and the Combat icon [Immortality p. 16]. The
+    grant writes the frame, so the context is re-read before the box closes;
+    the draw is named ``<box>:draw``."""
+
+    _, player, card_instance_id, _, event_source = _box_subject(state)
+    with_icon = grant_combat_icon(state, player)
+    _, granted = current_agent_effect_context(with_icon)
+    granted["pending_agent_effect"] = False
+    next_state = advance_after_effect(with_icon, granted, with_icon.players)
+    drawn = draw_or_request_personal_cards(
+        next_state, player, 1, source=f"{event_source}:draw"
+    )
+    return RuleResult(
+        state=drawn.state,
+        events=(
+            GameEvent(
+                event_id=event_source,
+                kind="agent_card_effect_resolved",
+                payload=(("card_id", card_instance_id), ("player", player)),
+            ),
+            *drawn.events,
+        ),
+    )
+
+
+def _hook_overthrow(state: GameState) -> RuleResult:
+    """Overthrow: one more Influence with the visited Faction, the
+    Influence's events alone (the placement keeps the box off a space with
+    no Faction, ``agent_turn.agent_effect_is_available``)."""
+
+    context, player, _, _, event_source = _box_subject(state)
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Agent-turn effect frame has invalid space")
+    faction = BOARD_SPACES_BY_ID[space_id].faction
+    if faction is None:
+        raise RuntimeError("card effect requires a visited Faction space")
+    gained = gain_faction_influence(
+        state,
+        player,
+        faction,
+        1,
+        event_prefix=f"{event_source}:influence:{faction.value}",
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(gained.state, context, gained.state.players)
+    return RuleResult(state=next_state, events=gained.events)
+
+
+def _hook_in_high_places(state: GameState) -> RuleResult:
+    """In High Places: "If you have another Bene Gesserit card in play: [draw
+    1 card] [Spy]" [In High Places card], the Bond judged when the effect
+    resolves [Main pp. 9, 20]. The box's event comes first; the plain Spy
+    icon opens the shared placement frame -- any unoccupied post, mandatory
+    with a Spy in supply, and with an empty supply "you may first recall one
+    of your Spies" [Main pp. 11, 20] (OQ-057 (14)) -- under the draw, whose
+    discard shuffle (if any) resolves first, so the printed order holds."""
+
+    context, player, card_instance_id, owner, event_source = _box_subject(state)
+    bonded = has_faction_bond(
+        counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(state, context)
+    event = GameEvent(
+        event_id=event_source,
+        kind=(
+            "agent_card_effect_resolved" if bonded else "agent_card_effect_unavailable"
+        ),
+        payload=(("card_id", card_instance_id), ("player", player)),
+    )
+    if not bonded:
+        return RuleResult(state=next_state, events=(event,))
+    with_spy = spy_placement_frame(
+        next_state,
+        player,
+        tuple(post.post_id for post in OBSERVATION_POSTS),
+        source=event_source,
+    )
+    draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
+    return RuleResult(state=draw.state, events=(event, *draw.events))
+
+
+# The hook names ``content.uprising.agent_abilities`` gives its special flows.
+_BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
+    MappingProxyType(
+        {
+            "seek_allies": _hook_seek_allies,
+            "clandestine_meeting": _hook_clandestine_meeting,
+            "lisan_al_gaib": _hook_lisan_al_gaib,
+            "occupation": _hook_occupation,
+            "overthrow": _hook_overthrow,
+            "in_high_places": _hook_in_high_places,
+        }
+    )
+)
+
+
+def box_hook_names() -> frozenset[str]:
+    """The special flows a recorded Agent box may name (``Ability.hook``)."""
+
+    return frozenset(_BOX_HOOKS)
 
 
 def resolve_faction_influence(state: GameState) -> RuleResult:
