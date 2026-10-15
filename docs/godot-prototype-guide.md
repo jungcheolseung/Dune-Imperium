@@ -140,6 +140,9 @@ git -C tmp/godot-preview switch --detach $godotCommit
 
 ## 검증
 
+기능 대응 뒤 Claude에게 화면 다듬기를 넘길 때는
+[화면 인수인계](godot-visual-handoff.md)의 코드 지도·가독성 우선순위·조작 유지 조건을 함께 읽는다.
+
 Python 런타임 준비·글꼴/용어 데이터·실패 시 서버 정리는
 `tests/launcher/test_godot_prototype.py`로 확인한다. Godot의 카드 사본 구분, 합법 칸 필터,
 확정 전 선택과 undo 세대는 `model_test.gd`가 실제 GDScript로 확인한다.
@@ -168,6 +171,10 @@ uv run --inexact --extra ui python scripts/godot/verify_prototype.py --full-game
 상한은 여덟 판이다. 화면이 있으면 `--full-game --seeds 11 --capture`로 전투·종료·저장 화면도 찍는다.
 `--rules all`은 모든 옵션을 켠다. 특정 옵션은 쉼표로 이름을 나열한다.
 현재 확장 완주 검사에서는 접목·기술·연구·계약·지휘관·Scouts 입찰/미션/비밀 선택도 실행했다.
+
+`scripts/godot/verify_parity.py --suite choices`는 합법 행동으로 만든 저장본의 접목 잠금/undo,
+이번 턴·이전 턴 카드 폐기와 연구·계약·지도자 대표 선택을 웹/Godot에서 직접 대조한다.
+`--evidence`는 화면이 있는 환경에서 두 언어와 좁은 창의 선택/상세창 캡처도 검사한다.
 실제 서버의 좌석/쿠키/SSE/관전/삭제 UI는 `scripts/godot/verify_contracts.py --godot <실행 파일>`로 검사한다.
 
 2026-10-13 검증: 네 판 모두 8~9라운드 종료, 사람 결정 49종 행동·12종 결정창 실행,
