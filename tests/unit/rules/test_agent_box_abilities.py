@@ -85,6 +85,7 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.effect_interpreter import spy_placement_allowed_post_ids
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     agent_card_source,
@@ -530,6 +531,9 @@ def test_six_boxes_choose_one_target_and_read_as_their_cards() -> None:
         assert reward_text_ko(reward) == AGENT_EFFECT_TEXT_KO[effect]
     with pytest.raises(ValueError, match="names no other limit"):
         PlaceSpy(factions=(Faction.EMPEROR,), visited_space=True)
+    # Only the Agent box knows the space visited this turn.
+    with pytest.raises(TypeError, match="judged with its Agent box"):
+        spy_placement_allowed_post_ids(PlaceSpy(visited_space=True))
 
 
 def test_double_agent_shares_another_players_post_never_its_own() -> None:
