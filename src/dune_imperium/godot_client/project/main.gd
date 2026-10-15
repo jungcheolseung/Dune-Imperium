@@ -412,6 +412,13 @@ func _size_table_cards() -> void:
 	for card in market_content.find_children("*", "Button", true, false):
 		if card.get_meta("table_card", "") == "market":
 			card.custom_minimum_size = Vector2(width, width * 1.42 + 42)
+		elif card.get_meta("table_card", "") == "landscape":
+			var landscape_width = maxi(138, int(market_scroll.custom_minimum_size.x) - 8)
+			card.custom_minimum_size = Vector2(landscape_width, floori(landscape_width * 0.62) + 42)
+	for item in market_content.get_children():
+		if item.has_meta("market_research"):
+			var board_width = maxi(138, int(market_scroll.custom_minimum_size.x) - 8)
+			item.custom_minimum_size = Vector2(board_width, floori(board_width * 0.71))
 
 
 func _build_preview() -> void:

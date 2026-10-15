@@ -16,6 +16,7 @@ func setup(owner_table: Control) -> void:
 	scouts_panel = table._panel(table.board, 10)
 	scouts_panel.z_index = 12
 	scouts_panel.hide()
+	table.board.resized.connect(_position_scouts)
 	scouts_button = table._button(table.board_tools, table.model.native("스카웃"), toggle_scouts)
 	scouts_button.custom_minimum_size.y = 28
 	scouts_button.hide()
@@ -31,19 +32,22 @@ func render() -> void:
 		if not refs.is_empty():
 			_market_group(group[1], refs, group[0] in ["face_up_contract_ids", "revealed_contract_ids", "skill_face_up", "tech_face_up"])
 	if summary.get("immortality", false):
-		table._button(table.market_content, table.model.phrase("{bene_tleilax_board}"), open_bene)
+		var open = table._button(table.market_content, table.model.phrase("{bene_tleilax_board}"), open_bene)
+		open.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		open.add_theme_font_size_override("font_size", 13)
 		var board = BeneBoard.new()
 		board.model = table.model
 		board.api = table.api
 		board.custom_minimum_size = Vector2(160, 114)
+		board.set_meta("market_research", true)
 		table.market_content.add_child(board)
 		board.chosen.connect(table._choose_ref)
 	if not view.get("scouts_subcommittees", []).is_empty():
-		_market_group(table.model.native("스카웃 소위원회"), view.scouts_subcommittees, false)
+		_market_group(table.model.native("스카웃 소위원회"), view.scouts_subcommittees, true)
 	for pile in [["intrigue_discard", table.model.native("책략 버린 더미")], ["imperium_removed", table.model.native("제외한 공용 카드")], ["contract_trash", table.model.native("폐기한 계약")], ["skill_trash", table.model.native("폐기한 스킬")], ["tech_trash", table.model.native("폐기한 기술")]]:
 		var refs = view.get(pile[0], [])
 		if not refs.is_empty():
-			table._button(table.market_content, "%s · %d" % [pile[1], refs.size()], table._open_pile.bind(pile[1], refs))
+			table._button(table.market_content, "%s · %d" % [pile[1], refs.size()], table._open_pile.bind(pile[1], refs)).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for count in [["imperium_deck_size", table.model.native("임페리움 덱")], ["intrigue_deck_size", table.model.native("책략 덱")], ["contract_bank_size", table.model.native("계약 보급")], ["skill_stack_size", table.model.native("스킬 더미")], ["tleilaxu_deck_size", table.model.native("틀레이락스 덱")]]:
 		if view.has(count[0]) and (int(view[count[0]]) > 0 or count[0] in ["imperium_deck_size", "intrigue_deck_size"]):
 			table._label(table.market_content, "%s %d" % [count[1], int(view[count[0]])], 12)
@@ -72,22 +76,51 @@ func _market_group(title: String, refs: Array, landscape: bool) -> void:
 		row.add_theme_constant_override("separation", 4)
 		table.market_content.add_child(row)
 		for offset in range(mini(1 if landscape else 2, refs.size() - index)):
-			table._card(row, str(refs[index + offset]), 160 if landscape else 76, 112 if landscape else 114)
+			var card = table._card(row, str(refs[index + offset]), 192 if landscape else 94, 161 if landscape else 176)
+			card.set_meta("table_card", "landscape" if landscape else "market")
 
 
 func open_bene() -> Window:
-	var parts = table.tools_ui._dialog(table.model.phrase("{bene_tleilax_board}"), Vector2i(930, 640))
+	var parts = table.tools_ui._dialog(table.model.phrase("{bene_tleilax_board}"), Vector2i(1000, 540))
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	parts[1].add_child(row)
 	var board = BeneBoard.new()
 	board.model = table.model
 	board.api = table.api
-	board.custom_minimum_size = Vector2(900, 615)
-	parts[1].add_child(board)
-	board.chosen.connect(func(ref):
-		table._choose_ref(ref)
-		parts[0].hide()
-		parts[0].queue_free()
-	)
+	board.custom_minimum_size = Vector2(700, 500)
+	board.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(board)
+	parts[0].set_meta("research_board", board)
+	var side = table._scroll(row)
+	side.get_parent().custom_minimum_size = Vector2(220, 500)
+	var points = table.model.catalog.get("bene_tleilax", {}).get("layout", {}).get("research_points", {})
+	var legal = table.model.legal_refs()
+	var routes = points.keys().filter(func(ref): return legal.has(ref))
+	if not routes.is_empty():
+		table._label(side, table.model.native("가능한 연구"), 17)
+		for ref in routes:
+			var choice = table._button(side, table.model.name_of(ref), _choose_research.bind(ref, parts[0]))
+			choice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			choice.set_meta("research_ref", ref)
+	table._label(side, table.model.native("연구 현황"), 17)
+	for player in table.model.view().get("players", []):
+		var seat = int(player.player)
+		var panel = table._panel(side, 8)
+		var status = VBoxContainer.new()
+		status.add_theme_constant_override("separation", 5)
+		panel.add_child(status)
+		table._label(status, table.model.seat_name(seat), 14).add_theme_color_override("font_color", table.Model.SEAT_COLORS[seat])
+		table._label(status, table.model.native("연구: %s · 틀레이락스 %d · 표본 %d") % [table.model.name_of(str(player.research_space)), int(player.tleilaxu_space), int(player.specimens)], 13).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	board.chosen.connect(_choose_research.bind(parts[0]))
 	return parts[0]
+
+
+func _choose_research(ref: String, dialog: Window) -> void:
+	# Both the board and its text buttons use the existing table choice path.
+	table._choose_ref(ref)
+	dialog.hide()
+	dialog.queue_free()
 
 
 func player_details(parent: Node, player: Dictionary) -> void:
@@ -227,30 +260,40 @@ func _update_scouts() -> void:
 	var header = HBoxContainer.new()
 	body.add_child(header)
 	if scouts_items.size() > 1:
-		table._button(header, "◀", func(): scouts_index = posmod(scouts_index - 1, scouts_items.size()); _update_scouts())
-		table._button(header, "▶", func(): scouts_index = (scouts_index + 1) % scouts_items.size(); _update_scouts())
+		for direction in [-1, 1]:
+			var next = table._button(header, "◀" if direction < 0 else "▶", func(): scouts_index = posmod(scouts_index + direction, scouts_items.size()); _update_scouts())
+			next.custom_minimum_size = Vector2(32, 32)
+			table._compact_button(next)
 	scouts_index = clampi(scouts_index, 0, scouts_items.size() - 1)
 	var ref = str(scouts_items[scouts_index])
 	var title = table._label(header, table.model.name_of(ref), 18)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	table._button(header, "×", toggle_scouts).custom_minimum_size.y = 28
+	var close = table._button(header, "×", toggle_scouts)
+	close.custom_minimum_size = Vector2(32, 32)
+	close.set_meta("scouts_close", true)
+	table._compact_button(close)
 	var description = table._scroll(body)
-	var entry = table.model.entry(ref)
-	if entry.get("currency") != null:
-		table._label(description, table.model.ui("panels.scouts_currency") + " " + table.model.phrase("{" + str(entry.currency) + "}"), 14)
-	for line in table.model.localized(entry, "lines") if table.model.localized(entry, "lines") is Array else []:
-		table._label(description, table.model.phrase(line), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var detail = table._entry_panel(description, ref, table.model.entry(ref), true)
+	detail.heading.hide()
 	if not resolving.is_empty() and ref == resolving:
-		table._label(description, table.model.prompt(), 13).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	scouts_panel.size = Vector2(clampf(table.board.size.x * 0.9, 300, 570), clampf(table.board.size.y * 0.7, 200, 370))
-	scouts_panel.position = Vector2((table.board.size.x - scouts_panel.size.x) / 2, 8)
+		table._label(description, table.model.prompt(), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	scouts_panel.show()
+	_position_scouts()
+
+
+func _position_scouts() -> void:
+	if not scouts_panel.visible:
+		return
+	var available = table.board.size - Vector2(16, 16)
+	scouts_panel.size = Vector2(clampf(table.board.size.x * 0.92, minf(300, available.x), minf(570, available.x)), clampf(table.board.size.y * 0.7, minf(200, available.y), minf(400, available.y)))
+	scouts_panel.position = Vector2((table.board.size.x - scouts_panel.size.x) / 2, 8)
 
 
 func scouts_details() -> Window:
 	var view = table.model.view()
-	var parts = table.tools_ui._dialog(table.model.native("스카웃 현황 / Arrakeen Scouts"))
+	var parts = table.tools_ui._dialog(table.model.native("스카웃 현황 / Arrakeen Scouts"), Vector2i(920, 600))
+	table._label(parts[1], table.model.native("공개 현황"), 19)
 	for entry in view.get("scouts_revealed", []):
 		table._button(parts[1], "%d R · %s" % [int(entry[0]), table.model.name_of(str(entry[1]))], table._open_details.bind(str(entry[1])))
 	for row in view.get("scouts_subcommittee_members", []):
@@ -258,25 +301,29 @@ func scouts_details() -> Window:
 	for row in view.get("scouts_goods", []):
 		table._label(parts[1], "%s · %s · %s %d · %s" % [table.model.name_of(str(row[0])), location_name(str(row[1])), table.model.phrase("{" + str(row[2]) + "}"), int(row[3]), table.model.seat_name(int(row[4])) if int(row[4]) >= 0 else table.model.ui("panels.scouts_anyone")], 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for row in view.get("scouts_parked", []):
-		table._label(parts[1], table.model.native("%s · %s · %s · 병력 %d") % [table.model.name_of(str(row[0])), table.model.seat_name(int(row[1])), location_name(str(row[2])), int(row[3])], 14)
+		table._label(parts[1], table.model.native("%s · %s · %s · 병력 %d") % [table.model.name_of(str(row[0])), table.model.seat_name(int(row[1])), location_name(str(row[2])), int(row[3])], 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for row in view.get("scouts_board_card_counts", []):
-		table._label(parts[1], table.model.native("%s · %s · 비공개 카드 %d") % [table.model.name_of(str(row[0])), location_name(str(row[1])), int(row[2])], 14)
+		table._label(parts[1], table.model.native("%s · %s · 비공개 카드 %d") % [table.model.name_of(str(row[0])), location_name(str(row[1])), int(row[2])], 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for row in view.get("scouts_secret_pending", []):
-		table._label(parts[1], table.model.native("%d R · %s · %s · 아직 비공개") % [int(row[0]), table.model.name_of(str(row[1])), table.model.seat_name(int(row[2]))], 14)
-	var own = view.get("private", {})
+		table._label(parts[1], table.model.native("%d R · %s · %s · 아직 비공개") % [int(row[0]), table.model.name_of(str(row[1])), table.model.seat_name(int(row[2]))], 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if not view.get("scouts_bids_confirmed", []).is_empty():
 		var names: PackedStringArray = []
 		for seat in view.scouts_bids_confirmed:
 			names.append(table.model.seat_name(int(seat)))
-		table._label(parts[1], table.model.ui("panels.scouts_bids", {"seats": ", ".join(names)}), 14)
+		table._label(parts[1], table.model.ui("panels.scouts_bids", {"seats": ", ".join(names)}), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	for row in view.get("scouts_calls", []):
+		table._label(parts[1], table.model.native("공개 입찰: %s · %d") % [table.model.seat_name(int(row[0])), int(row[1])], 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var own = view.get("private")
+	if not own is Dictionary:
+		own = {}
+	if not own.get("scouts_secret_picks", []).is_empty() or int(own.get("scouts_bid", -1)) >= 0:
+		table._label(parts[1], table.model.native("내 비공개 선택"), 19)
 	for row in own.get("scouts_secret_picks", []):
 		var lines = table.model.localized(table.model.entry(str(row[1])), "lines")
 		var picked = lines[int(row[2])] if lines is Array and lines.size() > int(row[2]) else str(int(row[2]) + 1)
 		table._label(parts[1], table.model.native("%d R · %s · 내 선택: %s") % [int(row[0]), table.model.name_of(str(row[1])), table.model.phrase(picked)], 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if int(own.get("scouts_bid", -1)) >= 0:
-		table._label(parts[1], table.model.native("내 봉인 입찰: %d") % int(own.scouts_bid), 14)
-	for row in view.get("scouts_calls", []):
-		table._label(parts[1], table.model.native("공개 입찰: %s · %d") % [table.model.seat_name(int(row[0])), int(row[1])], 14)
+		table._label(parts[1], table.model.native("내 봉인 입찰: %d") % int(own.scouts_bid), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return parts[0]
 
 

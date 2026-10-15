@@ -2,6 +2,10 @@ extends RefCounted
 
 # Native chrome only. Card names, player names and rule text use the catalog.
 const EN = {
+	"가능한 연구": "Available research",
+	"연구 현황": "Research status",
+	"공개 현황": "Public information",
+	"내 비공개 선택": "My private choices",
 	"수비대 %d · 교전 병력 %d": "Garrison %d · Troops %d",
 	"벌레 %d · 전투력 %d%s": "Worms %d · Strength %d%s",
 	"가능": "Ready",
