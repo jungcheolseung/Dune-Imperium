@@ -587,12 +587,20 @@ def spy_placement_targets(
     [Bloodlines p. 5].
     """
 
+    _refuse_visited_space(reward)
     if reward.shared_post:
         own = set(state.players[player].spy_post_ids)
         return tuple(
             post.post_id for post in OBSERVATION_POSTS if post.post_id not in own
         )
     return empty_observation_post_ids(state, spy_placement_allowed_post_ids(reward))
+
+
+def _refuse_visited_space(reward: PlaceSpy) -> None:
+    # The space visited this turn is the Agent box's to know
+    # (``agent_box_abilities.agent_spy_rows``, Double Agent).
+    if reward.visited_space:
+        raise TypeError(f"{reward!r} is judged with its Agent box")
 
 
 def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
@@ -602,6 +610,7 @@ def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
     observation post must connect to a [City] board space." [Main p. 20]
     """
 
+    _refuse_visited_space(reward)
     if reward.factions is not None:
         return observation_post_ids_for_factions(reward.factions)
     if reward.agent_icons is not None:

@@ -1,6 +1,6 @@
 """Agent boxes resolved from ability records (composed effects, stage A2).
 
-docs/composed-effects-plan.md 5 (A2): 44 personal-card Agent boxes are
+docs/composed-effects-plan.md 5 (A2, A3): personal-card Agent boxes are
 written as records (``content.uprising.agent_abilities``) and resolved by
 ``rules.agent_box_abilities``. The engine equivalence gate holds the move to
 the old engine game by game; these tests pin the record table and the
@@ -30,12 +30,16 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtMakerSpace,
+    CompleteContract,
     EffectSection,
     FactionBond,
+    ForceEnemyRetreat,
     GainedSpiceThisTurn,
+    GainInfluence,
     HasAlliance,
     InfluenceAtLeast,
     PayResources,
+    PlaceSpy,
     RecruitTroops,
     TrashPersonalCard,
 )
@@ -50,7 +54,10 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.display.effect_dsl_text import reward_text
+from dune_imperium.display.effect_dsl_text_ko import reward_text_ko
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
@@ -58,20 +65,28 @@ from dune_imperium.rules.agent_box_abilities import (
     condition_block,
     opens_at_placement,
     payment_box,
+    target_piece,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
     agent_card_payment_block,
     agent_icon_block,
+    apply_agent_card_influence,
     apply_agent_card_payment,
     box_hook_names,
+    legal_agent_card_contract_completion_actions,
     legal_agent_card_icon_actions,
+    legal_agent_card_influence_actions,
+    legal_agent_card_opponent_retreat_actions,
     legal_agent_card_payment_actions,
+    legal_agent_card_spy_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.effect_interpreter import spy_placement_allowed_post_ids
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     agent_card_source,
@@ -83,7 +98,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 55
+    assert len(AGENT_BOX_ABILITIES) == 61
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -434,3 +449,187 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
             mark=AbilityMark.OPTIONAL,
         )
         assert not payment_box(optional)
+
+
+def test_a_chosen_influence_offers_every_rising_faction_and_waits_without_one() -> None:
+    """For Humanity, "Gain 1 Influence with a chosen Faction" (composed A3c):
+    one row per Faction that can rise, named for the Agent box; with every
+    cube at the top it offers no confirmation and waits, then fizzles at the
+    turn's end (OQ-060, OQ-057 (1))."""
+
+    card = "imperium:for_humanity:0"
+    config = RulesetConfig(immortality=True)
+    owner = PlayerState(player_id=0, influence=Influence(emperor=6))
+    placed = _played(card, owner, config)
+    rows = legal_agent_card_influence_actions(placed, 0)
+    assert [dict(row.arguments)["faction"] for row in rows] == [
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    ]
+    assert {row.action_id for row in rows} == {"choose_agent_card_influence"}
+    gained = apply_agent_card_influence(placed, rows[0])
+    assert gained.state.players[0].influence.spacing_guild == 1
+    source = agent_card_source(1, 0, card)
+    prefix = f"{source}:influence:spacing_guild"
+    assert gained.events[0].event_id == f"{prefix}:influence"
+    context = dict(gained.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    stuck = _played(card, PlayerState(player_id=0, influence=top), config)
+    assert legal_agent_card_influence_actions(stuck, 0) == ()
+    # The page names the reason it waits (``display.unavailable``).
+    assert agent_box_influence_blocked(stuck, 0)
+    assert not agent_box_influence_blocked(placed, 0)
+    fizzled = resolve_agent_card_effect(stuck)
+    assert [(e.kind, e.event_id) for e in fizzled.events] == [
+        ("agent_card_effect_unavailable", source)
+    ]
+
+
+def test_public_spectacle_waits_for_a_recalled_spy() -> None:
+    card = "imperium:public_spectacle:0"
+    spy = PlayerState(
+        player_id=0, spy_post_ids=(OBSERVATION_POSTS[0].post_id,), spies_supply=2
+    )
+    placed = _played(card, spy)
+    assert legal_agent_card_influence_actions(placed, 0) == ()
+    # Waiting for its condition, not for a cube to lower.
+    assert not agent_box_influence_blocked(placed, 0)
+    recalled = replace(
+        placed,
+        players=(
+            replace(placed.players[0], spies_recalled_turn=1),
+            *placed.players[1:],
+        ),
+    )
+    assert len(legal_agent_card_influence_actions(recalled, 0)) == 4
+    with pytest.raises(RuntimeError, match="requires a player choice"):
+        resolve_agent_card_effect(recalled)
+
+
+def test_six_boxes_choose_one_target_and_read_as_their_cards() -> None:
+    """Composed A3c: a mandatory line that is one target choice -- a
+    Faction, a Spy's post, an enemy unit, a Contract -- and no other record
+    is read as one; the new pieces read as the printed text."""
+
+    targets = {
+        effect: type(piece)
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if (piece := target_piece(ability)) is not None
+    }
+    assert targets == {
+        _BOX.GAIN_CHOSEN_INFLUENCE: GainInfluence,
+        _BOX.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN: GainInfluence,
+        _BOX.PLACE_SPY: PlaceSpy,
+        _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: PlaceSpy,
+        _BOX.FORCE_OPPONENT_TROOP_RETREAT: ForceEnemyRetreat,
+        _BOX.COMPLETE_ONE_CONTRACT: CompleteContract,
+    }
+    for effect in (
+        _BOX.PLACE_SPY,
+        _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
+        _BOX.FORCE_OPPONENT_TROOP_RETREAT,
+        _BOX.COMPLETE_ONE_CONTRACT,
+    ):
+        (reward,) = AGENT_BOX_ABILITIES[effect].sections[0].rewards
+        assert reward_text(reward) == AGENT_EFFECT_TEXT[effect]
+        assert reward_text_ko(reward) == AGENT_EFFECT_TEXT_KO[effect]
+    with pytest.raises(ValueError, match="names no other limit"):
+        PlaceSpy(factions=(Faction.EMPEROR,), visited_space=True)
+    # Only the Agent box knows the space visited this turn.
+    with pytest.raises(TypeError, match="judged with its Agent box"):
+        spy_placement_allowed_post_ids(PlaceSpy(visited_space=True))
+
+
+def test_double_agent_shares_another_players_post_never_its_own() -> None:
+    """Double Agent's Spy goes on a post of the space visited this turn, held
+    by another player's Spy or not; without a Spy in supply the owner may
+    pass the icon up or recall one of its own Spies there [Main pp. 11, 20]."""
+
+    placed = _played("imperium:double_agent:0", PlayerState(player_id=0))
+    visited = dict(placed.decision_stack[-1].context)["space_id"]
+    connected = tuple(
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if visited in post.connected_space_ids
+    )
+    (post,) = connected  # Assembly Hall shares its post with Gather Support.
+    elsewhere = tuple(
+        p.post_id for p in OBSERVATION_POSTS if p.post_id not in connected
+    )[:2]
+
+    def spies(owner: tuple[str, ...], other: tuple[str, ...]) -> GameState:
+        return replace(
+            placed,
+            players=(
+                replace(
+                    placed.players[0],
+                    spy_post_ids=owner,
+                    spies_supply=3 - len(owner),
+                ),
+                replace(
+                    placed.players[1],
+                    spy_post_ids=other,
+                    spies_supply=3 - len(other),
+                ),
+                *placed.players[2:],
+            ),
+        )
+
+    def posts(state: GameState) -> list[tuple[str, object]]:
+        return [
+            (row.action_id, dict(row.arguments).get("post_id"))
+            for row in legal_agent_card_spy_actions(state, 0)
+        ]
+
+    shared = spies((), (post,))
+    assert posts(shared) == [("place_agent_card_spy", post)]
+    own = spies((post,), ())
+    assert posts(own) == []
+    # No Spy left: only a recall on the visited space's posts frees one.
+    empty = spies((post, *elsewhere), ())
+    assert posts(empty) == [
+        ("decline_agent_card_spy", None),
+        ("recall_spy_for_agent_card", post),
+    ]
+
+
+def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
+    """Disruption Tactics and CHOAM Demands resolve through their rows; the
+    one-action resolution refuses while a row is offered and otherwise
+    reports the box unavailable (OQ-057 (1))."""
+
+    config = RulesetConfig(bloodlines=True, choam_module=True)
+    card = "imperium:disruption_tactics:0"
+    tactics = _played(card, PlayerState(player_id=0), config)
+    source = agent_card_source(1, 0, card)
+    assert legal_agent_card_opponent_retreat_actions(tactics, 0) == ()
+    fizzled = resolve_agent_card_effect(tactics)
+    assert [(e.kind, e.event_id) for e in fizzled.events] == [
+        ("agent_card_effect_unavailable", source)
+    ]
+    enemy = replace(
+        tactics.players[2],
+        troops_supply=tactics.players[2].troops_supply - 1,
+        troops_conflict=1,
+        commanders_conflict=1,
+    )
+    engaged = replace(
+        tactics, players=(*tactics.players[:2], enemy, tactics.players[3])
+    )
+    assert [
+        dict(row.arguments)
+        for row in legal_agent_card_opponent_retreat_actions(engaged, 0)
+    ] == [{"player": 2}, {"commanders": 1, "player": 2}]
+    with pytest.raises(RuntimeError, match="enemy retreat"):
+        resolve_agent_card_effect(engaged)
+
+    owner = PlayerState(player_id=0, active_contract_ids=("contract:heighliner_ii",))
+    demands = _played("imperium:choam_demands:0", owner, config)
+    assert [
+        dict(row.arguments)["instance_id"]
+        for row in legal_agent_card_contract_completion_actions(demands, 0)
+    ] == ["contract:heighliner_ii"]
+    with pytest.raises(ValueError, match="complete_contract_by_card"):
+        resolve_agent_card_effect(demands)

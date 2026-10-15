@@ -715,11 +715,14 @@ class PlaceSpy:
     normal empty-post targets, for card text that says the Spy *may* go on
     the same post as another player's Spy [Distraction card] -- the Spy with
     Deep Cover set [Bloodlines p. 5]; the owner's own posts never qualify.
+    ``visited_space`` limits it to the posts connected to the board space the
+    owner sent an Agent to this turn [Double Agent card], and may share one.
     """
 
     factions: tuple[Faction, ...] | None = None
     shared_post: bool = False
     agent_icons: tuple[AgentIcon, ...] | None = None
+    visited_space: bool = False
 
     def __post_init__(self) -> None:
         if self.factions is not None:
@@ -742,6 +745,12 @@ class PlaceSpy:
             self.factions is not None or self.agent_icons is not None
         ):
             raise ValueError("a shared-post placement cannot limit its posts")
+        if not isinstance(self.visited_space, bool):
+            raise TypeError("visited_space must be a boolean")
+        if self.visited_space and (
+            self.factions is not None or self.agent_icons is not None
+        ):
+            raise ValueError("a visited-space placement names no other limit")
 
 
 @dataclass(frozen=True, slots=True)
@@ -983,6 +992,20 @@ class DrawPerSandwormInConflict:
 
 
 @dataclass(frozen=True, slots=True)
+class ForceEnemyRetreat:
+    """Force an enemy troop to retreat [Disruption Tactics card]: one unit of
+    an opponent's in the Conflict goes back to its garrison. A Sardaukar
+    Commander is a troop [Bloodlines p. 4]; the acting player picks the
+    opponent and, where both kinds are there, the kind (OQ-034)."""
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteContract:
+    """Complete one of your contracts [CHOAM Demands card]: an active
+    Contract of the owner's, whatever its printed condition."""
+
+
+@dataclass(frozen=True, slots=True)
 class LookAtIntrigueKeepOne:
     """Look at the Intrigue deck's top ``count`` cards, keep 1 and put the
     rest back on top [Imperium Ceremony card]."""
@@ -1033,6 +1056,8 @@ type Reward = (
     | BoostNextBeneGesseritCard
     | DrawPerSandwormInConflict
     | LookAtIntrigueKeepOne
+    | ForceEnemyRetreat
+    | CompleteContract
 )
 
 
