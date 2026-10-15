@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), 다음 A3c. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), 다음 A3f. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -129,7 +129,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | A0 | 능력 기록, 대기 능력 실행기, (모양, 출처) → template 표, 같음 확인 도구(6절) — 끝남(2026-10-15, 아래 "A0에서 만든 것") |
 | A1 | 책략 90 identity를 실행기로(이미 데이터라 실행기 검증용) — 끝남(2026-10-16, codec v148, 아래 "A1에서 만든 것") |
 | A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 — 44개 끝남(2026-10-16, 아래 "A2에서 만든 것"), 7개는 hook으로·1개는 A3로 |
-| A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개, Tread in Darkness, A2가 남긴 특이 흐름 7개. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`)에서 처리기마다 사건 출처·순서가 달라 모양별로 나눈다: A3a hook 등록부와 A2의 특이 흐름(끝남), A3b 대상 없는 선택 지불 S1(끝남), A3c 필수 대상 고르기 S5(진영·첩자 칸·상대 병력·계약), A3d 대상을 고르는 선택 화살표 S2a·S2b(보상을 곧바로 주는 것, 비용 뒤에 아이콘으로 거는 것 — 기록에 "걸리는 보상 아이콘" 칸이 따로 필요), A3e 검은 폐기 아이콘·한 칸 안 연속 고르기 S3·S4, A3f 평범한 줄이 한쪽인 고르기 S6·고르기 아이콘이 섞인 칸 S7(Tread in Darkness)·선택 획득 S8 |
+| A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개, Tread in Darkness, A2가 남긴 특이 흐름 7개. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`)에서 처리기마다 사건 출처·순서가 달라 모양별로 나눈다: A3a hook 등록부와 A2의 특이 흐름(끝남), A3b 대상 없는 선택 지불 S1(끝남), A3c 필수 대상 고르기 S5(진영·첩자 칸·상대 병력·계약, 끝남), A3d 대상을 고르는 선택 화살표 S2a·S2b(보상을 곧바로 주는 것, 비용 뒤에 아이콘으로 거는 것 — 기록에 "걸리는 보상 아이콘" 칸이 따로 필요; 버리기 7칸·책략 폐기 2칸 끝남, 개인 카드 폐기 3칸과 Piter는 A3e로), A3e 검은 폐기 아이콘·한 칸 안 연속 고르기 S3·S4(폐기 칸 5개 끝남; Arrakis Observer·Piter·Control the Spice는 A3f로), A3f 평범한 줄이 한쪽인 고르기 S6·고르기 아이콘이 섞인 칸 S7(Tread in Darkness)·선택 획득 S8 |
 | A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과 |
 | A5 | 보드 칸, Conflict 보상, 계약 |
 | A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech |
@@ -273,6 +273,60 @@ hook으로 두되 그 수를 세어 줄여 간다.
   `Ability.icons`가 아닌 별도 칸이 필요(아니면 배치 때 걸리고 "진행 중" 판정이 바뀜), A1 실행기의 Spy·영향력·획득 줄은 Agent 칸
   제공자와 세 곳에서 다름.
 
+### A3c에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **필수 대상 고르기:** 줄 하나가 대상 하나를 고르는 필수 칸 6개를 기록으로 — 선택 진영 영향력(Interstellar Trade·For Humanity,
+  Public Spectacle은 "이번 차례 스파이 소환" 조건), Spy 칸(Bene Gesserit Operative·Reliable Informant, Double Agent), Disruption
+  Tactics, CHOAM Demands. 실행기의 대상 모양(`agent_box_abilities.target_piece`·`target_rows`)이 줄을 내고, 고를 것이 없으면 확인 줄 없이
+  기다렸다가 턴 끝에 무산된다(OQ-057 (1), OQ-060). 한 번 해결(`resolve_box`)은 줄이 있는 동안 예외를 낸다 — 예외 종류도 옛 것 그대로
+  (시험 해결이 셋 다 "가능"으로 읽는다).
+- **줄의 출처:** 영향력은 A1 실행기의 고르기 줄(`piece_rows`)을 처음 다시 쓴다 — 새 인자 `empty_confirm=False`로 쌓인 책략 frame의
+  빈 확인 줄만 뺐다. Spy는 Agent 칸 규칙(공급에 Spy가 없을 때 먼저 소환과 그 넘기기)이 A1 실행기와 달라 `agent_spy_rows`로 옮겼고,
+  Arrakis Observer의 Deep Cover Spy(`PlaceSpy(shared_post=True)`)도 이것을 쓴다. Reliable Informant의 관측소 제한은 카드에 인쇄된
+  진영 표시(`agent_spy_factions`)에서 온다(기록은 제한 없는 `PlaceSpy`). 답은 Spy·후퇴·계약이 옛 처리기 그대로, 영향력만 실행기에서.
+- **DSL:** `PlaceSpy.visited_space`(이번 차례 Agent를 보낸 칸에 연결된 관측소, 공유 가능 — Double Agent), 보상 `ForceEnemyRetreat`·
+  `CompleteContract`. 표시 문구는 `tokens.py`·`tokens_ko.py`의 카드 문장과 같다(테스트가 지킨다). 일반 Spy 판정은 `visited_space`를
+  알 수 없어 예외를 낸다.
+- **남은 것:** A3d(대상을 고르는 선택 화살표), A3e, A3f.
+
+### A3d에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **버리기 화살표 7칸:** Delivery Agreement, I Believe, Engineered Miracle, Space-time Folding, Guild Envoy(필수), Captured Mentat,
+  Guild Spy. 기록은 "[You may] discard a card → …": 비용은 첫 줄에, 뒤 줄의 조건 `DiscardedCardHasFaction`(버린 카드의 진영 — Space-time
+  Folding의 두 번째 카드, Guild Envoy의 두 장, Guild Spy의 책략)은 비용을 낸 카드로 판정한다(일반 해석기는 예외를 낸다). 실행기의 버리기
+  모양(`discard_box`·`discard_rows`·`apply_discard`)은 선택 화살표의 거절, 그다음 손패마다 한 줄; 답은 버리기 처리기의 출처
+  (`round:R:player:P:agent_card_discard`, 카드 id 없음) 그대로 — 자원은 frame 쓰기와 함께, 계약 `…:contract_reward`, 뽑기
+  `…:<버린 카드>:draw`. 필수인 Guild Envoy는 손패가 비면 기다렸다가 무산된다.
+- **비용 뒤에 거는 보상 아이콘:** 기록에 `Ability.armed_icons`를 더했다 — 줄마다 키 하나, 배치 때가 아니라 비용의 답이 건다
+  (`effects.arm_agent_icons`). 버린 카드가 조건을 못 맞춘 줄은 걸지 않는다. 걸린 아이콘은 옛 아이콘 경로가 키별로 해결한다(OQ-027).
+  `icons`(배치 때 거는 인쇄 아이콘)와 따로 두어 "진행 중"·화면 막힘 판정이 바뀌지 않는다(조사가 짚은 함정).
+- **책략 폐기 화살표 2칸:** Branching Path(보상을 아이콘으로 검), Junction Headquarters(2 스파이스도 내고 1 VP). 동맹 조건은 비용을
+  낼 때 판정(OQ-028). 실행기의 책략 모양(`intrigue_box`·`intrigue_rows`·`intrigue_cost_block`·`apply_intrigue_payment`)이 거절과
+  책략마다 한 줄(`trash_intrigue_for_agent_card` 또는 `pay_agent_card_intrigue_and_spice`), 사건은 `<칸>:intrigue_payment` 아래.
+- 선택 화살표는 여전히 줄로만 해결된다: 일반 해결은 옛 시험 해결 답(예외 = "가능")을 그대로 낸다(`optional_arrow`).
+- **남은 것:** 개인 카드 폐기 화살표(Shishakli/Replacement Eyes, Pivotal Gambit, Elite Forces)와 Piter(병력 잃기)는 DSL에 개인 카드
+  폐기·병력 잃기 "비용"을 정해야 해서 A3e(검은 폐기 아이콘·한 칸 안 연속 고르기)와 함께.
+
+### A3e에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **폐기 칸 5개:** 검은 폐기 아이콘이 칸 전부인 Calculus of Power·Desert Survival·Eliminate Allies(#1)와 Ruthless Leadership(아이콘 둘,
+  "분쟁에 사다우카 지휘관이 있다면" 조건은 폐기할 때마다 판정, OQ-028), 폐기 화살표 Shishakli/Replacement Eyes(→ 카드 1장),
+  Pivotal Gambit(이 카드 폐기 → 병력·1등 보상 영향력 약속을 아이콘으로 검), Elite Forces(손패 폐기 → 황제 카드면 책략·병력을 아이콘으로
+  걸고 Combat은 곧바로).
+- **DSL:** 비용 `TrashCard`(손패·버린 더미·플레이 중 카드; `hand_only`, `this_card`), 조건 `TrashedCardHasFaction`(폐기한 카드의 진영,
+  Agent 칸만 판정), 보상 `PledgeFirstPlaceInfluence`(OQ-025). 표시 문구는 `tokens.py`·`tokens_ko.py`의 카드 문장에서. 검은 폐기 아이콘은
+  보상 `TrashPersonalCard()` 줄로 적는다(선택 칸).
+- **실행기의 폐기 모양**(`trash_box`·`trash_rows`·`trash_block`·`apply_trash`): 거절, 그다음 폐기할 수 있는 카드마다 한 줄(Usurp로 빌린
+  카드는 플레이 중이 아님, OQ-054); 조건이 안 맞으면 줄이 없다. 답은 폐기 처리기의 출처(`round:R:player:P:agent_card`, 카드 id 없음)
+  그대로, 폐기 효과의 병력을 frame 쓰기에 남기고(`keep_trash_recruits`), 아이콘이 남으면 `trashes_remaining`을 frame에 직접 쓴다.
+  `Ability.armed_icons`는 앞쪽 줄만 열쇠로 가질 수 있다(뒤 줄은 비용과 함께 — Elite Forces의 Combat).
+- **일반 해결:** 조건 없는 폐기 칸은 선택 화살표처럼 줄로만 해결된다(옛 시험 해결 답 = 예외). Ruthless Leadership만 한 번 해결로
+  가서 조건이 맞으면 예외, 안 맞으면 "해결 불가" 사건(옛 그대로).
+- **남은 것(A3f):** Arrakis Observer(버리기 → Deep Cover Spy 연속 단계, 길드 카드면 사건 있는 스파이스), Piter(병력 잃기 → 아이콘),
+  Control the Spice, 평범한 줄이 한쪽인 고르기 S6(Southern Faith, Possible Futures, High Priority Travel, Interstellar Conspiracy),
+  고르기 아이콘이 섞인 칸 S7(Dangerous Rhetoric, Steersman, Twisted Mentat, Tread in Darkness), 선택 획득 S8(Price is No Object,
+  Tleilaxu Master).
+
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
 - 내용: 행동을 `동사(대상, slot=k)`로 바꾸고 묶인 행동을 조각 행동으로 나눈다. `slot`은 대기 능력 목록의 자리다(지금
@@ -322,6 +376,24 @@ A2 관문(2026-10-16, 시작 master `7ba624ad`): 1번 200판 모두 same(191,836
 통과, E2E 67종 통과, 소크 720판 실패 0. 6번 `time_legal.py` Agent frame 호출당 1~2% 느림(관문 10% 안). 독립 리뷰: 막는 문제·중간 없음. 옛·새 엔진 차등 탐침 330판(Agent 효과 상태 172,999곳에서 합법 행동·사건·상태·네 좌석 보기와 모든 효과×키의
 막힘 이유·대기 판정까지)과 강제 탐침 2,665곳이 모두 같았다. 낮은 지적 3개(아이콘 조건이 막힘 이유를 늘 낼 것, 두 곳에 복사된 조건 판정,
 화면 비교 범위)와 사소한 지적들을 반영했다(worklog 2026-10-16 A2).
+
+A3e 관문(2026-10-16, 시작 master `ffb1205e`): 1번 200판 모두 same(네 번: 폐기 칸 4개 뒤, Elite Forces 뒤, 리뷰 반영 뒤, A3d 브랜치 받은 뒤). 에이전트 재기록 같음.
+2번 v148 묶음 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,761개·ruff·mypy, E2E 67종, 소크 720판
+실패 0. 6번 Agent frame 호출당 93.9·94.6·95.5 µs(시작, 부하 중) 대 95.6·96.9·94.5 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 360판,
+대상 상태 46,616곳 — Ruthless 두 폐기 사이 427, Elite Forces 황제 106·아닌 것 269, Usurp 사본 포함 — 모두 같음), 낮은 지적 2개(아이콘 하나짜리
+검은 폐기는 세는 값을 건드리지 않게; 버리기·책략 모양은 모든 줄이 걸릴 때만)와 사소한 것 3개 반영.
+
+A3d 관문(2026-10-16, 시작 master `70153b51`): 1번 200판 모두 same(다섯 번: 버리기 5칸 뒤, 7칸 뒤, 책략 2칸 뒤, A3c 받은 뒤 리뷰 반영 뒤 등). 에이전트 재기록 같음.
+2번 v148 묶음 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,759개·ruff·mypy, E2E 67종, 소크 720판
+실패 0. 6번 Agent frame 호출당 64.6 µs(시작) 대 65.1 µs(조용할 때), 부하 때 96.5 대 99.3 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등
+탐침 400판 두 번 — Junction 지불 844번·Branching Path 1,151번 포함 — 과 상황 탐침 221,744줄 모두 같음), 잠재적 낮은 지적 2개(걸린 아이콘
+열쇠를 그 길이 받는 칸에만 — 테스트로; 책략 화살표의 동맹은 진영을 이름)와 사소한 것들 반영.
+
+A3c 관문(2026-10-16, 시작 master `e3a0b618`): 1번 200판 모두 same(네 번: 영향력 2칸 뒤, 6칸 뒤, 최종, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음
+2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,756개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
+6번 Agent frame 호출당 64.6 µs(시작) 대 67.3 µs(조용할 때 한 번), 부하 때 96.5 대 97.6 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등
+탐침 300판, 상황 탐침 367,779줄, Arrakis Observer 75,562줄 모두 같음), 낮은 지적 2개(화면의 "영향력을 올릴 진영 없음" 판정이 기록을 읽게,
+Deep Cover가 카드 진영 표시를 읽지 않는 이유 주석)와 사소한 것 1개 반영.
 
 A3a·A3b 관문(2026-10-16, 시작 master `926b679d`): 1번 200판 모두 same(세 번). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec
 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,751개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 Agent frame 잡음 안. 독립 리뷰:

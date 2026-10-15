@@ -87,6 +87,7 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_PLEDGE,
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
+    agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
     agent_card_payment_block,
@@ -500,6 +501,9 @@ def test_a_chosen_influence_offers_every_rising_faction_and_waits_without_one() 
     top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     stuck = _played(card, PlayerState(player_id=0, influence=top), config)
     assert legal_agent_card_influence_actions(stuck, 0) == ()
+    # The page names the reason it waits (``display.unavailable``).
+    assert agent_box_influence_blocked(stuck, 0)
+    assert not agent_box_influence_blocked(placed, 0)
     fizzled = resolve_agent_card_effect(stuck)
     assert [(e.kind, e.event_id) for e in fizzled.events] == [
         ("agent_card_effect_unavailable", source)
@@ -513,6 +517,8 @@ def test_public_spectacle_waits_for_a_recalled_spy() -> None:
     )
     placed = _played(card, spy)
     assert legal_agent_card_influence_actions(placed, 0) == ()
+    # Waiting for its condition, not for a cube to lower.
+    assert not agent_box_influence_blocked(placed, 0)
     recalled = replace(
         placed,
         players=(
@@ -807,3 +813,28 @@ def test_two_optional_acquisitions_are_records() -> None:
     printed = _BOX.ACQUIRE_WITH_SOLARI_TO_HAND
     assert reward_text_ko(piece) in AGENT_EFFECT_TEXT_KO[printed]
     assert reward_text(piece).lower() in AGENT_EFFECT_TEXT[printed].lower()
+
+
+def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
+    """The legacy icon path offers and pays an armed key per effect (Branching
+    Path's ``spice`` is its 2 spice), so a record arming a key elsewhere would
+    be refused there or paid wrong; a new one has to extend that path first."""
+
+    users: dict[str, set[PersonalCardAgentEffect]] = {}
+    for effect, ability in AGENT_BOX_ABILITIES.items():
+        for key in ability.armed_icons:
+            users.setdefault(key, set()).add(effect)
+    branching = (
+        _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+    )
+    mentat = _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
+    guild_spy = _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+    gambit = _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
+    elite = _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    assert users == {
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
+        AGENT_ICON_CARDS: {mentat, guild_spy},
+        AGENT_ICON_SPICE: {branching},
+        AGENT_ICON_TROOPS: {gambit, elite},
+        AGENT_ICON_PLEDGE: {gambit},
+    }

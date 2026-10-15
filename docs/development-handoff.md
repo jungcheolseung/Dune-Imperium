@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A3a·A3b 병합 뒤)
+기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A3e 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,8 +28,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | composed-a3 병합 (2026-10-16) |
-| pytest | 7,751개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| master | composed-a3e 병합 (2026-10-16) |
+| pytest | 7,761개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 509파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
 | action codec | **v148** (다음 번호 v149) |
@@ -49,9 +49,9 @@
   그대로 두고 단계마다 `scripts/ab/engine_equivalence.py` 200판 same을 관문으로 한다. 학습은 A단계 끝에 한 번(사용자: 병행
   학습 안 함). 그 앞의 따로 작업 둘(Agent 차례 선택 효과 codec v146, Reveal 선택 효과 codec v147), A0(능력 기록, 행동 모양
   표, 대기 능력 실행기 핵심), A1(책략 선택 frame을 실행기로, codec v148), A2(개인 카드 Agent 칸 44개를 능력 기록으로, codec 그대로), A3a(hook 등록부와
-  특이 흐름 6개, Guild Impersonator)·A3b(대상 없는 선택 지불 4개)는 끝났다(기록 55개, hook 6개). **다음은 A3c**: 필수 대상 고르기(S5) — 선택 영향력
-  두 칸(Interstellar Trade/For Humanity, Public Spectacle)의 패치는 git 무시 `tmp/claude/4767ed6a/a3c/`에 준비됨, 이어 Spy 칸·Disruption
-  Tactics·CHOAM Demands. 그 뒤 A3d~A3f. 계획서 5절 표의 A3 줄과 "A3a·A3b에서 만든 것", 조사 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`.
+  특이 흐름 6개, Guild Impersonator)·A3b(대상 없는 선택 지불 4개)·A3c(필수 대상 고르기 6개)·A3d(버리기 화살표 7개, 책략 폐기 화살표 2개)·A3e(폐기 칸 5개)는 끝났다(기록 75개, hook 6개). **다음은 A3f**:
+  Arrakis Observer(버리기 → Deep Cover Spy 연속 단계), Piter(병력 잃기 → 아이콘), Control the Spice, S6 4칸, S7 4칸(Tread in Darkness
+  포함), S8 2칸. 계획서 5절 표의 A3 줄과 "A3e에서 만든 것", 조사 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`.
   같음 확인 기록은 단계 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`(Agent frame 값 포함)로도 잰다(6절 6번).
   [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A2]
 

@@ -339,7 +339,8 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # --- Intrigue arrows (composed effects, A3d) --------------------------
             # Branching Path: "If Bene Gesserit Alliance: You may trash an
             # Intrigue card -> Draw 1 Intrigue card, Gain 2 spice"; the Alliance
-            # is judged when the cost is paid, and the rewards are then armed.
+            # over the whole arrow sits on the cost line, judged when the cost
+            # is paid, and both rewards are then armed.
             _BRANCHING_PATH: Ability(
                 timing=AbilityTiming.AGENT_BOX,
                 sections=(

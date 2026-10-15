@@ -992,6 +992,8 @@ def agent_spy_rows(
     elif piece.factions is not None:
         allowed_post_ids = observation_post_ids_for_factions(piece.factions)
     elif not piece.shared_post and card.agent_spy_factions:
+        # A shared-post Spy (Deep Cover) never reads the marks: only a
+        # place-Spy card prints them (the card tables refuse them elsewhere).
         allowed_post_ids = observation_post_ids_for_factions(card.agent_spy_factions)
     if piece.shared_post:
         # Another player's Spy may share the post, never the owner's own
@@ -1045,6 +1047,18 @@ def agent_spy_rows(
     return (DomainAction(action_id="decline_agent_card_spy", actor=player), *recalls)
 
 
+def target_blocked(state: GameState, player: int, ability: Ability) -> bool:
+    """Whether the box's condition holds yet it has nothing to choose: every
+    Faction it may raise at the top (OQ-060), so it waits for the turn's
+    end (OQ-057 (1)); the page names this reason (``display.unavailable``)."""
+
+    _, context = current_agent_effect_context(state)
+    (line,) = ability.sections
+    return _line_holds(line, state.players[player], context) and not target_rows(
+        state, player, ability
+    )
+
+
 def target_choice_error(ability: Ability) -> Exception:
     """What resolving the box as one action raises while it has a choice."""
 
@@ -1089,6 +1103,8 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 _DISCARD_SOURCE: Final = "agent_card_discard"
 _DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
+# That path offers and pays a key per effect (Branching Path's 2 spice), so
+# the record table test keeps each key to the boxes it serves.
 _ARMED_REWARDS: Final[Mapping[str, Reward]] = {
     "intrigue": DrawIntrigueCards(1),
     "cards": DrawPersonalCards(1),
@@ -1298,7 +1314,10 @@ def intrigue_box(ability: Ability | None) -> bool:
         for cost in first.costs
     ):
         return False
-    if first.condition is not None and not isinstance(first.condition, HasAlliance):
+    if first.condition is not None and not (
+        isinstance(first.condition, HasAlliance) and first.condition.faction is not None
+    ):
+        # A named Faction's Alliance, judged by ``intrigue_cost_block``.
         return False
     if any(line.condition is not None for line in rest):
         return False
@@ -1422,6 +1441,9 @@ def apply_intrigue_payment(
         )
     ]
     if ability.armed_icons:
+        # Every key: the Alliance printed over the whole arrow gated the cost
+        # line's rows (``intrigue_cost_block``), and no later line has a
+        # condition of its own (``intrigue_box``).
         arm_agent_icons(context, ability.armed_icons)
     else:
         if spice := _spice_cost(ability):
