@@ -94,6 +94,10 @@ class Ability:
     # A Plot used "at the start of your turn" (Withdrawn, OQ-095 (6)).
     at_turn_start: bool = False
     hook: str | None = None
+    # An Agent box whose printed icons resolve one action each, in the
+    # owner's order (OQ-027): one row key per line, ``sections[i]`` resolved
+    # by ``resolve_agent_card_effect(effect=icons[i])``.
+    icons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, AbilityTiming):
@@ -114,6 +118,15 @@ class Ability:
             raise ValueError("triggered lines must be free and unconditional")
         if self.at_turn_start and self.timing is not AbilityTiming.PLOT:
             raise ValueError("only a Plot is played at the start of a turn")
+        if self.icons:
+            if self.timing is not AbilityTiming.AGENT_BOX:
+                raise ValueError("only an Agent box resolves icon by icon")
+            if self.structure is not AbilityStructure.SEPARATE:
+                raise ValueError("an icon-by-icon box uses each line on its own")
+            if len(self.icons) != len(self.sections):
+                raise ValueError("an icon-by-icon box keys every line")
+            if len(set(self.icons)) != len(self.icons) or not all(self.icons):
+                raise ValueError("icon keys must be named and distinct")
 
 
 _FROM_INTRIGUE = {
@@ -156,6 +169,7 @@ def intrigue_option(ability: Ability) -> IntrigueOption:
         or ability.structure is AbilityStructure.ONE_OF
         or ability.requirement is not None
         or ability.hook is not None
+        or ability.icons
     ):
         raise ValueError(f"no Intrigue option holds {ability!r}")
     return IntrigueOption(

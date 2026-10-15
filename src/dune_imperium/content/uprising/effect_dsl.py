@@ -45,7 +45,11 @@ class HasHighCouncil:
 
 @dataclass(frozen=True, slots=True)
 class HasAlliance:
-    """The player holds any Faction Alliance (Twisted Intrigue, Navigation)."""
+    """The player holds a Faction Alliance: any one (Twisted Intrigue,
+    Navigation), or ``faction``'s ("[Fremen] Alliance:" [Stillsuit
+    Manufacturer card])."""
+
+    faction: Faction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +250,56 @@ class OpponentPlayedCombatIntrigue:
 
 
 @dataclass(frozen=True, slots=True)
+class AtMakerSpace:
+    """The Agent was sent to a Maker space ("If you are at a Maker space:"
+    [Desert Power card]): fixed by the placement, so an Agent box judges it
+    when the card is played (OQ-028 (a))."""
+
+
+@dataclass(frozen=True, slots=True)
+class FactionBond:
+    """Another card of ``faction`` is in play: that Faction's Bond ("Fremen
+    Bond | 프레멘의 유대감" [Main p. 20])."""
+
+    faction: Faction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("a Bond names a Faction")
+
+
+@dataclass(frozen=True, slots=True)
+class SpyRecalledThisTurn:
+    """The player recalled one of their Spies this turn, by any means ("If
+    you recalled a Spy this turn:" [Strike Fleet card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class UnitsInConflictAtLeast:
+    """The player has ``count`` or more units in the Conflict, an Agent there
+    included ("If you have 3 or more units in the Conflict:" [Chani, Clever
+    Tactician card])."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("unit threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class ContractCompletedThisTurn:
+    """The player completed a Contract this turn ("If you completed a
+    Contract this turn:" [Mercantile Affairs card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class Grafted:
+    """The card was played grafted with another ("If grafted:" [Corrupt
+    Smuggler card]) [Immortality p. 10]."""
+
+
+@dataclass(frozen=True, slots=True)
 class AllConditions:
     """Every listed condition holds (Study Melange: spice and two markers)."""
 
@@ -276,6 +330,12 @@ type Condition = (
     | SolariAtLeast
     | SpiceAtLeast
     | OpponentPlayedCombatIntrigue
+    | AtMakerSpace
+    | FactionBond
+    | SpyRecalledThisTurn
+    | UnitsInConflictAtLeast
+    | ContractCompletedThisTurn
+    | Grafted
     | AllConditions
 )
 
@@ -889,6 +949,37 @@ class RevealPersuasionThisRound:
             raise ValueError("Persuasion bonus must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class ReturnThisCardToHand:
+    """Return this card from play to its owner's hand, face up so far so it
+    stays known (OQ-010) [Weirding Woman card]. Only a card counted in play
+    can return: a Row card borrowed with Usurp is not in play (OQ-054)."""
+
+
+@dataclass(frozen=True, slots=True)
+class BoostNextBeneGesseritCard:
+    """The next Bene Gesserit card the owner plays this round has all Agent
+    icons and adds "Draw 1 card" to its Agent box [Urgent Shigawire card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class DrawPerSandwormInConflict:
+    """Draw 1 card for each of the owner's sandworms in the Conflict
+    [Leadership card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class LookAtIntrigueKeepOne:
+    """Look at the Intrigue deck's top ``count`` cards, keep 1 and put the
+    rest back on top [Imperium Ceremony card]."""
+
+    count: int = 2
+
+    def __post_init__(self) -> None:
+        if self.count < 2:
+            raise ValueError("a peek to keep one looks at two or more cards")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -924,6 +1015,10 @@ type Reward = (
     | GenerateSpecimens
     | AcquireTleilaxuCard
     | RevealPersuasionThisRound
+    | ReturnThisCardToHand
+    | BoostNextBeneGesseritCard
+    | DrawPerSandwormInConflict
+    | LookAtIntrigueKeepOne
 )
 
 

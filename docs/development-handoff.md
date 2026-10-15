@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A1 병합 뒤)
+기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A2 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,9 +28,9 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | composed-a1 병합 (2026-10-16) |
-| pytest | 7,738개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 506파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| master | composed-a2 병합 (2026-10-16) |
+| pytest | 7,747개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| Ruff · mypy | `src tests` 통과, mypy 509파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
 | action codec | **v148** (다음 번호 v149) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
@@ -48,10 +48,11 @@
 - **효과 조각 엔진 전환(진행 중):** 카드 효과를 능력 기록(공통 조각의 조합)과 실행기로 옮긴다. A단계는 행동·관측·사건을
   그대로 두고 단계마다 `scripts/ab/engine_equivalence.py` 200판 same을 관문으로 한다. 학습은 A단계 끝에 한 번(사용자: 병행
   학습 안 함). 그 앞의 따로 작업 둘(Agent 차례 선택 효과 codec v146, Reveal 선택 효과 codec v147), A0(능력 기록, 행동 모양
-  표, 대기 능력 실행기 핵심), A1(책략 선택 frame을 실행기로, codec v148)은 끝났다. **다음은 A2**: 개인 카드 Agent 칸의 단순·조건부
-  이득 52개(설계는 시작 때; Agent 칸은 아이콘마다 행동 하나라 실행기에 아이콘별 줄 제시가 필요). 계획서 5절 "A1에서 만든 것"의
-  "A2가 할 일". 같음 확인 기록은 A2 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`로도 잰다(6절 6번).
-  [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A1]
+  표, 대기 능력 실행기 핵심), A1(책략 선택 frame을 실행기로, codec v148), A2(개인 카드 Agent 칸 44개를 능력 기록으로, codec 그대로)는
+  끝났다. **다음은 A3**: Agent 칸의 비용→보상 22개·고르기 14개와 Tread in Darkness, 그리고 A2가 남긴 특이 흐름 7개(Seek Allies, Occupation,
+  In High Places, Overthrow, Lisan al Gaib, Guild 영향력 칸, Clandestine Meeting)를 전용 hook 등록부로. 계획서 5절 "A2에서 만든 것".
+  같음 확인 기록은 단계 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`(Agent frame 값 포함)로도 잰다(6절 6번).
+  [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A2]
 
 **학습·AI**
 
@@ -178,7 +179,7 @@
 | phase·Combat·Endgame | `rules/phases.py`, `combat.py`, `endgame.py` |
 | dispatcher 표와 frame kind | `rules/engine.py`(`LEGAL_ACTION_PROVIDERS`·`ACTION_HANDLERS`·`report_only_event_kinds`), `frames.py`, `agent_effect_frame.py` |
 | effect DSL과 Intrigue | `content/uprising/effect_dsl.py`, `intrigue.py`, `rules/effect_interpreter.py`, `rules/intrigue.py`, `rules/intrigue_deck.py`, `rules/intrigue_triggers.py` |
-| 효과 조각 엔진(전환 중) | 능력 기록 `content/uprising/abilities.py`, 행동 모양 표(동사·출처·대상) `rules/action_shapes.py`, 대기 능력 실행기 `rules/ability_executor.py`; 계획 [composed-effects-plan.md](composed-effects-plan.md) |
+| 효과 조각 엔진(전환 중) | 능력 기록 `content/uprising/abilities.py`, 행동 모양 표(동사·출처·대상) `rules/action_shapes.py`, 대기 능력 실행기 `rules/ability_executor.py`; Agent 칸 기록 `content/uprising/agent_abilities.py`와 그 해결 `rules/agent_box_abilities.py`; 계획 [composed-effects-plan.md](composed-effects-plan.md) |
 | 고정 action catalog | `adapters/action_codec.py` |
 | 관측과 PettingZoo | `core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
 | replay와 random 러너 | `core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |

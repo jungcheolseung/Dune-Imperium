@@ -169,6 +169,10 @@ from dune_imperium.rules.acquisition import (
     reserve_cost,
     revealer_persuasion,
 )
+from dune_imperium.rules.agent_box_abilities import (
+    AgentIconBlock,
+    AgentIconCondition,
+)
 from dune_imperium.rules.agent_effect_frame import (
     active_box_can_act,
     agent_box_is_waiting,
@@ -176,8 +180,6 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
-    AgentIconBlock,
-    AgentIconCondition,
     AgentPaymentBlock,
     agent_box_influence_blocked,
     agent_card_cost_block,

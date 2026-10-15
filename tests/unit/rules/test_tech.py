@@ -285,8 +285,8 @@ def test_paying_spice_for_a_tile_does_not_undo_spice_gained_this_turn() -> None:
     # gain of the turn [Main p. 16]. The Tech price was taken from the Spice
     # without being recorded as spent, so it hid the turn's gains.
     from dune_imperium.content.uprising.effect_dsl import GainedSpiceThisTurn
-    from dune_imperium.rules.agent_effects import spice_gained_this_turn
     from dune_imperium.rules.effect_interpreter import condition_holds
+    from dune_imperium.rules.effects import spice_gained_this_turn
 
     owner = _owner(
         resources=Resources(solari=4, spice=6, water=2), spice_at_turn_start=4
