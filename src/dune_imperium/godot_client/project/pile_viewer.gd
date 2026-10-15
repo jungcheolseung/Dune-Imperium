@@ -64,7 +64,8 @@ func open(owner_table: Control, title: String, cards: Array, order = false, sour
 	heading = table._label(side, "", 20)
 	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	heading.size.x = 385
-	picture = table._picture(side, "", Vector2(240, 280))
+	picture = table._picture(side, "", Vector2(300, 340))
+	picture.set_meta("artwork_box", Vector2(300, 340))
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var description = table._scroll(side)
 	words = table._label(description, "", 16)
@@ -156,15 +157,17 @@ func render() -> void:
 	count.text = table.model.native("%d장") % refs.size()
 	if refs.is_empty():
 		table._label(body, table.model.native("카드가 없습니다."), 18)
+	var landscape = not shown.is_empty() and shown.all(func(group): return table.model.catalog.get("contracts", {}).has(group.ref.trim_prefix("contract:")) or table.model.catalog.get("tech", {}).has(group.ref) or table.model.catalog.get("skills", {}).has(group.ref.trim_prefix("skill:").get_slice(":", 0)))
+	var columns = 2 if landscape else 3
 	var row: HBoxContainer
 	for index in shown.size():
-		if index % 3 == 0:
+		if index % columns == 0:
 			row = HBoxContainer.new()
 			body.add_child(row)
 		var group = shown[index]
 		var cell = VBoxContainer.new()
 		row.add_child(cell)
-		var card = table._card(cell, group.ref, 162, 212, false)
+		var card = table._card(cell, group.ref, 240 if landscape else 162, 200 if landscape else 256, false)
 		for signal_name in ["pressed", "mouse_entered", "mouse_exited", "gui_input"]:
 			for connection in card.get_signal_connection_list(signal_name):
 				card.disconnect(signal_name, connection.callable)
@@ -191,3 +194,6 @@ func inspect(ref: String) -> void:
 	var image = table._image_path(table.model.entry(ref))
 	picture.set_meta("image_path", image)
 	picture.texture = table.api.texture(image)
+	picture.custom_minimum_size = Vector2(300, 340)
+	table._fit_picture(picture)
+	picture.visible = not image.is_empty()

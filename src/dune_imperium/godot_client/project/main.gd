@@ -8,6 +8,7 @@ const SessionTools = preload("res://session_tools.gd")
 const ChoicePresenter = preload("res://choices.gd")
 const ExpansionPresenter = preload("res://expansions.gd")
 const Portrait = preload("res://portrait.gd")
+const DetailEntry = preload("res://detail_entry.gd")
 
 var api = Api.new()
 var doorbell = Doorbell.new()
@@ -910,6 +911,7 @@ func _texture_ready(path: String, texture: Texture2D) -> void:
 	for picture in images:
 		if is_instance_valid(picture) and picture.get_meta("image_path", "") == path:
 			picture.texture = texture
+			_fit_picture(picture)
 	if model.catalog.get("board_image") == path:
 		board.board_texture = texture
 		board.queue_redraw()
@@ -918,6 +920,13 @@ func _texture_ready(path: String, texture: Texture2D) -> void:
 		board.queue_redraw()
 	if inspector_image.get_meta("image_path", "") == path:
 		inspector_image.texture = texture
+
+
+func _fit_picture(picture: TextureRect) -> void:
+	var box = picture.get_meta("artwork_box", Vector2.ZERO)
+	if box is Vector2 and box != Vector2.ZERO and picture.texture != null:
+		var ratio = float(picture.texture.get_width()) / picture.texture.get_height()
+		picture.custom_minimum_size = Vector2(box.x, floorf(minf(box.y, box.x / ratio)))
 
 
 func _choose_ref(ref: String) -> void:
@@ -1023,7 +1032,7 @@ func _action_button(action: Dictionary, description = "", zone = "") -> void:
 func _action_details(action: Dictionary, ref: String) -> void:
 	if not model.offered(action):
 		return
-	var parts = tools_ui._dialog(model.ui("render.effect_preview_title"))
+	var parts = tools_ui._dialog(model.ui("render.effect_preview_title"), Vector2i(920, 600))
 	parts[0].set_meta("action_detail_index", int(action.index))
 	var zone = str(model.choice_zones(model.actions()).get(int(action.index), ""))
 	_label(parts[1], model.live_description(action) + model.choice_suffix(zone), 18).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1032,9 +1041,6 @@ func _action_details(action: Dictionary, ref: String) -> void:
 		refs.push_front(ref)
 	for target in refs:
 		var entry = model.entry(target)
-		var heading = _label(parts[1], model.name_of(target), 18)
-		heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		heading.set_meta("action_preview_ref", target)
 		if entry.get("options") is Array:
 			var option_index = int(action.arguments.get("cost_option", 0))
 			if option_index >= 0 and option_index < entry.options.size():
@@ -1047,8 +1053,8 @@ func _action_details(action: Dictionary, ref: String) -> void:
 				entry = entry.duplicate(true)
 				entry.text = [lines[option_index]]
 				entry.erase("text_ko")
-		_picture(parts[1], _image_path(entry), Vector2(260, 290))
-		_label(parts[1], _entry_words(entry, target), 16).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var detail = _entry_panel(parts[1], target, entry)
+		detail.heading.set_meta("action_preview_ref", target)
 	var preview = action.get("subcommittee_preview")
 	if preview is Dictionary:
 		for line in preview.get("lines", []):
@@ -1307,37 +1313,19 @@ func _update_inspector() -> void:
 	inspector_image.texture = api.texture(path)
 
 
+func _entry_panel(parent: Node, ref: String, entry: Dictionary, compact = false) -> Control:
+	var panel = _panel(parent, 12)
+	var detail = DetailEntry.new()
+	panel.add_child(detail)
+	detail.setup(self, ref, entry, compact)
+	return detail
+
+
 func _open_details(ref: String) -> void:
-	_hide_preview()
-	var dialog = AcceptDialog.new()
-	dialog.title = model.name_of(ref)
-	dialog.dialog_text = ""
-	dialog.ok_button_text = model.native("닫기")
-	dialog.theme = theme
-	dialog.set_meta("game_dialog", game_id)
-	dialog.set_meta("detail_ref", ref)
-	var row = HBoxContainer.new()
-	row.custom_minimum_size = Vector2(620, 460)
-	dialog.add_child(row)
-	var image = Portrait.new()
-	image.model = model
-	image.ref = ref
-	image.custom_minimum_size = Vector2(310, 440)
-	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var path = _image_path(model.entry(ref))
-	image.texture = api.texture(path)
-	image.set_meta("image_path", path)
-	images.append(image)
-	row.add_child(image)
-	var body = _scroll(row)
-	_label(body, model.name_of(ref), 22).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_label(body, _entry_words(model.entry(ref), ref), 18).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	expansions.leader_detail(body, ref)
-	_attach_dialog(dialog)
-	dialog.confirmed.connect(dialog.queue_free)
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.popup_centered()
+	var parts = tools_ui._dialog(model.name_of(ref), Vector2i(920, 600))
+	parts[0].set_meta("detail_ref", ref)
+	_entry_panel(parts[1], ref, model.entry(ref))
+	expansions.leader_detail(parts[1], ref)
 
 
 func _choose_action(action: Dictionary, expected: String) -> void:
@@ -1637,6 +1625,10 @@ func _move_pointer(point: Vector2) -> void:
 
 func _check_layout() -> bool:
 	var window_rect = Rect2(Vector2.ZERO, size)
+	for entry_view in find_children("*", "BoxContainer", true, false):
+		if entry_view.has_meta("entry_view") and entry_view.is_visible_in_tree() and entry_view.get_window().visible and not entry_view.layout_fits():
+			_smoke_fail("detail artwork and text overlap or leave their entry")
+			return false
 	if hand_scroll.visible != (hand.get_child_count() > 0):
 		_smoke_fail("empty hand reserves card space or a populated hand is hidden")
 		return false
