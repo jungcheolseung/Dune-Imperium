@@ -47,8 +47,9 @@ func run() -> void:
 		check(pictures.size() == int(scenario.choice_picture), "Controlled pictures its card only while its choice is offered")
 		for expected in scenario.labels:
 			var matches = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(expected.index))
-			if not check(matches.size() == 1 and matches[0].text.split("\n")[0] == expected.text, "the actual private choice button matches the browser label"):
-				print("DECK_LABEL_DIFFERENCE ", JSON.stringify([matches[0].text if not matches.is_empty() else "missing", expected.text]))
+			var titles = reading_lines(matches[0], "title") if matches.size() == 1 else []
+			if not check(titles.size() == 1 and titles[0].text == expected.text, "the actual private choice title matches the browser label"):
+				print("DECK_LABEL_DIFFERENCE ", JSON.stringify([titles[0].text if not titles.is_empty() else "missing", expected.text]))
 		await capture_evidence("deck-" + str(scenario.language) + "-" + ("controlled" if not scenario.labels.is_empty() else "glowglobes"))
 		pile.confirmed.emit()
 		await process_frame

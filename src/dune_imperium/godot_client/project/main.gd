@@ -9,6 +9,7 @@ const ChoicePresenter = preload("res://choices.gd")
 const ExpansionPresenter = preload("res://expansions.gd")
 const Portrait = preload("res://portrait.gd")
 const DetailEntry = preload("res://detail_entry.gd")
+const ActionChoice = preload("res://action_choice.gd")
 
 var api = Api.new()
 var doorbell = Doorbell.new()
@@ -20,6 +21,7 @@ var log_ui = preload("res://log_presenter.gd").new()
 var layout_ui = preload("res://layout_preferences.gd").new()
 var display_ui = preload("res://display_scale.gd").new()
 var effects = preload("res://table_effects.gd").new()
+var feedback = preload("res://action_feedback.gd").new()
 var game_id = ""
 var busy = false
 var refreshing = false
@@ -372,6 +374,7 @@ func _build_table() -> void:
 	history_stack.custom_minimum_size.y = 132
 	history.add_child(history_stack)
 	_label(history_stack, model.native("행동 기록"), 14)
+	feedback.setup(self, history_stack)
 	log_content = _scroll(history_stack)
 	status = _label(root, model.native("테이블을 준비하고 있습니다…"), 12)
 	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -532,6 +535,7 @@ func _create_game(seed: Variant, draft = false, pace = "fast", options: Dictiona
 
 func _adopt_game(id: String) -> bool:
 	tools_ui.close_game_dialogs()
+	feedback.reset()
 	game_id = id
 	tools_ui.review.clear()
 	tools_ui.playback = false
@@ -682,6 +686,7 @@ func _render() -> void:
 	_render_choices()
 	_update_inspector()
 	effects.observe()
+	feedback.refresh()
 	for child in find_children("*", "Window", true, false):
 		if child.has_meta("pile_viewer") and not child.is_queued_for_deletion():
 			child.get_meta("pile_viewer").refresh()
@@ -1010,28 +1015,17 @@ func _action_button(action: Dictionary, description = "", zone = "") -> void:
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	content.add_child(row)
-	if not ref.is_empty() and not _image_path(model.entry(ref)).is_empty():
-		_picture(row, _image_path(model.entry(ref)), Vector2(44, 62))
 	var apply = _apply_placement if action.action_id == "agent_turn" else _choose_action
-	var button = _button(row, (description if not description.is_empty() else model.live_description(action)) + model.choice_suffix(zone), apply.bind(action, model.signature()))
-	button.add_theme_font_size_override("font_size", 15)
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.set_meta("action_index", int(action.index))
-	button.set_meta("choice_suffix", model.choice_suffix(zone))
-	if action.get("box") != null:
-		button.set_meta("agent_box", int(action.box))
-	if zone == "turn_pending":
-		button.add_theme_color_override("font_color", Color("f1c379"))
-	button.disabled = busy
+	var button = ActionChoice.new()
+	row.add_child(button)
+	button.setup(self, action, description, zone, ref, apply.bind(action, model.signature()))
 	if not ref.is_empty():
 		_bind_preview(button, ref)
-	if int(model.held_action().get("index", -1)) == int(action.index):
-		button.add_theme_stylebox_override("normal", _style(Color("53442f"), Color("e1bd7c")))
 	if not model.preview_refs(action).is_empty() or not ref.is_empty() or action.get("subcommittee_preview") is Dictionary:
 		var details = _button(row, "ⓘ", _action_details.bind(action, ref))
 		details.custom_minimum_size = Vector2(28, 28)
+		details.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		_compact_button(details)
 		details.tooltip_text = model.ui("render.effect_preview_title")
 		details.set_meta("action_detail_index", int(action.index))
 
@@ -1356,12 +1350,14 @@ func _send_action(action: Dictionary) -> bool:
 		return false
 	busy = true
 	generation += 1
+	var receipt = feedback.capture()
 	_lock_controls()
 	var reply = await api.call_json(HTTPClient.METHOD_POST, "/games/" + game_id + "/actions", model.request_body(action))
 	var accepted = _accept(reply)
 	tab = "choices"
 	await _sync()
 	busy = false
+	feedback.complete(receipt, action, reply)
 	_render()
 	return accepted
 
@@ -1632,6 +1628,10 @@ func _move_pointer(point: Vector2) -> void:
 
 func _check_layout() -> bool:
 	var window_rect = Rect2(Vector2.ZERO, size)
+	for button in content.find_children("*", "Button", true, false):
+		if button.has_meta("action_reading") and not button.layout_fits():
+			_smoke_fail("choice title, costs or hints leave their button")
+			return false
 	for entry_view in find_children("*", "BoxContainer", true, false):
 		if entry_view.has_meta("entry_view") and entry_view.is_visible_in_tree() and entry_view.get_window().visible and not entry_view.layout_fits():
 			_smoke_fail("detail artwork and text overlap or leave their entry")

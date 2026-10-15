@@ -2,9 +2,11 @@ extends SceneTree
 
 const Model = preload("res://model.gd")
 var failures: Array[String] = []
+var checks = 0
 
 
 func check(condition: bool, message: String) -> void:
+	checks += 1
 	if not condition:
 		failures.append(message)
 
@@ -125,8 +127,10 @@ func _initialize() -> void:
 	test_private_deck()
 	test_quantities()
 	test_choice_zones()
+	test_choice_reading()
+	test_feedback_context()
 	if failures.is_empty():
-		print("GODOT_MODEL_TESTS_OK")
+		print("GODOT_MODEL_TESTS_OK %d" % checks)
 		quit(0)
 	else:
 		for failure in failures:
@@ -271,3 +275,43 @@ func test_choice_zones() -> void:
 	model.snapshot.actions.agent_boxes = null
 	check(model.preview_refs(pair) == ["a", refs[0], refs[1]], "server null boxes leave ordinary effect previews available")
 	check(model.describe(rows[2]) == model.live_description(rows[2]), "personal zone warnings stay out of the shared log description")
+
+
+func test_choice_reading() -> void:
+	var model = Model.new()
+	model.words = {"terms": {"spice": {"ko": "스파이스", "en": "Spice"}}, "ko": {"ACTION_LABELS": {"take": "선택"}}, "ui": {"render.free": {"ko": "무료", "en": "Free"}, "render.irreversible_badge": {"ko": "되돌리기 불가", "en": "Cannot undo"}, "render.turn_card_pending_suffix": {"ko": "이번 턴 · 남은 효과 소실", "en": "This turn · Lose remaining effects"}}}
+	model.catalog = {"spaces": {"a": {"options": [{"cost": {"spice": 3}, "effect": "first effect"}, {"cost": {"spice": 1}, "effect": "chosen effect"}]}}}
+	var action = {"index": 9, "action_id": "take", "arguments": {"space_id": "a", "cost_option": 1, "discount": "spice"}, "strength_after": 5, "undoable": false}
+	for language in ["ko", "en"]:
+		model.language = language
+		var reading = model.choice_reading(action, "", "turn_pending")
+		check(reading.payment.begins_with(model.native("지불 비용: ") + model.ui("render.free")) and reading.payment.contains(model.native("인쇄 비용: ") + model.cost_text({"spice": 1})), "payment separates the discounted free amount from its printed cost in " + language)
+		check(reading.effect == "chosen effect" and not reading.context.contains("chosen effect"), "only the selected option's effect gets a separate reading line in " + language)
+		check(reading.previews.size() == 1 and reading.warnings.size() == 2 and reading.zone.is_empty(), "preview, irreversibility and the server-named lost-box warning stay distinct in " + language)
+		check(not reading.context.contains(" → 5") and not reading.context.contains(model.ui("render.irreversible_badge")), "annotations do not repeat in the action context in " + language)
+		var plain = model.choice_reading({"action_id": "take", "arguments": {}}, "Scouts supplied wording")
+		check(plain.title == "Scouts supplied wording" and plain.payment.is_empty() and plain.effect.is_empty(), "a server-supplied Scouts description is retained without invented costs in " + language)
+	model.language = "ko"
+	check(model.describe({"action_id": "take", "arguments": {}, "detail": "{spice:2}", "strength_after": 5, "undoable": false}) == "선택\n스파이스 2 · 전투력 → 5 · 되돌리기 불가", "public log formatting stays identical when live hints are separated")
+	var warned = model.choice_reading({"action_id": "take", "arguments": {}, "warning": "server warning", "reveal_preview": {"persuasion": 3, "strength": 4}})
+	check(warned.previews.size() == 1 and warned.warnings == PackedStringArray(["server warning"]), "reveal preview and the supplied warning occupy separate categories")
+
+
+func test_feedback_context() -> void:
+	var Feedback = preload("res://action_feedback.gd")
+	var context = {"game": "receipt", "seat": 0, "revision": 4, "undo": 0}
+	var snapshot = {"summary": {"game_id": "receipt", "revision": 4, "undo_count": 0}, "view": {"player": 0}, "you": {"seats": [0]}}
+	snapshot = JSON.parse_string(JSON.stringify(snapshot))
+	check(Feedback.current(context, snapshot, false) and not Feedback.confirmed(context, snapshot, false), "a local choice without an advanced server snapshot is never an applied receipt")
+	snapshot.summary.revision = 5
+	check(Feedback.confirmed(context, snapshot, false), "a same-seat advanced snapshot can confirm an accepted action")
+	check(not Feedback.confirmed(context, snapshot, true), "review never displays a live applied receipt")
+	for change in ["game", "seat", "ownership", "undo", "revision"]:
+		var invalid = snapshot.duplicate(true)
+		match change:
+			"game": invalid.summary.game_id = "other"
+			"seat": invalid.view.player = 1
+			"ownership": invalid.you.seats = []
+			"undo": invalid.summary.undo_count = 1
+			"revision": invalid.summary.revision = 3
+		check(not Feedback.current(context, invalid, false), "receipt is cleared by changed " + change)

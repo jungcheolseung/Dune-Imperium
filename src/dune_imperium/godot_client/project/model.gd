@@ -446,12 +446,12 @@ func top_choice_card() -> String:
 	return str(view().get("private", {}).get("peeked_card_id", ""))
 
 
-func live_description(action: Dictionary) -> String:
+func live_description(action: Dictionary, annotated = true) -> String:
 	var top = top_choice_card()
 	if not top.is_empty() and DECK_TOP_CHOICES.has(action.action_id):
-		var notes = action_notes(action)
+		var notes = action_notes(action) if annotated else PackedStringArray()
 		return ui(DECK_TOP_CHOICES[action.action_id], {"card": name_of(top)}) + ("\n" + " · ".join(notes) if not notes.is_empty() else "")
-	return describe(action)
+	return describe(action, annotated)
 
 
 # Read only the viewing seat's authorized projection. Public logs use describe().
@@ -554,11 +554,15 @@ func pile_groups(refs: Array, top = "") -> Array:
 	return result
 
 
-func describe(action: Dictionary) -> String:
-	var args = action.get("arguments", {})
+func action_heading(action: Dictionary) -> String:
 	var title = localized(action, "detail_title")
+	return phrase(title) if title != null else label("ACTION_LABELS", action.get("action_id", ""))
+
+
+func describe(action: Dictionary, annotated = true) -> String:
+	var args = action.get("arguments", {})
 	var detail = localized(action, "detail")
-	var heading = phrase(title) if title != null else label("ACTION_LABELS", action.get("action_id", ""))
+	var heading = action_heading(action)
 	var parts: PackedStringArray = []
 	if detail != null and not str(detail).is_empty():
 		parts.append(phrase(detail))
@@ -597,7 +601,7 @@ func describe(action: Dictionary) -> String:
 			parts.append(field + ": " + " / ".join(names))
 		elif value is String:
 			parts.append(field + ": " + name_of(value))
-	if args.has("cost_option") and args.has("space_id"):
+	if annotated and args.has("cost_option") and args.has("space_id"):
 		var options = entry(args.space_id).get("options", [])
 		var index = int(args.cost_option)
 		if index < options.size():
@@ -607,16 +611,18 @@ func describe(action: Dictionary) -> String:
 			if args.has("discount"):
 				paid = native("인쇄 비용: ") + cost_text(options[index].get("cost", {})) + " → " + native("지불 비용: ") + paid + " (" + phrase("{" + str(args.discount) + ":1}") + ui("turn.discount_suffix") + ")"
 			parts.append(paid + " → " + phrase(localized(options[index], "effect")))
-	parts.append_array(action_notes(action))
+	if annotated:
+		parts.append_array(action_notes(action))
 	return heading + ("\n" + " · ".join(parts) if not parts.is_empty() else "")
 
 
-func action_notes(action: Dictionary) -> PackedStringArray:
-	var parts: PackedStringArray = []
+func action_hints(action: Dictionary) -> Dictionary:
+	var previews: PackedStringArray = []
+	var warnings: PackedStringArray = []
 	if action.get("strength_after") != null:
-		parts.append(native("전투력 → %d") % int(action.strength_after))
+		previews.append(native("전투력 → %d") % int(action.strength_after))
 	if action.get("reveal_preview") is Dictionary:
-		parts.append(native("공개 후 설득력 %d · 전투력 %d") % [int(action.reveal_preview.get("persuasion", 0)), int(action.reveal_preview.get("strength", 0))])
+		previews.append(native("공개 후 설득력 %d · 전투력 %d") % [int(action.reveal_preview.get("persuasion", 0)), int(action.reveal_preview.get("strength", 0))])
 	if action.get("shortfall") is Array:
 		for shortage in action.shortfall:
 			var data = shortage.duplicate()
@@ -625,12 +631,46 @@ func action_notes(action: Dictionary) -> PackedStringArray:
 			var key = "render.shortfall_" + str(data.kind)
 			if data.kind == "intrigue" and int(data.get("twisted", 0)) > 0:
 				key += "_twisted"
-			parts.append(ui(key, data))
+			warnings.append(ui(key, data))
 	elif action.get("warning") != null and language == "ko":
-		parts.append(phrase(action.warning))
+		warnings.append(phrase(action.warning))
 	if action.get("undoable") == false and not action.get("sent_by_turn_end", false):
-		parts.append(ui("render.irreversible_badge"))
-	return parts
+		warnings.append(ui("render.irreversible_badge"))
+	return {"previews": previews, "warnings": warnings}
+
+
+func action_notes(action: Dictionary) -> PackedStringArray:
+	var hints = action_hints(action)
+	var notes: PackedStringArray = hints.previews.duplicate()
+	notes.append_array(hints.warnings)
+	return notes
+
+
+func choice_reading(action: Dictionary, description = "", zone = "") -> Dictionary:
+	# Presentation only: the original DTO and public log description stay intact.
+	var base = live_description(action, false) if description.is_empty() else description
+	var split = base.find("\n")
+	var reading = action_hints(action)
+	reading.title = base if split < 0 else base.left(split)
+	reading.context = "" if split < 0 else base.substr(split + 1)
+	reading.zone = choice_suffix(zone)
+	if zone == "turn_pending":
+		reading.warnings.append(reading.zone.strip_edges())
+		reading.zone = ""
+	reading.payment = ""
+	reading.effect = ""
+	var args = action.get("arguments", {})
+	if args.has("cost_option") and args.has("space_id"):
+		var options = entry(str(args.space_id)).get("options", [])
+		var index = int(args.cost_option)
+		if index >= 0 and index < options.size():
+			var paid = cost_text(paid_cost(action))
+			reading.payment = native("지불 비용: ") + (paid if not paid.is_empty() else ui("render.free"))
+			if args.has("discount"):
+				var printed = cost_text(options[index].get("cost", {}))
+				reading.payment += "\n" + native("인쇄 비용: ") + (printed if not printed.is_empty() else ui("render.free")) + " (" + phrase("{" + str(args.discount) + ":1}") + ui("turn.discount_suffix") + ")"
+			reading.effect = phrase(localized(options[index], "effect"))
+	return reading
 
 
 func hold(action: Dictionary) -> void:

@@ -27,7 +27,8 @@ func compare_layout(expected: Dictionary, phase: String) -> void:
 	for suffix in expected.suffixes:
 		var buttons = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(suffix.index))
 		if not buttons.is_empty():
-			check(buttons[0].get_meta("choice_suffix", "") == suffix.text and buttons[0].text.ends_with(suffix.text), phase + ": physical copy/current turn/lost-box warning matches the browser")
+			var words = buttons[0].find_children("*", "Label", true, false).map(func(label): return label.text)
+			check(buttons[0].get_meta("choice_suffix", "") == suffix.text and words.any(func(text): return str(text).ends_with(suffix.text)), phase + ": physical copy/current turn/lost-box warning matches the browser")
 
 
 func press_action(index: int) -> void:
@@ -123,6 +124,7 @@ func run() -> void:
 		await settled()
 		table.model.language = str(scenario.language)
 		table._render()
+		var seat = table.model.active_seat
 		compare_layout(scenario.before, "before")
 		await inspect_and_shortcuts(scenario)
 		if scenario.kind != "trash-earlier":
@@ -130,12 +132,14 @@ func run() -> void:
 		var revision = int(table.model.summary().revision)
 		await press_action(int(scenario.index))
 		check(int(table.model.summary().revision) == revision + 1, "one click sends only the offered step")
+		check_receipt(seat)
 		compare_layout(scenario.after, "after")
 		if scenario.kind == "box":
 			await capture_evidence("box-locked-" + str(scenario.language))
 			await table._mutate("undo", {"steps": 1})
 			compare_layout(scenario.restored, "undo")
 			check(int(table.model.summary().undo_count) == 1, "undo creates a fresh action generation")
+			check(not table.feedback.visible and table.feedback.receipt.is_empty(), "undo clears the previous applied receipt")
 			await press_action(int(scenario.other_index))
 			check(int(table.model.summary().revision) == revision + 1, "the second card's effect applies without a switch step")
 	if failed:
