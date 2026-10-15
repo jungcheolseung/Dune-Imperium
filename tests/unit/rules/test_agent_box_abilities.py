@@ -67,6 +67,7 @@ from dune_imperium.display.effect_dsl_text_ko import (
 )
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
@@ -120,7 +121,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 75
+    assert len(AGENT_BOX_ABILITIES) == 77
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -789,6 +790,29 @@ def test_ruthless_leadership_waits_for_a_commander() -> None:
     assert rows[0].action_id == "decline_agent_card_trash"
     with pytest.raises(RuntimeError, match="trash effect requires"):
         resolve_agent_card_effect(commanding)
+
+
+def test_two_optional_acquisitions_are_records() -> None:
+    """Composed A3f: Price is No Object (paid in Solari, to hand) and Tleilaxu
+    Master (cost cap 6 under one genetic marker, to hand at two). Only Tleilaxu
+    Master resolves as one action -- its old answer, unavailable."""
+
+    price = AGENT_BOX_ABILITIES[_BOX.ACQUIRE_WITH_SOLARI_TO_HAND]
+    master = AGENT_BOX_ABILITIES[_BOX.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER]
+    found = {
+        effect
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if agent_box_acquisition(ability) is not None
+    }
+    assert found == {
+        _BOX.ACQUIRE_WITH_SOLARI_TO_HAND,
+        _BOX.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
+    }
+    assert optional_arrow(price) and not optional_arrow(master)
+    (piece,) = price.sections[0].rewards
+    printed = _BOX.ACQUIRE_WITH_SOLARI_TO_HAND
+    assert reward_text_ko(piece) in AGENT_EFFECT_TEXT_KO[printed]
+    assert reward_text(piece).lower() in AGENT_EFFECT_TEXT[printed].lower()
 
 
 def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:

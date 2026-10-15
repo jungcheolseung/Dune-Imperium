@@ -101,6 +101,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
+from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
@@ -469,7 +470,12 @@ def resolve_box(state: GameState) -> RuleResult:
     line = ability.sections[0]
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    if trash_box(ability):
+    if agent_box_acquisition(ability) is not None:
+        # Tleilaxu Master: an optional acquisition resolves through its rows;
+        # reached by the dry run only, which keeps its old answer -- the box
+        # unavailable (its provider offered nothing).
+        available = False
+    elif trash_box(ability):
         # Ruthless Leadership: reached by the dry run only (the press lapses
         # the optional box first; ``optional_arrow`` keeps the unconditioned
         # trash boxes out); its Commander condition is judged now (OQ-028),
@@ -1144,14 +1150,21 @@ def discard_box(ability: Ability | None) -> bool:
 def optional_arrow(ability: Ability | None) -> bool:
     """An optional arrow, resolved only through its rows: the generic
     resolution keeps the dry-run answer it had before the record (not
-    implemented, read as available). Ruthless Leadership's trash icons are
-    not one: its condition fails there into the unavailable event."""
+    implemented, read as available) -- the payment, Intrigue, unconditioned
+    trash and optional discard boxes, and Price is No Object's acquisition
+    (the acquisition shape is ``rules.acquisition.agent_box_acquisition``,
+    kept there because this module imports the executor, which imports
+    acquisitions). Ruthless Leadership's trash icons and Tleilaxu Master's
+    conditioned acquisition are not one: their old answer is the
+    unavailable event."""
 
     if ability is None:
         return False
+    acquisition = agent_box_acquisition(ability)
     return (
         payment_box(ability)
         or intrigue_box(ability)
+        or (acquisition is not None and acquisition[1] is None)
         or (trash_box(ability) and not _trash_conditions(ability))
         or (discard_box(ability) and ability.mark is AbilityMark.OPTIONAL)
     )
