@@ -10,11 +10,11 @@ first and then queue the reward icons the same way.
 
 from collections.abc import Callable, Mapping
 from copy import replace
-from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
+from dune_imperium.content.uprising.abilities import AbilityMark
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -39,9 +39,15 @@ from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     AgentIconBlock,
     AgentIconCondition,
+    AgentPaymentBlock,
+    apply_payment,
     box_ability,
     box_icon_block,
     condition_block,
+    payment_box,
+    payment_cost_block,
+    payment_reward_block,
+    payment_rows,
     resolve_box,
     resolve_box_icon,
 )
@@ -129,8 +135,7 @@ from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
 )
-from dune_imperium.rules.specimens import generate_specimens, spend_specimens
-from dune_imperium.rules.spies import gather_intelligence_draw_available
+from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame, turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -2361,26 +2366,6 @@ def apply_agent_card_intrigue_payment(
     )
 
 
-class AgentPaymentBlock(StrEnum):
-    """Why an Agent box's arrow is withheld because its reward does nothing.
-
-    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
-    제시한다" (OQ-071, user decision 2026-09-29, generalised from OQ-075;
-    precedent OQ-046): a cost that would buy nothing is not offered.
-    ``legal_agent_card_payment_actions`` withholds the payment exactly when
-    ``agent_card_payment_block`` is not None, and the page's greyed-out row
-    reads the same block (``display.unavailable``).
-    """
-
-    # Ecological Testing Station's draw: deck and discard pile both empty,
-    # so the 2 water would buy nothing (OQ-071). Gather Intelligence is not
-    # gated this way: its recall is offered with both piles empty (OQ-099).
-    NO_CARD_TO_DRAW = "no_card_to_draw"
-    # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
-    # track's last space, where it does nothing (OQ-048).
-    TLEILAXU_TRACK_END = "tleilaxu_track_end"
-
-
 def agent_card_payment_block(
     state: GameState,
     player: int,
@@ -2393,15 +2378,13 @@ def agent_card_payment_block(
     can still make the reward live.
     """
 
-    if (
-        effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-        and not gather_intelligence_draw_available(state, player)
+    ability = box_ability(effect)
+    if payment_box(ability):
+        assert ability is not None
+        return payment_reward_block(state, player, ability)
+    if effect is _SOLARI_PER_PARTNER_ICON and tleilaxu_track_finished(
+        state.players[player]
     ):
-        return AgentPaymentBlock.NO_CARD_TO_DRAW
-    if effect in (
-        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
-        _SOLARI_PER_PARTNER_ICON,
-    ) and tleilaxu_track_finished(state.players[player]):
         return AgentPaymentBlock.TLEILAXU_TRACK_END
     return None
 
@@ -2482,10 +2465,10 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
     kind = OptionalBlockKind
     if effect is _ARRAKIS_REVOLT:
         return _arrakis_revolt_block(state, player)
-    if effect is PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI:
-        return short_of(kind.SPECIMENS, 1, owner.specimens)
-    if effect is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU:
-        return short_of(kind.SPECIMENS, 2, owner.specimens)
+    ability = box_ability(effect)
+    if payment_box(ability):
+        assert ability is not None
+        return payment_cost_block(owner, ability)
     if effect is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
         partner = other_grafted_card_id(context)
         if not partner or partner not in owner.in_play:
@@ -2506,10 +2489,6 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return None
     if effect is _SPICE_FOR_TRASH_AND_TROOP:
         return short_of(kind.SPICE, CONTROL_THE_SPICE_PRICE, resources.spice)
-    if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:
-        return short_of(kind.WATER, 2, resources.water)
-    if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
-        return short_of(kind.SPICE, 4, resources.spice)
     if effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
@@ -2545,41 +2524,17 @@ def legal_agent_card_payment_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
+    recorded = box_ability(source_card.agent_effect)
+    if payment_box(recorded):
+        # An optional arrow with no target, from its record (composed A3b).
+        assert recorded is not None
+        return payment_rows(state, player, recorded)
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect
         .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
     ):
         return _arrakis_revolt_payment_actions(state, player)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI
-    ):
-        # Organ Merchants: "specimen -> 4 Solari" [card face].
-        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if agent_card_cost_block(state, player) is not None:
-            return (decline,)
-        return (
-            decline,
-            DomainAction(action_id="pay_agent_card_specimen", actor=player),
-        )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU
-    ):
-        # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu" [card face];
-        # not offered once the advances would do nothing (OQ-071).
-        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if (
-            agent_card_cost_block(state, player) is not None
-            or agent_card_payment_block(state, player, source_card.agent_effect)
-            is not None
-        ):
-            return (decline,)
-        return (
-            decline,
-            DomainAction(action_id="pay_agent_card_two_specimens", actor=player),
-        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN
@@ -2712,35 +2667,7 @@ def legal_agent_card_payment_actions(
             decline,
             DomainAction(action_id="pay_agent_card_spice", actor=player),
         )
-    if source_card.agent_effect not in (
-        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
-        PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
-    ):
-        return ()
-    if (
-        # Ecological Testing Station's 2 water, Smuggler's Haven's 4 spice.
-        agent_card_cost_block(state, player) is not None
-        # Ecological Testing Station's draw with no card in the deck or the
-        # discard pile would buy nothing (OQ-071).
-        or agent_card_payment_block(state, player, source_card.agent_effect)
-        is not None
-    ):
-        # The arrow cost is judged again when the player resolves the pending
-        # payment in their chosen effect order [Main pp. 9, 20]; once it is
-        # unaffordable, only skipping remains.
-        return (DomainAction(action_id="decline_agent_card_payment", actor=player),)
-    return (
-        DomainAction(action_id="decline_agent_card_payment", actor=player),
-        DomainAction(
-            action_id=(
-                "pay_agent_card_water"
-                if source_card.agent_effect
-                is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-                else "pay_agent_card_spice"
-            ),
-            actor=player,
-        ),
-    )
+    return ()
 
 
 def legal_corrinth_city_payment_actions(
@@ -2918,33 +2845,13 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
 
     if action.action_id in _ARRAKIS_REVOLT_ACTION_IDS:
         return _apply_arrakis_revolt_payment(state, action, context, source)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if payment_box(recorded):
+        # An optional arrow with no target, from its record (composed A3b).
+        assert recorded is not None
+        return apply_payment(state, action.actor, recorded, context)
 
     owner = state.players[action.actor]
-    if action.action_id == "pay_agent_card_two_specimens":
-        # Tleilaxu Surgeon: two specimens return to the supply as they are
-        # spent [Immortality p. 8]; the token advances twice.
-        paid_owner = spend_specimens(owner, 2)
-        next_state = advance_after_effect(
-            state, context, replace_player(state.players, paid_owner)
-        )
-        advanced = advance_tleilaxu(
-            next_state, action.actor, 2, source=f"{source}:tleilaxu"
-        )
-        return RuleResult(
-            state=advanced.state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("player", action.actor),
-                        ("resource", "specimen"),
-                        ("spent", 2),
-                    ),
-                ),
-                *advanced.events,
-            ),
-        )
     if action.action_id == "trash_grafted_card_for_specimen":
         # Dissecting Kit: the other grafted card leaves play; its
         # un-activated box expires with it (OQ-022 designer ruling).
@@ -3135,33 +3042,6 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         return RuleResult(state=next_state, events=lost.events)
     if action.action_id == "choose_agent_card_reward":
         return _apply_stitched_horror_reward(state, action, context, source)
-    if action.action_id == "pay_agent_card_specimen":
-        # Organ Merchants: the specimen returns to the supply as it is spent
-        # [Immortality p. 8].
-        paid_owner = spend_specimens(owner, 1)
-        paid_owner = replace(
-            paid_owner,
-            resources=replace(
-                paid_owner.resources, solari=paid_owner.resources.solari + 4
-            ),
-        )
-        next_state = advance_after_effect(
-            state, context, replace_player(state.players, paid_owner)
-        )
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("player", action.actor),
-                        ("resource", "specimen"),
-                        ("spent", 1),
-                    ),
-                ),
-            ),
-        )
     # The same borrowed box `[Immortality p. 14]`. The provider checks the
     # arrow's cost against the borrowed effect's own resource, so reading the
     # printed card here sent a Ghola down the other branch: it charged four
@@ -3171,42 +3051,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     source_card = active_agent_card(context)
     if source_card.agent_effect is _SPICE_FOR_TRASH_AND_TROOP:
         return _apply_control_the_spice_payment(state, action, context, source)
-    pays_water = (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-    )
-    resource = "water" if pays_water else "spice"
-    spent = 2 if pays_water else 4
-    next_owner = replace(
-        owner,
-        resources=replace(
-            owner.resources,
-            water=owner.resources.water - (spent if pays_water else 0),
-            spice=owner.resources.spice - (0 if pays_water else spent),
-        ),
-        spice_spent_turn=owner.spice_spent_turn + (0 if pays_water else spent),
-        victory_points=owner.victory_points + (0 if pays_water else 1),
-    )
-    players = replace_player(state.players, next_owner)
-    paid_state = advance_after_effect(state, context, players)
-    event = GameEvent(
-        event_id=f"{source}:paid",
-        kind="agent_card_payment_resolved",
-        payload=(
-            ("player", action.actor),
-            ("resource", resource),
-            ("spent", spent),
-        ),
-    )
-    if not pays_water:
-        return RuleResult(state=paid_state, events=(event,))
-    draw = draw_or_request_personal_cards(
-        paid_state,
-        action.actor,
-        2,
-        source=source,
-    )
-    return RuleResult(state=draw.state, events=(event, *draw.events))
+    raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
 
 
 _ARRAKIS_REVOLT_ACTION_IDS = frozenset(
@@ -4157,8 +4002,6 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
-        PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
@@ -4173,10 +4016,8 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
-        PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
-        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
         PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     }
@@ -4250,7 +4091,11 @@ def box_is_optional(state: GameState) -> bool:
         return _box_researched(context, card_instance_id)
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return _signet_is_optional(state, context)
-    return effect in OPTIONAL_AGENT_BOXES
+    if effect in OPTIONAL_AGENT_BOXES:
+        return True
+    # A recorded box says so itself (composed effects, A3b).
+    recorded = box_ability(effect)
+    return recorded is not None and recorded.mark is AbilityMark.OPTIONAL
 
 
 def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bool:
@@ -4477,9 +4322,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if ability is not None and ability.hook is not None:
         # A special flow kept as code (composed effects, A3).
         return _BOX_HOOKS[ability.hook](state)
-    if ability is not None:
+    if ability is not None and not payment_box(ability):
         # A box written as an ability record (composed effects, stage A2).
         return resolve_box(state)
+    # An optional arrow resolves only through its payment row; the generic
+    # resolution below is reached only by the dry run, which keeps the
+    # answers it had before the record (Tleilaxu Surgeon: unavailable; the
+    # others: not implemented, read as available).
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
         # Long Reach with no further Faction to name. A first pick made with
         # no second possible is paid at once (``apply_agent_card_influence``,

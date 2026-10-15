@@ -30,6 +30,7 @@ from typing import Final
 
 from dune_imperium.content.uprising.abilities import (
     Ability,
+    AbilityMark,
     AbilityStructure,
     AbilityTiming,
 )
@@ -41,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
+    Cost,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -49,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainVictoryPoints,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
@@ -56,12 +59,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    PayResources,
     PlaceSpy,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
     Reward,
     SandwormsInConflictAtLeast,
+    SpendSpecimens,
     SpyRecalledThisTurn,
     TakeContract,
     TrashPersonalCard,
@@ -107,6 +112,17 @@ def _hook(
         sections=(_line(*rewards, condition=condition),) if rewards else (),
         requirement=requirement,
         hook=name,
+    )
+
+
+def _pay(cost: Cost, *rewards: Reward) -> Ability:
+    """An optional arrow with no target to pick: "You may pay X -> Y" (the
+    arrow cost is optional [Main p. 20] [FAQ p. 3])."""
+
+    return Ability(
+        timing=AbilityTiming.AGENT_BOX,
+        sections=(EffectSection(rewards=rewards, costs=(cost,)),),
+        mark=AbilityMark.OPTIONAL,
     )
 
 
@@ -214,6 +230,23 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN: _box(
                 GainInfluence(factions=(Faction.SPACING_GUILD,)),
                 condition=GainedSpiceThisTurn(1),
+            ),
+            # --- Optional arrows with no target (composed effects, A3b) ---------
+            # Ecological Testing Station.
+            _BOX.PAY_TWO_WATER_TO_DRAW_TWO: _pay(
+                PayResources(water=2), DrawPersonalCards(2)
+            ),
+            # Smuggler's Haven.
+            _BOX.MAY_PAY_FOUR_SPICE_FOR_VP: _pay(
+                PayResources(spice=4), GainVictoryPoints(1)
+            ),
+            # Organ Merchants.
+            _BOX.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI: _pay(
+                SpendSpecimens(1), GainResources(solari=4)
+            ),
+            # Tleilaxu Surgeon.
+            _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: _pay(
+                SpendSpecimens(2), AdvanceTleilaxu(2)
             ),
             # --- Special flows (hooks) -------------------------------------------
             # Seek Allies: "Trash this card." -- the trash's events alone.

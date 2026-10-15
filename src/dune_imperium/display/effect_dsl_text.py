@@ -79,6 +79,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
     SolariAtLeast,
+    SpendSpecimens,
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
@@ -312,6 +313,9 @@ def cost_text(cost: Cost) -> str:
             return (
                 f"Trash a card from your discard pile that costs {minimum_cost} or more"
             )
+        case SpendSpecimens(count=count):
+            # "You may spend 1 specimen" [Organ Merchants card].
+            return f"Spend {count} {_plural(count, 'specimen')}"
         case _:
             assert_never(cost)
 

@@ -12,7 +12,10 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.immortality.board import (
+    RESEARCH_START_ID,
+    TLEILAXU_TRACK_END,
+)
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
@@ -41,26 +44,35 @@ from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
+    AgentPaymentBlock,
     condition_block,
     opens_at_placement,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_card_cost_block,
     agent_card_icons_at_placement,
+    agent_card_payment_block,
     agent_icon_block,
+    apply_agent_card_payment,
     box_hook_names,
     legal_agent_card_icon_actions,
+    legal_agent_card_payment_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.effects import agent_card_source
+from dune_imperium.rules.effects import (
+    OptionalBlockKind,
+    agent_card_source,
+    short_of,
+)
 from dune_imperium.rules.frames import FrameKind
 
 _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 51
+    assert len(AGENT_BOX_ABILITIES) == 55
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -313,3 +325,73 @@ def test_every_hook_record_names_a_special_flow() -> None:
     for ability in AGENT_BOX_ABILITIES.values():
         if ability.hook is not None:
             assert not ability.icons
+
+
+def test_an_optional_arrow_offers_its_payment_while_it_can_pay() -> None:
+    """Smuggler's Haven, "You may pay 4 spice -> Gain 1 VP" (composed A3b):
+    the payment row while the spice is there, only the raw refusal (dropped
+    in the turn) once it is not; the payment's event has no card id."""
+
+    card = "imperium:smuggler_s_haven:0"
+    rich = _played(card, PlayerState(player_id=0, resources=Resources(spice=4)))
+    assert legal_agent_card_payment_actions(rich, 0) == (
+        DomainAction("decline_agent_card_payment", 0),
+        DomainAction("pay_agent_card_spice", 0),
+    )
+    paid = apply_agent_card_payment(rich, DomainAction("pay_agent_card_spice", 0))
+    owner = paid.state.players[0]
+    assert (owner.resources.spice, owner.spice_spent_turn) == (0, 4)
+    assert owner.victory_points == rich.players[0].victory_points + 1
+    assert [(e.kind, e.event_id, e.payload) for e in paid.events] == [
+        (
+            "agent_card_payment_resolved",
+            "round:1:player:0:agent_card_payment:paid",
+            (("player", 0), ("resource", "spice"), ("spent", 4)),
+        )
+    ]
+    poor = _played(card, PlayerState(player_id=0, resources=Resources(spice=3)))
+    assert legal_agent_card_payment_actions(poor, 0) == (
+        DomainAction("decline_agent_card_payment", 0),
+    )
+    assert agent_card_cost_block(poor, 0) == short_of(OptionalBlockKind.SPICE, 4, 3)
+
+
+def test_a_payment_that_buys_nothing_is_withheld() -> None:
+    """Tleilaxu Surgeon: spending two specimens is not offered once the
+    Tleilaxu token is at the track's end (OQ-071); otherwise it advances the
+    token twice under the payment's ``:tleilaxu`` source."""
+
+    card = "imperium:tleilaxu_surgeon:0"
+    config = RulesetConfig(immortality=True)
+    owner = PlayerState(player_id=0, specimens=2, troops_supply=7)
+    placed = _played(card, owner, config)
+    assert legal_agent_card_payment_actions(placed, 0)[-1] == DomainAction(
+        "pay_agent_card_two_specimens", 0
+    )
+    paid = apply_agent_card_payment(
+        placed, DomainAction("pay_agent_card_two_specimens", 0)
+    )
+    assert paid.state.players[0].specimens == 0
+    assert paid.events[0].payload == (
+        ("player", 0),
+        ("resource", "specimen"),
+        ("spent", 2),
+    )
+    assert all(
+        event.event_id.startswith("round:1:player:0:agent_card_payment:tleilaxu")
+        for event in paid.events[1:]
+    )
+    assert paid.events[1:]
+    finished = replace(
+        placed,
+        players=(
+            replace(placed.players[0], tleilaxu_space=TLEILAXU_TRACK_END),
+            *placed.players[1:],
+        ),
+    )
+    assert agent_card_payment_block(
+        finished, 0, _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU
+    ) is AgentPaymentBlock.TLEILAXU_TRACK_END
+    assert legal_agent_card_payment_actions(finished, 0) == (
+        DomainAction("decline_agent_card_payment", 0),
+    )

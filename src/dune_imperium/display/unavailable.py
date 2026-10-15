@@ -172,6 +172,7 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
+    AgentPaymentBlock,
 )
 from dune_imperium.rules.agent_effect_frame import (
     active_box_can_act,
@@ -180,7 +181,6 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
-    AgentPaymentBlock,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_payment_block,

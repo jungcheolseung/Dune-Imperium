@@ -366,6 +366,19 @@ class PayResources:
 
 
 @dataclass(frozen=True, slots=True)
+class SpendSpecimens:
+    """Spend ``count`` of the player's specimens: they return to the supply
+    as troops [Immortality p. 8] ("You may spend 1 specimen" [Organ
+    Merchants card])."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("specimen spend must be positive")
+
+
+@dataclass(frozen=True, slots=True)
 class LoseInfluence:
     """Lose ``count`` Influence, choosing a Faction for each step.
 
@@ -517,6 +530,7 @@ type Cost = (
     | FlipBattleCard
     | TrashDiscardPileCard
     | FlipFaceUpConflictCard
+    | SpendSpecimens
 )
 
 
