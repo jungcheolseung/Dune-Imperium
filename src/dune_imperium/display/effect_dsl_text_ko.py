@@ -38,6 +38,7 @@ from typing import assert_never
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardForSolari,
     AcquireCardUpTo,
     AcquireReserveCard,
     AcquireTech,
@@ -777,6 +778,12 @@ def reward_text_ko(reward: Reward) -> str:
         case PledgeFirstPlaceInfluence():
             # Quotes ``tokens_ko.py``'s Pivotal Gambit line.
             return "1등 보상에 {influence_any:1} 선택 추가"
+        case AcquireCardForSolari():
+            # Quotes ``tokens_ko.py``'s Price is No Object line.
+            return (
+                "{imperium_row} 또는 {reserve} 1장을 {solari}로 지불해 핸드로 "
+                "{acquire}"
+            )
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

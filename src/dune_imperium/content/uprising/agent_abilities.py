@@ -39,6 +39,8 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardForSolari,
+    AcquireCardUpTo,
     AdvanceTleilaxu,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
@@ -400,6 +402,27 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 _line(RecruitTroops(1), condition=_EMPEROR_TRASH),
                 _line(GrantCombatDeployment(), condition=_EMPEROR_TRASH),
                 armed=("intrigue", "troops"),
+            ),
+            # --- Optional acquisitions (composed effects, A3f) -------------------
+            # Price is No Object: "You may acquire an Imperium Row or Reserve
+            # card to your hand, paying its cost in solari".
+            _BOX.ACQUIRE_WITH_SOLARI_TO_HAND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(AcquireCardForSolari()),),
+                mark=AbilityMark.OPTIONAL,
+            ),
+            # Tleilaxu Master: "If 1 genetic marker: You may acquire a card
+            # costing 6 or less, If 2 genetic markers: put it in your hand",
+            # both judged when the box resolves (OQ-028).
+            _BOX.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(
+                        AcquireCardUpTo(6, to_hand_if=GeneticMarkersAtLeast(2)),
+                        condition=GeneticMarkersAtLeast(1),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.

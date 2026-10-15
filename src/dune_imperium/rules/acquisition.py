@@ -6,7 +6,14 @@ from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.uprising.abilities import Ability, AbilityMark
+from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardForSolari,
+    AcquireCardUpTo,
+    GeneticMarkersAtLeast,
+)
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_card_for_instance,
@@ -14,7 +21,6 @@ from dune_imperium.content.uprising.imperium import (
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
-    PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -252,11 +258,54 @@ def _resume_after_acquisition_spy(state: GameState) -> GameState:
     return state
 
 
+def agent_box_acquisition(
+    ability: Ability | None,
+) -> tuple[AcquireCardUpTo | AcquireCardForSolari, GeneticMarkersAtLeast | None] | None:
+    """The optional acquisition a recorded Agent box offers, and the genetic
+    marker condition its line prints (composed effects, A3f).
+
+    Tleilaxu Master's "If 1 genetic marker: You may acquire a card costing 6
+    or less" and Price is No Object's Solari acquisition to hand: the
+    refusal, then one row per card in reach; with the condition unmet the
+    box offers nothing (it is optional and lapses at the turn's end).
+    """
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+        or ability.sections[0].costs
+        or len(ability.sections[0].rewards) != 1
+    ):
+        return None
+    (line,) = ability.sections
+    (piece,) = line.rewards
+    condition = line.condition
+    if condition is not None and not isinstance(condition, GeneticMarkersAtLeast):
+        return None
+    match piece:
+        case AcquireCardForSolari():
+            return piece, condition
+        case AcquireCardUpTo(to_hand_if=None | GeneticMarkersAtLeast()):
+            return piece, condition
+    return None
+
+
+def _recorded_acquisition(
+    context: dict[str, ActionValue],
+) -> tuple[AcquireCardUpTo | AcquireCardForSolari, GeneticMarkersAtLeast | None] | None:
+    return agent_box_acquisition(
+        agent_box_ability(active_agent_card(context).agent_effect)
+    )
+
+
 def legal_agent_card_acquisitions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Price is No Object's optional Solari acquisitions."""
+    """Return a recorded Agent box's optional acquisitions (see above)."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -270,37 +319,35 @@ def legal_agent_card_acquisitions(
         or context.get("pending_agent_effect") is not True
     ):
         return ()
-    source = active_agent_card(context)
-    if (
-        source.agent_effect
-        is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER
+    recorded = _recorded_acquisition(context)
+    if recorded is None:
+        return ()
+    piece, condition = recorded
+    if condition is not None and (
+        _marker_block(state.players[player], condition) is not None
     ):
-        # Tleilaxu Master: "[one genetic marker]: you may acquire a card
-        # costing 6 or less" [card face], judged now (OQ-028).
-        if _tleilaxu_master_marker_block(state.players[player]) is not None:
-            return ()
-    elif (
-        source.agent_effect
-        is not PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
-    ):
+        # Judged now (OQ-028).
         return ()
     return (
         DomainAction(action_id="decline_agent_card_acquisition", actor=player),
-        *_agent_card_acquisition_targets(state, player, source.agent_effect),
+        *_agent_card_acquisition_targets(state, player, piece),
     )
 
 
-def _tleilaxu_master_marker_block(owner: PlayerState) -> OptionalEffectBlock | None:
+def _marker_block(
+    owner: PlayerState, condition: GeneticMarkersAtLeast
+) -> OptionalEffectBlock | None:
     markers = genetic_markers_reached(owner.research_space)
-    return short_of(OptionalBlockKind.GENETIC_MARKERS, 1, markers)
+    return short_of(OptionalBlockKind.GENETIC_MARKERS, condition.count, markers)
 
 
 def _agent_card_acquisition_targets(
-    state: GameState, player: int, effect: PersonalCardAgentEffect | None
+    state: GameState, player: int, piece: AcquireCardUpTo | AcquireCardForSolari
 ) -> tuple[DomainAction, ...]:
-    """The acquisitions Tleilaxu Master's or Price is No Object's box offers."""
+    """The acquisitions the box's piece offers: by its cost cap, or paid in
+    Solari to hand."""
 
-    if effect is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
+    if isinstance(piece, AcquireCardUpTo):
         return (
             *(
                 DomainAction(
@@ -308,7 +355,7 @@ def _agent_card_acquisition_targets(
                     actor=player,
                     arguments=(("card_id", card_id),),
                 )
-                for card_id in acquirable_reserve_card_ids(state, TLEILAXU_MASTER_COST)
+                for card_id in acquirable_reserve_card_ids(state, piece.max_cost)
             ),
             *(
                 DomainAction(
@@ -317,7 +364,7 @@ def _agent_card_acquisition_targets(
                     arguments=(("instance_id", instance_id),),
                 )
                 for instance_id in acquirable_imperium_instance_ids(
-                    state, TLEILAXU_MASTER_COST, player=player
+                    state, piece.max_cost, player=player
                 )
             ),
         )
@@ -349,37 +396,34 @@ def _agent_card_acquisition_targets(
 def agent_card_acquisition_block(
     state: GameState, player: int
 ) -> OptionalEffectBlock | None:
-    """Why Tleilaxu Master's or Price is No Object's box acquires nothing now.
+    """Why a recorded Agent box's acquisition acquires nothing now.
 
-    ``legal_agent_card_acquisitions`` offers Tleilaxu Master's acquisition
-    only with one genetic marker reached (``_tleilaxu_master_marker_block``)
-    and either box's cards exactly as ``_agent_card_acquisition_targets``
-    names them; with none, nothing is in reach (``needed``: Tleilaxu
-    Master's cost cap, 0 for Price is No Object's Solari, ``held`` of them).
-    None for any other box. The page greys an optional box that offers
-    nothing out with it (``display.unavailable``, OQ-095 (2)).
+    ``legal_agent_card_acquisitions`` offers it only while its genetic
+    marker condition holds (``_marker_block``) and the cards exactly as
+    ``_agent_card_acquisition_targets`` names them; with none, nothing is in
+    reach (``needed``: the cost cap, 0 for a Solari acquisition, ``held``
+    of them). None for any other box. The page greys an optional box that
+    offers nothing out with it (``display.unavailable``, OQ-095 (2)).
     """
 
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
         return None
-    effect = active_agent_card(context).agent_effect
+    recorded = _recorded_acquisition(context)
+    if recorded is None:
+        return None
+    piece, condition = recorded
     owner = state.players[player]
-    if effect is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
-        marker = _tleilaxu_master_marker_block(owner)
+    if condition is not None:
+        marker = _marker_block(owner, condition)
         if marker is not None:
             return marker
-        needed = TLEILAXU_MASTER_COST
-    elif effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND:
-        needed = 0
-    else:
-        return None
-    if _agent_card_acquisition_targets(state, player, effect):
+    if _agent_card_acquisition_targets(state, player, piece):
         return None
     return OptionalEffectBlock(
         OptionalBlockKind.NOTHING_TO_ACQUIRE,
-        needed=needed,
+        needed=piece.max_cost if isinstance(piece, AcquireCardUpTo) else 0,
         held=owner.resources.solari,
     )
 
@@ -388,11 +432,13 @@ def apply_agent_card_acquisition(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or acquire one card to hand by paying its cost in Solari."""
+    """Decline or acquire one card for a recorded Agent box."""
 
     if action not in legal_agent_card_acquisitions(state, action.actor):
         raise ValueError("action is not a legal Agent-card acquisition")
     _, context = current_agent_effect_context(state)
+    recorded = _recorded_acquisition(context)
+    assert recorded is not None
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
     if action.action_id == "decline_agent_card_acquisition":
@@ -411,22 +457,25 @@ def apply_agent_card_acquisition(
     if action.action_id == "acquire_reserve_with_solari":
         return _acquire_reserve_to_hand_with_solari(state, action, context)
     if action.action_id in ("acquire_reserve_by_card", "acquire_imperium_by_card"):
-        return _acquire_by_agent_card(state, action, context)
+        piece, _ = recorded
+        assert isinstance(piece, AcquireCardUpTo)
+        return _acquire_by_agent_card(state, action, context, piece)
     return _acquire_imperium_to_hand_with_solari(state, action, context)
-
-
-TLEILAXU_MASTER_COST = 6
 
 
 def _acquire_by_agent_card(
     state: GameState,
     action: DomainAction,
     context: dict[str, ActionValue],
+    piece: AcquireCardUpTo,
 ) -> RuleResult:
-    """Tleilaxu Master: a free acquisition; two markers send it to the hand."""
+    """A free acquisition by the cost cap; ``to_hand_if`` (Tleilaxu Master's
+    two genetic markers) sends it to the hand."""
 
     owner = state.players[action.actor]
-    to_hand = genetic_markers_reached(owner.research_space) >= 2
+    to_hand = isinstance(piece.to_hand_if, GeneticMarkersAtLeast) and (
+        genetic_markers_reached(owner.research_space) >= piece.to_hand_if.count
+    )
     source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
     # The box has resolved; the acquisition's own follow-ups (a Research
     # direction, a Spy post, the Contract market) stack above the turn.

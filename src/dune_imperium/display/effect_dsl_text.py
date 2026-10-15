@@ -11,6 +11,7 @@ from typing import assert_never
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardForSolari,
     AcquireCardUpTo,
     AcquireReserveCard,
     AcquireTech,
@@ -498,6 +499,11 @@ def reward_text(reward: Reward) -> str:
             return (
                 "Add 1 Influence of your choice to this Conflict's first-place"
                 " reward"
+            )
+        case AcquireCardForSolari():
+            return (
+                "Acquire an Imperium Row or Reserve card to your hand, paying"
+                " its cost in solari"
             )
         case CompleteContract():
             return "Complete one of your contracts"

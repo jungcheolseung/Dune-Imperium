@@ -3555,11 +3555,9 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
     {
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
-        PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
-        PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
         PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     }
@@ -4073,7 +4071,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         event_kind = "agent_card_effect_resolved"
     elif effect in (
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
-        PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
         _TRASH_GRAFTED_FOR_INFLUENCE,
         _CHOOSE_TWO_REWARDS,
