@@ -10,7 +10,6 @@ first and then queue the reward icons the same way.
 
 from collections.abc import Mapping
 from copy import replace
-from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
@@ -35,6 +34,14 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_box_abilities import (
+    AgentIconBlock,
+    AgentIconCondition,
+    box_ability,
+    box_icon_block,
+    resolve_box,
+    resolve_box_icon,
+)
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import (
@@ -3640,6 +3647,9 @@ def agent_card_icons_at_placement(
         return ()
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return _SIGNET_ICONS.get(leader_id or "", ())
+    ability = box_ability(effect)
+    if ability is not None:
+        return ability.icons
     return _PLACEMENT_ICONS.get(effect, ())
 
 
@@ -3803,37 +3813,6 @@ def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-class AgentIconCondition(StrEnum):
-    """What a conditioned Agent-box icon waits for (``agent_icon_block``)."""
-
-    INFLUENCE = "influence"
-    SPICE_GAINED = "spice_gained"
-    GRAFTED = "grafted"
-    GENETIC_MARKERS = "genetic_markers"
-    CONTRACTS_COMPLETED = "contracts_completed"
-    # Another card of ``faction`` in play; it can only be lost in a turn.
-    BOND = "bond"
-    # The Alliance of ``faction`` (any Alliance when None).
-    ALLIANCE = "alliance"
-    # The box's own card is not in play: a Row card borrowed with Usurp
-    # (OQ-054) never is.
-    NOT_IN_PLAY = "not_in_play"
-    # The icon belongs to no box that prints it; no card queues one.
-    NOT_PRINTED = "not_printed"
-
-
-@dataclass(frozen=True, slots=True)
-class AgentIconBlock:
-    """Why a conditioned Agent-box icon is not offered now: the printed
-    threshold ``needed`` against what the owner has (``held``), and the
-    Faction of an Influence threshold."""
-
-    condition: AgentIconCondition
-    needed: int = 0
-    held: int = 0
-    faction: Faction | None = None
-
-
 # The printed thresholds: two Influence, two spice this turn, two markers.
 _ICON_THRESHOLD: Final = 2
 _NOT_PRINTED: Final = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
@@ -3903,6 +3882,11 @@ def agent_icon_block(
     it while the turn is open (user ruling 2026-10-02, L2-Q3 (3)).
     """
 
+    ability = box_ability(effect)
+    if ability is not None and key in ability.icons:
+        # A recorded box judges its printed icons from its record; a key it
+        # does not print keeps the generic answer below.
+        return box_icon_block(owner, context, ability, key)
     if effect is _CARGO_RUNNER and key in _CARGO_RUNNER_CONTRACTS:
         return _contracts_block(owner, _CARGO_RUNNER_CONTRACTS[key])
     if effect is _TRASH_TO_DRAW_IF_BOND and key in (
@@ -4039,6 +4023,9 @@ def resolve_agent_card_icon(
     player, card_instance_id, _ = _effect_subject(context)
     card = active_agent_card(context)
     effect = card.agent_effect
+    recorded = box_ability(effect)
+    if recorded is not None and recorded.icons:
+        return resolve_box_icon(state, action)
     key = str(dict(action.arguments)["effect"])
     owner = state.players[player]
     source = (
@@ -4678,6 +4665,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     recruit_shortfall: tuple[GameEvent, ...] = ()
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
+    if box_ability(effect) is not None:
+        # A box written as an ability record (composed effects, stage A2).
+        return resolve_box(state)
     if effect is PersonalCardAgentEffect.TRASH_SELF:
         # "Trash this card." (Seek Allies) is mandatory [Main p. 20]. A card
         # trashed by a freely ordered effect expires before this resolution

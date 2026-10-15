@@ -1,0 +1,244 @@
+"""Agent boxes resolved from ability records (composed effects, stage A2).
+
+docs/composed-effects-plan.md 5 (A2): 44 personal-card Agent boxes are
+written as records (``content.uprising.agent_abilities``) and resolved by
+``rules.agent_box_abilities``. The engine equivalence gate holds the move to
+the old engine game by game; these tests pin the record table and the
+conventions a later edit could break.
+"""
+
+from dataclasses import replace
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    OBSERVATION_POSTS,
+    Faction,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AtMakerSpace,
+    FactionBond,
+    GainedSpiceThisTurn,
+    HasAlliance,
+    InfluenceAtLeast,
+)
+from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    Influence,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+)
+from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+from dune_imperium.rules.agent_box_abilities import (
+    AgentIconBlock,
+    AgentIconCondition,
+    condition_block,
+    opens_at_placement,
+)
+from dune_imperium.rules.agent_effects import (
+    agent_card_icons_at_placement,
+    agent_icon_block,
+    legal_agent_card_icon_actions,
+    resolve_agent_card_effect,
+    resolve_agent_card_icon,
+)
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.effects import agent_card_source
+from dune_imperium.rules.frames import FrameKind
+
+_BOX = PersonalCardAgentEffect
+
+
+def test_every_record_is_a_printed_agent_box() -> None:
+    assert len(AGENT_BOX_ABILITIES) == 44
+    for effect in AGENT_BOX_ABILITIES:
+        assert effect in AGENT_EFFECT_TEXT, effect
+
+
+def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
+    """The icon-by-icon boxes queue the icons OQ-027 rules, in printed order."""
+
+    assert {
+        effect: agent_card_icons_at_placement(effect)
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if ability.icons
+    } == {
+        _BOX.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO: ("troops", "cards"),
+        _BOX.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: ("water", "spice"),
+        _BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO: ("solari", "spice"),
+        _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
+            "troops",
+            "cards",
+        ),
+        _BOX.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS: ("cards", "intrigue"),
+        _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED: ("troops", "cards"),
+        _BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO: ("cards", "cards_second"),
+        _BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED: ("cards", "research"),
+        _BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE: ("water", "return_self"),
+    }
+    for effect, ability in AGENT_BOX_ABILITIES.items():
+        if not ability.icons:
+            assert agent_card_icons_at_placement(effect) == ()
+
+
+def test_placement_requirements_are_fixed_by_the_placement() -> None:
+    """Only the visited space and a Bond among cards in play are judged when
+    the card is played (OQ-028 (a)); every other condition when it resolves."""
+
+    requirements = {
+        type(ability.requirement)
+        for ability in AGENT_BOX_ABILITIES.values()
+        if ability.requirement is not None
+    }
+    assert requirements == {AtMakerSpace, FactionBond}
+    harvester = AGENT_BOX_ABILITIES[_BOX.GAIN_SPICE_IF_MAKER_SPACE]
+    owner = PlayerState(player_id=0)
+    maker = next(space for space in BOARD_SPACES if space.maker)
+    city = next(space for space in BOARD_SPACES if not space.maker)
+    assert opens_at_placement(harvester, owner, maker, "imperium:x:0")
+    assert not opens_at_placement(harvester, owner, city, "imperium:x:0")
+    elders = AGENT_BOX_ABILITIES[_BOX.RECRUIT_TWO_IF_BENE_GESSERIT_BOND]
+    elders_id = "imperium:southern_elders:0"
+    assert not opens_at_placement(elders, owner, city, elders_id)
+    bonded = replace(owner, in_play=("imperium:weirding_woman:0",))
+    assert opens_at_placement(elders, bonded, city, elders_id)
+
+
+def test_condition_blocks_say_what_the_owner_has() -> None:
+    owner = PlayerState(
+        player_id=0,
+        influence=Influence(bene_gesserit=1),
+        resources=Resources(spice=1),
+    )
+    context = {"card_id": "imperium:x:0", "graft_card_id": ""}
+    assert condition_block(
+        InfluenceAtLeast(Faction.BENE_GESSERIT, 2), owner, context
+    ) == AgentIconBlock(
+        AgentIconCondition.INFLUENCE, 2, 1, faction=Faction.BENE_GESSERIT
+    )
+    assert condition_block(GainedSpiceThisTurn(2), owner, context) == AgentIconBlock(
+        AgentIconCondition.SPICE_GAINED, 2, 1
+    )
+    assert condition_block(HasAlliance(Faction.FREMEN), owner, context) == (
+        AgentIconBlock(AgentIconCondition.ALLIANCE, faction=Faction.FREMEN)
+    )
+    allied = replace(owner, alliance_faction_ids=("fremen",))
+    assert condition_block(HasAlliance(Faction.FREMEN), allied, context) is None
+    with pytest.raises(TypeError, match="no icon block"):
+        condition_block(AtMakerSpace(), owner, context)
+
+
+def _played(
+    card: str, owner: PlayerState, config: RulesetConfig | None = None
+) -> GameState:
+    """``card`` sent to the first space it may visit, its box pending."""
+
+    state = GameState(
+        config=config or RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            replace(owner, hand=(card,)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    action = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["card_id"] == card
+    )
+    placed = apply_agent_action(state, action).state
+    assert placed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    return placed
+
+
+def test_an_icon_waits_for_its_condition_and_resolves_last_in_its_events() -> None:
+    """Wheels Within Wheels: each icon is its own action, judged when it
+    resolves; the icon's event comes after its gains (OQ-027, OQ-028)."""
+
+    card = "imperium:wheels_within_wheels:0"
+    # Its only Agent icon is the Spy: a Spy on a post opens that post's spaces.
+    spy = PlayerState(
+        player_id=0,
+        influence=Influence(emperor=2),
+        spy_post_ids=(OBSERVATION_POSTS[0].post_id,),
+        spies_supply=2,
+    )
+    placed = _played(card, spy)
+    assert legal_agent_card_icon_actions(placed, 0) == (
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "solari"),)),
+    )
+    context = dict(placed.decision_stack[-1].context)
+    wheels = _BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    assert agent_icon_block(placed.players[0], context, wheels, "spice") == (
+        AgentIconBlock(
+            AgentIconCondition.INFLUENCE, 2, 0, faction=Faction.SPACING_GUILD
+        )
+    )
+    result = resolve_agent_card_icon(
+        placed, DomainAction("resolve_agent_card_effect", 0, (("effect", "solari"),))
+    )
+    assert result.state.players[0].resources.solari == 2
+    source = agent_card_source(1, 0, card)
+    assert [(event.kind, event.event_id) for event in result.events] == [
+        ("agent_card_effect_resolved", f"{source}:solari:resolved")
+    ]
+
+
+def test_one_action_box_puts_its_event_first_and_draws_by_card_name() -> None:
+    """Prepare the Way: one action; its draw is named after the card's
+    definition, so every Reserve copy draws from the same source."""
+
+    card = "reserve:prepare_the_way:3"
+    waiting = _played(card, PlayerState(player_id=0, deck=("imperium:x:0",)))
+    unavailable = resolve_agent_card_effect(waiting)
+    assert [event.kind for event in unavailable.events] == [
+        "agent_card_effect_unavailable"
+    ]
+    ready = _played(
+        card,
+        PlayerState(
+            player_id=0,
+            influence=Influence(bene_gesserit=2),
+            deck=("starting:0:dagger:0",),
+        ),
+    )
+    resolved = resolve_agent_card_effect(ready)
+    assert resolved.events[0].event_id == agent_card_source(1, 0, card)
+    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    assert resolved.state.players[0].hand == ("starting:0:dagger:0",)
+
+
+def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> None:
+    """The troop first; the black trash icon on a frame named after the box,
+    so a self-trash keeps its card's effects (OQ-022)."""
+
+    card = "imperium:throne_room_politics:0"
+    placed = _played(
+        card,
+        PlayerState(player_id=0),
+        RulesetConfig(immortality=True, bloodlines=True, choam_module=True),
+    )
+    result = resolve_agent_card_effect(placed)
+    troops = placed.players[0].troops_garrison
+    assert result.state.players[0].troops_garrison == troops + 1
+    frame = result.state.decision_stack[-1]
+    assert frame.kind == FrameKind.OPTIONAL_TRASH
+    assert dict(frame.context)["source"] == agent_card_source(1, 0, card)
+    assert result.events[0].kind == "agent_card_effect_resolved"

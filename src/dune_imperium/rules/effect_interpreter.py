@@ -26,10 +26,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AtMakerSpace,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
+    ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
@@ -37,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
+    FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainCombatStrength,
@@ -48,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
+    Grafted,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
@@ -82,6 +86,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
+    SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
     TechTilesAtLeast,
@@ -90,6 +95,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
+    UnitsInConflictAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -275,8 +281,19 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return influence_amount(owner.influence, faction) >= amount
         case HasHighCouncil():
             return owner.high_council
-        case HasAlliance():
+        case HasAlliance(faction=None):
             return bool(owner.alliance_faction_ids)
+        case HasAlliance(faction=faction) if faction is not None:
+            return faction.value in owner.alliance_faction_ids
+        case SpyRecalledThisTurn():
+            # Every recall counts: Infiltrate, Gather Intelligence, a card's
+            # icon or cost, the recall before a placement [Main pp. 11, 20].
+            return owner.spies_recalled_turn > 0
+        case UnitsInConflictAtLeast(count=count):
+            # Troops, sandworms, Commanders and an Agent in the Conflict.
+            return owner.units_in_conflict >= count
+        case ContractCompletedThisTurn():
+            return owner.contracts_completed_turn >= 1
         case InNavigationSlot(slot=slot):
             return owner.navigation_active_slot == slot
         case TriggeredByFaction(faction=faction):
@@ -321,6 +338,10 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
                 )
                 for faction in Faction
             )
+        case AtMakerSpace() | FactionBond() | Grafted():
+            # They read the Agent turn and its card: judged by
+            # ``agent_box_abilities.box_condition_holds``.
+            raise TypeError(f"{condition!r} is judged with its Agent box")
     raise TypeError(f"unsupported condition: {condition!r}")
 
 

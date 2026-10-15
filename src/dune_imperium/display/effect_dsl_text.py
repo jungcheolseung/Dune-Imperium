@@ -17,17 +17,22 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AtMakerSpace,
+    BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
+    ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
     DrawIntrigueCards,
+    DrawPerSandwormInConflict,
     DrawPersonalCards,
     EffectSection,
+    FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainCombatStrength,
@@ -39,6 +44,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
+    Grafted,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
@@ -49,6 +55,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
+    LookAtIntrigueKeepOne,
     LoseInfluence,
     LoseTroops,
     OnRevealAcquisitionThisRound,
@@ -65,6 +72,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
+    ReturnThisCardToHand,
     RevealContractsTakeOne,
     RevealPersuasionThisRound,
     Reward,
@@ -74,6 +82,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
+    SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
     TechTilesAtLeast,
@@ -83,6 +92,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Trigger,
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
+    UnitsInConflictAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -174,8 +184,11 @@ def condition_text(condition: Condition) -> str:
             return f"you have {amount} or more {_faction_name(faction)} Influence"
         case HasHighCouncil():
             return "you hold a High Council seat"
-        case HasAlliance():
-            return "you have an Alliance"
+        case HasAlliance(faction=faction):
+            if faction is None:
+                return "you have an Alliance"
+            # "[Fremen] Alliance:" [Stillsuit Manufacturer card].
+            return f"you have the {_faction_name(faction)} Alliance"
         case InNavigationSlot(slot=slot):
             return f"this is in Navigation slot {slot}"
         case TriggeredByFaction(faction=faction):
@@ -220,6 +233,20 @@ def condition_text(condition: Condition) -> str:
             return f"you have {amount} or more solari"
         case SpiceAtLeast(amount=amount):
             return f"you have {amount} or more spice"
+        case AtMakerSpace():
+            # "If you are at a Maker space:" [Desert Power card].
+            return "you are at a Maker space"
+        case FactionBond(faction=faction):
+            # "If Bene Gesserit Bond:" (display/tokens.py, Southern Elders).
+            return f"{_faction_name(faction)} Bond"
+        case SpyRecalledThisTurn():
+            return "you recalled a Spy this turn"
+        case UnitsInConflictAtLeast(count=count):
+            return f"you have {count} or more units in the Conflict"
+        case ContractCompletedThisTurn():
+            return "you completed a Contract this turn"
+        case Grafted():
+            return "grafted"
         case OpponentPlayedCombatIntrigue():
             return "an opponent played a Combat Intrigue card in this Conflict"
         case AllConditions(conditions=conditions):
@@ -418,6 +445,20 @@ def reward_text(reward: Reward) -> str:
             return "You may acquire a Tleilaxu card (paying its specimen cost)"
         case RevealPersuasionThisRound(amount=amount):
             return f"Gain {amount} Persuasion during your Reveal turn this round"
+        case ReturnThisCardToHand():
+            return "Return this card to your hand"
+        case BoostNextBeneGesseritCard():
+            return (
+                "The next Bene Gesserit card you play this round has all Agent"
+                " icons and, added to its Agent box: Draw 1 card"
+            )
+        case DrawPerSandwormInConflict():
+            return "Draw 1 card per sandworm in the Conflict"
+        case LookAtIntrigueKeepOne(count=count):
+            return (
+                f"Look at the top {count} Intrigue cards, keep 1 and put the"
+                f" {'other' if count == 2 else 'others'} back on top"
+            )
         case _:
             assert_never(reward)
 

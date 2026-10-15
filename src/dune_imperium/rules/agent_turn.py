@@ -31,6 +31,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.agent_box_abilities import box_ability, opens_at_placement
 from dune_imperium.rules.agent_effects import (
     agent_card_icons_at_placement,
     holds_space_influence,
@@ -887,19 +888,6 @@ def agent_effect_is_available(
 
     if effect is None:
         return False
-    if effect in (
-        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
-        # Reachable off a Faction space through a granted Spy or Agent icon
-        # (Clandestine, Resourceful, Urgent Shigawire): nothing to gain.
-        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
-    ):
-        return space.faction is not None
-    if effect in (
-        PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
-    ):
-        return space.maker
     if (
         effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND
         and card_instance_id == owner.usurped_row_card_id
@@ -908,9 +896,19 @@ def agent_effect_is_available(
         # 14] (OQ-054, user ruling 2026-10-04), so "Return this card to your
         # hand" can never happen: the box is not left waiting for it.
         return False
+    ability = box_ability(effect)
+    if ability is not None:
+        # A box written as an ability record judges its placement condition
+        # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
+        return opens_at_placement(ability, owner, space, card_instance_id)
     if effect in (
-        PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
+        # Reachable off a Faction space through a granted Spy or Agent icon
+        # (Clandestine, Resourceful, Urgent Shigawire): nothing to gain.
+        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
+    ):
+        return space.faction is not None
+    if effect in (
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
     ):

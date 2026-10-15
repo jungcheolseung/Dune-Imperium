@@ -44,17 +44,22 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AtMakerSpace,
+    BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
+    ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
     DrawIntrigueCards,
+    DrawPerSandwormInConflict,
     DrawPersonalCards,
     EffectSection,
+    FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainCombatStrength,
@@ -66,6 +71,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
+    Grafted,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
@@ -76,6 +82,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
+    LookAtIntrigueKeepOne,
     LoseInfluence,
     LoseTroops,
     OnRevealAcquisitionThisRound,
@@ -92,6 +99,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
+    ReturnThisCardToHand,
     RevealContractsTakeOne,
     RevealPersuasionThisRound,
     Reward,
@@ -101,6 +109,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
+    SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
     TechTilesAtLeast,
@@ -110,6 +119,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Trigger,
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
+    UnitsInConflictAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -324,8 +334,12 @@ def condition_text_ko(condition: Condition) -> str:
             # ("High Council" clause), itself sourced from the glossary's
             # "High Council | 원로회 / 원로회 자리" ([Main p. 17]).
             return "원로회 자리를 보유했다면"
-        case HasAlliance():
-            return "{alliance}이 있다면"
+        case HasAlliance(faction=faction):
+            if faction is None:
+                return "{alliance}이 있다면"
+            # ``tokens_ko.py``'s "프레멘 {alliance}:" (Stillsuit
+            # Manufacturer), as a clause like the any-Alliance one.
+            return f"{_faction_name_ko(faction)} {{alliance}}이 있다면"
         case InNavigationSlot(slot=slot):
             # "이 카드가 운항 구획 4에 놓여 있었다면:" — Navigation Card 3's
             # own Korean print (`[KO card: Navigation Card 3]`; Navigation
@@ -416,6 +430,25 @@ def condition_text_ko(condition: Condition) -> str:
             return f"{{solari}} {amount} 이상이면"
         case SpiceAtLeast(amount=amount):
             return f"{{spice}} {amount} 이상이면"
+        case AtMakerSpace():
+            # Quotes ``tokens_ko.py``'s "메이커 장소에 있다면:" (Desert Power).
+            return "메이커 장소에 있다면"
+        case FactionBond(faction=faction):
+            # "Fremen Bond | 프레멘의 유대감" (glossary-ko.md, [Main p. 20]);
+            # ``tokens_ko.py``'s "베네 게세리트의 유대감이면:".
+            return f"{_faction_name_ko(faction)}의 유대감이면"
+        case SpyRecalledThisTurn():
+            # Quotes ``tokens_ko.py``'s "이번 차례에 {spy}를 소환했다면:".
+            return "이번 차례에 {spy}를 소환했다면"
+        case UnitsInConflictAtLeast(count=count):
+            # Quotes ``tokens_ko.py``'s "{conflict}에 부대가 3 이상 있다면:".
+            return f"{{conflict}}에 부대가 {count} 이상 있다면"
+        case ContractCompletedThisTurn():
+            # Quotes ``tokens_ko.py``'s "이번 차례에 {contract}을 완수했다면:".
+            return "이번 차례에 {contract}을 완수했다면"
+        case Grafted():
+            # Quotes ``tokens_ko.py``'s "{graft}했다면:".
+            return "{graft}했다면"
         case OpponentPlayedCombatIntrigue():
             # {intrigue} (책략 카드) matches ICON_RULES' own bare "Intrigue
             # card" rule, which fires inside English's "Combat Intrigue
@@ -688,6 +721,25 @@ def reward_text_ko(reward: Reward) -> str:
             return "틀레이락스 카드 {acquire} 가능 (표본 비용 지불)"
         case RevealPersuasionThisRound(amount=amount):
             return f"이번 라운드 자기 {{reveal_turn}}에 {{persuasion:{amount}}}"
+        case ReturnThisCardToHand():
+            # Quotes ``tokens_ko.py``'s "이 카드를 핸드로 되돌림" (Weirding
+            # Woman).
+            return "이 카드를 핸드로 되돌림"
+        case BoostNextBeneGesseritCard():
+            # Quotes ``tokens_ko.py``'s Urgent Shigawire line.
+            return (
+                "이번 라운드에 다음으로 플레이하는 베네 게세리트 카드는 모든"
+                " {agent} 아이콘을 가지며, 에이전트 칸에 {draw:1} 추가"
+            )
+        case DrawPerSandwormInConflict():
+            # Quotes ``tokens_ko.py``'s "{conflict}의 {sandworm}마다 {draw:1}".
+            return "{conflict}의 {sandworm}마다 {draw:1}"
+        case LookAtIntrigueKeepOne(count=count):
+            # Quotes ``tokens_ko.py``'s Imperium Ceremony line.
+            return (
+                f"{{intrigue}} 맨 위 {count}장 확인 후 1장 보관, 나머지는 맨"
+                " 위로 되돌림"
+            )
         case _:
             assert_never(reward)
 
