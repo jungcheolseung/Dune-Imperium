@@ -3,6 +3,35 @@ extends Button
 var table: Control
 var ref = ""
 var pile = ""
+var face: TextureRect
+var caption: Label
+var fallback: Label
+
+
+func arrange_face() -> void:
+	# Reserve two lines for names, including the small shared-market cards.
+	# Resize the face with the button so window/column changes need no snapshot.
+	if face == null or caption == null:
+		return
+	var footer = 34 if size.x < 120 else 38
+	face.position = Vector2(4, 4)
+	face.size = Vector2(maxf(1, size.x - 8), maxf(1, size.y - footer - 8))
+	caption.position = Vector2(5, size.y - footer)
+	caption.size = Vector2(maxf(1, size.x - 10), footer - 3)
+	var marker_room = size.x - 10
+	for child in get_children():
+		if child.has_meta("card_cost"):
+			marker_room -= child.get_minimum_size().x + 5
+	for child in get_children():
+		if child.has_meta("card_state"):
+			var text = str(child.get_meta("card_state"))
+			child.text = text
+			if child.get_minimum_size().x > marker_room:
+				child.text = text.left(1) if text.left(1) in ["✓", "+", "×"] else "•"
+			child.reset_size()
+	if fallback != null:
+		fallback.position = Vector2(8, 30)
+		fallback.size = Vector2(maxf(1, size.x - 16), maxf(1, size.y - footer - 34))
 
 
 func _get_drag_data(_position: Vector2) -> Variant:

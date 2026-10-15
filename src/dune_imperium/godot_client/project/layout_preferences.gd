@@ -42,7 +42,7 @@ func _handle(parent: Node, index: int, key: String) -> void:
 func widths() -> Dictionary:
 	var prefs = table.tools_ui.prefs.get("columns", {})
 	var wide = table.size.x >= 1340
-	var result = {"seats": float(prefs.get("seats", 210 if wide else 172)), "choices": float(prefs.get("choices", 320 if wide else 280)), "market": float(prefs.get("market", 176 if wide else 160))}
+	var result = {"seats": float(prefs.get("seats", 190 if wide else 158)), "choices": float(prefs.get("choices", 300 if wide else 270)), "market": float(prefs.get("market", 200 if wide else 158))}
 	var minimum = {"seats": 150.0, "choices": 270.0, "market": 150.0}
 	var budget = table.size.x - 400
 	var total = result.seats + result.choices + (0 if table.tools_ui.prefs.get("market_folded", false) else result.market)
