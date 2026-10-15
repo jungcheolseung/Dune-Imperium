@@ -15,7 +15,7 @@ Python 규칙·AI·codec·저장 형식은 그대로 사용하고, 두 클라이
 | 확장 / 지도자 | CHOAM·프로모, Bloodlines·Tech, Immortality·Go to 11, Epic, Scouts, 지도자 트랙·개인 슬롯 | 계약/스킬/기술/틀레이락스 시장·연구 보드·지도자 트랙/슬롯·Scouts 단계/조각/자기 비밀·봉인 입찰 연결. 접목·연구·입찰·미션·비밀 선택을 전 옵션 완주에서 실행 | tech_acquire, graft_boxes, bene_tleilax_specimens, scouts, scouts_stage, leader_card |
 | 플레이 편의 | 한국어/영어, 도움말, 게임/좌석/차례 시계, 열 너비·손패 순서·접힘 설정 | 555 UI 번역+native 문구·동적 prompt, 시계/도움말, 실제 손패/열 드래그와 설정 저장, 접힘·두 언어의 1440×900/1100×740 입력 검사. Windows IME 실기 남음 | lang, clock, help, layout_custom, columns, seats, narrow |
 | 선택 불가 / 효과 | 이유·조건·비용, agent-box 구분·예고, 자원 변화·카드/단계/전투 연출·서로 다른 합성 효과음 | 서버 이유·예고·비용·shortfall·접목 box를 표현하고 합법 수량만 선택. 공개 변화/카드/단계 cue와 서로 다른 PCM 합성음·음량/끄기/움직임 줄이기. 실제 스피커 청취는 Windows 피드백 | unavailable, effect_text, card_hover, table_effects, phase_banner, scouts_decision_item |
-| 설치 없는 배포 | Windows 런타임·개인 그림 동봉, 앱 종료·서버 정리, 작은 업데이트 | 이전 Windows 사용자 실행 확인. 전체 v3 243.73 MiB, 최신 화면 업데이트 253.13 KiB. 이 PC의 v1/v2/v3/플레이/정보 기준 overlay 2,395파일 hash·최소 환경 시작/undo/종료 검증. 새 Windows 실기 피드백 남음 | native bootstrap/portable 회귀 및 실제 Windows 피드백 |
+| 설치 없는 배포 | Windows 런타임·개인 그림 동봉, 앱 종료·서버 정리, 누적 프로그램 업데이트 | 이전 Windows 사용자 실행 확인. 최신 패널 업데이트 2.83 MiB. 보존한 직전 소스의 프로그램 353파일 및 새 ZIP/적용 복사본의 357파일 hash·최소 환경 시작/undo/종료 검증. 이전 전체 ZIP은 이번에 재검사하지 않음. 새 Windows 실기 피드백 남음 | native bootstrap/portable 회귀 및 실제 Windows 피드백 |
 
 ## 같은 국면의 직접 대조
 
@@ -60,7 +60,16 @@ Python 규칙·AI·codec·저장 형식은 그대로 사용하고, 두 클라이
 이 대조는 전수 카드/지도자·모든 결정창의 직접 비교를 완료했다는 뜻이 아니다. 연구·계약·지도자의
 나머지 조합과 실제 Windows IME·소리·모니터 이동·LAN은 별도로 남는다. 기본 화면의 손패/시장
 이름·비용·체크·빈 손패 접기와 선택 위계를 1차 개선했고, 새 배치에서 기본 입력 5사례/34·
-수량/경매 10사례/98·선택창 16사례/404항목을 다시 통과했다. 확장 패널/정보창 등의 후속 시각 마감은
+수량/경매 10사례/98·선택창 16사례/404항목을 다시 통과했다. 이어 상세창을 그림/설명 병렬 배치로
+바꾸고 덱/계약/기술의 큰 카드와 확장 시장·연구·Scouts를 정리했다. 새 상세 배치로 정보
+4사례/32와 선택창 16사례/404를 재실행했다.
+
+`scripts/godot/verify_panels.py`는 별도로 합법 저장본의 확장 시장·연구·Scouts를 ko/en
+6사례에서 검사한다. 실제 화면 86항목·1440×900/1100×740 캡처 36장과 headless 76항목을
+통과했다. 연구는 실제 보드 클릭과 텍스트 버튼 모두 현재 서버의 같은 행동 index를 실행한
+별도 복원본과 결과 hash가 같다. 정보창/시장 보기만으로 상태가 바뀌지 않으며, 그림 누락 시
+설명 열이 공간을 돌려받는 것과 긴 영어 지도자의 창 경계도 검사한다. 이 6사례는 위 웹 직접
+대조 35사례에 합산하지 않는다. 후속 시각 마감은
 [화면 인수인계](godot-visual-handoff.md)에 코드 위치·우선순위·지켜야 할 조작과 함께 정리했다.
 
 테스트 이름은 `scripts/e2e/<이름>.py`다. 기존 브라우저 E2E 전체 실행은 웹 기능의 기준이며,

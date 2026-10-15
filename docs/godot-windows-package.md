@@ -22,7 +22,23 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 
 ## 작은 플레이 업데이트
 
-최신 `dune-uprising-windows-visual-update-20261015.zip`(253.13 KiB)은 카드 가독성과
+최신 `dune-uprising-windows-panels-update-20261015.zip`(2.83 MiB)은 확장 시장·연구·Scouts와
+카드 상세/더미 보기를 개선한 누적 프로그램 업데이트다. 프로그램 전체를 포함하므로 앞선
+작은 업데이트를 순서대로 적용할 필요가 없다. 기존 개인용 전체 묶음(Python 3.14.7 / Godot
+4.6.3)에 적용한다. 게임을 닫고 ZIP 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의
+**상위 폴더**에 풀어 병합/덮어쓴 뒤 기존 `Play Dune.cmd`로 실행한다.
+`runtime/assets/saves/local`은 포함하지 않으며, 처음 설치할 때는 전체 묶음이 필요하다.
+
+소스 `3b602af2`, 2,962,531 bytes, SHA-256
+`66ae294a46db6b76396a148d39d017bbf7b3a4e75438600093d1700428cb58f1`.
+직전 화면 업데이트의 보존 복사본(`1e1ee943`)에서 프로그램 353파일 hash를 먼저 확인하고,
+새 ZIP의 프로그램 357파일과 적용 후 복사본의 hash·저장/설정 보존·최소 환경 스모크를 검증했다.
+기존 manifest에 overlay한 목표 파일 목록은 2,399개다. 이번에는 이전 전체 ZIP들이 작업 환경에
+없어 아카이브 전체를 다시 검사하지 않았다. 다른 PC의 동명 재빌드본 전체 manifest와의 일치도
+검증한 결과가 아니다. 근거는 `tmp/godot/panels-update-report.json`과 ZIP의 `update-manifest.json`이다.
+새 화면의 Windows 실제 GPU/IME/소리는 후속 실기 범위다.
+
+앞선 `dune-uprising-windows-visual-update-20261015.zip`(253.13 KiB)은 카드 가독성과
 기본 테이블 배치를 개선한 누적 프로그램 업데이트다. 손패 크기·시장 이름/인쇄 비용·체크 표식,
 빈 손패 접기·현재 선택/턴 종료 강조와 이전 기능·정보·배율/선택창 보완을 포함한다.
 게임을 닫고 ZIP 안의 `Dune-Uprising-Prototype`을 기존 같은 이름 폴더의 **상위 폴더**에 풀어
