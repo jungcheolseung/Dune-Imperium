@@ -11,8 +11,11 @@ A line's "distinct k", "for each" and "up to n" stay on its rewards
 (``GainInfluence.distinct``/``times``, ``GainSolariPerUnitType``,
 ``DeployFromGarrison.up_to``), as the DSL already writes them. The
 requirement tree has the DSL's conjunction (``AllConditions``); "or" and
-"not" are added with the first card that prints one, together with its
-wording in both languages (the display renders every condition).
+"not" are added when the first card that prints one moves into a record
+(Interstellar Conspiracy's "If grafted with an Emperor or Spacing Guild
+card", card-specific code until then), together with its wording in both
+languages: the display renders every DSL condition, and no card written in
+the DSL yet prints either.
 
 An effect that data would only make harder to read is a hook: ``hook`` names
 the executor function that resolves it through the common decisions and

@@ -148,9 +148,12 @@ hook으로 두되 그 수를 세어 줄여 간다.
 - **능력 기록** `content/uprising/abilities.py`: `Ability(timing, sections, mark, structure, requirement, trigger,
   at_turn_start, hook)`. 시점 10종(`AbilityTiming`), 표시 셋(의무·선택·자동), 구조 셋(순서대로·택일·따로 쓰는 줄,
   OQ-058). "서로 다른 k개·개수만큼·최대 n"은 DSL처럼 보상에 남는다(`GainInfluence.distinct`/`times`,
-  `GainSolariPerUnitType`, `DeployFromGarrison.up_to`). 요건의 "또는·아님"은 넣지 않았다: 화면이 모든 조건을 두 언어로
-  읽어 주므로, 그런 카드가 없는 지금 넣으면 근거 없는 한국어 문구를 지어내야 한다. 처음 인쇄한 카드가 나올 때 그 문구와
-  함께 더한다. hook은 이름만 두었다(지금 0개). 책략·Navigation 선택지 124개는 `intrigue_ability`/`intrigue_option`으로
+  `GainSolariPerUnitType`, `DeployFromGarrison.up_to`). 요건의 "또는·아님"은 넣지 않았다: 화면이 DSL 조건마다 두 언어
+  문구를 요구하고(`display/effect_dsl_text*.py`), 지금 DSL로 적힌 카드(책략·Navigation)에는 그런 조건이 없어 넣으면 쓰이지
+  않는 일반 문구를 지어내야 한다. 인쇄한 카드는 있다: Interstellar Conspiracy의 "If grafted with an Emperor or Spacing Guild
+  card"(카드 전용 코드, 문구 "황제 또는 우주 항행 길드 카드와 접합했다면"은 `display/tokens_ko.py`에 있음). 그 Agent 칸을 기록으로
+  옮길 때 그 문구와 함께 더한다(진영 집합 하나를 받는 조건이면 일반 "또는"이 필요 없을 수도 있다). Twisted 카드의 "if it is not a
+  Twisted card"는 줄의 조건이 아니라 비용 조각의 인자라(`GiveIntrigueToOpponent`·`TrashIntrigueCard`) 이미 데이터로 적혀 있다. hook은 이름만 두었다(지금 0개). 책략·Navigation 선택지 124개는 `intrigue_ability`/`intrigue_option`으로
   손실 없이 왕복한다(A1은 전사를 그대로 두고 실행기로 푼다).
 - **(모양, 출처) → template 표** `rules/action_shapes.py`: 전 옵션 카탈로그의 행동 279종마다 동사(45종)·출처(20종)·대상
   (25종), 거절·빈 확인이 무엇에 답하는지(`of`), 한 id가 답하는 다른 동사(`also`: `choose_intrigue_faction`은 영향력을
