@@ -317,6 +317,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 _line(DrawPersonalCards(1)),
                 _line(DrawPersonalCards(1), condition=_GUILD_DISCARD),
             ),
+            # Arrakis Observer: "You may discard a card -> Place a Spy with Deep
+            # Cover; if you discarded a Spacing Guild card: Gain 2 spice" -- the
+            # spice comes with the discard, the Spy is the box's next step.
+            _BOX.MAY_DISCARD_FOR_DEEP_COVER_SPY: _discard(
+                _line(PlaceSpy(shared_post=True)),
+                _line(GainResources(spice=2), condition=_GUILD_DISCARD),
+            ),
             # Captured Mentat: the rewards are armed as icons once the discard
             # is paid, each resolved on its own (OQ-027).
             _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: _discard(
