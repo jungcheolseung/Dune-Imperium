@@ -390,6 +390,23 @@ class AllianceTaken:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentOnSpaceWithIcon:
+    """The player has an Agent on a board space with ``icon`` ("If you have
+    an Agent on a [Landsraad] board space" [Canny Skill tile])."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("an Agent-space icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentSandwormInConflict:
+    """Any opponent has a sandworm in the Conflict [Fierce Skill tile]."""
+
+
+@dataclass(frozen=True, slots=True)
 class StrengthInConflictAtLeast:
     """The player has ``amount`` or more strength in the Conflict ("If you
     have 6 or more strength in the Conflict" [Gurney Halleck card])."""
@@ -472,6 +489,8 @@ type Condition = (
     | DuringAgentTurn
     | VisitedSpaceHasIcon
     | StrengthInConflictAtLeast
+    | AgentOnSpaceWithIcon
+    | OpponentSandwormInConflict
 )
 
 

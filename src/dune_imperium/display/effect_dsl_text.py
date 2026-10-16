@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
@@ -88,6 +89,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
+    OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
@@ -348,6 +350,13 @@ def condition_text(condition: Condition) -> str:
         case StrengthInConflictAtLeast(amount=amount):
             # Quotes ``display/leaders.py``'s Gurney Halleck line.
             return f"you have {amount} or more strength in the Conflict"
+        case AgentOnSpaceWithIcon(icon=icon):
+            # Quotes ``display/bloodlines.py``'s Canny line.
+            name = icon.value.replace("_", " ").title()
+            return f"you have an Agent on a {name} board space"
+        case OpponentSandwormInConflict():
+            # Quotes ``display/bloodlines.py``'s Fierce line.
+            return "any opponent has a sandworm in the Conflict"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):

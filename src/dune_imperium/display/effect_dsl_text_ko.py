@@ -46,6 +46,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
@@ -115,6 +116,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
+    OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
@@ -538,6 +540,12 @@ def condition_text_ko(condition: Condition) -> str:
         case StrengthInConflictAtLeast(amount=amount):
             # Quotes ``display/leaders_ko.py``'s Gurney Halleck line.
             return f"전투 트랙에서 당신의 전투력 총합이 {amount} 이상이라면"
+        case AgentOnSpaceWithIcon(icon=icon):
+            # Quotes ``display/bloodlines.py``'s Canny line.
+            return f"{_AGENT_ICON_NAMES_KO[icon]} 게임판 장소에 {{agent}}가 있다면"
+        case OpponentSandwormInConflict():
+            # Quotes ``display/bloodlines.py``'s Fierce line.
+            return "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"

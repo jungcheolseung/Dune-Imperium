@@ -63,6 +63,9 @@ class AbilityTiming(StrEnum):
     # Flipping a Tech tile: "used during one of your turns, and can be used
     # only once per round" [Bloodlines p. 7] (composed A6b).
     FLIP = "flip"
+    # Strength a tile adds while its unit is in the Conflict: a Sardaukar
+    # Commander's Skill [Bloodlines p. 4] (composed A7a).
+    IN_CONFLICT = "in_conflict"
     # A printed rule change in force while the card is held -- a cost, a
     # limit, an icon list, what its owner may see -- with no moment of its
     # own: the record names the engine's branch (``hook``), composed A6b.
