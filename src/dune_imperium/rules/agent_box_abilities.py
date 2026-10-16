@@ -76,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    LoseTroops,
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
@@ -107,6 +108,7 @@ from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
+from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
@@ -143,6 +145,7 @@ from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
     solo_occupied_post_ids,
 )
+from dune_imperium.rules.unit_loss import lose_unit
 
 _RESOLVED = "agent_card_effect_resolved"
 _UNAVAILABLE = "agent_card_effect_unavailable"
@@ -468,13 +471,19 @@ def resolve_box(state: GameState) -> RuleResult:
             len(ability.sections) != 1
             and not trash_box(ability)
             and not discard_box(ability)
+            and not lose_box(ability)
         )
     ):
         raise ValueError("the active Agent box is not resolved as one recorded action")
     line = ability.sections[0]
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    if agent_box_acquisition(ability) is not None:
+    if lose_box(ability):
+        # Piter: an optional arrow resolves through its rows; reached by the
+        # dry run only, which keeps its old answer -- the box unavailable
+        # (its provider offered nothing).
+        available = False
+    elif agent_box_acquisition(ability) is not None:
         # Tleilaxu Master: an optional acquisition resolves through its rows;
         # reached by the dry run only, which keeps its old answer -- the box
         # unavailable (its provider offered nothing).
@@ -1126,13 +1135,21 @@ _DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards, PlaceSpy)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
 # That path offers and pays a key per effect (Branching Path's 2 spice), so
 # the record table test keeps each key to the boxes it serves.
-_ARMED_REWARDS: Final[Mapping[str, Reward]] = {
-    "intrigue": DrawIntrigueCards(1),
-    "cards": DrawPersonalCards(1),
-    "spice": GainResources(spice=2),
-    "troops": RecruitTroops(1),
-    "pledge": PledgeFirstPlaceInfluence(),
+_ARMED_REWARDS: Final[Mapping[str, tuple[Reward, ...]]] = {
+    "intrigue": (DrawIntrigueCards(1),),
+    # Piter's ``cards`` draws two.
+    "cards": (DrawPersonalCards(1), DrawPersonalCards(2)),
+    "spice": (GainResources(spice=2),),
+    "troops": (RecruitTroops(1),),
+    "pledge": (PledgeFirstPlaceInfluence(),),
+    "research": (Research(),),
 }
+
+
+def _armed_line(key: str, line: EffectSection) -> bool:
+    """Whether ``line`` is the one reward the icon path pays for ``key``."""
+
+    return len(line.rewards) == 1 and line.rewards[0] in _ARMED_REWARDS.get(key, ())
 
 
 def discard_box(ability: Ability | None) -> bool:
@@ -1158,7 +1175,7 @@ def discard_box(ability: Ability | None) -> bool:
     if ability.armed_icons:
         # Every line armed: a trailing line paid at once is not this shape.
         return len(ability.armed_icons) == len(ability.sections) and all(
-            line.rewards == (_ARMED_REWARDS.get(key),)
+            _armed_line(key, line)
             for key, line in zip(ability.armed_icons, ability.sections, strict=False)
         )
     return all(
@@ -1374,7 +1391,7 @@ def intrigue_box(ability: Ability | None) -> bool:
     if ability.armed_icons:
         # Every line armed: a trailing line paid at once is not this shape.
         return len(ability.armed_icons) == len(ability.sections) and all(
-            line.rewards == (_ARMED_REWARDS.get(key),)
+            _armed_line(key, line)
             for key, line in zip(ability.armed_icons, ability.sections, strict=False)
         )
     return not rest and all(
@@ -1581,7 +1598,7 @@ def trash_box(ability: Ability | None) -> bool:
     ):
         return False
     if any(
-        line.rewards != (_ARMED_REWARDS.get(key),)
+        not _armed_line(key, line)
         for key, line in zip(ability.armed_icons, ability.sections, strict=False)
     ):
         return False
@@ -1784,3 +1801,106 @@ def trashes_remaining(context: Mapping[str, ActionValue], default: int = 0) -> i
     if isinstance(remaining, bool) or not isinstance(remaining, int):
         raise RuntimeError("Agent-turn effect frame has invalid trash count")
     return remaining
+
+
+# --- Unit-loss arrows (stage A3f) -----------------------------------------------
+#
+# "You may lose 1 troop -> ..." (Piter, Genius Advisor): the refusal, then for
+# the garrison and then the Conflict a troop row and, where one is, a
+# Sardaukar Commander row -- a Commander is a troop [Bloodlines p. 4] (OQ-105)
+# -- named ``lose_agent_card_troop``; with no unit the refusal alone
+# (``lose_cost_block``). The answer arms the record's keys, writes the frame
+# back first so what the loss records there stays (OQ-029, OQ-038 (b)), then
+# loses the unit under ``round:R:player:P:agent_card_payment:troop`` and
+# settles a Conflict loss's deployment. Every line is armed (OQ-027, OQ-106).
+
+_LOSS: Final = LoseTroops()
+
+
+def lose_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is an optional arrow paid by losing one unit."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or not ability.sections
+        or ability.sections[0].costs != (_LOSS,)
+        or any(line.costs for line in ability.sections[1:])
+        or any(line.condition is not None for line in ability.sections)
+    ):
+        return False
+    return len(ability.armed_icons) == len(ability.sections) and all(
+        _armed_line(key, line)
+        for key, line in zip(ability.armed_icons, ability.sections, strict=True)
+    )
+
+
+def lose_cost_block(owner: PlayerState) -> OptionalEffectBlock | None:
+    """No troop or Commander anywhere to lose."""
+
+    if (
+        owner.troops_garrison
+        + owner.commanders_garrison
+        + owner.troops_conflict
+        + owner.commanders_conflict
+    ) < 1:
+        return OptionalEffectBlock(OptionalBlockKind.NO_UNIT)
+    return None
+
+
+def lose_rows(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The refusal, then the units the loss may take, troop first per zone."""
+
+    owner = state.players[player]
+    rows = [DomainAction(action_id="decline_agent_card_payment", actor=player)]
+    if lose_cost_block(owner) is not None:
+        return tuple(rows)
+    for zone in ("garrison", "conflict"):
+        if getattr(owner, f"troops_{zone}") >= 1:
+            rows.append(
+                DomainAction(
+                    action_id="lose_agent_card_troop",
+                    actor=player,
+                    arguments=(("zone", zone),),
+                )
+            )
+        if getattr(owner, f"commanders_{zone}") >= 1:
+            rows.append(
+                DomainAction(
+                    action_id="lose_agent_card_troop",
+                    actor=player,
+                    arguments=(("commanders", 1), ("zone", zone)),
+                )
+            )
+    return tuple(rows)
+
+
+def apply_lose(
+    state: GameState,
+    action: DomainAction,
+    ability: Ability,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    """Lose the chosen unit and arm the arrow's rewards (the refusal is the
+    payment handler's)."""
+
+    arguments = dict(action.arguments)
+    zone = str(arguments["zone"])
+    commander = arguments.get("commanders") == 1
+    arm_agent_icons(context, ability.armed_icons)
+    settled = advance_after_effect(state, context)
+    lost = lose_unit(
+        settled, action.actor, zone, commander=commander, source=f"{source}:troop"
+    )
+    next_state = lost.state
+    if zone == "conflict":
+        next_state = reconcile_deployment_after_retreat(
+            next_state,
+            action.actor,
+            troops=int(not commander),
+            commanders=int(commander),
+        )
+    return RuleResult(state=next_state, events=lost.events)

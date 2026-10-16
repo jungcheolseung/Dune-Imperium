@@ -14,7 +14,7 @@ from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.abilities import AbilityMark
+from dune_imperium.content.uprising.abilities import Ability, AbilityMark
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -49,6 +49,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_chosen_influence,
     apply_discard,
     apply_intrigue_payment,
+    apply_lose,
     apply_payment,
     apply_trash,
     box_ability,
@@ -61,6 +62,9 @@ from dune_imperium.rules.agent_box_abilities import (
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
+    lose_box,
+    lose_cost_block,
+    lose_rows,
     optional_arrow,
     payment_box,
     payment_cost_block,
@@ -88,7 +92,6 @@ from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
-    reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
@@ -99,7 +102,6 @@ from dune_imperium.rules.effects import (
     active_agent_card,
     advance_after_effect,
     agent_card_source,
-    arm_agent_icons,
     borrowed_agent_card,
     current_agent_effect_context,
     drop_boost_draw,
@@ -164,7 +166,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
-from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
+from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
@@ -196,10 +198,7 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
-# card] [troop]" [card face] [Rise of Ix p. 10].
-_SPICE_FOR_TRASH_AND_TROOP = (
-    PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT
-)
+# card] [troop]" [card face] [Rise of Ix p. 10]; its record names the hook.
 CONTROL_THE_SPICE_PRICE: Final = 1
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
@@ -1965,16 +1964,9 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return short_of(
             kind.GENETIC_MARKERS, 2, genetic_markers_reached(owner.research_space)
         )
-    if effect is _LOSE_TROOP_FOR_CARDS:
-        if (
-            owner.troops_garrison
-            + owner.commanders_garrison
-            + owner.troops_conflict
-            + owner.commanders_conflict
-        ) < 1:
-            return OptionalEffectBlock(kind.NO_UNIT)
-        return None
-    if effect is _SPICE_FOR_TRASH_AND_TROOP:
+    if ability is not None and lose_box(ability):
+        return lose_cost_block(owner)
+    if _is_control_the_spice(ability):
         return short_of(kind.SPICE, CONTROL_THE_SPICE_PRICE, resources.spice)
     if effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
@@ -2091,35 +2083,9 @@ def legal_agent_card_payment_actions(
             for card_id in (source_card_id, other_grafted_card_id(context))
             if card_id in owner.in_play
         )
-    if source_card.agent_effect is _LOSE_TROOP_FOR_CARDS:
-        # Piter, Genius Advisor: "Lose a troop -> draw two cards and
-        # Research"; the owner picks the zone and, for a Sardaukar
-        # Commander, the kind, like an Intrigue loss (OQ-038): "troop을
-        # 대상으로 하는 효과는 Commander에도 적용된다" [Bloodlines p. 4]
-        # (OQ-105, user ruling 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼
-        # 수 있게 해야지"). In each zone the troop comes first.
-        actions = [DomainAction(action_id="decline_agent_card_payment", actor=player)]
-        if agent_card_cost_block(state, player) is not None:
-            # No troop or Commander anywhere to lose.
-            return tuple(actions)
-        for zone in ("garrison", "conflict"):
-            if getattr(owner, f"troops_{zone}") >= 1:
-                actions.append(
-                    DomainAction(
-                        action_id="lose_agent_card_troop",
-                        actor=player,
-                        arguments=(("zone", zone),),
-                    )
-                )
-            if getattr(owner, f"commanders_{zone}") >= 1:
-                actions.append(
-                    DomainAction(
-                        action_id="lose_agent_card_troop",
-                        actor=player,
-                        arguments=(("commanders", 1), ("zone", zone)),
-                    )
-                )
-        return tuple(actions)
+    if recorded is not None and lose_box(recorded):
+        # Piter, Genius Advisor, from its record (composed A3f).
+        return lose_rows(state, player)
     if source_card.agent_effect is _CHOOSE_TWO_REWARDS:
         # Stitched Horror: "Choose two" of the four rewards, one at a time.
         chosen = _chosen_rewards(context)
@@ -2132,7 +2098,7 @@ def legal_agent_card_payment_actions(
             for reward in STITCHED_HORROR_REWARDS
             if reward not in chosen
         )
-    if source_card.agent_effect is _SPICE_FOR_TRASH_AND_TROOP:
+    if _is_control_the_spice(recorded):
         # Control the Spice: the arrow cost may be left unpaid and is chosen
         # once [Main p. 9] [FAQ p. 3]; like Smuggler's Haven's below it is
         # judged when the owner resolves the box in their chosen order
@@ -2327,6 +2293,9 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         # An optional arrow with no target, from its record (composed A3b).
         assert recorded is not None
         return apply_payment(state, action.actor, recorded, context)
+    if recorded is not None and lose_box(recorded):
+        # Piter, Genius Advisor (composed A3f).
+        return apply_lose(state, action, recorded, context, source)
 
     owner = state.players[action.actor]
     if action.action_id == "trash_grafted_card_for_specimen":
@@ -2484,39 +2453,6 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         return RuleResult(
             state=gained.state, events=(*trashed.events, *gained.events)
         )
-    if action.action_id == "lose_agent_card_troop":
-        # Piter, Genius Advisor: "Lose a troop -> draw two cards and
-        # Research" [card face]. The troop (or a Sardaukar Commander,
-        # OQ-105) is the arrow's cost; the reward icons are then queued for
-        # their own actions in the owner's order, like Captured Mentat's and
-        # Guild Spy's (OQ-027 (b)), so the public choice of the cost stays
-        # undoable and only the draw closes the undo window (user ruling
-        # 2026-10-10, OQ-106: "그 외에는 전부 나누자").
-        arguments = dict(action.arguments)
-        zone = str(arguments["zone"])
-        commander = arguments.get("commanders") == 1
-        arm_agent_icons(context, (AGENT_ICON_CARDS, AGENT_ICON_RESEARCH))
-        # The box's frame is written first, so what the loss records on it
-        # stays: the shrunk withdrawal window (OQ-029; the deployment
-        # allowance stays used, user ruling 2026-10-04) or Harkonnen
-        # Advisor's undeployable troop given up first (OQ-038 (b)).
-        settled = advance_after_effect(state, context)
-        lost = lose_unit(
-            settled,
-            action.actor,
-            zone,
-            commander=commander,
-            source=f"{source}:troop",
-        )
-        next_state = lost.state
-        if zone == "conflict":
-            next_state = reconcile_deployment_after_retreat(
-                next_state,
-                action.actor,
-                troops=int(not commander),
-                commanders=int(commander),
-            )
-        return RuleResult(state=next_state, events=lost.events)
     if action.action_id == "choose_agent_card_reward":
         return _apply_stitched_horror_reward(state, action, context, source)
     # The same borrowed box `[Immortality p. 14]`. The provider checks the
@@ -2525,8 +2461,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     # spice and a Victory Point for a box that asks two water and draws two
     # cards, and crashed outright when the seat could not pay in the resource
     # it was never asked for.
-    source_card = active_agent_card(context)
-    if source_card.agent_effect is _SPICE_FOR_TRASH_AND_TROOP:
+    if _is_control_the_spice(recorded):
         return _apply_control_the_spice_payment(state, action, context, source)
     raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
 
@@ -3454,8 +3389,6 @@ OPTIONAL_AGENT_BOXES: Final = frozenset(
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS,
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
-        PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
-        PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     }
 )
 # The optional icons of boxes resolved icon by icon (OQ-027): Tread in
@@ -3979,7 +3912,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
         _TRASH_GRAFTED_FOR_INFLUENCE,
         _CHOOSE_TWO_REWARDS,
-        _LOSE_TROOP_FOR_CARDS,
     ):
         # Reached only when the box's choice provider offered nothing: no
         # grafted partner, no genetic marker, no Faction space.
@@ -4115,10 +4047,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     *recruit_shortfall,
                 ),
             )
-    elif effect is _SPICE_FOR_TRASH_AND_TROOP:
-        # Control the Spice resolves through its payment choice, which
-        # always offers at least the decline.
-        raise RuntimeError("Agent-card payment effect requires a player choice")
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"
@@ -4320,6 +4248,20 @@ def _hook_overthrow(state: GameState) -> RuleResult:
     return RuleResult(state=next_state, events=gained.events)
 
 
+def _hook_control_the_spice(state: GameState) -> RuleResult:
+    """Control the Spice resolves through its payment choice, which always
+    offers at least the decline: reached by the dry run only (its old
+    answer)."""
+
+    raise RuntimeError("Agent-card payment effect requires a player choice")
+
+
+def _is_control_the_spice(ability: Ability | None) -> bool:
+    """Control the Spice's payment flow, named by its record's hook."""
+
+    return ability is not None and ability.hook == "control_the_spice"
+
+
 def _hook_in_high_places(state: GameState) -> RuleResult:
     """In High Places: "If you have another Bene Gesserit card in play: [draw
     1 card] [Spy]" [In High Places card], the Bond judged when the effect
@@ -4364,6 +4306,7 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "occupation": _hook_occupation,
             "overthrow": _hook_overthrow,
             "in_high_places": _hook_in_high_places,
+            "control_the_spice": _hook_control_the_spice,
         }
     )
 )

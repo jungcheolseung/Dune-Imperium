@@ -69,6 +69,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    LoseTroops,
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
@@ -431,6 +432,36 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
                 mark=AbilityMark.OPTIONAL,
+            ),
+            # --- Unit-loss arrow, payment hook (composed effects, A3f) -----------
+            # Piter, Genius Advisor: "You may lose 1 troop -> Draw 2 cards,
+            # Research", the rewards armed as icons once the troop (or a
+            # Sardaukar Commander, OQ-105) is lost (OQ-106).
+            _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawPersonalCards(2),), costs=(LoseTroops(),)
+                    ),
+                    _line(Research()),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("cards", "research"),
+            ),
+            # Control the Spice: "You may pay 1 spice -> You may trash a card,
+            # Recruit 1 troop" -- its payment names the box's card and carries
+            # the troop count, and the trash is a frame of its own, so the flow
+            # stays code (``agent_effects`` hook ``control_the_spice``).
+            _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(TrashPersonalCard(), RecruitTroops(1)),
+                        costs=(PayResources(spice=1),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                hook="control_the_spice",
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.
