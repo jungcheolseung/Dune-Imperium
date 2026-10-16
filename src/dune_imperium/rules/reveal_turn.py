@@ -308,23 +308,27 @@ def target_reward_choice(ability: Ability | None) -> bool:
         return False
     (line,) = ability.sections
     match line.costs:
-        case (RecallSpy(count=1),) | (TrashCard(hand_only=False),):
-            return all(
-                isinstance(
-                    reward,
-                    (
-                        RevealSwords,
-                        DrawIntrigueCards,
-                        GrantCombatDeployment,
-                        GainInfluence,
-                    ),
-                )
-                and not (isinstance(reward, GainInfluence) and reward.requires_choice)
-                for reward in line.rewards
-            )
+        case (RecallSpy(count=1),) | (TrashCard(this_card=True),):
+            pass
+        case (TrashCard(other_in_play=faction),) if faction is not None:
+            pass
         case ():
             return line.rewards in ((GainInfluence(),), (TrashPersonalCard(),))
-    return False
+        case _:
+            return False
+    # Only the rewards the shape pays as printed: flat Reveal swords, one
+    # Intrigue card, the Combat icon, one Influence with a fixed Faction.
+    return all(
+        isinstance(reward, RevealSwords)
+        and reward.per is None
+        or reward == DrawIntrigueCards(1)
+        or reward == GrantCombatDeployment()
+        or isinstance(reward, GainInfluence)
+        and reward.times == 1
+        and reward.factions is not None
+        and len(reward.factions) == 1
+        for reward in line.rewards
+    )
 
 
 def _target_reward_line(effect: PersonalCardRevealChoiceEffect) -> EffectSection:
@@ -625,7 +629,7 @@ def _spy_alternative(ability: Ability) -> RevealSwords | None:
         return None
     for line in ability.sections:
         match line.rewards:
-            case (RevealSwords() as swords,):
+            case (RevealSwords(per=None) as swords,):
                 return swords
     return None
 
@@ -636,7 +640,7 @@ def _spy_icons(ability: Ability) -> int:
 
 # The printed "-OR-" lines whose row each is (Corrinth City, Delivery
 # Logistics), by the line's reward.
-_EITHER_LINE_ACTIONS: Final[Mapping[Reward, str]] = MappingProxyType(
+_PRINTED_OR_LINE_ACTIONS: Final[Mapping[Reward, str]] = MappingProxyType(
     {
         GainResources(solari=5): "gain_five_reveal_solari",
         TakeHighCouncilSeat(): "take_high_council_from_reveal",
@@ -646,7 +650,7 @@ _EITHER_LINE_ACTIONS: Final[Mapping[Reward, str]] = MappingProxyType(
 )
 
 
-def either_choice(ability: Ability | None) -> bool:
+def printed_or_choice(ability: Ability | None) -> bool:
     """Whether a Reveal choice record is a printed "-OR-" whose every line is
     its own row (Corrinth City, Delivery Logistics)."""
 
@@ -655,13 +659,13 @@ def either_choice(ability: Ability | None) -> bool:
         and ability.hook is None
         and ability.structure is AbilityStructure.ONE_OF
         and all(
-            len(line.rewards) == 1 and line.rewards[0] in _EITHER_LINE_ACTIONS
+            len(line.rewards) == 1 and line.rewards[0] in _PRINTED_OR_LINE_ACTIONS
             for line in ability.sections
         )
     )
 
 
-def _either_line_open(owner: PlayerState, line: EffectSection) -> bool:
+def _printed_or_line_open(owner: PlayerState, line: EffectSection) -> bool:
     """Whether a "-OR-" line can be chosen now: the seat taken only by a
     seat-less owner who can pay for it."""
 
@@ -680,7 +684,7 @@ def _either_line_open(owner: PlayerState, line: EffectSection) -> bool:
     return True
 
 
-def either_is_available(state: GameState, ability: Ability) -> bool:
+def printed_or_is_available(state: GameState, ability: Ability) -> bool:
     """The gate of a printed "-OR-": always open -- one line needs nothing --
     except that a Contract line is a CHOAM card's (Delivery Logistics), open
     only with the CHOAM module."""
@@ -690,7 +694,7 @@ def either_is_available(state: GameState, ability: Ability) -> bool:
     )
 
 
-def either_rows(
+def printed_or_rows(
     state: GameState, player: int, effect: PersonalCardRevealChoiceEffect
 ) -> tuple[DomainAction, ...]:
     """A printed "-OR-"'s rows, one per line it can take now, printed order."""
@@ -698,13 +702,13 @@ def either_rows(
     ability = reveal_choice_ability(effect)
     owner = state.players[player]
     return tuple(
-        DomainAction(action_id=_EITHER_LINE_ACTIONS[line.rewards[0]], actor=player)
+        DomainAction(action_id=_PRINTED_OR_LINE_ACTIONS[line.rewards[0]], actor=player)
         for line in ability.sections
-        if _either_line_open(owner, line)
+        if _printed_or_line_open(owner, line)
     )
 
 
-def resolve_either(state: GameState, action: DomainAction) -> RuleResult:
+def resolve_printed_or(state: GameState, action: DomainAction) -> RuleResult:
     """Resolve the opened "-OR-" line ``action`` takes: Corrinth City's 5
     Solari (``<root>:solari``) or its seat (``<root>:high_council``, +2
     Persuasion this Reveal), Delivery Logistics' Persuasion
@@ -718,7 +722,7 @@ def resolve_either(state: GameState, action: DomainAction) -> RuleResult:
     (line,) = (
         line
         for line in ability.sections
-        if _EITHER_LINE_ACTIONS[line.rewards[0]] == action.action_id
+        if _PRINTED_OR_LINE_ACTIONS[line.rewards[0]] == action.action_id
     )
     player = action.actor
     source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
@@ -740,7 +744,7 @@ def resolve_either(state: GameState, action: DomainAction) -> RuleResult:
         case TakeHighCouncilSeat():
             (price,) = line.costs
             assert isinstance(price, PayResources)
-            if not _either_line_open(owner, line):
+            if not _printed_or_line_open(owner, line):
                 raise RuntimeError("Corrinth City High Council choice is unavailable")
             next_owner = replace(
                 owner,
@@ -1036,7 +1040,7 @@ def legal_reveal_persuasion_or_contract_actions(
     ):
         return ()
     # Its record's lines (composed A4f).
-    return either_rows(state, player, opened[1])
+    return printed_or_rows(state, player, opened[1])
 
 
 def apply_reveal_persuasion_or_contract(
@@ -1048,7 +1052,7 @@ def apply_reveal_persuasion_or_contract(
     state = _open_pending(state, action, legal_reveal_persuasion_or_contract_actions)
     if action not in legal_reveal_persuasion_or_contract_actions(state, action.actor):
         raise ValueError("action is not a legal Persuasion-or-Contract choice")
-    return resolve_either(state, action)
+    return resolve_printed_or(state, action)
 
 
 def legal_reveal_influence_gain_actions(
@@ -1445,7 +1449,7 @@ def legal_corrinth_city_reveal_actions(
     ):
         return ()
     # Its record's lines (composed A4f).
-    return either_rows(state, player, opened[1])
+    return printed_or_rows(state, player, opened[1])
 
 
 def apply_corrinth_city_reveal(
@@ -1457,7 +1461,7 @@ def apply_corrinth_city_reveal(
     state = _open_pending(state, action, legal_corrinth_city_reveal_actions)
     if action not in legal_corrinth_city_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Corrinth City Reveal choice")
-    return resolve_either(state, action)
+    return resolve_printed_or(state, action)
 
 
 def legal_contract_reveal_choice_actions(
@@ -3787,9 +3791,9 @@ def _reveal_choice_effect_is_available(
         # A Spy icon always opens (a supply Spy with no free post waits on
         # its rows); Intelligence Training's on Command (composed A4e).
         return _target_condition_holds(ability.sections[0].condition, owner, persuasion)
-    if either_choice(ability):
+    if printed_or_choice(ability):
         # Corrinth City, Delivery Logistics (composed A4f).
-        return either_is_available(state, ability)
+        return printed_or_is_available(state, ability)
     return (
         (
             # For Humanity: the Alliance and two Influence with one Faction
