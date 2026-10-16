@@ -41,11 +41,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
     AcquireCardForSolari,
     AcquireCardUpTo,
+    AcquiredCard,
     AcquireReserveCard,
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AllianceTaken,
+    AtBoardSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -55,6 +58,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
+    ContractTaken,
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
@@ -133,7 +137,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
+    TakeControl,
     TakeHighCouncilSeat,
+    TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
@@ -508,6 +514,20 @@ def condition_text_ko(condition: Condition) -> str:
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
+        case AtBoardSpace(space_id=space_id):
+            # Quotes ``display/structs.py``'s ``contract_condition_text_ko``.
+            return f"{KOREAN_CARD_NAMES['spaces'][space_id]} 장소로 {{agent}}를 보냄"
+        case AcquiredCard(card_id=card_id):
+            korean = KOREAN_CARD_NAMES["cards"].get(card_id)
+            if korean is None:
+                from dune_imperium.display.effect_dsl_text import _acquirable_name
+
+                korean = _acquirable_name(card_id)
+            return f"{korean} 획득"
+        case ContractTaken():
+            return "가져오는 즉시 완수"
+        case AllianceTaken():
+            return "아무 팩션과 {alliance}이 됨"
         case AllConditions(conditions=conditions):
             # Quotes ``tokens_ko.py``'s established "그리고" join of several
             # already-complete conditional clauses (its own
@@ -860,6 +880,12 @@ def reward_text_ko(reward: Reward) -> str:
         case TakeHighCouncilSeat():
             # Quotes ``tokens_ko.py``'s Corrinth City line.
             return "원로회 자리 차지"
+        case TakeControl(space_id=space_id):
+            # Quotes ``display/structs.py``'s ``conflict_reward_text_ko``.
+            return f"{KOREAN_CARD_NAMES['spaces'][space_id]} 지배"
+        case TakeSwordmaster():
+            # Quotes ``display/spaces.py``'s Swordmaster line.
+            return "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

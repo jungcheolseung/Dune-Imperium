@@ -11,7 +11,15 @@ engine and replays them on another, comparing at every step:
   the observation encoding read);
 - ``events``: the step's events with their payloads and visibility;
 - ``state``: the state after the step, without the decision stack, event log
-  and revision (the record corpus fingerprint, ``records.portable.trace``).
+  and revision (the record corpus fingerprint, ``records.portable.trace``);
+- ``page``: what the play server sends with the owner's decision beside the
+  legal list -- the greyed-out rows and their reasons
+  (``display.unavailable``), the Agent-box and Reveal-choice groups and
+  which row belongs to which (``display.actions``), the Scouts lines -- and
+  each pending Reveal choice's own rows (``reveal_turn.pending_choice_entries``,
+  which the app AI reads). Added after stage A4d, whose first version
+  repeated a row inside one pending choice while the legal list stayed the
+  same; a recording made before has no ``page`` and skips it.
 
 The decision stack is the engine's control flow and is left out on purpose:
 a stage may store its pending effects differently, as long as nothing above
@@ -92,7 +100,7 @@ PLANS: dict[str, tuple[tuple[str, dict[str, bool], int, tuple[str, ...], int], .
     ),
 }
 MAX_STEPS = 30_000
-KINDS = ("chance", "legal", "views", "events", "state")
+KINDS = ("chance", "legal", "views", "events", "state", "page")
 
 type Spec = tuple[str, dict[str, bool], int, tuple[str, ...]]
 
@@ -106,6 +114,37 @@ def specs(plan: str) -> Iterator[Spec]:
 def _digest(value: Any) -> bytes:
     text = json.dumps(canonical(value), sort_keys=True, separators=(",", ":"))
     return hashlib.blake2b(text.encode(), digest_size=8).digest()
+
+
+def _page_key(state: Any, owner: int, legal: tuple[DomainAction, ...]) -> bytes:
+    """The decision's page metadata and pending Reveal choice rows (see
+    the module doc); a function that raises contributes its error's type."""
+
+    from dune_imperium.display.actions import (
+        agent_box_headers,
+        agent_box_of_rows,
+        reveal_choice_headers,
+        reveal_choice_of_rows,
+    )
+    from dune_imperium.display.scouts import scouts_choice_lines
+    from dune_imperium.display.unavailable import unavailable_choices
+    from dune_imperium.rules.reveal_turn import pending_choice_entries
+
+    parts: list[Any] = []
+    for read in (
+        lambda: pending_choice_entries(state, owner),
+        lambda: unavailable_choices(state, owner, legal),
+        lambda: agent_box_headers(state, owner),
+        lambda: agent_box_of_rows(state, owner, legal),
+        lambda: reveal_choice_headers(state, owner),
+        lambda: reveal_choice_of_rows(state, owner, legal),
+        lambda: scouts_choice_lines(state, owner, legal),
+    ):
+        try:
+            parts.append(read())
+        except Exception as error:  # noqa: BLE001 - part of the digest
+            parts.append(("raised", type(error).__name__))
+    return _digest(parts)
 
 
 def _chance_key(decision: ChanceDecision) -> bytes:
@@ -167,6 +206,7 @@ def record_game(args: tuple[str, Spec]) -> tuple[str, str]:
                 result = stepper.engine.apply(state, outcome)
                 step: tuple[Any, ...] = ("c", outcome.decision_id, outcome.values)
                 legal_key = _chance_key(decision)
+                page_key = b""
             elif isinstance(decision, PlayerDecision):
                 legal = stepper.engine.legal_actions(state, decision.owner)
                 if not legal:
@@ -179,6 +219,7 @@ def record_game(args: tuple[str, Spec]) -> tuple[str, str]:
                     if isinstance(agent, StateAgent)
                     else agent.choose_action(view, legal)
                 )
+                page_key = _page_key(state, decision.owner, legal)
                 result = stepper.engine.apply(state, action, legal_actions=legal)
                 step = ("a", action.action_id, action.actor, action.arguments)
                 legal_key = _digest((decision.owner, legal))
@@ -187,7 +228,14 @@ def record_game(args: tuple[str, Spec]) -> tuple[str, str]:
                 break
             stepper.state = result.state
             rows.append(
-                (step, legal_key, views, _digest(result.events), stepper.state_digest())
+                (
+                    step,
+                    legal_key,
+                    views,
+                    _digest(result.events),
+                    stepper.state_digest(),
+                    page_key,
+                )
             )
     except Exception:  # noqa: BLE001 - the error is part of the record
         end = "error: " + traceback.format_exc()[-1500:]
@@ -218,9 +266,9 @@ def check_game(path: str) -> dict[str, Any]:
     if stepper.state_digest() != data["initial"]:
         return report | {"status": "different", "step": -1, "kinds": ["state"]}
     actions: Counter[str] = Counter()
-    for index, (step, legal_key, views, events, state_digest) in enumerate(
-        data["rows"]
-    ):
+    for index, row in enumerate(data["rows"]):
+        step, legal_key, views, events, state_digest = row[:5]
+        page = row[5] if len(row) > 5 else None
         state = stepper.state
         kinds: list[str] = []
         try:
@@ -247,6 +295,10 @@ def check_game(path: str) -> dict[str, Any]:
                     legal = stepper.engine.legal_actions(state, decision.owner)
                     if _digest((decision.owner, legal)) != legal_key:
                         kinds.append("legal")
+                    if page is not None and _page_key(
+                        state, decision.owner, legal
+                    ) != page:
+                        kinds.append("page")
                     result = stepper.engine.apply(state, action)
         except Exception:  # noqa: BLE001 - reported
             return report | {
@@ -269,7 +321,8 @@ def check_game(path: str) -> dict[str, Any]:
                 "step_value": repr(step)[:300],
                 "actions": dict(actions),
             }
-    return report | {"status": "same", "actions": dict(actions)}
+    pages = all(len(row) > 5 for row in data["rows"])
+    return report | {"status": "same", "actions": dict(actions), "pages": pages}
 
 
 def _engine_commit() -> str:
@@ -333,6 +386,9 @@ def main() -> None:
     for r in results:
         coverage.update(r.get("actions", {}))
     print(f"checked on {_engine_commit()}: {dict(statuses)}; {steps} steps the same")
+    unpaged = sum(1 for r in results if r["status"] == "same" and not r.get("pages"))
+    if unpaged:
+        print(f"page not compared in {unpaged} games (recorded before the page kind)")
     print("action ids replayed:", len(coverage), dict(sorted(coverage.items())))
     for r in results:
         if r["status"] != "same":

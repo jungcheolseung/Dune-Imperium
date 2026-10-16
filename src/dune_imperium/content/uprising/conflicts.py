@@ -4,7 +4,24 @@ from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.abilities import Ability
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.conflict_abilities import (
+    CONFLICT_REWARD_ABILITIES,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    PayResources,
+    PlaceSpy,
+    RecallSpy,
+    RecruitTroops,
+    TakeContract,
+    TakeControl,
+    TrashPersonalCard,
+)
 from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
 
 
@@ -90,6 +107,97 @@ class ConflictDefinition:
     epic_only: bool = False
 
 
+def _rewards(conflict_id: str) -> tuple[ConflictReward, ConflictReward, ConflictReward]:
+    """The card's three reward rows, compiled from its records
+    (``conflict_abilities``, composed A5b)."""
+
+    first, second, third = CONFLICT_REWARD_ABILITIES[conflict_id]
+    return _row(first), _row(second), _row(third)
+
+
+def _put(
+    fields: dict[str, int | str | Faction], key: str, value: int | str | Faction
+) -> None:
+    """One reward field, printed once on the row."""
+
+    if key in fields:
+        raise ValueError(f"a Conflict reward row prints {key} twice")
+    fields[key] = value
+
+
+def _row(ability: Ability) -> ConflictReward:
+    fields: dict[str, int | str | Faction] = {}
+    counted = {
+        "place_spies": 0,
+        "deep_cover_spies": 0,
+        "trash_cards": 0,
+        "choose_influence": 0,
+    }
+    arrow_points: set[int] = set()
+    for line in ability.sections:
+        if line.condition is not None:
+            raise ValueError("a Conflict reward row prints no condition")
+        if line.costs:
+            # An optional "cost -> VP" arrow [FAQ p. 3]; the row's arrows share
+            # one VP value (Economic Supremacy prints two).
+            match line.costs, line.rewards:
+                case (PayResources(solari=solari, spice=0, water=0),), (
+                    GainVictoryPoints(amount=points),
+                ) if solari:
+                    _put(fields, "optional_solari_cost", solari)
+                case (PayResources(solari=0, spice=spice, water=0),), (
+                    GainVictoryPoints(amount=points),
+                ) if spice:
+                    _put(fields, "optional_spice_cost", spice)
+                case (RecallSpy(count=count),), (GainVictoryPoints(amount=points),):
+                    _put(fields, "optional_recall_spies", count)
+                case _:
+                    raise TypeError(f"{line!r} is not a Conflict reward arrow")
+            arrow_points.add(points)
+            continue
+        for reward in line.rewards:
+            match reward:
+                case GainResources(solari=solari, spice=spice, water=water):
+                    _put(fields, "solari", solari)
+                    _put(fields, "spice", spice)
+                    _put(fields, "water", water)
+                case DrawIntrigueCards(count=count):
+                    _put(fields, "intrigue", count)
+                case RecruitTroops(count=count):
+                    _put(fields, "troops", count)
+                case PlaceSpy() if reward == PlaceSpy(shared_post=True):
+                    counted["deep_cover_spies"] += 1
+                case PlaceSpy() if reward == PlaceSpy():
+                    counted["place_spies"] += 1
+                case TakeContract(count=count):
+                    _put(fields, "contracts", count)
+                case TrashPersonalCard() if reward == TrashPersonalCard():
+                    counted["trash_cards"] += 1
+                case GainVictoryPoints(amount=amount):
+                    _put(fields, "victory_points", amount)
+                case GainInfluence() if reward == GainInfluence(
+                    times=reward.times, distinct=True
+                ):
+                    _put(fields, "choose_distinct_influence", reward.times)
+                case GainInfluence(times=times, factions=(faction,)) if (
+                    reward == GainInfluence(times=times, factions=(faction,))
+                ):
+                    _put(fields, "faction_influence", times)
+                    _put(fields, "influence_faction", faction)
+                case GainInfluence() if reward == GainInfluence():
+                    counted["choose_influence"] += 1
+                case TakeControl(space_id=space_id):
+                    _put(fields, "control_space_id", space_id)
+                case _:
+                    raise TypeError(f"{reward!r} is not a Conflict reward")
+    if len(arrow_points) > 1:
+        raise ValueError("a Conflict reward row's arrows share one VP value")
+    if arrow_points:
+        _put(fields, "optional_victory_points", arrow_points.pop())
+    fields.update({key: value for key, value in counted.items() if value})
+    return ConflictReward(**fields)  # type: ignore[arg-type]
+
+
 MAIN_P3_P4: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 BLOODLINES_P3: Final = (
     SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (2, 3)),
@@ -129,11 +237,7 @@ CONFLICTS: Final = (
         "Skirmish (Crysknife)",
         ConflictTier.ONE,
         battle_icon=BattleIcon.CRYSKNIFE,
-        rewards=(
-            ConflictReward(choose_influence=1),
-            ConflictReward(spice=1, intrigue=1),
-            ConflictReward(spice=1),
-        ),
+        rewards=_rewards("skirmish_crysknife"),
     ),
     _conflict(
         452,
@@ -141,11 +245,7 @@ CONFLICTS: Final = (
         "Skirmish (Ornithopter)",
         ConflictTier.ONE,
         battle_icon=BattleIcon.ORNITHOPTER,
-        rewards=(
-            ConflictReward(solari=1, intrigue=1),
-            ConflictReward(solari=2, intrigue=1),
-            ConflictReward(intrigue=1),
-        ),
+        rewards=_rewards("skirmish_ornithopter"),
     ),
     _conflict(
         453,
@@ -153,11 +253,7 @@ CONFLICTS: Final = (
         "Skirmish (Desert Mouse)",
         ConflictTier.ONE,
         battle_icon=BattleIcon.DESERT_MOUSE,
-        rewards=(
-            ConflictReward(solari=2),
-            ConflictReward(solari=3),
-            ConflictReward(solari=2),
-        ),
+        rewards=_rewards("skirmish_desert_mouse"),
     ),
     _conflict(
         454,
@@ -165,16 +261,7 @@ CONFLICTS: Final = (
         "CHOAM Security",
         ConflictTier.TWO,
         battle_icon=BattleIcon.CRYSKNIFE,
-        rewards=(
-            ConflictReward(
-                troops=1,
-                contracts=1,
-                faction_influence=1,
-                influence_faction=Faction.SPACING_GUILD,
-            ),
-            ConflictReward(solari=2, water=1, troops=2),
-            ConflictReward(intrigue=1, troops=1),
-        ),
+        rewards=_rewards("choam_security"),
     ),
     _conflict(
         455,
@@ -182,15 +269,7 @@ CONFLICTS: Final = (
         "Spice Freighters",
         ConflictTier.TWO,
         battle_icon=BattleIcon.CRYSKNIFE,
-        rewards=(
-            ConflictReward(
-                choose_influence=1,
-                optional_spice_cost=3,
-                optional_victory_points=1,
-            ),
-            ConflictReward(spice=1, water=1, troops=1),
-            ConflictReward(spice=1, troops=1),
-        ),
+        rewards=_rewards("spice_freighters"),
     ),
     _conflict(
         456,
@@ -199,15 +278,7 @@ CONFLICTS: Final = (
         ConflictTier.TWO,
         battle_icon=BattleIcon.ORNITHOPTER,
         shield_wall_protected=True,
-        rewards=(
-            ConflictReward(
-                solari=2,
-                troops=2,
-                control_space_id="arrakeen",
-            ),
-            ConflictReward(solari=4, troops=1),
-            ConflictReward(solari=3),
-        ),
+        rewards=_rewards("siege_of_arrakeen"),
     ),
     _conflict(
         457,
@@ -216,15 +287,7 @@ CONFLICTS: Final = (
         ConflictTier.TWO,
         battle_icon=BattleIcon.CRYSKNIFE,
         shield_wall_protected=True,
-        rewards=(
-            ConflictReward(
-                spice=2,
-                place_spies=1,
-                control_space_id="spice_refinery",
-            ),
-            ConflictReward(spice=1, intrigue=1, troops=1),
-            ConflictReward(spice=2),
-        ),
+        rewards=_rewards("seize_spice_refinery"),
     ),
     _conflict(
         458,
@@ -232,16 +295,7 @@ CONFLICTS: Final = (
         "Test of Loyalty",
         ConflictTier.TWO,
         battle_icon=BattleIcon.ORNITHOPTER,
-        rewards=(
-            ConflictReward(
-                solari=2,
-                place_spies=1,
-                faction_influence=1,
-                influence_faction=Faction.EMPEROR,
-            ),
-            ConflictReward(solari=4, troops=1),
-            ConflictReward(solari=3),
-        ),
+        rewards=_rewards("test_of_loyalty"),
     ),
     _conflict(
         459,
@@ -249,15 +303,7 @@ CONFLICTS: Final = (
         "Shadow Contest",
         ConflictTier.TWO,
         battle_icon=BattleIcon.ORNITHOPTER,
-        rewards=(
-            ConflictReward(
-                intrigue=1,
-                faction_influence=1,
-                influence_faction=Faction.BENE_GESSERIT,
-            ),
-            ConflictReward(spice=1, intrigue=1, troops=1),
-            ConflictReward(spice=1, troops=1),
-        ),
+        rewards=_rewards("shadow_contest"),
     ),
     _conflict(
         460,
@@ -266,15 +312,7 @@ CONFLICTS: Final = (
         ConflictTier.TWO,
         battle_icon=BattleIcon.DESERT_MOUSE,
         shield_wall_protected=True,
-        rewards=(
-            ConflictReward(
-                spice=2,
-                troops=1,
-                control_space_id="imperial_basin",
-            ),
-            ConflictReward(water=2, troops=1),
-            ConflictReward(water=1, troops=1),
-        ),
+        rewards=_rewards("secure_imperial_basin"),
     ),
     _conflict(
         461,
@@ -282,16 +320,7 @@ CONFLICTS: Final = (
         "Protect the Sietches",
         ConflictTier.TWO,
         battle_icon=BattleIcon.DESERT_MOUSE,
-        rewards=(
-            ConflictReward(
-                water=1,
-                troops=1,
-                faction_influence=1,
-                influence_faction=Faction.FREMEN,
-            ),
-            ConflictReward(spice=3, troops=1),
-            ConflictReward(spice=2),
-        ),
+        rewards=_rewards("protect_the_sietches"),
     ),
     _conflict(
         462,
@@ -299,11 +328,7 @@ CONFLICTS: Final = (
         "Trade Dispute",
         ConflictTier.TWO,
         battle_icon=BattleIcon.DESERT_MOUSE,
-        rewards=(
-            ConflictReward(water=1, contracts=1, trash_cards=1),
-            ConflictReward(spice=1, water=1, trash_cards=1),
-            ConflictReward(water=1, troops=1),
-        ),
+        rewards=_rewards("trade_dispute"),
     ),
     _conflict(
         463,
@@ -311,11 +336,7 @@ CONFLICTS: Final = (
         "Propaganda",
         ConflictTier.THREE,
         battle_icon=BattleIcon.WILD,
-        rewards=(
-            ConflictReward(choose_distinct_influence=2),
-            ConflictReward(spice=3, intrigue=1),
-            ConflictReward(spice=3),
-        ),
+        rewards=_rewards("propaganda"),
     ),
     _conflict(
         464,
@@ -324,16 +345,7 @@ CONFLICTS: Final = (
         ConflictTier.THREE,
         battle_icon=BattleIcon.ORNITHOPTER,
         shield_wall_protected=True,
-        rewards=(
-            ConflictReward(
-                victory_points=1,
-                control_space_id="imperial_basin",
-                optional_spice_cost=4,
-                optional_victory_points=1,
-            ),
-            ConflictReward(spice=5),
-            ConflictReward(spice=3),
-        ),
+        rewards=_rewards("battle_for_imperial_basin"),
     ),
     _conflict(
         465,
@@ -342,16 +354,7 @@ CONFLICTS: Final = (
         ConflictTier.THREE,
         battle_icon=BattleIcon.CRYSKNIFE,
         shield_wall_protected=True,
-        rewards=(
-            ConflictReward(
-                victory_points=1,
-                control_space_id="arrakeen",
-                optional_recall_spies=2,
-                optional_victory_points=1,
-            ),
-            ConflictReward(solari=3, spice=1, intrigue=1),
-            ConflictReward(solari=2, spice=2),
-        ),
+        rewards=_rewards("battle_for_arrakeen"),
     ),
     _conflict(
         466,
@@ -360,16 +363,7 @@ CONFLICTS: Final = (
         ConflictTier.THREE,
         battle_icon=BattleIcon.DESERT_MOUSE,
         shield_wall_protected=True,
-        rewards=(
-            ConflictReward(
-                victory_points=1,
-                control_space_id="spice_refinery",
-                optional_solari_cost=6,
-                optional_victory_points=1,
-            ),
-            ConflictReward(spice=3, intrigue=1),
-            ConflictReward(spice=3),
-        ),
+        rewards=_rewards("battle_for_spice_refinery"),
     ),
     # Bloodlines adds one Conflict I and one Conflict II, both with a wild
     # battle icon [Bloodlines pp. 2-3]; rewards transcribed from the card
@@ -383,11 +377,7 @@ CONFLICTS: Final = (
         ),
         tier=ConflictTier.ONE,
         battle_icon=BattleIcon.WILD,
-        rewards=(
-            ConflictReward(trash_cards=1),
-            ConflictReward(water=1, solari=1),
-            ConflictReward(solari=2),
-        ),
+        rewards=_rewards("skirmish_wild"),
         bloodlines_only=True,
     ),
     ConflictDefinition(
@@ -402,14 +392,7 @@ CONFLICTS: Final = (
         ),
         tier=ConflictTier.TWO,
         battle_icon=BattleIcon.WILD,
-        rewards=(
-            # The first place prints a gold Spy behind a grey one: a Spy
-            # with Deep Cover, as on Deliver Supplies [Storms in the South
-            # card] [Bloodlines p. 5].
-            ConflictReward(deep_cover_spies=1, spice=2),
-            ConflictReward(intrigue=2, solari=2),
-            ConflictReward(intrigue=1, solari=2),
-        ),
+        rewards=_rewards("storms_in_the_south"),
         bloodlines_only=True,
     ),
     # Epic Game Mode needs a fifth Conflict III: "In this situation, you
@@ -431,16 +414,7 @@ CONFLICTS: Final = (
             ),
         ),
         tier=ConflictTier.THREE,
-        rewards=(
-            ConflictReward(
-                victory_points=1,
-                optional_solari_cost=6,
-                optional_spice_cost=4,
-                optional_victory_points=1,
-            ),
-            ConflictReward(victory_points=1),
-            ConflictReward(spice=2, solari=2),
-        ),
+        rewards=_rewards("economic_supremacy"),
         epic_only=True,
     ),
 )
@@ -460,6 +434,4 @@ def conflicts_by_tier(
     )
 
 
-CONFLICTS_BY_ID: Final = {
-    conflict.card.card_id: conflict for conflict in CONFLICTS
-}
+CONFLICTS_BY_ID: Final = {conflict.card.card_id: conflict for conflict in CONFLICTS}

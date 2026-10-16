@@ -13,6 +13,26 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    AllConditions,
+    AllianceTaken,
+    AtBoardSpace,
+    AtMakerSpace,
+    ContractTaken,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    EffectSection,
+    GainedSpiceThisTurn,
+    GainInfluence,
+    GainResources,
+    PlaceSpy,
+    RecallAgent,
+    RecruitTroops,
+    TakeContract,
+    TrashIntrigueCard,
+)
 
 
 class ContractConditionKind(StrEnum):
@@ -125,20 +145,92 @@ class ContractDefinition:
         return self.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH
 
 
+def _terms(card_id: str) -> tuple[ContractCondition, ContractReward]:
+    """The tile's condition and reward, compiled from its record
+    (``contract_abilities``, composed A5a)."""
+
+    ability = CONTRACT_ABILITIES[card_id]
+    (line,) = ability.sections
+    return _condition(ability.requirement, line), _reward(line)
+
+
+def _condition(requirement: object, line: EffectSection) -> ContractCondition:
+    if line.condition is not None:
+        raise ValueError("a Contract's reward line has no condition of its own")
+    if line.costs and not (
+        isinstance(requirement, ContractTaken) and line.costs == (TrashIntrigueCard(),)
+    ):
+        raise ValueError(f"no Contract pays {line.costs!r}")
+    match requirement:
+        case AtBoardSpace(space_id=space_id):
+            return ContractCondition(ContractConditionKind.BOARD_SPACE, target=space_id)
+        case AllConditions(conditions=(AtMakerSpace(), GainedSpiceThisTurn(amount=n))):
+            return ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=n)
+        case AcquiredCard(card_id=card_id):
+            return ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=card_id)
+        case ContractTaken() if line.costs:
+            return ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH)
+        case ContractTaken():
+            return ContractCondition(ContractConditionKind.IMMEDIATE)
+        case AllianceTaken():
+            return ContractCondition(ContractConditionKind.EARN_ALLIANCE)
+    raise TypeError(f"{requirement!r} is not a Contract condition")
+
+
+def _put(fields: dict[str, int | Faction], key: str, value: int | Faction) -> None:
+    """One reward field, printed once on the tile."""
+
+    if key in fields:
+        raise ValueError(f"a Contract prints {key} twice")
+    fields[key] = value
+
+
+def _reward(line: EffectSection) -> ContractReward:
+    fields: dict[str, int | Faction] = {}
+    counted = {"spies": 0, "deep_cover_spies": 0, "recall_agents": 0}
+    for reward in line.rewards:
+        match reward:
+            case GainResources(solari=solari, spice=0, water=water):
+                _put(fields, "solari", solari)
+                _put(fields, "water", water)
+            case RecruitTroops(count=count):
+                _put(fields, "troops", count)
+            case GainInfluence(
+                times=times,
+                factions=(faction,),
+                distinct=False,
+                where_opponent_leads=False,
+                different_from_trigger=False,
+                minimum_own=0,
+            ):
+                _put(fields, "influence", times)
+                _put(fields, "influence_faction", faction)
+            case DrawIntrigueCards(count=count):
+                _put(fields, "intrigue_cards", count)
+            case DrawPersonalCards(count=count):
+                _put(fields, "personal_cards", count)
+            case TakeContract(count=count):
+                _put(fields, "contracts", count)
+            case PlaceSpy() if reward == PlaceSpy(shared_post=True):
+                counted["deep_cover_spies"] += 1
+            case PlaceSpy() if reward == PlaceSpy():
+                counted["spies"] += 1
+            case RecallAgent() if reward == RecallAgent():
+                counted["recall_agents"] += 1
+            case _:
+                raise TypeError(f"{reward!r} is not a Contract reward")
+    fields.update({key: value for key, value in counted.items() if value})
+    return ContractReward(**fields)  # type: ignore[arg-type]
+
+
 CONTRACT_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (16,)),)
 BLOODLINES_CONTRACT_SOURCES: Final = (
     SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (2,)),
 )
 
 
-def _contract(
-    catalog_id: int,
-    slug: str,
-    name: str,
-    *,
-    condition: ContractCondition,
-    reward: ContractReward,
-) -> ContractDefinition:
+def _contract(catalog_id: int, slug: str, name: str) -> ContractDefinition:
+    condition, reward = _terms(slug.replace("-", "_"))
     return ContractDefinition(
         card=CardDefinition(
             card_id=slug.replace("-", "_"),
@@ -164,13 +256,8 @@ def _second_copy(original: ContractDefinition) -> ContractDefinition:
     )
 
 
-def _bloodlines_contract(
-    slug: str,
-    name: str,
-    *,
-    condition: ContractCondition,
-    reward: ContractReward,
-) -> ContractDefinition:
+def _bloodlines_contract(slug: str, name: str) -> ContractDefinition:
+    condition, reward = _terms(f"bloodlines_{slug.replace('-', '_')}")
     # Dune Cards Hub renders its Bloodlines catalog client-side and its
     # sitemap stops before the expansion, so the card face image is the
     # stable reference (the same URL the private asset manifest records).
@@ -194,18 +281,11 @@ _ESPIONAGE_I: Final = _contract(
     506,
     "espionage-i",
     "Espionage I",
-    condition=ContractCondition(
-        ContractConditionKind.BOARD_SPACE,
-        target="espionage",
-    ),
-    reward=ContractReward(solari=3),
 )
 _HARVEST_3: Final = _contract(
     508,
     "harvest-3",
     "Harvest 3+",
-    condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-    reward=ContractReward(solari=3),
 )
 
 # The box holds 30 tiles: "20 Contract tokens" and "10 Contract tokens with
@@ -229,45 +309,21 @@ STANDARD_CONTRACTS: Final = (
         517,
         "acquire",
         "Acquire",
-        condition=ContractCondition(
-            ContractConditionKind.ACQUIRE_CARD,
-            target="the_spice_must_flow",
-        ),
-        reward=ContractReward(
-            solari=3,
-            influence_faction=Faction.SPACING_GUILD,
-            influence=1,
-        ),
     ),
     _contract(
         512,
         "arrakeen-i",
         "Arrakeen I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="arrakeen",
-        ),
-        reward=ContractReward(water=1),
     ),
     _contract(
         511,
         "arrakeen-ii",
         "Arrakeen II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="arrakeen",
-        ),
-        reward=ContractReward(troops=1, spies=1),
     ),
     _contract(
         518,
         "deliver-supplies",
         "Deliver Supplies",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="deliver_supplies",
-        ),
-        reward=ContractReward(solari=3),
     ),
     _ESPIONAGE_I,
     _second_copy(_ESPIONAGE_I),
@@ -277,122 +333,61 @@ STANDARD_CONTRACTS: Final = (
         507,
         "harvest-4",
         "Harvest 4+",
-        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
-        reward=ContractReward(solari=4),
     ),
     _contract(
         513,
         "spice-refinery-i",
         "Spice Refinery I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="spice_refinery",
-        ),
-        # Two card backs: draw two cards [tile face].
-        reward=ContractReward(personal_cards=2),
     ),
     _contract(
         505,
         "heighliner-i",
         "Heighliner I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="heighliner",
-        ),
-        reward=ContractReward(water=2),
     ),
     _contract(
         504,
         "heighliner-ii",
         "Heighliner II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="heighliner",
-        ),
-        reward=ContractReward(troops=2),
     ),
     _contract(
         514,
         "spice-refinery-ii",
         "Spice Refinery II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="spice_refinery",
-        ),
-        reward=ContractReward(water=1),
     ),
     _contract(
         516,
         "high-council-i",
         "High Council I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="high_council",
-        ),
-        reward=ContractReward(
-            influence_faction=Faction.BENE_GESSERIT,
-            influence=1,
-        ),
     ),
     _contract(
         515,
         "high-council-ii",
         "High Council II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="high_council",
-        ),
-        reward=ContractReward(solari=3),
     ),
     _contract(
         501,
         "immediate",
         "Immediate",
-        condition=ContractCondition(ContractConditionKind.IMMEDIATE),
-        reward=ContractReward(solari=2),
     ),
     _contract(
         510,
         "research-station-i",
         "Research Station I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="research_station",
-        ),
-        reward=ContractReward(solari=2, spies=1),
     ),
     _contract(
         509,
         "research-station-ii",
         "Research Station II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="research_station",
-        ),
-        reward=ContractReward(solari=3),
     ),
     _contract(
         503,
         "sardaukar-i",
         "Sardaukar I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="sardaukar",
-        ),
-        reward=ContractReward(personal_cards=2),
     ),
     _contract(
         502,
         "sardaukar-ii",
         "Sardaukar II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="sardaukar",
-        ),
-        # The printed reward recalls one of the player's Agents; per the
-        # general glossary the recalled Agent cannot be the one just sent
-        # [Main p. 20].
-        reward=ContractReward(recall_agents=1),
     ),
 )
 
@@ -403,66 +398,36 @@ BLOODLINES_CONTRACTS: Final = (
     _bloodlines_contract(
         "deliver-supplies",
         "Deliver Supplies",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="deliver_supplies",
-        ),
-        reward=ContractReward(solari=1, deep_cover_spies=1),
     ),
     _bloodlines_contract(
         "earn-any-alliance",
         "Earn Any Alliance",
-        condition=ContractCondition(ContractConditionKind.EARN_ALLIANCE),
-        reward=ContractReward(solari=2, troops=2),
     ),
     _bloodlines_contract(
         "harvest-3",
         "Harvest 3+",
-        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-        reward=ContractReward(solari=2, spies=1),
     ),
     _bloodlines_contract(
         "harvest-4",
         "Harvest 4+",
-        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
-        reward=ContractReward(solari=3, spies=1),
     ),
     _bloodlines_contract(
         "high-council",
         "High Council",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="high_council",
-        ),
-        # Recall one of your Agents; as with Sardaukar II the Agent just
-        # sent is not a valid target [Main p. 20].
-        reward=ContractReward(recall_agents=1),
     ),
     _bloodlines_contract(
         "immediate",
         "Immediate",
         # "Requires an Intrigue card": trash an Intrigue card -> draw an
         # Intrigue card and a card [card face] [Bloodlines p. 2].
-        condition=ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH),
-        reward=ContractReward(intrigue_cards=1, personal_cards=1),
     ),
     _bloodlines_contract(
         "secrets",
         "Secrets",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="secrets",
-        ),
-        reward=ContractReward(solari=2, personal_cards=1),
     ),
     _bloodlines_contract(
         "spice-refinery",
         "Spice Refinery",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="spice_refinery",
-        ),
-        reward=ContractReward(troops=2),
     ),
 )
 
