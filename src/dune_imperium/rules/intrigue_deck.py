@@ -257,6 +257,48 @@ def draw_or_hold_intrigue_cards(
     )
 
 
+def triggered_intrigue_draw(
+    state: GameState,
+    owner: PlayerState,
+    player: int,
+    *,
+    origin: str,
+    source: str,
+) -> tuple[
+    PlayerState, tuple[str, ...], tuple[GameEvent, ...], tuple[int, int, str] | None
+]:
+    """A card's own box drawing one Intrigue card as it fires (Overthrow's
+    acquire box, Sardaukar Soldier's trash box), on the owner being changed.
+
+    Inside the seat's own turn the card waits as the seat's own step in
+    ``owed_draws`` (user ruling 2026-10-10, OQ-106; ``origin`` decides
+    whether it is the very next step, ``draw_is_immediate``, OQ-042), so the
+    effect that fired the box stays undoable. Elsewhere the deck's top card
+    is drawn at once (``source`` names the event, Suspensor Suits credited),
+    or with an empty deck the draw is returned to be queued
+    (``pending_intrigue_draws``): the dispatcher reshuffles the discard and
+    completes it before the next player decision [FAQ p. 2]. Returns the
+    owner, the Intrigue deck, the events and the queued draw.
+    """
+
+    if draw_waits_for_owner(state, player):
+        held = hold_draw(owner, OWED_INTRIGUE, origin, source)
+        return held, state.intrigue_deck, (), None
+    if not state.intrigue_deck:
+        return owner, state.intrigue_deck, (), (player, 1, source)
+    drawn = credit_suspensor_suits(
+        state,
+        replace(owner, intrigue_cards=(*owner.intrigue_cards, state.intrigue_deck[0])),
+        1,
+    )
+    event = GameEvent(
+        event_id=source,
+        kind="intrigue_card_drawn",
+        payload=(("count", 1), ("player", player)),
+    )
+    return drawn, state.intrigue_deck[1:], (event,), None
+
+
 def intrigue_draw_is_queued(state: GameState) -> bool:
     """Return whether an owed Intrigue draw can be resolved now."""
 

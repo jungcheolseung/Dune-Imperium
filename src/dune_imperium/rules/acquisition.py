@@ -12,13 +12,26 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
+    AdvanceTleilaxu,
+    DrawIntrigueCards,
+    GainInfluence,
+    GainResources,
     GeneticMarkersAtLeast,
+    PlaceSpy,
+    RecruitTroops,
+    Research,
+    Reward,
+    TakeContract,
 )
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.trigger_abilities import (
+    acquisition_ability,
+    single_resource,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
@@ -46,12 +59,9 @@ from dune_imperium.rules.effects import (
     short_of,
 )
 from dune_imperium.rules.frames import (
-    OWED_INTRIGUE,
     OWED_ORIGIN_ACQUIRE,
     FrameKind,
     context_int,
-    draw_waits_for_owner,
-    hold_draw,
     replace_player,
     reveal_is_open_for,
     turn_owner_of,
@@ -59,7 +69,9 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
-from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
+from dune_imperium.rules.intrigue_deck import (
+    triggered_intrigue_draw,
+)
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -1070,6 +1082,13 @@ def _acquired_definition(instance_id: str) -> ImperiumCardEntry:
     return imperium_card_for_instance(instance_id)
 
 
+def _acquire_rewards(definition: ImperiumCardEntry) -> tuple[Reward, ...]:
+    """The rewards of the card's acquire box, from its record (composed A4a)."""
+
+    ability = acquisition_ability(definition.acquisition_effect)
+    return () if ability is None else ability.sections[0].rewards
+
+
 def apply_acquisition_track_effects(
     state: GameState,
     player: int,
@@ -1084,15 +1103,16 @@ def apply_acquisition_track_effects(
     its zone, and the research may open a direction choice.
     """
 
-    effect = definition.acquisition_effect
-    if effect is PersonalCardAcquisitionEffect.RESEARCH:
-        return advance_research(
-            state, player, source=f"{source}:acquisition_bonus"
-        )
-    if effect is PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU:
-        return advance_tleilaxu(
-            state, player, 1, source=f"{source}:acquisition_bonus"
-        )
+    for reward in _acquire_rewards(definition):
+        match reward:
+            case Research():
+                return advance_research(
+                    state, player, source=f"{source}:acquisition_bonus"
+                )
+            case AdvanceTleilaxu(count=count):
+                return advance_tleilaxu(
+                    state, player, count, source=f"{source}:acquisition_bonus"
+                )
     return RuleResult(state=state)
 
 
@@ -1101,10 +1121,12 @@ def _acquisition_influence_faction(
 ) -> Faction | None:
     """Return the Faction an acquisition bonus raises by one, if any."""
 
-    if effect is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE:
-        return Faction.SPACING_GUILD
-    if effect is PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE:
-        return Faction.EMPEROR
+    ability = acquisition_ability(effect)
+    for reward in () if ability is None else ability.sections[0].rewards:
+        if isinstance(reward, GainInfluence):
+            # Steersman's and Imperial Throneship's fixed Faction.
+            assert reward.factions is not None and not reward.requires_choice
+            return reward.factions[0]
     return None
 
 
@@ -1117,129 +1139,72 @@ def _resolve_imperium_acquisition_bonus(
     """Apply one supported acquisition bonus before its follow-up choice."""
 
     definition = _acquired_definition(instance_id)
-    effect = definition.acquisition_effect
+    rewards = _acquire_rewards(definition)
     intrigue_deck = state.intrigue_deck
     events: tuple[GameEvent, ...] = ()
     pending_draw: tuple[int, int, str] | None = None
     recruited = 0
-    if effect is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD:
-        source = (
-            f"round:{state.round_number}:player:{player}:"
-            f"acquire:{instance_id}:intrigue_draw"
-        )
-        if draw_waits_for_owner(state, player):
-            # Overthrow's acquire box: inside the seat's own turn the card
-            # is its own step, the one right after the purchase: "Acquire
-            # Effects must be taken immediately upon acquiring the Card or
-            # Tech." (Direwolf Discord; user decision 2026-10-10, OQ-106,
-            # ``draw_is_immediate``; OQ-042). The Row refill still makes the
-            # purchase itself irreversible.
-            owner = hold_draw(
-                owner, OWED_INTRIGUE, f"{OWED_ORIGIN_ACQUIRE}{instance_id}", source
-            )
-        elif intrigue_deck:
-            owner = credit_suspensor_suits(
-                state,
-                replace(
+    box = f"round:{state.round_number}:player:{player}:acquire:{instance_id}"
+    for reward in rewards:
+        match reward:
+            case DrawIntrigueCards(count=1):
+                # Overthrow's acquire box: inside the seat's own turn the
+                # card is its own step, the one right after the purchase:
+                # "Acquire Effects must be taken immediately upon acquiring
+                # the Card or Tech." (Direwolf Discord; user decision
+                # 2026-10-10, OQ-106, ``draw_is_immediate``; OQ-042). The Row
+                # refill still makes the purchase itself irreversible.
+                owner, intrigue_deck, events, pending_draw = triggered_intrigue_draw(
+                    state,
                     owner,
-                    intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
-                ),
-                1,
-            )
-            intrigue_deck = intrigue_deck[1:]
-            events = (
-                GameEvent(
-                    event_id=source,
-                    kind="intrigue_card_drawn",
-                    payload=(("count", 1), ("player", player)),
-                ),
-            )
-        else:
-            # The deck is empty: the dispatcher reshuffles the discard and
-            # completes the draw before the next player decision [FAQ p. 2].
-            pending_draw = (player, 1, source)
-    elif effect is PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI:
-        owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + 2,
-            ),
-        )
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:solari"
-                ),
-                kind="acquisition_resource_gained",
-                payload=(
-                    ("amount", 2),
-                    ("player", player),
-                    ("resource", "solari"),
-                ),
-            ),
-        )
-    elif effect is PersonalCardAcquisitionEffect.GAIN_ONE_WATER:
-        # Possible Futures' acquire box (Bloodlines): one water.
-        owner = replace(
-            owner,
-            resources=replace(owner.resources, water=owner.resources.water + 1),
-        )
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:water"
-                ),
-                kind="acquisition_resource_gained",
-                payload=(("amount", 1), ("player", player), ("resource", "water")),
-            ),
-        )
-    elif effect in (
-        PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP,
-        PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS,
-    ):
-        # Arrakis Revolt's (promo) and Occupation's (Immortality) acquire
-        # boxes: the troops go to the garrison like any recruit [Main p. 20].
-        wanted = (
-            3 if effect is PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS else 1
-        )
-        owner, recruited = recruit_troops(owner, wanted)
-        troop_source = (
-            f"round:{state.round_number}:player:{player}:"
-            f"acquire:{instance_id}:troop"
-        )
-        events = (
-            GameEvent(
-                event_id=troop_source,
-                kind="acquisition_troop_recruited",
-                payload=(("amount", recruited), ("player", player)),
-            ),
-            *recruit_shortfall_events(troop_source, player, wanted, recruited),
-        )
-    elif effect is PersonalCardAcquisitionEffect.GAIN_ONE_SPICE:
-        # Lisan al Gaib's acquire box (Immortality): one spice.
-        owner = replace(
-            owner,
-            resources=replace(owner.resources, spice=owner.resources.spice + 1),
-        )
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:spice"
-                ),
-                kind="acquisition_resource_gained",
-                payload=(("amount", 1), ("player", player), ("resource", "spice")),
-            ),
-        )
+                    player,
+                    origin=f"{OWED_ORIGIN_ACQUIRE}{instance_id}",
+                    source=f"{box}:intrigue_draw",
+                )
+            case GainResources():
+                # Price is No Object's and Corrino Genes' 2 Solari, Possible
+                # Futures' water, Lisan al Gaib's spice.
+                resource, amount = single_resource(reward)
+                owner = replace(
+                    owner,
+                    resources=replace(
+                        owner.resources,
+                        solari=owner.resources.solari + reward.solari,
+                        spice=owner.resources.spice + reward.spice,
+                        water=owner.resources.water + reward.water,
+                    ),
+                )
+                events = (
+                    GameEvent(
+                        event_id=f"{box}:{resource}",
+                        kind="acquisition_resource_gained",
+                        payload=(
+                            ("amount", amount),
+                            ("player", player),
+                            ("resource", resource),
+                        ),
+                    ),
+                )
+            case RecruitTroops(count=wanted):
+                # Arrakis Revolt's (promo) and Occupation's (Immortality)
+                # acquire boxes: the troops go to the garrison like any
+                # recruit [Main p. 20].
+                owner, recruited = recruit_troops(owner, wanted)
+                troop_source = f"{box}:troop"
+                events = (
+                    GameEvent(
+                        event_id=troop_source,
+                        kind="acquisition_troop_recruited",
+                        payload=(("amount", recruited), ("player", player)),
+                    ),
+                    *recruit_shortfall_events(troop_source, player, wanted, recruited),
+                )
     return AcquisitionBonus(
         owner=owner,
         intrigue_deck=intrigue_deck,
         events=events,
-        places_spy=effect is PersonalCardAcquisitionEffect.PLACE_SPY,
-        takes_contract=effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
+        places_spy=any(isinstance(reward, PlaceSpy) for reward in rewards),
+        takes_contract=any(isinstance(reward, TakeContract) for reward in rewards),
         pending_draw=pending_draw,
         recruited=recruited,
     )

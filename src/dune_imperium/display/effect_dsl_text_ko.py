@@ -38,6 +38,7 @@ from typing import assert_never
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireBankCommander,
     AcquireCardForSolari,
     AcquireCardUpTo,
     AcquireReserveCard,
@@ -823,6 +824,9 @@ def reward_text_ko(reward: Reward) -> str:
                 "{reveal_turn} 시작 시, 다른 {graft} 카드를 {in_play}에서 핸드로 "
                 "되돌림"
             )
+        case AcquireBankCommander():
+            # Quotes ``tokens_ko.py``'s Sardaukar Standard line.
+            return "은행의 {commander} {acquire} 후 {recruit}"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

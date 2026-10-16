@@ -11,6 +11,7 @@ from typing import assert_never
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireBankCommander,
     AcquireCardForSolari,
     AcquireCardUpTo,
     AcquireReserveCard,
@@ -538,6 +539,8 @@ def reward_text(reward: Reward) -> str:
                 "At the start of your Reveal turn, return the other grafted"
                 " card from play to your hand"
             )
+        case AcquireBankCommander():
+            return "Acquire and recruit the Sardaukar Commander in the bank"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

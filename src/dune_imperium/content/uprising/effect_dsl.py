@@ -1097,6 +1097,13 @@ class ReturnOtherGraftedCardAtRevealStart:
 
 
 @dataclass(frozen=True, slots=True)
+class AcquireBankCommander:
+    """Acquire and recruit the Sardaukar Commander in the bank [Sardaukar
+    Standard card]: with a face-up Skill choice, or without a Skill when none
+    is choosable (OQ-031); nothing with an empty bank (OQ-035)."""
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1177,6 +1184,7 @@ type Reward = (
     | EachOpponentLosesTroop
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
+    | AcquireBankCommander
 )
 
 
