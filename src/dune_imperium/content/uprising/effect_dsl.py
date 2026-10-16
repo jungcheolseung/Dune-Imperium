@@ -1256,6 +1256,12 @@ class TakeControl:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeSwordmaster:
+    """Once per game, take the player's third Agent, usable from this round
+    [Main p. 10] (the Swordmaster space)."""
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1341,6 +1347,7 @@ type Reward = (
     | RevealSwords
     | TakeHighCouncilSeat
     | TakeControl
+    | TakeSwordmaster
 )
 
 

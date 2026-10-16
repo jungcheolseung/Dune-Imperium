@@ -139,6 +139,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
@@ -878,6 +879,9 @@ def reward_text_ko(reward: Reward) -> str:
         case TakeControl(space_id=space_id):
             # Quotes ``display/structs.py``'s ``conflict_reward_text_ko``.
             return f"{KOREAN_CARD_NAMES['spaces'][space_id]} 지배"
+        case TakeSwordmaster():
+            # Quotes ``display/spaces.py``'s Swordmaster line.
+            return "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

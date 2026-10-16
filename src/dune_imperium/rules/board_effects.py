@@ -14,7 +14,22 @@ from copy import replace
 from typing import Final, assert_never
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.uprising.abilities import Ability
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.board_abilities import (
+    BOARD_SPACE_ABILITIES,
+    board_space_ability,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+    Research,
+    TakeContract,
+    TakeHighCouncilSeat,
+    TakeSwordmaster,
+)
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -141,15 +156,6 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
     }
 )
 
-# High Council after the Councilor is seated: "spice 2, Intrigue 1장, troop
-# 3개" on every later visit [Board Guide p. 2].
-HIGH_COUNCIL_REVISIT_EFFECTS: Final = (
-    GainResourcesEffect(spice=2),
-    DrawIntrigueCardsEffect(1),
-    RecruitTroopsEffect(3),
-)
-
-
 def board_effect_is_implemented(
     state: GameState,
     space_id: str,
@@ -204,63 +210,49 @@ def static_board_effects(
     and live in ``visit_board_effects``.
     """
 
-    match space_id, cost_option:
-        case "dutiful_service", 0 if not choam_module:
-            return (GainResourcesEffect(solari=2),)
-        case "dutiful_service", 0:
-            return ()
-        case "sardaukar", 0:
-            return (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))
-        case "deliver_supplies", 0:
-            return (GainResourcesEffect(water=1),)
-        case "heighliner", 0:
-            return (RecruitTroopsEffect(5),)
-        case "espionage", 0:
-            return (DrawImperiumCardsEffect(1),)
-        case "fremkit", 0:
-            return (DrawImperiumCardsEffect(1),)
-        case "desert_tactics", 0:
-            return (RecruitTroopsEffect(1),)
-        case "assembly_hall", 0:
-            return (DrawIntrigueCardsEffect(1),)
-        case "secrets", 0:
-            return (DrawIntrigueCardsEffect(1),)
-        case "high_council", 0:
-            return ()
-        case "swordmaster", 0 | 1:
-            return ()
-        case "arrakeen", 0:
-            return (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))
-        case "gather_support", 0:
-            return (RecruitTroopsEffect(2),)
-        case "gather_support", 1:
-            return (RecruitTroopsEffect(2), GainResourcesEffect(water=1))
-        case "research_station", 0 if immortality:
-            # The Research Station overlay: "Draw two cards and research"
-            # [Immortality pp. 5, 16] [Main p. 18].
-            return (DrawImperiumCardsEffect(2), ResearchEffect())
-        case "research_station", 0:
-            return (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))
-        case "spice_refinery", 0:
-            return (GainResourcesEffect(solari=2),)
-        case "spice_refinery", 1:
-            return (GainResourcesEffect(solari=4),)
-        case "shipping", 0:
-            return (GainResourcesEffect(solari=5),)
-        case "accept_contract", 0 if not choam_module:
-            return (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))
-        case "accept_contract", 0:
-            return (DrawImperiumCardsEffect(1),)
-        case "imperial_privilege", 0:
-            # "Recall one of your other Agents from the board, and draw a
-            # card" [Board Guide p. 2]: the draw is its own icon, apart from
-            # the recall (user ruling 2026-10-10, OQ-027 (d)); the Intrigue
-            # slot and the recall are the space's written-sentence choice.
-            return (DrawImperiumCardsEffect(1),)
-        case _:
-            raise NotImplementedError(
-                f"board effect is not implemented: {space_id} option {cost_option}"
-            )
+    ability = board_space_ability(
+        space_id, cost_option, choam_module=choam_module, immortality=immortality
+    )
+    if ability is None:
+        raise NotImplementedError(
+            f"board effect is not implemented: {space_id} option {cost_option}"
+        )
+    return _gains(ability)
+
+
+def _gains(ability: Ability) -> tuple[AutomaticEffect, ...]:
+    """A space record's gain icons, in printed order (composed A5c); the
+    High Council seat, the Swordmaster and the Contract are icon keys of
+    their own (``resolve_board_effect``)."""
+
+    effects: list[AutomaticEffect] = []
+    for line in ability.sections:
+        for reward in line.rewards:
+            match reward:
+                case GainResources(solari=solari, spice=spice, water=water):
+                    effects.append(
+                        GainResourcesEffect(solari=solari, spice=spice, water=water)
+                    )
+                case DrawPersonalCards(count=count):
+                    effects.append(DrawImperiumCardsEffect(count))
+                case DrawIntrigueCards(count=count):
+                    effects.append(DrawIntrigueCardsEffect(count))
+                case RecruitTroops(count=count):
+                    effects.append(RecruitTroopsEffect(count))
+                case Research():
+                    effects.append(ResearchEffect())
+                case TakeHighCouncilSeat() | TakeSwordmaster() | TakeContract():
+                    pass
+                case _:
+                    raise TypeError(f"{reward!r} is not a board space icon")
+    return tuple(effects)
+
+
+# High Council after the Councilor is seated: "spice 2, Intrigue 1장, troop
+# 3개" on every later visit [Board Guide p. 2] -- its record's seated line.
+HIGH_COUNCIL_REVISIT_EFFECTS: Final = _gains(
+    BOARD_SPACE_ABILITIES["high_council", 0, "seated"]
+)
 
 
 def visit_board_effects(

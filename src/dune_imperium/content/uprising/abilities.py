@@ -49,6 +49,8 @@ class AbilityTiming(StrEnum):
     TRASH = "trash"
     DISCARD = "discard"
     TURN_START = "turn_start"
+    # Sending an Agent to a board space: its printed icons (composed A5c).
+    BOARD_SPACE = "board_space"
     # Completing a Contract tile (composed A5a).
     CONTRACT = "contract"
     # A Conflict card's reward row (composed A5b).

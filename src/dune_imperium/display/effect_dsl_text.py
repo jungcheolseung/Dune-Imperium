@@ -112,6 +112,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
@@ -592,6 +593,8 @@ def reward_text(reward: Reward) -> str:
             return "Take the High Council seat"
         case TakeControl(space_id=space_id):
             return f"Take control of {BOARD_SPACES_BY_ID[space_id].name}"
+        case TakeSwordmaster():
+            return "Take your third Agent, usable from this round"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:
