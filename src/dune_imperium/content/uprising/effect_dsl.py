@@ -331,6 +331,37 @@ class Grafted:
 
 
 @dataclass(frozen=True, slots=True)
+class HasSwordmaster:
+    """The player has its Swordmaster ("High Council and Swordmaster:"
+    [Paracompass card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class SpyingOnMakerSpace:
+    """One of the player's Spies watches a Maker space ("If you are spying on
+    a Maker space:" [Smuggler's Haven card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class GarrisonedUnitsAtLeast:
+    """The player has ``count`` or more units -- troops and Sardaukar
+    Commanders -- in its garrison [Imperial Throneship card]."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("garrison condition count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CommandReached:
+    """Command (6+): the player's Reveal turn generates six or more
+    Persuasion [Bloodlines pp. 5, 12], the others' first so the order does
+    not matter (``rules.reveal_turn``)."""
+
+
+@dataclass(frozen=True, slots=True)
 class AllConditions:
     """Every listed condition holds (Study Melange: spice and two markers)."""
 
@@ -370,7 +401,10 @@ type Condition = (
     | TrashedCardHasFaction
     | GraftedWithFaction
     | Grafted
-    | AllConditions
+    | AllConditions    | HasSwordmaster
+    | SpyingOnMakerSpace
+    | GarrisonedUnitsAtLeast
+    | CommandReached
 )
 
 
@@ -1103,6 +1137,71 @@ class AcquireBankCommander:
     is choosable (OQ-031); nothing with an empty bank (OQ-035)."""
 
 
+class RevealCountKind(StrEnum):
+    """What a Reveal gain is counted per (``RevealCount``)."""
+
+    # Each card of ``faction`` revealed this turn (Sardaukar Coordination).
+    REVEALED_FACTION_CARD = "revealed_faction_card"
+    # Each card of ``faction`` the player has in play, Agent turns included
+    # [Main p. 20 "In Play"] (Stilgar, The Devoted).
+    FACTION_CARD_IN_PLAY = "faction_card_in_play"
+    # Each Contract the player has completed, later ones included (OQ-028
+    # (c), Interstellar Trade).
+    COMPLETED_CONTRACT = "completed_contract"
+    # Each other revealed card with swords (Leadership).
+    OTHER_SWORD_CARD = "other_sword_card"
+
+
+@dataclass(frozen=True, slots=True)
+class RevealCount:
+    """The count a Reveal gain is multiplied by; ``faction`` for the two
+    Faction-card counts."""
+
+    kind: RevealCountKind
+    faction: Faction | None = None
+
+    def __post_init__(self) -> None:
+        by_faction = self.kind in (
+            RevealCountKind.REVEALED_FACTION_CARD,
+            RevealCountKind.FACTION_CARD_IN_PLAY,
+        )
+        if by_faction != (self.faction is not None):
+            raise ValueError("only a Faction-card count names a Faction")
+
+
+@dataclass(frozen=True, slots=True)
+class RevealPersuasion:
+    """+``amount`` Persuasion on the Reveal, spent this turn and counted for
+    Command [Main p. 9]; ``per`` multiplies it."""
+
+    amount: int
+    per: RevealCount | None = None
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Reveal Persuasion must be positive")
+        if self.per is not None and self.per.kind is RevealCountKind.OTHER_SWORD_CARD:
+            raise ValueError("Persuasion is not counted per sword card")
+
+
+@dataclass(frozen=True, slots=True)
+class RevealSwords:
+    """+``amount`` swords on the Reveal, counted as strength only with a unit
+    in the Conflict [Main p. 9]; ``per`` multiplies them."""
+
+    amount: int
+    per: RevealCount | None = None
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Reveal swords must be positive")
+        if self.per is not None and self.per.kind in (
+            RevealCountKind.FACTION_CARD_IN_PLAY,
+            RevealCountKind.COMPLETED_CONTRACT,
+        ):
+            raise ValueError("swords are counted per revealed card only")
+
+
 @dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
@@ -1185,6 +1284,8 @@ type Reward = (
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | AcquireBankCommander
+    | RevealPersuasion
+    | RevealSwords
 )
 
 

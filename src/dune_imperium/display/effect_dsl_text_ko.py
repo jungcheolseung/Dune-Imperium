@@ -50,6 +50,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
+    CommandReached,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -75,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
+    GarrisonedUnitsAtLeast,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
@@ -85,6 +87,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantCombatDeployment,
     HasAlliance,
     HasHighCouncil,
+    HasSwordmaster,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     InNavigationSlot,
@@ -113,7 +116,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     RevealContractsTakeOne,
+    RevealCount,
+    RevealCountKind,
+    RevealPersuasion,
     RevealPersuasionThisRound,
+    RevealSwords,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
@@ -122,6 +129,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
+    SpyingOnMakerSpace,
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
@@ -486,6 +494,19 @@ def condition_text_ko(condition: Condition) -> str:
             # card" rule, which fires inside English's "Combat Intrigue
             # card" too (the substring "Intrigue card" still matches).
             return "다른 플레이어가 이 {conflict}에서 전투 {intrigue}를 플레이했다면"
+        case HasSwordmaster():
+            # ``tokens_ko.py``'s "원로회 자리와 소드마스터를 보유했다면"
+            # (Paracompass), its Swordmaster half.
+            return "소드마스터를 보유했다면"
+        case SpyingOnMakerSpace():
+            # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
+            return "메이커 장소를 정탐 중이라면"
+        case GarrisonedUnitsAtLeast(count=count):
+            # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
+            return f"{{garrison}}에 부대가 {count} 이상 있다면"
+        case CommandReached():
+            # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
+            return "{command} ({persuasion} 6 이상)이면"
         case AllConditions(conditions=conditions):
             # Quotes ``tokens_ko.py``'s established "그리고" join of several
             # already-complete conditional clauses (its own
@@ -827,6 +848,11 @@ def reward_text_ko(reward: Reward) -> str:
         case AcquireBankCommander():
             # Quotes ``tokens_ko.py``'s Sardaukar Standard line.
             return "은행의 {commander} {acquire} 후 {recruit}"
+        case RevealPersuasion(amount=amount, per=per):
+            # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
+            return f"+{{persuasion:{amount}}}{_reveal_count_text_ko(per)}"
+        case RevealSwords(amount=amount, per=per):
+            return f"+{{sword:{amount}}}{_reveal_count_text_ko(per)}"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
@@ -909,3 +935,22 @@ def intrigue_card_text_ko(entry: IntrigueCardEntry) -> list[str]:
         option_text_ko(option, show_timing=not entry.navigation)
         for option in entry.options
     ]
+
+
+def _reveal_count_text_ko(per: RevealCount | None) -> str:
+    """Korean twin of ``effect_dsl_text._reveal_count_text`` (quotes
+    ``tokens_ko.py``'s ``reveal_effect_text_ko``)."""
+
+    if per is None:
+        return ""
+    match per.kind:
+        case RevealCountKind.REVEALED_FACTION_CARD:
+            assert per.faction is not None
+            return f" (공개한 {_faction_name_ko(per.faction)} 카드마다)"
+        case RevealCountKind.FACTION_CARD_IN_PLAY:
+            assert per.faction is not None
+            return f" ({{in_play}}에 있는 {_faction_name_ko(per.faction)} 카드마다)"
+        case RevealCountKind.COMPLETED_CONTRACT:
+            return " (완수한 {contract}마다)"
+        case RevealCountKind.OTHER_SWORD_CARD:
+            return " (공개한 다른 {sword} 카드마다)"

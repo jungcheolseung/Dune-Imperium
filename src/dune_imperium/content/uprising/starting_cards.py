@@ -5,6 +5,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.reveal_abilities import reveal_effects_of
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
@@ -143,7 +144,7 @@ EXPERIMENTATION: Final = StartingCardEntry(
     agent_icons=(AgentIcon.SPICE_TRADE,),
     agent_effect=PersonalCardAgentEffect.RESEARCH,
     reveal_persuasion=1,
-    reveal_effects=(PersonalCardRevealEffect(specimens=1),),
+    reveal_effects=reveal_effects_of("experimentation"),
 )
 REPLACED_BY_EXPERIMENTATION: Final = "dune_the_desert_planet"
 
@@ -169,7 +170,7 @@ CONTROL_THE_SPICE: Final = StartingCardEntry(
     agent_icons=(AgentIcon.SPICE_TRADE,),
     agent_effect=PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     reveal_persuasion=1,
-    reveal_effects=(PersonalCardRevealEffect(spice=1),),
+    reveal_effects=reveal_effects_of("control_the_spice"),
 )
 REPLACED_BY_CONTROL_THE_SPICE: Final = "dune_the_desert_planet"
 

@@ -1,9 +1,16 @@
 """Acquire, trash and discard boxes as ability records (composed effects, A4a)."""
 
+from collections.abc import Mapping
 from dataclasses import replace
+from enum import StrEnum
+from typing import Any
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.effect_dsl import GainResources
 from dune_imperium.content.uprising.trigger_abilities import (
     ACQUISITION_ABILITIES,
@@ -31,7 +38,16 @@ from dune_imperium.display.tokens_ko import (
 )
 from dune_imperium.rules.intrigue_deck import triggered_intrigue_draw
 
-_TABLES = (
+_TABLES: tuple[
+    tuple[
+        Mapping[Any, Ability],
+        type[StrEnum],
+        AbilityTiming,
+        Mapping[Any, str],
+        Mapping[Any, str],
+    ],
+    ...,
+] = (
     (
         ACQUISITION_ABILITIES,
         PersonalCardAcquisitionEffect,
