@@ -196,10 +196,7 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
-# card] [troop]" [card face] [Rise of Ix p. 10].
-_SPICE_FOR_TRASH_AND_TROOP = (
-    PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT
-)
+# card] [troop]" [card face] [Rise of Ix p. 10]; its record names the hook.
 CONTROL_THE_SPICE_PRICE: Final = 1
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
