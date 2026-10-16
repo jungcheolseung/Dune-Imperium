@@ -15,13 +15,17 @@ from dune_imperium.content.uprising.effect_dsl import GainResources
 from dune_imperium.content.uprising.trigger_abilities import (
     ACQUISITION_ABILITIES,
     DISCARD_ABILITIES,
+    REVEAL_ACQUISITION_ABILITIES,
     TRASH_ABILITIES,
+    TURN_START_ABILITIES,
     single_resource,
 )
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardDiscardEffect,
+    PersonalCardRevealAcquisitionEffect,
     PersonalCardTrashEffect,
+    PersonalCardTurnStartEffect,
 )
 from dune_imperium.core import GamePhase, GameState, PlayerState
 from dune_imperium.display.effect_dsl_text import reward_text
@@ -143,3 +147,15 @@ def test_a_triggered_intrigue_draw_outside_a_turn_draws_or_queues() -> None:
     )
     assert kept == owner and deck == () and events == ()
     assert pending == (0, 1, "src")
+
+
+def test_the_other_trigger_boxes_are_hook_records() -> None:
+    """Guild Spy's Reveal acquisition and Litany Against Fear's turn start
+    keep their flows as code (composed A4h), each with its record."""
+
+    assert set(REVEAL_ACQUISITION_ABILITIES) == set(PersonalCardRevealAcquisitionEffect)
+    assert set(TURN_START_ABILITIES) == set(PersonalCardTurnStartEffect)
+    assert [a.hook for a in REVEAL_ACQUISITION_ABILITIES.values()] == ["guild_spy"]
+    assert [a.hook for a in TURN_START_ABILITIES.values()] == ["litany_against_fear"]
+    (litany,) = TURN_START_ABILITIES.values()
+    assert litany.mark is AbilityMark.OPTIONAL

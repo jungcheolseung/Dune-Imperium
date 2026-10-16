@@ -23,6 +23,7 @@ at the end if it never does (``reveal_choice_lapsed``).
 from collections.abc import Callable, Mapping
 from copy import replace
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.content.bloodlines.sardaukar import (
@@ -40,10 +41,17 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     EffectSection,
     GainInfluence,
+    GainResources,
     GrantCombatDeployment,
+    PayResources,
+    PlaceSpy,
     RecallSpy,
+    RevealPersuasion,
     RevealSwords,
+    Reward,
     SpiesPlacedAtLeast,
+    TakeContract,
+    TakeHighCouncilSeat,
     TechTilesAtLeast,
     TrashCard,
     TrashPersonalCard,
@@ -594,6 +602,210 @@ def resolve_target_reward(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(state=working, events=tuple(events))
 
 
+# --- Spy icons and printed "-OR-"s from their records (composed A4e, A4f) ---
+
+
+def spy_icon_choice(ability: Ability | None) -> bool:
+    """Whether a Reveal choice record is a Spy icon (Public Spectacle, Wheels
+    within Wheels, Covert Operation's two, Intelligence Training's Command
+    one) or Undercover Asset's "Place a Spy -OR- +2 swords"."""
+
+    if ability is None or ability.hook is not None or not ability.sections:
+        return False
+    spy_lines = [line for line in ability.sections if line.rewards == (PlaceSpy(),)]
+    if ability.structure is AbilityStructure.ONE_OF:
+        return len(spy_lines) == 1 and _spy_alternative(ability) is not None
+    return len(spy_lines) == len(ability.sections)
+
+
+def _spy_alternative(ability: Ability) -> RevealSwords | None:
+    """Undercover Asset's printed alternative to its Spy icon."""
+
+    if ability.structure is not AbilityStructure.ONE_OF:
+        return None
+    for line in ability.sections:
+        match line.rewards:
+            case (RevealSwords() as swords,):
+                return swords
+    return None
+
+
+def _spy_icons(ability: Ability) -> int:
+    return sum(1 for line in ability.sections if line.rewards == (PlaceSpy(),))
+
+
+# The printed "-OR-" lines whose row each is (Corrinth City, Delivery
+# Logistics), by the line's reward.
+_EITHER_LINE_ACTIONS: Final[Mapping[Reward, str]] = MappingProxyType(
+    {
+        GainResources(solari=5): "gain_five_reveal_solari",
+        TakeHighCouncilSeat(): "take_high_council_from_reveal",
+        RevealPersuasion(1): "gain_reveal_persuasion",
+        TakeContract(1): "take_reveal_contract",
+    }
+)
+
+
+def either_choice(ability: Ability | None) -> bool:
+    """Whether a Reveal choice record is a printed "-OR-" whose every line is
+    its own row (Corrinth City, Delivery Logistics)."""
+
+    return (
+        ability is not None
+        and ability.hook is None
+        and ability.structure is AbilityStructure.ONE_OF
+        and all(
+            len(line.rewards) == 1 and line.rewards[0] in _EITHER_LINE_ACTIONS
+            for line in ability.sections
+        )
+    )
+
+
+def _either_line_open(owner: PlayerState, line: EffectSection) -> bool:
+    """Whether a "-OR-" line can be chosen now: the seat taken only by a
+    seat-less owner who can pay for it."""
+
+    if line.rewards == (TakeHighCouncilSeat(),):
+        if owner.high_council:
+            return False
+    for cost in line.costs:
+        match cost:
+            case PayResources(solari=solari, spice=spice, water=water):
+                if (
+                    owner.resources.solari < solari
+                    or owner.resources.spice < spice
+                    or owner.resources.water < water
+                ):
+                    return False
+    return True
+
+
+def either_is_available(state: GameState, ability: Ability) -> bool:
+    """The gate of a printed "-OR-": always open -- one line needs nothing --
+    except that a Contract line is a CHOAM card's (Delivery Logistics), open
+    only with the CHOAM module."""
+
+    return state.config.choam_module or not any(
+        line.rewards == (TakeContract(1),) for line in ability.sections
+    )
+
+
+def either_rows(
+    state: GameState, player: int, effect: PersonalCardRevealChoiceEffect
+) -> tuple[DomainAction, ...]:
+    """A printed "-OR-"'s rows, one per line it can take now, printed order."""
+
+    ability = reveal_choice_ability(effect)
+    owner = state.players[player]
+    return tuple(
+        DomainAction(action_id=_EITHER_LINE_ACTIONS[line.rewards[0]], actor=player)
+        for line in ability.sections
+        if _either_line_open(owner, line)
+    )
+
+
+def resolve_either(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve the opened "-OR-" line ``action`` takes: Corrinth City's 5
+    Solari (``<root>:solari``) or its seat (``<root>:high_council``, +2
+    Persuasion this Reveal), Delivery Logistics' Persuasion
+    (``<root>:persuasion``) or its Contract (the market, ``<root>:contract``)."""
+
+    opened = _choice_frame_effect(state, action.actor)
+    if opened is None:
+        raise RuntimeError("Reveal choice frame has invalid context")
+    card_id, effect = opened
+    ability = reveal_choice_ability(effect)
+    (line,) = (
+        line
+        for line in ability.sections
+        if _EITHER_LINE_ACTIONS[line.rewards[0]] == action.action_id
+    )
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
+    owner = state.players[player]
+    remaining = state.decision_stack[:-1]
+    match line.rewards[0]:
+        case GainResources(solari=solari):
+            next_owner = replace(
+                owner,
+                resources=replace(
+                    owner.resources, solari=owner.resources.solari + solari
+                ),
+            )
+            event = GameEvent(
+                event_id=f"{source}:solari",
+                kind="reveal_solari_gained",
+                payload=(("amount", solari), ("card_id", card_id), ("player", player)),
+            )
+        case TakeHighCouncilSeat():
+            (price,) = line.costs
+            assert isinstance(price, PayResources)
+            if not _either_line_open(owner, line):
+                raise RuntimeError("Corrinth City High Council choice is unavailable")
+            next_owner = replace(
+                owner,
+                high_council=True,
+                resources=replace(
+                    owner.resources, solari=owner.resources.solari - price.solari
+                ),
+            )
+            remaining = add_reveal_persuasion(remaining, 2)
+            event = GameEvent(
+                event_id=f"{source}:high_council",
+                kind="high_council_acquired",
+                payload=(
+                    ("card_id", card_id),
+                    ("player", player),
+                    ("solari", price.solari),
+                ),
+            )
+            # Arrakeen Scouts: the new seat lets the seat join a subcommittee
+            # any time in the rest of this Reveal turn (OQ-076 alternative C,
+            # user ruling 2026-09-30); no Agent took it, so Contingencies may
+            # recall any other Agent (OQ-075). With every subcommittee taken
+            # the offer is still armed and only its decline is offered (user
+            # ruling 2026-09-30; unreachable with four players, OQ-076 (c)).
+            state = queue_reveal_subcommittee_offer(
+                state, player, source=f"{source}:high_council"
+            )
+        case RevealPersuasion(amount=amount):
+            return RuleResult(
+                state=replace(
+                    state, decision_stack=add_reveal_persuasion(remaining, amount)
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:persuasion",
+                        kind="reveal_persuasion_gained",
+                        payload=(
+                            ("amount", amount),
+                            ("card_id", card_id),
+                            ("player", player),
+                        ),
+                    ),
+                ),
+            )
+        case TakeContract(count=count):
+            from dune_imperium.rules.contracts import begin_contract_gain
+
+            return begin_contract_gain(
+                replace(state, decision_stack=remaining),
+                player,
+                count,
+                source=f"{source}:contract",
+            )
+        case reward:
+            raise TypeError(f"{reward!r} is not a printed -OR- line")
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=remaining,
+        ),
+        events=(event,),
+    )
+
+
 def legal_reveal_spy_actions(
     state: GameState,
     player: int,
@@ -617,16 +829,11 @@ def legal_reveal_spy_actions(
     if not isinstance(card_id, str):
         raise RuntimeError("Reveal Spy frame has invalid card ID")
     owner = state.players[player]
-    if effect in (
-        PersonalCardRevealChoiceEffect.PLACE_SPY,
-        PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
-        PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
-    ):
+    icon = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect_value))
+    if spy_icon_choice(icon):
+        # A Spy icon, or Undercover Asset's "-OR-": its record (composed A4e).
         recalled = context.get("reveal_spy_recalled") is True
-        plain_spy = effect in (
-            PersonalCardRevealChoiceEffect.PLACE_SPY,
-            PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
-        )
+        plain_spy = _spy_alternative(icon) is None
         strength_choice = (
             ()
             if recalled or plain_spy
@@ -822,21 +1029,14 @@ def legal_reveal_persuasion_or_contract_actions(
     )
     if pending is not None:
         return pending
-    if not 0 <= player < state.config.players or not state.decision_stack:
-        return ()
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
+    opened = _choice_frame_effect(state, player)
     if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT.value
+        opened is None
+        or opened[1] is not PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
     ):
         return ()
-    return (
-        DomainAction(action_id="gain_reveal_persuasion", actor=player),
-        DomainAction(action_id="take_reveal_contract", actor=player),
-    )
+    # Its record's lines (composed A4f).
+    return either_rows(state, player, opened[1])
 
 
 def apply_reveal_persuasion_or_contract(
@@ -848,35 +1048,7 @@ def apply_reveal_persuasion_or_contract(
     state = _open_pending(state, action, legal_reveal_persuasion_or_contract_actions)
     if action not in legal_reveal_persuasion_or_contract_actions(state, action.actor):
         raise ValueError("action is not a legal Persuasion-or-Contract choice")
-    context = dict(state.decision_stack[-1].context)
-    card_id = context.get("reveal_card_id")
-    if not isinstance(card_id, str):
-        raise RuntimeError("Reveal choice frame has invalid card ID")
-    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
-    remaining = state.decision_stack[:-1]
-    if action.action_id == "gain_reveal_persuasion":
-        return RuleResult(
-            state=replace(state, decision_stack=add_reveal_persuasion(remaining, 1)),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:persuasion",
-                    kind="reveal_persuasion_gained",
-                    payload=(
-                        ("amount", 1),
-                        ("card_id", card_id),
-                        ("player", action.actor),
-                    ),
-                ),
-            ),
-        )
-    from dune_imperium.rules.contracts import begin_contract_gain
-
-    return begin_contract_gain(
-        replace(state, decision_stack=remaining),
-        action.actor,
-        1,
-        source=f"{source}:contract",
-    )
+    return resolve_either(state, action)
 
 
 def legal_reveal_influence_gain_actions(
@@ -1265,32 +1437,15 @@ def legal_corrinth_city_reveal_actions(
     pending = pending_choice_rows(state, player, legal_corrinth_city_reveal_actions)
     if pending is not None:
         return pending
-    if not 0 <= player < state.config.players or not state.decision_stack:
-        return ()
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
+    opened = _choice_frame_effect(state, player)
     if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL.value
+        opened is None
+        or opened[1]
+        is not PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
     ):
         return ()
-    owner = state.players[player]
-    take_seat = (
-        ()
-        if owner.high_council or owner.resources.solari < 5
-        else (
-            DomainAction(
-                action_id="take_high_council_from_reveal",
-                actor=player,
-            ),
-        )
-    )
-    return (
-        DomainAction(action_id="gain_five_reveal_solari", actor=player),
-        *take_seat,
-    )
+    # Its record's lines (composed A4f).
+    return either_rows(state, player, opened[1])
 
 
 def apply_corrinth_city_reveal(
@@ -1302,62 +1457,7 @@ def apply_corrinth_city_reveal(
     state = _open_pending(state, action, legal_corrinth_city_reveal_actions)
     if action not in legal_corrinth_city_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Corrinth City Reveal choice")
-    context = dict(state.decision_stack[-1].context)
-    card_id = context.get("reveal_card_id")
-    if not isinstance(card_id, str):
-        raise RuntimeError("Corrinth City Reveal frame has invalid card ID")
-    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
-    owner = state.players[action.actor]
-    remaining = state.decision_stack[:-1]
-    if action.action_id == "gain_five_reveal_solari":
-        next_owner = replace(
-            owner,
-            resources=replace(owner.resources, solari=owner.resources.solari + 5),
-        )
-        event = GameEvent(
-            event_id=f"{source}:solari",
-            kind="reveal_solari_gained",
-            payload=(
-                ("amount", 5),
-                ("card_id", card_id),
-                ("player", action.actor),
-            ),
-        )
-    else:
-        if owner.high_council or owner.resources.solari < 5:
-            raise RuntimeError("Corrinth City High Council choice is unavailable")
-        next_owner = replace(
-            owner,
-            high_council=True,
-            resources=replace(owner.resources, solari=owner.resources.solari - 5),
-        )
-        remaining = add_reveal_persuasion(remaining, 2)
-        event = GameEvent(
-            event_id=f"{source}:high_council",
-            kind="high_council_acquired",
-            payload=(
-                ("card_id", card_id),
-                ("player", action.actor),
-                ("solari", 5),
-            ),
-        )
-        # Arrakeen Scouts: the new seat lets the seat join a subcommittee
-        # any time in the rest of this Reveal turn (OQ-076 alternative C,
-        # user ruling 2026-09-30); no Agent took it, so Contingencies may
-        # recall any other Agent (OQ-075). With every subcommittee taken
-        # the offer is still armed and only its decline is offered (user
-        # ruling 2026-09-30; unreachable with four players, OQ-076 (c)).
-        state = queue_reveal_subcommittee_offer(
-            state, action.actor, source=f"{source}:high_council"
-        )
-    return RuleResult(
-        state=replace(
-            state,
-            players=replace_player(state.players, next_owner),
-            decision_stack=remaining,
-        ),
-        events=(event,),
-    )
+    return resolve_either(state, action)
 
 
 def legal_contract_reveal_choice_actions(
@@ -2104,14 +2204,22 @@ def apply_reveal_spy_action(
 
     arguments = dict(action.arguments)
     if action.action_id == "gain_two_reveal_strength":
+        # Undercover Asset's "+2 swords" line, counted only with a unit in
+        # the Conflict: its record (composed A4e).
+        alternative = _spy_alternative(reveal_choice_ability(effect))
+        if alternative is None:
+            raise RuntimeError("Reveal Spy choice has no swords line")
+        amount = alternative.amount
         owner = state.players[action.actor]
-        counted_strength = 2 if owner.units_in_conflict else 0
+        counted_strength = amount if owner.units_in_conflict else 0
         next_owner = replace(
             owner,
             combat_strength=owner.combat_strength + counted_strength,
         )
         remaining = state.decision_stack[:-1]
-        remaining = add_reveal_optional_sword_strength(remaining, 2, card_id=card_id)
+        remaining = add_reveal_optional_sword_strength(
+            remaining, amount, card_id=card_id
+        )
         if counted_strength:
             remaining = add_reveal_strength(remaining, counted_strength)
         return RuleResult(
@@ -2125,7 +2233,7 @@ def apply_reveal_spy_action(
                     event_id=f"{source}:strength",
                     kind="reveal_strength_gained",
                     payload=(
-                        ("amount", 2),
+                        ("amount", amount),
                         ("card_id", card_id),
                         ("player", action.actor),
                     ),
@@ -2235,7 +2343,7 @@ def _after_reveal_spy_icon(
 
     del player
     remaining = state.decision_stack[:-1]
-    if effect is not PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES:
+    if _spy_icons(reveal_choice_ability(effect)) < 2:
         return remaining
     card_id = context_str(
         frame_context(state.decision_stack[-1]), "reveal_card_id", owner=_CHOICE_FRAME
@@ -3667,13 +3775,21 @@ def _reveal_choice_effect_is_available(
     """
 
     command_open = persuasion is not None and persuasion >= COMMAND_PERSUASION
-    if target_reward_choice(reveal_choice_ability(effect)):
+    ability = reveal_choice_ability(effect)
+    if target_reward_choice(ability):
         # Spy Network, Arrakis Observer, Calculus of Power, Shrouded
         # Counsel, Disruption Tactics, CHOAM Demands, Pointing the Way, Ixian
         # Ambassador: from their records (composed A4d).
         return target_reward_is_available(
             owner, cards_in_play, card_id, effect, persuasion
         )
+    if spy_icon_choice(ability):
+        # A Spy icon always opens (a supply Spy with no free post waits on
+        # its rows); Intelligence Training's on Command (composed A4e).
+        return _target_condition_holds(ability.sections[0].condition, owner, persuasion)
+    if either_choice(ability):
+        # Corrinth City, Delivery Logistics (composed A4f).
+        return either_is_available(state, ability)
     return (
         (
             # For Humanity: the Alliance and two Influence with one Faction
@@ -3702,10 +3818,6 @@ def _reveal_choice_effect_is_available(
             and owner.troops_garrison + owner.troops_conflict >= 2
         )
         or (
-            effect is PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY
-            and command_open
-        )
-        or (
             effect
             is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
             and owner.troops_conflict + owner.commanders_conflict >= 2
@@ -3718,10 +3830,6 @@ def _reveal_choice_effect_is_available(
             and card_id in cards_in_play
         )
         or (
-            effect is PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
-            and state.config.choam_module
-        )
-        or (
             effect
             is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
             and any(
@@ -3732,12 +3840,6 @@ def _reveal_choice_effect_is_available(
             effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
             and owner.resources.spice >= 3
             and not reveal_influence_choice_blocked(owner, effect)
-        )
-        or effect
-        in (
-            PersonalCardRevealChoiceEffect.PLACE_SPY,
-            PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
-            PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
         )
         or (
             # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat one
@@ -3762,8 +3864,6 @@ def _reveal_choice_effect_is_available(
             # Sardaukar Commanders are troops for the retreat [Bloodlines p. 4].
             and owner.troops_conflict + owner.commanders_conflict >= 2
         )
-        or effect
-        is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
         # The Persuasion branch is always choosable, so the choice always
         # opens, with or without Maker Hooks (option (B), user ruling
         # 2026-09-30); ``legal_reveal_sandworm_actions`` gates the sandworm
