@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A3g 병합 뒤 — 개인 카드 Agent 칸 모두 기록)
+기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A4a·A4c 병합 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,10 +28,10 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | composed-a3g 병합 (2026-10-16) |
-| pytest | 7,774개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| master | composed-a4(A4a·A4c) 병합 (2026-10-16) |
+| pytest | 7,781개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 509파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A3g(67 모두 통과) |
+| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A4a·A4c(67 모두 통과) |
 | action codec | **v148** (다음 번호 v149) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,553 · CHOAM 4,848 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 36,379 |
@@ -50,8 +50,9 @@
   학습 안 함). 그 앞의 따로 작업 둘(Agent 차례 선택 효과 codec v146, Reveal 선택 효과 codec v147), A0(능력 기록, 행동 모양
   표, 대기 능력 실행기 핵심), A1(책략 선택 frame을 실행기로, codec v148), A2(개인 카드 Agent 칸 44개를 능력 기록으로, codec 그대로), A3a(hook 등록부와
   특이 흐름 6개, Guild Impersonator)·A3b(대상 없는 선택 지불 4개)·A3c(필수 대상 고르기 6개)·A3d(버리기 화살표 7개, 책략 폐기 화살표 2개)·A3e(폐기 칸 5개)·A3f-1(선택 획득 2개)·A3f-2(Arrakis Observer)·A3f-3(Piter, Control the Spice)·A3f-4(S6 4칸)·A3f-5(S7 4칸)는 끝났다 — **A3 끝**(기록 88개, hook 8개). A3g(표에 없던 Agent 칸 15개: 한 번 해결 3칸, hook 12칸)로 **개인 카드
-  Agent 칸이 모두 기록**이 됐다(103개, hook 20개). **다음:** A4(Reveal 선택과 자동 이득, 획득·폐기·버림·차례 시작 효과). 옮기기가 다
-  끝나면 "정리 단계"(물려받은 사건 이름·처리 차이와 hook 20개 통일, A8과 같은 codec 올림)를 한다. 계획서 5절 "A3g에서 만든 것"과 "정리 단계", 조사 `tmp/claude/4767ed6a/a3g/agent-rest-survey.md`.
+  Agent 칸이 모두 기록**이 됐다(103개, hook 20개). A4a(획득·폐기·버림 효과 18개)·A4c(Reveal 자동 이득 카드 51장)도 끝났다. **다음:**
+  A4d(Reveal 선택 기록 26개와 기반), 그다음 A4e~A4h(계획서 5절 표의 A4 줄). 옮기기가 다
+  끝나면 "정리 단계"(물려받은 사건 이름·처리 차이와 hook 20개 통일, A8과 같은 codec 올림)를 한다. 계획서 5절 "A4a·A4c에서 만든 것"과 "정리 단계", 조사 `tmp/claude/4767ed6a/a4/reveal-survey.md`(브랜치 비교용 탐침 포함).
   같음 확인 기록은 단계 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`(Agent frame 값 포함)로도 잰다(6절 6번).
   [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A2]
 

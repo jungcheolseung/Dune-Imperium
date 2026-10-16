@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), 다음 A4; 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), A4a(획득·폐기·버림 효과 18개)·A4c(Reveal 자동 이득 카드 51장) 끝남(2026-10-16, 5절 "A4a·A4c에서 만든 것"), 다음 A4d(Reveal 선택); 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -131,7 +131,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 — 44개 끝남(2026-10-16, 아래 "A2에서 만든 것"), 7개는 hook으로·1개는 A3로 |
 | A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개, Tread in Darkness, A2가 남긴 특이 흐름 7개. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`)에서 처리기마다 사건 출처·순서가 달라 모양별로 나눈다: A3a hook 등록부와 A2의 특이 흐름(끝남), A3b 대상 없는 선택 지불 S1(끝남), A3c 필수 대상 고르기 S5(진영·첩자 칸·상대 병력·계약, 끝남), A3d 대상을 고르는 선택 화살표 S2a·S2b(보상을 곧바로 주는 것, 비용 뒤에 아이콘으로 거는 것 — 기록에 "걸리는 보상 아이콘" 칸이 따로 필요; 버리기 7칸·책략 폐기 2칸 끝남, 개인 카드 폐기 3칸과 Piter는 A3e로), A3e 검은 폐기 아이콘·한 칸 안 연속 고르기 S3·S4(폐기 칸 5개 끝남; Arrakis Observer·Piter·Control the Spice는 A3f로), A3f 평범한 줄이 한쪽인 고르기 S6·고르기 아이콘이 섞인 칸 S7(Tread in Darkness)·선택 획득 S8 — 모두 끝남(2026-10-16) |
 | A3g | A2·A3 목록에 없던 개인 카드 Agent 칸 15개(Treacherous Maneuver, The Beast's Spoils, Long Reach, Holy War, Arrakis Revolt, Immortality 접합·연구 칸 6개, 그 밖 4개 — 아래 "A3f-5에서 만든 것" 끝). 사용자 결정(2026-10-16): A7로 미루지 않고 A3에 이어 지금 — 끝남(2026-10-16, 아래 "A3g에서 만든 것") |
-| A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과 |
+| A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a4/reveal-survey.md`)의 하위 단계: A4a 획득·폐기·버림 18개(조사의 A4a+A4b) — 끝남, A4c Reveal 자동 이득 카드 51장 — 끝남(아래 "A4a·A4c에서 만든 것"); 남은 것 A4d(Reveal 선택 기록 26개와 기반, "대상 고르기 → 보상" 8개), A4e(Spy 아이콘 4개), A4f(둘 중 하나 4개), A4g(한 행에 비용과 대상 10개), A4h(Guild Spy, Litany, 아이콘 조건) |
 | A5 | 보드 칸, Conflict 보상, 계약 |
 | A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech |
 | A7 | Immortality(접합, 연구, Tleilaxu, 표본), Arrakeen Scouts |
@@ -412,6 +412,26 @@ hook으로 두되 그 수를 세어 줄여 간다.
 - **결과:** 개인 카드의 Agent 칸은 모두 기록이 됐다(103개; 기록이 없는 효과는 지도자 Signet Ring뿐), hook 20개.
   `resolve_agent_card_effect`에 남은 옛 분기는 선택 화살표 기록의 시험 해결 답(Tleilaxu Surgeon "해결 불가", 나머지 "구현 안 됨")뿐이다.
 
+### A4a·A4c에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a4/reveal-survey.md`: 시점별 흐름 O.1~O.9, 멤버별 C·D·E, 묶음 G, 위험 R, 2,000판 탐침과 그
+결과 파일 — 브랜치에서 같은 탐침을 돌려 바이트 단위로 비교한다)를 따라, 처리 코드를 거의 건드리지 않는 두 묶음을 먼저 했다.
+
+- **A4a — 획득·폐기·버림 효과 18개:** `content/uprising/trigger_abilities.py`에 자동 기록(시점 ACQUIRE/TRASH/DISCARD, 선택 없음,
+  한 줄 한 조각). 획득 효과는 구매 경로가 7개라(Reveal 줄, 따로 둔 카드, Agent 칸, 책략·지도자·Scouts 등) 세 조각 — 주인의 이득과
+  Overthrow의 뽑기(`resolve_acquisition_bonus`), 고정 진영 영향력, 카드가 자리에 간 뒤의 트랙 — 이 각각 기록을 읽고, 순서는 경로마다
+  옛 그대로다. Spy·계약은 경로가 그 선택을 연다(기록의 `PlaceSpy`·`TakeContract`가 그 표시). 폐기 효과는 `trash_personal_card`,
+  버림 효과는 `resolve_personal_card_discard_trigger`가 기록을 읽는다. Overthrow와 Sardaukar Soldier가 따로 갖던 같은 "책략 카드
+  1장" 처리를 `intrigue_deck.triggered_intrigue_draw` 하나로(자기 차례 안이면 주인의 단계로 미룸 — 출처가 바로 다음인지 정한다,
+  OQ-106·OQ-042; 밖이면 바로 뽑거나 덱이 비면 대기열). DSL 보상 `AcquireBankCommander`(Sardaukar Standard).
+- **A4c — Reveal 자동 이득(카드 51장, 인쇄 줄 55개):** `content/uprising/reveal_abilities.py`에 카드 id별 자동 기록(줄마다 따로).
+  카드 목록(`imperium.py` 등 넷)은 `reveal_effects`를 이 기록에서 받는다(`reveal_effects_of` — 기록 줄을 처리 코드가 읽는
+  `PersonalCardRevealEffect`로 옮긴다). 그래서 `rules/reveal_turn.py`(시작·늦은 지급·늦게 온 카드·Leadership·주인의 단계)는 그대로다.
+  140장 모두 옮기기 전과 같은 값임을 확인했다. DSL 조건 `HasSwordmaster`·`SpyingOnMakerSpace`·`GarrisonedUnitsAtLeast`·
+  `CommandReached`, 보상 `RevealPersuasion`·`RevealSwords`와 그 셈(`RevealCount`: 공개한 진영 카드마다, 플레이 중인 진영 카드마다,
+  완수한 계약마다, 다른 검 카드마다) — 문구는 `tokens.reveal_effect_text(_ko)`에서.
+- **남은 것:** A4d~A4h(위 표). 처리 코드가 기록을 직접 읽게 하는 것(옮기는 함수 없이)은 정리 단계 후보다.
+
 ### 정리 단계 — 물려받은 차이 통일 (A단계 옮기기 뒤, A8과 함께; 사용자 결정 2026-10-16)
 
 A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 칸마다 따로 짜면서 생긴 차이까지 그대로 옮긴다. 이 차이는 규칙이 아니라
@@ -430,6 +450,8 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
     Maneuver(방문 진영 영향력이 칸의 1을 대신), Dissecting Kit·Beguiling Pheromones(접합 카드 폐기 모양 하나), Long Reach·Stitched
     Horror("서로 다른 k개" 고르기, 4.1), Corrinth City·Arrakis Revolt·Slig Farmer(지불 모양의 변형). 효과 이름으로 고르는 hook의
     제공자·처리기 코드도 함께 없앤다.
+  - Reveal 처리 코드는 기록을 옮긴 `PersonalCardRevealEffect`를 읽는다(A4c). 기록을 직접 읽게 하면 그 옮김이 없어진다. 공유 조각
+    `TakeContract`의 문구는 "Take 1 Contract"인데 카드는 "face-up"을 인쇄한다(A4a 테스트에 예외로 적음).
   - A3g~A7에서 찾는 같은 종류의 차이도 이 목록에 더한다.
 - **방법:**
   1. 차이 목록을 만들고 종류마다 규칙 하나를 정한다(예: 사건 이름 `<칸>:<무엇>`, 칸이 끝나면 언제나 "칸 해결" 사건 하나).
@@ -497,6 +519,14 @@ A2 관문(2026-10-16, 시작 master `7ba624ad`): 1번 200판 모두 same(191,836
 통과, E2E 67종 통과, 소크 720판 실패 0. 6번 `time_legal.py` Agent frame 호출당 1~2% 느림(관문 10% 안). 독립 리뷰: 막는 문제·중간 없음. 옛·새 엔진 차등 탐침 330판(Agent 효과 상태 172,999곳에서 합법 행동·사건·상태·네 좌석 보기와 모든 효과×키의
 막힘 이유·대기 판정까지)과 강제 탐침 2,665곳이 모두 같았다. 낮은 지적 3개(아이콘 조건이 막힘 이유를 늘 낼 것, 두 곳에 복사된 조건 판정,
 화면 비교 범위)와 사소한 지적들을 반영했다(worklog 2026-10-16 A2).
+
+A4a·A4c 관문(2026-10-16, 시작 master `26b41eca`, 같음 확인 기록을 이 master로 다시 만듦 — 옛 기록과 수 하나까지 같음): 1번 200판
+모두 same(네 번: A4a 뒤, A4c 뒤, 리뷰 반영 뒤 등). 에이전트 재기록 같음. 조사 탐침 2,000판(카드를 손·줄에 넣어 모든 멤버를 봄)의 결과
+파일이 시작 master와 바이트 단위로 같음(A4a 뒤, A4c 뒤), 조사 시나리오 7개도 같음. 2번 v148 묶음 2,000판 exact. 3번 codec 그대로.
+4번 기존 기대값 그대로. 5번 pytest 7,781개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 49.3~49.9 µs(시작) 대 49.3~50.6 µs —
+잡음 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 292판 약 39만 단계 — 구매 경로 전부, 덱이 빈 Overthrow, 차례 밖, 은행이 빈
+Sardaukar Standard, Fenring·Suspensor Suits, Scouts 시장 280갈래 — 와 카드 문구·카탈로그·코덱 4설정 출력, 모든 모듈 단독 import
+모두 같음), 낮은 지적 1개(나중 기록의 조각이 조용히 무시될 수 있음 — 모양이 모르는 조각에서 멈추게)와 사소한 것들 반영.
 
 A3g 관문(2026-10-16, 시작 master `45cf88e6`): 1번 200판 모두 same(세 번: 모양 3칸 뒤, hook 12칸 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음
 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만 88→103). 5번 pytest 7,774개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
