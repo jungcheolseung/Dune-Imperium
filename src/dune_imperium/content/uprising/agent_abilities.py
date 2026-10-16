@@ -74,6 +74,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    RecallAgent,
     RecruitTroops,
     Research,
     ReturnThisCardToHand,
@@ -86,6 +87,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
+    TrashThisCard,
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -517,6 +519,39 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 structure=AbilityStructure.ONE_OF,
                 hook="possible_futures",
             ),
+            # --- Printed icons with a choice icon (composed effects, A3f) -------
+            # Each icon resolves on its own (OQ-027); a choice icon is answered
+            # by its own rows (the Influence choice, the Agent recall, the trash),
+            # an automatic one by ``resolve_agent_card_effect(effect=...)``.
+            # Dangerous Rhetoric: "Trash this card, Gain 1 Influence with a chosen
+            # Faction" -- queued Influence first, the order the old engine kept.
+            _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: _icons(
+                ("influence", _line(GainInfluence())),
+                ("trash_self", _line(TrashThisCard())),
+            ),
+            # Steersman: "Draw 1 card, Recall 1 Agent".
+            _BOX.DRAW_ONE_AND_RECALL_AGENT: _icons(
+                ("cards", _line(DrawPersonalCards(1))),
+                ("recall", _line(RecallAgent())),
+            ),
+            # Twisted Mentat: "You may recall the Agent you sent this turn" (an
+            # optional icon, ``agent_effects.OPTIONAL_AGENT_ICONS``).
+            _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: _icons(
+                ("recall", _line(RecallAgent(sent_this_turn=True, optional=True))),
+            ),
+            # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
+            # Draw 1 card" -- the Bond opens the box and is judged again on each
+            # icon when it resolves (OQ-028); the trash stays optional (OQ-058).
+            _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(TrashPersonalCard(), condition=_BG_BOND),
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("trash", "cards"),
+            ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.
             _BOX.PAY_TWO_WATER_TO_DRAW_TWO: _pay(
@@ -536,7 +571,7 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # --- Special flows (hooks) -------------------------------------------
             # Seek Allies: "Trash this card." -- the trash's events alone.
-            _BOX.TRASH_SELF: _hook("seek_allies"),
+            _BOX.TRASH_SELF: _hook("seek_allies", TrashThisCard()),
             # Overthrow: one more Influence with the visited Faction, with no
             # event of its own; reachable only on a Faction space (the
             # placement code's rule, not a printed condition).

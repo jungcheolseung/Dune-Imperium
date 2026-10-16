@@ -45,6 +45,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    RecallAgent,
     RecruitTroops,
     TrashCard,
     TrashedCardHasFaction,
@@ -93,7 +94,9 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_RESEARCH,
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
+    AUTOMATIC_AGENT_ICONS,
     CONTROL_THE_SPICE_PRICE,
+    OPTIONAL_AGENT_ICONS,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
@@ -130,7 +133,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 84
+    assert len(AGENT_BOX_ABILITIES) == 88
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -155,6 +158,11 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO: ("cards", "cards_second"),
         _BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED: ("cards", "research"),
         _BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE: ("water", "return_self"),
+        # With a choice icon answered by its own rows (composed A3f).
+        _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: ("influence", "trash_self"),
+        _BOX.DRAW_ONE_AND_RECALL_AGENT: ("cards", "recall"),
+        _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: ("recall",),
+        _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -982,3 +990,62 @@ def test_southern_faith_offers_its_influence_beside_the_draw_with_the_bond() -> 
         ("resolve_agent_card_effect", {}),
         ("choose_agent_card_influence", {"faction": "bene_gesserit"}),
     ]
+
+
+def test_a_choice_icon_stays_with_its_own_rows() -> None:
+    """Composed A3f: a choice icon (Dangerous Rhetoric's Influence, the Agent
+    recalls, Tread in Darkness's trash) is never a ``resolve_agent_card_effect``
+    row: only the automatic icons are, and "Trash this card." reads as the
+    card prints it."""
+
+    choice_keys = {"influence", "recall", "trash"}
+    for ability in AGENT_BOX_ABILITIES.values():
+        assert not choice_keys & set(ability.icons) & set(AUTOMATIC_AGENT_ICONS)
+    rhetoric = _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+    trash_line = AGENT_BOX_ABILITIES[rhetoric].sections[1]
+    (piece,) = trash_line.rewards
+    assert reward_text_ko(piece) in AGENT_EFFECT_TEXT_KO[rhetoric]
+    for effect in (
+        _BOX.DRAW_ONE_AND_RECALL_AGENT,
+        _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN,
+    ):
+        (recall,) = AGENT_BOX_ABILITIES[effect].sections[-1].rewards
+        assert reward_text_ko(recall) in AGENT_EFFECT_TEXT_KO[effect]
+
+
+def test_dangerous_rhetoric_trashes_itself_by_its_own_icon() -> None:
+    """The card trashes itself and the Influence icon still pays (OQ-022);
+    the trash names the box, and the icon's event comes last."""
+
+    card = "imperium:dangerous_rhetoric:0"
+    placed = _played(card, PlayerState(player_id=0))
+    icons = legal_agent_card_icon_actions(placed, 0)
+    assert [dict(row.arguments)["effect"] for row in icons] == ["trash_self"]
+    trashed = resolve_agent_card_icon(placed, icons[0])
+    source = agent_card_source(1, 0, card)
+    assert [e.event_id for e in trashed.events][0] == f"{source}:trash:{card}"
+    assert trashed.events[-1].event_id == f"{source}:trash_self:resolved"
+    context = dict(trashed.state.decision_stack[-1].context)
+    assert context["agent_card_self_trashed"] is True
+    assert context["pending_agent_icons"] == "influence"
+
+
+def test_the_optional_icons_are_marked_in_their_records() -> None:
+    """The icons ``OPTIONAL_AGENT_ICONS`` lets lapse are the ones their records
+    print as optional (Tread in Darkness's black trash icon, Twisted Mentat's
+    "You may recall"), so a later stage can read it from the records."""
+
+    marked = {}
+    for effect, ability in AGENT_BOX_ABILITIES.items():
+        keys = frozenset(
+            key
+            for key, line in zip(ability.icons, ability.sections, strict=False)
+            if any(
+                isinstance(reward, TrashPersonalCard) and not reward.mandatory
+                or isinstance(reward, RecallAgent) and reward.optional
+                for reward in line.rewards
+            )
+        )
+        if keys:
+            marked[effect] = keys
+    assert marked == dict(OPTIONAL_AGENT_ICONS)

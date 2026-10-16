@@ -22,7 +22,6 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     CompleteContract,
-    FactionBond,
     ForceEnemyRetreat,
     GainInfluence,
     GrantCombatDeployment,
@@ -56,7 +55,6 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_trash,
     box_ability,
     box_icon_block,
-    condition_block,
     discard_box,
     discard_cost_block,
     discard_rows,
@@ -248,35 +246,6 @@ AGENT_ICON_RECALL: Final = "recall"  # Steersman: one Agent to recall
 # Tread in Darkness: its optional black trash icon (``trash_agent_card`` or
 # ``decline_agent_card_trash``).
 AGENT_ICON_TRASH: Final = "trash"
-
-# Agent boxes whose printed icons are all queued when the card is played,
-# in printed order, besides the recorded ones (``agent_box_abilities``,
-# their record's ``icons``). Arrow boxes queue their reward icons after the
-# cost.
-_BOX = PersonalCardAgentEffect
-_PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
-    MappingProxyType(
-        {
-            # Steersman: card draw and an Agent recall.
-            _BOX.DRAW_ONE_AND_RECALL_AGENT: (AGENT_ICON_CARDS, AGENT_ICON_RECALL),
-            # Dangerous Rhetoric: a chosen Faction's Influence and "Trash this card."
-            _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: (
-                AGENT_ICON_INFLUENCE,
-                AGENT_ICON_TRASH_SELF,
-            ),
-            # Twisted Mentat (Immortality): an optional recall of the Agent
-            # sent this turn.
-            _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: (AGENT_ICON_RECALL,),
-            # Tread in Darkness: "If you have another Bene Gesserit card in
-            # play: [trash] [draw 1]" [Tread in Darkness card], two icons
-            # with no arrow; the trash stays optional [Main p. 20] (OQ-058).
-            _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: (
-                AGENT_ICON_TRASH,
-                AGENT_ICON_CARDS,
-            ),
-        }
-    )
-)
 
 # Leaders whose Signet Ring ability prints several independent icons: the
 # Signet Ring card's box (or a Ghola copying it) queues them like a card's
@@ -2760,9 +2729,9 @@ def agent_card_icons_at_placement(
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return _SIGNET_ICONS.get(leader_id or "", ())
     ability = box_ability(effect)
-    if ability is not None:
-        return ability.icons
-    return _PLACEMENT_ICONS.get(effect, ())
+    # A box's printed icons come from its record; an arrow's are armed after
+    # its cost.
+    return ability.icons if ability is not None else ()
 
 
 def legal_agent_card_icon_actions(
@@ -2960,14 +2929,6 @@ def agent_icon_block(
         # A recorded box judges its printed icons from its record; a key it
         # does not print keeps the generic answer below.
         return box_icon_block(owner, context, ability, key)
-    if effect is _TRASH_TO_DRAW_IF_BOND and key in (
-        AGENT_ICON_TRASH,
-        AGENT_ICON_CARDS,
-    ):
-        # Judged per icon when it resolves (OQ-028): the trash icon may take
-        # the very card that gave the Bond, and the draw then waits for a
-        # Bond that cannot come back this turn.
-        return condition_block(FactionBond(Faction.BENE_GESSERIT), owner, context)
     if key in (AGENT_ICON_CARDS_SECOND, AGENT_ICON_RETURN_SELF, AGENT_ICON_WATER):
         return _NOT_PRINTED
     if key == AGENT_ICON_RESEARCH:
@@ -3007,10 +2968,9 @@ def resolve_agent_card_icon(
 ) -> RuleResult:
     """Resolve one printed icon of the played card's Agent box.
 
-    A box written as an ability record resolves its icons in
+    A box written as an ability record resolves its printed icons in
     ``agent_box_abilities.resolve_box_icon``; this resolves the others'
-    (Steersman's draw, Dangerous Rhetoric's "Trash this card.", Tread in
-    Darkness's draw, Fill Coffers' gains, and an arrow box's armed rewards).
+    (Fill Coffers' gains, and an arrow box's armed rewards).
     An icon is offered only while its condition holds
     (``agent_icon_condition_holds``), judged when it resolves in the owner's
     order [Main pp. 7, 9]. Urgent
@@ -3099,20 +3059,6 @@ def resolve_agent_card_icon(
             # Piter's Research follows the frame write-back below: it may
             # open its direction choice and bonus frames above the turn.
             pass
-        case "trash_self":
-            if card_instance_id in owner.in_play:
-                # The card trashes itself by its own printed icon, so any
-                # icon still queued keeps paying out (OQ-022).
-                context["agent_card_self_trashed"] = True
-                trashed = trash_personal_card(
-                    state, player, card_instance_id, source=source
-                )
-                _keep_trash_recruits(context, trashed)
-                effect_state = trashed.state
-                next_owner = effect_state.players[player]
-                extra_events = trashed.events
-            else:
-                available = False
         case "pledge":
             effect_state = replace(
                 state,

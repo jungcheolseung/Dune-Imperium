@@ -1051,6 +1051,24 @@ class DrawPerSandwormInConflict:
 
 
 @dataclass(frozen=True, slots=True)
+class TrashThisCard:
+    """Trash this card, as a printed effect of its own ("Trash this card."
+    [Dangerous Rhetoric card], [Seek Allies card]): mandatory [Main p. 20];
+    the card's other effects still pay once it is gone (OQ-022)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecallAgent:
+    """Recall one of the player's Agents from a board space: any but the one
+    sent this turn ("Recall 1 Agent" [Steersman card]), or with
+    ``sent_this_turn`` exactly that one ("You may recall the Agent you sent
+    this turn" [Twisted Mentat card], ``optional``)."""
+
+    sent_this_turn: bool = False
+    optional: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1125,6 +1143,8 @@ type Reward = (
     | CompleteContract
     | PledgeFirstPlaceInfluence
     | AcquireCardForSolari
+    | TrashThisCard
+    | RecallAgent
 )
 
 

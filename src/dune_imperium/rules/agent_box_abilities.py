@@ -97,6 +97,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
+    TrashThisCard,
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -642,13 +643,27 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
     finish_agent_icon(context, key)
     available = _line_holds(line, owner, context)
 
+    base = state
     next_owner: PlayerState = owner
     shortfall: tuple[GameEvent, ...] = ()
-    if available:
+    if any(isinstance(reward, TrashThisCard) for reward in line.rewards):
+        # Dangerous Rhetoric's "Trash this card.": the card trashes itself by
+        # its own printed icon, so any icon still queued keeps paying out
+        # (OQ-022); gone from play already, the icon does nothing.
+        if available and card_id in owner.in_play:
+            context["agent_card_self_trashed"] = True
+            trashed = trash_personal_card(state, player, card_id, source=source)
+            keep_trash_recruits(context, trashed)
+            base = trashed.state
+            next_owner = base.players[player]
+            shortfall = trashed.events
+        else:
+            available = False
+    elif available:
         next_owner, shortfall = _owner_gains(
             owner, line, context, card_id, f"{source}:{key}", player
         )
-    effect_state = replace(state, players=replace_player(state.players, next_owner))
+    effect_state = replace(base, players=replace_player(base.players, next_owner))
     intrigue_events: tuple[GameEvent, ...] = ()
     if available and (intrigue := _intrigue_draws(line)):
         drawn = draw_or_queue_intrigue_cards(

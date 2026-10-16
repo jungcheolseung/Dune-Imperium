@@ -100,6 +100,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    RecallAgent,
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
@@ -125,6 +126,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
+    TrashThisCard,
     Trigger,
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
@@ -789,6 +791,16 @@ def reward_text_ko(reward: Reward) -> str:
                 "{imperium_row} 또는 {reserve} 1장을 {solari}로 지불해 핸드로 "
                 "{acquire}"
             )
+        case TrashThisCard():
+            # Quotes ``tokens_ko.py``'s Dangerous Rhetoric line.
+            return "이 카드 {trash}"
+        case RecallAgent(sent_this_turn=True, optional=optional):
+            # Quotes ``tokens_ko.py``'s Twisted Mentat line.
+            text = "이번 차례에 보낸 {agent} 소환"
+            return f"{text} 가능" if optional else text
+        case RecallAgent():
+            # Quotes ``tokens_ko.py``'s Steersman line.
+            return "{agent} 소환"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
