@@ -34,6 +34,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompleteContract,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    EachOpponentDiscardsCard,
+    EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
@@ -42,11 +44,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     GraftedWithFaction,
     HasAlliance,
     InfluenceAtLeast,
+    OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
     RecruitTroops,
+    ReturnOtherGraftedCardAtRevealStart,
     TrashCard,
     TrashedCardHasFaction,
     TrashPersonalCard,
@@ -133,7 +137,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 91
+    assert len(AGENT_BOX_ABILITIES) == 103
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -1049,3 +1053,58 @@ def test_the_optional_icons_are_marked_in_their_records() -> None:
         if keys:
             marked[effect] = keys
     assert marked == dict(OPTIONAL_AGENT_ICONS)
+
+
+def test_every_personal_card_box_has_a_record() -> None:
+    """Composed A3g: with the boxes no stage of the plan listed, only a
+    leader's Signet Ring keeps its own code."""
+
+    assert set(PersonalCardAgentEffect) - set(AGENT_BOX_ABILITIES) == {
+        _BOX.LEADER_SIGNET
+    }
+
+
+def test_three_boxes_resolve_as_one_action_with_their_own_pieces() -> None:
+    """Covert Operation, Holy War and Chairdog (composed A3g) resolve as one
+    action; their pieces read as the cards print them, Holy War's sentences
+    in printed order (its losses are answered before its Spy moves,
+    OQ-036)."""
+
+    pieces = {
+        _BOX.EACH_OPPONENT_DISCARDS_PERSONAL_CARD: (EachOpponentDiscardsCard(),),
+        _BOX.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
+            EachOpponentLosesTroop(),
+            OpponentsMoveSpiesFromVisitedSpace(),
+        ),
+        _BOX.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START: (
+            ReturnOtherGraftedCardAtRevealStart(),
+        ),
+    }
+    for effect, rewards in pieces.items():
+        ability = AGENT_BOX_ABILITIES[effect]
+        assert ability.hook is None and not ability.icons
+        assert ability.mark is AbilityMark.MANDATORY
+        (line,) = ability.sections
+        assert line.rewards == rewards and line.condition is None
+        for reward in rewards:
+            assert reward_text(reward) in AGENT_EFFECT_TEXT[effect]
+            assert reward_text_ko(reward) in AGENT_EFFECT_TEXT_KO[effect]
+
+
+def test_the_optional_hooks_say_so_in_their_records() -> None:
+    """The boxes kept as hooks (composed A3, A3g) that are printed as an
+    optional effect -- an arrow cost [FAQ p. 3] -- are marked so in their
+    records; no separate table lists them any more."""
+
+    assert {
+        ability.hook
+        for ability in AGENT_BOX_ABILITIES.values()
+        if ability.hook is not None and ability.mark is AbilityMark.OPTIONAL
+    } == {
+        "control_the_spice",
+        "treacherous_maneuver",
+        "corrinth_city",
+        "arrakis_revolt",
+        "dissecting_kit",
+    }
+    assert len(box_hook_names()) == 20
