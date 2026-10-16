@@ -17,7 +17,7 @@ from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ACQUIRE_ABILITIES,
     TRASH_SPY_TO_ACQUIRE,
 )
-from dune_imperium.content.uprising.abilities import AbilityTiming
+from dune_imperium.content.uprising.abilities import AbilityStructure, AbilityTiming
 from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
     DuringAgentTurn,
@@ -201,6 +201,18 @@ def test_the_reveal_compiler_refuses_what_the_reveal_cannot_pay(
         ),
         # A hook nobody registered.
         (replace(TECH_ABILITIES["suspensor_suits"][0], hook="unknown"),),
+        # Two Flips on one tile.
+        (
+            TECH_ABILITIES["advanced_data_analysis"][0],
+            TECH_ABILITIES["advanced_data_analysis"][0],
+        ),
+        # A Flip choosing one of its lines.
+        (
+            replace(
+                TECH_ABILITIES["spy_drones"][0],
+                structure=AbilityStructure.ONE_OF,
+            ),
+        ),
         # A standing record that prints a line.
         (
             replace(

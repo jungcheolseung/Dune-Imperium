@@ -32,7 +32,12 @@ from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ABILITIES,
     TRASH_SPY_TO_ACQUIRE,
 )
-from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
@@ -1213,6 +1218,13 @@ def _check_tech_records() -> None:
                     raise ValueError(f"{tech_id}: unknown hook {record.hook!r}")
                 continue
             if record.timing is AbilityTiming.FLIP:
+                flips = [r for r in records if r.timing is AbilityTiming.FLIP]
+                if (
+                    len(flips) > 1
+                    or record.mark is not AbilityMark.OPTIONAL
+                    or record.structure is not AbilityStructure.SEQUENCE
+                ):
+                    raise ValueError(f"{tech_id}: one optional Flip, every line")
                 if record.requirement not in (None, DuringAgentTurn()):
                     raise ValueError(f"{tech_id}: no such Flip requirement")
                 for line in record.sections:
@@ -1234,6 +1246,8 @@ def _check_tech_records() -> None:
                         ):
                             raise ValueError(f"{tech_id}: no such Flip reward")
             elif record.timing is AbilityTiming.ENDGAME:
+                if record.requirement is not None or record.trigger is not None:
+                    raise ValueError(f"{tech_id}: an Endgame line checks itself")
                 for line in record.sections:
                     match line:
                         case EffectSection(

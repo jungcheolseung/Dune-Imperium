@@ -926,7 +926,7 @@ def reward_text_ko(reward: Reward) -> str:
             # Quotes ``display/leaders_ko.py``'s Lady Jessica Signet line.
             return (
                 "당신의 개인 공급처에서 게임판의 베네 게세리트 영역으로"
-                " 병력 1을 옮김"
+                " 병력 1을 옮김. 이것은 이제 당신의 기억이 됨"
             )
         case DrawTwistedIntrigueCards(count=count):
             # Quotes ``display/leaders_ko.py``'s Piter De Vries line.

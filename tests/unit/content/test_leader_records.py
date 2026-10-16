@@ -16,6 +16,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawTwistedIntrigueCards,
     EffectSection,
     GainResources,
+    HasAlliance,
     OnAgentSentTo,
     OnCardTrashed,
     OnConflictWon,
@@ -26,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     PayResources,
     PlaceSpy,
+    RecruitTroops,
     RecruitUndeployableTroops,
     StrengthInConflictAtLeast,
     SummonSandworm,
@@ -156,12 +158,61 @@ def test_the_new_signet_pieces_read_as_the_faces_print_them() -> None:
             SIGNET_ABILITIES["lady_margot_fenring"],
             sections=(EffectSection(rewards=(PlaceSpy(),)),),
         ),
+        # A recruit line with a condition: only resource lines are judged.
+        replace(
+            SIGNET_ABILITIES["gurney_halleck"],
+            sections=(
+                EffectSection(rewards=(RecruitTroops(1),), condition=HasAlliance()),
+            ),
+        ),
+        # A condition the shape cannot judge.
+        replace(
+            SIGNET_ABILITIES["liet_kynes"],
+            sections=(
+                EffectSection(
+                    rewards=(GainResources(solari=1),),
+                    condition=HasAlliance(Faction.FREMEN),
+                ),
+            ),
+        ),
     ],
 )
 def test_the_signet_rules_refuse_records_they_cannot_resolve(
     record: Ability, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(leader_abilities, "SIGNET_ABILITIES", {"face": record})
+    with pytest.raises(ValueError):
+        leader_abilities._check_signet_records()
+
+
+@pytest.mark.parametrize(
+    ("face", "record"),
+    [
+        # Spice Agony's payment is offered on Lady Jessica's faces only.
+        ("chani", SIGNET_ABILITIES["lady_jessica"]),
+        # Arrakis Informant's rows are Lady Margot Fenring's.
+        ("piter_de_vries", SIGNET_ABILITIES["lady_margot_fenring"]),
+        # A Spy line with a cost the rows would not charge.
+        (
+            "lady_margot_fenring",
+            replace(
+                SIGNET_ABILITIES["lady_margot_fenring"],
+                sections=(
+                    EffectSection(
+                        rewards=(PlaceSpy(agent_icons=(AgentIcon.CITY,)),),
+                        costs=(PayResources(spice=1),),
+                    ),
+                ),
+            ),
+        ),
+        # Icons on a face that is not its Leader's id (read by Leader id).
+        ("reverend_mother_jessica", SIGNET_ABILITIES["lady_amber_metulli"]),
+    ],
+)
+def test_signet_records_are_refused_on_faces_nothing_offers_them_on(
+    face: str, record: Ability, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(leader_abilities, "SIGNET_ABILITIES", {face: record})
     with pytest.raises(ValueError):
         leader_abilities._check_signet_records()
 
@@ -291,6 +342,19 @@ def test_the_trigger_pieces_read_as_the_cards_print_them() -> None:
             LEADER_ABILITIES["duncan_idaho"][0],
             sections=(EffectSection(rewards=(GainResources(spice=1),)),),
         ),
+        # Assassin paying spice: the site reads Solari.
+        replace(
+            LEADER_ABILITIES["count_hasimir_fenring"][0],
+            sections=(EffectSection(rewards=(GainResources(spice=1),)),),
+        ),
+        # A visit trigger on a space the visit code does not watch.
+        replace(
+            LEADER_ABILITIES["esmar_tuek"][0], trigger=OnAgentSentTo("sietch_tabr")
+        ),
+        # Smuggle Spice and the Twisted draw on another face: their sites
+        # name their Leader.
+        LEADER_ABILITIES["staban_tuek"][0],
+        LEADER_ABILITIES["piter_de_vries"][0],
     ],
 )
 def test_the_leader_rules_refuse_left_boxes_they_cannot_resolve(

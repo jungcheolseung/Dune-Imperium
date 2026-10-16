@@ -59,6 +59,7 @@ from dune_imperium.content.uprising.leader_abilities import (
 )
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_BY_ID,
+    LEADERS_BY_ID,
     FeydTrackReward,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -687,10 +688,7 @@ def signet_spy_posts(record: Ability) -> frozenset[str]:
     """The posts a Signet's single Spy line allows (Arrakis Informant: those
     connected to a City board space [Lady Margot Fenring card])."""
 
-    ((spy,),) = (line.rewards for line in record.sections)
-    if not isinstance(spy, PlaceSpy) or spy.agent_icons is None:
-        raise ValueError(f"{record!r} is not a Signet Spy line")
-    return observation_post_ids_for_agent_icons(spy.agent_icons)
+    return observation_post_ids_for_agent_icons(signet_spy_posts_icons(record))
 
 
 def _signet_payment(owner: PlayerState) -> tuple[PayResources, EffectSection]:
@@ -743,29 +741,36 @@ def _check_signet_records() -> None:
             draws = [
                 reward for reward in rewards if isinstance(reward, DrawPersonalCards)
             ]
-            if draws and len(rewards) > 1:
+            if draws and (len(rewards) > 1 or record.sections[0].condition):
                 raise ValueError(f"{face_id}: a Signet draw resolves alone")
+            recruits = (RecruitTroops, RecruitUndeployableTroops)
+            if sum(isinstance(reward, recruits) for reward in rewards) > 1:
+                raise ValueError(f"{face_id}: a Signet recruits once")
+            if record.icons and face_id not in LEADERS_BY_ID:
+                # ``_SIGNET_ICONS`` is read by the Leader's id.
+                raise ValueError(f"{face_id}: Signet icons need a Leader's own face")
             for line in record.sections:
                 if line.costs or not all(
-                    isinstance(
-                        reward,
-                        (
-                            RecruitTroops,
-                            RecruitUndeployableTroops,
-                            GainResources,
-                            DrawPersonalCards,
-                        ),
-                    )
+                    isinstance(reward, (*recruits, GainResources, DrawPersonalCards))
                     for reward in line.rewards
                 ):
                     raise ValueError(f"{face_id}: no such automatic Signet line")
-                if record.icons and not all(
+                gains_only = all(
                     isinstance(reward, GainResources) for reward in line.rewards
-                ):
+                )
+                if record.icons and not gains_only:
                     raise ValueError(f"{face_id}: a Signet icon pays resources")
+                if line.condition is not None and not (
+                    gains_only and _signet_condition_supported(line.condition)
+                ):
+                    # Only a resource line is judged (0 when it fails).
+                    raise ValueError(f"{face_id}: no such automatic Signet condition")
         elif record.mark is AbilityMark.OPTIONAL:
             # Spice Agony and Water of Life: one spice payment and what
-            # ``apply_leader_signet_payment`` pays for it.
+            # ``apply_leader_signet_payment`` pays for it, offered on Lady
+            # Jessica's faces (``legal_leader_signet_actions``).
+            if face_id not in ("lady_jessica", "reverend_mother_jessica"):
+                raise ValueError(f"{face_id}: nothing offers this Signet payment")
             match record.sections:
                 case (
                     EffectSection(
@@ -781,7 +786,36 @@ def _check_signet_records() -> None:
                 case _:
                     raise ValueError(f"{face_id}: no such Signet payment")
         else:
-            signet_spy_posts(record)
+            # Arrakis Informant, offered on Lady Margot Fenring's face.
+            (line,) = record.sections
+            if (
+                face_id != "lady_margot_fenring"
+                or line.costs
+                or line.condition is not None
+                or line.rewards
+                != (PlaceSpy(agent_icons=signet_spy_posts_icons(record)),)
+            ):
+                raise ValueError(f"{face_id}: no such Signet Spy line")
+
+
+def _signet_condition_supported(condition: Condition) -> bool:
+    """Whether ``_signet_condition_holds`` judges ``condition``."""
+
+    match condition:
+        case HasAlliance(faction=None) | InfluenceAtLeast() | VisitedSpaceHasIcon():
+            return True
+        case AllConditions(conditions=conditions):
+            return all(_signet_condition_supported(item) for item in conditions)
+    return False
+
+
+def signet_spy_posts_icons(record: Ability) -> tuple[AgentIcon, ...]:
+    """The Agent icons a Signet's single Spy line limits its posts to."""
+
+    ((spy,),) = (line.rewards for line in record.sections)
+    if not isinstance(spy, PlaceSpy) or spy.agent_icons is None:
+        raise ValueError(f"{record!r} is not a Signet Spy line")
+    return spy.agent_icons
 
 
 _check_signet_records()
@@ -2552,17 +2586,19 @@ def apply_smuggle_spice(
     events: list[GameEvent] = []
     next_players = players
     for candidate in players:
-        smuggled = leader_triggers(
-            candidate.leader_face_id or candidate.leader_id,
-            OnOpponentAgentAtSpiedMakerSpace,
-        )
+        # The log names the Leader of ``leader_ability_spice_gained`` from
+        # its kind alone (panels.js EVENT_IMPLIED_LEADER), so only Staban's
+        # record pays here (``_check_leader_records``).
         if (
             candidate.player_id == actor
-            or not smuggled
+            or candidate.leader_id != "staban_tuek"
             or not is_spying_on_space(candidate, space_id)
         ):
             continue
-        ((_, (reward,)),) = smuggled
+        ((_, (reward,)),) = leader_triggers(
+            candidate.leader_face_id or candidate.leader_id,
+            OnOpponentAgentAtSpiedMakerSpace,
+        )
         if not isinstance(reward, GainResources):
             raise RuntimeError("Smuggle Spice pays spice")
         next_players = replace_player(
@@ -3098,14 +3134,6 @@ def _check_leader_records() -> None:
     """Refuse a left-box record no firing site or hook resolves (the
     reach-Influence ones are ``influence``'s)."""
 
-    supported = {
-        OnReachInfluence: None,
-        OnOpponentAgentAtSpiedMakerSpace: GainResources,
-        OnCardTrashed: GainResources,
-        OnAgentSentTo: None,
-        OnRoundStart: DrawTwistedIntrigueCards,
-        OnSpiceGainedInTurnAtLeast: DrawPersonalCards,
-    }
     for face_id, abilities in LEADER_ABILITIES.items():
         for ability in abilities:
             if ability.timing is AbilityTiming.STANDING:
@@ -3124,17 +3152,41 @@ def _check_leader_records() -> None:
                     (SandwormsInConflictAtLeast(1), (DrawIntrigueCards(1),)),
                 ):
                     raise ValueError(f"{face_id}: no such automatic Reveal line")
-            elif ability.trigger is None or type(ability.trigger) not in supported:
-                raise ValueError(f"{face_id}: no such Leader trigger")
-            else:
-                reward_kind = supported[type(ability.trigger)]
-                (reward,) = ability.sections[0].rewards
-                if reward_kind is not None and not isinstance(reward, reward_kind):
-                    raise ValueError(f"{face_id}: no such Leader trigger reward")
-                drawn = (DrawPersonalCards, DrawTwistedIntrigueCards)
-                if isinstance(reward, drawn) and reward.count != 1:
-                    # The held and owed draws take one card (OQ-106).
-                    raise ValueError(f"{face_id}: a Leader trigger draws one card")
+            elif not _leader_trigger_supported(
+                face_id, ability.trigger, ability.sections
+            ):
+                raise ValueError(f"{face_id}: no firing site pays this trigger")
+
+
+def _leader_trigger_supported(
+    face_id: str, trigger: object, sections: tuple[EffectSection, ...]
+) -> bool:
+    """Whether the site that fires ``trigger`` pays ``sections`` as printed:
+    each reads one reward of one kind; the held and owed draws take one card
+    (OQ-106); Smuggle Spice and the Twisted draw are named by their Leader
+    (the log's EVENT_IMPLIED_LEADER, ``phases``)."""
+
+    if len(sections) != 1 or len(sections[0].rewards) != 1:
+        return False
+    (reward,) = sections[0].rewards
+    match trigger, reward:
+        case OnReachInfluence(), _:
+            return True  # ``influence._check_reach_bonuses``
+        case OnOpponentAgentAtSpiedMakerSpace(), GainResources(solari=0, water=0):
+            return face_id == "staban_tuek"
+        case OnCardTrashed(), GainResources(spice=0, water=0):
+            return True
+        case OnAgentSentTo(space_id="tuek_sietch", opponent=False), GainResources(
+            spice=0, water=0
+        ):
+            return True
+        case OnAgentSentTo(space_id="tuek_sietch", opponent=True), DrawIntrigueCards():
+            return True
+        case OnRoundStart(), DrawTwistedIntrigueCards(count=1):
+            return face_id == "piter_de_vries"
+        case OnSpiceGainedInTurnAtLeast(), DrawPersonalCards(count=1):
+            return True
+    return False
 
 
 _check_leader_records()

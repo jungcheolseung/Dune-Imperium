@@ -3375,6 +3375,8 @@ def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bo
     signet = signet_ability(owner.leader_face_id or owner.leader_id)
     if signet is None:
         return False
+    if signet.hook not in _STAGED_SIGNETS:
+        return signet.mark is AbilityMark.OPTIONAL
     if signet.hook == "unseen_network":
         return isinstance(context.get("staban_bonus_post"), str)
     if signet.hook in ("corrino_liaison", "listeners"):
@@ -3382,13 +3384,12 @@ def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bo
             context.get("leader_spy_recalled") is not True
             and context.get("listeners_paid") is not True
         )
-    if signet.hook == "personal_training":
-        stage_id = context.get("feyd_track_stage")
-        return isinstance(stage_id, str) and FEYD_TRACK_BY_ID[stage_id].reward in (
-            FeydTrackReward.PAY_SOLARI_TO_TRASH,
-            FeydTrackReward.OPTIONAL_TRASH,
-        )
-    return signet.mark is AbilityMark.OPTIONAL
+    # Personal Training.
+    stage_id = context.get("feyd_track_stage")
+    return isinstance(stage_id, str) and FEYD_TRACK_BY_ID[stage_id].reward in (
+        FeydTrackReward.PAY_SOLARI_TO_TRASH,
+        FeydTrackReward.OPTIONAL_TRASH,
+    )
 
 
 def box_has_optional_icon(state: GameState) -> bool:
