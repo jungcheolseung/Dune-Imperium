@@ -116,6 +116,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallSpy,
     RecruitTroops,
+    RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
@@ -151,9 +152,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashThisCard,
     Trigger,
     TriggeredByFaction,
+    TroopToMemory,
     UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
     UseSignetAbility,
+    VisitedSpaceHasIcon,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -517,6 +520,11 @@ def condition_text_ko(condition: Condition) -> str:
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "{agent_turn}"
+        case VisitedSpaceHasIcon(icon=icon):
+            # Quotes ``tokens_ko.py``'s "이번 차례에 팩션 장소로 {agent}를
+            # 보냈다면:".
+            name = _AGENT_ICON_NAMES_KO[icon]
+            return f"이번 차례에 {name} 장소로 {{agent}}를 보냈다면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -898,6 +906,15 @@ def reward_text_ko(reward: Reward) -> str:
         case GainInfluenceWhereAtMost(maximum=maximum):
             # Quotes ``display/bloodlines.py``'s Panopticon line.
             return f"영향력이 {maximum} 이하인 각 팩션에서 {{influence_any:1}}씩 얻음"
+        case RecruitUndeployableTroops(count=count):
+            # Quotes ``display/leaders_ko.py``'s Piter De Vries Signet line.
+            return f"{{troop:{count}}} 이번 차례에는 이 병력을 교전 칸에 배치할 수 없음"
+        case TroopToMemory():
+            # Quotes ``display/leaders_ko.py``'s Lady Jessica Signet line.
+            return (
+                "당신의 개인 공급처에서 게임판의 베네 게세리트 영역으로"
+                " 병력 1을 옮김"
+            )
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

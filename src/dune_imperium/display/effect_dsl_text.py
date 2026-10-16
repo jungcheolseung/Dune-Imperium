@@ -89,6 +89,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallSpy,
     RecruitTroops,
+    RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
@@ -124,9 +125,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashThisCard,
     Trigger,
     TriggeredByFaction,
+    TroopToMemory,
     UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
     UseSignetAbility,
+    VisitedSpaceHasIcon,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -327,6 +330,11 @@ def condition_text(condition: Condition) -> str:
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "Agent Turn"
+        case VisitedSpaceHasIcon(icon=icon):
+            # Quotes ``display/tokens.py``'s "If you sent an Agent to a
+            # Faction space this turn:" (Liet Kynes' Signet the same).
+            name = icon.value.replace("_", " ").title()
+            return f"you sent an Agent to a {name} space this turn"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -611,6 +619,19 @@ def reward_text(reward: Reward) -> str:
             return (
                 "Gain 1 Influence with each Faction where you have "
                 f"{maximum} or less Influence"
+            )
+        case RecruitUndeployableTroops(count=count):
+            # Quotes ``display/leaders.py``'s Piter De Vries Signet line.
+            them = "this troop" if count == 1 else "these troops"
+            return (
+                f"Recruit {count} {_plural(count, 'troop')}; you can't deploy"
+                f" {them} to the Conflict this turn"
+            )
+        case TroopToMemory():
+            # Quotes ``display/leaders.py``'s Lady Jessica Signet line.
+            return (
+                "Move 1 troop from your supply to the Bene Gesserit board area"
+                " as a memory"
             )
         case CompleteContract():
             return "Complete one of your contracts"

@@ -390,6 +390,19 @@ class AllianceTaken:
 
 
 @dataclass(frozen=True, slots=True)
+class VisitedSpaceHasIcon:
+    """The player sent an Agent this turn to a board space with ``icon``
+    ("If you sent an Agent this turn to a Landsraad space" [Liet Kynes
+    card])."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("a visited-space icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
 class DuringAgentTurn:
     """Agent Turn: only after the owner's Agent placement this turn
     [Rapid Dropships Tech tile] [Bloodlines p. 7]."""
@@ -445,6 +458,7 @@ type Condition = (
     | ContractTaken
     | AllianceTaken
     | DuringAgentTurn
+    | VisitedSpaceHasIcon
 )
 
 
@@ -1270,6 +1284,24 @@ class TakeSwordmaster:
 
 
 @dataclass(frozen=True, slots=True)
+class RecruitUndeployableTroops:
+    """Recruit ``count`` troops that can't be deployed to the Conflict this
+    turn [Piter De Vries card] (OQ-038)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("troop recruit count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class TroopToMemory:
+    """Move 1 troop from the supply to the Bene Gesserit board area as a
+    memory [Lady Jessica card]; nothing moves with the supply empty."""
+
+
+@dataclass(frozen=True, slots=True)
 class GainInfluenceWhereAtMost:
     """Gain 1 Influence with each Faction where the player has ``maximum``
     or less Influence [Panopticon Tech tile]."""
@@ -1377,6 +1409,8 @@ type Reward = (
     | TakeSwordmaster
     | UseSignetAbility
     | GainInfluenceWhereAtMost
+    | RecruitUndeployableTroops
+    | TroopToMemory
 )
 
 
