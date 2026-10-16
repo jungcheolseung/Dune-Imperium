@@ -55,6 +55,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    EachOpponentDiscardsCard,
+    EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
@@ -71,12 +73,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
     LoseTroops,
+    OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
     RecruitTroops,
     Research,
+    ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     Reward,
     SandwormsInConflictAtLeast,
@@ -568,6 +572,22 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Tleilaxu Surgeon.
             _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: _pay(
                 SpendSpecimens(2), AdvanceTleilaxu(2)
+            ),
+            # --- One action with follow-ups for the opponents (composed A3g) -----
+            # Covert Operation: "Each opponent discards a card" -- one frame per
+            # opponent holding a card, named ``<box>:opponent:<seat>``.
+            _BOX.EACH_OPPONENT_DISCARDS_PERSONAL_CARD: _box(EachOpponentDiscardsCard()),
+            # Holy War: "Each opponent loses one troop. Each opponent spying on
+            # the board space where you sent an Agent this turn must move that
+            # Spy" -- every loss first, then the Spy moves (OQ-036).
+            _BOX.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: _box(
+                EachOpponentLosesTroop(), OpponentsMoveSpiesFromVisitedSpace()
+            ),
+            # Chairdog: "At the start of your Reveal turn, return the other
+            # grafted card from play to your hand" -- noted at the graft; the box
+            # waits while that card is out of play.
+            _BOX.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START: _box(
+                ReturnOtherGraftedCardAtRevealStart()
             ),
             # --- Special flows (hooks) -------------------------------------------
             # Seek Allies: "Trash this card." -- the trash's events alone.

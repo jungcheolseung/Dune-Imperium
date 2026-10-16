@@ -34,6 +34,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    EachOpponentDiscardsCard,
+    EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -67,6 +69,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
+    OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -79,6 +82,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
+    ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     RevealContractsTakeOne,
     RevealPersuasionThisRound,
@@ -520,6 +524,20 @@ def reward_text(reward: Reward) -> str:
             return f"You may {text}" if optional else text.capitalize()
         case RecallAgent():
             return "Recall 1 Agent"
+        case EachOpponentDiscardsCard():
+            return "Each opponent discards a card"
+        case EachOpponentLosesTroop():
+            return "Each opponent loses one troop"
+        case OpponentsMoveSpiesFromVisitedSpace():
+            return (
+                "Each opponent spying on the board space where you sent an"
+                " Agent this turn must move that Spy"
+            )
+        case ReturnOtherGraftedCardAtRevealStart():
+            return (
+                "At the start of your Reveal turn, return the other grafted"
+                " card from play to your hand"
+            )
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

@@ -1069,6 +1069,34 @@ class RecallAgent:
 
 
 @dataclass(frozen=True, slots=True)
+class EachOpponentDiscardsCard:
+    """Each opponent discards a card [Covert Operation card]: every opponent
+    holding a card picks one, clockwise from the next seat."""
+
+
+@dataclass(frozen=True, slots=True)
+class EachOpponentLosesTroop:
+    """Each opponent loses one troop [Holy War card]: every opponent is
+    asked, clockwise from the next seat, even with nothing to lose (OQ-036
+    (a))."""
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentsMoveSpiesFromVisitedSpace:
+    """Each opponent spying on the board space where the player sent an
+    Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnOtherGraftedCardAtRevealStart:
+    """At the start of the owner's Reveal turn, the other grafted card goes
+    from play back to the hand [Chairdog card]. The return is noted on the
+    seat when the pair is grafted (adopted designer ruling,
+    ``graft.apply_graft_partner``) and carried out by ``begin_reveal_turn``;
+    nothing returns once that card has left play."""
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1145,6 +1173,10 @@ type Reward = (
     | AcquireCardForSolari
     | TrashThisCard
     | RecallAgent
+    | EachOpponentDiscardsCard
+    | EachOpponentLosesTroop
+    | OpponentsMoveSpiesFromVisitedSpace
+    | ReturnOtherGraftedCardAtRevealStart
 )
 
 

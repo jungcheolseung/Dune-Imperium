@@ -19,8 +19,12 @@ The events follow two conventions, one per way a box resolves:
   follow-ups that may push a frame above it, named ``<box>`` -- a Contract,
   Research, the Tleilaxu track, specimens, the Intrigue peek, the optional
   trash frame -- and a personal draw named after the card's *definition*
-  (``round:R:player:P:agent_card:<card>``). The event list is the box's event,
-  the draws' and follow-ups' events, then any recruit shortfall.
+  (``round:R:player:P:agent_card:<card>``); the opponents' decisions last,
+  pushed last-printed first so they are answered in printed order (Covert
+  Operation's discards ``<box>:opponent:<seat>``, Holy War's losses
+  ``<box>:unit_loss:<seat>`` before its Spy moves, OQ-036). The event list is
+  the box's event, the draws' and follow-ups' events, then any recruit
+  shortfall.
 - **Icon by icon** (``resolve_box_icon``, OQ-027): the icon's gains, a recruit
   shortfall named ``<box>:<icon>``, and an Intrigue draw named ``<box>:<icon>``
   before the write-back; specimens (``<box>:specimen``) then Research
@@ -66,6 +70,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    EachOpponentDiscardsCard,
+    EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
@@ -82,11 +88,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
     LoseTroops,
+    OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecruitTroops,
     Research,
+    ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     Reward,
     SandwormsInConflictAtLeast,
@@ -103,6 +111,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -132,7 +141,7 @@ from dune_imperium.rules.effects import (
     short_of,
     spice_gained_this_turn,
 )
-from dune_imperium.rules.frames import context_int, replace_player
+from dune_imperium.rules.frames import FrameKind, context_int, replace_player
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -147,12 +156,13 @@ from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
+from dune_imperium.rules.spy_moves import turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
     solo_occupied_post_ids,
 )
-from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 
 _RESOLVED = "agent_card_effect_resolved"
 _UNAVAILABLE = "agent_card_effect_unavailable"
@@ -353,9 +363,26 @@ def _line_block(
             # return to a hand (designer ruling, OQ-054); it is trashed
             # when the turn closes.
             return AgentIconBlock(AgentIconCondition.NOT_IN_PLAY)
+    if not _other_grafted_card_returns(line, owner, context):
+        return AgentIconBlock(AgentIconCondition.NOT_IN_PLAY)
     if line.condition is None:
         return None
     return condition_block(line.condition, owner, context)
+
+
+def _other_grafted_card_returns(
+    line: EffectSection, owner: PlayerState, context: Mapping[str, ActionValue]
+) -> bool:
+    """Chairdog's return can still happen: the other grafted card is in
+    play ("return the other grafted card from play" [Chairdog card])."""
+
+    if not any(
+        isinstance(reward, ReturnOtherGraftedCardAtRevealStart)
+        for reward in line.rewards
+    ):
+        return True
+    partner = other_grafted_card_id(context)
+    return bool(partner) and partner in owner.in_play
 
 
 def _line_holds(
@@ -364,6 +391,8 @@ def _line_holds(
     if any(isinstance(reward, ReturnThisCardToHand) for reward in line.rewards):
         if context.get("card_id") not in counted_in_play(owner):
             return False
+    if not _other_grafted_card_returns(line, owner, context):
+        return False
     return line.condition is None or box_condition_holds(
         line.condition, owner, context
     )
@@ -452,6 +481,18 @@ def _owner_gains(
                 owner = replace(owner, bene_gesserit_boost_pending=True)
             case ReturnThisCardToHand():
                 owner = _returned_to_hand(owner, card_id)
+            case ReturnOtherGraftedCardAtRevealStart():
+                # Noted when the pair was grafted (``graft.apply_graft_partner``);
+                # the box notes nothing twice.
+                partner = other_grafted_card_id(context)
+                if partner not in owner.chairdog_return_card_ids:
+                    owner = replace(
+                        owner,
+                        chairdog_return_card_ids=(
+                            *owner.chairdog_return_card_ids,
+                            partner,
+                        ),
+                    )
     return owner, shortfall
 
 
@@ -617,10 +658,65 @@ def resolve_box(state: GameState) -> RuleResult:
         )
         next_state = drawn_cards.state
         follow_ups.extend(drawn_cards.events)
+    for reward in reversed(line.rewards):
+        # The stack is last in, first out: the first printed is pushed last.
+        if (opponents := _opponents_decide(next_state, reward, context)) is not None:
+            next_state = opponents.state
+            follow_ups.extend(opponents.events)
     return RuleResult(
         state=next_state,
         events=(event, *influence_events, *intrigue_events, *follow_ups, *shortfall),
     )
+
+
+def _opponents_decide(
+    state: GameState, reward: Reward, context: Mapping[str, ActionValue]
+) -> RuleResult | None:
+    """Push the opponents' decisions a reward asks for, named after the box;
+    None for a reward the owner resolves."""
+
+    player, card_id = _subject(dict(context))
+    source = agent_card_source(state.round_number, player, card_id)
+    match reward:
+        case EachOpponentDiscardsCard():
+            # Only a seat holding a card is asked; the next seat answers
+            # first, and the last answer writes the owner's frame back
+            # (``agent_effects.apply_opponent_card_discard``).
+            seats = state.config.players
+            targets = tuple(
+                (player + offset) % seats
+                for offset in range(1, seats)
+                if state.players[(player + offset) % seats].hand
+            )
+            frames = tuple(
+                DecisionFrame(
+                    kind=FrameKind.OPPONENT_CARD_DISCARD,
+                    frame_id=f"{source}:opponent:{target}",
+                    decision=PlayerDecision(
+                        owner=target,
+                        prompt="Choose a card to discard for Covert Operation",
+                    ),
+                    context=(
+                        ("covert_operation_card_id", card_id),
+                        ("covert_operation_owner", player),
+                    ),
+                )
+                for target in reversed(targets)
+            )
+            return RuleResult(
+                state=replace(
+                    state, decision_stack=(*state.decision_stack, *frames)
+                ),
+                events=(),
+            )
+        case EachOpponentLosesTroop():
+            return opponent_unit_loss_frames(state, player, source=source)
+        case OpponentsMoveSpiesFromVisitedSpace():
+            space_id = context.get("space_id")
+            if not isinstance(space_id, str):
+                raise RuntimeError("Agent-turn effect frame has invalid space")
+            return turn_space_spy_frames(state, player, space_id, source=source)
+    return None
 
 
 def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:

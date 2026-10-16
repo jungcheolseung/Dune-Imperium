@@ -164,12 +164,11 @@ from dune_imperium.rules.shield_wall import (
     destroy_shield_wall,
 )
 from dune_imperium.rules.specimens import generate_specimens
-from dune_imperium.rules.spy_moves import spy_placement_frame, turn_space_spy_frames
+from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
-from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
@@ -3695,62 +3694,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     ),
                 ),
             )
-    elif effect is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD:
-        context["pending_agent_effect"] = False
-        base_frame = replace(
-            state.decision_stack[-1],
-            context=tuple(sorted(context.items())),
-        )
-        targets = tuple(
-            (player + offset) % state.config.players
-            for offset in range(1, state.config.players)
-            if state.players[(player + offset) % state.config.players].hand
-        )
-        frames = tuple(
-            DecisionFrame(
-                kind=FrameKind.OPPONENT_CARD_DISCARD,
-                frame_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"agent_card:{card_instance_id}:opponent:{target}"
-                ),
-                decision=PlayerDecision(
-                    owner=target,
-                    prompt="Choose a card to discard for Covert Operation",
-                ),
-                context=(
-                    ("covert_operation_card_id", card_instance_id),
-                    ("covert_operation_owner", player),
-                ),
-            )
-            for target in reversed(targets)
-        )
-        base_state = replace(
-            state,
-            decision_stack=(*state.decision_stack[:-1], base_frame, *frames),
-        )
-        next_state = (
-            base_state
-            if targets
-            else advance_after_effect(base_state, context, base_state.players)
-        )
-        return RuleResult(
-            state=next_state,
-            events=(
-                GameEvent(
-                    event_id=(
-                        f"round:{state.round_number}:player:{player}:"
-                        f"agent_card:{card_instance_id}"
-                    ),
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-            ),
-        )
-    elif effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
-        # Holy War: the opponents' decisions are pushed once this frame has
-        # advanced (below).
-        next_owner = owner
-        event_kind = "agent_card_effect_resolved"
     elif effect in (
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
@@ -3761,28 +3704,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # grafted partner, no genetic marker, no Faction space.
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
-    elif effect is (
-        PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START
-    ):
-        # Chairdog: the return to the hand at the start of the owner's Reveal
-        # turn (``begin_reveal_turn``) was already recorded on the seat when
-        # the pair was grafted (``graft.apply_graft_partner``; adopted
-        # designer ruling, docs/rules/designer-rulings-audit.md), so the box
-        # records nothing twice. Without a partner in play nothing returns.
-        partner = other_grafted_card_id(context)
-        next_owner = owner
-        if partner and partner in owner.in_play:
-            if partner not in owner.chairdog_return_card_ids:
-                next_owner = replace(
-                    owner,
-                    chairdog_return_card_ids=(
-                        *owner.chairdog_return_card_ids,
-                        partner,
-                    ),
-                )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            event_kind = "agent_card_effect_unavailable"
     elif effect is _RESEARCH_AND_TRASH_FOR_VP:
         if _box_researched(context, card_instance_id):
             # Scientific Breakthrough's trash line after its Research: an
@@ -3897,7 +3818,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
     players = replace_player(state.players, next_owner)
     context["pending_agent_effect"] = False
-    space_id_value = context.get("space_id")
     next_state = advance_after_effect(state, context, players)
     event = GameEvent(
         event_id=(
@@ -3907,23 +3827,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         kind=event_kind,
         payload=(("card_id", card_instance_id), ("player", player)),
     )
-    if effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
-        if not isinstance(space_id_value, str):
-            raise RuntimeError("Agent-turn effect frame has invalid space")
-        # The printed order (user ruling 2026-10-02, OQ-036): "Each
-        # opponent loses one troop. Each opponent spying on the board space
-        # where you sent an Agent this turn must move that Spy." [Holy War
-        # card] -- every opponent's loss first, clockwise from the next
-        # seat, then every opponent's Spy moves, each seat moving all of
-        # its Spies in its own go (OQ-036 (b)). The stack is last in, first
-        # out, so the Spy moves go beneath the losses.
-        moves = turn_space_spy_frames(
-            next_state, player, space_id_value, source=event_source
-        )
-        losses = opponent_unit_loss_frames(moves.state, player, source=event_source)
-        return RuleResult(
-            state=losses.state, events=(event, *moves.events, *losses.events)
-        )
     return RuleResult(state=next_state, events=(event, *recruit_shortfall))
 
 
