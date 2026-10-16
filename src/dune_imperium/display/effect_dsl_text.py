@@ -40,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentLosesTroop,
@@ -75,7 +76,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     LookAtIntrigueKeepOne,
     LoseInfluence,
     LoseTroops,
+    OnAgentSentTo,
+    OnCardTrashed,
+    OnConflictWon,
+    OnContractCompleted,
+    OnOpponentAgentAtSpiedMakerSpace,
+    OnReachInfluence,
     OnRevealAcquisitionThisRound,
+    OnRoundStart,
+    OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
@@ -111,6 +120,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SpyingOnMakerSpace,
     SpyRecalledThisTurn,
+    StrengthInConflictAtLeast,
     SummonSandworm,
     TakeContract,
     TakeControl,
@@ -335,6 +345,9 @@ def condition_text(condition: Condition) -> str:
             # Faction space this turn:" (Liet Kynes' Signet the same).
             name = icon.value.replace("_", " ").title()
             return f"you sent an Agent to a {name} space this turn"
+        case StrengthInConflictAtLeast(amount=amount):
+            # Quotes ``display/leaders.py``'s Gurney Halleck line.
+            return f"you have {amount} or more strength in the Conflict"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -633,6 +646,11 @@ def reward_text(reward: Reward) -> str:
                 "Move 1 troop from your supply to the Bene Gesserit board area"
                 " as a memory"
             )
+        case DrawTwistedIntrigueCards(count=count):
+            # Quotes ``display/leaders.py``'s Piter De Vries line.
+            if count == 1:
+                return "Draw a Twisted Intrigue card"
+            return f"Draw {count} Twisted Intrigue cards"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:
@@ -647,6 +665,28 @@ def trigger_text(trigger: Trigger) -> str:
             return "Whenever you acquire a card during your Reveal turn this round"
         case OnTroopsLostAtConflictEnd(minimum=minimum):
             return f"When you lose {minimum} or more troops at the end of a Conflict"
+        # The Leaders' and Tech tiles' triggers quote ``display/leaders.py``
+        # and ``display/bloodlines.py``.
+        case OnReachInfluence(faction=faction, amount=amount):
+            return f"When you reach {amount} {_faction_name(faction)} Influence"
+        case OnOpponentAgentAtSpiedMakerSpace():
+            return (
+                "Whenever another player sends an Agent to a Maker board space you"
+                " are spying on"
+            )
+        case OnCardTrashed():
+            return "Whenever you trash a card"
+        case OnAgentSentTo(space_id=space_id, opponent=opponent):
+            who = "an opponent sends" if opponent else "you send"
+            return f"Whenever {who} an Agent to {BOARD_SPACES_BY_ID[space_id].name}"
+        case OnRoundStart():
+            return "Round start"
+        case OnSpiceGainedInTurnAtLeast(amount=amount):
+            return f"Whenever you gain {amount} or more spice in a single turn"
+        case OnContractCompleted():
+            return "When you complete a contract"
+        case OnConflictWon():
+            return "When you win a Conflict"
         case _:
             assert_never(trigger)
 

@@ -28,20 +28,33 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     DrawIntrigueCards,
     DrawPersonalCards,
+    DrawTwistedIntrigueCards,
     EffectSection,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
+    OnAgentSentTo,
+    OnCardTrashed,
+    OnOpponentAgentAtSpiedMakerSpace,
+    OnReachInfluence,
+    OnRoundStart,
+    OnSpiceGainedInTurnAtLeast,
     PayResources,
     PlaceSpy,
     RecruitTroops,
     RecruitUndeployableTroops,
+    RevealPersuasion,
+    SandwormsInConflictAtLeast,
+    StrengthInConflictAtLeast,
     TroopToMemory,
     VisitedSpaceHasIcon,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.leader_abilities import (
+    LEADER_ABILITIES,
     SIGNET_ABILITIES,
+    leader_reveal_line,
+    leader_triggers,
     signet_ability,
 )
 from dune_imperium.content.uprising.leaders import (
@@ -151,7 +164,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
-# six-player game [Gurney Halleck card].
+# six-player game [Gurney Halleck card] -- its record's four-player value.
 ALWAYS_SMILING_STRENGTH: Final = 6
 
 
@@ -2539,19 +2552,26 @@ def apply_smuggle_spice(
     events: list[GameEvent] = []
     next_players = players
     for candidate in players:
+        smuggled = leader_triggers(
+            candidate.leader_face_id or candidate.leader_id,
+            OnOpponentAgentAtSpiedMakerSpace,
+        )
         if (
             candidate.player_id == actor
-            or candidate.leader_id != "staban_tuek"
+            or not smuggled
             or not is_spying_on_space(candidate, space_id)
         ):
             continue
+        ((_, (reward,)),) = smuggled
+        if not isinstance(reward, GainResources):
+            raise RuntimeError("Smuggle Spice pays spice")
         next_players = replace_player(
             next_players,
             replace(
                 candidate,
                 resources=replace(
                     candidate.resources,
-                    spice=candidate.resources.spice + 1,
+                    spice=candidate.resources.spice + reward.spice,
                 ),
             ),
         )
@@ -2565,7 +2585,7 @@ def apply_smuggle_spice(
                 payload=(
                     ("player", candidate.player_id),
                     ("space_id", space_id),
-                    ("spice", 1),
+                    ("spice", reward.spice),
                     ("visitor", actor),
                 ),
             )
@@ -3059,6 +3079,67 @@ def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
     )
 
 
+# The Leaders' left-box abilities whose flow stays code (composed A6e):
+# Devious Strength's and Desert Scouts' own Reveal rows, Other Memories' flip,
+# Reverend Mother's repeat, Tactician's token, Plot Course's Navigation queue.
+LEADER_HOOKS: Final = frozenset(
+    {
+        "devious_strength",
+        "desert_scouts",
+        "other_memories",
+        "reverend_mother",
+        "tactician",
+        "plot_course",
+    }
+)
+
+
+def _check_leader_records() -> None:
+    """Refuse a left-box record no firing site or hook resolves (the
+    reach-Influence ones are ``influence``'s)."""
+
+    supported = {
+        OnReachInfluence: None,
+        OnOpponentAgentAtSpiedMakerSpace: GainResources,
+        OnCardTrashed: GainResources,
+        OnAgentSentTo: None,
+        OnRoundStart: DrawTwistedIntrigueCards,
+        OnSpiceGainedInTurnAtLeast: DrawPersonalCards,
+    }
+    for face_id, abilities in LEADER_ABILITIES.items():
+        for ability in abilities:
+            if ability.timing is AbilityTiming.STANDING:
+                if ability.sections or ability.hook is None:
+                    raise ValueError(f"{face_id}: a standing record names its branch")
+            elif ability.hook is not None:
+                if ability.hook not in LEADER_HOOKS:
+                    raise ValueError(f"{face_id}: unknown hook {ability.hook!r}")
+            elif ability.timing is AbilityTiming.REVEAL:
+                (line,) = ability.sections
+                if (line.condition, line.rewards) not in (
+                    (
+                        StrengthInConflictAtLeast(ALWAYS_SMILING_STRENGTH),
+                        (RevealPersuasion(1),),
+                    ),
+                    (SandwormsInConflictAtLeast(1), (DrawIntrigueCards(1),)),
+                ):
+                    raise ValueError(f"{face_id}: no such automatic Reveal line")
+            elif ability.trigger is None or type(ability.trigger) not in supported:
+                raise ValueError(f"{face_id}: no such Leader trigger")
+            else:
+                reward_kind = supported[type(ability.trigger)]
+                (reward,) = ability.sections[0].rewards
+                if reward_kind is not None and not isinstance(reward, reward_kind):
+                    raise ValueError(f"{face_id}: no such Leader trigger reward")
+                drawn = (DrawPersonalCards, DrawTwistedIntrigueCards)
+                if isinstance(reward, drawn) and reward.count != 1:
+                    # The held and owed draws take one card (OQ-106).
+                    raise ValueError(f"{face_id}: a Leader trigger draws one card")
+
+
+_check_leader_records()
+
+
 def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
     """Apply automatic Reveal-turn Leader abilities after a transition.
 
@@ -3079,67 +3160,97 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
         player = frame.decision.owner
         owner = state.players[player]
         context = dict(frame.context)
-        if owner.leader_id == "gurney_halleck":
-            if (
-                context.get("leader_persuasion_granted") is True
-                or owner.combat_strength < ALWAYS_SMILING_STRENGTH
+        line = leader_reveal_line(owner.leader_face_id or owner.leader_id)
+        if line is None:
+            return result
+        match line.condition, line.rewards:
+            case (
+                StrengthInConflictAtLeast(amount=strength),
+                (RevealPersuasion(amount=persuasion, per=None),),
             ):
-                return result
-            stack = _with_frame_flag(
-                state.decision_stack, frame, "leader_persuasion_granted"
-            )
-            stack = add_reveal_persuasion(stack, 1)
-            event = GameEvent(
+                pass
+            case (
+                SandwormsInConflictAtLeast(count=sandworms),
+                (DrawIntrigueCards(count=intrigue),),
+            ):
+                return _grant_unpredictable_foe(
+                    result, frame, context, player, owner, sandworms, intrigue
+                )
+            case _:
+                raise RuntimeError("no such automatic Reveal line")
+        if (
+            context.get("leader_persuasion_granted") is True
+            or owner.combat_strength < strength
+        ):
+            return result
+        stack = _with_frame_flag(
+            state.decision_stack, frame, "leader_persuasion_granted"
+        )
+        stack = add_reveal_persuasion(stack, persuasion)
+        event = GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{player}:"
+                "leader_reveal:persuasion"
+            ),
+            kind="reveal_persuasion_gained",
+            payload=(
+                ("amount", persuasion),
+                ("leader_id", str(owner.leader_id)),
+                ("player", player),
+            ),
+        )
+        return RuleResult(
+            state=replace(state, decision_stack=stack),
+            events=(*result.events, event),
+        )
+    return result
+
+
+def _grant_unpredictable_foe(
+    result: RuleResult,
+    frame: DecisionFrame,
+    context: dict[str, ActionValue],
+    player: int,
+    owner: PlayerState,
+    sandworms: int,
+    intrigue: int,
+) -> RuleResult:
+    """Unpredictable Foe from its record: the first time a sandworm is in
+    the Conflict during the Reveal, an Intrigue card [Muad'Dib card]."""
+
+    state = result.state
+    if (
+        context.get("leader_intrigue_granted") is True
+        or owner.sandworms_conflict < sandworms
+    ):
+        return result
+    flagged = replace(
+        state,
+        decision_stack=_with_frame_flag(
+            state.decision_stack, frame, "leader_intrigue_granted"
+        ),
+    )
+    # The card waits on the Reveal's pending gains as the owner's own
+    # ``draw_reveal_intrigue`` (OQ-045), so the step that put the sandworm in
+    # the Conflict (or the Reveal itself) stays undoable (user ruling
+    # 2026-10-10, OQ-106).
+    queued = queue_reveal_intrigue_draw(
+        flagged, intrigue, "leader_reveal:unpredictable_foe"
+    )
+    return RuleResult(
+        state=queued,
+        events=(
+            *result.events,
+            GameEvent(
                 event_id=(
                     f"round:{state.round_number}:player:{player}:"
-                    "leader_reveal:persuasion"
+                    "leader_reveal:intrigue"
                 ),
-                kind="reveal_persuasion_gained",
-                payload=(
-                    ("amount", 1),
-                    ("leader_id", "gurney_halleck"),
-                    ("player", player),
-                ),
-            )
-            return RuleResult(
-                state=replace(state, decision_stack=stack),
-                events=(*result.events, event),
-            )
-        if owner.leader_id == "muad_dib":
-            if (
-                context.get("leader_intrigue_granted") is True
-                or owner.sandworms_conflict < 1
-            ):
-                return result
-            flagged = replace(
-                state,
-                decision_stack=_with_frame_flag(
-                    state.decision_stack, frame, "leader_intrigue_granted"
-                ),
-            )
-            # The card waits on the Reveal's pending gains as the owner's own
-            # ``draw_reveal_intrigue`` (OQ-045), so the step that put the
-            # sandworm in the Conflict (or the Reveal itself) stays
-            # undoable (user ruling 2026-10-10, OQ-106).
-            queued = queue_reveal_intrigue_draw(
-                flagged, 1, "leader_reveal:unpredictable_foe"
-            )
-            return RuleResult(
-                state=queued,
-                events=(
-                    *result.events,
-                    GameEvent(
-                        event_id=(
-                            f"round:{state.round_number}:player:{player}:"
-                            "leader_reveal:intrigue"
-                        ),
-                        kind="leader_ability_resolved",
-                        payload=(("leader_id", "muad_dib"), ("player", player)),
-                    ),
-                ),
-            )
-        return result
-    return result
+                kind="leader_ability_resolved",
+                payload=(("leader_id", str(owner.leader_id)), ("player", player)),
+            ),
+        ),
+    )
 
 
 def _with_frame_flag(

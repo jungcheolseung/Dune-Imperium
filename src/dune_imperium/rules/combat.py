@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING
 
-from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     GenerateSpecimens,
     IntrigueOption,
+    OnConflictWon,
     OnTroopsLostAtConflictEnd,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
@@ -1868,9 +1869,12 @@ def finish_combat(state: GameState) -> RuleResult:
             kind="combat_cleaned_up",
         )
     )
-    if ranking.winner is not None and has_tech(
-        next_state.players[ranking.winner].tech_ids, TechAbility.CONFLICT_WIN_DRAW
-    ):
+    draws = (
+        0
+        if ranking.winner is None
+        else tech_draws_on(next_state.players[ranking.winner].tech_ids, OnConflictWon)
+    )
+    if ranking.winner is not None and draws:
         # Planetary Array: "When you win a Conflict: draw a card" — a sole
         # winner only [FAQ p. 4] [Planetary Array Tech tile]; owed to the
         # engine's post-step draw.
@@ -1879,7 +1883,7 @@ def finish_combat(state: GameState) -> RuleResult:
             next_state,
             players=replace_player(
                 next_state.players,
-                replace(seat, tech_cards_owed=seat.tech_cards_owed + 1),
+                replace(seat, tech_cards_owed=seat.tech_cards_owed + draws),
             ),
         )
     return RuleResult(state=next_state, events=tuple(events))

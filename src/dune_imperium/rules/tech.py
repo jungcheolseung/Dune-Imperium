@@ -37,12 +37,15 @@ from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     DrawIntrigueCards,
+    DrawPersonalCards,
     DuringAgentTurn,
     EffectSection,
     GainInfluenceWhereAtMost,
     GainResources,
     GainVictoryPoints,
     GrantCombatDeployment,
+    OnConflictWon,
+    OnContractCompleted,
     SpyRecalledThisTurn,
     TrashPersonalCard,
 )
@@ -1182,15 +1185,12 @@ _ENDGAME_LINES: Final = tuple(
     if record.timing is AbilityTiming.ENDGAME
     for line in record.sections
 )
-# The tiles' abilities whose flow stays code (composed A6b): CHOAM
-# Transports' and Planetary Array's draws, Plasteel Blades, Suspensor Suits,
-# Forbidden Weapons and Panopticon's Reveal; Advanced Data Analysis' Spy
-# prerequisite (A6a).
+# The tiles' abilities whose flow stays code (composed A6b): Plasteel
+# Blades, Suspensor Suits, Forbidden Weapons and Panopticon's Reveal;
+# Advanced Data Analysis' Spy prerequisite (A6a).
 TECH_HOOKS: Final = frozenset(
     {
         TRASH_SPY_TO_ACQUIRE,
-        "choam_transports_draw",
-        "planetary_array_draw",
         "plasteel_blades",
         "suspensor_suits",
         "forbidden_weapons",
@@ -1250,6 +1250,15 @@ def _check_tech_records() -> None:
                             pass
                         case _:
                             raise ValueError(f"{tech_id}: no such Endgame line")
+            elif record.timing is AbilityTiming.TRIGGERED:
+                # CHOAM Transports' and Planetary Array's draws, one card owed
+                # or held (``tech_draw_on``, composed A6e).
+                if not isinstance(
+                    record.trigger, (OnContractCompleted, OnConflictWon)
+                ) or record.sections != (
+                    EffectSection(rewards=(DrawPersonalCards(1),)),
+                ):
+                    raise ValueError(f"{tech_id}: no such Tech trigger")
             elif record.timing is not AbilityTiming.REVEAL:
                 # The automatic Reveal lines are checked as they compile
                 # (``tech.TECH_REVEAL_GAINS``).

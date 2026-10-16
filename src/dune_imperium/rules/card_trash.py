@@ -6,10 +6,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
     AdvanceTleilaxu,
     DrawIntrigueCards,
+    GainResources,
+    OnCardTrashed,
     RecruitTroops,
     Reward,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.trigger_abilities import trash_ability
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
@@ -96,13 +99,18 @@ def trash_personal_card(
     pending_intrigue_draws = state.pending_intrigue_draws
     pending_skill_choices = state.pending_skill_choices
     decision_stack = state.decision_stack
-    if next_owner.leader_id == "count_hasimir_fenring":
+    for _, (assassin,) in leader_triggers(
+        next_owner.leader_face_id or next_owner.leader_id, OnCardTrashed
+    ):
         # Assassin: "Whenever you trash a card: 1 Solari" (personal cards
-        # only; not Intrigue cards [Bloodlines p. 12]).
+        # only; not Intrigue cards [Bloodlines p. 12]), from its record.
+        if not isinstance(assassin, GainResources):
+            raise RuntimeError("Assassin pays Solari")
         next_owner = replace(
             next_owner,
             resources=replace(
-                next_owner.resources, solari=next_owner.resources.solari + 1
+                next_owner.resources,
+                solari=next_owner.resources.solari + assassin.solari,
             ),
         )
         events.append(
@@ -110,9 +118,9 @@ def trash_personal_card(
                 event_id=f"{source}:trash:{card_id}:assassin",
                 kind="leader_ability_resolved",
                 payload=(
-                    ("leader_id", "count_hasimir_fenring"),
+                    ("leader_id", str(next_owner.leader_id)),
                     ("player", player),
-                    ("solari", 1),
+                    ("solari", assassin.solari),
                 ),
             )
         )

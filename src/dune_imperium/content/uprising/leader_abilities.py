@@ -1,4 +1,4 @@
-"""The Leaders' Signet Ring abilities as ability records (composed effects, A6c).
+"""The Leaders' printed abilities as ability records (composed effects, A6c, A6e).
 
 docs/composed-effects-plan.md 5 (A6c): each Leader face prints a Signet Ring
 ability, used when its owner plays the Signet Ring starting card on an Agent
@@ -11,8 +11,17 @@ the ones with nothing to choose from their lines in either host (one
 payment and Arrakis Informant's posts off theirs, and keeps the others as
 code under the hooks it registers (``SIGNET_HOOKS``), lines listed only
 where the DSL says the whole ability. Fill Coffers' two lines are icons
-resolved one action each in the Signet Ring's box (OQ-027, OQ-028). The
-printed text is ``display/leaders.py``.
+resolved one action each in the Signet Ring's box (OQ-027, OQ-028).
+
+Each face's left box is ``LEADER_ABILITIES`` (composed A6e), used "at the
+time written on the card" [Main p. 6]: triggered abilities with a fixed
+reward (the firing sites stay where they are and read the reward off the
+record, so nothing is reordered), two automatic Reveal lines (judged after
+every step until they first hold, OQ-020), the flows kept as code
+(``rules.leader_abilities.LEADER_HOOKS``) and the rule changes in force
+while the Leader plays (``STANDING`` records naming the engine branch). The
+setup deviations stay ``LeaderDefinition`` fields. The printed text is
+``display/leaders.py``.
 """
 
 from collections.abc import Mapping
@@ -30,14 +39,29 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     DrawIntrigueCards,
     DrawPersonalCards,
+    DrawTwistedIntrigueCards,
     EffectSection,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
+    OnAgentSentTo,
+    OnCardTrashed,
+    OnOpponentAgentAtSpiedMakerSpace,
+    OnReachInfluence,
+    OnRoundStart,
+    OnSpiceGainedInTurnAtLeast,
     PayResources,
     PlaceSpy,
+    RecallSpy,
     RecruitTroops,
     RecruitUndeployableTroops,
+    RetreatTroops,
+    RevealPersuasion,
+    RevealSwords,
+    Reward,
+    SandwormsInConflictAtLeast,
+    StrengthInConflictAtLeast,
+    Trigger,
     TroopToMemory,
     VisitedSpaceHasIcon,
 )
@@ -134,7 +158,16 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Fedaykin Maneuver: "Retreat any number of your troops -or- with 2
         # Fremen Influence: pay 1 water -> Draw 2 cards" [FAQ p. 3].
-        "chani": _hook("fedaykin_maneuver", AbilityMark.OPTIONAL),
+        "chani": _hook(
+            "fedaykin_maneuver",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(RetreatTroops(minimum=0),)),
+            EffectSection(
+                rewards=(DrawPersonalCards(2),),
+                condition=InfluenceAtLeast(Faction.FREMEN, 2),
+                costs=(PayResources(water=1),),
+            ),
+        ),
         # Corrino Liaison: "You may trash a card in your play area -or- place
         # a Spy with Deep Cover on an Emperor observation post".
         "count_hasimir_fenring": _hook("corrino_liaison", AbilityMark.OPTIONAL),
@@ -189,3 +222,180 @@ def signet_ability(face_id: str | None) -> Ability | None:
     """The Signet Ring ability a Leader face prints, if any."""
 
     return None if face_id is None else SIGNET_ABILITIES.get(face_id)
+
+
+def _triggered(trigger: Trigger, reward: Reward) -> Ability:
+    """A triggered ability with a fixed reward."""
+
+    return Ability(
+        timing=AbilityTiming.TRIGGERED,
+        sections=(EffectSection(rewards=(reward,)),),
+        mark=AbilityMark.AUTOMATIC,
+        trigger=trigger,
+    )
+
+
+def _left_hook(
+    timing: AbilityTiming, hook: str, mark: AbilityMark, *lines: EffectSection
+) -> Ability:
+    return Ability(timing=timing, sections=lines, mark=mark, hook=hook)
+
+
+def _standing(hook: str) -> Ability:
+    return _left_hook(AbilityTiming.STANDING, hook, AbilityMark.AUTOMATIC)
+
+
+LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
+    {
+        # Devious Strength: "Reveal turn, once: Recall one of your placed Spies
+        # -> Gain 2 swords" (its own recall rows on the Reveal).
+        "feyd_rautha_harkonnen": (
+            _left_hook(
+                AbilityTiming.REVEAL,
+                "devious_strength",
+                AbilityMark.OPTIONAL,
+                EffectSection(rewards=(RevealSwords(2),), costs=(RecallSpy(),)),
+            ),
+        ),
+        # Always Smiling: "Reveal turn: If you have 6 or more strength in the
+        # Conflict: Gain 1 Persuasion (4-player value)", never taken back
+        # (OQ-020).
+        "gurney_halleck": (
+            Ability(
+                timing=AbilityTiming.REVEAL,
+                sections=(
+                    EffectSection(
+                        rewards=(RevealPersuasion(1),),
+                        condition=StrengthInConflictAtLeast(6),
+                    ),
+                ),
+                mark=AbilityMark.AUTOMATIC,
+            ),
+        ),
+        # Desert Scouts: "Reveal turn: You may retreat one of your troops".
+        "lady_amber_metulli": (
+            _left_hook(
+                AbilityTiming.REVEAL,
+                "desert_scouts",
+                AbilityMark.OPTIONAL,
+                EffectSection(rewards=(RetreatTroops(minimum=1, maximum=1),)),
+            ),
+        ),
+        # Other Memories: on a Bene Gesserit space, return the memories, draw
+        # one card per memory and flip (OQ-018) [FAQ p. 3].
+        "lady_jessica": (
+            _left_hook(AbilityTiming.TRIGGERED, "other_memories", AbilityMark.OPTIONAL),
+        ),
+        # Reverend Mother: once a turn, 1 water to repeat a Bene Gesserit or
+        # Fremen space's printed effect (OQ-019).
+        "reverend_mother_jessica": (
+            _left_hook(
+                AbilityTiming.TRIGGERED, "reverend_mother", AbilityMark.OPTIONAL
+            ),
+        ),
+        # Loyalty: "When you reach 2 Bene Gesserit Influence: Gain 2 spice".
+        "lady_margot_fenring": (
+            _triggered(
+                OnReachInfluence(Faction.BENE_GESSERIT, 2), GainResources(spice=2)
+            ),
+        ),
+        # Unpredictable Foe: "Reveal turn: If you have one or more sandworms in
+        # the Conflict: Draw 1 Intrigue card" (OQ-045, OQ-106).
+        "muad_dib": (
+            Ability(
+                timing=AbilityTiming.REVEAL,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawIntrigueCards(1),),
+                        condition=SandwormsInConflictAtLeast(1),
+                    ),
+                ),
+                mark=AbilityMark.AUTOMATIC,
+            ),
+        ),
+        # Imperial Birthright: "When you reach 2 Emperor Influence: Draw 1
+        # Intrigue card" (OQ-106).
+        "princess_irulan": (
+            _triggered(OnReachInfluence(Faction.EMPEROR, 2), DrawIntrigueCards(1)),
+        ),
+        # Smuggle Spice: "Whenever another player sends an Agent to a Maker
+        # board space you are spying on: Gain 1 spice" (Limited Allies is a
+        # setup field).
+        "staban_tuek": (
+            _triggered(OnOpponentAgentAtSpiedMakerSpace(), GainResources(spice=1)),
+        ),
+        # Sardaukar Commander: both Sardaukar Contracts set aside; only he
+        # may take them (OQ-021).
+        "shaddam_corrino_iv": (_standing("sardaukar_contracts"),),
+        # Tactician: the Tactics token advances by the troops retreated or
+        # lost [FAQ p. 1].
+        "chani": (
+            _left_hook(AbilityTiming.TRIGGERED, "tactician", AbilityMark.AUTOMATIC),
+        ),
+        # Assassin: "Whenever you trash a card: Gain 1 solari".
+        "count_hasimir_fenring": (
+            _triggered(OnCardTrashed(), GainResources(solari=1)),
+        ),
+        # Ginaz Swordmaster: "The Swordmaster board space costs you 2 less".
+        "duncan_idaho": (_standing("ginaz_swordmaster"),),
+        # Tuek's Sietch: "Whenever you send an Agent to Tuek's Sietch: Gain 1
+        # solari. Whenever an opponent sends an Agent there: Draw 1 Intrigue
+        # card" (the space itself is set up for him, A5's board hook).
+        "esmar_tuek": (
+            _triggered(OnAgentSentTo("tuek_sietch"), GainResources(solari=1)),
+            _triggered(
+                OnAgentSentTo("tuek_sietch", opponent=True), DrawIntrigueCards(1)
+            ),
+        ),
+        # Clandestine: every card played has the Spy icon (OQ-055), and
+        # Gather Intelligence is forced.
+        "gaius_helen_mohiam": (_standing("clandestine"),),
+        # Twisted Genius: the Twisted deck is his setup (a setup field); "Round
+        # start: draw a Twisted Intrigue card" (OQ-072, OQ-097).
+        "piter_de_vries": (_triggered(OnRoundStart(), DrawTwistedIntrigueCards(1)),),
+        # Strange Form is setup (fields); Hungry for Spice: "whenever you gain
+        # 3 or more spice in a single turn: Draw 1 card" (OQ-063, OQ-106).
+        # Plot Course (printed where the Signet would be): "Whenever you reach
+        # 2 Influence with a Faction, play the next Navigation card" (OQ-012,
+        # OQ-039).
+        "steersman_y_rkoon": (
+            _triggered(OnSpiceGainedInTurnAtLeast(3), DrawPersonalCards(1)),
+            _left_hook(AbilityTiming.TRIGGERED, "plot_course", AbilityMark.AUTOMATIC),
+        ),
+        # Arrakis Planetologist: Sietch Tabr's requirement ignored, and every
+        # sandworm replaced (OQ-037).
+        "liet_kynes": (_standing("arrakis_planetologist"),),
+        # Secret Project: a Tech tile chosen at game start, acquirable at 1
+        # spice less (OQ-041).
+        "kota_odax_of_ix": (_standing("secret_project"),),
+    }
+)
+
+
+def leader_triggers[T](
+    face_id: str | None, kind: type[T]
+) -> tuple[tuple[T, tuple[Reward, ...]], ...]:
+    """A face's triggered abilities of trigger ``kind``, with their rewards."""
+
+    if face_id is None:
+        return ()
+    found: list[tuple[T, tuple[Reward, ...]]] = []
+    for ability in LEADER_ABILITIES.get(face_id, ()):
+        if isinstance(ability.trigger, kind) and ability.hook is None:
+            found.append((ability.trigger, ability.sections[0].rewards))
+    return tuple(found)
+
+
+def leader_reveal_line(face_id: str | None) -> EffectSection | None:
+    """A face's automatic Reveal line (Always Smiling, Unpredictable Foe)."""
+
+    if face_id is None:
+        return None
+    for ability in LEADER_ABILITIES.get(face_id, ()):
+        if (
+            ability.timing is AbilityTiming.REVEAL
+            and ability.hook is None
+            and ability.mark is AbilityMark.AUTOMATIC
+        ):
+            return ability.sections[0]
+    return None

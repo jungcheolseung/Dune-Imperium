@@ -43,6 +43,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainVictoryPoints,
     GrantCombatDeployment,
+    OnConflictWon,
+    OnContractCompleted,
     PlaceSpy,
     RecruitTroops,
     RevealPersuasion,
@@ -139,6 +141,18 @@ def _hook(
     )
 
 
+def _drawn_on(trigger: OnContractCompleted | OnConflictWon) -> Ability:
+    """A tile's trigger drawing one card, owed to the engine's post-step
+    draw or held as the owner's own step (OQ-106)."""
+
+    return Ability(
+        timing=AbilityTiming.TRIGGERED,
+        sections=(EffectSection(rewards=(DrawPersonalCards(1),)),),
+        mark=AbilityMark.AUTOMATIC,
+        trigger=trigger,
+    )
+
+
 def _standing(hook: str) -> Ability:
     return Ability(
         timing=AbilityTiming.STANDING,
@@ -155,11 +169,11 @@ TECH_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
             _flip(EffectSection(rewards=(DrawIntrigueCards(1),))),
         ),
         # "When you complete a contract: Draw 1 card" (a held immediate draw
-        # in the owner's turn, owed otherwise, ``rules.contract_tiles``) --
-        # no trigger piece says it. "Endgame: 1 VP if you have completed four
-        # or more contracts" (OQ-040).
+        # in the owner's turn, owed otherwise, ``rules.contract_tiles``).
+        # "Endgame: 1 VP if you have completed four or more contracts"
+        # (OQ-040).
         "choam_transports": (
-            _hook(AbilityTiming.TRIGGERED, "choam_transports_draw"),
+            _drawn_on(OnContractCompleted()),
             _automatic(
                 AbilityTiming.ENDGAME,
                 EffectSection(
@@ -206,7 +220,7 @@ TECH_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
             ),
         ),
         # "When you win a Conflict: Draw 1 card" (the sole winner).
-        "planetary_array": (_hook(AbilityTiming.TRIGGERED, "planetary_array_draw"),),
+        "planetary_array": (_drawn_on(OnConflictWon()),),
         # "Whenever you recruit a Sardaukar Commander: Trash this -> Gain an
         # additional Sardaukar Commander Skill" (OQ-044 (c)).
         "plasteel_blades": (
@@ -251,3 +265,20 @@ TECH_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         ),
     }
 )
+
+
+def tech_draws_on(
+    tech_ids: tuple[str, ...], kind: type[OnContractCompleted] | type[OnConflictWon]
+) -> int:
+    """Cards the held tiles draw when a ``kind`` trigger fires (CHOAM
+    Transports, Planetary Array; composed A6e)."""
+
+    return sum(
+        reward.count
+        for tech_id in tech_ids
+        for record in TECH_ABILITIES[tech_id]
+        if isinstance(record.trigger, kind)
+        for line in record.sections
+        for reward in line.rewards
+        if isinstance(reward, DrawPersonalCards)
+    )

@@ -13,7 +13,13 @@ from dune_imperium.content.uprising.board import (
     InfluenceRequirement,
     ResourceCost,
 )
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    GainResources,
+    OnAgentSentTo,
+)
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     card_is_graft,
@@ -744,35 +750,65 @@ def _apply_tuek_sietch_visit(
     visitor: int,
     round_number: int,
 ) -> tuple[GameState, tuple[GameEvent, ...]]:
+    # Tuek's Sietch: "Whenever you send an Agent to Tuek's Sietch: Gain 1
+    # solari. Whenever an opponent sends an Agent there: Draw 1 Intrigue
+    # card" [Esmar Tuek card], from his records (composed A6e).
     esmar = next(
-        (seat for seat in state.players if seat.leader_id == "esmar_tuek"), None
+        (
+            seat
+            for seat in state.players
+            if any(
+                trigger.space_id == "tuek_sietch"
+                for trigger, _ in leader_triggers(
+                    seat.leader_face_id or seat.leader_id, OnAgentSentTo
+                )
+            )
+        ),
+        None,
     )
     if esmar is None:
         return state, ()
+    own = esmar.player_id == visitor
+    ((_, (reward,)),) = (
+        (trigger, rewards)
+        for trigger, rewards in leader_triggers(
+            esmar.leader_face_id or esmar.leader_id, OnAgentSentTo
+        )
+        if trigger.space_id == "tuek_sietch" and trigger.opponent is not own
+    )
     source = f"round:{round_number}:player:{visitor}:tuek_sietch_visit"
-    if esmar.player_id == visitor:
+    if own:
+        if not isinstance(reward, GainResources):
+            raise RuntimeError("Tuek's Sietch pays its owner's visit in Solari")
         paid = replace(
-            esmar, resources=replace(esmar.resources, solari=esmar.resources.solari + 1)
+            esmar,
+            resources=replace(
+                esmar.resources, solari=esmar.resources.solari + reward.solari
+            ),
         )
         return replace(state, players=replace_player(state.players, paid)), (
             GameEvent(
                 event_id=source,
                 kind="leader_ability_resolved",
                 payload=(
-                    ("leader_id", "esmar_tuek"),
+                    ("leader_id", str(esmar.leader_id)),
                     ("player", esmar.player_id),
-                    ("solari", 1),
+                    ("solari", reward.solari),
                 ),
             ),
         )
-    drawn = draw_or_queue_intrigue_cards(state, esmar.player_id, 1, source=source)
+    if not isinstance(reward, DrawIntrigueCards):
+        raise RuntimeError("Tuek's Sietch draws for an opponent's visit")
+    drawn = draw_or_queue_intrigue_cards(
+        state, esmar.player_id, reward.count, source=source
+    )
     return drawn.state, (
         GameEvent(
             event_id=source,
             kind="leader_ability_resolved",
             payload=(
-                ("intrigue", 1),
-                ("leader_id", "esmar_tuek"),
+                ("intrigue", reward.count),
+                ("leader_id", str(esmar.leader_id)),
                 ("player", esmar.player_id),
                 ("visitor", visitor),
             ),

@@ -3,6 +3,8 @@
 from copy import replace
 from enum import StrEnum
 
+from dune_imperium.content.uprising.effect_dsl import OnSpiceGainedInTurnAtLeast
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
@@ -225,11 +227,14 @@ def hungry_for_spice_is_due(seat: PlayerState) -> bool:
     the seat's turn opened plus the spice spent since (OQ-063).
     """
 
+    hungry = leader_triggers(
+        seat.leader_face_id or seat.leader_id, OnSpiceGainedInTurnAtLeast
+    )
     return (
-        seat.leader_id == "steersman_y_rkoon"
+        bool(hungry)
         and not seat.hungry_for_spice_granted_turn
         and seat.resources.spice - seat.spice_at_turn_start + seat.spice_spent_turn
-        >= 3
+        >= hungry[0][0].amount
     )
 
 
