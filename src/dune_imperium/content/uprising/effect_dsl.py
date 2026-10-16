@@ -401,7 +401,8 @@ type Condition = (
     | TrashedCardHasFaction
     | GraftedWithFaction
     | Grafted
-    | AllConditions    | HasSwordmaster
+    | AllConditions
+    | HasSwordmaster
     | SpyingOnMakerSpace
     | GarrisonedUnitsAtLeast
     | CommandReached

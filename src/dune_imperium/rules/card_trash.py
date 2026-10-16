@@ -165,7 +165,9 @@ def trash_personal_card(
                             payload=(("card_id", card_id), ("player", player)),
                         )
                     )
-            case DrawIntrigueCards(count=1):
+            case DrawIntrigueCards(count=count):
+                if count != 1:
+                    raise ValueError(f"{reward!r}: a trash box draws one card")
                 # Sardaukar Soldier's "when trashed" Intrigue card waits as
                 # the seat's own step in its turn, so the trash choice stays
                 # undoable (user ruling 2026-10-10, OQ-106).
@@ -179,6 +181,10 @@ def trash_personal_card(
                 events.extend(drawn)
                 if pending is not None:
                     pending_intrigue_draws = (*pending_intrigue_draws, pending)
+            case AdvanceTleilaxu():
+                pass  # Once the card has moved (below).
+            case _:
+                raise TypeError(f"{reward!r} is not a trash box's reward")
 
     players = tuple(
         next_owner if candidate.player_id == player else candidate

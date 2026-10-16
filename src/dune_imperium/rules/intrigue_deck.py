@@ -274,8 +274,9 @@ def triggered_intrigue_draw(
     ``owed_draws`` (user ruling 2026-10-10, OQ-106; ``origin`` decides
     whether it is the very next step, ``draw_is_immediate``, OQ-042), so the
     effect that fired the box stays undoable. Elsewhere the deck's top card
-    is drawn at once (``source`` names the event, Suspensor Suits credited),
-    or with an empty deck the draw is returned to be queued
+    is drawn at once (``source`` names the event; Suspensor Suits is asked
+    as for every draw, though it counts only in the owner's own turn,
+    OQ-042 (a)), or with an empty deck the draw is returned to be queued
     (``pending_intrigue_draws``): the dispatcher reshuffles the discard and
     completes it before the next player decision [FAQ p. 2]. Returns the
     owner, the Intrigue deck, the events and the queued draw.

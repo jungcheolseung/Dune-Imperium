@@ -280,23 +280,23 @@ def reveal_effect(line: EffectSection) -> PersonalCardRevealEffect:
     for condition in _conditions(line.condition):
         match condition:
             case FactionBond(faction=faction):
-                fields["required_faction_bond"] = _bond(faction)
+                _set(fields, "required_faction_bond", _bond(faction))
             case HasHighCouncil():
-                fields["requires_high_council"] = True
+                _set(fields, "requires_high_council", True)
             case HasSwordmaster():
-                fields["requires_swordmaster"] = True
+                _set(fields, "requires_swordmaster", True)
             case SpiesPlacedAtLeast(count=count):
-                fields["minimum_spies_placed"] = count
+                _set(fields, "minimum_spies_placed", count)
             case SpyingOnMakerSpace():
-                fields["requires_spying_on_maker_space"] = True
+                _set(fields, "requires_spying_on_maker_space", True)
             case CommandersInConflictAtLeast(count=1):
-                fields["requires_commander_in_conflict"] = True
+                _set(fields, "requires_commander_in_conflict", True)
             case GeneticMarkersAtLeast(count=count):
-                fields["minimum_genetic_markers"] = count
+                _set(fields, "minimum_genetic_markers", count)
             case GarrisonedUnitsAtLeast(count=count):
-                fields["minimum_garrisoned_units"] = count
+                _set(fields, "minimum_garrisoned_units", count)
             case CommandReached():
-                fields["requires_command"] = True
+                _set(fields, "requires_command", True)
             case _:
                 raise TypeError(f"{condition!r} is not a Reveal gain condition")
     research = 0
@@ -304,45 +304,55 @@ def reveal_effect(line: EffectSection) -> PersonalCardRevealEffect:
         match reward:
             case RevealPersuasion(amount=amount, per=per):
                 if per is None:
-                    fields["persuasion"] = amount
+                    _set(fields, "persuasion", amount)
                 elif per.kind is RevealCountKind.COMPLETED_CONTRACT:
-                    fields["persuasion_per_completed_contract"] = amount
+                    _set(fields, "persuasion_per_completed_contract", amount)
                 else:
-                    fields["persuasion"] = amount
+                    _set(fields, "persuasion", amount)
                     _per_faction(fields, per)
             case RevealSwords(amount=amount, per=per):
                 if per is None:
-                    fields["strength"] = amount
+                    _set(fields, "strength", amount)
                 elif per.kind is RevealCountKind.OTHER_SWORD_CARD:
-                    fields["strength_per_other_sword_card"] = amount
+                    _set(fields, "strength_per_other_sword_card", amount)
                 else:
-                    fields["strength"] = amount
+                    _set(fields, "strength", amount)
                     _per_faction(fields, per)
             case GainResources(solari=solari, spice=spice, water=water):
-                fields.update(solari=solari, spice=spice, water=water)
+                _set(fields, "solari", solari)
+                _set(fields, "spice", spice)
+                _set(fields, "water", water)
             case DrawIntrigueCards(count=count):
-                fields["draw_intrigue"] = count
+                _set(fields, "draw_intrigue", count)
             case RecruitTroops(count=count):
-                fields["recruit_troops"] = count
+                _set(fields, "recruit_troops", count)
             case GainInfluence(times=times, factions=(faction,)):
-                fields["influence"] = times
-                fields["influence_faction"] = _bond(faction)
+                _set(fields, "influence", times)
+                _set(fields, "influence_faction", _bond(faction))
             case TrashThisCard():
-                fields["trashes_self"] = True
+                _set(fields, "trashes_self", True)
             case GrantCombatDeployment():
-                fields["grants_combat_icon"] = True
+                _set(fields, "grants_combat_icon", True)
             case GenerateSpecimens(count=count):
-                fields["specimens"] = count
+                _set(fields, "specimens", count)
             case AdvanceTleilaxu(count=count):
-                fields["tleilaxu"] = count
+                _set(fields, "tleilaxu", count)
             case Research():
                 # One research icon each (Tleilaxu Master prints two).
                 research += 1
             case _:
                 raise TypeError(f"{reward!r} is not a Reveal gain")
     if research:
-        fields["research"] = research
+        _set(fields, "research", research)
     return PersonalCardRevealEffect(**fields)  # type: ignore[arg-type]
+
+
+def _set(fields: dict[str, object], key: str, value: object) -> None:
+    """One field of the compiled gain, printed once on its line."""
+
+    if key in fields:
+        raise ValueError(f"a Reveal gain line prints {key} twice")
+    fields[key] = value
 
 
 def _per_faction(fields: dict[str, object], per: RevealCount) -> None:
@@ -352,7 +362,7 @@ def _per_faction(fields: dict[str, object], per: RevealCount) -> None:
         if per.kind is RevealCountKind.REVEALED_FACTION_CARD
         else "per_in_play_faction"
     )
-    fields[key] = _bond(per.faction)
+    _set(fields, key, _bond(per.faction))
 
 
 def reveal_effects_of(card_id: str) -> tuple[PersonalCardRevealEffect, ...]:

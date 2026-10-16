@@ -1125,7 +1125,8 @@ def _acquisition_influence_faction(
     for reward in () if ability is None else ability.sections[0].rewards:
         if isinstance(reward, GainInfluence):
             # Steersman's and Imperial Throneship's fixed Faction.
-            assert reward.factions is not None and not reward.requires_choice
+            if reward.factions is None or reward.requires_choice:
+                raise ValueError(f"{reward!r} is not a fixed Faction's Influence")
             return reward.factions[0]
     return None
 
@@ -1147,20 +1148,23 @@ def _resolve_imperium_acquisition_bonus(
     box = f"round:{state.round_number}:player:{player}:acquire:{instance_id}"
     for reward in rewards:
         match reward:
-            case DrawIntrigueCards(count=1):
+            case DrawIntrigueCards(count=count):
+                if count != 1:
+                    raise ValueError(f"{reward!r}: an acquire box draws one card")
                 # Overthrow's acquire box: inside the seat's own turn the
                 # card is its own step, the one right after the purchase:
                 # "Acquire Effects must be taken immediately upon acquiring
                 # the Card or Tech." (Direwolf Discord; user decision
                 # 2026-10-10, OQ-106, ``draw_is_immediate``; OQ-042). The Row
                 # refill still makes the purchase itself irreversible.
-                owner, intrigue_deck, events, pending_draw = triggered_intrigue_draw(
+                owner, intrigue_deck, drawn, pending_draw = triggered_intrigue_draw(
                     state,
                     owner,
                     player,
                     origin=f"{OWED_ORIGIN_ACQUIRE}{instance_id}",
                     source=f"{box}:intrigue_draw",
                 )
+                events = (*events, *drawn)
             case GainResources():
                 # Price is No Object's and Corrino Genes' 2 Solari, Possible
                 # Futures' water, Lisan al Gaib's spice.
@@ -1175,6 +1179,7 @@ def _resolve_imperium_acquisition_bonus(
                     ),
                 )
                 events = (
+                    *events,
                     GameEvent(
                         event_id=f"{box}:{resource}",
                         kind="acquisition_resource_gained",
@@ -1192,6 +1197,7 @@ def _resolve_imperium_acquisition_bonus(
                 owner, recruited = recruit_troops(owner, wanted)
                 troop_source = f"{box}:troop"
                 events = (
+                    *events,
                     GameEvent(
                         event_id=troop_source,
                         kind="acquisition_troop_recruited",
@@ -1199,6 +1205,14 @@ def _resolve_imperium_acquisition_bonus(
                     ),
                     *recruit_shortfall_events(troop_source, player, wanted, recruited),
                 )
+            case PlaceSpy() | TakeContract() | GainInfluence() | Research():
+                # Left to the purchase path: its Spy choice or Contract
+                # market, the Influence, the track after the card's zone.
+                pass
+            case AdvanceTleilaxu():
+                pass
+            case _:
+                raise TypeError(f"{reward!r} is not an acquire box's reward")
     return AcquisitionBonus(
         owner=owner,
         intrigue_deck=intrigue_deck,
