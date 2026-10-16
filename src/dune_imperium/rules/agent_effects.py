@@ -24,8 +24,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompleteContract,
     ForceEnemyRetreat,
     GainInfluence,
+    GainResources,
     GrantCombatDeployment,
     PlaceSpy,
+)
+from dune_imperium.content.uprising.leader_abilities import (
+    SIGNET_ABILITIES,
+    signet_ability,
 )
 from dune_imperium.content.uprising.personal_cards import (
     personal_card_for_instance,
@@ -43,7 +48,6 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     AgentIconBlock,
-    AgentIconCondition,
     AgentPaymentBlock,
     agent_spy_rows,
     apply_chosen_influence,
@@ -246,18 +250,15 @@ AGENT_ICON_RECALL: Final = "recall"  # Steersman: one Agent to recall
 # ``decline_agent_card_trash``).
 AGENT_ICON_TRASH: Final = "trash"
 
-# Leaders whose Signet Ring ability prints several independent icons: the
-# Signet Ring card's box (or a Ghola copying it) queues them like a card's
-# box (OQ-027). A Servo-Receivers use of the ability has no Agent box and
-# keeps resolving at once (``leader_abilities._resolve_leader_signet``).
-_FILL_COFFERS_LEADER: Final = "lady_amber_metulli"
+# Leaders whose Signet Ring ability prints several independent icons, from
+# their records (composed A6c): the Signet Ring card's box (or a Ghola
+# copying it) queues them like a card's box (OQ-027) -- Fill Coffers, whose
+# spice waits for an Alliance formed later in the turn (OQ-028, OQ-057 (1)).
+# A Servo-Receivers use of the ability has no Agent box and keeps resolving
+# at once (``leader_abilities._resolve_leader_signet``). Keyed by face, which
+# is the Leader's id for every face printing icons.
 _SIGNET_ICONS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
-    {
-        # Fill Coffers: "[1 Solari] —AND— If you have an Alliance: [1 spice]"
-        # [Lady Amber Metulli card]; the spice waits for an Alliance formed
-        # later in the turn (OQ-028, OQ-057 (1)).
-        _FILL_COFFERS_LEADER: (AGENT_ICON_SOLARI, AGENT_ICON_SPICE),
-    }
+    {face: record.icons for face, record in SIGNET_ABILITIES.items() if record.icons}
 )
 
 _LONG_LIVE_DRAW_CARD_ID = "long_live_fighters_draw_card_id"
@@ -2933,19 +2934,16 @@ def agent_icon_block(
     if key == AGENT_ICON_RESEARCH:
         # Piter, Genius Advisor's reward, armed once its cost is paid.
         return None if effect is _LOSE_TROOP_FOR_CARDS else _NOT_PRINTED
-    fill_coffers = (
-        effect is PersonalCardAgentEffect.LEADER_SIGNET
-        and owner.leader_id == _FILL_COFFERS_LEADER
-    )
+    if effect is PersonalCardAgentEffect.LEADER_SIGNET:
+        signet = signet_ability(owner.leader_face_id or owner.leader_id)
+        if signet is not None and key in signet.icons:
+            # Fill Coffers judges its icons from its record (composed A6c).
+            return box_icon_block(owner, context, signet, key)
     if key == AGENT_ICON_SOLARI:
-        return None if fill_coffers else _NOT_PRINTED
+        return _NOT_PRINTED
     if key == AGENT_ICON_SPICE:
         if effect is _BRANCHING_PATH:
             return None
-        if fill_coffers:
-            if owner.alliance_faction_ids:
-                return None
-            return AgentIconBlock(AgentIconCondition.ALLIANCE)
         return _NOT_PRINTED
     return None
 
@@ -3047,13 +3045,18 @@ def resolve_agent_card_icon(
                 next_owner = recruit(1)
         case "solari":
             if available:
-                # Fill Coffers' 1 Solari (the Signet Ring's box).
-                next_owner = gain(solari=1)
+                # Fill Coffers' Solari (the Signet Ring's box), as its record
+                # prints it.
+                next_owner = gain(solari=_signet_icon_gain(owner, key).solari)
         case "spice":
             if available:
                 # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];
-                # Fill Coffers pays 1 spice.
-                next_owner = gain(spice=2 if effect is _BRANCHING_PATH else 1)
+                # Fill Coffers' spice as its record prints it.
+                next_owner = gain(
+                    spice=2
+                    if effect is _BRANCHING_PATH
+                    else _signet_icon_gain(owner, key).spice
+                )
         case "research":
             # Piter's Research follows the frame write-back below: it may
             # open its direction choice and bonus frames above the turn.
@@ -3278,15 +3281,24 @@ _OPTIONAL_PROGRESS_KEYS: Final = (
     "listeners_paid",
     "leader_spy_recalled",
 )
-# Signet Ring abilities that are optional as a whole: Spice Agony and Water
-# of Life ("1 Spice ->", an arrow) [Lady Jessica card] [Reverend Mother
-# Jessica card], Chronicler's Insight ("acquire … or trash …, or neither")
-# [Princess Irulan card], Fedaykin Maneuver ("Retreat any number" -- zero
-# included [FAQ p. 3] -- or water -> two cards) [Chani card] and Into the
-# Fray ("may") [Duncan Idaho card].
-_OPTIONAL_SIGNETS: Final = frozenset(
-    {"lady_jessica", "princess_irulan", "chani", "duncan_idaho"}
+# Signet Ring abilities optional only at some stages (composed A6c): their
+# record's mark is the printed reading of the first one, their stage keys
+# decide the rest (``_signet_is_optional``).
+_STAGED_SIGNETS: Final = frozenset(
+    {"unseen_network", "corrino_liaison", "listeners", "personal_training"}
 )
+
+
+def _signet_icon_gain(owner: PlayerState, key: str) -> GainResources:
+    """What a Signet icon's line pays (Fill Coffers, composed A6c)."""
+
+    signet = signet_ability(owner.leader_face_id or owner.leader_id)
+    if signet is None or key not in signet.icons:
+        raise RuntimeError(f"the Signet Ring prints no {key} icon")
+    (reward,) = signet.sections[signet.icons.index(key)].rewards
+    if not isinstance(reward, GainResources):
+        raise RuntimeError(f"the Signet Ring's {key} icon pays no resources")
+    return reward
 
 
 def box_is_optional(state: GameState) -> bool:
@@ -3339,13 +3351,19 @@ def box_is_optional(state: GameState) -> bool:
 def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bool:
     """Whether the Signet Ring box's Leader ability is optional at this stage.
 
-    ``_OPTIONAL_SIGNETS`` throughout; Staban Tuek's paid follow-up once its
-    Spy is placed (an arrow) [Staban Tuek card]; Count Hasimir Fenring's and
-    Gaius Helen Mohiam's "— OR —" until a Spy is recalled for the Spy half
-    (a Spy is then owed, OQ-057 (14)) -- their refusal was offered before
-    and stays the reading; Feyd-Rautha's trash stages (a black trash icon,
-    and "1 Solari -> trash") [Feyd-Rautha Harkonnen card]. The Spy stages,
-    Esmar Tuek's choose-one and the other Leaders' abilities are mandatory.
+    A record marked optional throughout (composed A6c): Spice Agony and
+    Water of Life ("1 Spice ->", an arrow) [Lady Jessica card] [Reverend
+    Mother Jessica card], Chronicler's Insight ("acquire … or trash …, or
+    neither") [Princess Irulan card], Fedaykin Maneuver ("Retreat any
+    number" -- zero included [FAQ p. 3] -- or water -> two cards) [Chani
+    card] and Into the Fray ("may") [Duncan Idaho card]. By stage
+    (``_STAGED_SIGNETS``): Staban Tuek's paid follow-up once its Spy is
+    placed (an arrow) [Staban Tuek card]; Count Hasimir Fenring's and Gaius
+    Helen Mohiam's "— OR —" until a Spy is recalled for the Spy half (a Spy
+    is then owed, OQ-057 (14)) -- their refusal was offered before and stays
+    the reading; Feyd-Rautha's trash stages (a black trash icon, and "1
+    Solari -> trash") [Feyd-Rautha Harkonnen card]. The Spy stages, Esmar
+    Tuek's choose-one and the other Leaders' abilities are mandatory.
     """
 
     from dune_imperium.content.uprising.leaders import (
@@ -3353,16 +3371,20 @@ def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bo
         FeydTrackReward,
     )
 
-    leader_id = state.players[context_int(context, "turn_owner")].leader_id
-    if leader_id in _OPTIONAL_SIGNETS:
-        return True
-    if leader_id == "staban_tuek":
+    owner = state.players[context_int(context, "turn_owner")]
+    signet = signet_ability(owner.leader_face_id or owner.leader_id)
+    if signet is None:
+        return False
+    if signet.hook not in _STAGED_SIGNETS:
+        return signet.mark is AbilityMark.OPTIONAL
+    if signet.hook == "unseen_network":
         return isinstance(context.get("staban_bonus_post"), str)
-    if leader_id in ("count_hasimir_fenring", "gaius_helen_mohiam"):
+    if signet.hook in ("corrino_liaison", "listeners"):
         return (
             context.get("leader_spy_recalled") is not True
             and context.get("listeners_paid") is not True
         )
+    # Personal Training.
     stage_id = context.get("feyd_track_stage")
     return isinstance(stage_id, str) and FEYD_TRACK_BY_ID[stage_id].reward in (
         FeydTrackReward.PAY_SOLARI_TO_TRASH,

@@ -13,14 +13,53 @@ from collections.abc import Mapping
 from copy import replace
 from typing import Final
 
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
     Faction,
 )
+from dune_imperium.content.uprising.effect_dsl import (
+    AllConditions,
+    Condition,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    DrawTwistedIntrigueCards,
+    EffectSection,
+    GainResources,
+    HasAlliance,
+    InfluenceAtLeast,
+    OnAgentSentTo,
+    OnCardTrashed,
+    OnOpponentAgentAtSpiedMakerSpace,
+    OnReachInfluence,
+    OnRoundStart,
+    OnSpiceGainedInTurnAtLeast,
+    PayResources,
+    PlaceSpy,
+    RecruitTroops,
+    RecruitUndeployableTroops,
+    RevealPersuasion,
+    SandwormsInConflictAtLeast,
+    StrengthInConflictAtLeast,
+    TroopToMemory,
+    VisitedSpaceHasIcon,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.leader_abilities import (
+    LEADER_ABILITIES,
+    SIGNET_ABILITIES,
+    leader_reveal_line,
+    leader_triggers,
+    signet_ability,
+)
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_BY_ID,
+    LEADERS_BY_ID,
     FeydTrackReward,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -73,7 +112,11 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
+from dune_imperium.rules.influence import (
+    gain_faction_influence,
+    influence_amount,
+    influence_can_rise,
+)
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
@@ -122,7 +165,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
-# six-player game [Gurney Halleck card].
+# six-player game [Gurney Halleck card] -- its record's four-player value.
 ALWAYS_SMILING_STRENGTH: Final = 6
 
 
@@ -435,40 +478,14 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
     owner = state.players[player]
     source = f"round:{state.round_number}:player:{player}:leader_signet"
 
-    payload: tuple[tuple[str, ActionValue], ...]
-    recruit_shortfall: tuple[GameEvent, ...] = ()
-    if owner.leader_id == "gurney_halleck":
-        # Warmaster: recruit one troop [Gurney Halleck card]. A troop recruited
-        # while visiting a Combat space stays deployable [FAQ p. 4].
-        next_owner, recruited = recruit_troops(owner, 1)
-        previous = context.get("troops_recruited")
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-        recruit_shortfall = recruit_shortfall_events(source, player, 1, recruited)
-        payload = (("card_id", card_id), ("player", player), ("troops", recruited))
-    elif owner.leader_id == "lady_amber_metulli":
-        # Fill Coffers: gain one Solari, and one Spice while holding any
-        # Faction Alliance [Lady Amber Metulli card]. Reached only through
-        # Servo-Receivers (OQ-062), which has no Agent box to keep the spice
-        # waiting, so the Alliance is judged now; the Signet Ring card's box
-        # resolves the two as icons instead (``agent_effects._SIGNET_ICONS``).
-        spice = 1 if owner.alliance_faction_ids else 0
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + 1,
-                spice=owner.resources.spice + spice,
-            ),
-        )
-        payload = (
-            ("card_id", card_id),
-            ("player", player),
-            ("solari", 1),
-            ("spice", spice),
-        )
-    elif owner.leader_id == "feyd_rautha_harkonnen":
+    record = signet_ability(owner.leader_face_id or owner.leader_id)
+    if (
+        record is not None
+        and record.hook is None
+        and record.mark is AbilityMark.AUTOMATIC
+    ):
+        return _resolve_automatic_signet(state, context, record, player, source)
+    if owner.leader_id == "feyd_rautha_harkonnen":
         # Reached only when the Personal Training provider offers no choice:
         # the token already sits on the rightmost space, where it remains for
         # the rest of the game [Main p. 17], so there is no new space whose
@@ -492,22 +509,6 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
                 ),
             ),
         )
-    elif owner.leader_id == "muad_dib":
-        # Lead the Way: draw one card [Muad'Dib card].
-        context["pending_agent_effect"] = False
-        next_state = _store_signet(state, context, state.players)
-        draw = draw_or_request_personal_cards(
-            next_state,
-            player,
-            1,
-            source=source,
-        )
-        event = GameEvent(
-            event_id=source,
-            kind="leader_signet_resolved",
-            payload=(("card_id", card_id), ("cards", 1), ("player", player)),
-        )
-        return RuleResult(state=draw.state, events=(event, *draw.events))
     elif owner.leader_id == "lady_margot_fenring":
         # Reached only when Arrakis Informant offers no placement: every post
         # connected to a City board space is occupied and no recall can open
@@ -526,53 +527,6 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
                 ),
             ),
         )
-    elif owner.leader_id == "piter_de_vries":
-        # Harkonnen Advisor: one troop that "can't be deployed to the
-        # Conflict this turn" — exactly Warmaster minus the deployment: it
-        # joins the garrison, is not counted as recruited, and one garrison
-        # troop stays undeployable for the rest of the turn (OQ-038).
-        next_owner, recruited = recruit_troops(owner, 1)
-        previous_undeployable = context.get("undeployable_troops", 0)
-        if isinstance(previous_undeployable, bool) or not isinstance(
-            previous_undeployable, int
-        ):
-            raise RuntimeError("Agent-turn effect frame has invalid undeployable count")
-        context["undeployable_troops"] = previous_undeployable + recruited
-        recruit_shortfall = recruit_shortfall_events(source, player, 1, recruited)
-        payload = (("card_id", card_id), ("player", player), ("troops", recruited))
-    elif owner.leader_id == "liet_kynes":
-        # Judge of the Change: by the icon of the space visited this turn —
-        # Landsraad with two Emperor Influence: water; City: one Solari;
-        # Spice Trade: one spice [Liet Kynes card]. "If you sent an Agent
-        # this turn to..." finds no space when Servo-Receivers uses the
-        # ability outside an Agent turn (OQ-062).
-        space_id = context.get("space_id")
-        if not isinstance(space_id, str) and card_id != SERVO_SIGNET_CARD_ID:
-            raise RuntimeError("Agent-turn effect frame has invalid space")
-        icon = (
-            BOARD_SPACES_BY_ID[space_id].agent_icon
-            if isinstance(space_id, str)
-            else None
-        )
-        water = int(icon is AgentIcon.LANDSRAAD and owner.influence.emperor >= 2)
-        solari = int(icon is AgentIcon.CITY)
-        spice = int(icon is AgentIcon.SPICE_TRADE)
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + solari,
-                spice=owner.resources.spice + spice,
-                water=owner.resources.water + water,
-            ),
-        )
-        payload = (
-            ("card_id", card_id),
-            ("player", player),
-            ("solari", solari),
-            ("spice", spice),
-            ("water", water),
-        )
     elif owner.leader_id in (
         "staban_tuek",
         "princess_irulan",
@@ -588,9 +542,104 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         # so their choice providers never leave the generic resolution; the
         # Bloodlines Signets above all carry a decline or a sure choice.
         raise RuntimeError("this Leader's Signet Ring requires a player choice")
-    else:
-        raise RuntimeError("this Leader's Signet Ring ability is not implemented")
+    raise RuntimeError("this Leader's Signet Ring ability is not implemented")
 
+
+def _resolve_automatic_signet(
+    state: GameState,
+    context: dict[str, ActionValue],
+    record: Ability,
+    player: int,
+    source: str,
+) -> RuleResult:
+    """Resolve a Signet Ring ability with nothing to choose, from its record
+    (composed A6c): Warmaster, Lead the Way, Harkonnen Advisor, Judge of the
+    Change, and Fill Coffers through Servo-Receivers (OQ-062), which has no
+    Agent box to keep its spice waiting, so the Alliance is judged now -- the
+    Signet Ring card's box resolves those two as icons instead. One
+    ``leader_signet_resolved`` event names what the lines gave, a line whose
+    condition fails at 0; a draw follows its event.
+    """
+
+    owner = state.players[player]
+    card_id = context["card_id"]
+    first = record.sections[0].rewards[0]
+    if isinstance(first, DrawPersonalCards):
+        # Lead the Way: draw one card [Muad'Dib card].
+        context["pending_agent_effect"] = False
+        next_state = _store_signet(state, context, state.players)
+        draw = draw_or_request_personal_cards(
+            next_state,
+            player,
+            first.count,
+            source=source,
+        )
+        event = GameEvent(
+            event_id=source,
+            kind="leader_signet_resolved",
+            payload=(("card_id", card_id), ("cards", first.count), ("player", player)),
+        )
+        return RuleResult(state=draw.state, events=(event, *draw.events))
+    next_owner = owner
+    gained: dict[str, int] = {}
+    payload: dict[str, ActionValue] = {"card_id": card_id, "player": player}
+    recruit_shortfall: tuple[GameEvent, ...] = ()
+    for line in record.sections:
+        holds = line.condition is None or _signet_condition_holds(
+            line.condition, owner, context
+        )
+        for reward in line.rewards:
+            match reward:
+                case RecruitTroops(count=count):
+                    # A troop recruited while visiting a Combat space stays
+                    # deployable [FAQ p. 4].
+                    next_owner, recruited = recruit_troops(next_owner, count)
+                    previous = context.get("troops_recruited")
+                    if isinstance(previous, bool) or not isinstance(previous, int):
+                        raise RuntimeError(
+                            "Agent-turn effect frame has invalid recruit count"
+                        )
+                    context["troops_recruited"] = previous + recruited
+                    recruit_shortfall = recruit_shortfall_events(
+                        source, player, count, recruited
+                    )
+                    payload["troops"] = recruited
+                case RecruitUndeployableTroops(count=count):
+                    # Warmaster minus the deployment: it joins the garrison,
+                    # is not counted as recruited, and one garrison troop
+                    # stays undeployable for the rest of the turn (OQ-038).
+                    next_owner, recruited = recruit_troops(next_owner, count)
+                    previous_undeployable = context.get("undeployable_troops", 0)
+                    if isinstance(previous_undeployable, bool) or not isinstance(
+                        previous_undeployable, int
+                    ):
+                        raise RuntimeError(
+                            "Agent-turn effect frame has invalid undeployable count"
+                        )
+                    context["undeployable_troops"] = previous_undeployable + recruited
+                    recruit_shortfall = recruit_shortfall_events(
+                        source, player, count, recruited
+                    )
+                    payload["troops"] = recruited
+                case GainResources(solari=solari, spice=spice, water=water):
+                    for key, amount in (
+                        ("solari", solari),
+                        ("spice", spice),
+                        ("water", water),
+                    ):
+                        if amount:
+                            gained[key] = gained.get(key, 0) + (amount if holds else 0)
+                    if holds:
+                        next_owner = replace(
+                            next_owner,
+                            resources=replace(
+                                next_owner.resources,
+                                solari=next_owner.resources.solari + solari,
+                                spice=next_owner.resources.spice + spice,
+                                water=next_owner.resources.water + water,
+                            ),
+                        )
+    payload.update(gained)
     context["pending_agent_effect"] = False
     next_state = _store_signet(
         state,
@@ -600,9 +649,176 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
     event = GameEvent(
         event_id=source,
         kind="leader_signet_resolved",
-        payload=payload,
+        payload=tuple(sorted(payload.items())),
     )
     return RuleResult(state=next_state, events=(event, *recruit_shortfall))
+
+
+def _signet_condition_holds(
+    condition: Condition, owner: PlayerState, context: dict[str, ActionValue]
+) -> bool:
+    """Whether an automatic Signet line's printed condition holds now."""
+
+    match condition:
+        case HasAlliance(faction=None):
+            return bool(owner.alliance_faction_ids)
+        case InfluenceAtLeast(faction=faction, amount=amount):
+            return influence_amount(owner.influence, faction) >= amount
+        case VisitedSpaceHasIcon(icon=icon):
+            # "If you sent an Agent this turn to..." finds no space when
+            # Servo-Receivers uses the ability outside an Agent turn (OQ-062).
+            space_id = context.get("space_id")
+            if (
+                not isinstance(space_id, str)
+                and context.get("card_id") != SERVO_SIGNET_CARD_ID
+            ):
+                raise RuntimeError("Agent-turn effect frame has invalid space")
+            return (
+                isinstance(space_id, str)
+                and BOARD_SPACES_BY_ID[space_id].agent_icon is icon
+            )
+        case AllConditions(conditions=conditions):
+            return all(
+                _signet_condition_holds(item, owner, context) for item in conditions
+            )
+    raise TypeError(f"{condition!r} is not an automatic Signet condition")
+
+
+def signet_spy_posts(record: Ability) -> frozenset[str]:
+    """The posts a Signet's single Spy line allows (Arrakis Informant: those
+    connected to a City board space [Lady Margot Fenring card])."""
+
+    return observation_post_ids_for_agent_icons(signet_spy_posts_icons(record))
+
+
+def _signet_payment(owner: PlayerState) -> tuple[PayResources, EffectSection]:
+    """Spice Agony's or Water of Life's arrow: its cost and line."""
+
+    record = signet_ability(owner.leader_face_id or owner.leader_id)
+    if record is None or record.hook is not None or len(record.sections) != 1:
+        raise RuntimeError("this Leader's Signet Ring prints no payment")
+    (line,) = record.sections
+    (cost,) = line.costs
+    if not isinstance(cost, PayResources):
+        raise RuntimeError("this Leader's Signet Ring prints no payment")
+    return cost, line
+
+
+# The Signet Ring abilities whose flow stays code (composed A6c): Personal
+# Training's track, Chronicler's Insight's cost-dependent spice, Unseen
+# Network's post-dependent payment, Emperor of the Known Universe's
+# deployment ban, Fedaykin Maneuver's unit splits, Corrino Liaison's and
+# Listeners' stage-dependent refusals, Into the Fray's Agent, Esmar Tuek's
+# bonus-spice ledger, Reverse Engineering's Tech-tile cost.
+SIGNET_HOOKS: Final = frozenset(
+    {
+        "personal_training",
+        "chroniclers_insight",
+        "unseen_network",
+        "emperor_of_the_known_universe",
+        "fedaykin_maneuver",
+        "corrino_liaison",
+        "into_the_fray",
+        "esmar_smuggle_spice",
+        "listeners",
+        "reverse_engineering",
+    }
+)
+
+
+def _check_signet_records() -> None:
+    """Refuse a Signet record the shapes above cannot resolve."""
+
+    for face_id, record in SIGNET_ABILITIES.items():
+        if record.timing is not AbilityTiming.AGENT_BOX:
+            raise ValueError(f"{face_id}: a Signet is the Signet Ring's box")
+        if record.hook is not None:
+            if record.hook not in SIGNET_HOOKS:
+                raise ValueError(f"{face_id}: unknown Signet hook {record.hook!r}")
+            continue
+        rewards = tuple(reward for line in record.sections for reward in line.rewards)
+        if record.mark is AbilityMark.AUTOMATIC:
+            draws = [
+                reward for reward in rewards if isinstance(reward, DrawPersonalCards)
+            ]
+            if draws and (len(rewards) > 1 or record.sections[0].condition):
+                raise ValueError(f"{face_id}: a Signet draw resolves alone")
+            recruits = (RecruitTroops, RecruitUndeployableTroops)
+            if sum(isinstance(reward, recruits) for reward in rewards) > 1:
+                raise ValueError(f"{face_id}: a Signet recruits once")
+            if record.icons and face_id not in LEADERS_BY_ID:
+                # ``_SIGNET_ICONS`` is read by the Leader's id.
+                raise ValueError(f"{face_id}: Signet icons need a Leader's own face")
+            for line in record.sections:
+                if line.costs or not all(
+                    isinstance(reward, (*recruits, GainResources, DrawPersonalCards))
+                    for reward in line.rewards
+                ):
+                    raise ValueError(f"{face_id}: no such automatic Signet line")
+                gains_only = all(
+                    isinstance(reward, GainResources) for reward in line.rewards
+                )
+                if record.icons and not gains_only:
+                    raise ValueError(f"{face_id}: a Signet icon pays resources")
+                if line.condition is not None and not (
+                    gains_only and _signet_condition_supported(line.condition)
+                ):
+                    # Only a resource line is judged (0 when it fails).
+                    raise ValueError(f"{face_id}: no such automatic Signet condition")
+        elif record.mark is AbilityMark.OPTIONAL:
+            # Spice Agony and Water of Life: one spice payment and what
+            # ``apply_leader_signet_payment`` pays for it, offered on Lady
+            # Jessica's faces (``legal_leader_signet_actions``).
+            if face_id not in ("lady_jessica", "reverend_mother_jessica"):
+                raise ValueError(f"{face_id}: nothing offers this Signet payment")
+            match record.sections:
+                case (
+                    EffectSection(
+                        costs=(PayResources(solari=0, water=0),),
+                        rewards=(
+                            (GainResources(solari=0, spice=0),)
+                            | (DrawIntrigueCards(), TroopToMemory())
+                        ),
+                        condition=None,
+                    ),
+                ):
+                    pass
+                case _:
+                    raise ValueError(f"{face_id}: no such Signet payment")
+        else:
+            # Arrakis Informant, offered on Lady Margot Fenring's face.
+            (line,) = record.sections
+            if (
+                face_id != "lady_margot_fenring"
+                or line.costs
+                or line.condition is not None
+                or line.rewards
+                != (PlaceSpy(agent_icons=signet_spy_posts_icons(record)),)
+            ):
+                raise ValueError(f"{face_id}: no such Signet Spy line")
+
+
+def _signet_condition_supported(condition: Condition) -> bool:
+    """Whether ``_signet_condition_holds`` judges ``condition``."""
+
+    match condition:
+        case HasAlliance(faction=None) | InfluenceAtLeast() | VisitedSpaceHasIcon():
+            return True
+        case AllConditions(conditions=conditions):
+            return all(_signet_condition_supported(item) for item in conditions)
+    return False
+
+
+def signet_spy_posts_icons(record: Ability) -> tuple[AgentIcon, ...]:
+    """The Agent icons a Signet's single Spy line limits its posts to."""
+
+    ((spy,),) = (line.rewards for line in record.sections)
+    if not isinstance(spy, PlaceSpy) or spy.agent_icons is None:
+        raise ValueError(f"{record!r} is not a Signet Spy line")
+    return spy.agent_icons
+
+
+_check_signet_records()
 
 
 def _feyd_signet_context(
@@ -1078,7 +1294,12 @@ def legal_leader_signet_actions(
     if owner.leader_id == "lady_margot_fenring":
         # Arrakis Informant: place a Spy on a post connected to a City board
         # space [Lady Margot Fenring card].
-        return _leader_spy_placement_actions(state, player, context, CITY_POST_IDS)
+        record = signet_ability(owner.leader_face_id or owner.leader_id)
+        if record is None:
+            raise RuntimeError("Arrakis Informant has no record")
+        return _leader_spy_placement_actions(
+            state, player, context, signet_spy_posts(record)
+        )
 
     if owner.leader_id == "staban_tuek":
         bonus_post = context.get("staban_bonus_post")
@@ -1304,9 +1525,11 @@ def legal_leader_signet_actions(
 
 
 def _spice_agony_block(owner: PlayerState) -> OptionalEffectBlock | None:
-    """Spice Agony's and Water of Life's one spice [Lady Jessica card]."""
+    """Spice Agony's and Water of Life's one spice [Lady Jessica card],
+    as their records print it."""
 
-    return short_of(OptionalBlockKind.SPICE, 1, owner.resources.spice)
+    cost, _ = _signet_payment(owner)
+    return short_of(OptionalBlockKind.SPICE, cost.spice, owner.resources.spice)
 
 
 def _unseen_network_block(
@@ -1551,44 +1774,50 @@ def apply_leader_signet_payment(
     if owner.leader_id == "staban_tuek":
         return _apply_staban_bonus_payment(state, context, action)
 
-    if owner.resources.spice < 1:
+    cost, line = _signet_payment(owner)
+    if owner.resources.spice < cost.spice:
         raise RuntimeError("the Signet Ring payment requires one Spice")
     next_owner = replace(
         owner,
-        resources=replace(owner.resources, spice=owner.resources.spice - 1),
-        spice_spent_turn=owner.spice_spent_turn + 1,
+        resources=replace(owner.resources, spice=owner.resources.spice - cost.spice),
+        spice_spent_turn=owner.spice_spent_turn + cost.spice,
     )
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:spice_paid",
             kind="leader_signet_spice_paid",
-            payload=(("amount", 1), ("player", player)),
+            payload=(("amount", cost.spice), ("player", player)),
         )
     ]
 
-    if owner.leader_face_id == "reverend_mother_jessica":
-        # Water of Life: one Spice buys one water [Reverend Mother Jessica
-        # card].
-        next_owner = replace(
-            next_owner,
-            resources=replace(
-                next_owner.resources,
-                water=next_owner.resources.water + 1,
-            ),
-        )
-        next_state = _store_signet(
-            state,
-            context,
-            replace_player(state.players, next_owner),
-        )
-        events.append(
-            GameEvent(
-                event_id=source,
-                kind="leader_signet_resolved",
-                payload=(("player", player), ("water", 1)),
+    match line.rewards:
+        case (GainResources(water=water),):
+            # Water of Life: one Spice buys one water [Reverend Mother
+            # Jessica card].
+            next_owner = replace(
+                next_owner,
+                resources=replace(
+                    next_owner.resources,
+                    water=next_owner.resources.water + water,
+                ),
             )
-        )
-        return RuleResult(state=next_state, events=tuple(events))
+            next_state = _store_signet(
+                state,
+                context,
+                replace_player(state.players, next_owner),
+            )
+            events.append(
+                GameEvent(
+                    event_id=source,
+                    kind="leader_signet_resolved",
+                    payload=(("player", player), ("water", water)),
+                )
+            )
+            return RuleResult(state=next_state, events=tuple(events))
+        case (DrawIntrigueCards(count=intrigue), TroopToMemory()):
+            pass
+        case _:
+            raise RuntimeError("this Leader's Signet Ring prints no such payment")
 
     # Spice Agony: draw one Intrigue card and move a troop from the supply to
     # the Bene Gesserit area of the board, where it is now a memory
@@ -1604,7 +1833,7 @@ def apply_leader_signet_payment(
     intrigue_draw = draw_or_queue_intrigue_cards(
         working,
         player,
-        1,
+        intrigue,
         source=f"{source}:intrigue_draw",
     )
     next_state = _store_signet(
@@ -2357,19 +2586,28 @@ def apply_smuggle_spice(
     events: list[GameEvent] = []
     next_players = players
     for candidate in players:
+        # The log names the Leader of ``leader_ability_spice_gained`` from
+        # its kind alone (panels.js EVENT_IMPLIED_LEADER), so only Staban's
+        # record pays here (``_check_leader_records``).
         if (
             candidate.player_id == actor
             or candidate.leader_id != "staban_tuek"
             or not is_spying_on_space(candidate, space_id)
         ):
             continue
+        ((_, (reward,)),) = leader_triggers(
+            candidate.leader_face_id or candidate.leader_id,
+            OnOpponentAgentAtSpiedMakerSpace,
+        )
+        if not isinstance(reward, GainResources):
+            raise RuntimeError("Smuggle Spice pays spice")
         next_players = replace_player(
             next_players,
             replace(
                 candidate,
                 resources=replace(
                     candidate.resources,
-                    spice=candidate.resources.spice + 1,
+                    spice=candidate.resources.spice + reward.spice,
                 ),
             ),
         )
@@ -2383,7 +2621,7 @@ def apply_smuggle_spice(
                 payload=(
                     ("player", candidate.player_id),
                     ("space_id", space_id),
-                    ("spice", 1),
+                    ("spice", reward.spice),
                     ("visitor", actor),
                 ),
             )
@@ -2877,6 +3115,83 @@ def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
     )
 
 
+# The Leaders' left-box abilities whose flow stays code (composed A6e):
+# Devious Strength's and Desert Scouts' own Reveal rows, Other Memories' flip,
+# Reverend Mother's repeat, Tactician's token, Plot Course's Navigation queue.
+LEADER_HOOKS: Final = frozenset(
+    {
+        "devious_strength",
+        "desert_scouts",
+        "other_memories",
+        "reverend_mother",
+        "tactician",
+        "plot_course",
+    }
+)
+
+
+def _check_leader_records() -> None:
+    """Refuse a left-box record no firing site or hook resolves (the
+    reach-Influence ones are ``influence``'s)."""
+
+    for face_id, abilities in LEADER_ABILITIES.items():
+        for ability in abilities:
+            if ability.timing is AbilityTiming.STANDING:
+                if ability.sections or ability.hook is None:
+                    raise ValueError(f"{face_id}: a standing record names its branch")
+            elif ability.hook is not None:
+                if ability.hook not in LEADER_HOOKS:
+                    raise ValueError(f"{face_id}: unknown hook {ability.hook!r}")
+            elif ability.timing is AbilityTiming.REVEAL:
+                (line,) = ability.sections
+                if (line.condition, line.rewards) not in (
+                    (
+                        StrengthInConflictAtLeast(ALWAYS_SMILING_STRENGTH),
+                        (RevealPersuasion(1),),
+                    ),
+                    (SandwormsInConflictAtLeast(1), (DrawIntrigueCards(1),)),
+                ):
+                    raise ValueError(f"{face_id}: no such automatic Reveal line")
+            elif not _leader_trigger_supported(
+                face_id, ability.trigger, ability.sections
+            ):
+                raise ValueError(f"{face_id}: no firing site pays this trigger")
+
+
+def _leader_trigger_supported(
+    face_id: str, trigger: object, sections: tuple[EffectSection, ...]
+) -> bool:
+    """Whether the site that fires ``trigger`` pays ``sections`` as printed:
+    each reads one reward of one kind; the held and owed draws take one card
+    (OQ-106); Smuggle Spice and the Twisted draw are named by their Leader
+    (the log's EVENT_IMPLIED_LEADER, ``phases``)."""
+
+    if len(sections) != 1 or len(sections[0].rewards) != 1:
+        return False
+    (reward,) = sections[0].rewards
+    match trigger, reward:
+        case OnReachInfluence(), _:
+            return True  # ``influence._check_reach_bonuses``
+        case OnOpponentAgentAtSpiedMakerSpace(), GainResources(solari=0, water=0):
+            return face_id == "staban_tuek"
+        case OnCardTrashed(), GainResources(spice=0, water=0):
+            return True
+        case OnAgentSentTo(space_id="tuek_sietch", opponent=False), GainResources(
+            spice=0, water=0
+        ):
+            return True
+        case OnAgentSentTo(space_id="tuek_sietch", opponent=True), DrawIntrigueCards():
+            return True
+        case OnRoundStart(), DrawTwistedIntrigueCards(count=1):
+            return face_id == "piter_de_vries"
+        case OnSpiceGainedInTurnAtLeast(), DrawPersonalCards(count=1):
+            return True
+    return False
+
+
+_check_leader_records()
+
+
 def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
     """Apply automatic Reveal-turn Leader abilities after a transition.
 
@@ -2897,67 +3212,97 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
         player = frame.decision.owner
         owner = state.players[player]
         context = dict(frame.context)
-        if owner.leader_id == "gurney_halleck":
-            if (
-                context.get("leader_persuasion_granted") is True
-                or owner.combat_strength < ALWAYS_SMILING_STRENGTH
+        line = leader_reveal_line(owner.leader_face_id or owner.leader_id)
+        if line is None:
+            return result
+        match line.condition, line.rewards:
+            case (
+                StrengthInConflictAtLeast(amount=strength),
+                (RevealPersuasion(amount=persuasion, per=None),),
             ):
-                return result
-            stack = _with_frame_flag(
-                state.decision_stack, frame, "leader_persuasion_granted"
-            )
-            stack = add_reveal_persuasion(stack, 1)
-            event = GameEvent(
+                pass
+            case (
+                SandwormsInConflictAtLeast(count=sandworms),
+                (DrawIntrigueCards(count=intrigue),),
+            ):
+                return _grant_unpredictable_foe(
+                    result, frame, context, player, owner, sandworms, intrigue
+                )
+            case _:
+                raise RuntimeError("no such automatic Reveal line")
+        if (
+            context.get("leader_persuasion_granted") is True
+            or owner.combat_strength < strength
+        ):
+            return result
+        stack = _with_frame_flag(
+            state.decision_stack, frame, "leader_persuasion_granted"
+        )
+        stack = add_reveal_persuasion(stack, persuasion)
+        event = GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{player}:"
+                "leader_reveal:persuasion"
+            ),
+            kind="reveal_persuasion_gained",
+            payload=(
+                ("amount", persuasion),
+                ("leader_id", str(owner.leader_id)),
+                ("player", player),
+            ),
+        )
+        return RuleResult(
+            state=replace(state, decision_stack=stack),
+            events=(*result.events, event),
+        )
+    return result
+
+
+def _grant_unpredictable_foe(
+    result: RuleResult,
+    frame: DecisionFrame,
+    context: dict[str, ActionValue],
+    player: int,
+    owner: PlayerState,
+    sandworms: int,
+    intrigue: int,
+) -> RuleResult:
+    """Unpredictable Foe from its record: the first time a sandworm is in
+    the Conflict during the Reveal, an Intrigue card [Muad'Dib card]."""
+
+    state = result.state
+    if (
+        context.get("leader_intrigue_granted") is True
+        or owner.sandworms_conflict < sandworms
+    ):
+        return result
+    flagged = replace(
+        state,
+        decision_stack=_with_frame_flag(
+            state.decision_stack, frame, "leader_intrigue_granted"
+        ),
+    )
+    # The card waits on the Reveal's pending gains as the owner's own
+    # ``draw_reveal_intrigue`` (OQ-045), so the step that put the sandworm in
+    # the Conflict (or the Reveal itself) stays undoable (user ruling
+    # 2026-10-10, OQ-106).
+    queued = queue_reveal_intrigue_draw(
+        flagged, intrigue, "leader_reveal:unpredictable_foe"
+    )
+    return RuleResult(
+        state=queued,
+        events=(
+            *result.events,
+            GameEvent(
                 event_id=(
                     f"round:{state.round_number}:player:{player}:"
-                    "leader_reveal:persuasion"
+                    "leader_reveal:intrigue"
                 ),
-                kind="reveal_persuasion_gained",
-                payload=(
-                    ("amount", 1),
-                    ("leader_id", "gurney_halleck"),
-                    ("player", player),
-                ),
-            )
-            return RuleResult(
-                state=replace(state, decision_stack=stack),
-                events=(*result.events, event),
-            )
-        if owner.leader_id == "muad_dib":
-            if (
-                context.get("leader_intrigue_granted") is True
-                or owner.sandworms_conflict < 1
-            ):
-                return result
-            flagged = replace(
-                state,
-                decision_stack=_with_frame_flag(
-                    state.decision_stack, frame, "leader_intrigue_granted"
-                ),
-            )
-            # The card waits on the Reveal's pending gains as the owner's own
-            # ``draw_reveal_intrigue`` (OQ-045), so the step that put the
-            # sandworm in the Conflict (or the Reveal itself) stays
-            # undoable (user ruling 2026-10-10, OQ-106).
-            queued = queue_reveal_intrigue_draw(
-                flagged, 1, "leader_reveal:unpredictable_foe"
-            )
-            return RuleResult(
-                state=queued,
-                events=(
-                    *result.events,
-                    GameEvent(
-                        event_id=(
-                            f"round:{state.round_number}:player:{player}:"
-                            "leader_reveal:intrigue"
-                        ),
-                        kind="leader_ability_resolved",
-                        payload=(("leader_id", "muad_dib"), ("player", player)),
-                    ),
-                ),
-            )
-        return result
-    return result
+                kind="leader_ability_resolved",
+                payload=(("leader_id", str(owner.leader_id)), ("player", player)),
+            ),
+        ),
+    )
 
 
 def _with_frame_flag(

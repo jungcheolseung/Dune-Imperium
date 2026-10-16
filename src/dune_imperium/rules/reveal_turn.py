@@ -30,7 +30,12 @@ from dune_imperium.content.bloodlines.sardaukar import (
     SkillDefinition,
     skill_for_instance,
 )
-from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.bloodlines.tech import (
+    TECH_REVEAL_GAINS,
+    TECH_REVEAL_GAINS_BY_ID,
+    TechAbility,
+    has_tech,
+)
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
@@ -2635,9 +2640,8 @@ COMMAND_PERSUASION = 6
 
 # Tech tiles with a "Reveal Turn: Command (6+)" line, and the Reveal-frame
 # key recording which have paid this Reveal.
-_COMMAND_TECH = (
-    ("delivery_bay", TechAbility.COMMAND_TWO_SOLARI),
-    ("training_depot", TechAbility.COMMAND_TWO_STRENGTH),
+_COMMAND_TECH = tuple(
+    (gain.tech_id, gain.ability) for gain in TECH_REVEAL_GAINS if gain.command
 )
 _TECH_GRANTED_KEY = "tech_granted"
 # Skills whose Reveal-turn bonus this Reveal already paid ("Each one works
@@ -3541,8 +3545,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         and has_tech(next_owner.tech_ids, ability)
     )
     for tech_id in late_tech:
-        solari = 2 if tech_id == "delivery_bay" else 0
-        sword = 2 if tech_id == "training_depot" else 0
+        solari = TECH_REVEAL_GAINS_BY_ID[tech_id].solari
+        sword = TECH_REVEAL_GAINS_BY_ID[tech_id].swords
         if sword:
             frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
         next_owner = replace(
@@ -4703,8 +4707,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         # Tleilaxu Puppet: "Gain 1 Persuasion during your Reveal turn this
         # round" [card face].
         total += owner.reveal_persuasion_round_bonus
-        if has_tech(owner.tech_ids, TechAbility.REVEAL_PERSUASION):
-            total += 1
+        total += sum(
+            gain.persuasion
+            for gain in TECH_REVEAL_GAINS
+            if not gain.command and has_tech(owner.tech_ids, gain.ability)
+        )
         return total
 
     # "Command (6+)" effects open on the Persuasion the other effects
@@ -4719,7 +4726,9 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for tech_id, ability in _COMMAND_TECH
         if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
     )
-    tech_sword = 2 if "training_depot" in tech_granted else 0
+    tech_sword = sum(
+        TECH_REVEAL_GAINS_BY_ID[tech_id].swords for tech_id in tech_granted
+    )
 
     card_strengths = tuple(
         (
@@ -4801,8 +4810,13 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             resource_gain_entry(f"skill:{skill.skill_id}", spice=skill.reveal_spice)
             for skill in active_skills
         ),
-        resource_gain_entry(
-            "tech:delivery_bay", solari=2 if "delivery_bay" in tech_granted else 0
+        *(
+            resource_gain_entry(
+                f"tech:{gain.tech_id}",
+                solari=gain.solari if gain.tech_id in tech_granted else 0,
+            )
+            for gain in TECH_REVEAL_GAINS
+            if gain.solari
         ),
     )
     pending_gains: tuple[RevealGain, ...] = (
@@ -4984,8 +4998,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             kind="tech_reveal_bonus",
             payload=(
                 ("player", action.actor),
-                ("solari", 2 if tech_id == "delivery_bay" else 0),
-                ("strength", 2 if tech_id == "training_depot" else 0),
+                ("solari", TECH_REVEAL_GAINS_BY_ID[tech_id].solari),
+                ("strength", TECH_REVEAL_GAINS_BY_ID[tech_id].swords),
                 ("tech_id", tech_id),
             ),
         )

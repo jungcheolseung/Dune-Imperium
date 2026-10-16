@@ -390,6 +390,37 @@ class AllianceTaken:
 
 
 @dataclass(frozen=True, slots=True)
+class StrengthInConflictAtLeast:
+    """The player has ``amount`` or more strength in the Conflict ("If you
+    have 6 or more strength in the Conflict" [Gurney Halleck card])."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("a strength threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class VisitedSpaceHasIcon:
+    """The player sent an Agent this turn to a board space with ``icon``
+    ("If you sent an Agent this turn to a Landsraad space" [Liet Kynes
+    card])."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("a visited-space icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class DuringAgentTurn:
+    """Agent Turn: only after the owner's Agent placement this turn
+    [Rapid Dropships Tech tile] [Bloodlines p. 7]."""
+
+
+@dataclass(frozen=True, slots=True)
 class AllConditions:
     """Every listed condition holds (Study Melange: spice and two markers)."""
 
@@ -438,6 +469,9 @@ type Condition = (
     | AcquiredCard
     | ContractTaken
     | AllianceTaken
+    | DuringAgentTurn
+    | VisitedSpaceHasIcon
+    | StrengthInConflictAtLeast
 )
 
 
@@ -1263,6 +1297,55 @@ class TakeSwordmaster:
 
 
 @dataclass(frozen=True, slots=True)
+class RecruitUndeployableTroops:
+    """Recruit ``count`` troops that can't be deployed to the Conflict this
+    turn [Piter De Vries card] (OQ-038)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("troop recruit count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class DrawTwistedIntrigueCards:
+    """Draw ``count`` cards from the player's own Twisted Intrigue deck
+    [Piter De Vries card] (OQ-072, OQ-097)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("draw count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class TroopToMemory:
+    """Move 1 troop from the supply to the Bene Gesserit board area as a
+    memory [Lady Jessica card]; nothing moves with the supply empty."""
+
+
+@dataclass(frozen=True, slots=True)
+class GainInfluenceWhereAtMost:
+    """Gain 1 Influence with each Faction where the player has ``maximum``
+    or less Influence [Panopticon Tech tile]."""
+
+    maximum: int = 1
+
+    def __post_init__(self) -> None:
+        if self.maximum < 0:
+            raise ValueError("an Influence ceiling must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class UseSignetAbility:
+    """The Signet Ring icon off the Signet Ring card: "you use the Signet
+    Ring ability (with the corresponding icon) on your Leader" [Main p. 20]
+    (Servo-Receivers' acquire icon [Bloodlines p. 7])."""
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1349,6 +1432,11 @@ type Reward = (
     | TakeHighCouncilSeat
     | TakeControl
     | TakeSwordmaster
+    | UseSignetAbility
+    | GainInfluenceWhereAtMost
+    | RecruitUndeployableTroops
+    | TroopToMemory
+    | DrawTwistedIntrigueCards
 )
 
 
@@ -1384,7 +1472,86 @@ class OnTroopsLostAtConflictEnd:
             raise ValueError("loss trigger minimum must be positive")
 
 
-type Trigger = OnRevealAcquisitionThisRound | OnTroopsLostAtConflictEnd
+@dataclass(frozen=True, slots=True)
+class OnReachInfluence:
+    """When the player reaches ``amount`` Influence with ``faction``
+    [Lady Margot Fenring card] [Princess Irulan card]; like the Victory Point,
+    passing it in one multi-step gain counts and re-reaching after a loss
+    counts again [Main pp. 7, 17]."""
+
+    faction: Faction
+    amount: int = 2
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("an Influence trigger names a Faction")
+        if self.amount < 1:
+            raise ValueError("an Influence trigger amount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class OnOpponentAgentAtSpiedMakerSpace:
+    """Whenever another player sends an Agent to a Maker board space the
+    player is spying on [Staban Tuek card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnCardTrashed:
+    """Whenever the player trashes a card -- a personal card, not an
+    Intrigue card [Count Hasimir Fenring card] [Bloodlines p. 12]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnAgentSentTo:
+    """Whenever the player -- or with ``opponent`` another player -- sends
+    an Agent to ``space_id`` [Esmar Tuek card]."""
+
+    space_id: str
+    opponent: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class OnRoundStart:
+    """At Round Start, with the round's hand (OQ-072) [Piter De Vries
+    card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnSpiceGainedInTurnAtLeast:
+    """Whenever the player gains ``amount`` or more spice in a single turn
+    of theirs, once per turn (OQ-063) [Steersman Y'rkoon card]."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("a spice threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class OnContractCompleted:
+    """When the player completes a Contract [CHOAM Transports Tech
+    tile]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnConflictWon:
+    """When the player wins a Conflict -- alone [FAQ p. 4] [Planetary Array
+    Tech tile]."""
+
+
+type Trigger = (
+    OnRevealAcquisitionThisRound
+    | OnTroopsLostAtConflictEnd
+    | OnReachInfluence
+    | OnOpponentAgentAtSpiedMakerSpace
+    | OnCardTrashed
+    | OnAgentSentTo
+    | OnRoundStart
+    | OnSpiceGainedInTurnAtLeast
+    | OnContractCompleted
+    | OnConflictWon
+)
 
 
 # --- Composition ------------------------------------------------------------

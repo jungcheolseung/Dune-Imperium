@@ -67,6 +67,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    DrawTwistedIntrigueCards,
+    DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentLosesTroop,
     EffectSection,
@@ -77,6 +79,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAtMost,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
@@ -100,7 +103,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     LookAtIntrigueKeepOne,
     LoseInfluence,
     LoseTroops,
+    OnAgentSentTo,
+    OnCardTrashed,
+    OnConflictWon,
+    OnContractCompleted,
+    OnOpponentAgentAtSpiedMakerSpace,
+    OnReachInfluence,
     OnRevealAcquisitionThisRound,
+    OnRoundStart,
+    OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
@@ -114,6 +125,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallSpy,
     RecruitTroops,
+    RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
@@ -135,6 +147,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SpyingOnMakerSpace,
     SpyRecalledThisTurn,
+    StrengthInConflictAtLeast,
     SummonSandworm,
     TakeContract,
     TakeControl,
@@ -149,8 +162,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashThisCard,
     Trigger,
     TriggeredByFaction,
+    TroopToMemory,
     UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
+    UseSignetAbility,
+    VisitedSpaceHasIcon,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -511,6 +527,17 @@ def condition_text_ko(condition: Condition) -> str:
         case GarrisonedUnitsAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return f"{{garrison}}에 부대가 {count} 이상 있다면"
+        case DuringAgentTurn():
+            # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
+            return "{agent_turn}"
+        case VisitedSpaceHasIcon(icon=icon):
+            # Quotes ``tokens_ko.py``'s "이번 차례에 팩션 장소로 {agent}를
+            # 보냈다면:".
+            name = _AGENT_ICON_NAMES_KO[icon]
+            return f"이번 차례에 {name} 장소로 {{agent}}를 보냈다면"
+        case StrengthInConflictAtLeast(amount=amount):
+            # Quotes ``display/leaders_ko.py``'s Gurney Halleck line.
+            return f"전투 트랙에서 당신의 전투력 총합이 {amount} 이상이라면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -886,6 +913,24 @@ def reward_text_ko(reward: Reward) -> str:
         case TakeSwordmaster():
             # Quotes ``display/spaces.py``'s Swordmaster line.
             return "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)"
+        case UseSignetAbility():
+            # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
+            return "당신 {leader}의 {signet_ring} 능력 사용"
+        case GainInfluenceWhereAtMost(maximum=maximum):
+            # Quotes ``display/bloodlines.py``'s Panopticon line.
+            return f"영향력이 {maximum} 이하인 각 팩션에서 {{influence_any:1}}씩 얻음"
+        case RecruitUndeployableTroops(count=count):
+            # Quotes ``display/leaders_ko.py``'s Piter De Vries Signet line.
+            return f"{{troop:{count}}} 이번 차례에는 이 병력을 교전 칸에 배치할 수 없음"
+        case TroopToMemory():
+            # Quotes ``display/leaders_ko.py``'s Lady Jessica Signet line.
+            return (
+                "당신의 개인 공급처에서 게임판의 베네 게세리트 영역으로"
+                " 병력 1을 옮김. 이것은 이제 당신의 기억이 됨"
+            )
+        case DrawTwistedIntrigueCards(count=count):
+            # Quotes ``display/leaders_ko.py``'s Piter De Vries line.
+            return f"뒤틀린 책략 카드 {count}장을 뽑음"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
@@ -904,6 +949,31 @@ def trigger_text_ko(trigger: Trigger) -> str:
             return "이번 라운드에 자기 {reveal_turn} 동안 카드를 획득할 때마다"
         case OnTroopsLostAtConflictEnd(minimum=minimum):
             return f"{{conflict}} 종료 시 {{troop}}을 {minimum} 이상 잃을 때"
+        # The Leaders' and Tech tiles' triggers quote ``display/leaders_ko.py``
+        # and ``display/bloodlines.py``.
+        case OnReachInfluence(faction=faction, amount=amount):
+            return (
+                f"당신이 {{agent_icon_{faction.value}}} 영향력 {amount}에 도달할 때"
+            )
+        case OnOpponentAgentAtSpiedMakerSpace():
+            return (
+                "당신이 정탐하고 있는 메이커 게임판 장소로 다른 플레이어가"
+                " 에이전트를 보낼 때마다"
+            )
+        case OnCardTrashed():
+            return "당신이 카드 1장을 폐기할 때마다"
+        case OnAgentSentTo(space_id=space_id, opponent=opponent):
+            who = "다른 플레이어가" if opponent else "당신이"
+            name = KOREAN_CARD_NAMES["spaces"][space_id]
+            return f"{who} {name}에 에이전트를 보낼 때마다"
+        case OnRoundStart():
+            return "라운드 시작"
+        case OnSpiceGainedInTurnAtLeast(amount=amount):
+            return f"당신이 한 번의 차례 동안 {{spice:{amount}}} 이상 얻을 때마다"
+        case OnContractCompleted():
+            return "계약을 완수할 때마다"
+        case OnConflictWon():
+            return "{conflict}에서 승리할 때마다"
         case _:
             assert_never(trigger)
 
