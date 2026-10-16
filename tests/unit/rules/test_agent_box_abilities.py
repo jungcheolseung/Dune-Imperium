@@ -76,6 +76,7 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_box,
     discard_spy,
     intrigue_box,
+    lose_box,
     opens_at_placement,
     optional_arrow,
     payment_box,
@@ -86,8 +87,10 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
+    AGENT_ICON_RESEARCH,
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
+    CONTROL_THE_SPICE_PRICE,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
@@ -124,7 +127,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 78
+    assert len(AGENT_BOX_ABILITIES) == 80
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -835,12 +838,14 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     guild_spy = _BOX.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
     gambit = _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
     elite = _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    piter = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
-        AGENT_ICON_CARDS: {mentat, guild_spy},
+        AGENT_ICON_CARDS: {mentat, guild_spy, piter},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite},
         AGENT_ICON_PLEDGE: {gambit},
+        AGENT_ICON_RESEARCH: {piter},
     }
 
 
@@ -885,3 +890,47 @@ def test_arrakis_observer_announces_its_spice_and_waits_on_its_spy() -> None:
     after = dict(fizzled.state.decision_stack[-1].context)
     assert "agent_card_spy_pending" not in after
     assert after["pending_agent_effect"] is False
+
+
+def test_piter_loses_a_unit_then_arms_its_rewards() -> None:
+    """Composed A3f: Piter, Genius Advisor's "You may lose 1 troop -> Draw 2
+    cards, Research" -- a troop or a Sardaukar Commander per zone (OQ-105),
+    then both rewards armed (OQ-106); with no unit only the refusal, and the
+    one-action resolution keeps its old answer (unavailable)."""
+
+    piter = AGENT_BOX_ABILITIES[_BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH]
+    assert lose_box(piter) and not optional_arrow(piter)
+    assert piter.armed_icons == (AGENT_ICON_CARDS, AGENT_ICON_RESEARCH)
+    card = "tleilaxu:piter_genius_advisor:0"
+    config = RulesetConfig(immortality=True, promo_cards=True)
+    placed = _played(card, PlayerState(player_id=0), config)
+    rows = legal_agent_card_payment_actions(placed, 0)
+    assert [(row.action_id, dict(row.arguments)) for row in rows] == [
+        ("decline_agent_card_payment", {}),
+        ("lose_agent_card_troop", {"zone": "garrison"}),
+    ]
+    lost = apply_agent_card_payment(placed, rows[1])
+    context = dict(lost.state.decision_stack[-1].context)
+    assert context["pending_agent_icons"] == "cards,research"
+    owner = replace(placed.players[0], troops_garrison=0, troops_supply=12)
+    bare = replace(placed, players=(owner, *placed.players[1:]))
+    assert [row.action_id for row in legal_agent_card_payment_actions(bare, 0)] == [
+        "decline_agent_card_payment"
+    ]
+    assert [e.kind for e in resolve_agent_card_effect(bare).events] == [
+        "agent_card_effect_unavailable"
+    ]
+
+
+def test_control_the_spice_is_a_payment_hook() -> None:
+    """Control the Spice keeps its payment flow as code (its paid event names
+    the card and carries the troops, its trash is a frame of its own): the
+    record names the hook, prints the line, and the one-action resolution
+    refuses as before."""
+
+    spice = AGENT_BOX_ABILITIES[_BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT]
+    assert spice.hook == "control_the_spice"
+    assert spice.mark is AbilityMark.OPTIONAL
+    (line,) = spice.sections
+    assert line.costs == (PayResources(spice=CONTROL_THE_SPICE_PRICE),)
+    assert not payment_box(spice) and not trash_box(spice)
