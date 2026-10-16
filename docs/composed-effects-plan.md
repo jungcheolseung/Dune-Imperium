@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), 다음 A3g(표에 없던 Agent 칸 15개), 그다음 A4; 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), 다음 A4; 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -130,7 +130,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | A1 | 책략 90 identity를 실행기로(이미 데이터라 실행기 검증용) — 끝남(2026-10-16, codec v148, 아래 "A1에서 만든 것") |
 | A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 — 44개 끝남(2026-10-16, 아래 "A2에서 만든 것"), 7개는 hook으로·1개는 A3로 |
 | A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개, Tread in Darkness, A2가 남긴 특이 흐름 7개. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`)에서 처리기마다 사건 출처·순서가 달라 모양별로 나눈다: A3a hook 등록부와 A2의 특이 흐름(끝남), A3b 대상 없는 선택 지불 S1(끝남), A3c 필수 대상 고르기 S5(진영·첩자 칸·상대 병력·계약, 끝남), A3d 대상을 고르는 선택 화살표 S2a·S2b(보상을 곧바로 주는 것, 비용 뒤에 아이콘으로 거는 것 — 기록에 "걸리는 보상 아이콘" 칸이 따로 필요; 버리기 7칸·책략 폐기 2칸 끝남, 개인 카드 폐기 3칸과 Piter는 A3e로), A3e 검은 폐기 아이콘·한 칸 안 연속 고르기 S3·S4(폐기 칸 5개 끝남; Arrakis Observer·Piter·Control the Spice는 A3f로), A3f 평범한 줄이 한쪽인 고르기 S6·고르기 아이콘이 섞인 칸 S7(Tread in Darkness)·선택 획득 S8 — 모두 끝남(2026-10-16) |
-| A3g | A2·A3 목록에 없던 개인 카드 Agent 칸 15개(Treacherous Maneuver, The Beast's Spoils, Long Reach, Holy War, Arrakis Revolt, Immortality 접합·연구 칸 6개, 그 밖 4개 — 아래 "A3f-5에서 만든 것" 끝). 사용자 결정(2026-10-16): A7로 미루지 않고 A3에 이어 지금 |
+| A3g | A2·A3 목록에 없던 개인 카드 Agent 칸 15개(Treacherous Maneuver, The Beast's Spoils, Long Reach, Holy War, Arrakis Revolt, Immortality 접합·연구 칸 6개, 그 밖 4개 — 아래 "A3f-5에서 만든 것" 끝). 사용자 결정(2026-10-16): A7로 미루지 않고 A3에 이어 지금 — 끝남(2026-10-16, 아래 "A3g에서 만든 것") |
 | A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과 |
 | A5 | 보드 칸, Conflict 보상, 계약 |
 | A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech |
@@ -384,7 +384,33 @@ hook으로 두되 그 수를 세어 줄여 간다.
   hook 8개). Agent 칸이 있는 효과 중 기록이 없는 것은 15개로, 표의 어느 단계에도 안 적혀 있다: Treacherous Maneuver, The Beast's Spoils,
   Long Reach, Holy War, Arrakis Revolt, Immortality의 접합·연구 칸 6개(Dissecting Kit, Beguiling Pheromones, Stitched Horror, Scientific
   Breakthrough, Slig Farmer, Chairdog), 그리고 효과 문장으로 "방문한 진영 영향력 2, 이 카드 폐기", "덱 맨 위 3장을 보고 뽑기·버리기·폐기
-  1장씩", "카드 2장 버리고 5 Solari 지불 → 1 VP", "각 상대가 카드 1장 버림". A7(Immortality) 또는 새 단계로 정할 일이다.
+  1장씩", "카드 2장 버리고 5 Solari 지불 → 1 VP", "각 상대가 카드 1장 버림". A7(Immortality) 또는 새 단계로 정할 일이다 — 사용자 결정(2026-10-16)으로 A3g에서 옮겼다(아래).
+
+### A3g에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a3g/agent-rest-survey.md`: 칸마다 행·사건·시험 해결 답·막힘과 2,000판 탐침, 묶음 G1~G7)를 따라 공통
+모양과 정확히 같은 칸만 모양으로, 나머지는 hook으로 옮겼다.
+
+- **한 번 해결 + 상대의 결정(3칸):** Covert Operation("각 상대가 카드 1장 버림"), Holy War("각 상대가 병력 1을 잃음. 이번 차례 Agent를
+  보낸 칸을 정탐하는 상대는 그 Spy를 옮겨야 함"), Chairdog("Reveal 차례 시작 때 다른 접합 카드를 플레이에서 핸드로")를 `resolve_box`의
+  한 번 해결 기록으로. DSL 보상 `EachOpponentDiscardsCard`·`EachOpponentLosesTroop`·`OpponentsMoveSpiesFromVisitedSpace`·
+  `ReturnOtherGraftedCardAtRevealStart`(문구는 카드 문장에서). 한 번 해결 모양에 "상대의 결정" 규칙을 더했다: 칸의 다른 후속 뒤에,
+  인쇄 순서의 마지막부터 쌓아(스택은 나중 것이 먼저 답한다) 인쇄 순서대로 답하게 — Holy War는 잃기 전부 다음 Spy 옮기기(OQ-036).
+  Chairdog의 되돌림은 접합 때 좌석에 적히고(채택된 디자이너 판정) Reveal 시작에 일어나므로, 칸은 그 카드가 아직 플레이에 있는지만
+  본다(없으면 기다렸다가 턴 끝에 무산, OQ-057 (1)) — `ReturnThisCardToHand`의 "플레이에 있어야"와 같은 자리.
+- **hook 12개:** 나머지 칸은 행·사건·frame이 어느 공통 규칙과도 맞지 않아 흐름을 코드로 둔다(옛 해결 분기를 그대로 `_hook_*`로).
+  기록은 DSL로 칸 전체를 말할 수 있을 때만 줄을 적고, 아니면 줄 없이 주석에 인쇄 문장을 둔다(A3a의 Overthrow 선례; 일부만 적으면
+  나중에 기록을 일반적으로 읽는 코드가 그것을 칸 전체로 읽는다 — 리뷰 지적).
+  - Subversive Advisor(방문 진영 영향력 2가 칸의 1을 대신, 칸 사건 없음), Long Live the Fighters(덱 위 3장을 보는 자기 고르기 frame —
+    숨은 정보), Treacherous Maneuver(폐기 둘 + "1 대신 2", 출처에 카드 없음), Corrinth City(버리기 두 장을 하나씩, 자기 행·사건 이름),
+    Arrakis Revolt(지불 행 두 갈래 + Planetologist), The Beast's Spoils(앞면 전투 아이콘별 보상, 사건 모양 둘), Long Reach(둘 다 고른 뒤
+    지급, 지급하는 무산), Dissecting Kit·Beguiling Pheromones(접합 카드 폐기 — 상대 칸을 사건 없이 지우고 frame을 먼저 되쓴 뒤 폐기), Scientific
+    Breakthrough(Research 뒤 남는 폐기 줄), Slig Farmer(평범한 줄 옆 지불 행이 둘 다 준다), Stitched Horror(넷 중 둘을 먼저 고름).
+  - 선택인 넷(Treacherous Maneuver, Corrinth City, Arrakis Revolt, Dissecting Kit)은 기록에 선택 표시 — 옛 `OPTIONAL_AGENT_BOXES` 표를
+    지웠다.
+  - hook의 제공자·처리기 코드(효과 이름으로 고르는)는 그대로 두었다. 정리 단계에서 사건이 통일되면 공통 모양으로 바꿀 후보다(아래).
+- **결과:** 개인 카드의 Agent 칸은 모두 기록이 됐다(103개; 기록이 없는 효과는 지도자 Signet Ring뿐), hook 20개.
+  `resolve_agent_card_effect`에 남은 옛 분기는 선택 화살표 기록의 시험 해결 답(Tleilaxu Surgeon "해결 불가", 나머지 "구현 안 됨")뿐이다.
 
 ### 정리 단계 — 물려받은 차이 통일 (A단계 옮기기 뒤, A8과 함께; 사용자 결정 2026-10-16)
 
@@ -399,8 +425,11 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   - "칸 해결" 사건(`agent_card_effect_resolved`): 어떤 답은 내고 어떤 답은 내지 않는다.
   - Spy 넘기기 줄의 자리: 책략은 소환 줄들 뒤, Agent 칸은 앞(아래 "예외"의 확인 결과 (1)).
   - 시험 해결(`resolve_agent_card_effect`의 답): 선택 칸에 따라 예외(가능으로 읽힘), "해결 불가" 사건, 다른 예외가 섞여 있다.
-  - hook 8개(Seek Allies, Overthrow, Lisan al Gaib, Clandestine Meeting, Occupation, In High Places, Control the Spice, Possible Futures):
-    사건이 공통 규칙에 맞게 되면 공통 모양으로.
+  - hook 20개(Seek Allies, Overthrow, Lisan al Gaib, Clandestine Meeting, Occupation, In High Places, Control the Spice, Possible Futures,
+    그리고 A3g의 12개): 사건이 공통 규칙에 맞게 되면 공통 모양으로. 조사 G1~G7의 묶음이 출발점이다 — Subversive Advisor·Treacherous
+    Maneuver(방문 진영 영향력이 칸의 1을 대신), Dissecting Kit·Beguiling Pheromones(접합 카드 폐기 모양 하나), Long Reach·Stitched
+    Horror("서로 다른 k개" 고르기, 4.1), Corrinth City·Arrakis Revolt·Slig Farmer(지불 모양의 변형). 효과 이름으로 고르는 hook의
+    제공자·처리기 코드도 함께 없앤다.
   - A3g~A7에서 찾는 같은 종류의 차이도 이 목록에 더한다.
 - **방법:**
   1. 차이 목록을 만들고 종류마다 규칙 하나를 정한다(예: 사건 이름 `<칸>:<무엇>`, 칸이 끝나면 언제나 "칸 해결" 사건 하나).
@@ -468,6 +497,13 @@ A2 관문(2026-10-16, 시작 master `7ba624ad`): 1번 200판 모두 same(191,836
 통과, E2E 67종 통과, 소크 720판 실패 0. 6번 `time_legal.py` Agent frame 호출당 1~2% 느림(관문 10% 안). 독립 리뷰: 막는 문제·중간 없음. 옛·새 엔진 차등 탐침 330판(Agent 효과 상태 172,999곳에서 합법 행동·사건·상태·네 좌석 보기와 모든 효과×키의
 막힘 이유·대기 판정까지)과 강제 탐침 2,665곳이 모두 같았다. 낮은 지적 3개(아이콘 조건이 막힘 이유를 늘 낼 것, 두 곳에 복사된 조건 판정,
 화면 비교 범위)와 사소한 지적들을 반영했다(worklog 2026-10-16 A2).
+
+A3g 관문(2026-10-16, 시작 master `45cf88e6`): 1번 200판 모두 same(세 번: 모양 3칸 뒤, hook 12칸 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음
+2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만 88→103). 5번 pytest 7,774개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
+6번 Agent frame 호출당 65.3·63.7·64.7 µs(시작) 대 67.9·65.0·65.8 µs — 관문 안. 더해서 조사 탐침(15칸을 손에 넣고 Ghola·접합 짝까지)을 옛·새
+엔진에서 1,000판씩 돌려 기록한 값 2,219종이 모두 같았다. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 120판 — 상태 52,847곳, 적용한 행동
+236,812번, 턴이 내지 않는 원래 행 10,455번 — 과 시나리오 75개 13,609곳, 조사 시나리오 22개 모두 같음; 일부러 넣은 변이 둘은 첫 30판에서 잡힘),
+낮은 지적 1개(hook 기록에 칸의 일부만 적힌 줄 — 칸 전체를 말할 수 있을 때만 적게)와 사소한 것 3개 반영.
 
 A3f-5 관문(2026-10-16, 시작 master `c28b8346`): 1번 200판 모두 same(두 번: 구현 뒤, 리뷰 반영과 A3f-4 받은 뒤). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec
 그대로. 4번 기존 기대값 그대로(기록 수·아이콘 표 테스트만). 5번 pytest 7,770개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 A3f-3~5를 모두 쌓은
