@@ -17,12 +17,21 @@ whose play data is not complete stays out of the deck.
 from dataclasses import dataclass
 from typing import Final
 
+from dune_imperium.content.immortality.track_abilities import (
+    RECLAIMED_FORCES_ABILITY,
+)
 from dune_imperium.content.schema import (
     CardDefinition,
     SourceDocument,
     SourceRef,
 )
+from dune_imperium.content.uprising.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import AdvanceTleilaxu, RecruitTroops
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.reveal_abilities import reveal_effects_of
 from dune_imperium.content.uprising.types import (
@@ -403,6 +412,39 @@ RECLAIMED_FORCES: Final = TleilaxuCardEntry(
     immortality_only=True,
     specimen_cost=3,
 )
+
+
+def _reclaimed_forces_choices() -> tuple[tuple[str, int], ...]:
+    """Reclaimed Forces' choices and amounts, from its record (composed
+    A7c): ``("troops", 2)``, ``("tleilaxu", 1)``."""
+
+    record = RECLAIMED_FORCES_ABILITY
+    if (
+        record.timing is not AbilityTiming.ACQUIRE
+        or record.structure is not AbilityStructure.ONE_OF
+        or record.mark is not AbilityMark.MANDATORY
+    ):
+        raise ValueError("Reclaimed Forces chooses one of its lines")
+    choices: list[tuple[str, int]] = []
+    for line in record.sections:
+        if line.condition is not None or line.costs:
+            raise ValueError("Reclaimed Forces' lines are free")
+        match line.rewards:
+            case (RecruitTroops(count=count),):
+                choices.append(("troops", count))
+            case (AdvanceTleilaxu(count=count),):
+                choices.append(("tleilaxu", count))
+            case _:
+                raise ValueError(f"no Reclaimed Forces choice holds {line!r}")
+    if len({choice for choice, _ in choices}) != len(choices):
+        raise ValueError("Reclaimed Forces prints each choice once")
+    return tuple(choices)
+
+
+_RECLAIMED_FORCES_TERMS: Final = dict(_reclaimed_forces_choices())
+RECLAIMED_FORCES_CHOICES: Final = tuple(_RECLAIMED_FORCES_TERMS)
+RECLAIMED_FORCES_TROOPS: Final = _RECLAIMED_FORCES_TERMS["troops"]
+RECLAIMED_FORCES_TLEILAXU: Final = _RECLAIMED_FORCES_TERMS["tleilaxu"]
 
 
 def tleilaxu_cards_for(promo_cards: bool = False) -> tuple[TleilaxuCardEntry, ...]:

@@ -6,13 +6,34 @@ Tleilaxu track is the strip above it [Immortality p. 7]. Column and row
 coordinates are the transcription's own: columns run left to right from the
 start space (column 0) to the last column (8), rows are the hexagon's
 vertical slot so that a rightward step always changes the row by one.
+The printed bonuses are ability records (``track_abilities.py``, composed
+A7c) compiled into ``ResearchSpace.bonus`` and ``TLEILAXU_TRACK``.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.content.immortality.track_abilities import (
+    RESEARCH_SPACE_ABILITIES,
+    TLEILAXU_SPACE_ABILITIES,
+)
 from dune_imperium.content.schema import SourceDocument, SourceRef
+from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
+from dune_imperium.content.uprising.effect_dsl import (
+    AdvanceTleilaxu,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    GenerateSpecimens,
+    PayResources,
+    Research,
+    TakeSetupSpice,
+    TrashIntrigueCard,
+    TrashPersonalCard,
+)
 
 BOARD_SOURCES: Final = (SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 6, 7)),)
 
@@ -61,8 +82,70 @@ class ResearchSpace:
             raise ValueError("research space coordinates must not be negative")
 
 
-def _space(column: int, row: int, bonus: ResearchBonus) -> ResearchSpace:
-    return ResearchSpace(f"c{column}r{row}", column, row, bonus)
+def _space(column: int, row: int) -> ResearchSpace:
+    """One space, its bonus compiled from its record (composed A7c)."""
+
+    space_id = f"c{column}r{row}"
+    return ResearchSpace(space_id, column, row, _research_bonus(space_id))
+
+
+def _research_bonus(space_id: str) -> ResearchBonus:
+    """The bonus a research space's record prints; raises ``ValueError``
+    for a record no ``ResearchBonus`` holds."""
+
+    record = RESEARCH_SPACE_ABILITIES.get(space_id)
+    if record is None:
+        return ResearchBonus.NONE
+    if record.timing is not AbilityTiming.TRACK_SPACE or record.requirement:
+        raise ValueError(f"{space_id}: not a track space's bonus")
+    lines = tuple(
+        (line.condition, line.costs, line.rewards) for line in record.sections
+    )
+    automatic = record.mark is AbilityMark.AUTOMATIC
+    match lines:
+        case ((None, (), (GenerateSpecimens(count=1),)),) if automatic:
+            return ResearchBonus.SPECIMEN
+        case ((None, (), (AdvanceTleilaxu(count=1),)),) if automatic:
+            return ResearchBonus.TLEILAXU
+        case ((None, (), (Research(),)),) if automatic:
+            return ResearchBonus.RESEARCH
+        case (
+            (None, (), (TrashPersonalCard() as trash,)),
+            (None, (), (GenerateSpecimens(count=1),)),
+        ) if automatic and trash == TrashPersonalCard():
+            return ResearchBonus.TRASH_AND_SPECIMEN
+        case (
+            (None, (), (AdvanceTleilaxu(count=1),)),
+            (None, (), (GenerateSpecimens(count=1),)),
+        ) if automatic:
+            return ResearchBonus.TLEILAXU_AND_SPECIMEN
+        case ((None, (), (GainResources(solari=1, spice=0, water=0),)),) if automatic:
+            return ResearchBonus.SOLARI_ONE
+        case ((None, (), (GainResources(solari=0, spice=1, water=0),)),) if automatic:
+            return ResearchBonus.SPICE_ONE
+        case ((None, (), (GainResources(solari=0, spice=2, water=0),)),) if automatic:
+            return ResearchBonus.SPICE_TWO
+        case ((None, (), (GainInfluence() as gain,)),) if (
+            record.mark is AbilityMark.MANDATORY and gain == GainInfluence()
+        ):
+            return ResearchBonus.INFLUENCE_ANY
+        case (
+            (
+                None,
+                (TrashIntrigueCard() as cost,),
+                (DrawPersonalCards(count=1), DrawIntrigueCards(count=1)),
+            ),
+        ) if record.mark is AbilityMark.OPTIONAL and cost == TrashIntrigueCard():
+            return ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+        case (
+            (
+                None,
+                (PayResources(solari=7, spice=0, water=0),),
+                (AdvanceTleilaxu(count=2),),
+            ),
+        ) if record.mark is AbilityMark.OPTIONAL:
+            return ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+    raise ValueError(f"{space_id}: no ResearchBonus holds {lines!r}")
 
 
 RESEARCH_START_ID: Final = "c0r3"
@@ -72,28 +155,28 @@ FIRST_GENETIC_MARKER_COLUMN: Final = 4
 SECOND_GENETIC_MARKER_COLUMN: Final = 8
 
 RESEARCH_SPACES: Final[tuple[ResearchSpace, ...]] = (
-    _space(0, 3, ResearchBonus.NONE),
-    _space(1, 3, ResearchBonus.SPECIMEN),
-    _space(2, 2, ResearchBonus.SPECIMEN),
-    _space(2, 4, ResearchBonus.TLEILAXU),
-    _space(3, 1, ResearchBonus.RESEARCH),
-    _space(3, 3, ResearchBonus.TRASH_AND_SPECIMEN),
-    _space(3, 5, ResearchBonus.TLEILAXU_AND_SPECIMEN),
-    _space(4, 2, ResearchBonus.TLEILAXU),
-    _space(4, 4, ResearchBonus.SPECIMEN),
-    _space(4, 6, ResearchBonus.RESEARCH),
-    _space(5, 1, ResearchBonus.RESEARCH),
-    _space(5, 3, ResearchBonus.SPECIMEN),
-    _space(5, 5, ResearchBonus.SOLARI_ONE),
-    _space(6, 2, ResearchBonus.SPICE_ONE),
-    _space(6, 4, ResearchBonus.TLEILAXU),
-    _space(6, 6, ResearchBonus.INFLUENCE_ANY),
-    _space(7, 1, ResearchBonus.TLEILAXU),
-    _space(7, 3, ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE),
-    _space(7, 5, ResearchBonus.TRASH_AND_SPECIMEN),
-    _space(8, 2, ResearchBonus.SPICE_TWO),
-    _space(8, 4, ResearchBonus.TLEILAXU),
-    _space(8, 6, ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU),
+    _space(0, 3),
+    _space(1, 3),
+    _space(2, 2),
+    _space(2, 4),
+    _space(3, 1),
+    _space(3, 3),
+    _space(3, 5),
+    _space(4, 2),
+    _space(4, 4),
+    _space(4, 6),
+    _space(5, 1),
+    _space(5, 3),
+    _space(5, 5),
+    _space(6, 2),
+    _space(6, 4),
+    _space(6, 6),
+    _space(7, 1),
+    _space(7, 3),
+    _space(7, 5),
+    _space(8, 2),
+    _space(8, 4),
+    _space(8, 6),
 )
 RESEARCH_SPACES_BY_ID: Final = {space.space_id: space for space in RESEARCH_SPACES}
 RESEARCH_LAST_COLUMN: Final = max(space.column for space in RESEARCH_SPACES)
@@ -149,15 +232,35 @@ class TleilaxuBonus(StrEnum):
 
 
 # Space 0 is the start box; the token advances one space per Tleilaxu icon.
-TLEILAXU_TRACK: Final[tuple[TleilaxuBonus, ...]] = (
-    TleilaxuBonus.NONE,
-    TleilaxuBonus.NONE,
-    TleilaxuBonus.INTRIGUE,
-    TleilaxuBonus.NONE,
-    TleilaxuBonus.VICTORY_POINT_AND_FIRST_SPICE,
-    TleilaxuBonus.NONE,
-    TleilaxuBonus.INTRIGUE,
-    TleilaxuBonus.VICTORY_POINT,
+TLEILAXU_TRACK_SPACES: Final = 8
+
+
+def _tleilaxu_bonus(space: int) -> TleilaxuBonus:
+    """The bonus a Tleilaxu track space's record prints (composed A7c);
+    raises ``ValueError`` for a record no ``TleilaxuBonus`` holds."""
+
+    record = TLEILAXU_SPACE_ABILITIES.get(space)
+    if record is None:
+        return TleilaxuBonus.NONE
+    if (
+        record.timing is not AbilityTiming.TRACK_SPACE
+        or record.mark is not AbilityMark.AUTOMATIC
+        or record.requirement is not None
+        or any(line.condition is not None or line.costs for line in record.sections)
+    ):
+        raise ValueError(f"Tleilaxu space {space}: not a track space's bonus")
+    match tuple(line.rewards for line in record.sections):
+        case ((DrawIntrigueCards(count=1),),):
+            return TleilaxuBonus.INTRIGUE
+        case ((GainVictoryPoints(amount=1),), (TakeSetupSpice(),)):
+            return TleilaxuBonus.VICTORY_POINT_AND_FIRST_SPICE
+        case ((GainVictoryPoints(amount=1),),):
+            return TleilaxuBonus.VICTORY_POINT
+    raise ValueError(f"Tleilaxu space {space}: no TleilaxuBonus holds {record!r}")
+
+
+TLEILAXU_TRACK: Final[tuple[TleilaxuBonus, ...]] = tuple(
+    _tleilaxu_bonus(space) for space in range(TLEILAXU_TRACK_SPACES)
 )
 TLEILAXU_TRACK_END: Final = len(TLEILAXU_TRACK) - 1
 # "Place 2 spice from the bank on the fourth space of the Tleilaxu track"

@@ -63,6 +63,9 @@ class AbilityTiming(StrEnum):
     # Flipping a Tech tile: "used during one of your turns, and can be used
     # only once per round" [Bloodlines p. 7] (composed A6b).
     FLIP = "flip"
+    # Reaching a space of the research or Tleilaxu track: its printed bonus
+    # [Immortality pp. 6-7] (composed A7c).
+    TRACK_SPACE = "track_space"
     # Strength a tile adds while its unit is in the Conflict: a Sardaukar
     # Commander's Skill [Bloodlines p. 4] (composed A7a).
     IN_CONFLICT = "in_conflict"

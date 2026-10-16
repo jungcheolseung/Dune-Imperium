@@ -9,6 +9,7 @@ support.
 
 from typing import assert_never
 
+from dune_imperium.content.immortality.board import TLEILAXU_SETUP_SPICE
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
@@ -127,6 +128,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeSetupSpice,
     TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
@@ -660,6 +662,9 @@ def reward_text(reward: Reward) -> str:
             if count == 1:
                 return "Draw a Twisted Intrigue card"
             return f"Draw {count} Twisted Intrigue cards"
+        case TakeSetupSpice():
+            # Quotes ``server/static/labels_en.js``'s Tleilaxu track label.
+            return f"First to reach: {TLEILAXU_SETUP_SPICE} spice"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

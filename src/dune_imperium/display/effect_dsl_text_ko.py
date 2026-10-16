@@ -36,6 +36,7 @@ are quoted directly from Korean card scans (see each case's docstring).
 
 from typing import assert_never
 
+from dune_imperium.content.immortality.board import TLEILAXU_SETUP_SPICE
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
@@ -154,6 +155,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeSetupSpice,
     TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
@@ -939,6 +941,9 @@ def reward_text_ko(reward: Reward) -> str:
         case DrawTwistedIntrigueCards(count=count):
             # Quotes ``display/leaders_ko.py``'s Piter De Vries line.
             return f"뒤틀린 책략 카드 {count}장을 뽑음"
+        case TakeSetupSpice():
+            # Quotes ``server/static/labels.js``'s Tleilaxu track label.
+            return f"첫 도달 {{spice:{TLEILAXU_SETUP_SPICE}}}"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

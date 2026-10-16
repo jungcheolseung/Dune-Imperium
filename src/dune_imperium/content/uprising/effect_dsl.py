@@ -1328,6 +1328,13 @@ class RecruitUndeployableTroops:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeSetupSpice:
+    """The first player to reach the space takes the spice placed there
+    during setup [Immortality pp. 4, 7] (the Tleilaxu track's fourth
+    space)."""
+
+
+@dataclass(frozen=True, slots=True)
 class DrawTwistedIntrigueCards:
     """Draw ``count`` cards from the player's own Twisted Intrigue deck
     [Piter De Vries card] (OQ-072, OQ-097)."""
@@ -1456,6 +1463,7 @@ type Reward = (
     | RecruitUndeployableTroops
     | TroopToMemory
     | DrawTwistedIntrigueCards
+    | TakeSetupSpice
 )
 
 

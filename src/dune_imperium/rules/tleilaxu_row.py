@@ -20,7 +20,12 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
+    RECLAIMED_FORCES_TLEILAXU,
+    RECLAIMED_FORCES_TROOPS,
     tleilaxu_card_for_instance,
+)
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES_CHOICES as RECORDED_RECLAIMED_FORCES_CHOICES,
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.engine import RuleResult
@@ -49,7 +54,9 @@ from dune_imperium.rules.scouts_missions import (
 from dune_imperium.rules.scouts_missions import claim_goods_at
 from dune_imperium.rules.specimens import spend_specimens
 
-RECLAIMED_FORCES_CHOICES = ("troops", "tleilaxu")
+# Reclaimed Forces' choices (its record, composed A7c), re-exported for
+# the executor, Combat's Harvest Cells offer and the page.
+RECLAIMED_FORCES_CHOICES = RECORDED_RECLAIMED_FORCES_CHOICES
 
 
 def refill_tleilaxu_row(state: GameState) -> GameState:
@@ -303,7 +310,7 @@ def acquire_reclaimed_forces(
     if choice == "tleilaxu":
         paid = replace(state, players=replace_player(state.players, owner))
         advanced = advance_tleilaxu(
-            paid, player, 1, source=f"{source}:reclaimed_forces"
+            paid, player, RECLAIMED_FORCES_TLEILAXU, source=f"{source}:reclaimed_forces"
         )
         fired = fire_reveal_acquisition_intrigue(
             advanced.state,
@@ -315,7 +322,7 @@ def acquire_reclaimed_forces(
             state=fired.state,
             events=(event, *deal.events, *advanced.events, *fired.events),
         )
-    recruited_owner, recruited = recruit_troops(owner, 2)
+    recruited_owner, recruited = recruit_troops(owner, RECLAIMED_FORCES_TROOPS)
     next_state = replace(state, players=replace_player(state.players, recruited_owner))
     if tleilaxu_shop_is_open(next_state, player):
         # A Reveal-turn recruit may deploy with a Combat icon [Bloodlines
@@ -334,7 +341,10 @@ def acquire_reclaimed_forces(
             event,
             *deal.events,
             *recruit_shortfall_events(
-                f"{source}:reclaimed_forces", player, 2, recruited
+                f"{source}:reclaimed_forces",
+                player,
+                RECLAIMED_FORCES_TROOPS,
+                recruited,
             ),
             *fired.events,
         ),
