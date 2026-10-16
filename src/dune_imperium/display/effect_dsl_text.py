@@ -515,8 +515,9 @@ def reward_text(reward: Reward) -> str:
             )
         case TrashThisCard():
             return "Trash this card"
-        case RecallAgent(sent_this_turn=True):
-            return "Recall the Agent you sent this turn"
+        case RecallAgent(sent_this_turn=True, optional=optional):
+            text = "recall the Agent you sent this turn"
+            return f"You may {text}" if optional else text.capitalize()
         case RecallAgent():
             return "Recall 1 Agent"
         case CompleteContract():

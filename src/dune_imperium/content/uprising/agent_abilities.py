@@ -524,7 +524,7 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # by its own rows (the Influence choice, the Agent recall, the trash),
             # an automatic one by ``resolve_agent_card_effect(effect=...)``.
             # Dangerous Rhetoric: "Trash this card, Gain 1 Influence with a chosen
-            # Faction".
+            # Faction" -- queued Influence first, the order the old engine kept.
             _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: _icons(
                 ("influence", _line(GainInfluence())),
                 ("trash_self", _line(TrashThisCard())),
@@ -537,7 +537,7 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Twisted Mentat: "You may recall the Agent you sent this turn" (an
             # optional icon, ``agent_effects.OPTIONAL_AGENT_ICONS``).
             _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: _icons(
-                ("recall", _line(RecallAgent(sent_this_turn=True))),
+                ("recall", _line(RecallAgent(sent_this_turn=True, optional=True))),
             ),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each

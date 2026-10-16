@@ -1062,9 +1062,10 @@ class RecallAgent:
     """Recall one of the player's Agents from a board space: any but the one
     sent this turn ("Recall 1 Agent" [Steersman card]), or with
     ``sent_this_turn`` exactly that one ("You may recall the Agent you sent
-    this turn" [Twisted Mentat card])."""
+    this turn" [Twisted Mentat card], ``optional``)."""
 
     sent_this_turn: bool = False
+    optional: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -45,6 +45,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    RecallAgent,
     RecruitTroops,
     TrashCard,
     TrashedCardHasFaction,
@@ -95,6 +96,7 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TROOPS,
     AUTOMATIC_AGENT_ICONS,
     CONTROL_THE_SPICE_PRICE,
+    OPTIONAL_AGENT_ICONS,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_icons_at_placement,
@@ -1026,3 +1028,24 @@ def test_dangerous_rhetoric_trashes_itself_by_its_own_icon() -> None:
     context = dict(trashed.state.decision_stack[-1].context)
     assert context["agent_card_self_trashed"] is True
     assert context["pending_agent_icons"] == "influence"
+
+
+def test_the_optional_icons_are_marked_in_their_records() -> None:
+    """The icons ``OPTIONAL_AGENT_ICONS`` lets lapse are the ones their records
+    print as optional (Tread in Darkness's black trash icon, Twisted Mentat's
+    "You may recall"), so a later stage can read it from the records."""
+
+    marked = {}
+    for effect, ability in AGENT_BOX_ABILITIES.items():
+        keys = frozenset(
+            key
+            for key, line in zip(ability.icons, ability.sections, strict=False)
+            if any(
+                isinstance(reward, TrashPersonalCard) and not reward.mandatory
+                or isinstance(reward, RecallAgent) and reward.optional
+                for reward in line.rewards
+            )
+        )
+        if keys:
+            marked[effect] = keys
+    assert marked == dict(OPTIONAL_AGENT_ICONS)

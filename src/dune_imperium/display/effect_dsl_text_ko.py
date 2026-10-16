@@ -794,9 +794,10 @@ def reward_text_ko(reward: Reward) -> str:
         case TrashThisCard():
             # Quotes ``tokens_ko.py``'s Dangerous Rhetoric line.
             return "이 카드 {trash}"
-        case RecallAgent(sent_this_turn=True):
+        case RecallAgent(sent_this_turn=True, optional=optional):
             # Quotes ``tokens_ko.py``'s Twisted Mentat line.
-            return "이번 차례에 보낸 {agent} 소환"
+            text = "이번 차례에 보낸 {agent} 소환"
+            return f"{text} 가능" if optional else text
         case RecallAgent():
             # Quotes ``tokens_ko.py``'s Steersman line.
             return "{agent} 소환"

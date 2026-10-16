@@ -2968,10 +2968,9 @@ def resolve_agent_card_icon(
 ) -> RuleResult:
     """Resolve one printed icon of the played card's Agent box.
 
-    A box written as an ability record resolves its icons in
+    A box written as an ability record resolves its printed icons in
     ``agent_box_abilities.resolve_box_icon``; this resolves the others'
-    (Steersman's draw, Dangerous Rhetoric's "Trash this card.", Tread in
-    Darkness's draw, Fill Coffers' gains, and an arrow box's armed rewards).
+    (Fill Coffers' gains, and an arrow box's armed rewards).
     An icon is offered only while its condition holds
     (``agent_icon_condition_holds``), judged when it resolves in the owner's
     order [Main pp. 7, 9]. Urgent
