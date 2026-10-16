@@ -52,6 +52,7 @@ from dune_imperium.rules.reveal_turn import (
     pending_reveal_choices,
     reveal_choice_providers,
     reveal_late_arrivals,
+    target_reward_choice,
 )
 
 ENGINE = UprisingRulesEngine()
@@ -242,14 +243,22 @@ def _produced_by_card() -> dict[str, dict[str, list[DomainAction]]]:
                         _build_reveal_choice_frame(1, 0, card_id, effect),
                     ),
                 )
-                for provider in reveal_choice_providers():
-                    for action in provider(state, 0):
-                        produced.setdefault(action.action_id, {}).setdefault(
-                            entry.card.card_id, []
-                        ).append(action)
-                        assert action.action_id in REVEAL_CHOICE_EFFECT_ACTIONS[
-                            effect
-                        ], (entry.card.card_id, action)
+                offered = [
+                    action
+                    for provider in reveal_choice_providers()
+                    for action in provider(state, 0)
+                ]
+                # Each row comes from one provider: a pending entry lists
+                # what its frame offers, so a row two providers gave would
+                # show twice there (composed A4d).
+                assert len(offered) == len(set(offered)), entry.card.card_id
+                for action in offered:
+                    produced.setdefault(action.action_id, {}).setdefault(
+                        entry.card.card_id, []
+                    ).append(action)
+                    assert action.action_id in REVEAL_CHOICE_EFFECT_ACTIONS[
+                        effect
+                    ], (entry.card.card_id, action)
     return produced
 
 
@@ -783,3 +792,24 @@ def test_the_new_reveal_choice_pieces_read_as_the_cards_print_them() -> None:
     (seat,) = REVEAL_CHOICE_ABILITIES[corrinth].sections[1].rewards
     assert reward_text(seat) in REVEAL_CHOICE_EFFECT_TEXT[corrinth]
     assert reward_text_ko(seat) in REVEAL_CHOICE_EFFECT_TEXT_KO[corrinth]
+
+
+def test_eight_reveal_choices_pay_one_target_for_their_reward() -> None:
+    """Composed A4d: the choices that recall a Spy, trash a card or name a
+    Faction for their reward resolve by the shared "target -> reward" shape;
+    the Spy icons, the printed "-OR-"s and the hooks do not."""
+
+    assert {
+        effect
+        for effect, ability in REVEAL_CHOICE_ABILITIES.items()
+        if target_reward_choice(ability)
+    } == {
+        _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+        _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH,
+        _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH,
+        _Choice.COMMAND_MAY_TRASH_CARD,
+        _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON,
+        _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE,
+        _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+    }
