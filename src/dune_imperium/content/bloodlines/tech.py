@@ -172,12 +172,7 @@ class TechTile:
         """
 
         counted_icons = (
-            "solari",
-            "troops",
-            "intrigue",
-            "cards",
-            "victory_points",
-            "contracts",
+            "solari", "troops", "intrigue", "cards", "victory_points", "contracts"
         )
         return (
             *(key for key in counted_icons if getattr(self, f"acquire_{key}")),
