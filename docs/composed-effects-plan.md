@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), A4 끝남(2026-10-16, 5절 "A4a·A4c에서 만든 것"·"A4d~A4h에서 만든 것": 획득·폐기·버림 효과, Reveal 자동 이득, Reveal 선택 26개 — 개인 카드의 효과가 모두 기록), A5 끝남(2026-10-16, 5절 "A5에서 만든 것": 계약·Conflict 보상·보드 칸), A6 끝남(2026-10-17, 5절 "A6에서 만든 것": Tech·지도자), 다음 A7(Immortality, Arrakeen Scouts); 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), A4 끝남(2026-10-16, 5절 "A4a·A4c에서 만든 것"·"A4d~A4h에서 만든 것": 획득·폐기·버림 효과, Reveal 자동 이득, Reveal 선택 26개 — 개인 카드의 효과가 모두 기록), A5 끝남(2026-10-16, 5절 "A5에서 만든 것": 계약·Conflict 보상·보드 칸), A6 끝남(2026-10-17, 5절 "A6에서 만든 것": Tech·지도자), A7 끝남(2026-10-17, 5절 "A7에서 만든 것": 기술 타일·Immortality·Arrakeen Scouts) — **A단계 옮기기 끝**, 다음은 5절 "정리 단계"(A8과 함께). 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -134,7 +134,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a4/reveal-survey.md`)의 하위 단계 A4a~A4h — 끝남(2026-10-16, 아래 "A4a·A4c에서 만든 것", "A4d~A4h에서 만든 것") |
 | A5 | 보드 칸, Conflict 보상, 계약. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a5/a5-survey.md`)의 하위 단계 A5a(계약 28장)·A5b(Conflict 19장, 보상 57줄)·A5c(보드 칸 인쇄 아이콘)·A5d(보드 선택 아이콘과 특수 흐름 — 조사의 A5d+A5e) — 끝남(2026-10-16, 아래 "A5에서 만든 것") |
 | A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a6/a6-survey.md`)의 하위 단계 A6a(Tech 획득 효과)·A6b(Tech 능력 18개)·A6c(인장 18개)·A6e(지도자 왼쪽 칸 21개, Tech 유발 둘) — 조사의 A6d·A6f는 A6c·A6e에 들어감, A6g(규칙 변경·설정·지휘관 제안)는 판단으로 정리 — 끝남(2026-10-17, 아래 "A6에서 만든 것") |
-| A7 | Immortality(접합, 연구, Tleilaxu, 표본), Arrakeen Scouts |
+| A7 | Immortality(접합, 연구, Tleilaxu, 표본), Arrakeen Scouts, 그리고 사용자 결정(2026-10-17)으로 Sardaukar 기술 타일 7개. 조사(2026-10-17, git 무시 `tmp/claude/4767ed6a/a7/a7-survey.md`)의 하위 단계 A7a(기술 타일)·A7b(Scouts 77개)·A7c(연구·Tleilaxu 트랙 보너스, Reclaimed Forces)·A7d(Immortality 규칙 변경 넷) — A7e(장치)는 판단으로 정리 — 끝남(2026-10-17, 아래 "A7에서 만든 것") |
 | 정리 | 옮기기(A0~A7)가 끝난 뒤 옛 코드에서 물려받은 처리기별 차이를 하나의 규칙으로 통일: 사건 이름, "칸 해결" 사건, 시험 해결의 답, hook. 아래 "정리 단계". codec은 A8과 함께 한 번만 올린다 |
 | A8 | 망 특성(4.4)과 한 번의 재학습, 관문 뒤 플레이 서버 교체 |
 
@@ -526,9 +526,40 @@ hook으로 두되 그 수를 세어 줄여 간다.
   `LeaderDefinition` 칸 그대로(칸을 더하면 망 특성 digest가 바뀐다). Feyd의 훈련 트랙 칸 보상(`FeydTrackReward`)도 트랙 자료로 둔다.
   보드 칸에서 지휘관을 받는 제안은 칸에 인쇄된 효과가 아니라 모듈이 칸에 놓은 지휘관의 규칙이라, A5가 방문 규칙을 엔진 코드로 둔
   판단과 같이 엔진 코드로 둔다(A5의 "A6에서"를 이것으로 닫음). Sardaukar 기술 타일 7개(`SkillDefinition`)는 표의 어느 단계에도 없다
-  — 어디서 할지 사용자 결정 필요.
+  — 어디서 할지 사용자 결정 필요(2026-10-17 결정: A7a로 옮김, 아래 "A7에서 만든 것").
 - **결과:** Tech와 지도자의 인쇄 능력이 모두 기록이다(규칙 변경은 이름만 적은 `STANDING` 기록 11개). hook은 A5까지 41 + Tech 5 +
   인장 10 + 지도자 6 = 62.
+
+### A7에서 만든 것 (2026-10-17, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a7/a7-survey.md`: 기술 타일 7개, 연구 칸 22개·Tleilaxu 트랙 8칸·Reclaimed Forces·Tleilaxu 카드 18장,
+접합·표본·Family Atomics, Scouts 항목 77개; 2,000판 탐침·추적판·시나리오)를 따랐다. 기준 기록은 시작 master `9234a14a`로 다시
+만들었다(옛 기록과 수 하나까지 같음).
+
+- **A7a — Sardaukar 기술 타일 7개(사용자 결정 2026-10-17):** `content/bloodlines/skill_abilities.py`(기술 id별). Reveal 줄 넷
+  (Charismatic, Driven, Hardy, Desperate의 "이 타일 폐기 → 칼 3")과 전투력 줄(Canny, Fierce 둘, Loyal; 새 시점 `IN_CONFLICT` —
+  지휘관이 교전에 있는 동안)을 `content/bloodlines/sardaukar.py`가 `SkillDefinition` 칸(종류 포함)으로 옮긴다. 조건
+  `AgentOnSpaceWithIcon`·`OpponentSandwormInConflict`, Desperate의 비용은 기존 `TrashCard(this_card=True)`.
+- **A7c — Immortality 트랙 보너스와 Reclaimed Forces:** `content/immortality/track_abilities.py`. 연구 칸 21개의 보너스(칸 id별)와
+  Tleilaxu 트랙 4칸의 보상을 `ResearchSpace.bonus`·`TLEILAXU_TRACK`으로, Reclaimed Forces의 두 선택을 선택지와 수(병력 2,
+  Tleilaxu 1)로 옮긴다 — `rules/tleilaxu_row.py`가 옮긴 값을 읽고, 해결 순서(표본이 폐기보다, 책략이 카드보다 먼저)는 처리 코드
+  그대로. 새 시점 `TRACK_SPACE`, 보상 `TakeSetupSpice`(넷째 칸의 첫 도달 스파이스).
+- **A7d — Immortality의 인쇄된 규칙 변경 넷:** Ghola의 같은 Agent 칸, Usurp의 Row 접합, Tleilaxu Infiltrator의 "적 Agent가 막지 않음",
+  Family Atomics를 `content/immortality/rule_abilities.py`의 `STANDING` 기록으로(엔진 분기 이름).
+- **A7b — Arrakeen Scouts 77개:** `content/arrakeen_scouts/abilities.py`(항목 id별, 새 시점 `SCOUTS`). 위원회 14, 고르기·공유·비밀
+  이벤트, 판매 4, 봉인 경매 8의 줄 75개를 내용 표에서 글자 그대로 옮겼고(AST로 옮긴 뒤 77개 항목의 repr이 같음), 내용 표가 기록을
+  `ScoutsOption`·`rank_rewards`로 다시 옮긴다 — Scouts 단계와 줄 실행기(`SCOUTS_EFFECT`)는 그대로. 미션 16, 자동 이벤트 4, 라운드
+  효과 4, Mercenaries, Critical Moment 둘은 모듈의 장치라 줄 없는 hook 기록(이름만)이고, Rebuild Infrastructure는 자원자가 내는 줄과
+  hook을 함께 적었다. CHOAM Escort의 두 선택, 참가 비용 셋(Prison Planet, Fedaykin Assistance, Weirding Warfare), Political
+  Equilibrium의 좌석별 줄은 그 장치의 자료로 미션 표·규칙 코드에 남는다(판단: 장치와 떼어 적으면 반쪽 기록이 된다). Scouts 전용 조각 9개는 효과 DSL로 옮기고(`content.arrakeen_scouts.types`가 그대로 다시 내보냄) `Cost`·`Reward`에
+  넣었으며(손패 폐기는 비용 쪽에도), `EffectSection`은 무언가를 잃기만 하는 줄(Crackdown)을 받는다 — 이 셋(전용 조각, 비용 쪽 손패 폐기, 잃기만 하는 줄)은 `SCOUTS` 기록에만
+  허용한다(`Ability`가 확인). 문구는 `display/scouts.py`의 것을
+  옮겼다.
+- **옮기지 않은 것(판단, 조사의 A7e):** 표본(만들기·쓰기·되돌리기 창), 접합 기계, Tleilaxu Row 상점·채우기·덱 위, 유전 표지 규칙,
+  연구 이동·창, Tleilaxu 루프·끝·보류 뽑기, Scouts의 일정·뽑기·경매 기계는 게임 규칙이라 엔진 코드로 둔다(A5의 방문 규칙, A6의
+  지휘관 제안과 같은 판단). Tleilaxu 카드 18장의 효과와 Research Station 덧판은 A2~A5에서 이미 기록이다.
+- **결과: A단계 옮기기가 끝났다.** 모든 카드·타일·보드·트랙·모듈 항목의 인쇄 효과가 기록이다(규칙 변경은 이름만 적은 `STANDING`
+  기록 15개, 모듈 장치는 줄 없는 hook 기록). hook은 A6까지 62 + Scouts 28 = 90.
 
 ### 정리 단계 — 물려받은 차이 통일 (A단계 옮기기 뒤, A8과 함께; 사용자 결정 2026-10-16)
 
@@ -565,6 +596,15 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
     (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, codec·옛 기보 다리에 남음), 의무 단계에 "막히지
     않게" 남긴 거절, 닿지 않는 `acquire_leader_reserve`(비용 1인 Reserve 더미 없음)와 Esmar의 거절만 있는 인장. Tech 획득·Reveal은
     기록을 옮긴 `TechTile`·`TECH_REVEAL_GAINS`를 읽는다(A4c와 같음).
+  - 기술 타일·Immortality·Scouts(A7 조사 G.4-6): 연구 이동 사건 id가 부른 곳마다 다름(`…:research:<칸>` / `…:research:#:research:<칸>`
+    / `…:acquisition_bonus:research:<칸>`), Scouts 줄과 책략 보상의 자원 얻기는 사건이 없는데 연구 보너스·획득 보너스는 있음,
+    Tleilaxu VP·스파이스가 `tleilaxu_advanced`의 payload(따로 `victory_points_gained` 없음), Family Atomics와 Clear the Market은 같은
+    효과에 다른 사건, `skill_reveal_bonus`가 0인 양도 실음, 연구 창은 차례 안에서도 거절을 따로 냄(OQ-095 (2)와 다름),
+    `scouts_choice_skipped`는 결정 없는 사건, 연구 보너스 셋의 해결 순서가 인쇄 순서와 다름, `scm._PARKING`이
+    `Mission.parked_troops/troop_source`를 되풀이, Scouts의 `PaySpecimens`가 DSL `SpendSpecimens`와, 비용 쪽
+    `TrashPersonalCard(hand_only=True, mandatory=True)`가 `TrashCard(hand_only=True)`와 같은 일(합칠 후보), 고르기 이벤트의 거절 가능
+    여부가 `ScoutsEvent.passable`과 기록의 표시 두 곳(테스트가 맞춤), Scouts 장치
+    hook 이름(`scouts_<항목>`)은 엔진의 등록부가 아니라 항목 id.
   - A3g~A7에서 찾는 같은 종류의 차이도 이 목록에 더한다.
 - **방법:**
   1. 차이 목록을 만들고 종류마다 규칙 하나를 정한다(예: 사건 이름 `<칸>:<무엇>`, 칸이 끝나면 언제나 "칸 해결" 사건 하나).
@@ -632,6 +672,12 @@ A2 관문(2026-10-16, 시작 master `7ba624ad`): 1번 200판 모두 same(191,836
 통과, E2E 67종 통과, 소크 720판 실패 0. 6번 `time_legal.py` Agent frame 호출당 1~2% 느림(관문 10% 안). 독립 리뷰: 막는 문제·중간 없음. 옛·새 엔진 차등 탐침 330판(Agent 효과 상태 172,999곳에서 합법 행동·사건·상태·네 좌석 보기와 모든 효과×키의
 막힘 이유·대기 판정까지)과 강제 탐침 2,665곳이 모두 같았다. 낮은 지적 3개(아이콘 조건이 막힘 이유를 늘 낼 것, 두 곳에 복사된 조건 판정,
 화면 비교 범위)와 사소한 지적들을 반영했다(worklog 2026-10-16 A2).
+
+A7 관문(2026-10-17, 시작 master `9234a14a`로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A7a·A7c·A7b 뒤, 리뷰
+반영 뒤). 에이전트 재기록 같음. A7 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(하위 단계마다; A7a는 A6 탐침도
+같음), 조사 시나리오 같음. 기술 타일·연구 칸·Tleilaxu 트랙·Reclaimed Forces·Scouts 77개의 repr, 망 특성 digest 같음. 2번 v148·v147
+묶음 각 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로. 5번 pytest 7,865개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
+6번 호출당 합법 행동 50.0→49.7µs(중앙값 셋), Agent frame 65.9→65.6µs — 잡음 안. 독립 리뷰: 막는 문제·중간 없음 — 카탈로그, 코덱 11개 설정, 관측 표, 기술 타일·Scouts·Immortality 문구 두 언어, 망 특성 digest가 같고, 앱 AI 좌석으로 직접 둔 300판(26만여 단계)이 같았다. 낮은 지적 다섯(전용 조각·잃기만 하는 줄이 모든 기록에 열림, 옮기는 함수가 hook·구조를 안 봄, 미션 줄 범위, 거절 가능 여부 두 곳, 사소한 문구) 반영 — 이제 Scouts 전용 것은 `SCOUTS` 기록에만 허용하고 옮기는 함수가 모르는 모양을 거부.
 
 A6 관문(2026-10-17, 시작 master `0c58e583`로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A6a·A6b 뒤, A6c 뒤, A6e 뒤,
 리뷰 반영 뒤). 에이전트 재기록 같음. A6 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(하위 단계마다), 조사 시나리오

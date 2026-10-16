@@ -32,10 +32,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.uprising.effect_dsl import (
+    SCOUTS_ONLY_PIECES,
     Condition,
     EffectSection,
     IntrigueOption,
     IntrigueTiming,
+    TrashPersonalCard,
     Trigger,
 )
 
@@ -63,6 +65,16 @@ class AbilityTiming(StrEnum):
     # Flipping a Tech tile: "used during one of your turns, and can be used
     # only once per round" [Bloodlines p. 7] (composed A6b).
     FLIP = "flip"
+    # An Arrakeen Scouts item's printed lines: a subcommittee joined, an
+    # event's or a sale's choice, a secret reward, an auction place (composed
+    # A7b); a mechanism of the module is a hook record without lines.
+    SCOUTS = "scouts"
+    # Reaching a space of the research or Tleilaxu track: its printed bonus
+    # [Immortality pp. 6-7] (composed A7c).
+    TRACK_SPACE = "track_space"
+    # Strength a tile adds while its unit is in the Conflict: a Sardaukar
+    # Commander's Skill [Bloodlines p. 4] (composed A7a).
+    IN_CONFLICT = "in_conflict"
     # A printed rule change in force while the card is held -- a cost, a
     # limit, an icon list, what its owner may see -- with no moment of its
     # own: the record names the engine's branch (``hook``), composed A6b.
@@ -125,6 +137,19 @@ class Ability:
             raise ValueError("an ability needs a printed line or a hook")
         if self.hook == "":
             raise ValueError("a hook must be named")
+        if self.timing is not AbilityTiming.SCOUTS and any(
+            not section.rewards
+            or any(isinstance(cost, TrashPersonalCard) for cost in section.costs)
+            or any(
+                isinstance(piece, SCOUTS_ONLY_PIECES)
+                for piece in (*section.costs, *section.rewards)
+            )
+            for section in self.sections
+        ):
+            # An Arrakeen Scouts line may only take something away, charge
+            # a trash from the hand, or use the module's own pieces
+            # (composed A7b); no card prints them.
+            raise ValueError("only an Arrakeen Scouts line prints this")
         if (
             self.structure is not AbilityStructure.SEQUENCE
             and len(self.sections) < 2

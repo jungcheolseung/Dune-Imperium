@@ -2,14 +2,35 @@
 
 The Commander rules live in ``docs/rules/bloodlines.md`` section 3; the seven
 Skill effects are transcribed from the printed tile faces (asset repository
-``cards/en/bloodlines/skill/``), cited as ``[<name> Skill tile]``.
+``cards/en/bloodlines/skill/``), cited as ``[<name> Skill tile]``, as ability
+records (``skill_abilities.py``, composed A7a) compiled into the fields
+below.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.content.bloodlines.skill_abilities import SKILL_ABILITIES
 from dune_imperium.content.schema import SourceDocument, SourceRef
+from dune_imperium.content.uprising.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    GainCombatStrength,
+    GainResources,
+    InfluenceAtLeast,
+    OpponentSandwormInConflict,
+    RecruitTroops,
+    RevealPersuasion,
+    RevealSwords,
+    TrashCard,
+)
+from dune_imperium.content.uprising.types import AgentIcon
 
 # Four-player setup: five printed spaces plus Assembly Hall, and one
 # Commander in the bank for Sardaukar Standard [Bloodlines p. 3].
@@ -76,38 +97,94 @@ class SkillDefinition:
             raise ValueError("an Emperor Influence bonus needs its threshold")
 
 
+def _skill(skill_id: str, name: str) -> SkillDefinition:
+    """One Skill, its kind and printed effect compiled from its record
+    (composed A7a); raises ``ValueError`` for a record the fields cannot
+    hold."""
+
+    ability = SKILL_ABILITIES[skill_id]
+    if (
+        ability.requirement is not None
+        or ability.trigger is not None
+        or ability.hook is not None
+        or ability.structure is not AbilityStructure.SEQUENCE
+    ):
+        raise ValueError(f"{skill_id}: a Skill pays every printed line")
+    fields: dict[str, int] = {}
+
+    def put(field: str, amount: int) -> None:
+        if field in fields:
+            raise ValueError(f"{skill_id}: {field} printed twice")
+        fields[field] = amount
+
+    if ability.timing is AbilityTiming.REVEAL:
+        kind = SkillKind.REVEAL
+        (line,) = ability.sections
+        match ability.mark, line.condition, line.costs, line.rewards:
+            case AbilityMark.AUTOMATIC, None, (), (
+                RevealPersuasion(amount=n, per=None),
+            ):
+                put("reveal_persuasion", n)
+            case AbilityMark.AUTOMATIC, None, (), (
+                GainResources(solari=0, spice=n, water=0),
+            ):
+                put("reveal_spice", n)
+            case AbilityMark.AUTOMATIC, None, (), (RecruitTroops(count=n),):
+                put("reveal_troops", n)
+            case AbilityMark.OPTIONAL, None, (TrashCard(this_card=True),), (
+                RevealSwords(amount=n, per=None),
+            ):
+                put("trash_for_strength", n)
+            case _:
+                raise ValueError(f"{skill_id}: no Skill field holds {line!r}")
+    elif ability.timing is AbilityTiming.IN_CONFLICT:
+        kind = SkillKind.STRENGTH
+        if ability.mark is not AbilityMark.AUTOMATIC:
+            raise ValueError(f"{skill_id}: Skill strength needs no choice")
+        for line in ability.sections:
+            match line.condition, line.costs, line.rewards:
+                case None, (), (GainCombatStrength(amount=n),):
+                    put("strength", n)
+                case AgentOnSpaceWithIcon(icon=AgentIcon.LANDSRAAD), (), (
+                    GainCombatStrength(amount=n),
+                ):
+                    put("strength_if_landsraad_agent", n)
+                case OpponentSandwormInConflict(), (), (GainCombatStrength(amount=n),):
+                    put("strength_if_opponent_sandworm", n)
+                case InfluenceAtLeast(faction=Faction.EMPEROR, amount=threshold), (), (
+                    GainCombatStrength(amount=n),
+                ):
+                    put("strength_if_emperor_influence", n)
+                    put("emperor_influence_required", threshold)
+                case _:
+                    raise ValueError(f"{skill_id}: no Skill field holds {line!r}")
+    else:
+        raise ValueError(f"{skill_id}: a Skill pays on the Reveal or in the Conflict")
+    return SkillDefinition(
+        skill_id,
+        name,
+        kind,
+        reveal_persuasion=fields.get("reveal_persuasion", 0),
+        reveal_spice=fields.get("reveal_spice", 0),
+        reveal_troops=fields.get("reveal_troops", 0),
+        trash_for_strength=fields.get("trash_for_strength", 0),
+        strength=fields.get("strength", 0),
+        strength_if_landsraad_agent=fields.get("strength_if_landsraad_agent", 0),
+        strength_if_opponent_sandworm=fields.get("strength_if_opponent_sandworm", 0),
+        strength_if_emperor_influence=fields.get("strength_if_emperor_influence", 0),
+        emperor_influence_required=fields.get("emperor_influence_required", 0),
+    )
+
+
+# The seven Skills (their effects are the records in ``skill_abilities.py``).
 SKILLS: Final[tuple[SkillDefinition, ...]] = (
-    # "If you have an Agent on a [Landsraad] board space: 2 swords".
-    SkillDefinition(
-        "canny", "Canny", SkillKind.STRENGTH, strength_if_landsraad_agent=2
-    ),
-    # "Reveal Turn: 1 Persuasion".
-    SkillDefinition(
-        "charismatic", "Charismatic", SkillKind.REVEAL, reveal_persuasion=1
-    ),
-    # "Reveal Turn: Trash this -> 3 swords".
-    SkillDefinition("desperate", "Desperate", SkillKind.REVEAL, trash_for_strength=3),
-    # "Reveal Turn: 1 spice".
-    SkillDefinition("driven", "Driven", SkillKind.REVEAL, reveal_spice=1),
-    # "1 sword. If any opponent has a sandworm in the Conflict: +1 sword".
-    SkillDefinition(
-        "fierce",
-        "Fierce",
-        SkillKind.STRENGTH,
-        strength=1,
-        strength_if_opponent_sandworm=1,
-    ),
-    # "Reveal Turn: [troop]": the grey cube is the troop icon, "Recruit one
-    # troop" [Main p. 20] [Hardy Skill tile] (not a water drop).
-    SkillDefinition("hardy", "Hardy", SkillKind.REVEAL, reveal_troops=1),
-    # "[Emperor] 3 Influence: 2 swords".
-    SkillDefinition(
-        "loyal",
-        "Loyal",
-        SkillKind.STRENGTH,
-        strength_if_emperor_influence=2,
-        emperor_influence_required=3,
-    ),
+    _skill("canny", "Canny"),
+    _skill("charismatic", "Charismatic"),
+    _skill("desperate", "Desperate"),
+    _skill("driven", "Driven"),
+    _skill("fierce", "Fierce"),
+    _skill("hardy", "Hardy"),
+    _skill("loyal", "Loyal"),
 )
 SKILLS_BY_ID: Final = {skill.skill_id: skill for skill in SKILLS}
 

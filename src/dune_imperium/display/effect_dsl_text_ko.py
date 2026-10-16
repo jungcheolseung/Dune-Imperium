@@ -36,6 +36,7 @@ are quoted directly from Korean card scans (see each case's docstring).
 
 from typing import assert_never
 
+from dune_imperium.content.immortality.board import TLEILAXU_SETUP_SPICE
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
@@ -43,9 +44,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquiredCard,
     AcquireReserveCard,
+    AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
@@ -80,8 +83,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainInfluenceWhereAtMost,
+    GainLowestInfluence,
     GainResources,
     GainSolariPerUnitType,
+    GainSpiceWithHelixBonus,
     GainVictoryPoints,
     GarrisonedUnitsAtLeast,
     GenerateSpecimens,
@@ -101,6 +106,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     IntrigueTiming,
     LookAtIntrigueKeepOne,
+    LoseFactionInfluence,
+    LoseGarrisonTroops,
+    LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
     OnAgentSentTo,
@@ -115,15 +123,19 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
+    OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
+    PaySpecimens,
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
+    RecallOtherAgent,
     RecallSpy,
+    RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
@@ -152,6 +164,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeSetupSpice,
     TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
@@ -538,6 +551,12 @@ def condition_text_ko(condition: Condition) -> str:
         case StrengthInConflictAtLeast(amount=amount):
             # Quotes ``display/leaders_ko.py``'s Gurney Halleck line.
             return f"전투 트랙에서 당신의 전투력 총합이 {amount} 이상이라면"
+        case AgentOnSpaceWithIcon(icon=icon):
+            # Quotes ``display/bloodlines.py``'s Canny line.
+            return f"{_AGENT_ICON_NAMES_KO[icon]} 게임판 장소에 {{agent}}가 있다면"
+        case OpponentSandwormInConflict():
+            # Quotes ``display/bloodlines.py``'s Fierce line.
+            return "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -665,6 +684,17 @@ def cost_text_ko(cost: Cost) -> str:
         case SpendSpecimens(count=count):
             # Quotes ``tokens_ko.py``'s "표본 1개 지불" (Organ Merchants).
             return f"표본 {count}개 지불"
+        case LoseFactionInfluence(faction=faction, count=count):
+            # The Scouts costs quote ``display/scouts.py``'s step texts.
+            return f"{{influence_{faction.value}}} 영향력 {count} 잃기"
+        case LoseHighestInfluence():
+            return "영향력이 가장 높은 진영에서 영향력 1 잃기"
+        case LoseGarrisonTroops(count=count):
+            return f"주둔지의 {{troop:{count}}} 잃기"
+        case PaySpecimens(count=count):
+            return f"{{specimen:{count}}} 지불"
+        case TrashPersonalCard() as trash:
+            return reward_text_ko(trash)
         case _:
             assert_never(cost)
 
@@ -931,6 +961,21 @@ def reward_text_ko(reward: Reward) -> str:
         case DrawTwistedIntrigueCards(count=count):
             # Quotes ``display/leaders_ko.py``'s Piter De Vries line.
             return f"뒤틀린 책략 카드 {count}장을 뽑음"
+        case TakeSetupSpice():
+            # Quotes ``server/static/labels.js``'s Tleilaxu track label.
+            return f"첫 도달 {{spice:{TLEILAXU_SETUP_SPICE}}}"
+        case RecallOtherAgent():
+            # The Scouts rewards quote ``display/scouts.py``'s step texts.
+            return "다른 {agent} 1 회수"
+        case RecruitToConflict(count=count):
+            return f"{{troop:{count}}} 교전에 배치"
+        case AcquireReserveCardToHand(card_id=card_id):
+            name = KOREAN_CARD_NAMES["cards"].get(card_id, card_id)
+            return f"{name} 손으로 획득"
+        case GainLowestInfluence():
+            return "영향력이 가장 낮은 진영 영향력 +1"
+        case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
+            return f"{{spice:{spice}}} (나선에 닿았으면 {{spice:{helix}}})"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

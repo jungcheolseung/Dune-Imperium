@@ -8,6 +8,7 @@ does not fit these primitives keeps using explicit custom hooks.
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
@@ -390,6 +391,23 @@ class AllianceTaken:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentOnSpaceWithIcon:
+    """The player has an Agent on a board space with ``icon`` ("If you have
+    an Agent on a [Landsraad] board space" [Canny Skill tile])."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("an Agent-space icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentSandwormInConflict:
+    """Any opponent has a sandworm in the Conflict [Fierce Skill tile]."""
+
+
+@dataclass(frozen=True, slots=True)
 class StrengthInConflictAtLeast:
     """The player has ``amount`` or more strength in the Conflict ("If you
     have 6 or more strength in the Conflict" [Gurney Halleck card])."""
@@ -472,6 +490,8 @@ type Condition = (
     | DuringAgentTurn
     | VisitedSpaceHasIcon
     | StrengthInConflictAtLeast
+    | AgentOnSpaceWithIcon
+    | OpponentSandwormInConflict
 )
 
 
@@ -506,8 +526,9 @@ class TrashCard:
     the discard pile or in play ("You may trash a card -> Draw 1 card"
     [Shishakli card]; a Row card borrowed with Usurp is not in play, OQ-054).
     ``hand_only``: "a card from your hand"; ``this_card``: "You may trash this
-    card ->" [Pivotal Gambit card]; ``other_in_play``: "another <Faction> card
-    in play" [Calculus of Power card]."""
+    card ->" [Pivotal Gambit card] -- or the tile printing it, Desperate's
+    "Trash this ->" [Desperate Skill tile]; ``other_in_play``: "another
+    <Faction> card in play" [Calculus of Power card]."""
 
     hand_only: bool = False
     this_card: bool = False
@@ -676,6 +697,57 @@ class FlipFaceUpConflictCard:
             raise ValueError("flip count must be positive")
 
 
+# Arrakeen Scouts' own costs (composed A7b; ``content.arrakeen_scouts.types``
+# re-exports them).
+
+
+@dataclass(frozen=True, slots=True)
+class LoseFactionInfluence:
+    """Lose ``count`` Influence with one named Faction (Crackdown's Emperor
+    loss, Betrayal's Bene Gesserit cost). The DSL's ``LoseInfluence`` lets
+    the player pick the Faction, so it does not fit."""
+
+    faction: Faction
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("Influence loss needs a Faction")
+        if self.count < 1:
+            raise ValueError("Influence loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class LoseHighestInfluence:
+    """Lose one Influence on the player's highest track, choosing among tied
+    tracks (Political Equilibrium); nothing with no Influence at all."""
+
+
+@dataclass(frozen=True, slots=True)
+class LoseGarrisonTroops:
+    """Lose ``count`` troops from the garrison to the supply (Bene Gesserit
+    Treachery, Prison Planet). The DSL's ``LoseTroops`` also allows the
+    Conflict, which these items do not."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("garrison loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class PaySpecimens:
+    """Return ``count`` specimens from the Axolotl Tanks to the supply
+    (Ingratiate) [Immortality p. 8]."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("specimen cost must be positive")
+
+
 type Cost = (
     PayResources
     | LoseInfluence
@@ -690,6 +762,12 @@ type Cost = (
     | FlipFaceUpConflictCard
     | SpendSpecimens
     | TrashCard
+    | LoseFactionInfluence
+    | LoseHighestInfluence
+    | LoseGarrisonTroops
+    | PaySpecimens
+    # "Trash a card from your hand" as a Scouts line's price or loss.
+    | TrashPersonalCard
 )
 
 
@@ -1309,6 +1387,13 @@ class RecruitUndeployableTroops:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeSetupSpice:
+    """The first player to reach the space takes the spice placed there
+    during setup [Immortality pp. 4, 7] (the Tleilaxu track's fourth
+    space)."""
+
+
+@dataclass(frozen=True, slots=True)
 class DrawTwistedIntrigueCards:
     """Draw ``count`` cards from the player's own Twisted Intrigue deck
     [Piter De Vries card] (OQ-072, OQ-097)."""
@@ -1377,6 +1462,60 @@ class LookAtIntrigueKeepOne:
             raise ValueError("a peek to keep one looks at two or more cards")
 
 
+# Arrakeen Scouts' own rewards (composed A7b).
+
+
+@dataclass(frozen=True, slots=True)
+class RecallOtherAgent:
+    """Return one of the player's Agents from a board space to their supply,
+    other than the Agent that just took the High Council seat
+    (Contingencies; which Agent counts is an open question)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecruitToConflict:
+    """Recruit ``count`` troops from the supply straight into the Conflict
+    (Shadow Warfare: troops recruited during the sale are deployed at once)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("recruit count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireReserveCardToHand:
+    """Acquire one named Reserve card into the hand instead of the discard
+    pile (Moment of Revelation: Prepare the Way)."""
+
+    card_id: str
+
+    def __post_init__(self) -> None:
+        if not self.card_id:
+            raise ValueError("Reserve acquisition needs a card")
+
+
+@dataclass(frozen=True, slots=True)
+class GainLowestInfluence:
+    """Gain one Influence with the Faction where the player has the least,
+    choosing among tied Factions (Covert Operation's delayed choice)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GainSpiceWithHelixBonus:
+    """Gain ``spice`` spice, or ``helix_spice`` instead when the player's
+    research has reached the Helix (Offworld Operation's first-round choice;
+    what "reached the Helix" means is an open question)."""
+
+    spice: int = 1
+    helix_spice: int = 2
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.spice < self.helix_spice:
+            raise ValueError("the Helix amount must beat the plain amount")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1437,6 +1576,12 @@ type Reward = (
     | RecruitUndeployableTroops
     | TroopToMemory
     | DrawTwistedIntrigueCards
+    | TakeSetupSpice
+    | RecallOtherAgent
+    | RecruitToConflict
+    | AcquireReserveCardToHand
+    | GainLowestInfluence
+    | GainSpiceWithHelixBonus
 )
 
 
@@ -1570,8 +1715,9 @@ class EffectSection:
     costs: tuple[Cost, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.rewards:
-            raise ValueError("an effect section must produce at least one reward")
+        # An Arrakeen Scouts line may only take something away (Crackdown).
+        if not self.rewards and not self.costs:
+            raise ValueError("an effect section must produce or exact something")
         if len(self.costs) != len(set(self.costs)):
             raise ValueError("an effect section cannot repeat the same cost")
 
@@ -1617,3 +1763,18 @@ class IntrigueOption:
                     raise ValueError(
                         "triggered Intrigue sections must be free and unconditional"
                     )
+
+
+# The Arrakeen Scouts module's own pieces (composed A7b): only a Scouts record
+# prints them (``abilities.Ability``).
+SCOUTS_ONLY_PIECES: Final = (
+    LoseFactionInfluence,
+    LoseHighestInfluence,
+    LoseGarrisonTroops,
+    PaySpecimens,
+    RecallOtherAgent,
+    RecruitToConflict,
+    AcquireReserveCardToHand,
+    GainLowestInfluence,
+    GainSpiceWithHelixBonus,
+)

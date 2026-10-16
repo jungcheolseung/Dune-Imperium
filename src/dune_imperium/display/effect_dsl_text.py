@@ -9,6 +9,7 @@ support.
 
 from typing import assert_never
 
+from dune_imperium.content.immortality.board import TLEILAXU_SETUP_SPICE
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
@@ -16,9 +17,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquiredCard,
     AcquireReserveCard,
+    AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
@@ -53,8 +56,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainInfluenceWhereAtMost,
+    GainLowestInfluence,
     GainResources,
     GainSolariPerUnitType,
+    GainSpiceWithHelixBonus,
     GainVictoryPoints,
     GarrisonedUnitsAtLeast,
     GenerateSpecimens,
@@ -74,6 +79,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     IntrigueTiming,
     LookAtIntrigueKeepOne,
+    LoseFactionInfluence,
+    LoseGarrisonTroops,
+    LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
     OnAgentSentTo,
@@ -88,15 +96,19 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
+    OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
+    PaySpecimens,
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
+    RecallOtherAgent,
     RecallSpy,
+    RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
@@ -125,6 +137,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeSetupSpice,
     TakeSwordmaster,
     TechTilesAtLeast,
     TrashCard,
@@ -143,6 +156,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
 
 _FACTION_NAMES: dict[Faction, str] = {
@@ -348,6 +362,14 @@ def condition_text(condition: Condition) -> str:
         case StrengthInConflictAtLeast(amount=amount):
             # Quotes ``display/leaders.py``'s Gurney Halleck line.
             return f"you have {amount} or more strength in the Conflict"
+        case AgentOnSpaceWithIcon(icon=icon):
+            # Quotes ``display/bloodlines.py``'s Canny line.
+            name = icon.value.replace("_", " ").title()
+            article = "an" if name[0] in "AEIOU" else "a"
+            return f"you have an Agent on {article} {name} board space"
+        case OpponentSandwormInConflict():
+            # Quotes ``display/bloodlines.py``'s Fierce line.
+            return "any opponent has a sandworm in the Conflict"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -432,6 +454,17 @@ def cost_text(cost: Cost) -> str:
         case SpendSpecimens(count=count):
             # "You may spend 1 specimen" [Organ Merchants card].
             return f"Spend {count} {_plural(count, 'specimen')}"
+        case LoseFactionInfluence(faction=faction, count=count):
+            # The Scouts costs quote ``display/scouts.py``'s step texts.
+            return f"Lose {count} {faction.value.replace('_', ' ').title()} Influence"
+        case LoseHighestInfluence():
+            return "Lose 1 Influence with your highest Faction"
+        case LoseGarrisonTroops(count=count):
+            return f"Lose {count} troop{'s' if count > 1 else ''} from your garrison"
+        case PaySpecimens(count=count):
+            return f"Pay {count} specimen{'s' if count > 1 else ''}"
+        case TrashPersonalCard() as trash:
+            return reward_text(trash)
         case _:
             assert_never(cost)
 
@@ -651,6 +684,20 @@ def reward_text(reward: Reward) -> str:
             if count == 1:
                 return "Draw a Twisted Intrigue card"
             return f"Draw {count} Twisted Intrigue cards"
+        case TakeSetupSpice():
+            # Quotes ``server/static/labels_en.js``'s Tleilaxu track label.
+            return f"First to reach: {TLEILAXU_SETUP_SPICE} spice"
+        case RecallOtherAgent():
+            # The Scouts rewards quote ``display/scouts.py``'s step texts.
+            return "Recall another of your Agents"
+        case RecruitToConflict(count=count):
+            return f"Put {count} troop{'s' if count > 1 else ''} into the Conflict"
+        case AcquireReserveCardToHand(card_id=card_id):
+            return f"Acquire {RESERVE_STACKS_BY_ID[card_id].card.name} to your hand"
+        case GainLowestInfluence():
+            return "+1 Influence with your lowest Faction"
+        case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
+            return f"Gain {spice} spice ({helix} once you reach the Helix)"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:
