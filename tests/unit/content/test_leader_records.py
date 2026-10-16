@@ -31,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitUndeployableTroops,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    Trigger,
     TroopToMemory,
     VisitedSpaceHasIcon,
 )
@@ -262,7 +263,7 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
 def test_the_trigger_pieces_read_as_the_cards_print_them() -> None:
     """Each trigger quotes its Leader's (or Tech tile's) printed clause."""
 
-    english = {
+    english: dict[str, Trigger] = {
         "lady_margot_fenring": OnReachInfluence(Faction.BENE_GESSERIT, 2),
         "princess_irulan": OnReachInfluence(Faction.EMPEROR, 2),
         "staban_tuek": OnOpponentAgentAtSpiedMakerSpace(),
