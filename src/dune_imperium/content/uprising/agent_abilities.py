@@ -626,13 +626,15 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 requirement=_BG_BOND,
             ),
             # --- Special flows of the boxes no stage listed (composed A3g) -------
-            # Their rows, events and frames are their own; the lines list what
-            # the DSL can say, and a box with no line prints what it cannot.
+            # Their rows, events and frames are their own. A record lists its
+            # lines when the DSL can say the whole box; a box it cannot say
+            # whole has no line (a part alone would misread as the box), its
+            # printed text in the comment.
             # Subversive Advisor: "Gain 2 Influence with the visited Faction,
             # Trash this card" -- the 2 replace the space's 1 (never 2 + 1);
             # reachable only on a Faction space (``agent_turn``).
             _BOX.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF: _hook(
-                "subversive_advisor", TrashThisCard()
+                "subversive_advisor"
             ),
             # Long Live the Fighters: "If you have 3 or more cards in your deck:
             # Look at the top 3 cards, Draw 1, Discard 1, Trash 1" -- the
@@ -710,16 +712,7 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # card, You may pay 5 solari -> Advance the Tleilaxu track" -- the
             # payment row pays the Solari too.
             _BOX.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU: (
-                Ability(
-                    timing=AbilityTiming.AGENT_BOX,
-                    sections=(
-                        EffectSection(
-                            rewards=(AdvanceTleilaxu(1),),
-                            costs=(PayResources(solari=5),),
-                        ),
-                    ),
-                    hook="slig_farmer",
-                )
+                _hook("slig_farmer")
             ),
             # Stitched Horror: "Choose two: Gain 1 water / Recruit 1 troop /
             # Trash a card / Advance the Tleilaxu track" -- both named before

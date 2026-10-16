@@ -3832,7 +3832,8 @@ def _hook_unavailable(state: GameState) -> RuleResult:
     """A box answered through its own rows, reached with none to offer (no
     grafted partner, no Faction space): it waits for the turn's end and
     fizzles there (OQ-057 (1)). Dissecting Kit, Stitched Horror and
-    Beguiling Pheromones; the dry run reads this whatever they offer."""
+    Beguiling Pheromones -- the dry run reads this whatever they offer --
+    and Tleilaxu Surgeon's dry run (``resolve_agent_card_effect``)."""
 
     context, _, _, owner, _ = _box_subject(state)
     next_state, event = _close_box(

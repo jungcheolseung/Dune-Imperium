@@ -363,8 +363,6 @@ def _line_block(
             # return to a hand (designer ruling, OQ-054); it is trashed
             # when the turn closes.
             return AgentIconBlock(AgentIconCondition.NOT_IN_PLAY)
-    if not _other_grafted_card_returns(line, owner, context):
-        return AgentIconBlock(AgentIconCondition.NOT_IN_PLAY)
     if line.condition is None:
         return None
     return condition_block(line.condition, owner, context)
@@ -680,7 +678,8 @@ def _opponents_decide(
     match reward:
         case EachOpponentDiscardsCard():
             # Only a seat holding a card is asked; the next seat answers
-            # first, and the last answer writes the owner's frame back
+            # first. The owner's frame is already written back beneath them;
+            # the last answer writes it back again, unchanged
             # (``agent_effects.apply_opponent_card_discard``).
             seats = state.config.players
             targets = tuple(
