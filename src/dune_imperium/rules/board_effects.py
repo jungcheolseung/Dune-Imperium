@@ -140,6 +140,22 @@ BOARD_ICON_TUEK_SIETCH: Final = "tuek_sietch"  # bonus spice, then spice or a ca
 # ``BOARD_ICON_COMMANDER`` (Bloodlines) is defined in ``effects`` and resolved
 # by ``rules.sardaukar``.
 
+# The board flows kept as code, named by their records' ``hook``
+# (``content.uprising.board_abilities.BOARD_CHOICE_ABILITIES``, composed A5d).
+BOARD_SPACE_HOOKS: Final = frozenset(
+    {
+        "espionage_spy",
+        "desert_tactics_trash",
+        "shipping_influence",
+        "imperial_privilege_trade",
+        "imperial_privilege_recall",
+        "sietch_tabr",
+        "maker",
+        "tuek_sietch",
+        "secrets_steal",
+    }
+)
+
 # Board spaces with at least one icon that is resolved through a dedicated
 # choice rather than the generic ``resolve_board_effect`` action.
 CHOICE_DRIVEN_SPACE_IDS = frozenset(
