@@ -40,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentLosesTroop,
     EffectSection,
@@ -50,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAtMost,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
@@ -322,6 +324,9 @@ def condition_text(condition: Condition) -> str:
             return "you are spying on a Maker space"
         case GarrisonedUnitsAtLeast(count=count):
             return f"you have {count} or more garrisoned units"
+        case DuringAgentTurn():
+            # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
+            return "Agent Turn"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -601,6 +606,12 @@ def reward_text(reward: Reward) -> str:
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"
+        case GainInfluenceWhereAtMost(maximum=maximum):
+            # Quotes ``display/bloodlines.py``'s Panopticon line.
+            return (
+                "Gain 1 Influence with each Faction where you have "
+                f"{maximum} or less Influence"
+            )
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

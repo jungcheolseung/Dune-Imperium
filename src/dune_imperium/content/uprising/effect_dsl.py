@@ -390,6 +390,12 @@ class AllianceTaken:
 
 
 @dataclass(frozen=True, slots=True)
+class DuringAgentTurn:
+    """Agent Turn: only after the owner's Agent placement this turn
+    [Rapid Dropships Tech tile] [Bloodlines p. 7]."""
+
+
+@dataclass(frozen=True, slots=True)
 class AllConditions:
     """Every listed condition holds (Study Melange: spice and two markers)."""
 
@@ -438,6 +444,7 @@ type Condition = (
     | AcquiredCard
     | ContractTaken
     | AllianceTaken
+    | DuringAgentTurn
 )
 
 
@@ -1263,6 +1270,18 @@ class TakeSwordmaster:
 
 
 @dataclass(frozen=True, slots=True)
+class GainInfluenceWhereAtMost:
+    """Gain 1 Influence with each Faction where the player has ``maximum``
+    or less Influence [Panopticon Tech tile]."""
+
+    maximum: int = 1
+
+    def __post_init__(self) -> None:
+        if self.maximum < 0:
+            raise ValueError("an Influence ceiling must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
 class UseSignetAbility:
     """The Signet Ring icon off the Signet Ring card: "you use the Signet
     Ring ability (with the corresponding icon) on your Leader" [Main p. 20]
@@ -1357,6 +1376,7 @@ type Reward = (
     | TakeControl
     | TakeSwordmaster
     | UseSignetAbility
+    | GainInfluenceWhereAtMost
 )
 
 

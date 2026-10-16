@@ -60,6 +60,13 @@ class AbilityTiming(StrEnum):
     ENDGAME = "endgame"
     # An event fires it (a Leader's standing ability, a face-up trigger).
     TRIGGERED = "triggered"
+    # Flipping a Tech tile: "used during one of your turns, and can be used
+    # only once per round" [Bloodlines p. 7] (composed A6b).
+    FLIP = "flip"
+    # A printed rule change in force while the card is held -- a cost, a
+    # limit, an icon list, what its owner may see -- with no moment of its
+    # own: the record names the engine's branch (``hook``), composed A6b.
+    STANDING = "standing"
 
 
 class AbilityMark(StrEnum):

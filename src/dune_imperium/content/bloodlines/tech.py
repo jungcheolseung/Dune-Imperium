@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.bloodlines.tech_abilities import (
+    TECH_ABILITIES,
     TECH_ACQUIRE_ABILITIES,
     TRASH_SPY_TO_ACQUIRE,
 )
@@ -24,6 +25,7 @@ from dune_imperium.content.uprising.abilities import (
     AbilityTiming,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    CommandReached,
     DestroyShieldWall,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -33,6 +35,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainVictoryPoints,
     PlaceSpy,
     RecruitTroops,
+    RevealPersuasion,
+    RevealSwords,
     TakeContract,
     TrashPersonalCard,
     UseSignetAbility,
@@ -92,15 +96,6 @@ class TechAbility(StrEnum):
     INTRIGUE_DRAW_TROOP = "intrigue_draw_troop"
     # Reveal Turn: Command (6+): 2 swords.
     COMMAND_TWO_STRENGTH = "command_two_strength"
-
-
-FLIP_ABILITIES: Final = frozenset(
-    {
-        TechAbility.FLIP_DRAW_INTRIGUE,
-        TechAbility.FLIP_COMBAT_ICON,
-        TechAbility.FLIP_SOLARI_AND_TRASH,
-    }
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -440,6 +435,70 @@ TECH_TILES: Final[tuple[TechTile, ...]] = (
 )
 TECH_TILES_BY_ID: Final = {tile.tech_id: tile for tile in TECH_TILES}
 TECH_IDS: Final = tuple(tile.tech_id for tile in TECH_TILES)
+if set(TECH_ABILITIES) != set(TECH_IDS):
+    raise ValueError("every Tech tile prints one ability record set")
+# The abilities used by flipping the tile [Bloodlines p. 7] (composed A6b).
+FLIP_ABILITIES: Final = frozenset(
+    tile.ability
+    for tile in TECH_TILES
+    if any(
+        record.timing is AbilityTiming.FLIP for record in TECH_ABILITIES[tile.tech_id]
+    )
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TechRevealGain:
+    """A tile's automatic Reveal Turn line, compiled from its record
+    (composed A6b): ``command`` for "Command (6+):" [Bloodlines p. 5]."""
+
+    tech_id: str
+    ability: TechAbility
+    command: bool
+    persuasion: int = 0
+    solari: int = 0
+    swords: int = 0
+
+
+def _reveal_gain(tile: TechTile) -> TechRevealGain | None:
+    """The tile's automatic Reveal Turn line; raises ``ValueError`` for a
+    record the Reveal cannot pay."""
+
+    records = tuple(
+        record
+        for record in TECH_ABILITIES[tile.tech_id]
+        if record.timing is AbilityTiming.REVEAL and record.hook is None
+    )
+    if not records:
+        return None
+    (record,) = records
+    if (
+        record.mark is not AbilityMark.AUTOMATIC
+        or record.requirement is not None
+        or len(record.sections) != 1
+    ):
+        raise ValueError(f"{tile.tech_id}: not an automatic Reveal line")
+    (line,) = record.sections
+    command = line.condition == CommandReached()
+    if (line.condition is not None and not command) or line.costs:
+        raise ValueError(f"{tile.tech_id}: the Reveal checks no such condition")
+    match line.rewards:
+        case (RevealPersuasion(amount=amount, per=None),) if not command:
+            # Command opens on the other Persuasion and adds none itself.
+            return TechRevealGain(
+                tile.tech_id, tile.ability, command, persuasion=amount
+            )
+        case (GainResources(solari=solari, spice=0, water=0),) if command:
+            return TechRevealGain(tile.tech_id, tile.ability, command, solari=solari)
+        case (RevealSwords(amount=amount, per=None),) if command:
+            return TechRevealGain(tile.tech_id, tile.ability, command, swords=amount)
+    raise ValueError(f"{tile.tech_id}: the Reveal pays no such line")
+
+
+TECH_REVEAL_GAINS: Final = tuple(
+    gain for tile in TECH_TILES if (gain := _reveal_gain(tile)) is not None
+)
+TECH_REVEAL_GAINS_BY_ID: Final = {gain.tech_id: gain for gain in TECH_REVEAL_GAINS}
 
 
 def tech_tiles_for(choam_module: bool) -> tuple[TechTile, ...]:

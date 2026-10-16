@@ -67,6 +67,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentLosesTroop,
     EffectSection,
@@ -77,6 +78,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAtMost,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
@@ -512,6 +514,9 @@ def condition_text_ko(condition: Condition) -> str:
         case GarrisonedUnitsAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return f"{{garrison}}에 부대가 {count} 이상 있다면"
+        case DuringAgentTurn():
+            # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
+            return "{agent_turn}"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -890,6 +895,9 @@ def reward_text_ko(reward: Reward) -> str:
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"
+        case GainInfluenceWhereAtMost(maximum=maximum):
+            # Quotes ``display/bloodlines.py``'s Panopticon line.
+            return f"영향력이 {maximum} 이하인 각 팩션에서 {{influence_any:1}}씩 얻음"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
