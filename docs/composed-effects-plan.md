@@ -397,6 +397,7 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
     `…:agent_card:<카드>:intrigue_payment`, Control the Spice의 `…:agent_card_payment:<카드>:paid`(병력 수를 실음), 카드 정의 이름의 뽑기
     (`…:agent_card:<정의>`) 대 칸 이름의 뽑기(`<칸>:cards`) 등.
   - "칸 해결" 사건(`agent_card_effect_resolved`): 어떤 답은 내고 어떤 답은 내지 않는다.
+  - Spy 넘기기 줄의 자리: 책략은 소환 줄들 뒤, Agent 칸은 앞(아래 "예외"의 확인 결과 (1)).
   - 시험 해결(`resolve_agent_card_effect`의 답): 선택 칸에 따라 예외(가능으로 읽힘), "해결 불가" 사건, 다른 예외가 섞여 있다.
   - hook 8개(Seek Allies, Overthrow, Lisan al Gaib, Clandestine Meeting, Occupation, In High Places, Control the Spice, Possible Futures):
     사건이 공통 규칙에 맞게 되면 공통 모양으로.
@@ -408,8 +409,15 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      여전히 잡는다.
   4. codec을 올리고 기보 다리(records)를 더한다(옛 저장·기보 묶음이 새 엔진으로 옮겨지게). 화면(로그·연출이 읽는 사건)과 E2E도 함께
      맞춘다. A8(망 재학습, 플레이 서버 교체)과 같은 때에 해서 저장 호환을 한 번만 끊는다.
-- **예외 — 규칙 차이는 기다리지 않는다:** 겉으로 드러나는 규칙 구현 차이(예: Agent 칸 Spy와 책략 Spy의 "먼저 소환·넘기기" 줄이
-  세 군데 다름, A3c)는 이름 문제가 아니라 같은 규칙의 두 구현일 수 있어, 규칙 문서와 대조해 따로 먼저 정한다.
+- **예외 — 규칙 차이는 기다리지 않는다:** 겉으로 드러나는 규칙 구현 차이는 이름 문제가 아니라 같은 규칙의 두 구현일 수 있어, 규칙
+  문서와 대조해 따로 먼저 정한다.
+  - 확인함(2026-10-16): Agent 칸 Spy(`agent_box_abilities.agent_spy_rows`)와 책략 Spy(`ability_executor.piece_rows`의 `PlaceSpy`)의
+    차이 셋은 규칙 위반이 아니다. 둘 다 "공급에 Spy가 있고 놓을 칸이 있으면 배치 의무"(OQ-057 (14), [uprising-systems.md](rules/uprising-systems.md)
+    "Spy 배치는 supply에 Spy가 하나라도 있으면 의무다"), "공급이 비면 먼저 소환은 선택" `[Main pp. 11, 20]`, "놓을 칸이 없으면 Spy 없이
+    해결"을 지킨다. (1) 넘기기 줄의 자리: 책략은 소환 줄들 뒤, Agent 칸은 앞 — 보여 주는 순서뿐이라 위 통일 목록에 넣는다. (2) 아무것도
+    할 수 없을 때: 책략은 넘기기 줄 하나(쌓인 frame이라 지금 답해야 한다), Agent 칸은 줄 없이 기다렸다가 턴 끝에 무산(OQ-057 (1) — 자유
+    순서라 그 사이 칸이 생길 수 있다) — 두 맥락의 사용자 판정이 다른 것으로 둘 다 유지. (3) 먼저 소환한 Spy를 Espionage가 써 버리면
+    Agent 칸은 넘기기 없이 다시 소환해 놓아야 한다 — OQ-057 (14)에 적힌 판정(책략 frame에는 이런 끼어듦이 없다).
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
