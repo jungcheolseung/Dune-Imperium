@@ -76,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
@@ -466,6 +467,10 @@ def condition_text_ko(condition: Condition) -> str:
         case ContractCompletedThisTurn():
             # Quotes ``tokens_ko.py``'s "이번 차례에 {contract}을 완수했다면:".
             return "이번 차례에 {contract}을 완수했다면"
+        case GraftedWithFaction(factions=factions):
+            # Quotes ``tokens_ko.py``'s Interstellar Conspiracy line.
+            names = " 또는 ".join(_faction_name_ko(faction) for faction in factions)
+            return f"{names} 카드와 {{graft}}했다면"
         case Grafted():
             # Quotes ``tokens_ko.py``'s "{graft}했다면:".
             return "{graft}했다면"

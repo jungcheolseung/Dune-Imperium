@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GraftedWithFaction,
     GrantCombatDeployment,
     HasAlliance,
     InfluenceAtLeast,
@@ -96,6 +97,13 @@ _BG_TWO = InfluenceAtLeast(_BG, 2)
 _TWO_SPICE = GainedSpiceThisTurn(2)
 _GUILD_DISCARD = DiscardedCardHasFaction(Faction.SPACING_GUILD)
 _COMMANDER_IN_CONFLICT = CommandersInConflictAtLeast(1)
+_GUILD_TWO = InfluenceAtLeast(Faction.SPACING_GUILD, 2)
+_HIGH_PRIORITY_TRAVEL = (
+    _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO
+)
+_INTERSTELLAR_CONSPIRACY = (
+    _BOX.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
+)
 _EMPEROR_TRASH = TrashedCardHasFaction(Faction.EMPEROR)
 _BRANCHING_PATH = (
     _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
@@ -462,6 +470,52 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 mark=AbilityMark.OPTIONAL,
                 hook="control_the_spice",
+            ),
+            # --- A plain line beside a choice line (composed effects, A3f) ------
+            # Southern Faith: "Choose one: Draw 1 card / If Bene Gesserit Bond:
+            # Gain 1 Bene Gesserit Influence".
+            _BOX.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1)),
+                    _line(GainInfluence(factions=(_BG,)), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # High Priority Travel: "If you have 2 or more Spacing Guild
+            # Influence: Choose one: Draw 1 card / Combat".
+            _HIGH_PRIORITY_TRAVEL: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1), condition=_GUILD_TWO),
+                    _line(GrantCombatDeployment(), condition=_GUILD_TWO),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # Interstellar Conspiracy: "Gain 1 spice, If grafted with an Emperor
+            # or Spacing Guild card: Gain 1 Influence with a chosen Faction" --
+            # with the partner the choice pays both.
+            _INTERSTELLAR_CONSPIRACY: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(GainResources(spice=1)),
+                    _line(
+                        GainInfluence(),
+                        condition=GraftedWithFaction(
+                            (Faction.EMPEROR, Faction.SPACING_GUILD)
+                        ),
+                    ),
+                ),
+            ),
+            # Possible Futures: "Choose one: Gain 1 Influence with a chosen
+            # Faction / Recruit 2 troops; if Bene Gesserit Bond: get both" -- the
+            # Bond turns the choice into both, named apart, so the flow stays code
+            # (``agent_effects`` hook ``possible_futures``).
+            _BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(GainInfluence()), _line(RecruitTroops(2))),
+                structure=AbilityStructure.ONE_OF,
+                hook="possible_futures",
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.

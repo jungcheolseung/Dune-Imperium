@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FactionBond,
     ForceEnemyRetreat,
     GainInfluence,
+    GrantCombatDeployment,
     PlaceSpy,
 )
 from dune_imperium.content.uprising.personal_cards import (
@@ -48,6 +49,7 @@ from dune_imperium.rules.agent_box_abilities import (
     agent_spy_rows,
     apply_chosen_influence,
     apply_discard,
+    apply_either_influence,
     apply_intrigue_payment,
     apply_lose,
     apply_payment,
@@ -59,6 +61,9 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_cost_block,
     discard_rows,
     discard_spy,
+    either_box,
+    either_choice,
+    either_rows,
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
@@ -170,13 +175,6 @@ from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
-_DRAW_ONE_OR_COMBAT_ICON = (
-    PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO
-)
-_SPICE_AND_GRAFTED_INFLUENCE = (
-    PersonalCardAgentEffect
-    .GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
-)
 _RESEARCH_AND_TRASH_FOR_VP = (
     PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
 )
@@ -754,31 +752,19 @@ def legal_agent_card_influence_actions(
         # A chosen Faction's Influence, from its record (composed A3c).
         assert recorded is not None
         return target_rows(state, player, recorded)
+    if (
+        recorded is not None
+        and either_box(recorded)
+        and isinstance(either_choice(recorded), GainInfluence)
+    ):
+        # Southern Faith, Interstellar Conspiracy (composed A3f).
+        return either_rows(state, player, recorded)
     rising = tuple(
         faction
         for faction in Faction
         if influence_can_rise(state.players[player], faction)
     )
-    if effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
-        # Southern Faith: the draw is always there; the Influence needs
-        # another Bene Gesserit card in play, judged now (OQ-028).
-        owner = state.players[player]
-        if Faction.BENE_GESSERIT not in rising or not has_faction_bond(
-            counted_in_play(owner), source_card_id, Faction.BENE_GESSERIT
-        ):
-            return ()
-        return (
-            DomainAction(action_id="resolve_agent_card_effect", actor=player),
-            DomainAction(
-                action_id="choose_agent_card_influence",
-                actor=player,
-                arguments=(("faction", Faction.BENE_GESSERIT.value),),
-            ),
-        )
-    if (
-        effect
-        is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND
-    ):
+    if _is_possible_futures(recorded):
         # Possible Futures: without the Bond it is a choice between the
         # Influence and the two troops; with it the Influence choice pays
         # both.
@@ -815,24 +801,6 @@ def legal_agent_card_influence_actions(
             )
             for faction in rising
             if faction.value not in chosen
-        )
-    if (
-        effect
-        is _SPICE_AND_GRAFTED_INFLUENCE
-    ):
-        # Interstellar Conspiracy: the Influence needs an Emperor or Guild
-        # partner; otherwise the plain resolution pays the spice alone.
-        if not _grafted_with_factions(
-            context, (Faction.EMPEROR, Faction.SPACING_GUILD)
-        ):
-            return ()
-        return tuple(
-            DomainAction(
-                action_id="choose_agent_card_influence",
-                actor=player,
-                arguments=(("faction", faction.value),),
-            )
-            for faction in rising
         )
     if effect is not PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE:
         return ()
@@ -874,21 +842,6 @@ def agent_box_influence_blocked(state: GameState, player: int) -> bool:
     return False
 
 
-def _grafted_with_factions(
-    context: Mapping[str, ActionValue],
-    factions: tuple[Faction, ...],
-) -> bool:
-    """Return whether the other grafted card carries one of ``factions``."""
-
-    partner = other_grafted_card_id(context)
-    if not partner:
-        return False
-    return any(
-        faction in personal_card_for_instance(partner).factions
-        for faction in factions
-    )
-
-
 def apply_agent_card_influence(
     state: GameState,
     action: DomainAction,
@@ -901,6 +854,8 @@ def apply_agent_card_influence(
     recorded = box_ability(active_agent_card(context).agent_effect)
     if isinstance(target_piece(recorded), GainInfluence):
         return apply_chosen_influence(state, action)
+    if recorded is not None and either_box(recorded):
+        return apply_either_influence(state, action, recorded)
     _, source_card_id, _ = _effect_subject(context)
     faction_value = dict(action.arguments).get("faction")
     if not isinstance(faction_value, str):
@@ -984,10 +939,7 @@ def apply_agent_card_influence(
             context["pending_agent_effect"] = False
     events: tuple[GameEvent, ...] = gained.events
     players = gained.state.players
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND
-    ):
+    if _is_possible_futures(recorded):
         # With the Bond the Influence choice also pays the two troops.
         owner = players[action.actor]
         if has_faction_bond(
@@ -1005,19 +957,6 @@ def apply_agent_card_influence(
                     f"{source}:troops", action.actor, 2, recruited
                 ),
             )
-    if (
-        source_card.agent_effect
-        is _SPICE_AND_GRAFTED_INFLUENCE
-    ):
-        # Interstellar Conspiracy: the spice comes with the Influence.
-        spiced = players[action.actor]
-        players = replace_player(
-            players,
-            replace(
-                spiced,
-                resources=replace(spiced.resources, spice=spiced.resources.spice + 1),
-            ),
-        )
     next_state = advance_after_effect(
         replace(gained.state, players=players),
         context,
@@ -2020,17 +1959,13 @@ def legal_agent_card_payment_actions(
             DomainAction(action_id="trash_grafted_card_for_specimen", actor=player),
         )
     if (
-        source_card.agent_effect
-        is _DRAW_ONE_OR_COMBAT_ICON
+        recorded is not None
+        and either_box(recorded)
+        and isinstance(either_choice(recorded), GrantCombatDeployment)
     ):
         # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
-        # Combat" [card face]; the draw is the box's plain resolution.
-        if state.players[player].influence.spacing_guild < 2:
-            return ()
-        return (
-            DomainAction(action_id="resolve_agent_card_effect", actor=player),
-            DomainAction(action_id="take_agent_card_combat_icon", actor=player),
-        )
+        # Combat" [card face], from its record (composed A3f).
+        return either_rows(state, player, recorded)
     owner = state.players[player]
     if source_card.agent_effect is _RESEARCH_AND_TRASH_FOR_VP:
         # Scientific Breakthrough prints the Research icon and, on its own
@@ -3873,43 +3808,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # advanced (below).
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
-        # Southern Faith's draw half; the draw follows the generic path.
-        next_owner = owner
-        event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND:
-        # Possible Futures' two-troop half (the Bond case pays both through
-        # the Influence choice instead).
-        next_owner, recruited = recruit_troops(owner, 2)
-        previous = context.get("troops_recruited")
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-        recruit_shortfall = recruit_shortfall_events(event_source, player, 2, recruited)
-        event_kind = "agent_card_effect_resolved"
-    elif (
-        effect
-        is _DRAW_ONE_OR_COMBAT_ICON
-    ):
-        # High Priority Travel's draw half; the Influence is judged now
-        # (OQ-028).
-        next_owner = owner
-        event_kind = (
-            "agent_card_effect_resolved"
-            if owner.influence.spacing_guild >= 2
-            else "agent_card_effect_unavailable"
-        )
-    elif (
-        effect
-        is _SPICE_AND_GRAFTED_INFLUENCE
-    ):
-        # Interstellar Conspiracy without an Emperor or Guild partner: the
-        # spice alone (the Influence choice pays both otherwise).
-        next_owner = replace(
-            owner,
-            resources=replace(owner.resources, spice=owner.resources.spice + 1),
-        )
-        event_kind = "agent_card_effect_resolved"
     elif effect in (
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
@@ -4083,26 +3981,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         return RuleResult(
             state=losses.state, events=(event, *moves.events, *losses.events)
         )
-    if effect in (
-        # Southern Faith's and High Priority Travel's draw half.
-        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
-        PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO,
-    ):
-        draw_count = 1
-        if event_kind == "agent_card_effect_unavailable":
-            return RuleResult(state=next_state, events=(event, *recruit_shortfall))
-        draw = draw_or_request_personal_cards(
-            next_state,
-            player,
-            draw_count,
-            source=(
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card.card.card_id}"
-            ),
-        )
-        return RuleResult(
-            state=draw.state, events=(event, *draw.events, *recruit_shortfall)
-        )
     return RuleResult(state=next_state, events=(event, *recruit_shortfall))
 
 
@@ -4251,6 +4129,41 @@ def _hook_overthrow(state: GameState) -> RuleResult:
     return RuleResult(state=next_state, events=gained.events)
 
 
+def _hook_possible_futures(state: GameState) -> RuleResult:
+    """Possible Futures' two-troop half, its plain resolution (the Bond case
+    pays both through the Influence choice instead): the box's event, then
+    the shortfall named ``<box>:recruit_short``."""
+
+    context, player, card_instance_id, owner, event_source = _box_subject(state)
+    next_owner, recruited = recruit_troops(owner, 2)
+    previous = context.get("troops_recruited")
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context["troops_recruited"] = previous + recruited
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, next_owner)
+    )
+    event = GameEvent(
+        event_id=event_source,
+        kind="agent_card_effect_resolved",
+        payload=(("card_id", card_instance_id), ("player", player)),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            event,
+            *recruit_shortfall_events(event_source, player, 2, recruited),
+        ),
+    )
+
+
+def _is_possible_futures(ability: Ability | None) -> bool:
+    """Possible Futures' Bond-shaped choice, named by its record's hook."""
+
+    return ability is not None and ability.hook == "possible_futures"
+
+
 def _hook_control_the_spice(state: GameState) -> RuleResult:
     """Control the Spice resolves through its payment choice, which always
     offers at least the decline: reached by the dry run only (its old
@@ -4310,6 +4223,7 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "overthrow": _hook_overthrow,
             "in_high_places": _hook_in_high_places,
             "control_the_spice": _hook_control_the_spice,
+            "possible_futures": _hook_possible_futures,
         }
     )
 )

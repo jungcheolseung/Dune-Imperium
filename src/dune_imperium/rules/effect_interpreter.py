@@ -53,6 +53,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
@@ -340,6 +341,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             | ContractCompletedThisTurn()
             | DiscardedCardHasFaction()
             | TrashedCardHasFaction()
+            | GraftedWithFaction()
         ):
             # Printed only in Agent boxes so far: judged by
             # ``agent_box_abilities.box_condition_holds`` (one place, so the

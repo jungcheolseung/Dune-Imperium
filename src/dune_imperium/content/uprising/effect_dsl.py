@@ -312,6 +312,19 @@ class TrashedCardHasFaction:
 
 
 @dataclass(frozen=True, slots=True)
+class GraftedWithFaction:
+    """The card was played grafted with a card of one of ``factions`` ("If
+    grafted with an Emperor or Spacing Guild card:" [Interstellar Conspiracy
+    card]): the other grafted card's printed affiliation, either Faction."""
+
+    factions: tuple[Faction, ...]
+
+    def __post_init__(self) -> None:
+        if not self.factions or len(set(self.factions)) != len(self.factions):
+            raise ValueError("graft partner Factions must be unique and non-empty")
+
+
+@dataclass(frozen=True, slots=True)
 class Grafted:
     """The card was played grafted with another ("If grafted:" [Corrupt
     Smuggler card]) [Immortality p. 10]."""
@@ -355,6 +368,7 @@ type Condition = (
     | ContractCompletedThisTurn
     | DiscardedCardHasFaction
     | TrashedCardHasFaction
+    | GraftedWithFaction
     | Grafted
     | AllConditions
 )
