@@ -11,6 +11,7 @@ from typing import assert_never
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireBankCommander,
     AcquireCardForSolari,
     AcquireCardUpTo,
     AcquireReserveCard,
@@ -22,6 +23,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
+    CommandReached,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -47,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
+    GarrisonedUnitsAtLeast,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
@@ -57,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantCombatDeployment,
     HasAlliance,
     HasHighCouncil,
+    HasSwordmaster,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     InNavigationSlot,
@@ -85,7 +89,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     RevealContractsTakeOne,
+    RevealCount,
+    RevealCountKind,
+    RevealPersuasion,
     RevealPersuasionThisRound,
+    RevealSwords,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
@@ -94,6 +102,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
+    SpyingOnMakerSpace,
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
@@ -286,6 +295,14 @@ def condition_text(condition: Condition) -> str:
             return "grafted"
         case OpponentPlayedCombatIntrigue():
             return "an opponent played a Combat Intrigue card in this Conflict"
+        case HasSwordmaster():
+            return "you have your Swordmaster"
+        case SpyingOnMakerSpace():
+            return "you are spying on a Maker space"
+        case GarrisonedUnitsAtLeast(count=count):
+            return f"you have {count} or more garrisoned units"
+        case CommandReached():
+            return "Command (6+ Persuasion)"
         case AllConditions(conditions=conditions):
             return " and ".join(condition_text(item) for item in conditions)
         case _:
@@ -538,6 +555,12 @@ def reward_text(reward: Reward) -> str:
                 "At the start of your Reveal turn, return the other grafted"
                 " card from play to your hand"
             )
+        case AcquireBankCommander():
+            return "Acquire and recruit the Sardaukar Commander in the bank"
+        case RevealPersuasion(amount=amount, per=per):
+            return f"+{amount} Persuasion{_reveal_count_text(per)}"
+        case RevealSwords(amount=amount, per=per):
+            return f"+{amount} {_plural(amount, 'sword')}{_reveal_count_text(per)}"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:
@@ -600,3 +623,22 @@ def intrigue_card_text(entry: IntrigueCardEntry) -> list[str]:
         option_text(option, show_timing=not entry.navigation)
         for option in entry.options
     ]
+
+
+def _reveal_count_text(per: RevealCount | None) -> str:
+    """What a Reveal gain is counted per, as ``tokens.reveal_effect_text``
+    prints it."""
+
+    if per is None:
+        return ""
+    match per.kind:
+        case RevealCountKind.REVEALED_FACTION_CARD:
+            assert per.faction is not None
+            return f" per revealed {_faction_name(per.faction)} card"
+        case RevealCountKind.FACTION_CARD_IN_PLAY:
+            assert per.faction is not None
+            return f" per {_faction_name(per.faction)} card in play"
+        case RevealCountKind.COMPLETED_CONTRACT:
+            return " per completed Contract"
+        case RevealCountKind.OTHER_SWORD_CARD:
+            return " per other revealed sword card"
