@@ -155,6 +155,12 @@ def _terms(card_id: str) -> tuple[ContractCondition, ContractReward]:
 
 
 def _condition(requirement: object, line: EffectSection) -> ContractCondition:
+    if line.condition is not None:
+        raise ValueError("a Contract's reward line has no condition of its own")
+    if line.costs and not (
+        isinstance(requirement, ContractTaken) and line.costs == (TrashIntrigueCard(),)
+    ):
+        raise ValueError(f"no Contract pays {line.costs!r}")
     match requirement:
         case AtBoardSpace(space_id=space_id):
             return ContractCondition(ContractConditionKind.BOARD_SPACE, target=space_id)
@@ -162,13 +168,21 @@ def _condition(requirement: object, line: EffectSection) -> ContractCondition:
             return ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=n)
         case AcquiredCard(card_id=card_id):
             return ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=card_id)
-        case ContractTaken() if line.costs == (TrashIntrigueCard(),):
+        case ContractTaken() if line.costs:
             return ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH)
-        case ContractTaken() if not line.costs:
+        case ContractTaken():
             return ContractCondition(ContractConditionKind.IMMEDIATE)
         case AllianceTaken():
             return ContractCondition(ContractConditionKind.EARN_ALLIANCE)
     raise TypeError(f"{requirement!r} is not a Contract condition")
+
+
+def _put(fields: dict[str, int | Faction], key: str, value: int | Faction) -> None:
+    """One reward field, printed once on the tile."""
+
+    if key in fields:
+        raise ValueError(f"a Contract prints {key} twice")
+    fields[key] = value
 
 
 def _reward(line: EffectSection) -> ContractReward:
@@ -177,22 +191,31 @@ def _reward(line: EffectSection) -> ContractReward:
     for reward in line.rewards:
         match reward:
             case GainResources(solari=solari, spice=0, water=water):
-                fields.update(solari=solari, water=water)
+                _put(fields, "solari", solari)
+                _put(fields, "water", water)
             case RecruitTroops(count=count):
-                fields["troops"] = count
-            case GainInfluence(times=times, factions=(faction,)):
-                fields.update(influence=times, influence_faction=faction)
+                _put(fields, "troops", count)
+            case GainInfluence(
+                times=times,
+                factions=(faction,),
+                distinct=False,
+                where_opponent_leads=False,
+                different_from_trigger=False,
+                minimum_own=0,
+            ):
+                _put(fields, "influence", times)
+                _put(fields, "influence_faction", faction)
             case DrawIntrigueCards(count=count):
-                fields["intrigue_cards"] = count
+                _put(fields, "intrigue_cards", count)
             case DrawPersonalCards(count=count):
-                fields["personal_cards"] = count
+                _put(fields, "personal_cards", count)
             case TakeContract(count=count):
-                fields["contracts"] = count
-            case PlaceSpy(shared_post=True):
+                _put(fields, "contracts", count)
+            case PlaceSpy() if reward == PlaceSpy(shared_post=True):
                 counted["deep_cover_spies"] += 1
-            case PlaceSpy():
+            case PlaceSpy() if reward == PlaceSpy():
                 counted["spies"] += 1
-            case RecallAgent():
+            case RecallAgent() if reward == RecallAgent():
                 counted["recall_agents"] += 1
             case _:
                 raise TypeError(f"{reward!r} is not a Contract reward")

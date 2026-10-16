@@ -172,8 +172,9 @@ BOARD_CHOICE_ABILITIES: Final[Mapping[tuple[str, str], Ability]] = MappingProxyT
             mark=AbilityMark.MANDATORY, hook="tuek_sietch"
         ),
         # Secrets: "Each opponent holding 4 or more Intrigue cards gives you
-        # one at random", the text after its Intrigue draw (OQ-027).
-        ("secrets", "intrigue"): _choice(
+        # one at random", the text after its Intrigue draw (OQ-027) -- not an
+        # icon key of its own, so keyed ``steal``.
+        ("secrets", "steal"): _choice(
             mark=AbilityMark.AUTOMATIC, hook="secrets_steal"
         ),
     }

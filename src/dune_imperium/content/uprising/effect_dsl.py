@@ -433,7 +433,8 @@ type Condition = (
     | HasSwordmaster
     | SpyingOnMakerSpace
     | GarrisonedUnitsAtLeast
-    | CommandReached    | AtBoardSpace
+    | CommandReached
+    | AtBoardSpace
     | AcquiredCard
     | ContractTaken
     | AllianceTaken
@@ -1249,16 +1250,16 @@ class TakeHighCouncilSeat:
 
 @dataclass(frozen=True, slots=True)
 class TakeControl:
-    """Take control of ``space_id`` [Main p. 13]: the player's control marker
-    goes there, an opponent's moves off."""
+    """Take control of ``space_id`` [Main p. 10] [Main p. 20]: the player's
+    control marker goes there, an opponent's moves off."""
 
     space_id: str
 
 
 @dataclass(frozen=True, slots=True)
 class TakeSwordmaster:
-    """Once per game, take the player's third Agent, usable from this round
-    [Main p. 10] (the Swordmaster space)."""
+    """Once per game, take the player's third Agent [Main p. 20], usable from
+    this round [Board Guide p. 2] (the Swordmaster space)."""
 
 
 @dataclass(frozen=True, slots=True)

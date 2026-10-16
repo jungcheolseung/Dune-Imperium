@@ -519,7 +519,11 @@ def condition_text_ko(condition: Condition) -> str:
             return f"{KOREAN_CARD_NAMES['spaces'][space_id]} 장소로 {{agent}}를 보냄"
         case AcquiredCard(card_id=card_id):
             korean = KOREAN_CARD_NAMES["cards"].get(card_id)
-            return f"{korean if korean is not None else card_id} 획득"
+            if korean is None:
+                from dune_imperium.display.effect_dsl_text import _acquirable_name
+
+                korean = _acquirable_name(card_id)
+            return f"{korean} 획득"
         case ContractTaken():
             return "가져오는 즉시 완수"
         case AllianceTaken():

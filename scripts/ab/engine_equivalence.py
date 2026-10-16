@@ -321,7 +321,8 @@ def check_game(path: str) -> dict[str, Any]:
                 "step_value": repr(step)[:300],
                 "actions": dict(actions),
             }
-    return report | {"status": "same", "actions": dict(actions)}
+    pages = all(len(row) > 5 for row in data["rows"])
+    return report | {"status": "same", "actions": dict(actions), "pages": pages}
 
 
 def _engine_commit() -> str:
@@ -385,6 +386,9 @@ def main() -> None:
     for r in results:
         coverage.update(r.get("actions", {}))
     print(f"checked on {_engine_commit()}: {dict(statuses)}; {steps} steps the same")
+    unpaged = sum(1 for r in results if r["status"] == "same" and not r.get("pages"))
+    if unpaged:
+        print(f"page not compared in {unpaged} games (recorded before the page kind)")
     print("action ids replayed:", len(coverage), dict(sorted(coverage.items())))
     for r in results:
         if r["status"] != "same":

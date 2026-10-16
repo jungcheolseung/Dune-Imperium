@@ -115,6 +115,16 @@ def _rewards(conflict_id: str) -> tuple[ConflictReward, ConflictReward, Conflict
     return _row(first), _row(second), _row(third)
 
 
+def _put(
+    fields: dict[str, int | str | Faction], key: str, value: int | str | Faction
+) -> None:
+    """One reward field, printed once on the row."""
+
+    if key in fields:
+        raise ValueError(f"a Conflict reward row prints {key} twice")
+    fields[key] = value
+
+
 def _row(ability: Ability) -> ConflictReward:
     fields: dict[str, int | str | Faction] = {}
     counted = {
@@ -123,50 +133,67 @@ def _row(ability: Ability) -> ConflictReward:
         "trash_cards": 0,
         "choose_influence": 0,
     }
+    arrow_points: set[int] = set()
     for line in ability.sections:
+        if line.condition is not None:
+            raise ValueError("a Conflict reward row prints no condition")
         if line.costs:
-            (cost,) = line.costs
-            (victory_points,) = line.rewards
-            assert isinstance(victory_points, GainVictoryPoints)
-            fields["optional_victory_points"] = victory_points.amount
-            match cost:
-                case PayResources(solari=solari, spice=0, water=0) if solari:
-                    fields["optional_solari_cost"] = solari
-                case PayResources(solari=0, spice=spice, water=0):
-                    fields["optional_spice_cost"] = spice
-                case RecallSpy(count=count):
-                    fields["optional_recall_spies"] = count
+            # An optional "cost -> VP" arrow [FAQ p. 3]; the row's arrows share
+            # one VP value (Economic Supremacy prints two).
+            match line.costs, line.rewards:
+                case (PayResources(solari=solari, spice=0, water=0),), (
+                    GainVictoryPoints(amount=points),
+                ) if solari:
+                    _put(fields, "optional_solari_cost", solari)
+                case (PayResources(solari=0, spice=spice, water=0),), (
+                    GainVictoryPoints(amount=points),
+                ) if spice:
+                    _put(fields, "optional_spice_cost", spice)
+                case (RecallSpy(count=count),), (GainVictoryPoints(amount=points),):
+                    _put(fields, "optional_recall_spies", count)
                 case _:
-                    raise TypeError(f"{cost!r} is not a Conflict reward arrow")
+                    raise TypeError(f"{line!r} is not a Conflict reward arrow")
+            arrow_points.add(points)
             continue
         for reward in line.rewards:
             match reward:
                 case GainResources(solari=solari, spice=spice, water=water):
-                    fields.update(solari=solari, spice=spice, water=water)
+                    _put(fields, "solari", solari)
+                    _put(fields, "spice", spice)
+                    _put(fields, "water", water)
                 case DrawIntrigueCards(count=count):
-                    fields["intrigue"] = count
+                    _put(fields, "intrigue", count)
                 case RecruitTroops(count=count):
-                    fields["troops"] = count
-                case PlaceSpy(shared_post=True):
+                    _put(fields, "troops", count)
+                case PlaceSpy() if reward == PlaceSpy(shared_post=True):
                     counted["deep_cover_spies"] += 1
-                case PlaceSpy():
+                case PlaceSpy() if reward == PlaceSpy():
                     counted["place_spies"] += 1
                 case TakeContract(count=count):
-                    fields["contracts"] = count
-                case TrashPersonalCard():
+                    _put(fields, "contracts", count)
+                case TrashPersonalCard() if reward == TrashPersonalCard():
                     counted["trash_cards"] += 1
                 case GainVictoryPoints(amount=amount):
-                    fields["victory_points"] = amount
-                case GainInfluence(times=times, distinct=True):
-                    fields["choose_distinct_influence"] = times
-                case GainInfluence(times=times, factions=(faction,)):
-                    fields.update(faction_influence=times, influence_faction=faction)
-                case GainInfluence():
+                    _put(fields, "victory_points", amount)
+                case GainInfluence() if reward == GainInfluence(
+                    times=reward.times, distinct=True
+                ):
+                    _put(fields, "choose_distinct_influence", reward.times)
+                case GainInfluence(times=times, factions=(faction,)) if (
+                    reward == GainInfluence(times=times, factions=(faction,))
+                ):
+                    _put(fields, "faction_influence", times)
+                    _put(fields, "influence_faction", faction)
+                case GainInfluence() if reward == GainInfluence():
                     counted["choose_influence"] += 1
                 case TakeControl(space_id=space_id):
-                    fields["control_space_id"] = space_id
+                    _put(fields, "control_space_id", space_id)
                 case _:
                     raise TypeError(f"{reward!r} is not a Conflict reward")
+    if len(arrow_points) > 1:
+        raise ValueError("a Conflict reward row's arrows share one VP value")
+    if arrow_points:
+        _put(fields, "optional_victory_points", arrow_points.pop())
     fields.update({key: value for key, value in counted.items() if value})
     return ConflictReward(**fields)  # type: ignore[arg-type]
 
@@ -407,6 +434,4 @@ def conflicts_by_tier(
     )
 
 
-CONFLICTS_BY_ID: Final = {
-    conflict.card.card_id: conflict for conflict in CONFLICTS
-}
+CONFLICTS_BY_ID: Final = {conflict.card.card_id: conflict for conflict in CONFLICTS}

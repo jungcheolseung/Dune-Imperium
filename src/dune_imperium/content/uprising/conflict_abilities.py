@@ -216,7 +216,9 @@ CONFLICT_REWARD_ABILITIES: Final[Mapping[str, tuple[Ability, Ability, Ability]]]
                 _row(_line(GainResources(solari=1, water=1))),
                 _row(_line(GainResources(solari=2))),
             ),
-            # Storms in the South.
+            # Storms in the South. The first place prints a gold Spy behind a grey
+            # one: a Spy with Deep Cover, as on Deliver Supplies [Storms in the
+            # South card] [Bloodlines p. 5].
             "storms_in_the_south": (
                 _row(_line(GainResources(spice=2), PlaceSpy(shared_post=True))),
                 _row(_line(GainResources(solari=2), DrawIntrigueCards(2))),

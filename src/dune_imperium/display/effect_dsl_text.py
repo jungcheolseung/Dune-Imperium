@@ -158,7 +158,9 @@ def _acquirable_name(card_id: str) -> str:
 
     if card_id in IMPERIUM_CARDS_BY_ID:
         return IMPERIUM_CARDS_BY_ID[card_id].card.name
-    return RESERVE_STACKS_BY_ID[card_id].card.name
+    if card_id in RESERVE_STACKS_BY_ID:
+        return RESERVE_STACKS_BY_ID[card_id].card.name
+    raise ValueError(f"unknown acquirable card id: {card_id!r}")
 
 
 def _faction_name(faction: Faction) -> str:

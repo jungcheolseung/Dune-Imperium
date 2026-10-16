@@ -1,5 +1,7 @@
 """Contract terms and Conflict reward rows as ability records (composed A5a, A5b)."""
 
+import pytest
+
 from dune_imperium.content.uprising.abilities import AbilityTiming
 from dune_imperium.content.uprising.conflict_abilities import CONFLICT_REWARD_ABILITIES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -91,3 +93,38 @@ def test_the_new_contract_and_conflict_pieces_read_as_printed() -> None:
         AllianceTaken,
         TakeControl,
     }
+
+
+def test_the_compilers_refuse_what_the_tables_cannot_hold() -> None:
+    """A record the typed tables cannot represent fails loudly instead of
+    being dropped (review of A5)."""
+
+    from dune_imperium.content.uprising.abilities import Ability
+    from dune_imperium.content.uprising.conflicts import _row
+    from dune_imperium.content.uprising.contracts import _reward
+    from dune_imperium.content.uprising.effect_dsl import (
+        EffectSection,
+        GainInfluence,
+        GainResources,
+        GainVictoryPoints,
+        PayResources,
+    )
+
+    doubled = EffectSection(rewards=(GainResources(solari=2), GainResources(water=1)))
+    with pytest.raises(ValueError, match="twice"):
+        _reward(doubled)
+    with pytest.raises(ValueError, match="twice"):
+        _row(Ability(timing=AbilityTiming.CONFLICT_REWARD, sections=(doubled,)))
+    with pytest.raises(TypeError):
+        _row(
+            Ability(
+                timing=AbilityTiming.CONFLICT_REWARD,
+                sections=(EffectSection(rewards=(GainInfluence(times=2),)),),
+            )
+        )
+    arrows = (
+        EffectSection(rewards=(GainVictoryPoints(2),), costs=(PayResources(solari=6),)),
+        EffectSection(rewards=(GainVictoryPoints(1),), costs=(PayResources(spice=4),)),
+    )
+    with pytest.raises(ValueError, match="one VP"):
+        _row(Ability(timing=AbilityTiming.CONFLICT_REWARD, sections=arrows))

@@ -243,6 +243,8 @@ def _gains(ability: Ability) -> tuple[AutomaticEffect, ...]:
 
     effects: list[AutomaticEffect] = []
     for line in ability.sections:
+        if line.condition is not None or line.costs:
+            raise ValueError("a board space's printed icon has no condition or cost")
         for reward in line.rewards:
             match reward:
                 case GainResources(solari=solari, spice=spice, water=water):
@@ -269,6 +271,10 @@ def _gains(ability: Ability) -> tuple[AutomaticEffect, ...]:
 HIGH_COUNCIL_REVISIT_EFFECTS: Final = _gains(
     BOARD_SPACE_ABILITIES["high_council", 0, "seated"]
 )
+# Every space record compiles when the module loads: a record the table cannot
+# read fails here, not on the first visit.
+for _record in BOARD_SPACE_ABILITIES.values():
+    _gains(_record)
 
 
 def visit_board_effects(

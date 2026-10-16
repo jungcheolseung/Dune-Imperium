@@ -85,7 +85,7 @@ CONTRACT_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "harvest_3": _terms(_harvest(3), GainResources(solari=3)),
         # Harvest 4+.
         "harvest_4": _terms(_harvest(4), GainResources(solari=4)),
-        # Spice Refinery I.
+        # Spice Refinery I. Two card backs: draw two cards [tile face].
         "spice_refinery_i": _terms(
             AtBoardSpace("spice_refinery"), DrawPersonalCards(2)
         ),
@@ -118,7 +118,9 @@ CONTRACT_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Sardaukar I.
         "sardaukar_i": _terms(AtBoardSpace("sardaukar"), DrawPersonalCards(2)),
-        # Sardaukar II.
+        # Sardaukar II. The printed reward recalls one of the player's Agents;
+        # per the general glossary the recalled Agent cannot be the one just
+        # sent [Main p. 20].
         "sardaukar_ii": _terms(AtBoardSpace("sardaukar"), RecallAgent()),
         # Deliver Supplies.
         "bloodlines_deliver_supplies": _terms(
@@ -138,7 +140,8 @@ CONTRACT_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "bloodlines_harvest_4": _terms(
             _harvest(4), GainResources(solari=3), PlaceSpy()
         ),
-        # High Council.
+        # High Council (Bloodlines). Recall one of your Agents; as with Sardaukar
+        # II the Agent just sent is not a valid target [Main p. 20].
         "bloodlines_high_council": _terms(AtBoardSpace("high_council"), RecallAgent()),
         # Immediate.
         "bloodlines_immediate": _terms(
