@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A5 끝 — 계약·Conflict 보상·보드 칸까지 기록)
+기준일: 2026-10-17 (master, 효과 조각 엔진 전환 A6 끝 — Tech와 지도자까지 기록)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,10 +28,10 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | composed-a5 병합 (2026-10-16) |
-| pytest | 7,793개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 509파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A5(67 모두 통과) |
+| master | composed-a6 병합 (2026-10-17) |
+| pytest | 7,837개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
+| Ruff · mypy | `src tests` 통과, mypy 523파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-17 효과 조각 엔진 전환 A6(67종 모두 통과) |
 | action codec | **v148** (다음 번호 v149) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
 | action catalog | 기본 4,553 · CHOAM 4,848 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 36,379 |
@@ -52,8 +52,9 @@
   특이 흐름 6개, Guild Impersonator)·A3b(대상 없는 선택 지불 4개)·A3c(필수 대상 고르기 6개)·A3d(버리기 화살표 7개, 책략 폐기 화살표 2개)·A3e(폐기 칸 5개)·A3f-1(선택 획득 2개)·A3f-2(Arrakis Observer)·A3f-3(Piter, Control the Spice)·A3f-4(S6 4칸)·A3f-5(S7 4칸)는 끝났다 — **A3 끝**(기록 88개, hook 8개). A3g(표에 없던 Agent 칸 15개: 한 번 해결 3칸, hook 12칸)로 **개인 카드
   Agent 칸이 모두 기록**이 됐다(103개, hook 20개). A4(획득·폐기·버림 효과, Reveal 자동 이득, Reveal 선택 26개)도 끝나 **개인 카드의 효과가 모두
   기록**이다. A5(계약·Conflict 보상·보드 칸)도 끝났다. 같음 확인 도구가 이제 화면 정보와 Reveal 대기 선택의 행도 비교한다(`page`).
-  **다음:** A6(지도자, Tech; 보드 칸의 Bloodlines 지휘관 제안 포함), 단계 시작 master로 기준 기록을 다시 만들고 조사 탐침을 함께 쓴다. 옮기기가 다
-  끝나면 "정리 단계"(물려받은 사건 이름·처리 차이와 hook 41개 통일, A8과 같은 codec 올림)를 한다. 계획서 5절 "A5에서 만든 것"과 "정리 단계", 조사 `tmp/claude/4767ed6a/a5/a5-survey.md`(브랜치 비교용 탐침 포함).
+  A6(Tech, 지도자)도 끝났다(보드 칸 지휘관 제안은 방문 규칙으로 엔진 코드; Sardaukar 기술 타일 7개는 표에 없어 사용자 결정 대기).
+  **다음:** A7(Immortality, Arrakeen Scouts), 단계 시작 master로 기준 기록을 다시 만들고 조사 탐침을 함께 쓴다. 옮기기가 다
+  끝나면 "정리 단계"(물려받은 사건 이름·처리 차이와 hook 62개 통일, A8과 같은 codec 올림)를 한다. 계획서 5절 "A6에서 만든 것"과 "정리 단계", 조사 `tmp/claude/4767ed6a/a6/a6-survey.md`(브랜치 비교용 탐침 포함).
   같음 확인 기록은 단계 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`(Agent frame 값 포함)로도 잰다(6절 6번).
   [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A2]
 

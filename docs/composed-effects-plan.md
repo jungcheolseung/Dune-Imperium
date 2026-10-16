@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), A4 끝남(2026-10-16, 5절 "A4a·A4c에서 만든 것"·"A4d~A4h에서 만든 것": 획득·폐기·버림 효과, Reveal 자동 이득, Reveal 선택 26개 — 개인 카드의 효과가 모두 기록), A5 끝남(2026-10-16, 5절 "A5에서 만든 것": 계약·Conflict 보상·보드 칸), 다음 A6(지도자, Tech); 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), A4 끝남(2026-10-16, 5절 "A4a·A4c에서 만든 것"·"A4d~A4h에서 만든 것": 획득·폐기·버림 효과, Reveal 자동 이득, Reveal 선택 26개 — 개인 카드의 효과가 모두 기록), A5 끝남(2026-10-16, 5절 "A5에서 만든 것": 계약·Conflict 보상·보드 칸), A6 끝남(2026-10-17, 5절 "A6에서 만든 것": Tech·지도자), 다음 A7(Immortality, Arrakeen Scouts); 옮기기가 끝나면 5절 "정리 단계". 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -133,7 +133,7 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | A3g | A2·A3 목록에 없던 개인 카드 Agent 칸 15개(Treacherous Maneuver, The Beast's Spoils, Long Reach, Holy War, Arrakis Revolt, Immortality 접합·연구 칸 6개, 그 밖 4개 — 아래 "A3f-5에서 만든 것" 끝). 사용자 결정(2026-10-16): A7로 미루지 않고 A3에 이어 지금 — 끝남(2026-10-16, 아래 "A3g에서 만든 것") |
 | A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a4/reveal-survey.md`)의 하위 단계 A4a~A4h — 끝남(2026-10-16, 아래 "A4a·A4c에서 만든 것", "A4d~A4h에서 만든 것") |
 | A5 | 보드 칸, Conflict 보상, 계약. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a5/a5-survey.md`)의 하위 단계 A5a(계약 28장)·A5b(Conflict 19장, 보상 57줄)·A5c(보드 칸 인쇄 아이콘)·A5d(보드 선택 아이콘과 특수 흐름 — 조사의 A5d+A5e) — 끝남(2026-10-16, 아래 "A5에서 만든 것") |
-| A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech |
+| A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a6/a6-survey.md`)의 하위 단계 A6a(Tech 획득 효과)·A6b(Tech 능력 18개)·A6c(인장 18개)·A6e(지도자 왼쪽 칸 21개, Tech 유발 둘) — 조사의 A6d·A6f는 A6c·A6e에 들어감, A6g(규칙 변경·설정·지휘관 제안)는 판단으로 정리 — 끝남(2026-10-17, 아래 "A6에서 만든 것") |
 | A7 | Immortality(접합, 연구, Tleilaxu, 표본), Arrakeen Scouts |
 | 정리 | 옮기기(A0~A7)가 끝난 뒤 옛 코드에서 물려받은 처리기별 차이를 하나의 규칙으로 통일: 사건 이름, "칸 해결" 사건, 시험 해결의 답, hook. 아래 "정리 단계". codec은 A8과 함께 한 번만 올린다 |
 | A8 | 망 특성(4.4)과 한 번의 재학습, 관문 뒤 플레이 서버 교체 |
@@ -492,6 +492,44 @@ hook으로 두되 그 수를 세어 줄여 간다.
   보드 칸에서 Bloodlines 지휘관을 받는 제안은 A6(Bloodlines·Tech)에서.
 - **결과:** 보드·Conflict·계약의 인쇄 효과가 모두 기록이다. hook은 Agent 칸 20 + Reveal 선택 10 + 기타 2 + 보드 9 = 41.
 
+### A6에서 만든 것 (2026-10-17, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a6/a6-survey.md`: 지도자 18명 19면의 능력 38개와 설정 10개, Tech 타일 18장, 지휘관 제안; 2,000판
+탐침과 비교용 결과 파일, 수마다 추적판, 시나리오 7개)를 따랐다. 같음 확인 기준 기록은 시작 master `0c58e583`로 다시 만들었다.
+
+- **A6a — Tech 획득 효과:** `content/bloodlines/tech_abilities.py` `TECH_ACQUIRE_ABILITIES`(타일 id별, 아이콘마다 한 줄; Gene-Locked
+  Vault는 —OR— 두 줄). `content/bloodlines/tech.py`가 기록을 `TechTile`의 `acquire_*` 칸으로 옮기므로(엄격한 옮김: 두 번 인쇄·담을 칸
+  없는 조각이면 멈춤) 획득 처리와 망 특성 digest는 그대로다. Advanced Data Analysis의 "획득하려면 Spy 하나를 폐기" 전제는 hook 기록.
+  DSL 보상 `UseSignetAbility`.
+- **A6b — Tech 능력:** `TECH_ABILITIES`(타일 id별). 뒤집기 셋은 `rules/tech.py`가 기록에서 행·해결을 읽고(Rapid Dropships의
+  "Agent Turn"은 기록의 요건 `DuringAgentTurn`), 자동 Reveal 줄 셋(Command 둘, Self-Destroying Messages)은 `tech.TECH_REVEAL_GAINS`로
+  옮겨 Reveal이 읽으며, Endgame 줄 둘(CHOAM Transports·Panopticon, OQ-040)은 Endgame 처리가 읽는다. 흐름이 남는 넷(Forbidden
+  Weapons, Panopticon의 Reveal, Plasteel Blades, Suspensor Suits)은 hook. 갖고 있는 동안 규칙을 바꾸는 여섯(Gene-Locked Vault,
+  Glowglobes, Navigation Chamber, Ornithopter Fleet, Sardaukar High Command, Servo-Receivers)은 새 시점 `STANDING` 기록(줄 없이 엔진
+  분기 이름). 새 시점 `FLIP`·`STANDING`, 보상 `GainInfluenceWhereAtMost`.
+- **A6c — 인장 18개:** `content/uprising/leader_abilities.py` `SIGNET_ABILITIES`(지도자 면별; Y'rkoon은 인장 없음). 고를 것이 없는
+  넷(Warmaster, Lead the Way, Harkonnen Advisor, Judge of the Change)과 Servo-Receivers로 쓰는 Fill Coffers는 한 모양
+  (`_resolve_automatic_signet`)이 두 곳(인장 반지 칸, Servo 칸) 모두에서 기록으로 해결한다 — 사건 하나에 줄마다의 값(조건이 안 맞으면
+  0). Fill Coffers의 인장 반지 칸 아이콘(OQ-027·OQ-028), Spice Agony·Water of Life의 지불, Arrakis Informant의 관측소는 기록에서 읽고,
+  선택 표시도 기록에서(단계마다 바뀌는 넷 — Unseen Network, Corrino Liaison, Listeners, Personal Training — 은 단계 키가 정함).
+  나머지 열은 hook(`SIGNET_HOOKS`). 조건 `VisitedSpaceHasIcon`, 보상 `RecruitUndeployableTroops`·`TroopToMemory`.
+- **A6e — 지도자 왼쪽 칸 21개:** `LEADER_ABILITIES`(면별). 보상이 정해진 유발 여덟(Loyalty, Imperial Birthright, Staban의 Smuggle
+  Spice, Esmar의 방문 둘, Assassin, Twisted Genius의 라운드 시작 뽑기, Hungry for Spice)은 새 유발 조각(`OnReachInfluence`,
+  `OnOpponentAgentAtSpiedMakerSpace`, `OnCardTrashed`, `OnAgentSentTo`, `OnRoundStart`, `OnSpiceGainedInTurnAtLeast`)과 보상 줄로
+  적고, **유발 자리는 그대로 두고 그 자리에서 기록의 보상을 읽는다**(한 곳에서 돌리면 공용 처리 안의 사건 순서가 바뀐다: Assassin은
+  `card_trashed` 바로 뒤, 도달 보너스는 한 번의 얻기 안에서 단계마다). 자동 Reveal 줄 둘(Always Smiling: `StrengthInConflictAtLeast`,
+  Unpredictable Foe)도 데이터. 흐름 여섯(Devious Strength, Desert Scouts, Other Memories, Reverend Mother, Tactician, Plot Course)은
+  hook(`LEADER_HOOKS`), 규칙 변경 다섯(Shaddam의 따로 둔 계약, Ginaz Swordmaster, Clandestine, Arrakis Planetologist, Secret
+  Project)은 `STANDING`. 같은 방식으로 CHOAM Transports·Planetary Array의 뽑기도 유발 기록(`OnContractCompleted`, `OnConflictWon`)이
+  됐다. 보류·미룬 뽑기 기계는 한 장씩이라 기록의 뽑기 수가 1인지 불러올 때 확인한다. 보상 `DrawTwistedIntrigueCards`.
+- **옮기지 않은 것(판단):** 설정 차이 10개(시작 물, 시작 카드 제외, 전술 토큰 칸, 앞면, Feyd 토큰, Twisted 덱 등)는
+  `LeaderDefinition` 칸 그대로(칸을 더하면 망 특성 digest가 바뀐다). Feyd의 훈련 트랙 칸 보상(`FeydTrackReward`)도 트랙 자료로 둔다.
+  보드 칸에서 지휘관을 받는 제안은 칸에 인쇄된 효과가 아니라 모듈이 칸에 놓은 지휘관의 규칙이라, A5가 방문 규칙을 엔진 코드로 둔
+  판단과 같이 엔진 코드로 둔다(A5의 "A6에서"를 이것으로 닫음). Sardaukar 기술 타일 7개(`SkillDefinition`)는 표의 어느 단계에도 없다
+  — 어디서 할지 사용자 결정 필요.
+- **결과:** Tech와 지도자의 인쇄 능력이 모두 기록이다(규칙 변경은 이름만 적은 `STANDING` 기록 11개). hook은 A5까지 41 + Tech 5 +
+  인장 10 + 지도자 6 = 62.
+
 ### 정리 단계 — 물려받은 차이 통일 (A단계 옮기기 뒤, A8과 함께; 사용자 결정 2026-10-16)
 
 A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 칸마다 따로 짜면서 생긴 차이까지 그대로 옮긴다. 이 차이는 규칙이 아니라
@@ -521,6 +559,12 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
     기다림), 지운 거절 행동의 codec 템플릿 둘. 보드 hook 9개(A5d) 중 행이 공통 모양과 같은 다섯(Espionage의 Spy, Desert Tactics의
     폐기, Shipping의 영향력, Imperial Privilege의 맞바꿈과 소환)은 사건 통일 뒤 공통 모양으로. 계약·Conflict·보드 표는 기록을 옮긴
     `ContractCondition`·`ContractReward`·`ConflictReward`·`static_board_effects`를 읽는다(A4c의 Reveal과 같음).
+  - 지도자·Tech(A6 조사 G.4): 인장 사건의 `card_id`가 자동 인장에만 있음, 해결 사건이 뽑기·영향력 사건보다 앞(Lead the Way,
+    Fedaykin, Kota, Shaddam)인데 지불 사건보다는 뒤(Spice Agony, Staban), Fill Coffers는 칸에 따라 사건 모양 둘, Staban의 유발 사건
+    id는 주인을·Esmar는 방문자를 이름, Assassin·Tactician 사건 id에 유발한 효과의 출처가 붙음, 주지 않는 거절 행동 셋
+    (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, codec·옛 기보 다리에 남음), 의무 단계에 "막히지
+    않게" 남긴 거절, 닿지 않는 `acquire_leader_reserve`(비용 1인 Reserve 더미 없음)와 Esmar의 거절만 있는 인장. Tech 획득·Reveal은
+    기록을 옮긴 `TechTile`·`TECH_REVEAL_GAINS`를 읽는다(A4c와 같음).
   - A3g~A7에서 찾는 같은 종류의 차이도 이 목록에 더한다.
 - **방법:**
   1. 차이 목록을 만들고 종류마다 규칙 하나를 정한다(예: 사건 이름 `<칸>:<무엇>`, 칸이 끝나면 언제나 "칸 해결" 사건 하나).
@@ -588,6 +632,11 @@ A2 관문(2026-10-16, 시작 master `7ba624ad`): 1번 200판 모두 same(191,836
 통과, E2E 67종 통과, 소크 720판 실패 0. 6번 `time_legal.py` Agent frame 호출당 1~2% 느림(관문 10% 안). 독립 리뷰: 막는 문제·중간 없음. 옛·새 엔진 차등 탐침 330판(Agent 효과 상태 172,999곳에서 합법 행동·사건·상태·네 좌석 보기와 모든 효과×키의
 막힘 이유·대기 판정까지)과 강제 탐침 2,665곳이 모두 같았다. 낮은 지적 3개(아이콘 조건이 막힘 이유를 늘 낼 것, 두 곳에 복사된 조건 판정,
 화면 비교 범위)와 사소한 지적들을 반영했다(worklog 2026-10-16 A2).
+
+A6 관문(2026-10-17, 시작 master `0c58e583`로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A6a·A6b 뒤, A6c 뒤, A6e 뒤,
+리뷰 반영 뒤). 에이전트 재기록 같음. A6 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(하위 단계마다), 조사 시나리오
+7개 같음. Tech 타일 18장의 repr·획득 키, 망 특성 digest 같음. 2번 v148·v147 묶음 각 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값
+그대로. 5번 pytest 7,837개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 합법 행동 50.5→50.0µs(중앙값 셋), Agent frame 67.0→65.8µs — 잡음 안. 독립 리뷰: 막는 문제·중간 없음 — 카탈로그, 코덱 6개 설정, 지도자·Tech 문구 두 언어, 망 특성 digest가 같고, 300판 차등 탐침(앱 AI 좌석 포함, Servo 인장 284회·Jessica 뒤집기 133회 등 23만여 단계)과 Servo 시나리오 2,184개가 같았다. 낮은 지적 다섯(불러올 때의 검사가 처리 코드보다 느슨함 — 이제 처리 코드가 못 다루는 조건·보상·면·뒤집기 모양을 거부)과 한국어 기억 문구 반영. 전체 pytest가 새 테스트 파일 이름 겹침과, 로그의 EVENT_IMPLIED_LEADER 표가 기대하는 Smuggle Spice의 Staban 이름 빠짐을 잡아 고쳤다.
 
 A5 관문(2026-10-16, 시작 master `bdef8c76`, 보강한 도구로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A5a·A5b 뒤,
 A5c 뒤, A5d 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음(두 번). A5 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(세 번),
