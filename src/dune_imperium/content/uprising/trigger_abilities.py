@@ -1,4 +1,4 @@
-"""Acquire, trash and discard ability records of personal cards (composed effects, A4a).
+"""Trigger ability records of personal cards (composed effects, A4a, A4h).
 
 docs/composed-effects-plan.md 5 (A4a): a personal card's "when acquired",
 "when trashed" and "when discarded" boxes are written here as automatic
@@ -45,12 +45,17 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardDiscardEffect,
+    PersonalCardRevealAcquisitionEffect,
     PersonalCardTrashEffect,
+    PersonalCardTurnStartEffect,
 )
 
 _ACQUIRE = PersonalCardAcquisitionEffect
 _TRASH = PersonalCardTrashEffect
 _DISCARD = PersonalCardDiscardEffect
+_GUILD_SPY = (
+    PersonalCardRevealAcquisitionEffect.GAIN_INFLUENCE_FOR_EACH_SPIED_FACTION_ON_SPICE_MUST_FLOW
+)
 
 
 def _when(timing: AbilityTiming, *rewards: Reward) -> Ability:
@@ -137,6 +142,41 @@ DISCARD_ABILITIES: Final[Mapping[PersonalCardDiscardEffect, Ability]] = (
             # Corrupt Bureaucrat.
             _DISCARD.GAIN_THREE_SOLARI: _when(
                 AbilityTiming.DISCARD, GainResources(solari=3)
+            ),
+        }
+    )
+)
+
+
+# The two personal-card boxes whose flow stays code (composed A4h), with no
+# line: the DSL cannot say them whole. Guild Spy: "Gain 1 Influence with each
+# Faction you are spying on" once The Spice Must Flow is acquired during the
+# owner's Reveal, once per copy, Spies counted then (OQ-057 designer rulings;
+# ``reveal_turn.fire_guild_spy_on_spice_must_flow``). Litany Against Fear:
+# "Put this card into play -> Draw 1 card and pass your turn", only as the
+# turn's first action (OQ-095 (6); ``agent_turn``).
+REVEAL_ACQUISITION_ABILITIES: Final[
+    Mapping[PersonalCardRevealAcquisitionEffect, Ability]
+] = MappingProxyType(
+    {
+        _GUILD_SPY: (
+            Ability(
+                timing=AbilityTiming.TRIGGERED,
+                sections=(),
+                mark=AbilityMark.AUTOMATIC,
+                hook="guild_spy",
+            )
+        ),
+    }
+)
+TURN_START_ABILITIES: Final[Mapping[PersonalCardTurnStartEffect, Ability]] = (
+    MappingProxyType(
+        {
+            PersonalCardTurnStartEffect.PLAY_TO_DRAW_AND_PASS: Ability(
+                timing=AbilityTiming.TURN_START,
+                sections=(),
+                mark=AbilityMark.OPTIONAL,
+                hook="litany_against_fear",
             ),
         }
     )

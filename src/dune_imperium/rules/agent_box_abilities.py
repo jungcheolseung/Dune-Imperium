@@ -1714,6 +1714,7 @@ def trash_box(ability: Ability | None) -> bool:
     if (
         len(first.costs) != 1
         or not isinstance(first.costs[0], TrashCard)
+        or first.costs[0].other_in_play is not None
         or any(line.costs for line in rest)
         or any(
             line.condition is not None

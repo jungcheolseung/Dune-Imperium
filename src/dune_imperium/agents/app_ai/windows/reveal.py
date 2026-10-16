@@ -27,7 +27,7 @@ choice ("may", an arrow cost, a black trash icon [FAQ p. 3]) offers no
 refusal and lapses at ``finish_reveal``; a mandatory one holds
 ``finish_reveal`` while it offers something. The app's Explicit choices are
 exactly our mandatory ones and its Optional choices our optional ones
-(``content.uprising.types.OPTIONAL_REVEAL_CHOICES``). This adapter answers:
+(``content.uprising.reveal_choice_abilities``). This adapter answers:
 
 1. **``reveal``: automatic gains first** (``Stage.REVEAL_AUTO``):
    ``recruit_reveal_troops``, ``draw_reveal_intrigue``,
