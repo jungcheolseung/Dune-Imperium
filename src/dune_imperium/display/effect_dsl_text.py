@@ -73,6 +73,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    RecallAgent,
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
@@ -98,6 +99,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
+    TrashThisCard,
     Trigger,
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
@@ -511,6 +513,12 @@ def reward_text(reward: Reward) -> str:
                 "Acquire an Imperium Row or Reserve card to your hand, paying"
                 " its cost in solari"
             )
+        case TrashThisCard():
+            return "Trash this card"
+        case RecallAgent(sent_this_turn=True):
+            return "Recall the Agent you sent this turn"
+        case RecallAgent():
+            return "Recall 1 Agent"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

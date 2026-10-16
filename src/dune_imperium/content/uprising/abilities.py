@@ -112,7 +112,12 @@ class Ability:
             raise ValueError("an ability needs a printed line or a hook")
         if self.hook == "":
             raise ValueError("a hook must be named")
-        if self.structure is not AbilityStructure.SEQUENCE and len(self.sections) < 2:
+        if (
+            self.structure is not AbilityStructure.SEQUENCE
+            and len(self.sections) < 2
+            and not self.icons
+        ):
+            # A box printing a single icon still resolves it on its own.
             raise ValueError(f"a {self.structure} ability needs two or more lines")
         if self.mark is AbilityMark.AUTOMATIC and any(
             section.costs for section in self.sections

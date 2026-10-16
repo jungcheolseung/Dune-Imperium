@@ -42,7 +42,6 @@ from dune_imperium.rules.agent_icons import (
     is_bond_partner,
 )
 from dune_imperium.rules.board_effects import board_icons_for
-from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
@@ -908,17 +907,6 @@ def agent_effect_is_available(
         # A box written as an ability record judges its placement condition
         # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
         return opens_at_placement(ability, owner, space, card_instance_id)
-    if (
-        effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
-    ):
-        # A Row card borrowed with Usurp is not "in play" (OQ-054,
-        # ``counted_in_play``), so it never provides another card's Bond.
-        return has_faction_bond(
-            (*counted_in_play(owner), card_instance_id),
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        )
     return True
 
 
