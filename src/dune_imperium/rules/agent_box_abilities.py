@@ -44,7 +44,11 @@ from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.abilities import Ability, AbilityMark
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityStructure,
+)
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, BoardSpace, Faction
 from dune_imperium.content.uprising.effect_dsl import (
@@ -72,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GraftedWithFaction,
     GrantCombatDeployment,
     HasAlliance,
     InfluenceAtLeast,
@@ -120,6 +125,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     finish_agent_icon,
     is_grafted,
+    other_grafted_card_id,
     recruit_shortfall_events,
     recruit_troops,
     short_of,
@@ -316,6 +322,14 @@ def box_condition_holds(
             return owner.units_in_conflict >= count
         case ContractCompletedThisTurn():
             return owner.contracts_completed_turn >= 1
+        case GraftedWithFaction(factions=factions):
+            # The other grafted card's printed Factions; a Ghola copy's
+            # partner is the card it copies.
+            partner = other_grafted_card_id(context)
+            return bool(partner) and any(
+                faction in personal_card_for_instance(partner).factions
+                for faction in factions
+            )
         case SandwormsInConflictAtLeast(count=count):
             return owner.sandworms_conflict >= count
         case AllConditions(conditions=conditions):
@@ -472,6 +486,7 @@ def resolve_box(state: GameState) -> RuleResult:
             and not trash_box(ability)
             and not discard_box(ability)
             and not lose_box(ability)
+            and not either_box(ability)
         )
     ):
         raise ValueError("the active Agent box is not resolved as one recorded action")
@@ -1904,3 +1919,128 @@ def apply_lose(
             commanders=int(commander),
         )
     return RuleResult(state=next_state, events=lost.events)
+
+
+# --- A plain line beside a choice line (stage A3f) --------------------------------
+#
+# Two printed lines, the second a choice: "Choose one: Draw 1 card / If Bene
+# Gesserit Bond: Gain 1 Bene Gesserit Influence" (Southern Faith), "If 2 or
+# more Spacing Guild Influence: Choose one: Draw 1 card / Combat" (High
+# Priority Travel), and "Gain 1 spice, If grafted with an Emperor or Spacing
+# Guild card: Gain 1 Influence with a chosen Faction" (Interstellar
+# Conspiracy). The plain line resolves as one action (``resolve_box``, the
+# A2 conventions). While the choice line's condition holds and it has a
+# target, its rows are offered -- beside the plain row for "Choose one"
+# (``ONE_OF``), alone for a sequence, whose choice then pays the plain line
+# too (its gains after the choice's events); otherwise the frame offers the
+# plain row alone. The Combat answers through its own handler
+# (``take_agent_card_combat_icon``).
+
+_PLAIN_ROW: Final = "resolve_agent_card_effect"
+
+
+def either_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is a plain line beside a choice line (see above)."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.MANDATORY
+        or ability.icons
+        or ability.armed_icons
+        or ability.hook is not None
+        or ability.structure is AbilityStructure.SEPARATE
+        or len(ability.sections) != 2
+        or any(line.costs for line in ability.sections)
+    ):
+        return False
+    plain, choice = ability.sections
+    if len(choice.rewards) != 1 or choice.condition is None:
+        # The choice line is printed under a condition of its own; two plain
+        # lines resolve as one action.
+        return False
+    match choice.rewards[0]:
+        case GainInfluence(times=1, distinct=False) as gain:
+            # A sequence pays its plain line with a chosen Faction; "Choose
+            # one" may offer a fixed Faction beside the plain line.
+            if (
+                ability.structure is AbilityStructure.SEQUENCE
+                and not gain.requires_choice
+            ):
+                return False
+        case GrantCombatDeployment():
+            if ability.structure is not AbilityStructure.ONE_OF:
+                return False
+        case _:
+            return False
+    return all(
+        isinstance(reward, (DrawPersonalCards, GainResources))
+        for reward in plain.rewards
+    )
+
+
+def either_choice(ability: Ability) -> GainInfluence | GrantCombatDeployment:
+    """The choice line's one reward."""
+
+    piece = ability.sections[1].rewards[0]
+    assert isinstance(piece, (GainInfluence, GrantCombatDeployment))
+    return piece
+
+
+def either_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The choice line's rows while it holds -- after the plain row for
+    "Choose one" -- or none, leaving the plain row to the frame."""
+
+    _, context = current_agent_effect_context(state)
+    choice = ability.sections[1]
+    if not _line_holds(choice, state.players[player], context):
+        return ()
+    piece = either_choice(ability)
+    if isinstance(piece, GainInfluence):
+        rows = piece_rows(
+            state,
+            player,
+            piece,
+            Source.AGENT_CARD,
+            refusals=False,
+            empty_confirm=False,
+        )
+    else:
+        rows = (DomainAction(action_id="take_agent_card_combat_icon", actor=player),)
+    if not rows:
+        return ()
+    plain = ability.sections[0]
+    if ability.structure is AbilityStructure.ONE_OF and _line_holds(
+        plain, state.players[player], context
+    ):
+        return (DomainAction(action_id=_PLAIN_ROW, actor=player), *rows)
+    return rows
+
+
+def apply_either_influence(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Gain the chosen Faction's Influence; a sequence pays its plain line's
+    gains after it (Interstellar Conspiracy's spice)."""
+
+    _, context = current_agent_effect_context(state)
+    _, card_id = _subject(context)
+    player = action.actor
+    faction = Faction(str(dict(action.arguments)["faction"]))
+    source = agent_card_source(state.round_number, player, card_id)
+    gained = gain_faction_influence(
+        state, player, faction, 1, event_prefix=f"{source}:influence:{faction.value}"
+    )
+    context["pending_agent_effect"] = False
+    players = gained.state.players
+    if ability.structure is AbilityStructure.SEQUENCE:
+        owner = players[player]
+        for reward in ability.sections[0].rewards:
+            if isinstance(reward, GainResources):
+                owner = _gain(owner, reward)
+        players = replace_player(players, owner)
+    next_state = advance_after_effect(
+        replace(gained.state, players=players), context, players
+    )
+    return RuleResult(state=next_state, events=gained.events)

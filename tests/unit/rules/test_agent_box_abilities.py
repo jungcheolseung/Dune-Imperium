@@ -19,6 +19,7 @@ from dune_imperium.content.immortality.board import (
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
+    AbilityStructure,
     AbilityTiming,
 )
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
@@ -38,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ForceEnemyRetreat,
     GainedSpiceThisTurn,
     GainInfluence,
+    GraftedWithFaction,
     HasAlliance,
     InfluenceAtLeast,
     PayResources,
@@ -75,6 +77,7 @@ from dune_imperium.rules.agent_box_abilities import (
     condition_block,
     discard_box,
     discard_spy,
+    either_box,
     intrigue_box,
     lose_box,
     opens_at_placement,
@@ -127,7 +130,7 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    assert len(AGENT_BOX_ABILITIES) == 80
+    assert len(AGENT_BOX_ABILITIES) == 84
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -934,3 +937,48 @@ def test_control_the_spice_is_a_payment_hook() -> None:
     (line,) = spice.sections
     assert line.costs == (PayResources(spice=CONTROL_THE_SPICE_PRICE),)
     assert not payment_box(spice) and not trash_box(spice)
+
+
+def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
+    """Composed A3f: Southern Faith and High Priority Travel ("Choose one")
+    and Interstellar Conspiracy (a plain line, then a conditioned choice that
+    pays both). The plain line resolves as one action; Possible Futures,
+    whose Bond turns its choice into both, is a hook."""
+
+    either = {
+        effect: ability.structure
+        for effect, ability in AGENT_BOX_ABILITIES.items()
+        if either_box(ability)
+    }
+    conspiracy = _BOX.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
+    assert either == {
+        _BOX.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND: AbilityStructure.ONE_OF,
+        _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO: (
+            AbilityStructure.ONE_OF
+        ),
+        conspiracy: AbilityStructure.SEQUENCE,
+    }
+    futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]
+    assert futures.hook == "possible_futures"
+    partner = GraftedWithFaction((Faction.EMPEROR, Faction.SPACING_GUILD))
+    assert condition_text(partner) in AGENT_EFFECT_TEXT[conspiracy]
+    assert condition_text_ko(partner) in AGENT_EFFECT_TEXT_KO[conspiracy]
+
+
+def test_southern_faith_offers_its_influence_beside_the_draw_with_the_bond() -> None:
+    """Without the Bond only the frame's plain row (the draw); with it and a
+    Bene Gesserit cube that can rise, the plain row and that Influence."""
+
+    card = "imperium:southern_faith:0"
+    config = RulesetConfig(bloodlines=True)
+    alone = _played(card, PlayerState(player_id=0), config)
+    assert legal_agent_card_influence_actions(alone, 0) == ()
+    resolved = resolve_agent_card_effect(alone)
+    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    bonded = PlayerState(player_id=0, in_play=("imperium:bene_gesserit_operative:0",))
+    with_bond = _played(card, bonded, config)
+    rows = legal_agent_card_influence_actions(with_bond, 0)
+    assert [(row.action_id, dict(row.arguments)) for row in rows] == [
+        ("resolve_agent_card_effect", {}),
+        ("choose_agent_card_influence", {"faction": "bene_gesserit"}),
+    ]

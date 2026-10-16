@@ -49,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
@@ -270,6 +271,11 @@ def condition_text(condition: Condition) -> str:
             return f"the discarded card has {_faction_name(faction)} affiliation"
         case ContractCompletedThisTurn():
             return "you completed a Contract this turn"
+        case GraftedWithFaction(factions=factions):
+            # Interstellar Conspiracy (``tokens.py``).
+            names = " or ".join(_faction_name(faction) for faction in factions)
+            article = "an" if names[0] in "AEIOU" else "a"
+            return f"grafted with {article} {names} card"
         case Grafted():
             return "grafted"
         case OpponentPlayedCombatIntrigue():
