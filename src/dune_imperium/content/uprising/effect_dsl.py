@@ -362,6 +362,34 @@ class CommandReached:
 
 
 @dataclass(frozen=True, slots=True)
+class AtBoardSpace:
+    """The player sent an Agent to ``space_id`` (a Contract: "Send an Agent
+    to Arrakeen"), judged on the placement's snapshot."""
+
+    space_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class AcquiredCard:
+    """The player acquired a copy of ``card_id`` (a Contract: "Acquire The
+    Spice Must Flow")."""
+
+    card_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ContractTaken:
+    """The Contract was just taken: an Immediate tile completes at once
+    [Main p. 16]."""
+
+
+@dataclass(frozen=True, slots=True)
+class AllianceTaken:
+    """The player took an Alliance token it did not already hold (the
+    Bloodlines "Earn Any Alliance" Contract, OQ-056)."""
+
+
+@dataclass(frozen=True, slots=True)
 class AllConditions:
     """Every listed condition holds (Study Melange: spice and two markers)."""
 
@@ -405,7 +433,10 @@ type Condition = (
     | HasSwordmaster
     | SpyingOnMakerSpace
     | GarrisonedUnitsAtLeast
-    | CommandReached
+    | CommandReached    | AtBoardSpace
+    | AcquiredCard
+    | ContractTaken
+    | AllianceTaken
 )
 
 
@@ -1217,6 +1248,14 @@ class TakeHighCouncilSeat:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeControl:
+    """Take control of ``space_id`` [Main p. 13]: the player's control marker
+    goes there, an opponent's moves off."""
+
+    space_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1301,6 +1340,7 @@ type Reward = (
     | RevealPersuasion
     | RevealSwords
     | TakeHighCouncilSeat
+    | TakeControl
 )
 
 

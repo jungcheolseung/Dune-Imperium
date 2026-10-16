@@ -9,16 +9,19 @@ support.
 
 from typing import assert_never
 
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
     AcquireCardForSolari,
     AcquireCardUpTo,
+    AcquiredCard,
     AcquireReserveCard,
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AllianceTaken,
+    AtBoardSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -28,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
+    ContractTaken,
     Cost,
     DeployFromGarrison,
     DestroyShieldWall,
@@ -106,6 +110,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
+    TakeControl,
     TakeHighCouncilSeat,
     TechTilesAtLeast,
     TrashCard,
@@ -142,6 +147,17 @@ _TIMING_LABELS: dict[IntrigueTiming, str] = {
     IntrigueTiming.COMBAT: "Combat",
     IntrigueTiming.ENDGAME: "Endgame",
 }
+
+
+def _acquirable_name(card_id: str) -> str:
+    """An Imperium or Reserve card's name (a Contract's acquisition)."""
+
+    from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+    from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+
+    if card_id in IMPERIUM_CARDS_BY_ID:
+        return IMPERIUM_CARDS_BY_ID[card_id].card.name
+    return RESERVE_STACKS_BY_ID[card_id].card.name
 
 
 def _faction_name(faction: Faction) -> str:
@@ -304,6 +320,14 @@ def condition_text(condition: Condition) -> str:
             return f"you have {count} or more garrisoned units"
         case CommandReached():
             return "Command (6+ Persuasion)"
+        case AtBoardSpace(space_id=space_id):
+            return f"Send an Agent to {BOARD_SPACES_BY_ID[space_id].name}"
+        case AcquiredCard(card_id=card_id):
+            return f"Acquire {_acquirable_name(card_id)}"
+        case ContractTaken():
+            return "Complete immediately when taken"
+        case AllianceTaken():
+            return "Take an Alliance token you do not already hold"
         case AllConditions(conditions=conditions):
             return " and ".join(condition_text(item) for item in conditions)
         case _:
@@ -566,6 +590,8 @@ def reward_text(reward: Reward) -> str:
             return f"+{amount} {_plural(amount, 'sword')}{_reveal_count_text(per)}"
         case TakeHighCouncilSeat():
             return "Take the High Council seat"
+        case TakeControl(space_id=space_id):
+            return f"Take control of {BOARD_SPACES_BY_ID[space_id].name}"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:
