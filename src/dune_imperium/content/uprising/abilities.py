@@ -63,6 +63,10 @@ class AbilityTiming(StrEnum):
     # Flipping a Tech tile: "used during one of your turns, and can be used
     # only once per round" [Bloodlines p. 7] (composed A6b).
     FLIP = "flip"
+    # An Arrakeen Scouts item's printed lines: a subcommittee joined, an
+    # event's or a sale's choice, a secret reward, an auction place (composed
+    # A7b); a mechanism of the module is a hook record without lines.
+    SCOUTS = "scouts"
     # Reaching a space of the research or Tleilaxu track: its printed bonus
     # [Immortality pp. 6-7] (composed A7c).
     TRACK_SPACE = "track_space"

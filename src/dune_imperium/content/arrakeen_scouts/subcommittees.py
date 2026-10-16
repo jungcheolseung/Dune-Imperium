@@ -7,30 +7,14 @@ paraphrased in ``docs/rules/arrakeen-scouts.md``.
 
 from typing import Final
 
+from dune_imperium.content.arrakeen_scouts.abilities import (
+    scouts_option,
+)
 from dune_imperium.content.arrakeen_scouts.types import (
     BOTH_POOLS,
     IMMORTALITY_ONLY,
     AppDefinition,
-    RecallOtherAgent,
-    ScoutsOption,
     Subcommittee,
-)
-from dune_imperium.content.uprising.effect_dsl import (
-    AdvanceTleilaxu,
-    DiscardFromHand,
-    DrawIntrigueCards,
-    DrawPersonalCards,
-    GainInfluence,
-    GainResources,
-    GenerateSpecimens,
-    PayResources,
-    PlaceSpy,
-    RecallSpy,
-    RecruitTroops,
-    Research,
-    TakeContract,
-    TrashIntrigueCard,
-    TrashPersonalCard,
 )
 
 SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
@@ -39,9 +23,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="appropriations",
         name="Appropriations",
         tier=0,
-        option=ScoutsOption(
-            costs=(DiscardFromHand(1),), rewards=(GainResources(water=1),)
-        ),
+        option=scouts_option("appropriations"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_E_Appropriations", 1),
     ),
@@ -49,7 +31,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="intelligence",
         name="Intelligence",
         tier=0,
-        option=ScoutsOption(rewards=(PlaceSpy(),)),
+        option=scouts_option("intelligence"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_E_Intelligence", 8),
     ),
@@ -57,7 +39,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="readiness",
         name="Readiness",
         tier=0,
-        option=ScoutsOption(rewards=(RecruitTroops(1),)),
+        option=scouts_option("readiness"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_E_Readiness", 2),
     ),
@@ -65,7 +47,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="choam_coordination",
         name="CHOAM Coordination",
         tier=0,
-        option=ScoutsOption(rewards=(TakeContract(1),)),
+        option=scouts_option("choam_coordination"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_E_CHOAMCoordination", 13),
         choam_only=True,
@@ -74,7 +56,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="growth_project",
         name="Growth Project",
         tier=0,
-        option=ScoutsOption(rewards=(GenerateSpecimens(1),)),
+        option=scouts_option("growth_project"),
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Subcommittee_E_GrowthProject", 10),
     ),
@@ -83,10 +65,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="oversight",
         name="Oversight",
         tier=1,
-        option=ScoutsOption(
-            costs=(RecallSpy(1),),
-            rewards=(TrashPersonalCard(), GainResources(spice=1)),
-        ),
+        option=scouts_option("oversight"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_M_Oversight", 3),
     ),
@@ -94,9 +73,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="investigations",
         name="Investigations",
         tier=1,
-        option=ScoutsOption(
-            costs=(PayResources(solari=1),), rewards=(DrawIntrigueCards(1),)
-        ),
+        option=scouts_option("investigations"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_M_Investigations", 4),
     ),
@@ -104,9 +81,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="forecasting",
         name="Forecasting",
         tier=1,
-        option=ScoutsOption(
-            costs=(PayResources(spice=1),), rewards=(DrawPersonalCards(2),)
-        ),
+        option=scouts_option("forecasting"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_M_Forecasting", 14),
     ),
@@ -114,7 +89,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="choam_management",
         name="CHOAM Management",
         tier=1,
-        option=ScoutsOption(costs=(PayResources(spice=1),), rewards=(TakeContract(2),)),
+        option=scouts_option("choam_management"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_M_CHOAMManagement", 15),
         choam_only=True,
@@ -123,7 +98,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="analytics",
         name="Analytics",
         tier=1,
-        option=ScoutsOption(costs=(PayResources(solari=1),), rewards=(Research(),)),
+        option=scouts_option("analytics"),
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Subcommittee_M_Analytics", 11),
     ),
@@ -132,7 +107,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="relations",
         name="Relations",
         tier=2,
-        option=ScoutsOption(costs=(PayResources(spice=2),), rewards=(GainInfluence(),)),
+        option=scouts_option("relations"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_L_Relations", 5),
     ),
@@ -140,9 +115,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="contingencies",
         name="Contingencies",
         tier=2,
-        option=ScoutsOption(
-            costs=(TrashIntrigueCard(),), rewards=(RecallOtherAgent(),)
-        ),
+        option=scouts_option("contingencies"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_L_Contingencies", 16),
     ),
@@ -150,10 +123,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="leverage",
         name="Leverage",
         tier=2,
-        option=ScoutsOption(
-            costs=(RecallSpy(2),),
-            rewards=(GainInfluence(), DrawIntrigueCards(1)),
-        ),
+        option=scouts_option("leverage"),
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Subcommittee_L_Leverage", 17),
     ),
@@ -161,9 +131,7 @@ SUBCOMMITTEES: Final[tuple[Subcommittee, ...]] = (
         subcommittee_id="tleilaxu_relations",
         name="Tleilaxu Relations",
         tier=2,
-        option=ScoutsOption(
-            costs=(PayResources(spice=3),), rewards=(AdvanceTleilaxu(2),)
-        ),
+        option=scouts_option("tleilaxu_relations"),
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Subcommittee_L_TleilaxuRelations", 12),
     ),

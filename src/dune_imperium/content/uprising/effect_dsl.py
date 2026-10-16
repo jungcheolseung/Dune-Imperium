@@ -695,6 +695,57 @@ class FlipFaceUpConflictCard:
             raise ValueError("flip count must be positive")
 
 
+# Arrakeen Scouts' own costs (composed A7b; ``content.arrakeen_scouts.types``
+# re-exports them).
+
+
+@dataclass(frozen=True, slots=True)
+class LoseFactionInfluence:
+    """Lose ``count`` Influence with one named Faction (Crackdown's Emperor
+    loss, Betrayal's Bene Gesserit cost). The DSL's ``LoseInfluence`` lets
+    the player pick the Faction, so it does not fit."""
+
+    faction: Faction
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("Influence loss needs a Faction")
+        if self.count < 1:
+            raise ValueError("Influence loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class LoseHighestInfluence:
+    """Lose one Influence on the player's highest track, choosing among tied
+    tracks (Political Equilibrium); nothing with no Influence at all."""
+
+
+@dataclass(frozen=True, slots=True)
+class LoseGarrisonTroops:
+    """Lose ``count`` troops from the garrison to the supply (Bene Gesserit
+    Treachery, Prison Planet). The DSL's ``LoseTroops`` also allows the
+    Conflict, which these items do not."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("garrison loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class PaySpecimens:
+    """Return ``count`` specimens from the Axolotl Tanks to the supply
+    (Ingratiate) [Immortality p. 8]."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("specimen cost must be positive")
+
+
 type Cost = (
     PayResources
     | LoseInfluence
@@ -709,6 +760,12 @@ type Cost = (
     | FlipFaceUpConflictCard
     | SpendSpecimens
     | TrashCard
+    | LoseFactionInfluence
+    | LoseHighestInfluence
+    | LoseGarrisonTroops
+    | PaySpecimens
+    # "Trash a card from your hand" as a Scouts line's price or loss.
+    | TrashPersonalCard
 )
 
 
@@ -1403,6 +1460,60 @@ class LookAtIntrigueKeepOne:
             raise ValueError("a peek to keep one looks at two or more cards")
 
 
+# Arrakeen Scouts' own rewards (composed A7b).
+
+
+@dataclass(frozen=True, slots=True)
+class RecallOtherAgent:
+    """Return one of the player's Agents from a board space to their supply,
+    other than the Agent that just took the High Council seat
+    (Contingencies; which Agent counts is an open question)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecruitToConflict:
+    """Recruit ``count`` troops from the supply straight into the Conflict
+    (Shadow Warfare: troops recruited during the sale are deployed at once)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("recruit count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireReserveCardToHand:
+    """Acquire one named Reserve card into the hand instead of the discard
+    pile (Moment of Revelation: Prepare the Way)."""
+
+    card_id: str
+
+    def __post_init__(self) -> None:
+        if not self.card_id:
+            raise ValueError("Reserve acquisition needs a card")
+
+
+@dataclass(frozen=True, slots=True)
+class GainLowestInfluence:
+    """Gain one Influence with the Faction where the player has the least,
+    choosing among tied Factions (Covert Operation's delayed choice)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GainSpiceWithHelixBonus:
+    """Gain ``spice`` spice, or ``helix_spice`` instead when the player's
+    research has reached the Helix (Offworld Operation's first-round choice;
+    what "reached the Helix" means is an open question)."""
+
+    spice: int = 1
+    helix_spice: int = 2
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.spice < self.helix_spice:
+            raise ValueError("the Helix amount must beat the plain amount")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1464,6 +1575,11 @@ type Reward = (
     | TroopToMemory
     | DrawTwistedIntrigueCards
     | TakeSetupSpice
+    | RecallOtherAgent
+    | RecruitToConflict
+    | AcquireReserveCardToHand
+    | GainLowestInfluence
+    | GainSpiceWithHelixBonus
 )
 
 
@@ -1597,8 +1713,9 @@ class EffectSection:
     costs: tuple[Cost, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.rewards:
-            raise ValueError("an effect section must produce at least one reward")
+        # An Arrakeen Scouts line may only take something away (Crackdown).
+        if not self.rewards and not self.costs:
+            raise ValueError("an effect section must produce or exact something")
         if len(self.costs) != len(set(self.costs)):
             raise ValueError("an effect section cannot repeat the same cost")
 

@@ -6,23 +6,49 @@ records carry the app's names and numbers and a structured reading of each
 effect; the effect wording itself is paraphrased in the rules document and
 never copied here.
 
-Costs and rewards reuse the effect DSL primitives
-(``content.uprising.effect_dsl``) wherever one fits. The few effects the DSL
-has no primitive for are the Scouts-only records below (``LoseFactionInfluence``
-and friends). ``tests/unit/content/test_arrakeen_scouts_extraction.py`` audits
-every record's app metadata against the local extraction.
+Costs and rewards are effect DSL primitives (``content.uprising.effect_dsl``);
+the few the Uprising cards never print (``LoseFactionInfluence`` and friends)
+moved into the DSL with composed-effects stage A7b and are re-exported here.
+The items' lines themselves are ability records (``abilities.py``).
+``tests/unit/content/test_arrakeen_scouts_extraction.py`` audits every
+record's app metadata against the local extraction.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireReserveCardToHand as AcquireReserveCardToHand,
+)
 from dune_imperium.content.uprising.effect_dsl import (
     Cost,
     GainResources,
     PayResources,
     Reward,
-    TrashPersonalCard,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    GainLowestInfluence as GainLowestInfluence,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    GainSpiceWithHelixBonus as GainSpiceWithHelixBonus,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    LoseFactionInfluence as LoseFactionInfluence,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    LoseGarrisonTroops as LoseGarrisonTroops,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    LoseHighestInfluence as LoseHighestInfluence,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    PaySpecimens as PaySpecimens,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    RecallOtherAgent as RecallOtherAgent,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    RecruitToConflict as RecruitToConflict,
 )
 
 
@@ -80,125 +106,11 @@ def _check_pools(pools: tuple[ScoutsPool, ...]) -> None:
 
 
 # --- Scouts-only cost and reward primitives -----------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class LoseFactionInfluence:
-    """Lose ``count`` Influence with one named Faction (Crackdown's Emperor
-    loss, Betrayal's Bene Gesserit cost). The DSL's ``LoseInfluence`` lets
-    the player pick the Faction, so it does not fit."""
-
-    faction: Faction
-    count: int = 1
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.faction, Faction):
-            raise TypeError("Influence loss needs a Faction")
-        if self.count < 1:
-            raise ValueError("Influence loss count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class LoseHighestInfluence:
-    """Lose one Influence on the player's highest track, choosing among tied
-    tracks (Political Equilibrium); nothing with no Influence at all."""
-
-
-@dataclass(frozen=True, slots=True)
-class LoseGarrisonTroops:
-    """Lose ``count`` troops from the garrison to the supply (Bene Gesserit
-    Treachery, Prison Planet). The DSL's ``LoseTroops`` also allows the
-    Conflict, which these items do not."""
-
-    count: int = 1
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("garrison loss count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class PaySpecimens:
-    """Return ``count`` specimens from the Axolotl Tanks to the supply
-    (Ingratiate) [Immortality p. 8]."""
-
-    count: int = 1
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("specimen cost must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class RecallOtherAgent:
-    """Return one of the player's Agents from a board space to their supply,
-    other than the Agent that just took the High Council seat
-    (Contingencies; which Agent counts is an open question)."""
-
-
-@dataclass(frozen=True, slots=True)
-class RecruitToConflict:
-    """Recruit ``count`` troops from the supply straight into the Conflict
-    (Shadow Warfare: troops recruited during the sale are deployed at once)."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("recruit count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class AcquireReserveCardToHand:
-    """Acquire one named Reserve card into the hand instead of the discard
-    pile (Moment of Revelation: Prepare the Way)."""
-
-    card_id: str
-
-    def __post_init__(self) -> None:
-        if not self.card_id:
-            raise ValueError("Reserve acquisition needs a card")
-
-
-@dataclass(frozen=True, slots=True)
-class GainLowestInfluence:
-    """Gain one Influence with the Faction where the player has the least,
-    choosing among tied Factions (Covert Operation's delayed choice)."""
-
-
-@dataclass(frozen=True, slots=True)
-class GainSpiceWithHelixBonus:
-    """Gain ``spice`` spice, or ``helix_spice`` instead when the player's
-    research has reached the Helix (Offworld Operation's first-round choice;
-    what "reached the Helix" means is an open question)."""
-
-    spice: int = 1
-    helix_spice: int = 2
-
-    def __post_init__(self) -> None:
-        if not 1 <= self.spice < self.helix_spice:
-            raise ValueError("the Helix amount must beat the plain amount")
-
-
-# ``TrashPersonalCard`` is a DSL reward, but "trash a card from your hand"
-# is the price or the loss in several Scouts lines (Funeral Rites,
-# Termination Request), so it may stand on the cost side here.
-type ScoutsCost = (
-    Cost
-    | LoseFactionInfluence
-    | LoseHighestInfluence
-    | LoseGarrisonTroops
-    | PaySpecimens
-    | TrashPersonalCard
-)
-type ScoutsReward = (
-    Reward
-    | RecallOtherAgent
-    | RecruitToConflict
-    | AcquireReserveCardToHand
-    | GainLowestInfluence
-    | GainSpiceWithHelixBonus
-)
+# They live in the effect DSL since composed-effects stage A7b (re-exported
+# here); a Scouts line is a DSL line, ``trash a card from your hand`` included on
+# the cost side (Funeral Rites, Termination Request).
+type ScoutsCost = Cost
+type ScoutsReward = Reward
 
 
 @dataclass(frozen=True, slots=True)

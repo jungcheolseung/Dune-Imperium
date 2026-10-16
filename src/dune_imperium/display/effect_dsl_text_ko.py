@@ -44,6 +44,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquiredCard,
     AcquireReserveCard,
+    AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
@@ -82,8 +83,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainInfluenceWhereAtMost,
+    GainLowestInfluence,
     GainResources,
     GainSolariPerUnitType,
+    GainSpiceWithHelixBonus,
     GainVictoryPoints,
     GarrisonedUnitsAtLeast,
     GenerateSpecimens,
@@ -103,6 +106,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     IntrigueTiming,
     LookAtIntrigueKeepOne,
+    LoseFactionInfluence,
+    LoseGarrisonTroops,
+    LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
     OnAgentSentTo,
@@ -121,12 +127,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
+    PaySpecimens,
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
+    RecallOtherAgent,
     RecallSpy,
+    RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
@@ -675,6 +684,17 @@ def cost_text_ko(cost: Cost) -> str:
         case SpendSpecimens(count=count):
             # Quotes ``tokens_ko.py``'s "표본 1개 지불" (Organ Merchants).
             return f"표본 {count}개 지불"
+        case LoseFactionInfluence(faction=faction, count=count):
+            # The Scouts costs quote ``display/scouts.py``'s step texts.
+            return f"{{influence_{faction.value}}} 영향력 {count} 잃기"
+        case LoseHighestInfluence():
+            return "영향력이 가장 높은 진영에서 영향력 1 잃기"
+        case LoseGarrisonTroops(count=count):
+            return f"주둔지의 {{troop:{count}}} 잃기"
+        case PaySpecimens(count=count):
+            return f"{{specimen:{count}}} 지불"
+        case TrashPersonalCard() as trash:
+            return reward_text_ko(trash)
         case _:
             assert_never(cost)
 
@@ -944,6 +964,18 @@ def reward_text_ko(reward: Reward) -> str:
         case TakeSetupSpice():
             # Quotes ``server/static/labels.js``'s Tleilaxu track label.
             return f"첫 도달 {{spice:{TLEILAXU_SETUP_SPICE}}}"
+        case RecallOtherAgent():
+            # The Scouts rewards quote ``display/scouts.py``'s step texts.
+            return "다른 {agent} 1 회수"
+        case RecruitToConflict(count=count):
+            return f"{{troop:{count}}} 교전에 배치"
+        case AcquireReserveCardToHand(card_id=card_id):
+            name = KOREAN_CARD_NAMES["cards"].get(card_id, card_id)
+            return f"{name} 손으로 획득"
+        case GainLowestInfluence():
+            return "영향력이 가장 낮은 진영 영향력 +1"
+        case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
+            return f"{{spice:{spice}}} (나선에 닿았으면 {{spice:{helix}}})"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
