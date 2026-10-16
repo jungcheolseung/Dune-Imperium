@@ -1263,6 +1263,13 @@ class TakeSwordmaster:
 
 
 @dataclass(frozen=True, slots=True)
+class UseSignetAbility:
+    """The Signet Ring icon off the Signet Ring card: "you use the Signet
+    Ring ability (with the corresponding icon) on your Leader" [Main p. 20]
+    (Servo-Receivers' acquire icon [Bloodlines p. 7])."""
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1349,6 +1356,7 @@ type Reward = (
     | TakeHighCouncilSeat
     | TakeControl
     | TakeSwordmaster
+    | UseSignetAbility
 )
 
 

@@ -124,6 +124,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
+    UseSignetAbility,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -383,8 +384,7 @@ def cost_text(cost: Cost) -> str:
             # takes a Wild-icon card.
             icon_name = _BATTLE_ICON_NAMES[icon]
             return (
-                f"Flip a face-up won Conflict card ({icon_name} or Wild icon)"
-                " face down"
+                f"Flip a face-up won Conflict card ({icon_name} or Wild icon) face down"
             )
         case FlipFaceUpConflictCard(count=1):
             return "Flip a face-up won Conflict card face down"
@@ -556,8 +556,7 @@ def reward_text(reward: Reward) -> str:
             return "Force an enemy troop to retreat"
         case PledgeFirstPlaceInfluence():
             return (
-                "Add 1 Influence of your choice to this Conflict's first-place"
-                " reward"
+                "Add 1 Influence of your choice to this Conflict's first-place reward"
             )
         case AcquireCardForSolari():
             return (
@@ -597,6 +596,9 @@ def reward_text(reward: Reward) -> str:
             return f"Take control of {BOARD_SPACES_BY_ID[space_id].name}"
         case TakeSwordmaster():
             return "Take your third Agent, usable from this round"
+        case UseSignetAbility():
+            # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
+            return "Use your Leader's Signet Ring ability"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

@@ -151,6 +151,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TriggeredByFaction,
     UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
+    UseSignetAbility,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -203,7 +204,6 @@ _TIMING_LABELS_KO: dict[IntrigueTiming, str] = {
 }
 
 
-
 def _object_particle(word: str) -> str:
     """을 after a final consonant, 를 after a vowel (the Hangul syllable's
     final-consonant slot); a card name read aloud takes the same particle."""
@@ -212,6 +212,7 @@ def _object_particle(word: str) -> str:
     if "가" <= last <= "힣":
         return "을" if (ord(last) - ord("가")) % 28 else "를"
     return "을"
+
 
 def _faction_name_ko(faction: Faction) -> str:
     return _FACTION_NAMES_KO[faction]
@@ -284,9 +285,7 @@ def _place_spy_text_ko(spy: PlaceSpy) -> str:
         names = " 또는 ".join(_faction_name_ko(faction) for faction in spy.factions)
         return f"{{spy}} 배치 ({names} 관측소)"
     if spy.agent_icons is not None:
-        names = " 또는 ".join(
-            _AGENT_ICON_NAMES_KO[icon] for icon in spy.agent_icons
-        )
+        names = " 또는 ".join(_AGENT_ICON_NAMES_KO[icon] for icon in spy.agent_icons)
         return f"{{spy}} 배치 ({names} 관측소)"
     return "{spy} 배치"
 
@@ -581,9 +580,7 @@ def cost_text_ko(cost: Cost) -> str:
             where = "{conflict}에서 " if from_conflict else ""
             return f"{where}{{troop:{count}}} 잃음"
         case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
-            extra = (
-                f" (뒤틀린 책략 카드가 아니면 +{{spice:{bonus}}})" if bonus else ""
-            )
+            extra = f" (뒤틀린 책략 카드가 아니면 +{{spice:{bonus}}})" if bonus else ""
             return f"다른 플레이어에게 핸드의 {{intrigue}} 줌{extra}"
         case TrashIntrigueCard(troops_if_not_twisted=troops):
             # Same ``_plural`` quirk as ``LoseTroops`` above: English's
@@ -695,8 +692,7 @@ def reward_text_ko(reward: Reward) -> str:
             text = "{hand}의 카드 1장 {trash}" if hand_only else "카드 1장 {trash}"
             if bonus_spice:
                 text += (
-                    f"; 비용이 {bonus_minimum_cost} 이상이면: "
-                    f"{{spice:{bonus_spice}}}"
+                    f"; 비용이 {bonus_minimum_cost} 이상이면: {{spice:{bonus_spice}}}"
                 )
             return text
         case PlaceSpy() as spy:
@@ -838,8 +834,7 @@ def reward_text_ko(reward: Reward) -> str:
         case AcquireCardForSolari():
             # Quotes ``tokens_ko.py``'s Price is No Object line.
             return (
-                "{imperium_row} 또는 {reserve} 1장을 {solari}로 지불해 핸드로 "
-                "{acquire}"
+                "{imperium_row} 또는 {reserve} 1장을 {solari}로 지불해 핸드로 {acquire}"
             )
         case TrashThisCard():
             # Quotes ``tokens_ko.py``'s Dangerous Rhetoric line.
@@ -866,8 +861,7 @@ def reward_text_ko(reward: Reward) -> str:
         case ReturnOtherGraftedCardAtRevealStart():
             # Quotes ``tokens_ko.py``'s Chairdog line.
             return (
-                "{reveal_turn} 시작 시, 다른 {graft} 카드를 {in_play}에서 핸드로 "
-                "되돌림"
+                "{reveal_turn} 시작 시, 다른 {graft} 카드를 {in_play}에서 핸드로 되돌림"
             )
         case AcquireBankCommander():
             # Quotes ``tokens_ko.py``'s Sardaukar Standard line.
@@ -886,6 +880,9 @@ def reward_text_ko(reward: Reward) -> str:
         case TakeSwordmaster():
             # Quotes ``display/spaces.py``'s Swordmaster line.
             return "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)"
+        case UseSignetAbility():
+            # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
+            return "당신 {leader}의 {signet_ring} 능력 사용"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
