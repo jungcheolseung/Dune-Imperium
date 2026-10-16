@@ -1969,11 +1969,19 @@ def either_box(ability: Ability | None) -> bool:
     ):
         return False
     plain, choice = ability.sections
-    if len(choice.rewards) != 1:
+    if len(choice.rewards) != 1 or choice.condition is None:
+        # The choice line is printed under a condition of its own; two plain
+        # lines resolve as one action.
         return False
     match choice.rewards[0]:
-        case GainInfluence(times=1, distinct=False):
-            pass
+        case GainInfluence(times=1, distinct=False) as gain:
+            # A sequence pays its plain line with a chosen Faction; "Choose
+            # one" may offer a fixed Faction beside the plain line.
+            if (
+                ability.structure is AbilityStructure.SEQUENCE
+                and not gain.requires_choice
+            ):
+                return False
         case GrantCombatDeployment():
             if ability.structure is not AbilityStructure.ONE_OF:
                 return False
@@ -2017,7 +2025,10 @@ def either_rows(
         rows = (DomainAction(action_id="take_agent_card_combat_icon", actor=player),)
     if not rows:
         return ()
-    if ability.structure is AbilityStructure.ONE_OF:
+    plain = ability.sections[0]
+    if ability.structure is AbilityStructure.ONE_OF and _line_holds(
+        plain, state.players[player], context
+    ):
         return (DomainAction(action_id=_PLAIN_ROW, actor=player), *rows)
     return rows
 
@@ -2029,7 +2040,8 @@ def apply_either_influence(
     gains after it (Interstellar Conspiracy's spice)."""
 
     _, context = current_agent_effect_context(state)
-    player, card_id = _subject(context)
+    _, card_id = _subject(context)
+    player = action.actor
     faction = Faction(str(dict(action.arguments)["faction"]))
     source = agent_card_source(state.round_number, player, card_id)
     gained = gain_faction_influence(
