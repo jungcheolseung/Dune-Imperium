@@ -440,13 +440,20 @@ class TrashCard:
     the discard pile or in play ("You may trash a card -> Draw 1 card"
     [Shishakli card]; a Row card borrowed with Usurp is not in play, OQ-054).
     ``hand_only``: "a card from your hand"; ``this_card``: "You may trash this
-    card ->" [Pivotal Gambit card]."""
+    card ->" [Pivotal Gambit card]; ``other_in_play``: "another <Faction> card
+    in play" [Calculus of Power card]."""
 
     hand_only: bool = False
     this_card: bool = False
+    other_in_play: Faction | None = None
 
     def __post_init__(self) -> None:
-        if self.hand_only and self.this_card:
+        if (
+            int(self.hand_only)
+            + int(self.this_card)
+            + int(self.other_in_play is not None)
+            > 1
+        ):
             raise ValueError("a trash cost names one place to take the card from")
 
 
@@ -1204,6 +1211,12 @@ class RevealSwords:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeHighCouncilSeat:
+    """Take the High Council seat [Corrinth City card]: its +2 Persuasion on
+    each Reveal from now [Main p. 10]."""
+
+
+@dataclass(frozen=True, slots=True)
 class PledgeFirstPlaceInfluence:
     """Add 1 Influence of the player's choice to this Conflict's first-place
     reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
@@ -1287,6 +1300,7 @@ type Reward = (
     | AcquireBankCommander
     | RevealPersuasion
     | RevealSwords
+    | TakeHighCouncilSeat
 )
 
 

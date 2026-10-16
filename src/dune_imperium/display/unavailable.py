@@ -139,8 +139,10 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_is_optional,
+)
 from dune_imperium.content.uprising.types import (
-    OPTIONAL_REVEAL_CHOICES,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -1589,7 +1591,7 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
             _REVEAL_LAPSES_GONE
             if card_id not in state.players[seat].in_play
             else _REVEAL_LAPSES_UNUSED
-            if choice in OPTIONAL_REVEAL_CHOICES
+            if reveal_choice_is_optional(choice)
             else _REVEAL_LAPSES_UNMET
         )
         found.row(

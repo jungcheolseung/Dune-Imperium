@@ -15,12 +15,14 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.abilities import AbilityMark
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    REVEAL_CHOICE_ABILITIES,
+)
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.content.uprising.types import (
-    MANDATORY_REVEAL_CHOICES,
-    OPTIONAL_REVEAL_CHOICES,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core import (
@@ -34,11 +36,16 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.display.effect_dsl_text import cost_text, reward_text
+from dune_imperium.display.effect_dsl_text_ko import cost_text_ko, reward_text_ko
+from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT
+from dune_imperium.display.tokens_ko import REVEAL_CHOICE_EFFECT_TEXT_KO
 from dune_imperium.rules.engine import ACTION_HANDLERS, UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.reveal_turn import (
     REVEAL_CHOICE_ACTION_IDS,
     REVEAL_CHOICE_EFFECT_ACTIONS,
+    REVEAL_CHOICE_HOOKS,
     SOURCE_ARGUMENT,
     SOURCED_REVEAL_ACTION_IDS,
     _build_reveal_choice_frame,
@@ -120,21 +127,25 @@ FINISH = DomainAction(action_id="finish_reveal", actor=0)
 # --- data ------------------------------------------------------------------
 
 
-def test_every_reveal_choice_is_optional_or_mandatory_with_a_reason() -> None:
-    optional = set(OPTIONAL_REVEAL_CHOICES)
-    mandatory = set(MANDATORY_REVEAL_CHOICES)
-    assert not optional & mandatory
+def test_every_reveal_choice_is_optional_or_mandatory() -> None:
+    """Every Reveal choice has its record, marked optional or mandatory
+    (composed effects, A4d)."""
+
+    assert set(REVEAL_CHOICE_ABILITIES) == set(PersonalCardRevealChoiceEffect)
+    optional = {
+        effect
+        for effect, ability in REVEAL_CHOICE_ABILITIES.items()
+        if ability.mark is AbilityMark.OPTIONAL
+    }
+    mandatory = {
+        effect
+        for effect, ability in REVEAL_CHOICE_ABILITIES.items()
+        if ability.mark is AbilityMark.MANDATORY
+    }
     assert optional | mandatory == set(PersonalCardRevealChoiceEffect)
     assert len(optional) == 16
     assert len(mandatory) == 10
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
-    assert all(
-        reason.strip()
-        for reason in (
-            *OPTIONAL_REVEAL_CHOICES.values(),
-            *MANDATORY_REVEAL_CHOICES.values(),
-        )
-    )
     # A printed "-OR-" choice and a gain are mandatory; the Spy icons too
     # (OQ-057 (14)); "may" and arrows are optional [FAQ p. 3].
     assert {
@@ -746,3 +757,29 @@ def test_an_acquisitions_spy_frame_stacks_on_top_of_its_choice() -> None:
     assert acquired.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
     assert {a.action_id for a in _legal(acquired)} == {"place_acquisition_spy"}
     assert miracle not in acquired.players[0].in_play
+
+
+def test_reveal_choice_hooks_name_flows_kept_as_code() -> None:
+    """A record's ``hook`` names one of ``reveal_turn``'s kept flows, and
+    each such flow has its records (composed effects, A4d)."""
+
+    named = {
+        ability.hook
+        for ability in REVEAL_CHOICE_ABILITIES.values()
+        if ability.hook is not None
+    }
+    assert named == REVEAL_CHOICE_HOOKS
+
+
+def test_the_new_reveal_choice_pieces_read_as_the_cards_print_them() -> None:
+    """Calculus of Power's "another Emperor card in play" and Corrinth City's
+    seat, in both languages."""
+
+    calculus = _Choice.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
+    (trash,) = REVEAL_CHOICE_ABILITIES[calculus].sections[0].costs
+    assert cost_text(trash).lower() in REVEAL_CHOICE_EFFECT_TEXT[calculus].lower()
+    assert cost_text_ko(trash) in REVEAL_CHOICE_EFFECT_TEXT_KO[calculus]
+    corrinth = _Choice.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
+    (seat,) = REVEAL_CHOICE_ABILITIES[corrinth].sections[1].rewards
+    assert reward_text(seat) in REVEAL_CHOICE_EFFECT_TEXT[corrinth]
+    assert reward_text_ko(seat) in REVEAL_CHOICE_EFFECT_TEXT_KO[corrinth]

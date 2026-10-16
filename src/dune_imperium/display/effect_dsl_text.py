@@ -106,6 +106,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
+    TakeHighCouncilSeat,
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
@@ -366,6 +367,8 @@ def cost_text(cost: Cost) -> str:
             return (
                 f"Trash a card from your discard pile that costs {minimum_cost} or more"
             )
+        case TrashCard(other_in_play=faction) if faction is not None:
+            return f"Trash another {_faction_name(faction)} card in play"
         case TrashCard(hand_only=True):
             return "Trash a card from your hand"
         case TrashCard(this_card=True):
@@ -561,6 +564,8 @@ def reward_text(reward: Reward) -> str:
             return f"+{amount} Persuasion{_reveal_count_text(per)}"
         case RevealSwords(amount=amount, per=per):
             return f"+{amount} {_plural(amount, 'sword')}{_reveal_count_text(per)}"
+        case TakeHighCouncilSeat():
+            return "Take the High Council seat"
         case CompleteContract():
             return "Complete one of your contracts"
         case _:

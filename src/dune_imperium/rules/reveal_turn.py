@@ -13,7 +13,8 @@ the choice is done. Only a step that must be followed at once keeps that
 frame on top (a Spy recalled for its placement). An optional choice ("may",
 an arrow cost, a black trash icon [FAQ p. 3]) offers no refusal and lapses
 at ``finish_reveal``; a mandatory one holds ``finish_reveal`` while it offers
-something (``content.uprising.types.OPTIONAL_REVEAL_CHOICES``). An entry
+something (its record is marked optional,
+``content.uprising.reveal_choice_abilities``). An entry
 whose condition fails now (too few Spies, not enough Spice, Command (6+) not
 reached) waits, because a later Reveal choice can still open it, and lapses
 at the end if it never does (``reveal_choice_lapsed``).
@@ -35,8 +36,10 @@ from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     personal_card_for_instance,
 )
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_is_optional,
+)
 from dune_imperium.content.uprising.types import (
-    MANDATORY_REVEAL_CHOICES,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
@@ -3777,6 +3780,28 @@ def _build_reveal_choice_frame(
 # Operation's second Spy appended (OQ-095 (7) addition, user ruling
 # 2026-10-14; codec v147). The key keeps the name of the queue it replaced,
 # which held the deferred choices.
+# The Reveal choices whose flow stays code here, named by their records'
+# ``hook`` (``content.uprising.reveal_choice_abilities``, composed A4d): one
+# action pays a cost with its targets in one row (two Spies, an Influence
+# exchange or loss, spice for Influence, two troops retreated or lost, a
+# troop deployed or retreated), Engineered Miracle's purchase, or a choice
+# reaching outside its entry (Desert Power's held Persuasion, Priority
+# Contracts' printed spice).
+REVEAL_CHOICE_HOOKS: Final = frozenset(
+    {
+        "recall_two_spies",
+        "influence_exchange",
+        "spice_for_influence",
+        "retreat_two_troops",
+        "command_acquisition",
+        "influence_for_vp",
+        "deploy_or_retreat_troop",
+        "troops_for_specimens",
+        "desert_power",
+        "priority_contracts",
+    }
+)
+
 _PENDING_CHOICES_KEY = "deferred_reveal_choices"
 _CHOICE_FRAME = "Reveal choice frame"
 
@@ -4076,7 +4101,8 @@ def mandatory_choice_is_pending(state: GameState, player: int) -> bool:
 
     A Spy icon with a Spy in supply (OQ-057 (14)), a printed "-OR-" choice
     (Desert Power before its branch, OQ-069) or an Influence gain must be
-    answered before the Reveal ends (``MANDATORY_REVEAL_CHOICES``); one
+    answered before the Reveal ends (its record is marked mandatory,
+    ``reveal_choice_abilities``); one
     whose condition fails now, that has nothing to choose, or whose card
     another effect trashed (OQ-022), does not hold the end and lapses with
     it.
@@ -4084,7 +4110,7 @@ def mandatory_choice_is_pending(state: GameState, player: int) -> bool:
 
     by_entry = pending_choice_entries(state, player) or ()
     return any(
-        rows and PersonalCardRevealChoiceEffect(effect) in MANDATORY_REVEAL_CHOICES
+        rows and not reveal_choice_is_optional(PersonalCardRevealChoiceEffect(effect))
         for (_, effect), rows in by_entry
     )
 

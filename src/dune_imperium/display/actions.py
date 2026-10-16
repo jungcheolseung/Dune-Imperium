@@ -26,8 +26,10 @@ from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_is_optional,
+)
 from dune_imperium.content.uprising.types import (
-    OPTIONAL_REVEAL_CHOICES,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -548,8 +550,8 @@ def reveal_choice_headers(
     (``reveal_choice_key``), ``card_id``, the card's English ``name`` and
     Korean ``name_ko``, ``effect``, what it does (``text``/``text_ko``,
     ``reveal_choice_text``), ``optional`` (it offers no refusal and lapses
-    unused when the Reveal ends; ``content.uprising.types``
-    ``OPTIONAL_REVEAL_CHOICES``) and ``offered`` (it offers a row now; one
+    unused when the Reveal ends; its record's mark,
+    ``reveal_choice_abilities``) and ``offered`` (it offers a row now; one
     that does not is a greyed-out waiting row, ``display.unavailable``).
     Public: the Reveal lays the hand face up, and only the seat itself is
     sent its own decision's rows.
@@ -571,8 +573,9 @@ def reveal_choice_headers(
                 "effect": effect,
                 "text": text,
                 "text_ko": text_ko,
-                "optional": PersonalCardRevealChoiceEffect(effect)
-                in OPTIONAL_REVEAL_CHOICES,
+                "optional": reveal_choice_is_optional(
+                    PersonalCardRevealChoiceEffect(effect)
+                ),
                 "offered": bool(rows),
             }
         )

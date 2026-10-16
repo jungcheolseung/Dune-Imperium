@@ -22,8 +22,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     SetAsideImperiumRowCard,
     TrashPersonalCard,
 )
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_is_optional,
+)
 from dune_imperium.content.uprising.types import (
-    MANDATORY_REVEAL_CHOICES,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import DomainAction
@@ -330,7 +332,7 @@ def test_the_pending_list_policy() -> None:
 
 
 def _mandatory(entry: tuple[str, str]) -> bool:
-    return PersonalCardRevealChoiceEffect(entry[1]) in MANDATORY_REVEAL_CHOICES
+    return not reveal_choice_is_optional(PersonalCardRevealChoiceEffect(entry[1]))
 
 
 def test_the_executor_matches_the_engine_on_seeded_games() -> None:

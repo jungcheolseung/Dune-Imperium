@@ -133,6 +133,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
+    TakeHighCouncilSeat,
     TechTilesAtLeast,
     TrashCard,
     TrashDiscardPileCard,
@@ -602,6 +603,9 @@ def cost_text_ko(cost: Cost) -> str:
             # Korean print (`[KO card: Navigation Card 5]`, korean-card-style.md
             # row 49), reused here for "or more" on a cost.
             return f"{{discard_pile}}에서 비용이 {minimum_cost} 이상인 카드 {{trash}}"
+        case TrashCard(other_in_play=faction) if faction is not None:
+            # Quotes ``tokens_ko.py``'s Calculus of Power line.
+            return f"{{in_play}}의 다른 {_faction_name_ko(faction)} 카드 {{trash}}"
         case TrashCard(hand_only=True):
             # Quotes ``tokens_ko.py``'s Elite Forces line.
             return "핸드에서 카드 1장 {trash}"
@@ -853,6 +857,9 @@ def reward_text_ko(reward: Reward) -> str:
             return f"+{{persuasion:{amount}}}{_reveal_count_text_ko(per)}"
         case RevealSwords(amount=amount, per=per):
             return f"+{{sword:{amount}}}{_reveal_count_text_ko(per)}"
+        case TakeHighCouncilSeat():
+            # Quotes ``tokens_ko.py``'s Corrinth City line.
+            return "원로회 자리 차지"
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
