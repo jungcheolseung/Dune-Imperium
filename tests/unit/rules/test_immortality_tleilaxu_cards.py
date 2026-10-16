@@ -1324,6 +1324,34 @@ def test_chairdog_returns_the_other_grafted_card_when_the_reveal_starts() -> Non
     )
 
 
+def test_chairdog_box_waits_while_the_other_grafted_card_is_out_of_play() -> None:
+    """Chairdog's box reads "return the other grafted card from play" (its
+    record, composed A3g): with that card gone from play it resolves without
+    effect -- the dry run's answer, so the box waits for the turn's end
+    (OQ-057 (1)) -- and the return noted at the graft is left as it was."""
+
+    chairdog = _tleilaxu("chairdog")
+    grafted = _graft(_state(_owner((chairdog, DAGGER))), chairdog, "arrakeen", DAGGER)
+    owner = grafted.players[0]
+    assert owner.chairdog_return_card_ids == (DAGGER,)
+    gone = replace(
+        grafted,
+        players=(
+            replace(
+                owner,
+                in_play=tuple(card for card in owner.in_play if card != DAGGER),
+                discard_pile=(*owner.discard_pile, DAGGER),
+            ),
+            *grafted.players[1:],
+        ),
+    )
+    resolved = resolve_agent_card_effect(gone)
+    assert [event.kind for event in resolved.events] == [
+        "agent_card_effect_unavailable"
+    ]
+    assert resolved.state.players[0].chairdog_return_card_ids == (DAGGER,)
+
+
 def test_chairdog_trashed_first_by_its_partner_still_returns_the_partner() -> None:
     """Adopted designer ruling (docs/rules/designer-rulings-audit.md):
     "Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도

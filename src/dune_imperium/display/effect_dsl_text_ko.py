@@ -61,6 +61,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    EachOpponentDiscardsCard,
+    EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -94,6 +96,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
+    OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -106,6 +109,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RedirectSpiesOnTurnSpace,
     Research,
     RetreatTroops,
+    ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     RevealContractsTakeOne,
     RevealPersuasionThisRound,
@@ -801,6 +805,24 @@ def reward_text_ko(reward: Reward) -> str:
         case RecallAgent():
             # Quotes ``tokens_ko.py``'s Steersman line.
             return "{agent} 소환"
+        case EachOpponentDiscardsCard():
+            # Quotes ``tokens_ko.py``'s Covert Operation line.
+            return "다른 플레이어 각자 카드 1장 버리기"
+        case EachOpponentLosesTroop():
+            # Quotes ``tokens_ko.py``'s Holy War line.
+            return "다른 플레이어 각자 {troop} 하나 잃음"
+        case OpponentsMoveSpiesFromVisitedSpace():
+            # Quotes ``tokens_ko.py``'s Holy War line.
+            return (
+                "이번 차례에 당신이 {agent}를 보낸 장소를 정탐 중인 다른 "
+                "플레이어는 그 {spy}를 이동해야 함"
+            )
+        case ReturnOtherGraftedCardAtRevealStart():
+            # Quotes ``tokens_ko.py``'s Chairdog line.
+            return (
+                "{reveal_turn} 시작 시, 다른 {graft} 카드를 {in_play}에서 핸드로 "
+                "되돌림"
+            )
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"

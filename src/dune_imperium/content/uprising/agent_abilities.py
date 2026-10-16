@@ -22,8 +22,8 @@ which names the record. The printed text is ``display/tokens.py``.
   they describe the box, the hook judges and pays it (editing a hook
   record's condition changes no play).
 
-The boxes not here keep their own code in ``rules.agent_effects`` until a
-later stage moves them (plan 5).
+Every personal card's Agent box has its record here (composed A3g); a
+leader's Signet Ring (``LEADER_SIGNET``) keeps its own code.
 """
 
 from collections.abc import Mapping
@@ -50,11 +50,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     ContractCompletedThisTurn,
     Cost,
+    DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
+    EachOpponentDiscardsCard,
+    EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
@@ -71,17 +74,20 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
     LoseTroops,
+    OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
     RecruitTroops,
     Research,
+    ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
     Reward,
     SandwormsInConflictAtLeast,
     SpendSpecimens,
     SpyRecalledThisTurn,
+    SummonSandworm,
     TakeContract,
     TrashCard,
     TrashedCardHasFaction,
@@ -138,12 +144,14 @@ def _hook(
     *rewards: Reward,
     condition: Condition | None = None,
     requirement: Condition | None = None,
+    mark: AbilityMark = AbilityMark.MANDATORY,
 ) -> Ability:
     """A box resolved by the named special flow (``agent_effects._BOX_HOOKS``)."""
 
     return Ability(
         timing=AbilityTiming.AGENT_BOX,
         sections=(_line(*rewards, condition=condition),) if rewards else (),
+        mark=mark,
         requirement=requirement,
         hook=name,
     )
@@ -569,6 +577,22 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: _pay(
                 SpendSpecimens(2), AdvanceTleilaxu(2)
             ),
+            # --- One action with follow-ups for the opponents (composed A3g) -----
+            # Covert Operation: "Each opponent discards a card" -- one frame per
+            # opponent holding a card, named ``<box>:opponent:<seat>``.
+            _BOX.EACH_OPPONENT_DISCARDS_PERSONAL_CARD: _box(EachOpponentDiscardsCard()),
+            # Holy War: "Each opponent loses one troop. Each opponent spying on
+            # the board space where you sent an Agent this turn must move that
+            # Spy" -- every loss first, then the Spy moves (OQ-036).
+            _BOX.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: _box(
+                EachOpponentLosesTroop(), OpponentsMoveSpiesFromVisitedSpace()
+            ),
+            # Chairdog: "At the start of your Reveal turn, return the other
+            # grafted card from play to your hand" -- noted at the graft; the box
+            # waits while that card is out of play.
+            _BOX.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START: _box(
+                ReturnOtherGraftedCardAtRevealStart()
+            ),
             # --- Special flows (hooks) -------------------------------------------
             # Seek Allies: "Trash this card." -- the trash's events alone.
             _BOX.TRASH_SELF: _hook("seek_allies", TrashThisCard()),
@@ -600,6 +624,105 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 PlaceSpy(),
                 condition=_BG_BOND,
                 requirement=_BG_BOND,
+            ),
+            # --- Special flows of the boxes no stage listed (composed A3g) -------
+            # Their rows, events and frames are their own. A record lists its
+            # lines when the DSL can say the whole box; a box it cannot say
+            # whole has no line (a part alone would misread as the box), its
+            # printed text in the comment.
+            # Subversive Advisor: "Gain 2 Influence with the visited Faction,
+            # Trash this card" -- the 2 replace the space's 1 (never 2 + 1);
+            # reachable only on a Faction space (``agent_turn``).
+            _BOX.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF: _hook(
+                "subversive_advisor"
+            ),
+            # Long Live the Fighters: "If you have 3 or more cards in your deck:
+            # Look at the top 3 cards, Draw 1, Discard 1, Trash 1" -- the
+            # owner's pick frame over the pending box.
+            _BOX.LOOK_AT_TOP_THREE: _hook("long_live_the_fighters"),
+            # Treacherous Maneuver: "You may trash this card and an Emperor card
+            # from your hand -> Gain 2 Influence instead of 1 Influence with the
+            # visited Faction".
+            _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: _hook(
+                "treacherous_maneuver", mark=AbilityMark.OPTIONAL
+            ),
+            # Corrinth City: "You may discard 2 cards and pay 5 solari -> Gain 1
+            # VP" -- the two discards picked one by one (its own rows).
+            _BOX.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainVictoryPoints(1),),
+                        costs=(DiscardFromHand(2), PayResources(solari=5)),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                hook="corrinth_city",
+            ),
+            # Arrakis Revolt: "If Maker Hooks: You may pay 2 spice -> You may
+            # remove the Shield Wall, Summon 1 sandworm" -- the removal folded
+            # into the payment row (OQ-026).
+            _BOX.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS: (
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        EffectSection(
+                            rewards=(
+                                DestroyShieldWall(),
+                                SummonSandworm(requires_maker_hooks=True),
+                            ),
+                            costs=(PayResources(spice=2),),
+                        ),
+                    ),
+                    mark=AbilityMark.OPTIONAL,
+                    hook="arrakis_revolt",
+                )
+            ),
+            # The Beast's Spoils: "Gain rewards for your face-up battle icons:
+            # Crysknife: You may trash a card, Desert Mouse: Gain 1 spice,
+            # Ornithopter: Recruit 1 troop".
+            _BOX.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON: _hook("beasts_spoils"),
+            # Long Reach: "Choose two Factions: Gain 1 Influence with each" --
+            # both named before either is paid.
+            _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: _hook(
+                "long_reach", GainInfluence(times=2, distinct=True)
+            ),
+            # Dissecting Kit: "You may trash the other grafted card -> Generate
+            # 1 specimen".
+            _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: _hook(
+                "dissecting_kit", mark=AbilityMark.OPTIONAL
+            ),
+            # Scientific Breakthrough: "Research, If 2 genetic markers: You may
+            # trash this card -> Gain 1 VP" -- the trash line judged once the
+            # Research has settled.
+            _BOX.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(Research()),
+                    EffectSection(
+                        rewards=(GainVictoryPoints(1),),
+                        condition=GeneticMarkersAtLeast(2),
+                        costs=(TrashCard(this_card=True),),
+                    ),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                hook="scientific_breakthrough",
+            ),
+            # Slig Farmer: "Gain 1 solari per Agent icon on the other grafted
+            # card, You may pay 5 solari -> Advance the Tleilaxu track" -- the
+            # payment row pays the Solari too.
+            _BOX.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU: (
+                _hook("slig_farmer")
+            ),
+            # Stitched Horror: "Choose two: Gain 1 water / Recruit 1 troop /
+            # Trash a card / Advance the Tleilaxu track" -- both named before
+            # either is paid.
+            _BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU: _hook("stitched_horror"),
+            # Beguiling Pheromones: "If you sent an Agent to a Faction space this
+            # turn: Trash one of the grafted cards, Gain 1 Influence with that
+            # Faction".
+            _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE: _hook(
+                "beguiling_pheromones"
             ),
             # --- Icon by icon (OQ-027) -------------------------------------------
             # Hidden Missive.
