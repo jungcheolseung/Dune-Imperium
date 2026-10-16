@@ -9,7 +9,11 @@ from dune_imperium.content.arrakeen_scouts.events import EVENTS
 from dune_imperium.content.arrakeen_scouts.missions import MISSIONS
 from dune_imperium.content.arrakeen_scouts.subcommittees import SUBCOMMITTEES
 from dune_imperium.content.arrakeen_scouts.types import EventKind
-from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCardToHand,
@@ -106,3 +110,30 @@ def test_a_line_may_only_take_something_away_and_auction_places_cost_nothing(
     monkeypatch.setattr(abilities, "SCOUTS_ABILITIES", {"auction": paid})
     with pytest.raises(ValueError):
         abilities.scouts_rank_rewards("auction")
+
+
+def test_a_choice_event_s_record_says_whether_it_may_be_passed() -> None:
+    """``ScoutsEvent.passable`` and the record's mark agree (OQ-071)."""
+
+    for event in EVENTS:
+        if event.kind is not EventKind.CHOICE:
+            continue
+        mark = SCOUTS_ABILITIES[event.event_id].mark
+        assert (mark is AbilityMark.OPTIONAL) == event.passable, event.event_id
+
+
+def test_only_a_scouts_record_prints_the_module_s_own_pieces() -> None:
+    with pytest.raises(ValueError):
+        Ability(
+            timing=AbilityTiming.REVEAL,
+            sections=(EffectSection(rewards=(GainLowestInfluence(),)),),
+        )
+    with pytest.raises(ValueError):
+        Ability(
+            timing=AbilityTiming.REVEAL,
+            sections=(
+                EffectSection(
+                    rewards=(), costs=(LoseFactionInfluence(Faction.EMPEROR),)
+                ),
+            ),
+        )

@@ -19,7 +19,11 @@ from dune_imperium.content.immortality.track_abilities import (
     TLEILAXU_SPACE_ABILITIES,
 )
 from dune_imperium.content.schema import SourceDocument, SourceRef
-from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
+from dune_imperium.content.uprising.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     DrawIntrigueCards,
@@ -96,7 +100,13 @@ def _research_bonus(space_id: str) -> ResearchBonus:
     record = RESEARCH_SPACE_ABILITIES.get(space_id)
     if record is None:
         return ResearchBonus.NONE
-    if record.timing is not AbilityTiming.TRACK_SPACE or record.requirement:
+    if (
+        record.timing is not AbilityTiming.TRACK_SPACE
+        or record.requirement is not None
+        or record.trigger is not None
+        or record.hook is not None
+        or record.structure is AbilityStructure.ONE_OF
+    ):
         raise ValueError(f"{space_id}: not a track space's bonus")
     lines = tuple(
         (line.condition, line.costs, line.rewards) for line in record.sections
@@ -246,6 +256,9 @@ def _tleilaxu_bonus(space: int) -> TleilaxuBonus:
         record.timing is not AbilityTiming.TRACK_SPACE
         or record.mark is not AbilityMark.AUTOMATIC
         or record.requirement is not None
+        or record.trigger is not None
+        or record.hook is not None
+        or record.structure is AbilityStructure.ONE_OF
         or any(line.condition is not None or line.costs for line in record.sections)
     ):
         raise ValueError(f"Tleilaxu space {space}: not a track space's bonus")

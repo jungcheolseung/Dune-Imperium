@@ -8,6 +8,7 @@ does not fit these primitives keeps using explicit custom hooks.
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
@@ -525,8 +526,9 @@ class TrashCard:
     the discard pile or in play ("You may trash a card -> Draw 1 card"
     [Shishakli card]; a Row card borrowed with Usurp is not in play, OQ-054).
     ``hand_only``: "a card from your hand"; ``this_card``: "You may trash this
-    card ->" [Pivotal Gambit card]; ``other_in_play``: "another <Faction> card
-    in play" [Calculus of Power card]."""
+    card ->" [Pivotal Gambit card] -- or the tile printing it, Desperate's
+    "Trash this ->" [Desperate Skill tile]; ``other_in_play``: "another
+    <Faction> card in play" [Calculus of Power card]."""
 
     hand_only: bool = False
     this_card: bool = False
@@ -1761,3 +1763,18 @@ class IntrigueOption:
                     raise ValueError(
                         "triggered Intrigue sections must be free and unconditional"
                     )
+
+
+# The Arrakeen Scouts module's own pieces (composed A7b): only a Scouts record
+# prints them (``abilities.Ability``).
+SCOUTS_ONLY_PIECES: Final = (
+    LoseFactionInfluence,
+    LoseHighestInfluence,
+    LoseGarrisonTroops,
+    PaySpecimens,
+    RecallOtherAgent,
+    RecruitToConflict,
+    AcquireReserveCardToHand,
+    GainLowestInfluence,
+    GainSpiceWithHelixBonus,
+)

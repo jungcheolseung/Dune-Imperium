@@ -84,8 +84,8 @@ SKILL_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 condition=OpponentSandwormInConflict(),
             ),
         ),
-        # "Reveal Turn: [troop]" -- the troop icon, "Recruit one troop"
-        # [Main p. 20] [Hardy Skill tile].
+        # "Reveal Turn: [troop]": the grey cube is the troop icon, "Recruit
+        # one troop" [Main p. 20] [Hardy Skill tile] (not a water drop).
         "hardy": _reveal(RecruitTroops(1)),
         # "[Emperor] 3 Influence: 2 swords".
         "loyal": _strength(

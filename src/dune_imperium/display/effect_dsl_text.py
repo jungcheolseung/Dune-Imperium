@@ -365,7 +365,8 @@ def condition_text(condition: Condition) -> str:
         case AgentOnSpaceWithIcon(icon=icon):
             # Quotes ``display/bloodlines.py``'s Canny line.
             name = icon.value.replace("_", " ").title()
-            return f"you have an Agent on a {name} board space"
+            article = "an" if name[0] in "AEIOU" else "a"
+            return f"you have an Agent on {article} {name} board space"
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "any opponent has a sandworm in the Conflict"

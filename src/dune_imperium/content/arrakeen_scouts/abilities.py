@@ -478,8 +478,13 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
 def _line(item_id: str, index: int) -> EffectSection:
     ability = SCOUTS_ABILITIES[item_id]
     line = ability.sections[index]
-    if line.condition is not None or ability.requirement is not None:
-        raise ValueError(f"{item_id}: a Scouts line has no condition")
+    if (
+        ability.timing is not AbilityTiming.SCOUTS
+        or line.condition is not None
+        or ability.requirement is not None
+        or ability.trigger is not None
+    ):
+        raise ValueError(f"{item_id}: not a Scouts item's line")
     return line
 
 

@@ -25,7 +25,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_card_for_instance,
 )
 from dune_imperium.content.immortality.tleilaxu import (
-    RECLAIMED_FORCES_CHOICES as RECORDED_RECLAIMED_FORCES_CHOICES,
+    RECLAIMED_FORCES_CHOICES as RECLAIMED_FORCES_CHOICES,
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.engine import RuleResult
@@ -53,10 +53,6 @@ from dune_imperium.rules.scouts_missions import (
 )
 from dune_imperium.rules.scouts_missions import claim_goods_at
 from dune_imperium.rules.specimens import spend_specimens
-
-# Reclaimed Forces' choices (its record, composed A7c), re-exported for
-# the executor, Combat's Harvest Cells offer and the page.
-RECLAIMED_FORCES_CHOICES = RECORDED_RECLAIMED_FORCES_CHOICES
 
 
 def refill_tleilaxu_row(state: GameState) -> GameState:

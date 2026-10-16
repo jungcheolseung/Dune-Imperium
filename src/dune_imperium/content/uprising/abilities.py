@@ -32,10 +32,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.uprising.effect_dsl import (
+    SCOUTS_ONLY_PIECES,
     Condition,
     EffectSection,
     IntrigueOption,
     IntrigueTiming,
+    TrashPersonalCard,
     Trigger,
 )
 
@@ -135,6 +137,19 @@ class Ability:
             raise ValueError("an ability needs a printed line or a hook")
         if self.hook == "":
             raise ValueError("a hook must be named")
+        if self.timing is not AbilityTiming.SCOUTS and any(
+            not section.rewards
+            or any(isinstance(cost, TrashPersonalCard) for cost in section.costs)
+            or any(
+                isinstance(piece, SCOUTS_ONLY_PIECES)
+                for piece in (*section.costs, *section.rewards)
+            )
+            for section in self.sections
+        ):
+            # An Arrakeen Scouts line may only take something away, charge
+            # a trash from the hand, or use the module's own pieces
+            # (composed A7b); no card prints them.
+            raise ValueError("only an Arrakeen Scouts line prints this")
         if (
             self.structure is not AbilityStructure.SEQUENCE
             and len(self.sections) < 2

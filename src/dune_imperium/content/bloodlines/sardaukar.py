@@ -13,7 +13,11 @@ from typing import Final
 
 from dune_imperium.content.bloodlines.skill_abilities import SKILL_ABILITIES
 from dune_imperium.content.schema import SourceDocument, SourceRef
-from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
+from dune_imperium.content.uprising.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AgentOnSpaceWithIcon,
@@ -99,8 +103,13 @@ def _skill(skill_id: str, name: str) -> SkillDefinition:
     hold."""
 
     ability = SKILL_ABILITIES[skill_id]
-    if ability.requirement is not None or ability.trigger is not None:
-        raise ValueError(f"{skill_id}: a Skill checks only its lines")
+    if (
+        ability.requirement is not None
+        or ability.trigger is not None
+        or ability.hook is not None
+        or ability.structure is not AbilityStructure.SEQUENCE
+    ):
+        raise ValueError(f"{skill_id}: a Skill pays every printed line")
     fields: dict[str, int] = {}
 
     def put(field: str, amount: int) -> None:

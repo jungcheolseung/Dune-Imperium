@@ -423,6 +423,9 @@ def _reclaimed_forces_choices() -> tuple[tuple[str, int], ...]:
         record.timing is not AbilityTiming.ACQUIRE
         or record.structure is not AbilityStructure.ONE_OF
         or record.mark is not AbilityMark.MANDATORY
+        or record.requirement is not None
+        or record.trigger is not None
+        or record.hook is not None
     ):
         raise ValueError("Reclaimed Forces chooses one of its lines")
     choices: list[tuple[str, int]] = []
