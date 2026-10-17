@@ -1522,6 +1522,11 @@
   "정한 규칙 판단" 2번): 위 (2) 보강의 "그대로 남는 거절 (d) 차례 위에 따로 열리는 창"을 줄인다. 소유자 자신의 차례 안에서 열리는
   연구 보너스(c6r6, c7r3, c8r6)와 선택 폐기 창은 이 판정대로 차례의 줄로 거절 없이 내놓고 쓰지 않으면 "턴 종료"에 사라진다(낼 수
   없는 비용은 회색 줄, c6r6은 Agent 칸 Influence처럼 기다린다). 차례 밖의 창과 책략 슬롯은 그대로다. 구현 전까지 엔진은 그대로다.
+  — **구현(2026-10-17, 정리-2b, 브랜치 `cleanup2`, codec v149) — 연구 보너스:** 소유자 자신의 turn 안의 보너스는 turn frame
+  (turn, Agent-turn 효과, Reveal)의 대기 목록 `pending_turn_rows`에 들어가 거절 없는 줄로 제시되고, 쓰지 않으면 누름이
+  `research_bonus_lapsed`를 내며 소멸시킨다. c6r6은 올릴 진영이 있는 동안 턴 종료를 막는다(엔진의 두 턴 종료와 서버
+  `agent_turn_end_ready`가 같은 판정 `turn_rows.holds_the_end`). Scouts 단계·Combat·turn 안 Scouts 줄의 창은 그대로다.
+  [immortality.md](immortality.md) 3절. 선택 폐기 창은 다음 조각.
 
 ## OQ-096 — Epic setup Intrigue와 Leader의 Game Start 선택 순서
 
