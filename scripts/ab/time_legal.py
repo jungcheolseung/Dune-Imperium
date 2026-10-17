@@ -28,6 +28,8 @@ candidate's form (dropping a refusal the base still needs), are not applied.
 
 import sys
 import time
+from collections.abc import Sequence
+from typing import Any
 
 from engine_equivalence import load, load_rules, recordings
 from equivalence_rules import At, Rule, Step
@@ -45,9 +47,19 @@ AGENT = {"agent_effects"}
 
 
 def _answer(
-    engine: UprisingRulesEngine, state: object, rules: tuple[Rule, ...], old: Step
+    engine: UprisingRulesEngine,
+    state: object,
+    rules: tuple[Rule, ...],
+    old: Step,
+    rows: Sequence[Any] = (),
+    *,
+    apply: bool = True,
 ) -> object:
-    """Apply the declared answers to decisions the base did not have."""
+    """Apply the declared answers to decisions the base did not have
+    (``rows``: the recording's, for an answer the base gave later). On the
+    base (``apply`` false) the answers are only matched, for the caches: the
+    base recorded the games, and an answer could take its own later step
+    (its cleanup's Harvest Cells choice) for the candidate's."""
 
     while rules:
         decision = engine.current_decision(state)
@@ -56,12 +68,12 @@ def _answer(
             if isinstance(decision, PlayerDecision)
             else ()
         )
-        at = At(engine, state, decision, legal, old)
+        at = At(engine, state, decision, legal, old, rows, old.index)
         move = next(
             (m for rule in rules if rule.answer and (m := rule.answer(at)) is not None),
             None,
         )
-        if move is None:
+        if move is None or not apply:
             break
         state = engine.apply(state, move).state
     return state
@@ -91,7 +103,7 @@ def main() -> None:
                 state = engine.apply(
                     state, ChanceOutcome(decision_id=step[1], values=step[2])
                 ).state
-                state = _answer(engine, state, rules, old)
+                state = _answer(engine, state, rules, old, data["rows"], apply=not base)
                 continue
             decision = engine.current_decision(state)
             assert isinstance(decision, PlayerDecision)
@@ -109,7 +121,7 @@ def main() -> None:
                 agent += spent
                 agent_calls += repeats
             action = DomainAction(action_id=step[1], actor=step[2], arguments=step[3])
-            at = At(engine, state, decision, legal, old)
+            at = At(engine, state, decision, legal, old, data["rows"], index)
             moves = next(
                 (
                     tuple(m)
@@ -125,7 +137,7 @@ def main() -> None:
             else:
                 for move in moves:
                     state = engine.apply(state, move).state
-            state = _answer(engine, state, rules, old)
+            state = _answer(engine, state, rules, old, data["rows"], apply=not base)
     print(
         f"games={len(files)} calls={calls} total_s={total:.3f} "
         f"per_call_us={total / calls * 1e6:.1f} intrigue_calls={intrigue_calls} "

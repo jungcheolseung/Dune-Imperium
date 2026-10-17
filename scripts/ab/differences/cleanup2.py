@@ -9,6 +9,7 @@ sub-stage; a sub-stage adds its rules here with its change.
 
 import json
 import re
+from collections import Counter
 
 from equivalence_rules import At, Rule, Step
 
@@ -64,17 +65,28 @@ _TURN_FRAME_KINDS = frozenset({"turn", "agent_effects", "reveal"})
 
 
 def _game_at(index: int) -> None:
-    """Start a new game's bookkeeping at a lower step index; an expiry the
-    candidate moved that the base never logged is a difference."""
+    """Start a new game's bookkeeping at a lower step index; an expiry or a
+    Conflict-end event the candidate moved that the base never logged is a
+    difference (reported on the next game's first step, the bookkeeping
+    cleared first so it is reported once)."""
 
-    if index < _last_index[0]:
-        if _carried_expiries:
-            raise AssertionError(
-                f"expiry events the base never logged: {sorted(_carried_expiries)}"
-            )
-        for sources in _VANISHED.values():
-            sources.clear()
+    if index >= _last_index[0]:
+        _last_index[0] = index
+        return
+    expiries = sorted(_carried_expiries)
+    carried = [event["event_id"] for event in _CONFLICT_END_CARRY]
+    _carried_expiries.clear()
+    for sources in _VANISHED.values():
+        sources.clear()
+    _reset_conflict_end()
     _last_index[0] = index
+    if expiries:
+        raise AssertionError(f"expiry events the base never logged: {expiries}")
+    if carried:
+        raise AssertionError(
+            "the previous game ended with Conflict-end events the base never "
+            f"logged: {carried}"
+        )
 
 
 def _vanished(kind: str, step: Step, suffix: str) -> None:
@@ -509,6 +521,406 @@ def _research_icon_events_in_base_order(old: Step, candidate: Step) -> None:
     candidate.events = [by_text[text].pop(0) for text in base]
 
 
+# --- Conflict end (user decision 2026-10-18): the troops go back first, then
+# the windows; Harvest Cells resolves as it is played -------------------------
+
+_HARVEST_CELLS_CHOICES = frozenset(
+    {
+        "acquire_intrigue_reclaimed_forces",
+        "acquire_intrigue_tleilaxu",
+        "decline_intrigue_tleilaxu",
+    }
+)
+# Per game: the window interval (from the base's offering step), the base
+# steps answered early (Harvest Cells' acquisition) and the seats that played
+# in their window, and the candidate events moved to a later base step.
+_CONFLICT_END: dict[str, object] = {}
+_CONFLICT_END_CARRY: list[dict[str, object]] = []
+
+
+def _reset_conflict_end() -> None:
+    _CONFLICT_END.clear()
+    _CONFLICT_END.update(open=False, ahead=set(), played=set())
+    _CONFLICT_END_CARRY.clear()
+
+
+_reset_conflict_end()
+
+
+def _ahead() -> set[int]:
+    ahead = _CONFLICT_END["ahead"]
+    assert isinstance(ahead, set)
+    return ahead
+
+
+def _played() -> set[int]:
+    played = _CONFLICT_END["played"]
+    assert isinstance(played, set)
+    return played
+
+
+def _kinds(step: Step) -> set[str]:
+    return {event["kind"] for event in step.events}
+
+
+def _conflict_end_finish(step: Step) -> None:
+    """The window's press after a play is ``finish_conflict_end_intrigue``
+    (the base offered its decline again)."""
+
+    _game_at(step.index)
+    if "conflict_end_trigger_offered" in _kinds(step):
+        _played().clear()
+        _CONFLICT_END["plays"] = 0
+    if step.step[0] != "a":
+        return
+    seat = step.step[2]
+    playing = step.step[1] == "play_conflict_end_intrigue"
+    if playing:
+        _CONFLICT_END["plays"] = int(str(_CONFLICT_END.get("plays", 0))) + 1
+    if seat not in _played() or _seat_view(step).get("decision_kind") != (
+        "conflict_end_trigger"
+    ):
+        if playing:
+            _played().add(seat)
+        return
+    if isinstance(step.decision, list):
+        step.decision[1] = [
+            {**r, "action_id": "finish_conflict_end_intrigue"}
+            if r["action_id"] == "decline_conflict_end_intrigue"
+            else r
+            for r in step.decision[1]
+        ]
+    if step.step[1] == "decline_conflict_end_intrigue":
+        step.step = ("a", "finish_conflict_end_intrigue", seat, step.step[3])
+        step.events = [
+            {
+                **e,
+                "kind": "conflict_end_trigger_finished",
+                "event_id": e["event_id"].replace(":declined", ":finished"),
+            }
+            if e["kind"] == "conflict_end_trigger_declined"
+            else e
+            for e in step.events
+        ]
+
+
+def _harvest_cells_now(at: At) -> object:
+    """Harvest Cells' acquisition is asked as it is played; the base asked
+    it after the cleanup: answer with the base's later choice."""
+
+    if not isinstance(at.decision, PlayerDecision):
+        return None
+    top = at.state.decision_stack[-1]
+    source = dict(top.context).get("source")
+    if (
+        top.kind != FrameKind.INTRIGUE_CHOICE
+        or not isinstance(source, str)
+        or ":conflict_end:" not in source
+    ):
+        return None
+    owner = at.decision.owner
+    for index in range(at.index + 1, len(at.rows)):
+        step = at.rows[index][0]
+        if (
+            step[0] == "a"
+            and step[2] == owner
+            and step[1] in _HARVEST_CELLS_CHOICES
+            and index not in _ahead()
+        ):
+            _ahead().add(index)
+            return next(
+                (
+                    action
+                    for action in at.legal
+                    if action.action_id == step[1]
+                    and tuple(action.arguments) == tuple(map(tuple, step[3]))
+                ),
+                None,
+            )
+    return None
+
+
+def _carried(event: dict[str, object]) -> bool:
+    return event["kind"] == "tactics_token_advanced" or ":conflict_end:" in str(
+        event["event_id"]
+    )
+
+
+# One seat's two copies: the candidate resolves each as it is played, the
+# base resolved them at the cleanup, the later-played copy first; the
+# candidate's first acquisition takes the base's first answer.
+_HARVEST_CELLS_COPY = re.compile(r"(?<=harvest_cells:)\d+")
+
+
+def _harvest_cells_key(event: dict[str, object]) -> str:
+    """An event's text for matching: Harvest Cells' rewards log under
+    ``<source>:rewards`` when they apply on their own (as the candidate
+    applies them at the play) and under ``<source>`` when the card's last
+    choice applied them (as the base did when its acquisition came first),
+    and either copy matches (``_HARVEST_CELLS_COPY``)."""
+
+    event_id = str(event["event_id"]).replace(":rewards:", ":")
+    return _row_key({**event, "event_id": _HARVEST_CELLS_COPY.sub("#", event_id)})
+
+
+def _harvest_cells_steps(step: Step) -> None:
+    """The base's Harvest Cells steps after the cleanup -- its acquisition,
+    answered early, and its automatic rewards -- have no counterpart; their
+    events are the ones the candidate logged at the play. The base's
+    ``intrigue_trigger_fired`` has none either."""
+
+    step.events = [e for e in step.events if e["kind"] != "intrigue_trigger_fired"]
+    rewards = (
+        step.step[0] == "a"
+        and step.step[1] == "resolve_intrigue_rewards"
+        and any(":conflict_end:" in e["event_id"] for e in step.events)
+    )
+    if step.index not in _ahead() and not rewards:
+        return
+    step.vanish = True
+    left = []
+    for event in step.events:
+        match = next(
+            (
+                c
+                for c in _CONFLICT_END_CARRY
+                if _harvest_cells_key(c) == _harvest_cells_key(event)
+            ),
+            None,
+        )
+        if match is None:
+            left.append(event)
+        else:
+            _CONFLICT_END_CARRY.remove(match)
+    step.events = left
+
+
+# What the troops' return before the windows moves (with the Tactician
+# token's spice and water): the state fields and the views' seat keys.
+_RETURN_KEYS = (
+    "troops_supply",
+    "troops_conflict",
+    "commanders_supply",
+    "commanders_conflict",
+    "tactics_track_space",
+    "resources",
+)
+
+
+def _returned_early(old: Step, candidate: Step, *, after: bool = True) -> None:
+    """In the views before the step every seat's return keys are the base's,
+    and (``after``) the return's fields are left out of the state after
+    it."""
+
+    if after:
+        candidate.fields_unchecked.update(
+            f"players[{seat}].{key}" for seat in range(4) for key in _RETURN_KEYS
+        )
+    if not (candidate.views and old.views):
+        return
+    for base, view in zip(old.views, candidate.views, strict=True):
+        for seat, players in enumerate(view["players"]):
+            for key in _RETURN_KEYS:
+                players[key] = base["players"][seat][key]
+
+
+def _conflict_end_interval(old: Step, candidate: Step) -> None:
+    """From the base's offering step to its cleanup (or the last Harvest
+    Cells acquisition it answered after it), the candidate's troops are back
+    in the supply: until a Harvest Cells is played only the return's fields
+    differ (``_returned_early``). From a play on the candidate has also
+    resolved the card: its views are the base's but for each seat's hand,
+    the window's page is the base's, and the state after the step is not
+    compared."""
+
+    kinds = _kinds(old)
+    if "conflict_end_trigger_offered" in kinds:
+        _CONFLICT_END["open"] = True
+        _returned_early(old, candidate)
+        return
+    if not _CONFLICT_END["open"]:
+        return
+    pending = [index for index in _ahead() if index > old.index]
+    cleaned = "combat_cleaned_up" in kinds or _CONFLICT_END.get("cleaned") is True
+    if "combat_cleaned_up" in kinds:
+        _CONFLICT_END["cleaned"] = True
+    closing = cleaned and not pending
+    if not int(str(_CONFLICT_END.get("plays", 0))):
+        _returned_early(old, candidate, after=not closing)
+    else:
+        if candidate.views and old.views:
+            hands = [
+                (
+                    [players["hand_size"] for players in view["players"]],
+                    view["private"]["hand"],
+                )
+                for view in candidate.views
+            ]
+            candidate._views = [json.loads(json.dumps(view)) for view in old.views]
+            for view, (sizes, hand) in zip(candidate._views, hands, strict=True):
+                for players, size in zip(view["players"], sizes, strict=True):
+                    players["hand_size"] = size
+                view["private"]["hand"] = hand
+        if _seat_view(old).get("decision_kind") == "conflict_end_trigger":
+            candidate.page = old.page
+        if not closing:
+            old.state_unchecked = True
+    if closing:
+        _CONFLICT_END["open"] = False
+        _CONFLICT_END["cleaned"] = False
+        _CONFLICT_END["closing"] = True
+
+
+_PLANETARY_ARRAY = "planetary_array"
+_DRAW_FIELDS = ("hand", "deck", "tech_cards_owed")
+
+
+def _draw_views_differ(old: Step, candidate: Step, seat: int) -> bool:
+    """Whether the seat's hand, deck and discard differ in the views, after
+    putting the base's in the candidate's."""
+
+    differ = False
+    for base, view in zip(old.views, candidate.views, strict=True):
+        pairs = [(view["players"][seat], base["players"][seat], k) for k in (
+            "hand_size", "deck_size", "discard_pile"
+        )]
+        if view.get("player") == seat:
+            pairs += [(view["private"], base["private"], k) for k in (
+                "hand", "deck_size"
+            )]
+        for mine, theirs, key in pairs:
+            if mine[key] != theirs[key]:
+                differ = True
+                mine[key] = theirs[key]
+    return differ
+
+
+def _planetary_array_after_the_hand(old: Step, candidate: Step) -> None:
+    """Planetary Array's card is owed at the cleanup and drawn once the
+    transition settles (``tech.draw_owed_tech_cards``); the Round Start
+    pause defers it past the next round's hand. The base's cleanup also
+    pushed Harvest Cells' resolution, which drew it at once; with Harvest
+    Cells resolved in its window, it waits for the hand as every other win
+    does. Until the candidate draws it the seat's hand, deck and owed count
+    are the base's."""
+
+    late = _CONFLICT_END.setdefault("late_draws", {})
+    assert isinstance(late, dict)
+    for event in old.events:
+        if event["kind"] != "conflict_won" or not _played() or not old.views:
+            continue
+        seat = dict(event["payload"])["player"]
+        if _PLANETARY_ARRAY in old.views[0]["players"][seat]["tech_ids"]:
+            late[seat] = old.views[0]["round_number"]
+            candidate.fields_unchecked.update(
+                f"players[{seat}].{name}" for name in _DRAW_FIELDS
+            )
+            return
+    for seat, won in list(late.items()):
+        if old.views and candidate.views:
+            if not _draw_views_differ(old, candidate, seat):
+                del late[seat]
+                continue
+            if old.views[0]["round_number"] > won + 1:
+                raise AssertionError(f"Planetary Array's card never came: {seat}")
+        candidate.fields_unchecked.update(
+            f"players[{seat}].{name}" for name in _DRAW_FIELDS
+        )
+
+
+def _harvest_cells_discard_order(old: Step, candidate: Step) -> None:
+    """Each Harvest Cells goes to the Intrigue discard as it is played, in
+    window order -- turn order from the First Player (OQ-002); the base
+    discarded them at the cleanup, the last window's card first. With two
+    played at one Conflict's end the discard holds the same cards in
+    another order until it is shuffled: the base's order in the views, and
+    the field left out, while the two hold the same cards."""
+
+    if _CONFLICT_END.get("closing") and int(str(_CONFLICT_END.get("plays", 0))) > 1:
+        _CONFLICT_END["discard_order"] = True
+    if not _CONFLICT_END.get("discard_order"):
+        return
+    if old.views and candidate.views:
+        same = True
+        for base, view in zip(old.views, candidate.views, strict=True):
+            mine, theirs = view["intrigue_discard"], base["intrigue_discard"]
+            if mine != theirs:
+                same = False
+                if sorted(mine) == sorted(theirs):
+                    view["intrigue_discard"] = list(theirs)
+        if same:
+            _CONFLICT_END["discard_order"] = False
+            return
+    candidate.fields_unchecked.add("intrigue_discard")
+
+
+def _shortfall_id(event: dict[str, object]) -> tuple[str, ...] | None:
+    """A ``shortfall_refilled`` id without its event-log count
+    (``round:R:player:P:shortfall_refilled:<count>:T:S``)."""
+
+    parts = str(event["event_id"]).split(":")
+    if event["kind"] != "shortfall_refilled" or len(parts) != 8:
+        return None
+    return (*parts[:5], *parts[6:], _row_key(event["payload"]))
+
+
+def _shortfall_counts(old: Step, candidate: Step) -> None:
+    """The ``shortfall_refilled`` ids count the logged events, and the
+    candidate logs fewer at a Conflict's end (no ``intrigue_trigger_fired``,
+    the Harvest Cells steps gone): the base's id where only the count
+    differs."""
+
+    base = {_shortfall_id(e): e["event_id"] for e in old.events}
+    base.pop(None, None)
+    have = {e["event_id"] for e in old.events}
+    for event in candidate.events:
+        key = _shortfall_id(event)
+        if key is not None and event["event_id"] not in have and key in base:
+            event["event_id"] = base[key]
+
+
+def _conflict_end_events(old: Step, candidate: Step) -> None:
+    """The Tactician token's advance comes with the troops' return, before
+    the windows (the base logged it at the cleanup), and Harvest Cells'
+    specimens and acquisition with its play: such an event moves to the base
+    step that logged it, in the base's order."""
+
+    base = Counter(_row_key(e) for e in old.events)
+    # While a base step answered early is still ahead, everything the
+    # candidate went on to log after it belongs to that later step.
+    deferring = any(index > old.index for index in _ahead())
+    kept: list[dict[str, object]] = []
+    for event in candidate.events:
+        text = _row_key(event)
+        if (_carried(event) or deferring) and base[text] == 0:
+            _CONFLICT_END_CARRY.append(event)
+            continue
+        kept.append(event)
+    have = Counter(_row_key(e) for e in kept)
+    for event in list(_CONFLICT_END_CARRY):
+        text = _row_key(event)
+        if base[text] > have[text]:
+            kept.append(event)
+            have[text] += 1
+            _CONFLICT_END_CARRY.remove(event)
+    texts = [_row_key(e) for e in kept]
+    order = [_row_key(e) for e in old.events]
+    if (
+        texts != order
+        and sorted(texts) == sorted(order)
+        and any(_carried(e) for e in kept)
+    ):
+        by_text: dict[str, list[dict[str, object]]] = {}
+        for text, event in zip(texts, kept, strict=True):
+            by_text.setdefault(text, []).append(event)
+        kept = [by_text[text].pop(0) for text in order]
+    candidate.events = kept
+    if _CONFLICT_END.pop("closing", False) and _CONFLICT_END_CARRY:
+        raise AssertionError(
+            f"Conflict-end events the base never logged: {_CONFLICT_END_CARRY}"
+        )
+
+
 RULES = (
     Rule(
         "scouts_no_option_window",
@@ -582,6 +994,53 @@ RULES = (
         "tech_influence_greyed",
         why="cleanup-2b: decision 1, the page greys those Factions out",
         new=_no_greyed_tech_influence,
+    ),
+    Rule(
+        "conflict_end_finish",
+        why="user decision 2026-10-18: the Conflict-end window's press after a "
+        "play is 'finish'",
+        old=_conflict_end_finish,
+    ),
+    Rule(
+        "harvest_cells_steps",
+        why="user decision 2026-10-18: Harvest Cells resolves as it is played, "
+        "the base's later steps have no counterpart",
+        old=_harvest_cells_steps,
+    ),
+    Rule(
+        "harvest_cells_now",
+        why="user decision 2026-10-18: its acquisition is asked at the play",
+        answer=_harvest_cells_now,
+    ),
+    Rule(
+        "shortfall_counts",
+        why="user decision 2026-10-18: the Conflict's end logs fewer events, and "
+        "the shortfall ids count the log",
+        new=_shortfall_counts,
+    ),
+    Rule(
+        "conflict_end_interval",
+        why="user decision 2026-10-18: the troops go back before the windows "
+        "[Main p. 14] [FAQ p. 1]",
+        new=_conflict_end_interval,
+    ),
+    Rule(
+        "planetary_array_after_the_hand",
+        why="user decision 2026-10-18: with Harvest Cells resolved in its window "
+        "the cleanup's Planetary Array card waits for the next hand, as on any "
+        "other win (OQ-108)",
+        new=_planetary_array_after_the_hand,
+    ),
+    Rule(
+        "harvest_cells_discard_order",
+        why="user decision 2026-10-18: each Harvest Cells is discarded as it is "
+        "played, in turn order (OQ-002)",
+        new=_harvest_cells_discard_order,
+    ),
+    Rule(
+        "conflict_end_events",
+        why="user decision 2026-10-18: Tactician and Harvest Cells events come earlier",
+        new=_conflict_end_events,
     ),
     Rule(
         "research_icon_events",

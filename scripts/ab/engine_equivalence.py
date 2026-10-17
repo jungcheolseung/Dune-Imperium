@@ -73,7 +73,7 @@ import sys
 import traceback
 import zlib
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
@@ -495,6 +495,11 @@ class _Mask:
             for index in self.kept
         )
 
+    def without(self, names: set[str]) -> _Mask:
+        """This mask with ``names`` left out as well (one step's)."""
+
+        return _Mask(self.fields, self.left_out | frozenset(names))
+
     def differing(self, old: bytes, new: bytes) -> list[str]:
         kept = {self.fields[index] for index in self.kept}
         return [name for name in _state_fields(self.fields, old, new) if name in kept]
@@ -531,6 +536,8 @@ def _snapshot(*steps: Step) -> tuple[Any, ...]:
         (
             _text([step.step, step.decision, step.page, step.events]),
             step.vanish,
+            step.state_unchecked,
+            tuple(sorted(step.fields_unchecked)),
             step.views_now(),
         )
         for step in steps
@@ -551,7 +558,7 @@ def _fields_hit(hits: Counter[str], rules: tuple[Rule, ...], names: set[str]) ->
             hits[f"{rule.name}:fields"] += 1
 
 
-def _at(stepper: _Stepper, old: Step) -> At:
+def _at(stepper: _Stepper, old: Step, rows: Sequence[Any] = ()) -> At:
     state = stepper.state
     decision = stepper.engine.current_decision(state)
     legal = (
@@ -559,7 +566,7 @@ def _at(stepper: _Stepper, old: Step) -> At:
         if isinstance(decision, PlayerDecision)
         else ()
     )
-    return At(stepper.engine, state, decision, legal, old)
+    return At(stepper.engine, state, decision, legal, old, rows, old.index)
 
 
 def _before_diff(old: Step, candidate: Step) -> dict[str, Any]:
@@ -674,7 +681,7 @@ class _Game:
         then the decisions the rules answer), filling in its content."""
 
         stepper = self.stepper
-        at = _at(stepper, old)
+        at = _at(stepper, old, self.data["rows"])
         moves = self.moves(old, at)
         if moves == ():
             old.vanish = True
@@ -695,7 +702,7 @@ class _Game:
             self.offset += len(planned) - 1
             answered = 0
             while self.answering and stepper.state.phase is not GamePhase.FINISHED:
-                move = self.answer(_at(stepper, old))
+                move = self.answer(_at(stepper, old, self.data["rows"]))
                 if move is None:
                     break
                 answered += 1
@@ -797,8 +804,11 @@ def check_game(args: tuple[str, str | None]) -> dict[str, Any]:
             )
         diff = _step_diff(old, candidate)
         game.fields_hit(mask.left_out_differing(state_digest, now))
-        if mask(now) != mask(state_digest):
-            diff["state"] = mask.differing(state_digest, now)
+        unchecked = old.state_unchecked or candidate.state_unchecked
+        skipped = old.fields_unchecked | candidate.fields_unchecked
+        step_mask = mask.without(skipped) if skipped else mask
+        if not unchecked and step_mask(now) != step_mask(state_digest):
+            diff["state"] = step_mask.differing(state_digest, now)
         if diff:
             return done("different", step=index, step_value=repr(step)[:300], diff=diff)
     last = len(data["rows"])
