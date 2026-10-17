@@ -702,6 +702,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "pay_research_bonus": _row(_V.PAY, _S.RESEARCH),
     "decline_research_bonus": _row(_V.DECLINE, _S.RESEARCH),
+    "resolve_research_icon": _row(_V.RESOLVE, _S.RESEARCH, _T.OPTION),
     # --- Choices an opponent's effect forces ---------------------------------
     "discard_opponent_card": _row(_V.DISCARD, _S.OPPONENT, _T.PERSONAL_CARD),
     "move_spy": _row(_V.MOVE_SPY, _S.OPPONENT, _T.POST),

@@ -205,7 +205,10 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     # The grafted line resolved first: its Research direction and the c3r3
     # bonus ("trash and specimen"; the trash optional [Main p. 20], waiting on
     # the Agent turn as rows with no refusal, cleanup-2b) are answered while
-    # the draw icon still waits on the Agent box.
+    # the draw icon still waits on the Agent box. The bonus's two icons are
+    # independent effects in the owner's order (user decision 2026-10-17,
+    # composed-effects plan 5, rule decision 5; OQ-027 [Main p. 9]): the
+    # specimen waits as a row of its own beside the trash, taken after it here.
     espionage = _tleilaxu("industrial_espionage")
     owner = _owner((espionage, FACE_DANCER, DAGGER), research_space="c2r2")
     deck_size = len(owner.deck)
@@ -221,8 +224,11 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     bonus = engine.apply(researched, direction).state
     assert bonus.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert [
-        kind for kind, _source, _value in turn_rows.pending(bonus.decision_stack[-1])
-    ] == [turn_rows.OPTIONAL_TRASH]
+        (kind, value)
+        for kind, _source, value in turn_rows.pending(bonus.decision_stack[-1])
+    ] == [(turn_rows.RESEARCH_ICON, "specimen"), (turn_rows.OPTIONAL_TRASH, "")]
+    # Only the Research icon's own specimen so far; c3r3's waits.
+    assert bonus.players[0].specimens == 1
     assert "decline_optional_trash" not in {
         action.action_id for action in engine.legal_actions(bonus, 0)
     }
@@ -235,6 +241,17 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
 
     trashed = engine.apply(bonus, trash).state
     assert trashed.players[0].trashed == (DAGGER,)
+    assert trashed.players[0].specimens == 1
+    assert [
+        (kind, value)
+        for kind, _source, value in turn_rows.pending(trashed.decision_stack[-1])
+    ] == [(turn_rows.RESEARCH_ICON, "specimen")]
+    specimen = DomainAction(
+        action_id="resolve_research_icon",
+        actor=0,
+        arguments=(("effect", "specimen"),),
+    )
+    trashed = engine.apply(trashed, specimen).state
     assert trashed.players[0].specimens == 2
     assert turn_rows.pending(trashed.decision_stack[-1]) == ()
     assert _icon_keys(trashed) == {"cards"}

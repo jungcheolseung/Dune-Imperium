@@ -603,6 +603,30 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     ``end.leader_changed`` == False (``end.trigger_vp`` is True either way:
     seat 0 was already on 10; independent replay of the Endgame steps with
     the same capture).
+
+    Re-derived 2026-10-18 for cleanup-2b (codec v149: in-turn research
+    bonuses and optional trashes as turn rows, a research space's two icons
+    as their own steps in the owner's order, no Influence offered at the top
+    for Shipping and Tech acquire): seed 39 first diverges at round 4, seat
+    1's Experimentation research step (c3r5, step 253 of the game): its
+    Specimens and Tleilaxu-track icons are no longer resolved in that one
+    move but offered as two ``resolve_research_icon`` rows (step 254 no
+    longer offers ``draw_owed_intrigue``), and the game no longer has an
+    Endgame-opening Tech change the leader (it opens Endgame with check VP
+    [6, 8, 10, 5], seat 2 already leading and no ``:endgame_tech:`` event).
+    On a ``git archive`` export of the previous commit (a1b692f0) the same
+    capture over full seeds 1-200 finds seeds 16, 28, 39, 57 and 186 and
+    reproduces the values pinned before for seed 39; on this engine it finds
+    seeds 19, 26, 28, 106, 128 and 186, and the case is seed 19, the first.
+    Endgame opens there in round 10 on the empty Conflict deck with no seat
+    at 10 VP and check VP [8, 9, 9, 6]: seat 2 (Lady Jessica) ranks first of
+    its tie with seat 1 (Liet Kynes) on spice (6 to 3). Seat 1 holds
+    Panopticon; its Spacing Guild 1 -> 2 and Fremen 1 -> 2 gains both score,
+    taking it to 11 and the lead. Seat 0 then matches its wild Propaganda
+    with Spice Freighters (9) and seat 1 ends on 11 as the winner. The buggy
+    collector would read ``end.endgame_vp`` == 0 for seat 1 and
+    ``end.leader_changed`` == False (``end.trigger_vp`` is False: no seat was
+    on 10; independent replay of the Endgame steps with the same capture).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -610,7 +634,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 39):
+    for seed in (*FULL_SEEDS, 19):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -645,13 +669,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 39:
+        if seed == 19:
             saw_case = True
-            assert census["seats"][2]["end.endgame_vp"] == 3
+            assert census["seats"][1]["end.endgame_vp"] == 2
             assert census["game"]["end.leader_changed"] is True
-            assert census["game"]["end.trigger_vp"] is True
+            assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 39 regression case must run"
+    assert saw_case, "the seed 19 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(

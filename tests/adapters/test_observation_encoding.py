@@ -684,6 +684,14 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # board icon first; 3,580 -> 3,568 vectors), ``promo_bloodlines_tech`` at 545
 # (round 8, seat 1, the same trash taken from the turn's list; 3,160 either
 # way). The other four games meet no in-turn trash.
+# Re-pinned once more for cleanup-2b's research space icons (rule decision 5,
+# OQ-027): a research space's two icons, and c7r3's two rewards, are each
+# their own step in the owner's order. An export of the previous commit
+# (a1b692f0) reproduces the ``everything`` pin, and its trace equals this one
+# through decision 331; at 332 (round 5, seat 1, c3r3 reached in the Agent
+# turn) the specimen waits as a row beside the trash and the random seat
+# deploys first (3,568 -> 3,484 vectors). The other five games meet no
+# research space.
 _GOLDEN_DIGESTS = {
     "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
     "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
@@ -692,8 +700,8 @@ _GOLDEN_DIGESTS = {
         3160,
     ),
     "everything": (
-        "41ca08efb19c4e33f2bcc4dc4534ada0e1fd457b2cf76ae391683ec3012e6aa9",
-        3568,
+        "c65ca930c90c9a0fa3c4eb4cda5d11b16651d09c2122c71b1dd0faefa08806c2",
+        3484,
     ),
     "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),
     "scouts": (

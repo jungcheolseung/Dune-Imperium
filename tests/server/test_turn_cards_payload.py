@@ -434,7 +434,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 763 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 603 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -451,14 +451,20 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     the Research bonus's trash no longer opens a window; it waits on the
     Agent turn as a row among the turn's others, with no refusal, so the
     random walk moved off seed 243 once more. Searched from 0 for the
-    position, seeds 0-758 miss; 759 reaches it through an Intrigue card's
-    Research (Breakthrough, c7r5) and 763 is the first through the Research
-    Station: seat 3, round 6, Research c3r3, "trash and specimen".)"""
+    position, seeds 0-758 missed; 759 reached it through an Intrigue card's
+    Research (Breakthrough, c7r5) and 763 was the first through the Research
+    Station. A research space's two icons are steps of their own too (user
+    decision 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027
+    [Main p. 9]): the specimen waits as a row beside the trash and the Agent
+    turn goes on, which moved the walk off seed 763. Searched from 0 under
+    this whole test, seed 538 is the first, through an Agent card's Research
+    (Bene Tleilax Researcher, c3r3), and 603 the first through the Research
+    Station: seat 2, round 8, Research c3r3, "trash and specimen".)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 763, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 603, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:6", "reserve:prepare_the_way:7")
+    assert (card, earlier) == ("reserve:prepare_the_way:7", "reserve:prepare_the_way:0")
     session = manager._get(game_id)
     before = (
         session.state,

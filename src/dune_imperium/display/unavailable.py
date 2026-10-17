@@ -266,6 +266,7 @@ from dune_imperium.rules.immortality import (
     pending_research_bonuses,
     research_bonus_block,
     research_influence_factions,
+    window_icons,
 )
 from dune_imperium.rules.influence import influence_amount, influence_can_rise
 from dune_imperium.rules.intrigue import (
@@ -1929,8 +1930,11 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
     decline is offered.
     """
 
-    bonus = dict(state.decision_stack[-1].context).get("bonus")
-    if not isinstance(bonus, str):
+    frame = state.decision_stack[-1]
+    bonus = dict(frame.context).get("bonus")
+    if not isinstance(bonus, str) or window_icons(frame):
+        # A window ordering a pair's icons or c7r3's rewards (cleanup-2b)
+        # offers every one of them.
         return
     owner = state.players[seat]
     if ResearchBonus(bonus) is ResearchBonus.INFLUENCE_ANY:

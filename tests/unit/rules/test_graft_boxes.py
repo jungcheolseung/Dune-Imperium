@@ -118,6 +118,7 @@ OTHER_FRAME_KEYS = frozenset(
         "player",
         "purpose",
         "remaining",
+        "research_icons",
         "resource",
         "reveal_card_id",
         "reveal_choice_effect",

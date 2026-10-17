@@ -161,6 +161,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     Stage,
     TurnRowGap,
     decide,
+    research_icon_now,
     str_arg,
     triggered_draw,
     with_arg,
@@ -413,6 +414,10 @@ def research_bonus(run: DecisionRun) -> DomainAction | None:
     """A research space's printed choice (c6r6, c7r3, c8r6), in its window
     outside the owner's turn (Combat, the Arrakeen Scouts step)."""
 
+    icon = research_icon_now(run)
+    if icon is not None:
+        # A pair's icons or c7r3's rewards, ordered (cleanup-2b).
+        return icon
     decline = run.first("decline_research_bonus")
     influence = run.by_id("choose_research_influence")
     if influence:

@@ -19,6 +19,7 @@
 Rulings the official documents leave open are OQ-048 to OQ-051.
 """
 
+from collections.abc import Mapping
 from copy import replace
 from enum import StrEnum
 from typing import Final
@@ -42,11 +43,16 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
+    OWED_CARD,
+    OWED_INTRIGUE,
     FrameKind,
     context_int,
     context_str,
+    hold_draw,
     owned_top_frame,
     replace_player,
+    replace_top_frame,
+    with_context,
 )
 from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
@@ -54,7 +60,10 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
-from dune_imperium.rules.optional_trash import open_optional_trash
+from dune_imperium.rules.optional_trash import (
+    open_optional_trash,
+    optional_trash_frame,
+)
 from dune_imperium.rules.scouts_missions import (
     HELIX,
     TLEILAXU_OFFERING_TRACK_SPACE,
@@ -70,6 +79,7 @@ __all__ = [
     "apply_family_atomics",
     "apply_research_advance",
     "apply_research_bonus",
+    "apply_research_icon",
     "apply_specimen_return",
     "generate_specimens",
     "legal_family_atomics_actions",
@@ -417,20 +427,32 @@ def _resolve_research_bonus(
             return advance_tleilaxu(state, player, 1, source=source)
         case ResearchBonus.RESEARCH:
             return advance_research(state, player, source=source)
-        case ResearchBonus.TRASH_AND_SPECIMEN:
-            # A black trash icon is optional [Main p. 20]; the specimen is
-            # not.
-            specimen = generate_specimens(state, player, 1, source=source)
-            return RuleResult(
-                state=open_optional_trash(specimen.state, player, source),
-                events=specimen.events,
+        case ResearchBonus.TRASH_AND_SPECIMEN | ResearchBonus.TLEILAXU_AND_SPECIMEN:
+            # Two printed icons, each an independent effect resolved in the
+            # owner's order (OQ-027 [Main p. 9]; user decision 2026-10-17,
+            # composed-effects plan 5, rule decision 5: "그래도 순서를
+            # 고르게 하자. 원칙대로"). In the owner's own turn each waits on
+            # the turn as a row (the specimen and the Tleilaxu advance are
+            # mandatory; the black trash icon is optional [Main p. 20], its
+            # own row with no refusal); elsewhere one window offers them.
+            icons = _PAIRED_ICONS[bonus]
+            queued = turn_rows.queue(
+                state, player, (turn_rows.RESEARCH_ICON, source, icons[0])
             )
-        case ResearchBonus.TLEILAXU_AND_SPECIMEN:
-            specimen = generate_specimens(state, player, 1, source=source)
-            advanced = advance_tleilaxu(specimen.state, player, 1, source=source)
-            return RuleResult(
-                state=advanced.state, events=(*specimen.events, *advanced.events)
+            if queued is None:
+                return RuleResult(
+                    state=state.push_decision(
+                        _bonus_frame(player, bonus, source, icons=icons)
+                    )
+                )
+            if icons[1] == ICON_TRASH:
+                return RuleResult(state=open_optional_trash(queued, player, source))
+            paired = turn_rows.queue(
+                queued, player, (turn_rows.RESEARCH_ICON, source, icons[1])
             )
+            if paired is None:
+                raise RuntimeError("the turn that took one icon must take both")
+            return RuleResult(state=paired)
         case (
             ResearchBonus.SOLARI_ONE | ResearchBonus.SPICE_ONE | ResearchBonus.SPICE_TWO
         ):
@@ -487,10 +509,40 @@ def _resolve_research_bonus(
             )
 
 
+# The icons of a research space's pair, and of c7r3's rewards once its cost
+# is paid, each resolved on its own (``resolve_research_icon``, rule
+# decision 5). Their order here is the one an older engine fixed.
+ICON_SPECIMEN: Final = "specimen"
+ICON_TLEILAXU: Final = "tleilaxu"
+ICON_TRASH: Final = "trash"
+ICON_INTRIGUE: Final = "intrigue"
+ICON_CARD: Final = "cards"
+_PAIRED_ICONS: Final[Mapping[ResearchBonus, tuple[str, str]]] = {
+    ResearchBonus.TRASH_AND_SPECIMEN: (ICON_SPECIMEN, ICON_TRASH),
+    ResearchBonus.TLEILAXU_AND_SPECIMEN: (ICON_SPECIMEN, ICON_TLEILAXU),
+    ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: (ICON_INTRIGUE, ICON_CARD),
+}
+RESEARCH_ICON_ORDER: Final = (
+    ICON_SPECIMEN,
+    ICON_TLEILAXU,
+    ICON_TRASH,
+    ICON_INTRIGUE,
+    ICON_CARD,
+)
+_ICONS_KEY: Final = "research_icons"
+OWED_ORIGIN_RESEARCH: Final = "research_c7r3"
+"""The owed draws of c7r3's rewards in the owner's turn (OQ-106)."""
+
+
 def _bonus_frame(
-    player: int, bonus: ResearchBonus, source: str
+    player: int,
+    bonus: ResearchBonus,
+    source: str,
+    *,
+    icons: tuple[str, ...] = (),
 ) -> DecisionFrame:
-    """Return the frame offering a research space's printed bonus choice."""
+    """Return the frame offering a research space's printed bonus choice,
+    or with ``icons`` the window ordering its independent icons."""
 
     return DecisionFrame(
         kind=FrameKind.RESEARCH_BONUS,
@@ -501,9 +553,19 @@ def _bonus_frame(
         context=(
             ("bonus", bonus.value),
             ("player", player),
+            *(((_ICONS_KEY, ",".join(icons)),) if icons else ()),
             ("source", source),
         ),
     )
+
+
+def window_icons(frame: DecisionFrame) -> tuple[str, ...]:
+    """The icons a research window still orders (none for a choice)."""
+
+    value = dict(frame.context).get(_ICONS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("research window icons must be a string")
+    return tuple(icon for icon in value.split(",") if icon)
 
 
 class ResearchBonusBlock(StrEnum):
@@ -625,6 +687,32 @@ def pending_research_bonuses(
     )
 
 
+def pending_research_icons(state: GameState, player: int) -> tuple[str, ...]:
+    """The research space icons waiting on ``player``'s own turn frame,
+    when it is on top, one each, in ``RESEARCH_ICON_ORDER``."""
+
+    frame = turn_rows.rows_frame(state, player)
+    if frame is None:
+        return ()
+    waiting = {
+        value
+        for kind, _source, value in turn_rows.pending(frame)
+        if kind == turn_rows.RESEARCH_ICON
+    }
+    return tuple(icon for icon in RESEARCH_ICON_ORDER if icon in waiting)
+
+
+def _icon_rows(player: int, icons: tuple[str, ...]) -> tuple[DomainAction, ...]:
+    return tuple(
+        DomainAction(
+            action_id="resolve_research_icon",
+            actor=player,
+            arguments=(("effect", icon),),
+        )
+        for icon in icons
+    )
+
+
 def legal_research_bonus_actions(
     state: GameState,
     player: int,
@@ -647,11 +735,18 @@ def legal_research_bonus_actions(
     owner = state.players[player]
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
     if frame is None:
-        return tuple(
-            row
-            for bonus, _source in pending_research_bonuses(state, player)
-            for row in _bonus_rows(owner, player, bonus)
+        return (
+            *_icon_rows(player, pending_research_icons(state, player)),
+            *(
+                row
+                for bonus, _source in pending_research_bonuses(state, player)
+                for row in _bonus_rows(owner, player, bonus)
+            ),
         )
+    if icons := window_icons(frame):
+        # A pair's or c7r3's rewards outside the turn: one row per icon,
+        # in either order (rule decision 5).
+        return _icon_rows(player, icons)
     bonus = ResearchBonus(context_str(dict(frame.context), "bonus", owner=_BONUS_LABEL))
     decline = DomainAction(action_id="decline_research_bonus", actor=player)
     rows = _bonus_rows(owner, player, bonus)
@@ -731,15 +826,39 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
             kind="intrigue_card_trashed",
             payload=(("card_id", card_id), ("player", player)),
         )
-        intrigue = draw_or_queue_intrigue_cards(
-            trashed_state, player, 1, source=f"{source}:intrigue"
-        )
-        drawn = draw_or_request_personal_cards(
-            intrigue.state, player, 1, source=f"{source}:card"
+        # The arrow's cost is paid as one step; its two rewards are
+        # independent icons resolved in the owner's order (OQ-027 (b), rule
+        # decision 5): in the owner's turn each is a triggered draw held as
+        # its own step (OQ-106), elsewhere a window orders them.
+        if frame.kind == FrameKind.RESEARCH_BONUS:
+            return RuleResult(
+                state=trashed_state.push_decision(
+                    _bonus_frame(
+                        player,
+                        bonus,
+                        source,
+                        icons=_PAIRED_ICONS[bonus],
+                    )
+                ),
+                events=(trashed_event,),
+            )
+        held = hold_draw(
+            hold_draw(
+                trashed_state.players[player],
+                OWED_INTRIGUE,
+                OWED_ORIGIN_RESEARCH,
+                f"{source}:intrigue",
+            ),
+            OWED_CARD,
+            OWED_ORIGIN_RESEARCH,
+            f"{source}:card",
         )
         return RuleResult(
-            state=drawn.state,
-            events=(trashed_event, *intrigue.events, *drawn.events),
+            state=replace(
+                trashed_state,
+                players=replace_player(trashed_state.players, held),
+            ),
+            events=(trashed_event,),
         )
     # pay_research_bonus: "7 Solari -> two Tleilaxu advances".
     owner = popped.players[player]
@@ -762,6 +881,59 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
             *advanced.events,
         ),
     )
+
+
+def apply_research_icon(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve one icon of a research space's pair or of c7r3's rewards.
+
+    A window outside the turn closes once its last icon is taken; a row on
+    the owner's turn takes the newest waiting icon of its kind (``turn_rows``).
+    """
+
+    if action not in legal_research_bonus_actions(state, action.actor):
+        raise ValueError("action is not a legal research icon")
+    player = action.actor
+    icon = str(dict(action.arguments)["effect"])
+    frame = state.decision_stack[-1]
+    if frame.kind == FrameKind.RESEARCH_BONUS:
+        context = dict(frame.context)
+        source = context_str(context, "source", owner=_BONUS_LABEL)
+        remaining = list(window_icons(frame))
+        remaining.remove(icon)
+        working = (
+            replace_top_frame(
+                state, with_context(frame, {**context, _ICONS_KEY: ",".join(remaining)})
+            )
+            if remaining
+            else state.pop_decision()
+        )
+        if icon == ICON_TRASH:
+            # The window's trash opens its own window, with its refusal.
+            return RuleResult(
+                state=working.push_decision(optional_trash_frame(player, source))
+            )
+    else:
+        item = next(
+            item
+            for item in reversed(turn_rows.pending(frame))
+            if item[0] == turn_rows.RESEARCH_ICON and item[2] == icon
+        )
+        working = turn_rows.take(state, player, item)
+        source = item[1]
+    match icon:
+        case "specimen":
+            return generate_specimens(working, player, 1, source=source)
+        case "tleilaxu":
+            return advance_tleilaxu(working, player, 1, source=source)
+        case "intrigue":
+            return draw_or_queue_intrigue_cards(
+                working, player, 1, source=f"{source}:intrigue"
+            )
+        case "cards":
+            return draw_or_request_personal_cards(
+                working, player, 1, source=f"{source}:card"
+            )
+    raise RuntimeError(f"unknown research icon: {icon}")
 
 
 # --- Family Atomics ------------------------------------------------------

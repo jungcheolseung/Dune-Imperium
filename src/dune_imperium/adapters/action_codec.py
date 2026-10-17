@@ -82,6 +82,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
+from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -510,8 +511,12 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # holds the end); Shipping's and a Tech tile's acquire "Influence with any
 # Faction" offer no Faction at the top and, with every one there, wait and
 # lapse, or in Combat confirm with ``resolve_tech_influence_without_faction``
-# (new template, Tech catalogs). Older records drop the in-turn refusals and
-# the picks at the top, and confirm in Combat (``tech_influence_confirm``).
+# (new template, Tech catalogs); a research space's paired icons and c7r3's
+# rewards are each their own step in the owner's order
+# (``resolve_research_icon``, five new templates, Immortality catalogs; owed
+# draws for c7r3 in the turn). Older records drop the in-turn refusals and
+# the picks at the top, confirm in Combat (``tech_influence_confirm``) and
+# take the research icons in their old order (``research_icon_order``).
 ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -1688,6 +1693,12 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="lose_reveal_troops_for_specimens", arguments=(("zones", zones),)
         )
         for zones in ("garrison,garrison", "garrison,conflict", "conflict,conflict")
+    )
+    # A research space's paired icons and c7r3's rewards, each its own step
+    # in the owner's order (codec v149, cleanup-2b, rule decision 5).
+    templates.extend(
+        ActionTemplate(action_id="resolve_research_icon", arguments=(("effect", icon),))
+        for icon in RESEARCH_ICON_ORDER
     )
     # Piter's troop cost, Stitched Horror's picks, Beguiling Pheromones'
     # grafted-card trash.

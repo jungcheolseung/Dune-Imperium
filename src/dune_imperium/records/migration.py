@@ -109,6 +109,7 @@ from dune_imperium.rules.graft_boxes import (
     tagged,
     untagged,
 )
+from dune_imperium.rules.immortality import OWED_ORIGIN_RESEARCH, RESEARCH_ICON_ORDER
 from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
@@ -1463,6 +1464,49 @@ def _ghola_draw(state: GameState, box: int) -> bool:
     return bool(card_id) and card_is_ghola(personal_card_for_instance(card_id))
 
 
+def _research_icon_order(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Resolve a research space's paired icons and c7r3's rewards right
+    after the recorded step that raised them.
+
+    Before codec v149 (cleanup-2b, rule decision 5) the specimen, the
+    Tleilaxu advance and c7r3's Intrigue card and card came inside the step
+    that moved the token or paid the cost, in the order
+    ``RESEARCH_ICON_ORDER`` keeps; this engine offers each as its own step
+    (a turn row, an owed draw, or a window outside the turn). A pair's
+    optional trash stays the owner's own step, answered by the record.
+    """
+
+    del step
+    if not isinstance(decision, PlayerDecision):
+        return None
+    legal = engine.legal_actions(state, decision.owner)
+    icons = {
+        dict(action.arguments)["effect"]: action
+        for action in legal
+        if action.action_id == "resolve_research_icon"
+    }
+    for icon in RESEARCH_ICON_ORDER:
+        if icon in icons:
+            return icons[icon]
+    owed = state.players[decision.owner].owed_draws
+    for deck, action_id in (
+        (OWED_INTRIGUE, "draw_owed_intrigue"),
+        (OWED_CARD, "draw_owed_card"),
+    ):
+        if any(
+            entry_deck == deck and origin == OWED_ORIGIN_RESEARCH
+            for entry_deck, origin, _source in owed
+        ):
+            draw = DomainAction(action_id=action_id, actor=decision.owner)
+            return draw if draw in legal else None
+    return None
+
+
 def _tech_influence_confirm(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -2208,6 +2252,15 @@ BRIDGES: tuple[Bridge, ...] = (
     # Codec v149 (cleanup-2a) asks a Scouts seat with no line it can take,
     # which an older engine skipped.
     Bridge("scouts_no_option_window", _scouts_no_option, before_codec=149),
+    # Codec v149 (cleanup-2b) resolves a research space's paired icons and
+    # c7r3's rewards each as its own step; an older engine resolved them
+    # inside the step that raised them.
+    Bridge(
+        "research_icon_order",
+        _research_icon_order,
+        before_codec=149,
+        follows=True,
+    ),
     # Codec v149 (cleanup-2b) confirms a Tech acquire Influence with every
     # Faction at the top in Combat, where an older engine let it pick one.
     Bridge(

@@ -1932,6 +1932,34 @@ def test_a_research_bonus_window_outside_the_turn_greys_out_the_payment() -> Non
     )
 
 
+def test_a_research_icon_window_adds_no_greyed_out_row() -> None:
+    """User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    OQ-027 [Main p. 9]: outside the turn a pair's icons (and c7r3's rewards,
+    once its cost is paid) are ordered in one window that offers a row for
+    each of them, so nothing is greyed out beside them."""
+
+    owner = PlayerState(player_id=0, research_space="c7r3")
+    state = _state(owner, config=RulesetConfig(immortality=True))
+    # The arrow's own window, with no Intrigue card to pay it, greys out its
+    # trash (the control: this test would otherwise prove nothing).
+    arrow = state.push_decision(
+        _bonus_frame(0, ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE, "test")
+    )
+    assert [row["key"] for row in _research_rows(_found(arrow))] == [
+        "choice:research_bonus_trash"
+    ]
+    windows = {
+        ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: ("intrigue", "cards"),
+        ResearchBonus.TRASH_AND_SPECIMEN: ("specimen", "trash"),
+        ResearchBonus.TLEILAXU_AND_SPECIMEN: ("specimen", "tleilaxu"),
+    }
+    for bonus, icons in windows.items():
+        window = state.push_decision(_bonus_frame(0, bonus, "test", icons=icons))
+        legal = ENGINE.legal_actions(window, 0)
+        assert {action.action_id for action in legal} == {"resolve_research_icon"}
+        assert unavailable_choices(window, 0, legal) is None, bonus
+
+
 def test_no_research_bonus_row_while_its_cost_can_be_paid() -> None:
     held = "intrigue:ambush:0"
     cases = [

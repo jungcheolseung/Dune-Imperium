@@ -375,6 +375,66 @@ def _no_greyed_tech_influence(old: Step, candidate: Step) -> None:
         page[1]["rows"] = kept
 
 
+# --- 2b-4: a research space's paired icons and c7r3's rewards in order ----
+
+
+def _research_icons_in_base_order(at: At) -> object:
+    """2b-4: each icon of a research space's pair (and c7r3's rewards) is
+    its own step now, a turn row, an owed draw or a window; the base
+    resolved them inside the step that raised them, in the order
+    ``RESEARCH_ICON_ORDER`` keeps."""
+
+    from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE
+    from dune_imperium.rules.immortality import (
+        OWED_ORIGIN_RESEARCH,
+        RESEARCH_ICON_ORDER,
+    )
+
+    if not isinstance(at.decision, PlayerDecision):
+        return None
+    icons = {
+        dict(action.arguments)["effect"]: action
+        for action in at.legal
+        if action.action_id == "resolve_research_icon"
+    }
+    for icon in RESEARCH_ICON_ORDER:
+        if icon in icons:
+            return icons[icon]
+    owed = at.state.players[at.decision.owner].owed_draws
+    for deck, action_id in (
+        (OWED_INTRIGUE, "draw_owed_intrigue"),
+        (OWED_CARD, "draw_owed_card"),
+    ):
+        if any(d == deck and origin == OWED_ORIGIN_RESEARCH for d, origin, _ in owed):
+            return next(
+                (action for action in at.legal if action.action_id == action_id),
+                None,
+            )
+    return None
+
+
+_RESEARCH_ICON_SOURCE = re.compile(r":research:c\d+r\d+:")
+
+
+def _research_icon_events_in_base_order(old: Step, candidate: Step) -> None:
+    """2b-4: the icons answered after the step log their events after the
+    step's own (the base logged them inside it, before its closing event):
+    the same events, put back in the base's order. Only when an answered
+    research icon logged one (``:research:cNrM:`` in its source) and the
+    two sides hold exactly the same events."""
+
+    if not any(_RESEARCH_ICON_SOURCE.search(e["event_id"]) for e in candidate.events):
+        return
+    texts = [_row_key(e) for e in candidate.events]
+    base = [_row_key(e) for e in old.events]
+    if texts == base or sorted(texts) != sorted(base):
+        return
+    by_text: dict[str, list[dict[str, object]]] = {}
+    for text, event in zip(texts, candidate.events, strict=True):
+        by_text.setdefault(text, []).append(event)
+    candidate.events = [by_text[text].pop(0) for text in base]
+
+
 RULES = (
     Rule(
         "scouts_no_option_window",
@@ -448,5 +508,17 @@ RULES = (
         "tech_influence_greyed",
         why="cleanup-2b: decision 1, the page greys those Factions out",
         new=_no_greyed_tech_influence,
+    ),
+    Rule(
+        "research_icon_events",
+        why="cleanup-2b: decision 5, an answered icon's events come after the "
+        "step's own",
+        new=_research_icon_events_in_base_order,
+    ),
+    Rule(
+        "research_icons_in_order",
+        why="cleanup-2b: decision 5 (OQ-027), a research pair's icons and "
+        "c7r3's rewards each their own step",
+        answer=_research_icons_in_base_order,
     ),
 )

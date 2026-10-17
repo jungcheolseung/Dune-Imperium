@@ -103,7 +103,23 @@ RESEARCH_BONUS_ROW_IDS: Final = frozenset(
     }
 )
 TRASH_ROW_IDS: Final = frozenset({"trash_optional_card", "draw_planetologist_intrigue"})
-TURN_ROW_IDS: Final = RESEARCH_BONUS_ROW_IDS | TRASH_ROW_IDS
+RESEARCH_ICON_ROW: Final = "resolve_research_icon"
+TURN_ROW_IDS: Final = RESEARCH_BONUS_ROW_IDS | TRASH_ROW_IDS | {RESEARCH_ICON_ROW}
+
+
+def research_icon_now(run: DecisionRun) -> DomainAction | None:
+    """A research space's paired icon (or c7r3's reward in its window),
+    taken at once in the order an older engine fixed
+    (``immortality.RESEARCH_ICON_ORDER``): the app resolves a research
+    space's icons inside the step that moved the token (rule decision 5
+    gave our engine the order; the app has none)."""
+
+    from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
+
+    icons = {
+        str(dict(a.arguments)["effect"]): a for a in run.by_id(RESEARCH_ICON_ROW)
+    }
+    return next((icons[i] for i in RESEARCH_ICON_ORDER if i in icons), None)
 
 
 class TurnRowGap(Exception):
@@ -122,6 +138,8 @@ def waiting_turn_row(run: DecisionRun) -> DomainAction | None:
     )
 
     legal = {a.action_id for a in run.legal}
+    if RESEARCH_ICON_ROW in legal:
+        return research_icon_now(run)
     if legal & RESEARCH_BONUS_ROW_IDS:
         research = research_bonus_now(run)
         if research is not None:

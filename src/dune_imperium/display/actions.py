@@ -601,6 +601,24 @@ def reveal_choice_of_rows(
     return tuple(owner.get(action) for action in actions)
 
 
+_RESEARCH_ICON_TEXT: dict[str, tuple[str, str]] = {
+    "specimen": ("Gain 1 specimen", "{specimen}"),
+    "tleilaxu": ("Advance on the Tleilaxu track", "{tleilaxu}"),
+    "trash": ("Trash a card (optional)", "{trash} (선택)"),
+    "intrigue": ("Draw 1 Intrigue card", "{intrigue:1}"),
+    "cards": ("Draw 1 card", "{draw:1}"),
+}
+
+
+def research_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
+    """Describe one icon of a research space's pair or of c7r3's rewards
+    (``resolve_research_icon``, cleanup-2b)."""
+
+    if action.action_id != "resolve_research_icon":
+        return None
+    return _RESEARCH_ICON_TEXT[str(dict(action.arguments)["effect"])]
+
+
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
     """Describe one queued Tech reward and its currently chosen branch."""
 
@@ -668,6 +686,7 @@ _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     ),
     "imperial_birthright": ("Imperial Birthright", "Imperial Birthright"),
     "tleilaxu_track": ("Tleilaxu track", "{tleilaxu} 트랙"),
+    "research_c7r3": ("Research space c7r3", "{research} c7r3"),
     "hungry_for_spice": ("Hungry for Spice", "Hungry for Spice"),
     "choam_transports": (
         _CHOAM_TRANSPORTS,
@@ -738,7 +757,7 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     owed = owed_draw_action_text(state, action)
     if owed is not None:
         return owed[0]
-    tech = tech_acquire_action_text(action)
+    tech = tech_acquire_action_text(action) or research_icon_action_text(action)
     if tech is not None:
         return tech[0]
     scouts = scouts_action_text(state, action)
@@ -807,7 +826,7 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     owed = owed_draw_action_text(state, action)
     if owed is not None:
         return owed[1]
-    tech = tech_acquire_action_text(action)
+    tech = tech_acquire_action_text(action) or research_icon_action_text(action)
     if tech is not None:
         return tech[1]
     scouts = scouts_action_text(state, action)

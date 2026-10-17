@@ -45,6 +45,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.unit.rules.test_immortality import _agent_research, _at
 from tests.unit.rules.test_tech import _bought_glowglobes, _combat_acquire_frame
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
@@ -70,7 +71,11 @@ from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import active_box
-from dune_imperium.rules.immortality import pending_research_bonuses
+from dune_imperium.rules.immortality import (
+    OWED_ORIGIN_RESEARCH,
+    advance_research,
+    pending_research_bonuses,
+)
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
@@ -116,12 +121,15 @@ OQ106_FIXTURES: dict[str, dict[str, list[int]]] = {
     # the cards' reshuffle (369) comes after it, as v141 drew them. A Deep
     # Desert summon for Liet Kynes (two Intrigue cards) at 199: both wait on
     # the Agent turn as rows since codec v149 (cleanup-2b), so both are
-    # taken right after the summon (one window at a time before).
+    # taken right after the summon (one window at a time before). The Intrigue
+    # trash of c7r3 at 233 holds its card and Intrigue card as two owed draws
+    # of the research space since codec v149 (cleanup-2b, rule decision 5), and
+    # the same bridge takes them right after it, the Intrigue card first.
     "v141-no-tech_module-app_ai-9711": {
         "piter_reward": [169, 170, 368, 368],
         "reshuffle_renamed": [170, 369],
         "planetologist_intrigue": [199, 199],
-        "owed_draw": [235, 290, 371],
+        "owed_draw": [233, 233, 235, 290, 371],
     },
     # Reverse Engineering in a Servo-Receivers frame (round 1).
     "v141-no-immortality-no-go_to_11-random-4094": {
@@ -1859,16 +1867,21 @@ def test_oq106_bridges_add_each_split_step_right_after_its_recorded_step(
 
 
 @pytest.mark.parametrize("name", ["v141-heuristic-150", *OQ106_FIXTURES])
-def test_a_migrated_record_stamped_v142_needs_no_bridge(name: str) -> None:
+def test_a_migrated_record_stamped_with_this_codec_needs_no_bridge(name: str) -> None:
     # The migrated steps, with every split step in its place, are a record
-    # of this engine: stamped v142 they replay as they are. A follows bridge
-    # open to them would take a split step before the record does.
+    # of this engine: stamped with its codec they replay as they are. A
+    # follows bridge open to them would take a split step before the record
+    # does. (Stamped v142 until codec v149 made a research space's icons
+    # steps of their own: a record of v142 to v148 has none of those rows, so
+    # the ``research_icon_order`` follows bridge, open to it, would add the
+    # row the migrated steps already hold. The v142 bridges alone are kept
+    # away from a v142 stamp by the test above.)
     migrated = migrate_record(_fixture(name))
     replay = replace(
         migrated.replay,
         steps=tuple(step.step for step in migrated.steps),
         expected_state_hash=canonical_state_hash(migrated.state),
-        action_codec_version=142,
+        action_codec_version=ACTION_CODEC_VERSION,
     )
 
     assert migrate_record(replay).exact
@@ -2251,3 +2264,175 @@ def test_a_turn_tech_influence_picked_at_the_top_is_dropped_before_the_press() -
     )
     assert current.dropped == ()
     assert current.divergence is not None
+
+
+# --- a research space's icons, each its own step (cleanup-2b, codec v149) ----
+# User decision 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027
+# [Main p. 9] ("한 공간에 인쇄된 아이콘은 각각 독립된 효과이며, 소유자는 각
+# 아이콘을 별개 행동으로 원하는 순서에 해결한다"): a pair space's specimen,
+# Tleilaxu advance and optional trash, and c7r3's card and Intrigue card, are
+# separate steps in the owner's order. An older engine resolved them inside the
+# step that moved the token or paid the cost, in ``RESEARCH_ICON_ORDER``.
+
+_HELD = "intrigue:ambush:1"
+
+
+def _icon_row(effect: str) -> DomainAction:
+    return DomainAction("resolve_research_icon", 0, (("effect", effect),))
+
+
+def _draw(deck: str) -> DomainAction:
+    return DomainAction(f"draw_owed_{deck}", 0)
+
+
+def _icon_order(state: GameState) -> ReplayStep | None:
+    """What the ``research_icon_order`` bridge adds now, after a recorded step."""
+
+    decision = ENGINE.current_decision(state)
+    assert decision is not None
+    return migration._research_icon_order(ENGINE, state, decision, _PRESS)
+
+
+def _on_another_turn(space: str, **owner: object) -> GameState:
+    """Seat 0 on ``space`` while seat 1 is the turn's owner: seat 0's research
+    is no turn of its own, so a research space opens its window."""
+
+    turn = DecisionFrame(
+        kind="turn",
+        frame_id="round:1:turn:1",
+        decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+    )
+    return replace(_at(space, **owner), decision_stack=(turn,))
+
+
+def _agent_fork(space: str, target: str, **owner: object) -> GameState:
+    """Seat 0's Agent turn, its token on ``space`` moved on to ``target``."""
+
+    fork = _agent_research(space, **owner)
+    return ENGINE.apply(
+        fork,
+        DomainAction("choose_research_space", 0, (("space_id", target),)),
+    ).state
+
+
+def _answers(state: GameState, *, steps: int) -> list[ReplayStep | None]:
+    """The bridge's answers one after another, each applied to the state."""
+
+    answers: list[ReplayStep | None] = []
+    for _ in range(steps):
+        answer = _icon_order(state)
+        answers.append(answer)
+        if answer is None:
+            break
+        state = ENGINE.apply(state, answer).state
+    return answers
+
+
+def test_a_pairs_icons_follow_in_the_order_an_older_engine_resolved_them() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # c3r5 in the Agent turn: the specimen, then the Tleilaxu advance.
+    tleilaxu = _agent_fork("c2r4", "c3r5")
+    assert _answers(tleilaxu, steps=3) == [
+        _icon_row("specimen"),
+        _icon_row("tleilaxu"),
+        None,
+    ]
+    # c3r3: only the specimen; its optional trash stays the owner's own step,
+    # answered by the record.
+    trash = _agent_fork("c2r4", "c3r3")
+    assert _answers(trash, steps=2) == [_icon_row("specimen"), None]
+
+
+def test_a_window_s_icons_follow_in_the_same_order() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # Outside the owner's turn the window offers the rows; the trash icon too,
+    # which opens the optional-trash window the record answers.
+    for target, expected in (
+        ("c3r5", ["specimen", "tleilaxu"]),
+        ("c3r3", ["specimen", "trash"]),
+    ):
+        fork = _on_another_turn("c2r4")
+        advanced = advance_research(fork, 0, source="test").state
+        window = ENGINE.apply(
+            advanced,
+            DomainAction("choose_research_space", 0, (("space_id", target),)),
+        ).state
+        assert window.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+        assert _answers(window, steps=2) == [_icon_row(effect) for effect in expected]
+
+
+def test_c7r3_s_rewards_follow_as_its_owed_draws_or_its_window_rows() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    pay = DomainAction("trash_intrigue_for_research_bonus", 0, (("card_id", _HELD),))
+    # In the Agent turn: the Intrigue card, then the card, then nothing.
+    turn = ENGINE.apply(_agent_fork("c6r2", "c7r3", intrigue_cards=(_HELD,)), pay).state
+    assert _answers(turn, steps=3) == [_draw("intrigue"), _draw("card"), None]
+    # Outside the turn: the window's two rows in the same order.
+    fork = _on_another_turn("c6r2", intrigue_cards=(_HELD,))
+    advanced = advance_research(fork, 0, source="test").state
+    arrow = ENGINE.apply(
+        advanced, DomainAction("choose_research_space", 0, (("space_id", "c7r3"),))
+    ).state
+    window = ENGINE.apply(arrow, pay).state
+    assert _answers(window, steps=3) == [
+        _icon_row("intrigue"),
+        _icon_row("cards"),
+        None,
+    ]
+
+
+def test_the_research_icon_bridge_adds_nothing_where_nothing_waits() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # No icon row and no c7r3 draw: a turn with nothing owed, the fork's own
+    # direction frame, and a draw owed by something else.
+    assert _icon_order(_at("c0r3")) is None
+    fork = _agent_research("c2r4")
+    assert _icon_order(fork) is None
+    owner = fork.players[0]
+    other = replace(owner, owed_draws=(("card", "tleilaxu_track", "test:other"),))
+    assert _icon_order(replace(fork, players=(other, *fork.players[1:]))) is None
+    # A c7r3 draw that is not offered on this frame is not forced either.
+    stuck = replace(
+        owner, owed_draws=(("card", OWED_ORIGIN_RESEARCH, "test:card"),)
+    )
+    stuck_state = replace(fork, players=(stuck, *fork.players[1:]))
+    assert _draw("card") not in ENGINE.legal_actions(stuck_state, 0)
+    assert _icon_order(stuck_state) is None
+    # A pending chance is not a seat's decision.
+    chance = ChanceDecision("test:chance", "Shuffle", ("a", "b"))
+    assert migration._research_icon_order(ENGINE, fork, chance, _PRESS) is None
+
+
+def test_a_record_before_v149_gets_the_icons_right_after_the_moving_step() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # An older engine's record: the move to c3r5 alone, then the turn's end.
+    # The bridge adds the specimen and the Tleilaxu advance right after the
+    # move; a record of codec v149 has its own rows, and meets the held end.
+    fork = _agent_research("c2r4")
+    move = DomainAction("choose_research_space", 0, (("space_id", "c3r5"),))
+
+    record = migrate_record(
+        _v142_record(fork, move, _PRESS, codec=148), _StartingAt(fork)
+    )
+
+    assert record.divergence is None
+    assert [(m.step, m.bridge) for m in record.steps] == [
+        (move, None),
+        (_icon_row("specimen"), "research_icon_order"),
+        (_icon_row("tleilaxu"), "research_icon_order"),
+        (_PRESS, None),
+    ]
+    owner = record.state.players[0]
+    assert (owner.specimens, owner.tleilaxu_space) == (1, 1)
+
+    current = migrate_record(
+        _v142_record(fork, move, _PRESS, codec=149), _StartingAt(fork)
+    )
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == 1
+    assert "research_icon_order" not in current.bridge_counts()

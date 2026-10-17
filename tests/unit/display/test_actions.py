@@ -33,6 +33,9 @@ from dune_imperium.display.actions import (
     agent_card_icon_text_ko,
     effect_action_text,
     effect_action_text_ko,
+    owed_draw_action_text,
+    owed_draw_origin_text,
+    research_icon_action_text,
 )
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -332,6 +335,82 @@ def test_tech_acquire_icons_have_english_and_korean_details(tech_id: str) -> Non
             details.add(en)
         if effect in ("intrigue_or_card", "shield_wall"):
             assert len(details) == 2
+
+
+# User decision 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027
+# [Main p. 9]: a research space's paired icons and c7r3's rewards are each
+# an independent effect the owner resolves as its own step.
+_RESEARCH_ICON_TEXT = {
+    "specimen": ("Gain 1 specimen", "{specimen}"),
+    "tleilaxu": ("Advance on the Tleilaxu track", "{tleilaxu}"),
+    "trash": ("Trash a card (optional)", "{trash} (선택)"),
+    "intrigue": ("Draw 1 Intrigue card", "{intrigue:1}"),
+    "cards": ("Draw 1 card", "{draw:1}"),
+}
+
+
+def _research_icon(effect: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_research_icon",
+        actor=actor,
+        arguments=(("effect", effect),),
+    )
+
+
+@pytest.mark.parametrize("effect", sorted(_RESEARCH_ICON_TEXT))
+def test_research_icon_rows_say_which_icon_they_resolve(effect: str) -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    english, korean = _RESEARCH_ICON_TEXT[effect]
+    action = _research_icon(effect)
+    assert research_icon_action_text(action) == (english, korean)
+    # The same text reaches the button through the shared effect text.
+    state = GameState(config=RulesetConfig(immortality=True), seed=0)
+    assert effect_action_text(state, action) == english
+    assert effect_action_text_ko(state, action) == korean
+    assert_placeholders_are_terms(korean, terms_keys())
+    assert_no_stray_latin(korean)
+    assert_trash_and_discard_match(english, korean)
+
+
+def test_research_icon_text_is_only_for_the_icon_rows() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]: the other research rows keep their own labels.
+    assert research_icon_action_text(DomainAction("pay_research_bonus", 0)) is None
+    assert research_icon_action_text(DomainAction("decline_research_bonus", 0)) is None
+
+
+def test_a_c7r3_draw_names_its_research_space() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]; OQ-106: c7r3's Intrigue card and card wait as the
+    # owner's draws, each naming the space that earned it.
+    assert owed_draw_origin_text("research_c7r3") == (
+        "Research space c7r3",
+        "{research} c7r3",
+    )
+    state = GameState(
+        config=RulesetConfig(immortality=True),
+        seed=0,
+        players=(
+            PlayerState(
+                player_id=0,
+                owed_draws=(
+                    ("intrigue", "research_c7r3", "test:intrigue"),
+                    ("card", "research_c7r3", "test:card"),
+                ),
+            ),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+    )
+    for action_id in ("draw_owed_intrigue", "draw_owed_card"):
+        action = DomainAction(action_id=action_id, actor=0)
+        assert owed_draw_action_text(state, action) == (
+            "Research space c7r3",
+            "{research} c7r3",
+        )
+        assert effect_action_text(state, action) == "Research space c7r3"
+        assert effect_action_text_ko(state, action) == "{research} c7r3"
+    assert_placeholders_are_terms("{research} c7r3", terms_keys())
 
 
 _GHOLA = "tleilaxu:ghola:0"

@@ -3356,16 +3356,20 @@ def test_a_holder_sees_its_play_beside_the_decline() -> None:
 
 
 def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
-    # Seed 11, one human seat: seat 0 plays its Harvest Cells and still
+    # Seed 28, one human seat: seat 0 plays its Harvest Cells and still
     # holds another Intrigue card, so the window stays open with only
     # "쓰지 않음" (a public fact, OQ-103). The play can still be taken back,
     # so the server does not answer the window: the seat's own decline is
     # the press that confirms the play, and seals it. (v146: optional
     # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
-    # moved seed 33 off this shape; re-searched then, seed 11 is the first
-    # of 0-79 under this first-action walk.)
+    # moved seed 33 off this shape; re-searched then, seed 11 was the first
+    # of 0-79 under this first-action walk. Cleanup-2b (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 5): a research
+    # space's icons are steps of their own, so the first-action walk moved
+    # off seed 11 once more; re-searched under this walk and this whole
+    # test, seed 28 is the first of 0-399.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=11, immortality=True)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=28, immortality=True)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     sent: set[int] = set()

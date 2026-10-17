@@ -215,23 +215,29 @@ def _turn_end_offered(state: GameState) -> bool:
     )
 
 
-def _trash_waits_on_the_agent_turn(state: GameState) -> None:
+def _trash_waits_on_the_agent_turn(
+    state: GameState, *, specimen_waits: bool = False
+) -> None:
     """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
     own Agent turn an optional "[trash a card]" icon opens no window; it
     waits on the turn's effect frame as rows with no refusal and, optional,
-    holds no turn end back."""
+    holds no turn end back. With ``specimen_waits`` the research space's
+    specimen waits beside it as a mandatory row of its own, which does hold
+    the end (user decision 2026-10-17, composed-effects plan 5, rule decision
+    5; OQ-027 [Main p. 9])."""
 
     top = state.decision_stack[-1]
     assert top.kind == FrameKind.AGENT_EFFECTS
-    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
-        turn_rows.OPTIONAL_TRASH
+    assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
+        *(((turn_rows.RESEARCH_ICON, "specimen"),) if specimen_waits else ()),
+        (turn_rows.OPTIONAL_TRASH, ""),
     ]
     legal = {a.action_id for a in legal_optional_trash_actions(state, 0)}
     assert legal == {"trash_optional_card"}
     assert "decline_optional_trash" not in {
         a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)
     }
-    assert _turn_end_offered(state)
+    assert _turn_end_offered(state) == (not specimen_waits)
 
 
 def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
@@ -1526,8 +1532,14 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
         if dict(a.arguments)["space_id"] == "c3r3"
     )
     advanced = engine.apply(resolved, to_trash_and_specimen).state
-    _trash_waits_on_the_agent_turn(advanced)
+    # The two icons are independent effects in the owner's order (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027 [Main
+    # p. 9]): the specimen waits as a mandatory row beside the trash, and holds
+    # the turn's end until it is taken.
+    assert advanced.players[0].specimens == 0
+    _trash_waits_on_the_agent_turn(advanced, specimen_waits=True)
 
+    # The trash is taken first; the specimen still waits.
     trash = next(
         a
         for a in legal_optional_trash_actions(advanced, 0)
@@ -1539,6 +1551,15 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     _, context = current_agent_effect_context(trashed)
     assert context["turn_owner"] == 0
     assert context["troops_recruited"] == 2
+    assert trashed.players[0].specimens == 0 and not _turn_end_offered(trashed)
+    specimen = DomainAction(
+        action_id="resolve_research_icon",
+        actor=0,
+        arguments=(("effect", "specimen"),),
+    )
+    assert specimen in engine.legal_actions(trashed, 0)
+    trashed = engine.apply(trashed, specimen).state
+    assert trashed.players[0].specimens == 1
     assert _turn_end_offered(trashed)
 
     # Pressing the end reopens this seat's own next turn without the credit.

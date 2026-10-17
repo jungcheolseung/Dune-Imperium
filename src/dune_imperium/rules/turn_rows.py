@@ -15,7 +15,9 @@ Faction" holds the end back while a Faction can rise, and waits, then lapses,
 like an Agent box's Influence with every cube at the top (OQ-057 (1)).
 Arrakis Planetologist's Intrigue card, which shared its replacement's trash
 window (OQ-106), waits beside that trash as a mandatory step of its own and
-holds the end until drawn. Outside the owner's turn -- Combat, the Arrakeen
+holds the end until drawn, and so does each icon of a research space's pair
+(specimen and trash, specimen and Tleilaxu), resolved in the owner's order
+(rule decision 5, OQ-027). Outside the owner's turn -- Combat, the Arrakeen
 Scouts step, and a Scouts line run inside the turn, which keeps the module's
 own windows -- the effect still opens its window.
 
@@ -57,6 +59,11 @@ OPTIONAL_TRASH: Final = "optional_trash"
 
 PLANETOLOGIST_INTRIGUE: Final = "planetologist_intrigue"
 """Arrakis Planetologist's Intrigue card of one replaced sandworm; no value."""
+
+RESEARCH_ICON: Final = "research_icon"
+"""One icon of a research space's pair (``value``: ``specimen`` or
+``tleilaxu``), each resolved on its own in the owner's order (rule decision
+5, OQ-027); mandatory."""
 
 type Pending = tuple[str, str, str]
 
@@ -167,7 +174,7 @@ def holds_the_end(state: GameState, player: int) -> bool:
         return False
     owner = state.players[player]
     return any(
-        kind == PLANETOLOGIST_INTRIGUE
+        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON)
         or (
             kind == RESEARCH_BONUS
             and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
@@ -237,7 +244,8 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
             kind="optional_trash_lapsed",
             payload=(("player", player),),
         )
-    # Arrakis Planetologist's Intrigue card holds the end (``holds_the_end``).
+    # Arrakis Planetologist's Intrigue card and a research space's icon hold
+    # the end (``holds_the_end``).
     raise RuntimeError(f"a mandatory {kind} waits at the turn-end press")
 
 

@@ -24,6 +24,7 @@ from dune_imperium.content.uprising.starting_cards import starting_deck_instance
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
+    GameEvent,
     GamePhase,
     GameState,
     Influence,
@@ -54,6 +55,7 @@ from dune_imperium.rules.immortality import (
     apply_family_atomics,
     apply_research_advance,
     apply_research_bonus,
+    apply_research_icon,
     apply_specimen_return,
     generate_specimens,
     legal_family_atomics_actions,
@@ -61,9 +63,14 @@ from dune_imperium.rules.immortality import (
     legal_research_bonus_actions,
     legal_specimen_return_actions,
     pending_research_bonuses,
+    pending_research_icons,
     research_bonus_block,
+    window_icons,
 )
-from dune_imperium.rules.optional_trash import legal_optional_trash_actions
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+)
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_gain,
     begin_reveal_turn,
@@ -136,6 +143,70 @@ def _research_choices(state: GameState) -> dict[str, DomainAction]:
         str(dict(action.arguments)["space_id"]): action
         for action in legal_research_advance_actions(state, 0)
     }
+
+
+def _icon(effect: str) -> DomainAction:
+    """Seat 0's row resolving one research icon (rule decision 5)."""
+
+    return DomainAction(
+        action_id="resolve_research_icon", actor=0, arguments=(("effect", effect),)
+    )
+
+
+def _owed_draw(action_id: str) -> DomainAction:
+    return DomainAction(action_id=action_id, actor=0)
+
+
+def _offered_icons(state: GameState) -> set[str]:
+    """The icons seat 0 is offered a row for now, through the engine."""
+
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in UprisingRulesEngine().legal_actions(state, 0)
+        if action.action_id == "resolve_research_icon"
+    }
+
+
+def _turn_end_offered(state: GameState) -> bool:
+    return any(
+        action.action_id == "finish_agent_turn"
+        for action in UprisingRulesEngine().legal_actions(state, 0)
+    )
+
+
+def _agent_research(space_id: str, **overrides: object) -> GameState:
+    """Seat 0's Agent turn at the Research Station with its draw spent and
+    its Research icon resolved up to the fork: the token on ``space_id``
+    waits for the next space to be chosen."""
+
+    deck = starting_deck_instance_ids(0, immortality=True)
+    reconnaissance = next(card for card in deck if "reconnaissance" in card)
+    owner = _owner(
+        hand=(reconnaissance,),
+        deck=tuple(card for card in deck if card != reconnaissance),
+        research_space=space_id,
+        **overrides,
+    )
+    state = _turn_state(owner)
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "research_station"
+    )
+    state = apply_agent_action(state, placement).state
+    for effect in legal_board_effect_actions(state, 0):
+        state = resolve_board_effect(state, effect).state
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    return state
+
+
+def _out_of_turn(space_id: str, **overrides: object) -> GameState:
+    """Seat 0 on ``space_id`` in Combat, which is no player's turn
+    [Main p. 8]: a research space opens its window."""
+
+    return replace(
+        _at(space_id, **overrides), phase=GamePhase.COMBAT, decision_stack=()
+    )
 
 
 # --- setup -------------------------------------------------------------------
@@ -261,23 +332,30 @@ def test_a_research_space_advances_again_and_reaches_the_first_marker() -> None:
     assert "genetic_marker_reached" in {event.kind for event in chained.events}
 
 
-def test_trash_and_specimen_pays_the_specimen_then_queues_the_trash() -> None:
+def test_trash_and_specimen_waits_on_the_turn_as_two_rows() -> None:
     # c3r3 prints a specimen and a black "[trash a card]" icon, optional
-    # [FAQ p. 3]. In the owner's own turn the trash waits on the turn frame as
-    # rows with no refusal and lapses unused at the turn-end press (user
-    # decision 2026-10-17, cleanup-2b; OQ-095 (2)).
+    # [FAQ p. 3]. The two icons are independent effects the owner resolves in
+    # either order (user decision 2026-10-17, composed-effects plan 5, rule
+    # decision 5; OQ-027 [Main p. 9]). In the owner's own turn the specimen
+    # waits on the turn frame as a mandatory row and the trash as rows with no
+    # refusal; the trash lapses unused at the turn-end press (user decision
+    # 2026-10-17, cleanup-2b; OQ-095 (2)).
     state = _at("c2r2")
     result = advance_research(state, 0, source="test")
     chosen = apply_research_advance(
         result.state, _research_choices(result.state)["c3r3"]
     )
 
-    assert chosen.state.players[0].specimens == 1
+    # The step that moved the token resolved neither icon.
+    assert chosen.state.players[0].specimens == 0
+    assert [event.kind for event in chosen.events] == ["research_advanced"]
     top = chosen.state.decision_stack[-1]
     assert top.kind == "turn"
-    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
-        turn_rows.OPTIONAL_TRASH
+    assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
+        (turn_rows.RESEARCH_ICON, "specimen"),
+        (turn_rows.OPTIONAL_TRASH, ""),
     ]
+    assert pending_research_icons(chosen.state, 0) == ("specimen",)
     offered = legal_optional_trash_actions(chosen.state, 0)
     assert {a.action_id for a in offered} == {"trash_optional_card"}
     owner = chosen.state.players[0]
@@ -285,9 +363,18 @@ def test_trash_and_specimen_pays_the_specimen_then_queues_the_trash() -> None:
         *owner.hand,
         *owner.discard_pile,
     }
-    # Optional: it holds no end, and the press lapses it with an event.
-    assert not turn_rows.holds_the_end(chosen.state, 0)
-    lapsed = turn_rows.lapse(chosen.state, 0)
+    # The specimen is mandatory, so it holds the end; taking it is its own
+    # step and logs what the fixed-order step used to.
+    assert turn_rows.holds_the_end(chosen.state, 0)
+    taken = UprisingRulesEngine().apply(chosen.state, _icon("specimen"))
+    assert taken.state.players[0].specimens == 1
+    assert [(e.kind, dict(e.payload)) for e in taken.events] == [
+        ("specimens_generated", {"count": 1, "player": 0})
+    ]
+    # The trash is optional: it holds no end, and the press lapses it with an
+    # event.
+    assert not turn_rows.holds_the_end(taken.state, 0)
+    lapsed = turn_rows.lapse(taken.state, 0)
     assert [(e.kind, dict(e.payload)) for e in lapsed.events] == [
         ("optional_trash_lapsed", {"player": 0})
     ]
@@ -419,10 +506,25 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     owner = paid.state.players[0]
     assert owner.trashed == ()
     assert paid.state.intrigue_discard == (*chosen.state.intrigue_discard, held)
-    assert len(owner.intrigue_cards) == 1 and held not in owner.intrigue_cards
-    # No personal card left the hand; one was drawn.
-    assert len(owner.hand) == len(owner_before.hand) + 1
-    assert [event.kind for event in paid.events][0] == "intrigue_card_trashed"
+    assert held not in owner.intrigue_cards
+    # Paying the arrow's cost is its own step. The card and the Intrigue card
+    # are two independent icons the owner draws in either order (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027 [Main
+    # p. 9]), so they wait as two owed draws and nothing is drawn yet.
+    assert [event.kind for event in paid.events] == ["intrigue_card_trashed"]
+    assert [(deck, origin) for deck, origin, _source in owner.owed_draws] == [
+        ("intrigue", "research_c7r3"),
+        ("card", "research_c7r3"),
+    ]
+    assert owner.intrigue_cards == () and owner.hand == owner_before.hand
+    engine = UprisingRulesEngine()
+    drawn = engine.apply(
+        engine.apply(paid.state, _owed_draw("draw_owed_intrigue")).state,
+        _owed_draw("draw_owed_card"),
+    ).state.players[0]
+    # No personal card left the hand; one was drawn, and one Intrigue card.
+    assert len(drawn.hand) == len(owner_before.hand) + 1
+    assert len(drawn.intrigue_cards) == 1 and held not in drawn.intrigue_cards
     lapsed = turn_rows.lapse(chosen.state, 0)
     assert [e.kind for e in lapsed.events] == ["research_bonus_lapsed"]
     assert lapsed.state.players[0].intrigue_cards == (held,)
@@ -454,6 +556,337 @@ def test_trash_intrigue_bonus_without_an_intrigue_card_waits_and_lapses() -> Non
     )
     assert lapsed.decision_stack[-1].kind == "turn"
     assert lapsed.players[0] == owner_before
+
+
+# --- paired research icons are independent effects ---------------------------
+#
+# User decision 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027
+# [Main p. 9]: "한 공간에 인쇄된 아이콘은 각각 독립된 효과이며, 소유자는 각
+# 아이콘을 별개 행동으로 원하는 순서에 해결한다" ("그래도 순서를 고르게 하자.
+# 원칙대로").
+
+
+@pytest.mark.parametrize("order", [("specimen", "tleilaxu"), ("tleilaxu", "specimen")])
+def test_specimen_and_tleilaxu_are_two_rows_taken_in_either_order(
+    order: tuple[str, str],
+) -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. c3r5 prints a specimen and a Tleilaxu advance: in the
+    # owner's Agent turn each waits as a mandatory row, the step that moved
+    # the token resolves neither, and the turn's end waits for both.
+    engine = UprisingRulesEngine()
+    fork = _agent_research("c2r4")
+    entered = apply_research_advance(fork, _research_choices(fork)["c3r5"])
+    state = entered.state
+    owner = state.players[0]
+    assert owner.research_space == "c3r5"
+    assert (owner.specimens, owner.tleilaxu_space) == (0, 0)
+    assert [event.kind for event in entered.events] == ["research_advanced"]
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    waiting = turn_rows.pending(frame)
+    assert [(kind, value) for kind, _source, value in waiting] == [
+        (turn_rows.RESEARCH_ICON, "specimen"),
+        (turn_rows.RESEARCH_ICON, "tleilaxu"),
+    ]
+    source = waiting[0][1]
+    assert pending_research_icons(state, 0) == ("specimen", "tleilaxu")
+    assert _offered_icons(state) == {"specimen", "tleilaxu"}
+    assert turn_rows.holds_the_end(state, 0) and not _turn_end_offered(state)
+
+    events: list[GameEvent] = []
+    for position, icon in enumerate(order):
+        taken = engine.apply(state, _icon(icon))
+        state = taken.state
+        events.extend(taken.events)
+        remaining = set(order[position + 1 :])
+        # The taken icon is gone; the other one still holds the end.
+        assert _offered_icons(state) == remaining
+        assert turn_rows.holds_the_end(state, 0) == bool(remaining)
+        assert _turn_end_offered(state) == (not remaining)
+
+    owner = state.players[0]
+    assert (owner.specimens, owner.tleilaxu_space) == (1, 1)
+    # Each logs what the fixed-order step logged, under the research source.
+    assert sorted((e.kind, e.event_id, dict(e.payload)) for e in events) == [
+        (
+            "specimens_generated",
+            f"{source}:specimens",
+            {"count": 1, "player": 0},
+        ),
+        (
+            "tleilaxu_advanced",
+            f"{source}:tleilaxu:0",
+            {"player": 0, "space": 1},
+        ),
+    ]
+
+
+def test_specimen_and_trash_let_the_trash_come_first() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. c3r3 in the Agent turn: the specimen row and the
+    # optional trash rows are both offered, the trash may be taken first, and
+    # the specimen alone holds the turn's end.
+    engine = UprisingRulesEngine()
+    fork = _agent_research("c2r4")
+    state = apply_research_advance(fork, _research_choices(fork)["c3r3"]).state
+    waiting = turn_rows.pending(state.decision_stack[-1])
+    assert [(kind, value) for kind, _source, value in waiting] == [
+        (turn_rows.RESEARCH_ICON, "specimen"),
+        (turn_rows.OPTIONAL_TRASH, ""),
+    ]
+    offered = {a.action_id for a in engine.legal_actions(state, 0)}
+    assert {"resolve_research_icon", "trash_optional_card"} <= offered
+    assert "decline_optional_trash" not in offered
+    assert not _turn_end_offered(state)
+
+    card = legal_optional_trash_actions(state, 0)[0]
+    trashed = engine.apply(state, card).state
+    owner = trashed.players[0]
+    assert owner.specimens == 0 and len(owner.trashed) == 1
+    # The trash was taken before the specimen; the specimen still holds the end
+    # and is still offered, the trash rows are gone.
+    assert [kind for kind, _s, _v in turn_rows.pending(trashed.decision_stack[-1])] == [
+        turn_rows.RESEARCH_ICON
+    ]
+    assert _offered_icons(trashed) == {"specimen"}
+    assert not any(
+        a.action_id == "trash_optional_card" for a in engine.legal_actions(trashed, 0)
+    )
+    assert turn_rows.holds_the_end(trashed, 0) and not _turn_end_offered(trashed)
+
+    done = engine.apply(trashed, _icon("specimen")).state
+    assert done.players[0].specimens == 1
+    assert _turn_end_offered(done)
+
+
+def test_an_unused_trash_lapses_at_the_press_after_the_specimen() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. The pair's black trash icon is optional [FAQ p. 3]:
+    # once the specimen is taken the turn may end, and the press lapses the
+    # unused trash with an event, trashing nothing.
+    engine = UprisingRulesEngine()
+    fork = _agent_research("c2r4")
+    state = apply_research_advance(fork, _research_choices(fork)["c3r3"]).state
+
+    taken = engine.apply(state, _icon("specimen")).state
+    assert _turn_end_offered(taken)
+    assert [kind for kind, _s, _v in turn_rows.pending(taken.decision_stack[-1])] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    pressed = engine.apply(taken, DomainAction(action_id="finish_agent_turn", actor=0))
+    assert [
+        (e.kind, dict(e.payload))
+        for e in pressed.events
+        if e.kind == "optional_trash_lapsed"
+    ] == [("optional_trash_lapsed", {"player": 0})]
+    owner = pressed.state.players[0]
+    assert owner.trashed == () and owner.specimens == 1
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        ("draw_owed_card", "draw_owed_intrigue"),
+        ("draw_owed_intrigue", "draw_owed_card"),
+    ],
+)
+def test_c7r3_holds_its_card_and_intrigue_draws_in_either_order(
+    order: tuple[str, str],
+) -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. c7r3's "[Trash an Intrigue card] -> [card]
+    # [Intrigue card]" [Immortality p. 16]: in the Agent turn, paying the cost
+    # holds the two rewards as owed draws of the research space, taken in the
+    # owner's order; the turn's end waits for both.
+    engine = UprisingRulesEngine()
+    held = "intrigue:ambush:1"
+    fork = _agent_research("c6r2", intrigue_cards=(held,))
+    state = apply_research_advance(fork, _research_choices(fork)["c7r3"]).state
+    pay = next(
+        action
+        for action in legal_research_bonus_actions(state, 0)
+        if action.action_id == "trash_intrigue_for_research_bonus"
+    )
+    before = state.players[0]
+
+    paid = engine.apply(state, pay)
+    state = paid.state
+    owner = state.players[0]
+    assert [event.kind for event in paid.events] == ["intrigue_card_trashed"]
+    assert turn_rows.pending(state.decision_stack[-1]) == ()
+    assert [(deck, origin) for deck, origin, _s in owner.owed_draws] == [
+        ("intrigue", "research_c7r3"),
+        ("card", "research_c7r3"),
+    ]
+    assert owner.intrigue_cards == () and owner.hand == before.hand
+    assert {a.action_id for a in engine.legal_actions(state, 0)} >= {
+        "draw_owed_intrigue",
+        "draw_owed_card",
+    }
+    assert not _turn_end_offered(state)
+
+    for position, action_id in enumerate(order):
+        state = engine.apply(state, _owed_draw(action_id)).state
+        # The other draw still waits and holds the end; the taken one is gone.
+        assert len(state.players[0].owed_draws) == 1 - position
+        assert _turn_end_offered(state) == (position == 1)
+    owner = state.players[0]
+    assert len(owner.hand) == len(before.hand) + 1
+    assert len(owner.intrigue_cards) == 1 and held not in owner.intrigue_cards
+
+
+@pytest.mark.parametrize("order", [("specimen", "tleilaxu"), ("tleilaxu", "specimen")])
+def test_a_pair_outside_the_turn_opens_a_window_ordering_its_icons(
+    order: tuple[str, str],
+) -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. Combat is no player's turn [Main p. 8]: the pair
+    # (c3r5: specimen and Tleilaxu) opens one window with a row per icon and
+    # no decline; each row is taken once, in the owner's order, and the frame
+    # pops after the last.
+    fork = _out_of_turn("c2r4")
+    advanced = advance_research(fork, 0, source="test").state
+    state = apply_research_advance(advanced, _research_choices(advanced)["c3r5"]).state
+    window = state.decision_stack[-1]
+    assert window.kind == FrameKind.RESEARCH_BONUS
+    assert window_icons(window) == ("specimen", "tleilaxu")
+    assert state.players[0].specimens == 0 and state.players[0].tleilaxu_space == 0
+    assert sorted(
+        (a.action_id, dict(a.arguments)["effect"])
+        for a in UprisingRulesEngine().legal_actions(state, 0)
+    ) == [
+        ("resolve_research_icon", "specimen"),
+        ("resolve_research_icon", "tleilaxu"),
+    ]
+
+    first = apply_research_icon(state, _icon(order[0]))
+    assert first.state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    assert window_icons(first.state.decision_stack[-1]) == (order[1],)
+    assert [a.action_id for a in legal_research_bonus_actions(first.state, 0)] == [
+        "resolve_research_icon"
+    ]
+    second = apply_research_icon(first.state, _icon(order[1]))
+    assert second.state.decision_stack == ()
+    owner = second.state.players[0]
+    assert (owner.specimens, owner.tleilaxu_space) == (1, 1)
+    assert {e.kind for e in (*first.events, *second.events)} == {
+        "specimens_generated",
+        "tleilaxu_advanced",
+    }
+
+
+def test_the_trash_icon_outside_the_turn_opens_its_own_window_over_the_rest() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. c3r3 outside the turn: taking the trash icon first
+    # pushes the usual optional-trash window (with its decline) over the window
+    # still ordering the specimen; declining returns to it, and the frame pops
+    # after the last icon.
+    fork = _out_of_turn("c2r4")
+    advanced = advance_research(fork, 0, source="test").state
+    state = apply_research_advance(advanced, _research_choices(advanced)["c3r3"]).state
+    assert window_icons(state.decision_stack[-1]) == ("specimen", "trash")
+
+    trash = apply_research_icon(state, _icon("trash"))
+    assert [frame.kind for frame in trash.state.decision_stack] == [
+        FrameKind.RESEARCH_BONUS,
+        FrameKind.OPTIONAL_TRASH,
+    ]
+    assert window_icons(trash.state.decision_stack[0]) == ("specimen",)
+    offered = {a.action_id for a in legal_optional_trash_actions(trash.state, 0)}
+    assert offered == {"decline_optional_trash", "trash_optional_card"}
+    declined = apply_optional_trash(
+        trash.state, DomainAction(action_id="decline_optional_trash", actor=0)
+    )
+    assert [frame.kind for frame in declined.state.decision_stack] == [
+        FrameKind.RESEARCH_BONUS
+    ]
+    assert [a.action_id for a in legal_research_bonus_actions(declined.state, 0)] == [
+        "resolve_research_icon"
+    ]
+    done = apply_research_icon(declined.state, _icon("specimen"))
+    assert done.state.decision_stack == ()
+    assert done.state.players[0].specimens == 1
+
+
+def test_the_trash_icon_last_outside_the_turn_leaves_only_its_own_window() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. Taking the specimen first leaves the window with the
+    # trash alone; taking it pops the window and opens only the optional-trash
+    # window, whose card is trashed.
+    fork = _out_of_turn("c2r4")
+    advanced = advance_research(fork, 0, source="test").state
+    state = apply_research_advance(advanced, _research_choices(advanced)["c3r3"]).state
+
+    specimen = apply_research_icon(state, _icon("specimen"))
+    assert specimen.state.players[0].specimens == 1
+    assert window_icons(specimen.state.decision_stack[-1]) == ("trash",)
+    trash = apply_research_icon(specimen.state, _icon("trash"))
+    assert [frame.kind for frame in trash.state.decision_stack] == [
+        FrameKind.OPTIONAL_TRASH
+    ]
+    card = legal_optional_trash_actions(trash.state, 0)[-1]
+    trashed = apply_optional_trash(trash.state, card)
+    assert trashed.state.decision_stack == ()
+    assert trashed.state.players[0].trashed == (dict(card.arguments)["card_id"],)
+
+
+def test_c7r3_paid_in_its_window_opens_a_window_for_its_two_rewards() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]. c7r3 outside the turn: the arrow's window offers the
+    # trash (and its decline); paying it pushes a window with the Intrigue card
+    # and the card as two rows (no decline), each drawing one card under its
+    # own source, in either order.
+    held = "intrigue:ambush:1"
+    fork = _out_of_turn("c6r2", intrigue_cards=(held,))
+    advanced = advance_research(fork, 0, source="test").state
+    state = apply_research_advance(advanced, _research_choices(advanced)["c7r3"]).state
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    assert window_icons(state.decision_stack[-1]) == ()
+    before = state.players[0]
+    pay = next(
+        action
+        for action in legal_research_bonus_actions(state, 0)
+        if action.action_id == "trash_intrigue_for_research_bonus"
+    )
+
+    paid = apply_research_bonus(state, pay)
+    assert [event.kind for event in paid.events] == ["intrigue_card_trashed"]
+    window = paid.state.decision_stack[-1]
+    assert [frame.kind for frame in paid.state.decision_stack] == [
+        FrameKind.RESEARCH_BONUS
+    ]
+    assert window_icons(window) == ("intrigue", "cards")
+    assert paid.state.players[0].owed_draws == ()
+    assert paid.state.players[0].hand == before.hand
+    assert [
+        (a.action_id, dict(a.arguments)["effect"])
+        for a in legal_research_bonus_actions(paid.state, 0)
+    ] == [
+        ("resolve_research_icon", "intrigue"),
+        ("resolve_research_icon", "cards"),
+    ]
+
+    # Cards first, then the Intrigue card.
+    cards = apply_research_icon(paid.state, _icon("cards"))
+    assert window_icons(cards.state.decision_stack[-1]) == ("intrigue",)
+    assert len(cards.state.players[0].hand) == len(before.hand) + 1
+    assert cards.state.players[0].intrigue_cards == ()
+    intrigue = apply_research_icon(cards.state, _icon("intrigue"))
+    assert intrigue.state.decision_stack == ()
+    assert len(intrigue.state.players[0].intrigue_cards) == 1
+    source = dict(window.context)["source"]
+    (drawn,) = intrigue.events
+    assert drawn.kind == "intrigue_card_drawn"
+    assert drawn.event_id.startswith(f"{source}:intrigue:")
+
+    # Intrigue card first, then the card.
+    first = apply_research_icon(paid.state, _icon("intrigue"))
+    assert window_icons(first.state.decision_stack[-1]) == ("cards",)
+    assert len(first.state.players[0].intrigue_cards) == 1
+    last = apply_research_icon(first.state, _icon("cards"))
+    assert last.state.decision_stack == ()
+    assert len(last.state.players[0].hand) == len(before.hand) + 1
 
 
 def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:

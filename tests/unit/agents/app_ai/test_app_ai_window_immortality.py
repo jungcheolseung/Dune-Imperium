@@ -48,7 +48,11 @@ from dune_imperium.agents.app_ai.windows.agent_effects import (
     CONTROL_THE_SPICE_TRASH_INTENT,
     STITCHED_HORROR_TRASH_INTENT,
 )
-from dune_imperium.agents.app_ai.windows.common import TurnRowGap
+from dune_imperium.agents.app_ai.windows.common import (
+    TurnRowGap,
+    research_icon_now,
+    waiting_turn_row,
+)
 from dune_imperium.agents.app_ai.windows.intrigue import (
     INTENT,
     INTENT_AT,
@@ -466,6 +470,99 @@ def test_research_bonus_with_an_unknown_choice_is_a_gap() -> None:
     assert W.research_bonus(_with_legal(run, mystery)) is None
 
 
+def _icon_window(
+    bonus: ResearchBonus, icons: tuple[str, ...], **changes: object
+) -> GameState:
+    """``bonus``'s window ordering ``icons``, as it opens outside the owner's
+    turn (Combat, the Arrakeen Scouts step)."""
+
+    state, seat = _research_seat(**changes)
+    return state.push_decision(_bonus_frame(seat, bonus, "test", icons=icons))
+
+
+def _icon_effects(run: DecisionRun) -> list[str]:
+    return [str(arg(a, "effect")) for a in run.by_id("resolve_research_icon")]
+
+
+def test_research_icon_now_takes_the_specimen_before_the_other_icons() -> None:
+    """User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    OQ-027 [Main p. 9]: the owner orders a research space's independent icons.
+    The app has no such order (it resolves them inside the step that moves the
+    token), so the AI takes the older engine's: specimen, Tleilaxu, trash."""
+
+    # c3r5 in the owner's turn: a specimen and a Tleilaxu advance wait as rows.
+    pair = _bonus_state("c2r4", "c3r5").pop_decision()
+    run = _run(pair)
+    assert _icon_effects(run) == ["specimen", "tleilaxu"]
+    first = research_icon_now(run)
+    assert first is not None and _arg(first, "effect") == "specimen"
+    # Whatever order the rows are listed in.
+    backwards = DecisionRun(
+        run.ctx, run.profile, tuple(reversed(run.legal)), run.rng, run.memory
+    )
+    assert _icon_effects(backwards) == ["tleilaxu", "specimen"]
+    assert research_icon_now(backwards) == first
+    # The turn's waiting-row hook takes the same row first.
+    assert waiting_turn_row(run) == first
+    taken = ENGINE.apply(pair, first).state
+    second = research_icon_now(_run(taken))
+    assert second is not None and _arg(second, "effect") == "tleilaxu"
+
+    # c3r3: the trash rows are not icon rows; the specimen goes first.
+    trash_pair = _bonus_state("c2r2", "c3r3").pop_decision()
+    trash_run = _run(trash_pair)
+    assert "trash_optional_card" in {a.action_id for a in trash_run.legal}
+    row = research_icon_now(trash_run)
+    assert row is not None and _arg(row, "effect") == "specimen"
+
+
+def test_research_icon_now_is_none_without_an_icon_row() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]: no icon row, nothing taken (a direction frame, c7r3's
+    # arrow window).
+    assert research_icon_now(_run(_research())) is None
+    assert research_icon_now(_run(_window("c7r3", intrigue_cards=()))) is None
+
+
+@pytest.mark.parametrize(
+    ("bonus", "icons", "expected"),
+    [
+        (ResearchBonus.TRASH_AND_SPECIMEN, ("specimen", "trash"), "specimen"),
+        (ResearchBonus.TRASH_AND_SPECIMEN, ("trash", "specimen"), "specimen"),
+        (ResearchBonus.TRASH_AND_SPECIMEN, ("trash",), "trash"),
+        (ResearchBonus.TLEILAXU_AND_SPECIMEN, ("specimen", "tleilaxu"), "specimen"),
+        (ResearchBonus.TLEILAXU_AND_SPECIMEN, ("tleilaxu", "specimen"), "specimen"),
+        (ResearchBonus.TLEILAXU_AND_SPECIMEN, ("tleilaxu",), "tleilaxu"),
+        (
+            ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE,
+            ("intrigue", "cards"),
+            "intrigue",
+        ),
+        (
+            ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE,
+            ("cards", "intrigue"),
+            "intrigue",
+        ),
+        (ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE, ("cards",), "cards"),
+    ],
+)
+def test_research_bonus_takes_the_first_icon_of_an_icon_window(
+    bonus: ResearchBonus, icons: tuple[str, ...], expected: str
+) -> None:
+    """User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    OQ-027 [Main p. 9]: a window ordering a pair's icons (or c7r3's rewards)
+    has no decline; the handler answers the first icon in the fixed order
+    (``RESEARCH_ICON_ORDER``), not the order the rows are listed in."""
+
+    state = _icon_window(bonus, icons)
+    run = _run(state)
+    assert sorted(_icon_effects(run)) == sorted(icons)
+    assert {a.action_id for a in run.legal} == {"resolve_research_icon"}
+    action = W.research_bonus(run)
+    assert action is not None and action.action_id == "resolve_research_icon"
+    assert _arg(action, "effect") == expected
+
+
 def test_research_advance_with_a_space_off_the_track_is_a_gap() -> None:
     state = _research()
     run = _run(state)
@@ -556,16 +653,19 @@ def _no_junk(**changes: object) -> dict[str, object]:
 
 def test_a_research_hex_trashes_its_owners_turn_rows() -> None:
     """Inside the owner's own turn c3r3's trash waits on the turn as rows,
-    with no decline (cleanup-2b)."""
+    with no decline (cleanup-2b), beside its specimen: the two icons are
+    independent effects in the owner's order (user decision 2026-10-17,
+    composed-effects plan 5, rule decision 5; OQ-027 [Main p. 9])."""
 
     state = _bonus_state("c2r2", "c3r3")
     seat = _seat(state)
     reveal = state.pop_decision()
     assert [kind for kind, _, _ in turn_rows.pending(reveal.decision_stack[-1])] == [
-        turn_rows.OPTIONAL_TRASH
+        turn_rows.RESEARCH_ICON,
+        turn_rows.OPTIONAL_TRASH,
     ]
     ids = {a.action_id for a in ENGINE.legal_actions(reveal, seat)}
-    assert "trash_optional_card" in ids
+    assert {"trash_optional_card", "resolve_research_icon"} <= ids
     assert "decline_optional_trash" not in ids
 
 

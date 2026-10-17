@@ -254,6 +254,7 @@ const LABELS_EN = {
     "take_desert_riding_hooks": "Take {maker_hooks} Instead of {spice}",
     "trash_intrigue_for_research_bonus": "{research} bonus: {trash_intrigue} -> card + {intrigue}",
     "pay_research_bonus": "{research} bonus: 7 {solari} -> {tleilaxu} x2",
+    "resolve_research_icon": "{research} space icon",
     "decline_research_bonus": "{research} bonus: decline",
     "return_specimen": "Return a {specimen} to {supply}",
     "use_family_atomics": "Family Atomics: redeal the {imperium_row}",
@@ -337,7 +338,9 @@ const LABELS_EN = {
     "troops": "{recruit} {troop} ({garrison})",
     "water": "Gain {water}",
     "research": "{research}",
-    "return_self": "Return this card to hand"
+    "return_self": "Return this card to hand",
+    "specimen": "{specimen}",
+    "tleilaxu": "{tleilaxu}"
   },
   "RESEARCH_BONUS_LABELS": {
     "none": "",
