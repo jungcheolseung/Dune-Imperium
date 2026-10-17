@@ -34,6 +34,7 @@ const PROMPT_KO = {
   "Join a subcommittee or decline": "가입할 소위원회 선택, 또는 거절",
   "Choose an Arrakeen Scouts option or pass": "아라킨 스카웃 선택지 선택, 또는 패스",
   "Choose an Arrakeen Scouts option": "아라킨 스카웃 선택지 선택",
+  "Nothing in this Arrakeen Scouts item can be taken": "이 아라킨 스카웃 항목에서 할 수 있는 선택 없음",
   "Take part in the mission or pass": "임무에 참여, 또는 패스",
   "Make a secret pick": "비밀 선택",
   "Choose and confirm a sealed bid": "봉인 입찰액을 골라 확정",

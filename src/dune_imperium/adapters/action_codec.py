@@ -493,7 +493,18 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # changes (the engine equivalence gate: 200 games step by step); only the
 # decision stack's form does, so saves from v147 are refused by the version
 # check while a v147 record replays as it is.
-ACTION_CODEC_VERSION = 148
+# v149 (composed-effects cleanup-2, docs/composed-effects-plan.md 5 "정리-2
+# 계획"; one raise for the whole cleanup, on branch ``cleanup2`` until it
+# merges with A8): (2a, user decision 2026-10-17 applying the 2026-09-30
+# ruling "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다", OQ-071) an
+# Arrakeen Scouts choice with no line the seat can take -- an event's or a
+# sale's, or a revealed secret pick's costed line -- opens for that seat
+# too, its lines greyed with their reasons, and its one row
+# ``resolve_scouts_choice_without_option`` (new template, Scouts catalogs)
+# emits the ``scouts_choice_skipped`` an older engine emitted without
+# asking. Older records cross the window with the bridge
+# ``scouts_no_option_window``.
+ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1600,6 +1611,8 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             ActionTemplate(action_id="scouts_choose_option", arguments=(("option", i),))
             for i in range(_MAX_SCOUTS_OPTIONS)
         ),
+        # The same choice with no line the seat can take: take nothing.
+        ActionTemplate(action_id="resolve_scouts_choice_without_option"),
     ]
     return tuple(templates)
 

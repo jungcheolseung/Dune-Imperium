@@ -24,6 +24,8 @@ _SCOUTS_ACTION_PREFIXES = (
     "trash_optional_card",
     "take_desert_riding_hooks",
     "confirm_scouts_bid",
+    # A Scouts choice with no line the seat can take (codec v149).
+    "resolve_scouts_choice_without_option",
 )
 
 
@@ -31,7 +33,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 148
+    assert ACTION_CODEC_VERSION == 149
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,

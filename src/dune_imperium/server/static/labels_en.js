@@ -237,6 +237,7 @@ const LABELS_EN = {
     "scouts_lose_garrison_unit": "Lose from your {garrison}",
     "scouts_choose_option": "Choose",
     "scouts_pass": "Pass",
+    "resolve_scouts_choice_without_option": "No option you can take — confirm",
     "scouts_join_mission": "Take Part in the Mission",
     "scouts_secret_pick": "Secret Pick",
     "scouts_bid": "Choose a Bid",

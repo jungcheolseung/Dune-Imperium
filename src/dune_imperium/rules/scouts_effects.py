@@ -1297,6 +1297,20 @@ def _is_passable(item: str) -> bool:
     return event.passable or event.kind is EventKind.SHARED
 
 
+# The one row of a Scouts choice with no line the seat can take: it confirms
+# that the seat takes nothing (cleanup-2a; OQ-071 addendum).
+SCOUTS_NO_OPTION: Final = "resolve_scouts_choice_without_option"
+_NO_OPTION_PROMPT: Final = "Nothing in this Arrakeen Scouts item can be taken"
+
+
+def _skipped(item: str, player: int, source: str) -> GameEvent:
+    return GameEvent(
+        event_id=f"{source}:skipped",
+        kind="scouts_choice_skipped",
+        payload=(("item_id", item), ("player", player)),
+    )
+
+
 def _affordable(state: GameState, player: int, item: str) -> tuple[int, ...]:
     return tuple(
         index
@@ -1318,36 +1332,25 @@ def offer_scouts_choice(
     Only lines the seat can pay for, and whose cost buys something, are
     offered (``line_is_offered``). A seat that must choose and can do one
     line only still gets the choice, with the other line shown but not
-    selectable (``display.scouts.scouts_choice_lines``); one that can do
-    none is skipped without a choice (OQ-071, user ruling 2026-09-29)
-    [Scouts help]. ``volunteer`` is Rebuild Infrastructure's first seat
-    that agreed to pay (OQ-084).
+    selectable (``display.scouts.scouts_choice_lines``). One that can do
+    none takes nothing (OQ-071, user ruling 2026-09-29) [Scouts help], but
+    is asked too, its lines greyed with their reasons and one confirm
+    (``SCOUTS_NO_OPTION``) to take nothing -- "결정 창 없이 자동으로 넘어가는
+    곳도 모두 결정 창을 연다" (user ruling 2026-09-30, applied here by the
+    user's decision of 2026-10-17, cleanup-2a). ``volunteer`` is Rebuild
+    Infrastructure's first seat that agreed to pay (OQ-084).
     """
 
-    affordable = _affordable(state, player, item)
-    if not affordable:
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:skipped",
-                    kind="scouts_choice_skipped",
-                    payload=(("item_id", item), ("player", player)),
-                ),
-            ),
-        )
-    passable = _is_passable(item)
+    if not _affordable(state, player, item):
+        prompt = _NO_OPTION_PROMPT
+    elif _is_passable(item):
+        prompt = "Choose an Arrakeen Scouts option or pass"
+    else:
+        prompt = "Choose an Arrakeen Scouts option"
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_CHOICE,
         frame_id=f"{source}:choice",
-        decision=PlayerDecision(
-            owner=player,
-            prompt=(
-                "Choose an Arrakeen Scouts option or pass"
-                if passable
-                else "Choose an Arrakeen Scouts option"
-            ),
-        ),
+        decision=PlayerDecision(owner=player, prompt=prompt),
         context=(
             ("item", item),
             ("player", player),
@@ -1372,10 +1375,12 @@ def offer_only_line(
     A line without a cost just resolves. A line with a white-arrow cost is
     the seat's to take or leave: "You do not have to pay such a cost. If you
     don't pay the cost, you don't get the effect." [Main p. 20]; it is not
-    offered at all when the seat cannot pay it or when paying would buy
-    nothing (``line_is_offered``). Used by a revealed secret pick (OQ-085
-    (c), ``offer_secret_reward``); a joined subcommittee opens its line
-    directly, its cost already checked by ``joinable_subcommittees``.
+    offered when the seat cannot pay it or when paying would buy nothing
+    (``line_is_offered``), and the seat then only confirms that it takes
+    nothing, as at a choice with no line (cleanup-2a). Used by a revealed
+    secret pick (OQ-085 (c), ``offer_secret_reward``); a joined
+    subcommittee opens its line directly, its cost already checked by
+    ``joinable_subcommittees``.
     """
 
     option = scouts_option(item, index)
@@ -1390,22 +1395,17 @@ def offer_only_line(
                 exclude_space=exclude_space,
             )
         )
-    if not line_is_offered(state, player, option, exclude_space=exclude_space):
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:skipped",
-                    kind="scouts_choice_skipped",
-                    payload=(("item_id", item), ("player", player)),
-                ),
-            ),
-        )
+    offered = line_is_offered(state, player, option, exclude_space=exclude_space)
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_CHOICE,
         frame_id=f"{source}:choice",
         decision=PlayerDecision(
-            owner=player, prompt="Choose an Arrakeen Scouts option or pass"
+            owner=player,
+            prompt=(
+                "Choose an Arrakeen Scouts option or pass"
+                if offered
+                else _NO_OPTION_PROMPT
+            ),
         ),
         context=(
             ("exclude_space", exclude_space),
@@ -1437,7 +1437,8 @@ def _line_exclude_space(context: Mapping[str, object]) -> str:
 def legal_scouts_choice_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
-    """The seat's payable lines, and a pass where the item allows one."""
+    """The seat's payable lines, and a pass where the item allows one; with
+    no line to take, only the confirm that the seat takes nothing."""
 
     frame = owned_top_frame(state, FrameKind.SCOUTS_CHOICE, player)
     if frame is None:
@@ -1459,6 +1460,8 @@ def legal_scouts_choice_actions(
     else:
         passable = _is_passable(item)
         indices = _affordable(state, player, item)
+    if not indices:
+        return (DomainAction(action_id=SCOUTS_NO_OPTION, actor=player),)
     passes = (DomainAction(action_id="scouts_pass", actor=player),) if passable else ()
     return (
         *passes,
@@ -1474,7 +1477,8 @@ def legal_scouts_choice_actions(
 
 
 def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Pass, or take a line (Rebuild Infrastructure: agree to pay)."""
+    """Pass, take a line (Rebuild Infrastructure: agree to pay), or confirm
+    that there is nothing to take."""
 
     if action not in legal_scouts_choice_actions(state, action.actor):
         raise ValueError("action is not a legal Arrakeen Scouts option")
@@ -1482,6 +1486,8 @@ def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleRe
     item = context_str(context, "item", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
     popped = state.pop_decision()
+    if action.action_id == SCOUTS_NO_OPTION:
+        return RuleResult(state=popped, events=(_skipped(item, action.actor, source),))
     if action.action_id == "scouts_pass":
         return RuleResult(
             state=popped,

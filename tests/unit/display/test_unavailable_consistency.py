@@ -1950,7 +1950,10 @@ def _silent_optional_effects(
     with itself active, as the frame offers it), Imperial Privilege's
     Intrigue trade, Desert Tactics' trash, the visit's Sardaukar Commander
     and Acquire Tech, Reverend Mother's repeat and a new High Council
-    seat's subcommittee.
+    seat's subcommittee. A step the seat must take before anything else
+    -- Gather Intelligence, or a held draw that comes at once
+    (``frames.draw_is_immediate``, OQ-106: the Bene Gesserit Influence 4
+    Intrigue card) -- offers nothing else on purpose and is left out.
     """
 
     top = state.decision_stack[-1]
@@ -1959,6 +1962,8 @@ def _silent_optional_effects(
         or not isinstance(top.decision, PlayerDecision)
         or top.decision.owner != seat
         or legal_gather_intelligence_actions(state, seat)
+        or {action.action_id for action in legal}
+        <= {"draw_owed_card", "draw_owed_intrigue"}
     ):
         return set()
     _, context = current_agent_effect_context(state)

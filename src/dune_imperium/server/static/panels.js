@@ -2129,27 +2129,6 @@ function ownGlowFrom(seat, entries, seats) {
   return last + 1;
 }
 
-/* An Arrakeen Scouts choice the viewing seat could take nothing from is
-   skipped without asking (rules/scouts_effects.py, OQ-071). The log
-   records it; this also says so once, in the note, when it arrives. (A new
-   High Council seat with no subcommittee left open asks, offering only its
-   decline: OQ-076 (c).) */
-function noticeScoutsSkips(entries, from) {
-  const seat = activeSeat();
-  if (typeof seat !== "number") return;
-  const notes = [];
-  for (const entry of entries) {
-    if (entry.index < from || entry.undone || !entry.events) continue;
-    for (const event of entry.events) {
-      if (!event.payload || event.payload.player !== seat) continue;
-      if (event.kind === "scouts_choice_skipped") {
-        notes.push(t("panels.scouts_skipped", { item: scoutsItem(event.payload.item_id).name }));
-      }
-    }
-  }
-  if (notes.length) note(notes.join(" · "));
-}
-
 const LOG_EXPANDED_KEY = "dune.logExpanded";
 
 function labelLogSize(button) {
@@ -2211,7 +2190,6 @@ function renderLog() {
     } else if (log.count !== logSeen.count) {
       logSeen.freshFrom = logSeen.count;
       logSeen.count = log.count;
-      noticeScoutsSkips(log.entries, logSeen.freshFrom);
     }
     arrivedFrom = logSeen.freshFrom;
     const seat = activeSeat();

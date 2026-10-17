@@ -72,7 +72,7 @@ from dune_imperium.rules.graft_boxes import active_box
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
-from dune_imperium.rules.scouts_effects import reward_was_chosen
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION, reward_was_chosen
 from dune_imperium.server.persistence import parse_save_document
 from dune_imperium.simulation.runner import run_policy_game
 
@@ -190,20 +190,20 @@ def _this_engine_game(seed: int) -> GameReplay:
 def game() -> GameReplay:
     """A whole heuristic game on this engine with every module on.
 
-    Seed 102, seed 1 until codec v146: optional Agent-turn effects no longer
+    Seed 95; seed 1 until codec v146: optional Agent-turn effects no longer
     offer a refusal (OQ-095 (2), user ruling 2026-10-14), which moved seed
     1's game off these tests' preconditions -- a seat now deploys troops
     before drawing the Intrigue card a Research owes it (an older engine
     drew it inside the Research, so the bridge takes it first), and no seat
-    places with Navigation Chamber's discount any more. Of seeds 1-200,
-    95, 96, 102, 141, 149, 154, 182, 186, 187 and 194 meet every test on
-    this fixture but the triggered-draw one, which needs a game whose only
-    split steps are owed draws and has a seed of its own; 102's game also
-    holds an Imperial Privilege draw and an Arrakeen Scouts line draw, so
-    the older records built from it take those bridges too.
+    places with Navigation Chamber's discount any more. Seed 102 then, until
+    codec v149 (cleanup-2a) asked Scouts seats with nothing to take, an
+    extra decision that moved 102's game off them the same way; of the
+    seeds that met them then (95, 96, 102, 141, 149, 154, 182, 186, 187,
+    194), 95 still does. The triggered-draw test needs a game whose only
+    split steps are owed draws and has a seed of its own.
     """
 
-    return _this_engine_game(102)
+    return _this_engine_game(95)
 
 
 def _states(replay: GameReplay) -> list[GameState]:
@@ -297,9 +297,27 @@ def _held_steps(replay: GameReplay) -> dict[int, str]:
 
 
 def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> set[int]:
-    """The steps of ``replay`` an engine of ``codec`` would not have recorded."""
+    """The steps of ``replay`` an engine of ``codec`` would not have recorded:
+    before v142 the steps it made inside another (``_held_steps``), before
+    v149 the confirms of a Scouts choice with nothing to take, which it
+    skipped unasked (``_no_option_steps``)."""
 
-    return set(drop or ()) | (set(_held_steps(replay)) if codec < 142 else set())
+    return (
+        set(drop or ())
+        | (set(_held_steps(replay)) if codec < 142 else set())
+        | (_no_option_steps(replay) if codec < 149 else set())
+    )
+
+
+def _no_option_steps(replay: GameReplay) -> set[int]:
+    return _only_choice_in(replay, FrameKind.SCOUTS_CHOICE, SCOUTS_NO_OPTION)
+
+
+def _no_option_counts(replay: GameReplay) -> dict[str, int]:
+    """The bridge counts of those confirms in a record before v149."""
+
+    found = len(_no_option_steps(replay))
+    return {"scouts_no_option_window": found} if found else {}
 
 
 def _older(replay: GameReplay, codec: int, drop: set[int] | None = None) -> GameReplay:
@@ -399,6 +417,7 @@ def test_pauses_an_older_engine_never_recorded_are_answered(
     assert record.bridge_counts() == {
         "pause": len(pauses - set(_held_steps(game))),
         **_held_counts(game),
+        **_no_option_counts(game),
     }
     assert [migrated.step for migrated in record.steps] == _steps(game.steps)
     assert canonical_state_hash(record.state) == game.expected_state_hash
@@ -428,6 +447,27 @@ def test_conflict_end_windows_are_declined_only_for_records_before_v141(
     )
 
 
+def test_a_scouts_seat_with_nothing_to_take_is_answered_only_before_v149(
+    game: GameReplay,
+) -> None:
+    # Cleanup-2a asks such a seat; an older engine skipped it unasked.
+    confirms = _only_choice_in(game, FrameKind.SCOUTS_CHOICE, SCOUTS_NO_OPTION)
+    assert confirms
+
+    before = migrate_record(_older(game, 148))
+    assert before.complete
+    assert before.bridge_counts()["scouts_no_option_window"] == len(confirms)
+    assert [migrated.step for migrated in before.steps] == _steps(game.steps)
+    assert canonical_state_hash(before.state) == game.expected_state_hash
+
+    after = migrate_record(_older(game, 149, confirms))
+    assert after.divergence is not None
+    first = min(confirms)
+    assert after.divergence.recorded_index == first - sum(
+        1 for index in confirms if index < first
+    )
+
+
 def test_a_combat_intrigue_pass_is_answered_only_for_records_before_v139(
     game: GameReplay,
 ) -> None:
@@ -444,7 +484,11 @@ def test_a_combat_intrigue_pass_is_answered_only_for_records_before_v139(
 
     before = migrate_record(_older(game, 138, {dropped}))
     assert before.complete
-    assert before.bridge_counts() == {"combat_intrigue_pass": 1, **_held_counts(game)}
+    assert before.bridge_counts() == {
+        "combat_intrigue_pass": 1,
+        **_held_counts(game),
+        **_no_option_counts(game),
+    }
     assert [migrated.step for migrated in before.steps] == _steps(game.steps)
     assert canonical_state_hash(before.state) == game.expected_state_hash
 
@@ -563,6 +607,7 @@ def test_a_card_effect_recorded_before_v137_named_its_icon_is_rewritten(
     assert before.bridge_counts() == {
         "agent_card_effect_named": 1,
         **_held_counts(game),
+        **_no_option_counts(game),
     }
     assert before.steps[index].step == recorded
     assert before.steps[index].recorded_index == position
@@ -842,7 +887,10 @@ def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
 
     assert record.divergence is not None
     assert record.divergence.recorded_index == position
-    assert set(record.bridge_counts()) <= set(_held_counts(game))
+    assert set(record.bridge_counts()) <= {
+        *_held_counts(game),
+        *_no_option_counts(game),
+    }
     assert [migrated.step for migrated in record.steps] == _steps(game.steps[:index])
 
 
@@ -852,24 +900,28 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # the trigger, so its record has no such step. Dropped from this
     # engine's record (whose heuristic takes each at once), each is taken
     # right after its trigger again, so the game comes back step for step.
-    # Seed 10's game, whose only split steps are its three owed draws: this
-    # test ran on the fixture's seed 1 until codec v146 (OQ-095 (2), user
-    # ruling 2026-10-14), whose game then also held an Imperial Privilege
-    # draw and a Scouts reward pause and drew one owed Intrigue card a step
-    # late. Of seeds 1-200 only 2, 10 and 88 split nothing but owed draws,
-    # and seed 2 takes one late.
-    game = _this_engine_game(10)
+    # Seed 6's game; its other split steps are dropped with the draws and
+    # taken back by their own bridges. (Seed 10 until codec v149, whose game
+    # split nothing but its three owed draws, one of three such seeds of
+    # 1-200; cleanup-2a's Scouts confirms moved every game, none of 1-200
+    # splits only owed draws now, and seed 10's heuristic takes one owed
+    # Intrigue card a step late. Seeds 5, 6 and 20 are the first that bring
+    # every owed draw back. The fixture's seed 1 drew one a step late until
+    # codec v146, OQ-095 (2).)
+    game = _this_engine_game(6)
     owed = {
         index
         for index, step in enumerate(game.steps)
         if isinstance(step, DomainAction) and step.action_id.startswith("draw_owed_")
     }
     assert owed
-    assert set(_held_steps(game)) == owed
+    held = _held_steps(game)
+    assert {index for index, name in held.items() if name == "owed_draw"} == owed
 
-    before = migrate_record(_older(game, 141, owed))
+    before = migrate_record(_older(game, 141))
     assert before.complete, before.divergence
-    assert before.bridge_counts() == {"owed_draw": len(owed)}
+    assert before.bridge_counts() == {**_held_counts(game), **_no_option_counts(game)}
+    assert before.bridge_counts()["owed_draw"] == len(owed)
     assert [migrated.step for migrated in before.steps] == _steps(game.steps)
     assert canonical_state_hash(before.state) == game.expected_state_hash
 
@@ -896,7 +948,7 @@ def test_a_scouts_line_draw_an_older_engine_drew_at_once_follows_its_choice() ->
 
     before = migrate_record(_older(game, 141))
     assert before.complete, before.divergence
-    assert before.bridge_counts() == _held_counts(game)
+    assert before.bridge_counts() == {**_held_counts(game), **_no_option_counts(game)}
     choices = [
         previous.step
         for previous, migrated in zip(before.steps, before.steps[1:], strict=False)

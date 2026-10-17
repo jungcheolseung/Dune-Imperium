@@ -121,7 +121,7 @@ from dune_imperium.rules.reveal_turn import (
     reveal_choice_effect_is_available,
     reveal_pending_gains,
 )
-from dune_imperium.rules.scouts_effects import reward_was_chosen
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION, reward_was_chosen
 
 # A round's end can need a handful of bridges in a row before the next
 # recorded step fits (each reward recipient's pause, every seat's
@@ -1152,6 +1152,30 @@ def _decline_in(
     return answer
 
 
+def _scouts_no_option(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Answer a Scouts choice that offers only the confirm of taking nothing.
+
+    Codec v149 (cleanup-2a) asks a seat with no line it can take; an older
+    engine skipped it, so no recorded step answers the window -- unless the
+    record already holds the confirm itself.
+    """
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or state.decision_stack[-1].kind != FrameKind.SCOUTS_CHOICE
+    ):
+        return None
+    confirm = DomainAction(action_id=SCOUTS_NO_OPTION, actor=decision.owner)
+    if step == confirm or engine.legal_actions(state, decision.owner) != (confirm,):
+        return None
+    return confirm
+
+
 _CARD_EFFECT = "resolve_agent_card_effect"
 
 
@@ -2094,4 +2118,7 @@ BRIDGES: tuple[Bridge, ...] = (
     Bridge(
         "boost_draw_at_turn_end", _boost_draw_at_turn_end, before_codec=145
     ),
+    # Codec v149 (cleanup-2a) asks a Scouts seat with no line it can take,
+    # which an older engine skipped.
+    Bridge("scouts_no_option_window", _scouts_no_option, before_codec=149),
 )

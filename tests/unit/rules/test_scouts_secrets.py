@@ -37,6 +37,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 from dune_imperium.server.session_log import log_step, reveals_hidden_information
 from dune_imperium.server.sessions import _log_entry_json
@@ -208,6 +209,35 @@ def test_the_discard_line_may_be_taken_or_left() -> None:
     state = _act(state, "scouts_discard", card_id=state.players[2].hand[0])
     assert state.players[2].troops_garrison == garrison + 3
     assert state.scouts_secret_picks == ()
+
+
+def test_a_due_line_the_seat_cannot_pay_asks_it_to_take_nothing() -> None:
+    """Cleanup-2a (OQ-071 addendum, the 2026-09-30 ruling "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다"): seat 2's discard line falls due with
+    an empty hand, so it can only confirm that it takes nothing."""
+
+    picked = _pick_all(_reveal(_base(), "covert_operation"), PICKS)
+    state = _advance(_next_round(picked, 5))
+    while state.decision_stack[-1].kind != FrameKind.SCOUTS_DRAW:
+        seat = _owner(state)
+        state = ENGINE.apply(state, ENGINE.legal_actions(state, seat)[0]).state
+    players = list(state.players)
+    players[2] = replace(players[2], hand=())
+    state = _advance(_next_round(replace(state, players=tuple(players)), 6))
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
+    assert _owner(state) == 2
+    nothing = DomainAction(action_id=SCOUTS_NO_OPTION, actor=2)
+    assert ENGINE.legal_actions(state, 2) == (nothing,)
+    codec = ActionCodec(SCOUTS)
+    assert codec.decode(codec.encode(nothing), 2) == nothing
+    garrison = state.players[2].troops_garrison
+    before = len(state.event_log)
+    state = _act(state, SCOUTS_NO_OPTION)
+    skipped = [e for e in state.event_log[before:] if e.kind == "scouts_choice_skipped"]
+    assert [dict(e.payload) for e in skipped] == [
+        {"item_id": "covert_operation", "player": 2}
+    ]
+    assert state.players[2].troops_garrison == garrison
 
 
 def test_offworld_operation_pays_more_past_the_helix() -> None:

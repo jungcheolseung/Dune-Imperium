@@ -632,6 +632,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_rewards_first": apply_scouts_rewards_first,
     "scouts_choose_option": apply_scouts_choice_action,
     "scouts_pass": apply_scouts_choice_action,
+    "resolve_scouts_choice_without_option": apply_scouts_choice_action,
     "scouts_join_mission": apply_mission_join,
     "scouts_decline_mission": apply_mission_join,
     "scouts_collect_mission": apply_mission_collect,

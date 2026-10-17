@@ -1172,10 +1172,6 @@ const UI_TEXT = {
     "ko": "쓰이지 않은 비밀 선택",
     "en": "Secret picks never due"
   },
-  "panels.scouts_skipped": {
-    "ko": "{{item}}: 지금 할 수 있는 선택이 없어 넘어갔습니다",
-    "en": "{{item}}: nothing you could take, skipped"
-  },
   "panels.standings_heading": {
     "ko": "최종 순위",
     "en": "Final standings"
@@ -1633,6 +1629,10 @@ const UI_TEXT = {
   "render.turn_end_button_decline": {
     "ko": "쓰지 않음 · 턴 종료 ▶",
     "en": "Decline · End turn ▶"
+  },
+  "render.turn_end_button_nothing": {
+    "ko": "할 수 있는 선택 없음 · 턴 종료 ▶",
+    "en": "Nothing to take · End turn ▶"
   },
   "render.turn_end_button_with_buys": {
     "ko": "구매 끝 · 턴 종료 ▶",

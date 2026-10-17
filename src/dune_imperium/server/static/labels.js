@@ -275,6 +275,7 @@ const ACTION_LABELS = {
   scouts_lose_garrison_unit: "{garrison}에서 잃기",
   scouts_choose_option: "선택",
   scouts_pass: "패스",
+  resolve_scouts_choice_without_option: "할 수 있는 선택 없음 — 확인",
   scouts_join_mission: "임무 참여",
   scouts_secret_pick: "비밀 선택",
   scouts_bid: "입찰액 고르기",

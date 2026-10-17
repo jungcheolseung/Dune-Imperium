@@ -70,6 +70,10 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         # Arrakeen Scouts: confirming a sealed bid is the seat's turn end;
         # until then it may change the bid (D5, docs/arrakeen-scouts-design.md).
         "confirm_scouts_bid",
+        # A Scouts choice with no line the seat can take asks it anyway
+        # (cleanup-2a, OQ-071); its one confirm says the seat takes nothing,
+        # like a pass, so one press ends the seat's part.
+        "resolve_scouts_choice_without_option",
         # Critical Moment's open call (0 a pass) is one action per amount, so
         # the browser sends it with the turn-end press after the stepper set
         # the amount ("경매 ... 턴 종료를 눌러야 확정되게 해줘", user,
