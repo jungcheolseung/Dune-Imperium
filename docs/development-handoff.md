@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-18 (`docs/godot-client-plan`, origin/master `7ba624ad` 뒤로 리베이스)
+기준일: 2026-10-18 (`docs/godot-client-plan`, 메인 메뉴·실행 중 호스팅과 수정본 Windows ZIP)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -110,13 +110,13 @@
   멀티플레이는 즉시 서버 설정에서 LAN/Tailscale 탐색·켜기/끄기·방 만들기·초대 링크 복사와
   참가 탭을 제공한다. 앱 재실행 없이 소유한 서버만 제어하고, 키는 개인 파일 응답·인증 POST에만
   전달한다. Windows OpenGL 75항목·두 언어/좁은 창 13캡처·독립 게스트 참가/좌석 claim과
-  기존 open 43/remote 46 계약 검사를 통과했다. 메뉴 수정본 ZIP을 준비 중이다.
-  현재 소스는 리베이스로 master의 codec v148·관측 v32를 사용한다. 아래 이전 검증·Windows 패키지 수치는
-  리베이스 전 v145 소스의 기록이며, 기존 v145 저장본은 현재 플레이 서버에서 바로 열리지 않는다.
-  최신 전체 ZIP은 `tmp/godot/dune-uprising-windows-personal-20261018-v148.zip`(메인 체크아웃,
-  소스 `37041aa1`, 233.51 MiB, 개인 그림 포함). 동봉 Windows `pythonw.exe`의 headless
-  서버 자동 시작·배치·undo·턴 진행·정상 종료/포트 반환, 모델 137·배율 27과 파일별 hash 검증을
-  통과했다. 그래픽 실기·완주·LAN은 이번에 재실행하지 않았다. 세부는 설치 안내의 최신 전체 패키지 절.
+  기존 open 43/remote 46 계약 검사를 통과했다.
+  현재 소스는 master의 codec v148·관측 v32를 사용하며, 기존 v145 저장본은 현재 서버에서 바로 열리지 않는다.
+  최신 전체 ZIP은 `tmp/godot/dune-uprising-windows-personal-20261018-menu-v148.zip`(메인 체크아웃,
+  소스 `6f105768`, 233.53 MiB, 개인 그림 포함). 동봉 Windows `pythonw.exe`의 headless 62항목으로
+  메뉴·싱글·호스팅·독립 게스트 참가/좌석 claim·정상 종료/포트 반환을 검증했다. manifest 2,417파일
+  hash·CRC·x64 PE 35개도 통과했다. 다른 PC LAN·완주·IME/소리는 이번에 재실행하지 않았다.
+  아래의 이전 완주·패널 업데이트 수치는 리베이스 전 v145의 기록이다. 세부는 설치 안내의 메인 메뉴 수정본 절.
   기본판 드래프트·책략·구매·전투·최종 순위·저장/이어하기와 네 판 완주를 검증했다(49종 행동·12종
   결정창). Python·uv·Git 없는 개인용 Windows ZIP의 이전판은 사용자 시작/플레이 확인을 받았다.
   다른 PC에서 재빌드한 전체 ZIP(233.39 MiB / 풀면 347.54 MiB, SHA `2ca2e23e…`)은 그 PC의

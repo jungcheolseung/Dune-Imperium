@@ -35,6 +35,19 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 돌아와 진행 중인 게임으로 복귀할 수 있다. 저장 codec은 v148이며 같은 v148 저장본을 사용한다.
 v145 저장본과 이전 전체 패키지는 아래 호환 안내대로 별도 보관한다.
 
+소스 `6f105768`(깨끗한 작업 트리), ZIP 244,874,079 bytes(**233.53 MiB**), 압축 해제 후
+364,904,293 bytes(**348.00 MiB**). SHA-256:
+`30273978036074cb4e3bc837aa6ce0f83938065ebcf651467e8db453621147a9`.
+메인 체크아웃의 `tmp/godot/`에 전체 ZIP과 `.zip.sha256`을 둔다. 기존 ZIP은 보존했다.
+
+ZIP CRC·manifest 2,417파일 SHA-256·Windows x64 PE 35개·서버 의존성 13개를 검증했다.
+한글·공백 경로에 풀어 동봉 `pythonw.exe`만으로 메뉴→싱글 생성→호스팅→방 생성→독립 게스트
+참가/좌석 claim→종료를 headless 62항목으로 확인했다. 싱글/원격 서버 두 개가 모두 stdin으로
+exit 0 종료되고 포트를 반환하며, 개인 mailbox도 제거됐다. 별도 Torch·NumPy·pytest·uv·pip는 없다.
+실제 Windows OpenGL의 두 언어·좁은 창 75항목/13캡처와 기존 open 43/remote 46 계약 검사도
+통과했다. 근거는 `tmp/godot/windows-menu-validation/`과 작업 트리의 `tmp/godot/main-menu/`다.
+다른 PC 간 LAN/Tailscale 접속·전체 게임 완주·IME·소리는 이번에 다시 확인하지 않았다.
+
 ## 첫 v148 전체 패키지와 저장 호환 (이전 배포본)
 
 `dune-uprising-windows-personal-20261018-v148.zip`은 최신 master 뒤로 리베이스한 Godot
