@@ -685,6 +685,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # --- Tech tiles ----------------------------------------------------------
     "acquire_tech": _row(_V.ACQUIRE, _S.TECH, _T.TECH),
     "resolve_tech_acquire_effect": _row(_V.RESOLVE, _S.TECH, _T.TECH),
+    "resolve_tech_influence_without_faction": _row(
+        _V.RESOLVE_EMPTY, _S.TECH, of=_V.GAIN_INFLUENCE
+    ),
     "decline_tech": _row(_V.DECLINE, _S.TECH, of=_V.ACQUIRE),
     "flip_tech": _row(_V.FLIP, _S.TECH, _T.TECH),
     # Forbidden Weapons: the swords and an Influence lost, or the trash.

@@ -56,6 +56,7 @@ from dune_imperium.rules.effects import (
     ResearchEffect,
     add_board_icon,
     advance_after_effect,
+    blocked_board_icons,
     board_icon_is_pending,
     current_agent_effect_context,
     finish_board_icon,
@@ -997,14 +998,31 @@ def shipping_influence_factions(owner: PlayerState) -> tuple[Faction, ...]:
     A "choose a Faction" picker never offers a Faction at the top: "합법 행동
     provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060, user ruling
     2026-09-16), the gain there being lost (``influence_can_rise``). With
-    every cube at 6 all four stay on offer and the gain is lost as before:
-    the Agent-turn frame has no confirm for a board icon with nothing to
-    pick, and Shipping's paid line still buys its 5 Solari [Board Guide
-    p. 2], so OQ-071 does not withhold the space.
+    every cube at 6 it offers none: the icon waits, greyed out, and the
+    turn's end lapses it (``effects.blocked_board_icons``; user decision
+    2026-10-17, composed-effects plan 5, rule decision 1, which removes the
+    old boundary that offered all four). Shipping's paid line still buys its
+    5 Solari [Board Guide p. 2], so OQ-071 does not withhold the space.
     """
 
-    rising = tuple(faction for faction in Faction if influence_can_rise(owner, faction))
-    return rising or tuple(Faction)
+    return tuple(faction for faction in Faction if influence_can_rise(owner, faction))
+
+
+def shipping_influence_pending(state: GameState, player: int) -> bool:
+    """Whether ``player``'s own Agent turn at Shipping still owes its
+    "Influence with a chosen Faction"."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return False
+    return context.get("space_id") == "shipping" and board_icon_is_pending(
+        context, BOARD_ICON_INFLUENCE
+    )
 
 
 def legal_shipping_actions(
@@ -1013,17 +1031,7 @@ def legal_shipping_actions(
 ) -> tuple[DomainAction, ...]:
     """Return Shipping's Faction choices for its Influence reward."""
 
-    if not 0 <= player < state.config.players:
-        raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("space_id") != "shipping" or not board_icon_is_pending(
-        context, BOARD_ICON_INFLUENCE
-    ):
+    if not shipping_influence_pending(state, player):
         return ()
     return tuple(
         DomainAction(
@@ -1088,15 +1096,18 @@ def lapse_optional_board_effects(state: GameState, player: int) -> RuleResult:
     (``effects.OPTIONAL_BOARD_ICONS``), Lady Jessica's Other Memories ("you
     may return all your memories" [Lady Jessica card]) and Reverend Mother's
     paid repeat of the printed effects ("Once during each turn" … water 1 →
-    repeat [Reverend Mother Jessica card], an arrow). Each is logged.
+    repeat [Reverend Mother Jessica card], an arrow). Each is logged. So is
+    a mandatory icon that could only lapse (``blocked_board_icons``:
+    Shipping's Influence with every Faction at the top).
     """
 
     _, context = current_agent_effect_context(state)
     space_id = context.get("space_id")
     source = f"round:{state.round_number}:player:{player}:board:{space_id}"
     events: list[GameEvent] = []
+    blocked = blocked_board_icons(context, state.players[player])
     for key in pending_board_icons(context):
-        if key not in OPTIONAL_BOARD_ICONS:
+        if key not in OPTIONAL_BOARD_ICONS and key not in blocked:
             continue
         finish_board_icon(context, key)
         events.append(

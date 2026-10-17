@@ -2382,7 +2382,7 @@ def _old_repeat_gate(state: GameState, player: int) -> bool:
     context = _own_effect_context(state, player)
     assert context is not None
     return (
-        mandatory_board_icons_pending(context)
+        mandatory_board_icons_pending(context, state.players[player])
         or state.players[player].resources.water < 1
     )
 

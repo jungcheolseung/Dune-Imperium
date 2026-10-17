@@ -202,11 +202,11 @@ from dune_imperium.rules.board_effects import (
     desert_tactics_block,
     imperial_privilege_recall_targets,
     imperial_privilege_trade_block,
-    legal_shipping_actions,
     maker_sandworm_block,
     pending_maker_space,
     pending_sietch_tabr,
     shipping_influence_factions,
+    shipping_influence_pending,
     sietch_tabr_wall_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -306,13 +306,18 @@ from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     solo_occupied_post_ids,
 )
-from dune_imperium.rules.tech import landsraad_tech_block, tech_candidates
+from dune_imperium.rules.tech import (
+    landsraad_tech_block,
+    pending_tech_acquire_effects,
+    tech_candidates,
+)
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     reclaimed_forces_block,
     tleilaxu_acquisition_block,
     tleilaxu_shop_is_open,
 )
+from dune_imperium.rules.turn_rows import tech_influence_blocked
 from dune_imperium.rules.unit_loss import (
     UNIT_LOSS_CANDIDATES,
     UnitLossBlock,
@@ -2068,18 +2073,29 @@ def _shipping_influence(state: GameState, seat: int, found: _Found) -> None:
     """Shipping's "Influence with a chosen Faction": every Faction at the
     top, greyed out beside the ones offered (OQ-060).
 
-    Only while the icon is pending (``legal_shipping_actions`` offers
-    something); ``shipping_influence_factions`` is the provider's own list.
+    Only while the icon is pending; ``shipping_influence_factions`` is the
+    provider's own list. With every cube at the top it offers none and
+    waits for the turn's end, which lapses it (cleanup-2b, rule decision 1):
+    one row says so, like an Agent box's Influence there.
     """
 
-    if not legal_shipping_actions(state, seat):
+    if not shipping_influence_pending(state, seat):
+        return
+    factions = shipping_influence_factions(state.players[seat])
+    if not factions:
+        found.row(
+            "waiting",
+            "shipping_influence",
+            DomainAction(action_id="choose_shipping_influence", actor=seat),
+            _ALL_AT_THE_TOP_WAITING,
+        )
         return
     _influence_at_the_top(
         found,
         seat,
         "shipping_influence",
         "choose_shipping_influence",
-        shipping_influence_factions(state.players[seat]),
+        factions,
     )
 
 
@@ -2267,6 +2283,68 @@ def _tech(state: GameState, seat: int, found: _Found) -> None:
         DomainAction(action_id="acquire_tech", actor=seat),
         _TECH_STACKS_EMPTY,
     )
+
+
+_TECH_ACQUIRE_HOSTS: Final = frozenset(
+    {FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL}
+)
+
+
+def _tech_acquire_influence(state: GameState, seat: int, found: _Found) -> None:
+    """An owed Tech acquire "Influence with any Faction" (Glowglobes,
+    Navigation Chamber; OQ-098): every Faction at the top, greyed out, as
+    for Shipping (OQ-060; cleanup-2b, rule decision 1). With every cube at
+    the top it offers none: in the seat's turn one row says it waits for the
+    turn's end, which lapses it; in Combat's acquire frame the Factions show
+    beside ``resolve_tech_influence_without_faction``.
+    """
+
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return
+    combat = (
+        frame.kind == FrameKind.TECH_ACQUISITION
+        and dict(frame.context).get("acquire_effects_only") is True
+    )
+    if frame.kind not in _TECH_ACQUIRE_HOSTS and not combat:
+        return
+    owner = state.players[seat]
+    for key in pending_tech_acquire_effects(frame):
+        tech_id, effect = key.split(":")
+        if effect != "influence":
+            continue
+        if tech_influence_blocked(key, owner) and not combat:
+            reveal = frame.kind == FrameKind.REVEAL
+            found.row(
+                "waiting",
+                f"tech_acquire_influence:{tech_id}",
+                DomainAction(
+                    action_id="resolve_tech_acquire_effect",
+                    actor=seat,
+                    arguments=(("effect", effect), ("tech_id", tech_id)),
+                ),
+                _with_tail(_ALL_AT_THE_TOP, _REVEAL_LAPSES_UNMET, "waiting")
+                if reveal
+                else _ALL_AT_THE_TOP_WAITING,
+            )
+            continue
+        for faction in Faction:
+            if influence_can_rise(owner, faction):
+                continue
+            found.row(
+                "choice",
+                f"tech_acquire_influence:{tech_id}:{faction.value}",
+                DomainAction(
+                    action_id="resolve_tech_acquire_effect",
+                    actor=seat,
+                    arguments=(
+                        ("effect", effect),
+                        ("faction", faction.value),
+                        ("tech_id", tech_id),
+                    ),
+                ),
+                _AT_THE_TOP,
+            )
 
 
 def _skill_choice(state: GameState, seat: int, found: _Found) -> None:
@@ -3113,6 +3191,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _leader_reveal,
         _subcommittee_choice,
         _pending_research,
+        _tech_acquire_influence,
         _intrigue,
     ),
     FrameKind.AGENT_EFFECTS: (
@@ -3128,6 +3207,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _optional_board_effects,
         _subcommittee_choice,
         _pending_research,
+        _tech_acquire_influence,
         _intrigue,
     ),
     # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
@@ -3143,8 +3223,13 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),
     FrameKind.INTRIGUE_EFFECTS: (_intrigue_effects,),
-    FrameKind.TECH_ACQUISITION: (_tech,),
-    FrameKind.TURN: (_turn_start_card, _pending_research, _intrigue),
+    FrameKind.TECH_ACQUISITION: (_tech, _tech_acquire_influence),
+    FrameKind.TURN: (
+        _turn_start_card,
+        _pending_research,
+        _tech_acquire_influence,
+        _intrigue,
+    ),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.CONFLICT_END_TRIGGER: (_conflict_end_trigger,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),

@@ -806,16 +806,31 @@ def test_shipping_never_offers_a_faction_at_the_top() -> None:
     ]
     assert offered == ["emperor", "bene_gesserit"]
 
-    # With every cube at 6 the Agent-turn frame has no confirm for this
-    # board icon, and the paid line still buys 5 Solari (OQ-071 does not
-    # withhold the space), so all four stay on offer and the gain is lost.
+
+def test_shipping_with_every_cube_at_the_top_waits_and_lapses_at_the_end() -> None:
+    # User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    # OQ-060): with every cube at 6 Shipping offers no Faction either; the
+    # icon waits like an Agent box's Influence and the turn's end lapses it
+    # (OQ-057 (1)). Until codec v149 all four stayed on offer and the gain
+    # was lost. The paid line still buys 5 Solari (OQ-071).
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     state = _shipping_state(full)
-    actions = legal_shipping_actions(state, 0)
-    assert len(actions) == 4
-    result = apply_shipping_action(state, actions[0])
+    assert legal_shipping_actions(state, 0) == ()
+    state = _resolve_board(state, "resources")
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_board_icons"] == "influence"
+    assert any(
+        action.action_id == "finish_agent_turn"
+        for action in legal_agent_turn_finish_actions(state, 0)
+    )
+
+    result = finish_agent_turn_result(state)
+
     assert result.state.players[0].influence == full
-    assert legal_shipping_actions(result.state, 0) == ()
+    lapsed = [event for event in result.events if event.kind == "board_effect_lapsed"]
+    assert [dict(event.payload) for event in lapsed] == [
+        {"effect": "influence", "player": 0, "space_id": "shipping"}
+    ]
 
 
 def test_shipping_influence_choice_leaves_the_solari_icon_pending() -> None:

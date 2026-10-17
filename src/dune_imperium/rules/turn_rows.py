@@ -35,8 +35,10 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
+    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     frame_context,
     own_turn_frame_index,
@@ -175,6 +177,52 @@ def holds_the_end(state: GameState, player: int) -> bool:
     )
 
 
+def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
+    value = context.get(TECH_ACQUIRE_PENDING_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Tech acquire effects must be a string")
+    return tuple(key for key in value.split(",") if key)
+
+
+def tech_influence_blocked(key: str, owner: PlayerState) -> bool:
+    """Whether an owed Tech acquire icon ``key`` (``<tech_id>:<effect>``) is
+    an "Influence with any Faction" (Glowglobes, Navigation Chamber) with
+    every Faction at the top, where it offers none (OQ-060; user decision
+    2026-10-17, composed-effects plan 5, rule decision 1)."""
+
+    _tech_id, effect = key.split(":")
+    return effect == "influence" and not any(
+        influence_can_rise(owner, faction) for faction in Faction
+    )
+
+
+def tech_acquire_effects_hold_the_end(
+    context: Mapping[str, object], owner: PlayerState
+) -> bool:
+    """Whether a Tech tile's owed acquire icon still holds the turn's end
+    (OQ-098): any of them that offers a row. A blocked Influence
+    (``tech_influence_blocked``) waits, greyed out, and the press lapses it,
+    like an Agent box's Influence with every cube at the top (OQ-057 (1))."""
+
+    return any(
+        not tech_influence_blocked(key, owner) for key in _tech_acquire_keys(context)
+    )
+
+
+def tech_influence_lapsed(player: int, round_number: int, key: str) -> GameEvent:
+    """The event of a blocked Tech acquire Influence that lapses."""
+
+    tech_id, effect = key.split(":")
+    return GameEvent(
+        event_id=(
+            f"round:{round_number}:player:{player}:tech:{tech_id}:acquire:"
+            f"{effect}:lapsed"
+        ),
+        kind="tech_acquire_effect_lapsed",
+        payload=(("effect", effect), ("player", player), ("tech_id", tech_id)),
+    )
+
+
 def _lapsed(player: int, item: Pending) -> GameEvent:
     kind, source, value = item
     if kind == RESEARCH_BONUS:
@@ -194,14 +242,27 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
 
 
 def lapse(state: GameState, player: int) -> RuleResult:
-    """At the turn-end press: every waiting effect lapses, with an event."""
+    """At the turn-end press: every waiting effect lapses, with an event,
+    and so does a Tech acquire Influence that could only lapse (the others
+    hold the end, ``tech_acquire_effects_hold_the_end``)."""
 
     frame = rows_frame(state, player)
-    if frame is None or not pending(frame):
+    if frame is None:
         return RuleResult(state=state)
-    events = tuple(_lapsed(player, item) for item in pending(frame))
+    tech_keys = _tech_acquire_keys(dict(frame.context))
+    if not pending(frame) and not tech_keys:
+        return RuleResult(state=state)
+    owner = state.players[player]
+    if any(not tech_influence_blocked(key, owner) for key in tech_keys):
+        raise RuntimeError("an owed Tech acquire icon waits at the turn-end press")
+    events = (
+        *(_lapsed(player, item) for item in pending(frame)),
+        *(tech_influence_lapsed(player, state.round_number, key) for key in tech_keys),
+    )
+    context = frame_context(_with_pending(frame, ()))
+    context.pop(TECH_ACQUIRE_PENDING_KEY, None)
     cleared = _replace_frame(
-        state, len(state.decision_stack) - 1, _with_pending(frame, ())
+        state, len(state.decision_stack) - 1, with_context(frame, context)
     )
     return RuleResult(state=cleared, events=events)
 

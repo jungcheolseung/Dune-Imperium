@@ -18,6 +18,7 @@ from tests.unit.rules.test_immortality_intrigue import (
     _fighter,
     _pass_through_combat,
 )
+from tests.unit.rules.test_tech import _combat_acquire_frame
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.determinize import determinize
@@ -66,7 +67,7 @@ from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
 from dune_imperium.rules.combat import begin_combat_intrigue, resolve_combat_rewards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import OptionBlock
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind, with_context
 from dune_imperium.rules.immortality import (
     _bonus_frame,
     advance_research,
@@ -2171,6 +2172,34 @@ def test_shipping_greys_the_factions_at_the_top() -> None:
     )
 
 
+_ALL_AT_THE_TOP_WAITING = (
+    "Every Faction it can raise is already at the top (6);"
+    " it lapses if still unmet when the turn ends",
+    "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)"
+    " — 차례가 끝날 때까지 못 채우면 사라짐",
+    "waiting",
+)
+
+
+def test_shipping_with_every_faction_at_the_top_waits_for_the_turn_end() -> None:
+    """User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    OQ-060, OQ-057 (1)): with every cube at 6 Shipping's Influence offers no
+    Faction, holds nothing, and shows one waiting row that the turn's end
+    lapses, like an Agent box's Influence there."""
+
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _at_shipping(full)
+    assert _legal(state, "choose_shipping_influence") == []
+    found = _found(state)
+    assert _rows(found, "choice") == {}
+    rows = _rows(found, "waiting")
+    assert list(rows) == ["waiting:shipping_influence"]
+    row = rows["waiting:shipping_influence"]
+    assert row["action"]["action_id"] == "choose_shipping_influence"
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _ALL_AT_THE_TOP_WAITING
+
+
 # --- Holy War's unit loss ---
 
 _NO_UNIT_TO_LOSE = ("No unit to lose", "잃을 유닛 없음", "no_unit")
@@ -4068,3 +4097,128 @@ def test_the_leader_reveal_rows_read_nothing_hidden() -> None:
             other = determinize(state, seat, rng)
             other_legal = ENGINE.legal_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
+
+
+# --- A Tech tile's acquire "Influence with any Faction" ---
+# User decision 2026-10-17 (composed-effects plan 5, rule decision 1; OQ-060):
+# like Shipping's, Glowglobes' and Navigation Chamber's Influence offers no
+# Faction at the top, and with every cube at 6 it waits for the turn's end
+# (OQ-057 (1)) or, in Combat, for its owner's confirm.
+
+
+def _bought_glowglobes(influence: Influence) -> GameState:
+    """A Landsraad visit that bought Glowglobes: its Influence is owed."""
+
+    state = _resolve_the_rest(_landsraad_visit(3, influence=influence))
+    buy = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "acquire_tech"
+        and dict(action.arguments).get("tech_id") == "glowglobes"
+    )
+    bought = ENGINE.apply(state, buy).state
+    assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    return bought
+
+
+def test_a_tech_acquire_influence_greys_the_factions_at_the_top() -> None:
+    """The Factions below 6 stay on offer (OQ-060); Emperor and Fremen at
+    the top show greyed out "이미 최고치" on the "choice" surface, as
+    Shipping's do."""
+
+    state = _bought_glowglobes(Influence(emperor=6, fremen=6))
+    assert [
+        args["faction"] for args in _legal(state, "resolve_tech_acquire_effect")
+    ] == ["spacing_guild", "bene_gesserit"]
+    found = _found(state)
+    assert found["frame"] == FrameKind.AGENT_EFFECTS
+    assert _rows(found, "waiting") == {}
+    assert _faction_rows(
+        found, "tech_acquire_influence:glowglobes", "resolve_tech_acquire_effect"
+    ) == {"emperor": _AT_THE_TOP, "fremen": _AT_THE_TOP}
+
+    # Below the top everywhere: no row.
+    open_tracks = _bought_glowglobes(Influence(emperor=2))
+    assert len(_legal(open_tracks, "resolve_tech_acquire_effect")) == 4
+    assert (
+        unavailable_choices(open_tracks, 0, ENGINE.legal_actions(open_tracks, 0))
+        is None
+    )
+
+
+def test_a_tech_acquire_influence_with_every_faction_at_the_top_waits() -> None:
+    """With every cube at 6 nothing is offered and the turn's end is not
+    held: one waiting row says so (OQ-060, OQ-057 (1)), in the Agent turn
+    and, with the Reveal's own tail, in the Reveal turn."""
+
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _bought_glowglobes(full)
+    assert _legal(state, "resolve_tech_acquire_effect") == []
+    assert [a.action_id for a in ENGINE.legal_actions(state, 0)] == [
+        "finish_agent_turn"
+    ]
+    found = _found(state)
+    assert _rows(found, "choice") == {}
+    rows = _rows(found, "waiting")
+    assert list(rows) == ["waiting:tech_acquire_influence:glowglobes"]
+    row = rows["waiting:tech_acquire_influence:glowglobes"]
+    assert row["action"]["action_id"] == "resolve_tech_acquire_effect"
+    assert row["action"]["arguments"] == {
+        "effect": "influence",
+        "tech_id": "glowglobes",
+    }
+    assert _why(row) == _ALL_AT_THE_TOP_WAITING
+
+    owner = PlayerState(
+        player_id=0, hand=starting_deck_instance_ids(0)[:5], influence=full
+    )
+    revealed = _reveal(_state(owner, config=TECH_CONFIG), 0)
+    frame = revealed.decision_stack[-1]
+    owing = {**dict(frame.context), TECH_ACQUIRE_PENDING_KEY: "glowglobes:influence"}
+    waiting = replace(
+        revealed,
+        decision_stack=(*revealed.decision_stack[:-1], with_context(frame, owing)),
+    )
+    assert _legal(waiting, "resolve_tech_acquire_effect") == []
+    reveal_row = _rows(_found(waiting), "waiting")[
+        "waiting:tech_acquire_influence:glowglobes"
+    ]
+    assert _why(reveal_row) == (
+        "Every Faction it can raise is already at the top (6);"
+        " it lapses if still unmet when the Reveal turn ends",
+        "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)"
+        " — {reveal_turn}를 끝낼 때까지 못 채우면 사라짐",
+        "waiting",
+    )
+
+
+def test_a_combat_tech_acquire_influence_shows_the_four_greyed_factions() -> None:
+    """In Combat's acquire-effects-only frame (Battlefield Research) no turn
+    end lapses the icon: with every cube at 6 the owner's confirm is legal
+    and the four Factions show greyed out beside it, with no waiting row.
+    With a Faction below 6 only the others are greyed and there is no
+    confirm (OQ-060, OQ-098)."""
+
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _combat_acquire_frame(full)
+    assert _legal(state, "resolve_tech_influence_without_faction") == [{}]
+    assert _legal(state, "resolve_tech_acquire_effect") == []
+    found = _found(state)
+    assert found["frame"] == FrameKind.TECH_ACQUISITION
+    assert _rows(found, "waiting") == {}
+    assert _faction_rows(
+        found, "tech_acquire_influence:glowglobes", "resolve_tech_acquire_effect"
+    ) == {faction: _AT_THE_TOP for faction in _FACTION_NAMES}
+
+    some = _combat_acquire_frame(replace(full, fremen=5))
+    assert _legal(some, "resolve_tech_influence_without_faction") == []
+    assert [
+        args["faction"] for args in _legal(some, "resolve_tech_acquire_effect")
+    ] == ["fremen"]
+    assert _faction_rows(
+        _found(some), "tech_acquire_influence:glowglobes", "resolve_tech_acquire_effect"
+    ) == {
+        "emperor": _AT_THE_TOP,
+        "spacing_guild": _AT_THE_TOP,
+        "bene_gesserit": _AT_THE_TOP,
+    }

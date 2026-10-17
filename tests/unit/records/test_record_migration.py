@@ -45,6 +45,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.unit.rules.test_tech import _bought_glowglobes, _combat_acquire_frame
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.agents.registry import make_agent
@@ -57,7 +58,7 @@ from dune_imperium.content.uprising.starting_cards import starting_deck_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, is_fixed_outcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
-from dune_imperium.core.player import PlayerState, Resources
+from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.records import migration
@@ -2154,3 +2155,99 @@ def test_a_recorded_recall_pass_takes_the_plain_spy_icon_on_top() -> None:
         == migration.REVEAL_REFUSAL_BY_ORDER
     )
     assert slot.frames == []
+
+
+# --- an Influence picked at the top (cleanup-2b, codec v149) -----------------
+# User decision 2026-10-17 (composed-effects plan 5, rule decision 1; OQ-060,
+# OQ-057 (1)): Shipping's and a Tech tile's acquire "Influence with any
+# Faction" no longer offer a Faction at 6. An older engine let a record pick
+# one (nothing gained); this engine drops that step in a turn, where the
+# recorded turn end lapses the icon, and confirms it in Combat's acquire
+# frame, which has no turn end.
+
+_TOP = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+_TECH_PICK = DomainAction(
+    "resolve_tech_acquire_effect",
+    0,
+    (("effect", "influence"), ("faction", "emperor"), ("tech_id", "glowglobes")),
+)
+
+
+def test_influence_at_the_top_names_a_pick_of_a_faction_at_six() -> None:
+    state = _bought_glowglobes(replace(_TOP, fremen=2))
+    shipping = DomainAction(
+        "choose_shipping_influence", 0, (("faction", "emperor"),)
+    )
+    assert migration._influence_at_the_top(state, shipping)
+    assert migration._influence_at_the_top(state, _TECH_PICK)
+    # A Faction below 6 was a real gain; so is another seat's pick (seat 1
+    # holds no cube at 6), another effect, and an action without a Faction.
+    below = DomainAction("choose_shipping_influence", 0, (("faction", "fremen"),))
+    assert not migration._influence_at_the_top(state, below)
+    assert not migration._influence_at_the_top(
+        state, replace(_TECH_PICK, actor=1)
+    )
+    solari = DomainAction(
+        "resolve_tech_acquire_effect",
+        0,
+        (("effect", "solari"), ("tech_id", "plasteel_blades")),
+    )
+    assert not migration._influence_at_the_top(state, solari)
+    assert not migration._influence_at_the_top(state, _PRESS)
+
+
+def test_a_combat_tech_influence_picked_at_the_top_is_confirmed_instead() -> None:
+    combat = _combat_acquire_frame(_TOP)
+    decision = combat.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    confirm = DomainAction("resolve_tech_influence_without_faction", 0)
+
+    assert migration._tech_influence_confirm(ENGINE, combat, decision, _TECH_PICK) == (
+        confirm
+    )
+    # A Faction that can still rise was a real pick, and this engine offers
+    # no confirm for it.
+    open_combat = _combat_acquire_frame(replace(_TOP, emperor=3, fremen=5))
+    open_decision = open_combat.decision_stack[-1].decision
+    assert isinstance(open_decision, PlayerDecision)
+    assert (
+        migration._tech_influence_confirm(
+            ENGINE, open_combat, open_decision, _TECH_PICK
+        )
+        is None
+    )
+    # In a turn the bridge stays out: the step is dropped instead.
+    turn = _bought_glowglobes(_TOP)
+    turn_decision = turn.decision_stack[-1].decision
+    assert isinstance(turn_decision, PlayerDecision)
+    assert (
+        migration._tech_influence_confirm(ENGINE, turn, turn_decision, _TECH_PICK)
+        is None
+    )
+
+    # Walked as a codec v148 record: the pick comes back as the confirm.
+    record = migrate_record(
+        _v142_record(combat, _TECH_PICK, codec=148), _StartingAt(combat)
+    )
+    assert record.divergence is None
+    assert [(m.step, m.bridge) for m in record.steps] == [
+        (confirm, "tech_influence_confirm")
+    ]
+
+
+def test_a_turn_tech_influence_picked_at_the_top_is_dropped_before_the_press() -> None:
+    turn = _bought_glowglobes(_TOP)
+
+    record = migrate_record(
+        _v142_record(turn, _TECH_PICK, _PRESS, codec=148), _StartingAt(turn)
+    )
+
+    assert record.divergence is None
+    assert record.dropped == ((0, migration.INFLUENCE_AT_TOP_DROPPED),)
+    assert [m.step for m in record.steps] == [_PRESS]
+    # A record of codec v149 met the decision itself: nothing is dropped.
+    current = migrate_record(
+        _v142_record(turn, _TECH_PICK, codec=149), _StartingAt(turn)
+    )
+    assert current.dropped == ()
+    assert current.divergence is not None

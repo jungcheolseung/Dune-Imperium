@@ -224,6 +224,7 @@ const ACTION_LABELS = {
   choose_skill: "{commander_skill} 선택",
   acquire_tech: "{tech_tile} 획득",
   resolve_tech_acquire_effect: "{tech_tile} 획득 효과 해결",
+  resolve_tech_influence_without_faction: "{influence_any} 없이 확인 ({tech_tile} 획득)",
   decline_tech: "{tech_tile} 획득 거절",
   flip_tech: "{tech_tile} 뒤집기",
   choose_tech_strength: "금지된 무기: 검 3 + {influence_any} 1 잃기",
@@ -554,6 +555,7 @@ const EVENT_LABELS = {
   tactics_token_advanced: "전술 토큰 전진",
   tech_acquired: "{tech_tile} 획득",
   tech_acquire_effect_resolved: "{tech_tile} 획득 효과 해결",
+  tech_acquire_effect_lapsed: "{tech_tile} 획득 효과: 쓰지 않음",
   tech_declined: "{tech_tile} 획득 거절",
   tech_flipped: "{tech_tile} 뒤집기",
   tech_reveal_bonus: "{tech_tile} 보너스 획득",
@@ -591,8 +593,11 @@ const EFFECT_ICON_LABELS = {
   contract: "{contract} 획득",
   high_council: "원로회 자리",
   /* The optional board icons a turn end can leave unused
-     (board_effect_lapsed; rules/effects.py OPTIONAL_BOARD_ICONS). */
+     (board_effect_lapsed; rules/effects.py OPTIONAL_BOARD_ICONS), and
+     Shipping's Influence with every Faction at the top
+     (rules/effects.py blocked_board_icons). */
   imperial_privilege_intrigue: "{trash_intrigue} → {intrigue} (제국 특권)",
+  influence: "{influence_any}",
   intrigue: "{intrigue}",
   pledge: "1위 보상에 {influence_any} 선택 추가",
   resources: "자원 획득",

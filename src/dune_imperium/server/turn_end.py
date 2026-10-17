@@ -49,7 +49,6 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
 from dune_imperium.rules.frames import (
-    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owes_held_draw,
     owes_track_spy,
@@ -308,8 +307,9 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     if owes_track_spy(state, owner) or owes_held_draw(state, owner):
         return None
     # A Tech tile's acquire effects still waiting hold the end back too
-    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``).
-    if context.get(TECH_ACQUIRE_PENDING_KEY):
+    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``), but
+    # not an Influence with every Faction at the top (cleanup-2b).
+    if turn_rows.tech_acquire_effects_hold_the_end(context, state.players[owner]):
         return None
     # So does c6r6's Influence waiting with a Faction it can raise
     # (cleanup-2b; public facts: the frame's context, the seat's Influence).

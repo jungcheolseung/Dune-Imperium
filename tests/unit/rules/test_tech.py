@@ -50,6 +50,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, with_context
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -64,6 +65,7 @@ from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tech import (
     apply_tech_acquire_effect,
     apply_tech_acquisition,
+    apply_tech_influence_without_faction,
     legal_tech_acquire_effect_actions,
     legal_tech_acquisition_actions,
     push_tech_acquisition,
@@ -3155,3 +3157,279 @@ def test_reveal_spice_may_be_taken_after_forbidden_weapons_trashes() -> None:
     kept = apply_reveal_gain(trashed, gains[0]).state
     assert kept.players[0].resources.spice == 1
     assert legal_reveal_gain_actions(kept, 0) == ()
+
+
+# --- an acquire Influence never offers a Faction at the top ------------------
+# User decision 2026-10-17 (composed-effects plan 5, rule decision 1; OQ-060):
+# "the legal-action provider already offers no Faction at 6", so Glowglobes'
+# and Navigation Chamber's "Influence with any Faction" offers none either.
+# With no Faction left it waits like an Agent box's Influence and the turn's
+# end lapses it (OQ-057 (1)); Combat, which has no turn end, asks for a
+# confirm instead.
+
+_TOP = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+
+
+def _owing(state: GameState, *keys: str) -> GameState:
+    """Put Tech acquire icons (``<tech_id>:<effect>``) on the top frame."""
+
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    context[TECH_ACQUIRE_PENDING_KEY] = ",".join(keys)
+    return replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+    )
+
+
+def _bought_glowglobes(influence: Influence) -> GameState:
+    """An Assembly Hall visit that bought Glowglobes: its Influence is owed."""
+
+    state = _visit(_turn_state(_owner(influence=influence)), "assembly_hall")
+    purchase = next(
+        action
+        for action in legal_tech_acquisition_actions(state, 0)
+        if dict(action.arguments).get("tech_id") == "glowglobes"
+    )
+    return apply_tech_acquisition(state, purchase).state
+
+
+def _revealing(influence: Influence) -> GameState:
+    owner = _owner(hand=starting_deck_instance_ids(0)[:5], influence=influence)
+    state = _gains(_reveal(_turn_state(owner, stacks=((), (), ()))).state)
+    assert state.decision_stack[-1].kind == "reveal"
+    return state
+
+
+def _combat_acquire_frame(influence: Influence) -> GameState:
+    """Battlefield Research played in Combat bought Glowglobes: the
+    acquire-effects-only frame holds its Influence."""
+
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    owner = _tech_owner(
+        "training_depot",
+        "panopticon",
+        intrigue_cards=("intrigue:battlefield_research:0",),
+        troops_supply=8,
+        troops_garrison=1,
+        troops_conflict=3,
+        combat_strength=6,
+        has_revealed=True,
+        hand=(),
+        resources=Resources(spice=4),
+        influence=influence,
+    )
+    state = replace(
+        _turn_state(
+            owner,
+            stacks=(("glowglobes",), ("delivery_bay",), ("servo_receivers",)),
+        ),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(PlayerState(player_id=seat), has_revealed=True)
+                for seat in range(1, 4)
+            ),
+        ),
+    )
+    combat = begin_combat_intrigue(state).state
+    retreat = apply_intrigue_play(
+        combat, legal_intrigue_play_actions(combat, 0)[0]
+    ).state
+    picked = apply_intrigue_choice(
+        retreat, legal_intrigue_choice_actions(retreat, 0)[0]
+    ).state
+    purchase = next(
+        action
+        for action in legal_tech_acquisition_actions(picked, 0)
+        if dict(action.arguments).get("tech_id") == "glowglobes"
+    )
+    bought = apply_tech_acquisition(picked, purchase).state
+    frame = bought.decision_stack[-1]
+    assert frame.kind == "tech_acquisition"
+    assert dict(frame.context)["acquire_effects_only"] is True
+    return bought
+
+
+def _influence_lapsed(tech_id: str) -> GameEvent:
+    return GameEvent(
+        event_id=f"round:1:player:0:tech:{tech_id}:acquire:influence:lapsed",
+        kind="tech_acquire_effect_lapsed",
+        payload=(("effect", "influence"), ("player", 0), ("tech_id", tech_id)),
+    )
+
+
+def _holds_the_key(state: GameState) -> bool:
+    return any(
+        TECH_ACQUIRE_PENDING_KEY in dict(frame.context)
+        for frame in state.decision_stack
+    )
+
+
+@pytest.mark.parametrize("tech_id", ["glowglobes", "navigation_chamber"])
+def test_an_acquire_influence_never_offers_a_faction_at_the_top(tech_id: str) -> None:
+    # OQ-060; user decision 2026-10-17, composed-effects plan 5, rule
+    # decision 1: the Factions below 6 stay on offer, Emperor and Fremen at
+    # the top do not.
+    owner = _owner(
+        influence=Influence(emperor=6, spacing_guild=5, bene_gesserit=0, fremen=6)
+    )
+    state = _owing(_turn_state(owner), f"{tech_id}:influence")
+
+    actions = legal_tech_acquire_effect_actions(state, 0)
+
+    assert [dict(action.arguments)["faction"] for action in actions] == [
+        "spacing_guild",
+        "bene_gesserit",
+    ]
+    top_pick = DomainAction(
+        "resolve_tech_acquire_effect",
+        0,
+        (("effect", "influence"), ("faction", "fremen"), ("tech_id", tech_id)),
+    )
+    with pytest.raises(ValueError, match="not a legal Tech acquire effect"):
+        apply_tech_acquire_effect(state, top_pick)
+    gained = apply_tech_acquire_effect(state, actions[1]).state
+    assert gained.players[0].influence.bene_gesserit == 1
+    assert not _holds_the_key(gained)
+
+
+def test_every_faction_at_the_top_lapses_the_acquire_influence_at_the_agent_end() -> (
+    None
+):
+    # OQ-060 and OQ-057 (1); user decision 2026-10-17, composed-effects plan
+    # 5, rule decision 1: no row, the end is not held, and the press lapses
+    # the icon with its event.
+    bought = _bought_glowglobes(_TOP)
+    assert dict(bought.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY] == (
+        "glowglobes:influence"
+    )
+
+    assert legal_tech_acquire_effect_actions(bought, 0) == ()
+    legal = UprisingRulesEngine().legal_actions(bought, 0)
+    assert [action.action_id for action in legal] == ["finish_agent_turn"]
+
+    cleared = turn_rows.lapse(bought, 0)
+    assert not _holds_the_key(cleared.state)
+    assert list(cleared.events) == [_influence_lapsed("glowglobes")]
+
+    result = finish_agent_turn_result(bought)
+    lapsed = [e for e in result.events if e.kind == "tech_acquire_effect_lapsed"]
+    assert lapsed == [_influence_lapsed("glowglobes")]
+    assert result.state.players[0].influence == _TOP
+    assert not _holds_the_key(result.state)
+
+
+def test_every_faction_at_the_top_lapses_the_acquire_influence_at_the_reveal_end() -> (
+    None
+):
+    # The same for the Reveal turn's "finish_reveal" (OQ-060, OQ-057 (1);
+    # user decision 2026-10-17, composed-effects plan 5, rule decision 1).
+    state = _owing(_revealing(_TOP), "navigation_chamber:influence")
+
+    assert legal_tech_acquire_effect_actions(state, 0) == ()
+    engine = UprisingRulesEngine()
+    assert [a.action_id for a in engine.legal_actions(state, 0)] == ["finish_reveal"]
+
+    result = engine.apply(state, DomainAction("finish_reveal", 0))
+
+    lapsed = [e for e in result.events if e.kind == "tech_acquire_effect_lapsed"]
+    assert lapsed == [_influence_lapsed("navigation_chamber")]
+    assert not _holds_the_key(result.state)
+
+
+def test_a_blocked_acquire_influence_still_waits_for_the_other_owed_icon() -> None:
+    # OQ-098 (an owed acquire icon holds the turn's end) beside OQ-060 /
+    # OQ-057 (1); user decision 2026-10-17, composed-effects plan 5, rule
+    # decision 1: only the icon that offers no row stops holding the end.
+    keys = ("glowglobes:influence", "plasteel_blades:solari")
+    engine = UprisingRulesEngine()
+    solari = DomainAction(
+        "resolve_tech_acquire_effect",
+        0,
+        (("effect", "solari"), ("tech_id", "plasteel_blades")),
+    )
+
+    agent = _owing(_bought_glowglobes(_TOP), *keys)
+    assert engine.legal_actions(agent, 0) == (solari,)
+    paid = engine.apply(agent, solari).state
+    assert [a.action_id for a in engine.legal_actions(paid, 0)] == [
+        "finish_agent_turn"
+    ]
+    lapsed = [
+        e
+        for e in finish_agent_turn_result(paid).events
+        if e.kind == "tech_acquire_effect_lapsed"
+    ]
+    assert lapsed == [_influence_lapsed("glowglobes")]
+
+    reveal = _owing(_revealing(_TOP), *keys)
+    assert engine.legal_actions(reveal, 0) == (solari,)
+    paid = engine.apply(reveal, solari).state
+    assert [a.action_id for a in engine.legal_actions(paid, 0)] == ["finish_reveal"]
+
+
+def test_combat_acquire_influence_with_every_faction_at_the_top_is_confirmed() -> None:
+    # Battlefield Research in Combat has no turn end to lapse the icon, so
+    # its owner confirms it, as a Conflict reward's (OQ-060; user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 1).
+    engine = UprisingRulesEngine()
+    bought = _combat_acquire_frame(_TOP)
+    confirm = DomainAction("resolve_tech_influence_without_faction", 0)
+    assert legal_tech_acquire_effect_actions(bought, 0) == (confirm,)
+    assert engine.legal_actions(bought, 0) == (confirm,)
+
+    result = engine.apply(bought, confirm)
+
+    assert [e for e in result.events] == [_influence_lapsed("glowglobes")]
+    assert [frame.kind for frame in result.state.decision_stack] == ["combat_intrigue"]
+    assert result.state.players[0].influence == _TOP
+
+
+def test_combat_acquire_influence_with_a_faction_below_the_top_has_no_confirm() -> (
+    None
+):
+    # The confirm exists only while no Faction can rise (OQ-060; user
+    # decision 2026-10-17, composed-effects plan 5, rule decision 1).
+    bought = _combat_acquire_frame(replace(_TOP, fremen=5))
+
+    actions = legal_tech_acquire_effect_actions(bought, 0)
+
+    assert [action.action_id for action in actions] == ["resolve_tech_acquire_effect"]
+    assert [dict(action.arguments)["faction"] for action in actions] == ["fremen"]
+    with pytest.raises(ValueError):
+        apply_tech_influence_without_faction(
+            bought, DomainAction("resolve_tech_influence_without_faction", 0)
+        )
+
+
+def test_the_combat_confirm_keeps_the_frame_for_another_owed_icon() -> None:
+    # The confirm lapses only the blocked Influence; the frame goes once
+    # nothing else is owed (OQ-060, OQ-098; user decision 2026-10-17,
+    # composed-effects plan 5, rule decision 1).
+    engine = UprisingRulesEngine()
+    bought = _owing(
+        _combat_acquire_frame(_TOP), "glowglobes:influence", "plasteel_blades:solari"
+    )
+    confirm = DomainAction("resolve_tech_influence_without_faction", 0)
+    assert confirm in engine.legal_actions(bought, 0)
+
+    result = engine.apply(bought, confirm)
+
+    assert [e.event_id for e in result.events] == [
+        _influence_lapsed("glowglobes").event_id
+    ]
+    frame = result.state.decision_stack[-1]
+    assert frame.kind == "tech_acquisition"
+    assert dict(frame.context)[TECH_ACQUIRE_PENDING_KEY] == "plasteel_blades:solari"
+    assert confirm not in engine.legal_actions(result.state, 0)

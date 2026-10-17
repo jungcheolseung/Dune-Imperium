@@ -5081,7 +5081,9 @@ def legal_finish_reveal_actions(
         # (OQ-044), and its placement window offers only the decline when no
         # Spy can reach a post, so nothing lapses unasked.
         return ()
-    if context.get(TECH_ACQUIRE_PENDING_KEY):
+    if turn_rows.tech_acquire_effects_hold_the_end(context, state.players[player]):
+        # An owed Tech acquire icon (OQ-098), but not an Influence with
+        # every Faction at the top, which the press lapses (cleanup-2b).
         return ()
     if turn_rows.holds_the_end(state, player):
         # c6r6's Influence waiting on the Reveal, with a Faction it can raise

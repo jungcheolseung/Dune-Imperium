@@ -41,7 +41,6 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
-    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owes_held_draw,
     owes_track_spy,
@@ -414,7 +413,12 @@ def legal_agent_turn_finish_actions(
         return ()
     if agent_turn_is_finishing(context):
         return ()
-    if owes_track_spy(state, player) or context.get(TECH_ACQUIRE_PENDING_KEY):
+    if owes_track_spy(state, player) or turn_rows.tech_acquire_effects_hold_the_end(
+        context, state.players[player]
+    ):
+        # An owed Tech acquire icon holds the end (OQ-098), but not an
+        # Influence with every Faction at the top: the press lapses it
+        # (cleanup-2b, ``turn_rows.lapse``).
         return ()
     if turn_rows.holds_the_end(state, player):
         # c6r6's Influence waiting on the turn, with a Faction it can raise

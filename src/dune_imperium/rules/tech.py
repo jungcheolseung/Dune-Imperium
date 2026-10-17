@@ -89,6 +89,7 @@ from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
+    influence_can_rise,
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -110,6 +111,7 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
+from dune_imperium.rules.turn_rows import tech_influence_blocked, tech_influence_lapsed
 
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
@@ -201,14 +203,22 @@ def legal_tech_acquire_effect_actions(
     frame = _acquire_effect_host(state, player)
     if frame is None:
         return ()
+    owner = state.players[player]
     actions: list[DomainAction] = []
+    blocked = False
     for key in pending_tech_acquire_effects(frame):
         tech_id, effect = key.split(":")
         tile = TECH_TILES_BY_ID[tech_id]
+        blocked = blocked or tech_influence_blocked(key, owner)
         for arguments in tech_acquire_effect_arguments(tile, effect):
-            if (
-                dict(arguments).get("destroy_shield_wall")
-                and not state.shield_wall_present
+            values = dict(arguments)
+            if values.get("destroy_shield_wall") and not state.shield_wall_present:
+                continue
+            # A "choose a Faction" never offers a Faction at the top (OQ-060;
+            # user decision 2026-10-17, composed-effects plan 5, rule
+            # decision 1, which removes the old exception for these icons).
+            if "faction" in values and not influence_can_rise(
+                owner, Faction(str(values["faction"]))
             ):
                 continue
             actions.append(
@@ -218,7 +228,48 @@ def legal_tech_acquire_effect_actions(
                     arguments=arguments,
                 )
             )
+    if blocked and dict(frame.context).get("acquire_effects_only") is True:
+        # Outside a turn (Battlefield Research in Combat) no press lapses a
+        # blocked Influence: its owner confirms it, as a Conflict reward's
+        # (OQ-060, ``resolve_combat_influence_without_faction``).
+        actions.append(
+            DomainAction(
+                action_id="resolve_tech_influence_without_faction", actor=player
+            )
+        )
     return tuple(actions)
+
+
+def apply_tech_influence_without_faction(
+    state: GameState, action: DomainAction
+) -> RuleResult:
+    """Confirm the acquire Influences with every Faction at the top: each
+    lapses with an event (``turn_rows.tech_influence_lapsed``)."""
+
+    if action not in legal_tech_acquire_effect_actions(state, action.actor):
+        raise ValueError("action is not a legal Tech acquire effect")
+    player = action.actor
+    owner = state.players[player]
+    frame = state.decision_stack[-1]
+    keys = pending_tech_acquire_effects(frame)
+    lapsed = tuple(key for key in keys if tech_influence_blocked(key, owner))
+    pending = tuple(key for key in keys if key not in lapsed)
+    context = dict(frame.context)
+    if pending:
+        context[TECH_ACQUIRE_PENDING_KEY] = ",".join(pending)
+    else:
+        context.pop(TECH_ACQUIRE_PENDING_KEY, None)
+    working = replace(
+        state, decision_stack=(*state.decision_stack[:-1], with_context(frame, context))
+    )
+    if not pending:
+        working = working.pop_decision()
+    return RuleResult(
+        state=working,
+        events=tuple(
+            tech_influence_lapsed(player, state.round_number, key) for key in lapsed
+        ),
+    )
 
 
 def tech_cost(

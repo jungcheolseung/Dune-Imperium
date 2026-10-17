@@ -62,6 +62,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     personal_card_for_instance,
@@ -108,6 +109,7 @@ from dune_imperium.rules.graft_boxes import (
     tagged,
     untagged,
 )
+from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
@@ -330,6 +332,13 @@ def migrate_record(
                     break
                 if (
                     bridged is None
+                    and drops_turn_row_refusals
+                    and _influence_at_the_top(state, recorded)
+                ):
+                    dropped.append((index, INFLUENCE_AT_TOP_DROPPED))
+                    break
+                if (
+                    bridged is None
                     and drops_refusals
                     and isinstance(recorded, DomainAction)
                     and recorded.action_id == _REPEATED_MISSION_COLLECTION
@@ -440,6 +449,31 @@ TURN_ROW_REFUSAL_DROPPED: Final = "turn_row_refusal"
 _TURN_ROW_REFUSALS: Final = frozenset(
     {"decline_optional_trash", "decline_research_bonus"}
 )
+# Also from v149 (cleanup-2b, rule decision 1, OQ-060): Shipping's and a Tech
+# tile's acquire "Influence with any Faction" no longer offer a Faction at
+# the top. A recording engine's pick of one gained nothing; this engine's
+# icon waits instead and the recorded turn end lapses it (with every
+# Faction at the top), so the step is dropped; in Combat, where no turn end
+# lapses it, ``tech_influence_confirm`` names the confirm instead.
+INFLUENCE_AT_TOP_DROPPED: Final = "influence_at_top"
+
+
+def _influence_at_the_top(state: GameState, step: ReplayStep) -> bool:
+    """Whether ``step`` picks a Faction at the top for Shipping's or a Tech
+    acquire icon's Influence."""
+
+    if not isinstance(step, DomainAction):
+        return False
+    arguments = dict(step.arguments)
+    if step.action_id != "choose_shipping_influence" and not (
+        step.action_id == "resolve_tech_acquire_effect"
+        and arguments.get("effect") == "influence"
+    ):
+        return False
+    faction = arguments.get("faction")
+    return isinstance(faction, str) and not influence_can_rise(
+        state.players[step.actor], Faction(faction)
+    )
 # Also from v146 (user ruling 2026-10-14, OQ-019): Reverend Mother's repeat
 # no longer queues the Arrakeen Scouts mission collection again, an effect
 # of the visit not printed on the space. The pieces were all collected
@@ -1429,6 +1463,26 @@ def _ghola_draw(state: GameState, box: int) -> bool:
     return bool(card_id) and card_is_ghola(personal_card_for_instance(card_id))
 
 
+def _tech_influence_confirm(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Confirm a Combat Tech acquire Influence an older engine spent at the
+    top (codec v149, cleanup-2b): ``resolve_tech_influence_without_faction``
+    in place of the recorded pick, when this engine offers it."""
+
+    if not isinstance(decision, PlayerDecision) or not _influence_at_the_top(
+        state, step
+    ):
+        return None
+    confirm = DomainAction(
+        action_id="resolve_tech_influence_without_faction", actor=decision.owner
+    )
+    return confirm if confirm in engine.legal_actions(state, decision.owner) else None
+
+
 def _planetologist_intrigue(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -2154,4 +2208,12 @@ BRIDGES: tuple[Bridge, ...] = (
     # Codec v149 (cleanup-2a) asks a Scouts seat with no line it can take,
     # which an older engine skipped.
     Bridge("scouts_no_option_window", _scouts_no_option, before_codec=149),
+    # Codec v149 (cleanup-2b) confirms a Tech acquire Influence with every
+    # Faction at the top in Combat, where an older engine let it pick one.
+    Bridge(
+        "tech_influence_confirm",
+        _tech_influence_confirm,
+        before_codec=149,
+        rewrites=True,
+    ),
 )

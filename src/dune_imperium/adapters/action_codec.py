@@ -503,7 +503,15 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # ``resolve_scouts_choice_without_option`` (new template, Scouts catalogs)
 # emits the ``scouts_choice_skipped`` an older engine emitted without
 # asking. Older records cross the window with the bridge
-# ``scouts_no_option_window``.
+# ``scouts_no_option_window``. (2b, user decisions 2026-10-17, OQ-095 (2) and
+# OQ-060) a research bonus and an optional trash raised in the owner's own
+# turn wait on the turn as rows with no refusal and lapse at the turn-end
+# press (Arrakis Planetologist's Intrigue card waits beside its trash and
+# holds the end); Shipping's and a Tech tile's acquire "Influence with any
+# Faction" offer no Faction at the top and, with every one there, wait and
+# lapse, or in Combat confirm with ``resolve_tech_influence_without_faction``
+# (new template, Tech catalogs). Older records drop the in-turn refusals and
+# the picks at the top, and confirm in Combat (``tech_influence_confirm``).
 ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -1871,7 +1879,12 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
 def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Tech Module choices [Bloodlines pp. 6-7] (``rules.tech``)."""
 
-    templates: list[ActionTemplate] = [ActionTemplate(action_id="decline_tech")]
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id="decline_tech"),
+        # An acquire Influence with every Faction at the top, outside a
+        # turn (codec v149, cleanup-2b).
+        ActionTemplate(action_id="resolve_tech_influence_without_faction"),
+    ]
     for tile in TECH_TILES:
         base: tuple[tuple[str, ActionValue], ...] = (("tech_id", tile.tech_id),)
         variants: list[tuple[tuple[str, ActionValue], ...]] = []

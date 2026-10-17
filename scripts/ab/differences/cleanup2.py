@@ -313,6 +313,68 @@ def _no_trash_lapse(old: Step, candidate: Step) -> None:
     ]
 
 
+# --- 2b-3: no Faction at the top for Shipping and the Tech acquire Influence
+
+
+def _at_the_top(step: Step, faction: object) -> bool:
+    seat = step.step[2]
+    influence = _seat_view(step)["players"][seat]["influence"]
+    return isinstance(faction, str) and influence[faction] >= 6
+
+
+# The page's parts that hold one entry per legal row (``_page``):
+# ``agent_box_of_rows`` and ``reveal_choice_of_rows``.
+_PER_ROW_PARTS = (3, 5)
+
+
+def _tech_influence_rows(step: Step) -> None:
+    """2b-3: the base offered a Tech acquire "Influence with any Faction"
+    for a Faction at the top too (Glowglobes, Navigation Chamber); its rows
+    go, with their entries of the page's per-row parts."""
+
+    if step.step[0] != "a" or not isinstance(step.decision, list):
+        return
+    rows = step.decision[1]
+    if not isinstance(rows, list):
+        return
+    keep = [
+        not (
+            r["action_id"] == "resolve_tech_acquire_effect"
+            and dict(r["arguments"]).get("effect") == "influence"
+            and _at_the_top(step, dict(r["arguments"]).get("faction"))
+        )
+        for r in rows
+    ]
+    if all(keep):
+        return
+    step.decision[1] = [r for r, kept in zip(rows, keep, strict=True) if kept]
+    if isinstance(step.page, list):
+        for part in _PER_ROW_PARTS:
+            entries = step.page[part]
+            if isinstance(entries, list) and len(entries) == len(keep):
+                step.page[part] = [
+                    e for e, kept in zip(entries, keep, strict=True) if kept
+                ]
+
+
+_TECH_INFLUENCE_ROW_KEY = re.compile(r"^(choice|waiting):tech_acquire_influence:")
+
+
+def _no_greyed_tech_influence(old: Step, candidate: Step) -> None:
+    """2b-3: the candidate's page greys those Factions out."""
+
+    page = candidate.page
+    if not isinstance(page, list) or not isinstance(page[1], dict):
+        return
+    kept = [r for r in page[1]["rows"] if not _TECH_INFLUENCE_ROW_KEY.match(r["key"])]
+    if len(kept) == len(page[1]["rows"]):
+        return
+    if not kept and (not isinstance(old.page, list) or old.page[1] is None):
+        page[1] = None
+    else:
+        page[1]["rows"] = kept
+
+
 RULES = (
     Rule(
         "scouts_no_option_window",
@@ -375,5 +437,16 @@ RULES = (
         "trash_lapse_event",
         why="cleanup-2b: decision 2, the turn end lapses it with an event",
         new=_no_trash_lapse,
+    ),
+    Rule(
+        "tech_influence_rows",
+        why="cleanup-2b: decision 1 (OQ-060), no Tech acquire Influence for a "
+        "Faction at the top",
+        old=_tech_influence_rows,
+    ),
+    Rule(
+        "tech_influence_greyed",
+        why="cleanup-2b: decision 1, the page greys those Factions out",
+        new=_no_greyed_tech_influence,
     ),
 )

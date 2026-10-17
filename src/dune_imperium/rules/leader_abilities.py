@@ -2744,7 +2744,7 @@ def _board_repeat_block(
     """The repeat waits for the visit's mandatory effects, then costs one
     water [Reverend Mother Jessica card]."""
 
-    if mandatory_board_icons_pending(context):
+    if mandatory_board_icons_pending(context, owner):
         return OptionalEffectBlock(OptionalBlockKind.AFTER_THE_SPACE)
     return short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
 

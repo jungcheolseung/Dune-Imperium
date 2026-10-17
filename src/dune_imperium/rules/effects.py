@@ -7,6 +7,7 @@ from dataclasses import replace as replace_card
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     contract_for_instance,
@@ -27,6 +28,7 @@ from dune_imperium.rules.frames import (
     owes_track_spy,
     reset_turn_counters,
 )
+from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.strength import conflict_agent_strength
 
 
@@ -657,18 +659,50 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
     )
 
 
-def mandatory_board_icons_pending(context: Mapping[str, ActionValue]) -> bool:
+# Shipping's "Influence with a chosen Faction" (``board_effects.SHIPPING``
+# and ``board_effects.BOARD_ICON_INFLUENCE``, spelled here like the ids
+# above).
+_SHIPPING_INFLUENCE: Final = ("shipping", "influence")
+
+
+def blocked_board_icons(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> frozenset[str]:
+    """The visit's mandatory icons that can only lapse now.
+
+    Shipping's "Influence with a chosen Faction" with every Faction at the
+    top offers no Faction (OQ-060: "합법 행동 provider는 이미 6인 진영을
+    제시하지 않으므로") and, like an Agent box's Influence there, waits for
+    the turn's end, whose press lapses it (OQ-057 (1); user decision
+    2026-10-17, composed-effects plan 5, rule decision 1). An Influence loss
+    later in the turn offers it again.
+    """
+
+    space, icon = _SHIPPING_INFLUENCE
+    if context.get("space_id") != space or not board_icon_is_pending(context, icon):
+        return frozenset()
+    if any(influence_can_rise(owner, faction) for faction in Faction):
+        return frozenset()
+    return frozenset({icon})
+
+
+def mandatory_board_icons_pending(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> bool:
     """Whether a mandatory effect of the visited space still waits.
 
     The visit's optional icons (``OPTIONAL_BOARD_ICONS``) do not count: an
     unused one lapses when the turn ends (OQ-095 (2), user ruling
-    2026-10-14).
+    2026-10-14). Nor does one that can only lapse (``blocked_board_icons``).
     """
 
     if context.get("pending_board_effect") is not True:
         return False
     icons = pending_board_icons(context)
-    return not icons or any(key not in OPTIONAL_BOARD_ICONS for key in icons)
+    blocked = blocked_board_icons(context, owner)
+    return not icons or any(
+        key not in OPTIONAL_BOARD_ICONS and key not in blocked for key in icons
+    )
 
 
 def agent_turn_has_other_pending_effects(
@@ -694,8 +728,9 @@ def agent_turn_has_other_pending_effects(
         # (user ruling 2026-10-14).
         False if ignore_agent_effect else context["pending_agent_effect"],
         False if ignore_agent_effect else context.get("graft_pending_effect", False),
-        # The visit's optional icons do not count (``OPTIONAL_BOARD_ICONS``).
-        mandatory_board_icons_pending(context),
+        # The visit's optional icons do not count (``OPTIONAL_BOARD_ICONS``),
+        # nor one that can only lapse (``blocked_board_icons``).
+        mandatory_board_icons_pending(context, _turn_owner(context, players)),
         context["pending_faction_influence"],
         # Urgent Shigawire's added draw is offered whatever the box does
         # (user ruling 2026-10-10, OQ-106).
@@ -876,3 +911,12 @@ def spice_gained_this_turn(owner: PlayerState) -> int:
     """
 
     return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
+
+
+def _turn_owner(
+    context: Mapping[str, ActionValue], players: tuple[PlayerState, ...]
+) -> PlayerState:
+    owner = context.get("turn_owner")
+    if isinstance(owner, bool) or not isinstance(owner, int):
+        raise RuntimeError("Agent-turn effect frame has invalid turn owner")
+    return players[owner]

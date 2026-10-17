@@ -1210,6 +1210,91 @@ def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
     assert DomainAction("finish_agent_turn", 0) in _ENGINE.legal_actions(resolved, 0)
 
 
+def _bought_glowglobes(influence: Influence) -> GameState:
+    """Seat 0 sends an Agent to the Assembly Hall and buys Glowglobes: its
+    Influence icon is owed, nothing else is."""
+
+    starters = starting_deck_instance_ids(0)
+    owner = PlayerState(
+        player_id=0,
+        hand=starters[:5],
+        deck=starters[5:],
+        resources=Resources(spice=6),
+        influence=influence,
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        tech_stacks=(
+            ("glowglobes", "training_depot", "panopticon"),
+            ("gene_locked_vault", "delivery_bay", "servo_receivers"),
+            ("advanced_data_analysis", "plasteel_blades", "spy_drones"),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    def take(state: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in _ENGINE.legal_actions(state, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return _ENGINE.apply(state, action).state
+
+    visited = take(
+        take(state, "agent_turn", space_id="assembly_hall"), "resolve_board_effect"
+    )
+    return take(visited, "acquire_tech", tech_id="glowglobes")
+
+
+def test_a_blocked_tech_acquire_influence_does_not_hold_the_turn_end_ready_flag() -> (
+    None
+):
+    # User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    # OQ-060): Glowglobes' "Influence with any Faction" offers no Faction at
+    # the top, so with every cube at 6 it waits greyed out and the press
+    # lapses it (OQ-057 (1)): the end is ready. With a Faction it can still
+    # raise it holds the end (OQ-098), as does a blocked one beside another
+    # owed acquire icon.
+    top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    blocked = _bought_glowglobes(top)
+    assert dict(blocked.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY] == (
+        "glowglobes:influence"
+    )
+    assert agent_turn_end_ready(blocked) == 0
+    assert [a.action_id for a in _ENGINE.legal_actions(blocked, 0)] == [
+        "finish_agent_turn"
+    ]
+
+    raisable = _bought_glowglobes(replace(top, fremen=5))
+    assert dict(raisable.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY]
+    assert agent_turn_end_ready(raisable) is None
+
+    frame = blocked.decision_stack[-1]
+    context = dict(frame.context)
+    context[TECH_ACQUIRE_PENDING_KEY] = "glowglobes:influence,plasteel_blades:solari"
+    beside = replace(
+        blocked,
+        decision_stack=(
+            *blocked.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+    assert agent_turn_end_ready(beside) is None
+
+
 _ENGINE = UprisingRulesEngine()
 _SIGNET = "player:0:starter:signet_ring:0"
 _GHOLA = "tleilaxu:ghola:0"
