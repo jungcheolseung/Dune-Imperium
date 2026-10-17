@@ -405,17 +405,17 @@ from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
 from dune_imperium.agents.app_ai.windows.common import (
-    RESEARCH_BONUS_ROW_IDS,
-    ResearchBonusGap,
+    TURN_ROW_IDS,
     Source,
     Stage,
+    TurnRowGap,
     best_place_action,
     decide,
     int_arg,
     spy_answer,
     str_arg,
     triggered_draw,
-    waiting_research_bonus,
+    waiting_turn_row,
     with_arg,
     worst_recall_action,
 )
@@ -4116,7 +4116,7 @@ def _decide_both(
 def _unknown_ids(t: _Turn) -> None:
     """A legal id outside ``_KNOWN_ACTION_IDS`` is an unmapped choice."""
 
-    known = _KNOWN_ACTION_IDS | RESEARCH_BONUS_ROW_IDS
+    known = _KNOWN_ACTION_IDS | TURN_ROW_IDS
     ctx = t.run.ctx
     if ctx.bloodlines:
         known = known | _BLOODLINES_ACTION_IDS
@@ -4163,11 +4163,11 @@ def agent_effects_window(run: DecisionRun) -> DomainAction | None:
     if run.first("gather_intelligence") or run.first("decline_gather_intelligence"):
         return _gather_intelligence(run)
     try:
-        research = waiting_research_bonus(run)
-    except ResearchBonusGap:
+        waiting = waiting_turn_row(run)
+    except TurnRowGap:
         return None
-    if research is not None:
-        return research
+    if waiting is not None:
+        return waiting
     views = _box_views(run)
     if views is None:
         t = _turn(run)

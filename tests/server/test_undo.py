@@ -1363,8 +1363,13 @@ def test_planetologist_summon_can_be_taken_back_and_its_intrigue_cannot() -> Non
         row for row in rows if row["action_id"] == "draw_planetologist_intrigue"
     )
     assert draw["undoable"] is False
-    decline = next(row for row in rows if row["action_id"] == "decline_optional_trash")
-    assert decline["undoable"] is True
+    # The trash waits beside the draw as rows on the Agent turn, with no
+    # refusal (cleanup-2b, OQ-095 (2)); trashing a card reveals nothing, so it
+    # stays inside the undo window too.
+    assert "decline_optional_trash" not in {row["action_id"] for row in rows}
+    trash = [row for row in rows if row["action_id"] == "trash_optional_card"]
+    assert trash
+    assert all(row["undoable"] is True for row in trash)
 
     summary = _play_raw(manager, summary, index=_int(draw["index"]))
     held = manager._get(game_id).state.players[0].intrigue_cards

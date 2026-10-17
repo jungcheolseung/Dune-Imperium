@@ -7,6 +7,7 @@ the stage's start master (``d892cd6c``). Each rule's ``why`` names the plan's
 sub-stage; a sub-stage adds its rules here with its change.
 """
 
+import json
 import re
 
 from equivalence_rules import At, Rule, Step
@@ -50,17 +51,22 @@ def _seat_view(step: Step) -> dict[str, object]:
     return step.views[step.step[2]] if step.step[0] == "a" else {}
 
 
-def _in_turn_research_window(step: Step) -> bool:
-    """A base step answering a research bonus window raised in its owner's
-    own turn (its events name a player's source; Combat keeps the window)."""
+def _in_turn_window(step: Step, kind: str) -> bool:
+    """A base step answering a ``kind`` window raised in its owner's own turn
+    (its events name a player's source; Combat and the Scouts step keep the
+    window)."""
 
     if step.step[0] != "a":
         return False
     view = _seat_view(step)
-    if view.get("decision_kind") != "research_bonus" or view.get("phase") == "combat":
+    if view.get("decision_kind") != kind or view.get("phase") == "combat":
         return False
     ids = [event["event_id"] for event in step.events]
     return bool(ids) and all(_IN_TURN_SOURCE.match(i) for i in ids[:1])
+
+
+def _in_turn_research_window(step: Step) -> bool:
+    return _in_turn_window(step, "research_bonus")
 
 
 def _research_decline_vanishes(step: Step) -> None:
@@ -144,6 +150,169 @@ def _no_research_lapse(old: Step, candidate: Step) -> None:
     ]
 
 
+# --- 2b-2: optional trash icons raised in the owner's turn wait on it ------
+
+# The rows a trash window offered beside its decline: the trash, the
+# Planetologist's Intrigue card, and a triggered draw waiting in the turn.
+_TRASH_WINDOW_ROWS = frozenset(
+    {
+        "trash_optional_card",
+        "draw_planetologist_intrigue",
+        "draw_owed_intrigue",
+        "draw_owed_card",
+    }
+)
+# The rows only a waiting trash offers in the candidate's turn.
+_WAITING_TRASH_ROWS = frozenset({"trash_optional_card", "draw_planetologist_intrigue"})
+
+
+def _scouts_trash_items() -> frozenset[str]:
+    from dune_imperium.content.arrakeen_scouts.abilities import SCOUTS_ABILITIES
+    from dune_imperium.content.uprising.effect_dsl import TrashPersonalCard
+
+    return frozenset(
+        item
+        for item, ability in SCOUTS_ABILITIES.items()
+        for section in ability.sections
+        if any(isinstance(reward, TrashPersonalCard) for reward in section.rewards)
+    )
+
+
+# A Scouts line's trash icon run inside the turn (Oversight at the High
+# Council) keeps its window: its source is ``<line source>:<step>``, the line
+# source ending with the item id.
+_SCOUTS_LINE_TRASH = re.compile(rf":(?:{'|'.join(sorted(_scouts_trash_items()))}):\d+:")
+
+
+def _in_turn_trash_window(step: Step) -> bool:
+    return _in_turn_window(step, "optional_trash") and not any(
+        _SCOUTS_LINE_TRASH.search(event["event_id"]) for event in step.events[:1]
+    )
+
+
+def _row_key(row: object) -> str:
+    return json.dumps(row, sort_keys=True)
+
+
+def _trash_decline_vanishes(step: Step) -> None:
+    """2b-2: the in-turn decline has no counterpart (the trash waits and the
+    turn end lapses it); its event goes with it."""
+
+    if step.step[1] == "decline_optional_trash" and _in_turn_trash_window(step):
+        step.vanish = True
+        step.events = [e for e in step.events if e["kind"] != "optional_trash_declined"]
+
+
+def _trash_window_rows(step: Step) -> None:
+    """2b-2: the base's window offered its decline beside the rows."""
+
+    if _in_turn_trash_window(step) and isinstance(step.decision, list):
+        step.decision[1] = [
+            r for r in step.decision[1] if r["action_id"] != "decline_optional_trash"
+        ]
+
+
+def _only_trash_rows(old: Step, candidate: Step) -> None:
+    """2b-2: where the base answered its window, the candidate offers the
+    same rows inside its turn's list: compare those, in the window's order,
+    with the window's views and page."""
+
+    if not _in_turn_trash_window(old) or not isinstance(candidate.decision, list):
+        return
+    order = {
+        _row_key(r): index
+        for index, r in enumerate(
+            old.decision[1] if isinstance(old.decision, list) else []
+        )
+    }
+    offered = {r["action_id"] for r in old.decision[1]} if order else set()
+    rows = [
+        r
+        for r in candidate.decision[1]
+        if r["action_id"] in _TRASH_WINDOW_ROWS and r["action_id"] in offered
+    ]
+    candidate.decision[1] = sorted(
+        rows, key=lambda r: order.get(_row_key(r), len(order))
+    )
+    for view, base in zip(candidate.views, old.views, strict=True):
+        view["decision_kind"] = base["decision_kind"]
+        view["turn_owner"] = base["turn_owner"]
+        # A box whose card a trash took expires at once in the candidate
+        # (``trash_expiry_moves``); the base showed it until its windows
+        # closed.
+        view["agent_boxes"] = base["agent_boxes"]
+    candidate.page = old.page
+
+
+def _no_waiting_trash(old: Step, candidate: Step) -> None:
+    """2b-2: a trash the base declined still waits in the candidate's turn
+    until the turn end lapses it: its rows go (and with them the page, whose
+    per-row parts follow the list)."""
+
+    if (
+        old.step[0] != "a"
+        or _in_turn_trash_window(old)
+        or not isinstance(candidate.decision, list)
+        or not isinstance(candidate.decision[1], list)
+    ):
+        return
+    offered = (
+        {r["action_id"] for r in old.decision[1]}
+        if isinstance(old.decision, list) and isinstance(old.decision[1], list)
+        else set()
+    )
+    rows = [
+        r
+        for r in candidate.decision[1]
+        if r["action_id"] not in _WAITING_TRASH_ROWS or r["action_id"] in offered
+    ]
+    if len(rows) != len(candidate.decision[1]):
+        candidate.decision[1] = rows
+        candidate.page = old.page
+
+
+# The expiry events the candidate made at a trash that the base made later,
+# by id, and the last step index seen (a lower one starts another game).
+_carried_expiries: dict[str, dict[str, object]] = {}
+_last_index = [-1]
+
+
+def _expiry_at_the_trash(old: Step, candidate: Step) -> None:
+    """2b-2: trashing a card whose Agent box still waits expires the box at
+    once (``agent_effects.expire_trashed_card_effects`` runs when the turn's
+    effect frame is on top). The base held stacked windows over that frame
+    -- two Arrakis Planetologist replacements -- so its expiry came when the
+    last of them closed: the candidate's event moves to that step."""
+
+    if old.index <= _last_index[0]:
+        _carried_expiries.clear()
+    _last_index[0] = old.index
+    old_ids = [event["event_id"] for event in old.events]
+    new_ids = {event["event_id"] for event in candidate.events}
+    for event_id in [i for i in _carried_expiries if i in old_ids and i not in new_ids]:
+        candidate.events.insert(
+            min(old_ids.index(event_id), len(candidate.events)),
+            _carried_expiries.pop(event_id),
+        )
+    if not _in_turn_trash_window(old):
+        return
+    for event in list(candidate.events):
+        if (
+            event["kind"] == "agent_card_effect_expired"
+            and event["event_id"] not in old_ids
+        ):
+            candidate.events.remove(event)
+            _carried_expiries[event["event_id"]] = event
+
+
+def _no_trash_lapse(old: Step, candidate: Step) -> None:
+    """2b-2: the turn end lapses a waiting trash with an event."""
+
+    candidate.events = [
+        e for e in candidate.events if e["kind"] != "optional_trash_lapsed"
+    ]
+
+
 RULES = (
     Rule(
         "scouts_no_option_window",
@@ -175,5 +344,36 @@ RULES = (
         "research_lapse_event",
         why="cleanup-2b: decision 2, the turn end lapses it with an event",
         new=_no_research_lapse,
+    ),
+    Rule(
+        "trash_decline_vanishes",
+        why="cleanup-2b: decision 2 (OQ-095 (2)), no in-turn trash refusal",
+        old=_trash_decline_vanishes,
+    ),
+    Rule(
+        "trash_window_rows",
+        why="cleanup-2b: decision 2, the in-turn window's decline row goes",
+        old=_trash_window_rows,
+    ),
+    Rule(
+        "trash_rows_in_the_turn",
+        why="cleanup-2b: decision 2, the window's rows are turn rows",
+        new=_only_trash_rows,
+    ),
+    Rule(
+        "trash_rows_wait",
+        why="cleanup-2b: decision 2, an unused trash waits until the turn end",
+        new=_no_waiting_trash,
+    ),
+    Rule(
+        "trash_expiry_moves",
+        why="cleanup-2b: decision 2, a trashed card's waiting box expires at "
+        "the trash, not when the stacked windows close",
+        new=_expiry_at_the_trash,
+    ),
+    Rule(
+        "trash_lapse_event",
+        why="cleanup-2b: decision 2, the turn end lapses it with an event",
+        new=_no_trash_lapse,
     ),
 )

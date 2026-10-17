@@ -675,16 +675,25 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # stand in the Agent-turn effect frame beside the box's other effects and
 # the random seat resolves a card draw first (3,580 vectors either way).
 # The other five games meet no in-turn research bonus and keep their pins.
+# Re-pinned again for cleanup-2b's optional trash (observation still v32):
+# a "[trash a card]" icon raised in its owner's own turn waits on the turn as
+# rows instead of opening a window with a refusal. An export of the previous
+# commit (72d2ad95) reproduces the two pins it moves, and each trace equals
+# this one until the first in-turn trash window: ``everything`` at decision
+# 219 (round 4, seat 0, the random seat declined there and now resolves a
+# board icon first; 3,580 -> 3,568 vectors), ``promo_bloodlines_tech`` at 545
+# (round 8, seat 1, the same trash taken from the turn's list; 3,160 either
+# way). The other four games meet no in-turn trash.
 _GOLDEN_DIGESTS = {
     "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
     "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
     "promo_bloodlines_tech": (
-        "375622d5489d956b10c8e73ff7df1f0f3b5bf7eaffb9c2ebf8072d89e9096a89",
+        "01f019b151058725d311914a27cc186130431739da940c456cf7efc99cd7bccb",
         3160,
     ),
     "everything": (
-        "f7f8bdb86701b4c0d35ea72616478d7a8321ea4ea39c99c11c1e27db1f62e049",
-        3580,
+        "41ca08efb19c4e33f2bcc4dc4534ada0e1fd457b2cf76ae391683ec3012e6aa9",
+        3568,
     ),
     "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),
     "scouts": (

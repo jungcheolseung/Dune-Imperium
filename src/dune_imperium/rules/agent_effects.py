@@ -161,7 +161,7 @@ from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
     units_deployment_blocked,
 )
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import open_optional_trash
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
@@ -683,8 +683,8 @@ def _apply_stitched_horror_reward(
             next_state = advanced.state
             events.extend(advanced.events)
         elif pick == "trash":
-            next_state = next_state.push_decision(
-                optional_trash_frame(player, f"{source}:{index + 1}")
+            next_state = open_optional_trash(
+                next_state, player, f"{source}:{index + 1}"
             )
     return RuleResult(state=next_state, events=tuple(events))
 
@@ -2540,9 +2540,7 @@ def _apply_control_the_spice_payment(
     )
     box_source = f"{source}:{card_instance_id}"
     return RuleResult(
-        state=next_state.push_decision(
-            optional_trash_frame(player, box_source)
-        ),
+        state=open_optional_trash(next_state, player, box_source),
         events=(
             GameEvent(
                 event_id=f"{box_source}:paid",

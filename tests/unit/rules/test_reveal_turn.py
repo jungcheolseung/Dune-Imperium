@@ -29,6 +29,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult, Transition
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
     draw_or_request_personal_cards,
@@ -541,11 +542,12 @@ def test_desert_power_sandworm_branch_never_grants_persuasion_for_liet_kynes() -
 
 
 def test_desert_power_replacement_credits_eliminate_allies_in_combat_reveal() -> None:
-    # Round 3 review finding 1: Arrakis Planetologist's replacement pushes
-    # an OPTIONAL_TRASH frame directly over the REVEAL frame here (never an
-    # AGENT_EFFECTS frame), so trash_personal_card's own AGENT_EFFECTS-only
-    # crediting never fires; apply_optional_trash used to leave Eliminate
-    # Allies' troops out of the Combat icon's Reveal deployment allowance.
+    # Round 3 review finding 1: Arrakis Planetologist's replacement raised
+    # inside the owner's Combat-icon Reveal waits on the REVEAL frame itself
+    # (cleanup-2b; never an AGENT_EFFECTS frame), so trash_personal_card's own
+    # AGENT_EFFECTS-only crediting never fires; apply_optional_trash credits
+    # Eliminate Allies' troops to the Reveal's deployment allowance through
+    # ``credit_trash_recruits``.
     # "이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두 개"
     # [Bloodlines pp. 5, 12] ("Combat 아이콘" line, docs/rules/bloodlines.md);
     # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
@@ -578,22 +580,36 @@ def test_desert_power_replacement_credits_eliminate_allies_in_combat_reveal() ->
         if action.action_id == "pay_reveal_water_for_sandworm"
     )
     replaced = apply_reveal_sandworm_action(revealed, pay_water).state
-    assert replaced.decision_stack[-1].kind == "optional_trash"
+    # No window: the replacement's trash and Intrigue card wait on the Reveal
+    # as rows (user decision 2026-10-17, cleanup-2b), the trash with no
+    # refusal (OQ-095 (2)).
+    assert replaced.decision_stack[-1].kind == "reveal"
+    assert [
+        kind for kind, _source, _value in turn_rows.pending(replaced.decision_stack[-1])
+    ] == [turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE]
+    assert "decline_optional_trash" not in {
+        action.action_id for action in legal_optional_trash_actions(replaced, 0)
+    }
+    # The Intrigue card is mandatory: it holds the Reveal's end.
+    assert legal_finish_reveal_actions(replaced, 0) == ()
 
     trash = next(
         action
-        for action in legal_optional_trash_actions(replaced, 0)[1:]
-        if dict(action.arguments)["card_id"] == eliminate_allies
+        for action in legal_optional_trash_actions(replaced, 0)
+        if action.action_id == "trash_optional_card"
+        and dict(action.arguments)["card_id"] == eliminate_allies
     )
     resolved = apply_optional_trash(replaced, trash).state
-    # The replacement's Intrigue card is its own step in the same frame
-    # (user ruling 2026-10-10, OQ-106); the trash was credited before it.
-    assert dict(resolved.decision_stack[-2].context)["reveal_troops_recruited"] == 2
+    # The replacement's Intrigue card is its own step beside the trash (user
+    # ruling 2026-10-10, OQ-106); the trash was credited before it.
+    assert dict(resolved.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+    assert legal_finish_reveal_actions(resolved, 0) == ()
     resolved = apply_optional_trash(
         resolved, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
     ).state
 
     assert resolved.decision_stack[-1].kind == "reveal"
+    assert turn_rows.pending(resolved.decision_stack[-1]) == ()
     assert resolved.players[0].troops_garrison == 5
     assert dict(resolved.decision_stack[-1].context)["reveal_troops_recruited"] == 2
     assert [

@@ -157,9 +157,9 @@ from dune_imperium.agents.app_ai.windows.agent_effects import (
     STITCHED_HORROR_TRASH_INTENT,
 )
 from dune_imperium.agents.app_ai.windows.common import (
-    ResearchBonusGap,
     Source,
     Stage,
+    TurnRowGap,
     decide,
     str_arg,
     triggered_draw,
@@ -175,6 +175,7 @@ from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
 from dune_imperium.agents.app_ai.windows.scouts import scouts_trash_source
 from dune_imperium.agents.app_ai.windows.turn import GRAFT_PARTNER_INTENT
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules import turn_rows
 
 # ``Memory.intents`` keys this module reads (their writers own the names):
 # ``(GRAFT_PARTNER_INTENT, round, placed card) -> partner`` (``turn``);
@@ -389,7 +390,7 @@ def research_bonus_now(run: DecisionRun) -> DomainAction | None:
     playmat (module doc): c6r6's ``GainAnyFactionInfluenceCustomAbility``
     (Explicit, forced) at once; an arrow (c7r3, c8r6) when its Evaluate is
     worth more than 0 -- otherwise None, and a later prompt asks again.
-    Raises ``ResearchBonusGap`` for an Intrigue card with no archetype.
+    Raises ``TurnRowGap`` for an Intrigue card with no archetype.
     """
 
     influence = run.by_id("choose_research_influence")
@@ -398,7 +399,7 @@ def research_bonus_now(run: DecisionRun) -> DomainAction | None:
     trash = run.by_id("trash_intrigue_for_research_bonus")
     if trash:
         if not all(_known_intrigue(ref) for ref in _refs(trash, "card_id")):
-            raise ResearchBonusGap
+            raise TurnRowGap
         taken = _research_intrigue_trash(run, trash, None)
         if taken is not None:
             return taken
@@ -464,22 +465,23 @@ def _stored_trash(run: DecisionRun, source: str) -> object:
     )
 
 
-def optional_trash(run: DecisionRun) -> DomainAction | None:
-    """One optional trash, whatever granted it.
+#: A trash the app AI cannot value (a census gap): the agent falls back.
+_TRASH_GAP: Final = object()
+#: ``(TRASH_ANSWERED_INTENT, round, source)``: a trash waiting on the turn
+#: this seat already answered once, as the app prompts once per icon.
+TRASH_ANSWERED_INTENT: Final = "optional_trash_answered"
 
-    Liet Kynes' replacement frame also holds its Intrigue card as its own
-    step (``draw_planetologist_intrigue``, user ruling 2026-10-10, OQ-106);
-    it is taken first, as the replacement paid it before the trash. So is a
-    triggered draw waiting in the turn (``triggered_draw``), which the app
-    drew before this prompt.
-    """
 
-    draw = run.first("draw_planetologist_intrigue") or triggered_draw(run)
-    if draw is not None:
-        return draw
-    decline = run.first("decline_optional_trash")
-    trashes = run.by_id("trash_optional_card")
-    granted_by = _frame_source(run)
+def _trash_answer(
+    run: DecisionRun,
+    granted_by: str,
+    trashes: tuple[DomainAction, ...],
+    decline: DomainAction | None,
+) -> DomainAction | object | None:
+    """The app's answer to one trash icon granted by ``granted_by``:
+    a trash, ``decline`` ("trash nothing"; None in the turn, where there is
+    no refusal), or ``_TRASH_GAP``."""
+
     stored = _stored_trash(run, granted_by)
     if stored is not _MISSING:
         ref = (
@@ -491,7 +493,7 @@ def optional_trash(run: DecisionRun) -> DomainAction | None:
         return decline if action is None else action
     refs = _refs(trashes, "card_id")
     if not all(_known_card(ref) for ref in refs):
-        return None
+        return _TRASH_GAP
     seat = run.ctx.seat
     cards = tuple(card_entity(ref, seat) for ref in refs)
     # The Scouts trash icon (Oversight, Water Discipline): the line's own
@@ -499,7 +501,7 @@ def optional_trash(run: DecisionRun) -> DomainAction | None:
     # is not mirrored.
     from_scouts, line_trash = scouts_trash_source(run, granted_by)
     if from_scouts and line_trash is None:
-        return None
+        return _TRASH_GAP
     ability = line_trash or TrashCustomAbility(
         Entity(Kind.CARD, granted_by, None, seat)
     )
@@ -517,6 +519,62 @@ def optional_trash(run: DecisionRun) -> DomainAction | None:
     actions = (*trashes, *(() if decline is None else (decline,)))
     source = Source(ability.APP_CLASS, Stage.PROMPT, actions, evaluate)
     return decide(run, [source], skip=decline, forced=False)
+
+
+def optional_trash(run: DecisionRun) -> DomainAction | None:
+    """One optional trash window, whatever granted it: outside the owner's
+    turn (Combat, the Arrakeen Scouts step, a Scouts line).
+
+    Liet Kynes' replacement frame also holds its Intrigue card as its own
+    step (``draw_planetologist_intrigue``, user ruling 2026-10-10, OQ-106);
+    it is taken first, as the replacement paid it before the trash. So is a
+    triggered draw waiting in the turn (``triggered_draw``), which the app
+    drew before this prompt.
+    """
+
+    draw = run.first("draw_planetologist_intrigue") or triggered_draw(run)
+    if draw is not None:
+        return draw
+    answer = _trash_answer(
+        run,
+        _frame_source(run),
+        run.by_id("trash_optional_card"),
+        run.first("decline_optional_trash"),
+    )
+    return answer if isinstance(answer, DomainAction) else None
+
+
+def optional_trash_now(run: DecisionRun) -> DomainAction | None:
+    """A trash or Planetologist card waiting on the owner's turn that the
+    app takes now.
+
+    Since cleanup-2b the engine keeps them on the turn as rows until used or
+    lapsed at the turn end; the app prompts for each icon as it resolves.
+    The Planetologist's Intrigue card is drawn at once (the replacement paid
+    it before the trash). Each waiting trash, newest first as the engine
+    takes them, is answered once (``TRASH_ANSWERED_INTENT``): a trash, or
+    "nothing" and the next one. Raises ``TurnRowGap`` for a card with no
+    archetype or an unmirrored Scouts line.
+    """
+
+    draw = run.first("draw_planetologist_intrigue")
+    if draw is not None:
+        return draw
+    trashes = run.by_id("trash_optional_card")
+    if not trashes:
+        return None
+    frame = run.ctx.state.decision_stack[-1]
+    for kind, source, _value in reversed(turn_rows.pending(frame)):
+        key = (TRASH_ANSWERED_INTENT, run.ctx.round_number, source)
+        if kind != turn_rows.OPTIONAL_TRASH or key in run.memory.intents:
+            continue
+        run.memory.intents[key] = True
+        answer = _trash_answer(run, source, trashes, None)
+        if answer is _TRASH_GAP:
+            raise TurnRowGap
+        if isinstance(answer, DomainAction):
+            return answer
+    return None
 
 
 # ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ from dune_imperium.agents.app_ai.windows.agent_effects import (
     CONTROL_THE_SPICE_TRASH_INTENT,
     STITCHED_HORROR_TRASH_INTENT,
 )
+from dune_imperium.agents.app_ai.windows.common import TurnRowGap
 from dune_imperium.agents.app_ai.windows.intrigue import (
     INTENT,
     INTENT_AT,
@@ -512,9 +513,65 @@ def _get_card_to_trash(state: GameState, rng_seed: int = 0) -> str | None:
     return str(answer.response[0][0]) if answer.response[0] else None
 
 
+def _trash_source(state: GameState, seat: int) -> str:
+    return f"round:{state.round_number}:player:{seat}:research:c3r3"
+
+
+def _trash_window(**changes: object) -> GameState:
+    """A research space's optional trash window, as it opens outside the
+    owner's turn (Combat, the Arrakeen Scouts step; cleanup-2b)."""
+
+    state, seat = _research_seat(**changes)
+    return state.push_decision(optional_trash_frame(seat, _trash_source(state, seat)))
+
+
+def _waiting_trash(**changes: object) -> GameState:
+    """A research space's optional trash waiting on the seat's Reveal frame,
+    on top (cleanup-2b): its rows beside the Reveal's others, no decline."""
+
+    state, seat = _research_seat(**changes)
+    queued = turn_rows.queue(
+        state.pop_decision(),
+        seat,
+        (turn_rows.OPTIONAL_TRASH, _trash_source(state, seat), ""),
+    )
+    assert queued is not None
+    return queued
+
+
+def _no_junk(**changes: object) -> dict[str, object]:
+    """Only the Signet Ring (``TrashValue`` 0) can be trashed."""
+
+    me = _research().players[1]
+    signet = "player:1:starter:signet_ring:0"
+    cards = (*me.deck, *me.discard_pile, *me.in_play)
+    return {
+        "deck": tuple(c for c in cards if c != signet),
+        "hand": (signet,),
+        "discard_pile": (),
+        "in_play": (),
+        **changes,
+    }
+
+
+def test_a_research_hex_trashes_its_owners_turn_rows() -> None:
+    """Inside the owner's own turn c3r3's trash waits on the turn as rows,
+    with no decline (cleanup-2b)."""
+
+    state = _bonus_state("c2r2", "c3r3")
+    seat = _seat(state)
+    reveal = state.pop_decision()
+    assert [kind for kind, _, _ in turn_rows.pending(reveal.decision_stack[-1])] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    ids = {a.action_id for a in ENGINE.legal_actions(reveal, seat)}
+    assert "trash_optional_card" in ids
+    assert "decline_optional_trash" not in ids
+
+
 @pytest.mark.parametrize("rng_seed", [0, 3])
 def test_optional_trash_of_a_research_hex_is_get_card_to_trash(rng_seed: int) -> None:
-    state = _bonus_state("c2r2", "c3r3")  # specimen, then the optional trash
+    state = _trash_window()
     assert state.decision_stack[-1].kind == "optional_trash"
     expected = _get_card_to_trash(state, rng_seed)
     assert expected is not None  # the Dagger in play is junk
@@ -523,34 +580,75 @@ def test_optional_trash_of_a_research_hex_is_get_card_to_trash(rng_seed: int) ->
     assert _arg(action, "card_id") == expected
 
 
+@pytest.mark.parametrize("rng_seed", [0, 3])
+def test_a_waiting_trash_is_get_card_to_trash(rng_seed: int) -> None:
+    state = _waiting_trash()
+    expected = _get_card_to_trash(state, rng_seed)
+    assert expected is not None
+    action = W.optional_trash_now(_run(state, rng_seed=rng_seed))
+    assert action is not None and action.action_id == "trash_optional_card"
+    assert _arg(action, "card_id") == expected
+
+
 def test_optional_trash_declines_without_a_junk_card() -> None:
     """Only the Signet Ring (``TrashValue`` 0) can be trashed: "trash
     nothing" at 1.0 is the answer."""
 
-    me = _research().players[1]
-    signet = "player:1:starter:signet_ring:0"
-    cards = (*me.deck, *me.discard_pile, *me.in_play)
-    state = _bonus_state(
-        "c2r2",
-        "c3r3",
-        deck=tuple(c for c in cards if c != signet),
-        hand=(signet,),
-        discard_pile=(),
-        in_play=(),
-    )
+    state = _trash_window(**_no_junk())
     assert _get_card_to_trash(state) is None
     action = W.optional_trash(_run(state))
     assert action is not None and action.action_id == "decline_optional_trash"
 
 
+def test_a_waiting_trash_with_no_junk_card_is_answered_once() -> None:
+    """In the turn "trash nothing" takes no row: the trash waits for the
+    turn end to lapse it, and the app, which prompts once per icon, is not
+    asked again (``TRASH_ANSWERED_INTENT``)."""
+
+    state = _waiting_trash(**_no_junk())
+    seat = _seat(state)
+    memory = Memory()
+    assert W.optional_trash_now(_run(state, memory=memory)) is None
+    key = (W.TRASH_ANSWERED_INTENT, state.round_number, _trash_source(state, seat))
+    assert memory.intents[key] is True
+    assert W.optional_trash_now(_run(state, memory=memory)) is None
+
+
 def test_optional_trash_with_an_unknown_card_is_a_gap() -> None:
-    state = _bonus_state("c2r2", "c3r3")
+    state = _trash_window()
     stray = DomainAction(
         action_id="trash_optional_card",
         actor=_seat(state),
         arguments=(("card_id", _UNKNOWN_CARD),),
     )
     assert W.optional_trash(_with_legal(_run(state), stray)) is None
+
+
+def test_a_waiting_trash_with_an_unknown_card_is_a_gap() -> None:
+    state = _waiting_trash()
+    stray = DomainAction(
+        action_id="trash_optional_card",
+        actor=_seat(state),
+        arguments=(("card_id", _UNKNOWN_CARD),),
+    )
+    with pytest.raises(TurnRowGap):
+        W.optional_trash_now(_with_legal(_run(state), stray))
+
+
+def test_a_waiting_planetologist_card_is_drawn_first() -> None:
+    """Liet Kynes' replacement in the owner's turn waits as a trash and an
+    Intrigue card (cleanup-2b); the card is drawn first, as the replacement
+    paid it before the trash."""
+
+    state, seat = _research_seat()
+    source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
+    turn = state.pop_decision()
+    for kind in (turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE):
+        queued = turn_rows.queue(turn, seat, (kind, source, ""))
+        assert queued is not None
+        turn = queued
+    action = W.optional_trash_now(_run(turn))
+    assert action == DomainAction(action_id="draw_planetologist_intrigue", actor=seat)
 
 
 def test_planetologist_frame_draws_its_intrigue_first() -> None:

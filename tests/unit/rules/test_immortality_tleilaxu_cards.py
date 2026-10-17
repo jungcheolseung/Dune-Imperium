@@ -29,7 +29,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.observation import observe_state
-from dune_imperium.rules import card_trash
+from dune_imperium.rules import card_trash, turn_rows
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     apply_agent_card_discard,
@@ -203,8 +203,9 @@ def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
 
 def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     # The grafted line resolved first: its Research direction and the c3r3
-    # bonus ("trash and specimen"; the trash optional [Main p. 20]) are
-    # answered while the draw icon still waits on the Agent box.
+    # bonus ("trash and specimen"; the trash optional [Main p. 20], waiting on
+    # the Agent turn as rows with no refusal, cleanup-2b) are answered while
+    # the draw icon still waits on the Agent box.
     espionage = _tleilaxu("industrial_espionage")
     owner = _owner((espionage, FACE_DANCER, DAGGER), research_space="c2r2")
     deck_size = len(owner.deck)
@@ -218,7 +219,13 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
         arguments=(("space_id", "c3r3"),),
     )
     bonus = engine.apply(researched, direction).state
-    assert bonus.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert bonus.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [
+        kind for kind, _source, _value in turn_rows.pending(bonus.decision_stack[-1])
+    ] == [turn_rows.OPTIONAL_TRASH]
+    assert "decline_optional_trash" not in {
+        action.action_id for action in engine.legal_actions(bonus, 0)
+    }
     assert bonus.players[0].hand == (DAGGER,)
     assert len(bonus.players[0].deck) == deck_size
     trash = DomainAction(
@@ -229,6 +236,7 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     trashed = engine.apply(bonus, trash).state
     assert trashed.players[0].trashed == (DAGGER,)
     assert trashed.players[0].specimens == 2
+    assert turn_rows.pending(trashed.decision_stack[-1]) == ()
     assert _icon_keys(trashed) == {"cards"}
 
     drawn = resolve_agent_card_icon(trashed, _icon(trashed, "cards")).state
@@ -627,12 +635,22 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
     )
     # The trash waits for the second pick too.
     assert trashing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.pending(trashing.state.decision_stack[-1]) == ()
     trashed_and_troop = apply_agent_card_payment(
         trashing.state,
         _payment(trashing.state, "choose_agent_card_reward", reward="troop"),
     ).state
-    assert trashed_and_troop.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert trashed_and_troop.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+    # Both named: the trash then waits on the Agent turn as rows, with no
+    # refusal (cleanup-2b, OQ-095 (2)).
+    top = trashed_and_troop.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    assert "decline_optional_trash" not in {
+        action.action_id
+        for action in UprisingRulesEngine().legal_actions(trashed_and_troop, 0)
+    }
     assert trashed_and_troop.players[0].troops_garrison == 4
 
 

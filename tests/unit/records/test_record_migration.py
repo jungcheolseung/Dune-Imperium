@@ -62,7 +62,7 @@ from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.records import migration
 from dune_imperium.records.migration import migrate_record, walk
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
@@ -113,11 +113,13 @@ OQ106_FIXTURES: dict[str, dict[str, list[int]]] = {
     # the payment's id), and the Research follows that chance; at 368
     # (round 5) a Research past the second genetic marker settles first and
     # the cards' reshuffle (369) comes after it, as v141 drew them. A Deep
-    # Desert summon for Liet Kynes (two Intrigue cards) at 199.
+    # Desert summon for Liet Kynes (two Intrigue cards) at 199: both wait on
+    # the Agent turn as rows since codec v149 (cleanup-2b), so both are
+    # taken right after the summon (one window at a time before).
     "v141-no-tech_module-app_ai-9711": {
         "piter_reward": [169, 170, 368, 368],
         "reshuffle_renamed": [170, 369],
-        "planetologist_intrigue": [199, 200],
+        "planetologist_intrigue": [199, 199],
         "owed_draw": [235, 290, 371],
     },
     # Reverse Engineering in a Servo-Receivers frame (round 1).
@@ -191,7 +193,7 @@ def _this_engine_game(seed: int) -> GameReplay:
 def game() -> GameReplay:
     """A whole heuristic game on this engine with every module on.
 
-    Seed 95; seed 1 until codec v146: optional Agent-turn effects no longer
+    Seed 187; seed 1 until codec v146: optional Agent-turn effects no longer
     offer a refusal (OQ-095 (2), user ruling 2026-10-14), which moved seed
     1's game off these tests' preconditions -- a seat now deploys troops
     before drawing the Intrigue card a Research owes it (an older engine
@@ -200,11 +202,14 @@ def game() -> GameReplay:
     codec v149 (cleanup-2a) asked Scouts seats with nothing to take, an
     extra decision that moved 102's game off them the same way; of the
     seeds that met them then (95, 96, 102, 141, 149, 154, 182, 186, 187,
-    194), 95 still does. The triggered-draw test needs a game whose only
-    split steps are owed draws and has a seed of its own.
+    194), 95 still did. Seed 95 until cleanup-2b kept an in-turn optional
+    trash on the turn as rows (a seat now takes a Reveal's Research before
+    an owed Intrigue card); of those ten, 187 still meets them all. The
+    triggered-draw test needs a game whose only split steps are owed draws
+    and has a seed of its own.
     """
 
-    return _this_engine_game(95)
+    return _this_engine_game(187)
 
 
 def _states(replay: GameReplay) -> list[GameState]:
@@ -485,6 +490,44 @@ def test_an_in_turn_research_decline_is_dropped_only_before_v149(
     )
     seat = _actor(game, index)
     decline = DomainAction(action_id="decline_research_bonus", actor=seat)
+
+    def with_decline(codec: int) -> tuple[GameReplay, int]:
+        older = _older(game, codec)
+        position = _position(game, codec, index)
+        steps = (*older.steps[:position], decline, *older.steps[position:])
+        return replace(older, steps=steps), position
+
+    before, position = with_decline(148)
+    record = migrate_record(before)
+    assert record.complete, record.divergence
+    assert (position, "turn_row_refusal") in record.dropped
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+
+    after, position = with_decline(149)
+    stamped = migrate_record(after)
+    assert stamped.divergence is not None
+    assert stamped.divergence.recorded_index == position
+
+
+def test_an_in_turn_trash_decline_is_dropped_only_before_v149(
+    game: GameReplay,
+) -> None:
+    # Cleanup-2b: an optional trash raised in its owner's turn waits on the
+    # turn with no refusal, so an older engine's in-turn
+    # ``decline_optional_trash`` has no counterpart either.
+    states = _states(game)
+    index = next(
+        i
+        for i, (state, step) in enumerate(zip(states, game.steps, strict=True))
+        if isinstance(step, DomainAction)
+        and (frame := turn_rows.rows_frame(state, step.actor)) is not None
+        and any(
+            kind == turn_rows.OPTIONAL_TRASH for kind, _, _ in turn_rows.pending(frame)
+        )
+    )
+    seat = _actor(game, index)
+    decline = DomainAction(action_id="decline_optional_trash", actor=seat)
 
     def with_decline(codec: int) -> tuple[GameReplay, int]:
         older = _older(game, codec)
@@ -937,15 +980,16 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # the trigger, so its record has no such step. Dropped from this
     # engine's record (whose heuristic takes each at once), each is taken
     # right after its trigger again, so the game comes back step for step.
-    # Seed 6's game; its other split steps are dropped with the draws and
+    # Seed 4's game; its other split steps are dropped with the draws and
     # taken back by their own bridges. (Seed 10 until codec v149, whose game
     # split nothing but its three owed draws, one of three such seeds of
     # 1-200; cleanup-2a's Scouts confirms moved every game, none of 1-200
     # splits only owed draws now, and seed 10's heuristic takes one owed
-    # Intrigue card a step late. Seeds 5, 6 and 20 are the first that bring
-    # every owed draw back. The fixture's seed 1 drew one a step late until
-    # codec v146, OQ-095 (2).)
-    game = _this_engine_game(6)
+    # Intrigue card a step late. Seeds 5, 6 and 20 were then the first that
+    # brought every owed draw back; cleanup-2b's turn rows moved them too,
+    # and of 1-60 seeds 4, 12, 21, 22, 26, 43, 48 and 53 do. The fixture's
+    # seed 1 drew one a step late until codec v146, OQ-095 (2).)
+    game = _this_engine_game(4)
     owed = {
         index
         for index, step in enumerate(game.steps)
@@ -1066,7 +1110,9 @@ def test_records_of_older_engines_replay_to_their_end(
     # Codec v147 (OQ-095 (7) addition) drops a Reveal choice's defer and
     # resume and an optional Reveal choice's refusal: every pending choice is
     # offered at once and the recorded ``finish_reveal`` lapses one left
-    # unused. Every other recorded step applies.
+    # unused. Codec v149 (cleanup-2b) drops an in-turn refusal of a research
+    # bonus or an optional trash: it waits on the turn as rows and the
+    # recorded turn end lapses it. Every other recorded step applies.
     switches = [
         index
         for index, step in enumerate(replay.steps)
@@ -1089,6 +1135,10 @@ def test_records_of_older_engines_replay_to_their_end(
                 for refusal in migration._OPTIONAL_REVEAL_REFUSALS
             ),
             ("decline_reveal_spy_recall", migration.REVEAL_REFUSAL_BY_ORDER),
+            *(
+                (refusal, migration.TURN_ROW_REFUSAL_DROPPED)
+                for refusal in migration._TURN_ROW_REFUSALS
+            ),
         ), (index, step, reason)
     assert [
         index
@@ -1779,7 +1829,9 @@ def _where(record: migration.MigratedRecord) -> dict[str, list[int]]:
         *OQ106_FIXTURES.items(),
         (
             "v141-heuristic-1023",
-            {"intrigue_held_rewards": [46], "planetologist_intrigue": [211, 212]},
+            # Two replacements in the Agent turn, both drawn after the
+            # summon (cleanup-2b; [211, 212] while each had its window).
+            {"intrigue_held_rewards": [46], "planetologist_intrigue": [211, 211]},
         ),
         ("v141-heuristic-150", {"piter_reward": [557, 557], "owed_draw": [558]}),
         (

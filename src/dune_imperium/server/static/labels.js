@@ -507,6 +507,7 @@ const EVENT_LABELS = {
   navigation_exhausted: "{navigation} 소진",
   navigation_setup_finished: "{navigation} 설정 완료",
   optional_trash_declined: "{trash} 거절",
+  optional_trash_lapsed: "{trash}: 쓰지 않음",
   personal_card_discard_effect_resolved: "버린 카드 효과 해결",
   personal_card_late_revealed: "카드 뒤늦게 공개",
   personal_card_trash_effect_resolved: "폐기한 카드 효과 해결",

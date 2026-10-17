@@ -74,6 +74,7 @@ from dune_imperium.display.effect_dsl_text_ko import (
 )
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
@@ -132,6 +133,11 @@ from dune_imperium.rules.effects import (
     short_of,
 )
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+    open_optional_trash,
+)
 
 _BOX = PersonalCardAgentEffect
 
@@ -337,9 +343,10 @@ def test_one_action_box_puts_its_event_first_and_draws_by_card_name() -> None:
     )
 
 
-def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> None:
-    """The troop first; the black trash icon on a frame named after the box,
-    so a self-trash keeps its card's effects (OQ-022)."""
+def test_throne_room_politics_recruits_then_queues_its_trash_on_the_turn() -> None:
+    """The troop first; the black trash icon waits on the Agent turn as rows
+    with no refusal, queued under the box's own source so a self-trash keeps
+    its card's effects (OQ-022; cleanup-2b, OQ-095 (2))."""
 
     card = "imperium:throne_room_politics:0"
     placed = _played(
@@ -351,9 +358,64 @@ def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> Non
     troops = placed.players[0].troops_garrison
     assert result.state.players[0].troops_garrison == troops + 1
     frame = result.state.decision_stack[-1]
-    assert frame.kind == FrameKind.OPTIONAL_TRASH
-    assert dict(frame.context)["source"] == agent_card_source(1, 0, card)
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.pending(frame) == (
+        (turn_rows.OPTIONAL_TRASH, agent_card_source(1, 0, card), ""),
+    )
+    legal = legal_optional_trash_actions(result.state, 0)
+    # The card itself sits in play: it may trash itself (OQ-022). No refusal.
+    assert [(a.action_id, dict(a.arguments)) for a in legal] == [
+        ("trash_optional_card", {"card_id": card})
+    ]
     assert result.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_a_self_trash_takes_the_trash_its_own_box_opened() -> None:
+    """With two trashes waiting, the card whose own Agent box opened one of
+    them is trashed by that one, so it keeps what is left of its box (OQ-022:
+    "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"); any
+    other card takes the newest waiting trash, the order the windows, stacked
+    as they were raised, answered (cleanup-2b, OQ-095 (2))."""
+
+    card = "imperium:throne_room_politics:0"
+    other = "starting:0:dagger:0"
+    placed = _played(
+        card,
+        PlayerState(player_id=0, discard_pile=(other,)),
+        RulesetConfig(immortality=True, bloodlines=True, choam_module=True),
+    )
+    own = agent_card_source(1, 0, card)
+    elsewhere = "round:1:player:0:test:second_trash"
+    # The box's trash first, a second one raised after it: the newest waiting
+    # trash is not the box's own.
+    waiting = open_optional_trash(resolve_agent_card_effect(placed).state, 0, elsewhere)
+    frame = waiting.decision_stack[-1]
+    assert turn_rows.pending(frame) == (
+        (turn_rows.OPTIONAL_TRASH, own, ""),
+        (turn_rows.OPTIONAL_TRASH, elsewhere, ""),
+    )
+    offered = legal_optional_trash_actions(waiting, 0)
+    assert {dict(a.arguments)["card_id"] for a in offered} == {card, other}
+
+    def trash(card_id: str) -> GameState:
+        action = DomainAction("trash_optional_card", 0, (("card_id", card_id),))
+        return apply_optional_trash(waiting, action).state
+
+    # The box's own card: its trash is taken, the other stays waiting, and
+    # the box is marked as self-trashed.
+    itself = trash(card)
+    assert itself.players[0].trashed == (card,)
+    assert turn_rows.pending(itself.decision_stack[-1]) == (
+        (turn_rows.OPTIONAL_TRASH, elsewhere, ""),
+    )
+    assert dict(itself.decision_stack[-1].context)["agent_card_self_trashed"] is True
+    # Any other card: the newest trash is taken and the box's own still waits.
+    stranger = trash(other)
+    assert stranger.players[0].trashed == (other,)
+    assert turn_rows.pending(stranger.decision_stack[-1]) == (
+        (turn_rows.OPTIONAL_TRASH, own, ""),
+    )
+    assert "agent_card_self_trashed" not in dict(stranger.decision_stack[-1].context)
 
 
 def test_pointing_the_way_draws_its_intrigue_before_the_write_back() -> None:

@@ -28,6 +28,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult, Transition
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -52,6 +53,7 @@ from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, owes_track_spy
 from dune_imperium.rules.graft import apply_graft_partner, legal_graft_partner_actions
+from dune_imperium.rules.optional_trash import legal_optional_trash_actions
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_gain,
     begin_reveal_turn,
@@ -1331,13 +1333,22 @@ def test_stillsuit_manufacturer_return_lapses_without_the_alliance() -> None:
     assert stillsuit in owner.in_play and stillsuit not in owner.hand
 
 
-def test_throne_room_politics_recruits_then_offers_a_trash() -> None:
+def test_throne_room_politics_recruits_then_queues_a_trash() -> None:
     throne = _card("throne_room_politics")
     resolved = resolve_agent_card_effect(
         _place(_state(_owner((throne,))), throne, "dutiful_service")
     )
     assert resolved.state.players[0].troops_garrison == 4
-    assert resolved.state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    # The black trash icon is optional: it waits on the Agent turn as rows,
+    # with no refusal (cleanup-2b, OQ-095 (2)).
+    top = resolved.state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    assert "decline_optional_trash" not in {
+        a.action_id for a in legal_optional_trash_actions(resolved.state, 0)
+    }
     revealed = _take_gains(_reveal(_state(_owner((throne,)))))
     assert revealed.players[0].influence.bene_gesserit == 1
 

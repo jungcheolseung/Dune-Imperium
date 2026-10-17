@@ -483,8 +483,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_track_spy_actions,
         # A draw a Plot's trigger earned, its own step (OQ-106).
         legal_owed_draw_actions,
-        # A research bonus a Plot raised waits on the turn (cleanup-2b).
+        # A research bonus or trash icon a Plot raised waits on the turn
+        # (cleanup-2b).
         legal_research_bonus_actions,
+        legal_optional_trash_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -517,8 +519,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tleilaxu_acquisitions,
         # Arrakeen Scouts: Corrinth City's seat's subcommittee (OQ-076).
         legal_subcommittee_choice_actions,
-        # A research bonus raised in the Reveal waits on it (cleanup-2b).
+        # A research bonus or trash icon raised in the Reveal waits on it
+        # (cleanup-2b).
         legal_research_bonus_actions,
+        legal_optional_trash_actions,
     ),
     # A Reveal choice opened from the Reveal frame's pending list, on top
     # only while a step must follow at once (a Spy recalled for its

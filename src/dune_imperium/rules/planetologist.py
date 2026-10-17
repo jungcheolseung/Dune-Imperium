@@ -17,7 +17,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import replace_player
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import open_planetologist_replacement
 
 
 def replaces_sandworms(player: PlayerState) -> bool:
@@ -36,7 +36,8 @@ def replace_sandworms(
     """Pay ``count`` replacements: the spice now, then one frame each for
     the optional trash and the Intrigue card (``draw_planetologist_intrigue``),
     resolved in either order (user ruling 2026-10-10, OQ-106: "그 외에는
-    전부 나누자")."""
+    전부 나누자"). Inside the owner's own turn both wait on the turn as rows
+    instead (cleanup-2b, ``open_planetologist_replacement``)."""
 
     if count < 1:
         return RuleResult(state=state)
@@ -47,10 +48,8 @@ def replace_sandworms(
     )
     working = replace(state, players=replace_player(state.players, paid))
     for index in range(count):
-        working = working.push_decision(
-            optional_trash_frame(
-                player, f"{source}:planetologist:{index}", intrigue=True
-            )
+        working = open_planetologist_replacement(
+            working, player, f"{source}:planetologist:{index}"
         )
     return RuleResult(
         state=working,

@@ -434,7 +434,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 243 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 763 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -442,18 +442,23 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     was. (v146: optional Agent-turn effects offer no refusal (OQ-095 (2),
     2026-10-14), which moved seed 23's random walk off this position, and
     Other Memories without a refusal (same day) moved its replacement seed
-    43 off it again; re-searched, seeds 111 and 223 are the only ones of
+    43 off it again; re-searched, seeds 111 and 223 were the only ones of
     0-299. v147: personal-card Reveal choices are rows on the Reveal frame
     beside the purchases, with no defer/resume and no refusal, so a random
     walk picks from a different list at such a Reveal; neither 111 nor 223
-    reaches the position any more, and searched on from
-    112, seed 243 is the first that does: seat 3 (Lady Jessica), round 6,
-    Research c7r5.)"""
+    reached the position any more, and searched on from 112, seed 243 was
+    the first that did. Cleanup-2b (user decision 2026-10-17, OQ-095 (2)):
+    the Research bonus's trash no longer opens a window; it waits on the
+    Agent turn as a row among the turn's others, with no refusal, so the
+    random walk moved off seed 243 once more. Searched from 0 for the
+    position, seeds 0-758 miss; 759 reaches it through an Intrigue card's
+    Research (Breakthrough, c7r5) and 763 is the first through the Research
+    Station: seat 3, round 6, Research c3r3, "trash and specimen".)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 243, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 763, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:1", "reserve:prepare_the_way:7")
+    assert (card, earlier) == ("reserve:prepare_the_way:6", "reserve:prepare_the_way:7")
     session = manager._get(game_id)
     before = (
         session.state,

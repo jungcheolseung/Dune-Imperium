@@ -29,6 +29,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -238,10 +239,15 @@ def test_liet_may_pay_arrakis_revolt_and_keep_the_wall_behind_it() -> None:
     assert kept.state.shield_wall_present is True
     assert liet.sandworms_conflict == 0
     assert liet.resources.spice == 1  # 2 paid, 1 from the replacement
-    # The replacement's Intrigue card waits in its trash frame as its own
-    # step (user ruling 2026-10-10, OQ-106).
+    # The replacement's Intrigue card waits as its own step beside its trash
+    # (user ruling 2026-10-10, OQ-106), both on the owner's Agent turn as rows
+    # (user decision 2026-10-17, cleanup-2b).
     assert liet.intrigue_cards == ()
-    assert kept.state.decision_stack[-1].kind == "optional_trash"
+    assert kept.state.decision_stack[-1].kind == "agent_effects"
+    assert [
+        kind
+        for kind, _source, _value in turn_rows.pending(kept.state.decision_stack[-1])
+    ] == [turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE]
     drawn = apply_optional_trash(
         kept.state, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
     ).state

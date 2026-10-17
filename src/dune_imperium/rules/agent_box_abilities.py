@@ -153,7 +153,7 @@ from dune_imperium.rules.intrigue_deck import (
     with_trashed_intrigue,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import open_optional_trash
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import turn_space_spy_frames
@@ -638,9 +638,7 @@ def resolve_box(state: GameState) -> RuleResult:
             case TrashPersonalCard():
                 # The black trash icon on a frame of its own, named after the
                 # box so a self-trash keeps its card's effects (OQ-022).
-                next_state = next_state.push_decision(
-                    optional_trash_frame(player, source)
-                )
+                next_state = open_optional_trash(next_state, player, source)
         if step is not None:
             next_state = step.state
             follow_ups.extend(step.events)

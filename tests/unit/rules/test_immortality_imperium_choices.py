@@ -31,6 +31,7 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.engine import Transition
 from dune_imperium.core.observation import observe_state, peeked_intrigue_ids
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_agent_card_acquisition,
     legal_agent_card_acquisitions,
@@ -212,6 +213,25 @@ def _turn_end_offered(state: GameState) -> bool:
         action.action_id == "finish_agent_turn"
         for action in UprisingRulesEngine().legal_actions(state, 0)
     )
+
+
+def _trash_waits_on_the_agent_turn(state: GameState) -> None:
+    """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
+    own Agent turn an optional "[trash a card]" icon opens no window; it
+    waits on the turn's effect frame as rows with no refusal and, optional,
+    holds no turn end back."""
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    legal = {a.action_id for a in legal_optional_trash_actions(state, 0)}
+    assert legal == {"trash_optional_card"}
+    assert "decline_optional_trash" not in {
+        a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)
+    }
+    assert _turn_end_offered(state)
 
 
 def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
@@ -1011,8 +1031,8 @@ def test_tleilaxu_masters_last_effect_troop_counts_for_its_turn_not_the_next() -
 
 def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> None:
     # Throne Room Politics' box (troop 1 + trash) is the Agent turn's last
-    # effect, with every other seat revealed. Its OPTIONAL_TRASH frame opens
-    # on top of the owner's still-open effect frame, so Eliminate Allies'
+    # effect, with every other seat revealed. Its trash waits on the owner's
+    # still-open effect frame as rows, so Eliminate Allies'
     # trashed troops count for this turn (OQ-095 (3)) -- before OQ-095 the
     # turn had already closed and they were kept off the fresh "turn" frame
     # that reopened for the same player (2026-09-26 review round 3). "그
@@ -1044,9 +1064,7 @@ def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> Non
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    assert resolved.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
-    assert not _turn_end_offered(resolved)
+    _trash_waits_on_the_agent_turn(resolved)
 
     trash = next(
         a
@@ -1149,9 +1167,10 @@ def test_throne_room_politics_last_effect_trash_stays_out_of_a_later_reveal() ->
 
 def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -> None:
     # The same last-effect scenario as Eliminate Allies above, reached
-    # through the Sardaukar Standard trash effect instead. Its bank-Commander
+    # through the Sardaukar Standard trash effect instead (the trash waits on
+    # the owner's still-open effect frame as rows). Its bank-Commander
     # acquisition is queued and opens later through ``begin_skill_choice``,
-    # on top of the owner's still-open effect frame, so the Commander counts
+    # on top of that effect frame, so the Commander counts
     # for this turn (OQ-095 (3)). Before OQ-095 the turn had already closed
     # and the queued ``pending_skill_choices`` entry carried a
     # ``turn_closed`` marker to keep the Commander off the fresh "turn"
@@ -1191,7 +1210,7 @@ def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    assert resolved.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    _trash_waits_on_the_agent_turn(resolved)
 
     trash = next(
         a
@@ -1472,11 +1491,12 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
 def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() -> None:
     # Experimentation's own Research icon [Immortality pp. 3, 5] as the
     # Agent turn's last effect, with every other seat revealed: the two-way
-    # fork (c2r4 -> c3r3/c3r5) and the TRASH_AND_SPECIMEN trash offer open on
-    # top of the owner's still-open effect frame, so Eliminate Allies'
-    # troops count for this turn (OQ-095 (3)). Before OQ-095 the turn had
-    # already closed and reopened a fresh "turn" frame for this same player,
-    # and a ``turn_closed`` marker on these frames kept the troops off it
+    # fork (c2r4 -> c3r3/c3r5) opens on top of the owner's still-open effect
+    # frame and the TRASH_AND_SPECIMEN trash waits on it as rows, so
+    # Eliminate Allies' troops count for this turn (OQ-095 (3)). Before
+    # OQ-095 the turn had already closed and reopened a fresh "turn" frame
+    # for this same player, and a ``turn_closed`` marker on these frames kept
+    # the troops off it
     # (2026-09-26 review round 4, minor). "그 turn에 어떤 출처에서 recruit했든
     # 새 troop은 Conflict에 deploy할 수 있다..." [Main p. 10] [FAQ p. 4]
     # (docs/rules/player-turns.md:137).
@@ -1506,8 +1526,7 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
         if dict(a.arguments)["space_id"] == "c3r3"
     )
     advanced = engine.apply(resolved, to_trash_and_specimen).state
-    assert advanced.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert not _turn_end_offered(advanced)
+    _trash_waits_on_the_agent_turn(advanced)
 
     trash = next(
         a

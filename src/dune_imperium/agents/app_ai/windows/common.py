@@ -91,9 +91,10 @@ class Source:
     extra: dict[str, object] = field(default_factory=dict)
 
 
-#: The rows a research bonus waiting on the owner's turn is taken with
-#: (cleanup-2b): the turn windows know them, and ``waiting_research_bonus``
-#: answers them first.
+#: The rows an effect waiting on the owner's turn is taken with
+#: (cleanup-2b): a research bonus, an optional trash and Arrakis
+#: Planetologist's Intrigue card. The turn windows know them, and
+#: ``waiting_turn_row`` answers them first.
 RESEARCH_BONUS_ROW_IDS: Final = frozenset(
     {
         "choose_research_influence",
@@ -101,22 +102,33 @@ RESEARCH_BONUS_ROW_IDS: Final = frozenset(
         "pay_research_bonus",
     }
 )
+TRASH_ROW_IDS: Final = frozenset({"trash_optional_card", "draw_planetologist_intrigue"})
+TURN_ROW_IDS: Final = RESEARCH_BONUS_ROW_IDS | TRASH_ROW_IDS
 
 
-class ResearchBonusGap(Exception):
-    """A waiting research bonus the app AI cannot value (a census gap)."""
+class TurnRowGap(Exception):
+    """A waiting effect the app AI cannot value (a census gap)."""
 
 
-def waiting_research_bonus(run: DecisionRun) -> DomainAction | None:
-    """The research bonus waiting on the turn the app takes now, or None
-    (``windows.immortality.research_bonus_now``, imported here because that
-    module imports the turn windows). Raises ``ResearchBonusGap``."""
+def waiting_turn_row(run: DecisionRun) -> DomainAction | None:
+    """The effect waiting on the turn the app takes now, or None: a research
+    bonus first (``windows.immortality.research_bonus_now``), then a trash
+    or the Planetologist's card (``optional_trash_now``), imported here
+    because that module imports the turn windows. Raises ``TurnRowGap``."""
 
-    from dune_imperium.agents.app_ai.windows.immortality import research_bonus_now
+    from dune_imperium.agents.app_ai.windows.immortality import (
+        optional_trash_now,
+        research_bonus_now,
+    )
 
-    if not any(a.action_id in RESEARCH_BONUS_ROW_IDS for a in run.legal):
-        return None
-    return research_bonus_now(run)
+    legal = {a.action_id for a in run.legal}
+    if legal & RESEARCH_BONUS_ROW_IDS:
+        research = research_bonus_now(run)
+        if research is not None:
+            return research
+    if legal & TRASH_ROW_IDS:
+        return optional_trash_now(run)
+    return None
 
 
 def decide(

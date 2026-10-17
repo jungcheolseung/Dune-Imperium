@@ -43,6 +43,7 @@ from dune_imperium.core import (
     observe_state,
 )
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
@@ -1088,15 +1089,24 @@ def test_resolved_acquire_effects(tech_id: str, check: object) -> None:
     assert bought.players[0].tech_ids == (tech_id,)
 
 
-def test_planetary_array_opens_an_optional_trash_after_the_visit() -> None:
+def test_planetary_array_queues_an_optional_trash_after_the_visit() -> None:
+    # The tile's black trash icon is optional [FAQ p. 3]: in the owner's own
+    # Agent turn it waits on the turn as rows, with no refusal (user decision
+    # 2026-10-17, cleanup-2b; OQ-095 (2)).
     state = _visit(
         _turn_state(_owner(), stacks=(("planetary_array",), (), ())), "assembly_hall"
     )
     bought = _acquire(state, "planetary_array")
-    assert bought.decision_stack[-1].kind == "optional_trash"
+    top = bought.decision_stack[-1]
+    assert top.kind == "agent_effects"
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
     actions = legal_optional_trash_actions(bought, 0)
-    assert actions[0].action_id == "decline_optional_trash"
-    assert len(actions) == 1 + 4 + 1  # hand (Dagger played) + played card
+    assert {a.action_id for a in actions} == {"trash_optional_card"}
+    assert len(actions) == 4 + 1  # hand (Dagger played) + played card
+    # It holds no end: the press lapses it.
+    assert not turn_rows.holds_the_end(bought, 0)
 
 
 def test_planetary_array_last_effect_trash_credits_this_turn() -> None:
@@ -1124,12 +1134,14 @@ def test_planetary_array_last_effect_trash_credits_this_turn() -> None:
     )
     visited = _visit(state, "assembly_hall")
     bought = _acquire(visited, "planetary_array")
-    assert bought.decision_stack[-1].kind == "optional_trash"
-    # The trash offer sits on the owner's still-open Agent turn.
-    beneath = bought.decision_stack[-2]
-    assert beneath.kind == "agent_effects"
-    assert isinstance(beneath.decision, PlayerDecision)
-    assert beneath.decision.owner == 0
+    # The trash offer waits on the owner's still-open Agent turn.
+    waiting = bought.decision_stack[-1]
+    assert waiting.kind == "agent_effects"
+    assert isinstance(waiting.decision, PlayerDecision)
+    assert waiting.decision.owner == 0
+    assert [kind for kind, _source, _value in turn_rows.pending(waiting)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
 
     trash = next(
         a
@@ -2081,7 +2093,15 @@ def test_flip_tiles_are_offered_once_per_round_and_return_at_round_start() -> No
     drones = apply_tech_flip(
         recalled, DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),))
     )
-    assert drones.state.decision_stack[-1].kind == "optional_trash"
+    # The trash waits on the owner's turn as a row with no refusal (cleanup-2b).
+    waiting = drones.state.decision_stack[-1]
+    assert waiting.kind == "turn"
+    assert [kind for kind, _source, _value in turn_rows.pending(waiting)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    assert "decline_optional_trash" not in {
+        a.action_id for a in legal_optional_trash_actions(drones.state, 0)
+    }
 
     # Round Start turns every flipped tile face up again.
     fresh = create_initial_state(TECH, seed=3, leader_ids=LEADERS).state

@@ -2,19 +2,22 @@
 
 User decision 2026-10-17 (docs/composed-effects-plan.md 5, "정한 규칙 판단" 2;
 OQ-095 (2), whose exception "(d) 차례 위에 따로 열리는 창" it narrows): a
-research space's bonus choice (c6r6, c7r3, c8r6) raised inside its owner's own
-Agent or Reveal turn no longer opens a window of its own. It waits on the
-turn's frame -- the turn frame, the Agent-turn effect frame or the Reveal
-frame -- and is offered there as rows beside the turn's others, with no
-refusal: "may", an arrow cost or a black trash icon is optional [FAQ p. 3],
-and an optional effect "holds no turn end back and offers no refusal; the
-press lapses it" (OQ-095 (2), user ruling 2026-10-14). Unused, it lapses at
-the turn-end press (``finish_agent_turn``, ``finish_reveal``) with an event;
-c6r6's mandatory "Influence with any Faction" holds the end back while a
-Faction can rise, and waits, then lapses, like an Agent box's Influence with
-every cube at the top (OQ-057 (1)). Outside the owner's turn -- Combat, the
-Arrakeen Scouts step, and a Scouts line run inside the turn, which keeps the
-module's own windows -- the effect still opens its window.
+research space's bonus choice (c6r6, c7r3, c8r6) and an optional "[trash a
+card]" icon raised inside its owner's own Agent or Reveal turn no longer open
+a window of their own. Each waits on the turn's frame -- the turn frame, the
+Agent-turn effect frame or the Reveal frame -- and is offered there as rows
+beside the turn's others, with no refusal: "may", an arrow cost or a black
+trash icon is optional [FAQ p. 3], and an optional effect "holds no turn end
+back and offers no refusal; the press lapses it" (OQ-095 (2), user ruling
+2026-10-14). Unused, it lapses at the turn-end press (``finish_agent_turn``,
+``finish_reveal``) with an event; c6r6's mandatory "Influence with any
+Faction" holds the end back while a Faction can rise, and waits, then lapses,
+like an Agent box's Influence with every cube at the top (OQ-057 (1)).
+Arrakis Planetologist's Intrigue card, which shared its replacement's trash
+window (OQ-106), waits beside that trash as a mandatory step of its own and
+holds the end until drawn. Outside the owner's turn -- Combat, the Arrakeen
+Scouts step, and a Scouts line run inside the turn, which keeps the module's
+own windows -- the effect still opens its window.
 
 The waiting effects live in the turn frame's context (``PENDING_KEY``), as the
 Tech tiles' acquire icons do (``TECH_ACQUIRE_PENDING_KEY``, OQ-098), and move
@@ -46,6 +49,12 @@ PENDING_KEY: Final = "pending_turn_rows"
 
 RESEARCH_BONUS: Final = "research_bonus"
 """A research space's bonus choice; ``value`` is its ``ResearchBonus``."""
+
+OPTIONAL_TRASH: Final = "optional_trash"
+"""An optional "[trash a card]" icon (``rules.optional_trash``); no value."""
+
+PLANETOLOGIST_INTRIGUE: Final = "planetologist_intrigue"
+"""Arrakis Planetologist's Intrigue card of one replaced sandworm; no value."""
 
 type Pending = tuple[str, str, str]
 
@@ -130,22 +139,58 @@ def take(state: GameState, player: int, item: Pending) -> GameState:
     )
 
 
+def take_newest(state: GameState, player: int, kind: str) -> tuple[GameState, str]:
+    """Remove the newest waiting effect of ``kind`` from the top turn frame
+    and return its source: the one its window, stacked last, used to answer
+    first."""
+
+    frame = rows_frame(state, player)
+    if frame is None:
+        raise ValueError("the owner's turn frame is not on top")
+    item = next((item for item in reversed(pending(frame)) if item[0] == kind), None)
+    if item is None:
+        raise ValueError(f"no {kind} waits on the owner's turn")
+    return take(state, player, item), item[1]
+
+
 def holds_the_end(state: GameState, player: int) -> bool:
     """Whether a waiting effect still offers a mandatory row: c6r6 with a
-    Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition). Read
-    from public facts only (the frame's context, the seat's Influence), so
-    the server's turn-end mirror may ask it too."""
+    Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition), or
+    Arrakis Planetologist's Intrigue card. Read from public facts only (the
+    frame's context, the seat's Influence), so the server's turn-end mirror
+    may ask it too."""
 
     frame = rows_frame(state, player)
     if frame is None:
         return False
     owner = state.players[player]
     return any(
-        kind == RESEARCH_BONUS
-        and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
-        and any(influence_can_rise(owner, faction) for faction in Faction)
+        kind == PLANETOLOGIST_INTRIGUE
+        or (
+            kind == RESEARCH_BONUS
+            and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
+            and any(influence_can_rise(owner, faction) for faction in Faction)
+        )
         for kind, _source, value in pending(frame)
     )
+
+
+def _lapsed(player: int, item: Pending) -> GameEvent:
+    kind, source, value = item
+    if kind == RESEARCH_BONUS:
+        return GameEvent(
+            event_id=f"{source}:bonus_lapsed",
+            kind="research_bonus_lapsed",
+            payload=(("bonus", value), ("player", player)),
+        )
+    if kind == OPTIONAL_TRASH:
+        return GameEvent(
+            event_id=f"{source}:trash_lapsed",
+            kind="optional_trash_lapsed",
+            payload=(("player", player),),
+        )
+    # Arrakis Planetologist's Intrigue card holds the end (``holds_the_end``).
+    raise RuntimeError(f"a mandatory {kind} waits at the turn-end press")
 
 
 def lapse(state: GameState, player: int) -> RuleResult:
@@ -154,15 +199,7 @@ def lapse(state: GameState, player: int) -> RuleResult:
     frame = rows_frame(state, player)
     if frame is None or not pending(frame):
         return RuleResult(state=state)
-    events = tuple(
-        GameEvent(
-            event_id=f"{source}:bonus_lapsed",
-            kind="research_bonus_lapsed",
-            payload=(("bonus", value), ("player", player)),
-        )
-        for kind, source, value in pending(frame)
-        if kind == RESEARCH_BONUS
-    )
+    events = tuple(_lapsed(player, item) for item in pending(frame))
     cleared = _replace_frame(
         state, len(state.decision_stack) - 1, _with_pending(frame, ())
     )

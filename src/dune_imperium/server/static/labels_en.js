@@ -566,6 +566,7 @@ const LABELS_EN = {
     "navigation_exhausted": "{navigation} Exhausted",
     "navigation_setup_finished": "{navigation} Setup Finished",
     "optional_trash_declined": "{trash} Declined",
+    "optional_trash_lapsed": "{trash}: Unused",
     "personal_card_discard_effect_resolved": "Discarded Card Effect Resolved",
     "personal_card_late_revealed": "Card Revealed Late",
     "personal_card_trash_effect_resolved": "Trashed Card Effect Resolved",

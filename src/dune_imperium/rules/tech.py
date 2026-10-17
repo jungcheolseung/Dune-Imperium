@@ -96,7 +96,7 @@ from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
     use_leader_signet_for_tech,
 )
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import open_optional_trash
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
@@ -701,7 +701,7 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         working = contracts.state
         events.extend(contracts.events)
     if effect == "trash":
-        working = working.push_decision(optional_trash_frame(player, source))
+        working = open_optional_trash(working, player, source)
     if effect.startswith("spy_"):
         working = spy_placement_frame(
             working, player, ALL_POST_IDS, source=source, deep_cover=True
@@ -841,9 +841,7 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                         working, players=replace_player(working.players, seat)
                     )
                 case TrashPersonalCard():
-                    working = working.push_decision(
-                        optional_trash_frame(player, source)
-                    )
+                    working = open_optional_trash(working, player, source)
     return RuleResult(state=working, events=tuple(events))
 
 

@@ -429,14 +429,17 @@ _OPTIONAL_REFUSALS: Final = frozenset(
     }
 )
 # Codec v149 (cleanup-2b, user decision 2026-10-17, OQ-095 (2)): a research
-# bonus raised in its owner's own turn waits on the turn as rows with no
-# refusal, and the turn's end lapses it, so a recording engine's in-turn
-# ``decline_research_bonus`` has no counterpart and leaves the same state;
+# bonus or an optional trash raised in its owner's own turn waits on the turn
+# as rows with no refusal, and the turn's end lapses it, so a recording
+# engine's in-turn ``decline_research_bonus`` or ``decline_optional_trash``
+# has no counterpart and leaves the same state;
 # it is dropped once this engine refuses it (outside the turn the window and
 # its decline remain, and the step is applied as recorded).
 TURN_ROW_REFUSALS_CODEC: Final = 149
 TURN_ROW_REFUSAL_DROPPED: Final = "turn_row_refusal"
-_TURN_ROW_REFUSALS: Final = frozenset({"decline_research_bonus"})
+_TURN_ROW_REFUSALS: Final = frozenset(
+    {"decline_optional_trash", "decline_research_bonus"}
+)
 # Also from v146 (user ruling 2026-10-14, OQ-019): Reverend Mother's repeat
 # no longer queues the Arrakeen Scouts mission collection again, an effect
 # of the visit not printed on the space. The pieces were all collected
@@ -1440,14 +1443,18 @@ def _planetologist_intrigue(
     frame for ``draw_planetologist_intrigue``. It is taken when its frame
     comes to the top: after the summon, and for a second replacement
     (Deep Desert) after the recorded answer to the first frame, so that one
-    answer sees the hand an Intrigue card short.
+    answer sees the hand an Intrigue card short. Since codec v149
+    (cleanup-2b) a replacement in its owner's own turn waits on the turn as
+    rows instead: every card is taken right after the summon.
     """
 
     del step
+    if not isinstance(decision, PlayerDecision):
+        return None
+    top = state.decision_stack[-1]
     if (
-        not isinstance(decision, PlayerDecision)
-        or state.decision_stack[-1].kind != FrameKind.OPTIONAL_TRASH
-        or dict(state.decision_stack[-1].context).get(INTRIGUE_PENDING_KEY) is not True
+        top.kind == FrameKind.OPTIONAL_TRASH
+        and dict(top.context).get(INTRIGUE_PENDING_KEY) is not True
     ):
         return None
     draw = DomainAction(action_id="draw_planetologist_intrigue", actor=decision.owner)

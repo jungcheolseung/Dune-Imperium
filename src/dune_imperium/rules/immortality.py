@@ -54,7 +54,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import open_optional_trash
 from dune_imperium.rules.scouts_missions import (
     HELIX,
     TLEILAXU_OFFERING_TRACK_SPACE,
@@ -422,9 +422,7 @@ def _resolve_research_bonus(
             # not.
             specimen = generate_specimens(state, player, 1, source=source)
             return RuleResult(
-                state=specimen.state.push_decision(
-                    optional_trash_frame(player, source)
-                ),
+                state=open_optional_trash(specimen.state, player, source),
                 events=specimen.events,
             )
         case ResearchBonus.TLEILAXU_AND_SPECIMEN:

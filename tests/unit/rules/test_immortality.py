@@ -261,7 +261,11 @@ def test_a_research_space_advances_again_and_reaches_the_first_marker() -> None:
     assert "genetic_marker_reached" in {event.kind for event in chained.events}
 
 
-def test_trash_and_specimen_pays_the_specimen_then_offers_the_trash() -> None:
+def test_trash_and_specimen_pays_the_specimen_then_queues_the_trash() -> None:
+    # c3r3 prints a specimen and a black "[trash a card]" icon, optional
+    # [FAQ p. 3]. In the owner's own turn the trash waits on the turn frame as
+    # rows with no refusal and lapses unused at the turn-end press (user
+    # decision 2026-10-17, cleanup-2b; OQ-095 (2)).
     state = _at("c2r2")
     result = advance_research(state, 0, source="test")
     chosen = apply_research_advance(
@@ -269,11 +273,26 @@ def test_trash_and_specimen_pays_the_specimen_then_offers_the_trash() -> None:
     )
 
     assert chosen.state.players[0].specimens == 1
-    assert chosen.state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert any(
-        action.action_id == "decline_optional_trash"
-        for action in legal_optional_trash_actions(chosen.state, 0)
-    )
+    top = chosen.state.decision_stack[-1]
+    assert top.kind == "turn"
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    offered = legal_optional_trash_actions(chosen.state, 0)
+    assert {a.action_id for a in offered} == {"trash_optional_card"}
+    owner = chosen.state.players[0]
+    assert {dict(a.arguments)["card_id"] for a in offered} == {
+        *owner.hand,
+        *owner.discard_pile,
+    }
+    # Optional: it holds no end, and the press lapses it with an event.
+    assert not turn_rows.holds_the_end(chosen.state, 0)
+    lapsed = turn_rows.lapse(chosen.state, 0)
+    assert [(e.kind, dict(e.payload)) for e in lapsed.events] == [
+        ("optional_trash_lapsed", {"player": 0})
+    ]
+    assert turn_rows.pending(lapsed.state.decision_stack[-1]) == ()
+    assert lapsed.state.players[0].trashed == ()
 
 
 def _waits_on_the_turn(state: GameState, bonus: ResearchBonus) -> None:
