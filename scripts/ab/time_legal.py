@@ -15,10 +15,10 @@ times (docs/composed-effects-plan.md 6, item 6)::
         tmp/claude/<session>/equiv/<base8> 100 3
 """
 
-import pickle
 import sys
 import time
-from pathlib import Path
+
+from engine_equivalence import load, recordings
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
@@ -33,13 +33,13 @@ AGENT = {"agent_effects"}
 
 
 def main() -> None:
-    trace_dir, games, repeats = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
-    files = sorted(trace_dir.glob("*.pkl"))[:: max(1, 200 // games)][:games]
+    trace_dir, games, repeats = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+    files = recordings(trace_dir)[:: max(1, 200 // games)][:games]
     engine = UprisingRulesEngine()
     total = intrigue = agent = 0.0
     calls = intrigue_calls = agent_calls = 0
     for path in files:
-        data = pickle.loads(path.read_bytes())
+        data = load(path)
         _name, options, seed, _kinds = data["spec"]
         state = engine.reset(RulesetConfig(**options), seed)
         for step, *_ in data["rows"]:
