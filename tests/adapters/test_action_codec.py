@@ -854,3 +854,12 @@ def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> Non
     )
     with pytest.raises(ValueError, match="not present"):
         codec.encode(beyond)
+
+
+@pytest.mark.parametrize("bloodlines", [False, True])
+def test_c7r3_s_owed_card_encodes_with_or_without_bloodlines(bloodlines: bool) -> None:
+    # c7r3's card is owed in its owner's turn since codec v149 (cleanup-2b,
+    # rule decision 5; OQ-106): an Immortality game without Bloodlines, whose
+    # catalog held no ``draw_owed_card`` before, encodes it too.
+    codec = ActionCodec(RulesetConfig(immortality=True, bloodlines=bloodlines))
+    codec.encode(DomainAction(action_id="draw_owed_card", actor=0))

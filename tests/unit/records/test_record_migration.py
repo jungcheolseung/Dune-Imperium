@@ -45,6 +45,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.unit.rules.test_bloodlines_leaders import RECON as LIET_RECON
+from tests.unit.rules.test_bloodlines_leaders import _turn_state as _liet_turn_state
 from tests.unit.rules.test_immortality import _agent_research, _at
 from tests.unit.rules.test_tech import _bought_glowglobes, _combat_acquire_frame
 
@@ -2264,6 +2266,74 @@ def test_a_turn_tech_influence_picked_at_the_top_is_dropped_before_the_press() -
     )
     assert current.dropped == ()
     assert current.divergence is not None
+
+
+def test_a_turn_tech_influence_picked_at_the_top_beside_a_free_faction_diverges() -> (
+    None
+):
+    # Known divergence (cleanup-2b, rule decision 1; OQ-060): an older engine
+    # offered a Faction at 6 beside one that could still rise and the record
+    # picked it, gaining nothing. This engine offers only the Faction below 6
+    # and the icon holds the turn end until taken, so the recorded press has
+    # no counterpart: the pick is dropped and the record stops at the press.
+    turn = _bought_glowglobes(Influence(emperor=6, spacing_guild=6, bene_gesserit=6))
+
+    record = migrate_record(
+        _v142_record(turn, _TECH_PICK, _PRESS, codec=148), _StartingAt(turn)
+    )
+
+    assert record.dropped == ((0, migration.INFLUENCE_AT_TOP_DROPPED),)
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == 1
+
+
+def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None:
+    # Cleanup-2b (rule decision 2, OQ-095 (2)): Liet Kynes' replacement from
+    # Unexpected Allies' sandworm waits on the turn as rows, offered once the
+    # card's Shield Wall choice is answered; an older engine opened the
+    # replacement's window above that choice and the record drew and trashed
+    # there. Those steps are held and applied as soon as this engine offers
+    # them, before the next recorded step (``TURN_ROW_HELD``).
+    card = "intrigue:unexpected_allies:0"
+    turn = _liet_turn_state(
+        PlayerState(
+            player_id=0,
+            leader_id="liet_kynes",
+            hand=(LIET_RECON,),
+            intrigue_cards=(card,),
+            resources=Resources(water=2),
+        )
+    )
+    play = next(
+        a
+        for a in ENGINE.legal_actions(turn, 0)
+        if a.action_id == "play_intrigue" and dict(a.arguments)["card_id"] == card
+    )
+    opened = ENGINE.apply(turn, play).state
+    legal = ENGINE.legal_actions(opened, 0)
+    # The sandworm first, the Shield Wall choice still open.
+    rewards = next(a for a in legal if a.action_id == "resolve_intrigue_rewards")
+    keep = next(a for a in legal if a.action_id == "keep_shield_wall")
+    draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    trash = DomainAction(
+        action_id="trash_optional_card", actor=0, arguments=(("card_id", LIET_RECON),)
+    )
+
+    record = migrate_record(
+        _v142_record(turn, play, rewards, draw, trash, keep, codec=148),
+        _StartingAt(turn),
+    )
+
+    assert record.divergence is None, record.divergence
+    assert [(m.step, m.recorded_index, m.bridge) for m in record.steps] == [
+        (play, 0, None),
+        (rewards, 1, None),
+        (keep, 4, None),
+        (draw, 2, migration.TURN_ROW_HELD),
+        (trash, 3, migration.TURN_ROW_HELD),
+    ]
+    assert record.state.players[0].trashed == (LIET_RECON,)
+    assert len(record.state.players[0].intrigue_cards) == 1
 
 
 # --- a research space's icons, each its own step (cleanup-2b, codec v149) ----

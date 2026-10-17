@@ -30,6 +30,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.strength import conflict_agent_strength
+from dune_imperium.rules.turn_rows import PENDING_KEY
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +178,13 @@ def open_next_turn(state: GameState, player: int) -> GameState:
         raise RuntimeError("a turn cannot pass over an owed Emperor track Spy")
     if owes_held_draw(state, player):
         raise RuntimeError("a turn cannot pass over a waiting triggered draw")
+    if any(
+        frame.kind == FrameKind.TURN and dict(frame.context).get(PENDING_KEY)
+        for frame in state.decision_stack
+    ):
+        # Effects that wait on the turn (cleanup-2b) come only from an action
+        # of the turn, after which no turn-passing play is offered.
+        raise RuntimeError("a turn cannot pass over effects waiting on it")
     next_player = next_unrevealed_player(state, player)
     players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
@@ -624,7 +632,11 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
     next one.
     """
 
-    _owner_effect_frame(state, owner)
+    effect_frame = _owner_effect_frame(state, owner)
+    if dict(effect_frame.context).get(PENDING_KEY):
+        # The press lapses what waits on the turn (cleanup-2b), and a
+        # mandatory one holds the end back.
+        raise RuntimeError("an Agent turn cannot close over effects waiting on it")
     seat = state.players[owner]
     if seat.usurped_row_card_id:
         raise RuntimeError("the Usurped card is trashed before the turn closes")

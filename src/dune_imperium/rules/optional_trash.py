@@ -90,9 +90,8 @@ def open_planetologist_replacement(
 
 def _waiting_kinds(state: GameState, player: int) -> frozenset[str]:
     frame = turn_rows.rows_frame(state, player)
-    if frame is None:
-        return frozenset()
-    return frozenset(kind for kind, _source, _value in turn_rows.pending(frame))
+    items = () if frame is None else turn_rows.pending(frame)
+    return frozenset(kind for kind, _source, _value in items) if items else frozenset()
 
 
 def _intrigue_pending(frame: DecisionFrame) -> bool:
@@ -183,8 +182,10 @@ def _take_turn_row(state: GameState, action: DomainAction) -> RuleResult:
     row takes the newest waiting trash -- they are the same icon, "trash a
     card" from hand, discard pile or play [Main p. 20] -- except that a
     card's own box's trash is taken when that card is the one trashed, so
-    it keeps what is left of its box (OQ-022, ``_own_box_trash``). Newest
-    first is the order the windows, stacked as they were raised, answered.
+    it keeps what is left of its box (OQ-022, ``_own_box_trash``), and is
+    left for that card when another one is trashed while a plain trash
+    waits. Newest first is the order the windows, stacked as they were
+    raised, answered.
     """
 
     player = action.actor
@@ -198,12 +199,22 @@ def _take_turn_row(state: GameState, action: DomainAction) -> RuleResult:
         raise ValueError("the owner's turn frame is not on top")
     card_id = str(dict(action.arguments)["card_id"])
     own_box = agent_card_source(state.round_number, player, card_id)
+    # The trashes a card in play opened with its own box: kept for that card,
+    # whose self-trash only they credit.
+    own_boxes = {
+        agent_card_source(state.round_number, player, played)
+        for played in state.players[player].in_play
+    }
     trashes = [
         item
         for item in reversed(turn_rows.pending(frame))
         if item[0] == turn_rows.OPTIONAL_TRASH
     ]
-    item = next((item for item in trashes if item[1] == own_box), trashes[0])
+    item = (
+        next((item for item in trashes if item[1] == own_box), None)
+        or next((item for item in trashes if item[1] not in own_boxes), None)
+        or trashes[0]
+    )
     return _trash_or_decline(turn_rows.take(state, player, item), action, item[1])
 
 

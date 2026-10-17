@@ -735,6 +735,9 @@ def legal_research_bonus_actions(
     owner = state.players[player]
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
     if frame is None:
+        turn = turn_rows.rows_frame(state, player)
+        if turn is None or not turn_rows.pending(turn):
+            return ()
         return (
             *_icon_rows(player, pending_research_icons(state, player)),
             *(

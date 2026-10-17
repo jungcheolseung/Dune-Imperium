@@ -30,6 +30,7 @@ with the turn frame to the Agent-turn effect or Reveal frame that replaces it
 import json
 from collections.abc import Mapping
 from copy import replace
+from functools import cache
 from typing import Final
 
 from dune_imperium.content.immortality.board import ResearchBonus
@@ -75,13 +76,23 @@ _SCOUTS_KINDS: Final = frozenset(
 
 
 def pending(frame: DecisionFrame) -> tuple[Pending, ...]:
-    """The effects waiting on ``frame``, oldest first."""
+    """The effects waiting on ``frame``, oldest first.
 
-    value = dict(frame.context).get(PENDING_KEY, "")
-    if not isinstance(value, str):
-        raise RuntimeError("the turn's waiting effects must be a string")
-    if not value:
-        return ()
+    Asked by several providers at every decision of a turn, so it reads the
+    context pairs without building a dict and parses each value once.
+    """
+
+    for key, value in frame.context:
+        if key != PENDING_KEY:
+            continue
+        if not isinstance(value, str):
+            raise RuntimeError("the turn's waiting effects must be a string")
+        return _parsed(value) if value else ()
+    return ()
+
+
+@cache
+def _parsed(value: str) -> tuple[Pending, ...]:
     return tuple(
         (str(kind), str(source), str(item)) for kind, source, item in json.loads(value)
     )
@@ -186,6 +197,8 @@ def holds_the_end(state: GameState, player: int) -> bool:
 
 def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
     value = context.get(TECH_ACQUIRE_PENDING_KEY, "")
+    if not value:
+        return ()
     if not isinstance(value, str):
         raise RuntimeError("Tech acquire effects must be a string")
     return tuple(key for key in value.split(",") if key)

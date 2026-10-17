@@ -81,7 +81,7 @@ from dune_imperium.core.decisions import ChanceDecision, Decision, PlayerDecisio
 from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GameState, canonical_state_hash
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import (
     agent_box_can_resolve_by_choice,
     box_actions,
@@ -98,6 +98,7 @@ from dune_imperium.rules.frames import (
     OWED_CARD,
     OWED_INTRIGUE,
     FrameKind,
+    own_turn_frame_index,
     replace_player,
 )
 from dune_imperium.rules.graft_boxes import (
@@ -114,6 +115,7 @@ from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
+from dune_imperium.rules.owed_draws import next_owed_draw
 from dune_imperium.rules.pauses import SCOUTS_REWARD
 from dune_imperium.rules.reveal_turn import (
     GENERATED_PERSUASION_KEY,
@@ -269,7 +271,43 @@ def migrate_record(
             replay, tuple(migrated), at, divergence, tuple(dropped)
         )
 
+    # Recorded steps of an in-turn window this engine keeps as turn rows,
+    # held until the owner's turn frame offers them (``_waits_on_the_turn``).
+    waiting_steps: list[tuple[int, DomainAction]] = []
+
+    def apply_waiting(at: GameState) -> GameState | None:
+        """Apply the held steps this engine now offers, oldest first, each
+        with what the ``follows`` bridges add after it; None when those do
+        not settle."""
+
+        while waiting_steps:
+            held_index, held_step = waiting_steps[0]
+            try:
+                after = engine.apply(at, held_step).state
+            except IllegalActionError:
+                return at
+            waiting_steps.pop(0)
+            migrated.append(MigratedStep(held_step, held_index, TURN_ROW_HELD))
+            followed = _follow(engine, after, held_step, bridges, migrated)
+            if followed is None:
+                return None
+            at = followed
+        return at
+
     for index, recorded in enumerate(replay.steps):
+        if waiting_steps:
+            settled = apply_waiting(state)
+            if settled is None:
+                return ended(
+                    Divergence(
+                        recorded_index=index,
+                        step=recorded,
+                        reason="a held turn-row step's follows did not settle",
+                        pending=engine.current_decision(state),
+                    ),
+                    state,
+                )
+            state = settled
         if graft is not None and graft.drops(recorded):
             dropped.append((index, GRAFT_SWITCH_DROPPED))
             continue
@@ -340,6 +378,14 @@ def migrate_record(
                     break
                 if (
                     bridged is None
+                    and drops_turn_row_refusals
+                    and _waits_on_the_turn(state, recorded)
+                ):
+                    assert isinstance(recorded, DomainAction)
+                    waiting_steps.append((index, recorded))
+                    break
+                if (
+                    bridged is None
                     and drops_refusals
                     and isinstance(recorded, DomainAction)
                     and recorded.action_id == _REPEATED_MISSION_COLLECTION
@@ -397,6 +443,20 @@ def migrate_record(
                 pending=engine.current_decision(state),
             )
             return ended(divergence, state)
+    if waiting_steps:
+        first_index, first_step = waiting_steps[0]
+        settled = apply_waiting(state)
+        if settled is None or waiting_steps:
+            return ended(
+                Divergence(
+                    recorded_index=first_index,
+                    step=first_step,
+                    reason="a held turn-row step was never offered",
+                    pending=engine.current_decision(state),
+                ),
+                state,
+            )
+        state = settled
     return ended(None, state)
 
 
@@ -455,8 +515,39 @@ _TURN_ROW_REFUSALS: Final = frozenset(
 # the top. A recording engine's pick of one gained nothing; this engine's
 # icon waits instead and the recorded turn end lapses it (with every
 # Faction at the top), so the step is dropped; in Combat, where no turn end
-# lapses it, ``tech_influence_confirm`` names the confirm instead.
+# lapses it, ``tech_influence_confirm`` names the confirm instead. A known
+# divergence: a pick at the top beside a Faction that could still rise (the
+# older engine offered all four for a Tech tile) leaves this engine's icon
+# holding the turn end, so the record stops at its press; no step of the
+# record says which Faction the seat would have raised.
 INFLUENCE_AT_TOP_DROPPED: Final = "influence_at_top"
+# Also from v149: such an effect raised above another frame of the owner's
+# (an Intrigue card's choice still open, say) is offered once the turn frame
+# is back on top, where a recording engine opened its window at once and the
+# record answered it there. That step is held (``_waits_on_the_turn``) and
+# applied as soon as this engine offers it, before the next recorded step.
+TURN_ROW_HELD: Final = "turn_row_held"
+_TURN_ROW_STEPS: Final = frozenset(
+    {
+        "choose_research_influence",
+        "draw_planetologist_intrigue",
+        "pay_research_bonus",
+        "trash_intrigue_for_research_bonus",
+        "trash_optional_card",
+    }
+)
+
+
+def _waits_on_the_turn(state: GameState, step: ReplayStep) -> bool:
+    """Whether ``step`` answers an effect waiting on its actor's own turn
+    frame while another frame sits above it."""
+
+    if not isinstance(step, DomainAction) or step.action_id not in _TURN_ROW_STEPS:
+        return False
+    index = own_turn_frame_index(state, step.actor)
+    if index is None or index == len(state.decision_stack) - 1:
+        return False
+    return bool(turn_rows.pending(state.decision_stack[index]))
 
 
 def _influence_at_the_top(state: GameState, step: ReplayStep) -> bool:
@@ -1493,15 +1584,16 @@ def _research_icon_order(
     for icon in RESEARCH_ICON_ORDER:
         if icon in icons:
             return icons[icon]
-    owed = state.players[decision.owner].owed_draws
+    owner = state.players[decision.owner]
     for deck, action_id in (
         (OWED_INTRIGUE, "draw_owed_intrigue"),
         (OWED_CARD, "draw_owed_card"),
     ):
-        if any(
-            entry_deck == deck and origin == OWED_ORIGIN_RESEARCH
-            for entry_deck, origin, _source in owed
-        ):
+        # A press takes its deck's next waiting draw (``next_owed_draw``):
+        # only when that is c7r3's is it the one the older engine drew here;
+        # an older one is the record's own later step.
+        index = next_owed_draw(owner, deck)
+        if index is not None and owner.owed_draws[index][1] == OWED_ORIGIN_RESEARCH:
             draw = DomainAction(action_id=action_id, actor=decision.owner)
             return draw if draw in legal else None
     return None

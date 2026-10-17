@@ -51,6 +51,69 @@ def _seat_view(step: Step) -> dict[str, object]:
     return step.views[step.step[2]] if step.step[0] == "a" else {}
 
 
+# Per game: the sources of in-turn refusals the candidate has no counterpart
+# for (a bonus or trash that waits until the turn end lapses it), until that
+# lapse is seen; the expiry events carried to a later step
+# (``_expiry_at_the_trash``); and the last step index seen (a lower one starts
+# another game).
+_VANISHED: dict[str, set[str]] = {"research": set(), "trash": set()}
+_carried_expiries: dict[str, dict[str, object]] = {}
+_last_index = [-1]
+_SOURCE_SEAT = re.compile(r"^round:\d+:player:(\d+):")
+_TURN_FRAME_KINDS = frozenset({"turn", "agent_effects", "reveal"})
+
+
+def _game_at(index: int) -> None:
+    """Start a new game's bookkeeping at a lower step index; an expiry the
+    candidate moved that the base never logged is a difference."""
+
+    if index < _last_index[0]:
+        if _carried_expiries:
+            raise AssertionError(
+                f"expiry events the base never logged: {sorted(_carried_expiries)}"
+            )
+        for sources in _VANISHED.values():
+            sources.clear()
+    _last_index[0] = index
+
+
+def _vanished(kind: str, step: Step, suffix: str) -> None:
+    for event in step.events:
+        if event["event_id"].endswith(suffix):
+            _VANISHED[kind].add(event["event_id"].removesuffix(suffix))
+
+
+def _waits_for(kind: str, seat: object) -> bool:
+    """Whether a refusal of ``kind`` by ``seat`` vanished and its lapse is
+    still to come."""
+
+    return any(
+        (match := _SOURCE_SEAT.match(source)) is not None
+        and int(match.group(1)) == seat
+        for source in _VANISHED[kind]
+    )
+
+
+def _lapsed(kind: str, candidate: Step, event_kind: str, suffix: str) -> None:
+    """Drop the lapse events of the vanished refusals, which ends them."""
+
+    kept = []
+    for event in candidate.events:
+        source = event["event_id"].removesuffix(suffix)
+        if event["kind"] == event_kind and source in _VANISHED[kind]:
+            _VANISHED[kind].discard(source)
+            continue
+        kept.append(event)
+    candidate.events = kept
+
+
+def _at_a_turn_frame(old: Step, candidate: Step) -> bool:
+    seat = old.step[2]
+    return bool(candidate.views) and (
+        candidate.views[seat].get("decision_kind") in _TURN_FRAME_KINDS
+    )
+
+
 def _in_turn_window(step: Step, kind: str) -> bool:
     """A base step answering a ``kind`` window raised in its owner's own turn
     (its events name a player's source; Combat and the Scouts step keep the
@@ -73,8 +136,10 @@ def _research_decline_vanishes(step: Step) -> None:
     """2b-1: the in-turn decline has no counterpart (the bonus waits and the
     turn end lapses it); its event goes with it."""
 
+    _game_at(step.index)
     if step.step[1] == "decline_research_bonus" and _in_turn_research_window(step):
         step.vanish = True
+        _vanished("research", step, ":bonus_declined")
         step.events = [e for e in step.events if e["kind"] != "research_bonus_declined"]
 
 
@@ -93,7 +158,11 @@ def _only_research_rows(old: Step, candidate: Step) -> None:
     same rows inside its turn's list: compare those, with the window's
     views and page."""
 
-    if not _in_turn_research_window(old) or not isinstance(candidate.decision, list):
+    if (
+        not _in_turn_research_window(old)
+        or not isinstance(candidate.decision, list)
+        or not _at_a_turn_frame(old, candidate)
+    ):
         return
     candidate.decision[1] = [
         r for r in candidate.decision[1] if r["action_id"] in _RESEARCH_ROWS
@@ -115,6 +184,7 @@ def _no_waiting_research(old: Step, candidate: Step) -> None:
         or _in_turn_research_window(old)
         or not isinstance(candidate.decision, list)
         or not isinstance(candidate.decision[1], list)
+        or not _waits_for("research", old.step[2])
     ):
         return
     offered = (
@@ -143,11 +213,10 @@ def _no_waiting_research(old: Step, candidate: Step) -> None:
 
 
 def _no_research_lapse(old: Step, candidate: Step) -> None:
-    """2b-1: the turn end lapses a waiting bonus with an event."""
+    """2b-1: the turn end lapses a waiting bonus with an event (one whose
+    in-turn refusal vanished)."""
 
-    candidate.events = [
-        e for e in candidate.events if e["kind"] != "research_bonus_lapsed"
-    ]
+    _lapsed("research", candidate, "research_bonus_lapsed", ":bonus_lapsed")
 
 
 # --- 2b-2: optional trash icons raised in the owner's turn wait on it ------
@@ -198,8 +267,10 @@ def _trash_decline_vanishes(step: Step) -> None:
     """2b-2: the in-turn decline has no counterpart (the trash waits and the
     turn end lapses it); its event goes with it."""
 
+    _game_at(step.index)
     if step.step[1] == "decline_optional_trash" and _in_turn_trash_window(step):
         step.vanish = True
+        _vanished("trash", step, ":trash_declined")
         step.events = [e for e in step.events if e["kind"] != "optional_trash_declined"]
 
 
@@ -217,7 +288,11 @@ def _only_trash_rows(old: Step, candidate: Step) -> None:
     same rows inside its turn's list: compare those, in the window's order,
     with the window's views and page."""
 
-    if not _in_turn_trash_window(old) or not isinstance(candidate.decision, list):
+    if (
+        not _in_turn_trash_window(old)
+        or not isinstance(candidate.decision, list)
+        or not _at_a_turn_frame(old, candidate)
+    ):
         return
     order = {
         _row_key(r): index
@@ -254,6 +329,7 @@ def _no_waiting_trash(old: Step, candidate: Step) -> None:
         or _in_turn_trash_window(old)
         or not isinstance(candidate.decision, list)
         or not isinstance(candidate.decision[1], list)
+        or not _waits_for("trash", old.step[2])
     ):
         return
     offered = (
@@ -271,12 +347,6 @@ def _no_waiting_trash(old: Step, candidate: Step) -> None:
         candidate.page = old.page
 
 
-# The expiry events the candidate made at a trash that the base made later,
-# by id, and the last step index seen (a lower one starts another game).
-_carried_expiries: dict[str, dict[str, object]] = {}
-_last_index = [-1]
-
-
 def _expiry_at_the_trash(old: Step, candidate: Step) -> None:
     """2b-2: trashing a card whose Agent box still waits expires the box at
     once (``agent_effects.expire_trashed_card_effects`` runs when the turn's
@@ -284,9 +354,7 @@ def _expiry_at_the_trash(old: Step, candidate: Step) -> None:
     -- two Arrakis Planetologist replacements -- so its expiry came when the
     last of them closed: the candidate's event moves to that step."""
 
-    if old.index <= _last_index[0]:
-        _carried_expiries.clear()
-    _last_index[0] = old.index
+    _game_at(old.index)
     old_ids = [event["event_id"] for event in old.events]
     new_ids = {event["event_id"] for event in candidate.events}
     for event_id in [i for i in _carried_expiries if i in old_ids and i not in new_ids]:
@@ -306,11 +374,10 @@ def _expiry_at_the_trash(old: Step, candidate: Step) -> None:
 
 
 def _no_trash_lapse(old: Step, candidate: Step) -> None:
-    """2b-2: the turn end lapses a waiting trash with an event."""
+    """2b-2: the turn end lapses a waiting trash with an event (one whose
+    in-turn refusal vanished)."""
 
-    candidate.events = [
-        e for e in candidate.events if e["kind"] != "optional_trash_lapsed"
-    ]
+    _lapsed("trash", candidate, "optional_trash_lapsed", ":trash_lapsed")
 
 
 # --- 2b-3: no Faction at the top for Shipping and the Tech acquire Influence
@@ -378,17 +445,26 @@ def _no_greyed_tech_influence(old: Step, candidate: Step) -> None:
 # --- 2b-4: a research space's paired icons and c7r3's rewards in order ----
 
 
+# ``immortality.RESEARCH_ICON_ORDER`` and ``OWED_ORIGIN_RESEARCH`` and the
+# owed-draw decks, spelled out: ``time_legal.py`` runs these rules on the base
+# engine too, which has none of them.
+_RESEARCH_ICON_ORDER = ("specimen", "tleilaxu", "trash", "intrigue", "cards")
+_OWED_ORIGIN_RESEARCH = "research_c7r3"
+_OWED_DECKS = (("intrigue", "draw_owed_intrigue"), ("card", "draw_owed_card"))
+
+
+def _next_owed(owed: tuple[tuple[str, str, str], ...], deck: str) -> int | None:
+    """The waiting draw a press of ``deck``'s action takes (the oldest of
+    the deck; none of the c7r3 draws is immediate)."""
+
+    return next((i for i, (d, _, _) in enumerate(owed) if d == deck), None)
+
+
 def _research_icons_in_base_order(at: At) -> object:
     """2b-4: each icon of a research space's pair (and c7r3's rewards) is
     its own step now, a turn row, an owed draw or a window; the base
     resolved them inside the step that raised them, in the order
     ``RESEARCH_ICON_ORDER`` keeps."""
-
-    from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE
-    from dune_imperium.rules.immortality import (
-        OWED_ORIGIN_RESEARCH,
-        RESEARCH_ICON_ORDER,
-    )
 
     if not isinstance(at.decision, PlayerDecision):
         return None
@@ -397,15 +473,13 @@ def _research_icons_in_base_order(at: At) -> object:
         for action in at.legal
         if action.action_id == "resolve_research_icon"
     }
-    for icon in RESEARCH_ICON_ORDER:
+    for icon in _RESEARCH_ICON_ORDER:
         if icon in icons:
             return icons[icon]
     owed = at.state.players[at.decision.owner].owed_draws
-    for deck, action_id in (
-        (OWED_INTRIGUE, "draw_owed_intrigue"),
-        (OWED_CARD, "draw_owed_card"),
-    ):
-        if any(d == deck and origin == OWED_ORIGIN_RESEARCH for d, origin, _ in owed):
+    for deck, action_id in _OWED_DECKS:
+        index = _next_owed(owed, deck)
+        if index is not None and owed[index][1] == _OWED_ORIGIN_RESEARCH:
             return next(
                 (action for action in at.legal if action.action_id == action_id),
                 None,

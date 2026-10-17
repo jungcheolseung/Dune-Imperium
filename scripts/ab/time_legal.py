@@ -19,9 +19,11 @@ its declared differences (``engine_equivalence.py check --differences``),
 given as a fourth argument: their ``old`` hooks rewrite or drop a recorded
 step, ``moves`` replace it, and ``answer`` takes the decisions the base did
 not have. Only the recorded steps' decisions are timed, so the call counts
-stay those of the base. Give the base the same module: matching the answers
-asks the engine for the next decision's legal list, which warms its caches
-for the timed calls (about 15% at cleanup-2a).
+stay those of the base. Give the base the same module with a fifth argument
+``base``: matching the answers asks the engine for the next decision's legal
+list, which warms its caches for the timed calls (about 15% at cleanup-2a),
+while the ``old`` and ``moves`` hooks, which put a recorded step in the
+candidate's form (dropping a refusal the base still needs), are not applied.
 """
 
 import sys
@@ -68,6 +70,7 @@ def _answer(
 def main() -> None:
     trace_dir, games, repeats = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
     rules = load_rules(sys.argv[4]) if len(sys.argv) > 4 else ()
+    base = len(sys.argv) > 5 and sys.argv[5] == "base"
     files = recordings(trace_dir)[:: max(1, 200 // games)][:games]
     engine = UprisingRulesEngine()
     total = intrigue = agent = 0.0
@@ -79,7 +82,7 @@ def main() -> None:
         for index, row in enumerate(data["rows"]):
             old = Step(index, *row[:5])
             for rule in rules:
-                if rule.old is not None:
+                if rule.old is not None and not base:
                     rule.old(old)
             if old.vanish:
                 continue
@@ -111,7 +114,9 @@ def main() -> None:
                 (
                     tuple(m)
                     for rule in rules
-                    if rule.moves and (m := rule.moves(old, at)) is not None
+                    if rule.moves
+                    and not base
+                    and (m := rule.moves(old, at)) is not None
                 ),
                 None,
             )

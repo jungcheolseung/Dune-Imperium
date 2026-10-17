@@ -1700,6 +1700,10 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="resolve_research_icon", arguments=(("effect", icon),))
         for icon in RESEARCH_ICON_ORDER
     )
+    if not config.bloodlines:
+        # c7r3's card, owed in the owner's turn; the Bloodlines catalog has
+        # it already (Hungry for Spice, CHOAM Transports).
+        templates.append(ActionTemplate(action_id="draw_owed_card"))
     # Piter's troop cost, Stitched Horror's picks, Beguiling Pheromones'
     # grafted-card trash.
     templates.extend(
