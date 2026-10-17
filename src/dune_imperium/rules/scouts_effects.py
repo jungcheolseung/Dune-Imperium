@@ -841,7 +841,7 @@ def _apply_automatic(
                     payload=(("helix", helix), ("player", player), ("spice", gained)),
                 ),
             )
-        case DiscardFromHand() | RecallSpy() | TrashIntrigueCard():
+        case DiscardFromHand() | RecallSpy() | TrashIntrigueCard() | TrashCard():
             # A choice with nothing left to choose (checked before paying a
             # cost; a delayed reward's may run dry): nothing happens.
             return RuleResult(state=state)

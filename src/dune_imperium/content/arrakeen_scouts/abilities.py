@@ -490,6 +490,14 @@ def _line(item_id: str, index: int) -> EffectSection:
         or ability.trigger is not None
     ):
         raise ValueError(f"{item_id}: not a Scouts item's line")
+    if any(
+        isinstance(cost, TrashCard)
+        and (cost.this_card or cost.other_in_play is not None)
+        for cost in line.costs
+    ):
+        # The Scouts executor trashes from the hand, or from the hand, the
+        # discard pile and play; it has no "this card" (cleanup-1 review).
+        raise ValueError(f"{item_id}: a Scouts trash cost takes no card in particular")
     return line
 
 

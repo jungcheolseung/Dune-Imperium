@@ -8,7 +8,7 @@ from dune_imperium.content.arrakeen_scouts.auctions import AUCTIONS, SALES
 from dune_imperium.content.arrakeen_scouts.events import EVENTS
 from dune_imperium.content.arrakeen_scouts.missions import MISSIONS
 from dune_imperium.content.arrakeen_scouts.subcommittees import SUBCOMMITTEES
-from dune_imperium.content.arrakeen_scouts.types import EventKind
+from dune_imperium.content.arrakeen_scouts.types import AuctionKind, EventKind
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCardToHand,
     EffectSection,
     GainLowestInfluence,
+    GainResources,
     GainSpiceWithHelixBonus,
     LoseFactionInfluence,
     LoseGarrisonTroops,
@@ -172,6 +173,37 @@ def test_every_scouts_mechanism_is_named_after_its_engine_branch() -> None:
 
     hooks = {record.hook for record in SCOUTS_ABILITIES.values() if record.hook}
     assert hooks == SCOUTS_HOOKS
-    assert {SCOUTS_ABILITIES[mission.mission_id].hook for mission in MISSIONS} == {
-        f"mission_{mission.kind.value}" for mission in MISSIONS
+    expected = {
+        mission.mission_id: f"mission_{mission.kind.value}" for mission in MISSIONS
     }
+    for event in EVENTS:
+        if event.automatic is not None:
+            expected[event.event_id] = f"automatic_{event.automatic.value}"
+        elif event.modifier is not None:
+            expected[event.event_id] = f"modifier_{event.modifier.value}"
+        elif event.kind is EventKind.SHARED:
+            expected[event.event_id] = "event_shared"
+    for auction in AUCTIONS:
+        if auction.kind is not AuctionKind.SEALED:
+            expected[auction.auction_id] = f"auction_{auction.kind.value}"
+    assert {
+        item_id: record.hook
+        for item_id, record in SCOUTS_ABILITIES.items()
+        if record.hook
+    } == expected
+
+
+def test_a_scouts_trash_cost_takes_no_card_in_particular(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Scouts executor has no "trash this card" (cleanup-1 review)."""
+
+    for cost in (TrashCard(this_card=True), TrashCard(other_in_play=Faction.FREMEN)):
+        record = Ability(
+            timing=AbilityTiming.SCOUTS,
+            sections=(EffectSection(rewards=(GainResources(water=1),), costs=(cost,)),),
+            mark=AbilityMark.OPTIONAL,
+        )
+        monkeypatch.setattr(abilities, "SCOUTS_ABILITIES", {"item": record})
+        with pytest.raises(ValueError):
+            abilities.scouts_option("item")

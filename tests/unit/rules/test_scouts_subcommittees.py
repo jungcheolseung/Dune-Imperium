@@ -624,6 +624,18 @@ def test_the_conflict_agent_is_recallable_during_the_seats_reveal() -> None:
     assert line_is_offered(reveal, 0, contingencies)
 
 
+def test_an_automatic_hand_trash_with_an_empty_hand_does_nothing() -> None:
+    """A hand-trash cost is never offered with an empty hand, but the step
+    run without a choice must not fail there either (cleanup-1 review)."""
+    from dune_imperium.content.uprising.effect_dsl import TrashCard
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.scouts_effects import _apply_automatic
+
+    state = _state(_owner(hand=()))
+    step = TrashCard(hand_only=True)
+    assert _apply_automatic(state, 0, step, source="scouts") == RuleResult(state=state)
+
+
 CORRINTH = "imperium:corrinth_city:0"
 
 
