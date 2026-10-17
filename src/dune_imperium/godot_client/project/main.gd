@@ -10,6 +10,7 @@ const ExpansionPresenter = preload("res://expansions.gd")
 const Portrait = preload("res://portrait.gd")
 const DetailEntry = preload("res://detail_entry.gd")
 const ActionChoice = preload("res://action_choice.gd")
+const FrontMenu = preload("res://front_menu.gd")
 
 var api = Api.new()
 var doorbell = Doorbell.new()
@@ -67,6 +68,10 @@ var hover_serial = 0
 var hand_panel: PanelContainer
 var hand_scroll: ScrollContainer
 var board_tools: HBoxContainer
+var table_surface: Control
+var front_ui: Control
+var host_control = ""
+var menu_test = false
 
 
 func _ready() -> void:
@@ -80,8 +85,12 @@ func _ready() -> void:
 				var parsed = JSON.parse_string(file.get_as_text())
 				if parsed is Dictionary:
 					model.words = parsed
+		elif argument.begins_with("--host-control="):
+			host_control = argument.trim_prefix("--host-control=")
 		elif argument == "--smoke":
 			smoke = true
+		elif argument == "--menu-test":
+			menu_test = true
 		elif argument.begins_with("--capture="):
 			capture_dir = argument.trim_prefix("--capture=")
 		elif argument.begins_with("--rules="):
@@ -98,6 +107,11 @@ func _ready() -> void:
 			DirAccess.remove_absolute(path)
 			if data is Dictionary:
 				credentials = data
+	if get_meta("menu_test_guest", false):
+		menu_test = false
+		capture_dir = ""
+		playthrough_seeds = ""
+		smoke = false
 	choices.table = self
 	log_ui.table = self
 	add_child(display_ui)
@@ -128,18 +142,28 @@ func _ready() -> void:
 	add_child(timer)
 	timer.start()
 	get_tree().auto_accept_quit = false
-	var catalog = await api.call_json(HTTPClient.METHOD_GET, "/catalog")
-	if catalog.ok:
-		model.catalog = catalog.data
-		new_button.disabled = not model.server_info.get("admin", true)
-		load_button.disabled = not model.server_info.get("admin", true)
-		status.text = model.native("새 게임을 눌러 출발하세요")
-		if model.catalog.get("board_image") != null:
-			board.board_texture = api.texture(str(model.catalog.board_image))
-		board.queue_redraw()
-	else:
-		status.text = model.native("서버에 연결하지 못했습니다. 다시 실행해 주세요.")
-	if not playthrough_seeds.is_empty():
+	if not api.base_url.is_empty():
+		var catalog = await api.call_json(HTTPClient.METHOD_GET, "/catalog")
+		if catalog.ok:
+			model.catalog = catalog.data
+			new_button.disabled = not model.server_info.get("admin", true)
+			load_button.disabled = not model.server_info.get("admin", true)
+			status.text = model.native("새 게임을 눌러 출발하세요")
+			if model.catalog.get("board_image") != null:
+				board.board_texture = api.texture(str(model.catalog.board_image))
+			board.queue_redraw()
+		else:
+			status.text = model.native("서버에 연결하지 못했습니다. 다시 실행해 주세요.")
+	front_ui = FrontMenu.new()
+	add_child(front_ui)
+	front_ui.setup(self, host_control)
+	if not menu_test and (smoke or not capture_dir.is_empty() or not playthrough_seeds.is_empty()):
+		front_ui.show_table()
+	if menu_test:
+		var runner = load("res://front_menu_test.gd").new()
+		add_child(runner)
+		runner.run(self)
+	elif not playthrough_seeds.is_empty():
 		var runner = load("res://playthrough.gd").new()
 		add_child(runner)
 		runner.run(self, playthrough_seeds)
@@ -264,6 +288,7 @@ func _scroll(parent: Node) -> VBoxContainer:
 
 func _build_table() -> void:
 	var margin = MarginContainer.new()
+	table_surface = margin
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for key in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		margin.add_theme_constant_override(key, 8)
@@ -630,6 +655,8 @@ func _adopt_game(id: String) -> bool:
 	tab = "choices"
 	board.reset_view()
 	var accepted = await _sync()
+	if accepted and front_ui != null:
+		front_ui.show_table()
 	if accepted and model.active_seat < 0:
 		if model.summary().get("finished", false):
 			await tools_ui._review_meta(0, 0, true)
@@ -724,6 +751,8 @@ func _sync(preferred_seat = -2) -> bool:
 func _render() -> void:
 	_hide_preview()
 	_refresh_chrome(self)
+	if front_ui != null:
+		front_ui.refresh_language()
 	tools_ui.refresh_menu()
 	var summary = model.summary()
 	var view = model.view()

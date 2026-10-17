@@ -20,6 +20,13 @@ class HostConfig:
 
 def read_host_config(path: Path, *, assets: Path | None, local_port: int) -> HostConfig:
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return parse_host_config(data, assets=assets, local_port=local_port)
+
+
+def parse_host_config(
+    data: object, *, assets: Path | None, local_port: int,
+) -> HostConfig:
+    """Validate the same preferences for a saved or live host request."""
     if not isinstance(data, dict) or not isinstance(data.get("host", {}), dict):
         raise ValueError("잘못된 Godot 서버 설정입니다.")
     host = data.get("host", {})

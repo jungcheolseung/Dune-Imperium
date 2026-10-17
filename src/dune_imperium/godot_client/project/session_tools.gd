@@ -35,9 +35,10 @@ func setup(owner_table: Control) -> void:
 	table.new_button.get_parent().add_child(menu)
 	refresh_menu()
 	menu.get_popup().id_pressed.connect(_menu)
-	var response = await table.api.call_json(HTTPClient.METHOD_GET, "/whoami")
-	if response.ok:
-		table.model.server_info = response.data
+	if not table.api.base_url.is_empty():
+		var response = await table.api.call_json(HTTPClient.METHOD_GET, "/whoami")
+		if response.ok:
+			table.model.server_info = response.data
 	table.market_scroll.get_parent().visible = not prefs.get("market_folded", false)
 
 
@@ -47,7 +48,7 @@ func refresh_menu() -> void:
 	menu.text = table.model.native("메뉴")
 	var popup = menu.get_popup()
 	popup.clear()
-	for title in ["게임 목록 / 방", "원격 서버 연결", "플레이 설정", "도움말", "다시보기 / 관전", "방 링크 복사", "이번 방 나가기", "공용 카드 접기 / 펼치기", "플레이어 상세 접기 / 펼치기"]:
+	for title in ["게임 목록 / 방", "원격 서버 연결", "플레이 설정", "도움말", "다시보기 / 관전", "방 링크 복사", "이번 방 나가기", "공용 카드 접기 / 펼치기", "플레이어 상세 접기 / 펼치기", "메인 화면", "멀티플레이"]:
 		popup.add_item(table.model.native(title))
 
 
@@ -87,7 +88,7 @@ func _menu(id: int) -> void:
 				games()
 			else:
 				lobby()
-		1: connect_dialog()
+		1: table.front_ui.show_page("join")
 		2: settings()
 		3: help()
 		4: enter_review()
@@ -98,6 +99,8 @@ func _menu(id: int) -> void:
 		6: leave_game()
 		7: toggle_market()
 		8: toggle_seats()
+		9: table.front_ui.show_page("home")
+		10: table.front_ui.show_page("multi")
 
 
 func new_game() -> void:
@@ -279,8 +282,6 @@ func connect_url(url: String) -> bool:
 	var authority = clean.get_slice("#", 0).trim_suffix("/")
 	var origin = authority.get_slice("/", 0) + "//" + authority.get_slice("/", 2)
 	var fragment = clean.get_slice("#", 1)
-	leave_game()
-	table.api.base_url = origin
 	var admin_key = ""
 	var wanted = ""
 	for pair in fragment.split("&"):
@@ -288,24 +289,50 @@ func connect_url(url: String) -> bool:
 			admin_key = pair.get_slice("=", 1).uri_decode()
 		elif pair.get_slice("=", 0) == "game":
 			wanted = pair.get_slice("=", 1).uri_decode()
+	return await connect_server(origin, admin_key, wanted)
+
+
+func connect_server(origin: String, admin_key = "", wanted = "", browse = true) -> bool:
+	while table.refreshing:
+		await get_tree().process_frame
+	if table.busy:
+		return false
+	var previous = table.api.base_url
+	table.busy = true
+	table.api.base_url = origin
 	if not admin_key.is_empty():
 		var auth = await table.api.call_json(HTTPClient.METHOD_POST, "/auth/admin", {"key": admin_key})
 		if not table._accept(auth):
+			table.api.base_url = previous
+			table.busy = false
 			return false
 	var info = await table.api.call_json(HTTPClient.METHOD_GET, "/whoami")
 	var catalog = await table.api.call_json(HTTPClient.METHOD_GET, "/catalog")
 	if not table._accept(info) or not table._accept(catalog):
+		table.api.base_url = previous
+		table.busy = false
 		return false
+	if not wanted.is_empty():
+		var room = await table.api.call_json(HTTPClient.METHOD_GET, "/games/" + wanted)
+		if not table._accept(room):
+			if int(room.code) == 404:
+				table.status.text = table.model.native("이 초대 링크의 방을 찾지 못했습니다. 친구에게 새 링크를 요청하세요.")
+			table.api.base_url = previous
+			table.busy = false
+			return false
+	leave_game()
+	table.busy = false
 	table.model.server_info = info.data
 	table.model.catalog = catalog.data
 	table.board.textures.clear()
 	table.board.board_texture = table.api.texture(str(catalog.data.board_image)) if catalog.data.get("board_image") != null else null
 	if not wanted.is_empty():
-		await table._adopt_game(wanted)
-		if table.model.active_seat < 0 and not table.model.summary().get("finished", false):
-			lobby()
-	else:
+		if not await table._adopt_game(wanted):
+			return false
+	elif browse:
 		games()
+	table.new_button.disabled = not info.data.get("admin", false)
+	table.load_button.disabled = not info.data.get("admin", false)
 	return true
 
 
@@ -313,6 +340,15 @@ func lobby() -> void:
 	if table.game_id.is_empty():
 		return
 	var parts = _dialog(text("html.lobby_title"), Vector2i(650, 360))
+	if table.model.server_info.get("admin", false):
+		var base = table.model.server_info.get("public_url")
+		var invite = (str(base) if base != null else table.api.base_url).trim_suffix("/") + "/#game=" + table.game_id
+		table._label(parts[1], table.model.native("친구에게 보낼 초대 링크"), 14)
+		var link = LineEdit.new()
+		link.text = invite
+		link.editable = false
+		parts[1].add_child(link)
+		table._button(parts[1], table.model.native("초대 링크 복사"), func(): DisplayServer.clipboard_set(invite))
 	var name = LineEdit.new()
 	name.max_length = 20
 	name.text = str(prefs.get("name", ""))
@@ -330,7 +366,7 @@ func lobby() -> void:
 			table._button(row, table.model.native("입장 / Enter"), func(): parts[0].queue_free(); table._sync(seat))
 			table._button(row, table.model.native("자리 비우기 / Release"), func(): _release_seat(seat, parts[0]))
 		elif not player.claimed:
-			table._button(row, table.model.native("앉기 / Sit"), func():
+			var sit = table._button(row, table.model.native("앉기 / Sit"), func():
 				var response = await table.api.call_json(HTTPClient.METHOD_POST, "/games/" + table.game_id + "/seats/" + str(seat) + "/claim", {"name": name.text})
 				if table._accept(response):
 					prefs.name = name.text
@@ -339,6 +375,8 @@ func lobby() -> void:
 					table.doorbell.start(table.game_id)
 					await table._sync(seat)
 			)
+			sit.disabled = name.text.strip_edges().is_empty()
+			name.text_changed.connect(func(value): sit.disabled = value.strip_edges().is_empty())
 		elif table.model.server_info.get("admin", false):
 			table._button(row, table.model.native("자리 비우기 / Release"), func(): _release_seat(seat, parts[0]))
 
@@ -387,9 +425,13 @@ func settings() -> void:
 		pace.set_item_metadata(pace.item_count - 1, value)
 	pace.select(["normal", "fast", "instant"].find(str(table.model.summary().get("ai_pace", prefs.get("pace", "fast")))))
 	parts[1].add_child(pace)
-	pace.disabled = table.game_id.is_empty() or not table.model.server_info.get("admin", false)
+	pace.disabled = not table.game_id.is_empty() and not table.model.server_info.get("admin", false)
 	pace.item_selected.connect(func(index):
 		var value = pace.get_item_metadata(index)
+		if table.game_id.is_empty():
+			prefs.pace = value
+			save_preferences()
+			return
 		var response = await table.api.call_json(HTTPClient.METHOD_POST, "/games/" + table.game_id + "/ai-pace", {"pace": value})
 		if table._accept(response):
 			prefs.pace = value
@@ -397,7 +439,7 @@ func settings() -> void:
 			await table._sync()
 	)
 	table._button(parts[1], table.model.native("개인 배치 초기화"), table.layout_ui.reset)
-	table._button(parts[1], table.model.native("다음 실행의 서버 설정"), host_settings)
+	table._button(parts[1], table.model.native("멀티플레이 서버 설정"), func(): parts[0].queue_free(); table.front_ui.show_page("host"))
 	for pair in [["log_follow", "로그 자동 따라가기", true], ["animations", "연출 켜기", true], ["reduced_motion", "움직임 줄이기", false], ["sound", "효과음 켜기", true]]:
 		var check = CheckBox.new()
 		check.text = table.model.native(pair[1])
@@ -417,57 +459,7 @@ func settings() -> void:
 
 
 func host_settings() -> void:
-	var config = prefs.get("host", {})
-	var parts = _dialog(table.model.native("다음 실행의 서버 설정"), Vector2i(710, 490))
-	table._label(parts[1], table.model.native("저장 후 앱을 다시 실행하면 적용됩니다."), 14)
-	var mode = OptionButton.new()
-	for title in ["혼자 / 같은 컴퓨터에서 플레이", "친구 초대 서버"]:
-		mode.add_item(table.model.native(title))
-	mode.select(1 if config.get("mode") == "remote" else 0)
-	parts[1].add_child(mode)
-	var fields: Dictionary = {}
-	for pair in [["bind", "서버가 받을 주소", "0.0.0.0"], ["public_url", "친구에게 보낼 서버 주소", "http://192.168.1.10:8000"], ["checkpoint", "선택: 학습 체크포인트 파일", ""], ["python", "선택: 학습 런타임 실행 파일", ""]]:
-		table._label(parts[1], table.model.native(pair[1]), 14)
-		var row = HBoxContainer.new()
-		parts[1].add_child(row)
-		var input = LineEdit.new()
-		input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		input.text = str(config.get(pair[0], pair[2] if pair[0] == "bind" else ""))
-		input.placeholder_text = pair[2]
-		row.add_child(input)
-		fields[pair[0]] = input
-		if pair[0] in ["checkpoint", "python"]:
-			table._button(row, table.model.native("파일 선택"), func():
-				var file = FileDialog.new()
-				file.access = FileDialog.ACCESS_FILESYSTEM
-				file.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-				file.use_native_dialog = true
-				table.add_child(file)
-				file.file_selected.connect(func(path): input.text = path; file.queue_free())
-				file.canceled.connect(file.queue_free)
-				file.popup_centered(Vector2i(850, 600))
-			)
-	table._label(parts[1], table.model.native("포트"), 14)
-	var port = SpinBox.new()
-	port.min_value = 1
-	port.max_value = 65535
-	port.value = int(config.get("port", 8000))
-	parts[1].add_child(port)
-	var message = table._label(parts[1], "", 13)
-	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	table._button(parts[1], table.model.native("저장"), func():
-		for key in ["python", "checkpoint"]:
-			if not fields[key].text.is_empty() and not FileAccess.file_exists(fields[key].text):
-				message.text = table.model.native("선택한 파일을 찾지 못했습니다.")
-				return
-		if mode.selected == 1 and (fields.bind.text.strip_edges().is_empty() or not (fields.public_url.text.begins_with("http://") or fields.public_url.text.begins_with("https://"))):
-			message.text = table.model.native("서버가 받을 주소와 친구에게 보낼 HTTP(S) 주소를 입력하세요.")
-			return
-		prefs.host = {"mode": "remote" if mode.selected == 1 else "local", "bind": fields.bind.text.strip_edges(), "public_url": fields.public_url.text.strip_edges(), "port": int(port.value), "checkpoint": fields.checkpoint.text.strip_edges(), "python": fields.python.text.strip_edges()}
-		save_preferences()
-		parts[0].hide()
-		parts[0].queue_free()
-	)
+	table.front_ui.show_page("host")
 
 
 func help() -> void:

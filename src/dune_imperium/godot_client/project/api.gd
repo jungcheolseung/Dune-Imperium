@@ -55,9 +55,15 @@ func call_json(method: int, path: String, data: Dictionary = {}) -> Dictionary:
 	var result = await request.request_completed
 	request.queue_free()
 	_remember_headers(result[2], origin)
-	var parsed = JSON.parse_string(result[3].get_string_from_utf8())
-	var response = parsed if parsed is Dictionary or parsed is Array else {}
-	var success = result[0] == HTTPRequest.RESULT_SUCCESS and result[1] >= 200 and result[1] < 300
+	# Closing/replacing an owned server can finish a poll with an empty body.
+	# A failed connection is a UI error, not a JSON parser engine error.
+	var json = JSON.new()
+	var parsed: Variant = null
+	if not result[3].is_empty() and json.parse(result[3].get_string_from_utf8()) == OK:
+		parsed = json.data
+	var valid = parsed is Dictionary or parsed is Array
+	var response = parsed if valid else {"detail": "서버 응답을 읽지 못했습니다."}
+	var success = valid and result[0] == HTTPRequest.RESULT_SUCCESS and result[1] >= 200 and result[1] < 300
 	return {"ok": success, "code": result[1], "data": response}
 
 

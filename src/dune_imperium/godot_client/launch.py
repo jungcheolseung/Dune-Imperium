@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import urllib.request
 import zipfile
 from collections.abc import Sequence
@@ -18,6 +19,7 @@ from dune_imperium.godot_client.host_config import (
     server_origin,
     write_credentials,
 )
+from dune_imperium.godot_client.host_control import HostControl
 from dune_imperium.godot_client.ui_data import write_ui_data
 from dune_imperium.launcher.command import build_plan, no_window_flags
 from dune_imperium.launcher.supervisor import ServerProcess, StartupFailed
@@ -155,10 +157,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--capture", help=argparse.SUPPRESS)
     parser.add_argument("--playthrough", help=argparse.SUPPRESS)
     parser.add_argument("--rules", help=argparse.SUPPRESS)
+    parser.add_argument("--menu-test", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     server: ServerProcess | None = None
     client: subprocess.Popen[bytes] | None = None
     credentials: Path | None = None
+    control: HostControl | None = None
+    mailbox: tempfile.TemporaryDirectory[str] | None = None
     log_dir = TMP_DIR / "godot"
     log_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -177,7 +182,16 @@ def main(argv: list[str] | None = None) -> int:
             message = f"Godot 첫 실행 준비가 실패했습니다. {log_dir / 'import.log'}"
             raise ValueError(message)
         base = args.server
-        if base is None:
+        automated = (
+            args.headless or args.smoke or args.capture or args.playthrough
+        ) and not args.menu_test
+        if not automated:
+            mailbox = tempfile.TemporaryDirectory(prefix="host-", dir=log_dir)
+            control = HostControl(
+                Path(mailbox.name), assets=find_assets(), free_port=free_port,
+                server_factory=lambda plan, logs: ServerProcess(plan, log_dir=logs),
+            )
+        if base is None and automated:
             assets = find_assets()
             config = read_host_config(
                 PROJECT_ROOT / "local" / "godot-ui.json",
@@ -193,11 +207,15 @@ def main(argv: list[str] | None = None) -> int:
             if config.key:
                 credentials = write_credentials(log_dir, base, config.key)
         extra = ["--headless"] if args.headless else []
-        command = godot_command(binary, base, labels, extra)
+        command = godot_command(binary, base or "", labels, extra)
+        if mailbox is not None:
+            command.append(f"--host-control={mailbox.name}")
         if credentials:
             command.append(f"--host-credentials={credentials}")
-        if args.smoke or args.capture or args.playthrough:
+        if args.smoke or args.capture or args.playthrough or args.menu_test:
             command.append(f"--test-profile={log_dir / 'test-profile'}")
+        if args.menu_test:
+            command.append("--menu-test")
         if args.smoke:
             command.append("--smoke")
         if args.rules:
@@ -210,13 +228,19 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("스크린샷은 프로젝트 폴더 안에 저장해야 합니다.")
             captures.mkdir(parents=True, exist_ok=True)
             command.append(f"--capture={captures}")
-        print("게임 창을 엽니다. 창을 닫으면 시제품 서버도 종료합니다.", flush=True)
+        print("게임 창을 엽니다. 창을 닫으면 이 앱이 연 서버도 종료합니다.", flush=True)
         with (log_dir / "process.log").open("wb") as log:
             client = subprocess.Popen(
                 command, cwd=PROJECT_ROOT, stdout=log, stderr=subprocess.STDOUT,
                 creationflags=no_window_flags(),
             )
-            return client.wait()
+            if control is None:
+                return client.wait()
+            while True:
+                try:
+                    return client.wait(timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    control.process_once()
     except KeyboardInterrupt:
         return 130
     except (OSError, ValueError, StartupFailed, subprocess.TimeoutExpired) as error:
@@ -239,6 +263,12 @@ def main(argv: list[str] | None = None) -> int:
                     "시제품 서버의 포트가 아직 열려 있습니다. 로그를 확인하세요.",
                     file=sys.stderr,
                 )
+        try:
+            if control is not None:
+                control.stop()
+        finally:
+            if mailbox is not None:
+                mailbox.cleanup()
 
 
 if __name__ == "__main__":

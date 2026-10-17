@@ -196,5 +196,5 @@ def test_failed_server_start_is_stopped_before_the_launcher_returns(
     monkeypatch.setattr(subprocess, "run", imported)
     monkeypatch.setattr(launch, "TMP_DIR", tmp_path)
     monkeypatch.setattr(launch, "free_port", lambda: 8123)
-    assert launch.main(["--godot", str(binary)]) == 1
+    assert launch.main(["--godot", str(binary), "--smoke"]) == 1
     assert stopped == [True]
