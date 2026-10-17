@@ -31,6 +31,19 @@ Python·uv·Git·Godot의 설치, 터미널 명령, 첫 실행 다운로드가 �
 않으므로**, 이번 전체 패키지는 새 폴더에서 새 게임으로 시작한다. 이전 폴더와 `saves/`는
 그대로 보관한다. 아래 작은 업데이트들과 그 검증 수치는 리베이스 전 v145 배포본의 기록이다.
 
+소스 `37041aa1`(깨끗한 작업 트리), ZIP 244,857,809 bytes(**233.51 MiB**), 압축 해제 후
+364,857,198 bytes(**347.95 MiB**). SHA-256:
+`3c9fca6a9b7ff9b44aa60bb08aa035da50449ea6d8f1e6467793c4ebc7e86933`.
+산출물은 메인 체크아웃의 `tmp/godot/`에 있으며 같은 이름의 `.zip.sha256`도 둔다.
+
+ZIP CRC·manifest 2,412파일의 SHA-256·Windows x64 PE 35개·고정 서버 의존성 13개를
+확인했다. 한글·공백 경로에 풀어 동봉한 Windows Python 3.14.7의 `pythonw.exe`로 실제
+Godot을 headless 실행했다. Python·uv·pip·pytest·Torch·NumPy의 별도 설치 없이 서버 자동
+시작→Agent 배치→undo→턴 진행→AI 차례 복귀(revision 18, undo 1)→stdin 정상 종료와 포트
+반환을 통과했다. 같은 동봉 Godot의 모델 검사 137개·배율 검사 27개도 통과했다.
+근거는 `tmp/godot/windows-v148-validation/`의 manifest 검증 JSON, Windows smoke JSON,
+모델/배율 로그다. 이번에는 Windows 그래픽 화면·직접 조작·완주·LAN을 다시 검사하지 않았다.
+
 ## 작은 플레이 업데이트
 
 최신 `dune-uprising-windows-panels-update-20261015.zip`(2.83 MiB)은 확장 시장·연구·Scouts와
