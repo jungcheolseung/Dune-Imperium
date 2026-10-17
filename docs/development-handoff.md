@@ -29,8 +29,8 @@
 | 항목 | 값 |
 | --- | --- |
 | Godot 분기 · 원격 master | `docs/godot-client-plan`을 origin/master `7ba624ad`(composed-a1, 2026-10-16) 뒤로 리베이스. Godot 구현은 이 브랜치에만 유지 |
-| pytest | Godot 브랜치 7,775개 수집, 7,766개 통과·9 skip·PettingZoo 경고 2개(2026-10-18, Godot 회귀 37개 포함). skip은 macOS 전용 2개·이 PC의 IPv6 localhost 조건 2개·Scouts 앱 추출본 부재 5개 |
-| Ruff · mypy | Godot 브랜치 `src tests scripts/godot` 통과, mypy 520파일. `scripts/`의 다른 기존 Ruff 오류 68건은 검사 대상 아님 |
+| pytest | 직전 전체(2026-10-18 리베이스 직후) 7,766 통과·9 skip·PettingZoo 경고 2개, 7,775개 수집. 메인 메뉴 작업 뒤 관련 런처·원격 권한 회귀 337 통과·macOS 전용 2 skip(새 host control 16개 포함), 전체 재실행 안 함 |
+| Ruff · mypy | Godot 브랜치 `src tests scripts/godot` 통과, mypy 522파일. `scripts/`의 다른 기존 Ruff 오류 68건은 검사 대상 아님 |
 | 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
 | action codec | **v148** (다음 번호 v149) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
@@ -106,6 +106,11 @@
 
 - **Godot PC 2D 클라이언트:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
   **업데이트 ZIP/전체 패키지는 사용자가 요청할 때만 만든다**(2026-10-15 사용자 결정).
+  시작 화면은 **싱글플레이·멀티플레이·설정·게임종료**다(`f5c09548`). 모드 선택 뒤 서버를 켜며,
+  멀티플레이는 즉시 서버 설정에서 LAN/Tailscale 탐색·켜기/끄기·방 만들기·초대 링크 복사와
+  참가 탭을 제공한다. 앱 재실행 없이 소유한 서버만 제어하고, 키는 개인 파일 응답·인증 POST에만
+  전달한다. Windows OpenGL 75항목·두 언어/좁은 창 13캡처·독립 게스트 참가/좌석 claim과
+  기존 open 43/remote 46 계약 검사를 통과했다. 메뉴 수정본 ZIP을 준비 중이다.
   현재 소스는 리베이스로 master의 codec v148·관측 v32를 사용한다. 아래 이전 검증·Windows 패키지 수치는
   리베이스 전 v145 소스의 기록이며, 기존 v145 저장본은 현재 플레이 서버에서 바로 열리지 않는다.
   최신 전체 ZIP은 `tmp/godot/dune-uprising-windows-personal-20261018-v148.zip`(메인 체크아웃,

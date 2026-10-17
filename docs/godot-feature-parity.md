@@ -6,9 +6,10 @@ Python 규칙·AI·codec·저장 형식은 그대로 사용하고, 두 클라이
 
 | 영역 | 대응 내용 | 현재 검증 / 남은 것 | 웹 검증 기준 |
 | --- | --- | --- | --- |
+| 시작 / 호스팅 | 네 가지 메인 메뉴, 싱글플레이 새 게임/이어하기, 멀티플레이 즉시 서버 설정·LAN/Tailscale 탐색·켜기/끄기·초대 복사/참가 | Windows 실제 OpenGL 75항목·두 언어/좁은 창 13캡처, 독립 게스트 참가/좌석 claim·관리자 권한 차단·만료 링크 뒤 기존 방 보존. 다른 PC LAN/Tailscale 실기는 후속 | native `front_menu_test.gd`, host control 회귀 16개 |
 | 기본 게임 | 카드/칸 어느 순서든 선택, 유일한 배치 즉시 실행·복수 옵션·평면 목록, 공개·구매·책략·전투·확정·undo·최종 순위 | 기본판 기존 완주·배치/undo. 현재 입력의 전 옵션 seed 22(10R/1239)·33(8R/880) 완주 및 중간 복원. 아래 같은 국면 직접 대조, 매 결정의 합법 행 전체를 컨트롤과 대조. 옛 입력의 완주 수열과는 구분 | staged_turn, turn_end, held_choice, intrigue_options, combat_result |
 | 게임 설정 | 좌석 종류·난이도, 검색 서버의 탐색 AI, 학습 경로, 무작위 좌석, 시드, AI 속도, 모든 규칙 옵션 | 설정 창 실제 클릭·드래프트 및 전 옵션 완주. 기본 Windows는 앱 AI, 탐색/학습은 서버가 제공하는 현재 런타임·망을 사용 | setup_options, setup_layout, app_ai_seats, search_seats, ai_pace |
-| 좌석 / 원격 | 첫 좌석 이외의 사람, 로컬 좌석 교대, 이름·claim/release·관리자 인증, origin/path 쿠키 복귀, SSE·재접속 | 실제 open/remote 계약 검사: 쿠키 복귀·권한 상실·SSE 재접속·다른 좌석. 다음 실행 호스트 설정과 일회용 인증 파일 연결, 키는 argv/URL에 싣지 않음 | remote, open_mode, remote_fresh, launcher_link, races, recovery |
+| 좌석 / 원격 | 첫 좌석 이외의 사람, 로컬 좌석 교대, 이름·claim/release·관리자 인증, origin/path 쿠키 복귀, SSE·재접속 | 실제 open 43/remote 46 계약 검사를 새 메뉴 구현 뒤 Windows에서 재실행. 실행 중 호스트 설정은 런처가 소유한 서버에만 적용하고, 관리자 키는 개인 임시 파일 응답과 인증 POST로만 전달 | remote, open_mode, remote_fresh, launcher_link, races, recovery |
 | 저장 / 게임 관리 | 모든 4인 저장 복원·이름, 수동/자동 저장 목록, 삭제 확인, 게임 목록 / 방 | 이름·복원 및 저장/게임 삭제의 취소·두 번째 확인 클릭을 실제 테스트 서버에서 검증 | save_delete, recovery, refresh_error |
 | 관전 / 다시보기 | AI만 있는 판, 시점·좌석·처음/끝·내 수, 턴/수 단위 재생·속도, cursor까지의 로그 | AI 판 readonly 시점/좌석·재생·키보드/값 변경 seek·서버 불변, 종료 공개 덱 순서 보존 검사. 전 시점/조합 전수 검사는 아님 | spectate, endgame, log_passes, log_follow |
 | 공개 / 개인 정보 | 승점 기록·로그 이동, 교전 이력, 덱/버림/폐기·공개 책략·목표·종료 공개 | 승점/로그 상세, 교전 이력, 검색·장수·창 안 큰 카드, 공개/종료 정보와 자신의 엿보기. live 덱 순서는 숨기고 disclosure에서만 원래 순서를 읽음 | vp_ledger, conflict_history, deck_contents, deck_piles, pile_viewer, intrigue_faceup |
