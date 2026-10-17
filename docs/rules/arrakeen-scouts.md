@@ -286,6 +286,7 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 
 ## 11. 구현 상태
 
+- 2026-10-17 정리-2a(효과 조각 엔진 전환 정리-2, 브랜치 `cleanup2`, codec v149, 사용자 결정 "정한 규칙 판단" 6): 할 수 있는 줄이 없는 좌석에게도 `scouts_choice` 창을 연다(이벤트·판매·공개된 비밀 선택의 비용 줄). 줄은 이유와 함께 회색, 유일한 행동 `resolve_scouts_choice_without_option`(한 번 누름, 배너 "할 수 있는 선택 없음 · 턴 종료")이 전과 같은 `scouts_choice_skipped`를 낸다. 건너뛴 좌석 알림은 없앴다. 옛 기록은 다리 `scouts_no_option_window`(OQ-071).
 - 2026-10-10 OQ-106 셋째 묶음(사용자 판정 "그 외에는 전부 나누자", project convention; codec v142에 함께, 템플릿 변화 없음).
   - 줄의 보상 하나가 소유자의 선택이었으면(Faction, 선택 trash, Spy 배치, Contract, Research 방향) 그 뒤에 인쇄된 숨은 draw는 줄의 자기 단계로 남아 `scouts_rewards_first`("남은 보상 받기") 하나로 뽑는다: Leverage, Water Discipline, Spies for Hire 후반 1위, CHOAM Negotiations 후반 1위. 비용 칸의 선택(Rotating Doors의 Intrigue trash)은 보상과 한 단위로 남는다.
   - 봉인 경매의 두 번째 이후 각 승자의 보상 앞에 멈춤(`rules/pauses.py` `SCOUTS_REWARD`): Competitive Study 2위의 Research(두 번째 genetic marker 뒤의 draw, 한 갈래 전진)가 1위의 방향 선택 단계에서 일어나지 않는다.

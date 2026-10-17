@@ -1152,6 +1152,11 @@ def _decline_in(
     return answer
 
 
+_SCOUTS_CHOICE_ANSWERS: Final = frozenset(
+    {"scouts_choose_option", "scouts_pass", SCOUTS_NO_OPTION}
+)
+
+
 def _scouts_no_option(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -1161,17 +1166,20 @@ def _scouts_no_option(
     """Answer a Scouts choice that offers only the confirm of taking nothing.
 
     Codec v149 (cleanup-2a) asks a seat with no line it can take; an older
-    engine skipped it, so no recorded step answers the window -- unless the
-    record already holds the confirm itself.
+    engine skipped it, so no recorded step answers the window. A recorded
+    choice of that seat's was made for a window of its own, and the refusal
+    of it then means a rule changed, which no bridge may hide
+    (``_made_for``).
     """
 
     if (
         not isinstance(decision, PlayerDecision)
         or state.decision_stack[-1].kind != FrameKind.SCOUTS_CHOICE
+        or _made_for(engine, state, decision, step, _SCOUTS_CHOICE_ANSWERS)
     ):
         return None
     confirm = DomainAction(action_id=SCOUTS_NO_OPTION, actor=decision.owner)
-    if step == confirm or engine.legal_actions(state, decision.owner) != (confirm,):
+    if engine.legal_actions(state, decision.owner) != (confirm,):
         return None
     return confirm
 

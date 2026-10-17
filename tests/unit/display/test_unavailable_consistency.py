@@ -252,6 +252,7 @@ from dune_imperium.rules.leader_abilities import (
     signet_optional_block,
     units_deployment_blocked,
 )
+from dune_imperium.rules.owed_draws import immediate_owed_draw_actions
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -1962,8 +1963,7 @@ def _silent_optional_effects(
         or not isinstance(top.decision, PlayerDecision)
         or top.decision.owner != seat
         or legal_gather_intelligence_actions(state, seat)
-        or {action.action_id for action in legal}
-        <= {"draw_owed_card", "draw_owed_intrigue"}
+        or immediate_owed_draw_actions(state, seat)
     ):
         return set()
     _, context = current_agent_effect_context(state)

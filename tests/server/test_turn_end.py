@@ -359,6 +359,54 @@ def test_an_open_auction_call_is_the_press_itself() -> None:
     assert decision["kind"] == "scouts_call" and decision["owner"] == 1
 
 
+def test_a_scouts_choice_with_nothing_to_take_is_the_press_itself() -> None:
+    """Cleanup-2a (OQ-071 addendum): a seat that can take no line of a Scouts
+    choice is asked anyway, and its one row says it takes nothing -- like a
+    pass, the press itself: no hold, nothing to take back, and the next seat
+    decides at once."""
+
+    from dune_imperium.core.player import Resources
+    from dune_imperium.rules.scouts import _item_tasks, advance_scouts_step
+
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, game_seed=83, arrakeen_scouts=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    turn = session.state
+    # Royal Delegation costs 2 Solari; seat 0 holds 1.
+    players = tuple(
+        replace(player, resources=Resources(solari=1 if seat == 0 else 6, spice=6))
+        for seat, player in enumerate(turn.players)
+    )
+    state = replace(
+        turn,
+        players=players,
+        round_number=4,
+        first_player=0,
+        decision_stack=(),
+        scouts_opening=True,
+        scouts_item="royal_delegation",
+        scouts_revealed=((4, "royal_delegation"),),
+        scouts_tasks=(),
+    )
+    state = replace(state, scouts_tasks=_item_tasks(state, "royal_delegation"))
+    while not state.decision_stack:
+        state = advance_scouts_step(state).state
+    session.state = state
+    summary = manager.summary(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in actions] == ["resolve_scouts_choice_without_option"]
+
+    summary = manager.apply_action(
+        game_id, 0, _int(summary["revision"]), _int(actions[0]["index"])
+    )
+
+    assert summary["confirmation"] is None
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "scouts_choice" and decision["owner"] == 1
+
+
 def test_an_explicit_end_handing_straight_to_a_human_still_seals_the_turn() -> None:
     # Seed 0, two human seats: seat 0's finish_agent_turn hands straight to
     # human seat 1 with nothing else logged in between (no chance outcome,
