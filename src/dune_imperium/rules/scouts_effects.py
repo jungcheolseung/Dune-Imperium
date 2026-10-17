@@ -41,7 +41,6 @@ from dune_imperium.content.arrakeen_scouts.types import (
     LoseFactionInfluence,
     LoseGarrisonTroops,
     LoseHighestInfluence,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
     ScoutsCost,
@@ -67,6 +66,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     RetreatTroops,
     Reward,
+    SpendSpecimens,
+    TrashCard,
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
@@ -190,7 +191,7 @@ def option_is_affordable(state: GameState, player: int, option: ScoutsOption) ->
             case TrashIntrigueCard():
                 if not owner.intrigue_cards:
                     return False
-            case TrashPersonalCard(hand_only=hand_only):
+            case TrashCard(hand_only=hand_only):
                 zones = (
                     owner.hand
                     if hand_only
@@ -202,7 +203,7 @@ def option_is_affordable(state: GameState, player: int, option: ScoutsOption) ->
                 # A garrison Sardaukar Commander pays too (OQ-105).
                 if garrison_units(owner) < count:
                     return False
-            case PaySpecimens(count=count):
+            case SpendSpecimens(count=count):
                 if owner.specimens < count:
                     return False
             case LoseFactionInfluence(faction=faction, count=count):
@@ -408,7 +409,7 @@ def _is_choice(
             return bool(owner.spy_post_ids)
         case TrashIntrigueCard():
             return bool(owner.intrigue_cards)
-        case TrashPersonalCard(mandatory=True, hand_only=hand_only):
+        case TrashCard(hand_only=hand_only):
             return bool(
                 owner.hand
                 if hand_only
@@ -746,7 +747,7 @@ def _apply_automatic(
                 )
                 events.extend(result.events)
             return RuleResult(state=result.state, events=tuple(events))
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count):
             paid_count = min(count, owner.specimens)
             next_owner = replace(
                 owner,
@@ -1028,7 +1029,7 @@ def legal_scouts_effect_actions(
             )
         case DiscardFromHand():
             return offer("scouts_discard", "card_id", owner.hand)
-        case TrashPersonalCard(hand_only=hand_only):
+        case TrashCard(hand_only=hand_only):
             # A Row card borrowed with Usurp is not "in play" (OQ-054,
             # ``counted_in_play``), so it is no trash target.
             zones = (

@@ -42,9 +42,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseHighestInfluence as LoseHighestInfluence,
 )
 from dune_imperium.content.uprising.effect_dsl import (
-    PaySpecimens as PaySpecimens,
-)
-from dune_imperium.content.uprising.effect_dsl import (
     RecallOtherAgent as RecallOtherAgent,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -107,8 +104,7 @@ def _check_pools(pools: tuple[ScoutsPool, ...]) -> None:
 
 # --- Scouts-only cost and reward primitives -----------------------------------------
 # They live in the effect DSL since composed-effects stage A7b (re-exported
-# here); a Scouts line is a DSL line, ``trash a card from your hand`` included on
-# the cost side (Funeral Rites, Termination Request).
+# here); a Scouts line is a DSL line.
 type ScoutsCost = Cost
 type ScoutsReward = Reward
 

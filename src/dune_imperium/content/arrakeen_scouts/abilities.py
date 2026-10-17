@@ -41,7 +41,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseFactionInfluence,
     LoseGarrisonTroops,
     PayResources,
-    PaySpecimens,
     PlaceSpy,
     RecallOtherAgent,
     RecallSpy,
@@ -49,7 +48,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     Research,
     Reward,
+    SpendSpecimens,
     TakeContract,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -62,7 +63,7 @@ def _influence(faction: Faction) -> GainInfluence:
 
 
 # "Trash a card from your hand", the price or loss of two events.
-_TRASH_FROM_HAND: Final = TrashPersonalCard(hand_only=True, mandatory=True)
+_TRASH_FROM_HAND: Final = TrashCard(hand_only=True)
 
 
 def _record(
@@ -334,7 +335,7 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # ScoutsEvent ingratiate
         "ingratiate": _record(
             AbilityMark.OPTIONAL,
-            EffectSection(rewards=(GainInfluence(),), costs=(PaySpecimens(1),)),
+            EffectSection(rewards=(GainInfluence(),), costs=(SpendSpecimens(1),)),
         ),
         # ScoutsEvent betrayal
         "betrayal": _record(

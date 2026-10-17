@@ -100,7 +100,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
-    PaySpecimens,
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
@@ -461,10 +460,6 @@ def cost_text(cost: Cost) -> str:
             return "Lose 1 Influence with your highest Faction"
         case LoseGarrisonTroops(count=count):
             return f"Lose {count} troop{'s' if count > 1 else ''} from your garrison"
-        case PaySpecimens(count=count):
-            return f"Pay {count} specimen{'s' if count > 1 else ''}"
-        case TrashPersonalCard() as trash:
-            return reward_text(trash)
         case _:
             assert_never(cost)
 

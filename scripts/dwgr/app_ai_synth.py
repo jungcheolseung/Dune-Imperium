@@ -53,7 +53,6 @@ from dune_imperium.content.arrakeen_scouts.types import (
     LoseGarrisonTroops,
     LoseHighestInfluence,
     Mission,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
     ScoutsOption,
@@ -97,7 +96,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallSpy,
     RecruitTroops,
     Research,
+    SpendSpecimens,
     TakeContract,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -1375,7 +1376,7 @@ class _Line:
             self.add("SolariCost", cost.solari)
             self.add("SpiceCost", cost.spice)
             self.add("WaterCost", cost.water)
-        elif isinstance(cost, PaySpecimens):
+        elif isinstance(cost, SpendSpecimens):
             self.add("SpecimenCost", cost.count)
         elif isinstance(cost, RecallSpy):
             self.abilities += [_sc("RecallSpyCostAbility")] * cost.count
@@ -1383,8 +1384,8 @@ class _Line:
             self.abilities += [_sc("DiscardCostAbility")] * cost.count
         elif isinstance(cost, TrashIntrigueCard):
             self.abilities.append(_sc("TrashIntrigueCostAbility"))
-        elif isinstance(cost, TrashPersonalCard):
-            assert cost.hand_only and cost.mandatory, cost
+        elif isinstance(cost, TrashCard):
+            assert cost.hand_only, cost
             self.abilities.append(_sc("TrashFromHandCostAbility"))
         elif isinstance(cost, LoseGarrisonTroops):
             self.abilities += [_sc("LoseGarrisonTroopsCostAbility")] * cost.count
@@ -1477,7 +1478,7 @@ def _mission_lines(mission: Mission) -> list[_Line]:
     if mission.troop_source is TroopSource.GARRISON:
         line.cost(LoseGarrisonTroops(n))
     elif mission.troop_source is TroopSource.SPECIMENS:
-        line.cost(PaySpecimens(n))
+        line.cost(SpendSpecimens(n))
     if mission.seat_goods is not None:
         line.reward(mission.seat_goods)
     if n:

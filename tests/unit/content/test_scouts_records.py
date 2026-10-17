@@ -24,9 +24,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseGarrisonTroops,
     LoseHighestInfluence,
     PayResources,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
+    SpendSpecimens,
+    TrashCard,
     TrashPersonalCard,
 )
 from dune_imperium.display import scouts as display_scouts
@@ -75,8 +76,6 @@ def test_the_tables_take_their_lines_from_the_records() -> None:
         (LoseFactionInfluence(Faction.EMPEROR), True),
         (LoseHighestInfluence(), True),
         (LoseGarrisonTroops(2), True),
-        (PaySpecimens(1), True),
-        (TrashPersonalCard(hand_only=True, mandatory=True), True),
         (RecallOtherAgent(), False),
         (RecruitToConflict(2), False),
         (AcquireReserveCardToHand("prepare_the_way"), False),
@@ -137,3 +136,29 @@ def test_only_a_scouts_record_prints_the_module_s_own_pieces() -> None:
                 ),
             ),
         )
+
+
+def test_the_merged_pieces_keep_the_scouts_page_s_wording() -> None:
+    """Cleanup-1: Ingratiate's cost is the DSL's ``SpendSpecimens`` and the
+    hand-trash losses are ``TrashCard(hand_only=True)``; the Scouts page
+    shows them as before."""
+
+    costs = {
+        cost
+        for record in SCOUTS_ABILITIES.values()
+        for line in record.sections
+        for cost in line.costs
+    }
+    assert SpendSpecimens(1) in costs
+    assert TrashCard(hand_only=True) in costs
+    assert not any(isinstance(cost, TrashPersonalCard) for cost in costs)
+    assert display_scouts._step_text(SpendSpecimens(1), cost=True) == "Pay 1 specimen"
+    assert display_scouts._step_text_ko(SpendSpecimens(2), cost=True) == (
+        "{specimen:2} 지불"
+    )
+    assert display_scouts._step_text(TrashCard(hand_only=True), cost=True) == (
+        "Trash a card from your hand"
+    )
+    assert display_scouts._step_text_ko(TrashCard(hand_only=True), cost=True) == (
+        "{hand}의 카드 1장 {trash}"
+    )

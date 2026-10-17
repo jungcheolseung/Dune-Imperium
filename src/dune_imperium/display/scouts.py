@@ -25,7 +25,6 @@ from dune_imperium.content.arrakeen_scouts.types import (
     LoseFactionInfluence,
     LoseGarrisonTroops,
     LoseHighestInfluence,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
 )
@@ -36,6 +35,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     RecallSpy,
     RecruitTroops,
+    SpendSpecimens,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -173,7 +174,8 @@ def _step_text(step: object, *, cost: bool) -> str:
             return "Lose 1 Influence with your highest Faction"
         case LoseGarrisonTroops(count=count):
             return f"Lose {count} troop{'s' if count > 1 else ''} from your garrison"
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count) if cost:
+            # The wording the Scouts page has shown for Ingratiate's cost.
             return f"Pay {count} specimen{'s' if count > 1 else ''}"
         case RecallOtherAgent():
             return "Recall another of your Agents"
@@ -185,8 +187,9 @@ def _step_text(step: object, *, cost: bool) -> str:
             return "+1 Influence with your lowest Faction"
         case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
             return f"Gain {spice} spice ({helix} once you reach the Helix)"
-        case TrashPersonalCard() if cost:
-            return reward_text(step)
+        case TrashCard(hand_only=True) if cost:
+            # The wording the Scouts page has shown for a hand-trash cost.
+            return reward_text(TrashPersonalCard(hand_only=True, mandatory=True))
     return cost_text(step) if cost else reward_text(step)  # type: ignore[arg-type]
 
 
@@ -198,7 +201,7 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
             return "영향력이 가장 높은 진영에서 영향력 1 잃기"
         case LoseGarrisonTroops(count=count):
             return f"주둔지의 {{troop:{count}}} 잃기"
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count) if cost:
             return f"{{specimen:{count}}} 지불"
         case RecallOtherAgent():
             return "다른 {agent} 1 회수"
@@ -211,8 +214,8 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
             return "영향력이 가장 낮은 진영 영향력 +1"
         case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
             return f"{{spice:{spice}}} (나선에 닿았으면 {{spice:{helix}}})"
-        case TrashPersonalCard() if cost:
-            return reward_text_ko(step)
+        case TrashCard(hand_only=True) if cost:
+            return reward_text_ko(TrashPersonalCard(hand_only=True, mandatory=True))
     return cost_text_ko(step) if cost else reward_text_ko(step)  # type: ignore[arg-type]
 
 
@@ -585,15 +588,15 @@ def _cost_reason(state: GameState, seat: int, cost: object) -> Reason:
             )
         case TrashIntrigueCard():
             return "No Intrigue card to trash", "폐기할 {intrigue_card} 없음", "cost"
-        case TrashPersonalCard(hand_only=True):
+        case TrashCard(hand_only=True):
             return "No card in hand to trash", "{hand}에 {trash}할 카드 없음", "cost"
-        case TrashPersonalCard():
+        case TrashCard():
             return "No card to trash", "{trash}할 카드 없음", "cost"
         case LoseGarrisonTroops(count=count):
             # A garrison Sardaukar Commander pays too (OQ-105).
             en, ko, _ = _troops_reason("garrison", count, garrison_units(owner))
             return en, ko, "cost"
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count):
             en, ko, _ = _troops_reason("specimens", count, owner.specimens)
             return en, ko, "cost"
         case LoseFactionInfluence(faction=faction, count=count):

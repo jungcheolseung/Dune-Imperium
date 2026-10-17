@@ -127,7 +127,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentsMoveSpiesFromVisitedSpace,
     PassTurn,
     PayResources,
-    PaySpecimens,
     PeekTopCard,
     PermanentRevealPersuasion,
     PlaceSpy,
@@ -691,10 +690,6 @@ def cost_text_ko(cost: Cost) -> str:
             return "영향력이 가장 높은 진영에서 영향력 1 잃기"
         case LoseGarrisonTroops(count=count):
             return f"주둔지의 {{troop:{count}}} 잃기"
-        case PaySpecimens(count=count):
-            return f"{{specimen:{count}}} 지불"
-        case TrashPersonalCard() as trash:
-            return reward_text_ko(trash)
         case _:
             assert_never(cost)
 
