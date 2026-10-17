@@ -984,6 +984,14 @@
 - 재판정 예정(2026-10-17 사용자 결정, 정리 단계에서 구현 — [composed-effects-plan.md](../composed-effects-plan.md) 5절
   "정한 규칙 판단" 1번): 위 "알려진 경계"를 없앤다. Shipping과 Tech 타일의 Influence 선택도 이미 6인 진영을 내놓지 않고, 고를
   진영이 없으면 Agent 칸의 Influence처럼 회색 줄로 기다리다 "턴 종료"에 사라진다(OQ-057 (1)). 구현 전까지 엔진은 그대로다.
+  — **구현(2026-10-17, 정리-2b, 브랜치 `cleanup2`, codec v149):** Shipping의 `shipping_influence_factions`는 6 미만 진영만 내고,
+  모두 6이면 그 보드 아이콘은 턴 종료를 막지 않으며(`effects.blocked_board_icons`, Reverend Mother의 반복도 그것을 기다리지 않음)
+  누름이 `board_effect_lapsed`(effect `influence`)로 소멸시킨다. Glowglobes·Navigation Chamber의 획득 Influence도 6인 진영을 내지
+  않고, 모두 6이면 turn 안에서는 턴 종료를 막지 않다가(`turn_rows.tech_acquire_effects_hold_the_end`, 서버 `agent_turn_end_ready`도
+  같은 판정) 누름이 `tech_acquire_effect_lapsed`로 소멸시킨다. turn이 없는 Combat의 획득 효과 frame(Battlefield Research)에서는 위
+  Conflict 보상 보강처럼 확인 줄 `resolve_tech_influence_without_faction`(새 템플릿, Tech catalog)을 낸다. 화면은 막힌 진영을 "이미
+  최고치"로 회색으로, 모두 막히면 turn 안에서는 "기다림" 줄 하나로 보인다. 옛 기록에서 6인 진영을 고른 단계는 v149 미만 기록에서
+  버리고(`influence_at_top`), Combat frame에서는 확인으로 바꾼다(다리 `tech_influence_confirm`).
 
 ## OQ-061 — Imperial Privilege: 인쇄된 "Trash an Intrigue card" 아이콘과 Board Guide의 "discard"
 
