@@ -1801,8 +1801,9 @@ class GameSessionManager:
         answers: the other players would see the game wait only when the
         seat had something to play. Nor once the seat has played a card in
         the window (its unit is open): that play can still be taken back,
-        and the seat's own "쓰지 않음" press is what confirms it, as a
-        pass confirms a Combat Intrigue play. Returns whether it answered.
+        and the seat's own "끝내기" press (``finish_conflict_end_intrigue``,
+        2026-10-18) is what confirms it, as a pass confirms a Combat
+        Intrigue play. Returns whether it answered.
         """
 
         if sum(1 for assignment in session.seats if assignment == HUMAN_SEAT) != 1:

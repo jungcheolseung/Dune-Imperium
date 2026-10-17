@@ -1601,13 +1601,14 @@ function logEventLine(event) {
    Intrigue window (rules/combat.py, rules/endgame.py) — the engine never
    emits a bare "pass" — and decline_conflict_end_intrigue a Conflict-end
    window, which opens on public facts, mostly with nothing to play
-   (OQ-103). */
+   (OQ-103), or finish_conflict_end_intrigue it once a card was played. */
 const QUIET_ACTIONS = new Set([
   "finish_agent_turn",
   "finish_reveal",
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
   "decline_conflict_end_intrigue",
+  "finish_conflict_end_intrigue",
 ]);
 
 /* Steps that stand as a card of their own (setup picks). */

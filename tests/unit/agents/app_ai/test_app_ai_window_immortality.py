@@ -196,11 +196,20 @@ def _graft_parts(state: GameState) -> tuple[str, str]:
 
 
 def test_graft_partner_takes_the_turn_windows_stored_partner() -> None:
-    state = _graft(1)  # Ghola placed at Spice Refinery, three partners
+    # Seed 71, round 3: seat 0's Face Dancer placed at the Sardaukar space,
+    # three partners in hand. Seed 1 (Ghola placed at Spice Refinery) was
+    # this window until the Conflict-end change (troops back before the
+    # windows, Harvest Cells resolving as it is played, 2026-10-18) moved
+    # every later game. Of seeds 1-120 only 31, 71, 74 and 108 first reach
+    # a Graft card placed with three partners; seed 31's evaluator pick is
+    # its last partner (the stored one below would not differ from it), so
+    # the first that works is 71.
+    state = _graft(71)
     placed, _space = _graft_parts(state)
     run = _run(state)
     partners = [str(arg(a, "card_id")) for a in run.legal]
     assert len(partners) == 3
+    assert partners[-1] != _evaluator_partner(state)[0]
     key = (GRAFT_PARTNER_INTENT, state.round_number, placed)
     run.memory.intents[key] = partners[-1]
     assert _arg(W.graft_partner(run), "card_id") == partners[-1]
@@ -225,14 +234,14 @@ def _evaluator_partner(state: GameState, rng_seed: int = 0) -> tuple[str | None,
 
 
 def test_graft_partner_without_a_stored_partner_is_graft_card_evaluator() -> None:
-    state = _graft(1)
+    state = _graft(71)
     expected, value = _evaluator_partner(state)
     assert expected is not None and value > 0  # 100 base value
     assert _arg(W.graft_partner(_run(state)), "card_id") == expected
 
 
 def test_graft_partner_ignores_an_illegal_stored_partner() -> None:
-    state = _graft(1)
+    state = _graft(71)
     placed, _space = _graft_parts(state)
     run = _run(state)
     key = (GRAFT_PARTNER_INTENT, state.round_number, placed)
@@ -249,17 +258,18 @@ def test_graft_partner_of_a_plain_card_is_the_default_random_choice(
     """``GraftCardEvaluator`` answers nothing for a non-Graft played card: the
     forced prompt falls to ``DefaultRandomChoice`` (a uniform legal partner)."""
 
-    # Seed 193, round 4: seat 3 placed its Signet Ring at Arrakeen with two
-    # Graft partners in hand (Planned Coupling, Face Dancer Initiate). Seed 3
-    # reached such a window until 5654d7f8 (a Combat Intrigue pass right
-    # after a card play no longer counts as a consecutive pass, 2026-10-07),
-    # seed 137 until the Conflict-end window opened on public facts (OQ-103,
-    # codec v141) moved its game, and seed 107 until Imperial Privilege's
-    # card draw became its own icon (2026-10-10, OQ-027 (d)) moved its game
-    # at round 3 seat 3's Imperial Privilege visit; of seeds 1-192 every
-    # first Graft window now has a Graft card placed or a plain card with one
-    # partner.
-    state = _graft(193)
+    # Seed 128, round 3: seat 1 placed its Signet Ring at Arrakeen with two
+    # Graft partners in hand. Seed 3 reached such a window until 5654d7f8 (a
+    # Combat Intrigue pass right after a card play no longer counts as a
+    # consecutive pass, 2026-10-07), seed 137 until the Conflict-end window
+    # opened on public facts (OQ-103, codec v141) moved its game, seed 107
+    # until Imperial Privilege's card draw became its own icon (2026-10-10,
+    # OQ-027 (d)) moved its game at round 3 seat 3's Imperial Privilege
+    # visit, and seed 193 until the Conflict-end change (troops back before
+    # the windows, Harvest Cells resolving as it is played, 2026-10-18) moved
+    # every later game; of seeds 1-127 every first Graft window now has a
+    # Graft card placed or a plain card with one partner.
+    state = _graft(128)
     placed, _space = _graft_parts(state)
     assert placed.endswith("signet_ring:0")
     assert _evaluator_partner(state, rng_seed)[0] is None
@@ -276,7 +286,7 @@ def test_graft_partner_with_an_unknown_partner_is_a_gap() -> None:
     """No stored partner and a candidate with no app archetype: None (the
     census shows it), never a silent pick."""
 
-    state = _graft(1)
+    state = _graft(71)
     stray = DomainAction(
         action_id="choose_graft_partner",
         actor=_seat(state),
@@ -881,27 +891,41 @@ _HARVEST_CELLS = "intrigue:harvest_cells:0"
 
 @cache
 def _conflict_end() -> GameState:
-    """A Combat state with Harvest Cells in hand, 3 troops in the Conflict and
-    only the Conflict-end window open (OQ-057)."""
+    """A Combat state with Harvest Cells in hand and only the Conflict-end
+    window open (OQ-057): the seat's three troops have already gone back to
+    its supply, which the window records as ``lost`` (user decision
+    2026-10-18)."""
 
     state = first_decision("combat_intrigue", config=IMMORTALITY, seed=2)
     seat = _seat(state)
     me = state.players[seat]
-    moved = 3 - me.troops_conflict
     state = with_player(
         state,
         seat,
         intrigue_cards=(_HARVEST_CELLS,),
-        troops_conflict=3,
-        troops_supply=me.troops_supply - moved,
+        troops_conflict=0,
+        troops_supply=me.troops_supply + me.troops_conflict,
     )
-    frame = DecisionFrame(
+    return with_state(
+        state,
+        decision_stack=(_conflict_end_frame(seat, played=False),),
+        combat_rewards_resolved=True,
+    )
+
+
+def _conflict_end_frame(seat: int, *, played: bool) -> DecisionFrame:
+    """The seat's Conflict-end window as the engine builds it: the loss in
+    its context and, once a card was played in it, ``played``."""
+
+    context: dict[str, bool | int | str] = {"lost": 3, "player": seat}
+    if played:
+        context["played"] = True
+    return DecisionFrame(
         kind="conflict_end_trigger",
         frame_id="test:conflict_end_trigger",
         decision=PlayerDecision(owner=seat, prompt="test"),
-        context=(("player", seat),),
+        context=tuple(sorted(context.items())),
     )
-    return with_state(state, decision_stack=(frame,), combat_rewards_resolved=True)
 
 
 def test_conflict_end_plays_harvest_cells_and_records_its_answer() -> None:
@@ -921,12 +945,31 @@ def test_conflict_end_plays_harvest_cells_and_records_its_answer() -> None:
     applied = ENGINE.apply(state, action, legal_actions=run.legal).state
     assert stamp == len(state.event_log)
     assert applied.event_log[stamp].kind == "intrigue_played"
+    # The card resolved at its play: the acquisition choice is on top of the
+    # window and the app's answer is the one recorded for it.
+    assert applied.decision_stack[-1].kind == "intrigue_choice"
+    assert applied.event_log[stamp + 1].kind == "specimens_generated"
+
+
+def test_conflict_end_finishes_the_window_after_a_play() -> None:
+    """Once a card was played in the window its one press reads "finish"
+    (the engine offers no decline): with nothing else to play the handler
+    answers it."""
+
+    state = _conflict_end()
+    seat = _seat(state)
+    state = with_player(state, seat, intrigue_cards=())
+    state = with_state(state, decision_stack=(_conflict_end_frame(seat, played=True),))
+    run = _run(state)
+    assert {a.action_id for a in run.legal} == {"finish_conflict_end_intrigue"}
+    action = W.conflict_end_trigger(run)
+    assert action is not None and action.action_id == "finish_conflict_end_intrigue"
 
 
 def test_conflict_end_declines_when_harvest_cells_cannot_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``Cost`` (3 troops deployed in this Conflict) failing means no key."""
+    """``Cost`` (3 troops lost at this Conflict's end) failing means no key."""
 
     monkeypatch.setattr(HarvestCellsAbility, "meets_cost", lambda self, p: False)
     action = W.conflict_end_trigger(_run(_conflict_end()))

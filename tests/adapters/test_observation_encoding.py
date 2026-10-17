@@ -692,6 +692,13 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # turn) the specimen waits as a row beside the trash and the random seat
 # deploys first (3,568 -> 3,484 vectors). The other five games meet no
 # research space.
+# Re-pinned for the Conflict-end order (user decision 2026-10-18, codec v149):
+# the Conflict's troops go back to the supply before the Conflict-end
+# windows. An export of the previous commit (7ae17717) reproduces the old
+# ``everything`` pin, and its decision trace equals this one at every
+# decision (3,484 vectors either way); only the views at its three
+# Conflict-end windows (decisions 577, 648 and 649, all declines) differ, the
+# troops already in the supply there. The other five games open no window.
 _GOLDEN_DIGESTS = {
     "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
     "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
@@ -700,7 +707,7 @@ _GOLDEN_DIGESTS = {
         3160,
     ),
     "everything": (
-        "c65ca930c90c9a0fa3c4eb4cda5d11b16651d09c2122c71b1dd0faefa08806c2",
+        "080b591fd02eff1b31e68e732b885f5499aafef96be9f6ca6b56d976988cacea",
         3484,
     ),
     "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),

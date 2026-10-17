@@ -67,6 +67,10 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         # with nothing to play (OQ-103, user decision 2026-10-09): "쓰지
         # 않음" ends the seat's part with one press, like a pass.
         "decline_conflict_end_intrigue",
+        # Its end once a card was played in the window (user decision
+        # 2026-10-18: "끝내기"): the window stays open after a play while
+        # the seat holds Intrigue (OQ-103), and this one press closes it.
+        "finish_conflict_end_intrigue",
         # Arrakeen Scouts: confirming a sealed bid is the seat's turn end;
         # until then it may change the bid (D5, docs/arrakeen-scouts-design.md).
         "confirm_scouts_bid",

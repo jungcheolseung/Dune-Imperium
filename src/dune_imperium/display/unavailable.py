@@ -216,6 +216,7 @@ from dune_imperium.rules.combat import (
     combat_reward_influence_block,
     combat_reward_payment_block,
     combat_reward_spy_recall_block,
+    conflict_end_loss,
     conflict_end_trigger_block,
 )
 from dune_imperium.rules.contracts import (
@@ -547,23 +548,15 @@ def _conflict_end_reason(option: IntrigueOption) -> Reason:
     )
 
 
-# Harvest Cells in its own window when one more copy could change nothing
-# (``ConflictEndTriggerBlock``): its specimens come from troops back in the
-# supply after the cleanup, and lost Sardaukar Commanders go back to their
-# own supply and make none (``combat._harvest_cells_has_effect``).
+# Harvest Cells in its own window when it could change nothing
+# (``ConflictEndTriggerBlock``): its specimens come from troops in the supply,
+# where the Conflict's troops already went back as the window opened, and
+# lost Sardaukar Commanders go back to their own supply and make none
+# (``combat._harvest_cells_has_effect``).
 _NO_TROOP_FOR_A_SPECIMEN: Final[Reason] = (
-    "No troop in your supply or the Conflict to make a specimen",
-    "{specimen}으로 만들 {troop}이 {supply}에도 {conflict}에도 없음",
+    "No troop in your supply to make a specimen",
+    "{specimen}으로 만들 {troop}이 {supply}에 없음",
     "reward",
-)
-_TROOPS_TAKEN_FOR_SPECIMENS: Final[Reason] = (
-    "The copy already played takes every troop left to make a specimen",
-    "먼저 쓴 카드가 {specimen}으로 만들 {troop}을 모두 가져감",
-    "reward",
-)
-_COMMANDERS_MAKE_NONE: Final = (
-    " (Sardaukar Commanders make none)",
-    " ({commander}은 {specimen}이 되지 않음)",
 )
 _NO_TLEILAXU_CARD_TO_ACQUIRE: Final[Reason] = (
     "No Tleilaxu card your specimens could acquire",
@@ -583,23 +576,15 @@ def _conflict_end_trigger_reason(
 
     if not isinstance(block, ConflictEndTriggerBlock):
         return intrigue_option_reason(state, seat, option, block)
-    owner = state.players[seat]
     if block is ConflictEndTriggerBlock.LOSS:
         english, korean, _ = _conflict_end_reason(option)
-        lost = _units(owner)[1]
+        lost = conflict_end_loss(state, seat)
         return (
             f"{english} (you lose {lost} unit{plural_s(lost)})",
             f"{korean} (잃는 유닛 {lost})",
             "condition",
         )
-    english, korean, code = (
-        _NO_TROOP_FOR_A_SPECIMEN
-        if block is ConflictEndTriggerBlock.NO_TROOP
-        else _TROOPS_TAKEN_FOR_SPECIMENS
-    )
-    if owner.commanders_conflict:
-        english += _COMMANDERS_MAKE_NONE[0]
-        korean += _COMMANDERS_MAKE_NONE[1]
+    english, korean, code = _NO_TROOP_FOR_A_SPECIMEN
     # Both of its effects are dead, each explained, as ``_no_effect_reason``
     # joins them.
     return (

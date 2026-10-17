@@ -1294,8 +1294,8 @@ def _trigger_option_block(
     owner's Reveal turn is open, a card must still be acquirable in it
     (``_reveal_acquisition_ahead``); before the Reveal the whole Reveal
     turn is still ahead. Harvest Cells is judged by its Conflict-end window
-    instead (``combat._conflict_end_trigger_cards``), which projects the
-    troops the cleanup returns to the supply.
+    instead (``combat._conflict_end_trigger_cards``), which reads the
+    supply the Conflict's troops went back to before the window opened.
     """
 
     if not isinstance(option.trigger, OnRevealAcquisitionThisRound):

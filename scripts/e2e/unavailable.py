@@ -658,10 +658,12 @@ def maker_case(page, base: str, saves: Path) -> bool:
 # fixture lives in tests/unit/display/test_unavailable.py), described by
 # the server's own payload code for seat 0 of an all-human game whose state
 # is swapped in: "commanders" (three Commanders lost, no troop anywhere),
-# "second" (two troops and a Commander lost, the first copy already played)
-# and "lit" (a troop in the supply: the copy is playable).
+# "second" (two troops and a Commander lost, the first copy already played
+# and its acquisition declined: it resolved at its play, 2026-10-18) and
+# "lit" (a troop in the supply: the copy is playable).
 CONFLICT_END_PY = """
 import json
+from dune_imperium.core import DomainAction
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.sessions import GameSessionManager
 from tests.unit.display.test_unavailable import (
@@ -669,10 +671,14 @@ from tests.unit.display.test_unavailable import (
 )
 first, second = HARVEST_CELLS
 mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
+engine = UprisingRulesEngine()
+played = engine.apply(
+    _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
+).state
 states = {
     "commanders": _conflict_end_window(first),
-    "second": UprisingRulesEngine().apply(
-        _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
+    "second": engine.apply(
+        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state,
     "lit": _conflict_end_window(first, troops_supply=1, troops_garrison=11),
 }
@@ -742,11 +748,10 @@ CONFLICT_END_EXPECTED = {
         "heading": "지금은 쓸 수 없는 책략 카드",
         "body": "교전 종료 발동 책략 카드 사용 (세포 수확) — 세포 수확",
         "turn_end": "쓰지 않음 · 턴 종료 ▶",
-        "commanders": "표본으로 만들 병력이 개인 공급처에도 교전에도 없음"
-        " (사다우카 지휘관은 표본이 되지 않음)"
+        "turn_end_second": "끝내기 · 턴 종료 ▶",
+        "commanders": "표본으로 만들 병력이 개인 공급처에 없음"
         " · 표본으로 획득할 수 있는 틀레이락스 카드 없음",
-        "second": "먼저 쓴 카드가 표본으로 만들 병력을 모두 가져감"
-        " (사다우카 지휘관은 표본이 되지 않음)"
+        "second": "표본으로 만들 병력이 개인 공급처에 없음"
         " · 표본으로 획득할 수 있는 틀레이락스 카드 없음",
     },
     "en": {
@@ -754,12 +759,11 @@ CONFLICT_END_EXPECTED = {
         "body": "Use Conflict-end trigger Intrigue card (Harvest Cells)"
         " — Harvest Cells",
         "turn_end": "Decline · End turn ▶",
-        "commanders": "No troop in your supply or the Conflict to make a"
-        " specimen (Sardaukar Commanders make none); No Tleilaxu card your"
-        " specimens could acquire",
-        "second": "The copy already played takes every troop left to make a"
-        " specimen (Sardaukar Commanders make none); No Tleilaxu card your"
-        " specimens could acquire",
+        "turn_end_second": "Finish · End turn ▶",
+        "commanders": "No troop in your supply to make a specimen; No Tleilaxu"
+        " card your specimens could acquire",
+        "second": "No troop in your supply to make a specimen; No Tleilaxu"
+        " card your specimens could acquire",
     },
 }
 
@@ -796,12 +800,17 @@ def conflict_end_case(browser, base: str) -> bool:
             )
             shown = page.evaluate(CONFLICT_END_READ_JS, card)
             payload = fixture["actions"]["unavailable"] or {"rows": []}
+            # After a play the window's one press finishes it (2026-10-18).
+            press, turn_end = (
+                ("finish_conflict_end_intrigue", expected["turn_end_second"])
+                if name == "second"
+                else ("decline_conflict_end_intrigue", expected["turn_end"])
+            )
             ok &= check.ok(
-                [a["action_id"] for a in fixture["actions"]["actions"]]
-                == ["decline_conflict_end_intrigue"]
+                [a["action_id"] for a in fixture["actions"]["actions"]] == [press]
                 and shown["items"] == []
-                and shown["turnEnd"] == [expected["turn_end"]],
-                f"{label}: only the decline, as the turn-end row",
+                and shown["turnEnd"] == [turn_end],
+                f"{label}: only the {press}, as the turn-end row",
                 [shown["items"], shown["turnEnd"]],
             )
             ok &= check.ok(

@@ -136,10 +136,10 @@ class EndgameCollector(Collector):
         data = payload(event)
         option_value = data.get("option")
         if option_value is None:
-            # A face-up Trigger card (e.g. Harvest Cells) fires through
-            # rules/combat.py's Conflict-end trigger path
-            # (``resolve_faceup_trigger_option``), which plays it without
-            # choosing one of ``entry.options`` by index -- always Combat
+            # A Conflict-end trigger card (Harvest Cells) is played in
+            # rules/combat.py's Conflict-end window and resolves there
+            # (``intrigue.resolve_conflict_end_trigger``) without choosing
+            # one of ``entry.options`` by index -- always Combat
             # timing, never one of the three battle-icon cards or an
             # Endgame-timing option, so it is outside what these columns
             # count.

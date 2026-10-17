@@ -517,6 +517,14 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # draws for c7r3 in the turn). Older records drop the in-turn refusals and
 # the picks at the top, confirm in Combat (``tech_influence_confirm``) and
 # take the research icons in their old order (``research_icon_order``).
+# (Conflict end, user decision 2026-10-18) every reward, then the Conflict's
+# troops and Commanders back to the supply, then each seat's Conflict-end
+# window, then the rest of the cleanup: Harvest Cells resolves as it is
+# played (its specimens at once, then its acquisition) and the window's
+# press after a play is ``finish_conflict_end_intrigue`` (new template,
+# Immortality catalogs). Older records answer the acquisition as it is
+# asked (``harvest_cells_at_once``), drop its rewards step and rewrite the
+# press (``conflict_end_finish``).
 ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -1668,6 +1676,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Harvest Cells, played only after the rewards and before the
             # cleanup (OQ-057 (11), user ruling 2026-10-06).
             "decline_conflict_end_intrigue",
+            # The window's end once a card was played in it (codec v149,
+            # cleanup-2, user decision 2026-10-18: "끝내기").
+            "finish_conflict_end_intrigue",
             "pay_research_bonus",
             "return_specimen",
             "use_family_atomics",

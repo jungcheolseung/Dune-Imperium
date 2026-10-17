@@ -346,24 +346,22 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-def resolve_faceup_trigger_option(
+def resolve_conflict_end_trigger(
     state: GameState,
     player: int,
     card_id: str,
     *,
     source: str,
 ) -> RuleResult:
-    """Fire a face-up trigger card's option now (Harvest Cells at cleanup,
-    staged face up by the Conflict-end window).
+    """Resolve a Conflict-end trigger card from the hand as it is played
+    (Harvest Cells, in its window once the troops are back in the supply).
 
-    The card returns from the face-up zone to the owner's hand of played
-    cards so the ordinary finish path discards it; its sections then open
-    their choices or resolve at once.
+    User decision 2026-10-18 ("세포 수확은 내는 즉시 표본 2를 주고 획득
+    여부만 묻게 해줘"): its automatic rewards apply at once and only its
+    choice is asked -- "You may also acquire a Tleilaxu card (paying its
+    normal cost)." [Harvest Cells card]; the card then finishes as usual.
     """
 
-    owner = state.players[player]
-    if card_id not in owner.intrigue_faceup:
-        raise ValueError("the trigger card is not face up")
     entry = intrigue_card_for_instance(card_id)
     option_index = next(
         index for index, option in enumerate(entry.options) if option.trigger
@@ -372,23 +370,9 @@ def resolve_faceup_trigger_option(
     sections = applicable_sections(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
-    moved = replace(
-        owner,
-        intrigue_faceup=tuple(
-            held for held in owner.intrigue_faceup if held != card_id
-        ),
-        intrigue_cards=(*owner.intrigue_cards, card_id),
-    )
-    prepared = replace(state, players=replace_player(state.players, moved))
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:fired",
-            kind="intrigue_trigger_fired",
-            payload=(("card_id", card_id), ("player", player)),
-        )
-    ]
     return _resolve_paid_option(
-        prepared, player, card_id, option_index, option, sections, source, events
+        state, player, card_id, option_index, option, sections, source, [],
+        rewards_first=True,
     )
 
 
@@ -403,8 +387,12 @@ def _resolve_paid_option(
     events: list[GameEvent],
     *,
     separate: bool = False,
+    rewards_first: bool = False,
 ) -> RuleResult:
     """Open the option's choice frame, or finish it when nothing is chosen.
+
+    With ``rewards_first`` the automatic rewards apply now, as the frame
+    opens, and only its choices are left (``resolve_conflict_end_trigger``).
 
     The frame stores the option's pending ability (``ability_executor``):
     the lines that apply, judged now, and whether the Shield Wall stands,
@@ -426,6 +414,7 @@ def _resolve_paid_option(
                 if section in sections
             ),
             shield_wall=state.shield_wall_present,
+            rewards_applied=rewards_first,
         )
         frame = DecisionFrame(
             kind=FrameKind.INTRIGUE_CHOICE,
@@ -451,7 +440,15 @@ def _resolve_paid_option(
                 ("source", source),
             ),
         )
-        return RuleResult(state=played_state.push_decision(frame), events=tuple(events))
+        opened = played_state.push_decision(frame)
+        if not rewards_first:
+            return RuleResult(state=opened, events=tuple(events))
+        # The frame is in place before the rewards apply, so a draw that
+        # pushes a reshuffle stacks above it (as ``apply_intrigue_rewards``).
+        rewarded = apply_automatic_rewards(
+            opened, player, sections, f"{source}:rewards"
+        )
+        return RuleResult(state=rewarded.state, events=(*events, *rewarded.events))
 
     finished = finish_intrigue_play(
         played_state, player, card_id, sections, source, discard=not separate

@@ -149,13 +149,16 @@ def _cleanup_state(chani: PlayerState) -> GameState:
     )
 
 
-def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
+def test_tactician_advances_for_units_lost_when_the_conflict_end_step_opens() -> None:
     # "Chani (Leader) -- When resolving combat, troops that return to your
     # supply are considered 'lost.' Each different source of retreating or
     # losing troops is handled separately" [FAQ p. 1]; Tactician advances
     # "that many spaces, earning rewards as you reach them" [Chani card].
-    # Commanders are troops [Bloodlines p. 4].
-    from dune_imperium.rules.combat import finish_combat
+    # Commanders are troops [Bloodlines p. 4]. The troops return to the
+    # supply once all rewards are given [Main p. 14], before the Conflict-end
+    # windows, so the token advances as those windows are offered (user
+    # decision 2026-10-18) and the cleanup after them advances nothing more.
+    from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
 
     chani = PlayerState(
         player_id=0,
@@ -168,23 +171,28 @@ def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
         commanders_conflict=1,
         combat_strength=8,
     )
-    result = finish_combat(_cleanup_state(chani))
-    seat = result.state.players[0]
+    offered = offer_conflict_end_triggers(_cleanup_state(chani))
+    seat = offered.state.players[0]
     assert seat.troops_conflict == 0 and seat.troops_supply == 12
+    assert seat.commanders_conflict == 0 and seat.commanders_supply == 1
     assert seat.tactics_track_space == 6
     assert seat.resources.spice == 1  # the sixth space
-    assert any(
-        event.kind == "tactics_token_advanced" and dict(event.payload)["count"] == 4
-        for event in result.events
-    )
+    advanced = [e for e in offered.events if e.kind == "tactics_token_advanced"]
+    assert [dict(event.payload)["count"] for event in advanced] == [4]
+    assert advanced[0].event_id.endswith(":combat_cleanup:tactics")
+    assert not offered.state.decision_stack
 
-    # The cleanup is one source: passing the end pays the water once and
+    result = finish_combat(offered.state)
+    assert result.state.players[0].tactics_track_space == 6
+    assert all(event.kind != "tactics_token_advanced" for event in result.events)
+
+    # The loss is one source: passing the end pays the water once and
     # resets without advancing for the extra troops [Bloodlines p. 12].
     near_end = replace(chani, tactics_track_space=8)
-    seat = finish_combat(_cleanup_state(near_end)).state.players[0]
-    assert seat.tactics_track_space == 2
-    assert seat.resources.water == 1 + 1
-    assert seat.resources.spice == 0
+    reset = offer_conflict_end_triggers(_cleanup_state(near_end)).state.players[0]
+    assert reset.tactics_track_space == 2
+    assert reset.resources.water == 1 + 1
+    assert reset.resources.spice == 0
 
 
 def test_tactician_advances_once_for_one_multi_troop_loss() -> None:

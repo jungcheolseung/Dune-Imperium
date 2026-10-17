@@ -633,9 +633,12 @@ def _harvest_cells_evaluator(
 
 
 def conflict_end_trigger(run: DecisionRun) -> DomainAction | None:
-    """Play a Conflict-end Intrigue (Harvest Cells) or decline."""
+    """Play a Conflict-end Intrigue (Harvest Cells) or decline -- or, once a
+    card was played in the window, finish it (the window's same press)."""
 
-    decline = run.first("decline_conflict_end_intrigue")
+    decline = run.first("decline_conflict_end_intrigue") or run.first(
+        "finish_conflict_end_intrigue"
+    )
     sources: list[Source] = []
     for action in run.by_id("play_conflict_end_intrigue"):
         instance = str_arg(action, "card_id")

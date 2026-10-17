@@ -95,7 +95,6 @@ const LOG_EVENT_ICONS = {
   intrigue_effect_used: "log:intrigue_played",
   intrigue_kept_faceup: "log:intrigue_played",
   intrigue_played: "log:intrigue_played",
-  intrigue_trigger_fired: "log:intrigue_played",
   intrigue_triggered: "log:intrigue_played",
   intrigue_card_drawn: "log:intrigue",
   intrigue_card_given: "log:intrigue",

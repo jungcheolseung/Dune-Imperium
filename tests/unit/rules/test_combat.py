@@ -41,6 +41,7 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_spy_recall_actions,
     legal_combat_reward_trash_actions,
     legal_distinct_combat_reward_influence_actions,
+    offer_conflict_end_triggers,
     rank_combat,
     resolve_combat_rewards,
 )
@@ -1799,7 +1800,13 @@ def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() ->
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(state)
+    # The Conflict's units go back to the supply before the Conflict-end
+    # windows (here none opens), the sandworm and markers wait for the
+    # cleanup [Main p. 14].
+    offered = offer_conflict_end_triggers(state)
+    assert offered.state.decision_stack == ()
+    assert offered.state.players[0].troops_supply == 9
+    result = finish_combat(offered.state)
     winner = result.state.players[0]
 
     assert result.state.phase is GamePhase.MAKERS
@@ -1819,6 +1826,74 @@ def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() ->
         "battle_icons_matched",
         "combat_cleaned_up",
     )
+
+
+def test_the_units_return_before_the_conflict_card_is_awarded() -> None:
+    # "Once all rewards have been given, each player takes their troops from
+    # the Conflict and puts them in their supply" [Main p. 14]; a lost
+    # Sardaukar Commander goes to its own supply [Bloodlines p. 4]. That
+    # return opens the Conflict-end step, before the cleanup that awards the
+    # Conflict card and returns the sandworms (user decision 2026-10-18).
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(
+        players[0],
+        troops_supply=7,
+        troops_conflict=2,
+        commanders_supply=2,
+        commanders_conflict=1,
+        sandworms_conflict=1,
+    )
+    players[1] = replace(
+        players[1],
+        troops_supply=8,
+        troops_conflict=1,
+        commanders_supply=1,
+        commanders_conflict=2,
+    )
+    state = replace(
+        state,
+        config=RulesetConfig(bloodlines=True),
+        players=tuple(players),
+        combat_rewards_resolved=True,
+    )
+
+    offered = offer_conflict_end_triggers(state)
+
+    after = offered.state
+    assert after.combat_end_triggers_offered
+    for seat, troops, commanders in ((0, 9, 3), (1, 9, 3)):
+        assert after.players[seat].troops_supply == troops
+        assert after.players[seat].commanders_supply == commanders
+    assert all(
+        player.troops_conflict == 0 and player.commanders_conflict == 0
+        for player in after.players
+    )
+    # Nothing else of the cleanup happened yet: the Conflict card is still
+    # on the board, the sandworm and the Combat markers still stand.
+    assert after.current_conflict_ids == ("skirmish_crysknife",)
+    assert after.players[0].won_conflict_ids == ()
+    assert after.players[0].sandworms_conflict == 1
+    assert [player.combat_strength for player in after.players] == [8, 6, 4, 0]
+    assert all(event.kind != "conflict_won" for event in offered.events)
+
+    awarded = finish_combat(after)
+
+    assert awarded.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
+    assert awarded.state.current_conflict_ids == ()
+    assert awarded.state.players[0].sandworms_conflict == 0
+    assert all(player.combat_strength == 0 for player in awarded.state.players)
+    assert [event.kind for event in awarded.events][0] == "conflict_won"
+
+
+def test_finish_combat_refuses_units_still_in_the_conflict() -> None:
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(players[0], troops_supply=7, troops_conflict=2)
+    state = replace(state, players=tuple(players), combat_rewards_resolved=True)
+
+    with pytest.raises(RuntimeError, match="units return before the cleanup"):
+        finish_combat(state)
 
 
 def test_first_place_tie_leaves_conflict_on_board_during_cleanup() -> None:

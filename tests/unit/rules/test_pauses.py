@@ -395,8 +395,9 @@ def test_earn_any_alliance_completes_before_a_conflict_end_window_opens() -> Non
     # With Immortality, four units in the Conflict and an Intrigue card, the
     # seat gets a Conflict-end window once the pause is answered (OQ-103).
     # The Contract completed in the step that took the Alliance; neither the
-    # window nor the cleanup after it completes it again. The held card is
-    # one the Intrigue deck (INTRIGUE[:6]) does not also hold.
+    # window nor the cleanup after it completes it again, although the four
+    # troops are already back in the supply when the window opens. The held
+    # card is one the Intrigue deck (INTRIGUE[:6]) does not also hold.
     engine = UprisingRulesEngine()
     state = _alliance_combat(
         "protect_the_sietches",
@@ -412,7 +413,7 @@ def test_earn_any_alliance_completes_before_a_conflict_end_window_opens() -> Non
     window = engine.apply(paid.state, pause_outcome(paid.state))
     assert window.state.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     assert _completions(window.events) == []
-    assert _troops(window.state) == (0, 8, 4)
+    assert _troops(window.state) == (4, 8, 0)
     after = _to_round_start(engine, window.state)
     assert _completions(after.events) == []
     assert _troops(after.state) == (4, 8, 0)

@@ -132,7 +132,13 @@ PASS_MARKER_KINDS = {
 }
 # Mirrors UNLOGGED_EVENT_KINDS (static/panels.js): left out of every card.
 UNLOGGED_EVENT_KINDS = {"conflict_end_trigger_offered"}
-QUIET_ACTIONS = {"finish_agent_turn", "finish_reveal", *PASS_ACTION_IDS}
+QUIET_ACTIONS = {
+    "finish_agent_turn",
+    "finish_reveal",
+    # A Conflict-end window's press after a play (2026-10-18).
+    "finish_conflict_end_intrigue",
+    *PASS_ACTION_IDS,
+}
 SOLO_ACTIONS = {"pick_leader"}
 
 

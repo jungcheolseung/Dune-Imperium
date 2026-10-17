@@ -904,6 +904,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_combat_reward_trash": apply_combat_reward_trash,
     "play_conflict_end_intrigue": apply_conflict_end_trigger,
     "decline_conflict_end_intrigue": apply_conflict_end_trigger,
+    "finish_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,

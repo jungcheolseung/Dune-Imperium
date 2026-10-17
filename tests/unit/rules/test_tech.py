@@ -1769,7 +1769,7 @@ def test_glowglobes_shows_only_the_owner_the_top_card() -> None:
 
 
 def test_ornithopter_fleet_matches_a_won_conflict_with_any_face_up_card() -> None:
-    from dune_imperium.rules.combat import finish_combat
+    from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
 
     owner = _tech_owner(
         "ornithopter_fleet",
@@ -1798,7 +1798,10 @@ def test_ornithopter_fleet_matches_a_won_conflict_with_any_face_up_card() -> Non
             ),
         ),
     )
-    winner = finish_combat(state).state.players[0]
+    # The troop goes back to the supply as the Conflict-end step opens; the
+    # Conflict card is awarded by the cleanup after it.
+    offered = offer_conflict_end_triggers(state).state
+    winner = finish_combat(offered).state.players[0]
     assert winner.face_down_battle_card_ids == ("propaganda", "skirmish_wild")
     assert winner.victory_points == 2
 
@@ -1813,7 +1816,7 @@ def test_ornithopter_fleet_blocks_crysknife_flips_but_frees_ornithopter_ones() -
 
 
 def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
-    from dune_imperium.rules.combat import finish_combat
+    from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
     from dune_imperium.rules.tech import draw_owed_tech_cards
 
     owner = _tech_owner(
@@ -1840,7 +1843,7 @@ def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
             ),
         ),
     )
-    finished = finish_combat(state)
+    finished = finish_combat(offer_conflict_end_triggers(state).state)
     assert finished.state.players[0].tech_cards_owed == 1
     drawn = draw_owed_tech_cards(finished).state
     assert drawn.players[0].tech_cards_owed == 0

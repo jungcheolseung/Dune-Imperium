@@ -3,7 +3,7 @@
 from copy import replace
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
@@ -41,6 +41,8 @@ from dune_imperium.rules.frames import (
     frame_context_int,
     owned_top_frame,
     replace_player,
+    replace_top_frame,
+    with_context,
 )
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
@@ -1436,21 +1438,19 @@ def _trigger_specimens(option: IntrigueOption) -> int:
 def _harvest_cells_has_effect(
     state: GameState, player: int, option: IntrigueOption
 ) -> bool:
-    """Whether one more face-up copy of ``option`` could change something.
+    """Whether playing ``option`` now could change something.
 
     "To play an Intrigue card, you must meet its conditions and pay its
     costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
-    Intrigue option needs an effect that can change something. Harvest
-    Cells fires after the cleanup has put the Conflict's troops back in the
-    supply ("When resolving combat, troops that return to your supply are
-    considered 'lost.'" [FAQ p. 1]); Sardaukar Commanders go back to their
-    own supply [Bloodlines p. 4], so they make no specimen. Its specimens
-    can be made while those troops and the supply's outnumber what the
-    copies already face up take. Otherwise its Tleilaxu card can still be
-    bought if the specimens the earlier copies made pay for a Row card or a
-    Reclaimed Forces effect -- an upper bound, since an earlier copy may
-    spend them first, so it can only let a copy through, never keep one
-    out. The Row is judged as the window opens.
+    Intrigue option needs an effect that can change something. The window
+    opens once the Conflict's troops are back in the supply ("When
+    resolving combat, troops that return to your supply are considered
+    'lost.'" [FAQ p. 1]) and the card resolves as it is played (user
+    decision 2026-10-18), so its specimens can be made while the supply
+    holds a troop ("take a troop from your supply" [Immortality p. 8];
+    Sardaukar Commanders go back to their own supply [Bloodlines p. 4] and
+    make none). Otherwise its Tleilaxu card can still be bought if the
+    seat's specimens pay for a Row card or a Reclaimed Forces effect.
     """
 
     from dune_imperium.rules.tleilaxu_row import (
@@ -1459,13 +1459,7 @@ def _harvest_cells_has_effect(
     )
 
     owner = state.players[player]
-    staged = sum(
-        _trigger_specimens(staged_option)
-        for card_id in owner.intrigue_faceup
-        if (staged_option := _loss_trigger_option(card_id)) is not None
-    )
-    returning = owner.troops_supply + owner.troops_conflict
-    if _trigger_specimens(option) and returning - staged >= 1:
+    if _trigger_specimens(option) and owner.troops_supply >= 1:
         return True
     if not any(
         isinstance(reward, AcquireTleilaxuCard)
@@ -1473,23 +1467,19 @@ def _harvest_cells_has_effect(
         for reward in section.rewards
     ):
         return False
-    # The earlier copies' specimens, as troops taken from the supply the
-    # cleanup refills (the seat still accounts for all its troops).
-    made = min(staged, returning)
-    from_conflict = min(made, owner.troops_conflict)
-    projected = replace(
-        owner,
-        specimens=owner.specimens + made,
-        troops_conflict=owner.troops_conflict - from_conflict,
-        troops_supply=owner.troops_supply - (made - from_conflict),
-    )
     return any(
-        tleilaxu_card_for_instance(instance_id).specimen_cost <= projected.specimens
+        tleilaxu_card_for_instance(instance_id).specimen_cost <= owner.specimens
         for instance_id in state.tleilaxu_row
     ) or any(
-        reclaimed_forces_block(projected, choice) is None
+        reclaimed_forces_block(owner, choice) is None
         for choice in RECLAIMED_FORCES_CHOICES
     )
+
+
+# A Conflict-end window's context: the units its seat lost as they went
+# back to the supply, and whether the seat played a card in it.
+_LOST_KEY: Final = "lost"
+_PLAYED_KEY: Final = "played"
 
 
 class ConflictEndTriggerBlock(StrEnum):
@@ -1502,14 +1492,12 @@ class ConflictEndTriggerBlock(StrEnum):
     request 2026-09-29).
     """
 
-    # Fewer units leave the Conflict than the trigger names.
+    # Fewer units left the Conflict than the trigger names.
     LOSS = "loss"
-    # One more copy could change nothing (``_harvest_cells_has_effect``):
-    # no Tleilaxu card its specimens could pay for, and no troop in the
-    # supply once the Conflict's troops are back there ...
+    # The card could change nothing (``_harvest_cells_has_effect``): no
+    # Tleilaxu card its specimens could pay for, and no troop in the supply
+    # to make one.
     NO_TROOP = "no_troop"
-    # ... or the copies already face up take every such troop.
-    TROOPS_TAKEN = "troops_taken"
 
 
 def conflict_end_trigger_block(
@@ -1520,10 +1508,9 @@ def conflict_end_trigger_block(
 
     In order: the trigger's loss ("When you lose at least three troops at
     the end of a Conflict:" [Harvest Cells card]; ``lost`` defaults to the
-    units in the Conflict, ``_conflict_losses``), the play's own conditions
-    and costs (``option_unplayable_reason``), then an effect that could
-    change something (``_harvest_cells_has_effect``, user ruling
-    2026-10-06).
+    seat's loss, ``conflict_end_loss``), the play's own conditions and costs
+    (``option_unplayable_reason``), then an effect that could change
+    something (``_harvest_cells_has_effect``, user ruling 2026-10-06).
     """
 
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
@@ -1532,7 +1519,7 @@ def conflict_end_trigger_block(
     if not isinstance(trigger, OnTroopsLostAtConflictEnd):
         raise ValueError("not a Conflict-end loss trigger")
     if lost is None:
-        lost = _conflict_losses(state)[player]
+        lost = conflict_end_loss(state, player)
     if lost < trigger.minimum:
         return ConflictEndTriggerBlock.LOSS
     unplayable = option_unplayable_reason(state, player, option)
@@ -1540,11 +1527,7 @@ def conflict_end_trigger_block(
         return unplayable
     if _harvest_cells_has_effect(state, player, option):
         return None
-    # The troops ``_harvest_cells_has_effect`` counts as back in the supply.
-    owner = state.players[player]
-    if owner.troops_supply + owner.troops_conflict == 0:
-        return ConflictEndTriggerBlock.NO_TROOP
-    return ConflictEndTriggerBlock.TROOPS_TAKEN
+    return ConflictEndTriggerBlock.NO_TROOP
 
 
 def _conflict_end_trigger_cards(
@@ -1567,6 +1550,60 @@ def _conflict_end_trigger_cards(
 def _conflict_losses(state: GameState) -> tuple[int, ...]:
     return tuple(
         player.troops_conflict + player.commanders_conflict for player in state.players
+    )
+
+
+def conflict_end_loss(state: GameState, player: int) -> int:
+    """The units ``player`` lost at this Conflict's end: as its window
+    recorded them once they went back to the supply, or, before the
+    return, those still in the Conflict."""
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind == FrameKind.CONFLICT_END_TRIGGER and isinstance(
+            frame.decision, PlayerDecision
+        ):
+            if frame.decision.owner == player:
+                return context_int(
+                    dict(frame.context), _LOST_KEY, owner="Conflict-end Intrigue window"
+                )
+    return _conflict_losses(state)[player]
+
+
+def _return_conflict_units(
+    state: GameState, losses: tuple[int, ...]
+) -> RuleResult:
+    """Every seat's troops and Sardaukar Commanders leave the Conflict for
+    the supply: "Once all rewards have been given, each player takes their
+    troops from the Conflict and puts them in their supply" [Main p. 14]
+    [Bloodlines p. 4], and "troops that return to your supply are
+    considered 'lost.'" [FAQ p. 1]. The Tactician token advances once by the
+    whole loss, the cleanup being one source [Chani card]. Sandworms, the
+    Combat markers and the Conflict card wait for ``finish_combat``."""
+
+    players = tuple(
+        replace(
+            player,
+            troops_supply=player.troops_supply + player.troops_conflict,
+            troops_conflict=0,
+            commanders_supply=player.commanders_supply + player.commanders_conflict,
+            commanders_conflict=0,
+        )
+        for player in state.players
+    )
+    advanced = [
+        advance_tactics_token(
+            player,
+            lost,
+            source=f"round:{state.round_number}:player:{player.player_id}:"
+            "combat_cleanup",
+        )
+        for player, lost in zip(players, losses, strict=True)
+    ]
+    return RuleResult(
+        state=replace(state, players=tuple(player for player, _ in advanced)),
+        events=tuple(
+            event for _, tactics_events in advanced for event in tactics_events
+        ),
     )
 
 
@@ -1607,14 +1644,20 @@ def _conflict_end_window_opens(state: GameState, player: int, lost: int) -> bool
 
 
 def offer_conflict_end_triggers(state: GameState) -> RuleResult:
-    """Open the window for Intrigue that triggers at this Conflict's end.
+    """Return the Conflict's units, then open the window for Intrigue that
+    triggers at this Conflict's end.
 
-    Harvest Cells is played only here, after the rewards and before the
-    cleanup: "This card is played after combat resolves." (designer ruling,
-    OQ-057 (11); ``IntriguePlayBlock.CONFLICT_END`` keeps it out of Combat
-    Intrigue). Each seat, in turn order from the First Player (OQ-002), may
-    play a hand card whose Conflict-end trigger would fire -- one held from
-    earlier or one just received as a reward.
+    The troops go back to the supply first (``_return_conflict_units``):
+    that return is the loss ("troops that return to your supply are
+    considered 'lost.'" [FAQ p. 1]), so a card that triggers on it resolves
+    as it is played, with the troops back for its specimens (user decision
+    2026-10-18). Each seat's loss rides on its window. Harvest Cells is
+    played only here, after the rewards: "This card is played after combat
+    resolves." (designer ruling, OQ-057 (11); ``IntriguePlayBlock.
+    CONFLICT_END`` keeps it out of Combat Intrigue). Each seat, in turn
+    order from the First Player (OQ-002), may play a hand card whose
+    Conflict-end trigger fires -- one held from earlier or one just received
+    as a reward.
 
     Whether a seat's window opens is decided on public facts only
     (``_conflict_end_window_opens``), the same frame, prompt and event for
@@ -1633,6 +1676,8 @@ def offer_conflict_end_triggers(state: GameState) -> RuleResult:
     if state.combat_end_triggers_offered:
         raise ValueError("Conflict-end triggers were already offered")
     losses = _conflict_losses(state)
+    returned = _return_conflict_units(state, losses)
+    state = returned.state
     first = state.first_player or 0
     frames: list[DecisionFrame] = []
     for offset in range(state.config.players):
@@ -1650,7 +1695,7 @@ def offer_conflict_end_triggers(state: GameState) -> RuleResult:
                         "end, or decline"
                     ),
                 ),
-                context=(("player", player),),
+                context=((_LOST_KEY, losses[player]), ("player", player)),
             )
         )
     next_state = replace(
@@ -1660,13 +1705,16 @@ def offer_conflict_end_triggers(state: GameState) -> RuleResult:
     )
     return RuleResult(
         state=next_state,
-        events=tuple(
-            GameEvent(
-                event_id=f"{frame.frame_id}:offered",
-                kind="conflict_end_trigger_offered",
-                payload=(("player", dict(frame.context)["player"]),),
-            )
-            for frame in frames
+        events=(
+            *returned.events,
+            *(
+                GameEvent(
+                    event_id=f"{frame.frame_id}:offered",
+                    kind="conflict_end_trigger_offered",
+                    payload=(("player", dict(frame.context)["player"]),),
+                )
+                for frame in frames
+            ),
         ),
     )
 
@@ -1675,79 +1723,185 @@ def legal_conflict_end_trigger_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Play one of the seat's Conflict-end trigger cards now, or decline."""
+    """Play one of the seat's Conflict-end trigger cards now, or decline --
+    or, once a card is played in this window, finish it ("끝내기", user
+    decision 2026-10-18: the window stays open after a play, OQ-103, and its
+    one press no longer reads as declining)."""
 
     frame = owned_top_frame(state, FrameKind.CONFLICT_END_TRIGGER, player)
     if frame is None:
         return ()
-    losses = _conflict_losses(state)
+    context = dict(frame.context)
+    lost = context_int(context, _LOST_KEY, owner="Conflict-end Intrigue window")
+    end = (
+        "finish_conflict_end_intrigue"
+        if context.get(_PLAYED_KEY) is True
+        else "decline_conflict_end_intrigue"
+    )
     return (
-        DomainAction(action_id="decline_conflict_end_intrigue", actor=player),
+        DomainAction(action_id=end, actor=player),
         *(
             DomainAction(
                 action_id="play_conflict_end_intrigue",
                 actor=player,
                 arguments=(("card_id", card_id),),
             )
-            for card_id in _conflict_end_trigger_cards(state, player, losses[player])
+            for card_id in _conflict_end_trigger_cards(state, player, lost)
         ),
     )
 
 
 def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleResult:
-    """Stage the chosen hand card face up, or close the window.
+    """Play the chosen hand card, resolving it at once, or close the window.
 
-    The card is played now (designer ruling, OQ-057) but its effect waits
-    for the loss it names: "When you lose at least three troops at the end
-    of a Conflict:" [Harvest Cells card], and "When resolving combat, troops
-    that return to your supply are considered 'lost.'" [FAQ p. 1]. So it
-    joins the face-up cards that ``finish_combat`` fires after the troops
-    are back in the supply -- where its specimens come from ("take a troop
-    from your supply" [Immortality p. 8]) -- in turn order (OQ-002).
+    The troops already went back to the supply as the window opened, so the
+    loss the card names has happened: "When you lose at least three troops
+    at the end of a Conflict:" [Harvest Cells card], "When resolving combat,
+    troops that return to your supply are considered 'lost.'" [FAQ p. 1].
+    Its specimens come at once from the supply ("take a troop from your
+    supply" [Immortality p. 8]) and only its "You may also acquire a
+    Tleilaxu card" is asked (user decision 2026-10-18,
+    ``intrigue.resolve_conflict_end_trigger``).
     """
 
     if action not in legal_conflict_end_trigger_actions(state, action.actor):
         raise ValueError("action is not a legal Conflict-end Intrigue choice")
+    from dune_imperium.rules.intrigue import resolve_conflict_end_trigger
+
     player = action.actor
     frame = state.decision_stack[-1]
-    if action.action_id == "decline_conflict_end_intrigue":
+    if action.action_id in (
+        "decline_conflict_end_intrigue",
+        "finish_conflict_end_intrigue",
+    ):
+        finished = action.action_id == "finish_conflict_end_intrigue"
         return RuleResult(
             state=state.pop_decision(),
             events=(
                 GameEvent(
-                    event_id=f"{frame.frame_id}:declined",
-                    kind="conflict_end_trigger_declined",
+                    event_id=(
+                        f"{frame.frame_id}:{'finished' if finished else 'declined'}"
+                    ),
+                    kind=(
+                        "conflict_end_trigger_finished"
+                        if finished
+                        else "conflict_end_trigger_declined"
+                    ),
                     payload=(("player", player),),
                 ),
             ),
         )
     card_id = str(dict(action.arguments)["card_id"])
-    owner = state.players[player]
-    staged = replace(
-        owner,
-        intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
-        intrigue_faceup=(*owner.intrigue_faceup, card_id),
+    # The window stays open while the seat holds another Intrigue card, a
+    # public fact: closing it only when no other copy could change
+    # something would tell the table whether a second Harvest Cells is in
+    # the hand (OQ-103). Its play actions still offer only a copy that would
+    # change something (``_harvest_cells_has_effect``).
+    others = [held for held in state.players[player].intrigue_cards if held != card_id]
+    window = (
+        replace_top_frame(
+            state, with_context(frame, {**dict(frame.context), _PLAYED_KEY: True})
+        )
+        if others
+        else state.pop_decision()
     )
-    after = replace(state, players=replace_player(state.players, staged))
-    # The window stays open while the seat holds an Intrigue card, a public
-    # fact: closing it only when no other copy could change something would
-    # tell the table whether a second Harvest Cells is in the hand (OQ-103).
-    # Its play actions still offer only a copy that would change something
-    # (``_harvest_cells_has_effect``).
-    return RuleResult(
-        state=after if staged.intrigue_cards else after.pop_decision(),
-        events=(
+    played = GameEvent(
+        event_id=f"{frame.frame_id}:played:{card_id}",
+        kind="intrigue_played",
+        payload=(("card_id", card_id), ("player", player)),
+    )
+    resolved = resolve_conflict_end_trigger(
+        window,
+        player,
+        card_id,
+        source=f"round:{state.round_number}:player:{player}:conflict_end:{card_id}",
+    )
+    return RuleResult(state=resolved.state, events=(played, *resolved.events))
+
+
+def _award_conflict(state: GameState) -> RuleResult:
+    """The sole winner takes the Conflict card and checks its battle icon
+    [Main p. 14]; a tie leaves the card on the board [Main pp. 8, 14]. The
+    ranking reads the strengths the rewards found, which stand through the
+    Conflict-end windows (``strength.refresh_pre_reveal_strength``). The
+    award stays with the rest of the cleanup, after the windows, where the
+    engine always gave it: Planetary Array's draw follows it (OQ-108)."""
+
+    if not state.current_conflict_ids:
+        raise ValueError("Combat cleanup requires a current Conflict")
+    conflict_id = state.current_conflict_ids[-1]
+    ranking = rank_combat(state.players)
+    if ranking.winner is None:
+        return RuleResult(state=state)
+    players = state.players
+    winner = players[ranking.winner]
+    fleet = has_ornithopter_fleet(winner)
+    matched_card_id = None if fleet else _matching_battle_card(winner, conflict_id)
+    face_down = winner.face_down_battle_card_ids
+    victory_points = winner.victory_points
+    if matched_card_id is not None:
+        face_down = (*face_down, matched_card_id, conflict_id)
+        victory_points += 1
+    winner = replace(
+        winner,
+        victory_points=victory_points,
+        won_conflict_ids=(*winner.won_conflict_ids, conflict_id),
+        face_down_battle_card_ids=face_down,
+    )
+    match_events: tuple[GameEvent, ...] = ()
+    if fleet:
+        # Ornithopter Fleet: every icon is an Ornithopter, so the new
+        # card pairs with any face-up one [Bloodlines p. 12].
+        winner, match_events = match_all_battle_icons(
+            winner, source=f"round:{state.round_number}:conflict_won"
+        )
+    draws = tech_draws_on(winner.tech_ids, OnConflictWon)
+    if draws:
+        # Planetary Array: "When you win a Conflict: draw a card" — a sole
+        # winner only [FAQ p. 4] [Planetary Array Tech tile]; owed to the
+        # engine's post-step draw.
+        winner = replace(winner, tech_cards_owed=winner.tech_cards_owed + draws)
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"round:{state.round_number}:conflict_won:{ranking.winner}",
+            kind="conflict_won",
+            payload=(("conflict_id", conflict_id), ("player", ranking.winner)),
+        )
+    ]
+    if matched_card_id is not None:
+        events.append(
             GameEvent(
-                event_id=f"{frame.frame_id}:played:{card_id}",
-                kind="intrigue_played",
-                payload=(("card_id", card_id), ("player", player)),
-            ),
+                event_id=(
+                    f"round:{state.round_number}:battle_icons_matched:"
+                    f"{ranking.winner}"
+                ),
+                kind="battle_icons_matched",
+                payload=(
+                    ("first_card_id", matched_card_id),
+                    ("player", ranking.winner),
+                    ("second_card_id", conflict_id),
+                ),
+            )
+        )
+    events.extend(match_events)
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(players, winner),
+            current_conflict_ids=state.current_conflict_ids[:-1],
         ),
+        events=tuple(events),
     )
 
 
 def finish_combat(state: GameState) -> RuleResult:
-    """Award the Conflict card, clean up combat units, and enter Makers."""
+    """Award the Conflict card, finish the Combat cleanup and enter Makers.
+
+    The troops and Sardaukar Commanders went back to the supply as the
+    Conflict-end windows opened (``offer_conflict_end_triggers``);
+    sandworms return to the bank and every Combat marker to 0 now
+    [Main p. 14].
+    """
 
     if state.phase is not GamePhase.COMBAT:
         raise ValueError("Combat can finish only during Combat")
@@ -1755,81 +1909,16 @@ def finish_combat(state: GameState) -> RuleResult:
         raise ValueError("Combat rewards must resolve before cleanup")
     if state.decision_stack:
         raise ValueError("Combat cannot finish with a pending decision")
-    if not state.current_conflict_ids:
-        raise ValueError("Combat cleanup requires a current Conflict")
-
-    conflict_id = state.current_conflict_ids[-1]
-    ranking = rank_combat(state.players)
-    players = state.players
-    current_conflict_ids = state.current_conflict_ids
-    events: list[GameEvent] = []
-    match_events: tuple[GameEvent, ...] = ()
-    if ranking.winner is not None:
-        winner = players[ranking.winner]
-        fleet = has_ornithopter_fleet(winner)
-        matched_card_id = None if fleet else _matching_battle_card(winner, conflict_id)
-        face_down = winner.face_down_battle_card_ids
-        victory_points = winner.victory_points
-        if matched_card_id is not None:
-            face_down = (*face_down, matched_card_id, conflict_id)
-            victory_points += 1
-        winner = replace(
-            winner,
-            victory_points=victory_points,
-            won_conflict_ids=(*winner.won_conflict_ids, conflict_id),
-            face_down_battle_card_ids=face_down,
-        )
-        if fleet:
-            # Ornithopter Fleet: every icon is an Ornithopter, so the new
-            # card pairs with any face-up one [Bloodlines p. 12].
-            winner, match_events = match_all_battle_icons(
-                winner, source=f"round:{state.round_number}:conflict_won"
-            )
-        players = tuple(
-            winner if player.player_id == ranking.winner else player
-            for player in players
-        )
-        current_conflict_ids = current_conflict_ids[:-1]
-        events.append(
-            GameEvent(
-                event_id=f"round:{state.round_number}:conflict_won:{ranking.winner}",
-                kind="conflict_won",
-                payload=(("conflict_id", conflict_id), ("player", ranking.winner)),
-            )
-        )
-        if matched_card_id is not None:
-            events.append(
-                GameEvent(
-                    event_id=(
-                        f"round:{state.round_number}:battle_icons_matched:"
-                        f"{ranking.winner}"
-                    ),
-                    kind="battle_icons_matched",
-                    payload=(
-                        ("first_card_id", matched_card_id),
-                        ("player", ranking.winner),
-                        ("second_card_id", conflict_id),
-                    ),
-                )
-            )
-        events.extend(match_events)
-
-    # Harvest Cells (Immortality): troops returning to the supply at
-    # cleanup are "lost" [FAQ p. 1]; the card the Conflict-end window laid
-    # face up fires after the return.
-    losses = tuple(
-        player.troops_conflict + player.commanders_conflict for player in players
-    )
-    # Troops and Sardaukar Commanders return to the supply, sandworms to
-    # the bank, every marker to 0 [Main p. 14] [Bloodlines p. 4].
+    if any(
+        player.troops_conflict or player.commanders_conflict
+        for player in state.players
+    ):
+        raise RuntimeError("the Conflict's units return before the cleanup")
+    awarded = _award_conflict(state)
     players = tuple(
         replace(
             player,
-            troops_supply=player.troops_supply + player.troops_conflict,
-            troops_conflict=0,
             sandworms_conflict=0,
-            commanders_supply=player.commanders_supply + player.commanders_conflict,
-            commanders_conflict=0,
             # Into the Fray's Agent comes back too (it is recalled with the
             # others in the Recall phase either way) [Duncan Idaho card].
             agents_available=player.agents_available + player.agent_in_conflict,
@@ -1837,56 +1926,24 @@ def finish_combat(state: GameState) -> RuleResult:
             combat_strength=0,
             skill_strength_applied=0,
         )
-        for player in players
+        for player in awarded.state.players
     )
-    # Tactician: "When resolving combat, troops that return to your supply
-    # are considered 'lost.' Each different source of retreating or losing
-    # troops is handled separately" [FAQ p. 1] -- the cleanup is one source,
-    # so the token advances once by the whole loss [Chani card].
-    advanced = [
-        advance_tactics_token(
-            player,
-            lost,
-            source=f"round:{state.round_number}:player:{player.player_id}:"
-            "combat_cleanup",
-        )
-        for player, lost in zip(players, losses, strict=True)
-    ]
-    players = tuple(player for player, _ in advanced)
-    events.extend(event for _, tactics_events in advanced for event in tactics_events)
     next_state = replace(
-        state,
+        awarded.state,
         phase=GamePhase.MAKERS,
         players=players,
-        current_conflict_ids=current_conflict_ids,
         combat_intrigue_players=(),
     )
-    next_state, loss_events = _fire_troop_loss_triggers(next_state, losses)
-    events.extend(loss_events)
-    events.append(
-        GameEvent(
-            event_id=f"round:{state.round_number}:combat_cleanup",
-            kind="combat_cleaned_up",
-        )
-    )
-    draws = (
-        0
-        if ranking.winner is None
-        else tech_draws_on(next_state.players[ranking.winner].tech_ids, OnConflictWon)
-    )
-    if ranking.winner is not None and draws:
-        # Planetary Array: "When you win a Conflict: draw a card" — a sole
-        # winner only [FAQ p. 4] [Planetary Array Tech tile]; owed to the
-        # engine's post-step draw.
-        seat = next_state.players[ranking.winner]
-        next_state = replace(
-            next_state,
-            players=replace_player(
-                next_state.players,
-                replace(seat, tech_cards_owed=seat.tech_cards_owed + draws),
+    return RuleResult(
+        state=next_state,
+        events=(
+            *awarded.events,
+            GameEvent(
+                event_id=f"round:{state.round_number}:combat_cleanup",
+                kind="combat_cleaned_up",
             ),
-        )
-    return RuleResult(state=next_state, events=tuple(events))
+        ),
+    )
 
 
 def _matching_battle_card(player: PlayerState, conflict_id: str) -> str | None:
@@ -2338,52 +2395,3 @@ def refresh_combat_participants(state: GameState) -> RuleResult:
     )
 
 
-def _fire_troop_loss_triggers(
-    state: GameState, losses: tuple[int, ...]
-) -> tuple[GameState, tuple[GameEvent, ...]]:
-    """Resolve face-up Intrigue waiting on a Conflict-end troop loss.
-
-    Only the Conflict-end window lays such a card face up, and only when
-    this loss meets its trigger (``legal_conflict_end_trigger_actions``);
-    nothing changes the troops in the Conflict between that window and the
-    cleanup, so the card always fires. It used to expire when a card laid face up in
-    Combat Intrigue lost too few (gone with the user ruling of 2026-10-06).
-    """
-
-    from dune_imperium.rules.intrigue import resolve_faceup_trigger_option
-
-    next_state = state
-    events: list[GameEvent] = []
-    # Turn order from the First Player when several seats fire (designer
-    # ruling, OQ-002).
-    first = state.first_player or 0
-    for offset in range(state.config.players):
-        player = (first + offset) % state.config.players
-        lost = losses[player]
-        for card_id in state.players[player].intrigue_faceup:
-            entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
-            if entry is None:
-                continue
-            minimum = next(
-                (
-                    option.trigger.minimum
-                    for option in entry.options
-                    if isinstance(option.trigger, OnTroopsLostAtConflictEnd)
-                ),
-                None,
-            )
-            if minimum is None:
-                continue
-            source = (
-                f"round:{state.round_number}:player:{player}:conflict_end:{card_id}"
-            )
-            if lost < minimum:
-                raise RuntimeError(
-                    "a Conflict-end trigger card waits face up without its loss"
-                )
-            fired = resolve_faceup_trigger_option(
-                next_state, player, card_id, source=source
-            )
-            next_state = fired.state
-            events.extend(fired.events)
-    return next_state, tuple(events)

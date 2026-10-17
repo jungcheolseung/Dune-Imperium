@@ -114,6 +114,7 @@ OTHER_FRAME_KEYS = frozenset(
         "persuasion_generated",
         "picked",
         "placed_reaches",
+        "played",
         "played_at_priority",
         "player",
         "purpose",

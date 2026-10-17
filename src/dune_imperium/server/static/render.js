@@ -684,6 +684,7 @@ const EXPLICIT_TURN_END_IDS = new Set([
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
   "decline_conflict_end_intrigue",
+  "finish_conflict_end_intrigue",
   "confirm_scouts_bid",
   "resolve_scouts_choice_without_option",
   "scouts_call",
@@ -760,6 +761,11 @@ function turnEndButtonLabel(action, actions) {
   }
   if (action.action_id === "decline_conflict_end_intrigue") {
     return t("render.turn_end_button_decline");
+  }
+  if (action.action_id === "finish_conflict_end_intrigue") {
+    /* After a card was played in the window, its one press ends it
+       (user decision 2026-10-18: "끝내기", not "쓰지 않음"). */
+    return t("render.turn_end_button_finish");
   }
   if (action.action_id === "resolve_scouts_choice_without_option") {
     return t("render.turn_end_button_nothing");

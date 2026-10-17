@@ -445,6 +445,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_conflict_end_intrigue": _row(
         _V.DECLINE, _S.INTRIGUE, of=_V.PLAY, variant="conflict_end"
     ),
+    "finish_conflict_end_intrigue": _row(
+        _V.FINISH, _S.INTRIGUE, variant="conflict_end"
+    ),
     "use_intrigue_effect": _row(_V.USE, _S.INTRIGUE, _T.OPTION),
     "finish_intrigue_effects": _row(_V.FINISH, _S.INTRIGUE),
     "resolve_intrigue_rewards": _row(_V.RESOLVE, _S.INTRIGUE),

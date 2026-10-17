@@ -415,11 +415,12 @@ def test_harvest_cells_in_combat_intrigue_is_dimmed_until_the_conflict_ends() ->
 HARVEST_CELLS = ("intrigue:harvest_cells:0", "intrigue:harvest_cells:1")
 # No Tleilaxu Row card its specimens could pay for: four specimens each.
 PRICEY_ROW = ("tleilaxu:twisted_mentat:0", "tleilaxu:usurp:0")
+# The Conflict's troops are back in the supply when the window opens; lost
 # Sardaukar Commanders go back to their own supply and make no specimen
 # [Bloodlines p. 4] (``combat._harvest_cells_has_effect``).
-COMMANDERS_MAKE_NONE = (
-    " (Sardaukar Commanders make none)",
-    " ({commander}은 {specimen}이 되지 않음)",
+NO_TROOP_FOR_A_SPECIMEN = (
+    "No troop in your supply to make a specimen",
+    "{specimen}으로 만들 {troop}이 {supply}에 없음",
 )
 NO_TLEILAXU_CARD = (
     "; No Tleilaxu card your specimens could acquire",
@@ -477,12 +478,8 @@ def test_harvest_cells_that_could_change_nothing_greys_out_in_its_window() -> No
     found = _found(window)
     assert found["frame"] == "conflict_end_trigger"
     reason = {
-        "reason": "No troop in your supply or the Conflict to make a specimen"
-        + COMMANDERS_MAKE_NONE[0]
-        + NO_TLEILAXU_CARD[0],
-        "reason_ko": "{specimen}으로 만들 {troop}이 {supply}에도 {conflict}에도 없음"
-        + COMMANDERS_MAKE_NONE[1]
-        + NO_TLEILAXU_CARD[1],
+        "reason": NO_TROOP_FOR_A_SPECIMEN[0] + NO_TLEILAXU_CARD[0],
+        "reason_ko": NO_TROOP_FOR_A_SPECIMEN[1] + NO_TLEILAXU_CARD[1],
         "code": "reward",
     }
     assert found["rows"] == [
@@ -518,10 +515,11 @@ def test_harvest_cells_that_could_change_nothing_greys_out_in_its_window() -> No
 
 def test_a_second_harvest_cells_greys_out_once_the_first_takes_the_troops() -> None:
     """Two troops and a Commander lost: both copies are offered, the first
-    played takes both troops, and the second, which could make no specimen
-    and buy nothing with two, greys out in the window that stays open while
-    the seat holds an Intrigue card (OQ-103). The copy face up is not
-    dimmed."""
+    played takes both troops as its specimens, and the second, which could
+    make no specimen and buy nothing with two, greys out in the window that
+    stays open while the seat holds an Intrigue card (OQ-103). It reads as
+    any copy with no troop to make a specimen of; the first copy is already
+    in the discard pile and is not dimmed."""
 
     first, second = HARVEST_CELLS
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
@@ -529,16 +527,19 @@ def test_a_second_harvest_cells_greys_out_once_the_first_takes_the_troops() -> N
     assert unavailable_choices(both, 0, ENGINE.legal_actions(both, 0)) is None
 
     played = ENGINE.apply(both, _play_conflict_end(first)).state
+    # The first copy resolved at its play: its acquisition choice (nothing
+    # in the pricey Row pays) is answered, and the window is back on top.
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    played = ENGINE.apply(
+        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
     assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert played.players[0].troops_supply == 0
     assert _legal(played, "play_conflict_end_intrigue") == []
     found = _found(played)
     reason = (
-        "The copy already played takes every troop left to make a specimen"
-        + COMMANDERS_MAKE_NONE[0]
-        + NO_TLEILAXU_CARD[0],
-        "먼저 쓴 카드가 {specimen}으로 만들 {troop}을 모두 가져감"
-        + COMMANDERS_MAKE_NONE[1]
-        + NO_TLEILAXU_CARD[1],
+        NO_TROOP_FOR_A_SPECIMEN[0] + NO_TLEILAXU_CARD[0],
+        NO_TROOP_FOR_A_SPECIMEN[1] + NO_TLEILAXU_CARD[1],
         "reward",
     )
     (row,) = found["rows"]
@@ -554,6 +555,9 @@ def test_a_second_harvest_cells_greys_out_once_the_first_takes_the_troops() -> N
         first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
     )
     staged = ENGINE.apply(three, _play_conflict_end(first)).state
+    staged = ENGINE.apply(
+        staged, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
     assert _legal(staged, "play_conflict_end_intrigue") == [{"card_id": second}]
     assert unavailable_choices(staged, 0, ENGINE.legal_actions(staged, 0)) is None
 
@@ -566,8 +570,11 @@ def test_harvest_cells_below_its_loss_says_how_many_units_are_lost() -> None:
 
     card = HARVEST_CELLS[0]
     window = _conflict_end_window(card, troops_supply=1, troops_garrison=11)
-    owner = replace(window.players[0], commanders_conflict=2)
-    short = replace(window, players=(owner, *window.players[1:]))
+    # The window records the units its seat lost as they went back to the
+    # supply (``combat.conflict_end_loss``); make it two.
+    frame = window.decision_stack[-1]
+    short_frame = replace(frame, context=(("lost", 2), ("player", 0)))
+    short = replace(window, decision_stack=(*window.decision_stack[:-1], short_frame))
 
     assert ENGINE.legal_actions(short, 0) == (
         DomainAction(action_id="decline_conflict_end_intrigue", actor=0),

@@ -1630,6 +1630,10 @@ const UI_TEXT = {
     "ko": "쓰지 않음 · 턴 종료 ▶",
     "en": "Decline · End turn ▶"
   },
+  "render.turn_end_button_finish": {
+    "ko": "끝내기 · 턴 종료 ▶",
+    "en": "Finish · End turn ▶"
+  },
   "render.turn_end_button_nothing": {
     "ko": "할 수 있는 선택 없음 · 턴 종료 ▶",
     "en": "Nothing to take · End turn ▶"

@@ -135,9 +135,9 @@ Immortality (``spec/immortality.md`` §7):
 - Harvest Cells: play ``[card]`` / ``[[]]`` (only the
   ``conflict_end_trigger`` window's play) when ``HarvestCellsAbility`` can
   run; the request is the dealt Tleilaxu Row cards the seat can pay with the
-  two harvested specimens. At the Conflict's end the specimens come first
-  (``resolve_intrigue_rewards``; judgement: card-text order, and the app's
-  ``GetSpecimensAvailable`` counts the harvested specimens), then the
+  two harvested specimens. The card resolves as it is played: its
+  specimens are taken at the play (user decision 2026-10-18; the app's
+  ``GetSpecimensAvailable`` counts the harvested specimens too), then the
   answer's card is acquired, on top of the deck when the destination is
   offered (``AcquireAbility``'s ``ChooseAcquireTleilaxuLocation`` option 0;
   judgement: Harvest Cells uses the same picker), ``[[]]`` ->
@@ -1351,8 +1351,8 @@ def _flip_face_up(run: DecisionRun, cid: str) -> DomainAction | None:
 def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction | None:
     """Harvest Cells' "you may also acquire a Tleilaxu card" (module table).
 
-    The harvested specimens are taken first (``resolve_intrigue_rewards``).
-    Then the play's recorded answer (``recorded_answer``: the
+    The harvested specimens are already taken, at the play (codec v149).
+    The play's recorded answer (``recorded_answer``: the
     ``conflict_end_trigger`` prompt that played the card) is replayed: its
     card, or "no acquire" (an empty list) -> ``decline_intrigue_tleilaxu``.
     Without one, or when its card is not offered,
@@ -1363,9 +1363,6 @@ def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction
 
     if cid != "harvest_cells":
         return None
-    resolve = run.first("resolve_intrigue_rewards")
-    if resolve is not None:
-        return resolve
     decline = run.first("decline_intrigue_tleilaxu")
     acquires = run.by_id("acquire_intrigue_tleilaxu")
     refs = list(

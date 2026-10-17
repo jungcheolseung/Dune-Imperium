@@ -498,13 +498,42 @@ def test_navigation_gain_is_bucketed_leader_in_a_real_game(
     # Panopticon Tech gains: 16 total (independent replay, no collector
     # imports; on the previous commit's engine it recounts the values pinned
     # before).
+    # Re-counted 2026-10-18 for the Conflict-end order (user decision
+    # 2026-10-18, codec v149: the Conflict's troops and Commanders go back to
+    # the supply before the Conflict-end windows, and Harvest Cells resolves
+    # the moment it is played): seed 31 first diverges at round 8, seat 3's
+    # Conflict-end window (step 792 of the game, counting chance steps from
+    # 0). Seat 3 plays Harvest Cells at step 791 on both engines, but now its
+    # 2 specimens come with the play, so step 792 offers its Tleilaxu
+    # acquisition (seat 3 takes Subject X-137) where the previous engine
+    # offered ``decline_conflict_end_intrigue`` and only then the
+    # acquisition. Seat 1 still fills the role: a scan of full seeds 1-200
+    # listing every Influence gain with a "navigation" token whose id prefix
+    # is the bare-visit shape gives seed 31 seat 1 first again, on this
+    # engine and on a ``git archive`` export of the previous commit
+    # (7ae17717), then seeds 53, 61 and 83, so the seed stays. Its round-6
+    # Navigation gain (a Bene Gesserit visit on the bought Branching Path,
+    # slot 1 gains a Fremen) comes at step 476, long before the divergence,
+    # and so do its visits through round 7; the game now reaches Endgame in
+    # round 9, when seat 2's Conflict win takes it to 10 Victory Points (it
+    # ended in round 10 with the Conflict deck empty).
+    # Seat 1's own events now contain 7 visits (rounds 1, 1, 3, 6, 6, 7 and
+    # 8; 5 on starter cards, 2 on bought ones), 1 Navigation, 2 Intrigue
+    # (Imperium Politics, Tenuous Bond), 2 Agent-card (Experimentation's
+    # research step in round 5 and a starter Diplomacy trashed for an Emperor
+    # in round 8) and 2 Endgame Panopticon Tech gains (Spacing Guild and
+    # Fremen, was Spacing Guild and Bene Gesserit): 14 total (independent
+    # replay, no collector imports; was 16 with two more Intrigue gains,
+    # Withdrawal Agreement in round 9 and Sietch Ritual in round 10, which
+    # the shorter game no longer reaches; on the previous commit's engine it
+    # recounts the values pinned before).
     game = tip_census.play(_spec(True, 31), ("influence",))
     seat = game["seats"][1]
     assert seat["leader"] == "steersman_y_rkoon"
     sources = seat["infl.sources"]
     assert sources.get("leader") == 1
     assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 7
-    assert seat["infl.gained"] == 16
+    assert seat["infl.gained"] == 14
 
 
 def test_fremen2_round_uses_the_decision_round_not_a_folded_next_round(

@@ -3085,6 +3085,7 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
 # human seats at the table, where the wait itself would tell.
 
 _DECLINE: Final = "decline_conflict_end_intrigue"
+_FINISH: Final = "finish_conflict_end_intrigue"
 _PLAY: Final = "play_conflict_end_intrigue"
 _WINDOW_PROMPT: Final = (
     "Play an Intrigue card that triggers at this Conflict's end, or decline"
@@ -3355,19 +3356,24 @@ def test_a_holder_sees_its_play_beside_the_decline() -> None:
     assert "harvest_cells" in str(_obj(rows[1]["arguments"])["card_id"])
 
 
-def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
+def test_a_play_in_the_window_is_confirmed_by_the_seats_own_finish() -> None:
     # Seed 28, one human seat: seat 0 plays its Harvest Cells and still
-    # holds another Intrigue card, so the window stays open with only
-    # "쓰지 않음" (a public fact, OQ-103). The play can still be taken back,
-    # so the server does not answer the window: the seat's own decline is
-    # the press that confirms the play, and seals it. (v146: optional
-    # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
-    # moved seed 33 off this shape; re-searched then, seed 11 was the first
-    # of 0-79 under this first-action walk. Cleanup-2b (user decision
-    # 2026-10-17, composed-effects plan 5, rule decision 5): a research
-    # space's icons are steps of their own, so the first-action walk moved
-    # off seed 11 once more; re-searched under this walk and this whole
-    # test, seed 28 is the first of 0-399.)
+    # holds another Intrigue card, so the window stays open (a public fact,
+    # OQ-103). The card resolves at its play (user decision 2026-10-18): its
+    # specimens are taken and only the Tleilaxu acquisition is asked, over
+    # the window. Once that is answered the window offers only "끝내기"
+    # (`finish_conflict_end_intrigue`), not "쓰지 않음". The play and the
+    # answer can still be taken back, so the server does not answer the
+    # window: the seat's own finish is the press that confirms them, and
+    # seals them. (v146: optional Agent-turn effects offer no refusal
+    # (OQ-095 (2), 2026-10-14), which moved seed 33 off this shape;
+    # re-searched then, seed 11 was the first of 0-79 under this
+    # first-action walk. Cleanup-2b (user decision 2026-10-17,
+    # composed-effects plan 5, rule decision 5): a research space's icons
+    # are steps of their own, so the first-action walk moved off seed 11
+    # once more; re-searched under this walk and this whole test, seed 28 is
+    # the first of 0-399. Cleanup-2b's Conflict-end order (2026-10-18) kept
+    # seed 28 on this shape.)
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=28, immortality=True)
     game_id = str(summary["game_id"])
@@ -3393,11 +3399,30 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
         undo_count=_int(summary["undo_count"]),
     )
     assert len(session.steps) == played + 1
-    assert _window_actions(session, 0) == [_DECLINE]
+    # The specimens are taken; the acquisition choice sits over the window.
+    assert session.state.players[0].specimens == 2
+    assert session.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     assert summary["confirmation"] is None
     assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    rows = _rows(manager.legal_actions(game_id, 0)["actions"])
+    decline_acquisition = next(
+        row for row in rows if row["action_id"] == "decline_intrigue_tleilaxu"
+    )
+    assert decline_acquisition["undoable"] is True
+    summary = manager.apply_action(
+        game_id,
+        0,
+        _int(summary["revision"]),
+        _int(decline_acquisition["index"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert _window_actions(session, 0) == [_FINISH]
+    assert summary["confirmation"] is None
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
     [row] = _rows(manager.legal_actions(game_id, 0)["actions"])
-    assert row["action_id"] == _DECLINE
+    assert row["action_id"] == _FINISH
+    assert row["undoable"] is False
+    assert row["sent_by_turn_end"] is False
     summary = manager.apply_action(
         game_id,
         0,
@@ -3405,7 +3430,7 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
         _int(row["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert session.steps[played + 1] == DomainAction(action_id=_DECLINE, actor=0)
+    assert session.steps[played + 2] == DomainAction(action_id=_FINISH, actor=0)
     assert summary["confirmation"] is None
     assert _rows(summary["undo"]) == []
-    assert session.undo_floor > played + 1
+    assert session.undo_floor > played + 2

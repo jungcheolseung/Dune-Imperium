@@ -274,6 +274,31 @@ def migrate_record(
     # Recorded steps of an in-turn window this engine keeps as turn rows,
     # held until the owner's turn frame offers them (``_waits_on_the_turn``).
     waiting_steps: list[tuple[int, DomainAction]] = []
+    # Later recorded steps this engine asked for earlier and already applied
+    # (``_asked_earlier``).
+    consumed: set[int] = set()
+    # Seats whose recorded Harvest Cells plays may still owe, in the record,
+    # their "resolve the rewards" steps at the recording engine's cleanup,
+    # where the step has no counterpart here (a copy whose acquisition was
+    # answered first owes none, so a count may be left; the next Round
+    # Start clears it). Such a step is dropped only while no Intrigue choice
+    # of the seat is on top, where a rewards step of another card stands.
+    harvest_due: Counter[int] = Counter()
+
+    def harvest_rewards_due(index: int, recorded: ReplayStep, at: GameState) -> bool:
+        """Drop the recorded Harvest Cells rewards step a recording engine
+        asked at its cleanup, if this is it."""
+
+        if (
+            not isinstance(recorded, DomainAction)
+            or recorded.action_id != "resolve_intrigue_rewards"
+            or harvest_due[recorded.actor] <= 0
+            or _intrigue_choice_on_top(at, recorded.actor)
+        ):
+            return False
+        harvest_due[recorded.actor] -= 1
+        dropped.append((index, HARVEST_CELLS_REWARDS_DROPPED))
+        return True
 
     def apply_waiting(at: GameState) -> GameState | None:
         """Apply the held steps this engine now offers, oldest first, each
@@ -295,6 +320,13 @@ def migrate_record(
         return at
 
     for index, recorded in enumerate(replay.steps):
+        if index in consumed:
+            continue
+        if isinstance(recorded, ChanceOutcome) and ":round_start:" in (
+            recorded.decision_id
+        ):
+            # The recording engine's cleanup is over.
+            harvest_due.clear()
         if waiting_steps:
             settled = apply_waiting(state)
             if settled is None:
@@ -310,6 +342,10 @@ def migrate_record(
             state = settled
         if graft is not None and graft.drops(recorded):
             dropped.append((index, GRAFT_SWITCH_DROPPED))
+            continue
+        if harvest_rewards_due(index, recorded, state):
+            # Before any bridge: a pause bridge would otherwise answer the
+            # Round Start pause this step stood in front of in the record.
             continue
         if reveal is not None:
             reveal.sync(state)
@@ -376,6 +412,40 @@ def migrate_record(
                 ):
                     dropped.append((index, INFLUENCE_AT_TOP_DROPPED))
                     break
+                if bridged is None and drops_turn_row_refusals:
+                    earlier = _asked_earlier(
+                        engine, state, replay.steps, index, consumed
+                    )
+                    if earlier is not None:
+                        asked_index, asked_step = earlier
+                        consumed.add(asked_index)
+                        migrated.append(
+                            MigratedStep(asked_step, asked_index, HARVEST_CELLS_AT_ONCE)
+                        )
+                        followed = _follow(
+                            engine,
+                            engine.apply(state, asked_step).state,
+                            asked_step,
+                            bridges,
+                            migrated,
+                        )
+                        if followed is None:
+                            return ended(
+                                Divergence(
+                                    recorded_index=asked_index,
+                                    step=asked_step,
+                                    reason=(
+                                        f"{MAX_FOLLOWS_PER_STEP} follows bridges "
+                                        "after the step did not settle"
+                                    ),
+                                    pending=engine.current_decision(state),
+                                ),
+                                state,
+                            )
+                        state = followed
+                        if harvest_rewards_due(index, recorded, state):
+                            break
+                        continue
                 if (
                     bridged is None
                     and drops_turn_row_refusals
@@ -418,6 +488,9 @@ def migrate_record(
             )
             if graft is not None:
                 graft.applied(after, step)
+            if drops_turn_row_refusals and _plays_harvest_cells(recorded):
+                assert isinstance(recorded, DomainAction)
+                harvest_due[recorded.actor] += 1
             if reveal is not None:
                 reveal.applied(before, after, recorded)
             followed = _follow(engine, after, step, bridges, migrated)
@@ -527,6 +600,116 @@ INFLUENCE_AT_TOP_DROPPED: Final = "influence_at_top"
 # record answered it there. That step is held (``_waits_on_the_turn``) and
 # applied as soon as this engine offers it, before the next recorded step.
 TURN_ROW_HELD: Final = "turn_row_held"
+# Also from v149 (user decision 2026-10-18): the Conflict's troops go back to
+# the supply before the Conflict-end windows, and Harvest Cells resolves as
+# it is played -- its specimens at once, its "You may also acquire a
+# Tleilaxu card" asked right then. A recording engine fired it at the
+# cleanup, after every window: its acquisition answer, recorded there, is
+# taken as soon as this engine asks (``HARVEST_CELLS_AT_ONCE``), and its
+# "resolve the rewards" step has no counterpart (``HARVEST_CELLS_REWARDS_
+# DROPPED``). The window's press after a play is the finish
+# (``conflict_end_finish``).
+HARVEST_CELLS_AT_ONCE: Final = "harvest_cells_at_once"
+HARVEST_CELLS_REWARDS_DROPPED: Final = "harvest_cells_rewards"
+_HARVEST_CELLS_PREFIX: Final = "intrigue:harvest_cells:"
+_HARVEST_CELLS_CHOICES: Final = frozenset(
+    {
+        "acquire_intrigue_reclaimed_forces",
+        "acquire_intrigue_tleilaxu",
+        "decline_intrigue_tleilaxu",
+    }
+)
+
+
+def _harvest_cells_choice(state: GameState) -> int | None:
+    """The owner of an open Harvest Cells acquisition asked as it was played
+    in its Conflict-end window, if one is on top."""
+
+    if not state.decision_stack:
+        return None
+    top = state.decision_stack[-1]
+    source = dict(top.context).get("source")
+    if (
+        top.kind != FrameKind.INTRIGUE_CHOICE
+        or not isinstance(top.decision, PlayerDecision)
+        or not isinstance(source, str)
+        or ":conflict_end:" not in source
+    ):
+        return None
+    return top.decision.owner
+
+
+def _asked_earlier(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    steps: tuple[ReplayStep, ...],
+    index: int,
+    consumed: set[int],
+) -> tuple[int, DomainAction] | None:
+    """The owner's later recorded answer to the Harvest Cells acquisition
+    this engine asks now, if it is legal here."""
+
+    owner = _harvest_cells_choice(state)
+    if owner is None:
+        return None
+    for ahead in range(index, len(steps)):
+        step = steps[ahead]
+        if (
+            ahead in consumed
+            or not isinstance(step, DomainAction)
+            or step.actor != owner
+            or step.action_id not in _HARVEST_CELLS_CHOICES
+        ):
+            continue
+        return (ahead, step) if step in engine.legal_actions(state, owner) else None
+    return None
+
+
+def _intrigue_choice_on_top(state: GameState, player: int) -> bool:
+    if not state.decision_stack:
+        return False
+    top = state.decision_stack[-1]
+    return (
+        top.kind == FrameKind.INTRIGUE_CHOICE
+        and isinstance(top.decision, PlayerDecision)
+        and top.decision.owner == player
+    )
+
+
+def _plays_harvest_cells(recorded: ReplayStep) -> bool:
+    """Whether a recorded step plays Harvest Cells in its Conflict-end
+    window (the only window that plays it; no other card's rewards step
+    can come between it and the cleanup)."""
+
+    if (
+        not isinstance(recorded, DomainAction)
+        or recorded.action_id != "play_conflict_end_intrigue"
+    ):
+        return False
+    card_id = dict(recorded.arguments).get("card_id")
+    return isinstance(card_id, str) and card_id.startswith(_HARVEST_CELLS_PREFIX)
+
+
+def _conflict_end_finish(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """The window's press after a play: ``finish_conflict_end_intrigue``
+    where a recording engine offered its decline again (codec v149, user
+    decision 2026-10-18)."""
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or not isinstance(step, DomainAction)
+        or step.action_id != "decline_conflict_end_intrigue"
+    ):
+        return None
+    finish = DomainAction(
+        action_id="finish_conflict_end_intrigue", actor=decision.owner
+    )
+    return finish if finish in engine.legal_actions(state, decision.owner) else None
 _TURN_ROW_STEPS: Final = frozenset(
     {
         "choose_research_influence",
@@ -2352,6 +2535,14 @@ BRIDGES: tuple[Bridge, ...] = (
         _research_icon_order,
         before_codec=149,
         follows=True,
+    ),
+    # Codec v149 (user decision 2026-10-18) finishes the Conflict-end window
+    # after a play, where an older engine offered its decline again.
+    Bridge(
+        "conflict_end_finish",
+        _conflict_end_finish,
+        before_codec=149,
+        rewrites=True,
     ),
     # Codec v149 (cleanup-2b) confirms a Tech acquire Influence with every
     # Faction at the top in Combat, where an older engine let it pick one.

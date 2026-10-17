@@ -398,9 +398,15 @@ def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
     first, second = HARVEST_CELLS
     lone = _conflict_end_window(first)
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
-    played = ENGINE.apply(
+    # The first copy resolves at its play; its acquisition choice answered,
+    # the window is back with the second copy greyed out.
+    resolved = ENGINE.apply(
         _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
     ).state
+    played = ENGINE.apply(
+        resolved, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
+    assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     rng = random.Random(7)
     for state in (lone, played):
         legal = ENGINE.legal_actions(state, 0)
