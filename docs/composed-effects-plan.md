@@ -776,6 +776,45 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   넓음 — 좁힘)·낮은 넷 가운데 셋(자기 box trash 보존, 턴 넘김·닫힘의 멈춤, 다리의 다음 뽑기 확인) 반영. 앱 AI가 같은 출처를 두 번 쓰는
   경우의 질(낮음)은 남김. 약 900판 불변식 탐침에서 멈춤·누수·숨은 정보 문제 없음.
 
+### 정리-2에 함께 넣은 Conflict 끝 순서·세포 수확 (2026-10-18, 브랜치 `cleanup2`, codec v149 그대로)
+
+- **요청:** 사용자 보고 "세포수확 책략 카드 사용할 때 단계가 너무 이상하게 흘러", 앱 분석과 비교한 제안 뒤 결정 "추천한 대로 모든 보상 →
+  병력 회수 → 좌석별 Conflict 끝 창 → 나머지 정리 순서로 바꾸고, 세포 수확은 내는 즉시 표본 2를 주고 획득 여부만 묻게 해줘. 낸 뒤의
+  '쓰지 않음'은 '끝내기'로 보이게 하고, 정리-2 codec v149에 함께 넣어줘."
+- **엔진:** `combat.offer_conflict_end_triggers`가 Conflict의 troop·Commander를 supply로 돌리고(Chani의 Tactics token 전진도 여기,
+  [Main p. 14] [FAQ p. 1]) 좌석마다 손실을 창 frame(`lost`)에 실어 turn 순서로 창을 연다. 세포 수확은 내는 즉시 해결
+  (`intrigue.resolve_conflict_end_trigger`, 보상 먼저 → 표본 2, 그다음 획득 선택; `resolve_intrigue_rewards` 단계·face-up 대기·
+  `intrigue_trigger_fired` 없음). 낸 뒤 창이 열려 있으면 `finish_conflict_end_intrigue`(새 템플릿, 이벤트 `conflict_end_trigger_finished`,
+  화면 "끝내기 · 턴 종료 ▶"). `finish_combat`은 Conflict 카드 수여(`_award_conflict`)·sandworm·marker 0만. 창이 열린 동안
+  `strength.refresh_pre_reveal_strength`는 전투력을 다시 셈하지 않는다 — 같음 확인이 찾은 결함: sandworm이 남은 좌석은 Commander가
+  돌아가며 Skill 몫이 빠져 승자가 바뀌었다.
+- **Conflict 카드는 창 뒤 그대로:** 규칙 순서대로 창 앞에 주면 Planetary Array의 카드가 이긴 순간에 뽑혀(지금은 다음 손패 뒤), v148 기보
+  2,000판 중 약 70판이 다리 없이 갈라졌다. 사용자가 요청한 범위 밖이라 옮기지 않고 [OQ-108](rules/open-questions.md#oq-108--planetary-array의-카드를-뽑는-때)로 남겼다.
+- **주변:** 앱 AI(`HarvestCellsAbility.meets_cost`가 `combat.conflict_end_loss`, 창은 거절 또는 끝내기), 흐린 이유 문구("{specimen}으로
+  만들 {troop}이 {supply}에 없음"), 서버·화면·E2E의 명시적 턴 종료 목록, 서버 자동 거절 설명.
+- **기보 다리(v149 미만):** `harvest_cells_at_once`(엔진이 내는 순간 묻는 획득을 그 좌석의 나중 기록 답으로), `harvest_cells_rewards`
+  (옛 정리의 보상 단계 버림 — 어떤 다리보다 먼저, 그 좌석의 책략 선택이 위에 없을 때만; 낸 장 수만큼 세고 다음 Round Start에서 지움),
+  `conflict_end_finish`(낸 뒤의 거절을 끝내기로 다시 씀).
+- **정해진 차이(`scripts/ab/differences/cleanup2.py`):** 끝내기 이름, 세포 수확의 옛 뒤 단계 없앰(획득 답·보상 단계, 두 사본은 어느 쪽이든
+  짝), 앞당긴 획득 답, 창 구간(기준 엔진의 창 제시부터 정리 또는 앞당긴 마지막 단계까지 상태 비교 빼고 화면은 기준 것), Tactician·세포
+  수확 이벤트를 기준이 남긴 단계로 옮김, 두 장의 버림 더미 순서, Planetary Array+세포 수확 판의 손패 뒤 뽑기, 줄어든 이벤트 로그 길이를
+  세는 `shortfall_refilled` id. 도구에 `Step.state_unchecked`·`Step.fields_unchecked`(그 단계만 일부 필드 빼기)·`At.rows`/`At.index`
+  (나중 기록 답 읽기)를 더했다.
+- **다리를 만들 수 없는 기보:** v148·v147 각 2,000판 중 어긋남 7(Planetary Array+세포 수확 6 — 옛 엔진은 정리에서 세포 수확 선택이 위에
+  있어 카드를 정리 때 뽑았고 이제는 다른 승리처럼 다음 손패 뒤; 세포 수확 두 장+Row 보충 1 — 옛 엔진은 뒤에 낸 카드부터 해결했다), 끝까지
+  차이 38(37판은 두 장의 Intrigue 버림 더미 순서만, 1판은 옛 기록이 획득을 표본보다 먼저 답한 경우 — 사용자가 정한 "표본 먼저" 순서).
+- **관문:** 같음 확인 200판 모두 same(191,836단계; 창 구간 2,110, 앞당긴 획득 답 92, 옛 뒤 단계 없앰 215, 이벤트 옮김 436, 끝내기 56,
+  버림 순서 202, Planetary Array 39, shortfall id 25). 기보 v148·v147 각 2,000판: exact 183, equal 365, transient 1,407, persistent 38,
+  diverged 7, failed 0(다리 `harvest_cells_at_once` 940번/759판, `harvest_cells_rewards` 238번, `conflict_end_finish` 731번). pytest 7,982
+  (관문; 리뷰 뒤 OQ-109 고정 테스트 하나 더)·ruff·mypy. 소크 720판 실패 0. 속도 호출당 43.0 → 46.3µs(+8%, 2b와 같은 수준 — 이번 변경의
+  추가 비용 없음). E2E 61 통과, 실패 6은 2b와 같은 시드 전제(마무리에서). 판이 달라짐: golden `everything`(결정 순서는 같고 Conflict 끝 창
+  세 번의 관측만), tips-v1(124 → 125, 옮겨진 35국면 모두 처음 다른 결정이 Conflict 끝), tip census 하나, 빈 supply 방어 시드(14 → 179, 서버
+  테스트·E2E fixture), 앱 AI 접합 시드, 기보 테스트 시드 둘.
+- **독립 리뷰:** 막는 문제 없음. 중간 둘: 세포 수확 획득 중 뽑힌 책략 카드가 창의 열림(낸 순간에 정함)에 따라 낼 수 있거나 없음 — 공식
+  문서가 말하지 않아 [OQ-109](rules/open-questions.md#oq-109--세포-수확-획득-중에-뽑힌-책략-카드와-conflict-끝-창)로 남기고 지금 동작을
+  테스트로 고정; 같음 확인의 창 구간 규칙이 넓음 — 세포 수확을 내기 전에는 반환 필드만 빼도록, 낸 뒤에도 손패는 비교하도록 좁힘. 낮은
+  셋(옛 흐름 주석, 앞당긴 답의 follows 다리, 게임이 창 구간에서 끝날 때의 carry 보고) 반영.
+
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
 - 내용: 행동을 `동사(대상, slot=k)`로 바꾸고 묶인 행동을 조각 행동으로 나눈다. `slot`은 대기 능력 목록의 자리다(지금
