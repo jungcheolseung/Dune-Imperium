@@ -301,6 +301,13 @@
   5절 "정리 단계"의 "정한 규칙 판단" 5번): Bene Tleilax board 연구 칸의 두 아이콘(표본+폐기, Tleilaxu+표본)과 c7r3 화살표의 두
   보상(카드, 책략)도 위 원칙대로 각각 독립 효과로 두고 소유자가 순서를 고른다("그래도 순서를 고르게 하자. 원칙대로"). 지금은 표본을
   먼저, 책략을 카드보다 먼저 고정 순서로 해결한다(`rules/immortality.py`의 `_resolve_research_bonus`). 구현 전까지 엔진은 그대로다.
+  — **구현(2026-10-17, 정리-2b, 브랜치 `cleanup2`, codec v149):** 소유자 자신의 turn 안에서 두 아이콘 칸은 표본과 Tleilaxu 전진을 각각
+  의무 turn 줄 `resolve_research_icon(effect=specimen|tleilaxu)`로(턴 종료를 막음), 폐기를 선택 trash 줄로 기다리게 해 소유자가 순서를
+  정한다. c7r3는 비용(책략 폐기)을 한 단계로 낸 뒤 두 보상을 빚진 뽑기(`draw_owed_intrigue`·`draw_owed_card`, origin `research_c7r3`,
+  OQ-106)로 남긴다. 차례 밖(Combat, Arrakeen Scouts 단계, turn 안의 Scouts 줄)에서는 연구 보너스 창(`research_bonus` frame)이 아이콘마다
+  줄 하나씩 내는 순서 창이 된다(c7r3는 지불 뒤 같은 창; 폐기 아이콘을 고르면 거절 있는 trash 창이 열림). 새 템플릿
+  `resolve_research_icon` 다섯(Immortality catalog). 옛 기록은 다리 `research_icon_order`가 아이콘들을 일으킨 기록 단계 바로 뒤에 옛
+  고정 순서로 답한다.
 
 ## OQ-028 — 인쇄 조건의 판정 시점: 같은 turn의 뒤 선택으로 성립하는 조건
 
