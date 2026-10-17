@@ -263,6 +263,7 @@ from dune_imperium.rules.graft_boxes import (
 from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
+    pending_research_bonuses,
     research_bonus_block,
     research_influence_factions,
 )
@@ -1962,6 +1963,83 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
             pass
 
 
+def _with_tail(
+    reason: Reason, tail: tuple[str, str], code: str | None = None
+) -> Reason:
+    return (reason[0] + tail[0], reason[1] + tail[1], code or reason[2])
+
+
+def _pending_research(state: GameState, seat: int, found: _Found) -> None:
+    """A research bonus waiting on the seat's own turn that offers nothing
+    now (cleanup-2b, ``turn_rows``): greyed out with the block and that it
+    lapses. c6r6 with every cube at the top waits like an Agent box's
+    Influence; one with a Faction left greys the others out, as Shipping's
+    does (OQ-060). An arrow another effect of the turn could still pay for
+    (an Intrigue card drawn, Solari gained) sits with the waiting ones; at
+    the Tleilaxu track's end it never can.
+    """
+
+    waiting = pending_research_bonuses(state, seat)
+    if not waiting:
+        return
+    reveal = state.decision_stack[-1].kind == FrameKind.REVEAL
+    unmet = _REVEAL_LAPSES_UNMET if reveal else _FREE_ORDER
+    unused = _REVEAL_LAPSES_UNUSED if reveal else _LAPSES_UNUSED
+    owner = state.players[seat]
+    for bonus, _source in waiting:
+        if bonus is ResearchBonus.INFLUENCE_ANY:
+            factions = research_influence_factions(owner)
+            if factions:
+                _influence_at_the_top(
+                    found,
+                    seat,
+                    "research_influence",
+                    "choose_research_influence",
+                    factions,
+                )
+            else:
+                found.row(
+                    "waiting",
+                    "research_influence",
+                    DomainAction(action_id="choose_research_influence", actor=seat),
+                    _with_tail(_ALL_AT_THE_TOP, _REVEAL_LAPSES_UNMET, "waiting")
+                    if reveal
+                    else _ALL_AT_THE_TOP_WAITING,
+                )
+            continue
+        match research_bonus_block(owner, bonus):
+            case ResearchBonusBlock.NO_INTRIGUE:
+                found.row(
+                    "waiting",
+                    "research_bonus_trash",
+                    DomainAction(
+                        action_id="trash_intrigue_for_research_bonus", actor=seat
+                    ),
+                    _with_tail(_NO_INTRIGUE_TO_TRASH, unmet),
+                )
+            case ResearchBonusBlock.SOLARI:
+                found.row(
+                    "waiting",
+                    "research_bonus_pay",
+                    DomainAction(action_id="pay_research_bonus", actor=seat),
+                    _with_tail(
+                        resource_reason(
+                            "solari", SEVEN_SOLARI_COST, owner.resources.solari
+                        ),
+                        unmet,
+                    ),
+                )
+            case ResearchBonusBlock.TLEILAXU_TRACK_END:
+                found.row(
+                    "choice",
+                    "research_bonus_pay",
+                    DomainAction(action_id="pay_research_bonus", actor=seat),
+                    _with_tail(_TLEILAXU_TRACK_END, unused),
+                )
+            case None:
+                pass
+
+
 def _influence_at_the_top(
     found: _Found,
     seat: int,
@@ -3034,6 +3112,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _deferred,
         _leader_reveal,
         _subcommittee_choice,
+        _pending_research,
         _intrigue,
     ),
     FrameKind.AGENT_EFFECTS: (
@@ -3048,6 +3127,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _sietch_tabr,
         _optional_board_effects,
         _subcommittee_choice,
+        _pending_research,
         _intrigue,
     ),
     # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
@@ -3064,7 +3144,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.NAVIGATION_CHOICE: (_navigation,),
     FrameKind.INTRIGUE_EFFECTS: (_intrigue_effects,),
     FrameKind.TECH_ACQUISITION: (_tech,),
-    FrameKind.TURN: (_turn_start_card, _intrigue),
+    FrameKind.TURN: (_turn_start_card, _pending_research, _intrigue),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.CONFLICT_END_TRIGGER: (_conflict_end_trigger,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),

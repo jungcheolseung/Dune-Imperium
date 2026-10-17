@@ -157,6 +157,7 @@ from dune_imperium.agents.app_ai.windows.agent_effects import (
     STITCHED_HORROR_TRASH_INTENT,
 )
 from dune_imperium.agents.app_ai.windows.common import (
+    ResearchBonusGap,
     Source,
     Stage,
     decide,
@@ -380,8 +381,36 @@ def _research_payment(
     return decide(run, [source], skip=decline, forced=False)
 
 
+def research_bonus_now(run: DecisionRun) -> DomainAction | None:
+    """A research bonus waiting on the owner's turn that the app takes now.
+
+    Since cleanup-2b the engine keeps it on the turn as rows until used or
+    lapsed at the turn end, as the app keeps its custom ability on the
+    playmat (module doc): c6r6's ``GainAnyFactionInfluenceCustomAbility``
+    (Explicit, forced) at once; an arrow (c7r3, c8r6) when its Evaluate is
+    worth more than 0 -- otherwise None, and a later prompt asks again.
+    Raises ``ResearchBonusGap`` for an Intrigue card with no archetype.
+    """
+
+    influence = run.by_id("choose_research_influence")
+    if influence:
+        return _research_influence(run, influence)
+    trash = run.by_id("trash_intrigue_for_research_bonus")
+    if trash:
+        if not all(_known_intrigue(ref) for ref in _refs(trash, "card_id")):
+            raise ResearchBonusGap
+        taken = _research_intrigue_trash(run, trash, None)
+        if taken is not None:
+            return taken
+    pay = run.first("pay_research_bonus")
+    if pay is not None:
+        return _research_payment(run, pay, None)
+    return None
+
+
 def research_bonus(run: DecisionRun) -> DomainAction | None:
-    """A research space's printed choice (c6r6, c7r3, c8r6)."""
+    """A research space's printed choice (c6r6, c7r3, c8r6), in its window
+    outside the owner's turn (Combat, the Arrakeen Scouts step)."""
 
     decline = run.first("decline_research_bonus")
     influence = run.by_id("choose_research_influence")

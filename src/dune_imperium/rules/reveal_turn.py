@@ -80,6 +80,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
@@ -4910,6 +4911,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         context.append(
             (TECH_ACQUIRE_PENDING_KEY, turn_context[TECH_ACQUIRE_PENDING_KEY])
         )
+    # A research bonus a Plot raised before the Reveal (cleanup-2b).
+    context.extend(turn_rows.carried(turn_context))
     if carried_undeployable:
         context.append(("undeployable_troops", carried_undeployable))
     if carried_commanders:
@@ -5080,6 +5083,10 @@ def legal_finish_reveal_actions(
         return ()
     if context.get(TECH_ACQUIRE_PENDING_KEY):
         return ()
+    if turn_rows.holds_the_end(state, player):
+        # c6r6's Influence waiting on the Reveal, with a Faction it can raise
+        # (cleanup-2b).
+        return ()
     if owes_track_spy(state, player):
         # The Emperor track's Influence 4 Spy waits in the turn and must be
         # placed before it ends (user ruling 2026-10-04, overriding OQ-057
@@ -5124,6 +5131,9 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             frame_context(state.decision_stack[-1])
         )
     )
+    # So do the research bonuses waiting on the Reveal (cleanup-2b); the
+    # frame goes with the turn.
+    lapsed_events = (*lapsed_events, *turn_rows.lapse(state, action.actor).events)
     # Face-up Intrigue whose window was this Reveal turn expires with it.
     expired = expire_reveal_faceup_intrigue(state, action.actor)
     working = expired.state

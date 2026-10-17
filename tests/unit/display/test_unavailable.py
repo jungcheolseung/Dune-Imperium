@@ -28,6 +28,7 @@ from dune_imperium.content.bloodlines.sardaukar import (
 from dune_imperium.content.immortality.board import (
     RESEARCH_START_ID,
     TLEILAXU_TRACK_END,
+    ResearchBonus,
 )
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
@@ -66,7 +67,11 @@ from dune_imperium.rules.combat import begin_combat_intrigue, resolve_combat_rew
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import OptionBlock
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.immortality import advance_research
+from dune_imperium.rules.immortality import (
+    _bonus_frame,
+    advance_research,
+    pending_research_bonuses,
+)
 from dune_imperium.rules.reveal_turn import pending_reveal_choices
 
 ENGINE = UprisingRulesEngine()
@@ -1803,8 +1808,9 @@ def test_no_contract_recall_row_while_the_reward_has_a_target() -> None:
 
 
 def _research_bonus(origin: str, target: str, **owner_fields: Any) -> GameState:
-    """Seat 0 advances its research token from ``origin`` to ``target``,
-    whose arrow bonus window is then on top (Immortality)."""
+    """Seat 0 advances its research token from ``origin`` to ``target`` in
+    its own turn: the bonus then waits on the turn frame as rows
+    (cleanup-2b, ``turn_rows``)."""
 
     owner = PlayerState(player_id=0, research_space=origin, **owner_fields)
     state = _state(owner, config=RulesetConfig(immortality=True))
@@ -1816,51 +1822,64 @@ def _research_bonus(origin: str, target: str, **owner_fields: Any) -> GameState:
         and dict(action.arguments)["space_id"] == target
     )
     chosen = ENGINE.apply(advanced, choice).state
-    assert chosen.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    assert chosen.decision_stack[-1].kind == FrameKind.TURN
+    assert pending_research_bonuses(chosen, 0)
     return chosen
+
+
+def _research_rows(found: dict[str, Any] | None) -> list[dict[str, Any]]:
+    rows = found["rows"] if found is not None else []
+    return [row for row in rows if "research" in row["key"]]
+
+
+_FREE_ORDER = (
+    "; another effect of this turn can still meet it, and unused it lapses"
+    " when the turn ends",
+    " — 이번 차례의 다른 효과로 채우면 가능, 쓰지 않으면 차례가 끝날 때 사라짐",
+)
 
 
 def test_a_research_bonus_without_an_intrigue_card_greys_out_the_trash() -> None:
     """c7r3's "Trash an Intrigue card" arrow [Immortality p. 16] with an
-    empty Intrigue hand: the window opens anyway with only the decline
-    (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
-    창을 연다"), and the trash shows greyed out on the "choice" surface,
-    naming no card."""
+    empty Intrigue hand, waiting on the turn (cleanup-2b): no row and no
+    decline; the trash shows greyed out with the waiting ones -- an Intrigue
+    card drawn later in the turn would pay for it -- naming no card, and
+    says it lapses."""
 
     state = _research_bonus("c6r2", "c7r3")
-    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
-        "decline_research_bonus"
-    ]
+    legal = {action.action_id for action in ENGINE.legal_actions(state, 0)}
+    assert not legal & {
+        "trash_intrigue_for_research_bonus",
+        "decline_research_bonus",
+    }
     found = _found(state)
-    assert found["frame"] == FrameKind.RESEARCH_BONUS
-    assert [row["key"] for row in found["rows"]] == ["choice:research_bonus_trash"]
-    row = found["rows"][0]
+    assert found["frame"] == FrameKind.TURN
+    rows = _research_rows(found)
+    assert [row["key"] for row in rows] == ["waiting:research_bonus_trash"]
+    row = rows[0]
     assert row["action"]["action_id"] == "trash_intrigue_for_research_bonus"
     assert row["action"]["arguments"] == {}
     assert row["refs"] == []
     assert (row["reason"], row["reason_ko"], row["code"]) == (
-        "No Intrigue card to trash",
-        "폐기할 {intrigue_card} 없음",
+        "No Intrigue card to trash" + _FREE_ORDER[0],
+        "폐기할 {intrigue_card} 없음" + _FREE_ORDER[1],
         "cost",
     )
-    assert found["refs"] == {}
 
 
 def test_a_research_bonus_short_of_solari_greys_out_the_payment() -> None:
     """c8r6's "7 Solari -> two Tleilaxu" arrow with 3 Solari."""
 
     state = _research_bonus("c7r5", "c8r6", resources=Resources(solari=3))
-    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
-        "decline_research_bonus"
-    ]
-    found = _found(state)
-    assert [row["key"] for row in found["rows"]] == ["choice:research_bonus_pay"]
-    row = found["rows"][0]
+    assert _legal(state, "pay_research_bonus") == []
+    rows = _research_rows(_found(state))
+    assert [row["key"] for row in rows] == ["waiting:research_bonus_pay"]
+    row = rows[0]
     assert row["action"]["action_id"] == "pay_research_bonus"
     assert row["action"]["arguments"] == {}
     assert (row["reason"], row["reason_ko"], row["code"]) == (
-        "Needs 7 solari (you have 3)",
-        "{solari:7} 필요 (보유 3)",
+        "Needs 7 solari (you have 3)" + _FREE_ORDER[0],
+        "{solari:7} 필요 (보유 3)" + _FREE_ORDER[1],
         "cost",
     )
 
@@ -1868,19 +1887,48 @@ def test_a_research_bonus_short_of_solari_greys_out_the_payment() -> None:
 def test_a_research_bonus_at_the_tleilaxu_track_end_greys_out_the_payment() -> None:
     """c8r6's "7 Solari -> two Tleilaxu" arrow with the token on the last
     space: the advances would do nothing (OQ-048), so the cost is not
-    offered (OQ-071) and shows greyed out with that reason."""
+    offered (OQ-071) and shows greyed out with that reason; nothing in the
+    turn can change it, so it lapses unused."""
 
     state = _research_bonus(
         "c7r5", "c8r6", resources=Resources(solari=9), tleilaxu_space=7
     )
-    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
+    assert _legal(state, "pay_research_bonus") == []
+    rows = _research_rows(_found(state))
+    assert [row["key"] for row in rows] == ["choice:research_bonus_pay"]
+    row = rows[0]
+    assert row["action"]["action_id"] == "pay_research_bonus"
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        _TLEILAXU_TRACK_END[0] + "; it lapses unused when the turn ends",
+        _TLEILAXU_TRACK_END[1] + " — 차례가 끝나면 쓰지 않은 채 사라짐",
+        _TLEILAXU_TRACK_END[2],
+    )
+
+
+def test_a_research_bonus_window_outside_the_turn_greys_out_the_payment() -> None:
+    """Outside its owner's turn (Combat, the Arrakeen Scouts step) the
+    window opens with only the decline when the cost cannot be paid (user
+    ruling 2026-09-30), and the payment shows greyed out on "choice"."""
+
+    owner = PlayerState(
+        player_id=0, research_space="c8r6", resources=Resources(solari=3)
+    )
+    state = _state(owner, config=RulesetConfig(immortality=True))
+    window = state.push_decision(
+        _bonus_frame(0, ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU, "test")
+    )
+    assert [action.action_id for action in ENGINE.legal_actions(window, 0)] == [
         "decline_research_bonus"
     ]
-    found = _found(state)
+    found = _found(window)
+    assert found["frame"] == FrameKind.RESEARCH_BONUS
     assert [row["key"] for row in found["rows"]] == ["choice:research_bonus_pay"]
     row = found["rows"][0]
-    assert row["action"]["action_id"] == "pay_research_bonus"
-    assert (row["reason"], row["reason_ko"], row["code"]) == _TLEILAXU_TRACK_END
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 7 solari (you have 3)",
+        "{solari:7} 필요 (보유 3)",
+        "cost",
+    )
 
 
 def test_no_research_bonus_row_while_its_cost_can_be_paid() -> None:
@@ -1895,10 +1943,11 @@ def test_no_research_bonus_row_while_its_cost_can_be_paid() -> None:
     for state, offered in cases:
         legal = ENGINE.legal_actions(state, 0)
         assert any(offered in action.action_id for action in legal), offered
-        assert unavailable_choices(state, 0, legal) is None
+        assert _research_rows(unavailable_choices(state, 0, legal)) == []
     # Nor for the Influence bonus, which has no cost.
     influence = _research_bonus("c5r5", "c6r6")
-    assert unavailable_choices(influence, 0, ENGINE.legal_actions(influence, 0)) is None
+    found = unavailable_choices(influence, 0, ENGINE.legal_actions(influence, 0))
+    assert _research_rows(found) == []
 
 
 # --- A Conflict reward's Faction already at the top ---
@@ -2049,7 +2098,8 @@ def test_the_research_influence_bonus_greys_the_factions_at_the_top() -> None:
     """c6r6's "Influence with any Faction" never offers a Faction at 6 --
     "합법 행동 provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060) -- and
     shows it greyed out "이미 최고치" as a Conflict reward does. With every
-    track at 6 the window offers only the decline, the lapse's confirm."""
+    track at 6 it waits on the turn, offering nothing, like an Agent box's
+    Influence, and lapses at the turn end (cleanup-2b)."""
 
     some = _research_bonus("c5r5", "c6r6", influence=Influence(emperor=6, fremen=2))
     assert [args["faction"] for args in _legal(some, "choose_research_influence")] == [
@@ -2059,19 +2109,22 @@ def test_the_research_influence_bonus_greys_the_factions_at_the_top() -> None:
     ]
     assert _legal(some, "decline_research_bonus") == []
     found = _found(some)
-    assert found["frame"] == FrameKind.RESEARCH_BONUS
+    assert found["frame"] == FrameKind.TURN
     assert _faction_rows(
         found, "research_influence", "choose_research_influence"
     ) == {"emperor": _AT_THE_TOP}
 
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     none = _research_bonus("c5r5", "c6r6", influence=full)
-    assert ENGINE.legal_actions(none, 0) == (
-        DomainAction(action_id="decline_research_bonus", actor=0),
+    assert _legal(none, "choose_research_influence") == []
+    assert _legal(none, "decline_research_bonus") == []
+    rows = _research_rows(_found(none))
+    assert [row["key"] for row in rows] == ["waiting:research_influence"]
+    assert (rows[0]["reason_ko"], rows[0]["code"]) == (
+        "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)"
+        " — 차례가 끝날 때까지 못 채우면 사라짐",
+        "waiting",
     )
-    assert _faction_rows(
-        _found(none), "research_influence", "choose_research_influence"
-    ) == {faction: _AT_THE_TOP for faction in _FACTION_NAMES}
 
 
 _FACTION_NAMES = ("emperor", "spacing_guild", "bene_gesserit", "fremen")

@@ -992,6 +992,16 @@ def _old_contract_recall(state: GameState, player: int) -> tuple[DomainAction, .
     )
 
 
+def _research_bonus_window(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``legal_research_bonus_actions`` in the window alone: since
+    cleanup-2b it also offers the bonuses waiting on the owner's turn, which
+    the old copy never saw."""
+
+    if owned_top_frame(state, FrameKind.RESEARCH_BONUS, player) is None:
+        return ()
+    return legal_research_bonus_actions(state, player)
+
+
 def _old_research_bonus(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """``immortality.legal_research_bonus_actions`` before it read
     ``research_bonus_block`` (2026-10-02). The window it answers for now
@@ -1753,7 +1763,7 @@ _PAIRS: list[
     (legal_tleilaxu_acquisitions, _old_tleilaxu),
     (legal_intrigue_play_actions, _old_intrigue_plays),
     (_pending_groups, _old_pending_groups),
-    (legal_research_bonus_actions, _old_research_bonus),
+    (_research_bonus_window, _old_research_bonus),
     (legal_agent_card_recall_actions, _old_agent_card_recall),
     (legal_agent_card_icon_actions, _old_agent_card_icons),
     (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),

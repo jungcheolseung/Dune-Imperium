@@ -513,6 +513,7 @@ const EVENT_LABELS = {
   reclaimed_forces_acquired: "되돌아온 병사들 획득",
   research_advanced: "{research} 전진",
   research_bonus_declined: "{research} 보너스: 받지 않음",
+  research_bonus_lapsed: "{research} 보너스: 쓰지 않음",
   research_bonus_paid: "{research} 보너스: 7 {solari} → {tleilaxu} ×2",
   research_drew_card: "{research}: {draw}",
   research_resources_gained: "{research} 보너스: 자원 획득",

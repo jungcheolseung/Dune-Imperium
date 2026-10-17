@@ -21,6 +21,7 @@ Rulings the official documents leave open are OQ-048 to OQ-051.
 
 from copy import replace
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
@@ -38,6 +39,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -466,11 +468,19 @@ def _resolve_research_bonus(
             | ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
             | ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
         ):
-            # The window opens even when an arrow's cost cannot be paid
-            # (``research_bonus_block``): its owner then confirms the lapse
-            # with ``decline_research_bonus``, the only legal choice (user
-            # ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두
-            # 결정 창을 연다").
+            # Inside the owner's own turn the choice waits on the turn as
+            # rows, with no refusal, and an unused one lapses at the press
+            # (user decision 2026-10-17, cleanup-2b; ``turn_rows``).
+            # Elsewhere the window opens even when an arrow's cost cannot be
+            # paid (``research_bonus_block``): its owner then confirms the
+            # lapse with ``decline_research_bonus``, the only legal choice
+            # (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
+            # 모두 결정 창을 연다").
+            queued = turn_rows.queue(
+                state, player, (turn_rows.RESEARCH_BONUS, source, bonus.value)
+            )
+            if queued is not None:
+                return RuleResult(state=queued, events=())
             return RuleResult(
                 state=state.push_decision(
                     _bonus_frame(player, bonus, source)
@@ -561,11 +571,71 @@ def research_influence_factions(owner: PlayerState) -> tuple[Faction, ...]:
     return tuple(faction for faction in Faction if influence_can_rise(owner, faction))
 
 
+# The row each waiting research bonus is taken with, by action id.
+_BONUS_OF_ACTION: Final = {
+    "choose_research_influence": ResearchBonus.INFLUENCE_ANY,
+    "trash_intrigue_for_research_bonus": (
+        ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+    ),
+    "pay_research_bonus": ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU,
+}
+
+
+def _bonus_rows(
+    owner: PlayerState, player: int, bonus: ResearchBonus
+) -> tuple[DomainAction, ...]:
+    """The rows that take ``bonus`` now, none when it offers nothing."""
+
+    if bonus is ResearchBonus.INFLUENCE_ANY:
+        return tuple(
+            DomainAction(
+                action_id="choose_research_influence",
+                actor=player,
+                arguments=(("faction", faction.value),),
+            )
+            for faction in research_influence_factions(owner)
+        )
+    if research_bonus_block(owner, bonus) is not None:
+        return ()
+    if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
+        return tuple(
+            DomainAction(
+                action_id="trash_intrigue_for_research_bonus",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.intrigue_cards
+        )
+    if bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
+        return (DomainAction(action_id="pay_research_bonus", actor=player),)
+    raise RuntimeError(f"research bonus has no choices: {bonus}")
+
+
+def pending_research_bonuses(
+    state: GameState, player: int
+) -> tuple[tuple[ResearchBonus, str], ...]:
+    """The research bonuses waiting on ``player``'s own turn frame, when it
+    is on top: (bonus, source), oldest first (cleanup-2b)."""
+
+    frame = turn_rows.rows_frame(state, player)
+    if frame is None:
+        return ()
+    return tuple(
+        (ResearchBonus(value), source)
+        for kind, source, value in turn_rows.pending(frame)
+        if kind == turn_rows.RESEARCH_BONUS
+    )
+
+
 def legal_research_bonus_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
     """Offer the chosen Influence, the optional trash, or the optional payment.
+
+    Inside the owner's own turn the bonuses wait on the turn frame and are
+    offered there, each with the rows that take it now and no refusal
+    (cleanup-2b, ``turn_rows``). A window elsewhere:
 
     While the arrow's cost cannot be paid (``research_bonus_block``) only
     ``decline_research_bonus`` is offered: the window still opens, and its
@@ -576,41 +646,20 @@ def legal_research_bonus_actions(
     (OQ-060, 2026-09-30 addition).
     """
 
+    owner = state.players[player]
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
     if frame is None:
-        return ()
-    bonus = ResearchBonus(context_str(dict(frame.context), "bonus", owner=_BONUS_LABEL))
-    owner = state.players[player]
-    decline = DomainAction(action_id="decline_research_bonus", actor=player)
-    if bonus is ResearchBonus.INFLUENCE_ANY:
-        factions = research_influence_factions(owner)
-        if not factions:
-            return (decline,)
         return tuple(
-            DomainAction(
-                action_id="choose_research_influence",
-                actor=player,
-                arguments=(("faction", faction.value),),
-            )
-            for faction in factions
+            row
+            for bonus, _source in pending_research_bonuses(state, player)
+            for row in _bonus_rows(owner, player, bonus)
         )
-    if research_bonus_block(owner, bonus) is not None:
-        return (decline,)
-    if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="trash_intrigue_for_research_bonus",
-                    actor=player,
-                    arguments=(("card_id", card_id),),
-                )
-                for card_id in owner.intrigue_cards
-            ),
-        )
-    if bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
-        return (decline, DomainAction(action_id="pay_research_bonus", actor=player))
-    raise RuntimeError(f"research bonus frame has no choices: {bonus}")
+    bonus = ResearchBonus(context_str(dict(frame.context), "bonus", owner=_BONUS_LABEL))
+    decline = DomainAction(action_id="decline_research_bonus", actor=player)
+    rows = _bonus_rows(owner, player, bonus)
+    if bonus is ResearchBonus.INFLUENCE_ANY:
+        return rows or (decline,)
+    return (decline, *rows)
 
 
 def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
@@ -618,12 +667,25 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
 
     if action not in legal_research_bonus_actions(state, action.actor):
         raise ValueError("action is not a legal research bonus choice")
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    source = context_str(context, "source", owner=_BONUS_LABEL)
-    bonus = ResearchBonus(context_str(context, "bonus", owner=_BONUS_LABEL))
     player = action.actor
-    popped = state.pop_decision()
+    frame = state.decision_stack[-1]
+    if frame.kind == FrameKind.RESEARCH_BONUS:
+        context = dict(frame.context)
+        source = context_str(context, "source", owner=_BONUS_LABEL)
+        bonus = ResearchBonus(context_str(context, "bonus", owner=_BONUS_LABEL))
+        popped = state.pop_decision()
+    else:
+        # Taken from the owner's turn frame (cleanup-2b): the oldest waiting
+        # bonus this row takes.
+        bonus = _BONUS_OF_ACTION[action.action_id]
+        source = next(
+            source
+            for waiting, source in pending_research_bonuses(state, player)
+            if waiting is bonus
+        )
+        popped = turn_rows.take(
+            state, player, (turn_rows.RESEARCH_BONUS, source, bonus.value)
+        )
     arguments = dict(action.arguments)
     if action.action_id == "decline_research_bonus":
         return RuleResult(

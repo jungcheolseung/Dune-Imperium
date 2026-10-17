@@ -33,6 +33,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.effects import (
     agent_turn_has_other_pending_effects,
     close_agent_turn,
@@ -415,6 +416,10 @@ def legal_agent_turn_finish_actions(
         return ()
     if owes_track_spy(state, player) or context.get(TECH_ACQUIRE_PENDING_KEY):
         return ()
+    if turn_rows.holds_the_end(state, player):
+        # c6r6's Influence waiting on the turn, with a Faction it can raise
+        # (cleanup-2b): taking it is mandatory.
+        return ()
     if owes_held_draw(state, player):
         # A triggered draw waits as its own step and is taken before the
         # turn ends (user ruling 2026-10-10, OQ-106).
@@ -759,8 +764,14 @@ def apply_agent_turn_finish(
     # visited space's optional icons and the Leader's optional repeat.
     lapsed = lapse_optional_boxes(state)
     lapsed_board = lapse_optional_board_effects(lapsed.state, player)
-    working = lapsed_board.state
-    events: list[GameEvent] = [*lapsed.events, *lapsed_board.events]
+    # So do the research bonuses waiting on the turn (cleanup-2b).
+    lapsed_rows = turn_rows.lapse(lapsed_board.state, player)
+    working = lapsed_rows.state
+    events: list[GameEvent] = [
+        *lapsed.events,
+        *lapsed_board.events,
+        *lapsed_rows.events,
+    ]
     for _ in range(4):
         # Mandatory boxes that could not be met by the turn's end fizzle now
         # (OQ-057), the grafted partner's with its box made active.
@@ -892,6 +903,9 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
     recruited_more = _recruited_units(context) > recruited_at_press
     if (
         agent_turn_has_other_pending_effects(reopened, state.players)
+        # An effect the press's own steps queued on the turn (none can
+        # today) is the turn's own too, never dropped unseen.
+        or bool(turn_rows.pending(frame))
         or owes_track_spy(state, owner)
         or owes_held_draw(state, owner)
         or (

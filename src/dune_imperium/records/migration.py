@@ -256,6 +256,7 @@ def migrate_record(
         _GraftSlot() if replay.action_codec_version < GRAFT_BOXES_CODEC else None
     )
     drops_refusals = replay.action_codec_version < OPTIONAL_REFUSALS_CODEC
+    drops_turn_row_refusals = replay.action_codec_version < TURN_ROW_REFUSALS_CODEC
     reveal = (
         _RevealSlot() if replay.action_codec_version < REVEAL_CHOICES_CODEC else None
     )
@@ -318,6 +319,14 @@ def migrate_record(
                     and recorded.action_id in _OPTIONAL_REFUSALS
                 ):
                     dropped.append((index, OPTIONAL_REFUSAL_DROPPED))
+                    break
+                if (
+                    bridged is None
+                    and drops_turn_row_refusals
+                    and isinstance(recorded, DomainAction)
+                    and recorded.action_id in _TURN_ROW_REFUSALS
+                ):
+                    dropped.append((index, TURN_ROW_REFUSAL_DROPPED))
                     break
                 if (
                     bridged is None
@@ -419,6 +428,15 @@ _OPTIONAL_REFUSALS: Final = frozenset(
         "resolve_desert_tactics_without_trash",
     }
 )
+# Codec v149 (cleanup-2b, user decision 2026-10-17, OQ-095 (2)): a research
+# bonus raised in its owner's own turn waits on the turn as rows with no
+# refusal, and the turn's end lapses it, so a recording engine's in-turn
+# ``decline_research_bonus`` has no counterpart and leaves the same state;
+# it is dropped once this engine refuses it (outside the turn the window and
+# its decline remain, and the step is applied as recorded).
+TURN_ROW_REFUSALS_CODEC: Final = 149
+TURN_ROW_REFUSAL_DROPPED: Final = "turn_row_refusal"
+_TURN_ROW_REFUSALS: Final = frozenset({"decline_research_bonus"})
 # Also from v146 (user ruling 2026-10-14, OQ-019): Reverend Mother's repeat
 # no longer queues the Arrakeen Scouts mission collection again, an effect
 # of the visit not printed on the space. The pieces were all collected

@@ -130,12 +130,15 @@ from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
 from dune_imperium.agents.app_ai.windows.common import (
+    RESEARCH_BONUS_ROW_IDS,
+    ResearchBonusGap,
     Source,
     Stage,
     decide,
     int_arg,
     str_arg,
     triggered_draw,
+    waiting_research_bonus,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
@@ -1006,7 +1009,14 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
     drawn = triggered_draw(run)
     if drawn is not None:
         return drawn
-    if any(action.action_id not in _KNOWN_ACTION_IDS for action in run.legal):
+    try:
+        research = waiting_research_bonus(run)
+    except ResearchBonusGap:
+        return None
+    if research is not None:
+        return research
+    known = _KNOWN_ACTION_IDS | RESEARCH_BONUS_ROW_IDS
+    if any(action.action_id not in known for action in run.legal):
         return None  # an id with no app key: fall back, never pass it over
     owed = tech_acquire_effect_sources(run)
     if owed is None:

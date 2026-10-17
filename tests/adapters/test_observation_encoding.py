@@ -665,6 +665,16 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # 2,972 -> 2,728) and scouts at 459 (round 7, seat 3, Captured Mentat;
 # 2,872 -> 3,028). ``adapters/observation_encoding.py`` and
 # ``core/observation.py`` are unchanged.
+# Re-pinned for codec v149 (cleanup-2b, observation still v32): a research
+# space's bonus choice raised inside its owner's own turn waits on the turn's
+# frame as rows instead of opening a window with a refusal (composed-effects
+# plan, rule decision 2; OQ-095 (2)). A scratch export of the previous
+# commit's source (93c8446b, ``git archive``) reproduces the ``everything``
+# pin exactly, and its decision trace equals this one through decision 830;
+# at 831 (round 10, seat 1, c6r6 after Breakthrough) the Influence rows
+# stand in the Agent-turn effect frame beside the box's other effects and
+# the random seat resolves a card draw first (3,580 vectors either way).
+# The other five games meet no in-turn research bonus and keep their pins.
 _GOLDEN_DIGESTS = {
     "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
     "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
@@ -673,7 +683,7 @@ _GOLDEN_DIGESTS = {
         3160,
     ),
     "everything": (
-        "5823f7ba81a8863c205489d33ecbc0eaf254254093c78dec6240d7b0f8b0c2bb",
+        "f7f8bdb86701b4c0d35ea72616478d7a8321ea4ea39c99c11c1e27db1f62e049",
         3580,
     ),
     "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),

@@ -572,6 +572,7 @@ const LABELS_EN = {
     "reclaimed_forces_acquired": "Reclaimed Forces Acquired",
     "research_advanced": "{research} Advanced",
     "research_bonus_declined": "{research} Bonus: Declined",
+    "research_bonus_lapsed": "{research} Bonus: Unused",
     "research_bonus_paid": "{research} Bonus: 7 {solari} → {tleilaxu} ×2",
     "research_drew_card": "{research}: {draw}",
     "research_resources_gained": "{research} Bonus: Resource Gained",

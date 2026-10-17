@@ -266,6 +266,8 @@ from dune_imperium.agents.app_ai.context import (
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
 from dune_imperium.agents.app_ai.windows.common import (
+    RESEARCH_BONUS_ROW_IDS,
+    ResearchBonusGap,
     Source,
     Stage,
     decide,
@@ -273,6 +275,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     spy_answer,
     str_arg,
     triggered_draw,
+    waiting_research_bonus,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import (
@@ -2065,7 +2068,14 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     drawn = triggered_draw(run)
     if drawn is not None:
         return drawn
-    if any(a.action_id not in _REVEAL_ACTIONS for a in run.legal):
+    try:
+        research = waiting_research_bonus(run)
+    except ResearchBonusGap:
+        return None
+    if research is not None:
+        return research
+    known = _REVEAL_ACTIONS | RESEARCH_BONUS_ROW_IDS
+    if any(a.action_id not in known for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
     batch = _return_batch(run)
     if batch is not None:

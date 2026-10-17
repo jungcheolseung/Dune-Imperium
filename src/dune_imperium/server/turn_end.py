@@ -42,6 +42,7 @@ from typing import Final
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.combat_deployment import (
     FINISHING_KEY,
     legal_agent_turn_finish_actions,
@@ -309,5 +310,9 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     # A Tech tile's acquire effects still waiting hold the end back too
     # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``).
     if context.get(TECH_ACQUIRE_PENDING_KEY):
+        return None
+    # So does c6r6's Influence waiting with a Faction it can raise
+    # (cleanup-2b; public facts: the frame's context, the seat's Influence).
+    if turn_rows.holds_the_end(state, owner):
         return None
     return owner

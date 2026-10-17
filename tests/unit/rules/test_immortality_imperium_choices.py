@@ -1284,7 +1284,10 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
         if dict(a.arguments)["space_id"] == "c6r6"
     )
     advanced = engine.apply(resolved, to_influence_choice).state
-    assert advanced.decision_stack[-1].kind == "research_bonus"
+    # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
+    # mandatory, so the end waits for it.
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not _turn_end_offered(advanced)
 
     influence_choice = next(
         a
@@ -1309,6 +1312,65 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
+    # Cleanup-2b (user decision 2026-10-17; OQ-095 (2): an optional effect
+    # "holds no turn end back and offers no refusal; the press lapses it"):
+    # c8r6's "7 Solari -> two Tleilaxu" arrow raised by Experimentation's
+    # Research waits on the Agent turn, offers nothing with 3 Solari, holds
+    # no end back, and the press lapses it with ``research_bonus_lapsed``.
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        pending_research_bonuses,
+    )
+
+    owner = _owner(
+        (EXPERIMENTATION,), research_space="c7r5", resources=Resources(solari=3)
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(placed, legal_contract_actions(placed, 0)[0]).state
+    resolved = resolve_agent_card_effect(taken).state
+    to_c8r6 = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c8r6"
+    )
+    advanced = engine.apply(resolved, to_c8r6).state
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [bonus.value for bonus, _ in pending_research_bonuses(advanced, 0)] == [
+        "seven_solari_for_two_tleilaxu"
+    ]
+    assert "pay_research_bonus" not in _offered_ids(advanced)
+    assert "decline_research_bonus" not in _offered_ids(advanced)
+    assert _turn_end_offered(advanced)
+
+    pressed = engine.apply(
+        advanced, DomainAction(action_id="finish_agent_turn", actor=0)
+    )
+    lapsed = [
+        dict(e.payload) for e in pressed.events if e.kind == "research_bonus_lapsed"
+    ]
+    assert lapsed == [{"bonus": "seven_solari_for_two_tleilaxu", "player": 0}]
+    assert pressed.state.players[0].resources.solari == 3
 
 
 def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> None:
@@ -1368,7 +1430,10 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         if dict(a.arguments)["space_id"] == "c6r6"
     )
     advanced = engine.apply(resolved, to_influence_choice).state
-    assert advanced.decision_stack[-1].kind == "research_bonus"
+    # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
+    # mandatory, so the end waits for it.
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not _turn_end_offered(advanced)
 
     influence_choice = next(
         a

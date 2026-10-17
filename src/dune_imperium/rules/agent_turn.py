@@ -37,6 +37,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_box_abilities import box_ability, opens_at_placement
 from dune_imperium.rules.agent_effects import (
     agent_card_icons_at_placement,
@@ -554,6 +555,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         if turn_context.get(TECH_ACQUIRE_PENDING_KEY)
                         else ()
                     ),
+                    # A research bonus a Plot raised before the Agent went
+                    # out (cleanup-2b).
+                    *turn_rows.carried(turn_context),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (
                         # Subversive Advisor's waiting box holds the space's

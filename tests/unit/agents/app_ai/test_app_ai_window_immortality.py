@@ -56,11 +56,18 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
 from dune_imperium.agents.app_ai.windows.turn import GRAFT_PARTNER_INTENT
+from dune_imperium.content.immortality.board import ResearchBonus
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.immortality import advance_research, move_research_token
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.immortality import (
+    _bonus_frame,
+    advance_research,
+    move_research_token,
+    pending_research_bonuses,
+)
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.simulation.runner import run_policy_game
@@ -124,10 +131,39 @@ def _research_seat(**changes: object) -> tuple[GameState, int]:
 
 def _bonus_state(before: str, space: str, **changes: object) -> GameState:
     """The research token moved from ``before`` onto ``space`` (its bonus
-    frame or its optional trash on top)."""
+    waiting on the Reveal, or its optional trash on top)."""
 
     state, seat = _research_seat(research_space=before, **changes)
     return move_research_token(state, seat, space, source="test").state
+
+
+_BONUS_OF: dict[str, ResearchBonus] = {
+    "c6r6": ResearchBonus.INFLUENCE_ANY,
+    "c7r3": ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE,
+    "c8r6": ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU,
+}
+
+
+def _window(space: str, **changes: object) -> GameState:
+    """``space``'s bonus window, as it opens outside the owner's turn
+    (Combat, the Arrakeen Scouts step; cleanup-2b)."""
+
+    state, seat = _research_seat(research_space=space, **changes)
+    return state.push_decision(_bonus_frame(seat, _BONUS_OF[space], "test"))
+
+
+def _waiting(space: str, **changes: object) -> GameState:
+    """``space``'s bonus waiting on the seat's Reveal frame, on top
+    (cleanup-2b): its rows beside the Reveal's others."""
+
+    state, seat = _research_seat(research_space=space, **changes)
+    queued = turn_rows.queue(
+        state.pop_decision(),
+        seat,
+        (turn_rows.RESEARCH_BONUS, "test", _BONUS_OF[space].value),
+    )
+    assert queued is not None
+    return queued
 
 
 # -- registry ----------------------------------------------------------------------
@@ -312,7 +348,7 @@ def test_research_advance_takes_a_breakthrough_plays_space() -> None:
 
 
 def test_research_bonus_influence_is_gain_any_influence_evaluate() -> None:
-    state = _bonus_state("c5r5", "c6r6")
+    state = _window("c6r6")
     assert state.decision_stack[-1].kind == "research_bonus"
     profile = make_profile(state, _seat(state))
     tracks = tuple(track_entity(f) for f in FACTIONS)
@@ -323,6 +359,18 @@ def test_research_bonus_influence_is_gain_any_influence_evaluate() -> None:
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "choose_research_influence"
     assert _arg(action, "faction") == answer.response[0][0]
+    # Waiting on the turn, the forced Influence is taken first, the same.
+    waiting = _waiting("c6r6")
+    assert W.research_bonus_now(_run(waiting)) == action
+
+
+def test_a_research_bonus_moved_in_the_turn_waits_on_it() -> None:
+    state = _bonus_state("c5r5", "c6r6")
+    assert state.decision_stack[-1].kind != "research_bonus"
+    turn = state.pop_decision()
+    assert [b for b, _ in pending_research_bonuses(turn, _seat(state))] == [
+        ResearchBonus.INFLUENCE_ANY
+    ]
 
 
 _SPRING_THE_TRAP = "intrigue:spring_the_trap:0"
@@ -342,25 +390,29 @@ def test_research_bonus_trashes_a_junk_intrigue() -> None:
     """Spring the Trap with no Spy on the board is junk (``IsBadIntrigue``):
     ``TrashIntrigueForDrawAndIntrigue`` answers it at 5.0."""
 
-    state = _bonus_state(
-        "c6r2", "c7r3", intrigue_cards=(_SPRING_THE_TRAP,), **_no_spies()
-    )
+    state = _window("c7r3", intrigue_cards=(_SPRING_THE_TRAP,), **_no_spies())
     action = W.research_bonus(_run(state))
     assert action is not None
     assert action.action_id == "trash_intrigue_for_research_bonus"
     assert _arg(action, "card_id") == _SPRING_THE_TRAP
+    waiting = _waiting("c7r3", intrigue_cards=(_SPRING_THE_TRAP,), **_no_spies())
+    assert W.research_bonus_now(_run(waiting)) == action
 
 
 def test_research_bonus_keeps_a_useful_intrigue() -> None:
-    state = _bonus_state("c6r2", "c7r3", intrigue_cards=(_SPRING_THE_TRAP,))
+    state = _window("c7r3", intrigue_cards=(_SPRING_THE_TRAP,))
     assert state.players[_seat(state)].spy_post_ids  # not junk with a Spy out
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "decline_research_bonus"
+    # Waiting on the turn, the app leaves it on its playmat for now.
+    waiting = _waiting("c7r3", intrigue_cards=(_SPRING_THE_TRAP,))
+    assert W.research_bonus_now(_run(waiting)) is None
 
 
-def _c8r6(tleilaxu: int, solari: int) -> GameState:
+def _c8r6(tleilaxu: int, solari: int, *, waiting: bool = False) -> GameState:
     resources = replace(_research().players[1].resources, solari=solari)
-    return _bonus_state("c7r5", "c8r6", tleilaxu_space=tleilaxu, resources=resources)
+    build = _waiting if waiting else _window
+    return build("c8r6", tleilaxu_space=tleilaxu, resources=resources)
 
 
 def test_research_bonus_pays_seven_solari_for_two_tleilaxu() -> None:
@@ -368,6 +420,7 @@ def test_research_bonus_pays_seven_solari_for_two_tleilaxu() -> None:
     assert state.decision_stack[-1].kind == "research_bonus"
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "pay_research_bonus"
+    assert W.research_bonus_now(_run(_c8r6(0, 9, waiting=True))) == action
 
 
 @pytest.mark.parametrize("tleilaxu", [6, 7])
@@ -387,13 +440,14 @@ def test_research_bonus_never_pays_near_the_end_of_the_tleilaxu_track(
     )
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "decline_research_bonus"
+    assert W.research_bonus_now(_run(_c8r6(tleilaxu, 9, waiting=True))) is None
 
 
 def test_research_bonus_lapse_is_the_only_decline() -> None:
     """c7r3 with no Intrigue in hand: the window opens with the lapse only
     (``decline_research_bonus``), which is the answer."""
 
-    state = _bonus_state("c6r2", "c7r3", intrigue_cards=())
+    state = _window("c7r3", intrigue_cards=())
     run = _run(state)
     assert {a.action_id for a in run.legal} == {"decline_research_bonus"}
     action = W.research_bonus(run)
@@ -404,7 +458,7 @@ def test_research_bonus_with_an_unknown_choice_is_a_gap() -> None:
     """A bonus id the window does not know is not answered with the decline
     (regression: the handler used to fall through to ``decline``)."""
 
-    state = _bonus_state("c6r2", "c7r3", intrigue_cards=())
+    state = _window("c7r3", intrigue_cards=())
     run = _run(state)
     seat = _seat(state)
     mystery = DomainAction(action_id="mystery_research_bonus", actor=seat)

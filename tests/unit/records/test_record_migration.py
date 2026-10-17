@@ -69,6 +69,7 @@ from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import active_box
+from dune_imperium.rules.immortality import pending_research_bonuses
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
@@ -466,6 +467,42 @@ def test_a_scouts_seat_with_nothing_to_take_is_answered_only_before_v149(
     assert after.divergence.recorded_index == first - sum(
         1 for index in confirms if index < first
     )
+
+
+def test_an_in_turn_research_decline_is_dropped_only_before_v149(
+    game: GameReplay,
+) -> None:
+    # Cleanup-2b: a research bonus raised in its owner's turn waits on the
+    # turn with no refusal, so an older engine's in-turn
+    # ``decline_research_bonus`` has no counterpart; it leaves the same
+    # state, and is dropped once this engine refuses it.
+    states = _states(game)
+    index = next(
+        i
+        for i, (state, step) in enumerate(zip(states, game.steps, strict=True))
+        if isinstance(step, DomainAction)
+        and pending_research_bonuses(state, step.actor)
+    )
+    seat = _actor(game, index)
+    decline = DomainAction(action_id="decline_research_bonus", actor=seat)
+
+    def with_decline(codec: int) -> tuple[GameReplay, int]:
+        older = _older(game, codec)
+        position = _position(game, codec, index)
+        steps = (*older.steps[:position], decline, *older.steps[position:])
+        return replace(older, steps=steps), position
+
+    before, position = with_decline(148)
+    record = migrate_record(before)
+    assert record.complete, record.divergence
+    assert (position, "turn_row_refusal") in record.dropped
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+
+    after, position = with_decline(149)
+    stamped = migrate_record(after)
+    assert stamped.divergence is not None
+    assert stamped.divergence.recorded_index == position
 
 
 def test_a_combat_intrigue_pass_is_answered_only_for_records_before_v139(

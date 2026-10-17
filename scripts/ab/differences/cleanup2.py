@@ -7,7 +7,9 @@ the stage's start master (``d892cd6c``). Each rule's ``why`` names the plan's
 sub-stage; a sub-stage adds its rules here with its change.
 """
 
-from equivalence_rules import At, Rule
+import re
+
+from equivalence_rules import At, Rule, Step
 
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.rules.frames import FrameKind
@@ -29,11 +31,149 @@ def _scouts_no_option(at: At) -> object:
     return None
 
 
+# --- 2b-1: research bonuses raised in the owner's turn wait on it ---------
+
+_RESEARCH_ROWS = frozenset(
+    {
+        "choose_research_influence",
+        "trash_intrigue_for_research_bonus",
+        "pay_research_bonus",
+    }
+)
+_IN_TURN_SOURCE = re.compile(r"^round:\d+:player:\d+:")
+# The page's greyed-out rows of a waiting research bonus (display.unavailable
+# ``_pending_research``).
+_RESEARCH_ROW_KEY = re.compile(r"^(choice|waiting):research_(influence|bonus_)")
+
+
+def _seat_view(step: Step) -> dict[str, object]:
+    return step.views[step.step[2]] if step.step[0] == "a" else {}
+
+
+def _in_turn_research_window(step: Step) -> bool:
+    """A base step answering a research bonus window raised in its owner's
+    own turn (its events name a player's source; Combat keeps the window)."""
+
+    if step.step[0] != "a":
+        return False
+    view = _seat_view(step)
+    if view.get("decision_kind") != "research_bonus" or view.get("phase") == "combat":
+        return False
+    ids = [event["event_id"] for event in step.events]
+    return bool(ids) and all(_IN_TURN_SOURCE.match(i) for i in ids[:1])
+
+
+def _research_decline_vanishes(step: Step) -> None:
+    """2b-1: the in-turn decline has no counterpart (the bonus waits and the
+    turn end lapses it); its event goes with it."""
+
+    if step.step[1] == "decline_research_bonus" and _in_turn_research_window(step):
+        step.vanish = True
+        step.events = [e for e in step.events if e["kind"] != "research_bonus_declined"]
+
+
+def _research_window_rows(step: Step) -> None:
+    """2b-1: the base's window offered its decline beside the rows."""
+
+    if _in_turn_research_window(step) and isinstance(step.decision, list):
+        rows = step.decision[1]
+        step.decision[1] = [
+            r for r in rows if r["action_id"] != "decline_research_bonus"
+        ]
+
+
+def _only_research_rows(old: Step, candidate: Step) -> None:
+    """2b-1: where the base answered its window, the candidate offers the
+    same rows inside its turn's list: compare those, with the window's
+    views and page."""
+
+    if not _in_turn_research_window(old) or not isinstance(candidate.decision, list):
+        return
+    candidate.decision[1] = [
+        r for r in candidate.decision[1] if r["action_id"] in _RESEARCH_ROWS
+    ]
+    for view, base in zip(candidate.views, old.views, strict=True):
+        view["decision_kind"] = base["decision_kind"]
+        view["turn_owner"] = base["turn_owner"]
+    candidate.page = old.page
+
+
+def _no_waiting_research(old: Step, candidate: Step) -> None:
+    """2b-1: a bonus the base declined still waits in the candidate's turn
+    until the turn end lapses it: its rows (and with them the page, whose
+    per-row parts follow the list and whose dimmed cards spare an Intrigue
+    card the trash row could take) or, offering nothing, its greyed-out row."""
+
+    if (
+        old.step[0] != "a"
+        or _in_turn_research_window(old)
+        or not isinstance(candidate.decision, list)
+        or not isinstance(candidate.decision[1], list)
+    ):
+        return
+    offered = (
+        {r["action_id"] for r in old.decision[1]}
+        if isinstance(old.decision, list) and isinstance(old.decision[1], list)
+        else set()
+    )
+    rows = [
+        r
+        for r in candidate.decision[1]
+        if r["action_id"] not in _RESEARCH_ROWS or r["action_id"] in offered
+    ]
+    if len(rows) != len(candidate.decision[1]):
+        candidate.decision[1] = rows
+        candidate.page = old.page
+        return
+    page = candidate.page
+    if isinstance(page, list) and isinstance(page[1], dict):
+        kept = [r for r in page[1]["rows"] if not _RESEARCH_ROW_KEY.match(r["key"])]
+        if len(kept) == len(page[1]["rows"]):
+            return
+        if not kept and (not isinstance(old.page, list) or old.page[1] is None):
+            page[1] = None
+        else:
+            page[1]["rows"] = kept
+
+
+def _no_research_lapse(old: Step, candidate: Step) -> None:
+    """2b-1: the turn end lapses a waiting bonus with an event."""
+
+    candidate.events = [
+        e for e in candidate.events if e["kind"] != "research_bonus_lapsed"
+    ]
+
+
 RULES = (
     Rule(
         "scouts_no_option_window",
         why="cleanup-2a: decision 6, OQ-071 addendum (a Scouts seat with no line "
         "is asked)",
         answer=_scouts_no_option,
+    ),
+    Rule(
+        "research_decline_vanishes",
+        why="cleanup-2b: decision 2 (OQ-095 (2)), no in-turn research refusal",
+        old=_research_decline_vanishes,
+    ),
+    Rule(
+        "research_window_rows",
+        why="cleanup-2b: decision 2, the in-turn window's decline row goes",
+        old=_research_window_rows,
+    ),
+    Rule(
+        "research_rows_in_the_turn",
+        why="cleanup-2b: decision 2, the window's rows are turn rows",
+        new=_only_research_rows,
+    ),
+    Rule(
+        "research_rows_wait",
+        why="cleanup-2b: decision 2, an unused bonus waits until the turn end",
+        new=_no_waiting_research,
+    ),
+    Rule(
+        "research_lapse_event",
+        why="cleanup-2b: decision 2, the turn end lapses it with an event",
+        new=_no_research_lapse,
     ),
 )

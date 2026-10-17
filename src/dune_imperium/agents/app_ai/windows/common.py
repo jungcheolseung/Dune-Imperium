@@ -22,6 +22,7 @@ flat legal actions, so an adapter:
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Final
 
 from dune_imperium.agents.app_ai.catalog import post_entity, spy_entity
 from dune_imperium.agents.app_ai.choice import (
@@ -88,6 +89,34 @@ class Source:
     evaluate: Callable[[], tuple[float, DomainAction | None]] | None = None
     order: int = 0
     extra: dict[str, object] = field(default_factory=dict)
+
+
+#: The rows a research bonus waiting on the owner's turn is taken with
+#: (cleanup-2b): the turn windows know them, and ``waiting_research_bonus``
+#: answers them first.
+RESEARCH_BONUS_ROW_IDS: Final = frozenset(
+    {
+        "choose_research_influence",
+        "trash_intrigue_for_research_bonus",
+        "pay_research_bonus",
+    }
+)
+
+
+class ResearchBonusGap(Exception):
+    """A waiting research bonus the app AI cannot value (a census gap)."""
+
+
+def waiting_research_bonus(run: DecisionRun) -> DomainAction | None:
+    """The research bonus waiting on the turn the app takes now, or None
+    (``windows.immortality.research_bonus_now``, imported here because that
+    module imports the turn windows). Raises ``ResearchBonusGap``."""
+
+    from dune_imperium.agents.app_ai.windows.immortality import research_bonus_now
+
+    if not any(a.action_id in RESEARCH_BONUS_ROW_IDS for a in run.legal):
+        return None
+    return research_bonus_now(run)
 
 
 def decide(

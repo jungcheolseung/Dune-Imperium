@@ -31,6 +31,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -59,6 +60,7 @@ from dune_imperium.rules.immortality import (
     legal_research_advance_actions,
     legal_research_bonus_actions,
     legal_specimen_return_actions,
+    pending_research_bonuses,
     research_bonus_block,
 )
 from dune_imperium.rules.optional_trash import legal_optional_trash_actions
@@ -274,6 +276,32 @@ def test_trash_and_specimen_pays_the_specimen_then_offers_the_trash() -> None:
     )
 
 
+def _waits_on_the_turn(state: GameState, bonus: ResearchBonus) -> None:
+    """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
+    own turn the bonus opens no window; it waits on the turn frame as rows
+    with no refusal."""
+
+    assert state.decision_stack[-1].kind == "turn"
+    assert [waiting for waiting, _source in pending_research_bonuses(state, 0)] == [
+        bonus
+    ]
+    legal = {a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)}
+    assert "decline_research_bonus" not in legal
+
+
+def _lapses_unused(state: GameState, bonus: ResearchBonus) -> GameState:
+    """Offering nothing now, the bonus waits and lapses at the turn end."""
+
+    assert legal_research_bonus_actions(state, 0) == ()
+    assert not turn_rows.holds_the_end(state, 0)
+    lapsed = turn_rows.lapse(state, 0)
+    assert [(e.kind, dict(e.payload)) for e in lapsed.events] == [
+        ("research_bonus_lapsed", {"bonus": bonus.value, "player": 0})
+    ]
+    assert pending_research_bonuses(lapsed.state, 0) == ()
+    return lapsed.state
+
+
 def test_influence_bonus_asks_for_a_faction() -> None:
     state = _at("c5r5")
     result = advance_research(state, 0, source="test")
@@ -281,7 +309,9 @@ def test_influence_bonus_asks_for_a_faction() -> None:
         result.state, _research_choices(result.state)["c6r6"]
     )
 
-    assert chosen.state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    _waits_on_the_turn(chosen.state, ResearchBonus.INFLUENCE_ANY)
+    # Mandatory: it holds the turn's end while a Faction can rise.
+    assert turn_rows.holds_the_end(chosen.state, 0)
     actions = {
         str(dict(action.arguments)["faction"]): action
         for action in legal_research_bonus_actions(chosen.state, 0)
@@ -290,6 +320,20 @@ def test_influence_bonus_asks_for_a_faction() -> None:
     gained = apply_research_bonus(chosen.state, actions["fremen"])
     assert gained.state.players[0].influence.fremen == 1
     assert gained.state.decision_stack[-1].kind == "turn"
+    assert pending_research_bonuses(gained.state, 0) == ()
+    assert not turn_rows.holds_the_end(gained.state, 0)
+
+
+def test_a_research_bonus_outside_the_owner_s_turn_still_opens_its_window() -> None:
+    # Combat is no player's turn [Main p. 8]: the window opens as before,
+    # with its decline (user ruling 2026-09-30).
+    state = replace(_at("c5r5"), phase=GamePhase.COMBAT, decision_stack=())
+    result = advance_research(state, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c6r6"]
+    )
+    assert chosen.state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    assert len(legal_research_bonus_actions(chosen.state, 0)) == 4
 
 
 def test_influence_bonus_never_offers_a_faction_at_the_top() -> None:
@@ -311,22 +355,21 @@ def test_influence_bonus_never_offers_a_faction_at_the_top() -> None:
     ]
 
 
-def test_influence_bonus_with_every_faction_at_the_top_offers_only_the_decline() -> (
-    None
-):
-    # "고를 진영이 없어도 선택 frame은 그대로 ... 열리고" (OQ-060, 2026-09-30
-    # addition): the window still opens, and its decline confirms the lapse,
-    # as for an arrow whose cost cannot be paid.
+def test_influence_bonus_with_every_faction_at_the_top_waits_and_lapses() -> None:
+    # c6r6 with every cube at 6 waits, like an Agent box's Influence, and
+    # lapses at the turn end (cleanup-2b, OQ-057 (1)); it does not hold the
+    # end.
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     state = _at("c5r5", influence=full)
     result = advance_research(state, 0, source="test")
     chosen = apply_research_advance(
         result.state, _research_choices(result.state)["c6r6"]
     )
+    _waits_on_the_turn(chosen.state, ResearchBonus.INFLUENCE_ANY)
     owner_before = chosen.state.players[0]
-    declined = _declined_only(chosen.state)
-    assert declined.players[0] == owner_before
-    assert declined.players[0].influence == full
+    lapsed = _lapses_unused(chosen.state, ResearchBonus.INFLUENCE_ANY)
+    assert lapsed.players[0] == owner_before
+    assert lapsed.players[0].influence == full
 
 
 def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
@@ -343,13 +386,17 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
         result.state, _research_choices(result.state)["c7r3"]
     )
 
+    _waits_on_the_turn(
+        chosen.state, ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+    )
+    # Optional: it holds no end.
+    assert not turn_rows.holds_the_end(chosen.state, 0)
     actions = legal_research_bonus_actions(chosen.state, 0)
     assert [(a.action_id, dict(a.arguments)) for a in actions] == [
-        ("decline_research_bonus", {}),
         ("trash_intrigue_for_research_bonus", {"card_id": held}),
     ]
     owner_before = chosen.state.players[0]
-    paid = apply_research_bonus(chosen.state, actions[1])
+    paid = apply_research_bonus(chosen.state, actions[0])
     owner = paid.state.players[0]
     assert owner.trashed == ()
     assert paid.state.intrigue_discard == (*chosen.state.intrigue_discard, held)
@@ -357,34 +404,17 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     # No personal card left the hand; one was drawn.
     assert len(owner.hand) == len(owner_before.hand) + 1
     assert [event.kind for event in paid.events][0] == "intrigue_card_trashed"
-    declined = apply_research_bonus(
-        chosen.state, DomainAction(action_id="decline_research_bonus", actor=0)
-    )
-    assert declined.state.players[0].intrigue_cards == (held,)
-    assert held not in declined.state.intrigue_discard
+    lapsed = turn_rows.lapse(chosen.state, 0)
+    assert [e.kind for e in lapsed.events] == ["research_bonus_lapsed"]
+    assert lapsed.state.players[0].intrigue_cards == (held,)
+    assert held not in lapsed.state.intrigue_discard
 
 
-def _declined_only(state: GameState) -> GameState:
-    """The research bonus window is on top and offers only the decline,
-    which closes it with the public ``research_bonus_declined`` event."""
-
-    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
-    decline = DomainAction(action_id="decline_research_bonus", actor=0)
-    assert legal_research_bonus_actions(state, 0) == (decline,)
-    assert UprisingRulesEngine().legal_actions(state, 0) == (decline,)
-    declined = apply_research_bonus(state, decline)
-    assert [event.kind for event in declined.events] == ["research_bonus_declined"]
-    assert declined.state.decision_stack == state.decision_stack[:-1]
-    return declined.state
-
-
-def test_trash_intrigue_bonus_without_an_intrigue_card_offers_only_the_decline() -> (
-    None
-):
+def test_trash_intrigue_bonus_without_an_intrigue_card_waits_and_lapses() -> None:
     # The arrow's cost cannot be paid with an empty Intrigue hand, however
-    # many personal cards the owner holds. The window still opens, and its
-    # owner confirms the lapse (user ruling 2026-09-30, "결정 창 없이 자동으로
-    # 넘어가는 곳도 모두 결정 창을 연다"; before, it lapsed unasked).
+    # many personal cards the owner holds: the bonus waits on the turn,
+    # offering nothing, and lapses at its end (cleanup-2b; a window with only
+    # the decline, user ruling 2026-09-30, until codec v149).
     state = _at("c6r2")
     assert state.players[0].intrigue_cards == ()
     result = advance_research(state, 0, source="test")
@@ -397,9 +427,14 @@ def test_trash_intrigue_bonus_without_an_intrigue_card_offers_only_the_decline()
     )
     assert block is ResearchBonusBlock.NO_INTRIGUE
     owner_before = chosen.state.players[0]
-    declined = _declined_only(chosen.state)
-    assert declined.decision_stack[-1].kind == "turn"
-    assert declined.players[0] == owner_before
+    _waits_on_the_turn(
+        chosen.state, ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+    )
+    lapsed = _lapses_unused(
+        chosen.state, ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+    )
+    assert lapsed.decision_stack[-1].kind == "turn"
+    assert lapsed.players[0] == owner_before
 
 
 def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
@@ -412,16 +447,16 @@ def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
         chosen.state.players[0], ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
     )
     assert block is ResearchBonusBlock.SOLARI
-    declined = _declined_only(chosen.state)
-    assert declined.players[0].resources.solari == 6
-    assert declined.players[0].tleilaxu_space == 0
+    lapsed = _lapses_unused(chosen.state, ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU)
+    assert lapsed.players[0].resources.solari == 6
+    assert lapsed.players[0].tleilaxu_space == 0
 
     rich = _at("c7r5", resources=Resources(solari=7))
     result = advance_research(rich, 0, source="test")
     chosen = apply_research_advance(
         result.state, _research_choices(result.state)["c8r6"]
     )
-    assert chosen.state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    _waits_on_the_turn(chosen.state, ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU)
     paid = apply_research_bonus(
         chosen.state, DomainAction(action_id="pay_research_bonus", actor=0)
     )
@@ -439,7 +474,7 @@ def test_seven_solari_bonus_is_not_offered_at_the_tleilaxu_track_end() -> None:
     # On the track's last space a further advance does nothing (OQ-048), so
     # the 7 Solari would buy nothing: "비용이 있는 줄은 보상 중 하나라도
     # 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user decision
-    # 2026-09-29). Only the decline remains, as when the Solari are short.
+    # 2026-09-29). It waits unusable and lapses, as when the Solari are short.
     finished = _at("c7r5", resources=Resources(solari=9), tleilaxu_space=7)
     result = advance_research(finished, 0, source="test")
     chosen = apply_research_advance(
@@ -449,9 +484,9 @@ def test_seven_solari_bonus_is_not_offered_at_the_tleilaxu_track_end() -> None:
         chosen.state.players[0], ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
     )
     assert block is ResearchBonusBlock.TLEILAXU_TRACK_END
-    declined = _declined_only(chosen.state)
-    assert declined.players[0].resources.solari == 9
-    assert declined.players[0].tleilaxu_space == 7
+    lapsed = _lapses_unused(chosen.state, ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU)
+    assert lapsed.players[0].resources.solari == 9
+    assert lapsed.players[0].tleilaxu_space == 7
 
     # One space short, the first advance still reaches the VP space.
     near = _at("c7r5", resources=Resources(solari=9), tleilaxu_space=6)
