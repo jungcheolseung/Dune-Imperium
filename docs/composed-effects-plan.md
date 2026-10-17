@@ -739,6 +739,43 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
 - **판단 6 밖, 같은 종류로 남은 조용한 건너뜀(리뷰가 찾음, 사용자 결정 필요):** 낼 것이 없는 임무 참가(`scouts_missions.py`, OQ-088 — 창도
   사건도 없음), 모든 진영이 0일 때의 Political Equilibrium(`scouts.py`, 사건 없음). 2026-09-30 판정이 덮는지 정하면 같은 길로 한다.
 
+### 정리-2b에서 만든 것 (2026-10-17~18, 브랜치 `cleanup2`, codec v149 그대로)
+
+- **판단 2 — 차례 안의 연구 보너스·선택 폐기를 차례의 줄로(2b-1·2b-2, OQ-095 (2)):** 소유자 자신의 Agent·Reveal turn 안에서 생긴
+  c6r6·c7r3·c8r6 보너스와 선택 "[trash a card]" 아이콘은 창 대신 turn frame 문맥의 대기 목록(`rules/turn_rows.py`, 키
+  `pending_turn_rows`, TURN → Agent 효과·Reveal frame으로 옮겨 감)에 들어가 거절 없는 줄로 나오고, 쓰지 않으면 누름이 이벤트
+  (`research_bonus_lapsed`·`optional_trash_lapsed`)와 함께 소멸시킨다. c6r6은 올릴 진영이 있는 동안, Arrakis Planetologist의 Intrigue
+  카드(trash 곁의 의무 줄 `draw_planetologist_intrigue`)는 뽑을 때까지 턴 종료를 막는다. 줄 하나는 가장 나중의 trash를 쓰되, 고른 카드의
+  자기 box가 연 trash가 있으면 그것을, 없으면 다른 카드의 자기 box trash는 남겨 둔다(OQ-022). 차례 밖(Combat, Scouts 단계, turn 안의
+  Scouts 줄)은 창 그대로. 턴 종료가 보는 네 곳(엔진 둘, `settle_finishing_agent_turn`, 서버 `agent_turn_end_ready`)은 같은 판정
+  (`turn_rows.holds_the_end`)을 쓰고, 차례가 넘어가거나 닫힐 때 대기 항목이 남아 있으면 엔진이 멈춘다.
+- **판단 1 — 6 경계 없앰(2b-3, OQ-060):** Shipping과 Glowglobes·Navigation Chamber의 획득 Influence는 6인 진영을 내지 않고, 모두 6이면
+  턴 종료를 막지 않다가 누름에 소멸한다(`board_effect_lapsed`·`tech_acquire_effect_lapsed`). turn이 없는 Combat 획득 frame에서는 확인 줄
+  `resolve_tech_influence_without_faction`(새 템플릿, Tech catalog).
+- **판단 5 — 연구 칸 아이콘 순서(2b-4, OQ-027):** 두 아이콘 칸(표본+폐기, 표본+Tleilaxu)은 turn 안에서 의무 줄
+  `resolve_research_icon(effect=…)`(새 템플릿 다섯, Immortality catalog), c7r3는 비용을 낸 뒤 보상 둘이 빚진 뽑기(origin `research_c7r3`).
+  차례 밖은 `research_bonus` 창이 아이콘마다 줄을 내는 순서 창. Immortality만 켠 판의 catalog에도 `draw_owed_card`를 넣었다(리뷰가
+  찾은 막는 결함: 망·탐색 좌석과 PettingZoo 마스크가 그 행을 인코딩하지 못했다).
+- **기보 다리(v149 미만):** 차례 안 거절은 버림(`turn_row_refusal`), 맨 위 진영을 고른 단계는 버림(`influence_at_top`; Combat에서는 확인
+  `tech_influence_confirm`), 연구 아이콘·c7r3 뽑기는 그 단계 바로 뒤에 옛 순서로(`research_icon_order`, 다음 뽑기가 c7r3의 것일 때만),
+  다른 frame 위에서 답한 창의 단계는 붙잡았다가 엔진이 줄을 낼 때 적용(`turn_row_held`, Unexpected Allies 소환 + Liet Kynes). 알려진
+  갈라짐: 다른 진영이 오를 수 있는데 Tech 획득 Influence로 6인 진영을 고른 기록은 그 아이콘이 턴 종료를 막아 누름에서 멈춘다(테스트로 고정).
+- **정해진 차이(`scripts/ab/differences/cleanup2.py`):** 판단 2 규칙 열하나(창의 거절 사라짐·창의 줄을 차례 줄과 비교 — 후보가 정말
+  turn frame에 있을 때만 —, 거절이 사라진 항목만 기다림·소멸 이벤트 빼기, Planetologist 창이 겹친 판의 소멸 이벤트 자리 옮김 — 맞는 짝이
+  없으면 오류), 판단 1 둘, 판단 5 둘(옛 순서로 답하기, 답한 아이콘의 이벤트를 옛 자리로). `time_legal.py`에 기준 엔진용 `base` 모드(답만
+  하고 옛 단계 바꾸기는 하지 않음)를 더했다.
+- **판이 달라짐:** golden `everything`·`promo_bloodlines_tech`, tips-v1(121 → 124, 두 번 다시 캠; 옮겨진 국면은 모두 처음 다른 결정이 옛
+  차례 안 창이나 새 연구 아이콘 줄), tip census 셋, 기보 fixture 시드(95 → 187)·빚진 뽑기 시드(6 → 4), 서버 테스트 시드 둘, learner fixture
+  시드(9 → 10, float 허용치). 정리-2b-1 커밋은 일부 테스트만 돌려 문제집 36국면이 깨진 채 커밋됐다(2b-2에서 함께 다시 캠).
+- **관문(리뷰 반영 뒤):** 같음 확인 200판 모두 same(191,836단계; 연구 아이콘 답 603, trash 줄 712, 거절 사라짐 95). 기보 v148·v147 각
+  2,000판: exact 207, equal 1,784, transient 9, persistent·diverged·failed 0(다리 `research_icon_order` 5,242번/1,302판,
+  `turn_row_refusal` 973번, `turn_row_held` 5번/3판). pytest·ruff·mypy 통과. 소크 360판 실패 0. 속도 호출당 44.0 → 47.5µs(+8%, 같은
+  규칙 모듈로 중앙값 셋; 대기 목록 읽기를 빠르게 하기 전 +12%). E2E 61 통과, 실패 6(`trash_zone`·`endgame`·`lang`·`reveal_choices`·
+  `log_words`·`scouts_stage`)은 모두 "정한 시드의 판에 그 장면이 나와야 한다"는 전제 실패라 마무리에서 시드를 다시 고른다.
+- **독립 리뷰:** 막는 문제 1(위 `draw_owed_card` catalog)·중간 2(Tech 부분 6 기록의 갈라짐 — 문서·테스트로 고정, 정해진 차이 규칙이
+  넓음 — 좁힘)·낮은 넷 가운데 셋(자기 box trash 보존, 턴 넘김·닫힘의 멈춤, 다리의 다음 뽑기 확인) 반영. 앱 AI가 같은 출처를 두 번 쓰는
+  경우의 질(낮음)은 남김. 약 900판 불변식 탐침에서 멈춤·누수·숨은 정보 문제 없음.
+
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
 - 내용: 행동을 `동사(대상, slot=k)`로 바꾸고 묶인 행동을 조각 행동으로 나눈다. `slot`은 대기 능력 목록의 자리다(지금
