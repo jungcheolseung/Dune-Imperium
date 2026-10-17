@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-16 (master, 효과 조각 엔진 전환 A1 병합 뒤)
+기준일: 2026-10-18 (`docs/godot-client-plan`, origin/master `7ba624ad` 뒤로 리베이스)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,9 +28,9 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | composed-a1 병합 (2026-10-16) |
-| pytest | 7,738개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
-| Ruff · mypy | `src tests` 통과, mypy 506파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
+| Godot 분기 · 원격 master | `docs/godot-client-plan`을 origin/master `7ba624ad`(composed-a1, 2026-10-16) 뒤로 리베이스. Godot 구현은 이 브랜치에만 유지 |
+| pytest | Godot 브랜치 7,775개 수집, 7,766개 통과·9 skip·PettingZoo 경고 2개(2026-10-18, Godot 회귀 37개 포함). skip은 macOS 전용 2개·이 PC의 IPv6 localhost 조건 2개·Scouts 앱 추출본 부재 5개 |
+| Ruff · mypy | Godot 브랜치 `src tests scripts/godot` 통과, mypy 520파일. `scripts/`의 다른 기존 Ruff 오류 68건은 검사 대상 아님 |
 | 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
 | action codec | **v148** (다음 번호 v149) |
 | 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
@@ -106,6 +106,8 @@
 
 - **Godot PC 2D 클라이언트:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
   **업데이트 ZIP/전체 패키지는 사용자가 요청할 때만 만든다**(2026-10-15 사용자 결정).
+  현재 소스는 리베이스로 master의 codec v148·관측 v32를 사용한다. 아래 이전 검증·Windows 패키지 수치는
+  리베이스 전 v145 소스의 기록이며, 기존 v145 저장본은 현재 플레이 서버에서 바로 열리지 않는다.
   기본판 드래프트·책략·구매·전투·최종 순위·저장/이어하기와 네 판 완주를 검증했다(49종 행동·12종
   결정창). Python·uv·Git 없는 개인용 Windows ZIP의 이전판은 사용자 시작/플레이 확인을 받았다.
   다른 PC에서 재빌드한 전체 ZIP(233.39 MiB / 풀면 347.54 MiB, SHA `2ca2e23e…`)은 그 PC의
