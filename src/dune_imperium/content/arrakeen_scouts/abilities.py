@@ -6,11 +6,13 @@ cost -> reward lines (``SCOUTS`` timing, one section per line, structure
 ONE_OF where the seat takes one), a sealed auction one reward per winning
 place; the content tables compile them back into ``ScoutsOption`` /
 ``rank_rewards`` (``scouts_option``, ``scouts_options``,
-``scouts_rank_rewards``), which the Scouts step and its line executor read
+``scouts_rank_rewards``, and a choice event's ``passable`` from the mark,
+``scouts_passable``), which the Scouts step and its line executor read
 unchanged. Missions, automatic events, round modifiers, Mercenaries and
 Critical Moment are mechanisms of the module, kept as engine code and named
-by a record without lines (composed A7e); Rebuild Infrastructure's record
-lists what each volunteer pays beside its hook. The rules and the app's
+by a record without lines (composed A7e) after the engine branch that runs
+them (``rules.scouts.SCOUTS_HOOKS``, cleanup-1); Rebuild Infrastructure's
+record lists what each volunteer pays beside its hook. The rules and the app's
 wording are in ``docs/rules/arrakeen-scouts.md``.
 """
 
@@ -41,7 +43,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseFactionInfluence,
     LoseGarrisonTroops,
     PayResources,
-    PaySpecimens,
     PlaceSpy,
     RecallOtherAgent,
     RecallSpy,
@@ -49,7 +50,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     Research,
     Reward,
+    SpendSpecimens,
     TakeContract,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -62,7 +65,7 @@ def _influence(faction: Faction) -> GainInfluence:
 
 
 # "Trash a card from your hand", the price or loss of two events.
-_TRASH_FROM_HAND: Final = TrashPersonalCard(hand_only=True, mandatory=True)
+_TRASH_FROM_HAND: Final = TrashCard(hand_only=True)
 
 
 def _record(
@@ -260,7 +263,7 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             ),
         ),
         # ScoutsEvent political_equilibrium: AutomaticEffect.POLITICAL_EQUILIBRIUM
-        "political_equilibrium": _mechanism("scouts_political_equilibrium"),
+        "political_equilibrium": _mechanism("automatic_political_equilibrium"),
         # ScoutsEvent crackdown
         "crackdown": _record(
             AbilityMark.MANDATORY,
@@ -306,24 +309,24 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             EffectSection(rewards=(GainLowestInfluence(),)),
         ),
         # ScoutsEvent mating_season: AutomaticEffect.MATING_SEASON
-        "mating_season": _mechanism("scouts_mating_season"),
+        "mating_season": _mechanism("automatic_mating_season"),
         # ScoutsEvent unlikely_allies: RoundModifier.IGNORE_INFLUENCE_REQUIREMENTS
-        "unlikely_allies": _mechanism("scouts_unlikely_allies"),
+        "unlikely_allies": _mechanism("modifier_ignore_influence_requirements"),
         # ScoutsEvent clear_the_market: AutomaticEffect.CLEAR_THE_MARKET
-        "clear_the_market": _mechanism("scouts_clear_the_market"),
+        "clear_the_market": _mechanism("automatic_clear_the_market"),
         # ScoutsEvent clear_the_market_choam: AutomaticEffect.CLEAR_THE_MARKET_CONTRACTS
-        "clear_the_market_choam": _mechanism("scouts_clear_the_market_choam"),
+        "clear_the_market_choam": _mechanism("automatic_clear_the_market_contracts"),
         # ScoutsEvent market_opening: RoundModifier.SPICE_MUST_FLOW_DISCOUNT
-        "market_opening": _mechanism("scouts_market_opening"),
+        "market_opening": _mechanism("modifier_spice_must_flow_discount"),
         # ScoutsEvent eyes_on_arrakis: RoundModifier.FACTION_SPACES_ARE_COMBAT
-        "eyes_on_arrakis": _mechanism("scouts_eyes_on_arrakis"),
+        "eyes_on_arrakis": _mechanism("modifier_faction_spaces_are_combat"),
         # ScoutsEvent friends_everywhere: RoundModifier.ANY_FACTION_FOUR_BONUS
-        "friends_everywhere": _mechanism("scouts_friends_everywhere"),
+        "friends_everywhere": _mechanism("modifier_any_faction_four_bonus"),
         # ScoutsEvent rebuild_infrastructure
         "rebuild_infrastructure": _record(
             AbilityMark.OPTIONAL,
             EffectSection(rewards=(), costs=(PayResources(spice=1),)),
-            hook="scouts_rebuild_infrastructure",
+            hook="event_shared",
         ),
         # ScoutsEvent choam_bargain
         "choam_bargain": _record(
@@ -334,7 +337,7 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # ScoutsEvent ingratiate
         "ingratiate": _record(
             AbilityMark.OPTIONAL,
-            EffectSection(rewards=(GainInfluence(),), costs=(PaySpecimens(1),)),
+            EffectSection(rewards=(GainInfluence(),), costs=(SpendSpecimens(1),)),
         ),
         # ScoutsEvent betrayal
         "betrayal": _record(
@@ -371,7 +374,7 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             EffectSection(rewards=(DrawPersonalCards(1),)),
         ),
         # ScoutsAuction mercenaries: AuctionKind.MERCENARIES
-        "mercenaries": _mechanism("scouts_mercenaries"),
+        "mercenaries": _mechanism("auction_mercenaries"),
         # ScoutsAuction competitive_study_mid (one line per winning place)
         "competitive_study_mid": _places(
             EffectSection(rewards=(Research(), GenerateSpecimens(1)))
@@ -389,9 +392,9 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             EffectSection(rewards=(PlaceSpy(),)),
         ),
         # ScoutsAuction critical_moment_mid: AuctionKind.OPEN_CARDS
-        "critical_moment_mid": _mechanism("scouts_critical_moment_mid"),
+        "critical_moment_mid": _mechanism("auction_open_cards"),
         # ScoutsAuction critical_moment_late: AuctionKind.OPEN_CARDS
-        "critical_moment_late": _mechanism("scouts_critical_moment_late"),
+        "critical_moment_late": _mechanism("auction_open_cards"),
         # ScoutsAuction choam_negotiations_mid (one line per winning place)
         "choam_negotiations_mid": _places(EffectSection(rewards=(TakeContract(1),))),
         # ScoutsAuction choam_negotiations_late (one line per winning place)
@@ -440,37 +443,39 @@ SCOUTS_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             ),
         ),
         # Mission security_detail: MissionKind.SECURITY_DETAIL
-        "security_detail": _mechanism("scouts_security_detail"),
+        "security_detail": _mechanism("mission_security_detail"),
         # Mission imperial_reserve: MissionKind.IMPERIAL_RESERVE
-        "imperial_reserve": _mechanism("scouts_imperial_reserve"),
+        "imperial_reserve": _mechanism("mission_imperial_reserve"),
         # Mission desert_riding: MissionKind.DESERT_RIDING
-        "desert_riding": _mechanism("scouts_desert_riding"),
+        "desert_riding": _mechanism("mission_desert_riding"),
         # Mission urban_surveillance: MissionKind.URBAN_SURVEILLANCE
-        "urban_surveillance": _mechanism("scouts_urban_surveillance"),
+        "urban_surveillance": _mechanism("mission_urban_surveillance"),
         # Mission planetary_exploration: MissionKind.PLANETARY_EXPLORATION
-        "planetary_exploration": _mechanism("scouts_planetary_exploration"),
+        "planetary_exploration": _mechanism("mission_planetary_exploration"),
         # Mission choam_research: MissionKind.CHOAM_RESEARCH
-        "choam_research": _mechanism("scouts_choam_research"),
+        "choam_research": _mechanism("mission_choam_research"),
         # Mission choam_escort: MissionKind.CHOAM_ESCORT
-        "choam_escort": _mechanism("scouts_choam_escort"),
+        "choam_escort": _mechanism("mission_choam_escort"),
         # Mission sponsored_research: MissionKind.SPONSORED_RESEARCH
-        "sponsored_research": _mechanism("scouts_sponsored_research"),
+        "sponsored_research": _mechanism("mission_sponsored_research"),
         # Mission back_room_deal: MissionKind.BACK_ROOM_DEAL
-        "back_room_deal": _mechanism("scouts_back_room_deal"),
+        "back_room_deal": _mechanism("mission_back_room_deal"),
         # Mission prison_planet: MissionKind.PRISON_PLANET
-        "prison_planet": _mechanism("scouts_prison_planet"),
+        "prison_planet": _mechanism("mission_prison_planet"),
         # Mission emperors_schemes: MissionKind.EMPERORS_SCHEMES
-        "emperors_schemes": _mechanism("scouts_emperors_schemes"),
+        "emperors_schemes": _mechanism("mission_emperors_schemes"),
         # Mission fedaykin_assistance: MissionKind.FEDAYKIN_ASSISTANCE
-        "fedaykin_assistance": _mechanism("scouts_fedaykin_assistance"),
+        "fedaykin_assistance": _mechanism("mission_fedaykin_assistance"),
         # Mission weirding_warfare: MissionKind.WEIRDING_WARFARE
-        "weirding_warfare": _mechanism("scouts_weirding_warfare"),
+        "weirding_warfare": _mechanism("mission_weirding_warfare"),
         # Mission send_for_aid: MissionKind.SEND_FOR_AID
-        "send_for_aid": _mechanism("scouts_send_for_aid"),
+        "send_for_aid": _mechanism("mission_send_for_aid"),
         # Mission coordinate_with_the_emperor: MissionKind.COORDINATE_WITH_THE_EMPEROR
-        "coordinate_with_the_emperor": _mechanism("scouts_coordinate_with_the_emperor"),
+        "coordinate_with_the_emperor": _mechanism(
+            "mission_coordinate_with_the_emperor"
+        ),
         # Mission tleilaxu_offering: MissionKind.TLEILAXU_OFFERING
-        "tleilaxu_offering": _mechanism("scouts_tleilaxu_offering"),
+        "tleilaxu_offering": _mechanism("mission_tleilaxu_offering"),
     }
 )
 
@@ -485,6 +490,14 @@ def _line(item_id: str, index: int) -> EffectSection:
         or ability.trigger is not None
     ):
         raise ValueError(f"{item_id}: not a Scouts item's line")
+    if any(
+        isinstance(cost, TrashCard)
+        and (cost.this_card or cost.other_in_play is not None)
+        for cost in line.costs
+    ):
+        # The Scouts executor trashes from the hand, or from the hand, the
+        # discard pile and play; it has no "this card" (cleanup-1 review).
+        raise ValueError(f"{item_id}: a Scouts trash cost takes no card in particular")
     return line
 
 
@@ -502,6 +515,13 @@ def scouts_options(item_id: str) -> tuple[ScoutsOption, ...]:
         scouts_option(item_id, index)
         for index in range(len(SCOUTS_ABILITIES[item_id].sections))
     )
+
+
+def scouts_passable(item_id: str) -> bool:
+    """Whether a seat may take none of a choice event's lines: its record is
+    optional (OQ-071; ``ScoutsEvent.passable`` reads it since cleanup-1)."""
+
+    return SCOUTS_ABILITIES[item_id].mark is AbilityMark.OPTIONAL
 
 
 def scouts_rank_rewards(item_id: str) -> tuple[tuple[Reward, ...], ...]:

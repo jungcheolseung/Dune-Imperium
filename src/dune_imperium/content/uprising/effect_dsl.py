@@ -548,7 +548,8 @@ class TrashCard:
 class SpendSpecimens:
     """Spend ``count`` of the player's specimens: they return to the supply
     as troops [Immortality p. 8] ("You may spend 1 specimen" [Organ
-    Merchants card])."""
+    Merchants card]; an Arrakeen Scouts line's specimen cost, Ingratiate,
+    since cleanup-1)."""
 
     count: int = 1
 
@@ -736,18 +737,6 @@ class LoseGarrisonTroops:
             raise ValueError("garrison loss count must be positive")
 
 
-@dataclass(frozen=True, slots=True)
-class PaySpecimens:
-    """Return ``count`` specimens from the Axolotl Tanks to the supply
-    (Ingratiate) [Immortality p. 8]."""
-
-    count: int = 1
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("specimen cost must be positive")
-
-
 type Cost = (
     PayResources
     | LoseInfluence
@@ -765,9 +754,6 @@ type Cost = (
     | LoseFactionInfluence
     | LoseHighestInfluence
     | LoseGarrisonTroops
-    | PaySpecimens
-    # "Trash a card from your hand" as a Scouts line's price or loss.
-    | TrashPersonalCard
 )
 
 
@@ -1771,7 +1757,6 @@ SCOUTS_ONLY_PIECES: Final = (
     LoseFactionInfluence,
     LoseHighestInfluence,
     LoseGarrisonTroops,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
     AcquireReserveCardToHand,

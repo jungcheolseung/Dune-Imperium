@@ -15,7 +15,12 @@ whoever collects first); parked rows ``(mission, seat, location, troops)``.
 from copy import replace
 from typing import Final
 
-from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID, Mission, MissionKind
+from dune_imperium.content.arrakeen_scouts import (
+    MISSIONS,
+    MISSIONS_BY_ID,
+    Mission,
+    MissionKind,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -60,14 +65,13 @@ PRISON_PLANET_COMMANDER: Final = "commander"
 HELIX: Final = "helix"
 RECLAIMED_FORCES: Final = "reclaimed_forces"
 
-# Participation: (troop source, troops parked) per mission kind.
+# Participation: (troop source, troops parked) per mission kind, read from
+# the mission table (``Mission.troop_source`` / ``parked_troops``; cleanup-1 --
+# the numbers were written twice before).
 _PARKING: Final = {
-    MissionKind.SECURITY_DETAIL: ("supply", 1),
-    MissionKind.FEDAYKIN_ASSISTANCE: ("supply", 2),
-    MissionKind.WEIRDING_WARFARE: ("supply", 2),
-    MissionKind.SEND_FOR_AID: ("garrison", 1),
-    MissionKind.COORDINATE_WITH_THE_EMPEROR: ("specimens", 1),
-    MissionKind.TLEILAXU_OFFERING: ("supply", 2),
+    mission.kind: (mission.troop_source.value, mission.parked_troops)
+    for mission in MISSIONS
+    if mission.parked_troops and mission.troop_source is not None
 }
 # Where a mission's collected troops go when their seat visits (OQ-077).
 _TO_CONFLICT: Final = frozenset(

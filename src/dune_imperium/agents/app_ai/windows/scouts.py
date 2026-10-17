@@ -144,6 +144,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     RecallSpy,
     RecruitTroops,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -337,7 +338,7 @@ def scouts_effect(run: DecisionRun) -> DomainAction | None:
             return _pick(
                 run, line, sc.DiscardCostAbility, "scouts_discard", "card_id", cards
             )
-        case TrashPersonalCard(mandatory=True):
+        case TrashCard():
             refs = _strs(run.by_id("scouts_trash_card"), "card_id")
             if not all(card_id(ref) in CARD_ARCHETYPES for ref in refs):
                 return None
