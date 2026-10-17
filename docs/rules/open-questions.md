@@ -1299,7 +1299,12 @@
 - 재판정 예정(2026-10-17 사용자 결정, 정리 단계에서 구현 — [composed-effects-plan.md](../composed-effects-plan.md) 5절
   "정한 규칙 판단" 6번): 고르기 이벤트에서 할 수 있는 줄이 하나도 없는 좌석도 결정 창을 연다(이유와 함께 회색 줄 + 확인) —
   2026-09-30 판정 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"의 적용 표([unavailable-options-plan.md](../unavailable-options-plan.md)
-  5절)에서 빠졌던 경우다. "그 좌석은 아무것도 하지 않는다"는 결과는 그대로다. 구현 전까지 엔진은 결정 없이 `scouts_choice_skipped`를 낸다.
+  5절)에서 빠졌던 경우다. "그 좌석은 아무것도 하지 않는다"는 결과는 그대로다. — **구현(2026-10-17, 정리-2a, 브랜치 `cleanup2`, codec v149):**
+  할 수 있는 줄이 없는 좌석에게도 `scouts_choice` 창이 열리고(이벤트·판매, 그리고 같은 원칙으로 공개된 비밀 선택의 비용 줄을 받을 수
+  없을 때도), 줄은 이유와 함께 회색으로 보이며 유일한 행동 `resolve_scouts_choice_without_option`이 전과 같은
+  `scouts_choice_skipped`를 낸다. 패스가 있는 이벤트라도 이 창에는 패스를 내놓지 않는다(받을 것이 없으니 "패스"가 아니라 "할 수 있는
+  선택 없음"의 확인). 한 번 누르면 그 좌석의 몫이 끝난다(서버 `EXPLICIT_TURN_ENDS`). 옛 기록은 다리 `scouts_no_option_window`가 그 확인을
+  둔다. 테스트 `tests/unit/rules/test_scouts_choices.py`(`_takes_nothing`), E2E `scripts/e2e/scouts.py`("nothing").
 
 ## OQ-072 — Scouts 단계와 Control 방어 배치의 순서
 
