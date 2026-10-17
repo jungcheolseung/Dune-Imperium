@@ -14,6 +14,7 @@ from typing import Final
 from dune_imperium.content.arrakeen_scouts.abilities import (
     scouts_option,
     scouts_options,
+    scouts_passable,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
     BOTH_POOLS,
@@ -40,6 +41,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_SpiceGain_PrivateStock", 13),
         options=scouts_options("private_stock"),
+        passable=scouts_passable("private_stock"),
     ),
     ScoutsEvent(
         event_id="market_research",
@@ -50,7 +52,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_SpiceGain_MarketResearch", 13, 1),
         options=scouts_options("market_research"),
-        passable=True,
+        passable=scouts_passable("market_research"),
     ),
     # --- Intrigue Bonus (family 14) -------------------------------------------------
     ScoutsEvent(
@@ -62,6 +64,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_IntrigueBonus_SmokeAndMirrors", 14),
         options=scouts_options("smoke_and_mirrors"),
+        passable=scouts_passable("smoke_and_mirrors"),
     ),
     ScoutsEvent(
         event_id="rotating_doors",
@@ -72,7 +75,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_IntrigueBonus_RotatingDoors2", 14, 1),
         options=scouts_options("rotating_doors"),
-        passable=True,
+        passable=scouts_passable("rotating_doors"),
     ),
     # --- Single-event families ------------------------------------------------------
     ScoutsEvent(
@@ -84,7 +87,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_MomentOfRevelation", 15),
         options=scouts_options("moment_of_revelation"),
-        passable=True,
+        passable=scouts_passable("moment_of_revelation"),
     ),
     ScoutsEvent(
         event_id="water_discipline",
@@ -95,7 +98,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_WaterDiscipline", 16),
         options=scouts_options("water_discipline"),
-        passable=True,
+        passable=scouts_passable("water_discipline"),
     ),
     # --- Influence Gain (family 17) -------------------------------------------------
     ScoutsEvent(
@@ -107,7 +110,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceGain_RoyalDelegation", 17),
         options=scouts_options("royal_delegation"),
-        passable=True,
+        passable=scouts_passable("royal_delegation"),
     ),
     ScoutsEvent(
         event_id="guild_negotiation",
@@ -118,7 +121,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceGain_Negotiation2", 17, 1),
         options=scouts_options("guild_negotiation"),
-        passable=True,
+        passable=scouts_passable("guild_negotiation"),
     ),
     ScoutsEvent(
         event_id="covert_assistance",
@@ -129,7 +132,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceGain_CovertAssistance", 17, 2),
         options=scouts_options("covert_assistance"),
-        passable=True,
+        passable=scouts_passable("covert_assistance"),
     ),
     ScoutsEvent(
         event_id="gift_of_water",
@@ -140,7 +143,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceGain_GiftOfWater", 17, 3),
         options=scouts_options("gift_of_water"),
-        passable=True,
+        passable=scouts_passable("gift_of_water"),
     ),
     ScoutsEvent(
         event_id="share_intelligence",
@@ -151,7 +154,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceGain_ShareIntelligence", 17, 4),
         options=scouts_options("share_intelligence"),
-        passable=True,
+        passable=scouts_passable("share_intelligence"),
     ),
     # --- Influence Reduction (family 18) ----------------------------------------------
     ScoutsEvent(
@@ -173,6 +176,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceReduction_Crackdown", 18, 1),
         options=scouts_options("crackdown"),
+        passable=scouts_passable("crackdown"),
     ),
     ScoutsEvent(
         event_id="water_for_spice_smugglers",
@@ -183,6 +187,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceReduction_Smugglers2", 18, 2),
         options=scouts_options("water_for_spice_smugglers"),
+        passable=scouts_passable("water_for_spice_smugglers"),
     ),
     ScoutsEvent(
         event_id="bene_gesserit_treachery",
@@ -193,6 +198,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceReduction_Treachery2", 18, 3),
         options=scouts_options("bene_gesserit_treachery"),
+        passable=scouts_passable("bene_gesserit_treachery"),
     ),
     ScoutsEvent(
         event_id="funeral_rites",
@@ -203,6 +209,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=BOTH_POOLS,
         app=AppDefinition("Def_Event_InfluenceReduction_FuneralRites", 18, 4),
         options=scouts_options("funeral_rites"),
+        passable=scouts_passable("funeral_rites"),
     ),
     # --- Covert Operation (family 19): secret picks -----------------------------------
     ScoutsEvent(
@@ -345,6 +352,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         app=AppDefinition("Def_Event_CHOAMBargain", 27),
         choam_only=True,
         options=scouts_options("choam_bargain"),
+        passable=scouts_passable("choam_bargain"),
     ),
     # --- Uprising+Immortality pool ---------------------------------------------------
     ScoutsEvent(
@@ -356,7 +364,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Event_Ingratiate", 8),
         options=scouts_options("ingratiate"),
-        passable=True,
+        passable=scouts_passable("ingratiate"),
     ),
     ScoutsEvent(
         event_id="betrayal",
@@ -367,7 +375,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Event_Betrayal", 9),
         options=scouts_options("betrayal"),
-        passable=True,
+        passable=scouts_passable("betrayal"),
     ),
     ScoutsEvent(
         event_id="new_innovations",
@@ -378,7 +386,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Event_NewInnovations", 10),
         options=scouts_options("new_innovations"),
-        passable=True,
+        passable=scouts_passable("new_innovations"),
     ),
     ScoutsEvent(
         event_id="termination_request",
@@ -389,7 +397,7 @@ EVENTS: Final[tuple[ScoutsEvent, ...]] = (
         pools=IMMORTALITY_ONLY,
         app=AppDefinition("Def_Event_TerminationRequest", 11),
         options=scouts_options("termination_request"),
-        passable=True,
+        passable=scouts_passable("termination_request"),
     ),
     ScoutsEvent(
         event_id="offworld_operation",

@@ -6,7 +6,8 @@ cost -> reward lines (``SCOUTS`` timing, one section per line, structure
 ONE_OF where the seat takes one), a sealed auction one reward per winning
 place; the content tables compile them back into ``ScoutsOption`` /
 ``rank_rewards`` (``scouts_option``, ``scouts_options``,
-``scouts_rank_rewards``), which the Scouts step and its line executor read
+``scouts_rank_rewards``, and a choice event's ``passable`` from the mark,
+``scouts_passable``), which the Scouts step and its line executor read
 unchanged. Missions, automatic events, round modifiers, Mercenaries and
 Critical Moment are mechanisms of the module, kept as engine code and named
 by a record without lines (composed A7e) after the engine branch that runs
@@ -506,6 +507,13 @@ def scouts_options(item_id: str) -> tuple[ScoutsOption, ...]:
         scouts_option(item_id, index)
         for index in range(len(SCOUTS_ABILITIES[item_id].sections))
     )
+
+
+def scouts_passable(item_id: str) -> bool:
+    """Whether a seat may take none of a choice event's lines: its record is
+    optional (OQ-071; ``ScoutsEvent.passable`` reads it since cleanup-1)."""
+
+    return SCOUTS_ABILITIES[item_id].mark is AbilityMark.OPTIONAL
 
 
 def scouts_rank_rewards(item_id: str) -> tuple[tuple[Reward, ...], ...]:
