@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.display import scouts as display_scouts
 from dune_imperium.display.effect_dsl_text import cost_text, reward_text
 from dune_imperium.display.effect_dsl_text_ko import cost_text_ko, reward_text_ko
+from dune_imperium.rules.scouts import SCOUTS_HOOKS
 
 
 def test_every_scouts_item_has_a_record() -> None:
@@ -162,3 +163,15 @@ def test_the_merged_pieces_keep_the_scouts_page_s_wording() -> None:
     assert display_scouts._step_text_ko(TrashCard(hand_only=True), cost=True) == (
         "{hand}의 카드 1장 {trash}"
     )
+
+
+def test_every_scouts_mechanism_is_named_after_its_engine_branch() -> None:
+    """Cleanup-1: a mechanism's hook is the branch that runs it (mission kind,
+    automatic event, round modifier, shared event, auction kind), and every
+    registered branch has an item."""
+
+    hooks = {record.hook for record in SCOUTS_ABILITIES.values() if record.hook}
+    assert hooks == SCOUTS_HOOKS
+    assert {SCOUTS_ABILITIES[mission.mission_id].hook for mission in MISSIONS} == {
+        f"mission_{mission.kind.value}" for mission in MISSIONS
+    }

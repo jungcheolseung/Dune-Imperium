@@ -31,9 +31,12 @@ from dune_imperium.content.arrakeen_scouts import (
     EVENTS_BY_ID,
     MISSIONS_BY_ID,
     SALES_BY_ID,
+    AuctionKind,
     AuctionSlot,
     AutomaticEffect,
     EventKind,
+    MissionKind,
+    RoundModifier,
     ScoutsPool,
     auctions_for,
     events_for,
@@ -42,6 +45,7 @@ from dune_imperium.content.arrakeen_scouts import (
     scouts_pool,
     subcommittees_for,
 )
+from dune_imperium.content.arrakeen_scouts.abilities import SCOUTS_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -810,3 +814,36 @@ def apply_scouts_return_specimens(state: GameState, action: DomainAction) -> Rul
     if kind == FrameKind.SCOUTS_MISSION:
         return apply_mission_join(state, action)
     raise ValueError("no Scouts frame offers a specimen return")
+
+
+# The Arrakeen Scouts mechanisms kept as engine code, named by the branch that
+# runs them (composed A7b, cleanup-1): each mission kind (``scouts_missions``),
+# automatic event and round modifier (this module, ``scouts_modifiers``), the
+# shared event (``scouts_effects``) and the auctions that are not sealed bids
+# (``scouts_auctions``). Every hook a Scouts record names is one of these.
+SCOUTS_HOOKS: Final = frozenset(
+    {
+        *(f"mission_{kind.value}" for kind in MissionKind),
+        *(f"automatic_{effect.value}" for effect in AutomaticEffect),
+        *(f"modifier_{modifier.value}" for modifier in RoundModifier),
+        "event_shared",
+        *(
+            f"auction_{kind.value}"
+            for kind in AuctionKind
+            if kind is not AuctionKind.SEALED
+        ),
+    }
+)
+
+
+def _check_scouts_hooks() -> None:
+    unknown = {
+        record.hook
+        for record in SCOUTS_ABILITIES.values()
+        if record.hook is not None and record.hook not in SCOUTS_HOOKS
+    }
+    if unknown:
+        raise ValueError(f"Scouts records name no engine branch: {sorted(unknown)}")
+
+
+_check_scouts_hooks()
