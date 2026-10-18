@@ -612,7 +612,9 @@ def test_personal_training_at_the_final_space_gives_no_reward() -> None:
     assert legal_feyd_track_actions(placed, 0) == ()
     result = resolve_agent_card_effect(placed)
 
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert [(e.kind, e.event_id) for e in result.events] == [
+        ("leader_signet_unavailable", "round:1:player:0:leader_signet:unavailable")
+    ]
     assert (
         dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
     )
@@ -1400,7 +1402,9 @@ def test_arrakis_informant_fizzles_when_every_city_post_is_taken() -> None:
     assert legal_leader_signet_actions(placed, 0) == ()
     result = resolve_agent_card_effect(placed)
 
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert [(e.kind, e.event_id) for e in result.events] == [
+        ("leader_signet_unavailable", "round:1:player:0:leader_signet:unavailable")
+    ]
 
 
 def test_arrakis_informant_can_pass_up_the_recall_first_without_supply() -> None:

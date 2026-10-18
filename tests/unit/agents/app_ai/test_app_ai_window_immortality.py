@@ -67,6 +67,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.immortality import (
     _bonus_frame,
     advance_research,
@@ -776,11 +777,25 @@ def test_planetologist_frame_draws_its_intrigue_first() -> None:
 _CONTROL_THE_SPICE = "player:1:starter:control_the_spice:0"
 
 
+def _agent_effects_frame(seat: int, card: str) -> DecisionFrame:
+    """The seat's own Agent-effect frame, its active card ``card``."""
+
+    return DecisionFrame(
+        kind="agent_effects",
+        frame_id="test:agent_effects",
+        decision=PlayerDecision(owner=seat, prompt="Agent effects"),
+        context=(("card_id", card),),
+    )
+
+
 def _control_the_spice_trash() -> GameState:
+    """Control the Spice's trash frame, named exactly after its box (the
+    own Agent-effect frame's active card)."""
+
     state, seat = _research_seat()
-    source = f"round:{state.round_number}:player:{seat}:agent_card_payment"
-    frame = optional_trash_frame(seat, f"{source}:{_CONTROL_THE_SPICE}")
-    return state.push_decision(frame)
+    state = state.push_decision(_agent_effects_frame(seat, _CONTROL_THE_SPICE))
+    source = agent_card_source(state.round_number, seat, _CONTROL_THE_SPICE)
+    return state.push_decision(optional_trash_frame(seat, source))
 
 
 def test_optional_trash_follows_control_the_spices_stored_answer() -> None:
@@ -819,13 +834,13 @@ def test_optional_trash_ignores_another_cards_stored_answer() -> None:
 
 
 def test_optional_trash_follows_stitched_horrors_stored_answer() -> None:
-    """Stitched Horror's trash pick (source ``...:agent_card_payment:<n>``):
-    the card its Evaluate named, keyed by the box's card."""
+    """Stitched Horror's trash pick (source ``<box>:<n>``): the card its
+    Evaluate named, keyed by the box's card."""
 
     state = first_decision("agent_effects", config=IMMORTALITY, seed=1)
     seat = _seat(state)
     card = str(dict(state.decision_stack[-1].context)["card_id"])
-    source = f"round:{state.round_number}:player:{seat}:agent_card_payment:1"
+    source = f"{agent_card_source(state.round_number, seat, card)}:1"
     state = state.push_decision(optional_trash_frame(seat, source))
     run = _run(state)
     refs = [str(arg(a, "card_id")) for a in run.by_id("trash_optional_card")]

@@ -9,6 +9,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -37,6 +39,7 @@ from dune_imperium.rules.acquisition import (
     legal_agent_card_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_influence,
     apply_agent_card_payment,
     legal_agent_card_influence_actions,
@@ -49,10 +52,12 @@ from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.graft import (
     apply_graft_partner,
     legal_graft_partner_actions,
@@ -695,7 +700,11 @@ def test_interstellar_conspiracy_needs_an_emperor_or_guild_partner() -> None:
     assert legal_agent_card_influence_actions(wrong, 0) == ()
     resolved = resolve_agent_card_effect(wrong)
     assert resolved.state.players[0].resources.spice == 3
-    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    box = agent_card_source(1, 0, conspiracy)
+    assert resolved.events == (
+        resources_gained_event(box, 0, spice=1),
+        agent_box_event(box, conspiracy, 0, BoxOutcome.RESOLVED),
+    )
     keys = _card("keys_to_power")  # Spacing Guild, Bene Gesserit
     right = _graft(_state(_owner((conspiracy, keys))), conspiracy, "arrakeen", keys)
     picks = legal_agent_card_influence_actions(right, 0)
@@ -845,10 +854,11 @@ def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> Non
     master = _card("tleilaxu_master")
     unmarked = _place(_state(_owner((master,))), master, "assembly_hall")
     assert legal_agent_card_acquisitions(unmarked, 0) == ()
-    assert (
-        resolve_agent_card_effect(unmarked).events[0].kind
-        == "agent_card_effect_unavailable"
-    )
+    # An optional acquisition resolves through its rows only: with none to
+    # offer, the dry run answers that the box can only lapse (cleanup-2c-2).
+    assert agent_card_effect_is_unavailable(unmarked)
+    with pytest.raises(BoxNeedsRows):
+        resolve_agent_card_effect(unmarked)
 
     imperium = imperium_deck_instance_ids(False)
     row = (_card("spiritual_fervor"), _card("for_humanity"), *imperium[2:5])

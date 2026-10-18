@@ -502,7 +502,7 @@ def test_guild_impersonator_needs_spice_gained_this_turn() -> None:
         .state
     )
     late = resolve_agent_card_effect(spiced)
-    assert late.events[0].kind == "agent_card_effect_resolved"
+    assert late.events[-1].kind == "agent_card_effect_resolved"
     assert late.state.players[0].influence.spacing_guild == 1
 
 

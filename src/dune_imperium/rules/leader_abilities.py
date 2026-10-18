@@ -503,8 +503,8 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
             state=next_state,
             events=(
                 GameEvent(
-                    event_id=source,
-                    kind="agent_card_effect_unavailable",
+                    event_id=f"{source}:unavailable",
+                    kind="leader_signet_unavailable",
                     payload=(("card_id", card_id), ("player", player)),
                 ),
             ),
@@ -521,8 +521,8 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
             state=next_state,
             events=(
                 GameEvent(
-                    event_id=source,
-                    kind="agent_card_effect_unavailable",
+                    event_id=f"{source}:unavailable",
+                    kind="leader_signet_unavailable",
                     payload=(("card_id", card_id), ("player", player)),
                 ),
             ),

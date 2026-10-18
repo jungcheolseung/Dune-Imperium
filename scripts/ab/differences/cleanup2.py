@@ -114,11 +114,28 @@ def _lapsed(kind: str, candidate: Step, event_kind: str, suffix: str) -> None:
     kept = []
     for event in candidate.events:
         source = event["event_id"].removesuffix(suffix)
-        if event["kind"] == event_kind and source in _VANISHED[kind]:
-            _VANISHED[kind].discard(source)
+        named = (_VANISHED[kind] & {source, *_box_aliases(source)}) if (
+            event["kind"] == event_kind
+        ) else set()
+        if named:
+            _VANISHED[kind].discard(named.pop())
             continue
         kept.append(event)
     candidate.events = kept
+
+
+def _box_aliases(source: str) -> set[str]:
+    """The base's names of a frame the candidate names after its Agent box
+    (cleanup-2c-2): Control the Spice's trash ``…:agent_card_payment:<card>``,
+    Stitched Horror's ``…:agent_card_payment:<n>``."""
+
+    box = re.match(
+        rf"^(round:\d+:player:\d+):agent_card:({_CARD_REF})(?::(\d+))?$", source
+    )
+    if box is None:
+        return set()
+    root, card, pick = box.groups()
+    return {f"{root}:agent_card_payment:{pick if pick else card}"}
 
 
 def _at_a_turn_frame(old: Step, candidate: Step) -> bool:
@@ -1159,6 +1176,263 @@ def _gains_in_base_form(old: Step, candidate: Step) -> None:
     candidate.events = translated
 
 
+# --- Cleanup-2c-2: the Agent box's events -----------------------------------
+
+# A card instance (``imperium:long_reach:0``, ``player:1:starter:x:0``).
+_CARD_REF = r"(?:player:\d+:starter|[a-z_]+):[a-z0-9_]+:\d+"
+# ``<box>`` or ``<box>:<icon>``: an Agent box's own source.
+_BOX_SOURCE = re.compile(rf"^round:\d+:player:\d+:agent_card:{_CARD_REF}(?::[a-z_]+)?$")
+_BOX_KINDS = frozenset(
+    {
+        "agent_card_effect_resolved",
+        "agent_card_effect_unavailable",
+        "agent_card_effect_declined",
+        "agent_card_effect_lapsed",
+        "agent_card_effect_expired",
+        "leader_signet_unavailable",
+    }
+)
+# The refusals each answer used to name its own way.
+_BASE_DECLINES = frozenset(
+    {
+        "agent_card_payment_declined",
+        "agent_card_trash_declined",
+        "agent_card_discard_declined",
+        "agent_card_acquisition_declined",
+        "corrinth_city_payment_declined",
+        "agent_card_effect_declined",
+    }
+)
+_GRAFT_TRASHES = frozenset(
+    {"trash_grafted_card_for_influence", "trash_grafted_card_for_specimen"}
+)
+_SEAT_ROOT = re.compile(r"^(round:\d+:player:\d+):")
+
+
+def _pairs_with(kind: str, data: dict[str, object], base: dict[str, object]) -> bool:
+    """Whether the base's event ``base`` is the candidate's box event."""
+
+    base_kind = base["kind"]
+    base_data = _payload(base)
+    if ":agent_card_discard:" in str(base["event_id"]):
+        # Arrakis Observer's spice, a gain (``_box_gains``).
+        return False
+    if base_data.get("player") != data["player"]:
+        return False
+    if "card_id" in base_data and base_data["card_id"] != data.get("card_id"):
+        return False
+    if base_data.get("tech_id") != data.get("tech_id"):
+        # Servo-Receivers' Signet names its tile.
+        return False
+    if "effect" in base_data and base_data["effect"] != data.get("effect"):
+        return False
+    match kind:
+        case "agent_card_effect_declined":
+            return base_kind in _BASE_DECLINES
+        case "leader_signet_unavailable":
+            return base_kind == "agent_card_effect_unavailable"
+    return base_kind == kind
+
+
+def _box_gains(old: Step, event: dict[str, object]) -> list[dict[str, object]]:
+    """A box's ``resources_gained`` as the base logged it: Arrakis
+    Observer's spice under the box's kind, anything else not at all."""
+
+    data = _payload(event)
+    for base in old.events:
+        if ":agent_card_discard:" not in str(base["event_id"]):
+            continue
+        base_data = _payload(base)
+        if base_data.get("player") == data["player"] and all(
+            base_data.get(key, 0) == data.get(key, 0)
+            for key in ("solari", "spice", "water")
+        ):
+            return [base]
+    return []
+
+
+def _box_events_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c-2 (docs/composed-effects-plan.md, "2c-2 — Agent 칸"): the
+    candidate's box events read back as the base's (one per box, named
+    ``<box>:<outcome>``; the base logged some, under other names, and not
+    others), its box gains as the base's (none, or Arrakis Observer's), and
+    every other event named after the box under the base's id when the
+    base logged the same event under another source; then the base's
+    order."""
+
+    used: set[int] = set()
+    out: list[dict[str, object]] = []
+    graft_trash = old.step[0] == "a" and old.step[1] in _GRAFT_TRASHES
+    for event in candidate.events:
+        kind = str(event["kind"])
+        if kind == "resources_gained" and _BOX_SOURCE.match(
+            str(_payload(event)["source"])
+        ):
+            out.extend(_box_gains(old, event))
+            continue
+        if kind not in _BOX_KINDS:
+            out.append(event)
+            continue
+        same = next(
+            (
+                index
+                for index, base in enumerate(old.events)
+                if index not in used and base == event
+            ),
+            None,
+        )
+        if same is not None:
+            # Logged alike (Servo-Receivers' Signet with no ability).
+            used.add(same)
+            out.append(event)
+            continue
+        data = _payload(event)
+        match = next(
+            (
+                index
+                for index, base in enumerate(old.events)
+                if index not in used and _pairs_with(kind, data, base)
+            ),
+            None,
+        )
+        if match is not None:
+            used.add(match)
+            out.append(old.events[match])
+        elif kind == "agent_card_effect_expired" and not graft_trash:
+            # An expiry the base logged a step later (``_expiry_at_the_trash``
+            # carries it): its base id.
+            box = str(event["event_id"]).split(":expired")[0]
+            box = box.removesuffix(":cards")
+            out.append(
+                _base_event(
+                    f"{box}:effect_expired",
+                    kind,
+                    {"card_id": data["card_id"], "player": data["player"]},
+                )
+            )
+    for index, base in enumerate(old.events):
+        if index not in used and "crysknife" in _payload(base):
+            # The Beast's Spoils logged its box at its gains, the candidate
+            # once the Crysknife's trash is done.
+            out.insert(min(index, len(out)), base)
+    # Events named after the box the base named otherwise.
+    spare = [
+        base
+        for base in old.events
+        if base["event_id"] not in {e["event_id"] for e in out}
+        and base["kind"] not in _BOX_KINDS
+    ]
+    for position, event in enumerate(out):
+        root = _SEAT_ROOT.match(str(event["event_id"]))
+        if (
+            root is None
+            or ":agent_card:" not in str(event["event_id"])
+            or event in old.events
+        ):
+            continue
+        for base in spare:
+            if (
+                base["kind"] == event["kind"]
+                and str(base["event_id"]).startswith(root.group(1))
+                and _same_payload(base, event)
+            ):
+                out[position] = base
+                spare.remove(base)
+                break
+    texts = [_row_key(e) for e in out]
+    order = [_row_key(e) for e in old.events]
+    if texts != order and sorted(texts) == sorted(order):
+        by_text: dict[str, list[dict[str, object]]] = {}
+        for text, event in zip(texts, out, strict=True):
+            by_text.setdefault(text, []).append(event)
+        out = [by_text[text].pop(0) for text in order]
+    candidate.events = out
+
+
+def _same_payload(base: dict[str, object], event: dict[str, object]) -> bool:
+    """The payloads match, but a payment's ``gained`` (Slig Farmer's Solari,
+    now a ``resources_gained``) and a source named after the box (a
+    Contract's ``source``)."""
+
+    def plain(data: dict[str, object]) -> dict[str, object]:
+        return {
+            key: "<box>" if ":agent_card" in str(value) else value
+            for key, value in data.items()
+        }
+
+    base_data = _payload(base)
+    if event["kind"] == "agent_card_payment_resolved":
+        base_data.pop("gained", None)
+    return plain(base_data) == plain(_payload(event))
+
+
+def _box_owed_draws(old: Step, at: At) -> None:
+    """A draw an Agent box owes is logged under the box's name when taken
+    (``PlayerState.owed_draws`` holds that source): while a seat holds one
+    so named, its owed draws are compared by what they draw, not by name."""
+
+    for seat, player in enumerate(at.state.players):
+        if any(":agent_card:" in entry[2] for entry in player.owed_draws):
+            old.fields_unchecked.add(f"players[{seat}].owed_draws")
+
+
+def _box_owed_draw_named(old: Step, candidate: Step) -> None:
+    """The step an Agent box owes a draw in (its events named after the
+    box): that seat's owed draws are left to ``_box_owed_draws``."""
+
+    for event in candidate.events:
+        # The ids read as the base's by now (``agent_box_events``).
+        root = re.match(r"^round:\d+:player:(\d+):agent_", str(event["event_id"]))
+        if root is not None:
+            old.fields_unchecked.add(f"players[{root.group(1)}].owed_draws")
+
+
+_BOX_SHUFFLE = re.compile(
+    r"^round:(\d+):player:(\d+):(?:agent_card(?:_discard|_payment)?|shigawire)"
+    r"(?::.+)?:discard_shuffle$"
+)
+
+
+def _box_shuffle_named(old: Step, at: At) -> tuple[ChanceOutcome, ...] | None:
+    """Cleanup-2c-2: a box's draw is named after the box, and so is the
+    discard shuffle it asks for (the base named some after the card's
+    definition): the recorded permutation, under the candidate's name."""
+
+    if old.step[0] != "c" or not isinstance(at.decision, ChanceDecision):
+        return None
+    asked = _BOX_SHUFFLE.match(at.decision.decision_id)
+    recorded = _BOX_SHUFFLE.match(str(old.step[1]))
+    if (
+        asked is None
+        or recorded is None
+        or asked.groups() != recorded.groups()
+        or at.decision.decision_id == old.step[1]
+    ):
+        return None
+    move = ChanceOutcome(decision_id=at.decision.decision_id, values=tuple(old.step[2]))
+    return (move,)
+
+
+def _box_shuffle_or_owed(old: Step, at: At) -> tuple[ChanceOutcome, ...] | None:
+    _box_owed_draws(old, at)
+    return _box_shuffle_named(old, at)
+
+
+def _box_shuffle_decision(old: Step, candidate: Step) -> None:
+    """The renamed shuffle's decision reads as the base's."""
+
+    if (
+        old.step[0] == "c"
+        and isinstance(old.decision, list)
+        and isinstance(candidate.decision, list)
+        and old.decision[0] != candidate.decision[0]
+        and _BOX_SHUFFLE.match(str(old.decision[0]))
+        and _BOX_SHUFFLE.match(str(candidate.decision[0]))
+        and old.decision[1:] == candidate.decision[1:]
+    ):
+        candidate.decision[0] = old.decision[0]
+
+
 def _shortfall_id(event: dict[str, object]) -> tuple[str, ...] | None:
     """A ``shortfall_refilled`` id without its event-log count
     (``round:R:player:P:shortfall_refilled:<count>:T:S``)."""
@@ -1227,6 +1501,23 @@ def _conflict_end_events(old: Step, candidate: Step) -> None:
 
 
 RULES = (
+    Rule(
+        name="agent_box_events",
+        why="cleanup-2c-2: one box event per Agent box, named <box>:<outcome>; "
+        "box sources, gains and refusals unified",
+        new=_box_events_in_base_form,
+    ),
+    Rule(
+        name="agent_box_shuffle",
+        why="cleanup-2c-2: a box's draw shuffle is named after the box",
+        moves=_box_shuffle_or_owed,
+        new=_box_shuffle_decision,
+    ),
+    Rule(
+        name="agent_box_owed_draw",
+        why="cleanup-2c-2: a draw an Agent box owes holds the box's name",
+        new=_box_owed_draw_named,
+    ),
     Rule(
         "scouts_no_option_window",
         why="cleanup-2a: decision 6, OQ-071 addendum (a Scouts seat with no line "

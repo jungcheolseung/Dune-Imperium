@@ -170,8 +170,10 @@ OQ106_FIXTURES: dict[str, dict[str, list[int]]] = {
         "scouts_reward_pause": [307],
     },
     # Imperial Birthright (225) and Overthrow's card (269), which recorded
-    # 272 trashes from hand in an Intrigue choice that offers no owed draw.
-    "v141-app_ai-1050": {"owed_draw": [225, 269]},
+    # 272 trashes from hand in an Intrigue choice that offers no owed draw;
+    # the reshuffle of an Agent box's draw at 195 is named after the box
+    # (codec v149, cleanup-2c-2).
+    "v141-app_ai-1050": {"owed_draw": [225, 269], "reshuffle_renamed": [195]},
     # Hungry for Spice (round 4), whose draw reshuffles: the recorded chance
     # at 257 answers it.
     "v141-no-tech_module-no-immortality-no-go_to_11-random-9167": {
@@ -1884,7 +1886,13 @@ def _where(record: migration.MigratedRecord) -> dict[str, list[int]]:
         ("v141-heuristic-150", {"piter_reward": [557, 557], "owed_draw": [558]}),
         (
             "v141-no-immortality-no-go_to_11-heuristic-1211",
-            {"scouts_held_draw": [471], "owed_draw": [710]},
+            # The reshuffle at 789 is an Agent box's, named after the box
+            # (codec v149, cleanup-2c-2).
+            {
+                "scouts_held_draw": [471],
+                "owed_draw": [710],
+                "reshuffle_renamed": [789],
+            },
         ),
         ("v135-app_ai-3", {"owed_draw": [195]}),
     ],

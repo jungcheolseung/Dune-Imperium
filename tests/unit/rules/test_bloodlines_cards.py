@@ -697,7 +697,11 @@ def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
         _state(_owner(hand=(card,), sandworms_conflict=1)), card, "arrakeen"
     )
     result = resolve_agent_card_effect(with_worm)
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    # The Intrigue draw comes first; the box's own event is last.
+    assert [event.kind for event in result.events] == [
+        "intrigue_card_drawn",
+        "agent_card_effect_resolved",
+    ]
     assert len(result.state.players[0].intrigue_cards) == 1
 
     revealed = _reveal(_state(_six_persuasion_hand(card)))

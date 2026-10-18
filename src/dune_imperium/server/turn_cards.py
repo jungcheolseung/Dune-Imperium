@@ -71,13 +71,6 @@ TRASH_CARD_ACTIONS: Final = frozenset(
         "trash_reveal_card",
     }
 )
-# Beguiling Pheromones and Dissecting Kit clear the other grafted card's
-# box themselves, with no ``agent_card_effect_expired`` event
-# (``rules.agent_effects.apply_agent_card_payment``); trashing the active
-# card itself is that card's own cost and keeps its rewards (OQ-022).
-_GRAFT_TRASHES: Final = frozenset(
-    {"trash_grafted_card_for_influence", "trash_grafted_card_for_specimen"}
-)
 
 
 def turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -165,14 +158,15 @@ def _box_losing_trash(
     was, and loses the box when
 
     - the engine expires the card's box in that step
-      (``agent_card_effect_expired``, ``expire_trashed_card_effects``: an
-      optional trash, a Research bonus, Desert Tactics, an Intrigue card);
+      (``agent_card_effect_expired``: ``expire_trashed_card_effects`` after
+      an optional trash, a Research bonus, Desert Tactics, an Intrigue card;
+      Beguiling Pheromones or Dissecting Kit trashing the other grafted
+      card; trashing the active card itself is that card's own cost and
+      keeps its rewards, OQ-022);
     - or the card has left play while the effect frame still holds its box
       pending, not trashed by its own effect: the engine expires it as soon
       as the frame above closes (Arrakis Planetologist's trash while its
-      Intrigue card still waits in the same frame);
-    - or Beguiling Pheromones or Dissecting Kit trashes the other grafted
-      card, whose box they clear themselves.
+      Intrigue card still waits in the same frame).
 
     Dissecting Kit's row names no card; its row is reported with the
     partner it trashes.
@@ -192,17 +186,12 @@ def _box_losing_trash(
         # row (``box=1``) trashes "the other grafted card" of box 1.
         view, _, _ = route_box_action(state, action)
         context = _effect_context(view)
-        active = context.get("card_id")
         partner = context.get("graft_card_id")
         card_id = dict(action.arguments).get(
             "card_id",
             partner if action.action_id == "trash_grafted_card_for_specimen" else None,
         )
         if not isinstance(card_id, str) or card_id not in pending:
-            continue
-        if action.action_id in _GRAFT_TRASHES:
-            if card_id != active:
-                losing.append((action.action_id, card_id))
             continue
         try:
             result = engine.apply(state, action)

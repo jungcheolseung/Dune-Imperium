@@ -345,12 +345,11 @@ def test_source_category_routes_navigation_gains_to_leader(
         category("round:9:combat_reward:distinct_influence:3:2:fremen:influence")
         == "combat_reward"
     )
-    # Immortality's Agent-box paid resource choice aliases to "agent_card",
-    # not a stray "agent_card_payment" bucket.
+    # Immortality's Agent-box paid resource choice is named after the box.
     assert (
         category(
-            "round:5:player:2:agent_card_payment:research:research:c1r1:"
-            "influence:fremen:influence"
+            "round:5:player:2:agent_card:imperium:scientific_breakthrough:0:"
+            "research:research:c1r1:influence:fremen:influence"
         )
         == "agent_card"
     )

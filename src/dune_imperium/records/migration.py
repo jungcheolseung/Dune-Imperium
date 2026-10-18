@@ -2373,6 +2373,37 @@ def _reshuffle_renamed(
     return ChanceOutcome(decision.decision_id, step.values)
 
 
+_BOX_SHUFFLE = re.compile(
+    r"^round:\d+:player:\d+:(?:agent_card(?:_discard|_payment)?|shigawire):"
+)
+
+
+def _box_reshuffle_renamed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Give a recorded Agent box's discard reshuffle the box's name.
+
+    Codec v149 (cleanup-2c-2) names every draw of an Agent box after the box
+    (``round:R:player:P:agent_card:<card>``), where an older engine named
+    some after the card's definition, ``agent_card_discard``,
+    ``agent_card_payment`` or Urgent Shigawire's ``shigawire:<card>``; the
+    reshuffle a short draw asks for carries that name. Renamed as
+    ``_reshuffle_renamed`` does, for a box's draw on both sides.
+    """
+
+    if not (
+        isinstance(step, ChanceOutcome)
+        and isinstance(decision, ChanceDecision)
+        and _BOX_SHUFFLE.match(step.decision_id)
+        and _BOX_SHUFFLE.match(decision.decision_id)
+    ):
+        return None
+    return _reshuffle_renamed(engine, state, decision, step)
+
+
 _FINISH_AGENT_TURN = "finish_agent_turn"
 
 
@@ -2723,6 +2754,14 @@ BRIDGES: tuple[Bridge, ...] = (
     Bridge(
         "tech_influence_confirm",
         _tech_influence_confirm,
+        before_codec=149,
+        rewrites=True,
+    ),
+    # Codec v149 (cleanup-2c-2) names an Agent box's draws, and the
+    # reshuffles they ask for, after the box.
+    Bridge(
+        "box_reshuffle_renamed",
+        _box_reshuffle_renamed,
         before_codec=149,
         rewrites=True,
     ),

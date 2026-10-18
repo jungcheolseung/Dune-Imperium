@@ -46,6 +46,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.reveal_turn import (
@@ -70,8 +71,9 @@ DAGGER = "player:0:starter:dagger:0"
 DIPLOMACY = "player:0:starter:diplomacy:0"
 RECONNAISSANCE = "player:0:starter:reconnaissance:0"
 CONVINCING = "player:0:starter:convincing_argument:0"
-# The source the paid arrow's trash waits under (round 1, seat 0).
-_CONTROL_SOURCE = f"round:1:player:0:agent_card_payment:{CONTROL}"
+# The source the paid arrow's trash waits under: the card's Agent box (round 1,
+# seat 0; cleanup-2c-2).
+_CONTROL_SOURCE = agent_card_source(1, 0, CONTROL)
 # docs/rules/board-spaces.md:75-79: the five Spice Trade spaces of the base
 # board; Deep Desert, Hagga Basin and Imperial Basin are Combat spaces.
 SPICE_TRADE_SPACES = frozenset(

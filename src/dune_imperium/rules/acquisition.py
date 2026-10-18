@@ -41,6 +41,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -52,6 +53,7 @@ from dune_imperium.rules.effects import (
     OptionalEffectBlock,
     active_agent_card,
     advance_after_effect,
+    agent_card_source,
     current_agent_effect_context,
     recruit_shortfall_events,
     recruit_troops,
@@ -61,6 +63,7 @@ from dune_imperium.rules.frames import (
     OWED_ORIGIN_ACQUIRE,
     FrameKind,
     context_int,
+    context_str,
     replace_player,
     reveal_is_open_for,
     turn_owner_of,
@@ -452,27 +455,34 @@ def apply_agent_card_acquisition(
     recorded = _recorded_acquisition(context)
     assert recorded is not None
     context["pending_agent_effect"] = False
-    source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
+    card_instance_id = context_str(context, "card_id", owner="Agent-turn effect frame")
+    box = agent_card_source(state.round_number, action.actor, card_instance_id)
     if action.action_id == "decline_agent_card_acquisition":
         next_state = advance_after_effect(state, context)
         return RuleResult(
             state=next_state,
             events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="agent_card_acquisition_declined",
-                    payload=(("player", action.actor),),
+                agent_box_event(
+                    box, card_instance_id, action.actor, BoxOutcome.DECLINED
                 ),
             ),
         )
 
     if action.action_id == "acquire_reserve_with_solari":
-        return _acquire_reserve_to_hand_with_solari(state, action, context)
-    if action.action_id in ("acquire_reserve_by_card", "acquire_imperium_by_card"):
+        acquired = _acquire_reserve_to_hand_with_solari(state, action, context)
+    elif action.action_id in ("acquire_reserve_by_card", "acquire_imperium_by_card"):
         piece, _ = recorded
         assert isinstance(piece, AcquireCardUpTo)
-        return _acquire_by_agent_card(state, action, context, piece)
-    return _acquire_imperium_to_hand_with_solari(state, action, context)
+        acquired = _acquire_by_agent_card(state, action, context, piece, box)
+    else:
+        acquired = _acquire_imperium_to_hand_with_solari(state, action, context)
+    return RuleResult(
+        state=acquired.state,
+        events=(
+            *acquired.events,
+            agent_box_event(box, card_instance_id, action.actor, BoxOutcome.RESOLVED),
+        ),
+    )
 
 
 def _acquire_by_agent_card(
@@ -480,15 +490,16 @@ def _acquire_by_agent_card(
     action: DomainAction,
     context: dict[str, ActionValue],
     piece: AcquireCardUpTo,
+    source: str,
 ) -> RuleResult:
-    """A free acquisition by the cost cap; ``to_hand_if`` (Tleilaxu Master's
-    two genetic markers) sends it to the hand."""
+    """A free acquisition by the cost cap, named after the box (``source``);
+    ``to_hand_if`` (Tleilaxu Master's two genetic markers) sends it to the
+    hand."""
 
     owner = state.players[action.actor]
     to_hand = isinstance(piece.to_hand_if, GeneticMarkersAtLeast) and (
         genetic_markers_reached(owner.research_space) >= piece.to_hand_if.count
     )
-    source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
     # The box has resolved; the acquisition's own follow-ups (a Research
     # direction, a Spy post, the Contract market) stack above the turn.
     next_state = advance_after_effect(state, context)

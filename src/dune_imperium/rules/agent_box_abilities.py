@@ -119,6 +119,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
+from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
@@ -142,6 +143,7 @@ from dune_imperium.rules.effects import (
     spice_gained_this_turn,
 )
 from dune_imperium.rules.frames import FrameKind, context_int, replace_player
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -164,8 +166,8 @@ from dune_imperium.rules.spy_placement import (
 )
 from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 
-_RESOLVED = "agent_card_effect_resolved"
-_UNAVAILABLE = "agent_card_effect_unavailable"
+_RESOLVED = BoxOutcome.RESOLVED
+_UNAVAILABLE = BoxOutcome.UNAVAILABLE
 
 
 class AgentIconCondition(StrEnum):
@@ -494,6 +496,27 @@ def _owner_gains(
     return owner, shortfall
 
 
+def _gains_event(
+    rewards: tuple[Reward, ...], source: str, player: int
+) -> tuple[GameEvent, ...]:
+    """The rewards' resources and Victory Points as one ``resources_gained``
+    named ``source`` (rule decisions 3 and 4), or none when it gains
+    neither (only paid arrows print Victory Points, ``apply_payment`` and
+    the Intrigue payment)."""
+
+    amounts = {"solari": 0, "spice": 0, "water": 0, "victory_points": 0}
+    for reward in rewards:
+        if isinstance(reward, GainResources):
+            amounts["solari"] += reward.solari
+            amounts["spice"] += reward.spice
+            amounts["water"] += reward.water
+        elif isinstance(reward, GainVictoryPoints):
+            amounts["victory_points"] += reward.amount
+    if not any(amounts.values()):
+        return ()
+    return (resources_gained_event(source, player, **amounts),)
+
+
 def _intrigue_draws(line: EffectSection) -> int:
     return sum(
         reward.count for reward in line.rewards if isinstance(reward, DrawIntrigueCards)
@@ -533,23 +556,16 @@ def resolve_box(state: GameState) -> RuleResult:
     line = ability.sections[0]
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    if lose_box(ability):
-        # Piter: an optional arrow resolves through its rows; reached by the
-        # dry run only, which keeps its old answer -- the box unavailable
-        # (its provider offered nothing).
-        available = False
-    elif agent_box_acquisition(ability) is not None:
-        # Tleilaxu Master: an optional acquisition resolves through its rows;
-        # reached by the dry run only, which keeps its old answer -- the box
-        # unavailable (its provider offered nothing).
-        available = False
+    if lose_box(ability) or agent_box_acquisition(ability) is not None:
+        # Piter's optional arrow and Tleilaxu Master's optional acquisition
+        # resolve through their rows only; an optional box is never dry-run
+        # (cleanup-2c-2) and lapses at the turn's end.
+        raise BoxNeedsRows("an optional Agent box resolves through its rows")
     elif trash_box(ability):
-        # Ruthless Leadership: reached by the dry run only (the press lapses
-        # the optional box first; ``optional_arrow`` keeps the unconditioned
-        # trash boxes out); its Commander condition is judged now (OQ-028),
-        # and without it the box resolves without effect.
+        # Ruthless Leadership: its Commander condition is judged now
+        # (OQ-028); without it the box resolves without effect.
         if _trash_conditions_hold(owner, ability):
-            raise RuntimeError("Agent-card trash effect requires a player choice")
+            raise BoxNeedsRows("Agent-card trash effect requires a player choice")
         available = False
     elif discard_box(ability) and context.get("agent_card_spy_pending") is True:
         # Arrakis Observer's Deep Cover Spy after its paid discard: placing
@@ -560,7 +576,7 @@ def resolve_box(state: GameState) -> RuleResult:
         # (OQ-057 (1)).
         spy = discard_spy(ability)
         if spy is not None and agent_spy_rows(state, player, spy, context):
-            raise RuntimeError("place-Spy Agent effect requires a player choice")
+            raise BoxNeedsRows("place-Spy Agent effect requires a player choice")
         context.pop("agent_card_spy_pending", None)
         context.pop("agent_card_spy_recalled", None)
         available = False
@@ -568,7 +584,7 @@ def resolve_box(state: GameState) -> RuleResult:
         # Guild Envoy's mandatory discard resolves through its rows; with an
         # empty hand the box waits and fizzles (OQ-057 (1), OQ-028).
         if discard_rows(state, player, ability):
-            raise RuntimeError("Agent-card discard effect requires a player choice")
+            raise BoxNeedsRows("Agent-card discard effect requires a player choice")
         available = False
     else:
         available = _line_holds(line, owner, context)
@@ -577,7 +593,7 @@ def resolve_box(state: GameState) -> RuleResult:
         # is a caller's error, and with none the box waits and fizzles
         # (OQ-057 (1)) -- a Spy box dropping its recall-first marks.
         if target_rows(state, player, ability):
-            raise target_choice_error(ability)
+            raise BoxNeedsRows("the Agent box resolves through its target choice")
         if isinstance(piece, PlaceSpy):
             context.pop("agent_card_spy_pending", None)
             context.pop("agent_card_spy_recalled", None)
@@ -585,10 +601,12 @@ def resolve_box(state: GameState) -> RuleResult:
 
     next_owner: PlayerState = owner
     shortfall: tuple[GameEvent, ...] = ()
+    gains: tuple[GameEvent, ...] = ()
     if available:
         next_owner, shortfall = _owner_gains(
             owner, line, context, card_id, source, player
         )
+        gains = _gains_event(line.rewards, source, player)
     working = replace(state, players=replace_player(state.players, next_owner))
     influence_events: tuple[GameEvent, ...] = ()
     for reward in line.rewards if available else ():
@@ -607,16 +625,12 @@ def resolve_box(state: GameState) -> RuleResult:
             influence_events = (*influence_events, *gained.events)
     intrigue_events: tuple[GameEvent, ...] = ()
     if available and (intrigue := _intrigue_draws(line)):
-        drawn = draw_or_queue_intrigue_cards(
-            working, player, intrigue, source=f"{source}:intrigue_draw"
-        )
+        drawn = draw_or_queue_intrigue_cards(working, player, intrigue, source=source)
         working, intrigue_events = drawn.state, drawn.events
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(working, context)
-    event = GameEvent(
-        event_id=source,
-        kind=_RESOLVED if available else _UNAVAILABLE,
-        payload=(("card_id", card_id), ("player", player)),
+    event = agent_box_event(
+        source, card_id, player, _RESOLVED if available else _UNAVAILABLE
     )
     if not available:
         return RuleResult(state=next_state, events=(event,))
@@ -644,13 +658,7 @@ def resolve_box(state: GameState) -> RuleResult:
             follow_ups.extend(step.events)
     if draws := _personal_draws(line, owner):
         drawn_cards = draw_or_request_personal_cards(
-            next_state,
-            player,
-            draws,
-            source=(
-                f"round:{state.round_number}:player:{player}:"
-                f"agent_card:{card.card.card_id}"
-            ),
+            next_state, player, draws, source=source
         )
         next_state = drawn_cards.state
         follow_ups.extend(drawn_cards.events)
@@ -661,7 +669,14 @@ def resolve_box(state: GameState) -> RuleResult:
             follow_ups.extend(opponents.events)
     return RuleResult(
         state=next_state,
-        events=(event, *influence_events, *intrigue_events, *follow_ups, *shortfall),
+        events=(
+            *gains,
+            *influence_events,
+            *intrigue_events,
+            *follow_ups,
+            *shortfall,
+            event,
+        ),
     )
 
 
@@ -756,6 +771,7 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
         next_owner, shortfall = _owner_gains(
             owner, line, context, card_id, f"{source}:{key}", player
         )
+        shortfall = (*_gains_event(line.rewards, f"{source}:{key}", player), *shortfall)
     effect_state = replace(base, players=replace_player(base.players, next_owner))
     intrigue_events: tuple[GameEvent, ...] = ()
     if available and (intrigue := _intrigue_draws(line)):
@@ -788,10 +804,8 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
             next_state, player, draws, source=f"{source}:{key}"
         )
         next_state, draw_events = drawn_cards.state, drawn_cards.events
-    event = GameEvent(
-        event_id=f"{source}:{key}:resolved",
-        kind=_RESOLVED if available else _UNAVAILABLE,
-        payload=(("card_id", card_id), ("effect", key), ("player", player)),
+    event = agent_box_event(
+        source, card_id, player, _RESOLVED if available else _UNAVAILABLE, effect=key
     )
     return RuleResult(
         state=next_state,
@@ -805,12 +819,11 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
 # (``pay_agent_card_<variant>``) beside the refusal the provider keeps for the
 # box's raw rows (the turn drops it, ``agent_effect_frame._without_refusal``).
 # The answer pays, gains, writes the frame back, names its event
-# ``round:R:player:P:agent_card_payment:paid`` (no card id) with the resource
-# and the amount spent, then runs the follow-ups that may push a frame: a
-# draw named ``…:agent_card_payment``, a Tleilaxu advance named
-# ``…:agent_card_payment:tleilaxu``.
+# ``<box>:paid`` with the resource and the amount spent, the gains'
+# ``resources_gained`` ``<box>:resources``, then runs the follow-ups that may
+# push a frame: a draw named ``<box>``, a Tleilaxu advance named
+# ``<box>:tleilaxu``. The caller adds the box's event.
 
-_PAYMENT_SOURCE = "round:{round}:player:{player}:agent_card_payment"
 # The rewards ``apply_payment`` gives; a record with any other is no payment
 # box (it keeps its own code until a stage moves it).
 _PAYMENT_REWARDS = (
@@ -932,12 +945,15 @@ def payment_rows(
 
 
 def apply_payment(
-    state: GameState, player: int, ability: Ability, context: dict[str, ActionValue]
+    state: GameState,
+    player: int,
+    ability: Ability,
+    context: dict[str, ActionValue],
+    source: str,
 ) -> RuleResult:
     """Pay the arrow and take what it buys (``context`` has its pending flag
-    already cleared by the caller)."""
+    already cleared by the caller; ``source`` is the box)."""
 
-    source = _PAYMENT_SOURCE.format(round=state.round_number, player=player)
     cost = _payment_cost(ability)
     owner = state.players[player]
     match cost:
@@ -971,7 +987,8 @@ def apply_payment(
             event_id=f"{source}:paid",
             kind="agent_card_payment_resolved",
             payload=(("player", player), ("resource", resource), ("spent", spent)),
-        )
+        ),
+        *_gains_event(ability.sections[0].rewards, source, player),
     ]
     for reward in ability.sections[0].rewards:
         step: RuleResult | None = None
@@ -1003,20 +1020,6 @@ def apply_payment(
 # ``agent_effects``, named after their own actions.
 
 type TargetPiece = GainInfluence | PlaceSpy | ForceEnemyRetreat | CompleteContract
-
-_TARGET_CHOICE_ERRORS: Final[Mapping[type, tuple[type[Exception], str]]] = {
-    GainInfluence: (
-        RuntimeError,
-        "Agent-card Influence effect requires a player choice",
-    ),
-    PlaceSpy: (RuntimeError, "place-Spy Agent effect requires a player choice"),
-    ForceEnemyRetreat: (RuntimeError, "enemy retreat requires a player choice"),
-    CompleteContract: (
-        ValueError,
-        "CHOAM Demands resolves through complete_contract_by_card",
-    ),
-}
-
 
 def target_piece(ability: Ability | None) -> TargetPiece | None:
     """The one target ``ability``'s mandatory line chooses, if it is one."""
@@ -1208,16 +1211,6 @@ def target_blocked(state: GameState, player: int, ability: Ability) -> bool:
     )
 
 
-def target_choice_error(ability: Ability) -> Exception:
-    """What resolving the box as one action raises while it has a choice."""
-
-    piece = target_piece(ability)
-    if piece is None:
-        raise ValueError("the Agent box chooses no recorded target")
-    kind, message = _TARGET_CHOICE_ERRORS[type(piece)]
-    return kind(message)
-
-
 def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult:
     """Gain the chosen Faction's Influence and close the box."""
 
@@ -1230,7 +1223,10 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
     )
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(gained.state, context, gained.state.players)
-    return RuleResult(state=next_state, events=gained.events)
+    return RuleResult(
+        state=next_state,
+        events=(*gained.events, agent_box_event(source, card_id, player, _RESOLVED)),
+    )
 
 
 # --- Discard arrows (stage A3d) -------------------------------------------------
@@ -1238,22 +1234,20 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # "[You may] discard a card -> reward": the refusal of an optional arrow,
 # then one row per hand card; with an empty hand an optional arrow offers
 # only its refusal (``discard_cost_block``) and the mandatory one waits and
-# fizzles (OQ-057 (1)). The answer discards with source
-# ``round:R:player:P:agent_card_discard`` (no card id) and pays the lines
-# whose condition the discarded card meets: resources with the write-back,
-# then a Contract named ``<that>:contract_reward``, then one draw named
-# ``<that>:<discarded card>:draw`` (Space-time Folding's second card, Guild
-# Envoy's two). A gain that depends on the discarded card announces itself
-# (``<that>:<discarded card>:<resource>``, Arrakis Observer's 2 spice), and a
-# Spy line leaves the box pending on its Spy step (``agent_card_spy_pending``,
-# the rows ``agent_spy_rows``; a Spy placement is mandatory, OQ-057 (14)).
-# The events are the discard's, then the follow-ups'. An arrow
+# fizzles (OQ-057 (1)). The answer discards with the box as its source and
+# pays the lines whose condition the discarded card meets: resources with the
+# write-back (one ``resources_gained`` ``<box>:resources``, Arrakis
+# Observer's 2 spice), then a Contract named ``<box>:contract_reward``, then
+# one draw named ``<box>`` (Space-time Folding's second card, Guild Envoy's
+# two), and a Spy line leaves the box pending on its Spy step
+# (``agent_card_spy_pending``, the rows ``agent_spy_rows``; a Spy placement
+# is mandatory, OQ-057 (14)). The events are the discard's, the gain's, the
+# follow-ups', then the box's (unless it stays pending). An arrow
 # whose rewards are armed (``Ability.armed_icons``: Captured Mentat, Guild
 # Spy) pays nothing at once: the keys of the lines the discarded card meets
 # are queued in printed order (``effects.arm_agent_icons``), each resolved
 # on its own by the icon path (OQ-027), and the box is then mandatory.
 
-_DISCARD_SOURCE: Final = "agent_card_discard"
 _DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards, PlaceSpy)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
 # That path offers and pays a key per effect (Branching Path's 2 spice), so
@@ -1384,17 +1378,13 @@ def apply_discard(
 
     _, context = current_agent_effect_context(state)
     context["pending_agent_effect"] = False
-    player = action.actor
-    source = f"round:{state.round_number}:player:{player}:{_DISCARD_SOURCE}"
+    player, box_card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, box_card_id)
     if action.action_id == "decline_agent_card_discard":
         return RuleResult(
             state=advance_after_effect(state, context),
             events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="agent_card_discard_declined",
-                    payload=(("player", player),),
-                ),
+                agent_box_event(source, box_card_id, player, BoxOutcome.DECLINED),
             ),
         )
     card_id = dict(action.arguments).get("card_id")
@@ -1426,25 +1416,10 @@ def apply_discard(
     )
     owner = discarded.state.players[player]
     events = list(discarded.events)
-    for line, ok in zip(ability.sections, met, strict=True):
-        for reward in line.rewards if ok else ():
-            if not isinstance(reward, GainResources):
-                continue
+    for reward in rewards:
+        if isinstance(reward, GainResources):
             owner = _gain(owner, reward)
-            if isinstance(line.condition, DiscardedCardHasFaction):
-                events.extend(
-                    GameEvent(
-                        event_id=f"{source}:{card_id}:{resource}",
-                        kind=_RESOLVED,
-                        payload=(("player", player), (resource, amount)),
-                    )
-                    for resource, amount in (
-                        ("solari", reward.solari),
-                        ("spice", reward.spice),
-                        ("water", reward.water),
-                    )
-                    if amount
-                )
+    events.extend(_gains_event(rewards, source, player))
     if any(isinstance(reward, PlaceSpy) for reward in rewards):
         context["pending_agent_effect"] = True
         context["agent_card_spy_pending"] = True
@@ -1461,11 +1436,11 @@ def apply_discard(
     if draws := sum(
         reward.count for reward in rewards if isinstance(reward, DrawPersonalCards)
     ):
-        drawn = draw_or_request_personal_cards(
-            next_state, player, draws, source=f"{source}:{card_id}:draw"
-        )
+        drawn = draw_or_request_personal_cards(next_state, player, draws, source=source)
         next_state = drawn.state
         events.extend(drawn.events)
+    if context["pending_agent_effect"] is not True:
+        events.append(agent_box_event(source, box_card_id, player, _RESOLVED))
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -1600,18 +1575,11 @@ def apply_intrigue_payment(
     # [Main p. 9] [FAQ p. 3].
     context["pending_agent_effect"] = False
     player, card_id = _subject(context)
-    box = agent_card_source(state.round_number, player, card_id)
-    source = f"{box}:intrigue_payment"
+    source = agent_card_source(state.round_number, player, card_id)
     if action.action_id == "decline_agent_card_intrigue_payment":
         return RuleResult(
             state=advance_after_effect(state, context),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="agent_card_payment_declined",
-                    payload=(("card_id", card_id), ("player", player)),
-                ),
-            ),
+            events=(agent_box_event(source, card_id, player, BoxOutcome.DECLINED),),
         )
     intrigue_card_id = dict(action.arguments).get("intrigue_card_id")
     if not isinstance(intrigue_card_id, str):
@@ -1662,6 +1630,8 @@ def apply_intrigue_payment(
                     owner = replace(owner, victory_points=owner.victory_points + amount)
                 case GainResources():
                     owner = _gain(owner, reward)
+        events.extend(_gains_event(ability.sections[0].rewards, source, player))
+        events.append(agent_box_event(source, card_id, player, _RESOLVED))
     next_state = advance_after_effect(
         with_trashed_intrigue(state, intrigue_card_id),
         context,
@@ -1678,12 +1648,11 @@ def apply_intrigue_payment(
 # per card the trash may take -- hand, discard pile and cards in play (a
 # Usurped Row card is not in play, OQ-054), the box's own card while in play
 # for "this card", the hand for "from your hand" -- and none while a printed
-# condition fails. The answer trashes with source ``round:R:player:P:
-# agent_card`` (no card id) and keeps the trash trigger's recruits in the
-# context written back; a box with icons left keeps its ``trashes_remaining``
-# counter on the frame. Shishakli's draw is named ``<that>:trash_draw``.
+# condition fails. The answer trashes with the box as its source and keeps
+# the trash trigger's recruits in the context written back; a box with icons
+# left keeps its ``trashes_remaining`` counter on the frame. Shishakli's draw
+# is named ``<box>``; the box's event comes last once the box is done.
 
-_TRASH_SOURCE: Final = "agent_card"
 _TRASH_ICON: Final = TrashPersonalCard()
 
 
@@ -1821,25 +1790,24 @@ def apply_trash(
     """Refuse the trash, or trash the chosen card and take what it buys."""
 
     _, context = current_agent_effect_context(state)
-    player = action.actor
-    source = f"round:{state.round_number}:player:{player}:{_TRASH_SOURCE}"
+    player, box_card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, box_card_id)
     context["pending_agent_effect"] = False
     if action.action_id == "decline_agent_card_trash":
         context.pop("trashes_remaining", None)
         return RuleResult(
             state=advance_after_effect(state, context),
             events=(
-                GameEvent(
-                    event_id=f"{source}:trash_declined",
-                    kind="agent_card_trash_declined",
-                    payload=(("player", player),),
-                ),
+                agent_box_event(source, box_card_id, player, BoxOutcome.DECLINED),
             ),
         )
     card_id = dict(action.arguments).get("card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Agent-card trash choice has invalid card ID")
     trashed = trash_personal_card(state, player, card_id, source=source)
+    done: tuple[GameEvent, ...] = (
+        agent_box_event(source, box_card_id, player, _RESOLVED),
+    )
     keep_trash_recruits(context, trashed)
     cost = _trash_cost(ability)
     if cost is None and len(ability.sections) > 1:
@@ -1860,13 +1828,13 @@ def apply_trash(
         context.pop("trashes_remaining", None)
         return RuleResult(
             state=advance_after_effect(trashed.state, context, trashed.state.players),
-            events=trashed.events,
+            events=(*trashed.events, *done),
         )
     if cost is None:
         # The one black trash icon.
         return RuleResult(
             state=advance_after_effect(trashed.state, context, trashed.state.players),
-            events=trashed.events,
+            events=(*trashed.events, *done),
         )
     if cost.this_card:
         # The card trashed itself as its own cost, so its rewards still pay
@@ -1899,18 +1867,19 @@ def apply_trash(
             context, "existing_troop_deployment_limit", owner="Agent-turn effect frame"
         )
         context["existing_troop_deployment_limit"] = max(limit, 2)
+    if context["pending_agent_effect"] is True:
+        # Armed rewards wait as icons; the box is not done.
+        done = ()
     next_state = advance_after_effect(trashed.state, context, trashed.state.players)
     draws = sum(
         reward.count for reward in paid if isinstance(reward, DrawPersonalCards)
     )
     if draws:
-        drawn = draw_or_request_personal_cards(
-            next_state, player, draws, source=f"{source}:trash_draw"
-        )
+        drawn = draw_or_request_personal_cards(next_state, player, draws, source=source)
         return RuleResult(
-            state=drawn.state, events=(*trashed.events, *drawn.events)
+            state=drawn.state, events=(*trashed.events, *drawn.events, *done)
         )
-    return RuleResult(state=next_state, events=trashed.events)
+    return RuleResult(state=next_state, events=(*trashed.events, *done))
 
 
 def trashes_remaining(context: Mapping[str, ActionValue], default: int = 0) -> int:
@@ -2143,13 +2112,22 @@ def apply_either_influence(
     )
     context["pending_agent_effect"] = False
     players = gained.state.players
+    gains: tuple[GameEvent, ...] = ()
     if ability.structure is AbilityStructure.SEQUENCE:
         owner = players[player]
         for reward in ability.sections[0].rewards:
             if isinstance(reward, GainResources):
                 owner = _gain(owner, reward)
         players = replace_player(players, owner)
+        gains = _gains_event(ability.sections[0].rewards, source, player)
     next_state = advance_after_effect(
         replace(gained.state, players=players), context, players
     )
-    return RuleResult(state=next_state, events=gained.events)
+    return RuleResult(
+        state=next_state,
+        events=(
+            *gained.events,
+            *gains,
+            agent_box_event(source, card_id, player, _RESOLVED),
+        ),
+    )

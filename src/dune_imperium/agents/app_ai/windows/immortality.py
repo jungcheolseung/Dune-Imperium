@@ -184,12 +184,11 @@ from dune_imperium.rules import turn_rows
 # ``(STITCHED_HORROR_TRASH_INTENT, round, Stitched Horror card) -> card``
 # (``agent_effects``).
 
-#: The optional-trash source of an Agent-box payment: Control the Spice's
-#: ends with the paying card (``round:<r>:player:<p>:agent_card_payment:
-#: <card ref>``), Stitched Horror's with its pick number (``...:<n>``)
+#: The optional-trash source of an Agent box is the box
+#: (``round:<r>:player:<p>:agent_card:<card ref>``, Control the Spice's),
+#: or the box and a pick number (``...:<n>``, Stitched Horror's)
 #: (``rules/agent_effects.py``).
-_PAYMENT_SOURCE: Final = ":agent_card_payment:"
-_STITCHED_HORROR_SOURCE: Final = re.compile(r":agent_card_payment:\d+$")
+_BOX_SOURCE: Final = re.compile(r"round:\d+:player:\d+:agent_card:")
 #: ``CanGainTleilaxuInfluence @0x4a77ca0``: rank below 7.
 _TLEILAXU_TOP: Final = 7
 #: ``PaySolariForTleilaxuInfluence::Cost``: ``HasResources.AtLeast(Solari, 7)``.
@@ -445,29 +444,29 @@ _MISSING: Final = object()
 def _stored_trash(run: DecisionRun, source: str) -> object:
     """The trash an Agent-box answer already named for this frame, if any.
 
-    Control the Spice: the key names the paying card the source ends with.
-    Stitched Horror: the source ends with the pick number; the key names the
-    card whose box resolves (the own Agent-effect frame's active card).
-    Popped once read; ``_MISSING`` when the frame is neither or nothing was
-    stored.
+    The key names the card whose box resolves (the own Agent-effect frame's
+    active card): Control the Spice's frame is named after that box,
+    Stitched Horror's after the box and its pick number. Popped once read;
+    ``_MISSING`` when the frame is neither or nothing was stored.
     """
 
-    if _PAYMENT_SOURCE not in source:
+    box = _BOX_SOURCE.match(source)
+    effects = run.ctx.own_frame_context("agent_effects")
+    card_ref = None if effects is None else effects.get("card_id")
+    if box is None or not isinstance(card_ref, str):
         return _MISSING
     intents = run.memory.intents
     round_number = run.ctx.round_number
-    if _STITCHED_HORROR_SOURCE.search(source):
-        effects = run.ctx.own_frame_context("agent_effects")
-        card_ref = None if effects is None else effects.get("card_id")
-        if not isinstance(card_ref, str):
-            return _MISSING
+    named = source[box.end() :]
+    if named == card_ref:
+        return intents.pop(
+            (CONTROL_THE_SPICE_TRASH_INTENT, round_number, card_ref), _MISSING
+        )
+    if re.fullmatch(rf"{re.escape(card_ref)}:\d+", named):
         return intents.pop(
             (STITCHED_HORROR_TRASH_INTENT, round_number, card_ref), _MISSING
         )
-    card_ref = source.split(_PAYMENT_SOURCE, 1)[1]
-    return intents.pop(
-        (CONTROL_THE_SPICE_TRASH_INTENT, round_number, card_ref), _MISSING
-    )
+    return _MISSING
 
 
 #: A trash the app AI cannot value (a census gap): the agent falls back.

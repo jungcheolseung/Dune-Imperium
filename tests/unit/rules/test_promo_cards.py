@@ -44,13 +44,16 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat import (
     face_up_battle_icons,
     finish_combat,
     offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.optional_trash import apply_optional_trash
 from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
 from dune_imperium.simulation import run_random_game
@@ -282,7 +285,11 @@ def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
         "agent_card_payment_resolved",
         "shield_wall_destroyed",
         "sandworm_deployed",
+        "agent_card_effect_resolved",
     ]
+    assert result.events[-1] == agent_box_event(
+        agent_card_source(1, 0, revolt), revolt, 0, BoxOutcome.RESOLVED
+    )
 
 
 def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
@@ -305,12 +312,17 @@ def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
     assert [event.kind for event in kept.events] == [
         "agent_card_payment_resolved",
         "sandworm_deployed",
+        "agent_card_effect_resolved",
     ]
 
     declined = apply_agent_card_payment(placed, actions["decline_agent_card_payment"])
     assert declined.state.players[0].resources.spice == 2
     assert declined.state.players[0].sandworms_conflict == 0
-    assert declined.events[0].kind == "agent_card_payment_declined"
+    assert declined.events == (
+        agent_box_event(
+            agent_card_source(1, 0, revolt), revolt, 0, BoxOutcome.DECLINED
+        ),
+    )
 
 
 def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
@@ -383,6 +395,7 @@ def test_arrakis_revolt_keeps_no_wall_payment_under_the_emperor_ban() -> None:
         "agent_card_payment_resolved",
         "shield_wall_destroyed",
         "sandworm_summon_unavailable",
+        "agent_card_effect_resolved",
     ]
 
     # Without the wall the payment could only summon, so only declining is
@@ -651,13 +664,10 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert _context(resolved.state)["troops_recruited"] == 1
     assert _context(resolved.state)["pending_agent_effect"] is True
     assert _context(resolved.state)["trashes_remaining"] == 1
-    assert dict(resolved.events[0].payload) == {
-        "card_id": spoils,
-        "crysknife": 1,
-        "player": 0,
-        "spice": 1,
-        "troops": 1,
-    }
+    # The hook step pays the spice as a gain of the box; the box is not over
+    # (its trash is still to be answered), so it leaves no box event yet.
+    box = agent_card_source(1, 0, spoils)
+    assert resolved.events == (resources_gained_event(box, 0, spice=1),)
 
     actions = legal_agent_card_trash_actions(resolved.state, 0)
     assert {dict(action.arguments).get("card_id") for action in actions} == {
@@ -673,6 +683,12 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert trashed.state.players[0].trashed == (dagger,)
     assert _context(trashed.state)["pending_agent_effect"] is False
     assert "trashes_remaining" not in _context(trashed.state)
+    # The trash answer closes the box: its event comes last.
+    assert [event.kind for event in trashed.events] == [
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
+    assert trashed.events[-1] == agent_box_event(box, spoils, 0, BoxOutcome.RESOLVED)
 
     declined = apply_agent_card_trash(
         resolved.state,
@@ -680,6 +696,7 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     )
     assert _context(declined.state)["pending_agent_effect"] is False
     assert declined.state.players[0].trashed == ()
+    assert declined.events == (agent_box_event(box, spoils, 0, BoxOutcome.DECLINED),)
 
 
 def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
