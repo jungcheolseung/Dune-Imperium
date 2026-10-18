@@ -549,7 +549,9 @@ def reward_text(reward: Reward) -> str:
         case RetreatTroops() as troops:
             return _retreat_troops_text(troops)
         case TakeContract(count=count):
-            return f"Take {count} {_plural(count, 'Contract')}"
+            # Every Contract taken is a face-up one, as the cards print it
+            # ("Take 1 face-up Contract", the personal cards' own text).
+            return f"Take {count} face-up {_plural(count, 'Contract')}"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             if to_hand_if is None:
                 return f"Acquire a card costing {max_cost} or less"

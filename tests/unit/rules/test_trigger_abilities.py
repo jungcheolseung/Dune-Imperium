@@ -92,15 +92,11 @@ def test_every_trigger_box_is_an_automatic_record() -> None:
 
 def test_trigger_records_read_as_the_cards_print_them() -> None:
     """The record's reward renders as the box's printed text, in both
-    languages -- except "Take 1 face-up Contract", whose shared piece does
-    not print "face-up" (every Contract taken is a face-up one)."""
+    languages ("Take 1 face-up Contract" too, since cleanup 2e)."""
 
     for table, _, _, english, korean in _TABLES:
         for effect, ability in table.items():
             (reward,) = ability.sections[0].rewards
-            if effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT:
-                assert reward_text(reward) == "Take 1 Contract"
-                continue
             assert reward_text(reward) == english[effect], effect
             assert reward_text_ko(reward) == korean[effect], effect
 

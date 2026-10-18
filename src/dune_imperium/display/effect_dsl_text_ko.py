@@ -782,9 +782,9 @@ def reward_text_ko(reward: Reward) -> str:
         case RetreatTroops() as troops:
             return _retreat_troops_text_ko(troops)
         case TakeContract(count=count):
-            # Quotes ``display/structs.py``'s established "{contract} N개
-            # 가져옴" (its own ``contract_reward_text_ko``).
-            return f"{{contract}} {count}개 가져옴"
+            # The personal cards' own "앞면 {contract} N개 가져옴" (every
+            # Contract taken is a face-up one, as the cards print it).
+            return f"앞면 {{contract}} {count}개 가져옴"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             base = f"비용이 {max_cost} 이하인 카드 {{acquire}}"
             if to_hand_if is None:
