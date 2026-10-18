@@ -214,9 +214,13 @@ def _effect_context(state: GameState) -> dict[str, object]:
     return {}
 
 
+# The Signet Ring box logs its own kinds (cleanup-2c-4).
+_BOX_EXPIRED_KINDS = frozenset({"agent_card_effect_expired", "leader_signet_expired"})
+
+
 def _box_expired(events: tuple[GameEvent, ...], card_id: str) -> bool:
     return any(
-        event.kind == "agent_card_effect_expired"
+        event.kind in _BOX_EXPIRED_KINDS
         and dict(event.payload).get("card_id") == card_id
         for event in events
     )

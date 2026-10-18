@@ -2753,9 +2753,11 @@ def apply_leader_board_repeat(
     _, context = current_agent_effect_context(state)
     player = action.actor
     context["pending_leader_board_repeat"] = False
-    source = f"round:{state.round_number}:player:{player}:leader_board_repeat"
-
     owner = state.players[player]
+    # Reverend Mother Jessica's ability, named after that face (cleanup-2c-4).
+    face = owner.leader_face_id or str(owner.leader_id)
+    source = f"round:{state.round_number}:player:{player}:leader:{face}"
+
     if owner.resources.water < 1:
         raise RuntimeError("the board repeat requires one water")
     next_owner = replace(
@@ -2801,7 +2803,7 @@ def apply_leader_board_repeat(
                 event_id=f"{source}:resolved",
                 kind="leader_ability_resolved",
                 payload=(
-                    ("leader_id", str(owner.leader_id)),
+                    ("leader_id", face),
                     ("player", player),
                     ("space_id", space_id),
                 ),

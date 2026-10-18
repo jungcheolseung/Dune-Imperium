@@ -80,6 +80,8 @@ from dune_imperium.rules.setup import create_draft_initial_state, create_initial
 from dune_imperium.simulation.sweep import run_checked_game
 
 IMMORTALITY = RulesetConfig(immortality=True)
+# Seat 0's research track space c3r5 in round 1 (cleanup-2c-5).
+TRACK_C3R5 = "round:1:player:0:research:c3r5"
 GO_TO_11 = RulesetConfig(immortality=True, go_to_11=True)
 LEADERS = (
     "feyd_rautha_harkonnen",
@@ -607,11 +609,13 @@ def test_specimen_and_tleilaxu_are_two_rows_taken_in_either_order(
 
     owner = state.players[0]
     assert (owner.specimens, owner.tleilaxu_space) == (1, 1)
-    # Each logs what the fixed-order step logged, under the research source.
+    # Each logs what the fixed-order step logged; the row keeps the name of
+    # what moved the token, what the space gives the seat's track space's.
+    assert source.endswith(":research:c3r5") and source != TRACK_C3R5
     assert sorted((e.kind, e.event_id, dict(e.payload)) for e in events) == [
         (
             "specimens_generated",
-            f"{source}:specimens",
+            f"{TRACK_C3R5}:specimens",
             {"count": 1, "player": 0},
         ),
         (
@@ -876,10 +880,11 @@ def test_c7r3_paid_in_its_window_opens_a_window_for_its_two_rewards() -> None:
     intrigue = apply_research_icon(cards.state, _icon("intrigue"))
     assert intrigue.state.decision_stack == ()
     assert len(intrigue.state.players[0].intrigue_cards) == 1
-    source = dict(window.context)["source"]
+    # The window keeps the opener's name, the draw the track space's.
+    assert dict(window.context)["source"] != "round:1:player:0:research:c7r3"
     (drawn,) = intrigue.events
     assert drawn.kind == "intrigue_card_drawn"
-    assert drawn.event_id.startswith(f"{source}:intrigue:")
+    assert drawn.event_id.startswith("round:1:player:0:research:c7r3:intrigue_draw:")
 
     # Intrigue card first, then the card.
     first = apply_research_icon(paid.state, _icon("intrigue"))

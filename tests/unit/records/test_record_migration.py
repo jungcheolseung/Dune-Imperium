@@ -3052,3 +3052,84 @@ def test_a_reshuffle_of_the_same_cards_is_taken_under_this_engines_decision() ->
         ENGINE, _window_combat(_window_fighter(3, intrigue_cards=(PLAIN,)))
     ).state
     assert migration._reshuffle_earlier(ENGINE, window, (later,), 0, set()) is None
+
+
+_DISCARD = ":discard_shuffle"
+_INTRIGUE = ":intrigue_shuffle"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "suffix", "renamed"),
+    (
+        # A caller's extra word dropped (cleanup-2c-5, 2c-6).
+        ("round:2:player:1:x:draw", "round:2:player:1:x", _DISCARD, True),
+        (
+            "round:2:player:1:intrigue:a:0:1:intrigue",
+            "round:2:player:1:intrigue:a:0:1",
+            _INTRIGUE,
+            True,
+        ),
+        (
+            "round:2:player:1:leader_signet:intrigue_draw",
+            "round:2:player:1:leader_signet",
+            _INTRIGUE,
+            True,
+        ),
+        # A research pair's icon: the opener's name, now the track space's.
+        (
+            "round:2:player:1:board:research_station:research:c3r3:card",
+            "round:2:player:1:research:c3r3",
+            _DISCARD,
+            True,
+        ),
+        (
+            "round:2:player:1:board:research_station:research:c7r3:intrigue",
+            "round:2:player:1:research:c7r3",
+            _INTRIGUE,
+            True,
+        ),
+        # A Tleilaxu space's draw: the mover's name, now the track space's.
+        (
+            "round:2:player:1:agent_card:imperium:x:0:tleilaxu:3",
+            "round:2:player:1:tleilaxu:3",
+            _INTRIGUE,
+            True,
+        ),
+        # Esmar Tuek's draw for a visit: the visitor's seat, now Esmar's.
+        (
+            "round:2:player:3:tuek_sietch_visit",
+            "round:2:player:1:leader:esmar_tuek",
+            _INTRIGUE,
+            True,
+        ),
+        # Not renames: another seat, another space, another round's Esmar
+        # draw, an unrelated name.
+        (
+            "round:2:player:0:board:research_station:research:c3r3:card",
+            "round:2:player:1:research:c3r3",
+            _DISCARD,
+            False,
+        ),
+        (
+            "round:2:player:1:board:research_station:research:c3r1:card",
+            "round:2:player:1:research:c3r3",
+            _DISCARD,
+            False,
+        ),
+        (
+            "round:1:player:3:tuek_sietch_visit",
+            "round:2:player:1:leader:esmar_tuek",
+            _INTRIGUE,
+            False,
+        ),
+        ("round:2:player:1:board:arrakeen", "round:2:player:1:x", _DISCARD, False),
+    ),
+)
+def test_cleanup2c_renames_only_a_draw_it_explains(
+    old: str, new: str, suffix: str, renamed: bool
+) -> None:
+    """Codec v149 renamed draws by the event grammar, and the reshuffle a
+    short draw asks for with them (2026-10-18 review: the Intrigue
+    reshuffle's renames had no bridge)."""
+
+    assert migration._cleanup2c_renamed(old + suffix, new + suffix, suffix) is renamed

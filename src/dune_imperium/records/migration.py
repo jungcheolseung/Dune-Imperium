@@ -2379,51 +2379,75 @@ def _renamed_draw_reshuffle(
     decision: Decision,
     step: ReplayStep,
 ) -> ReplayStep | None:
-    """Give a recorded discard reshuffle the name of the draw that asks it.
+    """Give a recorded discard or Intrigue reshuffle the name of the draw
+    that asks it.
 
     Codec v149 (cleanup-2c) renames draws by the event grammar: an Agent
     box's after the box (``round:R:player:P:agent_card:<card>``, where an
     older engine named some after the card's definition,
     ``agent_card_discard``, ``agent_card_payment`` or ``shigawire:<card>``),
-    a Leader ability's after the Leader (Hungry for Spice), a Research
-    draw and an Intrigue line's draw after their source without the
-    caller's extra word. The reshuffle a short draw asks for carries that
-    name. Renamed only when the recorded name is the older one of exactly
-    such a rename (``_cleanup2c_renamed``), the same personal reshuffle in
-    this round, the recorded values exactly the pile.
+    a Leader ability's after the Leader (Hungry for Spice, Esmar Tuek's
+    Tuek's Sietch draw), what a research or Tleilaxu track space gives
+    after the seat's track space, a Research draw and an Intrigue line's or
+    a Signet payment's draw after their source without the caller's extra
+    word. The reshuffle a short draw asks for carries that name. Renamed
+    only when the recorded name is the older one of exactly such a rename
+    (``_cleanup2c_renamed``), the same kind of reshuffle in this round, the
+    recorded values exactly the pile.
     """
 
     del engine
+    suffix = _RENAMED_RESHUFFLES.get(state.decision_stack[-1].kind)
     if not (
-        isinstance(step, ChanceOutcome)
+        suffix is not None
+        and isinstance(step, ChanceOutcome)
         and isinstance(decision, ChanceDecision)
-        and state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
         and step.decision_id != decision.decision_id
-        and _cleanup2c_renamed(step.decision_id, decision.decision_id)
+        and _cleanup2c_renamed(step.decision_id, decision.decision_id, suffix)
     ):
         return None
     prefix = f"round:{state.round_number}:"
     if not all(
-        decision_id.startswith(prefix) and decision_id.endswith(_DISCARD_SHUFFLE)
+        decision_id.startswith(prefix) and decision_id.endswith(suffix)
         for decision_id in (step.decision_id, decision.decision_id)
     ) or Counter(step.values) != Counter(decision.options):
         return None
     return ChanceOutcome(decision.decision_id, step.values)
 
 
+_INTRIGUE_SHUFFLE = ":intrigue_shuffle"
+# The reshuffles a renamed draw asks for, and the word ending their names.
+_RENAMED_RESHUFFLES: dict[str, str] = {
+    FrameKind.PERSONAL_DRAW_RESHUFFLE: _DISCARD_SHUFFLE,
+    FrameKind.INTRIGUE_RESHUFFLE: _INTRIGUE_SHUFFLE,
+}
+
+
 _OLD_BOX_DRAW = re.compile(
     r"^round:\d+:player:\d+:(?:agent_card(?:_discard|_payment)?|shigawire):"
 )
 _NEW_BOX_DRAW = re.compile(r"^round:\d+:player:\d+:agent_card:")
-_NEW_RESEARCH_DRAW = re.compile(r"^round:\d+:player:\d+(:research:c\d+r\d+.*)$")
+_NEW_TRACK_DRAW = re.compile(
+    r"^round:\d+:player:\d+(:(?:research:c\d+r\d+|tleilaxu:\d+):.*)$"
+)
+# Esmar Tuek's draw for a visit to Tuek's Sietch: named after the visitor,
+# now after Esmar (cleanup-2c-4); the seat changes.
+_OLD_ESMAR_DRAW = re.compile(r"^(round:\d+):player:\d+:tuek_sietch_visit:")
+_NEW_ESMAR_DRAW = re.compile(r"^(round:\d+):player:\d+:leader:esmar_tuek:")
+# The words a caller added to a draw's source, which cleanup-2c dropped.
+_DROPPED_DRAW_WORDS = (":draw", ":research_draw", ":intrigue", ":intrigue_draw")
 
 
-def _cleanup2c_renamed(old: str, new: str) -> bool:
-    """Whether reshuffle ``new`` is ``old`` under a cleanup-2c draw name: a
-    box's draw named after the box, Hungry for Spice's after the Leader, a
-    research space's draw after the seat's track space, a caller's extra
-    ``:draw`` or ``:research_draw`` dropped -- and the seat unchanged."""
+def _cleanup2c_renamed(old: str, new: str, suffix: str = _DISCARD_SHUFFLE) -> bool:
+    """Whether reshuffle ``new`` is ``old`` under a cleanup-2c draw name
+    (both ending with ``suffix``): a box's draw named after the box, Hungry
+    for Spice's after the Leader, Esmar Tuek's after Esmar, what a research
+    or Tleilaxu track space gives after the seat's track space, a caller's
+    extra word dropped -- and the seat unchanged but for Esmar's."""
 
+    esmar = _OLD_ESMAR_DRAW.match(old), _NEW_ESMAR_DRAW.match(new)
+    if esmar[0] is not None and esmar[1] is not None:
+        return esmar[0].group(1) == esmar[1].group(1)
     seat = re.compile(r"^round:\d+:player:(\d+):")
     old_seat, new_seat = seat.match(old), seat.match(new)
     if (old_seat is None) != (new_seat is None) or (
@@ -2432,15 +2456,18 @@ def _cleanup2c_renamed(old: str, new: str) -> bool:
         and old_seat.group(1) != new_seat.group(1)
     ):
         return False
-    for extra in (":draw", ":research_draw"):
-        if old.replace(f"{extra}{_DISCARD_SHUFFLE}", _DISCARD_SHUFFLE) == new != old:
+    for extra in _DROPPED_DRAW_WORDS:
+        if old.replace(f"{extra}{suffix}", suffix) == new != old:
             return True
     if new.replace(":leader:steersman_y_rkoon:", ":hungry_for_spice:") == old:
         return True
     if _OLD_BOX_DRAW.match(old) and _NEW_BOX_DRAW.match(new):
         return True
-    research = _NEW_RESEARCH_DRAW.match(new)
-    return research is not None and old.endswith(research.group(1))
+    track = _NEW_TRACK_DRAW.match(new)
+    return track is not None and any(
+        old.replace(f"{extra}{suffix}", suffix).endswith(track.group(1))
+        for extra in ("", ":card", ":intrigue")
+    )
 
 
 _FINISH_AGENT_TURN = "finish_agent_turn"

@@ -432,6 +432,10 @@ const UI_TEXT = {
     "ko": "연구 트랙 {{column}}-{{row}}",
     "en": "Research track {{column}}-{{row}}"
   },
+  "core.source_combat_reward": {
+    "ko": "{combat} 보상",
+    "en": "{combat} Reward"
+  },
   "help.announce_finished_winner": {
     "ko": "게임 종료 — {{name}} 승리",
     "en": "Game over — {{name}} wins"

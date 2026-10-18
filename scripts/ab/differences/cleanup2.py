@@ -129,17 +129,25 @@ def _box_aliases(source: str, kind: str) -> set[str]:
     (cleanup-2c-2): Control the Spice's trash ``…:agent_card_payment:<card>``,
     Stitched Horror's ``…:agent_card_payment:<n>``; and of a research
     space's window, whose opener lost a caller's extra ``:research`` in
-    cleanup-2c-5 (every vanished source of that round ending with the
-    space)."""
+    cleanup-2c-5 (every vanished source of that round and seat ending with
+    the space)."""
 
     research = re.match(r"^round:(\d+):.*:research:(c\d+r\d+)$", source)
     if research is not None:
         round_number, space = research.groups()
+        seat = _SOURCE_SEAT.match(source)
         return {
             vanished
             for vanished in _VANISHED[kind]
             if vanished.startswith(f"round:{round_number}:")
             and vanished.endswith(f":research:{space}")
+            and (
+                (named := _SOURCE_SEAT.match(vanished)) is not None
+                and seat is not None
+                and named.group(1) == seat.group(1)
+                or named is None
+                and seat is None
+            )
         }
 
     box = re.match(
@@ -1450,6 +1458,8 @@ def _signet_pairs_with(event: dict[str, object], base: dict[str, object]) -> boo
     base_data = _payload(base)
     if base["kind"] not in _SIGNET_BASE[str(event["kind"])]:
         return False
+    if base.get("visible_to") != event.get("visible_to"):
+        return False
     if base_data.get("player") != data.get("player"):
         return False
     for key in ("card_id", "tech_id"):
@@ -1558,7 +1568,9 @@ def _scouts_and_row_in_base_form(old: Step, candidate: Step) -> None:
             if index in used or base["kind"] != kind:
                 continue
             base_data = _payload(base)
-            if all(base_data.get(key) == data.get(key) for key in keys):
+            if all(base_data.get(key) == data.get(key) for key in keys) and (
+                base.get("visible_to") == event.get("visible_to")
+            ):
                 return index
         return None
 
@@ -1782,18 +1794,36 @@ _NAMED_SPACES = frozenset(
 )
 
 
+def _agrees(base: dict[str, object], event: dict[str, object]) -> bool:
+    """Whether ``event`` says nothing ``base`` contradicts: the same
+    visibility and, for every payload key both carry (bar the renamed
+    ``source``), the same value -- what a rule checks before it puts the
+    base's event in the candidate's place (2026-10-18 review)."""
+
+    if base.get("visible_to") != event.get("visible_to"):
+        return False
+    base_data, data = _payload(base), _payload(event)
+    return all(
+        base_data[key] == data[key]
+        for key in base_data.keys() & data.keys()
+        if key != "source"
+    )
+
+
 def _same_event(
     old: Step, used: set[int], event: dict[str, object], keys: tuple[str, ...]
 ) -> int | None:
     """The base event of the step with ``event``'s kind and the same
-    ``keys`` in its payload, not yet taken."""
+    ``keys`` in its payload, not yet taken, that ``event`` agrees with."""
 
     data = _payload(event)
     for index, base in enumerate(old.events):
         if index in used or base["kind"] != event["kind"]:
             continue
         base_data = _payload(base)
-        if all(base_data.get(key) == data.get(key) for key in keys):
+        if all(base_data.get(key) == data.get(key) for key in keys) and _agrees(
+            base, event
+        ):
             return index
     return None
 
@@ -1885,6 +1915,8 @@ def _same_payload(base: dict[str, object], event: dict[str, object]) -> bool:
             for key, value in data.items()
         }
 
+    if base.get("visible_to") != event.get("visible_to"):
+        return False
     base_data = _payload(base)
     if event["kind"] == "agent_card_payment_resolved":
         base_data.pop("gained", None)
@@ -1898,8 +1930,10 @@ _RENAMED_SOURCES = (":agent_card:", ":research:", ":tleilaxu:", ":leader:")
 def _box_owed_draws(old: Step, at: At) -> None:
     """A waiting draw is logged under its source's name when taken
     (``PlayerState.owed_draws`` and ``GameState.pending_intrigue_draws``
-    hold it): while one waits under a name cleanup-2c changed, the waiting
-    draws are compared by what they draw, not by name."""
+    hold it): while one waits under a name cleanup-2c changed, those fields
+    are left out of the state comparison (the recording keeps only their
+    digests). What they draw is still compared through the step's legal
+    draw actions and page, and the draw's events and chance when taken."""
 
     for seat, player in enumerate(at.state.players):
         if any(

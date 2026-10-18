@@ -323,7 +323,35 @@ function sourceRef(value) {
     if (entry) return { section: kind, entry };
   }
   const entry = parts.length === 1 ? lookup(parts[0]) : null;
-  return entry ? entrySection(parts[0]) : null;
+  if (entry) return entrySection(parts[0]);
+  return trackSourceRef(parts);
+}
+
+/* The sources that name no catalog id (rules/immortality.py,
+   leader_abilities.py, combat.py): a seat's research or Tleilaxu track
+   space ("round:3:player:1:research:c3r3", "…:tleilaxu:4"), the Signet
+   Ring's box ("round:3:player:1:leader_signet") and a Conflict reward's
+   optional cost ("round:3:combat_reward:optional:0:1"). Read only when no
+   card or space is named, so a window named after what opened it keeps
+   that name. */
+function trackSourceRef(parts) {
+  const last = parts[parts.length - 1];
+  const before = parts[parts.length - 2];
+  if (parts[2] === "combat_reward") {
+    return { section: "combat_reward", entry: { name: t("core.source_combat_reward") } };
+  }
+  if (last === "leader_signet") {
+    const entry = lookup("signet_ring", "cards");
+    return entry ? { section: "cards", entry } : null;
+  }
+  if (before === "research") {
+    const name = researchSpaceName(last, false);
+    return name ? { section: "research", entry: { name } } : null;
+  }
+  if (before === "tleilaxu" && /^(?:\d+|end)$/.test(last)) {
+    return { section: "tleilaxu_track", entry: { name: t("board.tleilaxu_track") } };
+  }
+  return null;
 }
 
 /* What one engine value reads as on screen, given the field that holds it

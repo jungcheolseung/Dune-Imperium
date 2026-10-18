@@ -583,9 +583,47 @@ def test_feyds_signet_ring_trashed_by_its_own_box_keeps_its_rewards() -> None:
         and dict(action.arguments)["card_id"] == signet
     )
     result = ENGINE.apply(session.state, trash)
-    assert "agent_card_effect_expired" not in {event.kind for event in result.events}
+    kinds = {event.kind for event in result.events}
+    assert not kinds & {"agent_card_effect_expired", "leader_signet_expired"}
     _, pending = turn_cards(result.state)
     assert pending == ()
+
+
+def test_a_research_trash_of_a_pending_signet_ring_is_flagged() -> None:
+    """Feyd-Rautha plays the Signet Ring at Research Station with its box
+    still pending; the Research to c3r3 offers an optional trash with the
+    Signet Ring among the cards. That trash is not the box's own step, so it
+    loses the box, which logs ``leader_signet_expired`` (cleanup-2c-4), and
+    the row is flagged (2026-10-18 review: only the Agent box's kind was
+    read)."""
+
+    signet = next(card for card in STARTERS if ":signet_ring:" in card)
+    state = _state((signet,))
+    owner = replace(
+        state.players[0],
+        leader_id="feyd_rautha_harkonnen",
+        research_space="c2r2",
+        family_atomics=False,
+        resources=Resources(solari=6, spice=6, water=3),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = _place(state, signet, "research_station")
+    for action in (
+        DomainAction("resolve_board_effect", 0, (("effect", "research"),)),
+        DomainAction("choose_research_space", 0, (("space_id", "c3r3"),)),
+    ):
+        assert action in ENGINE.legal_actions(state, 0)
+        state = ENGINE.apply(state, action).state
+    _, pending = turn_cards(state)
+    assert pending == (signet,)
+    trash = DomainAction("trash_optional_card", 0, (("card_id", signet),))
+    assert box_losing_trash(ENGINE, state, 0) == (("trash_optional_card", signet),)
+    result = ENGINE.apply(state, trash)
+    assert [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "leader_signet_expired"
+    ] == [signet]
 
 
 def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:

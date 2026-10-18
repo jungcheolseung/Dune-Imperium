@@ -385,7 +385,7 @@ def move_research_token(
     # The windows the bonus opens keep the name of what moved the token: an
     # Arrakeen Scouts line knows its own Research's window by it
     # (``scouts_effects._rewards_ahead``).
-    step_source = f"round:{state.round_number}:player:{player}:research:{space_id}"
+    step_source = _track_space(state.round_number, player, space_id)
     opener = f"{source}:research:{space_id}"
     helix: tuple[GameEvent, ...] = ()
     if markers_before == 0 and markers:
@@ -420,6 +420,20 @@ def move_research_token(
         moved, player, space.bonus, source=opener, named=step_source
     )
     return RuleResult(state=bonus.state, events=(*events, *bonus.events))
+
+
+def _track_space(round_number: int, player: int, space_id: str) -> str:
+    """The name of a seat's research track space (cleanup-2c-5)."""
+
+    return f"round:{round_number}:player:{player}:research:{space_id}"
+
+
+def _opened_space(state: GameState, player: int, opener: str) -> str:
+    """The track space a window or row named ``<opener>:research:<space>``
+    belongs to: what the space gives is named after it (cleanup-2c-5 rule 1,
+    the 2026-10-18 review: a pair's icons had kept the opener's name)."""
+
+    return _track_space(state.round_number, player, opener.rsplit(":", 1)[1])
 
 
 def _resolve_research_bonus(
@@ -854,16 +868,17 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
                 ),
                 events=(trashed_event,),
             )
+        named = _opened_space(state, player, source)
         held = hold_draw(
             hold_draw(
                 trashed_state.players[player],
                 OWED_INTRIGUE,
                 OWED_ORIGIN_RESEARCH,
-                f"{source}:intrigue",
+                named,
             ),
             OWED_CARD,
             OWED_ORIGIN_RESEARCH,
-            f"{source}:card",
+            named,
         )
         return RuleResult(
             state=replace(
@@ -928,19 +943,16 @@ def apply_research_icon(state: GameState, action: DomainAction) -> RuleResult:
         )
         working = turn_rows.take(state, player, item)
         source = item[1]
+    named = _opened_space(state, player, source)
     match icon:
         case "specimen":
-            return generate_specimens(working, player, 1, source=source)
+            return generate_specimens(working, player, 1, source=named)
         case "tleilaxu":
             return advance_tleilaxu(working, player, 1)
         case "intrigue":
-            return draw_or_queue_intrigue_cards(
-                working, player, 1, source=f"{source}:intrigue"
-            )
+            return draw_or_queue_intrigue_cards(working, player, 1, source=named)
         case "cards":
-            return draw_or_request_personal_cards(
-                working, player, 1, source=f"{source}:card"
-            )
+            return draw_or_request_personal_cards(working, player, 1, source=named)
     raise RuntimeError(f"unknown research icon: {icon}")
 
 

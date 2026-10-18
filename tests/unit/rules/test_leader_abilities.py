@@ -1167,7 +1167,7 @@ def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
     paid_result = apply_leader_board_repeat(recruited, pay)
     assert lapsed(paid_result) == [
         (
-            "round:1:player:0:leader_board_repeat:trash:lapsed",
+            "round:1:player:0:leader:reverend_mother_jessica:trash:lapsed",
             {"effect": "trash", "player": 0, "space_id": "desert_tactics"},
         )
     ]
@@ -1175,6 +1175,10 @@ def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
         "resources_paid",
         "leader_ability_resolved",
     ]
+    # The flipped face's ability, as the page names it (2026-10-18 review).
+    assert dict(paid_result.events[-1].payload)["leader_id"] == (
+        "reverend_mother_jessica"
+    )
     paid = paid_result.state
     paid_context = dict(paid.decision_stack[-1].context)
     assert paid_context["pending_board_icons"] == "troops,trash"
