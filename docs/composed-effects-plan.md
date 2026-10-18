@@ -920,6 +920,27 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   6. 하지 않는 것: 폐기 보상 frame이 낼 카드가 없으면 확인 없이 건너뛰는 것(2026-09-30 원칙의 적용 대상이지만 Combat 중에는 플레이한
      카드가 있어 사실상 닿지 않고, 확인 창에는 새 행동 템플릿이 필요하다 — 사용자 결정으로 남긴다), 지운 거절 행동의 codec 템플릿
      둘(망 행 번호가 바뀌므로 A8과 함께), 보드 hook 줄이기(2d).
+- **2c-4 — 지도자·Tech:**
+  1. **Signet Ring 칸도 칸 사건 하나.** Signet Ring 카드의 칸(또는 그 칸을 복사한 Ghola, Servo-Receivers의 Signet)은 2c-2의 칸 규칙을
+     따르되 지도자 능력이므로 자기 종류 `leader_signet_<결과>`(`resolved`·`declined`·`unavailable`·`lapsed`·`expired`)를 쓴다
+     (`box_events.signet_box_event`; id `round:R:player:P:leader_signet[:<아이콘>]:<결과>`, payload `card_id`(Servo는 `tech_id`)·
+     `player`·아이콘이면 `effect`). 턴 끝 lapse·fizzle·만료와 Fill Coffers의 아이콘 해결이 Agent 카드 종류(`agent_card_effect_*`)를
+     빌려 쓰던 것도 이 종류로. `leader_signet_resolved`가 18가지 payload를 싣던 것(자동 인장만 `card_id`, 카드 수·병력·memories·보너스
+     spice·진영 등)은 칸 사건 payload 하나로 — 자원은 `resources_gained`(출처 `…:leader_signet`), 뽑기·영향력·병력 모자람은 자기
+     사건, 나머지는 상태가 말한다. 거절 사건(`leader_signet_payment_declined`, `leader_card_trash_declined`)은 `leader_signet_declined`
+     하나로. 칸 사건은 맨 뒤(지금 Lead the Way·Fedaykin·Kota·Shaddam은 뽑기·영향력 앞).
+  2. **지도자 능력의 출처는 그 지도자.** Signet이 아닌 지도자 능력(Esmar의 Tuek's Sietch, Staban의 Smuggle Spice, Assassin, Chani의
+     Tactics 트랙, Steersman의 Hungry for Spice)은 출처 `round:R:player:<지도자 좌석>:leader:<leader_id>`로 이름 짓는다 — 지금
+     Esmar는 방문자 좌석, Assassin·Tactician은 유발한 폐기·후퇴의 출처, Hungry for Spice는 `hungry_for_spice`를 붙인다(Unpredictable
+     Foe의 `leader_reveal:intrigue`는 기보 다리가 읽으므로 그대로). 화면은 `leader` 출처를 지도자 이름으로 읽는다. 자원은
+     `resources_gained`(판단 3): Staban의 `leader_ability_spice_gained`는 없어지고(다른 좌석 차례의 "지도자 능력" 카드 제목은
+     `leader_ability_resolved`가 이어 받는다), Esmar·Assassin의 Solari와 Tactics 트랙의 spice·water는 사건 payload에서 빠진다. 능력
+     자신의 사건(`leader_ability_resolved` id `<출처>:resolved`, `tactics_token_advanced` id `<출처>:tactics`)은 맨 뒤.
+  3. **Tech:** Reveal 보너스(`tech_reveal_bonus`)는 Reveal 출처 `<reveal>:tech:<타일>` 하나로(늦게 받은 것의 `…:tech:<타일>:late`
+     없앰), 0인 양은 싣지 않는다(Solari는 Reveal의 얻기가 낸다). Tech 폐기는 `<출처>:tech_trashed`로(`…:trashed`와 섞여 있던 것).
+  4. 하지 않는 것: 주지 않는 거절 행동 셋의 codec 템플릿(A8과 함께), 의무 단계에 "막히지 않게" 남긴 거절(행동이 바뀜 — 사용자 결정),
+     닿지 않는 `acquire_leader_reserve`와 Esmar의 거절만 있는 인장(죽은 코드 정리는 2d), Tech 지불 사건 모양(2c-6). `leader_signet_resolved`
+     에서 빠진 지불(Chani의 water, Staban의 spice 1·Solari 2, Shaddam의 Solari 3)은 2c-6의 지불 사건으로 다시 남긴다.
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
