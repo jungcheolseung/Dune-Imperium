@@ -2373,38 +2373,74 @@ def _reshuffle_renamed(
     return ChanceOutcome(decision.decision_id, step.values)
 
 
-_BOX_SHUFFLE = re.compile(
-    r"^round:\d+:player:\d+:"
-    r"(?:agent_card(?:_discard|_payment)?|shigawire|hungry_for_spice|leader):"
-)
-
-
-def _box_reshuffle_renamed(
+def _renamed_draw_reshuffle(
     engine: UprisingRulesEngine,
     state: GameState,
     decision: Decision,
     step: ReplayStep,
 ) -> ReplayStep | None:
-    """Give a recorded Agent box's discard reshuffle the box's name.
+    """Give a recorded discard reshuffle the name of the draw that asks it.
 
-    Codec v149 (cleanup-2c-2) names every draw of an Agent box after the box
-    (``round:R:player:P:agent_card:<card>``), where an older engine named
-    some after the card's definition, ``agent_card_discard``,
-    ``agent_card_payment`` or Urgent Shigawire's ``shigawire:<card>``, and
-    (cleanup-2c-4) Hungry for Spice's after the Leader
-    (``round:R:player:P:leader:steersman_y_rkoon``, was ``hungry_for_spice``);
-    the reshuffle a short draw asks for carries that name. Renamed as
-    ``_reshuffle_renamed`` does, for such a draw on both sides.
+    Codec v149 (cleanup-2c) renames draws by the event grammar: an Agent
+    box's after the box (``round:R:player:P:agent_card:<card>``, where an
+    older engine named some after the card's definition,
+    ``agent_card_discard``, ``agent_card_payment`` or ``shigawire:<card>``),
+    a Leader ability's after the Leader (Hungry for Spice), a Research
+    draw and an Intrigue line's draw after their source without the
+    caller's extra word. The reshuffle a short draw asks for carries that
+    name. Renamed only when the recorded name is the older one of exactly
+    such a rename (``_cleanup2c_renamed``), the same personal reshuffle in
+    this round, the recorded values exactly the pile.
     """
 
+    del engine
     if not (
         isinstance(step, ChanceOutcome)
         and isinstance(decision, ChanceDecision)
-        and _BOX_SHUFFLE.match(step.decision_id)
-        and _BOX_SHUFFLE.match(decision.decision_id)
+        and state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+        and step.decision_id != decision.decision_id
+        and _cleanup2c_renamed(step.decision_id, decision.decision_id)
     ):
         return None
-    return _reshuffle_renamed(engine, state, decision, step)
+    prefix = f"round:{state.round_number}:"
+    if not all(
+        decision_id.startswith(prefix) and decision_id.endswith(_DISCARD_SHUFFLE)
+        for decision_id in (step.decision_id, decision.decision_id)
+    ) or Counter(step.values) != Counter(decision.options):
+        return None
+    return ChanceOutcome(decision.decision_id, step.values)
+
+
+_OLD_BOX_DRAW = re.compile(
+    r"^round:\d+:player:\d+:(?:agent_card(?:_discard|_payment)?|shigawire):"
+)
+_NEW_BOX_DRAW = re.compile(r"^round:\d+:player:\d+:agent_card:")
+_NEW_RESEARCH_DRAW = re.compile(r"^round:\d+:player:\d+(:research:c\d+r\d+.*)$")
+
+
+def _cleanup2c_renamed(old: str, new: str) -> bool:
+    """Whether reshuffle ``new`` is ``old`` under a cleanup-2c draw name: a
+    box's draw named after the box, Hungry for Spice's after the Leader, a
+    research space's draw after the seat's track space, a caller's extra
+    ``:draw`` or ``:research_draw`` dropped -- and the seat unchanged."""
+
+    seat = re.compile(r"^round:\d+:player:(\d+):")
+    old_seat, new_seat = seat.match(old), seat.match(new)
+    if (old_seat is None) != (new_seat is None) or (
+        old_seat is not None
+        and new_seat is not None
+        and old_seat.group(1) != new_seat.group(1)
+    ):
+        return False
+    for extra in (":draw", ":research_draw"):
+        if old.replace(f"{extra}{_DISCARD_SHUFFLE}", _DISCARD_SHUFFLE) == new != old:
+            return True
+    if new.replace(":leader:steersman_y_rkoon:", ":hungry_for_spice:") == old:
+        return True
+    if _OLD_BOX_DRAW.match(old) and _NEW_BOX_DRAW.match(new):
+        return True
+    research = _NEW_RESEARCH_DRAW.match(new)
+    return research is not None and old.endswith(research.group(1))
 
 
 _FINISH_AGENT_TURN = "finish_agent_turn"
@@ -2760,11 +2796,11 @@ BRIDGES: tuple[Bridge, ...] = (
         before_codec=149,
         rewrites=True,
     ),
-    # Codec v149 (cleanup-2c-2) names an Agent box's draws, and the
-    # reshuffles they ask for, after the box.
+    # Codec v149 (cleanup-2c) renames draws by the event grammar, and the
+    # reshuffles they ask for with them.
     Bridge(
-        "box_reshuffle_renamed",
-        _box_reshuffle_renamed,
+        "draw_reshuffle_renamed",
+        _renamed_draw_reshuffle,
         before_codec=149,
         rewrites=True,
     ),

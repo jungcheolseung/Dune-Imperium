@@ -254,10 +254,11 @@ def test_offworld_operation_pays_more_past_the_helix() -> None:
     spice = [p.resources.spice for p in state.players]
     result = _advance_automatic(RuleResult(state=_next_round(state, 5)))
     state = result.state
+    # A resource gain like any other (cleanup-2c-5).
     gained = {
         dict(e.payload)["player"]: dict(e.payload)["spice"]
         for e in result.events
-        if e.kind == "scouts_helix_spice"
+        if e.kind == "resources_gained" and "spice" in dict(e.payload)
     }
     assert gained == {0: 2, 1: 1}
     assert state.players[0].resources.spice == spice[0] + 2

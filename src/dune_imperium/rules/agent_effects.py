@@ -683,9 +683,7 @@ def _apply_stitched_horror_reward(
     next_state = advance_after_effect(state, context, players)
     for index, pick in enumerate(chosen):
         if pick == "tleilaxu":
-            advanced = advance_tleilaxu(
-                next_state, player, 1, source=f"{source}:tleilaxu"
-            )
+            advanced = advance_tleilaxu(next_state, player, 1)
             next_state = advanced.state
             events.extend(advanced.events)
         elif pick == "trash":
@@ -2362,9 +2360,7 @@ def _apply_payment_choice(
         expired = _expired_partner_box(state, context, action.actor)
         next_state = advance_after_effect(state, context)
         trashed = trash_personal_card(next_state, action.actor, partner, source=source)
-        generated = generate_specimens(
-            trashed.state, action.actor, 1, source=f"{source}:specimen"
-        )
+        generated = generate_specimens(trashed.state, action.actor, 1, source=source)
         return RuleResult(
             state=generated.state,
             events=(
@@ -2410,9 +2406,7 @@ def _apply_payment_choice(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
         researched = (
-            advance_research(
-                next_state, action.actor, source=f"{source}:research"
-            )
+            advance_research(next_state, action.actor, source=source)
             if research_owed
             else RuleResult(state=next_state, events=())
         )
@@ -2460,9 +2454,7 @@ def _apply_payment_choice(
         next_state = advance_after_effect(
             state, context, replace_player(state.players, paid_owner)
         )
-        advanced = advance_tleilaxu(
-            next_state, action.actor, 1, source=f"{source}:tleilaxu"
-        )
+        advanced = advance_tleilaxu(next_state, action.actor, 1)
         return RuleResult(
             state=advanced.state,
             events=(
@@ -3287,7 +3279,7 @@ def resolve_agent_card_icon(
     research_events: tuple[GameEvent, ...] = ()
     if key == AGENT_ICON_RESEARCH and available and effect is _LOSE_TROOP_FOR_CARDS:
         # Piter, Genius Advisor's reward Research, after its cost (OQ-106).
-        researched = advance_research(next_state, player, source=f"{source}:research")
+        researched = advance_research(next_state, player, source=source)
         next_state = researched.state
         research_events = researched.events
     draw_events: tuple[GameEvent, ...] = ()
@@ -4212,9 +4204,7 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
         (*_researched_boxes(context), card_instance_id)
     )
     next_state = advance_after_effect(state, context)
-    researched = advance_research(
-        next_state, player, source=f"{event_source}:research"
-    )
+    researched = advance_research(next_state, player, source=event_source)
     return RuleResult(
         state=researched.state,
         events=(

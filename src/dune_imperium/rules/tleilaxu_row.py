@@ -305,9 +305,7 @@ def acquire_reclaimed_forces(
     # answered (user ruling 2026-10-04); neither choice opens one today.
     if choice == "tleilaxu":
         paid = replace(state, players=replace_player(state.players, owner))
-        advanced = advance_tleilaxu(
-            paid, player, RECLAIMED_FORCES_TLEILAXU, source=f"{source}:reclaimed_forces"
-        )
+        advanced = advance_tleilaxu(paid, player, RECLAIMED_FORCES_TLEILAXU)
         fired = fire_reveal_acquisition_intrigue(
             advanced.state,
             player,

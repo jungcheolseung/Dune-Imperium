@@ -121,7 +121,6 @@ const LOG_EVENT_ICONS = {
   leader_signet_spice_paid: "spice",
   maker_spice_added: "spice",
   reveal_spice_paid: "spice",
-  scouts_helix_spice: "spice",
   scouts_maker_spice_added: "spice",
   leader_board_repeat_paid: "water",
   corrinth_city_payment_resolved: "victory_point",

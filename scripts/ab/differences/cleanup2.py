@@ -114,7 +114,7 @@ def _lapsed(kind: str, candidate: Step, event_kind: str, suffix: str) -> None:
     kept = []
     for event in candidate.events:
         source = event["event_id"].removesuffix(suffix)
-        named = (_VANISHED[kind] & {source, *_box_aliases(source)}) if (
+        named = (_VANISHED[kind] & {source, *_box_aliases(source, kind)}) if (
             event["kind"] == event_kind
         ) else set()
         if named:
@@ -124,10 +124,23 @@ def _lapsed(kind: str, candidate: Step, event_kind: str, suffix: str) -> None:
     candidate.events = kept
 
 
-def _box_aliases(source: str) -> set[str]:
+def _box_aliases(source: str, kind: str) -> set[str]:
     """The base's names of a frame the candidate names after its Agent box
     (cleanup-2c-2): Control the Spice's trash ``…:agent_card_payment:<card>``,
-    Stitched Horror's ``…:agent_card_payment:<n>``."""
+    Stitched Horror's ``…:agent_card_payment:<n>``; and of a research
+    space's window, whose opener lost a caller's extra ``:research`` in
+    cleanup-2c-5 (every vanished source of that round ending with the
+    space)."""
+
+    research = re.match(r"^round:(\d+):.*:research:(c\d+r\d+)$", source)
+    if research is not None:
+        round_number, space = research.groups()
+        return {
+            vanished
+            for vanished in _VANISHED[kind]
+            if vanished.startswith(f"round:{round_number}:")
+            and vanished.endswith(f":research:{space}")
+        }
 
     box = re.match(
         rf"^(round:\d+:player:\d+):agent_card:({_CARD_REF})(?::(\d+))?$", source
@@ -667,14 +680,17 @@ _AT_THE_WINDOWS = frozenset(
 
 
 def _carry_key(event: dict[str, object]) -> str:
-    """An event's text for carrying it between steps: a Tactics advance by
-    its seat and count alone (cleanup-2c-4 renamed it and moved its gain to
-    a ``resources_gained``)."""
+    """An event's text for carrying it between steps: its kind and payload,
+    not its id (cleanup-2c renamed sources), and a Tactics advance by its
+    seat and count alone (cleanup-2c-4 also moved its gain to a
+    ``resources_gained``)."""
 
     if event["kind"] == "tactics_token_advanced":
         data = _payload(event)
         return f"tactics:{data['player']}:{data['count']}"
-    return _row_key(event)
+    return json.dumps(
+        [event["kind"], event["payload"], event.get("visible_to")], sort_keys=True
+    )
 
 
 def _carried(event: dict[str, object]) -> bool:
@@ -1363,6 +1379,9 @@ def _adopt_base_ids(
     renamed = False
     for position, event in enumerate(out):
         root = _SEAT_ROOT.match(str(event["event_id"]))
+        if root is None and any_seat:
+            # A source with no seat (``round:R:scouts:...``).
+            root = re.match(r"^(round:\d+):", str(event["event_id"]))
         if (
             root is None
             or not any(word in str(event["event_id"]) for word in roots)
@@ -1516,6 +1535,107 @@ def _leader_and_tech_in_base_form(old: Step, candidate: Step) -> None:
     candidate.events = _in_base_order(old, out) if changed else out
 
 
+# --- Cleanup-2c-5: research, Immortality and Scouts events ---------------------
+
+
+def _scouts_and_row_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c-5 (docs/composed-effects-plan.md, "2c-5"), before the
+    gains rule: Offworld Operation's spice and a mission's goods are
+    resource gains now (``scouts_helix_spice``, the goods' amounts on
+    ``scouts_mission_goods_taken``); the Row's redeal is
+    ``imperium_row_cleared`` for Family Atomics (whose own event kept the
+    removed cards) and Clear the Market (``scouts_row_cleared``); a Skill's
+    Reveal bonus lost its zeros and its ``:late``."""
+
+    used: set[int] = set()
+    out: list[dict[str, object]] = []
+    changed = False
+
+    def base_of(
+        kind: str, data: dict[str, object], keys: tuple[str, ...]
+    ) -> int | None:
+        for index, base in enumerate(old.events):
+            if index in used or base["kind"] != kind:
+                continue
+            base_data = _payload(base)
+            if all(base_data.get(key) == data.get(key) for key in keys):
+                return index
+        return None
+
+    for event in candidate.events:
+        kind = str(event["kind"])
+        data = _payload(event)
+        match: int | None = None
+        drop = False
+        if kind == "resources_gained":
+            match = base_of("scouts_helix_spice", data, ("player", "spice"))
+            if match is None and any(
+                base["kind"] == "scouts_mission_goods_taken"
+                and _payload(base).get("player") == data["player"]
+                and str(data["source"]).endswith(f":{_payload(base)['mission_id']}")
+                for base in old.events
+            ):
+                drop = True
+        elif kind == "scouts_mission_goods_taken":
+            match = base_of(kind, data, ("player", "mission_id"))
+        elif kind == "imperium_row_cleared":
+            if "player" in data:
+                drop = any(base["kind"] == "family_atomics_used" for base in old.events)
+            else:
+                match = base_of("scouts_row_cleared", data, ("dealt", "removed"))
+        elif kind == "family_atomics_used" and event not in old.events:
+            match = base_of(kind, data, ("player",))
+        elif kind == "skill_reveal_bonus" and event not in old.events:
+            match = base_of(kind, data, ("player", "skill_id"))
+        if match is not None:
+            used.add(match)
+            out.append(old.events[match])
+            changed = True
+        elif drop:
+            changed = True
+        else:
+            out.append(event)
+    candidate.events = _in_base_order(old, out) if changed else out
+
+
+def _tracks_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c-5, after the gains rule: the research and Tleilaxu tracks
+    are named after the seat's track space whatever moved the token (the
+    base named them after the caller's source, chained bonus moves under
+    each other); a Tleilaxu space's spice left ``tleilaxu_advanced``;
+    callers dropped their own extra words (``:research``, ``:specimen``,
+    ``:research_draw``): the base's id where only that differs."""
+
+    used: set[int] = set()
+    out: list[dict[str, object]] = []
+    changed = False
+    for event in candidate.events:
+        kind = str(event["kind"])
+        tracks = ("tleilaxu_advanced", "tleilaxu_track_end")
+        if event not in old.events and kind in tracks:
+            keys = ("player", "space") if kind == "tleilaxu_advanced" else ("player",)
+            match = _same_event(old, used, event, keys)
+            if match is not None:
+                used.add(match)
+                out.append(old.events[match])
+                changed = True
+                continue
+        out.append(event)
+    changed |= _adopt_base_ids(
+        old,
+        out,
+        (
+            ":research",
+            ":tleilaxu:",
+            ":specimens",
+            ":intrigue_draw:",
+            ":discard_shuffled",
+        ),
+        any_seat=True,
+    )
+    candidate.events = _in_base_order(old, out) if changed else out
+
+
 # --- Cleanup-2c-3: board, Conflict and Contract events ------------------------
 
 _BOARD_SOURCE = re.compile(r"^round:\d+:player:\d+:board:[a-z_]+$")
@@ -1643,38 +1763,55 @@ def _same_payload(base: dict[str, object], event: dict[str, object]) -> bool:
     return plain(base_data) == plain(_payload(event))
 
 
+# The sources cleanup-2c renamed that a waiting draw carries.
+_RENAMED_SOURCES = (":agent_card:", ":research:", ":tleilaxu:", ":leader:")
+
+
 def _box_owed_draws(old: Step, at: At) -> None:
-    """A draw an Agent box owes is logged under the box's name when taken
-    (``PlayerState.owed_draws`` holds that source): while a seat holds one
-    so named, its owed draws are compared by what they draw, not by name."""
+    """A waiting draw is logged under its source's name when taken
+    (``PlayerState.owed_draws`` and ``GameState.pending_intrigue_draws``
+    hold it): while one waits under a name cleanup-2c changed, the waiting
+    draws are compared by what they draw, not by name."""
 
     for seat, player in enumerate(at.state.players):
-        if any(":agent_card:" in entry[2] for entry in player.owed_draws):
+        if any(
+            word in entry[2] for entry in player.owed_draws for word in _RENAMED_SOURCES
+        ):
             old.fields_unchecked.add(f"players[{seat}].owed_draws")
+    if any(
+        word in entry[2]
+        for entry in at.state.pending_intrigue_draws
+        for word in _RENAMED_SOURCES
+    ):
+        old.fields_unchecked.add("pending_intrigue_draws")
 
 
 def _box_owed_draw_named(old: Step, candidate: Step) -> None:
-    """The step an Agent box owes a draw in (its events named after the
-    box): that seat's owed draws are left to ``_box_owed_draws``."""
+    """The step a renamed source may owe a draw in (its events carry that
+    name): that seat's waiting draws are left to ``_box_owed_draws``."""
 
     for event in candidate.events:
-        # The ids read as the base's by now (``agent_box_events``).
-        root = re.match(r"^round:\d+:player:(\d+):agent_", str(event["event_id"]))
-        if root is not None:
+        event_id = str(event["event_id"])
+        root = re.match(r"^round:\d+:player:(\d+):", event_id)
+        if root is not None and (
+            ":agent_" in event_id
+            or any(word in event_id for word in _RENAMED_SOURCES)
+        ):
             old.fields_unchecked.add(f"players[{root.group(1)}].owed_draws")
+            old.fields_unchecked.add("pending_intrigue_draws")
 
 
-_BOX_SHUFFLE = re.compile(
-    r"^round:(\d+):player:(\d+):"
-    r"(?:agent_card(?:_discard|_payment)?|shigawire|hungry_for_spice|leader)"
-    r"(?::.+)?:discard_shuffle$"
-)
+# A personal discard reshuffle, named after the draw that asks it (a Scouts
+# reward's names no seat; the pile tells the seat).
+_BOX_SHUFFLE = re.compile(r"^round:(\d+):(?:.+:)?discard_shuffle$")
 
 
 def _box_shuffle_named(old: Step, at: At) -> tuple[ChanceOutcome, ...] | None:
-    """Cleanup-2c-2: a box's draw is named after the box, and so is the
-    discard shuffle it asks for (the base named some after the card's
-    definition): the recorded permutation, under the candidate's name."""
+    """Cleanup-2c: draws are renamed by the event grammar (a box's after the
+    box, a Leader ability's after the Leader, a Research draw without the
+    caller's extra word), and so is the discard shuffle each asks for: the
+    recorded permutation, under the candidate's name, when it is the same
+    seat's shuffle of the same pile in the same round."""
 
     if old.step[0] != "c" or not isinstance(at.decision, ChanceDecision):
         return None
@@ -1685,6 +1822,7 @@ def _box_shuffle_named(old: Step, at: At) -> tuple[ChanceOutcome, ...] | None:
         or recorded is None
         or asked.groups() != recorded.groups()
         or at.decision.decision_id == old.step[1]
+        or sorted(at.decision.options) != sorted(old.step[2])
     ):
         return None
     move = ChanceOutcome(decision_id=at.decision.decision_id, values=tuple(old.step[2]))
@@ -1757,13 +1895,9 @@ def _conflict_end_events(old: Step, candidate: Step) -> None:
     for event in list(_CONFLICT_END_CARRY):
         text = _carry_key(event)
         if base[text] > have[text]:
-            # The base's own event (a Tactics advance carried here is named
-            # after the Leader in the candidate, cleanup-2c-4).
-            kept.append(
-                next(e for e in old.events if _carry_key(e) == text)
-                if event["kind"] == "tactics_token_advanced"
-                else event
-            )
+            # The base's own event (the candidate's may carry a source
+            # cleanup-2c renamed).
+            kept.append(next(e for e in old.events if _carry_key(e) == text))
             have[text] += 1
             _CONFLICT_END_CARRY.remove(event)
     texts = [_row_key(e) for e in kept]
@@ -1802,6 +1936,12 @@ RULES = (
         why="cleanup-2c-4: the Signet box's own event, Leader abilities named "
         "after the Leader, their gains, zero-free Tech Reveal bonuses",
         new=_leader_and_tech_in_base_form,
+    ),
+    Rule(
+        name="scouts_and_row_events",
+        why="cleanup-2c-5: Scouts gains as resources_gained, one Row redeal "
+        "event, zero-free Skill Reveal bonuses",
+        new=_scouts_and_row_in_base_form,
     ),
     Rule(
         name="agent_box_shuffle",
@@ -1926,6 +2066,12 @@ RULES = (
         why="cleanup-2c: rule decisions 3 and 4, one resources_gained event with "
         "a line's VP as a key; Tech acquire amounts on their own event",
         new=_gains_in_base_form,
+    ),
+    Rule(
+        "track_events",
+        why="cleanup-2c-5: the research and Tleilaxu tracks named after the "
+        "seat's track space; callers' extra source words dropped",
+        new=_tracks_in_base_form,
     ),
     Rule(
         "shortfall_counts",

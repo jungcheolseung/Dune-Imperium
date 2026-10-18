@@ -520,7 +520,10 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
     assert paid.events[0].event_id == f"{box}:paid"
     advances = paid.events[1:-1]
     assert advances
-    assert all(event.event_id.startswith(f"{box}:tleilaxu") for event in advances)
+    # The Tleilaxu track names its own events (cleanup-2c-5).
+    assert all(
+        event.event_id.startswith("round:1:player:0:tleilaxu:") for event in advances
+    )
     assert paid.events[-1] == agent_box_event(box, card, 0, BoxOutcome.RESOLVED)
     finished = replace(
         placed,

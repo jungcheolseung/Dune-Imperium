@@ -3154,7 +3154,7 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
         if kind == "specimens":
             return generate_specimens(settled, player, count, source=event_id)
         if kind == "tleilaxu":
-            return advance_tleilaxu(settled, player, count, source=event_id)
+            return advance_tleilaxu(settled, player, count)
         # A Reveal-box Research icon (Tleilaxu Master): each action advances
         # once, so the two icons may be resolved apart with other Reveal
         # effects between them (designer ruling, OQ-057); the advance may
@@ -3351,19 +3351,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 ("troops", str(skill.reveal_troops), f"skill:{skill.skill_id}")
             )
         events.append(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:reveal:"
-                    f"skill:{skill.skill_id}:late"
-                ),
-                kind="skill_reveal_bonus",
-                payload=(
-                    ("persuasion", skill.reveal_persuasion),
-                    ("player", player),
-                    ("skill_id", skill.skill_id),
-                    ("spice", skill.reveal_spice),
-                    ("troops", skill.reveal_troops),
-                ),
+            _skill_reveal_bonus(
+                f"round:{state.round_number}:player:{player}:reveal", player, skill
             )
         )
     if late_skills:
@@ -4978,17 +4967,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for tech_id in tech_granted
     )
     events.extend(
-        GameEvent(
-            event_id=f"{event.event_id}:skill:{skill.skill_id}",
-            kind="skill_reveal_bonus",
-            payload=(
-                ("persuasion", skill.reveal_persuasion),
-                ("player", action.actor),
-                ("skill_id", skill.skill_id),
-                ("spice", skill.reveal_spice),
-                ("troops", skill.reveal_troops),
-            ),
-        )
+        _skill_reveal_bonus(event.event_id, action.actor, skill)
         for skill in active_skills
         if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_troops
     )
@@ -5295,5 +5274,29 @@ def _tech_reveal_bonus(source: str, player: int, tech_id: str) -> GameEvent:
             *((("solari", gains.solari),) if gains.solari else ()),
             *((("strength", gains.swords),) if gains.swords else ()),
             ("tech_id", tech_id),
+        ),
+    )
+
+
+def _skill_reveal_bonus(
+    source: str, player: int, skill: SkillDefinition
+) -> GameEvent:
+    """A Skill tile's Reveal bonus, as a Tech tile's (``_tech_reveal_bonus``):
+    named after the Reveal, without its zero amounts (cleanup-2c-5); the
+    spice and the troop are gained with the Reveal's gains."""
+
+    return GameEvent(
+        event_id=f"{source}:skill:{skill.skill_id}",
+        kind="skill_reveal_bonus",
+        payload=(
+            *(
+                (("persuasion", skill.reveal_persuasion),)
+                if skill.reveal_persuasion
+                else ()
+            ),
+            ("player", player),
+            ("skill_id", skill.skill_id),
+            *((("spice", skill.reveal_spice),) if skill.reveal_spice else ()),
+            *((("troops", skill.reveal_troops),) if skill.reveal_troops else ()),
         ),
     )

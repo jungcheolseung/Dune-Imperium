@@ -61,6 +61,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
+from dune_imperium.rules.market_events import imperium_row_cleared_event
 from dune_imperium.rules.optional_trash import (
     open_optional_trash,
     optional_trash_frame,
@@ -198,13 +199,14 @@ def advance_tleilaxu(
     state: GameState,
     player: int,
     steps: int,
-    *,
-    source: str,
 ) -> RuleResult:
     """Advance the Tleilaxu token ``steps`` spaces, paying each space's bonus.
 
     On the last space the token stays and a further advance does nothing
-    (OQ-048).
+    (OQ-048). The track is the seat's: its events are named after the space
+    reached (``round:R:player:P:tleilaxu:<space>``, cleanup-2c-5), whatever
+    moved the token; a space's Victory Point rides on ``tleilaxu_advanced``
+    (rule decision 4) and its spice is a ``resources_gained`` (decision 3).
     """
 
     if steps < 1:
@@ -213,19 +215,20 @@ def advance_tleilaxu(
         raise ValueError("the Tleilaxu track requires Immortality")
     events: list[GameEvent] = []
     working = state
-    for step in range(steps):
+    track = f"round:{state.round_number}:player:{player}:tleilaxu"
+    for _ in range(steps):
         owner = working.players[player]
-        step_source = f"{source}:tleilaxu:{step}"
         if tleilaxu_track_finished(owner):
             events.append(
                 GameEvent(
-                    event_id=f"{step_source}:end",
+                    event_id=f"{track}:end",
                     kind="tleilaxu_track_end",
                     payload=(("player", player),),
                 )
             )
             break
         space = owner.tleilaxu_space + 1
+        step_source = f"{track}:{space}"
         bonus = TLEILAXU_TRACK[space]
         next_owner = replace(owner, tleilaxu_space=space)
         payload: list[tuple[str, bool | int | str]] = [
@@ -233,6 +236,7 @@ def advance_tleilaxu(
             ("space", space),
         ]
         track_spice = working.tleilaxu_track_spice
+        gains: tuple[GameEvent, ...] = ()
         if bonus in (
             TleilaxuBonus.VICTORY_POINT,
             TleilaxuBonus.VICTORY_POINT_AND_FIRST_SPICE,
@@ -251,13 +255,14 @@ def advance_tleilaxu(
                     spice=next_owner.resources.spice + track_spice,
                 ),
             )
-            payload.append(("spice", track_spice))
+            gains = (resources_gained_event(step_source, player, spice=track_spice),)
             track_spice = 0
         working = replace(
             working,
             players=replace_player(working.players, next_owner),
             tleilaxu_track_spice=track_spice,
         )
+        events.extend(gains)
         events.append(
             GameEvent(
                 event_id=step_source,
@@ -298,9 +303,7 @@ def advance_research(state: GameState, player: int, *, source: str) -> RuleResul
         raise ValueError("the research track requires Immortality")
     owner = state.players[player]
     if genetic_markers_reached(owner.research_space) >= 2:
-        drawn = draw_or_request_personal_cards(
-            state, player, 1, source=f"{source}:research_draw"
-        )
+        drawn = draw_or_request_personal_cards(state, player, 1, source=source)
         return RuleResult(
             state=drawn.state,
             events=(
@@ -377,7 +380,13 @@ def move_research_token(
     next_owner = replace(owner, research_space=space_id)
     markers = genetic_markers_reached(space_id)
     moved = replace(state, players=replace_player(state.players, next_owner))
-    step_source = f"{source}:research:{space_id}"
+    # The track is the seat's: its events, and what the space reached gains,
+    # are named after that space, whatever moved the token (cleanup-2c-5).
+    # The windows the bonus opens keep the name of what moved the token: an
+    # Arrakeen Scouts line knows its own Research's window by it
+    # (``scouts_effects._rewards_ahead``).
+    step_source = f"round:{state.round_number}:player:{player}:research:{space_id}"
+    opener = f"{source}:research:{space_id}"
     helix: tuple[GameEvent, ...] = ()
     if markers_before == 0 and markers:
         # Arrakeen Scouts' Sponsored Research: the spice beside the Helix
@@ -407,7 +416,9 @@ def move_research_token(
             )
         )
     events.extend(helix)
-    bonus = _resolve_research_bonus(moved, player, space.bonus, source=step_source)
+    bonus = _resolve_research_bonus(
+        moved, player, space.bonus, source=opener, named=step_source
+    )
     return RuleResult(state=bonus.state, events=(*events, *bonus.events))
 
 
@@ -417,15 +428,20 @@ def _resolve_research_bonus(
     bonus: ResearchBonus,
     *,
     source: str,
+    named: str,
 ) -> RuleResult:
+    """Resolve a research space's printed bonus: its gains named ``named``
+    (the seat's track space), its windows and chained Research ``source``
+    (what moved the token)."""
+
     owner = state.players[player]
     match bonus:
         case ResearchBonus.NONE:
             return RuleResult(state=state, events=())
         case ResearchBonus.SPECIMEN:
-            return generate_specimens(state, player, 1, source=source)
+            return generate_specimens(state, player, 1, source=named)
         case ResearchBonus.TLEILAXU:
-            return advance_tleilaxu(state, player, 1, source=source)
+            return advance_tleilaxu(state, player, 1)
         case ResearchBonus.RESEARCH:
             return advance_research(state, player, source=source)
         case ResearchBonus.TRASH_AND_SPECIMEN | ResearchBonus.TLEILAXU_AND_SPECIMEN:
@@ -473,7 +489,7 @@ def _resolve_research_bonus(
             return RuleResult(
                 state=replace(state, players=replace_player(state.players, next_owner)),
                 events=(
-                    resources_gained_event(source, player, solari=solari, spice=spice),
+                    resources_gained_event(named, player, solari=solari, spice=spice),
                 ),
             )
         case (
@@ -865,7 +881,7 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
         ),
     )
     paid_state = replace(popped, players=replace_player(popped.players, paid))
-    advanced = advance_tleilaxu(paid_state, player, 2, source=source)
+    advanced = advance_tleilaxu(paid_state, player, 2)
     return RuleResult(
         state=advanced.state,
         events=(
@@ -920,7 +936,7 @@ def apply_research_icon(state: GameState, action: DomainAction) -> RuleResult:
         case "specimen":
             return generate_specimens(working, player, 1, source=source)
         case "tleilaxu":
-            return advance_tleilaxu(working, player, 1, source=source)
+            return advance_tleilaxu(working, player, 1)
         case "intrigue":
             return draw_or_queue_intrigue_cards(
                 working, player, 1, source=f"{source}:intrigue"
@@ -966,21 +982,21 @@ def apply_family_atomics(state: GameState, action: DomainAction) -> RuleResult:
         imperium_row=next_row,
         imperium_deck=state.imperium_deck[5:],
     )
+    source = f"round:{state.round_number}:player:{action.actor}:family_atomics"
+    # The Row's redeal is the same event as Clear the Market's (cleanup-2c-5),
+    # then the token's own.
     return RuleResult(
         state=next_state,
         events=(
+            imperium_row_cleared_event(source, removed, next_row, player=action.actor),
             GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:family_atomics"
-                ),
+                event_id=source,
                 kind="family_atomics_used",
-                payload=(
-                    ("player", action.actor),
-                    ("removed", ",".join(removed)),
-                ),
+                payload=(("player", action.actor),),
             ),
         ),
     )
+
 
 
 def research_context_player(frame: DecisionFrame) -> int:

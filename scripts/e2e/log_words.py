@@ -379,7 +379,7 @@ def check_coverage(records: list[dict]) -> None:
         "a Feyd track step": lambda s: s == "payload feyd_token_advanced.to_space",
         "a Skill instance": lambda s: s.endswith(".skill_instance_id"),
         "Family Atomics' removed cards": lambda s: s
-        == "payload family_atomics_used.removed",
+        == "payload imperium_row_cleared.removed",
         "an exchanged Influence": lambda s: s == "action exchange_reveal_influence",
         "a Secrets steal": lambda s: s.startswith("chance ") and ":secrets:steal:" in s,
         "a Combat/Endgame Intrigue pass": lambda s: s.startswith("action ")

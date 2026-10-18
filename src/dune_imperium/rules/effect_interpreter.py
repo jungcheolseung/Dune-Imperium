@@ -1639,24 +1639,19 @@ def apply_rewards(
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.
-        drawn = draw_intrigue_cards(
-            next_state, player, intrigue_draws, source=f"{source}:intrigue"
-        )
+        drawn = draw_intrigue_cards(next_state, player, intrigue_draws, source=source)
         next_state = drawn.state
         events.extend(drawn.events)
     if specimens:
-        generated = generate_specimens(
-            next_state, player, specimens, source=f"{source}:specimens"
-        )
+        generated = generate_specimens(next_state, player, specimens, source=source)
         next_state = generated.state
         events.extend(generated.events)
     if tleilaxu_advances:
-        advanced = advance_tleilaxu(
-            next_state, player, tleilaxu_advances, source=f"{source}:tleilaxu"
-        )
+        advanced = advance_tleilaxu(next_state, player, tleilaxu_advances)
         next_state = advanced.state
         events.extend(advanced.events)
     for index in range(researches):
+        # Each Research its own source: two may each open a direction frame.
         researched = advance_research(
             next_state, player, source=f"{source}:research:{index}"
         )
@@ -1664,7 +1659,7 @@ def apply_rewards(
         events.extend(researched.events)
     if personal_draws:
         drawn = draw_or_request_personal_cards(
-            next_state, player, personal_draws, source=f"{source}:draw"
+            next_state, player, personal_draws, source=source
         )
         next_state = drawn.state
         events.extend(drawn.events)

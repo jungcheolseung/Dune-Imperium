@@ -643,7 +643,7 @@ def resolve_box(state: GameState) -> RuleResult:
             case Research():
                 step = advance_research(next_state, player, source=source)
             case AdvanceTleilaxu(count=count):
-                step = advance_tleilaxu(next_state, player, count, source=source)
+                step = advance_tleilaxu(next_state, player, count)
             case GenerateSpecimens(count=count):
                 step = generate_specimens(next_state, player, count, source=source)
             case LookAtIntrigueKeepOne():
@@ -788,15 +788,13 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
         for reward in line.rewards:
             if isinstance(reward, GenerateSpecimens):
                 generated = generate_specimens(
-                    next_state, player, reward.count, source=f"{source}:specimen"
+                    next_state, player, reward.count, source=source
                 )
                 next_state = generated.state
                 track_events = (*track_events, *generated.events)
         for reward in line.rewards:
             if isinstance(reward, Research):
-                researched = advance_research(
-                    next_state, player, source=f"{source}:research"
-                )
+                researched = advance_research(next_state, player, source=source)
                 next_state = researched.state
                 track_events = (*track_events, *researched.events)
     draw_events: tuple[GameEvent, ...] = ()
@@ -995,9 +993,7 @@ def apply_payment(
         step: RuleResult | None = None
         match reward:
             case AdvanceTleilaxu(count=count):
-                step = advance_tleilaxu(
-                    next_state, player, count, source=f"{source}:tleilaxu"
-                )
+                step = advance_tleilaxu(next_state, player, count)
             case DrawPersonalCards(count=count):
                 step = draw_or_request_personal_cards(
                     next_state, player, count, source=source

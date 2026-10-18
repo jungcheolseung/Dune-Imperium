@@ -1944,8 +1944,9 @@ def test_a_migrated_record_stamped_with_this_codec_needs_no_bridge(name: str) ->
 
 
 def test_a_recorded_reshuffle_takes_the_id_of_the_one_this_engine_asks() -> None:
-    # Insider Information's held draw reshuffles under ``...:rewards:draw``;
-    # v141 recorded the same seat's same pile under ``...:draw``.
+    # Insider Information's held draw reshuffles under ``...:rewards`` (the
+    # line's own ``:draw`` dropped, codec v149 cleanup-2c-5); v141 recorded
+    # the same seat's same pile under ``...:draw``.
     replay = _fixture("v141-heuristic-1027")
     recorded = replay.steps[108]
     assert isinstance(recorded, ChanceOutcome)
@@ -1956,7 +1957,7 @@ def test_a_recorded_reshuffle_takes_the_id_of_the_one_this_engine_asks() -> None
     assert renamed.bridge == "reshuffle_renamed"
     assert isinstance(renamed.step, ChanceOutcome)
     assert renamed.step == ChanceOutcome(
-        recorded.decision_id.replace(":draw:", ":rewards:draw:"), recorded.values
+        recorded.decision_id.replace(":draw:", ":rewards:"), recorded.values
     )
 
 

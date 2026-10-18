@@ -1121,9 +1121,7 @@ def apply_acquisition_track_effects(
                     state, player, source=f"{source}:acquisition_bonus"
                 )
             case AdvanceTleilaxu(count=count):
-                return advance_tleilaxu(
-                    state, player, count, source=f"{source}:acquisition_bonus"
-                )
+                return advance_tleilaxu(state, player, count)
     return RuleResult(state=state)
 
 

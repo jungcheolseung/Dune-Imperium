@@ -60,6 +60,7 @@ from dune_imperium.rules.frames import (
     reset_turn_counters,
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
+from dune_imperium.rules.market_events import imperium_row_cleared_event
 from dune_imperium.rules.scouts_auctions import (
     AUCTION_PAUSE,
     auction_tasks,
@@ -680,10 +681,8 @@ def _clear_row(state: GameState) -> RuleResult:
             imperium_deck=state.imperium_deck[5:],
         ),
         events=(
-            GameEvent(
-                event_id=f"round:{state.round_number}:scouts:clear_row",
-                kind="scouts_row_cleared",
-                payload=(("dealt", ",".join(dealt)), ("removed", ",".join(removed))),
+            imperium_row_cleared_event(
+                f"round:{state.round_number}:scouts:clear_row", removed, dealt
             ),
         ),
     )

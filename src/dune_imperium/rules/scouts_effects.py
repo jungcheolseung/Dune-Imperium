@@ -100,6 +100,7 @@ from dune_imperium.rules.frames import (
     turn_owner_of,
     update_turn_recruits,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     alliance_recipients_after_influence_loss,
@@ -835,11 +836,9 @@ def _apply_automatic(
                         owner.resources, spice=owner.resources.spice + gained
                     ),
                 ),
-                GameEvent(
-                    event_id=f"{source}:helix_spice",
-                    kind="scouts_helix_spice",
-                    payload=(("helix", helix), ("player", player), ("spice", gained)),
-                ),
+                # A resource gain like any other (rule decision 3,
+                # cleanup-2c-5).
+                resources_gained_event(source, player, spice=gained),
             )
         case DiscardFromHand() | RecallSpy() | TrashIntrigueCard() | TrashCard():
             # A choice with nothing left to choose (checked before paying a

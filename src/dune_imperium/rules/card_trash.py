@@ -226,9 +226,7 @@ def trash_personal_card(
             # the research modules import this one.
             from dune_imperium.rules.immortality import advance_tleilaxu
 
-            advanced = advance_tleilaxu(
-                result.state, player, reward.count, source=f"{source}:trash:{card_id}"
-            )
+            advanced = advance_tleilaxu(result.state, player, reward.count)
             result = RuleResult(
                 state=advanced.state, events=(*result.events, *advanced.events)
             )

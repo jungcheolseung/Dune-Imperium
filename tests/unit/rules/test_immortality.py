@@ -615,8 +615,9 @@ def test_specimen_and_tleilaxu_are_two_rows_taken_in_either_order(
             {"count": 1, "player": 0},
         ),
         (
+            # The Tleilaxu track names its own events (cleanup-2c-5).
             "tleilaxu_advanced",
-            f"{source}:tleilaxu:0",
+            "round:1:player:0:tleilaxu:1",
             {"player": 0, "space": 1},
         ),
     ]
@@ -970,7 +971,7 @@ def test_past_the_second_marker_research_draws_a_card() -> None:
 def test_tleilaxu_track_pays_intrigue_victory_points_and_the_first_spice() -> None:
     state = _at(RESEARCH_START_ID)
 
-    first = advance_tleilaxu(state, 0, 4, source="test")
+    first = advance_tleilaxu(state, 0, 4)
     owner = first.state.players[0]
     assert owner.tleilaxu_space == 4
     # Inside the seat's own turn the second space's Intrigue card waits as
@@ -983,12 +984,12 @@ def test_tleilaxu_track_pays_intrigue_victory_points_and_the_first_spice() -> No
 
     # The second player to reach the space gains the point but no spice;
     # outside its own turn the Intrigue card is drawn at once.
-    second = advance_tleilaxu(first.state, 1, 4, source="test")
+    second = advance_tleilaxu(first.state, 1, 4)
     other = second.state.players[1]
     assert other.victory_points == 2 and other.resources.spice == 0
     assert len(other.intrigue_cards) == 1 and other.owed_draws == ()
 
-    end = advance_tleilaxu(second.state, 0, 4, source="test")
+    end = advance_tleilaxu(second.state, 0, 4)
     owner = end.state.players[0]
     assert owner.tleilaxu_space == TLEILAXU_TRACK_END
     assert owner.victory_points == 3
