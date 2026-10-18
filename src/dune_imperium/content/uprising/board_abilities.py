@@ -34,6 +34,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     PlaceSpy,
+    RecallAgent,
     RecruitTroops,
     Research,
     Reward,
@@ -107,18 +108,20 @@ BOARD_SPACE_ABILITIES: Final[Mapping[tuple[str, int, str], Ability]] = MappingPr
 )
 
 
-def _choice(*lines: EffectSection, mark: AbilityMark, hook: str) -> Ability:
+def _choice(
+    *lines: EffectSection, mark: AbilityMark, hook: str | None = None
+) -> Ability:
     return Ability(
         timing=AbilityTiming.BOARD_SPACE, sections=lines, mark=mark, hook=hook
     )
 
 
 # The spaces' choice icons and special flows, keyed by (space id, icon key)
-# (composed A5d). Each keeps its flow as code in ``rules.board_effects``
-# (``BOARD_SPACE_HOOKS``): their rows match shared shapes, but each handler
-# names its events its own way -- left for the cleanup stage, which unifies
-# the events. A record lists its line only where the DSL can say the whole
-# icon (the A3g rule); its mark matches ``effects.OPTIONAL_BOARD_ICONS``.
+# (composed A5d). A record whose one line says the whole icon is read off
+# that line by ``rules.board_effects`` (cleanup-2d: the Spy, the trash, the
+# Influence, the Intrigue trade and the recall); the rest name a flow kept
+# as code there (``BOARD_SPACE_HOOKS``). Its mark matches
+# ``effects.OPTIONAL_BOARD_ICONS``.
 BOARD_CHOICE_ABILITIES: Final[Mapping[tuple[str, str], Ability]] = MappingProxyType(
     {
         # Espionage: "Place a Spy" -- mandatory with a Spy in supply,
@@ -126,19 +129,16 @@ BOARD_CHOICE_ABILITIES: Final[Mapping[tuple[str, str], Ability]] = MappingProxyT
         ("espionage", "spy"): _choice(
             EffectSection(rewards=(PlaceSpy(),)),
             mark=AbilityMark.MANDATORY,
-            hook="espionage_spy",
         ),
         # Desert Tactics: "You may trash a card".
         ("desert_tactics", "trash"): _choice(
             EffectSection(rewards=(TrashPersonalCard(),)),
             mark=AbilityMark.OPTIONAL,
-            hook="desert_tactics_trash",
         ),
         # Shipping: "Gain 1 Influence with a Faction of your choice".
         ("shipping", "influence"): _choice(
             EffectSection(rewards=(GainInfluence(),)),
             mark=AbilityMark.MANDATORY,
-            hook="shipping_influence",
         ),
         # Imperial Privilege: "You may trash an Intrigue card -> Draw 1
         # Intrigue card", its own icon beside the recall (OQ-027 (d)).
@@ -147,12 +147,12 @@ BOARD_CHOICE_ABILITIES: Final[Mapping[tuple[str, str], Ability]] = MappingProxyT
                 rewards=(DrawIntrigueCards(1),), costs=(TrashIntrigueCard(),)
             ),
             mark=AbilityMark.OPTIONAL,
-            hook="imperial_privilege_trade",
         ),
-        # Imperial Privilege: "Recall one of your other Agents" -- a
-        # Conflict Agent too (OQ-068's sibling), which no piece says.
+        # Imperial Privilege: "Recall one of your other Agents from the
+        # board" [Board Guide p. 2] -- an earlier turn's Into the Fray Agent
+        # too, like every Recall Agent effect (OQ-037 (d), OQ-068).
         ("imperial_privilege", "imperial_privilege"): _choice(
-            mark=AbilityMark.MANDATORY, hook="imperial_privilege_recall"
+            EffectSection(rewards=(RecallAgent(),)), mark=AbilityMark.MANDATORY
         ),
         # Sietch Tabr: "Choose one: take the Maker Hooks token (if you lack
         # it), Recruit 1 troop and Gain 1 water -- or Gain 1 water,

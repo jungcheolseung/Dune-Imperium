@@ -130,12 +130,16 @@ from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
-from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules.card_bonds import (
+    counted_in_play,
+    has_faction_bond,
+    trashable_cards,
+)
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
-    grant_combat_icon,
+    open_combat_deployment,
     reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -155,7 +159,7 @@ from dune_imperium.rules.effects import (
     short_of,
     spice_gained_this_turn,
 )
-from dune_imperium.rules.frames import FrameKind, context_int, replace_player
+from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.immortality import (
     advance_research,
@@ -766,14 +770,8 @@ def resolve_box(state: GameState) -> RuleResult:
     if available and any(
         isinstance(reward, GrantCombatDeployment) for reward in line.rewards
     ):
-        # Occupation's Combat icon [Bloodlines p. 5] writes the frame; what
-        # it changed joins the context written back.
-        _, read = current_agent_effect_context(working)
-        working = grant_combat_icon(working, player)
-        _, granted = current_agent_effect_context(working)
-        context.update(
-            {key: value for key, value in granted.items() if read.get(key) != value}
-        )
+        # Occupation's Combat icon [Bloodlines p. 5].
+        open_combat_deployment(context)
     influence_events: tuple[GameEvent, ...] = ()
     for reward in line.rewards if available else ():
         if isinstance(reward, GainInfluence):
@@ -1991,12 +1989,7 @@ def trash_targets(
             if card_id != context.get("card_id")
             and cost.faction in personal_card_for_instance(card_id).factions
         )
-    if cost is not None and cost.hand_only:
-        return owner.hand
-    # A Row card borrowed with Usurp is not "in play" ("A grafted card in
-    # the Imperium Row isn't considered to be 'in play.'" [Immortality
-    # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
-    return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+    return trashable_cards(owner, hand_only=cost is not None and cost.hand_only)
 
 
 def trash_block(
@@ -2128,16 +2121,9 @@ def apply_trash(
         if ok
         for reward in line.rewards
     )
-    if any(isinstance(reward, GrantCombatDeployment) for reward in paid) and (
-        context.get("units_deploy_blocked") is not True
-    ):
-        # The Combat icon: this turn deploys as though at a Combat space,
-        # never more than two units from the garrison [Bloodlines p. 5].
-        context["pending_combat_deployment"] = True
-        limit = context_int(
-            context, "existing_troop_deployment_limit", owner="Agent-turn effect frame"
-        )
-        context["existing_troop_deployment_limit"] = max(limit, 2)
+    if any(isinstance(reward, GrantCombatDeployment) for reward in paid):
+        # The Combat icon [Bloodlines p. 5].
+        open_combat_deployment(context)
     if context["pending_agent_effect"] is True:
         # Armed rewards wait as icons; the box is not done.
         done = ()

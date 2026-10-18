@@ -86,7 +86,7 @@ from dune_imperium.rules.action_shapes import (
     action_shape,
     template_id,
 )
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
     resolve_personal_card_discard_trigger,
@@ -107,7 +107,6 @@ from dune_imperium.rules.effect_interpreter import (
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
     influence_gain_candidates,
-    spy_placement_allowed_post_ids,
     trashable_discard_pile_ids,
 )
 from dune_imperium.rules.effects import (
@@ -145,6 +144,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
     spy_options,
+    spy_placement_allowed_post_ids,
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -466,14 +466,9 @@ def piece_rows(
             # borrowed with Usurp is not "in play" (OQ-054).
             if refusals and not mandatory:
                 rows.append(row(Verb.DECLINE, of=Verb.TRASH))
-            candidates = (
-                owner.hand
-                if hand_only
-                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
-            )
             rows.extend(
                 row(Verb.TRASH, Target.PERSONAL_CARD, (("card_id", card_id),))
-                for card_id in candidates
+                for card_id in trashable_cards(owner, hand_only=hand_only)
             )
         case LoseTroops(from_conflict=from_conflict):
             # The zone and, for a Sardaukar Commander, the kind (OQ-038).

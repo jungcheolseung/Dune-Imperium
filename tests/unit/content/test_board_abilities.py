@@ -54,13 +54,36 @@ def test_the_swordmaster_reads_as_its_space_prints_it() -> None:
     assert reward_text_ko(TakeSwordmaster()) in korean
 
 
-def test_the_board_choices_are_hook_records() -> None:
-    """Every choice icon and special flow of a space has its record naming a
-    flow kept in ``rules.board_effects`` (composed A5d), marked as the
-    engine lets it lapse or holds the turn's end."""
+def test_the_board_choices_are_records_or_named_flows() -> None:
+    """Every choice icon and special flow of a space has its record, marked
+    as the engine lets it lapse or holds the turn's end: the five icons one
+    line says are read off it (cleanup-2d), the rest name a flow kept in
+    ``rules.board_effects`` (composed A5d)."""
 
-    named = {ability.hook for ability in BOARD_CHOICE_ABILITIES.values()}
-    assert named == BOARD_SPACE_HOOKS
+    named = {
+        ability.hook
+        for ability in BOARD_CHOICE_ABILITIES.values()
+        if ability.hook is not None
+    }
+    assert named == BOARD_SPACE_HOOKS == {
+        "sietch_tabr",
+        "maker",
+        "tuek_sietch",
+        "secrets_steal",
+    }
+    recorded = {
+        key: ability.sections
+        for (_, key), ability in BOARD_CHOICE_ABILITIES.items()
+        if ability.hook is None
+    }
+    assert recorded.keys() == {
+        "spy",
+        "trash",
+        "influence",
+        "imperial_privilege_intrigue",
+        "imperial_privilege",
+    }
+    assert all(len(lines) == 1 for lines in recorded.values())
     optional = {
         key
         for (_, key), ability in BOARD_CHOICE_ABILITIES.items()

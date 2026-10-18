@@ -25,7 +25,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import counted_in_play, trashable_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.effects import (
@@ -962,7 +962,7 @@ def legal_combat_reward_trash_actions(
                 actor=player,
                 arguments=(("card_id", card_id),),
             )
-            for card_id in (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+            for card_id in trashable_cards(owner)
         ),
     )
 

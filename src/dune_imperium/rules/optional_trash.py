@@ -22,7 +22,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.frames import (
@@ -148,9 +148,7 @@ def _trash_rows(owner: PlayerState, player: int) -> tuple[DomainAction, ...]:
             actor=player,
             arguments=(("card_id", card_id),),
         )
-        # A Row card borrowed with Usurp is not "in play" (OQ-054,
-        # ``counted_in_play``), so it is no trash target.
-        for card_id in (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+        for card_id in trashable_cards(owner)
     )
 
 

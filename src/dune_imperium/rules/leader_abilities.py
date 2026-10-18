@@ -80,18 +80,17 @@ from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
-    acquisition_spy_frame,
+    open_acquisition_frames,
 )
 from dune_imperium.rules.box_events import (
     BoxNeedsRows,
     BoxOutcome,
     signet_box_event,
 )
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import counted_in_play, trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
-from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     OPTIONAL_BOARD_ICONS,
     OptionalBlockKind,
@@ -888,11 +887,7 @@ def legal_feyd_track_actions(
                             actor=player,
                             arguments=(("card_id", card_id),),
                         )
-                        for card_id in (
-                            *owner.hand,
-                            *owner.discard_pile,
-                            *counted_in_play(owner),
-                        )
+                        for card_id in trashable_cards(owner)
                     )
                     if can_trash
                     else ()
@@ -2335,25 +2330,14 @@ def apply_leader_signet_acquire(
             to_hand=True,
             source=source,
         )
-    next_state = acquired.result.state
     resolved = _signet_box(source, context, player, BoxOutcome.RESOLVED)
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, player, acquired.instance_id)
-        )
-        return RuleResult(state=next_state, events=(*acquired.result.events, resolved))
-    if acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state,
-            player,
-            1,
-            source=f"{source}:acquisition_bonus",
-        )
-        return RuleResult(
-            state=contracts.state,
-            events=(*acquired.result.events, *contracts.events, resolved),
-        )
-    return RuleResult(state=next_state, events=(*acquired.result.events, resolved))
+    opened = open_acquisition_frames(
+        acquired.result.state, player, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state,
+        events=(*acquired.result.events, *opened.events, resolved),
+    )
 
 
 def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResult:
@@ -3003,40 +2987,29 @@ def apply_leader_reveal_action(
         )
 
     # Desert Scouts retreats one troop from the Conflict to the garrison
-    # [Main p. 20]. Without remaining units the revealed swords stop counting.
-    remaining_units = owner.units_in_conflict - 1
-    next_strength = owner.combat_strength - 2 if remaining_units else 0
-    strength_delta = next_strength - owner.combat_strength
-    if action.action_id == "retreat_leader_commander":
-        next_owner = replace(
-            owner,
-            commanders_garrison=owner.commanders_garrison + 1,
-            commanders_conflict=owner.commanders_conflict - 1,
-            combat_strength=next_strength,
-        )
-    else:
-        next_owner = replace(
-            owner,
-            troops_garrison=owner.troops_garrison + 1,
-            troops_conflict=owner.troops_conflict - 1,
-            combat_strength=next_strength,
-        )
-    if strength_delta:
-        decision_stack = add_reveal_strength(decision_stack, strength_delta)
-    return RuleResult(
-        state=replace(
-            state,
-            players=replace_player(state.players, next_owner),
-            decision_stack=decision_stack,
-        ),
-        events=(
-            GameEvent(
-                event_id=f"{source}:troops_retreated",
-                kind="troops_retreated",
-                payload=(("count", 1), ("player", action.actor)),
-            ),
-        ),
+    # [Main p. 20], a Sardaukar Commander being a troop [Bloodlines p. 4];
+    # without remaining units the revealed swords stop counting
+    # (``retreat_units``).
+    commander = action.action_id == "retreat_leader_commander"
+    retreated = retreat_units(
+        replace(state, decision_stack=decision_stack),
+        action.actor,
+        source,
+        troops=0 if commander else 1,
+        commanders=1 if commander else 0,
     )
+    strength_delta = (
+        retreated.state.players[action.actor].combat_strength - owner.combat_strength
+    )
+    if strength_delta:
+        retreated = RuleResult(
+            state=replace(
+                retreated.state,
+                decision_stack=add_reveal_strength(decision_stack, strength_delta),
+            ),
+            events=retreated.events,
+        )
+    return retreated
 
 
 def grant_hungry_for_spice(

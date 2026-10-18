@@ -518,19 +518,12 @@ def _acquire_by_agent_card(
             to_hand=to_hand,
             source=source,
         )
-    result_state = acquired.result.state
-    events = acquired.result.events
-    if acquired.places_spy:
-        result_state = result_state.push_decision(
-            acquisition_spy_frame(result_state, action.actor, acquired.instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            result_state, action.actor, 1, source=f"{source}:acquisition_bonus"
-        )
-        result_state = contracts.state
-        events = (*events, *contracts.events)
-    return RuleResult(state=result_state, events=events)
+    opened = open_acquisition_frames(
+        acquired.result.state, action.actor, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state, events=(*acquired.result.events, *opened.events)
+    )
 
 
 def _acquire_reserve_to_hand_with_solari(
@@ -999,36 +992,14 @@ def apply_imperium_acquisition(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=decision_stack,
     )
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            next_state,
-            action.actor,
-            faction,
-            1,
-            event_prefix=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"acquire:{instance_id}:influence:{faction.value}"
-            ),
-        )
-        next_state = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
+    effects = _acquisition_effects(
         next_state,
         action.actor,
         definition,
         source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
     )
-    next_state = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
-    completed = complete_acquire_contracts(
-        next_state,
-        action.actor,
-        definition.card.card_id,
-        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
-    )
-    next_state = completed.state
-    acquisition_events = (*acquisition_events, *completed.events)
+    next_state = effects.state
+    acquisition_events = (*acquisition_events, *effects.events)
     if takes_contract:
         contracts = begin_contract_gain(
             next_state,
@@ -1096,6 +1067,34 @@ def _acquire_rewards(definition: ImperiumCardEntry) -> tuple[Reward, ...]:
 
     ability = acquisition_ability(definition.acquisition_effect)
     return () if ability is None else ability.sections[0].rewards
+
+
+def _acquisition_effects(
+    state: GameState, player: int, definition: ImperiumCardEntry, *, source: str
+) -> RuleResult:
+    """The acquired card's effects after its bonus, in this order: the
+    acquire box's Influence (``<source>:influence:<faction>``), its track
+    steps (``apply_acquisition_track_effects``) and the Contracts the
+    acquisition completes (``complete_acquire_contracts``)."""
+
+    events: tuple[GameEvent, ...] = ()
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is not None:
+        gained = gain_faction_influence(
+            state,
+            player,
+            faction,
+            1,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        state, events = gained.state, gained.events
+    tracked = apply_acquisition_track_effects(state, player, definition, source=source)
+    completed = complete_acquire_contracts(
+        tracked.state, player, definition.card.card_id, source=source
+    )
+    return RuleResult(
+        state=completed.state, events=(*events, *tracked.events, *completed.events)
+    )
 
 
 def apply_acquisition_track_effects(
@@ -1429,30 +1428,9 @@ def apply_manipulated_acquisition(
         f"round:{state.round_number}:player:{action.actor}:"
         f"acquire_manipulated:{instance_id}"
     )
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            next_state,
-            action.actor,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        next_state = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
-        next_state, action.actor, definition, source=source
-    )
-    next_state = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
-    completed = complete_acquire_contracts(
-        next_state,
-        action.actor,
-        definition.card.card_id,
-        source=source,
-    )
-    next_state = completed.state
-    acquisition_events = (*acquisition_events, *completed.events)
+    effects = _acquisition_effects(next_state, action.actor, definition, source=source)
+    next_state = effects.state
+    acquisition_events = (*acquisition_events, *effects.events)
     if bonus.takes_contract:
         contracts = begin_contract_gain(
             next_state,
@@ -1568,6 +1546,27 @@ class IntrigueAcquisition:
     instance_id: str
     places_spy: bool = False
     takes_contract: bool = False
+
+
+def open_acquisition_frames(
+    state: GameState, player: int, acquired: IntrigueAcquisition, *, source: str
+) -> RuleResult:
+    """Open what an acquisition left its caller: the acquired card's Spy post
+    (``acquisition_spy_frame``) or else the Contract market (named
+    ``<source>:acquisition_bonus``); the events are the market's only."""
+
+    if acquired.places_spy:
+        return RuleResult(
+            state=state.push_decision(
+                acquisition_spy_frame(state, player, acquired.instance_id)
+            ),
+            events=(),
+        )
+    if acquired.takes_contract:
+        return begin_contract_gain(
+            state, player, 1, source=f"{source}:acquisition_bonus"
+        )
+    return RuleResult(state=state, events=())
 
 
 def acquire_reserve_for_intrigue(
@@ -1712,19 +1711,13 @@ def apply_reveal_command_acquisition(
     acquired = acquire_imperium_for_intrigue(
         trashed.state, action.actor, instance_id, to_hand=False, source=source
     )
-    next_state = acquired.result.state
-    events: tuple[GameEvent, ...] = (*trashed.events, *acquired.result.events)
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, action.actor, instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state, action.actor, 1, source=f"{source}:acquisition_bonus"
-        )
-        next_state = contracts.state
-        events = (*events, *contracts.events)
-    return RuleResult(state=next_state, events=events)
+    opened = open_acquisition_frames(
+        acquired.result.state, action.actor, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state,
+        events=(*trashed.events, *acquired.result.events, *opened.events),
+    )
 
 
 def acquire_imperium_for_intrigue(
@@ -1799,25 +1792,7 @@ def acquire_imperium_for_intrigue(
         # trusting a possibly stale local context.
         prepared = update_turn_recruits(prepared, troops_recruited=bonus.recruited)
     acquisition_events = bonus.events
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            prepared,
-            player,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        prepared = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
-        prepared, player, definition, source=source
-    )
-    prepared = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
-    completed = complete_acquire_contracts(
-        prepared, player, definition.card.card_id, source=source
-    )
+    completed = _acquisition_effects(prepared, player, definition, source=source)
     # The caller opens the Spy post or the Contract market only after this
     # returns (after the Intrigue card itself, [Main p. 20]); Call to Arms
     # waits for those frames too, like for a Research direction opened here

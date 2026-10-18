@@ -8,6 +8,7 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
+from dune_imperium.content.uprising.effect_dsl import PlaceSpy
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
@@ -185,6 +186,28 @@ def observation_post_ids_for_agent_icons(
             for space_id in post.connected_space_ids
         )
     )
+
+
+def _refuse_visited_space(reward: PlaceSpy) -> None:
+    # The space visited this turn is the Agent box's to know
+    # (``agent_box_abilities.agent_spy_rows``, Double Agent).
+    if reward.visited_space:
+        raise TypeError(f"{reward!r} is judged with its Agent box")
+
+
+def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
+    """Return the posts a limited placement may use; None when unlimited.
+
+    "Some effects limit placement. For example: '[Spy] on [City]' means the
+    observation post must connect to a [City] board space." [Main p. 20]
+    """
+
+    _refuse_visited_space(reward)
+    if reward.factions is not None:
+        return observation_post_ids_for_factions(reward.factions)
+    if reward.agent_icons is not None:
+        return observation_post_ids_for_agent_icons(reward.agent_icons)
+    return None
 
 
 def is_spying_on_space(player: PlayerState, space_id: str) -> bool:

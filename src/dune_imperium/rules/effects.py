@@ -842,6 +842,72 @@ def recallable_conflict_agents(owner: PlayerState, *, sent_this_turn: bool) -> i
     return max(0, owner.agent_in_conflict - (1 if sent_this_turn else 0))
 
 
+def recall_agent_targets(
+    owner: PlayerState, *, excluded_space_id: str, turn_agent_in_conflict: bool
+) -> tuple[str, ...]:
+    """Where a Recall Agent effect may take one of ``owner``'s Agents from.
+
+    "Return one of your other Agents on the board to your Leader (not the
+    Agent you sent during this turn)." [Main p. 20]: the owner's board
+    spaces but ``excluded_space_id`` (this turn's), then "conflict" for an
+    earlier turn's Into the Fray Agent (``recallable_conflict_agents``,
+    OQ-037 (d), OQ-068). Imperial Privilege's "Recall one of your other
+    Agents from the board" [Board Guide p. 2], the Contract reward and an
+    Agent box's Recall Agent icon read this.
+    """
+
+    return (
+        *(
+            space_id
+            for space_id in owner.agent_locations
+            if space_id != excluded_space_id
+        ),
+        *(
+            ("conflict",)
+            if recallable_conflict_agents(owner, sent_this_turn=turn_agent_in_conflict)
+            > 0
+            else ()
+        ),
+    )
+
+
+def recall_board_agent(
+    owner: PlayerState,
+    space_id: str,
+    *,
+    player: int,
+    source: str,
+    event_id: str,
+    source_key: str = "source",
+) -> tuple[PlayerState, GameEvent]:
+    """Return the owner with its Agent on ``space_id`` recalled, and its
+    event: the Agent returns to its Leader [Main p. 20]. ``source_key``
+    names the payload key ``source`` is filed under, as in
+    ``recall_conflict_agent``."""
+
+    next_owner = replace(
+        owner,
+        agents_available=owner.agents_available + 1,
+        agent_locations=tuple(
+            location for location in owner.agent_locations if location != space_id
+        ),
+    )
+    event = GameEvent(
+        event_id=event_id,
+        kind="agent_recalled",
+        payload=tuple(
+            sorted(
+                (
+                    ("player", player),
+                    (source_key, source),
+                    ("space_id", space_id),
+                )
+            )
+        ),
+    )
+    return next_owner, event
+
+
 def recall_conflict_agent(
     owner: PlayerState,
     *,

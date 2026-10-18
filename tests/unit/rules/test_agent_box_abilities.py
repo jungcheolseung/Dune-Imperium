@@ -137,10 +137,7 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
-from dune_imperium.rules.effect_interpreter import (
-    condition_holds,
-    spy_placement_allowed_post_ids,
-)
+from dune_imperium.rules.effect_interpreter import condition_holds
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     agent_card_source,
@@ -153,6 +150,7 @@ from dune_imperium.rules.optional_trash import (
     legal_optional_trash_actions,
     open_optional_trash,
 )
+from dune_imperium.rules.spy_placement import spy_placement_allowed_post_ids
 
 _BOX = PersonalCardAgentEffect
 

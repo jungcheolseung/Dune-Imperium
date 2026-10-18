@@ -96,7 +96,11 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules.card_bonds import (
+    counted_in_play,
+    has_faction_bond,
+    trashable_cards,
+)
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     deployment_rooms,
@@ -670,7 +674,7 @@ def _target_reward_targets(
                 and faction in personal_card_for_instance(candidate).factions
             )
     if line.rewards == (TrashPersonalCard(),):
-        return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+        return trashable_cards(owner)
     return tuple(
         faction.value for faction in Faction if influence_can_rise(owner, faction)
     )
@@ -1868,32 +1872,19 @@ def apply_reveal_troop_retreat(
     if reward is None:
         raise RuntimeError("Reveal troop-retreat frame names no retreat arrow")
     persuasion_choice = isinstance(reward, RevealPersuasion)
-    if not remaining_units:
-        # No unit left, no strength, swords or not [Main p. 12].
-        next_strength = 0
-    elif persuasion_choice:
-        # Command Center pays Persuasion, not swords: each retreated troop or
-        # Commander takes its 2 strength along [Main pp. 12, 14]
-        # [Bloodlines p. 4].
-        next_strength = max(owner.combat_strength - 2 * 2, 0)
-    else:
-        # Chani, Clever Tactician: the 4 troop strength becomes 4 swords.
-        next_strength = owner.combat_strength
-    next_owner = replace(
-        owner,
-        troops_garrison=owner.troops_garrison + troops,
-        troops_conflict=owner.troops_conflict - troops,
-        commanders_garrison=owner.commanders_garrison + commanders,
-        commanders_conflict=owner.commanders_conflict - commanders,
-        combat_strength=next_strength,
+    # Each retreated troop or Commander takes its 2 strength along, and with
+    # no unit left there is no strength at all [Main pp. 12, 14]
+    # [Bloodlines p. 4]; Tactician advances once for the two (``retreat_units``,
+    # [Chani card] [FAQ p. 1]).
+    retreated = retreat_units(
+        state, action.actor, source, troops=troops, commanders=commanders
     )
-    # Tactician: "Whenever you retreat or lose any number of troops from the
-    # Conflict, advance your Tactics token that many spaces" [Chani card];
-    # Commanders are troops [Bloodlines p. 4], and this one source moves the
-    # token once [FAQ p. 1].
-    next_owner, tactics_events = advance_tactics_token(
-        next_owner, 2, round_number=state.round_number
-    )
+    next_owner = retreated.state.players[action.actor]
+    if remaining_units and not persuasion_choice:
+        # Chani, Clever Tactician: the 4 troop strength becomes 4 swords
+        # (Command Center pays Persuasion instead).
+        next_owner = replace(next_owner, combat_strength=owner.combat_strength)
+    next_strength = next_owner.combat_strength
     remaining = state.decision_stack[:-1]
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
@@ -1929,15 +1920,7 @@ def apply_reveal_troop_retreat(
             players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
-        events=(
-            GameEvent(
-                event_id=f"{source}:troops_retreated",
-                kind="troops_retreated",
-                payload=(("count", 2), ("player", action.actor)),
-            ),
-            *tactics_events,
-            reward_event,
-        ),
+        events=(*retreated.events, reward_event),
     )
 
 

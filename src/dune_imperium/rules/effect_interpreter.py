@@ -112,7 +112,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
@@ -148,15 +148,14 @@ from dune_imperium.rules.intrigue_deck import (
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
-from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import connected_post_ids
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
-    observation_post_ids_for_agent_icons,
-    observation_post_ids_for_factions,
     solo_occupied_post_ids,
+    spy_placement_allowed_post_ids,
     spy_placement_posts,
 )
 
@@ -596,35 +595,12 @@ def spy_placement_targets(
     [Bloodlines p. 5].
     """
 
-    _refuse_visited_space(reward)
     return spy_placement_posts(
         state,
         player,
         spy_placement_allowed_post_ids(reward),
         shared_post=reward.shared_post,
     )
-
-
-def _refuse_visited_space(reward: PlaceSpy) -> None:
-    # The space visited this turn is the Agent box's to know
-    # (``agent_box_abilities.agent_spy_rows``, Double Agent).
-    if reward.visited_space:
-        raise TypeError(f"{reward!r} is judged with its Agent box")
-
-
-def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
-    """Return the posts a limited placement may use; None when unlimited.
-
-    "Some effects limit placement. For example: '[Spy] on [City]' means the
-    observation post must connect to a [City] board space." [Main p. 20]
-    """
-
-    _refuse_visited_space(reward)
-    if reward.factions is not None:
-        return observation_post_ids_for_factions(reward.factions)
-    if reward.agent_icons is not None:
-        return observation_post_ids_for_agent_icons(reward.agent_icons)
-    return None
 
 
 def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> bool:
@@ -964,15 +940,7 @@ def reward_can_change_something(
             # Hooks it asks for, or against a Shield Wall-protected Conflict
             # [Main p. 20] unless Arrakis Planetologist replaces the
             # sandworm [Liet Kynes card].
-            return (
-                bool(state.current_conflict_ids)
-                and not units_deployment_blocked(state, player)
-                and not (needs_hooks and not owner.maker_hooks)
-                and (
-                    replaces_sandworms(owner)
-                    or not current_conflict_is_shield_wall_protected(state)
-                )
-            )
+            return sandworm_block(state, player, needs_hooks=needs_hooks) is None
         case DeployFromGarrison():
             return sum(deployable_garrison_units(state, player)) >= 1
         case RetreatTroops(minimum=minimum):
@@ -982,9 +950,7 @@ def reward_can_change_something(
         case TrashPersonalCard(hand_only=hand_only):
             # A Row card borrowed with Usurp is not "in play" (OQ-054); a
             # bonus for the trashed card's cost is not an effect of its own.
-            if hand_only:
-                return bool(owner.hand)
-            return bool(owner.hand or owner.discard_pile or counted_in_play(owner))
+            return bool(trashable_cards(owner, hand_only=hand_only))
         case PlaceSpy():
             return spy_placement_possible(state, player, reward)
         case AcquireCardUpTo(max_cost=max_cost):
@@ -1513,20 +1479,13 @@ def apply_rewards(
                 raise ValueError("Influence choices must be resolved as choice slots")
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
-                and not (needs_hooks and not owner.maker_hooks)
-                and state.current_conflict_ids
-                and not units_deployment_blocked(state, player)
+                and sandworm_block(state, player, needs_hooks=needs_hooks) is None
             ):
                 # Arrakis Planetologist: the replacement, even under the
                 # Shield Wall [Liet Kynes card]; paid by the caller.
                 sandworms_replaced += count
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks):
-                if (
-                    (needs_hooks and not owner.maker_hooks)
-                    or not state.current_conflict_ids
-                    or current_conflict_is_shield_wall_protected(state)
-                    or units_deployment_blocked(state, player)
-                ):
+                if sandworm_block(state, player, needs_hooks=needs_hooks) is not None:
                     # No effect against a Shield Wall-protected Conflict
                     # [Main p. 20], without the required Maker Hooks, or
                     # while Emperor of the Known Universe blocks deployment

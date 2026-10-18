@@ -13,7 +13,6 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contract_tiles import (
@@ -26,8 +25,9 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     eligible_agent_contract_ids,
     pending_agent_contract_ids,
+    recall_agent_targets,
+    recall_board_agent,
     recall_conflict_agent,
-    recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
     turn_agent_in_conflict,
@@ -401,33 +401,10 @@ def contract_recall_targets(state: GameState, player: int) -> tuple[str, ...] | 
         return None
     context = dict(frame.context)
     excluded = context.get("excluded_space_id")
-    return _recall_targets(
+    return recall_agent_targets(
         state.players[player],
-        excluded if isinstance(excluded, str) else "",
+        excluded_space_id=excluded if isinstance(excluded, str) else "",
         turn_agent_in_conflict=context.get("turn_agent_in_conflict") is True,
-    )
-
-
-def _recall_targets(
-    owner: PlayerState, excluded_space_id: str, *, turn_agent_in_conflict: bool
-) -> tuple[str, ...]:
-    """The owner's other board spaces, then "conflict" for an earlier turn's
-    Into the Fray Agent (``recallable_conflict_agents``)."""
-
-    return (
-        *(
-            space_id
-            for space_id in owner.agent_locations
-            if space_id != excluded_space_id
-        ),
-        *(
-            ("conflict",)
-            if recallable_conflict_agents(
-                owner, sent_this_turn=turn_agent_in_conflict
-            )
-            > 0
-            else ()
-        ),
     )
 
 
@@ -468,21 +445,12 @@ def apply_contract_recall_action(
         space_id = dict(action.arguments).get("space_id")
         if not isinstance(space_id, str):
             raise RuntimeError("Contract recall choice has invalid space ID")
-        next_owner = replace(
+        next_owner, event = recall_board_agent(
             owner,
-            agents_available=owner.agents_available + 1,
-            agent_locations=tuple(
-                location for location in owner.agent_locations if location != space_id
-            ),
-        )
-        event = GameEvent(
+            space_id,
+            player=action.actor,
+            source=source,
             event_id=f"{source}:reward:recall:{space_id}",
-            kind="agent_recalled",
-            payload=(
-                ("player", action.actor),
-                ("source", source),
-                ("space_id", space_id),
-            ),
         )
     next_state = replace(
         state.pop_decision(),
@@ -1326,9 +1294,9 @@ def _begin_contract_reward_choice(
         # resolve after the turn has passed (it can be the turn's last
         # effect), so it is carried in the frame's context instead of
         # re-derived from a closed Agent-turn effect frame.
-        targets = _recall_targets(
+        targets = recall_agent_targets(
             state.players[player],
-            excluded_space_id,
+            excluded_space_id=excluded_space_id,
             turn_agent_in_conflict=turn_agent_in_conflict,
         )
         frame = DecisionFrame(

@@ -57,4 +57,49 @@ SPY_PASS_FIRST = Rule(
     new=_spy_pass_first,
 )
 
-RULES = (SPY_PASS_FIRST,)
+# The two retreats that moved units by hand before ``units.retreat_units``.
+_RETREATS = {
+    "retreat_leader_troop": 0,
+    "retreat_leader_commander": 1,
+    "retreat_two_troops_for_reveal": None,
+}
+
+
+def _arguments(step: Step) -> dict[str, object]:
+    raw = step.step[3]
+    if isinstance(raw, dict):
+        return dict(raw)
+    return {str(pair[0]): pair[1] for pair in raw or ()}
+
+
+def _retreat_event(step: Step) -> None:
+    """2d-4: Desert Scouts' retreat and the Reveal two-troop retreat log
+    ``retreat_units``' event: id ``<source>:retreat``, and the Commander
+    share in the payload (``commanders``, when not zero)."""
+
+    if step.step[0] != "a" or step.step[1] not in _RETREATS:
+        return
+    commanders = _RETREATS[step.step[1]]
+    if commanders is None:
+        share = _arguments(step).get("commanders", 0)
+        commanders = share if isinstance(share, int) else 0
+    for event in step.events:
+        event_id = str(event["event_id"])
+        if event["kind"] == "troops_retreated" and event_id.endswith(
+            ":troops_retreated"
+        ):
+            event["event_id"] = event_id.removesuffix("troops_retreated") + "retreat"
+            payload = event["payload"]
+            assert isinstance(payload, list)
+            if commanders:
+                event["payload"] = [["commanders", commanders], *payload]
+
+
+RETREAT_EVENT = Rule(
+    name="retreat_event",
+    why="cleanup-2d-4: the hand-rolled retreats (Desert Scouts, the Reveal "
+    "two-troop retreat) log retreat_units' event",
+    old=_retreat_event,
+)
+
+RULES = (SPY_PASS_FIRST, RETREAT_EVENT)

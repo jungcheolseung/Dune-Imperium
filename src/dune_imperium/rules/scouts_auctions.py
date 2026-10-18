@@ -50,9 +50,8 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
     acquire_imperium_for_intrigue,
-    acquisition_spy_frame,
+    open_acquisition_frames,
 )
-from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -604,18 +603,11 @@ def apply_take(state: GameState, action: DomainAction) -> RuleResult:
         source=source,
         from_market=True,
     )
-    next_state = acquired.result.state
-    events = acquired.result.events
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, player, instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state, player, 1, source=f"{source}:acquisition_bonus"
-        )
-        next_state = contracts.state
-        events = (*events, *contracts.events)
+    opened = open_acquisition_frames(
+        acquired.result.state, player, acquired, source=source
+    )
+    next_state = opened.state
+    events = (*acquired.result.events, *opened.events)
     return RuleResult(
         state=next_state,
         events=(

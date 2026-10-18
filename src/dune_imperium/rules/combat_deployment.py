@@ -667,6 +667,22 @@ def apply_commander_withdrawal(
     return RuleResult(state=next_state, events=(event,))
 
 
+def open_combat_deployment(context: dict[str, ActionValue]) -> None:
+    """Open an Agent turn's basic deployment as though at a Combat space,
+    the garrison share capped at two whatever the number of icons
+    [Bloodlines p. 5], in the owner's Agent-turn effect frame ``context``;
+    nothing while Emperor of the Known Universe blocks the turn's
+    deployment [Main p. 17]."""
+
+    if context.get("units_deploy_blocked") is True:
+        return
+    context["pending_combat_deployment"] = True
+    limit = context.get("existing_troop_deployment_limit", 0)
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
+    context["existing_troop_deployment_limit"] = max(limit, 2)
+
+
 def grant_combat_icon(state: GameState, player: int) -> GameState:
     """Let ``player`` deploy this turn as if at a Combat space [Bloodlines p. 5].
 
@@ -688,13 +704,7 @@ def grant_combat_icon(state: GameState, player: int) -> GameState:
             context = dict(frame.context)
             if context.get("units_deploy_blocked") is True:
                 return state
-            context["pending_combat_deployment"] = True
-            limit = context.get("existing_troop_deployment_limit", 0)
-            if isinstance(limit, bool) or not isinstance(limit, int):
-                raise RuntimeError(
-                    "Agent-turn effect frame has invalid deployment limit"
-                )
-            context["existing_troop_deployment_limit"] = max(limit, 2)
+            open_combat_deployment(context)
             return replace(
                 state,
                 decision_stack=(

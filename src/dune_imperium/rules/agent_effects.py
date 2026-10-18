@@ -116,7 +116,11 @@ from dune_imperium.rules.box_events import (
     agent_box_event,
     signet_box_event,
 )
-from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules.card_bonds import (
+    counted_in_play,
+    has_faction_bond,
+    trashable_cards,
+)
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
     resolve_personal_card_discard_trigger,
@@ -144,8 +148,9 @@ from dune_imperium.rules.effects import (
     other_grafted_card_id,
     pending_agent_icons,
     pending_boost_draws,
+    recall_agent_targets,
+    recall_board_agent,
     recall_conflict_agent,
-    recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
     short_of,
@@ -183,13 +188,10 @@ from dune_imperium.rules.leader_abilities import (
     apply_kota_signet_action,
     legal_leader_signet_actions,
     resolve_leader_signet,
-    units_deployment_blocked,
 )
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
-from dune_imperium.rules.shield_wall import (
-    current_conflict_is_shield_wall_protected,
-    destroy_shield_wall,
-)
+from dune_imperium.rules.sandworms import sandworm_block
+from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.spy_placement import (
@@ -1037,21 +1039,10 @@ def agent_card_recall_targets(state: GameState, player: int) -> tuple[str, ...] 
         return None
     _, _, turn_space_id = _effect_subject(context)
     owner = state.players[player]
-    return (
-        *(
-            space_id
-            for space_id in owner.agent_locations
-            if space_id != turn_space_id
-        ),
-        *(
-            ("conflict",)
-            if recallable_conflict_agents(
-                owner,
-                sent_this_turn=turn_agent_in_conflict(owner, context, turn_space_id),
-            )
-            > 0
-            else ()
-        ),
+    return recall_agent_targets(
+        owner,
+        excluded_space_id=turn_space_id,
+        turn_agent_in_conflict=turn_agent_in_conflict(owner, context, turn_space_id),
     )
 
 
@@ -1174,13 +1165,13 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     space_id = dict(action.arguments).get("space_id")
     if not isinstance(space_id, str):
         raise RuntimeError("Agent-card recall choice has invalid space ID")
-    owner = state.players[action.actor]
-    next_owner = replace(
-        owner,
-        agents_available=owner.agents_available + 1,
-        agent_locations=tuple(
-            location for location in owner.agent_locations if location != space_id
-        ),
+    next_owner, recall_event = recall_board_agent(
+        state.players[action.actor],
+        space_id,
+        player=action.actor,
+        source=source_card_id,
+        event_id=f"{source}:agent_recalled:{space_id}",
+        source_key="card_id",
     )
     # The printed card draw is the box's other icon, resolved by its own
     # action in the owner's order (OQ-027).
@@ -1197,21 +1188,7 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
         context,
         replace_player(state.players, next_owner),
     )
-    return RuleResult(
-        state=next_state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:agent_recalled:{space_id}",
-                kind="agent_recalled",
-                payload=(
-                    ("card_id", source_card_id),
-                    ("player", action.actor),
-                    ("space_id", space_id),
-                ),
-            ),
-            done,
-        ),
-    )
+    return RuleResult(state=next_state, events=(recall_event, done))
 
 
 def legal_agent_card_opponent_retreat_actions(
@@ -1356,11 +1333,7 @@ def _agent_card_trash_targets(
 ) -> tuple[str, ...]:
     """The cards the active Agent box's trash may take now."""
 
-    owner = state.players[player]
-    # A Row card borrowed with Usurp is not "in play" ("A grafted card in
-    # the Imperium Row isn't considered to be 'in play.'" [Immortality
-    # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
-    return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+    return trashable_cards(state.players[player])
 
 
 def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock | None:
@@ -2032,7 +2005,6 @@ def _arrakis_revolt_options(state: GameState, player: int) -> tuple[DomainAction
     """Arrakis Revolt's paid options: none without the Shield Wall while
     Emperor of the Known Universe bars deployment (``_arrakis_revolt_block``)."""
 
-    owner = state.players[player]
     actions: list[DomainAction] = []
     if state.shield_wall_present:
         actions.append(
@@ -2041,10 +2013,7 @@ def _arrakis_revolt_options(state: GameState, player: int) -> tuple[DomainAction
                 actor=player,
             )
         )
-    if not units_deployment_blocked(state, player) and (
-        replaces_sandworms(owner)
-        or not current_conflict_is_shield_wall_protected(state)
-    ):
+    if sandworm_block(state, player, needs_hooks=False) is None:
         actions.append(
             DomainAction(action_id="pay_agent_card_spice_for_sandworm", actor=player)
         )
@@ -2077,12 +2046,11 @@ def _apply_arrakis_revolt_payment(
         events.extend(destroyed.events)
     owner = paid.players[action.actor]
     replaced = 0
-    if replaces_sandworms(owner) and not units_deployment_blocked(paid, action.actor):
+    blocked = sandworm_block(paid, action.actor, needs_hooks=False)
+    if blocked is None and replaces_sandworms(owner):
         # Arrakis Planetologist, even under the Shield Wall [Liet Kynes card].
         replaced = 1
-    elif current_conflict_is_shield_wall_protected(paid) or units_deployment_blocked(
-        paid, action.actor
-    ):
+    elif blocked is not None:
         # No effect against a Shield Wall-protected Conflict [Main p. 20] or
         # while Emperor of the Known Universe blocks deployment [Main p. 17].
         events.append(

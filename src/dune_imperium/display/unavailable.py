@@ -236,7 +236,6 @@ from dune_imperium.rules.effect_interpreter import (
     option_unplayable_reason,
     resource_cost,
     rewards_with_no_effect,
-    spy_placement_allowed_post_ids,
     spy_placement_targets,
 )
 from dune_imperium.rules.effects import (
@@ -307,6 +306,7 @@ from dune_imperium.rules.spies import (
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     solo_occupied_post_ids,
+    spy_placement_allowed_post_ids,
 )
 from dune_imperium.rules.tech import (
     landsraad_tech_block,

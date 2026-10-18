@@ -9,26 +9,32 @@ a choice (a Spy post, a card to trash, a Faction) resolve through the space's
 dedicated actions further down this module.
 """
 
-from collections.abc import Mapping
 from copy import replace
 from typing import Final, assert_never
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
-from dune_imperium.content.uprising.abilities import Ability
+from dune_imperium.content.uprising.abilities import Ability, AbilityMark
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.board_abilities import (
+    BOARD_CHOICE_ABILITIES,
     BOARD_SPACE_ABILITIES,
     board_space_ability,
 )
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPersonalCards,
+    EffectSection,
+    GainInfluence,
     GainResources,
+    PlaceSpy,
+    RecallAgent,
     RecruitTroops,
     Research,
     TakeContract,
     TakeHighCouncilSeat,
     TakeSwordmaster,
+    TrashIntrigueCard,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -38,7 +44,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -61,8 +67,9 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     finish_board_icon,
     pending_board_icons,
+    recall_agent_targets,
+    recall_board_agent,
     recall_conflict_agent,
-    recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
     turn_agent_in_conflict,
@@ -82,8 +89,8 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
+from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.scouts_missions import (
     BOARD_ICON_SCOUTS,
     desert_riding_token,
@@ -92,14 +99,12 @@ from dune_imperium.rules.scouts_missions import (
     take_desert_riding_token,
 )
 from dune_imperium.rules.scouts_offers import BOARD_ICON_SUBCOMMITTEE
-from dune_imperium.rules.shield_wall import (
-    current_conflict_is_shield_wall_protected,
-    destroy_shield_wall,
-)
+from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
     spy_options,
+    spy_placement_allowed_post_ids,
 )
 
 _FRAME_LABEL = "Agent-turn effect frame"
@@ -143,20 +148,84 @@ BOARD_ICON_TUEK_SIETCH: Final = "tuek_sietch"  # bonus spice, then spice or a ca
 # by ``rules.sardaukar``.
 
 # The board flows kept as code, named by their records' ``hook``
-# (``content.uprising.board_abilities.BOARD_CHOICE_ABILITIES``, composed A5d).
+# (``content.uprising.board_abilities.BOARD_CHOICE_ABILITIES``, composed A5d);
+# the other choice icons are read off their records' lines
+# (``_recorded_choice``, cleanup-2d).
 BOARD_SPACE_HOOKS: Final = frozenset(
-    {
-        "espionage_spy",
-        "desert_tactics_trash",
-        "shipping_influence",
-        "imperial_privilege_trade",
-        "imperial_privilege_recall",
-        "sietch_tabr",
-        "maker",
-        "tuek_sietch",
-        "secrets_steal",
-    }
+    {"sietch_tabr", "maker", "tuek_sietch", "secrets_steal"}
 )
+
+
+def _check_board_choice_records() -> None:
+    """Every board choice record names a flow kept as code, or prints the one
+    line a flow below reads off it: a Spy to place (Espionage), an optional
+    trash (Desert Tactics), Influence with a chosen Faction (Shipping), an
+    optional Intrigue trade (Imperial Privilege) or a recall of another
+    Agent (Imperial Privilege)."""
+
+    for (space_id, key), ability in BOARD_CHOICE_ABILITIES.items():
+        if ability.hook is not None:
+            if ability.hook not in BOARD_SPACE_HOOKS:
+                raise ValueError(f"{space_id}: unknown board hook {ability.hook!r}")
+            continue
+        if len(ability.sections) != 1 or ability.sections[0].condition is not None:
+            raise ValueError(f"{space_id} {key}: a recorded icon prints one plain line")
+        line = ability.sections[0]
+        match line.costs, line.rewards, ability.mark:
+            case (), (PlaceSpy(visited_space=False),), AbilityMark.MANDATORY:
+                pass
+            case (), (
+                TrashPersonalCard(mandatory=False, bonus_spice=0),
+            ), AbilityMark.OPTIONAL:
+                pass
+            case (), (
+                GainInfluence(
+                    times=1,
+                    distinct=False,
+                    where_opponent_leads=False,
+                    different_from_trigger=False,
+                    minimum_own=0,
+                    visited_space=False,
+                ),
+            ), AbilityMark.MANDATORY:
+                pass
+            case (TrashIntrigueCard(troops_if_not_twisted=0),), (
+                DrawIntrigueCards(),
+            ), AbilityMark.OPTIONAL:
+                pass
+            case (), (RecallAgent(sent_this_turn=False),), AbilityMark.MANDATORY:
+                pass
+            case _:
+                raise ValueError(f"{space_id} {key}: no board flow reads {line!r}")
+
+
+_check_board_choice_records()
+
+
+def _recorded_choice[P](
+    state: GameState, player: int, piece: type[P]
+) -> tuple[dict[str, ActionValue], str, P, EffectSection] | None:
+    """``player``'s own Agent-effect context, then the key, the ``piece`` and
+    the line of the visited space's pending choice icon whose record prints
+    that piece (``_check_board_choice_records``); None when no such icon
+    waits for ``player``."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    space_id = context.get("space_id")
+    for key in pending_board_icons(context):
+        ability = BOARD_CHOICE_ABILITIES.get((str(space_id), key))
+        if ability is None or ability.hook is not None:
+            continue
+        line = ability.sections[0]
+        for part in (*line.costs, *line.rewards):
+            if isinstance(part, piece):
+                return context, key, part, line
+    return None
 
 # Board spaces with at least one icon that is resolved through a dedicated
 # choice rather than the generic ``resolve_board_effect`` action.
@@ -733,23 +802,21 @@ def legal_espionage_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
+    found = _recorded_choice(state, player, PlaceSpy)
+    if found is None:
         return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("space_id") != "espionage" or not board_icon_is_pending(
-        context, BOARD_ICON_SPY
-    ):
-        return ()
+    context, _, piece, _ = found
 
     # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
     # made for Espionage may already have been consumed by another freely
     # ordered effect, so an empty supply reopens the recall choice. Every
     # post taken, the icon resolves without a Spy (``spy_options``).
     options = spy_options(
-        state, player, recalled=context.get("espionage_spy_recalled") is True
+        state,
+        player,
+        spy_placement_allowed_post_ids(piece),
+        shared_post=piece.shared_post,
+        recalled=context.get("espionage_spy_recalled") is True,
     )
     return (
         *(
@@ -1012,7 +1079,14 @@ def shipping_influence_factions(owner: PlayerState) -> tuple[Faction, ...]:
     5 Solari [Board Guide p. 2], so OQ-071 does not withhold the space.
     """
 
-    return tuple(faction for faction in Faction if influence_can_rise(owner, faction))
+    record = BOARD_CHOICE_ABILITIES["shipping", BOARD_ICON_INFLUENCE]
+    (piece,) = record.sections[0].rewards
+    assert isinstance(piece, GainInfluence)
+    return tuple(
+        faction
+        for faction in piece.factions or tuple(Faction)
+        if influence_can_rise(owner, faction)
+    )
 
 
 def shipping_influence_pending(state: GameState, player: int) -> bool:
@@ -1021,15 +1095,7 @@ def shipping_influence_pending(state: GameState, player: int) -> bool:
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return False
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return False
-    return context.get("space_id") == "shipping" and board_icon_is_pending(
-        context, BOARD_ICON_INFLUENCE
-    )
+    return _recorded_choice(state, player, GainInfluence) is not None
 
 
 def legal_shipping_actions(
@@ -1164,30 +1230,18 @@ def legal_desert_tactics_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
+    found = _recorded_choice(state, player, TrashPersonalCard)
+    if found is None:
         return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("space_id") != "desert_tactics" or not board_icon_is_pending(
-        context, BOARD_ICON_TRASH
-    ):
-        return ()
+    _, _, piece, _ = found
     return tuple(
         DomainAction(
             action_id="trash_card_for_desert_tactics",
             actor=player,
             arguments=(("card_id", card_id),),
         )
-        for card_id in _desert_tactics_targets(state.players[player])
+        for card_id in trashable_cards(state.players[player], hand_only=piece.hand_only)
     )
-
-
-def _desert_tactics_targets(owner: PlayerState) -> tuple[str, ...]:
-    # A Row card borrowed with Usurp is not "in play" (OQ-054,
-    # ``counted_in_play``), so it is no trash target.
-    return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
 
 
 def desert_tactics_block(state: GameState, player: int) -> OptionalEffectBlock | None:
@@ -1199,17 +1253,11 @@ def desert_tactics_block(state: GameState, player: int) -> OptionalEffectBlock |
     out with this (``display.unavailable``, OQ-095 (2)).
     """
 
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
+    found = _recorded_choice(state, player, TrashPersonalCard)
+    if found is None:
         return None
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return None
-    if context.get("space_id") != "desert_tactics" or not board_icon_is_pending(
-        context, BOARD_ICON_TRASH
-    ):
-        return None
-    if _desert_tactics_targets(state.players[player]):
+    _, _, piece, _ = found
+    if trashable_cards(state.players[player], hand_only=piece.hand_only):
         return None
     return OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_TRASH)
 
@@ -1302,10 +1350,7 @@ def legal_imperial_privilege_actions(
     owner = state.players[player]
     trades: tuple[DomainAction, ...] = ()
     if (
-        _imperial_privilege_context(
-            state, player, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE
-        )
-        is not None
+        _recorded_choice(state, player, TrashIntrigueCard) is not None
         and imperial_privilege_trade_block(state, player) is None
     ):
         trades = tuple(
@@ -1357,33 +1402,11 @@ def imperial_privilege_trade_block(
     """
 
     if (
-        _imperial_privilege_context(
-            state, player, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE
-        )
-        is None
+        _recorded_choice(state, player, TrashIntrigueCard) is None
         or state.players[player].intrigue_cards
     ):
         return None
     return OptionalEffectBlock(OptionalBlockKind.INTRIGUE)
-
-
-def _imperial_privilege_context(
-    state: GameState, player: int, icon: str
-) -> dict[str, ActionValue] | None:
-    """``player``'s own Agent-effect context while Imperial Privilege's
-    ``icon`` is pending, else None."""
-
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return None
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return None
-    if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
-        context, icon
-    ):
-        return None
-    return context
 
 
 def imperial_privilege_recall_targets(
@@ -1402,37 +1425,20 @@ def imperial_privilege_recall_targets(
     a board Agent -- so confirming as soon as none is left gives up nothing.
     """
 
-    context = _imperial_privilege_context(state, player, BOARD_ICON_IMPERIAL_PRIVILEGE)
-    if context is None:
+    found = _recorded_choice(state, player, RecallAgent)
+    if found is None:
         return None
+    context = found[0]
+    space_id = str(context["space_id"])
     owner = state.players[player]
-    return (
-        *(
-            location
-            for location in owner.agent_locations
-            if location != "imperial_privilege"
-        ),
-        *(("conflict",) if _recallable_conflict_agents(owner, context) else ()),
-    )
-
-
-def _recallable_conflict_agents(
-    owner: PlayerState, context: Mapping[str, ActionValue]
-) -> int:
-    """Count the owner's Conflict Agents Imperial Privilege may recall.
-
-    "Recall one of your other Agents from the board" [Board Guide p. 2]
-    excludes the Agent sent there this turn (docs/rules/board-spaces.md),
-    and an Into the Fray Agent may be recalled only on a later turn
-    (OQ-037 (d)), like every Recall Agent effect (OQ-068). See
-    ``turn_agent_in_conflict`` for when this turn's Agent counts as moved.
-    """
-
-    return recallable_conflict_agents(
+    # "Recall one of your other Agents from the board" [Board Guide p. 2]
+    # excludes the Agent sent there this turn (docs/rules/board-spaces.md),
+    # and an Into the Fray Agent may be recalled only on a later turn
+    # (OQ-037 (d)), like every Recall Agent effect (OQ-068).
+    return recall_agent_targets(
         owner,
-        sent_this_turn=turn_agent_in_conflict(
-            owner, context, "imperial_privilege"
-        ),
+        excluded_space_id=space_id,
+        turn_agent_in_conflict=turn_agent_in_conflict(owner, context, space_id),
     )
 
 
@@ -1482,23 +1488,12 @@ def apply_imperial_privilege_action(
             if not isinstance(space_value, str):
                 raise RuntimeError("Imperial Privilege recall has invalid space ID")
             space_id = space_value
-            next_owner = replace(
+            next_owner, recall_event = recall_board_agent(
                 owner,
-                agents_available=owner.agents_available + 1,
-                agent_locations=tuple(
-                    location
-                    for location in owner.agent_locations
-                    if location != space_id
-                ),
-            )
-            recall_event = GameEvent(
+                space_id,
+                player=action.actor,
+                source="imperial_privilege",
                 event_id=f"{source}:agent_recalled:{space_id}",
-                kind="agent_recalled",
-                payload=(
-                    ("player", action.actor),
-                    ("source", "imperial_privilege"),
-                    ("space_id", space_id),
-                ),
             )
         players = tuple(
             next_owner if candidate.player_id == action.actor else candidate
@@ -1555,8 +1550,15 @@ def apply_imperial_privilege_action(
                 payload=(("card_id", card_id), ("player", action.actor)),
             )
         )
+        found = _recorded_choice(state, action.actor, TrashIntrigueCard)
+        assert found is not None
+        draws = sum(
+            reward.count
+            for reward in found[3].rewards
+            if isinstance(reward, DrawIntrigueCards)
+        )
         drawn = draw_or_queue_intrigue_cards(
-            effect_state, action.actor, 1, source=source
+            effect_state, action.actor, draws, source=source
         )
         effect_state = drawn.state
         events.extend(drawn.events)
@@ -1731,18 +1733,8 @@ def maker_sandworm_block(state: GameState, player: int) -> OptionalEffectBlock |
     input is public.
     """
 
-    owner = state.players[player]
-    if not owner.maker_hooks:
-        return OptionalEffectBlock(OptionalBlockKind.MAKER_HOOKS)
-    if not state.current_conflict_ids:
-        return OptionalEffectBlock(OptionalBlockKind.NO_CONFLICT)
-    if units_deployment_blocked(state, player):
-        return OptionalEffectBlock(OptionalBlockKind.DEPLOYMENT_BARRED)
-    if not replaces_sandworms(owner) and current_conflict_is_shield_wall_protected(
-        state
-    ):
-        return OptionalEffectBlock(OptionalBlockKind.SHIELD_WALL)
-    return None
+    reason = sandworm_block(state, player)
+    return None if reason is None else OptionalEffectBlock(OptionalBlockKind(reason))
 
 
 def desert_riding_offered_at(state: GameState, space_id: str) -> bool:

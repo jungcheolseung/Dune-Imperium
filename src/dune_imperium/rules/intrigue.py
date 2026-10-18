@@ -53,13 +53,12 @@ from dune_imperium.rules.ability_executor import (
     intrigue_ref,
     rewards_wait,
 )
-from dune_imperium.rules.acquisition import acquisition_spy_frame
+from dune_imperium.rules.acquisition import open_acquisition_frames
 from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.combat import (
     COMBAT_INTRIGUE_PLAYED_KEY,
     refresh_combat_participants,
 )
-from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     OptionUnplayable,
@@ -1002,18 +1001,10 @@ def _apply_intrigue_acquisition(
         )
         next_state = finished.state
         events = (*events, *finished.events)
-    next_state = _restack(next_state, pushed)
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, player, acquired.instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state, player, 1, source=f"{step_source}:acquisition_bonus"
-        )
-        next_state = contracts.state
-        events = (*events, *contracts.events)
-    return RuleResult(state=next_state, events=events)
+    opened = open_acquisition_frames(
+        _restack(next_state, pushed), player, acquired, source=step_source
+    )
+    return RuleResult(state=opened.state, events=(*events, *opened.events))
 
 
 def finish_intrigue_play(
