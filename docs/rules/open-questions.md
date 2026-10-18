@@ -129,6 +129,7 @@
 | [OQ-105](#oq-105--스스로-내는-troop-잃기-비용에-sardaukar-commander를-쓸-수-있는가) | 스스로 내는 "troop 잃기" 비용에 Sardaukar Commander를 쓸 수 있는가 | `DECIDED` |
 | [OQ-106](#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) | 공개 선택과 숨은 draw를 한 단계에 묶지 않는다 | `DECIDED` |
 | [OQ-107](#oq-107--urgent-shigawire의-부스트와-graft-상대인-bene-gesserit-카드) | Urgent Shigawire의 부스트와 graft 상대인 Bene Gesserit 카드 | `DECIDED` |
+| [OQ-110](#oq-110--공개-차례-도중에-나온-운항-카드-3의-설득력) | 공개 차례 도중에 나온 운항 카드 3의 설득력 | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -1721,3 +1722,15 @@
 - 옛 기보(v145): codec 145 미만 기보에서는 Ghola의 복사 box에 더해진 draw가 없다. 다리 `boost_draw_at_turn_end`가 그 turn의 `finish_agent_turn`이 거절될 때 바로 앞에 Ghola 칸의 draw를 넣는다(OQ-022 2026-10-12 보강의 Throne Room Politics도 같은 다리). 옛 다리 `shigawire_draw`(codec 142 미만, 배치 직후)와 `shigawire_partner_draw`(codec 144 미만)는 Ghola의 복사 draw를 건드리지 않는다 — 옛 엔진에는 그 draw가 아예 없었으므로 턴 종료 앞까지 미뤄야 turn 안의 다른 draw가 한 장씩 밀리지 않는다.
 - 옛 기보: codec 144 미만 기보에서는 상대가 부스트를 받지 않았으므로 상대의 더해진 draw가 없다. 다리 `shigawire_partner_draw`(codec 144 미만)가 그 turn의 `finish_agent_turn`이 거절될 때 바로 앞에 그 draw를 넣는다(turn 안의 적힌 수는 옛 엔진이 보인 손패를 그대로 본다). 옛 엔진이 남겨 둔 부스트를 같은 라운드의 뒤 Bene Gesserit 카드가 쓴 기보는 그 수에서 갈라진다(규칙 변경, [human-records.md](../human-records.md) 2절).
 - 재개 조건: 공식 FAQ가 graft와 "the next ... card you play"의 관계를 정할 때.
+
+## OQ-110 — 공개 차례 도중에 나온 운항 카드 3의 설득력
+
+- 상태: `DECIDED` (2026-10-19 사용자 판정 "고치긴 해야해"·"지금 master에 넣어 줘", project convention — 공식 규칙이 아니다; codec 그대로 v148)
+- 질문: Navigation Card 3은 "If this is in Navigation slot 4: For the rest of the game, during each of your Reveal turns, [1 Persuasion]." `[Navigation Card 3 card]`(한국어판 "이제부터 매 라운드의 자기 공개 차례 동안 [1]." `[KO card: Navigation Card 3]`)이다. Y'rkoon은 어떤 진영에서든 영향력 2에 도달할 때마다 운항 카드를 낸다 `[Steersman Y'rkoon card]` `[Bloodlines p. 12]`. 그 도달이 자기 공개 차례 도중(공개 효과, 그 차례에 낸 Plot 책략)에 일어나면, 진행 중인 그 공개 차례도 "each of your Reveal turns"에 드는가? 공식 문서와 FAQ는 말하지 않는다([bloodlines.md](bloodlines.md) 6절의 Y'rkoon 항목에도 없다).
+- 전 엔진: 좌석 `reveal_persuasion_bonus`만 올리고 그 값은 `begin_reveal_turn`의 공개 시작 합계에서만 읽어서, 그 공개에는 아무것도 주지 않고 다음 공개부터 1을 줬다. 2026-10-18 사용자 질문("공개차례 중 운항카드 뒤집어서 설득력 1 올라가면, 그거 바로 공개 차례에 적용되게 되어있나?")으로 발견했다.
+- 판정: 든다. 카드는 "For the rest of the game"이고, 진행 중인 공개 차례는 남은 게임 안의 자기 공개 차례다. 같은 모양의 선례: Tleilaxu Puppet의 "Gain [1 Persuasion] during your Reveal turn this round" `[Tleilaxu Puppet card]`는 자기 공개 차례에 내면 그 공개에 바로 더한다(2026-09-26 감사 수정, [implementation-audits/immortality.md](../implementation-audits/immortality.md); Plot은 공개 차례에도 낼 수 있다 `[Main pp. 7, 8]`).
+- 구현: `rules/ability_executor._gain_reveal_persuasion_now`가 보너스 증가분을 열린 공개에 더한다(`reveal_turn.add_reveal_persuasion`; 생성한 설득력이라 명령(6+)에도 센다 `[Bloodlines p. 5]`). 좌석 값은 그대로 남아 다음 공개마다 `begin_reveal_turn`이 더한다(Puppet의 라운드 보너스는 이번 라운드뿐이라 지급한 뒤 뺀다). 행동 목록과 관측 모양이 같아 codec은 그대로다.
+- 같은 모양 전수(2026-10-18): 공개 시작 때만 읽는 값 가운데 공개 도중에 바뀔 수 있는 것 — 원로회 자리(Corrinth City, 바로 +2), 지휘관 기술(늦은 지급, OQ-028 (c)), Puppet, 명령(6+) 카드·기술 타일, Interstellar Trade, 공개 중 뽑기·손 획득 `[FAQ p. 3]`, 모집 — 은 이미 처리돼 있다. 명령이 아닌 기술 타일의 공개 줄(Self-Destroying Messages의 Persuasion 1, Panopticon의 Spy·troop)도 시작 때만 보지만, 공개 차례 중에 기술 타일을 얻을 길이 없어(Rapid Engineering은 손패를 버려야 하는데 공개 중 손패는 비어 있고, Battlefield Research는 전투 시점이다) 지금은 닿지 않는다.
+- 테스트: `tests/unit/rules/test_navigation.py::test_card_three_from_slot_four_pays_the_reveal_it_is_played_in`(그 공개의 설득력·생성 설득력 1, 좌석 보너스 1 유지; 고친 줄을 빼면 실패함을 확인), 기존 `test_card_three_in_slot_four_adds_permanent_reveal_persuasion`(다음 공개 +1).
+- 옛 기보: 기보 묶음 `v148-02e203ce`(AI 판 2,000개) 대조에서 2,000판 모두 exact다 — 이 경우가 나온 판이 없다. `saves/`의 사람 판 8개도 갈라진 판이 없다(exact 2, 다리로 옮긴 판 6). 그래서 다리를 두지 않았다. 이 경우가 나온 옛 기보는 그 공개의 설득력이 1 많아져 그 뒤 수(획득)에서 갈라질 수 있다(규칙 변경, [human-records.md](../human-records.md) 2절).
+- 재개 조건: 공식 FAQ가 공개 차례 도중에 생긴 "during each of your Reveal turns" 효과를 정할 때.
