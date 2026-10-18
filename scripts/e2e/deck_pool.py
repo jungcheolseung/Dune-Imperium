@@ -32,7 +32,10 @@ this browser's own, the others are "another seat"):
 
 And once per language: the open viewer draws again from a foreign render (a
 card more in the pool, no pool left but a discard pile, nothing left to show
-closes it).
+closes it), and a card in the seat's public hand (``hand_public``: acquired
+straight to the hand, Price is No Object) is shown in its own section between
+the pool and the discard pile, or alone (the zones line still opens it) when
+the seat has nothing else to show (user report 2026-10-19: it was missing).
 
 E2E_SHOTS_DIR optionally names where the screenshots go
 (deck_pool_{ko,en}.png); otherwise a temporary folder.
@@ -71,6 +74,7 @@ TEXT = {
         "pool_seat": "플레이어{seat}의 카드덱·핸드에 있는 카드 · {n}장",
         "discard_mine": "내 버림 더미 ({n})",
         "discard_seat": "플레이어{seat}의 버림 더미 ({n})",
+        "hand_public_seat": "플레이어{seat} 핸드의 공개된 카드 ({n})",
         "note": (
             "어느 카드가 카드덱에 있고 어느 카드가 핸드에 있는지는 알 수 없습니다. "
             "산 카드·버린 카드·폐기한 카드가 모두 공개되므로 누구나 셀 수 있는 "
@@ -83,6 +87,7 @@ TEXT = {
         "pool_seat": "In Player {seat}'s deck or hand · {n} cards",
         "discard_mine": "My discard pile ({n})",
         "discard_seat": "Player {seat}'s discard pile ({n})",
+        "hand_public_seat": "Public cards in Player {seat}'s hand ({n})",
         "note": (
             "Which of these are in the deck and which in the hand is not known. "
             "Every card bought, discarded or trashed is public, so anyone can "
@@ -149,6 +154,14 @@ EDIT_JS = """([seat, edit]) => {
   if (edit === 'more') own.deck_pool = [...own.deck_pool, 'dagger'].sort();
   else if (edit === 'no_pool') own.deck_pool = [];
   else if (edit === 'empty') { own.deck_pool = []; own.discard_pile = []; }
+  else if (edit === 'public_hand') {
+    own.hand_public = [own.discard_pile[0]];
+    own.hand_size += 1;
+  } else if (edit === 'public_only') {
+    own.hand_public = [own.discard_pile[0]];
+    own.deck_pool = [];
+    own.discard_pile = [];
+  }
   state.view = view;
   render({ foreign: true });
 }"""
@@ -387,6 +400,36 @@ def check_foreign(
         == words["discard_seat"].format(n=len(discard), seat=seat + 1),
         f"{label} with no pool left the viewer shows the discard pile alone",
         (only["open"], only["layout"], only["title"]),
+    )
+    page.evaluate(RESTORE_JS)
+    page.evaluate(EDIT_JS, [seat, "public_hand"])
+    public = viewer(page)
+    want = words["hand_public_seat"].format(n=1, seat=seat + 1)
+    check.ok(
+        public["open"]
+        and public["layout"] == ["note", "cards", "title", "cards", "title", "cards"]
+        and public["heads"]
+        == [want, words["discard_seat"].format(n=len(discard), seat=seat + 1)]
+        and [c["instance"] for c in public["rows"][1]] == [discard[0]],
+        f"{label} a public hand card has its own section '{want}' between the"
+        " pool and the discard pile",
+        (public["layout"], public["heads"], public["rows"][1:2]),
+    )
+    page.evaluate(RESTORE_JS)
+    page.evaluate(EDIT_JS, [seat, "public_only"])
+    alone = viewer(page)
+    clickable = page.evaluate(
+        "(sel) => document.querySelector(sel).classList.contains('clickable')",
+        opener(seat),
+    )
+    check.ok(
+        alone["open"]
+        and alone["layout"] == ["cards"]
+        and alone["title"] == want
+        and clickable,
+        f"{label} with only a public hand card left the viewer shows it alone"
+        " and the zones line still opens it",
+        (alone["open"], alone["layout"], alone["title"], clickable),
     )
     page.evaluate(RESTORE_JS)
     page.evaluate(EDIT_JS, [seat, "empty"])

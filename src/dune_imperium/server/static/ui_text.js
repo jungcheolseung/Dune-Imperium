@@ -956,6 +956,14 @@ const UI_TEXT = {
     "ko": "내 {discard_pile}",
     "en": "My discard pile"
   },
+  "panels.my_hand_public": {
+    "ko": "내 {hand}의 공개된 카드 ({{count}})",
+    "en": "Public cards in my hand ({{count}})"
+  },
+  "panels.seat_hand_public": {
+    "ko": "{{seat}} {hand}의 공개된 카드 ({{count}})",
+    "en": "Public cards in {{seat}}'s hand ({{count}})"
+  },
   "panels.seat_discard": {
     "ko": "{{seat}}의 {discard_pile}",
     "en": "{{seat}}'s discard pile"
