@@ -2,21 +2,22 @@
 
 "플레이어가 15초 이상 아무 행동을 하지 않는 상태면 경고음을 재생하게 하고
 싶어" (user, 2026-10-19): while a decision or a turn-end press waits on a seat
-this screen plays, 15 seconds without a step sound the idle warning
-(sounds.js SOUNDS.idle) once. The page's playSound is wrapped to record each
+this screen plays, every 15 seconds without a step sound the idle warning
+(sounds.js SOUNDS.idle), again until a step ("15초에 울리고 또 15초 흐르면
+또 울려야해", the same day). The page's playSound is wrapped to record each
 call and its time: a browser may refuse to play audio before a gesture, and
 the call is what this script checks.
 
 One local game, seat 0 human and three heuristic seats, a fixed seed:
 
 [A] the human seat's decision on screen: no warning 14 seconds in, one at
-    about 15 seconds, still only one 20 seconds in;
+    about 15 seconds, a second at about 30 seconds;
 [B] a step starts the wait again: no new warning 14 seconds after the seat's
     next decision arrived, one more at about 15 seconds;
 [C] nothing is armed while the decision belongs to another seat or while a
     review is on screen (the summary edited in the page, then put back).
 
-About 45 seconds, nearly all of it waiting.
+About 55 seconds, nearly all of it waiting.
 """
 
 from __future__ import annotations
@@ -81,11 +82,18 @@ def first_wait(page) -> None:
         "[A] one warning at about 15 seconds",
         warned,
     )
-    sleep_until(page, since, 20)
+    sleep_until(page, since, 29)
     check.ok(
         len(idle_after(page, since)) == 1,
-        "[A] still only one 20 seconds in",
+        "[A] still only one 29 seconds in",
         idle_after(page, since),
+    )
+    sleep_until(page, since, 31)
+    warned = idle_after(page, since)
+    check.ok(
+        len(warned) == 2 and 29_000 <= warned[1] <= 30_500,
+        "[A] a second warning at about 30 seconds",
+        warned,
     )
 
 

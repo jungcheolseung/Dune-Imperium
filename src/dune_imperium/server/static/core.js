@@ -35,9 +35,10 @@ const state = {
   pick: null,
   /* The count chosen on each count stepper, by action id (countRow). */
   counts: {},
-  /* A choice held for the turn-end press, {key, index} (turn.js
-     chooseAction): outside its turns a step that cannot be taken back is
-     sent only with the seat's "턴 종료". Page-only, like `pick`. */
+  /* A choice held for the "확정 ▶" press, {key, index} (turn.js
+     chooseAction): outside its turns a step that cannot be taken back, and
+     inside one the steps server/turn_end.py HELD_IN_TURN names, is sent only
+     with that press. Page-only, like `pick`. */
   held: null,
 };
 

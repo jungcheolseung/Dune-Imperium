@@ -9,9 +9,13 @@
    if need be. Outside its turns, a step it could not take back (a Conflict
    reward that runs straight into the next round's draw, a Scouts line that
    draws a card) is marked sent_by_turn_end by the server: a click only holds
-   it here, and the banner's "확정 ▶" row sends it. That row does not say
-   "턴 종료": whether the seat's unit goes on after the step can hang on the
-   very card it reveals, which nobody may know before. A second click on the
+   it here, and the banner's "확정 ▶" row sends it. Inside a turn the server
+   marks only Long Live the Fighters' second pick so, when it cannot be
+   taken back (server/turn_end.py HELD_IN_TURN, user decision 2026-10-19):
+   until the press the undo row can still take the draw pick back. The "확정
+   ▶" row does not say "턴 종료": whether the seat's unit goes on after the
+   step can hang on the very card it reveals, which nobody may know before.
+   A second click on the
    held row in the list, or Escape, lets it go; a click on its table object
    keeps it. It belongs to the decision it was picked in (heldKey) and never
    reaches the server before the press. */

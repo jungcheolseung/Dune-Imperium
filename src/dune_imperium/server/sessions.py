@@ -136,6 +136,7 @@ from dune_imperium.server.session_log import (
 from dune_imperium.server.turn_cards import box_losing_trash, turn_cards
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
+    HELD_IN_TURN,
     TURN_PASS_EVENTS,
     TURN_TAKING_EVENTS,
     agent_turn_end_ready,
@@ -3070,9 +3071,12 @@ def _serialize_action(
     acquisition that refills the Row, a Scouts line that draws a card): the
     browser only holds it and sends it with the seat's "확정 ▶" press, so
     the seat may still pick another one before that ("확정 전에 다른 곳에
-    두고 싶을 수 있잖아", user, 2026-10-08) -- it is read from the stack and
-    ``undoable`` alone. A unit's last step that only runs into a reveal
-    after it stops at the engine's pause before that reveal instead
+    두고 싶을 수 있잖아", user, 2026-10-08). Inside a turn, a step listed
+    in ``turn_end.HELD_IN_TURN`` (Long Live the Fighters' second pick, user
+    decision 2026-10-19) is held the same way whenever it cannot be taken
+    back. The mark is read from the stack, the action id and ``undoable``
+    alone. A unit's last step that only runs into a reveal after it stops
+    at the engine's pause before that reveal instead
     (rules/pauses.py), whatever the seats hold, and is held by the server
     with its undo, so neither mark depends on another seat's hidden cards
     (it did before the pauses: a Harvest Cells in another hand stopped the
@@ -3122,7 +3126,10 @@ def _serialize_action(
         "sent_by_turn_end": (
             not undoable
             and action.action_id not in EXPLICIT_TURN_ENDS
-            and own_unit_outside_turns(session.state, action.actor)
+            and (
+                own_unit_outside_turns(session.state, action.actor)
+                or action.action_id in HELD_IN_TURN
+            )
         ),
         "warning": shortfall_warning(shortfalls, action.actor),
         "shortfall": shortfall_details(shortfalls, action.actor),

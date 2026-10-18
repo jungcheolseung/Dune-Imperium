@@ -8,12 +8,14 @@ server holds the remaining unit ends (a Leader pick, Conflict rewards, a
 Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료",
 as long as the seat still has a step of the unit to take back; a step that
 reveals something itself cannot be taken back and is instead held by the
-browser and sent with "확정 ▶" (``sent_by_turn_end``, see below).
+browser and sent with "확정 ▶" (``sent_by_turn_end``, see below). Inside a
+turn the browser holds only the few irreversible steps ``HELD_IN_TURN``
+names (Long Live the Fighters' second pick, user decision 2026-10-19).
 The last Leader pick has its own explicit ``finish_leader_draft`` so setup
 cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine
 already keeps, so the server needs no rule logic of its own; this module is
-that reading and nothing else.
+that reading, and that one short list of action ids, and nothing else.
 
 A seat's *unit* is its own run of decisions: an Agent or Reveal turn in
 Player Turns, or its share of a phase outside them (a Leader pick, a Combat
@@ -100,6 +102,17 @@ INTERRUPT_KINDS: Final = frozenset(
 # 버튼을 눌렀다면 그건 턴 종료를 누른거랑 같으니까" (user, 2026-10-01,
 # OQ-095 (6)) -- so no press follows it.
 TURN_PASS_EVENTS: Final = frozenset({"turn_passed", "turn_start_card_played"})
+
+# In-turn steps the browser also holds for "확정 ▶" whenever they cannot be
+# taken back (``sent_by_turn_end``). Long Live the Fighters' second pick
+# commits the draw, the discard and the trash at once ("Look at the top 3
+# cards, Draw 1, Discard 1, Trash 1" [Long Live the Fighters card]); with
+# Glowglobes ("look at the top card of your deck at any time" [Glowglobes
+# Tech tile]) the deck's new top card then shows to its owner, a reveal that
+# closes the undo window (OQ-010) over the first pick too. Held, the seat may
+# still pick another discard or take its draw pick back (user decision
+# 2026-10-19, after a misclicked draw that could not be undone).
+HELD_IN_TURN: Final = frozenset({"select_long_live_fighters_discard"})
 
 # Events that mean a seat has taken its turn: an Agent went out, or the
 # turn was passed. A Reveal turn ends only through ``finish_reveal``, which

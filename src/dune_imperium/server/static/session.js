@@ -34,10 +34,12 @@ function turnTone() {
 /* The idle warning (user request 2026-10-19: "플레이어가 15초 이상 아무
    행동을 하지 않는 상태면 경고음을 재생"): while a decision or a turn-end
    press waits on a seat this screen plays (isMyTurn: on a remote table the
-   seats this browser claimed, locally every human seat), 15 seconds without
-   a step sound the idle warning once. A step of any seat, an undo included,
-   moves the revision or the undo count and starts the wait again; a review,
-   a request in flight or another screen than the game's never sounds. */
+   seats this browser claimed, locally every human seat), every 15 seconds
+   without a step sound the idle warning, again and again until a step
+   ("15초에 울리고 또 15초 흐르면 또 울려야해", the same day). A step of any
+   seat, an undo included, moves the revision or the undo count and starts
+   the count again; a review, a request in flight or another screen than the
+   game's stays silent. */
 const IDLE_WARNING_MS = 15000;
 let idleKey = "";
 let idleTimer = null;
@@ -53,12 +55,13 @@ function watchIdle() {
   window.clearTimeout(idleTimer);
   idleTimer = null;
   if (!key) return;
-  idleTimer = window.setTimeout(() => {
-    idleTimer = null;
-    if (idleKey !== key || state.busy || state.review) return;
-    if (el("game-screen").hidden) return;
+  const ring = () => {
+    if (idleKey !== key) return;
+    idleTimer = window.setTimeout(ring, IDLE_WARNING_MS);
+    if (state.busy || state.review || el("game-screen").hidden) return;
     playSound("idle");
-  }, IDLE_WARNING_MS);
+  };
+  idleTimer = window.setTimeout(ring, IDLE_WARNING_MS);
 }
 
 function note(text) {
