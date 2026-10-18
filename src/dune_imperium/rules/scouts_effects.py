@@ -1,11 +1,12 @@
 """Arrakeen Scouts: one seat's cost -> reward line, and the subcommittees.
 
 ``push_scouts_effect`` opens a ``scouts_effect`` frame that resolves one
-``ScoutsOption`` for one seat: its costs in order, then its rewards in
-order (docs/rules/arrakeen-scouts.md). Each step is either automatic (paid
-or gained at once, possibly opening another module's frame: a Spy
-placement, a Contract pick, a reshuffle) or a choice this frame offers (a
-card to discard or trash, a Spy to recall, a Faction, an Agent). The frame
+item line (its record's ``EffectSection``) for one seat: its costs in
+order, then its rewards in order (docs/rules/arrakeen-scouts.md). Each step
+is either automatic (paid or gained at once, possibly opening another
+module's frame: a Spy placement, a Contract pick, a reshuffle) or a choice
+this frame offers (a card to discard or trash, a Spy to recall, a Faction,
+an Agent). The frame
 stays on the stack under any frame a step opens and moves its cursor before
 opening it, so it resumes by itself once that frame pops; the engine's
 automatic advance runs the automatic steps. A hidden draw printed after one
@@ -32,7 +33,6 @@ from dune_imperium.content.arrakeen_scouts import (
     SUBCOMMITTEES_BY_ID,
     AutomaticEffect,
     EventKind,
-    ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
     AcquireReserveCardToHand,
@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainInfluence,
@@ -128,7 +129,7 @@ _OFFER_FRAME: Final = "Subcommittee offer frame"
 _ALL_POSTS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)
 _CHOICE_FRAME: Final = "Scouts choice frame"
 # Political Equilibrium, per seat: one Influence off the highest track.
-_EQUILIBRIUM: Final = ScoutsOption(costs=(LoseHighestInfluence(),))
+_EQUILIBRIUM: Final = EffectSection(rewards=(), costs=(LoseHighestInfluence(),))
 
 type ScoutsStep = ScoutsCost | ScoutsReward
 # Steps ``apply_rewards`` cannot take; the ones this module handles itself
@@ -147,7 +148,7 @@ _NOT_DSL_REWARDS: Final = (
 # --- Which option -------------------------------------------------------------------
 
 
-def scouts_option(item: str, index: int) -> ScoutsOption:
+def scouts_option(item: str, index: int) -> EffectSection:
     """Return option ``index`` of a Scouts item (a subcommittee has one)."""
 
     if item in SUBCOMMITTEES_BY_ID:
@@ -162,17 +163,17 @@ def scouts_option(item: str, index: int) -> ScoutsOption:
     if item in SALES_BY_ID:
         return SALES_BY_ID[item].options[index]
     if item in AUCTIONS_BY_ID:
-        return ScoutsOption(rewards=AUCTIONS_BY_ID[item].rank_rewards[index])
+        return EffectSection(rewards=AUCTIONS_BY_ID[item].rank_rewards[index])
     raise ValueError(f"unknown Scouts item: {item!r}")
 
 
-def option_steps(option: ScoutsOption) -> tuple[ScoutsStep, ...]:
+def option_steps(option: EffectSection) -> tuple[ScoutsStep, ...]:
     """Costs in printed order, then rewards (costs are paid in full first)."""
 
     return (*option.costs, *option.rewards)
 
 
-def option_is_affordable(state: GameState, player: int, option: ScoutsOption) -> bool:
+def option_is_affordable(state: GameState, player: int, option: EffectSection) -> bool:
     """Whether ``player`` can pay every cost of ``option`` now."""
 
     owner = state.players[player]
@@ -256,7 +257,7 @@ def reward_has_effect(
 def line_is_offered(
     state: GameState,
     player: int,
-    option: ScoutsOption,
+    option: EffectSection,
     *,
     exclude_space: str = "",
 ) -> bool:
@@ -282,7 +283,7 @@ def line_is_offered(
 def line_unavailable_reason(
     state: GameState,
     player: int,
-    option: ScoutsOption,
+    option: EffectSection,
     *,
     exclude_space: str = "",
 ) -> ScoutsStep | None:
@@ -310,7 +311,7 @@ def line_unavailable_reason(
 
 
 def _first_unpaid_cost(
-    state: GameState, player: int, option: ScoutsOption
+    state: GameState, player: int, option: EffectSection
 ) -> ScoutsCost:
     """The first cost, in printed order, that ``option_is_affordable`` fails on."""
 
@@ -327,7 +328,9 @@ def _first_unpaid_cost(
                 or water > resources.water
             ):
                 return cost
-        elif not option_is_affordable(state, player, ScoutsOption(costs=(cost,))):
+        elif not option_is_affordable(
+            state, player, EffectSection(rewards=(), costs=(cost,))
+        ):
             return cost
     return option.costs[0]  # not reached while the option is unaffordable
 
@@ -376,7 +379,7 @@ def _effect_frame(state: GameState) -> DecisionFrame | None:
     return frame if frame.kind == FrameKind.SCOUTS_EFFECT else None
 
 
-def _cursor(frame: DecisionFrame) -> tuple[int, str, ScoutsOption, int, int]:
+def _cursor(frame: DecisionFrame) -> tuple[int, str, EffectSection, int, int]:
     context = dict(frame.context)
     player = context_int(context, "player", owner=_EFFECT_FRAME)
     item = context_str(context, "item", owner=_EFFECT_FRAME)
@@ -565,7 +568,7 @@ _REWARDS_FIRST_KINDS: Final = (
 _STOP: Final = "stop"
 
 
-def _line_steps(frame: DecisionFrame, option: ScoutsOption) -> tuple[ScoutsStep, ...]:
+def _line_steps(frame: DecisionFrame, option: EffectSection) -> tuple[ScoutsStep, ...]:
     """The line's steps, without the rewards already taken ahead (``stop``)."""
 
     steps = option_steps(option)
@@ -1271,7 +1274,7 @@ def _apply_garrison_unit_loss(
 # --- One seat's turn-order choice ---------------------------------------------------
 
 
-def _choice_options(item: str) -> tuple[ScoutsOption, ...]:
+def _choice_options(item: str) -> tuple[EffectSection, ...]:
     if item in SALES_BY_ID:
         return SALES_BY_ID[item].options
     return EVENTS_BY_ID[item].options

@@ -5,12 +5,13 @@ docs/composed-effects-plan.md 5 (A7c): each research space prints a bonus
 its reacher takes [Immortality pp. 3, 6, 16], keyed by space id, and four
 Tleilaxu track spaces print a reward [Immortality pp. 4, 7], keyed by
 space; Reclaimed Forces prints "choose one: recruit two troops, or advance
-Tleilaxu once" [Immortality p. 9]. ``content.immortality.board`` and
-``content.immortality.tleilaxu`` compile them back into the unchanged
-``ResearchBonus`` / ``TleilaxuBonus`` / choice tables, which
-``rules.immortality`` and ``rules.tleilaxu_row`` read (the bonuses' order of
+Tleilaxu once" [Immortality p. 9]. ``content.immortality.board`` checks the
+track records on load and compiles the research records back into
+``ResearchBonus``, which ``rules.immortality`` reads (the bonuses' order of
 resolution stays theirs: a specimen before the trash, the Intrigue card
-before the card). The rules around them -- the move, the windows, the
+before the card); the Tleilaxu track and Reclaimed Forces are read from the
+records themselves (cleanup 2e), ``TleilaxuBonus`` staying only as the
+board's label key. The rules around them -- the move, the windows, the
 Tleilaxu loop and end, the held draws -- stay engine code.
 """
 

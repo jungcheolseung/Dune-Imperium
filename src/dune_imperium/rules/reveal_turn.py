@@ -24,17 +24,17 @@ from collections.abc import Callable, Mapping
 from copy import replace
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Final
+from typing import Final, NamedTuple
 
 from dune_imperium.content.bloodlines.sardaukar import (
     SkillDefinition,
     skill_for_instance,
 )
 from dune_imperium.content.bloodlines.tech import (
-    TECH_REVEAL_GAINS,
-    TECH_REVEAL_GAINS_BY_ID,
+    TECH_TILES,
     TechAbility,
     has_tech,
+    tech_reveal_line,
 )
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.abilities import (
@@ -2880,10 +2880,36 @@ def fire_guild_spy_on_spice_must_flow(
 COMMAND_PERSUASION = 6
 """Persuasion a Reveal turn must generate for "Command (6+)" [Bloodlines p. 5]."""
 
+
+
+class _TechRevealPay(NamedTuple):
+    """What a Tech tile's automatic Reveal Turn line pays, read from its
+    record (``tech_reveal_line``)."""
+
+    persuasion: int = 0
+    solari: int = 0
+    swords: int = 0
+
+
+def _tech_reveal_pay(tech_id: str) -> _TechRevealPay:
+    line = tech_reveal_line(tech_id)
+    match () if line is None else line.rewards:
+        case (RevealPersuasion(amount=amount),):
+            return _TechRevealPay(persuasion=amount)
+        case (GainResources(solari=solari),):
+            return _TechRevealPay(solari=solari)
+        case (RevealSwords(amount=amount),):
+            return _TechRevealPay(swords=amount)
+    return _TechRevealPay()
+
+
 # Tech tiles with a "Reveal Turn: Command (6+)" line, and the Reveal-frame
 # key recording which have paid this Reveal.
 _COMMAND_TECH = tuple(
-    (gain.tech_id, gain.ability) for gain in TECH_REVEAL_GAINS if gain.command
+    (tile.tech_id, tile.ability)
+    for tile in TECH_TILES
+    if (line := tech_reveal_line(tile.tech_id)) is not None
+    and line.condition == CommandReached()
 )
 _TECH_GRANTED_KEY = "tech_granted"
 # Skills whose Reveal-turn bonus this Reveal already paid ("Each one works
@@ -3764,8 +3790,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         and has_tech(next_owner.tech_ids, ability)
     )
     for tech_id in late_tech:
-        solari = TECH_REVEAL_GAINS_BY_ID[tech_id].solari
-        sword = TECH_REVEAL_GAINS_BY_ID[tech_id].swords
+        _, solari, sword = _tech_reveal_pay(tech_id)
         if sword:
             frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
         next_owner = replace(
@@ -4888,9 +4913,9 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         # round" [card face].
         total += owner.reveal_persuasion_round_bonus
         total += sum(
-            gain.persuasion
-            for gain in TECH_REVEAL_GAINS
-            if not gain.command and has_tech(owner.tech_ids, gain.ability)
+            _tech_reveal_pay(tile.tech_id).persuasion
+            for tile in TECH_TILES
+            if has_tech(owner.tech_ids, tile.ability)
         )
         return total
 
@@ -4906,9 +4931,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for tech_id, ability in _COMMAND_TECH
         if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
     )
-    tech_sword = sum(
-        TECH_REVEAL_GAINS_BY_ID[tech_id].swords for tech_id in tech_granted
-    )
+    tech_sword = sum(_tech_reveal_pay(tech_id).swords for tech_id in tech_granted)
 
     card_strengths = tuple(
         (
@@ -4992,11 +5015,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
         *(
             resource_gain_entry(
-                f"tech:{gain.tech_id}",
-                solari=gain.solari if gain.tech_id in tech_granted else 0,
+                f"tech:{tile.tech_id}",
+                solari=solari if tile.tech_id in tech_granted else 0,
             )
-            for gain in TECH_REVEAL_GAINS
-            if gain.solari
+            for tile in TECH_TILES
+            if (solari := _tech_reveal_pay(tile.tech_id).solari)
         ),
     )
     pending_gains: tuple[RevealGain, ...] = (
@@ -5477,7 +5500,7 @@ def _tech_reveal_bonus(source: str, player: int, tech_id: str) -> GameEvent:
     zero amounts (cleanup-2c-4); the Solari is gained with the Reveal's
     gains."""
 
-    gains = TECH_REVEAL_GAINS_BY_ID[tech_id]
+    gains = _tech_reveal_pay(tech_id)
     return GameEvent(
         event_id=f"{source}:tech:{tech_id}",
         kind="tech_reveal_bonus",

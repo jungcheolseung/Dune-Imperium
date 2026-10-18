@@ -414,9 +414,12 @@ RECLAIMED_FORCES: Final = TleilaxuCardEntry(
 )
 
 
-def _reclaimed_forces_choices() -> tuple[tuple[str, int], ...]:
-    """Reclaimed Forces' choices and amounts, from its record (composed
-    A7c): ``("troops", 2)``, ``("tleilaxu", 1)``."""
+def _reclaimed_forces_choices() -> tuple[
+    tuple[str, RecruitTroops | AdvanceTleilaxu], ...
+]:
+    """Reclaimed Forces' lines from its record (composed A7c), each under
+    the ``choice`` argument that names it: ``"troops"`` for the recruit,
+    ``"tleilaxu"`` for the advance."""
 
     record = RECLAIMED_FORCES_ABILITY
     if (
@@ -428,15 +431,15 @@ def _reclaimed_forces_choices() -> tuple[tuple[str, int], ...]:
         or record.hook is not None
     ):
         raise ValueError("Reclaimed Forces chooses one of its lines")
-    choices: list[tuple[str, int]] = []
+    choices: list[tuple[str, RecruitTroops | AdvanceTleilaxu]] = []
     for line in record.sections:
         if line.condition is not None or line.costs:
             raise ValueError("Reclaimed Forces' lines are free")
         match line.rewards:
-            case (RecruitTroops(count=count),):
-                choices.append(("troops", count))
-            case (AdvanceTleilaxu(count=count),):
-                choices.append(("tleilaxu", count))
+            case (RecruitTroops() as reward,):
+                choices.append(("troops", reward))
+            case (AdvanceTleilaxu() as reward,):
+                choices.append(("tleilaxu", reward))
             case _:
                 raise ValueError(f"no Reclaimed Forces choice holds {line!r}")
     if len({choice for choice, _ in choices}) != len(choices):
@@ -444,10 +447,16 @@ def _reclaimed_forces_choices() -> tuple[tuple[str, int], ...]:
     return tuple(choices)
 
 
-_RECLAIMED_FORCES_TERMS: Final = dict(_reclaimed_forces_choices())
-RECLAIMED_FORCES_CHOICES: Final = tuple(_RECLAIMED_FORCES_TERMS)
-RECLAIMED_FORCES_TROOPS: Final = _RECLAIMED_FORCES_TERMS["troops"]
-RECLAIMED_FORCES_TLEILAXU: Final = _RECLAIMED_FORCES_TERMS["tleilaxu"]
+RECLAIMED_FORCES_CHOICES: Final = tuple(
+    choice for choice, _ in _reclaimed_forces_choices()
+)
+
+
+def reclaimed_forces_reward(choice: str) -> RecruitTroops | AdvanceTleilaxu:
+    """The reward of the Reclaimed Forces line ``choice`` names, read from
+    its record."""
+
+    return dict(_reclaimed_forces_choices())[choice]
 
 
 def tleilaxu_cards_for(promo_cards: bool = False) -> tuple[TleilaxuCardEntry, ...]:

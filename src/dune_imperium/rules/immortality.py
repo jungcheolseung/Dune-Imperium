@@ -26,14 +26,21 @@ from typing import Final
 
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
-    TLEILAXU_TRACK,
     TLEILAXU_TRACK_END,
     ResearchBonus,
-    TleilaxuBonus,
     genetic_markers_reached,
     research_next_space_ids,
 )
+from dune_imperium.content.immortality.track_abilities import (
+    TLEILAXU_SPACE_ABILITIES,
+)
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    GainVictoryPoints,
+    Reward,
+    TakeSetupSpice,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -229,7 +236,14 @@ def advance_tleilaxu(
             break
         space = owner.tleilaxu_space + 1
         step_source = f"{track}:{space}"
-        bonus = TLEILAXU_TRACK[space]
+        # The space's printed bonus is its record (composed A7c), checked on
+        # load (``board._tleilaxu_bonus``).
+        record = TLEILAXU_SPACE_ABILITIES.get(space)
+        bonus: tuple[Reward, ...] = (
+            ()
+            if record is None
+            else tuple(reward for line in record.sections for reward in line.rewards)
+        )
         next_owner = replace(owner, tleilaxu_space=space)
         payload: list[tuple[str, bool | int | str]] = [
             ("player", player),
@@ -237,15 +251,15 @@ def advance_tleilaxu(
         ]
         track_spice = working.tleilaxu_track_spice
         gains: tuple[GameEvent, ...] = ()
-        if bonus in (
-            TleilaxuBonus.VICTORY_POINT,
-            TleilaxuBonus.VICTORY_POINT_AND_FIRST_SPICE,
-        ):
+        points = sum(
+            reward.amount for reward in bonus if isinstance(reward, GainVictoryPoints)
+        )
+        if points:
             next_owner = replace(
-                next_owner, victory_points=next_owner.victory_points + 1
+                next_owner, victory_points=next_owner.victory_points + points
             )
-            payload.append(("victory_points", 1))
-        if bonus is TleilaxuBonus.VICTORY_POINT_AND_FIRST_SPICE and track_spice:
+            payload.append(("victory_points", points))
+        if TakeSetupSpice() in bonus and track_spice:
             # "The first player to reach it takes an additional bonus: the
             # 2 spice that was placed here during setup" [Immortality p. 7].
             next_owner = replace(
@@ -275,13 +289,16 @@ def advance_tleilaxu(
             offered = release_offering(working, player, source=step_source)
             working = offered.state
             events.extend(offered.events)
-        if bonus is TleilaxuBonus.INTRIGUE:
+        intrigue = sum(
+            reward.count for reward in bonus if isinstance(reward, DrawIntrigueCards)
+        )
+        if intrigue:
             # Inside the seat's own turn the card waits as its own step, so
             # the choice that moved the token (a research direction, a
             # trash of Replacement Eyes) stays undoable (user ruling
             # 2026-10-10, OQ-106).
             drawn = draw_or_hold_intrigue_cards(
-                working, player, 1, origin="tleilaxu_track", source=step_source
+                working, player, intrigue, origin="tleilaxu_track", source=step_source
             )
             working = drawn.state
             events.extend(drawn.events)

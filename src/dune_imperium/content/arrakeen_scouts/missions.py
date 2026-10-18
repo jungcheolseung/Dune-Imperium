@@ -15,10 +15,10 @@ from dune_imperium.content.arrakeen_scouts.types import (
     LoseGarrisonTroops,
     Mission,
     MissionKind,
-    ScoutsOption,
     TroopSource,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    EffectSection,
     GainResources,
     PayResources,
     RecruitTroops,
@@ -104,8 +104,8 @@ MISSIONS: Final[tuple[Mission, ...]] = (
         # The second line's pieces wait on one of the seat's face-up
         # Contracts and are gained when that Contract is completed.
         choices=(
-            ScoutsOption(rewards=(RecruitTroops(1),)),
-            ScoutsOption(rewards=(GainResources(solari=1, spice=1),)),
+            EffectSection(rewards=(RecruitTroops(1),)),
+            EffectSection(rewards=(GainResources(solari=1, spice=1),)),
         ),
     ),
     Mission(

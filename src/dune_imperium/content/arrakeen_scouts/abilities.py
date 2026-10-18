@@ -4,7 +4,7 @@ docs/composed-effects-plan.md 5 (A7b): every Scouts item is keyed by its id.
 A subcommittee, a choice or shared event, a sale and a secret event print
 cost -> reward lines (``SCOUTS`` timing, one section per line, structure
 ONE_OF where the seat takes one), a sealed auction one reward per winning
-place; the content tables compile them back into ``ScoutsOption`` /
+place; the content tables compile them back into ``EffectSection`` /
 ``rank_rewards`` (``scouts_option``, ``scouts_options``,
 ``scouts_rank_rewards``, and a choice event's ``passable`` from the mark,
 ``scouts_passable``), which the Scouts step and its line executor read
@@ -20,7 +20,6 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-from dune_imperium.content.arrakeen_scouts.types import ScoutsOption
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -501,14 +500,14 @@ def _line(item_id: str, index: int) -> EffectSection:
     return line
 
 
-def scouts_option(item_id: str, index: int = 0) -> ScoutsOption:
-    """The item's ``index``-th line as the Scouts executor reads it."""
+def scouts_option(item_id: str, index: int = 0) -> EffectSection:
+    """The item's ``index``-th line of its record, which the Scouts executor
+    reads: costs in order, then rewards (cleanup 2e)."""
 
-    line = _line(item_id, index)
-    return ScoutsOption(costs=line.costs, rewards=line.rewards)
+    return _line(item_id, index)
 
 
-def scouts_options(item_id: str) -> tuple[ScoutsOption, ...]:
+def scouts_options(item_id: str) -> tuple[EffectSection, ...]:
     """Every line of a choice or shared event, or a sale."""
 
     return tuple(

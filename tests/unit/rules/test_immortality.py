@@ -18,6 +18,7 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.effect_dsl import DrawPersonalCards, Research
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -45,7 +46,6 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
     static_board_effects,
 )
-from dune_imperium.rules.effects import DrawImperiumCardsEffect, ResearchEffect
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import (
@@ -1038,12 +1038,12 @@ def test_a_specimen_can_be_returned_during_the_owners_turn() -> None:
 
 def test_the_overlay_replaces_the_research_station_effects() -> None:
     assert static_board_effects("research_station", 0, choam_module=False) != (
-        DrawImperiumCardsEffect(2),
-        ResearchEffect(),
+        DrawPersonalCards(2),
+        Research(),
     )
     assert static_board_effects(
         "research_station", 0, choam_module=False, immortality=True
-    ) == (DrawImperiumCardsEffect(2), ResearchEffect())
+    ) == (DrawPersonalCards(2), Research())
     state = _at(RESEARCH_START_ID)
     assert board_icons_for(state, 0, "research_station", 0) == ("cards", "research")
 

@@ -53,13 +53,8 @@ from dune_imperium.rules.effects import (
     BOARD_ICON_TECH,
     OPTIONAL_BOARD_ICONS,
     AutomaticEffect,
-    DrawImperiumCardsEffect,
-    DrawIntrigueCardsEffect,
-    GainResourcesEffect,
     OptionalBlockKind,
     OptionalEffectBlock,
-    RecruitTroopsEffect,
-    ResearchEffect,
     add_board_icon,
     advance_after_effect,
     blocked_board_icons,
@@ -318,18 +313,14 @@ def _gains(ability: Ability) -> tuple[AutomaticEffect, ...]:
             raise ValueError("a board space's printed icon has no condition or cost")
         for reward in line.rewards:
             match reward:
-                case GainResources(solari=solari, spice=spice, water=water):
-                    effects.append(
-                        GainResourcesEffect(solari=solari, spice=spice, water=water)
-                    )
-                case DrawPersonalCards(count=count):
-                    effects.append(DrawImperiumCardsEffect(count))
-                case DrawIntrigueCards(count=count):
-                    effects.append(DrawIntrigueCardsEffect(count))
-                case RecruitTroops(count=count):
-                    effects.append(RecruitTroopsEffect(count))
-                case Research():
-                    effects.append(ResearchEffect())
+                case (
+                    GainResources()
+                    | DrawPersonalCards()
+                    | DrawIntrigueCards()
+                    | RecruitTroops()
+                    | Research()
+                ):
+                    effects.append(reward)
                 case TakeHighCouncilSeat() | TakeSwordmaster() | TakeContract():
                     pass
                 case _:
@@ -369,15 +360,15 @@ def board_icon_for_effect(effect: AutomaticEffect) -> str:
     """Return the icon key one automatic effect is resolved under."""
 
     match effect:
-        case GainResourcesEffect():
+        case GainResources():
             return BOARD_ICON_RESOURCES
-        case DrawImperiumCardsEffect():
+        case DrawPersonalCards():
             return BOARD_ICON_CARDS
-        case DrawIntrigueCardsEffect():
+        case DrawIntrigueCards():
             return BOARD_ICON_INTRIGUE
-        case RecruitTroopsEffect():
+        case RecruitTroops():
             return BOARD_ICON_TROOPS
-        case ResearchEffect():
+        case Research():
             return BOARD_ICON_RESEARCH
         case _:
             assert_never(effect)
@@ -651,9 +642,9 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     recruit_shortfall: tuple[GameEvent, ...] = ()
     gains: tuple[GameEvent, ...] = ()
     match _icon_effect(effects, key):
-        case ResearchEffect():
+        case Research():
             research = True
-        case GainResourcesEffect() as effect:
+        case GainResources() as effect:
             next_owner = _gain_resources(owner, effect)
             gains = (
                 resources_gained_event(
@@ -664,11 +655,11 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
                     water=effect.water,
                 ),
             )
-        case DrawImperiumCardsEffect() as effect:
+        case DrawPersonalCards() as effect:
             personal_draw_count = effect.count
-        case DrawIntrigueCardsEffect() as effect:
+        case DrawIntrigueCards() as effect:
             intrigue_draw_count = effect.count
-        case RecruitTroopsEffect() as effect:
+        case RecruitTroops() as effect:
             next_owner, recruited = recruit_troops(owner, effect.count)
             context["troops_recruited"] = (
                 context_int(context, "troops_recruited", owner=_FRAME_LABEL) + recruited
@@ -1925,7 +1916,7 @@ def apply_maker_space_action(
 
 def _gain_resources(
     player: PlayerState,
-    effect: GainResourcesEffect,
+    effect: GainResources,
 ) -> PlayerState:
     return replace(
         player,

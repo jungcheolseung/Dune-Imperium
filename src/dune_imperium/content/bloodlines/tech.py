@@ -181,9 +181,13 @@ class TechTile:
 
     @property
     def flips(self) -> bool:
-        """Return whether the ability is used by flipping the tile."""
+        """Return whether the ability is used by flipping the tile: the
+        tile's record has a Flip line [Bloodlines p. 7] (composed A6b)."""
 
-        return self.ability in FLIP_ABILITIES
+        return any(
+            record.timing is AbilityTiming.FLIP
+            for record in TECH_ABILITIES[self.tech_id]
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,68 +441,58 @@ TECH_TILES_BY_ID: Final = {tile.tech_id: tile for tile in TECH_TILES}
 TECH_IDS: Final = tuple(tile.tech_id for tile in TECH_TILES)
 if set(TECH_ABILITIES) != set(TECH_IDS):
     raise ValueError("every Tech tile prints one ability record set")
-# The abilities used by flipping the tile [Bloodlines p. 7] (composed A6b).
-FLIP_ABILITIES: Final = frozenset(
-    tile.ability
-    for tile in TECH_TILES
-    if any(
-        record.timing is AbilityTiming.FLIP for record in TECH_ABILITIES[tile.tech_id]
-    )
-)
 
 
-@dataclass(frozen=True, slots=True)
-class TechRevealGain:
-    """A tile's automatic Reveal Turn line, compiled from its record
-    (composed A6b): ``command`` for "Command (6+):" [Bloodlines p. 5]."""
-
-    tech_id: str
-    ability: TechAbility
-    command: bool
-    persuasion: int = 0
-    solari: int = 0
-    swords: int = 0
-
-
-def _reveal_gain(tile: TechTile) -> TechRevealGain | None:
-    """The tile's automatic Reveal Turn line; raises ``ValueError`` for a
-    record the Reveal cannot pay."""
+def tech_reveal_line(tech_id: str) -> EffectSection | None:
+    """The tile's automatic "Reveal Turn:" line -- the line of its REVEAL
+    record without a hook (composed A6b) -- or None; ``command`` lines open
+    on "Command (6+):" [Bloodlines p. 5]."""
 
     records = tuple(
         record
-        for record in TECH_ABILITIES[tile.tech_id]
+        for record in TECH_ABILITIES[tech_id]
         if record.timing is AbilityTiming.REVEAL and record.hook is None
     )
     if not records:
         return None
     (record,) = records
-    if (
-        record.mark is not AbilityMark.AUTOMATIC
-        or record.requirement is not None
-        or len(record.sections) != 1
-    ):
-        raise ValueError(f"{tile.tech_id}: not an automatic Reveal line")
     (line,) = record.sections
-    command = line.condition == CommandReached()
-    if (line.condition is not None and not command) or line.costs:
-        raise ValueError(f"{tile.tech_id}: the Reveal checks no such condition")
-    match line.rewards:
-        case (RevealPersuasion(amount=amount, per=None),) if not command:
+    return line
+
+
+def _check_reveal_lines() -> None:
+    """Every automatic Reveal Turn line is one the Reveal can pay; raises
+    ``ValueError`` on load otherwise."""
+
+    for tile in TECH_TILES:
+        for record in TECH_ABILITIES[tile.tech_id]:
+            if record.timing is not AbilityTiming.REVEAL or record.hook is not None:
+                continue
+            if (
+                record.mark is not AbilityMark.AUTOMATIC
+                or record.requirement is not None
+                or len(record.sections) != 1
+            ):
+                raise ValueError(f"{tile.tech_id}: not an automatic Reveal line")
+        line = tech_reveal_line(tile.tech_id)
+        if line is None:
+            continue
+        command = line.condition == CommandReached()
+        if (line.condition is not None and not command) or line.costs:
+            raise ValueError(f"{tile.tech_id}: the Reveal checks no such condition")
+        match line.rewards:
             # Command opens on the other Persuasion and adds none itself.
-            return TechRevealGain(
-                tile.tech_id, tile.ability, command, persuasion=amount
-            )
-        case (GainResources(solari=solari, spice=0, water=0),) if command:
-            return TechRevealGain(tile.tech_id, tile.ability, command, solari=solari)
-        case (RevealSwords(amount=amount, per=None),) if command:
-            return TechRevealGain(tile.tech_id, tile.ability, command, swords=amount)
-    raise ValueError(f"{tile.tech_id}: the Reveal pays no such line")
+            case (RevealPersuasion(per=None),) if not command:
+                pass
+            case (GainResources(spice=0, water=0),) if command:
+                pass
+            case (RevealSwords(per=None),) if command:
+                pass
+            case _:
+                raise ValueError(f"{tile.tech_id}: the Reveal pays no such line")
 
 
-TECH_REVEAL_GAINS: Final = tuple(
-    gain for tile in TECH_TILES if (gain := _reveal_gain(tile)) is not None
-)
-TECH_REVEAL_GAINS_BY_ID: Final = {gain.tech_id: gain for gain in TECH_REVEAL_GAINS}
+_check_reveal_lines()
 
 
 def tech_tiles_for(choam_module: bool) -> tuple[TechTile, ...]:

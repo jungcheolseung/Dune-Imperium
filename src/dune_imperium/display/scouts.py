@@ -16,7 +16,6 @@ from dune_imperium.content.arrakeen_scouts import (
     SALES_BY_ID,
     SUBCOMMITTEES_BY_ID,
     MissionKind,
-    ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
     AcquireReserveCardToHand,
@@ -31,6 +30,7 @@ from dune_imperium.content.arrakeen_scouts.types import (
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
+    EffectSection,
     GainInfluence,
     PayResources,
     RecallSpy,
@@ -219,7 +219,7 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
     return cost_text_ko(step) if cost else reward_text_ko(step)  # type: ignore[arg-type]
 
 
-def scouts_option_text(option: ScoutsOption) -> str:
+def scouts_option_text(option: EffectSection) -> str:
     """One line: its costs, an arrow, its rewards (no arrow for one side)."""
 
     costs = ", ".join(_step_text(cost, cost=True) for cost in option.costs)
@@ -227,7 +227,7 @@ def scouts_option_text(option: ScoutsOption) -> str:
     return " → ".join(side for side in (costs, rewards) if side)
 
 
-def scouts_option_text_ko(option: ScoutsOption) -> str:
+def scouts_option_text_ko(option: EffectSection) -> str:
     costs = ", ".join(_step_text_ko(cost, cost=True) for cost in option.costs)
     rewards = ", ".join(_step_text_ko(reward, cost=False) for reward in option.rewards)
     return " → ".join(side for side in (costs, rewards) if side)
@@ -399,7 +399,7 @@ def scouts_item_lines(item_id: str) -> tuple[list[str], list[str]]:
     note = _NOTES.get(item_id)
     if note is not None:
         return [note[0]], [note[1]]
-    options: list[ScoutsOption] = []
+    options: list[EffectSection] = []
     prefixes: list[tuple[str, str]] = []
     if item_id in SUBCOMMITTEES_BY_ID:
         options = [SUBCOMMITTEES_BY_ID[item_id].option]
@@ -421,7 +421,7 @@ def scouts_item_lines(item_id: str) -> tuple[list[str], list[str]]:
         auction = AUCTIONS_BY_ID[item_id]
         if not auction.rank_rewards:
             return [auction_rule_text(item_id)], [auction_rule_text_ko(item_id)]
-        options = [ScoutsOption(rewards=rewards) for rewards in auction.rank_rewards]
+        options = [EffectSection(rewards=rewards) for rewards in auction.rank_rewards]
         prefixes = [("1st: ", "1위: "), ("2nd: ", "2위: ")][: len(options)]
     english = [scouts_option_text(option) for option in options]
     korean = [scouts_option_text_ko(option) for option in options]
@@ -645,7 +645,7 @@ def _reward_reason(reward: object) -> Reason:
 
 
 def _step_reason(
-    state: GameState, seat: int, option: ScoutsOption, step: ScoutsStep
+    state: GameState, seat: int, option: EffectSection, step: ScoutsStep
 ) -> Reason:
     if step in option.costs:
         return _cost_reason(state, seat, step)

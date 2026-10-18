@@ -9,6 +9,12 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES, Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+)
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -57,12 +63,6 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
-from dune_imperium.rules.effects import (
-    DrawImperiumCardsEffect,
-    DrawIntrigueCardsEffect,
-    GainResourcesEffect,
-    RecruitTroopsEffect,
-)
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.gain_events import resources_gained_event
 
@@ -161,13 +161,13 @@ def test_first_resource_board_effects_are_typed() -> None:
     state = _state("diplomacy")
 
     assert board_effects_for(state, "dutiful_service", 0) == (
-        GainResourcesEffect(solari=2),
+        GainResources(solari=2),
     )
     assert board_effects_for(state, "deliver_supplies", 0) == (
-        GainResourcesEffect(water=1),
+        GainResources(water=1),
     )
     assert board_effects_for(state, "spice_refinery", 1) == (
-        GainResourcesEffect(solari=4),
+        GainResources(solari=4),
     )
 
 
@@ -311,11 +311,11 @@ def test_unprinted_or_already_resolved_board_icon_is_rejected() -> None:
 def test_draw_and_recruit_board_effects_are_typed() -> None:
     state = _state("diplomacy")
 
-    assert board_effects_for(state, "fremkit", 0) == (DrawImperiumCardsEffect(1),)
-    assert board_effects_for(state, "assembly_hall", 0) == (DrawIntrigueCardsEffect(1),)
+    assert board_effects_for(state, "fremkit", 0) == (DrawPersonalCards(1),)
+    assert board_effects_for(state, "assembly_hall", 0) == (DrawIntrigueCards(1),)
     assert board_effects_for(state, "research_station", 0) == (
-        RecruitTroopsEffect(2),
-        DrawImperiumCardsEffect(2),
+        RecruitTroops(2),
+        DrawPersonalCards(2),
     )
 
 
@@ -2067,39 +2067,39 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
 # Tactics' troop, Shipping's Solari, Imperial Privilege's draw since the user
 # ruling of 2026-10-10) list just that icon (OQ-027).
 _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
-    "dutiful_service": {0: (GainResourcesEffect(solari=2),)},
-    "sardaukar": {0: (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))},
-    "deliver_supplies": {0: (GainResourcesEffect(water=1),)},
-    "heighliner": {0: (RecruitTroopsEffect(5),)},
-    "espionage": {0: (DrawImperiumCardsEffect(1),)},
-    "secrets": {0: (DrawIntrigueCardsEffect(1),)},
-    "desert_tactics": {0: (RecruitTroopsEffect(1),)},
-    "fremkit": {0: (DrawImperiumCardsEffect(1),)},
-    "assembly_hall": {0: (DrawIntrigueCardsEffect(1),)},
+    "dutiful_service": {0: (GainResources(solari=2),)},
+    "sardaukar": {0: (DrawIntrigueCards(1), RecruitTroops(4))},
+    "deliver_supplies": {0: (GainResources(water=1),)},
+    "heighliner": {0: (RecruitTroops(5),)},
+    "espionage": {0: (DrawPersonalCards(1),)},
+    "secrets": {0: (DrawIntrigueCards(1),)},
+    "desert_tactics": {0: (RecruitTroops(1),)},
+    "fremkit": {0: (DrawPersonalCards(1),)},
+    "assembly_hall": {0: (DrawIntrigueCards(1),)},
     "gather_support": {
-        0: (RecruitTroopsEffect(2),),
-        1: (RecruitTroopsEffect(2), GainResourcesEffect(water=1)),
+        0: (RecruitTroops(2),),
+        1: (RecruitTroops(2), GainResources(water=1)),
     },
     "high_council": {0: ()},
-    "imperial_privilege": {0: (DrawImperiumCardsEffect(1),)},
+    "imperial_privilege": {0: (DrawPersonalCards(1),)},
     "swordmaster": {0: (), 1: ()},
-    "arrakeen": {0: (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))},
-    "research_station": {0: (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))},
+    "arrakeen": {0: (RecruitTroops(1), DrawPersonalCards(1))},
+    "research_station": {0: (RecruitTroops(2), DrawPersonalCards(2))},
     "sietch_tabr": {0: None},
     "tuek_sietch": {0: None},
     "spice_refinery": {
-        0: (GainResourcesEffect(solari=2),),
-        1: (GainResourcesEffect(solari=4),),
+        0: (GainResources(solari=2),),
+        1: (GainResources(solari=4),),
     },
-    "accept_contract": {0: (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))},
+    "accept_contract": {0: (DrawPersonalCards(1), GainResources(solari=2))},
     "deep_desert": {0: None},
     "hagga_basin": {0: None},
     "imperial_basin": {0: None},
-    "shipping": {0: (GainResourcesEffect(solari=5),)},
+    "shipping": {0: (GainResources(solari=5),)},
 }
 _CHOAM_EFFECT_OVERRIDES: dict[str, dict[int, tuple[object, ...] | None]] = {
     "dutiful_service": {0: ()},
-    "accept_contract": {0: (DrawImperiumCardsEffect(1),)},
+    "accept_contract": {0: (DrawPersonalCards(1),)},
 }
 
 # Every printed icon of every space option, in printed order, as the keys of

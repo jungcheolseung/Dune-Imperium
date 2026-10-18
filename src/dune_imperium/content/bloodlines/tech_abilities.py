@@ -11,8 +11,8 @@ a hook record whose flow stays in ``rules.tech``.
 
 Each tile's printed ability is ``TECH_ABILITIES`` (composed A6b), keyed by
 tile id: the Flip lines (``rules.tech`` offers and resolves them from the
-records), the automatic Reveal Turn lines (compiled into
-``tech.TECH_REVEAL_GAINS``, which the Reveal reads), the Endgame lines
+records), the automatic Reveal Turn lines (``tech.tech_reveal_line``,
+which the Reveal reads), the Endgame lines
 (``rules.tech.apply_endgame_tech_effects``); the flows kept as code are hook
 records (``rules.tech.TECH_HOOKS``), lines listed only where the DSL says
 the whole ability, and the rule changes in force while the tile is held are

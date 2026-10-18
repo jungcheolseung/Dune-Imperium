@@ -12,6 +12,13 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     contract_for_instance,
 )
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+    Research,
+)
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     card_is_ghola,
@@ -32,70 +39,12 @@ from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.strength import conflict_agent_strength
 from dune_imperium.rules.turn_rows import PENDING_KEY
 
-
-@dataclass(frozen=True, slots=True)
-class GainResourcesEffect:
-    """Gain public spendable resources from the bank."""
-
-    solari: int = 0
-    spice: int = 0
-    water: int = 0
-
-    def __post_init__(self) -> None:
-        if min(self.solari, self.spice, self.water) < 0:
-            raise ValueError("resource gains must not be negative")
-        if self.solari == self.spice == self.water == 0:
-            raise ValueError("a resource-gain effect must gain something")
-
-
-@dataclass(frozen=True, slots=True)
-class DrawImperiumCardsEffect:
-    """Draw cards from the current player's personal deck."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("card draw count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class DrawIntrigueCardsEffect:
-    """Draw hidden cards from the shared Intrigue deck."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("Intrigue draw count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class RecruitTroopsEffect:
-    """Recruit as many troops as possible up to ``count``."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("troop recruit count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class ResearchEffect:
-    """Advance the research token (Immortality's revised Research Station).
-
-    "Draw two cards and research" [Immortality p. 16]; the advance may open
-    a direction choice for the owner [Immortality p. 6].
-    """
-
-
+# A board space's automatic icon is its record's own gain piece (cleanup 2e):
+# the Solari/spice/water gain, the personal card draw, the Intrigue draw, the
+# troop recruit and the Research icon ("Draw two cards and research"
+# [Immortality p. 16]).
 type AutomaticEffect = (
-    GainResourcesEffect
-    | DrawImperiumCardsEffect
-    | DrawIntrigueCardsEffect
-    | RecruitTroopsEffect
-    | ResearchEffect
+    GainResources | DrawPersonalCards | DrawIntrigueCards | RecruitTroops | Research
 )
 
 

@@ -1328,8 +1328,8 @@ def _check_tech_records() -> None:
                 ):
                     raise ValueError(f"{tech_id}: no such Tech trigger")
             elif record.timing is not AbilityTiming.REVEAL:
-                # The automatic Reveal lines are checked as they compile
-                # (``tech.TECH_REVEAL_GAINS``).
+                # The automatic Reveal lines are checked on load
+                # (``tech.tech_reveal_line``).
                 raise ValueError(
                     f"{tech_id}: no {record.timing} ability without a hook"
                 )

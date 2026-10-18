@@ -230,7 +230,10 @@ def genetic_markers_reached(space_id: str) -> int:
 
 
 class TleilaxuBonus(StrEnum):
-    """The bonus printed on one Tleilaxu track space [Immortality p. 7]."""
+    """The label key of the bonus printed on one Tleilaxu track space
+    [Immortality p. 7], derived from the space's record for the board's
+    labels (``server.catalog``); the rules read the record itself
+    (cleanup 2e)."""
 
     NONE = "none"
     INTRIGUE = "intrigue"

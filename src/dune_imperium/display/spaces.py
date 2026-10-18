@@ -14,6 +14,13 @@ from types import MappingProxyType
 from typing import assert_never
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+    Research,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
@@ -31,11 +38,6 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.effects import (
     AutomaticEffect,
-    DrawImperiumCardsEffect,
-    DrawIntrigueCardsEffect,
-    GainResourcesEffect,
-    RecruitTroopsEffect,
-    ResearchEffect,
     current_agent_effect_context,
 )
 
@@ -562,7 +564,7 @@ def automatic_effect_texts(effect: AutomaticEffect) -> tuple[str, ...]:
     """Render one engine automatic effect as display fragments."""
 
     match effect:
-        case GainResourcesEffect():
+        case GainResources():
             return tuple(
                 f"Gain {amount} {resource}"
                 for resource, amount in (
@@ -572,16 +574,16 @@ def automatic_effect_texts(effect: AutomaticEffect) -> tuple[str, ...]:
                 )
                 if amount
             )
-        case RecruitTroopsEffect():
+        case RecruitTroops():
             noun = "troop" if effect.count == 1 else "troops"
             return (f"Recruit {effect.count} {noun}",)
-        case DrawImperiumCardsEffect():
+        case DrawPersonalCards():
             noun = "card" if effect.count == 1 else "cards"
             return (f"Draw {effect.count} {noun}",)
-        case DrawIntrigueCardsEffect():
+        case DrawIntrigueCards():
             noun = "Intrigue card" if effect.count == 1 else "Intrigue cards"
             return (f"Draw {effect.count} {noun}",)
-        case ResearchEffect():
+        case Research():
             return ("Research (advance your research token)",)
         case _:
             assert_never(effect)
@@ -625,7 +627,7 @@ def automatic_effect_texts_ko(effect: AutomaticEffect) -> tuple[str, ...]:
     """
 
     match effect:
-        case GainResourcesEffect():
+        case GainResources():
             return tuple(
                 f"{{{term}:{amount}}}"
                 for term, amount in (
@@ -635,13 +637,13 @@ def automatic_effect_texts_ko(effect: AutomaticEffect) -> tuple[str, ...]:
                 )
                 if amount
             )
-        case RecruitTroopsEffect():
+        case RecruitTroops():
             return (f"{{troop:{effect.count}}}",)
-        case DrawImperiumCardsEffect():
+        case DrawPersonalCards():
             return (f"{{draw:{effect.count}}}",)
-        case DrawIntrigueCardsEffect():
+        case DrawIntrigueCards():
             return (f"{{intrigue:{effect.count}}}",)
-        case ResearchEffect():
+        case Research():
             return ("{research} (연구 토큰 전진)",)
         case _:
             assert_never(effect)

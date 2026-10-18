@@ -55,7 +55,6 @@ from dune_imperium.content.arrakeen_scouts.types import (
     Mission,
     RecallOtherAgent,
     RecruitToConflict,
-    ScoutsOption,
     TroopSource,
 )
 from dune_imperium.content.bloodlines.sardaukar import (
@@ -84,6 +83,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    EffectSection,
     GainCombatStrength,
     GainInfluence,
     GainResources,
@@ -1332,8 +1332,10 @@ MISSION_PARKED: Mapping[str, str] = {
 }
 #: §5.3: the automatic Political Equilibrium is one line (ties only), and
 #: Rebuild Infrastructure's agreed line also returns the Shield Wall.
-EVENT_EXTRA_LINES: Mapping[str, tuple[ScoutsOption, ...]] = {
-    "political_equilibrium": (ScoutsOption(costs=(LoseHighestInfluence(),)),),
+EVENT_EXTRA_LINES: Mapping[str, tuple[EffectSection, ...]] = {
+    "political_equilibrium": (
+        EffectSection(rewards=(), costs=(LoseHighestInfluence(),)),
+    ),
 }
 EVENT_EXTRA_ABILITIES: Mapping[str, tuple[str, ...]] = {
     "rebuild_infrastructure": (_sc("ShieldWallReturnAbility"),),
@@ -1445,7 +1447,7 @@ class _Line:
         else:
             raise TypeError(f"no Scouts encoding for reward {reward!r}")
 
-    def option(self, option: ScoutsOption) -> _Line:
+    def option(self, option: EffectSection) -> _Line:
         for cost in option.costs:
             self.cost(cost)
         for reward in option.rewards:
@@ -1522,7 +1524,7 @@ def scouts_records() -> list[Record]:
         if auction.kind is not AuctionKind.SEALED:
             continue  # Mercenaries and Critical Moment have no line (§5.4)
         for k, rewards in enumerate(auction.rank_rewards):
-            line = _Line().option(ScoutsOption(rewards=rewards))
+            line = _Line().option(EffectSection(rewards=rewards))
             records.append(
                 _line_record("Auction", auction.auction_id, k, auction.name, line)
             )
