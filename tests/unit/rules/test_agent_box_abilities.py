@@ -43,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainVictoryPoints,
     GraftedTrash,
     GraftedWithFaction,
     HasAlliance,
@@ -86,6 +87,8 @@ from dune_imperium.rules.agent_box_abilities import (
     choose_two_box,
     condition_block,
     discard_box,
+    discard_pay_block,
+    discard_pay_box,
     discard_spy,
     either_box,
     graft_trash_box,
@@ -1199,10 +1202,9 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.hook is not None and ability.mark is AbilityMark.OPTIONAL
     } == {
-        "corrinth_city",
         "arrakis_revolt",
     }
-    assert len(box_hook_names()) == 8
+    assert len(box_hook_names()) == 7
 
 
 def test_the_grafted_card_trashes_are_records() -> None:
@@ -1249,3 +1251,18 @@ def test_stitched_horror_is_a_choose_two_record() -> None:
             (EffectSection(rewards=(GainResources(water=1),)),),
             structure=AbilityStructure.CHOOSE_TWO,
         )
+
+
+def test_corrinth_city_is_a_discard_and_pay_record() -> None:
+    """Corrinth City's arrow (cleanup-2d): two discards and five Solari for a
+    Victory Point, judged as a whole, its rows keeping the card's names."""
+
+    corrinth = AGENT_BOX_ABILITIES[_BOX.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP]
+    assert discard_pay_box(corrinth) and corrinth.hook is None
+    (line,) = corrinth.sections
+    assert line.costs == (DiscardFromHand(2), PayResources(solari=5))
+    assert line.rewards == (GainVictoryPoints(1),)
+    owner = PlayerState(player_id=0, resources=Resources(solari=4), hand=("a", "b"))
+    assert discard_pay_block(owner, corrinth) == short_of(
+        OptionalBlockKind.SOLARI, 5, 4
+    )

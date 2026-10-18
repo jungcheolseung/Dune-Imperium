@@ -654,7 +654,8 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 mark=AbilityMark.OPTIONAL,
             ),
             # Corrinth City: "You may discard 2 cards and pay 5 solari -> Gain 1
-            # VP" -- the two discards picked one by one (its own rows).
+            # VP" -- the two discards picked one by one, then all paid at once
+            # (a discard-and-pay arrow, cleanup-2d).
             _BOX.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: Ability(
                 timing=AbilityTiming.AGENT_BOX,
                 sections=(
@@ -664,7 +665,6 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
                 mark=AbilityMark.OPTIONAL,
-                hook="corrinth_city",
             ),
             # Arrakis Revolt: "If Maker Hooks: You may pay 2 spice -> You may
             # remove the Shield Wall, Summon 1 sandworm" -- the removal folded

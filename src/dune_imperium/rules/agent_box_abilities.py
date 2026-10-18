@@ -2281,6 +2281,170 @@ def graft_trash_rows(
     )
 
 
+# --- Two discards and a payment (cleanup-2d) ------------------------------------------
+#
+# "You may discard 2 cards and pay 5 solari -> Gain 1 VP" [Corrinth City
+# card]: the whole cost is judged whenever the box resolves, in the owner's
+# order [Main pp. 9, 20]; the two cards are picked one by one
+# (``select_corrinth_city_discard`` stores the first in
+# ``corrinth_first_card_id``, ``pay_corrinth_city`` names the second and
+# pays everything at once), beside the refusal
+# ``decline_corrinth_city_payment``; the rows keep the card's codec names.
+
+
+def discard_pay_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is an optional arrow paid by two discards and a
+    Solari payment for Victory Points."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
+        return False
+    (line,) = ability.sections
+    return (
+        len(line.costs) == 2
+        and line.costs[0] == DiscardFromHand(2)
+        and isinstance(line.costs[1], PayResources)
+        and line.costs[1].spice == line.costs[1].water == 0
+        and line.costs[1].solari > 0
+        and all(isinstance(reward, GainVictoryPoints) for reward in line.rewards)
+    )
+
+
+def discard_pay_solari(ability: Ability) -> int:
+    cost = ability.sections[0].costs[1]
+    assert isinstance(cost, PayResources)
+    return cost.solari
+
+
+def discard_pay_block(
+    owner: PlayerState, ability: Ability
+) -> OptionalEffectBlock | None:
+    """Why the whole cost cannot be paid now: the Solari, then the cards."""
+
+    return short_of(
+        OptionalBlockKind.SOLARI, discard_pay_solari(ability), owner.resources.solari
+    ) or short_of(OptionalBlockKind.HAND, 2, len(owner.hand))
+
+
+def discard_pay_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal, then the first pick or the second (paying everything)."""
+
+    _, context = current_agent_effect_context(state)
+    owner = state.players[player]
+    decline = DomainAction(action_id="decline_corrinth_city_payment", actor=player)
+    if discard_pay_block(owner, ability) is not None:
+        # Once the cost is unaffordable, only skipping remains.
+        return (decline,)
+    first_card_id = context.get("corrinth_first_card_id")
+    if first_card_id is not None and not isinstance(first_card_id, str):
+        raise RuntimeError("pending Corrinth City payment has invalid first card")
+    if first_card_id is not None and first_card_id not in owner.hand:
+        # A freely ordered effect (an Intrigue discard cost) can consume the
+        # stored first pick before the payment completes; the cost then
+        # restarts from no pick [Main pp. 9, 20].
+        first_card_id = None
+    return (
+        decline,
+        *(
+            DomainAction(
+                action_id=(
+                    "select_corrinth_city_discard"
+                    if first_card_id is None
+                    else "pay_corrinth_city"
+                ),
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.hand
+            if card_id != first_card_id
+        ),
+    )
+
+
+def apply_discard_pay(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Refuse, store the first pick, or discard both and pay for the gain."""
+
+    _, context = current_agent_effect_context(state)
+    player, card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, card_id)
+    if action.action_id == "decline_corrinth_city_payment":
+        context["pending_agent_effect"] = False
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(agent_box_event(source, card_id, player, BoxOutcome.DECLINED),),
+        )
+    picked = dict(action.arguments).get("card_id")
+    if not isinstance(picked, str):
+        raise RuntimeError("Corrinth City payment has invalid card ID")
+    if action.action_id == "select_corrinth_city_discard":
+        context["corrinth_first_card_id"] = picked
+        frame = state.decision_stack[-1]
+        return RuleResult(
+            state=replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:-1],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                ),
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:first_discard_selected",
+                    kind="corrinth_city_payment_started",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    first_card_id = context.get("corrinth_first_card_id")
+    if not isinstance(first_card_id, str):
+        raise RuntimeError("Corrinth City payment is missing its first card")
+    context["pending_agent_effect"] = False
+    solari = discard_pay_solari(ability)
+    owner = state.players[player]
+    if owner.resources.solari < solari:
+        raise RuntimeError("Corrinth City payment requires its Solari")
+    paid_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - solari),
+    )
+    paid_state = replace(state, players=replace_player(state.players, paid_owner))
+    first = discard_personal_card_from_hand(
+        paid_state, player, first_card_id, source=source
+    )
+    second = discard_personal_card_from_hand(first.state, player, picked, source=source)
+    gained_owner = second.state.players[player]
+    points = sum(
+        reward.amount
+        for reward in ability.sections[0].rewards
+        if isinstance(reward, GainVictoryPoints)
+    )
+    gained_owner = replace(
+        gained_owner, victory_points=gained_owner.victory_points + points
+    )
+    next_state = advance_after_effect(
+        second.state, context, replace_player(second.state.players, gained_owner)
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            *first.events,
+            *second.events,
+            resources_paid_event(source, player, solari=solari),
+            resources_gained_event(source, player, victory_points=points),
+            agent_box_event(source, card_id, player, _RESOLVED),
+        ),
+    )
+
+
 # --- "Choose two" (cleanup-2d) ------------------------------------------------------
 #
 # "Choose two: Gain 1 water / Recruit 1 troop / Trash a card / Advance the

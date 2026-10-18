@@ -55,6 +55,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_chosen_influence,
     apply_chosen_reward,
     apply_discard,
+    apply_discard_pay,
     apply_either_influence,
     apply_intrigue_payment,
     apply_lose,
@@ -67,6 +68,9 @@ from dune_imperium.rules.agent_box_abilities import (
     chosen_rewards,
     discard_box,
     discard_cost_block,
+    discard_pay_block,
+    discard_pay_box,
+    discard_pay_rows,
     discard_rows,
     discard_spy,
     either_box,
@@ -1642,7 +1646,6 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
     except ValueError:
         return None
     owner = state.players[player]
-    resources = owner.resources
     effect = active_agent_card(context).agent_effect
     kind = OptionalBlockKind
     if effect is _ARRAKIS_REVOLT:
@@ -1663,10 +1666,8 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         )
     if ability is not None and lose_box(ability):
         return lose_cost_block(owner)
-    if effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
-        return short_of(kind.SOLARI, 5, resources.solari) or short_of(
-            kind.HAND, 2, len(owner.hand)
-        )
+    if ability is not None and discard_pay_box(ability):
+        return discard_pay_block(owner, ability)
     return None
 
 
@@ -1773,44 +1774,10 @@ def legal_corrinth_city_payment_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
-    _, source_card_id, _ = _effect_subject(context)
-    source_card = active_agent_card(context)
-    if (
-        source_card.agent_effect
-        is not PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
-    ):
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is None or not discard_pay_box(recorded):
         return ()
-    owner = state.players[player]
-    if agent_card_cost_block(state, player) is not None:
-        # The full cost (5 Solari, two cards in hand) must still be payable
-        # when the player resolves the pending payment in their chosen
-        # effect order [Main pp. 9, 20]; once it is unaffordable, only
-        # skipping remains.
-        return (DomainAction(action_id="decline_corrinth_city_payment", actor=player),)
-    first_card_id = context.get("corrinth_first_card_id")
-    if first_card_id is not None and not isinstance(first_card_id, str):
-        raise RuntimeError("pending Corrinth City payment has invalid first card")
-    if first_card_id is not None and first_card_id not in owner.hand:
-        # A freely ordered effect (for example an Intrigue discard cost) can
-        # consume the stored first selection before the payment completes;
-        # the atomic cost then restarts from no selection [Main pp. 9, 20].
-        first_card_id = None
-    return (
-        DomainAction(action_id="decline_corrinth_city_payment", actor=player),
-        *(
-            DomainAction(
-                action_id=(
-                    "select_corrinth_city_discard"
-                    if first_card_id is None
-                    else "pay_corrinth_city"
-                ),
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            for card_id in owner.hand
-            if card_id != first_card_id
-        ),
-    )
+    return discard_pay_rows(state, player, recorded)
 
 
 def apply_corrinth_city_payment(
@@ -1822,87 +1789,9 @@ def apply_corrinth_city_payment(
     if action not in legal_corrinth_city_payment_actions(state, action.actor):
         raise ValueError("action is not a legal Corrinth City payment choice")
     _, context = current_agent_effect_context(state)
-    _, source_card_id, _ = _effect_subject(context)
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"agent_card:{source_card_id}"
-    )
-    if action.action_id == "decline_corrinth_city_payment":
-        context["pending_agent_effect"] = False
-        return RuleResult(
-            state=advance_after_effect(state, context),
-            events=(
-                agent_box_event(
-                    source, source_card_id, action.actor, BoxOutcome.DECLINED
-                ),
-            ),
-        )
-
-    card_id = dict(action.arguments).get("card_id")
-    if not isinstance(card_id, str):
-        raise RuntimeError("Corrinth City payment has invalid card ID")
-    if action.action_id == "select_corrinth_city_discard":
-        context["corrinth_first_card_id"] = card_id
-        frame = state.decision_stack[-1]
-        next_frame = replace(frame, context=tuple(sorted(context.items())))
-        return RuleResult(
-            state=replace(
-                state,
-                decision_stack=(*state.decision_stack[:-1], next_frame),
-            ),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:first_discard_selected",
-                    kind="corrinth_city_payment_started",
-                    payload=(("player", action.actor),),
-                ),
-            ),
-        )
-
-    first_card_id = context.get("corrinth_first_card_id")
-    if not isinstance(first_card_id, str):
-        raise RuntimeError("Corrinth City payment is missing its first card")
-    context["pending_agent_effect"] = False
-    owner = state.players[action.actor]
-    if owner.resources.solari < 5:
-        raise RuntimeError("Corrinth City payment requires five Solari")
-    paid_owner = replace(
-        owner,
-        resources=replace(owner.resources, solari=owner.resources.solari - 5),
-    )
-    paid_state = replace(state, players=replace_player(state.players, paid_owner))
-    first_discard = discard_personal_card_from_hand(
-        paid_state,
-        action.actor,
-        first_card_id,
-        source=source,
-    )
-    second_discard = discard_personal_card_from_hand(
-        first_discard.state,
-        action.actor,
-        card_id,
-        source=source,
-    )
-    resolved_owner = second_discard.state.players[action.actor]
-    resolved_owner = replace(
-        resolved_owner,
-        victory_points=resolved_owner.victory_points + 1,
-    )
-    next_state = advance_after_effect(
-        second_discard.state,
-        context,
-        replace_player(second_discard.state.players, resolved_owner),
-    )
-    return RuleResult(
-        state=next_state,
-        events=(
-            *first_discard.events,
-            *second_discard.events,
-            resources_paid_event(source, action.actor, solari=5),
-            resources_gained_event(source, action.actor, victory_points=1),
-            agent_box_event(source, source_card_id, action.actor, BoxOutcome.RESOLVED),
-        ),
-    )
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    assert recorded is not None
+    return apply_discard_pay(state, action, recorded)
 
 
 def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResult:
@@ -3671,7 +3560,6 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "possible_futures": _hook_possible_futures,
             # The boxes no stage of the plan listed (composed A3g).
             "long_live_the_fighters": _hook_long_live_the_fighters,
-            "corrinth_city": _hook_rows_only,
             "arrakis_revolt": _hook_rows_only,
             "beasts_spoils": _hook_beasts_spoils,
             "scientific_breakthrough": _hook_scientific_breakthrough,
