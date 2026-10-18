@@ -886,6 +886,33 @@ def test_occupation_draws_and_grants_the_combat_icon() -> None:
     assert revealed.players[0].troops_garrison == 4
 
 
+def test_occupation_turn_end_waits_for_its_combat_icon() -> None:
+    # Every effect without "may", an arrow cost or a black trash icon is
+    # mandatory (OQ-057 (1), [FAQ p. 3]), and the turn's end comes only once
+    # the mandatory ones are done (OQ-095 (2)): with its draw taken first,
+    # Occupation's Combat icon (cleanup-2d-5) still holds it.
+    occupation = _card("occupation")
+    state = _place(
+        _state(_owner((occupation,), troops_garrison=3)), occupation, "arrakeen"
+    )
+    engine = UprisingRulesEngine()
+    current = engine.apply(
+        state, DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),))
+    ).state
+    for _ in range(5):
+        space = [
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id in ("resolve_board_effect", "resolve_faction_influence")
+        ]
+        if not space:
+            break
+        current = engine.apply(current, space[0]).state
+    offered = {action.action_id for action in engine.legal_actions(current, 0)}
+    assert "take_agent_card_combat_icon" in offered
+    assert "finish_agent_turn" not in offered
+
+
 def test_organ_merchants_pays_a_specimen_for_four_solari() -> None:
     merchants = _card("organ_merchants")
     dry = _place(_state(_owner((merchants,))), merchants, "arrakeen")

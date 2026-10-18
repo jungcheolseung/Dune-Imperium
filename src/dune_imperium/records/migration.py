@@ -2158,6 +2158,29 @@ def _signet_without_option(
     return confirm if confirm in engine.legal_actions(state, step.actor) else None
 
 
+def _combat_trash_declined_without_card(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded refusal of a Conflict trash reward with no card left to
+    trash (a second trash after the first took the last card), as the
+    confirm this engine offers there (codec v149, cleanup-2f)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id == "decline_combat_reward_trash"
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    confirm = DomainAction(
+        action_id="resolve_combat_trash_without_card", actor=step.actor
+    )
+    return confirm if confirm in engine.legal_actions(state, step.actor) else None
+
+
 def _tech_influence_confirm(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -3065,6 +3088,12 @@ BRIDGES: tuple[Bridge, ...] = (
     Bridge(
         "signet_without_option",
         _signet_without_option,
+        before_codec=149,
+        rewrites=True,
+    ),
+    Bridge(
+        "combat_trash_declined_without_card",
+        _combat_trash_declined_without_card,
         before_codec=149,
         rewrites=True,
     ),

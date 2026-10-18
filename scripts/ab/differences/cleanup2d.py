@@ -404,7 +404,12 @@ def _split_rows(old: Step, candidate: Step) -> None:
         return
     if base and all(row["action_id"] in _FRAME_SPY for row in base):
         # In High Places' Spy: the base's frame offered only its placement.
+        # The candidate's turn offers its other effects beside the Spy rows,
+        # never the turn's end while the Spy waits (OQ-057 (14)): a row list
+        # with it stays as it is, so the comparison shows it.
         spy = [row for row in rows if row["action_id"] in _BOX_SPY]
+        if any(row["action_id"] == "finish_agent_turn" for row in rows):
+            return
         if len(spy) == len(base) and all(
             any(
                 row["action_id"] == _FRAME_SPY[frame_row["action_id"]]

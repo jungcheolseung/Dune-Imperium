@@ -3155,3 +3155,156 @@ def test_cleanup2c_renames_only_a_draw_it_explains(
     reshuffle's renames had no bridge)."""
 
     assert migration._cleanup2c_renamed(old + suffix, new + suffix, suffix) is renamed
+
+
+# --- Codec v149: the split boxes and the confirms (cleanup-2d-5, 2f) -----------
+# An older engine resolved Clandestine Meeting, Occupation and In High Places
+# with one ``resolve_agent_card_effect`` (In High Places' Spy in the shared
+# placement frame), refused a Signet stage with nothing to do, and either
+# skipped a Conflict trash with no card or offered only its refusal there.
+
+
+def _decided(state: GameState) -> PlayerDecision | ChanceDecision:
+    decision = ENGINE.current_decision(state)
+    assert decision is not None
+    return decision
+
+
+def _box_args(action: ReplayStep) -> dict[str, object]:
+    assert isinstance(action, DomainAction)
+    return dict(action.arguments)
+
+
+def test_a_recorded_box_resolution_plays_its_icons_one_by_one() -> None:
+    from tests.unit.rules.test_immortality_imperium import (
+        FACE_DANCER,
+        _card,
+        _graft,
+        _owner,
+        _place,
+        _state,
+    )
+
+    occupation = _card("occupation")
+    state = _place(
+        _state(_owner((occupation,), troops_garrison=3)), occupation, "arrakeen"
+    )
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    first = migration._split_box_icon(
+        ENGINE, state, _decided(state), plain
+    )
+    assert first == DomainAction(action_id="take_agent_card_combat_icon", actor=0)
+    after = ENGINE.apply(state, first).state
+    follow = migration._split_box_follow(
+        ENGINE, after, _decided(after), first
+    )
+    assert follow == DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
+    )
+    done = ENGINE.apply(after, follow).state
+    assert (
+        migration._split_box_follow(ENGINE, done, _decided(done), follow)
+        is None
+    )
+
+    # Box 1 of a grafted turn: Clandestine Meeting's Influence, then its card.
+    meeting = _card("clandestine_meeting")
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, meeting))), FACE_DANCER, "dutiful_service", meeting
+    )
+    plain_box1 = DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("box", 1),)
+    )
+    first = migration._split_box_icon(
+        ENGINE, grafted, _decided(grafted), plain_box1
+    )
+    assert isinstance(first, DomainAction)
+    assert first.action_id == "choose_agent_card_influence"
+    assert _box_args(first) == {"box": 1, "faction": "bene_gesserit"}
+    after = ENGINE.apply(grafted, first).state
+    follow = migration._split_box_follow(
+        ENGINE, after, _decided(after), first
+    )
+    assert follow is not None and _box_args(follow) == {"box": 1, "effect": "intrigue"}
+
+
+def test_in_high_places_old_spy_frame_moves_are_its_spy_rows() -> None:
+    from tests.unit.rules.test_agent_effects import _in_high_places_on_secrets
+
+    placed, _ = _in_high_places_on_secrets()
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    draw = migration._split_box_icon(
+        ENGINE, placed, _decided(placed), plain
+    )
+    assert draw == DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
+    )
+    drawn = ENGINE.apply(placed, draw).state
+    # The Spy waits for the record's frame step, not for a follow.
+    assert (
+        migration._split_box_follow(ENGINE, drawn, _decided(drawn), draw)
+        is None
+    )
+    post = (("post_id", "bene-gesserit-espionage-secrets"),)
+    spy = migration._split_box_spy(
+        ENGINE,
+        drawn,
+        _decided(drawn),
+        DomainAction(action_id="place_spy_on_space", actor=0, arguments=post),
+    )
+    assert spy == DomainAction(
+        action_id="place_agent_card_spy", actor=0, arguments=post
+    )
+
+
+def test_the_cleanup_2f_refusals_are_the_confirms() -> None:
+    from tests.unit.rules.test_bloodlines_leaders import SIGNET, _esmar_state, _play
+    from tests.unit.rules.test_combat import _reward_state
+
+    esmar = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
+    state = _play(
+        _esmar_state(
+            esmar,
+            maker_bonus_spice=(
+                ("deep_desert", 0),
+                ("hagga_basin", 0),
+                ("imperial_basin", 0),
+            ),
+        ),
+        SIGNET,
+        "arrakeen",
+    )
+    assert migration._signet_without_option(
+        ENGINE,
+        state,
+        _decided(state),
+        DomainAction(action_id="decline_leader_signet_payment", actor=0),
+    ) == DomainAction(action_id="resolve_leader_signet_without_option", actor=0)
+
+    from dune_imperium.rules.combat import resolve_combat_rewards
+
+    rewarded = resolve_combat_rewards(_reward_state("trade_dispute")).state
+    decision = _decided(rewarded)
+    confirm = DomainAction(action_id="resolve_combat_trash_without_card", actor=0)
+    # The recorded refusal of a trash with no card left is the confirm; a
+    # record that never had the window gets it answered before its next step.
+    assert (
+        migration._combat_trash_declined_without_card(
+            ENGINE,
+            rewarded,
+            decision,
+            DomainAction(action_id="decline_combat_reward_trash", actor=0),
+        )
+        == confirm
+    )
+    window = next(
+        bridge
+        for bridge in migration.BRIDGES
+        if bridge.name == "combat_trash_without_card"
+    )
+    assert (
+        window.answer(
+            ENGINE, rewarded, decision, DomainAction(action_id="reveal_turn", actor=1)
+        )
+        == confirm
+    )

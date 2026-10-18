@@ -2855,9 +2855,10 @@ def _pending_icons_offer_nothing(
 ) -> bool:
     """Return whether a multi-icon box has icons nothing can resolve.
 
-    A multi-icon box resolves icon by icon through exactly four providers
-    (OQ-027; the trash one for Tread in Darkness's trash icon), so when all
-    four are empty the icons cannot be resolved at all. Ghola copying
+    A multi-icon box resolves icon by icon through exactly five providers
+    (OQ-027; the trash one for Tread in Darkness's trash icon, the last for
+    Occupation's Combat icon and In High Places' Spy, cleanup-2d-5), so when
+    all five are empty the icons cannot be resolved at all. Ghola copying
     Steersman's "draw a card, recall an Agent" box reaches this: the first
     box already recalled the seat's last Agent, so the copy's recall icon
     has no target. Like any other mandatory box whose condition is false it
@@ -2871,6 +2872,7 @@ def _pending_icons_offer_nothing(
         or legal_agent_card_recall_actions(state, player)
         or legal_agent_card_influence_actions(state, player)
         or legal_agent_card_trash_actions(state, player)
+        or legal_agent_card_icon_choice_actions(state, player)
     )
 
 

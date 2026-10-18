@@ -3148,6 +3148,35 @@ def test_in_high_places_spy_may_pass_on_the_recall_with_an_empty_supply() -> Non
     assert dict(passed.decision_stack[-1].context)["pending_agent_icons"] == "cards"
 
 
+def test_in_high_places_turn_end_waits_for_its_spy() -> None:
+    # Placing is mandatory with a Spy in supply, and without one "box에 답하기
+    # 전에는 turn 종료가 제시되지 않고" (OQ-057 (14)); "턴 종료는 의무 효과가
+    # 모두 끝났을 때만 제시된다" (OQ-095 (2)). Once the draw icon is taken
+    # (cleanup-2d-5), the Spy icon still holds the turn's end.
+    engine = UprisingRulesEngine()
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    for supply, spied in ((3, ()), (0, posts)):
+        placed, _ = _in_high_places_on_secrets(spies_supply=supply, spy_post_ids=spied)
+        current = engine.apply(placed, _icon_action(placed, "cards")).state
+        for _ in range(5):
+            space = [
+                action
+                for action in engine.legal_actions(current, 0)
+                if action.action_id
+                in ("resolve_board_effect", "resolve_faction_influence")
+            ]
+            if not space:
+                break
+            current = engine.apply(current, space[0]).state
+        offered = {action.action_id for action in engine.legal_actions(current, 0)}
+        assert "finish_agent_turn" not in offered, supply
+        assert offered & {
+            "place_agent_card_spy",
+            "decline_agent_card_spy",
+            "recall_spy_for_agent_card",
+        }
+
+
 def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn() -> (
     None
 ):
@@ -3177,7 +3206,6 @@ def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn()
         "decline_agent_card_spy",
         "recall_spy_for_agent_card",
         "place_agent_card_spy",
-        "finish_agent_turn",
     }
     current = engine.apply(placed, _icon_action(placed, "cards")).state
     for _ in range(5):
