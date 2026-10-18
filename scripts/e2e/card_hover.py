@@ -113,7 +113,7 @@ REVEAL_LINES_JS = """() => {
         if (entry.type !== 'action') continue;
         for (const event of entry.events || []) {
             if (event.kind === 'cards_revealed') {
-                const ids = String(event.payload.card_ids).split(',');
+                const ids = event.payload.card_ids;
                 events.push({ids: ids.filter(Boolean), player: event.payload.player});
             }
         }

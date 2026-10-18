@@ -430,7 +430,7 @@ def apply_scouts_draw(state: GameState, outcome: ChanceOutcome) -> RuleResult:
                     kind="scouts_subcommittees_revealed",
                     payload=(
                         ("round", round_number),
-                        ("subcommittee_ids", ",".join(drawn)),
+                        ("subcommittee_ids", tuple(drawn)),
                     ),
                 ),
             ),
@@ -446,7 +446,7 @@ def apply_scouts_draw(state: GameState, outcome: ChanceOutcome) -> RuleResult:
                 GameEvent(
                     event_id=f"round:{round_number}:scouts:mission_layout",
                     kind="scouts_mission_layout",
-                    payload=(("rounds", ",".join(map(str, layout))),),
+                    payload=(("rounds", layout),),
                 ),
             ),
         )
@@ -657,7 +657,7 @@ def _mating_season(state: GameState) -> RuleResult:
                 kind="scouts_maker_spice_added",
                 payload=(
                     ("amount", 1),
-                    ("space_ids", ",".join(space for space, _ in maker_bonus_spice)),
+                    ("space_ids", tuple(space for space, _ in maker_bonus_spice)),
                 ),
             ),
         ),
@@ -726,7 +726,7 @@ def _deal_cleared_contracts(state: GameState, outcome: ChanceOutcome) -> RuleRes
                 # Joined: the old pair is back in the hidden bank, but its
                 # identities were public while face up (as Family Atomics'
                 # removed Row).
-                payload=(("dealt", ",".join(dealt)), ("removed", ",".join(removed))),
+                payload=(("dealt", tuple(dealt)), ("removed", tuple(removed))),
             ),
         ),
     )

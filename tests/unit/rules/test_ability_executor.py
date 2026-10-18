@@ -12,6 +12,7 @@ frame's rows, its hold of ``finish_reveal`` and the entry an action takes
 
 from collections import Counter
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -271,7 +272,10 @@ def test_a_lose_troops_cost_moves_the_tactics_token_once() -> None:
         state, entry = applied.result.state, applied.entry
         tallies.append(entry.tally)
         advanced.extend(
-            (int(dict(event.payload)["count"]), int(dict(event.payload)["space"]))
+            (
+                cast(int, dict(event.payload)["count"]),
+                cast(int, dict(event.payload)["space"]),
+            )
             for event in applied.result.events
             if event.kind == "tactics_token_advanced"
         )

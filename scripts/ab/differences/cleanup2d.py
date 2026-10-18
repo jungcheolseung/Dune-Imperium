@@ -474,7 +474,10 @@ def _signet_confirm_rows(old: Step, candidate: Step) -> None:
         rows = candidate.decision[1]
         if (
             isinstance(rows, list)
-            and any(isinstance(r, dict) and r.get("action_id") == _SIGNET_NO_OPTION for r in rows)
+            and any(
+                isinstance(r, dict) and r.get("action_id") == _SIGNET_NO_OPTION
+                for r in rows
+            )
             and any(
                 isinstance(r, dict) and r.get("action_id") == _SIGNET_DECLINE
                 for r in old.decision[1]
@@ -486,7 +489,10 @@ def _signet_confirm_rows(old: Step, candidate: Step) -> None:
             if isinstance(candidate.page, list) and isinstance(old.page, list):
                 candidate.page = old.page
     for event in candidate.events:
-        if event["kind"] == "leader_signet_unavailable" and old.step[1] == _SIGNET_DECLINE:
+        if (
+            event["kind"] == "leader_signet_unavailable"
+            and old.step[1] == _SIGNET_DECLINE
+        ):
             event["kind"] = "leader_signet_declined"
             event["event_id"] = str(event["event_id"]).removesuffix(
                 ":unavailable"
@@ -526,4 +532,67 @@ TRASH_CONFIRM = Rule(
     answer=_trash_confirm_answer,
 )
 
-RULES = (SPLIT_BOXES, SIGNET_CONFIRM, TRASH_CONFIRM, SPY_PASS_FIRST, RETREAT_EVENT)
+# --- 2c-7: lists in event payloads (user decision 2026-10-18) ---------------
+#
+# "목록으로 바꾸자. 깔끔하게.": the id lists (and the seat and round numbers)
+# an event once carried as one comma-joined string are lists. The base's
+# strings in the candidate's form, for the kinds that carry them (and the
+# cumulative check's older ``scouts_row_cleared``).
+_LIST_KEYS: dict[str, type] = {
+    "card_ids": str,
+    "contract_ids": str,
+    "dealt": str,
+    "leader_ids": str,
+    "locations": str,
+    "players": int,
+    "removed": str,
+    "rounds": int,
+    "space_ids": str,
+    "subcommittee_ids": str,
+}
+_LIST_KINDS = frozenset(
+    {
+        "cards_revealed",
+        "contracts_revealed",
+        "imperium_row_cleared",
+        "leader_draft_pool_revealed",
+        "leader_draft_unused",
+        "scouts_contracts_cleared",
+        "scouts_maker_spice_added",
+        "scouts_market_cleared",
+        "scouts_market_revealed",
+        "scouts_mission_goods_placed",
+        "scouts_mission_layout",
+        "scouts_row_cleared",
+        "scouts_shield_wall_rebuilt",
+        "scouts_subcommittees_revealed",
+    }
+)
+
+
+def _payload_lists(step: Step) -> None:
+    for event in step.events:
+        if event["kind"] not in _LIST_KINDS:
+            continue
+        for pair in event["payload"]:
+            kind = _LIST_KEYS.get(str(pair[0]))
+            if kind is not None and isinstance(pair[1], str):
+                items = [item for item in pair[1].split(",") if item]
+                pair[1] = [int(item) for item in items] if kind is int else items
+
+
+PAYLOAD_LISTS = Rule(
+    name="payload_lists",
+    why="cleanup-2c-7: an event's id or number list is a list, not one "
+    "comma-joined string (user decision 2026-10-18)",
+    old=_payload_lists,
+)
+
+RULES = (
+    PAYLOAD_LISTS,
+    SPLIT_BOXES,
+    SIGNET_CONFIRM,
+    TRASH_CONFIRM,
+    SPY_PASS_FIRST,
+    RETREAT_EVENT,
+)

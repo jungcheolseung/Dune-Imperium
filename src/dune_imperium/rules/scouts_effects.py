@@ -1563,7 +1563,7 @@ def _rebuild(
             GameEvent(
                 event_id=f"{source}:rebuilt",
                 kind="scouts_shield_wall_rebuilt",
-                payload=(("players", f"{volunteer},{player}"),),
+                payload=(("players", (volunteer, player)),),
             ),
         ),
     )

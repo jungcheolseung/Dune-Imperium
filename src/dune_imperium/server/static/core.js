@@ -365,8 +365,9 @@ function fieldText(key, value, siblings = {}) {
   /* The server writes the Korean marker for an argument this seat may not
      see (sessions.py); it reads in the page's language. */
   if (text === UI_TEXT["common.hidden"].ko) return t("common.hidden");
-  /* The engine joins an id list into one string ("staban_tuek,gurney_halleck",
-     Family Atomics' "removed", "garrison,garrison"). */
+  /* An id list (an event's list, joined by the log as "a,b": a Leader
+     draft's leader_ids, the Row's "removed"), or a frame context's
+     comma-joined ids ("garrison,garrison"). */
   if (text.includes(",")) {
     const parts = text
       .split(",")

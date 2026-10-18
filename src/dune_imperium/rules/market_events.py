@@ -23,8 +23,8 @@ def imperium_row_cleared_event(
         event_id=f"{source}:imperium_row_cleared",
         kind="imperium_row_cleared",
         payload=(
-            ("dealt", ",".join(dealt)),
+            ("dealt", tuple(dealt)),
             *((("player", player),) if player is not None else ()),
-            ("removed", ",".join(removed)),
+            ("removed", tuple(removed)),
         ),
     )

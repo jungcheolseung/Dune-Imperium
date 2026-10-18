@@ -734,6 +734,7 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      `signet_confirm`·`trash_confirm`(200판에는 두 경우가 나오지 않음).
   5c. **정리-2c-7 — payload 목록(사용자 결정 2026-10-18, "목록으로 바꾸자. 깔끔하게."):** 쉼표 문자열로 이은 id 목록(2c-6 4번)을
      진짜 목록으로 — 사건 payload 값 형에 목록을 더하고(행동 인자 형은 그대로), 직렬화·`PlayerView`·화면이 나누던 곳을 함께 바꾼다.
+     **구현(2026-10-18):** 아래 "2c-6" 4번의 부기.
   6. **A8:** 조사 결과 지금 플레이 망(MLP `readapt-v147-4400.pt`)은 카드 특성을 읽지 않는다 — 기록에서 만드는 망 특성(4.4)은 엔티티 망
      계보에만 쓰인다. 그래서 A8은 계보 결정에 달렸다(사용자 결정 필요): (가) 엔티티 계보로 옮김 — 특성 전환, 재학습 약 10–11시간, 관문 약
      6시간; (나) MLP 계보 유지 — v149에서 새로 생기거나 없어진 행만 다시 적응시키고 관문, 특성 전환은 뒤로.
@@ -883,7 +884,7 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   공용 도우미는 출처 뒤에 자기 낱말 하나만 붙이고, 출처에 이미 있는 낱말을 되풀이하지 않는다. id는 유일하지 않아도 된다(같은 일의 되풀이).
 - **payload 키:** 행위 좌석 `player`(다른 좌석은 `from_player`/`to_player`/`recipient`/`victim`/`visitor`), 개수 `count`, 자원
   `solari`/`spice`/`water`, VP `victory_points`, 카드 `card_id`, 출처 `source`(출처 문자열 — 화면이 카드·칸 이름으로 읽는다), 칸 `space_id`.
-  얻은 양은 0이면 싣지 않는다. 목록은 쉼표 문자열(빈 목록은 빈 문자열; 2c-6 4번).
+  얻은 양은 0이면 싣지 않는다. 목록은 목록(id 목록은 문자열, 좌석·라운드는 정수; 빈 목록은 빈 목록 — 정리-2c-7, `core.events.EventValue`).
 - **판단 3 — 자원 얻기:** `resources_gained` 하나(`rules/gain_events.py`). id `<출처>:resources`, payload `player`·`source`·얻은 자원 키.
   획득 보너스(`acquisition_resource_gained`), 연구 보너스(`research_resources_gained`), Reveal 이득(`reveal_resources_gained`)과 Reveal
   선택의 Solari·spice(`reveal_solari_gained`, `contract_reveal_spice_gained`)를 합쳤고, 사건이 없던 책략·Scouts 줄의 자원 얻기에도 낸다
@@ -1013,6 +1014,14 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      정리-2c-7에서 목록으로.** 처음 판단: payload 값의 형(`core.actions.ActionValue =
      bool | int | str`)이 목록을 받지 않아 핵심 형과 사건 직렬화·`PlayerView`를 함께 바꿔야 하고, 화면이 문자열을 나누는 곳
      (`core.js` 둘, `effects.js`, `panels.js`)도 고쳐야 한다. 사건 문법은 "목록은 쉼표 문자열"로 적는다.
+     **구현(2026-10-18, 정리-2c-7):** `core.events.EventValue`(= 행동 값 | 문자열 튜플 | 정수 튜플)가 payload 값 형이고 행동 인자 형은
+     그대로다. 사건 12종의 15개 필드(`cards_revealed.card_ids`, `contracts_revealed.contract_ids`, `imperium_row_cleared.dealt`·`removed`,
+     `leader_draft_pool_revealed`·`leader_draft_unused.leader_ids`, Scouts 일곱 — `scouts_subcommittees_revealed.subcommittee_ids`,
+     `scouts_mission_layout.rounds`(정수), `scouts_maker_spice_added.space_ids`, `scouts_contracts_cleared.dealt`·`removed`,
+     `scouts_market_revealed`·`scouts_market_cleared.card_ids`, `scouts_mission_goods_placed.locations`,
+     `scouts_shield_wall_rebuilt.players`(정수))가 목록이다. 화면(`effects.js`, `panels.js`의 좌석 목록)과 E2E 둘이 목록을 읽고, 로그는
+     이미 목록을 이어 읽었다. frame 문맥의 쉼표 문자열(대기 아이콘 등)은 행동 값이라 그대로다. 같음 확인은 선언된 차이
+     `payload_lists`(옛 기록의 문자열을 목록으로).
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 

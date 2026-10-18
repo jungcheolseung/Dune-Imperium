@@ -444,7 +444,7 @@ def reveal_market(state: GameState) -> RuleResult:
             GameEvent(
                 event_id=f"round:{state.round_number}:scouts:{auction_id}:market",
                 kind="scouts_market_revealed",
-                payload=(("card_ids", ",".join(cards)), ("item_id", auction_id)),
+                payload=(("card_ids", tuple(cards)), ("item_id", auction_id)),
             ),
         ),
     )
@@ -640,7 +640,7 @@ def clear_market(state: GameState) -> RuleResult:
             GameEvent(
                 event_id=f"round:{state.round_number}:scouts:{state.scouts_item}:cleared",
                 kind="scouts_market_cleared",
-                payload=(("card_ids", ",".join(cleared)),),
+                payload=(("card_ids", tuple(cleared)),),
             ),
         )
         if cleared

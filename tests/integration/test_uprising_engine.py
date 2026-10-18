@@ -1,6 +1,7 @@
 """Integration coverage for the concrete Uprising rules dispatcher."""
 
 from dataclasses import replace
+from typing import cast
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -455,8 +456,8 @@ def test_report_only_events_reach_the_transition_but_never_the_state() -> None:
         for event in shown:
             if event.kind == "cards_revealed":
                 payload = dict(event.payload)
-                player = before.players[int(payload["player"])]
-                assert str(payload["card_ids"]).split(",") == list(player.hand)
+                player = before.players[cast(int, payload["player"])]
+                assert payload["card_ids"] == player.hand
         reported.extend(shown)
         state = transition.state
         assert not any(

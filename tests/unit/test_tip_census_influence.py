@@ -7,7 +7,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -277,7 +277,7 @@ def _play_with_faction_oracle(spec: T.MatchSpec) -> list[dict[str, int]]:
             if not isinstance(player, int) or faction not in net[0]:
                 continue
             sign = 1 if event.kind == "influence_gained" else -1
-            net[player][faction] += sign * int(data["amount"])
+            net[player][faction] += sign * cast(int, data["amount"])
         state = result.state
     else:
         raise RuntimeError(f"step limit reached for seed {spec.game_seed}")

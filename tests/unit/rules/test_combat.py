@@ -1,6 +1,7 @@
 """Tests for official four-player Combat ranking and ties."""
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 from tests.support.pauses import answer_pause, pause_outcome
@@ -392,10 +393,10 @@ def _standing(events: tuple[GameEvent, ...]) -> list[tuple[int, int, int, int]]:
         assert event.visible_to is None
         rows.append(
             (
-                int(payload["player"]),
-                int(payload["rank"]),
-                int(payload["strength"]),
-                int(payload["multiplier"]),
+                cast(int, payload["player"]),
+                cast(int, payload["rank"]),
+                cast(int, payload["strength"]),
+                cast(int, payload["multiplier"]),
             )
         )
     return rows

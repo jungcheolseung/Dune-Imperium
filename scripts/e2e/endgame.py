@@ -275,8 +275,8 @@ def check_review_status(page) -> None:
 
 
 def check_id_lists(page) -> None:
-    """The engine joins an id list into one string (leader_ids, contract_ids);
-    the log printed it raw ("staban_tuek,gurney_halleck"). A Leader-draft game
+    """An event's id list (leader_ids, contract_ids) reads as names; the log
+    once printed it raw ("staban_tuek,gurney_halleck"). A Leader-draft game
     logs the unused Leaders right at the start."""
     lines = page.evaluate(
         """() => {

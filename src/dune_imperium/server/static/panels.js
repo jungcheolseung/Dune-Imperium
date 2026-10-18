@@ -1479,11 +1479,10 @@ function logEventParts(payload, eventKind) {
       parts.push(key === "player" ? seat : `${label}: ${seat}`);
       continue;
     }
-    /* Seats joined into one string: Rebuild Infrastructure's two payers,
-       "0,1" (rules/scouts_effects.py). Named bare, as "player" is. */
-    if (key === "players" && typeof value === "string") {
-      const seats = value.split(",").filter(Boolean);
-      parts.push(seats.map((seat) => t("common.seat", { seat: Number(seat) })).join(", "));
+    /* A list of seats: Rebuild Infrastructure's two payers, [0, 1]
+       (rules/scouts_effects.py). Named bare, as "player" is. */
+    if (key === "players" && Array.isArray(value)) {
+      parts.push(value.map((seat) => t("common.seat", { seat })).join(", "));
       continue;
     }
     /* Combat rewards and the like list every field; zeros say nothing. */

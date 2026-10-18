@@ -5157,7 +5157,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     shown = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:revealed",
         kind="cards_revealed",
-        payload=(("card_ids", ",".join(revealed)), ("player", action.actor)),
+        payload=(("card_ids", tuple(revealed)), ("player", action.actor)),
     )
     events: list[GameEvent] = [event, shown]
     for card_id, effect in reveal_effects:

@@ -263,7 +263,7 @@ def place_mission_goods(
                     ("cards", len(cards)),
                     (
                         "locations",
-                        ",".join(
+                        tuple(
                             sorted({row[1] for row in goods} | {c[1] for c in cards})
                         ),
                     ),
