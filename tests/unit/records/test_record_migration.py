@@ -2749,12 +2749,16 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # A record's Harvest Cells owes its "resolve the rewards" step until the
     # next recorded Round Start pause; a record of an engine before v140 has no
     # pauses, so the count stays. Another Intrigue card's own rewards step by
-    # that seat -- its choice frame on top -- must still apply. Seed 65: seat
-    # 2 plays Harvest Cells in round 3 (259, finished at 261) and Insider
-    # Information in round 7 (rewards at 575); the pauses of the game are
-    # left out of its record as an older engine left them out.
-    game = _this_engine_game(65)
-    play, rewards = 259, 575
+    # that seat -- its choice frame on top -- must still apply. Seed 175: seat
+    # 3 plays Harvest Cells in round 1 (87, finished at 89) and Insider
+    # Information in round 9 (rewards at 821); the pauses of the game are
+    # left out of its record as an older engine left them out. Seed 65 until
+    # cleanup-2d split three Agent boxes per icon (2026-10-18) moved its game
+    # (its step 575 is now seat 1's Agent turn); 175 is the first seed of
+    # 1-500 meeting every precondition below, the v148 record of its game
+    # migrating completely.
+    game = _this_engine_game(175)
+    play, rewards = 87, 821
     assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -2766,7 +2770,8 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         for index, step in enumerate(game.steps)
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
-    assert {263, 354, 442, 555} <= starts  # round starts between the two
+    # round starts between the two
+    assert {90, 179, 269, 360, 474, 593, 698, 794} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -2789,8 +2794,8 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # on top removed: the due count would drop Insider Information's rewards
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
-    game = _this_engine_game(65)
-    rewards = 575
+    game = _this_engine_game(175)
+    rewards = 821
     starts = {
         index
         for index, step in enumerate(game.steps)
