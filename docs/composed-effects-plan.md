@@ -857,7 +857,7 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   공용 도우미는 출처 뒤에 자기 낱말 하나만 붙이고, 출처에 이미 있는 낱말을 되풀이하지 않는다. id는 유일하지 않아도 된다(같은 일의 되풀이).
 - **payload 키:** 행위 좌석 `player`(다른 좌석은 `from_player`/`to_player`/`recipient`/`victim`/`visitor`), 개수 `count`, 자원
   `solari`/`spice`/`water`, VP `victory_points`, 카드 `card_id`, 출처 `source`(출처 문자열 — 화면이 카드·칸 이름으로 읽는다), 칸 `space_id`.
-  얻은 양은 0이면 싣지 않는다. 목록은 쉼표 문자열이 아니라 목록으로(2c-6).
+  얻은 양은 0이면 싣지 않는다. 목록은 쉼표 문자열(빈 목록은 빈 문자열; 2c-6 4번).
 - **판단 3 — 자원 얻기:** `resources_gained` 하나(`rules/gain_events.py`). id `<출처>:resources`, payload `player`·`source`·얻은 자원 키.
   획득 보너스(`acquisition_resource_gained`), 연구 보너스(`research_resources_gained`), Reveal 이득(`reveal_resources_gained`)과 Reveal
   선택의 Solari·spice(`reveal_solari_gained`, `contract_reveal_spice_gained`)를 합쳤고, 사건이 없던 책략·Scouts 줄의 자원 얻기에도 낸다
@@ -941,6 +941,46 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   4. 하지 않는 것: 주지 않는 거절 행동 셋의 codec 템플릿(A8과 함께), 의무 단계에 "막히지 않게" 남긴 거절(행동이 바뀜 — 사용자 결정),
      닿지 않는 `acquire_leader_reserve`와 Esmar의 거절만 있는 인장(죽은 코드 정리는 2d), Tech 지불 사건 모양(2c-6). `leader_signet_resolved`
      에서 빠진 지불(Chani의 water, Staban의 spice 1·Solari 2, Shaddam의 Solari 3)은 2c-6의 지불 사건으로 다시 남긴다.
+- **2c-5 — 연구·Immortality·Scouts:**
+  1. **트랙은 좌석의 것.** 연구 토큰과 Tleilaxu 토큰의 이동 사건은 그 좌석 트랙의 칸 이름으로 —
+     `round:R:player:P:research:<칸>`(지금 `<부른 출처>:research:<칸>`, 부른 곳마다 41모양이고 연쇄 보너스는
+     `…:research:c3r1:research:c4r2`), `round:R:player:P:tleilaxu:<칸>`·`…:tleilaxu:end`(지금 `<출처>:tleilaxu:<n>`). 칸이 주는 것의
+     출처는 그 칸이다(연구 보너스의 얻기와 표본, Tleilaxu 칸의 책략 뽑기, Scouts Tleilaxu Offering). 칸 보너스가 여는 창(방향·보너스
+     고르기·폐기)과 차례의 줄은 토큰을 움직인 쪽의 이름을 지킨다 — Arrakeen Scouts 줄이 자기 연구의 창을 그 이름으로 알아본다
+     (`scouts_effects._rewards_ahead`; 같음 확인이 이 결합을 잡았다). `advance_tleilaxu`는 출처를 받지 않는다.
+     Tleilaxu 칸의 spice는 `resources_gained`(판단 3), VP는 `tleilaxu_advanced`의 키(판단 4, 트랙 사건 관례).
+  2. **부르는 쪽이 붙이던 낱말을 뺀다:** `…:research`(연구는 이제 트랙이 이름 짓고, 연구 뽑기는 `<출처>`로 — `<출처>:research_draw`는
+     `research_drew_card`의 id로만), `…:specimen`·`…:specimens`(표본 도우미가 `:specimens`를 붙인다), 책략 줄의 `…:intrigue`·`…:draw`.
+     한 줄의 연구 둘은 서로 다른 방향 창을 열 수 있어 `…:research:<n>`을 남긴다.
+  3. **같은 효과는 같은 사건:** Family Atomics와 Clear the Market의 Imperium 줄 다시 채우기는 `imperium_row_cleared`(`removed`·`dealt`,
+     좌석이 한 것이면 `player`; `rules/market_events.py`) — Family Atomics는 그 뒤에 자기 사건 `family_atomics_used`(좌석만),
+     `scouts_row_cleared`는 없어진다.
+  4. **Scouts의 자원 얻기:** Offworld Operation의 spice(`scouts_helix_spice`)와 임무 물품의 자원은 `resources_gained`(출처
+     `<출처>:<임무>`); `scouts_mission_goods_taken`은 그 뒤에 임무와 좌석만(자원이 아닌 Maker Hooks 토큰은 그 키로).
+  5. **Skill Reveal 보너스**는 Tech와 같게: Reveal 출처 `<reveal>:skill:<타일>` 하나(`…:late` 없앰), 0인 양은 싣지 않는다.
+  6. 개인 덱 섞기의 chance id는 그것을 부른 뽑기의 이름을 따르므로, 같음 확인과 기보 다리(`draw_reshuffle_renamed`)는 "같은 라운드에
+     같은 더미를 섞는 개인 덱 섞기"를 이름만 바뀐 것으로 본다(Scouts 보상의 뽑기처럼 좌석이 이름에 없어도 더미가 좌석을 말한다).
+  7. 이미 된 것: 연구 칸 아이콘의 순서(2b, 판단 5), `scouts_choice_skipped`(2a), Scouts 장치 이름(정리-1). 연구 창의 거절은 차례 밖
+     창에만 남는다(2b).
+- **2c-6 — 나머지 같은 종류의 차이:**
+  1. **지불은 `resources_paid` 하나**(판단 3의 거울, `rules/gain_events.py`): id `<출처>:paid`, payload `player`·`source`와 낸 것만 —
+     `solari`·`spice`·`water`·`specimens`. 지금의 지불 사건 아홉(네 관례: 따로 키 `intrigue_cost_paid`·`scouts_cost_paid`,
+     `resource`+`spent` `agent_card_payment_resolved`, `cost`+`resource` `combat_reward_paid`, 양만 `leader_signet_spice_paid`·
+     `leader_signet_solari_paid`·`reveal_spice_paid`, 자원 하나 `leader_board_repeat_paid`·`research_bonus_paid`, 그리고
+     `scouts_specimens_paid`·`corrinth_city_payment_resolved`)을 합친다. 지불로 얻는 것(Corrinth City·Conflict 보상의 선택 비용의
+     VP)은 `resources_gained`. 2c-4에서 빠진 Signet 지불(Chani의 water, Staban의 spice·Solari, Shaddam의 Solari)도 이것으로 남긴다.
+     카드를 내는 비용(Dissecting Kit의 접합 카드 폐기)은 폐기 사건이 말한다.
+  2. **거절 낱말:** `declined`(소유자가 내놓은 선택을 거절), `passed`(창을 넘김), `skipped`(할 것이 없어 확인), `unavailable`(인쇄된
+     조건·대상이 없음), `lapsed`(턴 끝까지 안 씀), `expired`(출처가 먼저 사라짐). 같은 일을 다른 종류로 내던 폐기 거절
+     (`tech_trash_declined`, `combat_reward_trash_declined`, `intrigue_trash_declined`)은 `optional_trash_declined` 하나로(id
+     `<출처>:trash_declined`; Plasteel Blades는 `tech_id`를 지킨다). 거절 사건의 payload는 좌석과 거절한 것을 가리키는 키만 —
+     Conflict 보상의 선택 비용 거절은 `player`·`resource`, Spy 회수 거절은 `player`(0인 양 없앰). 남은 거절 종류는 이미 이 낱말을
+     따른다. 지울 거절(필수 단계의 `decline_*`)과 그 codec 자리는 A8과 함께 사용자가 정한다.
+  3. **`shortfall_refilled`** id에서 사건 기록 길이를 뺀다(`round:R:player:P:shortfall_refilled`, id는 유일하지 않아도 된다), 0인 양은
+     싣지 않는다.
+  4. 쉼표 문자열 목록(`cards_revealed.card_ids` 등 여섯)은 **그대로 둔다**. payload 값의 형(`core.actions.ActionValue =
+     bool | int | str`)이 목록을 받지 않아 핵심 형과 사건 직렬화·`PlayerView`를 함께 바꿔야 하고, 화면이 문자열을 나누는 곳
+     (`core.js` 둘, `effects.js`, `panels.js`)도 고쳐야 한다. 사건 문법은 "목록은 쉼표 문자열"로 적는다.
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
