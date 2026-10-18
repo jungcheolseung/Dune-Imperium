@@ -765,6 +765,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v147: the base catalog's 140 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 141
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -786,6 +787,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v147: the CHOAM catalog's 144 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 145
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

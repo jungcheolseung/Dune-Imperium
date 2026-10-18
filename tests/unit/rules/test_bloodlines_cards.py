@@ -4406,6 +4406,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # Faction and Unswerving Loyalty's deploy and retreat of a troop or a
         # Commander.
         + 122 + 29 + 1 + 2 * 13 + 5 * 2 * 13 + 2 * 3 + 4 + 4 + 2 * 2
+        # v149 (cleanup-2f): five refusals out (decline_sardaukar_commander
+        # among them), two confirms in.
+        - 3
     )
     action = DomainAction(
         action_id="trash_agent_card",
