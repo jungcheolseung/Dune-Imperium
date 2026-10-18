@@ -15,8 +15,9 @@
    - scouts: an Arrakeen Scouts item is revealed: three quick marimba
      notes rising (A4);
    - idle: a seat this screen plays has left its decision untouched for
-     15 seconds (session.js watchIdle, user request 2026-10-19): two short
-     beeps, the one square-wave sound, so it reads as a warning.
+     15 seconds, and every 15 seconds after (session.js watchIdle, user
+     request 2026-10-19): two short beeps, the one square-wave sound, so it
+     reads as a warning.
    The phase sounds go with their banners (effects.js drawPhaseBanner), so
    they keep the AI pace and never sound for a moment that happened before
    the page loaded. A review plays none.
