@@ -866,6 +866,60 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   `resources_gained`(출처 `…:endgame_tech:choam_transports`), Tech 획득 아이콘(Sardaukar High Command)은 `tech_acquire_effect_resolved`
   의 키(같은 사건에 Solari 아이콘의 양도 `solari`로). `victory_points_gained`는 없어졌다. 다른 사건 이름은 그대로(Conflict 보상, 계약,
   Reveal For Humanity 등은 이미 키로 싣는다).
+- **2c-2 — Agent 칸:** (`<칸>` = `round:R:player:P:agent_card:<instance>`, `effects.agent_card_source`)
+  1. **칸 사건은 칸마다 하나.** Agent 칸 하나(아이콘마다 따로 해결하는 칸이면 아이콘 하나, 줄을 따로 판정하는 Scientific Breakthrough면
+     줄 하나)가 끝나는 행동은 그 칸의 사건을 꼭 하나, 그 행동이 그 칸으로 낸 사건들 맨 뒤에 낸다(`rules/box_events.py`). 종류
+     `agent_card_effect_<결과>`, id `<칸>:<결과>`(아이콘·줄이면 `<칸>:<아이콘>:<결과>`), payload `card_id`·`player`(아이콘·줄이면
+     `effect`도). 결과는 `resolved`(효과를 썼다), `declined`(거절 행동으로 쓰지 않았다), `unavailable`(인쇄된 조건·대상이 없어 효과를
+     할 수 없이 끝났다 — fizzle; 그래도 규칙이 주는 것, 곧 Long Reach가 이미 고른 진영(OQ-060)은 그 앞의 사건이 말한다), `lapsed`(선택
+     칸을 턴 끝까지 쓰지 않았다), `expired`(칸을 쓰기 전에 카드가 플레이를 떠났다 — 접합 짝 카드의 칸도). 결과는 칸을 끝낸 행동이
+     정한다: 앞부분을 쓴 뒤 남은 것을 거절하면 `declined`. 남은 아이콘이 있는 칸이 끝나면(lapse·fizzle·만료) 아이콘마다 하나.
+     지금까지 칸 사건 없이 닫히던
+     답(지불·Spy·회수·진영 고르기·폐기·버리기·계약·hook 일곱)도 낸다. 칸마다 달랐던 거절 사건(`agent_card_payment_declined`,
+     `agent_card_trash_declined`, `agent_card_acquisition_declined`, `corrinth_city_payment_declined`, `…:recall_declined`)은
+     `agent_card_effect_declined` 하나로. 턴 끝 fizzle의 id는 `…:unavailable`(지금은 `…:resolved`), Leader Signet 칸의 해결 불가는 자기
+     종류 `leader_signet_unavailable`(id `<Signet 출처>:unavailable`; 지금은 Agent 카드 종류를 빌려 씀). 칸 사건 payload에는 다른 키를
+     싣지 않는다(The Beast's Spoils의 `crysknife`·`spice`·`troops`는 빠지고 spice는 3번으로).
+  2. **출처는 `<칸>`.** 칸이 내는 사건의 id는 `<칸>`에서 시작한다 — 아이콘이 하는 일(얻기·뽑기·병력 모자람)도 `<칸>`이고 아이콘은
+     자기 칸 사건에만 이름을 남긴다(2c-3에서 보드 칸과 같게 맞춤; Urgent Shigawire가 더한 뽑기는 칸의 `cards` 아이콘과 다른 단위라
+     `<칸>:boost:<결과>`, payload의 `effect`는 `cards`): 폐기 `<칸>:trash:<card>`, 버리기
+     `<칸>:discard:<card>`, 지불 `<칸>:paid`, 지불로 낸 책략 `<칸>:intrigue_trashed:<card>`, 개인 카드 뽑기의 섞기
+     `<칸>:discard_shuffled`, 책략 뽑기 `<칸>:intrigue_draw:<n>`, 획득 `<칸>:…`. 칸 없는 이름(`…:agent_card`, `…:agent_card_payment`,
+     `…:agent_card_discard`, `…:agent_acquisition`), 카드 정의 이름(`…:agent_card:<정의>`), 출처에 이미 있는 낱말의 되풀이
+     (`<칸>:intrigue_draw:intrigue_draw`, `<칸>:long_live_fighters:…`)를 없앤다. 다른 좌석의 결정(`<칸>:opponent:<좌석>`)과 연구·표본·
+     Tleilaxu 사건(2c-5)은 그대로.
+  3. **칸의 자원·VP는 `resources_gained`(판단 3·4).** 칸이 주는 Solari·spice·water·VP는 출처 `<칸>`의
+     `resources_gained` 하나로 — 기록 칸의 얻기, 아이콘의 얻기, 지불 화살표의 보상(Organ Merchants, Smuggler's Haven, Junction
+     Headquarters), Arrakis Observer의 버리기 spice(지금 `agent_card_effect_resolved`), The Beast's Spoils의 spice, Slig Farmer의 Solari
+     (지금 지불 사건의 `gained`). VP가 이미 자기 출처 사건의 키인 곳(`agent_card_trashed_for_vp`, `corrinth_city_payment_resolved`)은
+     그대로 둔다(지불 사건 모양은 2c-6).
+  4. **시험 해결의 답은 하나의 물음.** `agent_card_effect_is_unavailable`은 "지금 해결하면 효과 없이 끝나는가"다. 줄(고르기·지불)을
+     낼 수 있으면 아니다. 선택 칸은 줄로만 해결하므로, 줄이 없으면 그렇다 — 선택 화살표 모두 같게(지금은 Tleilaxu Surgeon·Piter·
+     Tleilaxu Master만 "그렇다", 나머지는 예외로 "아니다"; 엔진의 행·턴 끝은 선택 칸을 먼저 거르므로 바뀌지 않는다). 의무 칸은 해결해
+     보고, 첫 사건이 아니라 그 칸의 `unavailable` 사건을 찾는다. 한 행동으로 해결할 수 없는 칸(줄로만 해결하는 칸, 선택 화살표, 고르는
+     중인 칸)은 모두 같은 예외 `BoxNeedsRows`를 던지고, 시험 해결은 그 예외만 읽는다(지금은 `NotImplementedError`·`RuntimeError`·
+     `ValueError` 셋을 삼킨다).
+- **2c-3 — 보드·Conflict·계약:**
+  1. **출처의 사건은 맨 뒤(2c-2와 같은 원칙).** 한 출처(보드 칸의 아이콘, Conflict 보상, 계약 완수)가 한 행동에서 낸 사건들 가운데
+     그 출처 자신의 사건(`board_effect_resolved`, `combat_reward_gained`, `contract_completed`)은 맨 뒤 — Conflict 보상은 이미 영향력
+     뒤였고, 계약은 영향력·병력 모자람 앞에서 뒤로, 보드는 병력 모자람 앞으로.
+  2. **보드 칸 아이콘마다 사건 하나, id `<칸>:<아이콘>`.** 보드 출처는 `round:R:player:P:board:<space>`. 아이콘 키 없이 칸 이름만 쓰던
+     Maker 칸 셋(`hagga_basin`·`imperial_basin`·`deep_desert`), Sietch Tabr, Tuek's Sietch, Imperial Privilege의 회수는 아이콘 키를
+     붙이고, 책략 맞바꿈도 보드 사건(`imperial_privilege_intrigue`)을 낸다. 보드 칸이 하는 일(뽑기·연구·계약·병력 모자람·Imperial
+     Privilege의 회수, Sietch Tabr의 Desert Riding 토큰·방패벽)은 보드 출처로 이름 짓는다(아이콘 키 없이 — 아이콘은 자기 사건에만).
+  3. **자원은 `resources_gained`(판단 3).** 보드 칸의 자원(일반 자원 아이콘, Maker 칸·Tuek's Sietch의 spice와 보너스 spice, Sietch
+     Tabr의 water)은 보드 출처의 `resources_gained`로 내고 보드 사건 payload에서는 뺀다(보너스 spice는 그 양이 0이 아닐 때 `bonus_spice`로
+     남긴다 — 칸에 쌓였던 것을 말하는 값). Control 보너스(`control_bonus_gained`)도 출처 `round:R:player:P:control:<space>`의
+     `resources_gained`로(화면은 `control` 출처를 칸 이름으로 읽는다). Conflict 보상과 계약 완수는 여러 보상을 한데 싣는 사건이라
+     자원·VP를 그대로 키로 싣는다(판단 4의 관례).
+  4. **payload는 0을 싣지 않는다.** `combat_reward_gained`(14키를 0까지 싣던 것 → 0이 아닌 보상, 그리고 `multiplier`·`player`·`rank`),
+     `contract_completed`(모양 셋 → 하나: `contract_id`·`player`와 0이 아닌 보상 키; 받자마자 완수하는 계약의 id도
+     `<출처>:contract:<계약>:completed`로 다른 길과 같게), 보드 사건의 `sandworms`·`bonus_spice`.
+  5. **Conflict 보상의 책략 카드도 `intrigue_card_drawn`**(id `<보상 출처>:intrigue_draw:<덱 장수>`, 지금은 사건 없음). 덱이 모자라면
+     지금처럼 대기.
+  6. 하지 않는 것: 폐기 보상 frame이 낼 카드가 없으면 확인 없이 건너뛰는 것(2026-09-30 원칙의 적용 대상이지만 Combat 중에는 플레이한
+     카드가 있어 사실상 닿지 않고, 확인 창에는 새 행동 템플릿이 필요하다 — 사용자 결정으로 남긴다), 지운 거절 행동의 codec 템플릿
+     둘(망 행 번호가 바뀌므로 A8과 함께), 보드 hook 줄이기(2d).
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
