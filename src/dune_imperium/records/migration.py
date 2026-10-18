@@ -1954,20 +1954,19 @@ def _research_icon_order(
 # 나누자"): Clandestine Meeting, Occupation and In High Places resolve each
 # icon as its own step (OQ-027); an older engine resolved both with one
 # ``resolve_agent_card_effect``, In High Places then opening the shared Spy
-# frame under its draw. The icon moves in the recording engine's order.
-_SPLIT_BOX_MOVES: Final[
-    dict[PersonalCardAgentEffect, tuple[tuple[str, tuple[tuple[str, str], ...]], ...]]
-] = {
+# frame under its draw. Each icon's move, in the recording engine's order.
+type _IconMove = tuple[str, str, tuple[tuple[str, str], ...]]
+_SPLIT_BOX_MOVES: Final[dict[PersonalCardAgentEffect, tuple[_IconMove, ...]]] = {
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
-        ("choose_agent_card_influence", (("faction", "bene_gesserit"),)),
-        ("resolve_agent_card_effect", (("effect", "intrigue"),)),
+        ("influence", "choose_agent_card_influence", (("faction", "bene_gesserit"),)),
+        ("intrigue", "resolve_agent_card_effect", (("effect", "intrigue"),)),
     ),
     PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON: (
-        ("take_agent_card_combat_icon", ()),
-        ("resolve_agent_card_effect", (("effect", "cards"),)),
+        ("combat", "take_agent_card_combat_icon", ()),
+        ("cards", "resolve_agent_card_effect", (("effect", "cards"),)),
     ),
     PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
-        ("resolve_agent_card_effect", (("effect", "cards"),)),
+        ("cards", "resolve_agent_card_effect", (("effect", "cards"),)),
     ),
 }
 _IN_HIGH_PLACES: Final = (
@@ -2012,10 +2011,12 @@ def _split_icon_moves(
     found = _split_box(state, box)
     if found is None:
         return []
-    effect = found[0]
+    effect, pending = found
     legal = engine.legal_actions(state, player)
     moves = []
-    for action_id, arguments in _SPLIT_BOX_MOVES[effect]:
+    for key, action_id, arguments in _SPLIT_BOX_MOVES[effect]:
+        if key not in pending:
+            continue
         move = DomainAction(action_id=action_id, actor=player, arguments=arguments)
         move = tagged(move, 1) if box == 1 else move
         if move not in legal:
@@ -2046,10 +2047,26 @@ def _split_box_icon(
         return None
     box = row_box(step) or 0
     found = _split_box(state, box)
-    if found is None or set(found[1]) != set(AGENT_BOX_ABILITIES[found[0]].icons):
+    if found is None:
         return None
     moves = _split_icon_moves(engine, state, step.actor, box)
-    return moves[0] if moves else None
+    if moves:
+        return moves[0]
+    # Urgent Shigawire's draw added to the box [Urgent Shigawire card],
+    # recorded before the box as ``effect=cards``, took the box's own
+    # ``cards`` icon here (the box's icon answers that row first); the
+    # recorded resolution's draw is then that added draw.
+    draw = DomainAction(
+        action_id="resolve_agent_card_effect",
+        actor=step.actor,
+        arguments=(("effect", "cards"),),
+    )
+    draw = tagged(draw, 1) if box == 1 else draw
+    if "cards" in AGENT_BOX_ABILITIES[found[0]].icons and draw in engine.legal_actions(
+        state, step.actor
+    ):
+        return draw
+    return None
 
 
 def _split_box_follow(
@@ -2073,11 +2090,13 @@ def _split_box_follow(
         return None
     effect, pending = found
     moves = {
-        (action_id, arguments) for action_id, arguments in _SPLIT_BOX_MOVES[effect]
+        (action_id, arguments) for _, action_id, arguments in _SPLIT_BOX_MOVES[effect]
     }
     if (step.action_id, untagged(step).arguments) not in moves or len(pending) != 1:
         return None
-    for action_id, arguments in _SPLIT_BOX_MOVES[effect]:
+    for key, action_id, arguments in _SPLIT_BOX_MOVES[effect]:
+        if key not in pending:
+            continue
         move = DomainAction(action_id=action_id, actor=step.actor, arguments=arguments)
         move = tagged(move, 1) if box == 1 else move
         if move != step and move in engine.legal_actions(state, step.actor):
