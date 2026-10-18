@@ -1019,6 +1019,146 @@ def _harvest_cells_discard_order(old: Step, candidate: Step) -> None:
     candidate.fields_unchecked.add("intrigue_discard")
 
 
+# --- Cleanup-2c, rule decisions 3 and 4: one resource-gain event ------------
+
+
+def _payload(event: dict[str, object]) -> dict[str, object]:
+    payload = event["payload"]
+    assert isinstance(payload, list)
+    return {str(key): value for key, value in payload}
+
+
+def _base_event(
+    event_id: str, kind: str, payload: dict[str, object]
+) -> dict[str, object]:
+    return {
+        "event_id": event_id,
+        "kind": kind,
+        "payload": [[key, payload[key]] for key in sorted(payload)],
+        "visible_to": None,
+    }
+
+
+def _gain_in_base_form(event: dict[str, object]) -> list[dict[str, object]]:
+    """A candidate ``resources_gained`` as the base's event for that source
+    (none for an Intrigue or Scouts line's resources, which left none)."""
+
+    data = _payload(event)
+    source = str(data["source"])
+    player = data["player"]
+    amounts = {
+        key: int(str(data.get(key, 0)))
+        for key in ("solari", "spice", "water", "victory_points")
+    }
+    # A Navigation card's line (its source is the trigger's plus
+    # ``:navigation:N``) is an Intrigue-shaped line, whatever triggered it.
+    navigation = re.search(r":navigation:\d+$", source) is not None
+    if not navigation and re.search(r":research:c\d+r\d+$", source):
+        return [
+            _base_event(
+                f"{source}:resources",
+                "research_resources_gained",
+                {
+                    "player": player,
+                    "solari": amounts["solari"],
+                    "spice": amounts["spice"],
+                },
+            )
+        ]
+    if not navigation and ":acquire:" in source:
+        return [
+            _base_event(
+                f"{source}:{resource}",
+                "acquisition_resource_gained",
+                {"amount": amount, "player": player, "resource": resource},
+            )
+            for resource, amount in amounts.items()
+            if amount and resource != "victory_points"
+        ]
+    if not navigation and ":reveal_gain:" in source:
+        return [
+            _base_event(
+                source,
+                "reveal_resources_gained",
+                {
+                    "player": player,
+                    "solari": amounts["solari"],
+                    "source": source.split(":reveal_gain:", 1)[1],
+                    "spice": amounts["spice"],
+                    "water": amounts["water"],
+                },
+            )
+        ]
+    if not navigation and ":reveal_card:" in source:
+        card_id = source.split(":reveal_card:", 1)[1]
+        if card_id.endswith(":contract_count_choice"):
+            card_id = card_id.removesuffix(":contract_count_choice")
+            return [
+                _base_event(
+                    f"{source}:spice",
+                    "contract_reveal_spice_gained",
+                    {"amount": amounts["spice"], "card_id": card_id, "player": player},
+                )
+            ]
+        return [
+            _base_event(
+                f"{source}:solari",
+                "reveal_solari_gained",
+                {"amount": amounts["solari"], "card_id": card_id, "player": player},
+            )
+        ]
+    if not navigation and ":endgame_tech:" in source:
+        return [
+            _base_event(
+                source,
+                "victory_points_gained",
+                {
+                    "amount": amounts["victory_points"],
+                    "player": player,
+                    "source": "tech",
+                },
+            )
+        ]
+    # An Intrigue or Scouts line: only its Victory Points left an event.
+    if amounts["victory_points"]:
+        return [
+            _base_event(
+                f"{source}:victory_points",
+                "victory_points_gained",
+                {"amount": amounts["victory_points"], "player": player},
+            )
+        ]
+    return []
+
+
+def _gains_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c decisions 3 and 4: the candidate's ``resources_gained``
+    and the amounts on ``tech_acquire_effect_resolved`` read back as the
+    base's events (the state compares the amounts themselves)."""
+
+    translated: list[dict[str, object]] = []
+    for event in candidate.events:
+        if event["kind"] == "resources_gained":
+            translated.extend(_gain_in_base_form(event))
+            continue
+        if event["kind"] == "tech_acquire_effect_resolved":
+            data = _payload(event)
+            points = int(str(data.pop("victory_points", 0)))
+            data.pop("solari", None)
+            translated.append(_base_event(str(event["event_id"]), event["kind"], data))
+            if points:
+                translated.append(
+                    _base_event(
+                        f"{event['event_id']}:victory_points",
+                        "victory_points_gained",
+                        {"amount": points, "player": data["player"]},
+                    )
+                )
+            continue
+        translated.append(event)
+    candidate.events = translated
+
+
 def _shortfall_id(event: dict[str, object]) -> tuple[str, ...] | None:
     """A ``shortfall_refilled`` id without its event-log count
     (``round:R:player:P:shortfall_refilled:<count>:T:S``)."""
@@ -1193,6 +1333,12 @@ RULES = (
         "harvest_cells_now",
         why="user decision 2026-10-18: its acquisition is asked at the play",
         answer=_harvest_cells_now,
+    ),
+    Rule(
+        "gains_in_base_form",
+        why="cleanup-2c: rule decisions 3 and 4, one resources_gained event with "
+        "a line's VP as a key; Tech acquire amounts on their own event",
+        new=_gains_in_base_form,
     ),
     Rule(
         "shortfall_counts",
