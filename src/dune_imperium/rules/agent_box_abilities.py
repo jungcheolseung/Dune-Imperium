@@ -123,7 +123,10 @@ from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
-from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
+from dune_imperium.rules.combat_deployment import (
+    grant_combat_icon,
+    reconcile_deployment_after_retreat,
+)
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
@@ -587,6 +590,19 @@ def resolve_box(state: GameState) -> RuleResult:
         available = False
     else:
         available = _line_holds(line, owner, context)
+    base = state
+    self_trash: tuple[GameEvent, ...] = ()
+    if available and any(isinstance(reward, TrashThisCard) for reward in line.rewards):
+        # Seek Allies' "Trash this card." [Main p. 20]: the card trashes
+        # itself by its own effect (OQ-022), before the frame is written
+        # back so a trash trigger's troops count as this turn's recruits.
+        if card_id in owner.in_play:
+            trashed = trash_personal_card(state, player, card_id, source=source)
+            keep_trash_recruits(context, trashed)
+            base, self_trash = trashed.state, trashed.events
+            owner = base.players[player]
+        else:
+            available = False
     if (piece := target_piece(ability)) is not None:
         # A target choice resolves through its rows; reached with one to make
         # is a caller's error, and with none the box waits and fizzles
@@ -606,7 +622,18 @@ def resolve_box(state: GameState) -> RuleResult:
             owner, line, context, card_id, source, player
         )
         gains = _gains_event(line.rewards, source, player)
-    working = replace(state, players=replace_player(state.players, next_owner))
+    working = replace(base, players=replace_player(base.players, next_owner))
+    if available and any(
+        isinstance(reward, GrantCombatDeployment) for reward in line.rewards
+    ):
+        # Occupation's Combat icon [Bloodlines p. 5] writes the frame; what
+        # it changed joins the context written back.
+        _, read = current_agent_effect_context(working)
+        working = grant_combat_icon(working, player)
+        _, granted = current_agent_effect_context(working)
+        context.update(
+            {key: value for key, value in granted.items() if read.get(key) != value}
+        )
     influence_events: tuple[GameEvent, ...] = ()
     for reward in line.rewards if available else ():
         if isinstance(reward, GainInfluence):
@@ -673,6 +700,7 @@ def resolve_box(state: GameState) -> RuleResult:
             *influence_events,
             *intrigue_events,
             *follow_ups,
+            *self_trash,
             *shortfall,
             event,
         ),
@@ -830,6 +858,8 @@ _PAYMENT_REWARDS = (
     GainVictoryPoints,
     DrawPersonalCards,
     AdvanceTleilaxu,
+    RecruitTroops,
+    TrashPersonalCard,
 )
 
 
@@ -971,12 +1001,19 @@ def apply_payment(
                 ),
                 spice_spent_turn=owner.spice_spent_turn + spice,
             )
+    shortfall: tuple[GameEvent, ...] = ()
     for reward in ability.sections[0].rewards:
         match reward:
             case GainResources():
                 owner = _gain(owner, reward)
             case GainVictoryPoints(amount=amount):
                 owner = replace(owner, victory_points=owner.victory_points + amount)
+            case RecruitTroops(count=count):
+                # A troop recruited this turn, which a Combat space lets the
+                # owner deploy [Main p. 10] [FAQ p. 4] (Control the Spice).
+                owner, recruited = recruit_troops(owner, count)
+                _credit_recruits(context, recruited)
+                shortfall = recruit_shortfall_events(source, player, count, recruited)
     next_state = advance_after_effect(
         state, context, replace_player(state.players, owner)
     )
@@ -988,10 +1025,15 @@ def apply_payment(
             **{"specimens" if resource == "specimen" else resource: spent},
         ),
         *_gains_event(ability.sections[0].rewards, source, player),
+        *shortfall,
     ]
     for reward in ability.sections[0].rewards:
         step: RuleResult | None = None
         match reward:
+            case TrashPersonalCard():
+                # The black trash icon stays optional once the cost is paid
+                # [FAQ p. 3], on a frame of its own named after the box.
+                next_state = open_optional_trash(next_state, player, source)
             case AdvanceTleilaxu(count=count):
                 step = advance_tleilaxu(next_state, player, count)
             case DrawPersonalCards(count=count):

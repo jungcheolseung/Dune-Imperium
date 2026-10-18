@@ -203,9 +203,6 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
     PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
-# Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
-# card] [troop]" [card face] [Rise of Ix p. 10]; its record names the hook.
-CONTROL_THE_SPICE_PRICE: Final = 1
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
 _BRANCHING_PATH = (
@@ -1915,8 +1912,6 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         )
     if ability is not None and lose_box(ability):
         return lose_cost_block(owner)
-    if _is_control_the_spice(ability):
-        return short_of(kind.SPICE, CONTROL_THE_SPICE_PRICE, resources.spice)
     if effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP:
         return short_of(kind.SOLARI, 5, resources.solari) or short_of(
             kind.HAND, 2, len(owner.hand)
@@ -2042,18 +2037,6 @@ def legal_agent_card_payment_actions(
             )
             for reward in STITCHED_HORROR_REWARDS
             if reward not in chosen
-        )
-    if _is_control_the_spice(recorded):
-        # Control the Spice: the arrow cost may be left unpaid and is chosen
-        # once [Main p. 9] [FAQ p. 3]; like Smuggler's Haven's below it is
-        # judged when the owner resolves the box in their chosen order
-        # (OQ-028), so a spice gained first (Imperial Basin) pays it.
-        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if agent_card_cost_block(state, player) is not None:
-            return (decline,)
-        return (
-            decline,
-            DomainAction(action_id="pay_agent_card_spice", actor=player),
         )
     return ()
 
@@ -2478,14 +2461,6 @@ def _apply_payment_choice(
         )
     if action.action_id == "choose_agent_card_reward":
         return _apply_stitched_horror_reward(state, action, context, source)
-    # The same borrowed box `[Immortality p. 14]`. The provider checks the
-    # arrow's cost against the borrowed effect's own resource, so reading the
-    # printed card here sent a Ghola down the other branch: it charged four
-    # spice and a Victory Point for a box that asks two water and draws two
-    # cards, and crashed outright when the seat could not pay in the resource
-    # it was never asked for.
-    if _is_control_the_spice(recorded):
-        return _apply_control_the_spice_payment(state, action, context, source)
     raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
 
 
@@ -2612,51 +2587,6 @@ def _apply_arrakis_revolt_payment(
     return RuleResult(state=next_state, events=tuple(events))
 
 
-def _apply_control_the_spice_payment(
-    state: GameState,
-    action: DomainAction,
-    context: dict[str, ActionValue],
-    source: str,
-) -> RuleResult:
-    """Pay Control the Spice's spice, recruit its troop, then offer its trash.
-
-    "[1 spice] -> [trash a card] [troop]" [card face]. The black trash icon
-    stays optional once the cost is paid ("검은색 카드 폐기 아이콘을 사용하지
-    않는 경우에는 그 효과를 생략할 수 있다" [FAQ p. 3]) and "hand, discard
-    pile, in play 가운데 카드 1장을 대상으로 한다" [Main p. 20], this card
-    included. The two rewards are independent, so the box follows Throne Room
-    Politics: the troop now, then the generic optional-trash frame. The
-    troop is one recruited this turn, which a Combat space lets the owner
-    deploy ("그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
-    deploy할 수 있다" [Main p. 10] [FAQ p. 4]).
-    """
-
-    player = action.actor
-    owner = state.players[player]
-    paid_owner = replace(
-        owner,
-        resources=replace(
-            owner.resources,
-            spice=owner.resources.spice - CONTROL_THE_SPICE_PRICE,
-        ),
-        spice_spent_turn=owner.spice_spent_turn + CONTROL_THE_SPICE_PRICE,
-    )
-    # "supply에 troop이 없으면 recruit할 수 없다" [Main p. 10].
-    recruited_owner, recruited = recruit_troops(paid_owner, 1)
-    context["troops_recruited"] = (
-        context_int(context, "troops_recruited", owner="Agent-turn effect frame")
-        + recruited
-    )
-    next_state = advance_after_effect(
-        state, context, replace_player(state.players, recruited_owner)
-    )
-    return RuleResult(
-        state=open_optional_trash(next_state, player, source),
-        events=(
-            resources_paid_event(source, player, spice=CONTROL_THE_SPICE_PRICE),
-            *recruit_shortfall_events(source, player, 1, recruited),
-        ),
-    )
 
 
 def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
@@ -3765,112 +3695,12 @@ def _box_subject(
     return context, player, card_instance_id, owner, source
 
 
-def _hook_seek_allies(state: GameState) -> RuleResult:
-    """"Trash this card." (Seek Allies) is mandatory [Main p. 20]; the trash's
-    events alone. A card trashed by a freely ordered effect expires before
-    this resolution is offered (OQ-022), so the card is still in play here."""
-
-    context, player, card_instance_id, _, event_source = _box_subject(state)
-    trashed = trash_personal_card(
-        state, player, card_instance_id, source=event_source
-    )
-    _keep_trash_recruits(context, trashed)
-    context["pending_agent_effect"] = False
-    next_state = advance_after_effect(trashed.state, context, trashed.state.players)
-    return RuleResult(
-        state=next_state,
-        events=(
-            *trashed.events,
-            agent_box_event(
-                event_source, card_instance_id, player, BoxOutcome.RESOLVED
-            ),
-        ),
-    )
 
 
-def _hook_clandestine_meeting(state: GameState) -> RuleResult:
-    """Clandestine Meeting: Bene Gesserit Influence and an Intrigue card, the
-    draw named ``<box>``; the box's event comes last."""
-
-    context, player, card_instance_id, _, event_source = _box_subject(state)
-    gained = gain_faction_influence(
-        state,
-        player,
-        Faction.BENE_GESSERIT,
-        1,
-        event_prefix=f"{event_source}:influence:bene_gesserit",
-    )
-    drawn = draw_or_queue_intrigue_cards(gained.state, player, 1, source=event_source)
-    context["pending_agent_effect"] = False
-    next_state = advance_after_effect(drawn.state, context, drawn.state.players)
-    return RuleResult(
-        state=next_state,
-        events=(
-            *gained.events,
-            *drawn.events,
-            agent_box_event(
-                event_source, card_instance_id, player, BoxOutcome.RESOLVED
-            ),
-        ),
-    )
 
 
-def _hook_lisan_al_gaib(state: GameState) -> RuleResult:
-    """Lisan al Gaib: the Bond is judged when the effect resolves
-    [Main pp. 9, 20] (a grafted partner may provide it)."""
-
-    context, player, card_instance_id, owner, event_source = _box_subject(state)
-    context["pending_agent_effect"] = False
-    if not has_faction_bond(
-        counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
-    ):
-        return RuleResult(
-            state=advance_after_effect(state, context),
-            events=(
-                agent_box_event(
-                    event_source, card_instance_id, player, BoxOutcome.UNAVAILABLE
-                ),
-            ),
-        )
-    gained = gain_faction_influence(
-        state,
-        player,
-        Faction.FREMEN,
-        1,
-        event_prefix=f"{event_source}:influence:fremen",
-    )
-    next_state = advance_after_effect(gained.state, context, gained.state.players)
-    return RuleResult(
-        state=next_state,
-        events=(
-            *gained.events,
-            agent_box_event(
-                event_source, card_instance_id, player, BoxOutcome.RESOLVED
-            ),
-        ),
-    )
 
 
-def _hook_occupation(state: GameState) -> RuleResult:
-    """Occupation: draw a card and the Combat icon [Immortality p. 16]. The
-    grant writes the frame, so the context is re-read before the box closes;
-    the draw is named ``<box>``."""
-
-    _, player, card_instance_id, _, event_source = _box_subject(state)
-    with_icon = grant_combat_icon(state, player)
-    _, granted = current_agent_effect_context(with_icon)
-    granted["pending_agent_effect"] = False
-    next_state = advance_after_effect(with_icon, granted, with_icon.players)
-    drawn = draw_or_request_personal_cards(next_state, player, 1, source=event_source)
-    return RuleResult(
-        state=drawn.state,
-        events=(
-            *drawn.events,
-            agent_box_event(
-                event_source, card_instance_id, player, BoxOutcome.RESOLVED
-            ),
-        ),
-    )
 
 
 def _hook_overthrow(state: GameState) -> RuleResult:
@@ -3937,17 +3767,8 @@ def _is_possible_futures(ability: Ability | None) -> bool:
     return ability is not None and ability.hook == "possible_futures"
 
 
-def _hook_control_the_spice(state: GameState) -> RuleResult:
-    """Control the Spice resolves through its payment choice (an optional
-    box, never dry-run)."""
-
-    raise BoxNeedsRows("Agent-card payment effect requires a player choice")
 
 
-def _is_control_the_spice(ability: Ability | None) -> bool:
-    """Control the Spice's payment flow, named by its record's hook."""
-
-    return ability is not None and ability.hook == "control_the_spice"
 
 
 def _hook_in_high_places(state: GameState) -> RuleResult:
@@ -4254,13 +4075,8 @@ def _hook_beasts_spoils(state: GameState) -> RuleResult:
 _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
     MappingProxyType(
         {
-            "seek_allies": _hook_seek_allies,
-            "clandestine_meeting": _hook_clandestine_meeting,
-            "lisan_al_gaib": _hook_lisan_al_gaib,
-            "occupation": _hook_occupation,
             "overthrow": _hook_overthrow,
             "in_high_places": _hook_in_high_places,
-            "control_the_spice": _hook_control_the_spice,
             "possible_futures": _hook_possible_futures,
             # The boxes no stage of the plan listed (composed A3g).
             "subversive_advisor": _hook_subversive_advisor,

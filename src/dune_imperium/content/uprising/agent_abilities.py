@@ -467,19 +467,10 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 armed_icons=("cards", "research"),
             ),
             # Control the Spice: "You may pay 1 spice -> You may trash a card,
-            # Recruit 1 troop" -- its payment names the box's card and carries
-            # the troop count, and the trash is a frame of its own, so the flow
-            # stays code (``agent_effects`` hook ``control_the_spice``).
-            _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: Ability(
-                timing=AbilityTiming.AGENT_BOX,
-                sections=(
-                    EffectSection(
-                        rewards=(TrashPersonalCard(), RecruitTroops(1)),
-                        costs=(PayResources(spice=1),),
-                    ),
-                ),
-                mark=AbilityMark.OPTIONAL,
-                hook="control_the_spice",
+            # Recruit 1 troop" -- a paid arrow (``apply_payment``): the troop
+            # now, the black trash icon on a frame of its own (cleanup-2d).
+            _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: _pay(
+                PayResources(spice=1), TrashPersonalCard(), RecruitTroops(1)
             ),
             # --- A plain line beside a choice line (composed effects, A3f) ------
             # Southern Faith: "Choose one: Draw 1 card / If Bene Gesserit Bond:
@@ -594,28 +585,25 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ReturnOtherGraftedCardAtRevealStart()
             ),
             # --- Special flows (hooks) -------------------------------------------
-            # Seek Allies: "Trash this card." -- the trash's events alone.
-            _BOX.TRASH_SELF: _hook("seek_allies", TrashThisCard()),
+            # Seek Allies: "Trash this card." [Main p. 20] -- the box trashes
+            # its own card (cleanup-2d).
+            _BOX.TRASH_SELF: _box(TrashThisCard()),
             # Overthrow: one more Influence with the visited Faction, with no
             # event of its own; reachable only on a Faction space (the
             # placement code's rule, not a printed condition).
             _BOX.GAIN_VISITED_FACTION_INFLUENCE: _hook("overthrow"),
-            # Lisan al Gaib: the Fremen Influence, its events alone.
-            _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _hook(
-                "lisan_al_gaib",
-                GainInfluence(factions=(Faction.FREMEN,)),
-                condition=_BG_BOND,
+            # Lisan al Gaib: the Fremen Influence, the Bond judged when the box
+            # resolves (a grafted partner may give it).
+            _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
+                GainInfluence(factions=(Faction.FREMEN,)), condition=_BG_BOND
             ),
-            # Clandestine Meeting: its Intrigue draw is named ``<box>:intrigue``.
-            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _hook(
-                "clandestine_meeting",
-                GainInfluence(factions=(_BG,)),
-                DrawIntrigueCards(1),
+            # Clandestine Meeting: Bene Gesserit Influence and an Intrigue card.
+            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _box(
+                GainInfluence(factions=(_BG,)), DrawIntrigueCards(1)
             ),
-            # Occupation: the Combat grant rewrites the frame; the draw is
-            # named ``<box>:draw``.
-            _BOX.DRAW_ONE_AND_COMBAT_ICON: _hook(
-                "occupation", DrawPersonalCards(1), GrantCombatDeployment()
+            # Occupation: a card and the Combat icon [Immortality p. 16].
+            _BOX.DRAW_ONE_AND_COMBAT_ICON: _box(
+                DrawPersonalCards(1), GrantCombatDeployment()
             ),
             # In High Places: the Spy frame under the draw, both named ``<box>``.
             _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: _hook(

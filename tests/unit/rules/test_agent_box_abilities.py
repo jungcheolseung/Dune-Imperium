@@ -100,7 +100,6 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
     AUTOMATIC_AGENT_ICONS,
-    CONTROL_THE_SPICE_PRICE,
     OPTIONAL_AGENT_ICONS,
     agent_box_influence_blocked,
     agent_card_cost_block,
@@ -541,9 +540,10 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the four records it was written for, and
-    refuses a record it would pay wrongly (a reward it does not give, a
-    cost no row names): such a box keeps its own code."""
+    """The payment shape takes the five records it was written for (Control
+    the Spice since cleanup-2d), and refuses a record it would pay wrongly
+    (a reward it does not give, a cost no row names): such a box keeps its
+    own code."""
 
     payments = {
         effect
@@ -555,9 +555,10 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_FOUR_SPICE_FOR_VP,
         _BOX.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+        _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     }
     for cost, rewards in (
-        (PayResources(spice=1), (TrashPersonalCard(), RecruitTroops(1))),
+        (PayResources(spice=1), (GainInfluence(),)),
         (PayResources(solari=5), (AdvanceTleilaxu(1),)),
     ):
         optional = Ability(
@@ -1018,18 +1019,18 @@ def test_piter_loses_a_unit_then_arms_its_rewards() -> None:
         resolve_agent_card_effect(bare)
 
 
-def test_control_the_spice_is_a_payment_hook() -> None:
-    """Control the Spice keeps its payment flow as code (its paid event names
-    the card and carries the troops, its trash is a frame of its own): the
-    record names the hook, prints the line, and the one-action resolution
-    refuses as before."""
+def test_control_the_spice_is_a_payment_box() -> None:
+    """Control the Spice's arrow is the payment shape's since cleanup-2d:
+    the troop now, the black trash icon on a frame of its own
+    (``tests/unit/rules/test_control_the_spice.py`` plays it)."""
 
     spice = AGENT_BOX_ABILITIES[_BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT]
-    assert spice.hook == "control_the_spice"
+    assert spice.hook is None
     assert spice.mark is AbilityMark.OPTIONAL
     (line,) = spice.sections
-    assert line.costs == (PayResources(spice=CONTROL_THE_SPICE_PRICE),)
-    assert not payment_box(spice) and not trash_box(spice)
+    assert line.costs == (PayResources(spice=1),)
+    assert line.rewards == (TrashPersonalCard(), RecruitTroops(1))
+    assert payment_box(spice) and not trash_box(spice)
 
 
 def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
@@ -1182,10 +1183,9 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.hook is not None and ability.mark is AbilityMark.OPTIONAL
     } == {
-        "control_the_spice",
         "treacherous_maneuver",
         "corrinth_city",
         "arrakis_revolt",
         "dissecting_kit",
     }
-    assert len(box_hook_names()) == 20
+    assert len(box_hook_names()) == 15
