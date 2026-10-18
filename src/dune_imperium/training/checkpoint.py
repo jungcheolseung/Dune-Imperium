@@ -96,16 +96,30 @@ class MigrationReport:
     # (``_ALIASES``: box 1's rows of a grafted turn from the untagged ones,
     # codec v143). They count as trained, so they are not ``new_action_rows``.
     actions_aliased: int = 0
+    # An entity file written under another feature table, moved by name
+    # (``entity_network.retarget_entities``).
+    features_moved: bool = False
+    feature_columns_kept: int = 0
+    feature_columns_new: int = 0
+    feature_columns_dropped: int = 0
+    entities_new: int = 0
 
     def describe(self) -> str:
         aliased = f"{self.actions_aliased} aliased, " if self.actions_aliased else ""
+        features = (
+            f"; entity features: {self.feature_columns_kept} columns kept, "
+            f"{self.feature_columns_new} new, {self.feature_columns_dropped} "
+            f"dropped, {self.entities_new} new entities"
+            if self.features_moved
+            else ""
+        )
         return (
             f"codec v{self.from_codec_version} -> v{self.to_codec_version}: "
             f"{self.actions_kept} actions kept, {aliased}{self.actions_new} new, "
             f"{self.actions_dropped} dropped; observation "
             f"v{self.from_observation_version} -> v{self.to_observation_version}: "
             f"{self.observation_kept} columns kept, {self.observation_new} new, "
-            f"{self.observation_dropped} dropped"
+            f"{self.observation_dropped} dropped{features}"
         )
 
 
@@ -209,6 +223,11 @@ def save_checkpoint(
             document["entity_inputs"] = {
                 key: list(value) for key, value in names.items()
             }
+            # The feature table by name, so a later table (a card record
+            # fixed) moves the file instead of refusing it (_load_entity).
+            from dune_imperium.training.entity_features import feature_tables
+
+            document["entity_tables"] = feature_tables()
     _write(document, path)
 
 
@@ -431,11 +450,14 @@ def _load_entity(
 
     # Imported here: the entity tables read every content package, which an
     # MLP-only caller should not pay for.
+    from dune_imperium.training.entity_features import FEATURE_DIGEST, feature_tables
     from dune_imperium.training.entity_network import (
+        EntityMove,
         EntityNetwork,
         action_vocabulary,
         legacy_inputs,
         retarget_action_parts,
+        retarget_entities,
         retarget_inputs,
     )
 
@@ -446,8 +468,23 @@ def _load_entity(
     templates = document.get("action_templates")
     config = target or RulesetConfig.from_identifier(own)
     codec = ActionCodec(config)
+    # A file that stores its feature table moves to today's by name; one
+    # that does not is refused under another table (``build_network``).
+    stored_tables = document.get("entity_tables")
+    current_tables = feature_tables()
+    features_moved = stored_tables is not None and (
+        arch.get("feature_digest") != FEATURE_DIGEST or stored_tables != current_tables
+    )
+    if features_moved:
+        arch = {**arch, "feature_digest": FEATURE_DIGEST}
     network = build_network({**arch, "ruleset": config.identifier}, codec.size)
     assert isinstance(network, EntityNetwork)
+    entity_move = EntityMove(0, 0, 0, 0)
+    if features_moved:
+        assert stored_tables is not None
+        state_dict, entity_move = retarget_entities(
+            state_dict, stored_tables, current_tables
+        )
     width = int(arch["entity_width"])
     stored_inputs = document.get("entity_inputs")
     if stored_inputs is not None:
@@ -515,7 +552,7 @@ def _load_entity(
                 kept += 1
         state_dict.update(moved)
     migration: MigrationReport | None = None
-    if observation_moved or catalog_moved:
+    if observation_moved or catalog_moved or features_moved:
         # The optimizer's moments no longer fit the moved parameters.
         optimizer_state = None
         migration = MigrationReport(
@@ -531,6 +568,11 @@ def _load_entity(
             observation_kept=kept_inputs,
             observation_new=new_inputs,
             observation_dropped=dropped_inputs,
+            features_moved=features_moved,
+            feature_columns_kept=entity_move.columns_kept,
+            feature_columns_new=entity_move.columns_new,
+            feature_columns_dropped=entity_move.columns_dropped,
+            entities_new=entity_move.entities_new,
         )
     network.load_state_dict(state_dict)
     network.eval()

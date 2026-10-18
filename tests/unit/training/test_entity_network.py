@@ -48,8 +48,10 @@ from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
     SelfPlayRunner,
     SelfPlaySpec,
+    entity_features,  # noqa: E402
 )
 from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
+from dune_imperium.training import entity_network as entity_network_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
     load_checkpoint,
     observation_layout,
@@ -59,6 +61,7 @@ from dune_imperium.training.checkpoint import (  # noqa: E402
 from dune_imperium.training.distill import legal_log_probs  # noqa: E402
 from dune_imperium.training.entity_features import (  # noqa: E402
     FEATURE_DIGEST,
+    Vocabulary,
     resolve,
     resolve_argument,
     vocabularies,
@@ -636,6 +639,79 @@ def test_an_entity_file_is_refused_under_another_feature_table(tmp_path: Path) -
     document["observation_version"] = 30
     torch.save(document, path)
     with pytest.raises(ValueError, match="carries no input names"):
+        load_checkpoint(path)
+
+
+def test_a_changed_feature_table_moves_an_entity_file_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A card record fixed after a file was written (stage A8): the file is
+    moved by name instead of refused. Every entity whose own features did not
+    change computes exactly what it did, even where a column's scale moved; a
+    new column starts at zero."""
+
+    path = _saved(tmp_path, _BASE)
+    original, _ = load_checkpoint(path)
+    assert isinstance(original, EntityNetwork)
+    with torch.no_grad():
+        before = original.entity_table()
+    tables = dict(vocabularies())
+    tech = tables["tech"]
+    raw = tech.features * np.array(tech.scales, dtype=np.float32)
+    # Tile 1's first column grows past every other tile's (that column's
+    # scale moves for all of them), the last column goes, and a new column
+    # names tile 2 only.
+    raw[1, 0] = np.abs(raw[:, 0]).max() * 2
+    last = len(tech.columns) - 1
+    touched = {1, 2} | set(np.nonzero(raw[:, last])[0].tolist())
+    extra = np.zeros((tech.size, 1), dtype=np.float32)
+    extra[2, 0] = 3.0
+    raw = np.concatenate([raw[:, :last], extra], axis=1)
+    scales = np.abs(raw).max(axis=0)
+    tables["tech"] = Vocabulary(
+        name="tech",
+        ids=tech.ids,
+        columns=(*tech.columns[:last], "test.new_column"),
+        features=raw / scales,
+        scales=tuple(float(value) for value in scales),
+    )
+    for module in (entity_features, entity_network_module):
+        monkeypatch.setattr(module, "vocabularies", lambda: tables)
+        monkeypatch.setattr(module, "FEATURE_DIGEST", "1" * 64)
+
+    moved, info = load_checkpoint(path)
+    assert isinstance(moved, EntityNetwork)
+    assert info.migration is not None and info.migration.features_moved
+    assert (
+        info.migration.feature_columns_new,
+        info.migration.feature_columns_dropped,
+        info.migration.entities_new,
+    ) == (1, 1, 0)
+    assert "entity features" in info.migration.describe()
+    assert not moved.state_dict()["entity_project.tech.weight"][:, -1].any()
+    with torch.no_grad():
+        after = moved.entity_table()
+    start = moved.entity_offsets["tech"]
+    for row in range(after.shape[0]):
+        index = row - start
+        if 0 <= index < tech.size and index in touched:
+            continue
+        torch.testing.assert_close(after[row], before[row])
+    assert not torch.allclose(after[start + 1], before[start + 1])
+
+
+def test_an_entity_file_without_its_feature_table_is_refused_under_another(
+    tmp_path: Path,
+) -> None:
+    """A file written before files stored their feature table cannot be moved
+    by name, so another table still refuses it."""
+
+    path = _saved(tmp_path, _BASE)
+    document = checkpoint_module._read(path)
+    del document["entity_tables"]
+    document["arch"]["feature_digest"] = "0" * 64
+    torch.save(document, path)
+    with pytest.raises(ValueError, match="feature table"):
         load_checkpoint(path)
 
 

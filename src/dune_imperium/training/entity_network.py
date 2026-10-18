@@ -366,6 +366,87 @@ def retarget_action_parts(
     return moved
 
 
+class EntityMove(NamedTuple):
+    """What ``retarget_entities`` did, for the migration report."""
+
+    columns_kept: int
+    columns_new: int
+    columns_dropped: int
+    entities_new: int
+
+
+def retarget_entities(
+    state_dict: dict[str, Tensor],
+    old: Mapping[str, Mapping[str, Sequence[Any]]],
+    new: Mapping[str, Mapping[str, Sequence[Any]]],
+) -> tuple[dict[str, Tensor], EntityMove]:
+    """Move a state dict's entity projections by feature column name and its
+    own entity vectors by id (``entity_features.feature_tables``).
+
+    A kept column's weights are rescaled by the ratio of its scales, so an
+    entity whose own features did not change computes what it did; a column,
+    entity or vocabulary the file never had starts at zero.
+    """
+
+    moved = dict(state_dict)
+    width = next(
+        value.shape[1]
+        for key, value in state_dict.items()
+        if key.startswith("entity_own.")
+    )
+    kept = fresh = dropped = new_entities = 0
+    for name, table in new.items():
+        columns = list(table["columns"])
+        ids = list(table["ids"])
+        weight_name = f"entity_project.{name}.weight"
+        bias_name = f"entity_project.{name}.bias"
+        own_name = f"entity_own.{name}"
+        weight = torch.zeros(width, max(1, len(columns)))
+        bias = torch.zeros(width)
+        own = torch.zeros(len(ids), width)
+        before = old.get(name)
+        if before is None:
+            fresh += len(columns)
+            new_entities += len(ids)
+        else:
+            old_weight = state_dict[weight_name]
+            old_scales = list(before["scales"])
+            where = {column: index for index, column in enumerate(before["columns"])}
+            scales = list(table["scales"])
+            for index, column in enumerate(columns):
+                found = where.get(column)
+                if found is None:
+                    fresh += 1
+                    continue
+                kept += 1
+                weight[:, index] = old_weight[:, found] * (
+                    scales[index] / old_scales[found]
+                )
+            dropped += len(set(before["columns"]) - set(columns))
+            bias = state_dict[bias_name].clone()
+            old_own = state_dict[own_name]
+            old_ids = {entity: index for index, entity in enumerate(before["ids"])}
+            for index, entity in enumerate(ids):
+                found = old_ids.get(entity)
+                if found is None:
+                    new_entities += 1
+                else:
+                    own[index] = old_own[found]
+        moved[weight_name] = weight
+        moved[bias_name] = bias
+        moved[own_name] = own
+    for name, table in old.items():
+        if name not in new:
+            dropped += len(table["columns"])
+            for key in (
+                f"entity_project.{name}.weight",
+                f"entity_project.{name}.bias",
+                f"entity_own.{name}",
+            ):
+                moved.pop(key, None)
+    return moved, EntityMove(kept, fresh, dropped, new_entities)
+
+
 def _group(segment: str) -> str:
     if segment.startswith("seat") and segment[4].isdigit():
         return f"seat{segment[4]}"

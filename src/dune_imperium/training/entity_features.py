@@ -29,10 +29,14 @@ and reward, a Conflict's reward rows, a Tech tile's ability key, a research
 space's bonus) are left out, so two cards that print the same thing read the
 same.
 
-``FEATURE_DIGEST`` covers every vocabulary's ids, columns and values; an
-``entity`` checkpoint stores it and is refused under another table, like the
-slot table (``training.slots``). Change the reflection only with
-``FEATURE_VERSION``.
+``FEATURE_DIGEST`` covers every vocabulary's ids, columns and values. An
+``entity`` checkpoint stores it and the tables' names (``feature_tables``:
+each vocabulary's ids, columns and the scale each column was divided by), so
+a file written under another table -- a card record fixed, a card added --
+is moved by name on load (``entity_network.retarget_entities``): a column or
+entity the file never had starts at zero, and every entity whose own
+features did not change computes exactly what it did. Change the reflection
+only with ``FEATURE_VERSION``.
 
 ``resolve`` maps an action argument or a slot key's id onto a vocabulary
 member (a card instance id, a card id, a space, ...), or ``None`` when the
@@ -169,6 +173,8 @@ class Vocabulary:
     columns: tuple[str, ...]
     # ``[len(ids), len(columns)]``, every value in [-1, 1].
     features: np.ndarray
+    # The largest magnitude each column was divided by.
+    scales: tuple[float, ...] = ()
 
     @property
     def size(self) -> int:
@@ -187,7 +193,13 @@ def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Voc
     keep = scale > 0
     matrix = matrix[:, keep] / scale[keep]
     kept = tuple(column for column, used in zip(columns, keep, strict=True) if used)
-    return Vocabulary(name=name, ids=ids, columns=kept, features=matrix)
+    return Vocabulary(
+        name=name,
+        ids=ids,
+        columns=kept,
+        features=matrix,
+        scales=tuple(float(value) for value in scale[keep]),
+    )
 
 
 def _personal_entry(card_id: str) -> object:
@@ -548,6 +560,20 @@ def _digest() -> str:
 
 
 FEATURE_DIGEST: Final = _digest()
+
+
+def feature_tables() -> dict[str, dict[str, list[Any]]]:
+    """Each vocabulary's ids, columns and column scales, as a checkpoint
+    stores them (module docstring)."""
+
+    return {
+        name: {
+            "ids": list(table.ids),
+            "columns": list(table.columns),
+            "scales": list(table.scales),
+        }
+        for name, table in vocabularies().items()
+    }
 
 
 def resolve_argument(action_id: str, key: str, value: str) -> tuple[str, int] | None:
