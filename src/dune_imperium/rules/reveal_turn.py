@@ -47,8 +47,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
     CompletedContractsAtLeast,
     Condition,
+    DeployFromGarrison,
     DrawIntrigueCards,
     EffectSection,
+    FactionBond,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -98,6 +100,7 @@ from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     reconcile_deployment_after_retreat,
     undeployable_troops,
+    undeployable_troops_this_turn,
 )
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
@@ -471,6 +474,45 @@ def troop_loss_specimens(
     ):
         return 0
     return line.rewards[0].count
+
+
+def troop_move_choice(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
+    """"You may deploy or retreat 1 troop" [Shadout Mapes card], maybe under a
+    Bond [Unswerving Loyalty card]."""
+
+    if effect is None:
+        return False
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    return (
+        ability is not None
+        and ability.hook is None
+        and ability.mark is AbilityMark.OPTIONAL
+        and ability.structure is AbilityStructure.ONE_OF
+        and [line.rewards for line in ability.sections]
+        == [(DeployFromGarrison(1),), (RetreatTroops(1, 1),)]
+        and all(
+            line.condition is None or isinstance(line.condition, FactionBond)
+            for line in ability.sections
+        )
+    )
+
+
+def _troop_move_bond(effect: PersonalCardRevealChoiceEffect) -> Faction | None:
+    condition = reveal_choice_ability(effect).sections[0].condition
+    return condition.faction if isinstance(condition, FactionBond) else None
+
+
+def _deployable_garrison_troops(state: GameState, player: int) -> int:
+    """Garrison troops a Reveal card's deploy may move: Harkonnen Advisor's
+    troop stays out -- "Reveal turn에서도 Harkonnen Advisor의 troop은 배치
+    불가로 남는다" (OQ-062 (b), "You can't deploy this troop to the Conflict
+    this turn." [Piter De Vries card], OQ-038 (b))."""
+
+    return max(
+        state.players[player].troops_garrison
+        - undeployable_troops_this_turn(state, player),
+        0,
+    )
 
 
 def _reveal_choice_frame_matching(
@@ -2062,9 +2104,7 @@ def legal_reveal_troop_move_actions(
     pending = pending_choice_rows(state, player, legal_reveal_troop_move_actions)
     if pending is not None:
         return pending
-    context = _reveal_choice_frame_context(
-        state, player, PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-    )
+    context = _reveal_choice_frame_matching(state, player, troop_move_choice)
     if context is None:
         return ()
     card_id, _ = _reveal_choice_card_source(state, player, context, "troop_move")
@@ -2079,7 +2119,7 @@ def legal_reveal_troop_move_actions(
         for action_id, troops, commanders in (
             (
                 "deploy_reveal_card_troop",
-                owner.troops_garrison,
+                _deployable_garrison_troops(state, player),
                 owner.commanders_garrison,
             ),
             (
@@ -3932,9 +3972,18 @@ def _reveal_choice_effect_is_available(
             )
         )
         or (
-            # Shadout Mapes: a Commander is a troop [Bloodlines p. 4].
-            effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-            and owner.troops_garrison
+            # Shadout Mapes, Unswerving Loyalty: a unit to move -- a Commander
+            # is a troop [Bloodlines p. 4], Harkonnen Advisor's troop stays
+            # in the garrison (OQ-062 (b)); Unswerving Loyalty's "Fremen
+            # Bond" -- "one or more other Fremen cards in play" [Main p. 20] --
+            # judged when the choice opens like the other Reveal conditions
+            # (OQ-028).
+            troop_move_choice(effect)
+            and (
+                (bond := _troop_move_bond(effect)) is None
+                or has_faction_bond(cards_in_play, card_id, bond)
+            )
+            and _deployable_garrison_troops(state, player)
             + owner.commanders_garrison
             + owner.troops_conflict
             + owner.commanders_conflict
@@ -3968,23 +4017,6 @@ def _reveal_choice_effect_is_available(
             (price := spice_influence_price(effect)) > 0
             and owner.resources.spice >= price
             and not reveal_influence_choice_blocked(owner, effect)
-        )
-        or (
-            # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat one
-            # of your troops" [Unswerving Loyalty card] -- "one or more other
-            # Fremen cards in play" [Main p. 20], judged when the choice opens
-            # like the other Reveal conditions (OQ-028); then Shadout Mapes'
-            # own condition (a troop to move).
-            effect is _FREMEN_BOND_TROOP_MOVE
-            and has_faction_bond(cards_in_play, card_id, Faction.FREMEN)
-            and _reveal_choice_effect_is_available(
-                state,
-                player,
-                owner,
-                cards_in_play,
-                card_id,
-                PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
-            )
         )
         # The Persuasion branch is always choosable, so the choice always
         # opens, with or without Maker Hooks (option (B), user ruling
@@ -4063,7 +4095,6 @@ def _build_reveal_choice_frame(
 REVEAL_CHOICE_HOOKS: Final = frozenset(
     {
         "command_acquisition",
-        "deploy_or_retreat_troop",
         "desert_power",
         "priority_contracts",
     }

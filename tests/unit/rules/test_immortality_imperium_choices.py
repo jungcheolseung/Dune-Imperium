@@ -781,6 +781,36 @@ def _mapes_reveal(
     return _reveal(refresh_pre_reveal_strength(RuleResult(state=state)).state)
 
 
+def test_shadout_mapes_leaves_harkonnen_advisors_troop_in_the_garrison() -> None:
+    # "Reveal turn에서도 Harkonnen Advisor의 troop은 배치 불가로 남는다"
+    # (OQ-062 (b); "You can't deploy this troop to the Conflict this turn."
+    # [Piter De Vries card], OQ-038 (b)): the Reveal frame's
+    # ``undeployable_troops`` keeps that troop out of Shadout Mapes' deploy
+    # too (2026-10-18; it used to count every garrison troop).
+    def with_advisor_troop(state: GameState) -> GameState:
+        frame = state.decision_stack[-1]
+        context = {**dict(frame.context), "undeployable_troops": 1}
+        return replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+
+    only_advisor = with_advisor_troop(
+        _mapes_reveal(troops_garrison=1, troops_conflict=1)
+    )
+    assert [a.action_id for a in legal_reveal_troop_move_actions(only_advisor, 0)] == [
+        "retreat_reveal_card_troop"
+    ]
+    one_more = with_advisor_troop(_mapes_reveal(troops_garrison=2, troops_conflict=1))
+    assert [a.action_id for a in legal_reveal_troop_move_actions(one_more, 0)] == [
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+    ]
+
+
 def test_shadout_mapes_deploys_a_garrison_commander() -> None:
     revealed = _mapes_reveal(
         troops_garrison=0,

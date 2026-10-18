@@ -36,8 +36,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     Cost,
+    DeployFromGarrison,
     DrawIntrigueCards,
     EffectSection,
+    FactionBond,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -185,16 +187,22 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 ),
                 mark=_OPTIONAL,
             ),
-            # Shadout Mapes: "You may deploy or retreat 1 troop".
+            # Shadout Mapes: "You may deploy or retreat 1 troop" -- the card's
+            # own permission to deploy, no Combat icon needed; a Commander is a
+            # troop [Bloodlines p. 4].
             _CHOICE.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _choice(
+                _line(DeployFromGarrison(1)),
+                _line(RetreatTroops(1, 1)),
                 mark=_OPTIONAL,
-                hook="deploy_or_retreat_troop",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat 1
             # troop".
             _CHOICE.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _choice(
+                _line(DeployFromGarrison(1), condition=FactionBond(Faction.FREMEN)),
+                _line(RetreatTroops(1, 1), condition=FactionBond(Faction.FREMEN)),
                 mark=_OPTIONAL,
-                hook="deploy_or_retreat_troop",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
