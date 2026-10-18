@@ -869,14 +869,17 @@ def test_clandestine_meeting_influence_asks_once_the_threshold_is_reached(
         IMM, "face_dancer", partner="clandestine_meeting", space="deliver_supplies"
     )
     state = _switched(state, seat)
+    # Its Bene Gesserit icon is the card's ``GainInfluenceAbility``, its
+    # Intrigue icon ``AgentGainIntrigueAbility`` (cleanup-2d-5).
     monkeypatch.setattr(ae, "_immediate", lambda ability, p: False)
-    source = _source(_turn(state, seat), "clandestine_meeting box")
+    source = _source(_turn(state, seat), "clandestine_meeting influence")
     assert source.stage is Stage.PROMPT
     monkeypatch.undo()
     monkeypatch.setattr(ae, "intrigue_play_sources", lambda run, plays, combat: [])
     monkeypatch.setattr(ae, "_immediate", lambda ability, p: True)
-    source = _source(_turn(state, seat), "clandestine_meeting box")
-    assert source.stage is Stage.IMMEDIATE
+    t = _turn(state, seat)
+    assert _source(t, "clandestine_meeting influence").stage is Stage.IMMEDIATE
+    assert _source(t, "clandestine_meeting intrigue").stage is Stage.IMMEDIATE
 
 
 # ---------------------------------------------------------------------------
@@ -939,7 +942,11 @@ def test_a_waiting_partner_box_lets_the_turn_end() -> None:
 
 def test_occupation_deploys_through_its_own_deploy_units() -> None:
     state, seat, _ref, _ = _place(IMM, "occupation", space="dutiful_service")
-    state = _apply(state, seat, _a(seat, "resolve_agent_card_effect"))
+    # Its Combat icon is the generic box (500) (cleanup-2d-5).
+    combat = _source(_turn(state, seat), "occupation combat")
+    assert combat.actions == (_a(seat, "take_agent_card_combat_icon"),)
+    state = _apply(state, seat, _a(seat, "take_agent_card_combat_icon"))
+    state = _apply(state, seat, _a(seat, "resolve_agent_card_effect", effect="cards"))
     t = _turn(state, seat)
     assert "deploy_troops" in _ids(t)
     source = _source(t, "Deploy Units")

@@ -117,8 +117,15 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   Stilltent, Southern Elders: their ``AlwaysRunImmediately`` ability, 600.
 - Leadership, Chani Clever Tactician, Imperial Spymaster, Weirding Woman,
   Covert Operation: their ability (E) at its ``Evaluate``.
-- In High Places: ``InHighPlacesPlaceSpyAbility`` (E) at ``SpyValue`` (the
-  ``BeneGesseritDrawAbility`` draw rides along).
+- In High Places (two icons since cleanup-2d-5): its ``cards`` icon ->
+  ``BeneGesseritDrawAbility``, its Spy rows -> ``InHighPlacesPlaceSpyAbility``
+  (E) at ``SpyValue``.
+- Clandestine Meeting (two icons): ``intrigue`` -> ``AgentGainIntrigueAbility``
+  (always immediate), the Bene Gesserit row -> its ``GainInfluenceAbility``
+  (immediate unless the deferral threshold is reached).
+- Occupation (two icons): ``cards`` -> ``DrawAbility``, the Combat icon
+  (``take_agent_card_combat_icon``) -> the generic box (500); its
+  ``DeployUnitsAbility`` then deploys.
 - Long Live the Fighters: ``LongLiveTheFightersStartAbility`` (O), 100.
 - ``effect=`` icons: Hidden Missive ``troops`` / Maker Keeper / Wheels Within
   Wheels -> their ``AlwaysRunImmediately`` riders, 600; Hidden Missive and
@@ -501,7 +508,6 @@ _BOX_ABILITY: Mapping[str, str] = {
     "fedaykin_stilltent": "FedaykinStilltentAbility",
     "southern_elders": "SouthernEldersAgentAbility",
     "weirding_woman": "WeirdingWomanAbility",
-    "in_high_places": "InHighPlacesPlaceSpyAbility",
     "covert_operation": "CovertOperationAbility",
     "priority_contracts": "GainContractAbility",
     "long_live_the_fighters": "LongLiveTheFightersStartAbility",
@@ -540,6 +546,10 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     # were gained (OQ-057 (1)); gated by its Cost (``_GATED_ICON_CARDS``).
     ("fremen_war_name", "troops"): "FremenWarNameTroopAbility",
     ("fremen_war_name", "cards"): "FremenWarNameDrawAbility",
+    # Split per icon in our engine (cleanup-2d-5), as the app's own abilities.
+    ("in_high_places", "cards"): "BeneGesseritDrawAbility",
+    ("clandestine_meeting", "intrigue"): "AgentGainIntrigueAbility",
+    ("occupation", "cards"): "DrawAbility",
 }
 #: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
 #: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
@@ -607,6 +617,7 @@ _CARD_SPY_ABILITY: Mapping[str, str] = {
     "bene_gesserit_operative": "PlaceSpyAgentAbility",
     "reliable_informant": "ReliableInformantAbility",
     "double_agent": "DoubleAgentAbility",
+    "in_high_places": "InHighPlacesPlaceSpyAbility",
 }
 _CARD_INFLUENCE_ABILITY: Mapping[str, str] = {
     "dangerous_rhetoric": "DangerousRhetoricAbility",
@@ -624,7 +635,6 @@ _EXPANSION_BOX_ABILITY: Mapping[str, str] = {
     "imperium_ceremony": "ImperiumCeremonyAbility",
     "keys_to_power": "KeysToPowerAbility",
     "lisan_al_gaib": "LisanAlGaibAgentAbility",
-    "occupation": "DrawAbility",
     "planned_coupling": "DrawAbility",
     "show_of_strength": "DrawAbility",
     "face_dancer": "DrawAbility",
@@ -673,7 +683,6 @@ _EXPANSION_BOX_CARDS = frozenset(
         "experimentation",
         "bene_tleilax_researcher",
         "scientific_breakthrough",
-        "clandestine_meeting",
         "throne_room_politics",
         "the_beast_s_spoils",
     }
@@ -2007,8 +2016,6 @@ def _expansion_box(t: _Turn, short: str, action: DomainAction) -> None:
         _gated_ability_source(t, label, found, _ROW_CARD, action, _research_request(t))
     elif short in _FIRST_BOX_CARDS:
         _box_auto(t, label, action)  # SpecimenAgentAbility (state 210)
-    elif short == "clandestine_meeting":
-        _clandestine_meeting(t, label, action)
     elif short == "throne_room_politics":
         # The ``AgentTroops`` box (500) and ``TrashAgentAbility`` (Explicit;
         # our engine opens its trash as ``optional_trash`` right after).
@@ -2043,28 +2050,6 @@ def _expansion_box(t: _Turn, short: str, action: DomainAction) -> None:
     else:
         name = _EXPANSION_BOX_ABILITY[short]
         _gated_ability_source(t, label, _find(t.card, name), _ROW_CARD, action)
-
-
-def _clandestine_meeting(t: _Turn, label: str, action: DomainAction) -> None:
-    """``AgentGainIntrigueAbility`` (always immediate) and the card's
-    ``GainInfluenceAbility`` (immediate unless the deferral threshold is
-    reached): one action of ours. Both immediate: the earlier in the 600
-    order; otherwise the influence asks (Explicit, at its ``DeferValue``)."""
-
-    intrigue = _find(t.card, "AgentGainIntrigueAbility")
-    influence = _first_of(t.card, GainInfluenceAbility)
-    if intrigue is None or influence is None:
-        t.unmapped.append(label)
-        return
-    p = t.p
-    if not _immediate(influence[0], p):
-        _ability_source(t, label, influence, _ROW_CARD, action)
-        return
-    first = min(
-        (intrigue, influence),
-        key=lambda found: _immediate_order(t, found[0], _ROW_CARD, found[1]),
-    )
-    _ability_source(t, label, first, _ROW_CARD, action)
 
 
 #: Every Bloodlines single box ``_bloodlines_box`` answers.
@@ -2402,6 +2387,15 @@ def _arrakis_revolt(t: _Turn) -> None:
     _prompt(t, "Arrakis Revolt", uses, evaluate, explicit=False)
 
 
+def _occupation(t: _Turn) -> None:
+    """Occupation's Combat icon (cleanup-2d-5): the generic box (500); the
+    card's ``DeployUnitsAbility`` deploys once it is taken."""
+
+    take = t.run.first("take_agent_card_combat_icon")
+    if take is not None:
+        _box_auto(t, "occupation combat", take)
+
+
 def _high_priority_travel(t: _Turn) -> None:
     """``HighPriorityTravelAbility`` (Explicit; spec immortality.md §5.6):
     option 0 draws (our plain resolution), option 1 takes the Combat icon
@@ -2639,6 +2633,7 @@ _PAYMENT_HANDLERS: Mapping[str, Callable[[_Turn], None]] = {
     "control_the_spice": _control_the_spice,
     "arrakis_revolt": _arrakis_revolt,
     "high_priority_travel": _high_priority_travel,
+    "occupation": _occupation,
     "slig_farmer": _slig_farmer,
     "beguiling_pheromones": _beguiling_pheromones,
     "piter_genius_advisor": _piter,
@@ -2832,6 +2827,16 @@ def _card_influence(t: _Turn, short: str) -> None:
         return
     if short in _BOND_CHOICE_CARDS:
         _bond_choice(t, short, actions)
+        return
+    if short == "clandestine_meeting":
+        # Its Bene Gesserit icon (cleanup-2d-5): the card's
+        # ``GainInfluenceAbility``, immediate unless the deferral threshold
+        # is reached, then asking (Explicit, at its ``DeferValue``).
+        found = _first_of(t.card, GainInfluenceAbility)
+        if found is None:
+            t.unmapped.append(f"{short} influence")
+            return
+        _ability_source(t, f"{short} influence", found, _ROW_CARD, actions[0])
         return
     name = _CARD_INFLUENCE_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None

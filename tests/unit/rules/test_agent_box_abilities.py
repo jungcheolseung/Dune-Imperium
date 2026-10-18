@@ -186,6 +186,10 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.DRAW_ONE_AND_RECALL_AGENT: ("cards", "recall"),
         _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: ("recall",),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
+        # Split per icon (cleanup-2d-5, user decision 2026-10-18).
+        _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
+        _BOX.DRAW_ONE_AND_COMBAT_ICON: ("cards", "combat"),
+        _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: ("cards", "spy"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -1206,7 +1210,6 @@ def test_no_optional_box_is_a_hook_any_more() -> None:
     }
     assert box_hook_names() == {
         "beasts_spoils",
-        "in_high_places",
         "long_live_the_fighters",
         "possible_futures",
         "scientific_breakthrough",

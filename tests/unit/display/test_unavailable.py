@@ -2834,6 +2834,34 @@ def test_tread_in_darkness_draw_greys_out_once_its_bond_card_is_trashed() -> Non
     }
 
 
+def test_in_high_places_icons_grey_out_once_its_bond_card_is_trashed() -> None:
+    """In High Places' [draw 1] and [Spy] are two icons (cleanup-2d-5, user
+    decision 2026-10-18), each judged on its Bond when it resolves (OQ-028):
+    without the Bond both wait as "choice" rows until the turn's end."""
+    in_high_places = _imperium("in_high_places")
+    bond = _imperium("truthtrance")
+    owner = PlayerState(
+        player_id=0, hand=(in_high_places,), deck=(DAGGER,), in_play=(bond,)
+    )
+    state = _place(_state(owner), "secrets")
+    assert _icon_rows(state) == {}
+    lost = replace(
+        state.players[0],
+        in_play=tuple(card for card in state.players[0].in_play if card != bond),
+        trashed=(bond,),
+    )
+    state = replace(state, players=(lost, *state.players[1:]))
+    reason = (
+        "Needs another Bene Gesserit card in play; it lapses when the turn ends",
+        "{in_play}에 다른 베네 게세리트 카드 필요 — 차례가 끝날 때 사라짐",
+        "condition",
+    )
+    assert _icon_rows(state) == {
+        "choice:agent_icon:cards": reason,
+        "choice:agent_icon:spy": reason,
+    }
+
+
 def test_stillsuit_manufacturer_return_waits_for_the_fremen_alliance() -> None:
     """Stillsuit Manufacturer's "[Fremen] Alliance: Return this card from
     play to your hand." is its own icon (OQ-027): without the Alliance it

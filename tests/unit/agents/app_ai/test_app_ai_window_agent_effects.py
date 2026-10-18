@@ -1199,14 +1199,6 @@ def test_dangerous_rhetoric_trash_self_is_the_last_chore() -> None:
             Stage.PROMPT,
             2.5,
         ),
-        (
-            "in_high_places",
-            "secrets",
-            {"in_play": ("imperium:bene_gesserit_operative:1",)},
-            {"spy_value": _summer(1.5)},
-            Stage.PROMPT,
-            1.5,
-        ),
     ],
 )
 def test_single_box_stage_and_value(
@@ -1225,6 +1217,30 @@ def test_single_box_stage_and_value(
         got, action = box.evaluate()
         assert got == pytest.approx(value)
         assert action == _a(seat, "resolve_agent_card_effect")
+
+
+def test_in_high_places_icons_are_its_draw_and_its_spy() -> None:
+    """In High Places resolves icon by icon (cleanup-2d-5), as the app's own
+    ``BeneGesseritDrawAbility`` and ``InHighPlacesPlaceSpyAbility``: the draw
+    from its icon, the Spy (E) at ``SpyValue``."""
+
+    state, seat, _ = _place(
+        "in_high_places",
+        "secrets",
+        in_play=("imperium:bene_gesserit_operative:1",),
+    )
+    sources = {
+        s.label: s
+        for s in _sources(state, seat, {"spy_value": _summer(1.5)})
+    }
+    assert "in_high_places box" not in sources
+    assert "in_high_places cards" in sources
+    spy = sources["in_high_places spy"]
+    assert spy.stage is Stage.PROMPT
+    assert spy.evaluate is not None
+    got, action = spy.evaluate()
+    assert got == pytest.approx(1.5)
+    assert action is not None and action.action_id == "place_agent_card_spy"
 
 
 def test_covert_operation_is_valued_at_its_defer_value() -> None:

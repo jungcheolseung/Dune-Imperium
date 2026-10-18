@@ -8,8 +8,24 @@ whole of cleanup-2 against ``d892cd6c``) takes the same rules.
 """
 
 import json
+from typing import Any
 
-from equivalence_rules import Rule, Step
+from equivalence_rules import At, Rule, Step
+
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules.effects import (
+    active_agent_card,
+    current_agent_effect_context,
+    pending_agent_icons,
+)
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.graft_boxes import (
+    box_is_pending,
+    is_grafted_turn,
+    state_with_active_box,
+)
 
 # The Intrigue executor's Spy pass-up (``ability_executor.piece_rows``).
 _EXECUTOR_SPY_PASS = "decline_intrigue_spy"
@@ -102,4 +118,327 @@ RETREAT_EVENT = Rule(
     old=_retreat_event,
 )
 
-RULES = (SPY_PASS_FIRST, RETREAT_EVENT)
+# --- 2d-5: three Agent boxes split per icon (user decision 2026-10-18) -------
+#
+# Clandestine Meeting, Occupation and In High Places resolved their two icons
+# with one ``resolve_agent_card_effect`` (In High Places opening the shared
+# Spy placement frame under its draw); each icon is now its own row in the
+# owner's order (OQ-027): the base's one move plays as the candidate's icon
+# moves, In High Places' Spy at the base's frame step. The rows, the box
+# events (one per icon now) and the Spy's events are compared in the base's
+# form.
+_BOX = PersonalCardAgentEffect
+_SPLIT_ICONS: dict[PersonalCardAgentEffect, tuple[str, ...]] = {
+    _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
+    _BOX.DRAW_ONE_AND_COMBAT_ICON: ("cards", "combat"),
+    _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: ("cards", "spy"),
+}
+_IN_HIGH_PLACES = _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
+# The candidate's moves for the base's one resolution, in the base's order.
+_SPLIT_MOVES: dict[PersonalCardAgentEffect, tuple[tuple[str, dict[str, Any]], ...]] = {
+    _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
+        ("choose_agent_card_influence", {"faction": "bene_gesserit"}),
+        ("resolve_agent_card_effect", {"effect": "intrigue"}),
+    ),
+    _BOX.DRAW_ONE_AND_COMBAT_ICON: (
+        ("take_agent_card_combat_icon", {}),
+        ("resolve_agent_card_effect", {"effect": "cards"}),
+    ),
+    _IN_HIGH_PLACES: (("resolve_agent_card_effect", {"effect": "cards"}),),
+}
+# The base's shared Spy frame rows -> the box's Spy rows.
+_FRAME_SPY = {
+    "place_spy_on_space": "place_agent_card_spy",
+    "recall_spy_for_placement": "recall_spy_for_agent_card",
+    "decline_spy_placement": "decline_agent_card_spy",
+}
+_BOX_SPY = frozenset(_FRAME_SPY.values())
+# The split boxes pending on the candidate at the step being compared, as
+# (box, effect, pending icons); set by ``_split_moves`` before the step.
+_now: list[tuple[int, PersonalCardAgentEffect, tuple[str, ...]]] = []
+# Whether ``_split_moves`` played this step's two icons in the other order.
+_reversed = False
+
+
+def _split_boxes(
+    state: Any,
+) -> list[tuple[int, PersonalCardAgentEffect, tuple[str, ...]]]:
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        # A chance decision on top (a draw's reshuffle): the frame below.
+        frames = [
+            f for f in state.decision_stack if f.kind == FrameKind.AGENT_EFFECTS
+        ]
+        if not frames:
+            return []
+        context = dict(frames[-1].context)
+        effect = active_agent_card(context).agent_effect
+        if (
+            effect not in _SPLIT_ICONS
+            or context.get("pending_agent_effect") is not True
+        ):
+            return []
+        return [(0, effect, pending_agent_icons(context))]
+    found = []
+    for box in (0, 1) if is_grafted_turn(context) else (0,):
+        if not box_is_pending(context, box):
+            continue
+        _, active = current_agent_effect_context(state_with_active_box(state, box))
+        effect = active_agent_card(active).agent_effect
+        if effect in _SPLIT_ICONS:
+            found.append((box, effect, pending_agent_icons(active)))
+    return found
+
+
+def _row_args(row: Any) -> dict[str, Any]:
+    if isinstance(row, DomainAction):
+        return dict(row.arguments)
+    if isinstance(row, dict):
+        return {str(pair[0]): pair[1] for pair in row["arguments"]}
+    return {str(pair[0]): pair[1] for pair in row or ()}
+
+
+def _row_box(row: Any) -> int:
+    box = _row_args(row).get("box", 0)
+    return box if isinstance(box, int) else 0
+
+
+def _split_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
+    """The base's one resolution as the candidate's icon moves; its shared
+    Spy frame's move as the box's Spy move."""
+
+    global _now, _reversed
+    _now = _split_boxes(at.state)
+    _reversed = False
+    if old.step[0] != "a" or not _now:
+        return None
+    action_id, args = old.step[1], _row_args(old.step[3])
+    box = _row_box(old.step[3])
+    entry = next((found for found in _now if found[0] == box), None)
+    if (
+        action_id == "resolve_agent_card_effect"
+        and "effect" not in args
+        and entry is not None
+        and set(entry[2]) == set(_SPLIT_ICONS[entry[1]])
+    ):
+        moves = []
+        for wanted, wanted_args in _SPLIT_MOVES[entry[1]]:
+            move = next(
+                (
+                    action
+                    for action in at.legal
+                    if action.action_id == wanted
+                    and _row_box(action) == box
+                    and all(
+                        _row_args(action).get(k) == v for k, v in wanted_args.items()
+                    )
+                ),
+                None,
+            )
+            if move is None:
+                return None
+            moves.append(move)
+        if entry[1] is _IN_HIGH_PLACES:
+            # The base pushed its Spy frame; the candidate's icon waits.
+            old.state_unchecked = True
+        if len(moves) == 2 and not _plays_in_order(at, moves):
+            # The first icon's follow-up (an owed draw of its Influence
+            # bonus) holds the second: the other order, events compared in
+            # the base's (``_split_rows``).
+            moves.reverse()
+            _reversed = True
+        return tuple(moves)
+    spy = next(
+        (found for found in _now if found[1] is _IN_HIGH_PLACES and "spy" in found[2]),
+        None,
+    )
+    if spy is not None and action_id in _FRAME_SPY:
+        move = next(
+            (
+                action
+                for action in at.legal
+                if action.action_id == _FRAME_SPY[action_id]
+                and _row_box(action) == spy[0]
+                and _row_args(action).get("post_id") == args.get("post_id")
+            ),
+            None,
+        )
+        if move is None:
+            return None
+        if action_id == "recall_spy_for_placement":
+            old.state_unchecked = True  # the frame stays open in the base
+        return (move,)
+    return None
+
+
+def _plays_in_order(at: At, moves: list[DomainAction]) -> bool:
+    """Whether the second move is still offered after the first."""
+
+    first = at.engine.apply(at.state, moves[0]).state
+    try:
+        legal = at.engine.legal_actions(first, moves[1].actor)
+    except ValueError:
+        return False
+    return moves[1] in legal
+
+
+def _split_row(row: dict[str, Any]) -> bool:
+    """A candidate row of a pending split box's icons."""
+
+    for box, effect, _ in _now:
+        if _row_box(row) != box:
+            continue
+        action_id = row["action_id"]
+        args = _row_args(row)
+        if action_id == "resolve_agent_card_effect" and args.get("effect") in (
+            _SPLIT_ICONS[effect]
+        ):
+            return True
+        if effect is _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE and (
+            action_id == "choose_agent_card_influence"
+        ):
+            return True
+        if effect is _BOX.DRAW_ONE_AND_COMBAT_ICON and (
+            action_id == "take_agent_card_combat_icon"
+        ):
+            return True
+        if effect is _IN_HIGH_PLACES and action_id in _BOX_SPY:
+            return True
+    return False
+
+
+def _split_card(event: dict[str, Any]) -> bool:
+    payload = {str(key): value for key, value in event["payload"]}
+    card_id = payload.get("card_id")
+    return (
+        isinstance(card_id, str)
+        and card_id.count(":") >= 1
+        and _card_effect(card_id) in _SPLIT_ICONS
+    )
+
+
+def _card_effect(card_id: str) -> PersonalCardAgentEffect | None:
+    try:
+        return personal_card_for_instance(card_id).agent_effect
+    except (KeyError, ValueError):
+        return None
+
+
+def _split_base(step: Step) -> None:
+    """The base's one box event of a split box goes (the candidate logs one
+    per icon, which ``_split_rows`` drops)."""
+
+    step.events = [
+        event
+        for event in step.events
+        if not (
+            str(event["kind"]).startswith("agent_card_effect_") and _split_card(event)
+        )
+    ]
+
+
+def _spy_in_base_form(event: dict[str, Any]) -> dict[str, Any]:
+    """In High Places' Spy event as the base's shared frame logged it
+    (``<box>:spy_placement:placed:<post>`` and its kin, no card)."""
+
+    event_id = str(event["event_id"])
+    payload = {str(key): value for key, value in event["payload"]}
+    box, _, rest = event_id.rpartition(":spy_")
+    frame = f"{box}:spy_placement"
+    match event["kind"]:
+        case "spy_placed":
+            new_id = f"{frame}:placed:{payload['post_id']}"
+            data = {"player": payload["player"], "post_id": payload["post_id"]}
+        case "spy_recalled":
+            new_id = f"{frame}:recalled:{payload['post_id']}"
+            data = {"player": payload["player"], "post_id": payload["post_id"]}
+        case _:
+            new_id = f"{frame}:unavailable"
+            data = {"player": payload["player"]}
+    del rest
+    return {
+        **event,
+        "event_id": new_id,
+        "payload": [[key, data[key]] for key in sorted(data)],
+    }
+
+
+def _views_in_base_form(old: Step, candidate: Step, keys: tuple[str, ...]) -> None:
+    for view, base_view in zip(candidate.views, old.views, strict=True):
+        for key in (*keys, "agent_boxes"):
+            if key in base_view:
+                view[key] = base_view[key]
+
+
+def _split_rows(old: Step, candidate: Step) -> None:
+    """The split boxes' rows, box events and Spy events in the base's form."""
+
+    if any(effect is _IN_HIGH_PLACES and "spy" in icons for _, effect, icons in _now):
+        # Its Spy still waits as an icon; the base's box was resolved.
+        _views_in_base_form(old, candidate, ())
+
+    events = []
+    for event in candidate.events:
+        kind = str(event["kind"])
+        if kind.startswith("agent_card_effect_") and _split_card(event):
+            continue
+        if (
+            kind in ("spy_placed", "spy_recalled", "spy_placement_unavailable")
+            and ":agent_card:" in str(event["event_id"])
+            and _split_card(event)
+        ):
+            event = _spy_in_base_form(event)
+        events.append(event)
+    if _reversed and _same_items(events, old.events):
+        # The icons' order (``_split_moves``): the same events.
+        events = list(old.events)
+    candidate.events = events
+    if old.step[0] != "a" or not _now or not isinstance(candidate.decision, list):
+        return
+    if not isinstance(old.decision, list):
+        return
+    rows, base = candidate.decision[1], old.decision[1]
+    if not isinstance(rows, list) or not isinstance(base, list):
+        return
+    if base and all(row["action_id"] in _FRAME_SPY for row in base):
+        # In High Places' Spy: the base's frame offered only its placement.
+        spy = [row for row in rows if row["action_id"] in _BOX_SPY]
+        if len(spy) == len(base) and all(
+            any(
+                row["action_id"] == _FRAME_SPY[frame_row["action_id"]]
+                and _row_args(row).get("post_id") == _row_args(frame_row).get("post_id")
+                for row in spy
+            )
+            for frame_row in base
+        ):
+            candidate.decision[1] = list(base)
+            candidate.page = old.page
+            _views_in_base_form(old, candidate, ("decision_kind", "turn_owner"))
+        return
+    boxes = {box for box, _, _ in _now}
+    kept = [row for row in rows if not _split_row(row)]
+    base_kept = [
+        row
+        for row in base
+        if not (
+            row["action_id"] == "resolve_agent_card_effect"
+            and "effect" not in _row_args(row)
+            and _row_box(row) in boxes
+        )
+    ]
+    if len(kept) != len(rows) and _same_items(kept, base_kept):
+        candidate.decision[1] = list(base)
+        candidate.page = old.page
+
+
+SPLIT_BOXES = Rule(
+    name="split_boxes",
+    why="cleanup-2d-5: Clandestine Meeting, Occupation and In High Places "
+    "resolve icon by icon (OQ-027, user decision 2026-10-18)",
+    old=_split_base,
+    new=_split_rows,
+    moves=_split_moves,
+)
+
+RULES = (SPLIT_BOXES, SPY_PASS_FIRST, RETREAT_EVENT)

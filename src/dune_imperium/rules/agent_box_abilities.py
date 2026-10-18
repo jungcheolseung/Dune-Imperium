@@ -154,6 +154,7 @@ from dune_imperium.rules.effects import (
     finish_agent_icon,
     is_grafted,
     other_grafted_card_id,
+    pending_agent_icons,
     recruit_shortfall_events,
     recruit_troops,
     short_of,
@@ -900,6 +901,29 @@ def _opponents_decide(
             if not isinstance(space_id, str):
                 raise RuntimeError("Agent-turn effect frame has invalid space")
             return turn_space_spy_frames(state, player, space_id, source=source)
+    return None
+
+
+def icon_line[P](
+    context: Mapping[str, ActionValue], ability: Ability | None, piece: type[P]
+) -> tuple[str, P] | None:
+    """The pending icon of an icon-by-icon box whose line prints ``piece``,
+    with that piece; None when none waits.
+
+    A choice icon is answered by its own rows (cleanup-2d-5): a Faction's
+    Influence by ``choose_agent_card_influence``, the Combat icon by
+    ``take_agent_card_combat_icon``, a Spy by the box's Spy rows, the
+    recall and the trash by theirs.
+    """
+
+    if ability is None or not ability.icons:
+        return None
+    pending = pending_agent_icons(context)
+    for key, line in zip(ability.icons, ability.sections, strict=True):
+        if key in pending:
+            for reward in line.rewards:
+                if isinstance(reward, piece):
+                    return key, reward
     return None
 
 

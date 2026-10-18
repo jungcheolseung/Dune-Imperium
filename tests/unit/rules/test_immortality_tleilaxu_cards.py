@@ -1495,8 +1495,16 @@ def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> 
     _, context = current_agent_effect_context(grafted.state)
     assert context["graft_pending_effect"] is True
 
-    # Occupation's box (draw and the Combat icon) resolves like any partner.
-    drawn = resolve_agent_card_effect(_switch(grafted.state))
+    # Occupation's box (draw and the Combat icon) resolves like any partner,
+    # icon by icon (cleanup-2d-5).
+    switched = _switch(grafted.state)
+    drew = resolve_agent_card_icon(
+        switched,
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),)),
+    )
+    drawn = apply_agent_card_payment(
+        drew.state, DomainAction("take_agent_card_combat_icon", 0)
+    )
     assert len(drawn.state.players[0].hand) == 1
     # The turn stays open until its owner ends it (OQ-095), so the borrowed
     # card is still in play beside the turn end.

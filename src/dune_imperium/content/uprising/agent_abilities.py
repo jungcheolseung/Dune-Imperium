@@ -531,6 +531,19 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ("influence", _line(GainInfluence())),
                 ("trash_self", _line(TrashThisCard())),
             ),
+            # Clandestine Meeting: "[Bene Gesserit Influence] [Intrigue card]"
+            # -- the Influence answered by its one-Faction row (cleanup-2d-5,
+            # user decision 2026-10-18: "원칙대로 아이콘마다 나누자").
+            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _icons(
+                ("influence", _line(GainInfluence(factions=(_BG,)))),
+                ("intrigue", _line(DrawIntrigueCards(1))),
+            ),
+            # Occupation: "[draw 1] [Combat]" [Immortality p. 16] -- the Combat
+            # icon answered by ``take_agent_card_combat_icon`` (cleanup-2d-5).
+            _BOX.DRAW_ONE_AND_COMBAT_ICON: _icons(
+                ("cards", _line(DrawPersonalCards(1))),
+                ("combat", _line(GrantCombatDeployment())),
+            ),
             # Steersman: "Draw 1 card, Recall 1 Agent".
             _BOX.DRAW_ONE_AND_RECALL_AGENT: _icons(
                 ("cards", _line(DrawPersonalCards(1))),
@@ -553,6 +566,20 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 structure=AbilityStructure.SEPARATE,
                 requirement=_BG_BOND,
                 icons=("trash", "cards"),
+            ),
+            # In High Places: "If you have another Bene Gesserit card in play:
+            # [draw 1 card] [Spy]" -- as Tread in Darkness, the Bond opens the
+            # box and is judged again on each icon (OQ-028); the Spy icon is
+            # answered by the box's Spy rows (cleanup-2d-5).
+            _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                    _line(PlaceSpy(), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("cards", "spy"),
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.
@@ -600,22 +627,6 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # resolves (a grafted partner may give it).
             _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
                 GainInfluence(factions=(Faction.FREMEN,)), condition=_BG_BOND
-            ),
-            # Clandestine Meeting: Bene Gesserit Influence and an Intrigue card.
-            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _box(
-                GainInfluence(factions=(_BG,)), DrawIntrigueCards(1)
-            ),
-            # Occupation: a card and the Combat icon [Immortality p. 16].
-            _BOX.DRAW_ONE_AND_COMBAT_ICON: _box(
-                DrawPersonalCards(1), GrantCombatDeployment()
-            ),
-            # In High Places: the Spy frame under the draw, both named ``<box>``.
-            _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: _hook(
-                "in_high_places",
-                DrawPersonalCards(1),
-                PlaceSpy(),
-                condition=_BG_BOND,
-                requirement=_BG_BOND,
             ),
             # --- Special flows of the boxes no stage listed (composed A3g) -------
             # Their rows, events and frames are their own. A record lists its

@@ -86,10 +86,6 @@ from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
     legal_gather_intelligence_actions,
 )
-from dune_imperium.rules.spy_moves import (
-    apply_spy_placement,
-    legal_spy_placement_actions,
-)
 from dune_imperium.rules.strength import units_strength
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -2971,12 +2967,12 @@ def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
     )
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
 
-    result = resolve_agent_card_effect(lowered)
-
-    assert result.events[0].kind == "agent_card_effect_unavailable"
-    assert result.state.players[0].deck == (drawn,)
-    assert result.state.players[0].spies_supply == 3
-    assert result.state.decision_stack[-1].kind != FrameKind.SPY_PLACEMENT
+    # Both icons wait for the Bond, judged on each when it resolves
+    # (OQ-028, cleanup-2d-5), and the turn's end fizzles them (OQ-057 (1)).
+    assert not legal_agent_card_icon_actions(lowered, 0)
+    assert legal_agent_card_spy_actions(lowered, 0) == ()
+    assert lowered.players[0].deck == (drawn,)
+    assert lowered.players[0].spies_supply == 3
 
 
 def test_seek_allies_box_expires_after_a_mid_frame_trash() -> None:
@@ -3101,27 +3097,33 @@ def test_in_high_places_bond_draws_a_card_and_places_a_spy() -> None:
     # observation post on the board" [Main p. 20].
     placed, drawn = _in_high_places_on_secrets()
 
-    result = resolve_agent_card_effect(placed)
+    # Two icons, each its own effect in the owner's order (OQ-027; user
+    # decision 2026-10-18, cleanup-2d-5): the draw and the box's Spy rows.
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(placed, 0)
+    ] == ["cards"]
+    choices = legal_agent_card_spy_actions(placed, 0)
+    # Mandatory with a Spy in supply, on any unoccupied post (OQ-057 (14)).
+    assert {action.action_id for action in choices} == {"place_agent_card_spy"}
+    assert len(choices) == len(OBSERVATION_POSTS)
+
+    result = resolve_agent_card_icon(placed, _icon_action(placed, "cards"))
 
     owner = result.state.players[0]
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.events[-1].kind == "agent_card_effect_resolved"
     assert drawn in owner.hand
     assert owner.resources.water == placed.players[0].resources.water
-    assert result.state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
-    choices = legal_spy_placement_actions(result.state, 0)
-    # Mandatory with a Spy in supply, on any unoccupied post (OQ-057 (14)).
-    assert {action.action_id for action in choices} == {"place_spy_on_space"}
-    assert len(choices) == len(OBSERVATION_POSTS)
     post_id = OBSERVATION_POSTS[0].post_id
-    spied = apply_spy_placement(
+    spied = apply_agent_card_spy_action(
         result.state,
         DomainAction(
-            action_id="place_spy_on_space", actor=0, arguments=(("post_id", post_id),)
+            action_id="place_agent_card_spy", actor=0, arguments=(("post_id", post_id),)
         ),
     ).state
     assert spied.players[0].spy_post_ids == (post_id,)
     assert spied.players[0].spies_supply == 2
-    # Back to the Agent turn, whose box is now resolved.
+    # The box is now resolved.
     assert spied.decision_stack[-1].kind == placed.decision_stack[-1].kind
     assert dict(spied.decision_stack[-1].context)["pending_agent_effect"] is False
 
@@ -3133,18 +3135,17 @@ def test_in_high_places_spy_may_pass_on_the_recall_with_an_empty_supply() -> Non
     posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
     placed, _ = _in_high_places_on_secrets(spies_supply=0, spy_post_ids=posts)
 
-    result = resolve_agent_card_effect(placed)
-
-    choices = legal_spy_placement_actions(result.state, 0)
+    choices = legal_agent_card_spy_actions(placed, 0)
     assert [action.action_id for action in choices] == [
-        "decline_spy_placement",
-        "recall_spy_for_placement",
-        "recall_spy_for_placement",
-        "recall_spy_for_placement",
+        "decline_agent_card_spy",
+        "recall_spy_for_agent_card",
+        "recall_spy_for_agent_card",
+        "recall_spy_for_agent_card",
     ]
-    passed = apply_spy_placement(result.state, choices[0]).state
+    passed = apply_agent_card_spy_action(placed, choices[0]).state
     assert passed.players[0].spy_post_ids == posts
-    assert passed.decision_stack[-1].kind == placed.decision_stack[-1].kind
+    # The Spy icon is passed up; the draw still waits.
+    assert dict(passed.decision_stack[-1].context)["pending_agent_icons"] == "cards"
 
 
 def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn() -> (
@@ -3171,29 +3172,38 @@ def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn()
         ),
     )
     engine = UprisingRulesEngine()
-    current = placed
+    box_rows = {
+        "resolve_agent_card_effect",
+        "decline_agent_card_spy",
+        "recall_spy_for_agent_card",
+        "place_agent_card_spy",
+        "finish_agent_turn",
+    }
+    current = engine.apply(placed, _icon_action(placed, "cards")).state
     for _ in range(5):
         others = [
             action
             for action in engine.legal_actions(current, 0)
-            if action.action_id != "resolve_agent_card_effect"
+            if action.action_id not in box_rows
         ]
         if not others:
             break
         current = engine.apply(current, others[0]).state
-    resolved = engine.apply(
-        current, DomainAction(action_id="resolve_agent_card_effect", actor=0)
-    ).state
-    assert resolved.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
-    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
 
+    # The Spy icon is the turn's last effect (cleanup-2d-5: one of the box's
+    # icons, no frame of its own).
     recall = next(
         action
-        for action in engine.legal_actions(resolved, 0)
-        if action.action_id == "recall_spy_for_placement"
+        for action in engine.legal_actions(current, 0)
+        if action.action_id == "recall_spy_for_agent_card"
     )
-    recalled = engine.apply(resolved, recall).state
-    spied = engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
+    recalled = engine.apply(current, recall).state
+    place = next(
+        action
+        for action in engine.legal_actions(recalled, 0)
+        if action.action_id == "place_agent_card_spy"
+    )
+    spied = engine.apply(recalled, place).state
     assert spied.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert spied.players[0].spies_recalled_turn == 1
     assert [action.action_id for action in engine.legal_actions(spied, 0)] == [

@@ -198,9 +198,23 @@ def test_clandestine_meeting_needs_a_graft_and_pays_influence_and_intrigue() -> 
     )
     from dune_imperium.rules.graft_boxes import other_box_state
 
-    # The partner's box (box 1), resolved with it active.
-    resolved = resolve_agent_card_effect(other_box_state(state))
-    owner = resolved.state.players[0]
+    # The partner's box (box 1), resolved with it active: its two icons
+    # each its own effect in the owner's order (OQ-027, cleanup-2d-5), the
+    # Influence answered by its one-Faction row.
+    box = other_box_state(state)
+    influence = legal_agent_card_influence_actions(box, 0)
+    assert [dict(action.arguments)["faction"] for action in influence] == [
+        "bene_gesserit"
+    ]
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(box, 0)
+    ] == ["intrigue"]
+    gained = apply_agent_card_influence(box, influence[0]).state
+    drew = resolve_agent_card_icon(
+        gained, DomainAction("resolve_agent_card_effect", 0, (("effect", "intrigue"),))
+    )
+    owner = drew.state.players[0]
     assert owner.influence.bene_gesserit == 1
     assert len(owner.intrigue_cards) == 1
 
@@ -847,11 +861,26 @@ def test_occupation_draws_and_grants_the_combat_icon() -> None:
     state = _place(
         _state(_owner((occupation,), troops_garrison=3)), occupation, "arrakeen"
     )
-    resolved = resolve_agent_card_effect(state)
+    # "[draw 1] [Combat]": two icons in the owner's order (OQ-027,
+    # cleanup-2d-5), the Combat icon answered by its own row.
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(state, 0)
+    ] == ["cards"]
+    assert [
+        action.action_id for action in legal_agent_card_payment_actions(state, 0)
+    ] == ["take_agent_card_combat_icon"]
+    combat = apply_agent_card_payment(
+        state, DomainAction("take_agent_card_combat_icon", 0)
+    ).state
+    _, context = current_agent_effect_context(combat)
+    assert context["pending_combat_deployment"] is True
+    assert context["pending_agent_icons"] == "cards"
+    resolved = resolve_agent_card_icon(
+        combat, DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),))
+    )
     owner = resolved.state.players[0]
     assert len(owner.hand) == 1
-    _, context = current_agent_effect_context(resolved.state)
-    assert context["pending_combat_deployment"] is True
     revealed = _take_gains(_reveal(_state(_owner((occupation,)))))
     assert revealed.players[0].resources.water == 3
     assert revealed.players[0].troops_garrison == 4

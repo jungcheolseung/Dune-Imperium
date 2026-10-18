@@ -2484,7 +2484,7 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
     owner = state.players[seat]
     effect = active_agent_card(context).agent_effect
     for key in pending_agent_icons(context):
-        if key not in (*AUTOMATIC_AGENT_ICONS, AGENT_ICON_TRASH):
+        if key not in (*AUTOMATIC_AGENT_ICONS, *_CHOICE_ICON_ROWS):
             continue
         block = agent_icon_block(owner, context, effect, key)
         if block is None:
@@ -2492,9 +2492,10 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         found.row(
             "waiting" if block.condition in _ICON_CAN_STILL_BE_MET else "choice",
             f"agent_icon:{key}",
-            # Tread in Darkness's trash icon is offered as its trash choices.
-            DomainAction(action_id="trash_agent_card", actor=seat)
-            if key == AGENT_ICON_TRASH
+            # A choice icon is offered as its own rows (Tread in Darkness's
+            # trash, In High Places' Spy, Occupation's Combat icon).
+            DomainAction(action_id=_CHOICE_ICON_ROWS[key], actor=seat)
+            if key in _CHOICE_ICON_ROWS
             else DomainAction(
                 action_id="resolve_agent_card_effect",
                 actor=seat,
@@ -2513,6 +2514,13 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+# The choice icons of an icon-by-icon box judged by ``agent_icon_block``,
+# and the row each is offered as (cleanup-2d-5 added the Spy and Combat).
+_CHOICE_ICON_ROWS: Final[Mapping[str, str]] = {
+    AGENT_ICON_TRASH: "trash_agent_card",
+    "spy": "place_agent_card_spy",
+    "combat": "take_agent_card_combat_icon",
+}
 _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,

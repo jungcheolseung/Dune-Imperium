@@ -310,6 +310,21 @@
   줄 하나씩 내는 순서 창이 된다(c7r3는 지불 뒤 같은 창; 폐기 아이콘을 고르면 거절 있는 trash 창이 열림). 새 템플릿
   `resolve_research_icon` 다섯(Immortality catalog). 옛 기록은 다리 `research_icon_order`가 아이콘들을 일으킨 기록 단계 바로 뒤에 옛
   고정 순서로 답한다.
+- 카드 Agent box 확장 3(2026-10-18 사용자 결정, 정리-2d-5, 브랜치 `cleanup2`, codec v149): "위에 아이콘 두 개를 한 번에 해결하는 Agent
+  칸은 원칙대로 아이콘마다 나누자." 위 "카드 Agent box 확장"(2026-09-03, "카드 효과도 마찬가지")의 원칙대로, 두 아이콘을 행동 하나로
+  해결하던 box 셋도 아이콘마다 해결한다. (1) Clandestine Meeting "[Bene Gesserit Influence] [Intrigue card]" `[Clandestine Meeting card]` —
+  Influence 아이콘은 한 진영뿐인 `choose_agent_card_influence(faction=bene_gesserit)` 행(인쇄된 한 진영이므로 맨 위에서도 제시되고 얻을
+  것이 없으면 잃는다, OQ-060), Intrigue는 `resolve_agent_card_effect(effect=intrigue)`. (2) Occupation "[draw 1] [Combat]"
+  `[Immortality p. 16]` — `resolve_agent_card_effect(effect=cards)`와 Combat 아이콘 행 `take_agent_card_combat_icon`(High Priority
+  Travel이 쓰던 행). (3) In High Places "If you have another Bene Gesserit card in play: [draw 1 card] [Spy]" `[In High Places card]` —
+  Tread in Darkness처럼 Bond가 box를 열고 아이콘마다 해결할 때 다시 판정한다(OQ-028). draw는 `resolve_agent_card_effect(effect=cards)`,
+  Spy는 공유 배치 창 대신 box의 Spy 행(`place_agent_card_spy`·`recall_spy_for_agent_card`·`decline_agent_card_spy`, OQ-057 (14)).
+  Bond를 잃으면 두 아이콘이 회색 줄로 기다리다 차례가 끝날 때 사라진다(OQ-057 (1)). 새 codec 템플릿은 없다(있는 행을 아이콘 단위로 씀).
+  Overthrow는 아이콘이 하나라 대상이 아니다(정리-2d 대조). 보조 증거(공식 규칙 아님): 앱도 세 카드를 능력 둘로 둔다
+  (`AgentGainIntrigueAbility`·`GainInfluenceAbility`, `DrawAbility`·`DeployUnitsAbility`, `BeneGesseritDrawAbility`·`InHighPlacesPlaceSpyAbility`).
+  옛 기록과의 같음 확인은 선언된 차이 `split_boxes`(`scripts/ab/differences/cleanup2d.py`). 테스트: `tests/unit/rules/test_immortality_imperium.py`
+  (`test_clandestine_meeting_needs_a_graft_and_pays_influence_and_intrigue`, `test_occupation_draws_and_grants_the_combat_icon`),
+  `tests/unit/rules/test_agent_effects.py`(`test_in_high_places_*` 넷), `tests/unit/display/test_unavailable.py::test_in_high_places_icons_grey_out_once_its_bond_card_is_trashed`.
 
 ## OQ-028 — 인쇄 조건의 판정 시점: 같은 turn의 뒤 선택으로 성립하는 조건
 

@@ -17,7 +17,6 @@ from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
-    OBSERVATION_POSTS,
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -80,6 +79,7 @@ from dune_imperium.rules.agent_box_abilities import (
     graft_trash_block,
     graft_trash_box,
     graft_trash_rows,
+    icon_line,
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
@@ -129,9 +129,7 @@ from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits as _keep_trash_recruits
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
-from dune_imperium.rules.combat_deployment import (
-    grant_combat_icon,
-)
+from dune_imperium.rules.combat_deployment import open_combat_deployment
 from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
@@ -193,7 +191,6 @@ from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandwo
 from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.specimens import generate_specimens
-from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
@@ -592,8 +589,6 @@ def apply_opponent_card_discard(
     return RuleResult(state=popped, events=discarded.events)
 
 
-
-
 def legal_agent_card_influence_actions(
     state: GameState,
     player: int,
@@ -660,17 +655,25 @@ def legal_agent_card_influence_actions(
                 for faction in rising
             ),
         )
-    if effect is not PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE:
+    found = icon_line(context, recorded, GainInfluence)
+    if found is None:
         return ()
-    if AGENT_ICON_INFLUENCE not in pending_agent_icons(context):
+    # An icon box's Influence (Dangerous Rhetoric's chosen Faction,
+    # Clandestine Meeting's Bene Gesserit, cleanup-2d-5): a chosen Faction
+    # never at the top (OQ-060); a printed one is gained or lost there.
+    key, piece = found
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, key) is not None:
         return ()
+    factions = piece.factions or tuple(Faction)
     return tuple(
         DomainAction(
             action_id="choose_agent_card_influence",
             actor=player,
             arguments=(("faction", faction.value),),
         )
-        for faction in rising
+        for faction in factions
+        if len(factions) == 1 or faction in rising
     )
 
 
@@ -719,7 +722,6 @@ def apply_agent_card_influence(
     if not isinstance(faction_value, str):
         raise RuntimeError("Agent-card Influence choice has invalid Faction")
     faction = Faction(faction_value)
-    source_card = active_agent_card(context)
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
@@ -731,20 +733,19 @@ def apply_agent_card_influence(
         1,
         event_prefix=f"{source}:influence:{faction.value}",
     )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
-    ):
-        # "Trash this card." is the box's other printed icon, resolved by
-        # its own action in the owner's order (OQ-027).
-        finish_agent_icon(context, AGENT_ICON_INFLUENCE)
+    icon = icon_line(context, recorded, GainInfluence)
+    if icon is not None:
+        # The box's other printed icons (Dangerous Rhetoric's "Trash this
+        # card.", Clandestine Meeting's Intrigue card) resolve by their own
+        # actions in the owner's order (OQ-027).
+        finish_agent_icon(context, icon[0])
         closing = (
             agent_box_event(
                 source,
                 source_card_id,
                 action.actor,
                 BoxOutcome.RESOLVED,
-                effect=AGENT_ICON_INFLUENCE,
+                effect=icon[0],
             ),
         )
     else:
@@ -899,6 +900,9 @@ def legal_agent_card_spy_actions(
         # Bene Gesserit Operative, Reliable Informant, Double Agent: from
         # their records (composed A3c).
         return target_rows(state, player, recorded)
+    icon_rows = _spy_icon_rows(state, player, context, recorded)
+    if icon_rows is not None:
+        return icon_rows
     if (
         recorded is not None
         and discard_box(recorded)
@@ -910,6 +914,66 @@ def legal_agent_card_spy_actions(
         # pp. 5, 12].
         return agent_spy_rows(state, player, spy, context)
     return ()
+
+
+def _combat_icon_rows(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    recorded: Ability | None,
+) -> tuple[DomainAction, ...] | None:
+    """An icon box's Combat icon (Occupation, cleanup-2d-5): its row, or ()
+    while its condition fails; None when no Combat icon waits."""
+
+    combat = icon_line(context, recorded, GrantCombatDeployment)
+    if combat is None:
+        return None
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, combat[0]):
+        return ()
+    return (DomainAction(action_id="take_agent_card_combat_icon", actor=player),)
+
+
+def _spy_icon_rows(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    recorded: Ability | None,
+) -> tuple[DomainAction, ...] | None:
+    """An icon box's Spy icon (In High Places, cleanup-2d-5): the box's Spy
+    rows (``agent_spy_rows``), or () while its condition fails; None when no
+    Spy icon waits."""
+
+    spy = icon_line(context, recorded, PlaceSpy)
+    if spy is None:
+        return None
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, spy[0]):
+        return ()
+    return agent_spy_rows(state, player, spy[1], context)
+
+
+def legal_agent_card_icon_choice_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """The Combat and Spy icons of an icon-by-icon box, answered by the
+    payment and the Spy handlers (cleanup-2d-5); the recall, the Influence
+    and the trash keep their own providers."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    return (
+        *(_combat_icon_rows(state, player, context, recorded) or ()),
+        *(_spy_icon_rows(state, player, context, recorded) or ()),
+    )
 
 
 def apply_agent_card_spy_action(
@@ -926,11 +990,19 @@ def apply_agent_card_spy_action(
     source = (
         f"round:{state.round_number}:player:{action.actor}:agent_card:{source_card_id}"
     )
+    # In High Places' Spy is one of its icons (cleanup-2d-5): the answer
+    # retires the icon, not the box.
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    icon = icon_line(context, recorded, PlaceSpy)
+    key = icon[0] if icon is not None else None
 
     if action.action_id == "decline_agent_card_spy":
         # No Spy in supply and the recall-first passed up [Main pp. 11, 20]:
         # the box resolves without a Spy and the Agent turn goes on.
-        context["pending_agent_effect"] = False
+        if key is not None:
+            finish_agent_icon(context, key)
+        else:
+            context["pending_agent_effect"] = False
         context.pop("agent_card_spy_pending", None)
         return RuleResult(
             state=advance_after_effect(state, context, state.players),
@@ -941,7 +1013,11 @@ def apply_agent_card_spy_action(
                     payload=(("card_id", source_card_id), ("player", action.actor)),
                 ),
                 agent_box_event(
-                    source, source_card_id, action.actor, BoxOutcome.DECLINED
+                    source,
+                    source_card_id,
+                    action.actor,
+                    BoxOutcome.DECLINED,
+                    effect=key,
                 ),
             ),
         )
@@ -970,7 +1046,10 @@ def apply_agent_card_spy_action(
         return RuleResult(state=next_state, events=(event,))
 
     next_owner = place_spy(owner, post_id)
-    context["pending_agent_effect"] = False
+    if key is not None:
+        finish_agent_icon(context, key)
+    else:
+        context["pending_agent_effect"] = False
     context.pop("agent_card_spy_pending", None)
     # A second Spy box this turn (a graft partner, Ghola's copy) starts
     # without a recall-first of its own.
@@ -993,7 +1072,9 @@ def apply_agent_card_spy_action(
         state=next_state,
         events=(
             event,
-            agent_box_event(source, source_card_id, action.actor, BoxOutcome.RESOLVED),
+            agent_box_event(
+                source, source_card_id, action.actor, BoxOutcome.RESOLVED, effect=key
+            ),
         ),
     )
 
@@ -1326,8 +1407,6 @@ _TRASH_BOXES: Final = frozenset(
 )
 
 
-
-
 def _agent_card_trash_targets(
     state: GameState, player: int, context: dict[str, ActionValue]
 ) -> tuple[str, ...]:
@@ -1647,6 +1726,9 @@ def legal_agent_card_payment_actions(
         # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
         # Combat" [card face], from its record (composed A3f).
         return either_rows(state, player, recorded)
+    combat = _combat_icon_rows(state, player, context, recorded)
+    if combat is not None:
+        return combat
     if source_card.agent_effect is _RESEARCH_AND_TRASH_FOR_VP:
         # Scientific Breakthrough prints the Research icon and, on its own
         # line, "[2 genetic markers]: Trash this card -> 1 VP" [card face].
@@ -1729,6 +1811,24 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     _, context = current_agent_effect_context(state)
     _, card_instance_id, _ = _effect_subject(context)
     source = agent_card_source(state.round_number, action.actor, card_instance_id)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    combat = icon_line(context, recorded, GrantCombatDeployment)
+    if combat is not None:
+        # Occupation's Combat icon [Bloodlines p. 5], one of its icons.
+        open_combat_deployment(context)
+        finish_agent_icon(context, combat[0])
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                agent_box_event(
+                    source,
+                    card_instance_id,
+                    action.actor,
+                    BoxOutcome.RESOLVED,
+                    effect=combat[0],
+                ),
+            ),
+        )
     paid = _apply_payment_choice(state, action, context, source)
     if _box_still_pending(paid.state, action.actor, card_instance_id):
         return paid
@@ -1857,13 +1957,9 @@ def _apply_payment_choice(
     if recorded is not None and graft_trash_box(recorded):
         return _apply_graft_trash(state, action, recorded, context, source)
     if action.action_id == "take_agent_card_combat_icon":
-        # High Priority Travel's Combat half; the grant writes the frame, so
-        # the context is re-read before the box closes.
-        with_icon = grant_combat_icon(state, action.actor)
-        _, granted = current_agent_effect_context(with_icon)
-        granted["pending_agent_effect"] = False
-        next_state = advance_after_effect(with_icon, granted, with_icon.players)
-        return RuleResult(state=next_state, events=())
+        # High Priority Travel's Combat half [Bloodlines p. 5].
+        open_combat_deployment(context)
+        return RuleResult(state=advance_after_effect(state, context), events=())
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
         # so its research still pays out (OQ-022) unless it already did;
@@ -2083,8 +2179,6 @@ def _apply_arrakis_revolt_payment(
             state=replacement.state, events=(*events, *replacement.events)
         )
     return RuleResult(state=next_state, events=tuple(events))
-
-
 
 
 def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
@@ -3185,16 +3279,6 @@ def _box_subject(
     return context, player, card_instance_id, owner, source
 
 
-
-
-
-
-
-
-
-
-
-
 def _hook_possible_futures(state: GameState) -> RuleResult:
     """Possible Futures' two-troop half, its plain resolution (the Bond case
     pays both through the Influence choice instead): the shortfall named
@@ -3227,43 +3311,6 @@ def _is_possible_futures(ability: Ability | None) -> bool:
     return ability is not None and ability.hook == "possible_futures"
 
 
-
-
-
-
-def _hook_in_high_places(state: GameState) -> RuleResult:
-    """In High Places: "If you have another Bene Gesserit card in play: [draw
-    1 card] [Spy]" [In High Places card], the Bond judged when the effect
-    resolves [Main pp. 9, 20]. The box's event comes last; the plain Spy
-    icon opens the shared placement frame -- any unoccupied post, mandatory
-    with a Spy in supply, and with an empty supply "you may first recall one
-    of your Spies" [Main pp. 11, 20] (OQ-057 (14)) -- under the draw, whose
-    discard shuffle (if any) resolves first, so the printed order holds."""
-
-    context, player, card_instance_id, owner, event_source = _box_subject(state)
-    bonded = has_faction_bond(
-        counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
-    )
-    context["pending_agent_effect"] = False
-    next_state = advance_after_effect(state, context)
-    event = agent_box_event(
-        event_source,
-        card_instance_id,
-        player,
-        BoxOutcome.RESOLVED if bonded else BoxOutcome.UNAVAILABLE,
-    )
-    if not bonded:
-        return RuleResult(state=next_state, events=(event,))
-    with_spy = spy_placement_frame(
-        next_state,
-        player,
-        tuple(post.post_id for post in OBSERVATION_POSTS),
-        source=event_source,
-    )
-    draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
-    return RuleResult(state=draw.state, events=(*draw.events, event))
-
-
 def _close_box(
     state: GameState,
     context: dict[str, ActionValue],
@@ -3283,10 +3330,6 @@ def _close_box(
         player,
         outcome,
     )
-
-
-
-
 
 
 def _hook_long_live_the_fighters(state: GameState) -> RuleResult:
@@ -3352,8 +3395,6 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
     )
 
 
-
-
 def _hook_beasts_spoils(state: GameState) -> RuleResult:
     """The Beast's Spoils: one reward per printed battle icon kind that is
     face up in the owner's supply -- immediate matching keeps at most one
@@ -3410,7 +3451,6 @@ def _hook_beasts_spoils(state: GameState) -> RuleResult:
 _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
     MappingProxyType(
         {
-            "in_high_places": _hook_in_high_places,
             "possible_futures": _hook_possible_futures,
             # The boxes no stage of the plan listed (composed A3g).
             "long_live_the_fighters": _hook_long_live_the_fighters,

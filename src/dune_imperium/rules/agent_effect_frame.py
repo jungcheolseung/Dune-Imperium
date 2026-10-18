@@ -33,6 +33,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
+    legal_agent_card_icon_choice_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
     legal_agent_card_opponent_retreat_actions,
@@ -297,6 +298,7 @@ def _active_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
             *legal_agent_card_recall_actions(state, player),
             *legal_agent_card_influence_actions(state, player),
             *legal_agent_card_trash_actions(state, player),
+            *legal_agent_card_icon_choice_actions(state, player),
         )
     else:
         # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
