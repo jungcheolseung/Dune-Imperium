@@ -26,6 +26,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AtFactionSpace,
     AtMakerSpace,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
@@ -335,6 +336,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             )
         case (
             AtMakerSpace()
+            | AtFactionSpace()
             | FactionBond()
             | Grafted()
             | SpyRecalledThisTurn()

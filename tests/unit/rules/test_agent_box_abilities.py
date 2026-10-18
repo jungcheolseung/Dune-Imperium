@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AtFactionSpace,
     AtMakerSpace,
     CompleteContract,
     DiscardedCardHasFaction,
@@ -190,7 +191,7 @@ def test_placement_requirements_are_fixed_by_the_placement() -> None:
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.requirement is not None
     }
-    assert requirements == {AtMakerSpace, FactionBond}
+    assert requirements == {AtMakerSpace, AtFactionSpace, FactionBond}
     harvester = AGENT_BOX_ABILITIES[_BOX.GAIN_SPICE_IF_MAKER_SPACE]
     owner = PlayerState(player_id=0)
     maker = next(space for space in BOARD_SPACES if space.maker)
@@ -1188,4 +1189,4 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
         "arrakis_revolt",
         "dissecting_kit",
     }
-    assert len(box_hook_names()) == 15
+    assert len(box_hook_names()) == 13

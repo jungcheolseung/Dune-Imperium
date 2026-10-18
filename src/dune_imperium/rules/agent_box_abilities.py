@@ -53,10 +53,16 @@ from dune_imperium.content.uprising.abilities import (
     AbilityStructure,
 )
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS, BoardSpace, Faction
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+    BoardSpace,
+    Faction,
+)
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AllConditions,
+    AtFactionSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
@@ -243,6 +249,8 @@ def _requirement_holds(
     match condition:
         case AtMakerSpace():
             return space.maker
+        case AtFactionSpace():
+            return space.faction is not None
         case FactionBond(faction=faction):
             # A Row card borrowed with Usurp is not "in play" (OQ-054,
             # ``counted_in_play``), so it never gives another card its Bond.
@@ -448,6 +456,43 @@ def _gain(owner: PlayerState, reward: GainResources) -> PlayerState:
     )
 
 
+# The frame key that says a box's Influence replaced the visited space's own
+# 1 for good: a partner box that held it too and expires later does not
+# bring the 1 back (never 2 + 1, [Main pp. 9, 11, 20]).
+SPACE_INFLUENCE_REPLACED: Final = "space_influence_replaced"
+
+
+def holds_space_influence(ability: Ability | None) -> bool:
+    """Whether a waiting box of ``ability`` holds the visited space's own
+    Influence: a mandatory "Gain 2 Influence with the visited Faction" that
+    replaces it [Subversive Advisor card], so while the box waits the
+    space's ``resolve_faction_influence`` step is not offered and the two
+    never add up to 3 [Main pp. 9, 11, 20]."""
+
+    return (
+        ability is not None
+        and ability.mark is AbilityMark.MANDATORY
+        and any(
+            isinstance(reward, GainInfluence) and reward.replaces_space
+            for line in ability.sections
+            for reward in line.rewards
+        )
+    )
+
+
+def _visited_faction(context: Mapping[str, ActionValue]) -> Faction:
+    """The Faction of the space the Agent was sent to (the placement judged
+    it, ``AtFactionSpace``)."""
+
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Agent-turn effect frame has invalid space")
+    faction = BOARD_SPACES_BY_ID[space_id].faction
+    if faction is None:
+        raise RuntimeError("a visited Faction's gain needs a Faction space")
+    return faction
+
+
 def _credit_recruits(context: dict[str, ActionValue], recruited: int) -> None:
     previous = context.get("troops_recruited")
     if isinstance(previous, bool) or not isinstance(previous, int):
@@ -637,9 +682,15 @@ def resolve_box(state: GameState) -> RuleResult:
     influence_events: tuple[GameEvent, ...] = ()
     for reward in line.rewards if available else ():
         if isinstance(reward, GainInfluence):
-            # A fixed Faction's Influence, prefix ``<box>:influence:<f>``.
-            assert reward.factions is not None and not reward.requires_choice
-            faction = reward.factions[0]
+            # A fixed or the visited Faction's Influence, prefix
+            # ``<box>:influence:<f>``.
+            if reward.visited_space:
+                faction = _visited_faction(context)
+                if reward.replaces_space:
+                    context[SPACE_INFLUENCE_REPLACED] = True
+            else:
+                assert reward.factions is not None and not reward.requires_choice
+                faction = reward.factions[0]
             gained = gain_faction_influence(
                 working,
                 player,

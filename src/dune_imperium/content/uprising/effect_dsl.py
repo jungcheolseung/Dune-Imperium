@@ -258,6 +258,14 @@ class AtMakerSpace:
 
 
 @dataclass(frozen=True, slots=True)
+class AtFactionSpace:
+    """The Agent was sent to a Faction space: fixed by the placement, so an
+    Agent box judges it when the card is played (OQ-028 (a)). A box reached
+    off one through a granted Spy or Agent icon (Clandestine, Resourceful,
+    Urgent Shigawire) has no visited Faction to gain with (OQ-046)."""
+
+
+@dataclass(frozen=True, slots=True)
 class FactionBond:
     """Another card of ``faction`` is in play: that Faction's Bond ("Fremen
     Bond | 프레멘의 유대감" [Main p. 20])."""
@@ -470,6 +478,7 @@ type Condition = (
     | SpiceAtLeast
     | OpponentPlayedCombatIntrigue
     | AtMakerSpace
+    | AtFactionSpace
     | FactionBond
     | SpyRecalledThisTurn
     | UnitsInConflictAtLeast
@@ -849,10 +858,21 @@ class GainInfluence:
     # played the card, where the player already has ``minimum_own``.
     different_from_trigger: bool = False
     minimum_own: int = 0
+    # "Gain N Influence with the visited Faction" [Overthrow card]
+    # [Subversive Advisor card]: the Faction of the space the Agent was sent
+    # to, no choice; ``replaces_space``: the N replace the space's own 1 --
+    # "기본 1 대신 총 2", never 2 + 1 [Main pp. 9, 11, 20]
+    # (docs/rules/player-turns.md).
+    visited_space: bool = False
+    replaces_space: bool = False
 
     def __post_init__(self) -> None:
         if self.times < 1:
             raise ValueError("Influence gain times must be positive")
+        if self.visited_space and self.factions is not None:
+            raise ValueError("the visited Faction is the only one a visited gain names")
+        if self.replaces_space and not self.visited_space:
+            raise ValueError("only a visited Faction's gain replaces the space's")
         if self.factions is not None:
             if not self.factions or len(self.factions) != len(set(self.factions)):
                 raise ValueError("Influence gain Factions must be unique and non-empty")
@@ -867,6 +887,8 @@ class GainInfluence:
     def requires_choice(self) -> bool:
         """Return whether the player must pick a Faction."""
 
+        if self.visited_space:
+            return False
         return self.factions is None or len(self.factions) > 1
 
 

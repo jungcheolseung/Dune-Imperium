@@ -47,6 +47,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
+    SPACE_INFLUENCE_REPLACED,
     AgentIconBlock,
     AgentPaymentBlock,
     agent_spy_rows,
@@ -86,6 +87,9 @@ from dune_imperium.rules.agent_box_abilities import (
     trash_box,
     trash_rows,
     trashes_remaining,
+)
+from dune_imperium.rules.agent_box_abilities import (
+    holds_space_influence as box_holds_space_influence,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import (
@@ -193,7 +197,7 @@ _RESEARCHED_BOXES: Final = "research_resolved_card_ids"
 # Set once a box's "gain two Influence instead of one" has replaced the
 # visited space's own Influence (Subversive Advisor, Treacherous Maneuver):
 # the space's 1 never comes back after that (``_release_space_influence``).
-_SPACE_INFLUENCE_REPLACED: Final = "space_influence_replaced"
+_SPACE_INFLUENCE_REPLACED: Final = SPACE_INFLUENCE_REPLACED
 _SOLARI_PER_PARTNER_ICON = (
     PersonalCardAgentEffect
     .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
@@ -2609,18 +2613,10 @@ def _left_play_by_own_effect(
 
 
 def holds_space_influence(effect: PersonalCardAgentEffect | None) -> bool:
-    """Return whether a waiting box of this effect holds the space's Influence.
+    """Return whether a waiting box of this effect holds the space's Influence
+    (its record says so, ``agent_box_abilities.holds_space_influence``)."""
 
-    Subversive Advisor's "gain two Influence instead of one" [Subversive
-    Advisor card] replaces the visited Faction space's own gain, so while
-    its box waits the space's ``resolve_faction_influence`` step is not
-    offered: the two never add up to 3 [Main pp. 9, 11, 20].
-    """
-
-    return (
-        effect
-        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
-    )
+    return effect is not None and box_holds_space_influence(box_ability(effect))
 
 
 def _waiting_box_holds_space_influence(context: dict[str, ActionValue]) -> bool:
@@ -3703,36 +3699,6 @@ def _box_subject(
 
 
 
-def _hook_overthrow(state: GameState) -> RuleResult:
-    """Overthrow: one more Influence with the visited Faction (the placement
-    keeps the box off a space with no Faction,
-    ``agent_turn.agent_effect_is_available``)."""
-
-    context, player, card_instance_id, _, event_source = _box_subject(state)
-    space_id = context.get("space_id")
-    if not isinstance(space_id, str):
-        raise RuntimeError("Agent-turn effect frame has invalid space")
-    faction = BOARD_SPACES_BY_ID[space_id].faction
-    if faction is None:
-        raise RuntimeError("card effect requires a visited Faction space")
-    gained = gain_faction_influence(
-        state,
-        player,
-        faction,
-        1,
-        event_prefix=f"{event_source}:influence:{faction.value}",
-    )
-    context["pending_agent_effect"] = False
-    next_state = advance_after_effect(gained.state, context, gained.state.players)
-    return RuleResult(
-        state=next_state,
-        events=(
-            *gained.events,
-            agent_box_event(
-                event_source, card_instance_id, player, BoxOutcome.RESOLVED
-            ),
-        ),
-    )
 
 
 def _hook_possible_futures(state: GameState) -> RuleResult:
@@ -3889,50 +3855,6 @@ def _hook_long_reach(state: GameState) -> RuleResult:
     )
 
 
-def _hook_subversive_advisor(state: GameState) -> RuleResult:
-    """Subversive Advisor, "Gain 2 Influence with the visited Faction, Trash
-    this card": the Influence's events, then the trash's, named ``<box>``,
-    then the box's (the placement keeps the box off a space with no Faction,
-    ``agent_turn.agent_effect_is_available``)."""
-
-    context, player, card_instance_id, _, source = _box_subject(state)
-    space_id = context.get("space_id")
-    if not isinstance(space_id, str):
-        raise RuntimeError("Agent-turn effect frame has invalid space")
-    faction = BOARD_SPACES_BY_ID[space_id].faction
-    if faction is None:
-        raise RuntimeError("card effect requires a visited Faction space")
-    gained = gain_faction_influence(
-        state,
-        player,
-        faction,
-        2,
-        event_prefix=f"{source}:influence:{faction.value}",
-    )
-    # The 2 replaced the space's 1 for good: a partner box that held it
-    # too and expires later does not bring the 1 back (never 2 + 1).
-    context[_SPACE_INFLUENCE_REPLACED] = True
-    trashed = trash_personal_card(
-        gained.state,
-        player,
-        card_instance_id,
-        source=source,
-    )
-    _keep_trash_recruits(context, trashed)
-    context["pending_agent_effect"] = False
-    next_state = advance_after_effect(
-        trashed.state,
-        context,
-        trashed.state.players,
-    )
-    return RuleResult(
-        state=next_state,
-        events=(
-            *gained.events,
-            *trashed.events,
-            agent_box_event(source, card_instance_id, player, BoxOutcome.RESOLVED),
-        ),
-    )
 
 
 def _hook_long_live_the_fighters(state: GameState) -> RuleResult:
@@ -4075,11 +3997,9 @@ def _hook_beasts_spoils(state: GameState) -> RuleResult:
 _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
     MappingProxyType(
         {
-            "overthrow": _hook_overthrow,
             "in_high_places": _hook_in_high_places,
             "possible_futures": _hook_possible_futures,
             # The boxes no stage of the plan listed (composed A3g).
-            "subversive_advisor": _hook_subversive_advisor,
             "long_live_the_fighters": _hook_long_live_the_fighters,
             "treacherous_maneuver": _hook_rows_only,
             "corrinth_city": _hook_rows_only,

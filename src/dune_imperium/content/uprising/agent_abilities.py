@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
     AdvanceTleilaxu,
+    AtFactionSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
@@ -588,10 +589,11 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Seek Allies: "Trash this card." [Main p. 20] -- the box trashes
             # its own card (cleanup-2d).
             _BOX.TRASH_SELF: _box(TrashThisCard()),
-            # Overthrow: one more Influence with the visited Faction, with no
-            # event of its own; reachable only on a Faction space (the
-            # placement code's rule, not a printed condition).
-            _BOX.GAIN_VISITED_FACTION_INFLUENCE: _hook("overthrow"),
+            # Overthrow: "Gain 1 additional Influence with the visited
+            # Faction"; nothing to gain off a Faction space (OQ-046).
+            _BOX.GAIN_VISITED_FACTION_INFLUENCE: _box(
+                GainInfluence(visited_space=True), requirement=AtFactionSpace()
+            ),
             # Lisan al Gaib: the Fremen Influence, the Bond judged when the box
             # resolves (a grafted partner may give it).
             _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
@@ -619,10 +621,11 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # whole has no line (a part alone would misread as the box), its
             # printed text in the comment.
             # Subversive Advisor: "Gain 2 Influence with the visited Faction,
-            # Trash this card" -- the 2 replace the space's 1 (never 2 + 1);
-            # reachable only on a Faction space (``agent_turn``).
-            _BOX.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF: _hook(
-                "subversive_advisor"
+            # Trash this card" -- the 2 replace the space's 1 (never 2 + 1).
+            _BOX.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF: _box(
+                GainInfluence(visited_space=True, times=2, replaces_space=True),
+                TrashThisCard(),
+                requirement=AtFactionSpace(),
             ),
             # Long Live the Fighters: "If you have 3 or more cards in your deck:
             # Look at the top 3 cards, Draw 1, Discard 1, Trash 1" -- the

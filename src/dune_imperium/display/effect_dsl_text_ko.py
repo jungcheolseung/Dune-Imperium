@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
+    AtFactionSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -363,6 +364,12 @@ def _gain_influence_text_ko(gain: GainInfluence) -> str:
     하나"); an explicit Faction subset joins with "또는" (korean-card-style.md rule
     6's "—OR—" → "—또는—", extended to an inline word list).
     """
+    if gain.visited_space:
+        # "방문한 팩션 {influence_any} 1 추가" (Overthrow) and "방문한 팩션
+        # {influence_any:2}" (Subversive Advisor), ``tokens_ko.py``.
+        if gain.replaces_space:
+            return f"방문한 팩션 {{influence_any:{gain.times}}}"
+        return f"방문한 팩션 {{influence_any}} {gain.times} 추가"
 
     if gain.factions is not None and len(gain.factions) == 1:
         return f"{{influence_{gain.factions[0].value}:{gain.times}}}"
@@ -498,6 +505,9 @@ def condition_text_ko(condition: Condition) -> str:
         case AtMakerSpace():
             # Quotes ``tokens_ko.py``'s "메이커 장소에 있다면:" (Desert Power).
             return "메이커 장소에 있다면"
+        case AtFactionSpace():
+            # Never printed; "게임판의 팩션 장소" [Main p. 7] (glossary-ko.md).
+            return "팩션 장소에 있다면"
         case FactionBond(faction=faction):
             # "Fremen Bond | 프레멘의 유대감" (glossary-ko.md, [Main p. 20]);
             # ``tokens_ko.py``'s "베네 게세리트의 유대감이면:".
