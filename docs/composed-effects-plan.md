@@ -738,6 +738,11 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      (3) `TakeContract` 문구(71e2fed6) — DSL이 "Take 1 face-up Contract"/"앞면 {contract} 1개 가져옴"으로(개인 카드 문구와 같게).
      `ResearchBonus`는 파생 키로 그대로. 확인: 매 단계 2c 끝 기록 200판 same(선언된 차이 그대로), 화면 문구·브라우저 카탈로그·
      codec 행이 40판에서 바이트 단위로 같음(`tmp/claude/4767ed6a/c2/2e/parity.py`; (3)은 바뀐 Contract 문구만).
+     **사용자 결정(2026-10-19, "일단 가 방향으로"):** 남은 셋 — Conflict 보상(`ConflictReward`), 계약(`ContractCondition`·
+     `ContractReward`), Reveal 자동 이득(`PersonalCardRevealEffect`) — 은 그대로 둔다. 이 셋은 옮겨 적은 사본이 아니라 기록을 종류별로
+     더한 합계이고, 지급(동률 배수, CHOAM 없을 때 계약 → Solari 2)·사건 payload(2c-3 4번: 합한 키를 싣는다)·화면 문구가 함께 쓴다.
+     데이터 원본은 기록 하나이고, 합계는 불러올 때 기록에서 계산하며 담을 수 없는 기록이면 불러오기가 실패한다. 지급 코드가 조각을
+     하나씩 읽게 다시 짜는 일은 아래 B단계로 미룬다. **정리-2e 끝.**
   5b. **정리-2f — 거절·확인 줄 정리(사용자 결정 2026-10-18, "모두 추천 값대로"):** (가) 엔진이 더는 내놓지 않는 거절 템플릿
      (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, `resolve_desert_tactics_without_trash`,
      `decline_imperial_privilege_intrigue`)을 codec·처리 표·이름표에서 뺀다(옛 기보는 다리가 이름으로 거른다). (나) 의무 단계에
@@ -1044,6 +1049,11 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   접합 차례의 `box=1`을 일반화). 엔진 밖 약 5,300곳을 함께 옮긴다.
 - 정하는 기준: A8 뒤 확장 하나를 빼고 학습한 망이 그 확장에 얼마나 빨리 적응하는지(entity-network-plan.md의 남은
   실험)를 행동 특성 표만으로 잰다. 충분하면 B단계는 하지 않는다. 모자라면 그때 8절의 두 질문과 함께 정한다.
+- 함께 할 일(정리-2e에서 미룸, 사용자 결정 2026-10-19): Conflict 보상·계약·Reveal 자동 이득을 종류별 합계
+  (`ConflictReward`·`ContractCondition`·`ContractReward`·`PersonalCardRevealEffect`) 대신 기록 조각을 하나씩 읽어 지급하게 바꾼다.
+  묶인 보상을 조각 행동으로 나누는 이 단계의 일과 같은 곳을 고친다. 합한 키를 싣는 사건(`combat_reward_gained`·
+  `contract_completed`·Reveal 이득)과 화면 문구도 이때 함께 정한다. B단계를 하지 않으면, C단계에서 합계가 담을 수 없는 보상이
+  처음 나올 때 한다.
 
 ### C단계 — 새 내용
 
