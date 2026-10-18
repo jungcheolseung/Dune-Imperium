@@ -54,6 +54,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
     draw_or_hold_intrigue_cards,
@@ -472,15 +473,7 @@ def _resolve_research_bonus(
             return RuleResult(
                 state=replace(state, players=replace_player(state.players, next_owner)),
                 events=(
-                    GameEvent(
-                        event_id=f"{source}:resources",
-                        kind="research_resources_gained",
-                        payload=(
-                            ("player", player),
-                            ("solari", solari),
-                            ("spice", spice),
-                        ),
-                    ),
+                    resources_gained_event(source, player, solari=solari, spice=spice),
                 ),
             )
         case (

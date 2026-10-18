@@ -30,7 +30,6 @@ from dune_imperium.content.uprising.imperium import (
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.trigger_abilities import (
     acquisition_ability,
-    single_resource,
 )
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
@@ -67,6 +66,7 @@ from dune_imperium.rules.frames import (
     turn_owner_of,
     update_turn_recruits,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import (
@@ -1168,7 +1168,6 @@ def _resolve_imperium_acquisition_bonus(
             case GainResources():
                 # Price is No Object's and Corrino Genes' 2 Solari, Possible
                 # Futures' water, Lisan al Gaib's spice.
-                resource, amount = single_resource(reward)
                 owner = replace(
                     owner,
                     resources=replace(
@@ -1180,14 +1179,12 @@ def _resolve_imperium_acquisition_bonus(
                 )
                 events = (
                     *events,
-                    GameEvent(
-                        event_id=f"{box}:{resource}",
-                        kind="acquisition_resource_gained",
-                        payload=(
-                            ("amount", amount),
-                            ("player", player),
-                            ("resource", resource),
-                        ),
+                    resources_gained_event(
+                        box,
+                        player,
+                        solari=reward.solari,
+                        spice=reward.spice,
+                        water=reward.water,
                     ),
                 )
             case RecruitTroops(count=wanted):

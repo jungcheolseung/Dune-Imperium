@@ -123,7 +123,8 @@ def test_corrinth_city_gains_five_solari_when_seat_is_unavailable() -> None:
 
     assert result.state.players[0].resources.solari == 7
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
-    assert result.events[0].kind == "reveal_solari_gained"
+    assert result.events[0].kind == "resources_gained"
+    assert dict(result.events[0].payload)["solari"] == 5
 
 
 def test_desert_power_can_keep_persuasion_or_pay_water_for_a_sandworm() -> None:
@@ -2914,7 +2915,8 @@ def test_four_contract_reveal_can_keep_spice_or_trash_the_card_for_vp() -> None:
     kept = apply_contract_reveal_choice(revealed, actions[0])
     assert kept.state.players[0].resources.spice == 5
     assert priority in kept.state.players[0].in_play
-    assert kept.events[0].kind == "contract_reveal_spice_gained"
+    assert kept.events[0].kind == "resources_gained"
+    assert dict(kept.events[0].payload)["spice"] == 2
 
     trashed = apply_contract_reveal_choice(revealed, actions[1])
     assert trashed.state.players[0].resources.spice == 3

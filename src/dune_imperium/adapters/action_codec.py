@@ -529,7 +529,9 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # back, and a played window stays open while its seat holds an Intrigue card,
 # judged as it comes back on top; older records take a moved reshuffle of the
 # same cards (``tech_draw_at_the_win``, ``reshuffle_moved``) and finish a
-# window this engine keeps open (``conflict_end_reopened``).
+# window this engine keeps open (``conflict_end_reopened``). (2c) Event
+# kinds, ids and payloads follow the event grammar of the plan's "정리-2c 사건
+# 문법" (no action changes; the state hash changes with the event log).
 ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

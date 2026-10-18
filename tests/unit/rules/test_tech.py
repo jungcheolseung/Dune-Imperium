@@ -1095,6 +1095,43 @@ def test_resolved_acquire_effects(tech_id: str, check: object) -> None:
     assert bought.players[0].tech_ids == (tech_id,)
 
 
+@pytest.mark.parametrize(
+    ("tech_id", "effect", "amounts"),
+    [
+        ("sardaukar_high_command", "victory_points", {"victory_points": 1}),
+        ("plasteel_blades", "solari", {"solari": 4}),
+    ],
+)
+def test_an_acquire_icons_amount_rides_on_its_own_event(
+    tech_id: str, effect: str, amounts: dict[str, int]
+) -> None:
+    # Cleanup-2c, rule decision 4: a gained amount -- Victory Points too --
+    # is a payload key of the event of the thing that scored, not an event
+    # of its own (``victory_points_gained`` is gone).
+    owner = _owner(resources=Resources(solari=4, spice=12))
+    state = _visit(_turn_state(owner, stacks=((tech_id,), (), ())), "assembly_hall")
+    purchase = next(
+        action
+        for action in legal_tech_acquisition_actions(state, 0)
+        if dict(action.arguments).get("tech_id") == tech_id
+    )
+    bought = apply_tech_acquisition(state, purchase).state
+    icon = next(
+        action
+        for action in legal_tech_acquire_effect_actions(bought, 0)
+        if dict(action.arguments)["effect"] == effect
+    )
+    events = apply_tech_acquire_effect(bought, icon).events
+
+    assert [event.kind for event in events] == ["tech_acquire_effect_resolved"]
+    assert dict(events[0].payload) == {
+        "effect": effect,
+        "player": 0,
+        "tech_id": tech_id,
+        **amounts,
+    }
+
+
 def test_planetary_array_queues_an_optional_trash_after_the_visit() -> None:
     # The tile's black trash icon is optional [FAQ p. 3]: in the owner's own
     # Agent turn it waits on the turn as rows, with no refusal (user decision
@@ -2744,7 +2781,7 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
         return [
             event
             for event in result.events
-            if event.event_id.endswith(":endgame_tech:choam_transports")
+            if event.event_id.endswith(":endgame_tech:choam_transports:resources")
         ]
 
     three, four = endgame(3), endgame(4)
@@ -2760,8 +2797,14 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
     assert three.state.players[0].victory_points == owner.victory_points + 1
     # Four contracts add CHOAM Transports' point.
     (scored,) = choam_vp_events(four)
-    assert scored.kind == "victory_points_gained"
-    assert dict(scored.payload) == {"amount": 1, "player": 0, "source": "tech"}
+    # The one gain event, its Victory Point a payload key (cleanup-2c, rule
+    # decisions 3 and 4).
+    assert scored.kind == "resources_gained"
+    assert dict(scored.payload) == {
+        "player": 0,
+        "source": "round:1:player:0:endgame_tech:choam_transports",
+        "victory_points": 1,
+    }
     assert four.state.players[0].victory_points == owner.victory_points + 2
 
 

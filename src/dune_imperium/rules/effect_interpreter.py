@@ -129,6 +129,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player, turn_owner_of
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -1455,6 +1456,10 @@ def apply_rewards(
     specimens = 0
     tleilaxu_advances = 0
     researches = 0
+    # The line's gains, one ``resources_gained`` where its first gain stands
+    # (rule decisions 3 and 4, ``rules/gain_events.py``).
+    gains = {"solari": 0, "spice": 0, "water": 0, "victory_points": 0}
+    gain_at: int | None = None
     for reward in rewards:
         match reward:
             case Research():
@@ -1480,15 +1485,14 @@ def apply_rewards(
                         water=owner.resources.water + water,
                     ),
                 )
+                gain_at = len(events) if gain_at is None else gain_at
+                gains["solari"] += solari
+                gains["spice"] += spice
+                gains["water"] += water
             case GainVictoryPoints(amount=amount):
                 owner = replace(owner, victory_points=owner.victory_points + amount)
-                events.append(
-                    GameEvent(
-                        event_id=f"{source}:victory_points",
-                        kind="victory_points_gained",
-                        payload=(("amount", amount), ("player", player)),
-                    )
-                )
+                gain_at = len(events) if gain_at is None else gain_at
+                gains["victory_points"] += amount
             case RecruitTroops(count=count):
                 owner, recruited = recruit_troops(owner, count)
                 troops_recruited += recruited
@@ -1617,6 +1621,8 @@ def apply_rewards(
             case _:
                 raise TypeError(f"unsupported reward: {reward!r}")
 
+    if gain_at is not None and any(gains.values()):
+        events.insert(gain_at, resources_gained_event(source, player, **gains))
     next_state = replace(state, players=replace_player(state.players, owner))
     for index, gain in enumerate(fixed_influence):
         assert gain.factions is not None

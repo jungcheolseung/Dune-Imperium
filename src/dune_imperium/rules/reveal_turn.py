@@ -108,6 +108,7 @@ from dune_imperium.rules.frames import (
     reveal_is_open_for,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -742,11 +743,7 @@ def resolve_printed_or(state: GameState, action: DomainAction) -> RuleResult:
                     owner.resources, solari=owner.resources.solari + solari
                 ),
             )
-            event = GameEvent(
-                event_id=f"{source}:solari",
-                kind="reveal_solari_gained",
-                payload=(("amount", solari), ("card_id", card_id), ("player", player)),
-            )
+            event = resources_gained_event(source, player, solari=solari)
         case TakeHighCouncilSeat():
             (price,) = line.costs
             assert isinstance(price, PayResources)
@@ -1544,17 +1541,7 @@ def apply_contract_reveal_choice(
                 state.pop_decision(),
                 players=replace_player(state.players, next_owner),
             ),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:spice",
-                    kind="contract_reveal_spice_gained",
-                    payload=(
-                        ("amount", spice),
-                        ("card_id", card_id),
-                        ("player", action.actor),
-                    ),
-                ),
-            ),
+            events=(resources_gained_event(source, action.actor, spice=spice),),
         )
 
     prepared = state.pop_decision()
@@ -3142,16 +3129,8 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
             events=(
-                GameEvent(
-                    event_id=event_id,
-                    kind="reveal_resources_gained",
-                    payload=(
-                        ("player", player),
-                        ("solari", solari),
-                        ("source", source),
-                        ("spice", spice),
-                        ("water", water),
-                    ),
+                resources_gained_event(
+                    event_id, player, solari=solari, spice=spice, water=water
                 ),
             ),
         )

@@ -57,11 +57,11 @@ def _pre_endgame_tech_state(
             continue
         data = payload(event)
         player = int(data["player"])
-        if event.kind == "victory_points_gained":
+        if event.kind == "resources_gained":
             # CHOAM Transports: "Endgame: worth 1 VP if you have completed
             # four or more contracts" [Bloodlines Tech tile] -- a flat VP
-            # gain.
-            tech_vp[player] += int(data["amount"])
+            # gain, on the one gain event (cleanup-2c).
+            tech_vp[player] += int(data.get("victory_points", 0))
         elif (
             event.kind == "influence_gained"
             and influence_amount(

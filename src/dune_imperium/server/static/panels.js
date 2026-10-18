@@ -953,7 +953,8 @@ const vpLedger = {
    expansion) and the review's 75 found one in nearly every scoring step;
    a step with none still shows its own head. */
 const VP_CAUSE_KINDS = new Set([
-  "victory_points_gained",
+  /* A line's gain (cleanup-2c: its Victory Points are a payload key). */
+  "resources_gained",
   "reveal_victory_point_gained",
   "influence_gained",
   "influence_lost",

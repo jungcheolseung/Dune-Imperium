@@ -188,7 +188,12 @@ def test_contingency_plan_plot_option_gains_two_solari_and_is_discarded() -> Non
     assert result.state.players[0].resources.solari == 2
     assert result.state.players[0].intrigue_cards == ()
     assert result.state.intrigue_discard == (card,)
-    assert [event.kind for event in result.events] == ["intrigue_played"]
+    # The play and its line's gain (cleanup-2c, rule decision 3).
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["solari"] == 2
     assert result.events[0].visible_to is None
     # The turn frame is untouched: the owner still chooses an Agent or Reveal turn.
     assert result.state.decision_stack == state.decision_stack
@@ -220,6 +225,7 @@ def test_market_opportunity_offers_each_affordable_exchange() -> None:
     assert [event.kind for event in result.events] == [
         "intrigue_played",
         "intrigue_cost_paid",
+        "resources_gained",
     ]
 
     rich = _turn_state(replace(owner, resources=Resources(solari=5, spice=2)))

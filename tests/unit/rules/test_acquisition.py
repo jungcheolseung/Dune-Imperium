@@ -364,8 +364,12 @@ def test_price_is_no_object_acquisition_gains_two_solari() -> None:
     assert result.state.players[0].resources.solari == 2
     assert tuple(event.kind for event in result.events) == (
         "card_acquired",
-        "acquisition_resource_gained",
+        "resources_gained",
     )
+    gained = result.events[1]
+    assert gained.event_id == f"{dict(gained.payload)['source']}:resources"
+    assert dict(gained.payload)["solari"] == 2
+    assert ":acquire:" in str(dict(gained.payload)["source"])
 
 
 def _price_agent_state(

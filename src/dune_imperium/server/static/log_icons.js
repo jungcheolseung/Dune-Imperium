@@ -118,8 +118,6 @@ const LOG_EVENT_ICONS = {
   // Resources and Victory Points.
   contract_icons_converted_to_solari: "solari",
   leader_signet_solari_paid: "solari",
-  reveal_solari_gained: "solari",
-  contract_reveal_spice_gained: "spice",
   leader_ability_spice_gained: "spice",
   leader_signet_spice_paid: "spice",
   maker_spice_added: "spice",
@@ -129,7 +127,6 @@ const LOG_EVENT_ICONS = {
   leader_board_repeat_paid: "water",
   corrinth_city_payment_resolved: "victory_point",
   reveal_victory_point_gained: "victory_point",
-  victory_points_gained: "victory_point",
   game_finished: "log:vp_winner",
   // Contracts, Control, the Maker and the Shield Wall.
   contract_completed: "contract",
@@ -157,7 +154,6 @@ const LOG_EVENT_ICONS = {
   genetic_marker_reached: "log:research",
   research_advanced: "log:research",
   research_bonus_paid: "log:research",
-  research_resources_gained: "log:research",
   tleilaxu_advanced: "log:tleilaxu",
   tleilaxu_track_end: "log:tleilaxu",
   secret_project_chosen: "log:tech",

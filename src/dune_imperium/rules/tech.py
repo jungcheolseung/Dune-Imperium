@@ -85,6 +85,7 @@ from dune_imperium.rules.frames import (
     update_turn_recruits,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -695,11 +696,28 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
     source = (
         f"round:{state.round_number}:player:{player}:tech:{tech_id}:acquire:{effect}"
     )
+    # What the icon gained rides on its event (rule decision 4: VP, like any
+    # amount gained, is a key of the source event's payload).
+    amounts = {
+        "solari": tile.acquire_solari if effect == "solari" else 0,
+        "victory_points": (
+            tile.acquire_victory_points if effect == "victory_points" else 0
+        ),
+    }
     events: list[GameEvent] = [
         GameEvent(
             event_id=source,
             kind="tech_acquire_effect_resolved",
-            payload=(("effect", effect), ("player", player), ("tech_id", tech_id)),
+            payload=tuple(
+                sorted(
+                    (
+                        ("effect", effect),
+                        ("player", player),
+                        ("tech_id", tech_id),
+                        *((key, amount) for key, amount in amounts.items() if amount),
+                    )
+                )
+            ),
         )
     ]
     owner = working.players[player]
@@ -713,13 +731,6 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
     if effect == "victory_points":
         owner = replace(
             owner, victory_points=owner.victory_points + tile.acquire_victory_points
-        )
-        events.append(
-            GameEvent(
-                event_id=f"{source}:victory_points",
-                kind="victory_points_gained",
-                payload=(("amount", tile.acquire_victory_points), ("player", player)),
-            )
         )
     if effect == "troops":
         owner, recruited = recruit_troops(owner, tile.acquire_troops)
@@ -1198,14 +1209,8 @@ def apply_endgame_tech_effects(state: GameState) -> RuleResult:
                         state, players=replace_player(state.players, scored)
                     )
                     events.append(
-                        GameEvent(
-                            event_id=f"{source}:{tile.tech_id}",
-                            kind="victory_points_gained",
-                            payload=(
-                                ("amount", amount),
-                                ("player", player),
-                                ("source", "tech"),
-                            ),
+                        resources_gained_event(
+                            f"{source}:{tile.tech_id}", player, victory_points=amount
                         )
                     )
                 case EffectSection(
