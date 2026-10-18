@@ -3061,8 +3061,10 @@ _INTRIGUE = ":intrigue_shuffle"
 @pytest.mark.parametrize(
     ("old", "new", "suffix", "renamed"),
     (
-        # A caller's extra word dropped (cleanup-2c-5, 2c-6).
+        # A caller's extra word dropped (cleanup-2c-5, 2c-6), with a seat in
+        # the name or none (an Arrakeen Scouts reward's).
         ("round:2:player:1:x:draw", "round:2:player:1:x", _DISCARD, True),
+        ("round:2:scouts:a:draw", "round:2:scouts:a", _DISCARD, True),
         (
             "round:2:player:1:intrigue:a:0:1:intrigue",
             "round:2:player:1:intrigue:a:0:1",
@@ -3095,6 +3097,14 @@ _INTRIGUE = ":intrigue_shuffle"
             _INTRIGUE,
             True,
         ),
+        # An Arrakeen Scouts reward's research (no seat in the name) moved
+        # the seat's token (corpus record full.ha.75).
+        (
+            "round:5:scouts:competitive_study_late:reward:research:research:c7r3:card",
+            "round:5:player:2:research:c7r3",
+            _DISCARD,
+            True,
+        ),
         # Esmar Tuek's draw for a visit: the visitor's seat, now Esmar's.
         (
             "round:2:player:3:tuek_sietch_visit",
@@ -3123,6 +3133,13 @@ _INTRIGUE = ":intrigue_shuffle"
             False,
         ),
         ("round:2:player:1:board:arrakeen", "round:2:player:1:x", _DISCARD, False),
+        # A seated name never becomes a seatless one.
+        (
+            "round:2:player:1:research:c3r3:card",
+            "round:2:scouts:x:research:c3r3",
+            _DISCARD,
+            False,
+        ),
     ),
 )
 def test_cleanup2c_renames_only_a_draw_it_explains(

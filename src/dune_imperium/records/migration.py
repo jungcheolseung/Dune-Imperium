@@ -2450,11 +2450,14 @@ def _cleanup2c_renamed(old: str, new: str, suffix: str = _DISCARD_SHUFFLE) -> bo
         return esmar[0].group(1) == esmar[1].group(1)
     seat = re.compile(r"^round:\d+:player:(\d+):")
     old_seat, new_seat = seat.match(old), seat.match(new)
-    if (old_seat is None) != (new_seat is None) or (
-        old_seat is not None
-        and new_seat is not None
-        and old_seat.group(1) != new_seat.group(1)
-    ):
+    if old_seat is not None and new_seat is not None:
+        if old_seat.group(1) != new_seat.group(1):
+            return False
+    elif new_seat is not None:
+        # A seatless opener (an Arrakeen Scouts reward's research) moved a
+        # seat's track token: the space's draw is that seat's now.
+        return _track_renamed(old, new, suffix)
+    elif old_seat is not None:
         return False
     for extra in _DROPPED_DRAW_WORDS:
         if old.replace(f"{extra}{suffix}", suffix) == new != old:
@@ -2463,6 +2466,14 @@ def _cleanup2c_renamed(old: str, new: str, suffix: str = _DISCARD_SHUFFLE) -> bo
         return True
     if _OLD_BOX_DRAW.match(old) and _NEW_BOX_DRAW.match(new):
         return True
+    return _track_renamed(old, new, suffix)
+
+
+def _track_renamed(old: str, new: str, suffix: str) -> bool:
+    """Whether ``new`` names after the seat's research or Tleilaxu track
+    space the draw ``old`` named after what moved the token (with an icon's
+    extra ``:card`` or ``:intrigue``)."""
+
     track = _NEW_TRACK_DRAW.match(new)
     return track is not None and any(
         old.replace(f"{extra}{suffix}", suffix).endswith(track.group(1))

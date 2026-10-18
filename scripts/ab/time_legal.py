@@ -37,7 +37,7 @@ from equivalence_rules import At, Rule, Step
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 
 # Frames the stage A1 moved onto the executor; a later stage adds its own.
@@ -79,6 +79,23 @@ def _answer(
     return state
 
 
+def _chance(engine: UprisingRulesEngine, state: Any, step: Sequence[Any]) -> Any:
+    """The recorded chance outcome, under the decision this engine asks when
+    only its name changed (cleanup-2c renamed the draws, and the reshuffles
+    named after them): the same shuffle of the same cards."""
+
+    decision = engine.current_decision(state)
+    decision_id = str(step[1])
+    if (
+        isinstance(decision, ChanceDecision)
+        and decision.decision_id != decision_id
+        and sorted(decision.options) == sorted(step[2])
+        and decision_id.rsplit(":", 1)[1] == decision.decision_id.rsplit(":", 1)[1]
+    ):
+        decision_id = decision.decision_id
+    return ChanceOutcome(decision_id=decision_id, values=tuple(step[2]))
+
+
 def main() -> None:
     trace_dir, games, repeats = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
     rules = load_rules(sys.argv[4]) if len(sys.argv) > 4 else ()
@@ -100,9 +117,7 @@ def main() -> None:
                 continue
             step = old.step
             if step[0] == "c":
-                state = engine.apply(
-                    state, ChanceOutcome(decision_id=step[1], values=step[2])
-                ).state
+                state = engine.apply(state, _chance(engine, state, step)).state
                 state = _answer(engine, state, rules, old, data["rows"], apply=not base)
                 continue
             decision = engine.current_decision(state)

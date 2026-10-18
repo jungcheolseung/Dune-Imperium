@@ -290,6 +290,11 @@ async ({gameId}) => {
     if (!table || typeof table !== "object") continue;
     for (const entry of Object.values(table)) {
       if (entry && typeof entry.name === "string") names.add(entry.name);
+      // A Leader face's ability name, as the page shows it: Korean from the
+      // Korean print, English for Reverend Mother Jessica, whose face has
+      // no Korean scan (docs/rules/glossary-ko.md); its board repeat's line
+      // names it (cleanup-2c review).
+      if (entry && typeof entry.ability === "string") names.add(entry.ability);
     }
   }
   return {out, names: [...names], posts: Object.keys(state.catalog.posts)};
