@@ -690,9 +690,9 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Ornithopter: Recruit 1 troop".
             _BOX.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON: _hook("beasts_spoils"),
             # Long Reach: "Choose two Factions: Gain 1 Influence with each" --
-            # both named before either is paid.
-            _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: _hook(
-                "long_reach", GainInfluence(times=2, distinct=True)
+            # both named before either is paid (a target choice, cleanup-2d).
+            _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: _box(
+                GainInfluence(times=2, distinct=True)
             ),
             # Dissecting Kit: "You may trash the other grafted card -> Generate
             # 1 specimen" (cleanup-2d).

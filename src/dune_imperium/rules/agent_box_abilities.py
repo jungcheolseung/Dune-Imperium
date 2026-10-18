@@ -162,6 +162,7 @@ from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
     influence_amount,
+    influence_can_rise,
 )
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
@@ -717,6 +718,17 @@ def resolve_box(state: GameState) -> RuleResult:
         if isinstance(piece, PlaceSpy):
             context.pop("agent_card_spy_pending", None)
             context.pop("agent_card_spy_recalled", None)
+        if isinstance(piece, GainInfluence) and piece.times > 1:
+            # Long Reach with no second Faction left after its first pick (a
+            # later effect raised the last other cube to the top), or none
+            # named: the Faction named is paid and the rest is lost, as a
+            # Conflict reward's "Choose two" pays its first (OQ-060); the box
+            # fizzles (OQ-057 (1)).
+            named = _pay_named_influence(
+                base, player, _influence_chosen(context), source
+            )
+            base, self_trash = named.state, named.events
+            owner = base.players[player]
         available = False
 
     next_owner: PlayerState = owner
@@ -770,7 +782,8 @@ def resolve_box(state: GameState) -> RuleResult:
         source, card_id, player, _RESOLVED if available else _UNAVAILABLE
     )
     if not available:
-        return RuleResult(state=next_state, events=(event,))
+        # Long Reach's named Faction, paid as it fizzles.
+        return RuleResult(state=next_state, events=(*self_trash, event))
 
     follow_ups: list[GameEvent] = []
     for reward in line.rewards:
@@ -1188,6 +1201,9 @@ def target_piece(ability: Ability | None) -> TargetPiece | None:
     match piece:
         case GainInfluence(requires_choice=True, times=1):
             return piece
+        case GainInfluence(requires_choice=True, distinct=True):
+            # Long Reach's "Choose two Factions" (cleanup-2d).
+            return piece
         case PlaceSpy(agent_icons=None):
             return piece
         case ForceEnemyRetreat() | CompleteContract():
@@ -1208,6 +1224,20 @@ def target_rows(
     if not _line_holds(line, state.players[player], context):
         return ()
     match piece:
+        case GainInfluence(times=times) if times > 1:
+            # "Choose two" of the Factions, one pick at a time: each a
+            # Faction that can rise (OQ-060) and not named yet.
+            chosen = _influence_chosen(context)
+            return tuple(
+                DomainAction(
+                    action_id="choose_agent_card_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+                for faction in Faction
+                if influence_can_rise(state.players[player], faction)
+                and faction.value not in chosen
+            )
         case GainInfluence():
             return piece_rows(
                 state,
@@ -1361,13 +1391,71 @@ def target_blocked(state: GameState, player: int, ability: Ability) -> bool:
     )
 
 
+def _influence_chosen(context: Mapping[str, ActionValue]) -> list[str]:
+    """The Factions this box named so far (they move with the box when the
+    other grafted box is made active, ``graft_boxes.swap_boxes``, so a
+    second such box of the turn names its own)."""
+
+    value = context.get("influence_chosen", "")
+    return str(value).split(",") if value else []
+
+
+def _pay_named_influence(
+    state: GameState, player: int, picks: list[str], source: str
+) -> RuleResult:
+    working = state
+    events: list[GameEvent] = []
+    for pick in picks:
+        step = gain_faction_influence(
+            working, player, Faction(pick), 1, event_prefix=f"{source}:influence:{pick}"
+        )
+        working = step.state
+        events.extend(step.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
 def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult:
-    """Gain the chosen Faction's Influence and close the box."""
+    """Gain the chosen Faction's Influence and close the box.
+
+    "Choose two" [Long Reach card] names both Factions before either
+    Influence moves (designer ruling, OQ-057): the box stays pending until
+    the second, different Faction is named. When no second Faction can rise
+    any more (every other cube at the top, OQ-060), the one named is paid at
+    once and the second is lost, so the owner can use the gain in the rest
+    of the turn (user ruling 2026-10-08, "앱처럼 즉시").
+    """
 
     _, context = current_agent_effect_context(state)
     player, card_id = _subject(context)
     faction = Faction(str(dict(action.arguments)["faction"]))
     source = agent_card_source(state.round_number, player, card_id)
+    piece = target_piece(box_ability(active_agent_card(context).agent_effect))
+    if isinstance(piece, GainInfluence) and piece.times > 1:
+        chosen = [*_influence_chosen(context), faction.value]
+        second_possible = any(
+            influence_can_rise(state.players[player], other)
+            and other.value not in chosen
+            for other in Faction
+        )
+        waiting = len(chosen) < piece.times and second_possible
+        context["influence_chosen"] = ",".join(chosen)
+        context["pending_agent_effect"] = waiting
+        if waiting:
+            return RuleResult(
+                state=advance_after_effect(state, context),
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:influence:{faction.value}:chosen",
+                        kind="agent_card_influence_chosen",
+                        payload=(("faction", faction.value), ("player", player)),
+                    ),
+                ),
+            )
+        paid = _pay_named_influence(state, player, chosen, source)
+        return RuleResult(
+            state=advance_after_effect(paid.state, context, paid.state.players),
+            events=(*paid.events, agent_box_event(source, card_id, player, _RESOLVED)),
+        )
     gained = gain_faction_influence(
         state, player, faction, 1, event_prefix=f"{source}:influence:{faction.value}"
     )

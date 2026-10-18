@@ -758,19 +758,6 @@ def legal_agent_card_influence_actions(
                 for faction in rising
             ),
         )
-    if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
-        # Long Reach: "Choose two" of the four Factions, one pick at a time.
-        chosen_value = context.get("influence_chosen", "")
-        chosen = str(chosen_value).split(",") if chosen_value else []
-        return tuple(
-            DomainAction(
-                action_id="choose_agent_card_influence",
-                actor=player,
-                arguments=(("faction", faction.value),),
-            )
-            for faction in rising
-            if faction.value not in chosen
-        )
     if effect is not PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE:
         return ()
     if AGENT_ICON_INFLUENCE not in pending_agent_icons(context):
@@ -835,100 +822,36 @@ def apply_agent_card_influence(
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
     )
+    gained = gain_faction_influence(
+        state,
+        action.actor,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
     if (
         source_card.agent_effect
-        is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE
+        is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
     ):
-        # Long Reach: "Choose two" names both Factions before either
-        # Influence moves (designer ruling, OQ-057); the box stays pending
-        # until the second, different Faction is chosen. When no second
-        # Faction can rise any more (every other cube at the top, OQ-060),
-        # the one named is paid at once and the second is lost, so the owner
-        # can use the gain in the rest of the turn (user ruling 2026-10-08,
-        # "앱처럼 즉시"; the Steam app gives that one track its +1 as soon as
-        # the ability is used -- secondary evidence, not an official rule).
-        chosen_value = context.get("influence_chosen", "")
-        chosen = [
-            *(str(chosen_value).split(",") if chosen_value else []),
-            faction.value,
-        ]
-        owner_now = state.players[action.actor]
-        second_possible = any(
-            influence_can_rise(owner_now, other) and other.value not in chosen
-            for other in Faction
+        # "Trash this card." is the box's other printed icon, resolved by
+        # its own action in the owner's order (OQ-027).
+        finish_agent_icon(context, AGENT_ICON_INFLUENCE)
+        closing = (
+            agent_box_event(
+                source,
+                source_card_id,
+                action.actor,
+                BoxOutcome.RESOLVED,
+                effect=AGENT_ICON_INFLUENCE,
+            ),
         )
-        waiting = len(chosen) < 2 and second_possible
-        # The picks belong to this box; they move with it when the other
-        # grafted box is made active (``graft_boxes.swap_boxes``), so a
-        # second Long Reach box of the turn (Ghola copying it, OQ-057 (12))
-        # names its own two Factions.
-        context["influence_chosen"] = ",".join(chosen)
-        context["pending_agent_effect"] = waiting
-        closing: tuple[GameEvent, ...] = (
-            ()
-            if waiting
-            else (
-                agent_box_event(
-                    source, source_card_id, action.actor, BoxOutcome.RESOLVED
-                ),
-            )
-        )
-        if waiting:
-            gained = RuleResult(
-                state=state,
-                events=(
-                    GameEvent(
-                        event_id=f"{source}:influence:{faction.value}:chosen",
-                        kind="agent_card_influence_chosen",
-                        payload=(("faction", faction.value), ("player", action.actor)),
-                    ),
-                ),
-            )
-        else:
-            working = state
-            picked_events: list[GameEvent] = []
-            for pick in chosen:
-                step = gain_faction_influence(
-                    working,
-                    action.actor,
-                    Faction(pick),
-                    1,
-                    event_prefix=f"{source}:influence:{pick}",
-                )
-                working = step.state
-                picked_events.extend(step.events)
-            gained = RuleResult(state=working, events=tuple(picked_events))
     else:
-        gained = gain_faction_influence(
-            state,
-            action.actor,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
+        context["pending_agent_effect"] = False
+        closing = (
+            agent_box_event(
+                source, source_card_id, action.actor, BoxOutcome.RESOLVED
+            ),
         )
-        if (
-            source_card.agent_effect
-            is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
-        ):
-            # "Trash this card." is the box's other printed icon, resolved by
-            # its own action in the owner's order (OQ-027).
-            finish_agent_icon(context, AGENT_ICON_INFLUENCE)
-            closing = (
-                agent_box_event(
-                    source,
-                    source_card_id,
-                    action.actor,
-                    BoxOutcome.RESOLVED,
-                    effect=AGENT_ICON_INFLUENCE,
-                ),
-            )
-        else:
-            context["pending_agent_effect"] = False
-            closing = (
-                agent_box_event(
-                    source, source_card_id, action.actor, BoxOutcome.RESOLVED
-                ),
-            )
     events: tuple[GameEvent, ...] = gained.events
     players = gained.state.players
     if _is_possible_futures(recorded):
@@ -3694,46 +3617,6 @@ def _hook_rows_only(state: GameState) -> RuleResult:
     )
 
 
-def _hook_long_reach(state: GameState) -> RuleResult:
-    """Long Reach, "Choose two Factions: Gain 1 Influence with each": both
-    picks go through the Influence choice (``apply_agent_card_influence``),
-    paid once both are named, or at once when no second is possible (user
-    ruling 2026-10-08). Reached here only when the second became impossible
-    after the first pick -- a later effect of the turn raised the last other
-    cube to the top -- or with no Faction named at all: the box then waits
-    for the turn's end (this resolution reports itself unavailable, OQ-057
-    (1)), and the Faction already named is paid and the rest is lost, as a
-    Conflict reward's "Choose two" pays its first Faction (OQ-060): the box
-    fizzles, after the Faction it named is paid."""
-
-    context, player, card_instance_id, _, event_source = _box_subject(state)
-    if legal_agent_card_influence_actions(state, player):
-        raise BoxNeedsRows("Agent-card Influence effect requires a player choice")
-    chosen_value = context.get("influence_chosen", "")
-    working = state
-    named_events: list[GameEvent] = []
-    for pick in (Faction(value) for value in str(chosen_value).split(",") if value):
-        step = gain_faction_influence(
-            working,
-            player,
-            pick,
-            1,
-            event_prefix=f"{event_source}:influence:{pick.value}",
-        )
-        working = step.state
-        named_events.extend(step.events)
-    context["pending_agent_effect"] = False
-    return RuleResult(
-        state=advance_after_effect(working, context, working.players),
-        events=(
-            *named_events,
-            agent_box_event(
-                event_source, card_instance_id, player, BoxOutcome.UNAVAILABLE
-            ),
-        ),
-    )
-
-
 
 
 def _hook_long_live_the_fighters(state: GameState) -> RuleResult:
@@ -3883,7 +3766,6 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "corrinth_city": _hook_rows_only,
             "arrakis_revolt": _hook_rows_only,
             "beasts_spoils": _hook_beasts_spoils,
-            "long_reach": _hook_long_reach,
             "scientific_breakthrough": _hook_scientific_breakthrough,
             "slig_farmer": _hook_slig_farmer,
             "stitched_horror": _hook_unavailable,

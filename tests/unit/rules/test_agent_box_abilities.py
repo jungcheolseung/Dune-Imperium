@@ -630,10 +630,11 @@ def test_public_spectacle_waits_for_a_recalled_spy() -> None:
         resolve_agent_card_effect(recalled)
 
 
-def test_six_boxes_choose_one_target_and_read_as_their_cards() -> None:
+def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
     """Composed A3c: a mandatory line that is one target choice -- a
-    Faction, a Spy's post, an enemy unit, a Contract -- and no other record
-    is read as one; the new pieces read as the printed text."""
+    Faction, a Spy's post, an enemy unit, a Contract; Long Reach's two
+    distinct Factions since cleanup-2d -- and no other record is read as
+    one; the new pieces read as the printed text."""
 
     targets = {
         effect: type(piece)
@@ -647,6 +648,7 @@ def test_six_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: PlaceSpy,
         _BOX.FORCE_OPPONENT_TROOP_RETREAT: ForceEnemyRetreat,
         _BOX.COMPLETE_ONE_CONTRACT: CompleteContract,
+        _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: GainInfluence,
     }
     for effect in (
         _BOX.PLACE_SPY,
@@ -1198,7 +1200,7 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
         "corrinth_city",
         "arrakis_revolt",
     }
-    assert len(box_hook_names()) == 10
+    assert len(box_hook_names()) == 9
 
 
 def test_the_grafted_card_trashes_are_records() -> None:
