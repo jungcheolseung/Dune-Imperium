@@ -935,7 +935,9 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      Foe의 `leader_reveal:intrigue`는 기보 다리가 읽으므로 그대로). 화면은 `leader` 출처를 지도자 이름으로 읽는다. 자원은
      `resources_gained`(판단 3): Staban의 `leader_ability_spice_gained`는 없어지고(다른 좌석 차례의 "지도자 능력" 카드 제목은
      `leader_ability_resolved`가 이어 받는다), Esmar·Assassin의 Solari와 Tactics 트랙의 spice·water는 사건 payload에서 빠진다. 능력
-     자신의 사건(`leader_ability_resolved` id `<출처>:resolved`, `tactics_token_advanced` id `<출처>:tactics`)은 맨 뒤.
+     자신의 사건(`leader_ability_resolved` id `<출처>:resolved`, `tactics_token_advanced` id `<출처>:tactics`)은 맨 뒤. Reverend
+     Mother Jessica의 칸 반복(2c-6에서 사건을 얻음)은 뒤집힌 면의 이름 `…:leader:reverend_mother_jessica`로, 사건의 `leader_id`도
+     그 면(화면이 그 능력 이름을 읽는다; 2c 리뷰).
   3. **Tech:** Reveal 보너스(`tech_reveal_bonus`)는 Reveal 출처 `<reveal>:tech:<타일>` 하나로(늦게 받은 것의 `…:tech:<타일>:late`
      없앰), 0인 양은 싣지 않는다(Solari는 Reveal의 얻기가 낸다). Tech 폐기는 `<출처>:tech_trashed`로(`…:trashed`와 섞여 있던 것).
   4. 하지 않는 것: 주지 않는 거절 행동 셋의 codec 템플릿(A8과 함께), 의무 단계에 "막히지 않게" 남긴 거절(행동이 바뀜 — 사용자 결정),
@@ -947,7 +949,8 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      `…:research:c3r1:research:c4r2`), `round:R:player:P:tleilaxu:<칸>`·`…:tleilaxu:end`(지금 `<출처>:tleilaxu:<n>`). 칸이 주는 것의
      출처는 그 칸이다(연구 보너스의 얻기와 표본, Tleilaxu 칸의 책략 뽑기, Scouts Tleilaxu Offering). 칸 보너스가 여는 창(방향·보너스
      고르기·폐기)과 차례의 줄은 토큰을 움직인 쪽의 이름을 지킨다 — Arrakeen Scouts 줄이 자기 연구의 창을 그 이름으로 알아본다
-     (`scouts_effects._rewards_ahead`; 같음 확인이 이 결합을 잡았다). `advance_tleilaxu`는 출처를 받지 않는다.
+     (`scouts_effects._rewards_ahead`; 같음 확인이 이 결합을 잡았다). 짝 아이콘(c3r3·c3r5 등)의 표본·뽑기와 c7r3의 두 보상도 칸
+     이름으로 받는다(창·줄이 가진 `<부른 출처>:research:<칸>`에서 칸을 읽는다; 2c 리뷰). `advance_tleilaxu`는 출처를 받지 않는다.
      Tleilaxu 칸의 spice는 `resources_gained`(판단 3), VP는 `tleilaxu_advanced`의 키(판단 4, 트랙 사건 관례).
   2. **부르는 쪽이 붙이던 낱말을 뺀다:** `…:research`(연구는 이제 트랙이 이름 짓고, 연구 뽑기는 `<출처>`로 — `<출처>:research_draw`는
      `research_drew_card`의 id로만), `…:specimen`·`…:specimens`(표본 도우미가 `:specimens`를 붙인다), 책략 줄의 `…:intrigue`·`…:draw`.
@@ -960,6 +963,8 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   5. **Skill Reveal 보너스**는 Tech와 같게: Reveal 출처 `<reveal>:skill:<타일>` 하나(`…:late` 없앰), 0인 양은 싣지 않는다.
   6. 개인 덱 섞기의 chance id는 그것을 부른 뽑기의 이름을 따르므로, 같음 확인과 기보 다리(`draw_reshuffle_renamed`)는 "같은 라운드에
      같은 더미를 섞는 개인 덱 섞기"를 이름만 바뀐 것으로 본다(Scouts 보상의 뽑기처럼 좌석이 이름에 없어도 더미가 좌석을 말한다).
+     기보 다리는 Intrigue 덱 섞기(`…:intrigue_shuffle`)도 같은 이름 바꿈(책략 줄·Signet 지불의 낱말, Esmar의 방문자 좌석 → Esmar,
+     Tleilaxu·연구 칸)이면 받는다(corpus 2,000판에는 없음; 2c 리뷰).
   7. 이미 된 것: 연구 칸 아이콘의 순서(2b, 판단 5), `scouts_choice_skipped`(2a), Scouts 장치 이름(정리-1). 연구 창의 거절은 차례 밖
      창에만 남는다(2b).
 - **2c-6 — 나머지 같은 종류의 차이:**
