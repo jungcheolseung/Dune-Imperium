@@ -785,10 +785,11 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   [Main p. 14] [FAQ p. 1]) 좌석마다 손실을 창 frame(`lost`)에 실어 turn 순서로 창을 연다. 세포 수확은 내는 즉시 해결
   (`intrigue.resolve_conflict_end_trigger`, 보상 먼저 → 표본 2, 그다음 획득 선택; `resolve_intrigue_rewards` 단계·face-up 대기·
   `intrigue_trigger_fired` 없음). 낸 뒤 창이 열려 있으면 `finish_conflict_end_intrigue`(새 템플릿, 이벤트 `conflict_end_trigger_finished`,
-  화면 "끝내기 · 턴 종료 ▶"). `finish_combat`은 Conflict 카드 수여(`_award_conflict`)·sandworm·marker 0만. 창이 열린 동안
+  화면 "끝내기 · 턴 종료 ▶"). `finish_combat`은 Conflict 카드 수여(`_award_conflict`)·sandworm·marker 0만(같은 날 OQ-108로 수여는
+  창 앞으로 — 아래 절). 창이 열린 동안
   `strength.refresh_pre_reveal_strength`는 전투력을 다시 셈하지 않는다 — 같음 확인이 찾은 결함: sandworm이 남은 좌석은 Commander가
   돌아가며 Skill 몫이 빠져 승자가 바뀌었다.
-- **Conflict 카드는 창 뒤 그대로:** 규칙 순서대로 창 앞에 주면 Planetary Array의 카드가 이긴 순간에 뽑혀(지금은 다음 손패 뒤), v148 기보
+- **Conflict 카드는 창 뒤 그대로(같은 날 OQ-108 판정으로 바뀜 — 아래 절):** 규칙 순서대로 창 앞에 주면 Planetary Array의 카드가 이긴 순간에 뽑혀(지금은 다음 손패 뒤), v148 기보
   2,000판 중 약 70판이 다리 없이 갈라졌다. 사용자가 요청한 범위 밖이라 옮기지 않고 [OQ-108](rules/open-questions.md#oq-108--planetary-array의-카드를-뽑는-때)로 남겼다.
 - **주변:** 앱 AI(`HarvestCellsAbility.meets_cost`가 `combat.conflict_end_loss`, 창은 거절 또는 끝내기), 흐린 이유 문구("{specimen}으로
   만들 {troop}이 {supply}에 없음"), 서버·화면·E2E의 명시적 턴 종료 목록, 서버 자동 거절 설명.
@@ -814,6 +815,35 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   문서가 말하지 않아 [OQ-109](rules/open-questions.md#oq-109--세포-수확-획득-중에-뽑힌-책략-카드와-conflict-끝-창)로 남기고 지금 동작을
   테스트로 고정; 같음 확인의 창 구간 규칙이 넓음 — 세포 수확을 내기 전에는 반환 필드만 빼도록, 낸 뒤에도 손패는 비교하도록 좁힘. 낮은
   셋(옛 흐름 주석, 앞당긴 답의 follows 다리, 게임이 창 구간에서 끝날 때의 carry 보고) 반영.
+
+### OQ-108·OQ-109 판정 반영 (2026-10-18, 사용자 "그래 둘다 B가 맞겠다", codec v149 그대로)
+
+- **OQ-108 (B):** 승자가 보상 직후·병력 회수 전에 Conflict 카드를 가져가고 battle icon을 확인한다([Main p. 14]의 순서) —
+  `offer_conflict_end_triggers`가 `_award_conflict`를 먼저 부르고, `finish_combat`은 sandworm·marker 0만. Planetary Array의 카드는 그때
+  빚져 창에 답하기 전에 뽑힌다(덱이 비면 그 자리에서 섞음). 전에는 대개 다음 라운드 패 5장 뒤였다.
+- **OQ-109 (b):** 낸 뒤 창은 늘 "낸 창"으로 남고, 다시 맨 위에 왔을 때 그 좌석이 책략 카드를 쥐고 있지 않으면 엔진의 자동 단계가 닫는다
+  (`combat.spent_conflict_end_window`, 이벤트 없음). 낸 카드의 획득이 Tleilaxu track Intrigue 칸에서 뽑은 카드도 그 창에서 낼 수 있다.
+- **기보 다리(v149 미만):** `tech_draw_at_the_win`(같은 결정의 Planetary Array 섞기를 앞당김), `reshuffle_moved`(Planetary Array를 가진
+  좌석이 한 라운드 일찍 섞는 같은 카드 묶음의 섞인 순서를 나중 기록에서 — 둘 중 하나가 `:tech_draw:discard_shuffle`일 때만; 이 엔진은 덱
+  맨 위 카드를 이긴 순간 가져가므로 이긴 순간이나 다음 Round Start에 섞고, 옛 엔진은 다음 패 뒤 같은 카드를 섞었다), `conflict_end_reopened`
+  (이 엔진이 열어 둔 창을 옛 기록이 다른 단계로 넘어간 자리에서 끝내기로 답함). 기록된 그 단계 자신을 다른 결정으로 가져온 경우 그 자리에서
+  끝낸다(되풀이 시도 결함, 대조가 잡음).
+- **정해진 차이:** Conflict 카드 수여 이벤트(`conflict_won`·`battle_icons_matched`)와 Planetary Array 섞기 이벤트를 창 앞에서 기준 단계로
+  옮김, 창 구간에서 빼는 필드에 Conflict 카드·Victory Point·현재 Conflict 더함, Planetary Array 카드는 후보가 먼저 뽑음(기준이 같은 카드를
+  뽑을 때까지 그 좌석의 손패·덱·덱 구성·버린 더미·Glowglobes가 보여 주는 맨 위 카드는 기준 것, 상태에서 빠짐), 같은 카드 묶음의 섞기를
+  앞당김(기준의 Round Start 섞기를 앞당기면 후보의 Round Start가 한 단계 앞서므로 그 사이 상태 비교를 뺌), 다시 열린 창에 끝내기 답.
+  OQ-108 이전의 "Planetary Array+세포 수확 판의 손패 뒤 뽑기" 규칙은 없앴다.
+- **독립 리뷰:** 막는 문제 1 — 창이 하나도 열리지 않는 판(Immortality가 없거나 아무도 창을 받지 않음)에서는 엔진이 정리·라운드 시작까지 한
+  번에 흘러가 Planetary Array 카드가 여전히 다음 패 뒤에 뽑혔다 → Combat 단계에서 빚진 카드를 정리 전에 뽑는 자동 단계를 더함(회귀 테스트
+  둘). 중간 1 — 옛 기록에서 다른 좌석의 거절을 `conflict_end_finish`가 열린 창 좌석의 끝내기로 가져감 → 같은 좌석일 때만(분배 단계 테스트).
+  낮은 셋 반영: 같은 결정 섞기의 값 확인, 같음 확인의 상태 건너뛰기를 기준의 Round Start 멈춤부터로 좁힘, 옛 순서를 말하는 주석.
+- **관문:** 같음 확인 200판 모두 same(191,836단계; 같은 결정 섞기·다시 열린 창 규칙은 이 200판에 그런 장면이 없어 쓰이지 않음). 기보
+  v148·v147 각 2,000판: exact 176, equal 274, transient 1,510, persistent 39, diverged 1, failed 0(다리 `reshuffle_moved` 139번/120판,
+  `tech_draw_at_the_win` 11번/10판; OQ-108 이전의 diverged 7 가운데 Planetary Array+세포 수확 6판이 이제 이어진다 — 남은 1판은 세포 수확
+  두 장+Row 보충; persistent 39 = 두 장의 버림 더미 순서만 38 + 표본보다 획득을 먼저 답한 옛 기록 1). pytest 7,991·ruff·mypy, 소크 720판
+  실패 0, 속도 호출당 42.8 → 46.4µs(+8%, 그대로). E2E 60 통과, 실패 7 = 2b의 시드 전제 6 + `log_passes`("아무것도 보이지 않는 Conflict 끝
+  멈춤" 장면 — 이제 승자가 있으면 그 멈춤에 Conflict 승리가 보임; 마무리에서 함께 다시 고름). 판이 달라짐: golden `everything`(결정 순서는
+  같고 창 관측만), tips-v1(125 → 124 → 123, 옮겨진 국면 모두 상태가 처음 갈라지는 곳이 Conflict 끝·정리 단계).
 
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
