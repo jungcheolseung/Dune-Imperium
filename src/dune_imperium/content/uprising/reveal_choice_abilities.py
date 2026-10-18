@@ -104,21 +104,18 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: _choice(
                 _line(RevealPersuasion(3), costs=(RecallSpy(2),)),
                 mark=_OPTIONAL,
-                hook="recall_two_spies",
             ),
             # Captured Mentat: "You may lose 1 Influence with a chosen Faction ->
             # Gain 1 Influence with a chosen Faction" -- one row names both.
             _CHOICE.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE: _choice(
                 _line(GainInfluence(), costs=(LoseInfluence(1),)),
                 mark=_OPTIONAL,
-                hook="influence_exchange",
             ),
             # Spacing Guild's Favor: "You may pay 3 spice -> Gain 1 Influence with
             # a chosen Faction" -- one row names the Faction.
             _CHOICE.MAY_PAY_THREE_SPICE_FOR_INFLUENCE: _choice(
                 _line(GainInfluence(), costs=(PayResources(spice=3),)),
                 mark=_OPTIONAL,
-                hook="spice_for_influence",
             ),
             # Calculus of Power: "You may trash another Emperor card in play ->
             # +3 swords".
@@ -133,7 +130,6 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: _choice(
                 _line(RevealSwords(4), costs=(RetreatTroops(2, 2),)),
                 mark=_OPTIONAL,
-                hook="retreat_two_troops",
             ),
             # Shrouded Counsel: "Command (6+ Persuasion): You may trash a card".
             _CHOICE.COMMAND_MAY_TRASH_CARD: _choice(
@@ -144,7 +140,6 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: _choice(
                 _line(RevealPersuasion(2), costs=(RetreatTroops(2, 2),)),
                 mark=_OPTIONAL,
-                hook="retreat_two_troops",
             ),
             # Disruption Tactics: "Trash this card -> Combat (deploy as though at
             # a Combat space)".
