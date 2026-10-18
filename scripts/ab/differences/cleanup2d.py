@@ -310,7 +310,8 @@ def _split_row(row: dict[str, Any]) -> bool:
 
 def _split_card(event: dict[str, Any]) -> bool:
     payload = {str(key): value for key, value in event["payload"]}
-    card_id = payload.get("card_id")
+    # A box's Spy recall names its card ``source``.
+    card_id = payload.get("card_id", payload.get("source"))
     return (
         isinstance(card_id, str)
         and card_id.count(":") >= 1
