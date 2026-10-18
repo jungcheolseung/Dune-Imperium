@@ -178,9 +178,9 @@ from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
     observation_post_ids_for_factions,
-    solo_occupied_post_ids,
+    spy_placement_posts,
+    spy_recall_posts,
 )
 from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 
@@ -1351,17 +1351,11 @@ def agent_spy_rows(
         # A shared-post Spy (Deep Cover) never reads the marks: only a
         # place-Spy card prints them (the card tables refuse them elsewhere).
         allowed_post_ids = observation_post_ids_for_factions(card.agent_spy_factions)
-    if piece.shared_post:
-        # Another player's Spy may share the post, never the owner's own
-        # [Bloodlines pp. 5, 12; Double Agent card].
-        placements = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if (allowed_post_ids is None or post.post_id in allowed_post_ids)
-            and post.post_id not in owner.spy_post_ids
-        )
-    else:
-        placements = empty_observation_post_ids(state, allowed_post_ids)
+    # Another player's Spy may share a shared-post Spy's post, never the
+    # owner's own [Bloodlines pp. 5, 12; Double Agent card].
+    placements = spy_placement_posts(
+        state, player, allowed_post_ids, shared_post=piece.shared_post
+    )
     # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
     # made earlier this turn may already have been consumed by another effect
     # (e.g. the Espionage board space), in which case another recall is offered.
@@ -1374,18 +1368,9 @@ def agent_spy_rows(
             )
             for post_id in placements
         )
-    recall_post_ids = owner.spy_post_ids
-    if not placements and piece.shared_post:
-        recall_post_ids = tuple(
-            post_id
-            for post_id in owner.spy_post_ids
-            if allowed_post_ids is None or post_id in allowed_post_ids
-        )
-    elif not placements:
-        # Only a recall that leaves its post empty opens a placement: a post
-        # shared with another player's Spy (Deep Cover) stays occupied
-        # [Main pp. 11, 20] (``solo_occupied_post_ids``).
-        recall_post_ids = solo_occupied_post_ids(state, player, allowed_post_ids)
+    recall_post_ids = spy_recall_posts(
+        state, player, placements, allowed_post_ids, shared_post=piece.shared_post
+    )
     recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_agent_card",

@@ -20,7 +20,6 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
-    OBSERVATION_POSTS,
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -140,7 +139,8 @@ from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
     place_spy,
     recall_spy,
-    solo_occupied_post_ids,
+    spy_placement_posts,
+    spy_recall_posts,
 )
 from dune_imperium.rules.units import retreat_units
 
@@ -1206,15 +1206,8 @@ def _leader_spy_placement_actions(
     """
 
     owner = state.players[player]
-    placements = (
-        tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id not in owner.spy_post_ids
-            and (allowed_post_ids is None or post.post_id in allowed_post_ids)
-        )
-        if deep_cover
-        else empty_observation_post_ids(state, allowed_post_ids)
+    placements = spy_placement_posts(
+        state, player, allowed_post_ids, shared_post=deep_cover
     )
     if owner.spies_supply > 0:
         return tuple(
@@ -1225,17 +1218,9 @@ def _leader_spy_placement_actions(
             )
             for post_id in placements
         )
-    recall_post_ids = owner.spy_post_ids
-    if not placements and deep_cover and allowed_post_ids is not None:
-        recall_post_ids = tuple(
-            post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
-        )
-    elif not placements:
-        # Only a recall that leaves its post empty opens a placement: a post
-        # shared with another player's Spy (Deep Cover) stays occupied
-        # [Main pp. 11, 20] (``solo_occupied_post_ids``), and recalling from
-        # it would leave a placement that cannot happen.
-        recall_post_ids = solo_occupied_post_ids(state, player, allowed_post_ids)
+    recall_post_ids = spy_recall_posts(
+        state, player, placements, allowed_post_ids, shared_post=deep_cover
+    )
     recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_leader_placement",

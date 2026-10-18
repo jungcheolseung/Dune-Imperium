@@ -14,7 +14,6 @@ from enum import StrEnum
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
-    OBSERVATION_POSTS,
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
@@ -158,6 +157,7 @@ from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_agent_icons,
     observation_post_ids_for_factions,
     solo_occupied_post_ids,
+    spy_placement_posts,
 )
 
 type ChoiceSlot = (
@@ -597,12 +597,12 @@ def spy_placement_targets(
     """
 
     _refuse_visited_space(reward)
-    if reward.shared_post:
-        own = set(state.players[player].spy_post_ids)
-        return tuple(
-            post.post_id for post in OBSERVATION_POSTS if post.post_id not in own
-        )
-    return empty_observation_post_ids(state, spy_placement_allowed_post_ids(reward))
+    return spy_placement_posts(
+        state,
+        player,
+        spy_placement_allowed_post_ids(reward),
+        shared_post=reward.shared_post,
+    )
 
 
 def _refuse_visited_space(reward: PlaceSpy) -> None:

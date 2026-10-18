@@ -145,7 +145,7 @@ from dune_imperium.rules.spy_moves import (
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
-    solo_occupied_post_ids,
+    spy_recall_posts,
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -606,14 +606,13 @@ def piece_rows(
             else:
                 # With an empty supply one Spy may be recalled first
                 # [Main pp. 11, 20], only where the placement stays
-                # reachable: any Spy while a target post is free, else the
-                # sole occupant of an allowed post.
-                recallable = (
-                    owner.spy_post_ids
-                    if targets
-                    else solo_occupied_post_ids(
-                        state, player, spy_placement_allowed_post_ids(piece)
-                    )
+                # reachable (``spy_recall_posts``).
+                recallable = spy_recall_posts(
+                    state,
+                    player,
+                    targets,
+                    spy_placement_allowed_post_ids(piece),
+                    shared_post=piece.shared_post,
                 )
                 rows.extend(
                     row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))

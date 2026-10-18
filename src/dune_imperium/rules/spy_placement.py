@@ -55,6 +55,58 @@ def solo_occupied_post_ids(
     )
 
 
+def spy_placement_posts(
+    state: GameState,
+    player: int,
+    allowed_post_ids: frozenset[str] | None = None,
+    *,
+    shared_post: bool = False,
+) -> tuple[str, ...]:
+    """The posts a placement may use now: the empty allowed ones, or with
+    ``shared_post`` any allowed post the owner's own Spy does not hold --
+    "you also have the option to ignore any opponents' Spies ... (You can't
+    place the Spy where you already have a Spy of your own.)" [Bloodlines
+    p. 5] (Spy with Deep Cover, Distraction)."""
+
+    if shared_post:
+        own = set(state.players[player].spy_post_ids)
+        return tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id not in own
+            and (allowed_post_ids is None or post.post_id in allowed_post_ids)
+        )
+    return empty_observation_post_ids(state, allowed_post_ids)
+
+
+def spy_recall_posts(
+    state: GameState,
+    player: int,
+    placements: tuple[str, ...],
+    allowed_post_ids: frozenset[str] | None = None,
+    *,
+    shared_post: bool = False,
+) -> tuple[str, ...]:
+    """The owner's Spies a recall-first may take with an empty supply: "If
+    you have no Spies in your supply when you need to place one, you may
+    first recall one of your Spies" [Main pp. 11, 20] -- any while a
+    placement post is free; otherwise only one whose recall frees an
+    allowed post: with ``shared_post`` any of the owner's allowed posts,
+    else a post the owner's Spy holds alone (a post shared with another
+    player's Spy stays occupied, ``solo_occupied_post_ids``)."""
+
+    owner = state.players[player]
+    if placements:
+        return owner.spy_post_ids
+    if shared_post:
+        return tuple(
+            post_id
+            for post_id in owner.spy_post_ids
+            if allowed_post_ids is None or post_id in allowed_post_ids
+        )
+    return solo_occupied_post_ids(state, player, allowed_post_ids)
+
+
 def observation_post_ids_for_factions(
     factions: tuple[Faction, ...],
 ) -> frozenset[str]:
