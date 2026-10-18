@@ -13,7 +13,9 @@ from collections import Counter
 
 from equivalence_rules import At, Rule, Step
 
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
 SCOUTS_NO_OPTION = "resolve_scouts_choice_without_option"
@@ -640,9 +642,19 @@ def _harvest_cells_now(at: At) -> object:
     return None
 
 
+# Logged as the windows open (the Conflict card's award, the troops' return)
+# where the base logged them at its cleanup.
+_AT_THE_WINDOWS = frozenset(
+    {"battle_icons_matched", "conflict_won", "tactics_token_advanced"}
+)
+
+
 def _carried(event: dict[str, object]) -> bool:
-    return event["kind"] == "tactics_token_advanced" or ":conflict_end:" in str(
-        event["event_id"]
+    event_id = str(event["event_id"])
+    return (
+        event["kind"] in _AT_THE_WINDOWS
+        or ":conflict_end:" in event_id
+        or ":tech_draw:" in event_id
     )
 
 
@@ -669,7 +681,12 @@ def _harvest_cells_steps(step: Step) -> None:
     events are the ones the candidate logged at the play. The base's
     ``intrigue_trigger_fired`` has none either."""
 
-    step.events = [e for e in step.events if e["kind"] != "intrigue_trigger_fired"]
+    step.events = [
+        e
+        for e in step.events
+        if e["kind"] != "intrigue_trigger_fired"
+        and e["event_id"] not in _moved_shuffles()
+    ]
     rewards = (
         step.step[0] == "a"
         and step.step[1] == "resolve_intrigue_rewards"
@@ -695,8 +712,10 @@ def _harvest_cells_steps(step: Step) -> None:
     step.events = left
 
 
-# What the troops' return before the windows moves (with the Tactician
-# token's spice and water): the state fields and the views' seat keys.
+# What the Conflict card's award and the troops' return before the windows
+# move (with the Tactician token's spice and water and a matched battle
+# icon's Victory Point): each seat's state fields and view keys, and the
+# board's current Conflict.
 _RETURN_KEYS = (
     "troops_supply",
     "troops_conflict",
@@ -704,21 +723,26 @@ _RETURN_KEYS = (
     "commanders_conflict",
     "tactics_track_space",
     "resources",
+    "won_conflict_ids",
+    "face_down_battle_card_ids",
+    "victory_points",
 )
 
 
 def _returned_early(old: Step, candidate: Step, *, after: bool = True) -> None:
-    """In the views before the step every seat's return keys are the base's,
-    and (``after``) the return's fields are left out of the state after
-    it."""
+    """In the views before the step every seat's return keys and the current
+    Conflict are the base's, and (``after``) those fields are left out of
+    the state after it."""
 
     if after:
         candidate.fields_unchecked.update(
             f"players[{seat}].{key}" for seat in range(4) for key in _RETURN_KEYS
         )
+        candidate.fields_unchecked.add("current_conflict_ids")
     if not (candidate.views and old.views):
         return
     for base, view in zip(old.views, candidate.views, strict=True):
+        view["current_conflict_ids"] = base["current_conflict_ids"]
         for seat, players in enumerate(view["players"]):
             for key in _RETURN_KEYS:
                 players[key] = base["players"][seat][key]
@@ -772,22 +796,25 @@ def _conflict_end_interval(old: Step, candidate: Step) -> None:
 
 
 _PLANETARY_ARRAY = "planetary_array"
-_DRAW_FIELDS = ("hand", "deck", "tech_cards_owed")
+_DRAW_FIELDS = ("hand", "deck", "discard_pile", "tech_cards_owed")
 
 
 def _draw_views_differ(old: Step, candidate: Step, seat: int) -> bool:
-    """Whether the seat's hand, deck and discard differ in the views, after
-    putting the base's in the candidate's."""
+    """Whether the seat's hand, deck (its size and pool) and discard differ
+    in the views, after putting the base's in the candidate's."""
 
     differ = False
     for base, view in zip(old.views, candidate.views, strict=True):
-        pairs = [(view["players"][seat], base["players"][seat], k) for k in (
-            "hand_size", "deck_size", "discard_pile"
-        )]
+        pairs = [
+            (view["players"][seat], base["players"][seat], key)
+            for key in ("hand_size", "deck_size", "deck_pool", "discard_pile")
+        ]
         if view.get("player") == seat:
-            pairs += [(view["private"], base["private"], k) for k in (
-                "hand", "deck_size"
-            )]
+            # Glowglobes shows its owner the deck's top card.
+            pairs += [
+                (view["private"], base["private"], key)
+                for key in ("hand", "deck_size", "peeked_card_id")
+            ]
         for mine, theirs, key in pairs:
             if mine[key] != theirs[key]:
                 differ = True
@@ -795,37 +822,175 @@ def _draw_views_differ(old: Step, candidate: Step, seat: int) -> bool:
     return differ
 
 
-def _planetary_array_after_the_hand(old: Step, candidate: Step) -> None:
-    """Planetary Array's card is owed at the cleanup and drawn once the
-    transition settles (``tech.draw_owed_tech_cards``); the Round Start
-    pause defers it past the next round's hand. The base's cleanup also
-    pushed Harvest Cells' resolution, which drew it at once; with Harvest
-    Cells resolved in its window, it waits for the hand as every other win
-    does. Until the candidate draws it the seat's hand, deck and owed count
-    are the base's."""
+def _planetary_array_at_the_win(old: Step, candidate: Step) -> None:
+    """OQ-108 (user decision 2026-10-18): the candidate draws Planetary
+    Array's card as the Conflict is won, before the windows ("When you win
+    a Conflict: draw a card"); the base drew it at its cleanup when a
+    Harvest Cells fired there, else after the next round's hand. Until the
+    base draws the same card the seat's hand, deck, discard and owed count
+    are the base's in the views and left out of the state."""
 
-    late = _CONFLICT_END.setdefault("late_draws", {})
-    assert isinstance(late, dict)
-    for event in old.events:
-        if event["kind"] != "conflict_won" or not _played() or not old.views:
+    candidate.events = [
+        e for e in candidate.events if e["event_id"] not in _moved_shuffles()
+    ]
+    ahead_until = _CONFLICT_END.get("ahead_until")
+    if isinstance(ahead_until, int):
+        # From the base's Round Start pause, which its shuffle then held up,
+        # to that shuffle, the candidate's Round Start is a step ahead.
+        if old.step[0] == "c" and str(old.step[1]).endswith(":round_start:pause"):
+            _CONFLICT_END["ahead_started"] = True
+        if old.index >= ahead_until:
+            _CONFLICT_END.pop("ahead_until")
+            _CONFLICT_END.pop("ahead_started", None)
+        elif _CONFLICT_END.get("ahead_started"):
+            old.state_unchecked = True
+    early = _CONFLICT_END.setdefault("early_draws", {})
+    assert isinstance(early, dict)
+    started = set()
+    for event in candidate.events:
+        if event["kind"] != "conflict_won" or not old.views:
             continue
         seat = dict(event["payload"])["player"]
         if _PLANETARY_ARRAY in old.views[0]["players"][seat]["tech_ids"]:
-            late[seat] = old.views[0]["round_number"]
-            candidate.fields_unchecked.update(
-                f"players[{seat}].{name}" for name in _DRAW_FIELDS
-            )
-            return
-    for seat, won in list(late.items()):
-        if old.views and candidate.views:
+            early[seat] = old.views[0]["round_number"]
+            started.add(seat)
+    for seat, won in list(early.items()):
+        if seat not in started and old.views and candidate.views:
             if not _draw_views_differ(old, candidate, seat):
-                del late[seat]
+                del early[seat]
                 continue
             if old.views[0]["round_number"] > won + 1:
                 raise AssertionError(f"Planetary Array's card never came: {seat}")
         candidate.fields_unchecked.update(
             f"players[{seat}].{name}" for name in _DRAW_FIELDS
         )
+
+
+def _tech_draw_now(at: At) -> object:
+    """OQ-108: Planetary Array's card is drawn as the Conflict is won; a base
+    that drew it at its cleanup (a Harvest Cells fired there) recorded its
+    reshuffle under the same decision, which is the answer."""
+
+    if (
+        not isinstance(at.decision, ChanceDecision)
+        or ":tech_draw:" not in at.decision.decision_id
+        or at.state.phase is not GamePhase.COMBAT
+        or not at.state.combat_end_triggers_offered
+    ):
+        return None
+    for index in range(at.index + 1, len(at.rows)):
+        step = at.rows[index][0]
+        if step[0] == "c" and step[1] == at.decision.decision_id:
+            _ahead().add(index)
+            return ChanceOutcome(decision_id=step[1], values=tuple(step[2]))
+    return None
+
+
+_PERSONAL_SHUFFLE = re.compile(r"^round:\d+:player:(\d+):(?:.+:)?discard_shuffle$")
+_ROUND_START_SHUFFLE = re.compile(r"^round:\d+:player:\d+:discard_shuffle$")
+
+
+def _moved_shuffles() -> set[str]:
+    moved = _CONFLICT_END.setdefault("moved_shuffles", set())
+    assert isinstance(moved, set)
+    return moved
+
+
+def _reshuffle_now(at: At) -> object:
+    """OQ-108: with Planetary Array's card drawn at the win, its seat
+    reshuffles its discard a round earlier (at the win or the next Round
+    Start) where the base shuffled the same cards for that card after the
+    next round's hand. The base's permutation of those cards is the answer;
+    both shuffles' events are left out (the shuffle moved)."""
+
+    if not isinstance(at.decision, ChanceDecision):
+        return None
+    asked = _PERSONAL_SHUFFLE.match(at.decision.decision_id)
+    if asked is None or _PLANETARY_ARRAY not in (
+        at.state.players[int(asked.group(1))].tech_ids
+    ):
+        return None
+    following = next(
+        (
+            at.rows[index][0]
+            for index in range(at.index + 1, len(at.rows))
+            if index not in _ahead()
+        ),
+        None,
+    )
+    if following is not None and following[0] == "c" and following[1] == (
+        at.decision.decision_id
+    ):
+        return None
+    cards = sorted(at.decision.options)
+    for index in range(at.index + 1, min(len(at.rows), at.index + 200)):
+        step = at.rows[index][0]
+        if index in _ahead() or step[0] != "c":
+            continue
+        recorded = _PERSONAL_SHUFFLE.match(step[1])
+        if (
+            recorded is not None
+            and recorded.group(1) == asked.group(1)
+            # One side is that card's draw (``...:tech_draw:discard_shuffle``).
+            and ":tech_draw:discard_shuffle" in f"{at.decision.decision_id} {step[1]}"
+            and sorted(step[2]) == cards
+        ):
+            _ahead().add(index)
+            _moved_shuffles().update((f"{step[1]}d", f"{at.decision.decision_id}d"))
+            if _ROUND_START_SHUFFLE.match(step[1]):
+                # The base's Round Start waited for that shuffle; the
+                # candidate's ran on, a step ahead until the base's.
+                _CONFLICT_END["ahead_until"] = index
+            return ChanceOutcome(
+                decision_id=at.decision.decision_id, values=tuple(step[2])
+            )
+    return None
+
+
+_WINDOW_STEPS = frozenset(
+    {
+        "decline_conflict_end_intrigue",
+        "finish_conflict_end_intrigue",
+        "play_conflict_end_intrigue",
+    }
+)
+
+
+def _conflict_end_reopened(at: At) -> object:
+    """OQ-109 (user decision 2026-10-18): a played window stays open while
+    its seat holds an Intrigue card, judged when it comes back on top, so a
+    seat whose play emptied its hand sees it again if the card's acquisition
+    drew one. The base, which drew that card at its cleanup, went on to
+    another step: the candidate finishes the window."""
+
+    if not isinstance(at.decision, PlayerDecision):
+        return None
+    top = at.state.decision_stack[-1]
+    if (
+        top.kind != FrameKind.CONFLICT_END_TRIGGER
+        or dict(top.context).get("played") is not True
+    ):
+        return None
+    owner = at.decision.owner
+    following = next(
+        (
+            at.rows[index][0]
+            for index in range(at.index + 1, len(at.rows))
+            if index not in _ahead()
+        ),
+        None,
+    )
+    if (
+        following is not None
+        and following[0] == "a"
+        and following[2] == owner
+        and following[1] in _WINDOW_STEPS
+    ):
+        return None
+    return next(
+        (a for a in at.legal if a.action_id == "finish_conflict_end_intrigue"),
+        None,
+    )
 
 
 def _harvest_cells_discard_order(old: Step, candidate: Step) -> None:
@@ -1008,6 +1173,23 @@ RULES = (
         old=_harvest_cells_steps,
     ),
     Rule(
+        "tech_draw_at_the_win",
+        why="OQ-108: Planetary Array's reshuffle comes as the Conflict is won",
+        answer=_tech_draw_now,
+    ),
+    Rule(
+        "reshuffle_moved",
+        why="OQ-108: the Planetary Array card's seat shuffles the same cards a "
+        "round earlier",
+        answer=_reshuffle_now,
+    ),
+    Rule(
+        "conflict_end_reopened",
+        why="OQ-109 (user decision 2026-10-18): a played window is judged when it "
+        "comes back on top",
+        answer=_conflict_end_reopened,
+    ),
+    Rule(
         "harvest_cells_now",
         why="user decision 2026-10-18: its acquisition is asked at the play",
         answer=_harvest_cells_now,
@@ -1025,11 +1207,10 @@ RULES = (
         new=_conflict_end_interval,
     ),
     Rule(
-        "planetary_array_after_the_hand",
-        why="user decision 2026-10-18: with Harvest Cells resolved in its window "
-        "the cleanup's Planetary Array card waits for the next hand, as on any "
-        "other win (OQ-108)",
-        new=_planetary_array_after_the_hand,
+        "planetary_array_at_the_win",
+        why="OQ-108 (user decision 2026-10-18): the Conflict card, and Planetary "
+        "Array's card, before the troops go back [Main p. 14]",
+        new=_planetary_array_at_the_win,
     ),
     Rule(
         "harvest_cells_discard_order",
