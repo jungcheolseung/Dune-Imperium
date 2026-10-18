@@ -248,13 +248,14 @@ def _standing(hook: str) -> Ability:
 LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
     {
         # Devious Strength: "Reveal turn, once: Recall one of your placed Spies
-        # -> Gain 2 swords" (its own recall rows on the Reveal).
+        # -> Gain 2 swords" (its recall rows on the Reveal; cleanup-2d).
         "feyd_rautha_harkonnen": (
-            _left_hook(
-                AbilityTiming.REVEAL,
-                "devious_strength",
-                AbilityMark.OPTIONAL,
-                EffectSection(rewards=(RevealSwords(2),), costs=(RecallSpy(),)),
+            Ability(
+                timing=AbilityTiming.REVEAL,
+                sections=(
+                    EffectSection(rewards=(RevealSwords(2),), costs=(RecallSpy(),)),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
         ),
         # Always Smiling: "Reveal turn: If you have 6 or more strength in the
@@ -274,11 +275,12 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         ),
         # Desert Scouts: "Reveal turn: You may retreat one of your troops".
         "lady_amber_metulli": (
-            _left_hook(
-                AbilityTiming.REVEAL,
-                "desert_scouts",
-                AbilityMark.OPTIONAL,
-                EffectSection(rewards=(RetreatTroops(minimum=1, maximum=1),)),
+            Ability(
+                timing=AbilityTiming.REVEAL,
+                sections=(
+                    EffectSection(rewards=(RetreatTroops(minimum=1, maximum=1),)),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
         ),
         # Other Memories: on a Bene Gesserit space, return the memories, draw

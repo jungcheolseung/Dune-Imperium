@@ -41,9 +41,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     PayResources,
     PlaceSpy,
+    RecallSpy,
     RecruitTroops,
     RecruitUndeployableTroops,
+    RetreatTroops,
     RevealPersuasion,
+    RevealSwords,
     SandwormsInConflictAtLeast,
     StrengthInConflictAtLeast,
     TroopToMemory,
@@ -2812,6 +2815,63 @@ def apply_leader_board_repeat(
     )
 
 
+def _leader_reveal_swords(ability: Ability) -> int:
+    """"Reveal turn: recall one of your Spies -> N swords" [Feyd-Rautha
+    Harkonnen card]: N, or 0 for another ability."""
+
+    if (
+        ability.timing is not AbilityTiming.REVEAL
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
+        return 0
+    (line,) = ability.sections
+    if line.costs != (RecallSpy(),) or len(line.rewards) != 1:
+        return 0
+    reward = line.rewards[0]
+    if isinstance(reward, RevealSwords) and reward.per is None:
+        return reward.amount
+    return 0
+
+
+def _leader_reveal_retreats(ability: Ability) -> bool:
+    """"Reveal turn: You may retreat one of your troops" [Lady Amber Metulli
+    card]."""
+
+    return (
+        ability.timing is AbilityTiming.REVEAL
+        and ability.mark is AbilityMark.OPTIONAL
+        and ability.hook is None
+        and len(ability.sections) == 1
+        and not ability.sections[0].costs
+        and ability.sections[0].rewards == (RetreatTroops(minimum=1, maximum=1),)
+    )
+
+
+def _leader_reveal_ability(owner: PlayerState) -> Ability | None:
+    """The owner's face's optional Reveal-turn ability, if it has one."""
+
+    face = owner.leader_face_id or owner.leader_id
+    for ability in LEADER_ABILITIES.get(str(face), ()):
+        if _leader_reveal_swords(ability) or _leader_reveal_retreats(ability):
+            return ability
+    return None
+
+
+def _leader_ability_slug(owner: PlayerState) -> str:
+    """The face's printed ability name as an id ("Devious Strength" ->
+    ``devious_strength``)."""
+
+    leader = LEADERS_BY_ID[str(owner.leader_id)]
+    name = (
+        leader.alternate_ability_name
+        if owner.leader_face_id and owner.leader_face_id != owner.leader_id
+        else leader.ability_name
+    )
+    return str(name).lower().replace(" ", "_").replace("'", "")
+
+
 def _leader_reveal_is_open(state: GameState, player: int) -> bool:
     """Whether ``player``'s Reveal turn is open and its Leader's Reveal-turn
     ability is still unused (it is used at most once per Reveal turn)."""
@@ -2843,13 +2903,14 @@ def leader_reveal_block(state: GameState, player: int) -> OptionalEffectBlock | 
     if not _leader_reveal_is_open(state, player):
         return None
     owner = state.players[player]
-    if owner.leader_id == "lady_amber_metulli":
+    ability = _leader_reveal_ability(owner)
+    if ability is None:
+        return None
+    if _leader_reveal_retreats(ability):
         if owner.troops_conflict >= 1 or owner.commanders_conflict >= 1:
             return None
         return OptionalEffectBlock(OptionalBlockKind.NO_UNIT_IN_CONFLICT)
-    if owner.leader_id == "feyd_rautha_harkonnen":
-        return short_of(OptionalBlockKind.SPIES_ON_BOARD, 1, len(owner.spy_post_ids))
-    return None
+    return short_of(OptionalBlockKind.SPIES_ON_BOARD, 1, len(owner.spy_post_ids))
 
 
 def legal_leader_reveal_actions(
@@ -2865,7 +2926,10 @@ def legal_leader_reveal_actions(
     if leader_reveal_block(state, player) is not None:
         return ()
     owner = state.players[player]
-    if owner.leader_id == "lady_amber_metulli":
+    ability = _leader_reveal_ability(owner)
+    if ability is None:
+        return ()
+    if _leader_reveal_retreats(ability):
         # Desert Scouts: "Reveal Turn: You may retreat one of your troops."
         # A Sardaukar Commander is a troop for this purpose [Bloodlines p. 4].
         return (
@@ -2880,19 +2944,17 @@ def legal_leader_reveal_actions(
                 else ()
             ),
         )
-    if owner.leader_id == "feyd_rautha_harkonnen":
-        # Devious Strength: "Reveal Turn: recall one of your Spies for two
-        # swords" — an arrow cost usable once per Reveal turn [Main p. 20]
-        # [FAQ p. 3].
-        return tuple(
-            DomainAction(
-                action_id="recall_spy_for_leader",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in owner.spy_post_ids
+    # Devious Strength: "Reveal Turn: recall one of your Spies for two
+    # swords" — an arrow cost usable once per Reveal turn [Main p. 20]
+    # [FAQ p. 3].
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_leader",
+            actor=player,
+            arguments=(("post_id", post_id),),
         )
-    return ()
+        for post_id in owner.spy_post_ids
+    )
 
 
 def apply_leader_reveal_action(
@@ -2920,12 +2982,15 @@ def apply_leader_reveal_action(
         post_id = dict(action.arguments).get("post_id")
         if not isinstance(post_id, str):
             raise RuntimeError("Devious Strength has an invalid post ID")
-        counted = 2 if owner.units_in_conflict else 0
+        ability = _leader_reveal_ability(owner)
+        assert ability is not None
+        swords = _leader_reveal_swords(ability)
+        counted = swords if owner.units_in_conflict else 0
         next_owner = replace(
             recall_spy(owner, post_id),
             combat_strength=owner.combat_strength + counted,
         )
-        decision_stack = add_reveal_optional_sword_strength(decision_stack, 2)
+        decision_stack = add_reveal_optional_sword_strength(decision_stack, swords)
         if counted:
             decision_stack = add_reveal_strength(decision_stack, counted)
         return RuleResult(
@@ -2941,13 +3006,13 @@ def apply_leader_reveal_action(
                     payload=(
                         ("player", action.actor),
                         ("post_id", post_id),
-                        ("source", "devious_strength"),
+                        ("source", _leader_ability_slug(owner)),
                     ),
                 ),
                 GameEvent(
                     event_id=f"{source}:strength",
                     kind="reveal_strength_gained",
-                    payload=(("amount", 2), ("player", action.actor)),
+                    payload=(("amount", swords), ("player", action.actor)),
                 ),
             ),
         )
@@ -3092,8 +3157,6 @@ def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
 # Reverend Mother's repeat, Tactician's token, Plot Course's Navigation queue.
 LEADER_HOOKS: Final = frozenset(
     {
-        "devious_strength",
-        "desert_scouts",
         "other_memories",
         "reverend_mother",
         "tactician",
@@ -3114,6 +3177,11 @@ def _check_leader_records() -> None:
             elif ability.hook is not None:
                 if ability.hook not in LEADER_HOOKS:
                     raise ValueError(f"{face_id}: unknown hook {ability.hook!r}")
+            elif ability.timing is AbilityTiming.REVEAL and (
+                _leader_reveal_swords(ability) or _leader_reveal_retreats(ability)
+            ):
+                # An optional Reveal-turn ability (``legal_leader_reveal_actions``).
+                pass
             elif ability.timing is AbilityTiming.REVEAL:
                 (line,) = ability.sections
                 if (line.condition, line.rewards) not in (
