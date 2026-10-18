@@ -668,7 +668,7 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Arrakis Revolt: "If Maker Hooks: You may pay 2 spice -> You may
             # remove the Shield Wall, Summon 1 sandworm" -- the removal folded
-            # into the payment row (OQ-026).
+            # into the payment row (OQ-026; a wall-and-worm arrow, cleanup-2d).
             _BOX.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS: (
                 Ability(
                     timing=AbilityTiming.AGENT_BOX,
@@ -682,7 +682,6 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                         ),
                     ),
                     mark=AbilityMark.OPTIONAL,
-                    hook="arrakis_revolt",
                 )
             ),
             # The Beast's Spoils: "Gain rewards for your face-up battle icons:

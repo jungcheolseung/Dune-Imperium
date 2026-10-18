@@ -99,6 +99,9 @@ from dune_imperium.rules.agent_box_abilities import (
     trash_box,
     trash_rows,
     trashes_remaining,
+    wall_and_worm_box,
+    wall_and_worm_needs_hooks,
+    wall_and_worm_spice,
 )
 from dune_imperium.rules.agent_box_abilities import (
     holds_space_influence as box_holds_space_influence,
@@ -1604,20 +1607,18 @@ def agent_card_payment_block(
     return None
 
 
-_ARRAKIS_REVOLT = (
-    PersonalCardAgentEffect
-    .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
-)
-
-
-def _arrakis_revolt_block(state: GameState, player: int) -> OptionalEffectBlock | None:
-    """Arrakis Revolt's gate: Maker Hooks, the two spice, a Conflict, and a
-    paid option left (``_arrakis_revolt_options``)."""
+def _arrakis_revolt_block(
+    state: GameState, player: int, ability: Ability
+) -> OptionalEffectBlock | None:
+    """Arrakis Revolt's gate: Maker Hooks, the spice, a Conflict, and a paid
+    option left (``_arrakis_revolt_options``)."""
 
     owner = state.players[player]
-    if not owner.maker_hooks:
+    if wall_and_worm_needs_hooks(ability) and not owner.maker_hooks:
         return OptionalEffectBlock(OptionalBlockKind.MAKER_HOOKS)
-    spice = short_of(OptionalBlockKind.SPICE, 2, owner.resources.spice)
+    spice = short_of(
+        OptionalBlockKind.SPICE, wall_and_worm_spice(ability), owner.resources.spice
+    )
     if spice is not None:
         return spice
     if not state.current_conflict_ids:
@@ -1648,9 +1649,9 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
     owner = state.players[player]
     effect = active_agent_card(context).agent_effect
     kind = OptionalBlockKind
-    if effect is _ARRAKIS_REVOLT:
-        return _arrakis_revolt_block(state, player)
     ability = box_ability(effect)
+    if ability is not None and wall_and_worm_box(ability):
+        return _arrakis_revolt_block(state, player, ability)
     if payment_box(ability):
         assert ability is not None
         return payment_cost_block(owner, ability)
@@ -1694,11 +1695,8 @@ def legal_agent_card_payment_actions(
         # An optional arrow with no target, from its record (composed A3b).
         assert recorded is not None
         return payment_rows(state, player, recorded)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect
-        .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
-    ):
+    if recorded is not None and wall_and_worm_box(recorded):
+        # Arrakis Revolt, from its record (cleanup-2d).
         return _arrakis_revolt_payment_actions(state, player)
     if recorded is not None and graft_trash_box(recorded):
         # Dissecting Kit and Beguiling Pheromones, from their records
@@ -1922,9 +1920,9 @@ def _apply_payment_choice(
     if action.action_id == "decline_agent_card_payment":
         return RuleResult(state=advance_after_effect(state, context), events=())
 
-    if action.action_id in _ARRAKIS_REVOLT_ACTION_IDS:
-        return _apply_arrakis_revolt_payment(state, action, context, source)
     recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is not None and wall_and_worm_box(recorded):
+        return _apply_arrakis_revolt_payment(state, action, recorded, context, source)
     if payment_box(recorded):
         # An optional arrow with no target, from its record (composed A3b).
         assert recorded is not None
@@ -2077,14 +2075,6 @@ def _apply_graft_trash(
     return RuleResult(state=working, events=tuple(events))
 
 
-_ARRAKIS_REVOLT_ACTION_IDS = frozenset(
-    {
-        "pay_agent_card_spice_for_sandworm",
-        "pay_agent_card_spice_for_sandworm_and_shield_wall",
-    }
-)
-
-
 def _arrakis_revolt_payment_actions(
     state: GameState,
     player: int,
@@ -2139,17 +2129,19 @@ def _arrakis_revolt_options(state: GameState, player: int) -> tuple[DomainAction
 def _apply_arrakis_revolt_payment(
     state: GameState,
     action: DomainAction,
+    ability: Ability,
     context: dict[str, ActionValue],
     source: str,
 ) -> RuleResult:
+    spice = wall_and_worm_spice(ability)
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
-        resources=replace(owner.resources, spice=owner.resources.spice - 2),
-        spice_spent_turn=owner.spice_spent_turn + 2,
+        resources=replace(owner.resources, spice=owner.resources.spice - spice),
+        spice_spent_turn=owner.spice_spent_turn + spice,
     )
     paid = replace(state, players=replace_player(state.players, next_owner))
-    events: list[GameEvent] = [resources_paid_event(source, action.actor, spice=2)]
+    events: list[GameEvent] = [resources_paid_event(source, action.actor, spice=spice)]
     if action.action_id == "pay_agent_card_spice_for_sandworm_and_shield_wall":
         destroyed = destroy_shield_wall(
             paid,
@@ -3402,18 +3394,6 @@ def _close_box(
 
 
 
-def _hook_rows_only(state: GameState) -> RuleResult:
-    """A box resolved only through its own rows (Treacherous Maneuver's trash,
-    Corrinth City's discards, Arrakis Revolt's payment, Dissecting Kit's
-    optional arrow)."""
-
-    _, context = current_agent_effect_context(state)
-    raise BoxNeedsRows(
-        "the Agent box resolves through its rows: "
-        f"{active_agent_card(context).card.card_id}"
-    )
-
-
 
 
 def _hook_long_live_the_fighters(state: GameState) -> RuleResult:
@@ -3560,7 +3540,6 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "possible_futures": _hook_possible_futures,
             # The boxes no stage of the plan listed (composed A3g).
             "long_live_the_fighters": _hook_long_live_the_fighters,
-            "arrakis_revolt": _hook_rows_only,
             "beasts_spoils": _hook_beasts_spoils,
             "scientific_breakthrough": _hook_scientific_breakthrough,
             "slig_farmer": _hook_slig_farmer,

@@ -70,6 +70,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
+    DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
     DrawIntrigueCards,
@@ -106,6 +107,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SandwormsInConflictAtLeast,
     SpendSpecimens,
     SpyRecalledThisTurn,
+    SummonSandworm,
     TakeContract,
     TrashCard,
     TrashedCardHasFaction,
@@ -2279,6 +2281,51 @@ def graft_trash_rows(
             for card_id in targets
         ),
     )
+
+
+# --- A paid Shield Wall and sandworm (cleanup-2d) -------------------------------------
+#
+# "If Maker Hooks: You may pay 2 spice -> You may remove the Shield Wall,
+# Summon 1 sandworm" [Arrakis Revolt card]: the removal is optional and
+# folded into the payment's rows (OQ-026); ``agent_effects`` offers and pays
+# them, reading the spice and the Maker Hooks condition from the record.
+
+
+def wall_and_worm_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` pays spice for an optional Shield Wall removal and
+    a sandworm."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
+        return False
+    (line,) = ability.sections
+    return (
+        len(line.costs) == 1
+        and isinstance(line.costs[0], PayResources)
+        and line.costs[0].solari == line.costs[0].water == 0
+        and line.costs[0].spice > 0
+        and len(line.rewards) == 2
+        and isinstance(line.rewards[0], DestroyShieldWall)
+        and isinstance(line.rewards[1], SummonSandworm)
+        and line.rewards[1].count == 1
+    )
+
+
+def wall_and_worm_spice(ability: Ability) -> int:
+    cost = ability.sections[0].costs[0]
+    assert isinstance(cost, PayResources)
+    return cost.spice
+
+
+def wall_and_worm_needs_hooks(ability: Ability) -> bool:
+    summon = ability.sections[0].rewards[1]
+    assert isinstance(summon, SummonSandworm)
+    return summon.requires_maker_hooks
 
 
 # --- Two discards and a payment (cleanup-2d) ------------------------------------------

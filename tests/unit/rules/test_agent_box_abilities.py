@@ -99,6 +99,9 @@ from dune_imperium.rules.agent_box_abilities import (
     payment_box,
     target_piece,
     trash_box,
+    wall_and_worm_box,
+    wall_and_worm_needs_hooks,
+    wall_and_worm_spice,
 )
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
@@ -1192,19 +1195,28 @@ def test_three_boxes_resolve_as_one_action_with_their_own_pieces() -> None:
             assert reward_text_ko(reward) in AGENT_EFFECT_TEXT_KO[effect]
 
 
-def test_the_optional_hooks_say_so_in_their_records() -> None:
-    """The boxes kept as hooks (composed A3, A3g) that are printed as an
-    optional effect -- an arrow cost [FAQ p. 3] -- are marked so in their
-    records; no separate table lists them any more."""
+def test_no_optional_box_is_a_hook_any_more() -> None:
+    """The optional boxes once kept as hooks (composed A3, A3g) are records
+    since cleanup-2d; the boxes still kept as hooks are mandatory flows."""
 
-    assert {
+    assert not {
         ability.hook
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.hook is not None and ability.mark is AbilityMark.OPTIONAL
-    } == {
-        "arrakis_revolt",
     }
-    assert len(box_hook_names()) == 7
+    assert box_hook_names() == {
+        "beasts_spoils",
+        "in_high_places",
+        "long_live_the_fighters",
+        "possible_futures",
+        "scientific_breakthrough",
+        "slig_farmer",
+    }
+    revolt = AGENT_BOX_ABILITIES[
+        _BOX.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+    ]
+    assert wall_and_worm_box(revolt)
+    assert wall_and_worm_spice(revolt) == 2 and wall_and_worm_needs_hooks(revolt)
 
 
 def test_the_grafted_card_trashes_are_records() -> None:
