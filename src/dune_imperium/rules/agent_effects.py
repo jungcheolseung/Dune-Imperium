@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ForceEnemyRetreat,
     GainInfluence,
     GainResources,
+    GenerateSpecimens,
     GrantCombatDeployment,
     PlaceSpy,
 )
@@ -67,6 +68,9 @@ from dune_imperium.rules.agent_box_abilities import (
     either_box,
     either_choice,
     either_rows,
+    graft_trash_block,
+    graft_trash_box,
+    graft_trash_rows,
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
@@ -123,7 +127,6 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     drop_boost_draw,
     finish_agent_icon,
-    is_grafted,
     other_grafted_card_id,
     pending_agent_icons,
     pending_boost_draws,
@@ -201,9 +204,6 @@ _SOLARI_PER_PARTNER_ICON = (
     .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
 )
 _CHOOSE_TWO_REWARDS = PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU
-_TRASH_GRAFTED_FOR_INFLUENCE = (
-    PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
-)
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
@@ -1805,11 +1805,8 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         return discard_cost_block(owner, ability)
     if ability is not None and intrigue_box(ability):
         return intrigue_cost_block(owner, ability)
-    if effect is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN:
-        partner = other_grafted_card_id(context)
-        if not partner or partner not in owner.in_play:
-            return OptionalEffectBlock(kind.NO_PARTNER)
-        return None
+    if ability is not None and graft_trash_box(ability):
+        return graft_trash_block(owner, ability, context)
     if effect is _RESEARCH_AND_TRASH_FOR_VP:
         return short_of(
             kind.GENETIC_MARKERS, 2, genetic_markers_reached(owner.research_space)
@@ -1852,18 +1849,10 @@ def legal_agent_card_payment_actions(
         .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
     ):
         return _arrakis_revolt_payment_actions(state, player)
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN
-    ):
-        # Dissecting Kit: "Trash the other grafted card -> a specimen"
-        # [card face]; without a partner still in play the box does nothing.
-        if agent_card_cost_block(state, player) is not None:
-            return ()
-        return (
-            DomainAction(action_id="decline_agent_card_payment", actor=player),
-            DomainAction(action_id="trash_grafted_card_for_specimen", actor=player),
-        )
+    if recorded is not None and graft_trash_box(recorded):
+        # Dissecting Kit and Beguiling Pheromones, from their records
+        # (cleanup-2d).
+        return graft_trash_rows(state, player, recorded)
     if (
         recorded is not None
         and either_box(recorded)
@@ -1908,24 +1897,6 @@ def legal_agent_card_payment_actions(
             DomainAction(
                 action_id="pay_agent_card_five_solari_for_tleilaxu", actor=player
             ),
-        )
-    if source_card.agent_effect is _TRASH_GRAFTED_FOR_INFLUENCE:
-        # Beguiling Pheromones: a Faction space visited this turn and a
-        # grafted card (either one) still in play [card face] [FAQ p. 1].
-        # "trash one of the grafted cards and gain an additional Influence"
-        # has no "may", arrow or black-X icon, so it is mandatory [FAQ p. 3]:
-        # the owner picks which card, never whether.
-        _, _, space_id = _effect_subject(context)
-        if BOARD_SPACES_BY_ID[space_id].faction is None or not is_grafted(context):
-            return ()
-        return tuple(
-            DomainAction(
-                action_id="trash_grafted_card_for_influence",
-                actor=player,
-                arguments=(("card_id", card_id),),
-            )
-            for card_id in (source_card_id, other_grafted_card_id(context))
-            if card_id in owner.in_play
         )
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor, from its record (composed A3f).
@@ -2232,20 +2203,9 @@ def _apply_payment_choice(
         # Piter, Genius Advisor (composed A3f).
         return apply_lose(state, action, recorded, context, source)
 
+    if recorded is not None and graft_trash_box(recorded):
+        return _apply_graft_trash(state, action, recorded, context, source)
     owner = state.players[action.actor]
-    if action.action_id == "trash_grafted_card_for_specimen":
-        # Dissecting Kit: the other grafted card leaves play; its
-        # un-activated box expires with it (OQ-022 designer ruling).
-        partner = other_grafted_card_id(context)
-        expired = _expired_partner_box(state, context, action.actor)
-        next_state = advance_after_effect(state, context)
-        trashed = trash_personal_card(next_state, action.actor, partner, source=source)
-        generated = generate_specimens(trashed.state, action.actor, 1, source=source)
-        return RuleResult(
-            state=generated.state,
-            # The cost is the trash; its own event says so (cleanup-2c-6).
-            events=(*trashed.events, *expired, *generated.events),
-        )
     if action.action_id == "take_agent_card_combat_icon":
         # High Priority Travel's Combat half; the grant writes the frame, so
         # the context is re-read before the box closes.
@@ -2334,38 +2294,57 @@ def _apply_payment_choice(
                 *advanced.events,
             ),
         )
-    if action.action_id == "trash_grafted_card_for_influence":
-        # Beguiling Pheromones: trashing the other grafted card expires its
-        # un-activated box (OQ-022, FAQ p. 1); trashing itself keeps the
-        # Influence (its own cost).
-        _, active_id, space_id = _effect_subject(context)
-        trashed_id = str(dict(action.arguments)["card_id"])
-        expired_box: tuple[GameEvent, ...] = ()
-        if trashed_id == active_id:
-            context["agent_card_self_trashed"] = True
-        else:
-            expired_box = _expired_partner_box(state, context, action.actor)
-        faction = BOARD_SPACES_BY_ID[space_id].faction
-        if faction is None:
-            raise RuntimeError("Beguiling Pheromones needs a Faction space")
-        next_state = advance_after_effect(state, context)
-        trashed = trash_personal_card(
-            next_state, action.actor, trashed_id, source=source
-        )
-        gained = gain_faction_influence(
-            trashed.state,
-            action.actor,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        return RuleResult(
-            state=gained.state,
-            events=(*trashed.events, *expired_box, *gained.events),
-        )
     if action.action_id == "choose_agent_card_reward":
         return _apply_stitched_horror_reward(state, action, context, source)
     raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
+
+
+def _apply_graft_trash(
+    state: GameState,
+    action: DomainAction,
+    ability: Ability,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    """Trash a grafted card for the box's reward [Dissecting Kit card]
+    [Beguiling Pheromones card]. Trashing the other grafted card expires its
+    un-activated box (OQ-022 designer ruling, FAQ p. 1); trashing the box's
+    own card is its own cost, so the reward still pays out. The cost is the
+    trash; its own event says so (cleanup-2c-6)."""
+
+    _, active_id, space_id = _effect_subject(context)
+    named = dict(action.arguments).get("card_id")
+    trashed_id = named if isinstance(named, str) else other_grafted_card_id(context)
+    expired: tuple[GameEvent, ...] = ()
+    if trashed_id == active_id:
+        context["agent_card_self_trashed"] = True
+    else:
+        expired = _expired_partner_box(state, context, action.actor)
+    next_state = advance_after_effect(state, context)
+    trashed = trash_personal_card(next_state, action.actor, trashed_id, source=source)
+    working = trashed.state
+    events: list[GameEvent] = [*trashed.events, *expired]
+    for reward in ability.sections[0].rewards:
+        step: RuleResult | None = None
+        if isinstance(reward, GenerateSpecimens):
+            step = generate_specimens(
+                working, action.actor, reward.count, source=source
+            )
+        elif isinstance(reward, GainInfluence) and reward.visited_space:
+            faction = BOARD_SPACES_BY_ID[space_id].faction
+            if faction is None:
+                raise RuntimeError("a visited Faction's gain needs a Faction space")
+            step = gain_faction_influence(
+                working,
+                action.actor,
+                faction,
+                reward.times,
+                event_prefix=f"{source}:influence:{faction.value}",
+            )
+        if step is not None:
+            working = step.state
+            events.extend(step.events)
+    return RuleResult(state=working, events=tuple(events))
 
 
 _ARRAKIS_REVOLT_ACTION_IDS = frozenset(
@@ -3905,11 +3884,9 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "arrakis_revolt": _hook_rows_only,
             "beasts_spoils": _hook_beasts_spoils,
             "long_reach": _hook_long_reach,
-            "dissecting_kit": _hook_rows_only,
             "scientific_breakthrough": _hook_scientific_breakthrough,
             "slig_farmer": _hook_slig_farmer,
             "stitched_horror": _hook_unavailable,
-            "beguiling_pheromones": _hook_unavailable,
         }
     )
 )

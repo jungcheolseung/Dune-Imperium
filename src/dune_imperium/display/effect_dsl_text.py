@@ -67,6 +67,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -454,6 +455,12 @@ def cost_text(cost: Cost) -> str:
             )
         case TrashCard(other_in_play=faction) if faction is not None:
             return f"Trash another {_faction_name(faction)} card in play"
+        case TrashCard(grafted=GraftedTrash.OTHER):
+            # "You may trash the other grafted card" [Dissecting Kit card].
+            return "Trash the other grafted card"
+        case TrashCard(grafted=GraftedTrash.EITHER):
+            # "Trash one of the grafted cards" [Beguiling Pheromones card].
+            return "Trash one of the grafted cards"
         case TrashCard(hand_only=True, faction=faction) if faction is not None:
             # "an Emperor card from your hand" [Treacherous Maneuver card].
             return f"Trash an {_faction_name(faction)} card from your hand"

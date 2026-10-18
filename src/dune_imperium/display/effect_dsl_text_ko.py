@@ -94,6 +94,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -681,6 +682,12 @@ def cost_text_ko(cost: Cost) -> str:
         case TrashCard(other_in_play=faction) if faction is not None:
             # Quotes ``tokens_ko.py``'s Calculus of Power line.
             return f"{{in_play}}의 다른 {_faction_name_ko(faction)} 카드 {{trash}}"
+        case TrashCard(grafted=GraftedTrash.OTHER):
+            # Quotes ``tokens_ko.py``'s Dissecting Kit line.
+            return "다른 {graft} 카드 {trash}"
+        case TrashCard(grafted=GraftedTrash.EITHER):
+            # Quotes ``tokens_ko.py``'s Beguiling Pheromones line.
+            return "{graft}한 카드 중 하나 {trash}"
         case TrashCard(hand_only=True, faction=faction) if faction is not None:
             # Quotes ``tokens_ko.py``'s Treacherous Maneuver line ("핸드의
             # 황제 카드 {trash}").

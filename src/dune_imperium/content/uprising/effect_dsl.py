@@ -529,6 +529,14 @@ class PayResources:
         )
 
 
+class GraftedTrash(StrEnum):
+    """Which grafted card a trash takes: "the other grafted card" [Dissecting
+    Kit card], "one of the grafted cards" [Beguiling Pheromones card]."""
+
+    OTHER = "other"
+    EITHER = "either"
+
+
 @dataclass(frozen=True, slots=True)
 class TrashCard:
     """Trash one of the player's cards as an arrow's cost: one in hand, in
@@ -544,6 +552,8 @@ class TrashCard:
     other_in_play: Faction | None = None
     # "an Emperor card from your hand" [Treacherous Maneuver card].
     faction: Faction | None = None
+    # A card of the graft pair (``GraftedTrash``).
+    grafted: GraftedTrash | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -555,6 +565,10 @@ class TrashCard:
             raise ValueError("a trash cost names one place to take the card from")
         if self.faction is not None and not self.hand_only:
             raise ValueError("a trash cost names a Faction only for a card in hand")
+        if self.grafted is not None and (
+            self.hand_only or self.this_card or self.other_in_play is not None
+        ):
+            raise ValueError("a grafted card's trash names no other place")
 
 
 @dataclass(frozen=True, slots=True)

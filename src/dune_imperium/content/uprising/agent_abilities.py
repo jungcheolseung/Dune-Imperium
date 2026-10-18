@@ -69,6 +69,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantCombatDeployment,
     HasAlliance,
@@ -694,9 +695,9 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 "long_reach", GainInfluence(times=2, distinct=True)
             ),
             # Dissecting Kit: "You may trash the other grafted card -> Generate
-            # 1 specimen".
-            _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: _hook(
-                "dissecting_kit", mark=AbilityMark.OPTIONAL
+            # 1 specimen" (cleanup-2d).
+            _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: _pay(
+                TrashCard(grafted=GraftedTrash.OTHER), GenerateSpecimens(1)
             ),
             # Scientific Breakthrough: "Research, If 2 genetic markers: You may
             # trash this card -> Gain 1 VP" -- the trash line judged once the
@@ -727,8 +728,16 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Beguiling Pheromones: "If you sent an Agent to a Faction space this
             # turn: Trash one of the grafted cards, Gain 1 Influence with that
             # Faction".
-            _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE: _hook(
-                "beguiling_pheromones"
+            # Its "If you sent an Agent to a Faction space this turn" is the
+            # visited Faction's gain (no Faction, nothing offered; cleanup-2d).
+            _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainInfluence(visited_space=True),),
+                        costs=(TrashCard(grafted=GraftedTrash.EITHER),),
+                    ),
+                ),
             ),
             # --- Icon by icon (OQ-027) -------------------------------------------
             # Hidden Missive.

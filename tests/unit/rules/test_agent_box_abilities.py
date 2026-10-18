@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ForceEnemyRetreat,
     GainedSpiceThisTurn,
     GainInfluence,
+    GraftedTrash,
     GraftedWithFaction,
     HasAlliance,
     InfluenceAtLeast,
@@ -85,6 +86,7 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_box,
     discard_spy,
     either_box,
+    graft_trash_box,
     intrigue_box,
     lose_box,
     opens_at_placement,
@@ -1195,6 +1197,29 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
     } == {
         "corrinth_city",
         "arrakis_revolt",
-        "dissecting_kit",
     }
-    assert len(box_hook_names()) == 12
+    assert len(box_hook_names()) == 10
+
+
+def test_the_grafted_card_trashes_are_records() -> None:
+    """Dissecting Kit and Beguiling Pheromones (cleanup-2d): a grafted card's
+    trash for a specimen (optional, "the other grafted card") or for the
+    visited Faction's Influence (mandatory, "one of the grafted cards"),
+    read as the cards print them."""
+
+    kit_effect = _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN
+    pheromones_effect = _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+    kit = AGENT_BOX_ABILITIES[kit_effect]
+    pheromones = AGENT_BOX_ABILITIES[pheromones_effect]
+    assert graft_trash_box(kit) and graft_trash_box(pheromones)
+    assert kit.mark is AbilityMark.OPTIONAL
+    assert pheromones.mark is AbilityMark.MANDATORY
+    assert kit.sections[0].costs == (TrashCard(grafted=GraftedTrash.OTHER),)
+    assert pheromones.sections[0].costs == (TrashCard(grafted=GraftedTrash.EITHER),)
+    assert pheromones.sections[0].rewards == (GainInfluence(visited_space=True),)
+    for effect, ability in ((kit_effect, kit), (pheromones_effect, pheromones)):
+        cost = ability.sections[0].costs[0]
+        assert cost_text(cost).lower() in AGENT_EFFECT_TEXT[effect].lower()
+        assert cost_text_ko(cost) in AGENT_EFFECT_TEXT_KO[effect]
+    with pytest.raises(ValueError, match="no other place"):
+        TrashCard(hand_only=True, grafted=GraftedTrash.OTHER)

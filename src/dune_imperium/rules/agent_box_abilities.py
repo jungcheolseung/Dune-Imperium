@@ -87,6 +87,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantCombatDeployment,
     HasAlliance,
@@ -678,6 +679,13 @@ def resolve_box(state: GameState) -> RuleResult:
             raise BoxNeedsRows("place-Spy Agent effect requires a player choice")
         context.pop("agent_card_spy_pending", None)
         context.pop("agent_card_spy_recalled", None)
+        available = False
+    elif graft_trash_box(ability):
+        # Beguiling Pheromones' mandatory trash resolves through its rows;
+        # with none (no graft, no Faction space) the box waits and fizzles
+        # (OQ-057 (1)).
+        if graft_trash_rows(state, player, ability):
+            raise BoxNeedsRows("the grafted card's trash requires a player choice")
         available = False
     elif discard_box(ability):
         # Guild Envoy's mandatory discard resolves through its rows; with an
@@ -1818,6 +1826,7 @@ def trash_box(ability: Ability | None) -> bool:
         # Maneuver card]: the pick, then the card itself.
         or (len(costs) == 2 and (costs[1] != _THIS_CARD or costs[0] == _THIS_CARD))
         or costs[0].other_in_play is not None
+        or costs[0].grafted is not None
         or any(line.costs for line in rest)
         or any(
             line.condition is not None
@@ -2059,6 +2068,122 @@ def apply_trash(
             state=drawn.state, events=(*trashed.events, *drawn.events, *done)
         )
     return RuleResult(state=next_state, events=(*trashed.events, *done))
+
+
+# --- A grafted card's trash (cleanup-2d) ------------------------------------------
+#
+# "You may trash the other grafted card -> Generate 1 specimen" [Dissecting
+# Kit card] and "Trash one of the grafted cards, Gain 1 Influence with that
+# Faction" [Beguiling Pheromones card]: one row per card the trash may take
+# (no card named when only the other one can be), named after the reward
+# (``trash_grafted_card_for_specimen`` / ``…_for_influence``), beside the
+# refusal for an optional box. The answer is ``agent_effects``' (the other
+# grafted card's waiting box expires with it, OQ-022).
+
+
+def graft_trash_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` trashes a grafted card for its reward."""
+
+    if (
+        ability is None
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+    ):
+        return False
+    (line,) = ability.sections
+    return (
+        len(line.costs) == 1
+        and isinstance(line.costs[0], TrashCard)
+        and line.costs[0].grafted is not None
+        and all(
+            isinstance(reward, GenerateSpecimens)
+            or (isinstance(reward, GainInfluence) and reward.visited_space)
+            for reward in line.rewards
+        )
+    )
+
+
+def graft_trash_cost(ability: Ability) -> TrashCard:
+    cost = ability.sections[0].costs[0]
+    assert isinstance(cost, TrashCard) and cost.grafted is not None
+    return cost
+
+
+def graft_trash_block(
+    owner: PlayerState, ability: Ability, context: Mapping[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """Why "the other grafted card" cannot be trashed now: it left play."""
+
+    if graft_trash_cost(ability).grafted is GraftedTrash.OTHER:
+        partner = other_grafted_card_id(context)
+        if not partner or partner not in owner.in_play:
+            return OptionalEffectBlock(OptionalBlockKind.NO_PARTNER)
+    return None
+
+
+def graft_trash_targets(
+    state: GameState, player: int, ability: Ability, context: Mapping[str, ActionValue]
+) -> tuple[str, ...]:
+    """The grafted cards the trash may take now: none for the visited
+    Faction's gain off a Faction space [Beguiling Pheromones card] or with
+    no graft [FAQ p. 1]."""
+
+    owner = state.players[player]
+    if graft_trash_block(owner, ability, context) is not None:
+        return ()
+    visited = any(
+        isinstance(reward, GainInfluence) and reward.visited_space
+        for reward in ability.sections[0].rewards
+    )
+    space_id = context.get("space_id")
+    if visited and (
+        not isinstance(space_id, str) or BOARD_SPACES_BY_ID[space_id].faction is None
+    ):
+        return ()
+    partner = other_grafted_card_id(context)
+    if graft_trash_cost(ability).grafted is GraftedTrash.OTHER:
+        return (partner,)
+    if not is_grafted(context):
+        return ()
+    return tuple(
+        card_id
+        for card_id in (context.get("card_id"), partner)
+        if isinstance(card_id, str) and card_id in owner.in_play
+    )
+
+
+def graft_trash_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal of an optional box, then one row per card it may take."""
+
+    _, context = current_agent_effect_context(state)
+    targets = graft_trash_targets(state, player, ability, context)
+    if not targets:
+        return ()
+    reward = ability.sections[0].rewards[0]
+    action_id = (
+        "trash_grafted_card_for_specimen"
+        if isinstance(reward, GenerateSpecimens)
+        else "trash_grafted_card_for_influence"
+    )
+    names_card = graft_trash_cost(ability).grafted is GraftedTrash.EITHER
+    return (
+        *(
+            (DomainAction(action_id="decline_agent_card_payment", actor=player),)
+            if ability.mark is AbilityMark.OPTIONAL
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id=action_id,
+                actor=player,
+                arguments=(("card_id", card_id),) if names_card else (),
+            )
+            for card_id in targets
+        ),
+    )
 
 
 def trashes_remaining(context: Mapping[str, ActionValue], default: int = 0) -> int:
