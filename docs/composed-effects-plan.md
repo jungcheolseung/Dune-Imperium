@@ -707,12 +707,27 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      손으로 복사한 쌍둥이(Combat 아이콘, 후퇴, 획득 후속, 모래벌레 문 셋), Spy 넘기기 줄의 자리 하나로. Scouts 장치 이름은 갈래별로. 바꾸기
      전에 규칙을 문서와 대조해 정할 것(조사 F5): Imperial Privilege 소환(확인 대 기다림), Arrakis Revolt, 아이콘 여럿을 한 번에 해결하는
      칸 넷(In High Places, Occupation, Clandestine Meeting, Overthrow — OQ-027과 대조), Shadout Mapes의 두 가지.
+     **대조 결과(2026-10-18):** Imperial Privilege 소환은 두 맥락 모두 유지(Spy의 "예외" (2)와 같은 판단 — 보드는 확인 창, Agent 칸은
+     기다림); Arrakis Revolt는 OQ-026·OQ-027이 명시한 예외라 지불 변형 유지; Overthrow는 아이콘이 하나(조사의 오기); Shadout Mapes의
+     Combat 아이콘 없는 배치는 카드 문장이 배치를 허락하므로 맞고("You may deploy or retreat 1 troop"), Harkonnen Advisor의 배치 금지
+     troop을 빼지 않는 것은 OQ-038 (b) 위반이라 고친다(2d-3). **사용자 결정(2026-10-18, "원칙대로 아이콘마다 나누자"):** 아이콘 두
+     개를 한 번에 해결하는 칸 셋(Clandestine Meeting, Occupation, In High Places)은 OQ-027 확장대로 아이콘마다 나눈다(2d-5, 행이 바뀜).
   5. **정리-2e — 옮겨 받는 옛 표 없애기:** 망에 무관한 것 먼저(Flip, Reclaimed Forces 상수, Tleilaxu 트랙, Tech Reveal 줄, Scouts, 보드
      아이콘), 나머지(Conflict·계약, Reveal 이득, Tech 획득, 기술 타일)는 2c·2d에서 그 사건이 바뀔 때 함께. `ResearchBonus`는 저장·화면·휴리스틱이
      읽는 키라 파생 키로 남긴다. `TakeContract` 문구("face-up").
+  5b. **정리-2f — 거절·확인 줄 정리(사용자 결정 2026-10-18, "모두 추천 값대로"):** (가) 엔진이 더는 내놓지 않는 거절 템플릿
+     (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, `resolve_desert_tactics_without_trash`,
+     `decline_imperial_privilege_intrigue`)을 codec·처리 표·이름표에서 뺀다(옛 기보는 다리가 이름으로 거른다). (나) 의무 단계에
+     "막히지 않게" 남긴 거절(Fenring Corrino Liaison·Mohiam Listeners의 먼저 회수 뒤, Esmar Smuggle Spice의 두 갈래 불가)은
+     "할 수 있는 것 없음 · 확인" 줄로(2026-09-30 원칙, 2a의 확인 줄과 같은 모양). (다) 낼 카드가 없는 Conflict 폐기 보상은 확인
+     창을 연다(같은 원칙).
+  5c. **정리-2c-7 — payload 목록(사용자 결정 2026-10-18, "목록으로 바꾸자. 깔끔하게."):** 쉼표 문자열로 이은 id 목록(2c-6 4번)을
+     진짜 목록으로 — 사건 payload 값 형에 목록을 더하고(행동 인자 형은 그대로), 직렬화·`PlayerView`·화면이 나누던 곳을 함께 바꾼다.
   6. **A8:** 조사 결과 지금 플레이 망(MLP `readapt-v147-4400.pt`)은 카드 특성을 읽지 않는다 — 기록에서 만드는 망 특성(4.4)은 엔티티 망
      계보에만 쓰인다. 그래서 A8은 계보 결정에 달렸다(사용자 결정 필요): (가) 엔티티 계보로 옮김 — 특성 전환, 재학습 약 10–11시간, 관문 약
      6시간; (나) MLP 계보 유지 — v149에서 새로 생기거나 없어진 행만 다시 적응시키고 관문, 특성 전환은 뒤로.
+     **사용자 결정(2026-10-18): (가) 엔티티 계보로 옮겨 재학습.** 특성 전환(FEATURE_VERSION 2, 기록에서 특성)은 정리-2의 마지막
+     기록 변경 뒤에 하고(지문이 기록에 따라 바뀜), 학생 증류 → PPO(학습률 1e-5) → 탐색 좌석 관문(대조는 v149 트리에서 다시) 순서.
   7. **마무리:** v149 기보 묶음, 다리, 규칙 요약 문서(조사 7.6의 목록), E2E 전부, master에 한 번 병합, 사용자 검토 뒤 푸시.
 
 ### 정리-2a에서 만든 것 (2026-10-17, 브랜치 `cleanup2`, codec v149)
@@ -983,7 +998,8 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      따른다. 지울 거절(필수 단계의 `decline_*`)과 그 codec 자리는 A8과 함께 사용자가 정한다.
   3. **`shortfall_refilled`** id에서 사건 기록 길이를 뺀다(`round:R:player:P:shortfall_refilled`, id는 유일하지 않아도 된다), 0인 양은
      싣지 않는다.
-  4. 쉼표 문자열 목록(`cards_revealed.card_ids` 등 여섯)은 **그대로 둔다**. payload 값의 형(`core.actions.ActionValue =
+  4. 쉼표 문자열 목록(`cards_revealed.card_ids` 등 여섯)은 **그대로 둔다** — **바뀜(2026-10-18 사용자 결정 "목록으로 바꾸자"):
+     정리-2c-7에서 목록으로.** 처음 판단: payload 값의 형(`core.actions.ActionValue =
      bool | int | str`)이 목록을 받지 않아 핵심 형과 사건 직렬화·`PlayerView`를 함께 바꿔야 하고, 화면이 문자열을 나누는 곳
      (`core.js` 둘, `effects.js`, `panels.js`)도 고쳐야 한다. 사건 문법은 "목록은 쉼표 문자열"로 적는다.
 
