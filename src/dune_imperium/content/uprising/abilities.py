@@ -102,6 +102,9 @@ class AbilityStructure(StrEnum):
     ONE_OF = "one_of"
     # Lines printed without "—OR—", each used on its own (OQ-058).
     SEPARATE = "separate"
+    # "Choose two" of the lines, both named before either is paid (designer
+    # ruling, OQ-057) [Stitched Horror card].
+    CHOOSE_TWO = "choose_two"
 
 
 @dataclass(frozen=True, slots=True)

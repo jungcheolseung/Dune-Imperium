@@ -723,8 +723,17 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Stitched Horror: "Choose two: Gain 1 water / Recruit 1 troop /
             # Trash a card / Advance the Tleilaxu track" -- both named before
-            # either is paid.
-            _BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU: _hook("stitched_horror"),
+            # either is paid (cleanup-2d).
+            _BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(GainResources(water=1)),
+                    _line(RecruitTroops(1)),
+                    _line(TrashPersonalCard()),
+                    _line(AdvanceTleilaxu(1)),
+                ),
+                structure=AbilityStructure.CHOOSE_TWO,
+            ),
             # Beguiling Pheromones: "If you sent an Agent to a Faction space this
             # turn: Trash one of the grafted cards, Gain 1 Influence with that
             # Faction".

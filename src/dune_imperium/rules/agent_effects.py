@@ -53,6 +53,7 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentPaymentBlock,
     agent_spy_rows,
     apply_chosen_influence,
+    apply_chosen_reward,
     apply_discard,
     apply_either_influence,
     apply_intrigue_payment,
@@ -61,6 +62,9 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_trash,
     box_ability,
     box_icon_block,
+    choose_two_box,
+    choose_two_rows,
+    chosen_rewards,
     discard_box,
     discard_cost_block,
     discard_rows,
@@ -173,7 +177,6 @@ from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
     units_deployment_blocked,
 )
-from dune_imperium.rules.optional_trash import open_optional_trash
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
@@ -203,7 +206,6 @@ _SOLARI_PER_PARTNER_ICON = (
     PersonalCardAgentEffect
     .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
 )
-_CHOOSE_TWO_REWARDS = PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
@@ -615,81 +617,6 @@ def _partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) ->
     )
 
 
-def _chosen_rewards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
-    value = context.get("rewards_chosen", "")
-    return tuple(str(value).split(",")) if value else ()
-
-
-def _apply_stitched_horror_reward(
-    state: GameState,
-    action: DomainAction,
-    context: dict[str, ActionValue],
-    source: str,
-) -> RuleResult:
-    """Record one of Stitched Horror's picks; both pay out after the second.
-
-    "Choose two" names both rewards before either resolves (designer ruling,
-    OQ-057), so the second pick cannot depend on what the first produced.
-    """
-
-    player = action.actor
-    reward = str(dict(action.arguments)["reward"])
-    chosen = (*_chosen_rewards(context), reward)
-    context["rewards_chosen"] = ",".join(chosen)
-    context["pending_agent_effect"] = len(chosen) < 2
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:reward:{reward}",
-            kind="agent_card_reward_chosen",
-            payload=(("player", player), ("reward", reward)),
-        )
-    ]
-    frame = state.decision_stack[-1]
-    if context["pending_agent_effect"] is True:
-        # The first pick: the box stays open for the second.
-        return RuleResult(
-            state=replace(
-                state,
-                decision_stack=(
-                    *state.decision_stack[:-1],
-                    replace(frame, context=tuple(sorted(context.items()))),
-                ),
-            ),
-            events=tuple(events),
-        )
-    players = state.players
-    for pick in chosen:
-        owner = players[player]
-        if pick == "water":
-            players = replace_player(
-                players,
-                replace(
-                    owner,
-                    resources=replace(owner.resources, water=owner.resources.water + 1),
-                ),
-            )
-            events.append(resources_gained_event(source, player, water=1))
-        elif pick == "troop":
-            recruited_owner, recruited = recruit_troops(owner, 1)
-            context["troops_recruited"] = (
-                context_int(
-                    context, "troops_recruited", owner="Agent-turn effect frame"
-                )
-                + recruited
-            )
-            players = replace_player(players, recruited_owner)
-            events.extend(recruit_shortfall_events(source, player, 1, recruited))
-    next_state = advance_after_effect(state, context, players)
-    for index, pick in enumerate(chosen):
-        if pick == "tleilaxu":
-            advanced = advance_tleilaxu(next_state, player, 1)
-            next_state = advanced.state
-            events.extend(advanced.events)
-        elif pick == "trash":
-            next_state = open_optional_trash(
-                next_state, player, f"{source}:{index + 1}"
-            )
-    return RuleResult(state=next_state, events=tuple(events))
 
 
 def legal_agent_card_influence_actions(
@@ -1824,18 +1751,9 @@ def legal_agent_card_payment_actions(
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor, from its record (composed A3f).
         return lose_rows(state, player)
-    if source_card.agent_effect is _CHOOSE_TWO_REWARDS:
-        # Stitched Horror: "Choose two" of the four rewards, one at a time.
-        chosen = _chosen_rewards(context)
-        return tuple(
-            DomainAction(
-                action_id="choose_agent_card_reward",
-                actor=player,
-                arguments=(("reward", reward),),
-            )
-            for reward in STITCHED_HORROR_REWARDS
-            if reward not in chosen
-        )
+    if recorded is not None and choose_two_box(recorded):
+        # Stitched Horror, from its record (cleanup-2d).
+        return choose_two_rows(state, player, recorded)
     return ()
 
 
@@ -2217,8 +2135,8 @@ def _apply_payment_choice(
                 *advanced.events,
             ),
         )
-    if action.action_id == "choose_agent_card_reward":
-        return _apply_stitched_horror_reward(state, action, context, source)
+    if recorded is not None and choose_two_box(recorded):
+        return apply_chosen_reward(state, action, recorded)
     raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
 
 
@@ -3421,7 +3339,7 @@ def _box_selection_under_way(
 
     if context.get("pending_agent_effect") is not True:
         return False
-    if context.get("influence_chosen") or _chosen_rewards(context):
+    if context.get("influence_chosen") or chosen_rewards(context):
         return True
     player = context_int(context, "turn_owner")
     owner = state.players[player]
@@ -3593,16 +3511,6 @@ def _close_box(
     )
 
 
-def _hook_unavailable(state: GameState) -> RuleResult:
-    """A box answered through its own rows, reached with none to offer (no
-    grafted partner, no Faction space): it waits for the turn's end and
-    fizzles there (OQ-057 (1)). Stitched Horror and Beguiling Pheromones
-    (the dry run is asked only while they offer nothing,
-    ``agent_effect_frame.agent_box_can_resolve_by_choice``)."""
-
-    context, _, _, owner, _ = _box_subject(state)
-    next_state, event = _close_box(state, context, owner, BoxOutcome.UNAVAILABLE)
-    return RuleResult(state=next_state, events=(event,))
 
 
 def _hook_rows_only(state: GameState) -> RuleResult:
@@ -3768,7 +3676,6 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "beasts_spoils": _hook_beasts_spoils,
             "scientific_breakthrough": _hook_scientific_breakthrough,
             "slig_farmer": _hook_slig_farmer,
-            "stitched_horror": _hook_unavailable,
         }
     )
 )

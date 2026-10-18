@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ForceEnemyRetreat,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainResources,
     GraftedTrash,
     GraftedWithFaction,
     HasAlliance,
@@ -82,6 +83,7 @@ from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
     AgentPaymentBlock,
+    choose_two_box,
     condition_block,
     discard_box,
     discard_spy,
@@ -1200,7 +1202,7 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
         "corrinth_city",
         "arrakis_revolt",
     }
-    assert len(box_hook_names()) == 9
+    assert len(box_hook_names()) == 8
 
 
 def test_the_grafted_card_trashes_are_records() -> None:
@@ -1225,3 +1227,25 @@ def test_the_grafted_card_trashes_are_records() -> None:
         assert cost_text_ko(cost) in AGENT_EFFECT_TEXT_KO[effect]
     with pytest.raises(ValueError, match="no other place"):
         TrashCard(hand_only=True, grafted=GraftedTrash.OTHER)
+
+
+def test_stitched_horror_is_a_choose_two_record() -> None:
+    """Stitched Horror's "Choose two" (cleanup-2d): four one-reward lines,
+    picked by their keys in printed order; a "Choose two" needs lines to
+    choose from."""
+
+    horror = AGENT_BOX_ABILITIES[_BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU]
+    assert choose_two_box(horror)
+    assert horror.structure is AbilityStructure.CHOOSE_TWO
+    assert [line.rewards for line in horror.sections] == [
+        (GainResources(water=1),),
+        (RecruitTroops(1),),
+        (TrashPersonalCard(),),
+        (AdvanceTleilaxu(1),),
+    ]
+    with pytest.raises(ValueError, match="two or more lines"):
+        Ability(
+            AbilityTiming.AGENT_BOX,
+            (EffectSection(rewards=(GainResources(water=1),)),),
+            structure=AbilityStructure.CHOOSE_TWO,
+        )

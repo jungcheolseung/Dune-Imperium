@@ -647,6 +647,7 @@ def resolve_box(state: GameState) -> RuleResult:
         or ability.hook is not None
         or (
             len(ability.sections) != 1
+            and not choose_two_box(ability)
             and not trash_box(ability)
             and not discard_box(ability)
             and not lose_box(ability)
@@ -680,6 +681,12 @@ def resolve_box(state: GameState) -> RuleResult:
             raise BoxNeedsRows("place-Spy Agent effect requires a player choice")
         context.pop("agent_card_spy_pending", None)
         context.pop("agent_card_spy_recalled", None)
+        available = False
+    elif choose_two_box(ability):
+        # "Choose two" resolves through its picks; reached with none to
+        # make, the box fizzles (OQ-057 (1)).
+        if choose_two_rows(state, player, ability):
+            raise BoxNeedsRows("the Agent box resolves through its picks")
         available = False
     elif graft_trash_box(ability):
         # Beguiling Pheromones' mandatory trash resolves through its rows;
@@ -2272,6 +2279,134 @@ def graft_trash_rows(
             for card_id in targets
         ),
     )
+
+
+# --- "Choose two" (cleanup-2d) ------------------------------------------------------
+#
+# "Choose two: Gain 1 water / Recruit 1 troop / Trash a card / Advance the
+# Tleilaxu track" [Stitched Horror card]: both picks are named before either
+# is paid (designer ruling, OQ-057), so the second cannot depend on what the
+# first produced. Rows ``choose_agent_card_reward(reward=<key>)`` for each
+# line not picked yet, in printed order; the first pick keeps the box open
+# (``rewards_chosen``), the second pays both: resources and troops with the
+# write-back, then the Tleilaxu step and the optional trash frame
+# (``<box>:<pick number>``).
+
+# The row key each line's reward is named by.
+_CHOSEN_REWARD_KEYS: Final[Mapping[str, Reward]] = {
+    "water": GainResources(water=1),
+    "troop": RecruitTroops(1),
+    "trash": TrashPersonalCard(),
+    "tleilaxu": AdvanceTleilaxu(1),
+}
+
+
+def choose_two_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is a "Choose two" of keyed one-reward lines."""
+
+    return (
+        ability is not None
+        and ability.structure is AbilityStructure.CHOOSE_TWO
+        and ability.mark is AbilityMark.MANDATORY
+        and ability.hook is None
+        and all(
+            not line.costs
+            and line.condition is None
+            and len(line.rewards) == 1
+            and line.rewards[0] in _CHOSEN_REWARD_KEYS.values()
+            for line in ability.sections
+        )
+    )
+
+
+def _reward_key(reward: Reward) -> str:
+    return next(key for key, piece in _CHOSEN_REWARD_KEYS.items() if piece == reward)
+
+
+def chosen_rewards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """The keys this box picked so far (they move with the box when the
+    other grafted box is made active, ``graft_boxes``)."""
+
+    value = context.get("rewards_chosen", "")
+    return tuple(str(value).split(",")) if value else ()
+
+
+def choose_two_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    _, context = current_agent_effect_context(state)
+    chosen = chosen_rewards(context)
+    return tuple(
+        DomainAction(
+            action_id="choose_agent_card_reward",
+            actor=player,
+            arguments=(("reward", key),),
+        )
+        for line in ability.sections
+        if (key := _reward_key(line.rewards[0])) not in chosen
+    )
+
+
+def apply_chosen_reward(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Record one pick; both pay out after the second (the box's event is
+    the caller's)."""
+
+    _, context = current_agent_effect_context(state)
+    player, card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, card_id)
+    key = str(dict(action.arguments)["reward"])
+    chosen = (*chosen_rewards(context), key)
+    context["rewards_chosen"] = ",".join(chosen)
+    context["pending_agent_effect"] = len(chosen) < 2
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:reward:{key}",
+            kind="agent_card_reward_chosen",
+            payload=(("player", player), ("reward", key)),
+        )
+    ]
+    if context["pending_agent_effect"] is True:
+        # The first pick: the box stays open for the second.
+        frame = state.decision_stack[-1]
+        return RuleResult(
+            state=replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:-1],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                ),
+            ),
+            events=tuple(events),
+        )
+    picks = tuple(_CHOSEN_REWARD_KEYS[pick] for pick in chosen)
+    owner = state.players[player]
+    for reward in picks:
+        match reward:
+            case GainResources():
+                owner = _gain(owner, reward)
+                events.extend(_gains_event((reward,), source, player))
+            case RecruitTroops(count=count):
+                owner, recruited = recruit_troops(owner, count)
+                _credit_recruits(context, recruited)
+                events.extend(
+                    recruit_shortfall_events(source, player, count, recruited)
+                )
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, owner)
+    )
+    for index, reward in enumerate(picks):
+        match reward:
+            case AdvanceTleilaxu(count=count):
+                advanced = advance_tleilaxu(next_state, player, count)
+                next_state = advanced.state
+                events.extend(advanced.events)
+            case TrashPersonalCard():
+                next_state = open_optional_trash(
+                    next_state, player, f"{source}:{index + 1}"
+                )
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def trashes_remaining(context: Mapping[str, ActionValue], default: int = 0) -> int:
