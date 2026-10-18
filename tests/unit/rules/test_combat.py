@@ -1800,12 +1800,26 @@ def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() ->
         combat_rewards_resolved=True,
     )
 
-    # The Conflict's units go back to the supply before the Conflict-end
-    # windows (here none opens), the sandworm and markers wait for the
-    # cleanup [Main p. 14].
+    # "모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의
+    # supply에 놓고 battle icon 일치를 확인한다." [Main p. 14] -- the card is
+    # awarded as the Conflict-end step opens (OQ-108, user decision
+    # 2026-10-18), and the Conflict's units go back to the supply in the same
+    # step, before the windows (here none opens). The sandworm and the markers
+    # wait for the cleanup.
     offered = offer_conflict_end_triggers(state)
     assert offered.state.decision_stack == ()
     assert offered.state.players[0].troops_supply == 9
+    assert offered.state.current_conflict_ids == ("older_tied_conflict",)
+    assert offered.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
+    assert offered.state.players[0].face_down_battle_card_ids == (
+        "objective_crysknife_1",
+        "skirmish_crysknife",
+    )
+    assert offered.state.players[0].victory_points == 2
+    assert tuple(event.kind for event in offered.events) == (
+        "conflict_won",
+        "battle_icons_matched",
+    )
     result = finish_combat(offered.state)
     winner = result.state.players[0]
 
@@ -1821,19 +1835,18 @@ def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() ->
     assert all(player.troops_conflict == 0 for player in result.state.players)
     assert all(player.sandworms_conflict == 0 for player in result.state.players)
     assert all(player.combat_strength == 0 for player in result.state.players)
-    assert tuple(event.kind for event in result.events) == (
-        "conflict_won",
-        "battle_icons_matched",
-        "combat_cleaned_up",
-    )
+    # The cleanup awards nothing any more: only its own event.
+    assert tuple(event.kind for event in result.events) == ("combat_cleaned_up",)
 
 
-def test_the_units_return_before_the_conflict_card_is_awarded() -> None:
-    # "Once all rewards have been given, each player takes their troops from
-    # the Conflict and puts them in their supply" [Main p. 14]; a lost
-    # Sardaukar Commander goes to its own supply [Bloodlines p. 4]. That
-    # return opens the Conflict-end step, before the cleanup that awards the
-    # Conflict card and returns the sandworms (user decision 2026-10-18).
+def test_the_conflict_card_is_awarded_before_the_units_return() -> None:
+    # "모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의
+    # supply에 놓고 battle icon 일치를 확인한다." [Main p. 14] -- the winner
+    # takes the card first (OQ-108, user decision 2026-10-18); then "each
+    # player takes their troops from the Conflict and puts them in their
+    # supply" [Main p. 14], a lost Sardaukar Commander to its own supply
+    # [Bloodlines p. 4]. That return opens the Conflict-end windows; the
+    # cleanup after them returns the sandworms and zeroes the Combat markers.
     state = _reward_state("skirmish_crysknife")
     players = list(state.players)
     players[0] = replace(
@@ -1869,21 +1882,22 @@ def test_the_units_return_before_the_conflict_card_is_awarded() -> None:
         player.troops_conflict == 0 and player.commanders_conflict == 0
         for player in after.players
     )
-    # Nothing else of the cleanup happened yet: the Conflict card is still
-    # on the board, the sandworm and the Combat markers still stand.
-    assert after.current_conflict_ids == ("skirmish_crysknife",)
-    assert after.players[0].won_conflict_ids == ()
+    # The Conflict card is already the winner's, before the units returned
+    # (the event order is the step order); the sandworm and the Combat
+    # markers still stand until the cleanup.
+    assert after.current_conflict_ids == ()
+    assert after.players[0].won_conflict_ids == ("skirmish_crysknife",)
     assert after.players[0].sandworms_conflict == 1
     assert [player.combat_strength for player in after.players] == [8, 6, 4, 0]
-    assert all(event.kind != "conflict_won" for event in offered.events)
+    assert [event.kind for event in offered.events][0] == "conflict_won"
 
-    awarded = finish_combat(after)
+    cleaned = finish_combat(after)
 
-    assert awarded.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
-    assert awarded.state.current_conflict_ids == ()
-    assert awarded.state.players[0].sandworms_conflict == 0
-    assert all(player.combat_strength == 0 for player in awarded.state.players)
-    assert [event.kind for event in awarded.events][0] == "conflict_won"
+    assert cleaned.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
+    assert cleaned.state.current_conflict_ids == ()
+    assert cleaned.state.players[0].sandworms_conflict == 0
+    assert all(player.combat_strength == 0 for player in cleaned.state.players)
+    assert [event.kind for event in cleaned.events] == ["combat_cleaned_up"]
 
 
 def test_finish_combat_refuses_units_still_in_the_conflict() -> None:
@@ -1902,8 +1916,11 @@ def test_first_place_tie_leaves_conflict_on_board_during_cleanup() -> None:
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(state)
+    offered = offer_conflict_end_triggers(state)
+    result = finish_combat(offered.state)
 
+    assert offered.state.current_conflict_ids == ("skirmish_desert_mouse",)
+    assert offered.events == ()
     assert result.state.current_conflict_ids == ("skirmish_desert_mouse",)
     assert all(player.won_conflict_ids == () for player in result.state.players)
     assert tuple(event.kind for event in result.events) == ("combat_cleaned_up",)

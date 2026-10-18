@@ -49,7 +49,18 @@ import pytest
 from tests.unit.rules.test_bloodlines_leaders import RECON as LIET_RECON
 from tests.unit.rules.test_bloodlines_leaders import _turn_state as _liet_turn_state
 from tests.unit.rules.test_immortality import _agent_research, _at
-from tests.unit.rules.test_tech import _bought_glowglobes, _combat_acquire_frame
+from tests.unit.rules.test_immortality_intrigue import (
+    HARVEST_CELLS,
+    PLAIN,
+)
+from tests.unit.rules.test_immortality_intrigue import _combat_state as _window_combat
+from tests.unit.rules.test_immortality_intrigue import _fighter as _window_fighter
+from tests.unit.rules.test_immortality_intrigue import _offer as _window_offer
+from tests.unit.rules.test_tech import (
+    _bought_glowglobes,
+    _combat_acquire_frame,
+    _planetary_array_conflict_end,
+)
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.agents.registry import make_agent
@@ -81,6 +92,7 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
+from dune_imperium.rules.pauses import CONTINUE
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
 from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION, reward_was_chosen
 from dune_imperium.server.persistence import parse_save_document
@@ -2780,3 +2792,245 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
 
     assert (index, migration.HARVEST_CELLS_REWARDS_DROPPED) in record.dropped
     assert record.divergence is not None
+
+
+# --- The Conflict card first, and a window that stays open (codec v149) --------
+# User decision 2026-10-18 ("그래 둘다 B가 맞겠다"): the winner takes the Conflict
+# card, and Planetary Array's card is drawn, as the Conflict-end step opens
+# (OQ-108); a window a card was played in stays open while its seat holds an
+# Intrigue card, judged as it comes back on top (OQ-109). An older engine drew
+# that card at its cleanup or after the next round's hand, so its reshuffle of
+# the seat's discard comes under another decision, and it had closed a window
+# this engine keeps open. The three bridges below answer those.
+
+
+def _planetary_array_reshuffle() -> tuple[GameState, ChanceDecision, tuple[str, ...]]:
+    """The state at Planetary Array's tech-draw reshuffle, the decision this
+    engine asks as the Conflict card is awarded, and the recorded order."""
+
+    discard = starting_deck_instance_ids(0)[5:8]
+    _engine, offered = _planetary_array_conflict_end((), discard)
+    decision = ENGINE.current_decision(offered.state)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
+    return offered.state, decision, tuple(reversed(discard))
+
+
+def _asking(state: GameState, decision_id: str) -> tuple[GameState, ChanceDecision]:
+    """The same state, the chance on top asking under another decision id."""
+
+    top = state.decision_stack[-1]
+    assert isinstance(top.decision, ChanceDecision)
+    renamed = replace(top, decision=replace(top.decision, decision_id=decision_id))
+    asked = replace(state, decision_stack=(*state.decision_stack[:-1], renamed))
+    decision = ENGINE.current_decision(asked)
+    assert isinstance(decision, ChanceDecision)
+    return asked, decision
+
+
+def test_a_window_this_engine_keeps_open_is_finished_where_the_record_went_on() -> (
+    None
+):
+    # Seat 0 plays a Harvest Cells holding another Intrigue card and answers
+    # its acquisition: the window comes back on top and stays open (OQ-109).
+    window = _window_offer(
+        ENGINE,
+        _window_combat(_window_fighter(3, intrigue_cards=(HARVEST_CELLS[0], PLAIN))),
+    ).state
+    played = ENGINE.apply(
+        window,
+        DomainAction("play_conflict_end_intrigue", 0, (("card_id", HARVEST_CELLS[0]),)),
+    ).state
+    after_play = ENGINE.current_decision(played)
+    assert after_play is not None
+    opened = ENGINE.current_decision(window)
+    assert opened is not None
+    kept = ENGINE.apply(played, DomainAction("decline_intrigue_tleilaxu", 0)).state
+    decision = ENGINE.current_decision(kept)
+    finish = DomainAction("finish_conflict_end_intrigue", 0)
+    assert isinstance(decision, PlayerDecision) and decision.owner == 0
+    assert kept.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert finish in ENGINE.legal_actions(kept, 0)
+
+    def reopened(step: ReplayStep) -> ReplayStep | None:
+        return migration._conflict_end_reopened(ENGINE, kept, decision, step)
+
+    # The recording engine had closed the window, so its next step belongs to
+    # another seat, or to a chance: this engine answers the finish first.
+    other_window = DomainAction("decline_conflict_end_intrigue", 1)
+    play_there = DomainAction(
+        "play_conflict_end_intrigue", 1, (("card_id", HARVEST_CELLS[1]),)
+    )
+    pause = ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,))
+    for later in (other_window, play_there, pause):
+        assert reopened(later) == finish
+    # The seat's own window step answers the window itself.
+    for own in (
+        finish,
+        DomainAction("decline_conflict_end_intrigue", 0),
+        DomainAction("play_conflict_end_intrigue", 0, (("card_id", PLAIN),)),
+    ):
+        assert reopened(own) is None
+
+    # Only a window a card was played in: the unplayed one, or the acquisition
+    # choice on top of the played one, is no reopened window.
+    assert (
+        migration._conflict_end_reopened(ENGINE, window, opened, other_window) is None
+    )
+    assert (
+        migration._conflict_end_reopened(ENGINE, played, after_play, other_window)
+        is None
+    )
+    # Nor a chance on top.
+    chance_state, chance, _ = _planetary_array_reshuffle()
+    assert migration._conflict_end_reopened(ENGINE, chance_state, chance, pause) is None
+    # It is a bridge of the older records only, run before the recorded step.
+    bridge = next(b for b in migration.BRIDGES if b.name == "conflict_end_reopened")
+    assert (bridge.before_codec, bridge.rewrites, bridge.follows) == (149, False, False)
+
+    # Through the dispatch an older record sees: another seat's recorded
+    # decline is that seat's, so ``conflict_end_finish`` (a rewrite, earlier
+    # in BRIDGES) leaves it and the reopened window is finished before it
+    # (it used to take that decline as seat 0's finish, 2026-10-18 review).
+    older = tuple(
+        b for b in migration.BRIDGES if b.before_codec is None or 148 < b.before_codec
+    )
+    bridged = migration._bridge(ENGINE, kept, other_window, older)
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == ("conflict_end_reopened", finish)
+    # The seat's own recorded decline is still rewritten to its finish.
+    own_bridged = migration._bridge(
+        ENGINE, kept, DomainAction("decline_conflict_end_intrigue", 0), older
+    )
+    assert own_bridged is not None
+    assert (own_bridged[0].name, own_bridged[1]) == ("conflict_end_finish", finish)
+
+
+def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win() -> (
+    None
+):
+    # The recording engine drew Planetary Array's card at a cleanup that also
+    # fired a Harvest Cells, under the same decision this engine asks as the
+    # Conflict card is awarded.
+    state, decision, shuffled = _planetary_array_reshuffle()
+    recorded = ChanceOutcome(decision.decision_id, shuffled)
+    elsewhere = ChanceOutcome("round:2:player:0:discard_shuffle", shuffled)
+    pause = ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,))
+    filler = DomainAction("finish_conflict_end_intrigue", 0)
+
+    def earlier(
+        steps: tuple[ReplayStep, ...], index: int = 0, consumed: set[int] | None = None
+    ) -> tuple[int, ReplayStep] | None:
+        return migration._tech_draw_earlier(
+            ENGINE, state, steps, index, consumed or set()
+        )
+
+    assert earlier((filler, elsewhere, recorded)) == (2, recorded)
+    # Looked for from the step the record stands at, and taken once.
+    assert earlier((recorded, filler), index=1) is None
+    assert earlier((filler, recorded), consumed={1}) is None
+    # None is looked for past the recording's next pause.
+    assert earlier((pause, recorded)) is None
+    # Only the draw of the win: not another chance, another phase, or a state
+    # whose windows were not offered yet.
+    plain, _ = _asking(state, "round:2:player:0:discard_shuffle")
+    assert (
+        migration._tech_draw_earlier(ENGINE, plain, (recorded,), 0, set()) is None
+    )
+    for changed in (
+        replace(state, phase=GamePhase.MAKERS),
+        replace(state, combat_end_triggers_offered=False),
+    ):
+        assert (
+            migration._tech_draw_earlier(ENGINE, changed, (recorded,), 0, set())
+            is None
+        )
+    # The bridge names tell the two apart: the same decision, or the same
+    # cards under another one.
+    assert migration._asked_earlier_bridge(recorded, recorded) == (
+        migration.TECH_DRAW_AT_THE_WIN
+    )
+    moved = ChanceOutcome(decision.decision_id, shuffled)
+    assert migration._asked_earlier_bridge(moved, elsewhere) == (
+        migration.RESHUFFLE_MOVED
+    )
+    harvest = DomainAction("acquire_intrigue_tleilaxu", 0)
+    assert migration._asked_earlier_bridge(harvest, harvest) == (
+        migration.HARVEST_CELLS_AT_ONCE
+    )
+    # The dispatch tries the same decision first, then the moved reshuffle.
+    asked = migration._asked_earlier(ENGINE, state, (filler, recorded), 0, set())
+    assert asked == (1, recorded)
+    asked = migration._asked_earlier(ENGINE, state, (filler, elsewhere), 0, set())
+    assert asked == (1, ChanceOutcome(decision.decision_id, shuffled))
+
+
+def test_a_reshuffle_of_the_same_cards_is_taken_under_this_engines_decision() -> None:
+    # This engine takes a seat's deck card a round earlier than the recording
+    # engine did, so it shuffles the discard at the win (or at the next Round
+    # Start) where the recording engine shuffled the same cards for that
+    # card after the next round's hand, under another decision. The recorded
+    # permutation is taken now.
+    state, decision, shuffled = _planetary_array_reshuffle()
+    cards = tuple(sorted(decision.options))
+    filler = DomainAction("finish_conflict_end_intrigue", 0)
+    later = ChanceOutcome("round:2:player:0:discard_shuffle", shuffled)
+    taken = ChanceOutcome(decision.decision_id, shuffled)
+
+    def moved(
+        steps: tuple[ReplayStep, ...],
+        *,
+        asked: tuple[GameState, ChanceDecision] | None = None,
+        consumed: set[int] | None = None,
+    ) -> tuple[int, ReplayStep] | None:
+        at = asked[0] if asked else state
+        return migration._reshuffle_earlier(ENGINE, at, steps, 0, consumed or set())
+
+    assert moved((filler, later)) == (1, taken)
+    # The order is the record's, whatever order the engine lists the cards in.
+    assert sorted(shuffled) == list(cards)
+    assert moved((later,), consumed={0}) is None
+
+    # Another seat's reshuffle is not this seat's.
+    assert moved((ChanceOutcome("round:2:player:1:discard_shuffle", shuffled),)) is None
+    # Other cards: one the engine's shuffle does not hold, or one fewer.
+    swapped = (*shuffled[:-1], "player:0:starter:other:9")
+    assert moved((ChanceOutcome("round:2:player:0:discard_shuffle", swapped),)) is None
+    assert (
+        moved((ChanceOutcome("round:2:player:0:discard_shuffle", shuffled[:-1]),))
+        is None
+    )
+    # Not a personal reshuffle of the seat (an Intrigue deck's, a pause).
+    assert moved((ChanceOutcome("round:2:intrigue:discard_shuffle", shuffled),)) is None
+    assert moved((ChanceOutcome("round:2:player:0:pause", shuffled),)) is None
+
+    # Only a seat holding Planetary Array: the card comes from the tile.
+    seat = state.players[0]
+    bare = replace(
+        state,
+        players=(replace(seat, tech_ids=()), *state.players[1:]),
+    )
+    assert migration._reshuffle_earlier(ENGINE, bare, (later,), 0, set()) is None
+
+    # One of the two reshuffles must be that card's draw. Neither is when this
+    # engine asks the round start's own shuffle and the record has another
+    # round's; the other way round, this engine's draw takes a round start's.
+    plain = _asking(state, "round:2:player:0:discard_shuffle")
+    next_round = ChanceOutcome("round:3:player:0:discard_shuffle", shuffled)
+    assert moved((next_round,), asked=plain) is None
+    drawn = ChanceOutcome("round:2:player:0:tech_draw:discard_shuffle", shuffled)
+    assert moved((drawn,), asked=plain) == (
+        0,
+        ChanceOutcome("round:2:player:0:discard_shuffle", shuffled),
+    )
+
+    # Looked for within the recording's next rounds only.
+    reach = migration._RESHUFFLE_LOOKAHEAD
+    assert moved((filler,) * (reach - 1) + (later,)) == (reach - 1, taken)
+    assert moved((filler,) * reach + (later,)) is None
+
+    # Not a chance at all: the window it stands before is no reshuffle.
+    window = _window_offer(
+        ENGINE, _window_combat(_window_fighter(3, intrigue_cards=(PLAIN,)))
+    ).state
+    assert migration._reshuffle_earlier(ENGINE, window, (later,), 0, set()) is None

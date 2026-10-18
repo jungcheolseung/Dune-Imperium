@@ -162,10 +162,10 @@ def refresh_pre_reveal_strength(result: RuleResult) -> RuleResult:
     if state.phase is GamePhase.COMBAT and state.combat_end_triggers_offered:
         # The troops and Commanders went back to the supply after the
         # rewards (``combat.offer_conflict_end_triggers``); the strengths
-        # stand as the rewards found them, and decide the Conflict card,
-        # until the cleanup sets every Combat marker to 0 [Main p. 14]. A
-        # sandworm still in the Conflict would otherwise let a Skill's share
-        # drop with the Commander's return [Bloodlines p. 4].
+        # stand as the rewards found them until the cleanup sets every
+        # Combat marker to 0 [Main p. 14]. A sandworm still in the Conflict
+        # would otherwise let a Skill's share drop with the Commander's
+        # return [Bloodlines p. 4].
         return result
     players = list(state.players)
     for player in state.players:

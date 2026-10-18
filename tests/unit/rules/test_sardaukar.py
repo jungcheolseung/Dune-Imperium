@@ -1363,10 +1363,11 @@ def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> Non
     # "Once all rewards have been given, each player takes their troops from
     # the Conflict" [Main p. 14] and the Combat markers return to 0 only
     # with the rest of the cleanup. Fierce adds 1 strength "while a Commander
-    # is in the Conflict" [Bloodlines p. 4]; before the strengths were
-    # frozen, the Commander's return dropped that share (a sandworm kept the
-    # seat in the Conflict, so the refresh ran), 10 became 9 and the tie
-    # left the Conflict card on the board.
+    # is in the Conflict" [Bloodlines p. 4]; the winner takes the Conflict
+    # card before the troops go back (OQ-108, user decision 2026-10-18), but
+    # the strengths still stand through the windows: a sandworm keeps the seat
+    # in the Conflict, so a refresh would drop Fierce's share with the
+    # Commander's return (10 became 9) while the windows are answered.
     conflict_id = CONFLICTS[0].card.card_id
     state = _frozen_strength_state(conflict_id)
 
@@ -1374,6 +1375,10 @@ def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> Non
 
     assert offered.state.combat_end_triggers_offered
     assert offered.state.decision_stack  # seat 0's window is open
+    # The Conflict card went to the 10 over the 9 as the step opened.
+    assert [event.kind for event in offered.events].count("conflict_won") == 1
+    assert offered.state.players[0].won_conflict_ids == (conflict_id,)
+    assert offered.state.current_conflict_ids == ()
     seat = offered.state.players[0]
     assert (seat.commanders_conflict, seat.troops_conflict) == (0, 0)
     assert seat.sandworms_conflict == 1
@@ -1382,19 +1387,20 @@ def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> Non
     assert refreshed.players[0].skill_strength_applied == 1
     assert refreshed.players[1].combat_strength == 9
     # What the freeze prevents: the same refresh before the windows were
-    # offered would drop Fierce's share with the Commander and tie at 9.
+    # offered would drop Fierce's share with the Commander and read 9.
     unfrozen = replace(offered.state, combat_end_triggers_offered=False)
     assert refresh_pre_reveal_strength(RuleResult(state=unfrozen)).state.players[
         0
     ].combat_strength == 9
 
     # The window is answered through the engine, which refreshes the
-    # strengths after every step; the win and the card are still seat 0's.
+    # strengths after every step; the card stays seat 0's, awarded once, and
+    # the cleanup zeroes the markers.
     engine = UprisingRulesEngine()
     transition = engine.apply(
         refreshed, DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
     )
-    assert [event.kind for event in transition.events].count("conflict_won") == 1
+    assert [event.kind for event in transition.events].count("conflict_won") == 0
     declined = transition.state
     assert declined.phase is not GamePhase.COMBAT
     winner = declined.players[0]

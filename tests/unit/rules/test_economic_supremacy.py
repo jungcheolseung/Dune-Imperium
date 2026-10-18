@@ -38,6 +38,7 @@ from dune_imperium.rules.combat import (
     face_up_battle_icons,
     finish_combat,
     legal_combat_reward_optional_payment_actions,
+    offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
 from dune_imperium.rules.effect_interpreter import (
@@ -355,16 +356,18 @@ def test_winning_it_pairs_with_no_face_up_card(
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(before)
+    # The winner takes the card as the Conflict-end step opens, before the
+    # troops go back (OQ-108, user decision 2026-10-18); the cleanup after the
+    # windows awards nothing.
+    offered = offer_conflict_end_triggers(before)
+    result = finish_combat(offered.state)
     winner = result.state.players[0]
 
     assert winner.won_conflict_ids == (*won_conflict_ids, ES)
     assert winner.face_down_battle_card_ids == ()
     assert winner.victory_points == before.players[0].victory_points
-    assert [event.kind for event in result.events] == [
-        "conflict_won",
-        "combat_cleaned_up",
-    ]
+    assert [event.kind for event in offered.events] == ["conflict_won"]
+    assert [event.kind for event in result.events] == ["combat_cleaned_up"]
 
 
 def test_a_later_win_matches_its_own_icon_and_leaves_it_face_up() -> None:
@@ -377,7 +380,9 @@ def test_a_later_win_matches_its_own_icon_and_leaves_it_face_up() -> None:
         combat_rewards_resolved=True,
     )
 
-    winner = finish_combat(before).state.players[0]
+    # The card is awarded, and its icon matched, as the Conflict-end step
+    # opens (OQ-108, user decision 2026-10-18).
+    winner = offer_conflict_end_triggers(before).state.players[0]
 
     assert winner.face_down_battle_card_ids == (
         "objective_crysknife_1",
@@ -569,9 +574,10 @@ def test_ornithopter_fleet_winning_it_pairs_nothing() -> None:
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(before)
+    result = offer_conflict_end_triggers(before)
     winner = result.state.players[0]
 
+    assert winner.won_conflict_ids == (ES,)
     assert winner.face_down_battle_card_ids == ()
     assert winner.victory_points == before.players[0].victory_points
     assert "battle_icons_matched" not in [event.kind for event in result.events]
@@ -589,7 +595,7 @@ def test_ornithopter_fleet_pairs_the_next_win_past_it() -> None:
         combat_rewards_resolved=True,
     )
 
-    winner = finish_combat(before).state.players[0]
+    winner = offer_conflict_end_triggers(before).state.players[0]
 
     assert winner.face_down_battle_card_ids == (
         "objective_crysknife_1",

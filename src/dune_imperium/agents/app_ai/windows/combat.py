@@ -47,9 +47,10 @@ flips after the pairs are scored and two wild icons left over pair with
 each other (``endgame_intrigue``).
 
 The app's reward window sees the sole winner's battle icon already scored
-(``ResolveCombat`` runs it before the place-1 window); ours scores it in
-``finish_combat`` after every reward frame. ``app_reward_run`` rebuilds the
-app's view for the reward windows.
+(``ResolveCombat`` runs it before the place-1 window); ours scores it once
+every reward is resolved, as the Conflict-end windows open
+(``combat._award_conflict``, OQ-108). ``app_reward_run`` rebuilds the app's
+view for the reward windows.
 
 Addresses are build dad97e2021144d45b5b4f022e07bd3b3.
 """
@@ -148,8 +149,9 @@ def app_reward_run(run: DecisionRun) -> DecisionRun:
     for the place-1, non-double entry it appends the Conflict's battle icon to
     the winner's ``BattleIconList`` and runs ``ScoreBattleIconsPairs
     (includeWildcards = false)`` before the winner's resolution window, and
-    every later entry's window comes after it. Our engine does both in
-    ``finish_combat`` after every reward frame (R3 §5.1, §6), so the values
+    every later entry's window comes after it. Our engine does both after
+    every reward frame, as the Conflict-end windows open (R3 §5.1, §6;
+    ``combat._award_conflict``, OQ-108), so the values
     the app reads (``VictoryPoints`` in ``GetVictoryPointValue``'s doubling and
     ``IsClimax``, the battle-icon list) would lag by one card.
 

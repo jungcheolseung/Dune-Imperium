@@ -26,17 +26,18 @@ Engine facts this module relies on (see ``rules/combat.py``):
   multiplier (and the winner and margin, for rank 1). Before that ruling
   every recipient's event came before any reward choice opened, all in the
   ``combat_intrigue_finished`` step.
-- The Conflict-end step (``offer_conflict_end_triggers``) returns
-  ``troops_conflict`` to the supply and ``finish_combat`` zeroes
-  ``combat_strength`` and pops ``current_conflict_ids``, each only in its own
-  *post*-state, so the units/strength
+- The Conflict-end step (``offer_conflict_end_triggers``) pops
+  ``current_conflict_ids`` (the award, OQ-108) and returns ``troops_conflict``
+  to the supply, and ``finish_combat`` zeroes ``combat_strength``, each only
+  in its own *post*-state, so the units/strength
   snapshot must come from the *pre*-state of the step whose events contain
   ``combat_intrigue_finished`` (never from a ``conflict_won`` step's
   post-state, which is already cleaned up).
 - ``current_conflict_ids`` is a stack: one Conflict is revealed per round
-  (``rules/phases.py::begin_round``) and pushed on top; ``finish_combat`` pops
-  it only when there was a winner, so a Conflict nobody won (an empty
-  ``rank_combat`` top group, or a >1-way tie for 1st) can be left underneath
+  (``rules/phases.py::begin_round``) and pushed on top; the award
+  (``combat._award_conflict``) pops it only when there was a winner, so a
+  Conflict nobody won (an empty ``rank_combat`` top group, or a >1-way tie
+  for 1st) can be left underneath
   a later round's Conflict. ``current_conflict_ids[-1]`` is always the
   Conflict currently resolving.
 - A Conflict nobody entered still finishes Combat Intrigue: with no

@@ -1337,7 +1337,7 @@ def draw_owed_tech_cards(result: RuleResult) -> RuleResult:
     """Draw the cards CHOAM Transports and Planetary Array owe after a step.
 
     Both tiles pay inside another effect's resolution (a contract
-    completion, the Combat cleanup), where a discard reshuffle could not be
+    completion, the Conflict card's award), where a discard reshuffle could not be
     pushed safely; the owing seat records the count and this hook draws
     once the transition has settled. A pending chance frame defers it to
     the next transition, like Hungry for Spice.

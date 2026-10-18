@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.pauses import pause_outcome
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
@@ -31,6 +32,7 @@ from dune_imperium.content.uprising.intrigue import (
 )
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
+    ChanceOutcome,
     DecisionFrame,
     DomainAction,
     GameEvent,
@@ -42,15 +44,17 @@ from dune_imperium.core import (
     Resources,
     observe_state,
 )
-from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.decisions import ChanceDecision
+from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.engine import UprisingRulesEngine
-from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, with_context
+from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind, with_context
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -1798,9 +1802,16 @@ def test_ornithopter_fleet_matches_a_won_conflict_with_any_face_up_card() -> Non
             ),
         ),
     )
-    # The troop goes back to the supply as the Conflict-end step opens; the
-    # Conflict card is awarded by the cleanup after it.
+    # The Conflict card is awarded, and matched with any face-up card, as the
+    # Conflict-end step opens, the troop going back to the supply after it
+    # (OQ-108, user decision 2026-10-18); the cleanup after the windows
+    # changes neither.
     offered = offer_conflict_end_triggers(state).state
+    assert offered.players[0].face_down_battle_card_ids == (
+        "propaganda",
+        "skirmish_wild",
+    )
+    assert offered.players[0].troops_conflict == 0
     winner = finish_combat(offered).state.players[0]
     assert winner.face_down_battle_card_ids == ("propaganda", "skirmish_wild")
     assert winner.victory_points == 2
@@ -1816,7 +1827,7 @@ def test_ornithopter_fleet_blocks_crysknife_flips_but_frees_ornithopter_ones() -
 
 
 def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
-    from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
+    from dune_imperium.rules.combat import offer_conflict_end_triggers
     from dune_imperium.rules.tech import draw_owed_tech_cards
 
     owner = _tech_owner(
@@ -1843,11 +1854,214 @@ def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
             ),
         ),
     )
-    finished = finish_combat(offer_conflict_end_triggers(state).state)
-    assert finished.state.players[0].tech_cards_owed == 1
-    drawn = draw_owed_tech_cards(finished).state
+    # The card is owed as the Conflict card is awarded (OQ-108, user decision
+    # 2026-10-18), and drawn once that step settles.
+    offered = offer_conflict_end_triggers(state)
+    assert offered.state.players[0].tech_cards_owed == 1
+    drawn = draw_owed_tech_cards(offered).state
     assert drawn.players[0].tech_cards_owed == 0
     assert len(drawn.players[0].hand) == 1
+
+
+def _planetary_array_conflict_end(
+    deck: tuple[str, ...], discard: tuple[str, ...]
+) -> tuple[UprisingRulesEngine, Transition]:
+    """A Combat the Planetary Array owner wins, through the engine up to the
+    transition that offers the Conflict-end windows (Immortality, so the
+    owner's loss of three and its Intrigue card open one)."""
+
+    engine = UprisingRulesEngine()
+    owner = _tech_owner(
+        "planetary_array",
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        combat_strength=6,
+        has_revealed=True,
+        intrigue_cards=("intrigue:backed_by_choam:0",),
+        hand=(),
+        deck=deck,
+        discard_pile=discard,
+    )
+    state = replace(
+        _turn_state(
+            owner,
+            stacks=((), (), ()),
+            config=RulesetConfig(bloodlines=True, tech_module=True, immortality=True),
+            decision_stack=(),
+            first_player=0,
+            reveal_order=(0, 1, 2, 3),
+        ),
+        phase=GamePhase.COMBAT,
+        players=(
+            owner,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3)),
+        ),
+    )
+    state = begin_combat_intrigue(state).state
+    while True:
+        frame = state.decision_stack[-1]
+        if frame.kind == FrameKind.PAUSE:
+            transition = engine.apply(state, pause_outcome(state))
+        else:
+            assert isinstance(frame.decision, PlayerDecision)
+            actions = engine.legal_actions(state, frame.decision.owner)
+            passing = next(
+                (a for a in actions if a.action_id.startswith("pass_")), actions[0]
+            )
+            transition = engine.apply(state, passing)
+        if transition.state.combat_end_triggers_offered:
+            return engine, transition
+        state = transition.state
+
+
+def test_planetary_array_s_card_is_in_hand_before_any_conflict_end_window() -> None:
+    # "When you win a Conflict: draw a card" [Planetary Array Tech tile].
+    # The winner takes the Conflict card right after the rewards [Main p. 14]
+    # (OQ-108, user decision 2026-10-18), so the card is owed there and drawn
+    # as that step settles: the Conflict-end window it opens finds the card
+    # already in the hand, before any window is answered.
+    deck = starting_deck_instance_ids(0)[5:8]
+    engine, offered = _planetary_array_conflict_end(deck, ())
+
+    seat = offered.state.players[0]
+    assert seat.hand == (deck[0],)
+    assert seat.deck == deck[1:]
+    assert seat.tech_cards_owed == 0
+    top = offered.state.decision_stack[-1]
+    assert top.kind == FrameKind.CONFLICT_END_TRIGGER
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 0
+    kinds = [event.kind for event in offered.events]
+    assert kinds.index("conflict_won") < kinds.index("conflict_end_trigger_offered")
+    # The window is still unanswered: it only declines (no Harvest Cells).
+    assert engine.legal_actions(offered.state, 0) == (
+        DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
+    )
+    declined = engine.apply(
+        offered.state,
+        DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
+    ).state
+    assert deck[0] in declined.players[0].hand
+    assert declined.players[0].tech_cards_owed == 0
+
+
+def test_planetary_array_s_empty_deck_reshuffles_before_the_window() -> None:
+    # The same draw with an empty deck: the discard pile is shuffled first
+    # (a ``...:tech_draw:discard_shuffle`` chance on top of the unanswered
+    # window), then the card is drawn and the window is the decision again.
+    discard = starting_deck_instance_ids(0)[5:8]
+    engine, offered = _planetary_array_conflict_end((), discard)
+
+    seat = offered.state.players[0]
+    assert seat.hand == () and seat.tech_cards_owed == 0
+    top = offered.state.decision_stack[-1]
+    assert top.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    assert isinstance(top.decision, ChanceDecision)
+    assert top.decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
+    assert tuple(sorted(top.decision.options)) == tuple(sorted(discard))
+    # The Conflict-end window waits underneath, unanswered.
+    assert offered.state.decision_stack[-2].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert [event.kind for event in offered.events].count("conflict_won") == 1
+
+    shuffled = tuple(reversed(discard))
+    answered = engine.apply(
+        offered.state, ChanceOutcome(top.decision.decision_id, shuffled)
+    )
+
+    assert answered.state.players[0].hand == (shuffled[0],)
+    assert answered.state.players[0].deck == shuffled[1:]
+    assert [event.kind for event in answered.events] == ["personal_discard_shuffled"]
+    window = answered.state.decision_stack[-1]
+    assert window.kind == FrameKind.CONFLICT_END_TRIGGER
+    assert isinstance(window.decision, PlayerDecision) and window.decision.owner == 0
+
+
+def _planetary_array_win_without_windows(
+    deck: tuple[str, ...], discard: tuple[str, ...]
+) -> tuple[UprisingRulesEngine, GameState]:
+    """A Combat the Planetary Array owner wins with no Conflict-end window
+    (Immortality off), through the engine to the first decision past the
+    Conflict-end pause: the Round Start pause, or a reshuffle on the way."""
+
+    engine = UprisingRulesEngine()
+    owner = _tech_owner(
+        "planetary_array",
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        combat_strength=6,
+        has_revealed=True,
+        intrigue_cards=(),
+        hand=(),
+        deck=deck,
+        discard_pile=discard,
+    )
+    state = replace(
+        _turn_state(
+            owner,
+            stacks=((), (), ()),
+            config=RulesetConfig(bloodlines=True, tech_module=True),
+            decision_stack=(),
+            first_player=0,
+            reveal_order=(0, 1, 2, 3),
+            # Conflicts left, so the round ends into a Round Start.
+            conflict_deck=tuple(conflict.card.card_id for conflict in CONFLICTS[1:4]),
+        ),
+        phase=GamePhase.COMBAT,
+        players=(
+            owner,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3)),
+        ),
+    )
+    state = begin_combat_intrigue(state).state
+    while True:
+        frame = state.decision_stack[-1]
+        if frame.kind == FrameKind.PAUSE:
+            if dict(frame.context).get("point") == "round_start":
+                return engine, state
+            state = engine.apply(state, pause_outcome(state)).state
+        elif isinstance(frame.decision, ChanceDecision):
+            return engine, state
+        else:
+            assert isinstance(frame.decision, PlayerDecision)
+            actions = engine.legal_actions(state, frame.decision.owner)
+            passing = next(
+                (a for a in actions if a.action_id.startswith("pass_")), actions[0]
+            )
+            state = engine.apply(state, passing).state
+
+
+def test_planetary_array_s_card_comes_at_the_win_with_no_window() -> None:
+    # OQ-108 (B), user decision 2026-10-18: "When you win a Conflict: draw a
+    # card" [Planetary Array Tech tile] at the Conflict card's award, right
+    # after the rewards [Main p. 14] -- also when no Conflict-end window
+    # opens, where the cleanup runs on into the next round in one step (the
+    # card used to come after the next round's hand there).
+    deck = starting_deck_instance_ids(0)[5:10]
+    _engine, paused = _planetary_array_win_without_windows(deck, ())
+
+    assert paused.phase is GamePhase.ROUND_START
+    seat = paused.players[0]
+    assert seat.hand == (deck[0],)
+    assert seat.deck == deck[1:]
+    assert seat.tech_cards_owed == 0
+
+
+def test_planetary_array_s_empty_deck_reshuffles_in_combat_with_no_window() -> None:
+    discard = starting_deck_instance_ids(0)[5:8]
+    engine, asked = _planetary_array_win_without_windows((), discard)
+
+    assert asked.phase is GamePhase.COMBAT
+    top = asked.decision_stack[-1]
+    assert top.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    assert isinstance(top.decision, ChanceDecision)
+    assert top.decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
+    shuffled = tuple(reversed(discard))
+    answered = engine.apply(asked, ChanceOutcome(top.decision.decision_id, shuffled))
+    seat = answered.state.players[0]
+    assert seat.hand == (shuffled[0],)
+    assert seat.tech_cards_owed == 0
+    assert answered.state.phase is GamePhase.ROUND_START
 
 
 def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn() -> (

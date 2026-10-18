@@ -92,6 +92,7 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
+    close_spent_conflict_end_window,
     combat_participants_are_stale,
     finish_combat,
     legal_combat_intrigue_actions,
@@ -106,6 +107,7 @@ from dune_imperium.rules.combat import (
     pay_combat_rewards,
     refresh_combat_participants,
     resolve_combat_rewards,
+    spent_conflict_end_window,
 )
 from dune_imperium.rules.combat_deployment import (
     apply_agent_turn_finish,
@@ -1218,6 +1220,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # seat's Conflict rewards fizzle there (user ruling 2026-10-02,
             # L2-Q2: "보상 끝까지 보류 후 불발").
             automatic = fizzle_combat_held_contract_icons(state)
+        elif spent_conflict_end_window(state):
+            # A Conflict-end window a card was played in, back on top with
+            # its seat holding no Intrigue card, closes (OQ-103, OQ-109).
+            automatic = close_spent_conflict_end_window(state)
         elif state.decision_stack:
             break
         elif scouts_step_is_pending(state):
@@ -1239,6 +1245,12 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
                     if state.combat_rewards_paid > 0
                     else offer_conflict_end_triggers(state)
                 )
+            elif any(seat.tech_cards_owed for seat in state.players):
+                # The card Planetary Array owes for the win is drawn before
+                # the cleanup runs on into the next round (OQ-108): with a
+                # Conflict-end window open it is drawn as that step settles;
+                # with none, here (a reshuffle stops the run).
+                automatic = draw_owed_tech_cards(RuleResult(state=state))
             else:
                 automatic = finish_combat(state)
         elif state.phase is GamePhase.MAKERS:

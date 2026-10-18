@@ -1577,8 +1577,9 @@ def _return_conflict_units(
     troops from the Conflict and puts them in their supply" [Main p. 14]
     [Bloodlines p. 4], and "troops that return to your supply are
     considered 'lost.'" [FAQ p. 1]. The Tactician token advances once by the
-    whole loss, the cleanup being one source [Chani card]. Sandworms, the
-    Combat markers and the Conflict card wait for ``finish_combat``."""
+    whole loss, the cleanup being one source [Chani card]. The Conflict card
+    went to its winner just before (``_award_conflict``, OQ-108); sandworms
+    and the Combat markers wait for ``finish_combat``."""
 
     players = tuple(
         replace(
@@ -1644,10 +1645,12 @@ def _conflict_end_window_opens(state: GameState, player: int, lost: int) -> bool
 
 
 def offer_conflict_end_triggers(state: GameState) -> RuleResult:
-    """Return the Conflict's units, then open the window for Intrigue that
-    triggers at this Conflict's end.
+    """Award the Conflict card, return the Conflict's units, then open the
+    window for Intrigue that triggers at this Conflict's end.
 
-    The troops go back to the supply first (``_return_conflict_units``):
+    The winner takes the Conflict card once every reward is resolved
+    (``_award_conflict``, OQ-108). The troops go back to the supply next
+    (``_return_conflict_units``):
     that return is the loss ("troops that return to your supply are
     considered 'lost.'" [FAQ p. 1]), so a card that triggers on it resolves
     as it is played, with the troops back for its specimens (user decision
@@ -1675,8 +1678,9 @@ def offer_conflict_end_triggers(state: GameState) -> RuleResult:
         raise ValueError("Conflict-end triggers follow the resolved rewards")
     if state.combat_end_triggers_offered:
         raise ValueError("Conflict-end triggers were already offered")
-    losses = _conflict_losses(state)
-    returned = _return_conflict_units(state, losses)
+    awarded = _award_conflict(state)
+    losses = _conflict_losses(awarded.state)
+    returned = _return_conflict_units(awarded.state, losses)
     state = returned.state
     first = state.first_player or 0
     frames: list[DecisionFrame] = []
@@ -1706,6 +1710,7 @@ def offer_conflict_end_triggers(state: GameState) -> RuleResult:
     return RuleResult(
         state=next_state,
         events=(
+            *awarded.events,
             *returned.events,
             *(
                 GameEvent(
@@ -1751,6 +1756,32 @@ def legal_conflict_end_trigger_actions(
     )
 
 
+def spent_conflict_end_window(state: GameState) -> bool:
+    """Whether a Conflict-end window a card was played in is back on top
+    with its seat holding no Intrigue card: nothing is left to decide there
+    (OQ-103, OQ-109), and the engine closes it (``close_spent_conflict_end_
+    window``) as the play used to when it left the hand empty."""
+
+    if not state.decision_stack:
+        return False
+    frame = state.decision_stack[-1]
+    if (
+        frame.kind != FrameKind.CONFLICT_END_TRIGGER
+        or dict(frame.context).get(_PLAYED_KEY) is not True
+        or not isinstance(frame.decision, PlayerDecision)
+    ):
+        return False
+    return not state.players[frame.decision.owner].intrigue_cards
+
+
+def close_spent_conflict_end_window(state: GameState) -> RuleResult:
+    """Close a played Conflict-end window whose seat holds no Intrigue card."""
+
+    if not spent_conflict_end_window(state):
+        raise ValueError("the Conflict-end window on top is not spent")
+    return RuleResult(state=state.pop_decision())
+
+
 def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleResult:
     """Play the chosen hand card, resolving it at once, or close the window.
 
@@ -1792,18 +1823,16 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
             ),
         )
     card_id = str(dict(action.arguments)["card_id"])
-    # The window stays open while the seat holds another Intrigue card, a
-    # public fact: closing it only when no other copy could change
-    # something would tell the table whether a second Harvest Cells is in
-    # the hand (OQ-103). Its play actions still offer only a copy that would
-    # change something (``_harvest_cells_has_effect``).
-    others = [held for held in state.players[player].intrigue_cards if held != card_id]
-    window = (
-        replace_top_frame(
-            state, with_context(frame, {**dict(frame.context), _PLAYED_KEY: True})
-        )
-        if others
-        else state.pop_decision()
+    # The window stays open while the seat holds an Intrigue card, a public
+    # fact: closing it only when no other copy could change something would
+    # tell the table whether a second Harvest Cells is in the hand (OQ-103).
+    # Whether it is still holding one is judged when the window comes back
+    # on top (``spent_conflict_end_window``), so a card the played one's
+    # acquisition drew -- a Tleilaxu track Intrigue space -- may be played
+    # too (user decision 2026-10-18, OQ-109). Its play actions still offer
+    # only a copy that would change something (``_harvest_cells_has_effect``).
+    window = replace_top_frame(
+        state, with_context(frame, {**dict(frame.context), _PLAYED_KEY: True})
     )
     played = GameEvent(
         event_id=f"{frame.frame_id}:played:{card_id}",
@@ -1820,12 +1849,14 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
 
 
 def _award_conflict(state: GameState) -> RuleResult:
-    """The sole winner takes the Conflict card and checks its battle icon
-    [Main p. 14]; a tie leaves the card on the board [Main pp. 8, 14]. The
-    ranking reads the strengths the rewards found, which stand through the
-    Conflict-end windows (``strength.refresh_pre_reveal_strength``). The
-    award stays with the rest of the cleanup, after the windows, where the
-    engine always gave it: Planetary Array's draw follows it (OQ-108)."""
+    """The sole winner takes the Conflict card: "모든 순위 보상을 처리한 뒤,
+    승자는 Conflict 카드를 face-up 상태로 자신의 supply에 놓고 battle icon
+    일치를 확인한다. [Main p. 14]" (docs/rules/combat-and-round-end.md), before
+    the cleanup returns the troops (user decision 2026-10-18, OQ-108). A tie
+    leaves the card on the board [Main pp. 8, 14]. Planetary Array's card
+    ("When you win a Conflict: draw a card") is owed here and drawn before
+    anything else follows: as the step settles when a Conflict-end window
+    opens, else by the engine before the cleanup (``rules/engine.py``)."""
 
     if not state.current_conflict_ids:
         raise ValueError("Combat cleanup requires a current Conflict")
@@ -1895,12 +1926,12 @@ def _award_conflict(state: GameState) -> RuleResult:
 
 
 def finish_combat(state: GameState) -> RuleResult:
-    """Award the Conflict card, finish the Combat cleanup and enter Makers.
+    """Finish the Combat cleanup and enter Makers.
 
-    The troops and Sardaukar Commanders went back to the supply as the
-    Conflict-end windows opened (``offer_conflict_end_triggers``);
-    sandworms return to the bank and every Combat marker to 0 now
-    [Main p. 14].
+    The Conflict card went to its winner and the troops and Sardaukar
+    Commanders back to the supply as the Conflict-end windows opened
+    (``offer_conflict_end_triggers``); sandworms return to the bank and
+    every Combat marker to 0 now [Main p. 14].
     """
 
     if state.phase is not GamePhase.COMBAT:
@@ -1914,7 +1945,6 @@ def finish_combat(state: GameState) -> RuleResult:
         for player in state.players
     ):
         raise RuntimeError("the Conflict's units return before the cleanup")
-    awarded = _award_conflict(state)
     players = tuple(
         replace(
             player,
@@ -1926,10 +1956,10 @@ def finish_combat(state: GameState) -> RuleResult:
             combat_strength=0,
             skill_strength_applied=0,
         )
-        for player in awarded.state.players
+        for player in state.players
     )
     next_state = replace(
-        awarded.state,
+        state,
         phase=GamePhase.MAKERS,
         players=players,
         combat_intrigue_players=(),
@@ -1937,7 +1967,6 @@ def finish_combat(state: GameState) -> RuleResult:
     return RuleResult(
         state=next_state,
         events=(
-            *awarded.events,
             GameEvent(
                 event_id=f"round:{state.round_number}:combat_cleanup",
                 kind="combat_cleaned_up",

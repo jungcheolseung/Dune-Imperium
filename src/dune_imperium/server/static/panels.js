@@ -1667,7 +1667,7 @@ function splitEntryEvents(entry) {
    window's own "declined" marker, or nothing at all (the pass that closes
    the window reads as flow instead, see splitEntryEvents/NEUTRAL_EVENT_KINDS
    and combat_intrigue_finished; the last Conflict-end decline runs on into
-   conflict_won). */
+   the cleanup). */
 const PASS_MARKER_KINDS = new Set([
   "combat_intrigue_passed",
   "endgame_intrigue_passed",

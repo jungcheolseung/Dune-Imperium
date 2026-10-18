@@ -57,6 +57,7 @@ the flow and protect it with an old-engine record in
 the divergence is the right answer.
 """
 
+import re
 from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
@@ -80,7 +81,7 @@ from dune_imperium.core.chance import (
 from dune_imperium.core.decisions import ChanceDecision, Decision, PlayerDecision
 from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.core.replay import GameReplay, ReplayStep
-from dune_imperium.core.state import GameState, canonical_state_hash
+from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import (
     agent_box_can_resolve_by_choice,
@@ -420,7 +421,13 @@ def migrate_record(
                         asked_index, asked_step = earlier
                         consumed.add(asked_index)
                         migrated.append(
-                            MigratedStep(asked_step, asked_index, HARVEST_CELLS_AT_ONCE)
+                            MigratedStep(
+                                asked_step,
+                                asked_index,
+                                _asked_earlier_bridge(
+                                    asked_step, replay.steps[asked_index]
+                                ),
+                            )
                         )
                         followed = _follow(
                             engine,
@@ -443,7 +450,12 @@ def migrate_record(
                                 state,
                             )
                         state = followed
-                        if harvest_rewards_due(index, recorded, state):
+                        if asked_index == index or harvest_rewards_due(
+                            index, recorded, state
+                        ):
+                            # The recorded step itself, taken under this
+                            # engine's decision; or the rewards step it
+                            # stood before, which has no counterpart here.
                             break
                         continue
                 if (
@@ -610,6 +622,26 @@ TURN_ROW_HELD: Final = "turn_row_held"
 # DROPPED``). The window's press after a play is the finish
 # (``conflict_end_finish``).
 HARVEST_CELLS_AT_ONCE: Final = "harvest_cells_at_once"
+# Also from v149 (user decision 2026-10-18, OQ-108): the winner takes the
+# Conflict card, and Planetary Array's card, before the troops go back; a
+# recorded reshuffle of that draw is taken as this engine asks
+# (``_tech_draw_earlier``).
+TECH_DRAW_AT_THE_WIN: Final = "tech_draw_at_the_win"
+# ... and a seat's reshuffle of the same cards the recording engine did
+# later under another decision (``_reshuffle_earlier``).
+RESHUFFLE_MOVED: Final = "reshuffle_moved"
+
+
+def _asked_earlier_bridge(asked: ReplayStep, recorded: ReplayStep) -> str:
+    """The bridge name of a later ``recorded`` step taken earlier as
+    ``asked``."""
+
+    if not isinstance(asked, ChanceOutcome):
+        return HARVEST_CELLS_AT_ONCE
+    same = isinstance(recorded, ChanceOutcome) and (
+        recorded.decision_id == asked.decision_id
+    )
+    return TECH_DRAW_AT_THE_WIN if same else RESHUFFLE_MOVED
 HARVEST_CELLS_REWARDS_DROPPED: Final = "harvest_cells_rewards"
 _HARVEST_CELLS_PREFIX: Final = "intrigue:harvest_cells:"
 _HARVEST_CELLS_CHOICES: Final = frozenset(
@@ -645,13 +677,18 @@ def _asked_earlier(
     steps: tuple[ReplayStep, ...],
     index: int,
     consumed: set[int],
-) -> tuple[int, DomainAction] | None:
+) -> tuple[int, ReplayStep] | None:
     """The owner's later recorded answer to the Harvest Cells acquisition
-    this engine asks now, if it is legal here."""
+    this engine asks now, if it is legal here; or the later recorded
+    reshuffle of the Planetary Array card this engine draws as the Conflict
+    is won (``_tech_draw_earlier``), or of the same cards under another
+    decision (``_reshuffle_earlier``)."""
 
     owner = _harvest_cells_choice(state)
     if owner is None:
-        return None
+        return _tech_draw_earlier(
+            engine, state, steps, index, consumed
+        ) or _reshuffle_earlier(engine, state, steps, index, consumed)
     for ahead in range(index, len(steps)):
         step = steps[ahead]
         if (
@@ -674,6 +711,132 @@ def _intrigue_choice_on_top(state: GameState, player: int) -> bool:
         and isinstance(top.decision, PlayerDecision)
         and top.decision.owner == player
     )
+
+
+def _tech_draw_earlier(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    steps: tuple[ReplayStep, ...],
+    index: int,
+    consumed: set[int],
+) -> tuple[int, ReplayStep] | None:
+    """The winner takes the Conflict card before the troops go back (codec
+    v149, OQ-108), so Planetary Array's card is drawn there; a recording
+    engine whose cleanup also fired a Harvest Cells drew it at that cleanup.
+    Its reshuffle, recorded there under the same decision, is taken as this
+    engine asks (none is looked for past the recording's next pause)."""
+
+    decision = engine.current_decision(state)
+    if (
+        not isinstance(decision, ChanceDecision)
+        or state.phase is not GamePhase.COMBAT
+        or not state.combat_end_triggers_offered
+        or ":tech_draw:" not in decision.decision_id
+    ):
+        return None
+    for ahead in range(index, len(steps)):
+        step = steps[ahead]
+        if ahead in consumed or not isinstance(step, ChanceOutcome):
+            continue
+        if step.decision_id == decision.decision_id:
+            if sorted(step.values) != sorted(decision.options):
+                return None
+            return ahead, step
+        if step.decision_id.endswith(FIXED_OUTCOME_SUFFIX):
+            return None
+    return None
+
+
+_PERSONAL_SHUFFLE: Final = re.compile(
+    r"^round:\d+:player:(\d+):(?:.+:)?discard_shuffle$"
+)
+_PLANETARY_ARRAY: Final = "planetary_array"
+_TECH_DRAW_SHUFFLE: Final = ":tech_draw:discard_shuffle"
+# How far ahead a moved reshuffle is looked for: the recording engine drew
+# Planetary Array's card after the next round's hand at the latest.
+_RESHUFFLE_LOOKAHEAD: Final = 200
+
+
+def _reshuffle_earlier(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    steps: tuple[ReplayStep, ...],
+    index: int,
+    consumed: set[int],
+) -> tuple[int, ReplayStep] | None:
+    """A seat's discard reshuffle this engine asks before the recording did:
+    Planetary Array's card, drawn as the Conflict is won (OQ-108), takes the
+    deck's top card a round earlier, so this engine shuffles the seat's
+    discard at the win or at the next Round Start where the recording
+    engine shuffled the same cards for that card after the next round's
+    hand. The recorded permutation of those same cards is taken now, under
+    this engine's decision; the game is then the recording's."""
+
+    decision = engine.current_decision(state)
+    if not isinstance(decision, ChanceDecision):
+        return None
+    asked = _PERSONAL_SHUFFLE.match(decision.decision_id)
+    if asked is None or _PLANETARY_ARRAY not in (
+        state.players[int(asked.group(1))].tech_ids
+    ):
+        return None
+    cards = sorted(decision.options)
+    for ahead in range(index, min(len(steps), index + _RESHUFFLE_LOOKAHEAD)):
+        step = steps[ahead]
+        if ahead in consumed or not isinstance(step, ChanceOutcome):
+            continue
+        recorded = _PERSONAL_SHUFFLE.match(step.decision_id)
+        if (
+            recorded is not None
+            and recorded.group(1) == asked.group(1)
+            # One side is that card's draw (``...:tech_draw:discard_shuffle``).
+            and _TECH_DRAW_SHUFFLE in f"{decision.decision_id} {step.decision_id}"
+            and sorted(step.values) == cards
+        ):
+            return ahead, ChanceOutcome(decision.decision_id, step.values)
+    return None
+
+
+def _conflict_end_reopened(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """The window's finish where a recording engine had closed it: a seat
+    whose hand the play emptied may hold an Intrigue card again once the
+    card's acquisition drew one (a Tleilaxu track Intrigue space), and the
+    window, judged when it comes back on top, stays open (codec v149, user
+    decision 2026-10-18, OQ-109). A recording engine drew that card at its
+    cleanup, after every window, so its record goes on to another step."""
+
+    if not isinstance(decision, PlayerDecision) or not state.decision_stack:
+        return None
+    top = state.decision_stack[-1]
+    if (
+        top.kind != FrameKind.CONFLICT_END_TRIGGER
+        or dict(top.context).get("played") is not True
+    ):
+        return None
+    if (
+        isinstance(step, DomainAction)
+        and step.actor == decision.owner
+        and step.action_id in _CONFLICT_END_WINDOW_STEPS
+    ):
+        return None
+    finish = DomainAction(
+        action_id="finish_conflict_end_intrigue", actor=decision.owner
+    )
+    return finish if finish in engine.legal_actions(state, decision.owner) else None
+
+
+_CONFLICT_END_WINDOW_STEPS: Final = frozenset(
+    {
+        "decline_conflict_end_intrigue",
+        "finish_conflict_end_intrigue",
+        "play_conflict_end_intrigue",
+    }
+)
 
 
 def _plays_harvest_cells(recorded: ReplayStep) -> bool:
@@ -704,6 +867,9 @@ def _conflict_end_finish(
         not isinstance(decision, PlayerDecision)
         or not isinstance(step, DomainAction)
         or step.action_id != "decline_conflict_end_intrigue"
+        # Another seat's decline is its own window's: the window on top is
+        # one this engine keeps open (``conflict_end_reopened``).
+        or step.actor != decision.owner
     ):
         return None
     finish = DomainAction(
@@ -2543,6 +2709,14 @@ BRIDGES: tuple[Bridge, ...] = (
         _conflict_end_finish,
         before_codec=149,
         rewrites=True,
+    ),
+    # Codec v149 (user decision 2026-10-18, OQ-109) keeps a Conflict-end
+    # window open after a play while its seat holds an Intrigue card, judged
+    # when it comes back on top; an older engine had closed it at the play.
+    Bridge(
+        "conflict_end_reopened",
+        _conflict_end_reopened,
+        before_codec=149,
     ),
     # Codec v149 (cleanup-2b) confirms a Tech acquire Influence with every
     # Faction at the top in Combat, where an older engine let it pick one.

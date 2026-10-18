@@ -524,7 +524,12 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # press after a play is ``finish_conflict_end_intrigue`` (new template,
 # Immortality catalogs). Older records answer the acquisition as it is
 # asked (``harvest_cells_at_once``), drop its rewards step and rewrite the
-# press (``conflict_end_finish``).
+# press (``conflict_end_finish``). (OQ-108, OQ-109, same decision) the winner
+# takes the Conflict card, and Planetary Array's card, before the troops go
+# back, and a played window stays open while its seat holds an Intrigue card,
+# judged as it comes back on top; older records take a moved reshuffle of the
+# same cards (``tech_draw_at_the_win``, ``reshuffle_moved``) and finish a
+# window this engine keeps open (``conflict_end_reopened``).
 ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

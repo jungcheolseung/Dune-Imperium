@@ -47,6 +47,7 @@ from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actio
 from dune_imperium.rules.combat import (
     face_up_battle_icons,
     finish_combat,
+    offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -592,12 +593,15 @@ def test_a_new_conflict_and_combat_cleanup_carry_no_stale_pledge() -> None:
         combat_intrigue_complete=True,
         combat_rewards_resolved=True,
     )
-    finished = finish_combat(state)
+    # The winner takes the Conflict card as the Conflict-end step opens
+    # (OQ-108, user decision 2026-10-18); the cleanup after it only closes
+    # the Combat.
+    offered = offer_conflict_end_triggers(state)
+    assert offered.state.conflict_first_place_influence_bonus == 0
+    assert [event.kind for event in offered.events] == ["conflict_won"]
+    finished = finish_combat(offered.state)
     assert finished.state.conflict_first_place_influence_bonus == 0
-    assert [event.kind for event in finished.events] == [
-        "conflict_won",
-        "combat_cleaned_up",
-    ]
+    assert [event.kind for event in finished.events] == ["combat_cleaned_up"]
 
 
 # --------------------------------------------------------- The Beast's Spoils

@@ -24,7 +24,8 @@ The points are fixed by public facts only, so where a pause stands tells no
 seat anything:
 - ``REWARDS`` before each Conflict reward recipient after the first is paid
   (``rules/combat.py``);
-- ``CONFLICT_END`` once a Combat's rewards are paid, before the Conflict-end
+- ``CONFLICT_END`` once a Combat's rewards are paid, before the Conflict card
+  is awarded (with Planetary Array's card, OQ-108) and the Conflict-end
   Intrigue windows are offered (``rules/engine.py``). The windows open on
   public facts and tell nothing of a hand (OQ-103, user decision
   2026-10-09); the pause keeps the last recipient's choice open to undo
