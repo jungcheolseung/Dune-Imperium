@@ -108,7 +108,6 @@ from dune_imperium.rules.effect_interpreter import (
     flippable_battle_card_ids,
     influence_gain_candidates,
     spy_placement_allowed_post_ids,
-    spy_placement_targets,
     trashable_discard_pile_ids,
 )
 from dune_imperium.rules.effects import (
@@ -145,7 +144,7 @@ from dune_imperium.rules.spy_moves import (
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
-    spy_recall_posts,
+    spy_options,
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -597,32 +596,27 @@ def piece_rows(
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.ACQUIRE))
         case PlaceSpy():
-            targets = spy_placement_targets(state, player, piece)
-            if owner.spies_supply > 0:
-                rows.extend(
-                    row(Verb.PLACE_SPY, Target.POST, (("post_id", post_id),))
-                    for post_id in targets
-                )
-            else:
-                # With an empty supply one Spy may be recalled first
-                # [Main pp. 11, 20], only where the placement stays
-                # reachable (``spy_recall_posts``).
-                recallable = spy_recall_posts(
-                    state,
-                    player,
-                    targets,
-                    spy_placement_allowed_post_ids(piece),
-                    shared_post=piece.shared_post,
-                )
-                rows.extend(
-                    row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
-                    for post_id in recallable
-                )
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
-            # passed up only when it cannot be made, whatever the turn.
-            if owner.spies_supply == 0 or not targets:
+            # passed up (first) only when it cannot be made, whatever the
+            # turn, and a recall-first comes only where it opens a post
+            # (``spy_options``).
+            options = spy_options(
+                state,
+                player,
+                spy_placement_allowed_post_ids(piece),
+                shared_post=piece.shared_post,
+            )
+            if options.pass_up:
                 rows.append(row(Verb.DECLINE, of=Verb.PLACE_SPY))
+            rows.extend(
+                row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
+                for post_id in options.recall
+            )
+            rows.extend(
+                row(Verb.PLACE_SPY, Target.POST, (("post_id", post_id),))
+                for post_id in options.place
+            )
     return tuple(rows)
 
 

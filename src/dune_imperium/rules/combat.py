@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Final
 
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
@@ -56,7 +56,7 @@ from dune_imperium.rules.ornithopter import (
 )
 from dune_imperium.rules.pauses import REWARDS, push_pause
 from dune_imperium.rules.scouts_missions import free_prison_marker
-from dune_imperium.rules.spy_placement import recall_spy
+from dune_imperium.rules.spy_placement import recall_spy, spy_options
 from dune_imperium.rules.tactics import advance_tactics_token
 
 if TYPE_CHECKING:
@@ -1048,40 +1048,32 @@ def legal_combat_reward_spy_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    owner = state.players[player]
-    if dict(frame.context).get("deep_cover") is True:
-        # Spy with Deep Cover: opponents' Spies may be ignored, never one's
-        # own [Bloodlines pp. 5, 12].
-        occupied = set(owner.spy_post_ids)
-    else:
-        occupied = {
-            post_id for seat in state.players for post_id in seat.spy_post_ids
-        }
-    targets = tuple(
-        post.post_id for post in OBSERVATION_POSTS if post.post_id not in occupied
+    options = spy_options(
+        state, player, None, shared_post=dict(frame.context).get("deep_cover") is True
     )
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    return (
+        *(
+            (DomainAction(action_id="decline_combat_reward_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_combat_reward",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_combat_reward_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    if targets and owner.spy_post_ids:
-        return (
-            DomainAction(action_id="decline_combat_reward_spy", actor=player),
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_combat_reward",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    return (DomainAction(action_id="decline_combat_reward_spy", actor=player),)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_combat_reward_spy(

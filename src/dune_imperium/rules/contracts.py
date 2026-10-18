@@ -3,7 +3,7 @@
 from copy import replace
 from enum import StrEnum
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
@@ -45,9 +45,9 @@ from dune_imperium.rules.intrigue_deck import (
     with_trashed_intrigue,
 )
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 
@@ -249,41 +249,32 @@ def legal_contract_spy_actions(
         or "contract_spy_id" not in context
     ):
         return ()
-    owner = state.players[player]
-    if context.get("deep_cover") is True:
-        # Spy with Deep Cover ignores opponents' Spies; only the owner's
-        # own Spies block a post [Bloodlines pp. 5, 12].
-        targets = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id not in owner.spy_post_ids
-        )
-    else:
-        targets = empty_observation_post_ids(state)
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    options = spy_options(
+        state, player, None, shared_post=context.get("deep_cover") is True
+    )
+    return (
+        *(
+            (DomainAction(action_id="decline_contract_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_contract",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_contract_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    decline = DomainAction(action_id="decline_contract_spy", actor=player)
-    if targets and owner.spy_post_ids:
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_contract",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    # Nothing can be placed (no free post, or no Spy at all).
-    return (decline,)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_contract_spy_action(

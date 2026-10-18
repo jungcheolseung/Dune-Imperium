@@ -7,9 +7,11 @@ the stage's start master (``d892cd6c``). Each rule's ``why`` names the plan's
 sub-stage; a sub-stage adds its rules here with its change.
 """
 
+import importlib.util
 import json
 import re
 from collections import Counter
+from pathlib import Path
 
 from equivalence_rules import At, Rule, Step
 
@@ -2082,7 +2084,16 @@ def _conflict_end_events(old: Step, candidate: Step) -> None:
         )
 
 
+# Cleanup-2d's rules, declared against the 2c end (``cleanup2d.py``).
+_SPEC = importlib.util.spec_from_file_location(
+    "cleanup2d_differences", Path(__file__).with_name("cleanup2d.py")
+)
+assert _SPEC is not None and _SPEC.loader is not None
+_CLEANUP2D = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_CLEANUP2D)
+
 RULES = (
+    *_CLEANUP2D.RULES,
     Rule(
         name="agent_box_events",
         why="cleanup-2c-2: one box event per Agent box, named <box>:<outcome>; "

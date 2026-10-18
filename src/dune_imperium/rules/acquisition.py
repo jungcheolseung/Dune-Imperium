@@ -88,9 +88,9 @@ from dune_imperium.rules.scouts_modifiers import (
     reserve_discount,
 )
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 
@@ -157,32 +157,30 @@ def legal_acquisition_spy_actions(
         or "acquisition_card_id" not in context
     ):
         return ()
-    owner = state.players[player]
-    targets = empty_observation_post_ids(state)
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    options = spy_options(state, player, None, shared_post=False)
+    return (
+        *(
+            (DomainAction(action_id="decline_acquisition_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_acquisition",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_acquisition_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    decline = DomainAction(action_id="decline_acquisition_spy", actor=player)
-    if targets and owner.spy_post_ids:
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_acquisition",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    # Nothing can be placed (no free post, or no Spy at all).
-    return (decline,)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_acquisition_spy_action(

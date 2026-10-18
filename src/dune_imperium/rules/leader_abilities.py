@@ -139,8 +139,7 @@ from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
     place_spy,
     recall_spy,
-    spy_placement_posts,
-    spy_recall_posts,
+    spy_options,
 )
 from dune_imperium.rules.units import retreat_units
 
@@ -1205,36 +1204,37 @@ def _leader_spy_placement_actions(
     Cover [Bloodlines pp. 5, 12]).
     """
 
-    owner = state.players[player]
-    placements = spy_placement_posts(
-        state, player, allowed_post_ids, shared_post=deep_cover
+    options = spy_options(
+        state,
+        player,
+        allowed_post_ids,
+        shared_post=deep_cover,
+        recalled=not offer_decline or context.get("leader_spy_recalled") is True,
+        stuck_passes=False,
     )
-    if owner.spies_supply > 0:
-        return tuple(
+    return (
+        *(
+            (DomainAction(action_id="decline_leader_spy_placement", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_leader_placement",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_leader_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in placements
-        )
-    recall_post_ids = spy_recall_posts(
-        state, player, placements, allowed_post_ids, shared_post=deep_cover
+            for post_id in options.place
+        ),
     )
-    recalls = tuple(
-        DomainAction(
-            action_id="recall_spy_for_leader_placement",
-            actor=player,
-            arguments=(("post_id", post_id),),
-        )
-        for post_id in recall_post_ids
-    )
-    if recalls and offer_decline and context.get("leader_spy_recalled") is not True:
-        return (
-            DomainAction(action_id="decline_leader_spy_placement", actor=player),
-            *recalls,
-        )
-    return recalls
 
 
 def signet_influence_withheld(state: GameState, player: int) -> bool:

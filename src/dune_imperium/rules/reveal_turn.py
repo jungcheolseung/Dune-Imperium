@@ -150,6 +150,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
     spied_factions,
+    spy_recall_posts,
 )
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -1155,7 +1156,10 @@ def legal_reveal_spy_actions(
                     card_id,
                     (("post_id", post_id),),
                 )
-                for post_id in owner.spy_post_ids
+                # Only a recall that opens a post (OQ-057 (14) addition).
+                for post_id in spy_recall_posts(
+                    state, player, empty_observation_post_ids(state)
+                )
             ),
         )
     ability = reveal_choice_ability(effect)

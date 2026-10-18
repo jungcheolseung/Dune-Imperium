@@ -179,8 +179,7 @@ from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
-    spy_placement_posts,
-    spy_recall_posts,
+    spy_options,
 )
 from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 
@@ -1332,7 +1331,6 @@ def agent_spy_rows(
     keeps from its partner).
     """
 
-    owner = state.players[player]
     card = active_agent_card(context)
     allowed_post_ids: frozenset[str] | None = None
     if piece.visited_space:
@@ -1352,40 +1350,43 @@ def agent_spy_rows(
         # place-Spy card prints them (the card tables refuse them elsewhere).
         allowed_post_ids = observation_post_ids_for_factions(card.agent_spy_factions)
     # Another player's Spy may share a shared-post Spy's post, never the
-    # owner's own [Bloodlines pp. 5, 12; Double Agent card].
-    placements = spy_placement_posts(
-        state, player, allowed_post_ids, shared_post=piece.shared_post
+    # owner's own [Bloodlines pp. 5, 12; Double Agent card]. The supply is
+    # judged now: a recall made earlier this turn may already have been
+    # consumed by another effect (Espionage), and then another recall is
+    # offered. With nothing to place or recall the box waits for the turn's
+    # end like any box that can only fizzle (OQ-057 (1)); after a
+    # recall-first the placement is owed.
+    options = spy_options(
+        state,
+        player,
+        allowed_post_ids,
+        shared_post=piece.shared_post,
+        recalled=context.get("agent_card_spy_recalled") is True,
+        stuck_passes=False,
     )
-    # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
-    # made earlier this turn may already have been consumed by another effect
-    # (e.g. the Espionage board space), in which case another recall is offered.
-    if owner.spies_supply > 0:
-        return tuple(
+    return (
+        *(
+            (DomainAction(action_id="decline_agent_card_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_agent_card",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_agent_card_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in placements
-        )
-    recall_post_ids = spy_recall_posts(
-        state, player, placements, allowed_post_ids, shared_post=piece.shared_post
+            for post_id in options.place
+        ),
     )
-    recalls = tuple(
-        DomainAction(
-            action_id="recall_spy_for_agent_card",
-            actor=player,
-            arguments=(("post_id", post_id),),
-        )
-        for post_id in recall_post_ids
-    )
-    if not recalls or context.get("agent_card_spy_recalled") is True:
-        # With nothing to recall the box waits for the turn's end like any
-        # box that can only fizzle (OQ-057 (1)); after a recall-first the
-        # placement is mandatory, even if another freely ordered effect
-        # (Espionage) spent that Spy meanwhile.
-        return recalls
-    return (DomainAction(action_id="decline_agent_card_spy", actor=player), *recalls)
 
 
 def target_blocked(state: GameState, player: int, ability: Ability) -> bool:

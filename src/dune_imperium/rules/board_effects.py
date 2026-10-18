@@ -97,9 +97,9 @@ from dune_imperium.rules.shield_wall import (
     destroy_shield_wall,
 )
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 _FRAME_LABEL = "Agent-turn effect frame"
@@ -744,40 +744,35 @@ def legal_espionage_actions(
     ):
         return ()
 
-    owner = state.players[player]
-    recalled = context.get("espionage_spy_recalled") is True
     # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
     # made for Espionage may already have been consumed by another freely
-    # ordered effect, so an empty supply always reopens the recall choice.
-    if owner.spies_supply > 0:
-        placements = tuple(
+    # ordered effect, so an empty supply reopens the recall choice. Every
+    # post taken, the icon resolves without a Spy (``spy_options``).
+    options = spy_options(
+        state, player, recalled=context.get("espionage_spy_recalled") is True
+    )
+    return (
+        *(
+            (DomainAction(action_id="resolve_espionage_without_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_espionage",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="resolve_espionage_place_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in empty_observation_post_ids(state)
-        )
-        if placements:
-            return placements
-        # Every post is taken: the icon resolves without a Spy.
-        return (DomainAction(action_id="resolve_espionage_without_spy", actor=player),)
-
-    recalls = tuple(
-        DomainAction(
-            action_id="recall_spy_for_espionage",
-            actor=player,
-            arguments=(("post_id", post_id),),
-        )
-        for post_id in owner.spy_post_ids
-    )
-    if recalled:
-        return recalls
-    # With an empty supply nothing has to be placed, and the recall that
-    # would free a Spy is the player's choice [Main pp. 11, 20].
-    return (
-        DomainAction(action_id="resolve_espionage_without_spy", actor=player),
-        *recalls,
+            for post_id in options.place
+        ),
     )
 
 

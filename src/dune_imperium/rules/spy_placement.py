@@ -1,6 +1,7 @@
 """Shared Observation Post occupancy operations."""
 
 from copy import replace
+from dataclasses import dataclass
 
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
@@ -105,6 +106,53 @@ def spy_recall_posts(
             if allowed_post_ids is None or post_id in allowed_post_ids
         )
     return solo_occupied_post_ids(state, player, allowed_post_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class SpyOptions:
+    """What a Spy placement offers now (``spy_options``): posts to place on,
+    Spies to recall first, and whether the pass-up row (first) is offered."""
+
+    place: tuple[str, ...] = ()
+    recall: tuple[str, ...] = ()
+    pass_up: bool = False
+
+
+def spy_options(
+    state: GameState,
+    player: int,
+    allowed_post_ids: frozenset[str] | None = None,
+    *,
+    shared_post: bool = False,
+    recalled: bool = False,
+    stuck_passes: bool = True,
+) -> SpyOptions:
+    """One placement's choices, whatever offers it.
+
+    Placing is mandatory while a Spy is in the supply and a post is free (the
+    erratum to [Main p. 11], OQ-057 (14)). Without a Spy "you may first
+    recall one of your Spies" [Main pp. 11, 20]: the pass-up comes first,
+    then the recalls that open a post (``spy_recall_posts``, OQ-057 (14)
+    addition 2026-10-14); once a recall-first was made (``recalled``) the
+    placement is owed and the pass-up is gone. With nothing to place or
+    recall a host either passes (``stuck_passes``) or waits for the turn's
+    end and fizzles (an Agent box, a Leader Signet, OQ-057 (1)).
+    """
+
+    owner = state.players[player]
+    posts = spy_placement_posts(
+        state, player, allowed_post_ids, shared_post=shared_post
+    )
+    if owner.spies_supply > 0:
+        if posts:
+            return SpyOptions(place=posts)
+        return SpyOptions(pass_up=stuck_passes)
+    recalls = spy_recall_posts(
+        state, player, posts, allowed_post_ids, shared_post=shared_post
+    )
+    if not recalls:
+        return SpyOptions(pass_up=stuck_passes and not recalled)
+    return SpyOptions(recall=recalls, pass_up=not recalled)
 
 
 def observation_post_ids_for_factions(

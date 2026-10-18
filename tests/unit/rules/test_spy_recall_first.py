@@ -28,6 +28,11 @@ from dune_imperium.rules.leader_abilities import (
     _leader_spy_placement_actions,
     _listeners_spies,
 )
+from dune_imperium.rules.spy_moves import (
+    legal_spy_placement_actions,
+    spy_placement_frame,
+)
+from dune_imperium.rules.spy_placement import SpyOptions, spy_options
 
 ENGINE = UprisingRulesEngine()
 SHARED = "arrakis-research-station-spice-refinery"
@@ -146,3 +151,57 @@ def test_listeners_recall_first_serves_the_paid_half_too() -> None:
 
     assert recalls(1) == set(owner_posts)
     assert recalls(0) == set()
+
+
+def test_every_spy_host_reads_one_recall_first_rule() -> None:
+    """cleanup-2d: one decision for every host (``spy_options``). With an
+    empty supply the pass-up comes first, then the recalls that open a post:
+    with a free post any Spy, else a post the owner holds alone; after a
+    recall-first the pass-up is gone; with nothing to place or recall a host
+    passes or (``stuck_passes`` off: an Agent box, a Leader) waits."""
+
+    state = _state(
+        _seat(0, (SHARED, SOLO, "bene-gesserit-espionage-secrets")),
+        _seat(1, ("arrakis-research-station-sietch-tabr",)),
+        _seat(2, (SHARED,)),
+        _seat(3, ()),
+    )
+    city = frozenset((SHARED, SOLO, "arrakis-research-station-sietch-tabr"))
+    assert spy_options(state, 0, city) == SpyOptions(recall=(SOLO,), pass_up=True)
+    assert spy_options(state, 0, city, recalled=True) == SpyOptions(recall=(SOLO,))
+    assert spy_options(state, 3, city) == SpyOptions(pass_up=True)
+    assert spy_options(state, 3, city, stuck_passes=False) == SpyOptions()
+    free = spy_options(state, 0)
+    assert free.pass_up and free.recall == state.players[0].spy_post_ids
+
+
+def test_the_shared_placement_frame_recalls_a_spy_that_frees_its_post() -> None:
+    """The shared placement frame (Emperor track, Panopticon, In High
+    Places): every allowed post taken and the supply empty, a recall of the
+    owner's Spy holding an allowed post alone opens a placement, so it is
+    offered beside the pass-up -- "먼저 회수는 그 회수로 놓을 수 있는 칸이
+    생길 때만 제시한다" (OQ-057 (14) addition 2026-10-14). The frame used to
+    offer only the pass-up there (cleanup-2d)."""
+
+    allowed = (SOLO, "arrakis-research-station-sietch-tabr")
+    state = spy_placement_frame(
+        _state(
+            _seat(0, (SOLO, "bene-gesserit-espionage-secrets", SHARED)),
+            _seat(1, ("arrakis-research-station-sietch-tabr",)),
+            _seat(2, ()),
+            _seat(3, ()),
+        ),
+        0,
+        allowed,
+        source="test",
+    )
+    assert legal_spy_placement_actions(state, 0) == (
+        DomainAction("decline_spy_placement", 0),
+        DomainAction("recall_spy_for_placement", 0, (("post_id", SOLO),)),
+    )
+    recalled = ENGINE.apply(
+        state, DomainAction("recall_spy_for_placement", 0, (("post_id", SOLO),))
+    ).state
+    assert legal_spy_placement_actions(recalled, 0) == (
+        DomainAction("place_spy_on_space", 0, (("post_id", SOLO),)),
+    )
