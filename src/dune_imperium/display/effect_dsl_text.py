@@ -59,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainSolariPerUnitType,
     GainSpiceWithHelixBonus,
     GainVictoryPoints,
@@ -655,6 +656,9 @@ def reward_text(reward: Reward) -> str:
                 "Each opponent spying on the board space where you sent an"
                 " Agent this turn must move that Spy"
             )
+        case GainSolariPerPartnerAgentIcon():
+            # Slig Farmer's card text (``tokens.py``).
+            return "Gain 1 solari per Agent icon on the other grafted card"
         case ReturnOtherGraftedCardAtRevealStart():
             return (
                 "At the start of your Reveal turn, return the other grafted"

@@ -43,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainVictoryPoints,
     GraftedTrash,
     GraftedWithFaction,
@@ -97,6 +98,7 @@ from dune_imperium.rules.agent_box_abilities import (
     opens_at_placement,
     optional_arrow,
     payment_box,
+    plain_and_paid_box,
     target_piece,
     trash_box,
     wall_and_worm_box,
@@ -1210,7 +1212,6 @@ def test_no_optional_box_is_a_hook_any_more() -> None:
         "long_live_the_fighters",
         "possible_futures",
         "scientific_breakthrough",
-        "slig_farmer",
     }
     revolt = AGENT_BOX_ABILITIES[
         _BOX.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
@@ -1278,3 +1279,19 @@ def test_corrinth_city_is_a_discard_and_pay_record() -> None:
     assert discard_pay_block(owner, corrinth) == short_of(
         OptionalBlockKind.SOLARI, 5, 4
     )
+
+
+def test_slig_farmer_is_a_plain_line_beside_a_paid_arrow() -> None:
+    """Slig Farmer (cleanup-2d): the per-icon Solari, then "You may pay 5
+    solari -> Advance the Tleilaxu track", read as the card prints them."""
+
+    effect = _BOX.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+    farmer = AGENT_BOX_ABILITIES[effect]
+    assert plain_and_paid_box(farmer) and farmer.hook is None
+    plain, paid = farmer.sections
+    assert plain.rewards == (GainSolariPerPartnerAgentIcon(),)
+    assert paid.costs == (PayResources(solari=5),)
+    assert paid.rewards == (AdvanceTleilaxu(1),)
+    gain = GainSolariPerPartnerAgentIcon()
+    assert reward_text(gain) in AGENT_EFFECT_TEXT[effect]
+    assert reward_text_ko(gain) in AGENT_EFFECT_TEXT_KO[effect]

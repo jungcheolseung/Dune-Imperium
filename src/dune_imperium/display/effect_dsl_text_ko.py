@@ -86,6 +86,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainSolariPerUnitType,
     GainSpiceWithHelixBonus,
     GainVictoryPoints,
@@ -936,6 +937,9 @@ def reward_text_ko(reward: Reward) -> str:
                 "이번 차례에 당신이 {agent}를 보낸 장소를 정탐 중인 다른 "
                 "플레이어는 그 {spy}를 이동해야 함"
             )
+        case GainSolariPerPartnerAgentIcon():
+            # Quotes ``tokens_ko.py``'s Slig Farmer line.
+            return "다른 {graft} 카드의 {agent} 아이콘마다 {solari:1}"
         case ReturnOtherGraftedCardAtRevealStart():
             # Quotes ``tokens_ko.py``'s Chairdog line.
             return (

@@ -1300,6 +1300,14 @@ class OpponentsMoveSpiesFromVisitedSpace:
 
 
 @dataclass(frozen=True, slots=True)
+class GainSolariPerPartnerAgentIcon:
+    """Gain 1 Solari per Agent icon on the other grafted card [Slig Farmer
+    card]: borrowed and conditional icons count too -- Blank Slate's grafted
+    Faction icons, Servo-Receivers' Signet icons, a met Long Reach condition
+    -- since the card carries them (OQ-055, user ruling 2026-09-08)."""
+
+
+@dataclass(frozen=True, slots=True)
 class ReturnOtherGraftedCardAtRevealStart:
     """At the start of the owner's Reveal turn, the other grafted card goes
     from play back to the hand [Chairdog card]. The return is noted on the
@@ -1591,6 +1599,7 @@ type Reward = (
     | EachOpponentLosesTroop
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
+    | GainSolariPerPartnerAgentIcon
     | AcquireBankCommander
     | RevealPersuasion
     | RevealSwords

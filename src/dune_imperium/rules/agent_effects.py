@@ -60,6 +60,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_intrigue_payment,
     apply_lose,
     apply_payment,
+    apply_plain_and_paid,
     apply_trash,
     box_ability,
     box_icon_block,
@@ -90,6 +91,9 @@ from dune_imperium.rules.agent_box_abilities import (
     payment_cost_block,
     payment_reward_block,
     payment_rows,
+    plain_and_paid_block,
+    plain_and_paid_box,
+    plain_and_paid_rows,
     resolve_box,
     resolve_box_icon,
     target_blocked,
@@ -106,7 +110,6 @@ from dune_imperium.rules.agent_box_abilities import (
 from dune_imperium.rules.agent_box_abilities import (
     holds_space_influence as box_holds_space_influence,
 )
-from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import (
     BoxNeedsRows,
     BoxOutcome,
@@ -168,8 +171,6 @@ from dune_imperium.rules.graft_boxes import (
 )
 from dune_imperium.rules.immortality import (
     advance_research,
-    advance_tleilaxu,
-    tleilaxu_track_finished,
 )
 from dune_imperium.rules.influence import (
     gain_faction_influence,
@@ -209,10 +210,6 @@ _RESEARCHED_BOXES: Final = "research_resolved_card_ids"
 # visited space's own Influence (Subversive Advisor, Treacherous Maneuver):
 # the space's 1 never comes back after that (``_release_space_influence``).
 _SPACE_INFLUENCE_REPLACED: Final = SPACE_INFLUENCE_REPLACED
-_SOLARI_PER_PARTNER_ICON = (
-    PersonalCardAgentEffect
-    .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
-)
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
@@ -222,7 +219,6 @@ _BRANCHING_PATH = (
 )
 # Stitched Horror's four printed rewards, in card order.
 STITCHED_HORROR_REWARDS: Final = ("water", "troop", "trash", "tleilaxu")
-SLIG_FARMER_PRICE: Final = 5
 
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
@@ -592,36 +588,6 @@ def apply_opponent_card_discard(
         # open the next turn when no group in that frame is still pending.
         popped = advance_after_effect(popped, dict(base_frame.context))
     return RuleResult(state=popped, events=discarded.events)
-
-
-def _partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> int:
-    """Slig Farmer: the Agent icons the other grafted card has right now.
-
-    Borrowed and conditional icons count too — Blank Slate's grafted Faction
-    icons, Servo-Receivers' Signet icons, a met Long Reach condition — since
-    the card carries them (OQ-055, user ruling 2026-09-08).
-    """
-
-    partner = other_grafted_card_id(context)
-    if not partner:
-        return 0
-    player = context.get("turn_owner")
-    if isinstance(player, bool) or not isinstance(player, int):
-        raise RuntimeError("Agent-turn effect frame has invalid owner")
-    owner = state.players[player]
-    opponents = tuple(seat for seat in state.players if seat.player_id != player)
-    partner_card = personal_card_for_instance(partner)
-    # Long Reach in play does not count as its own "another Bene Gesserit
-    # card in play" [Long Reach card].
-    return len(
-        effective_agent_icons(
-            partner_card,
-            owner,
-            grafted=True,
-            opponents=opponents,
-            card_instance_id=partner,
-        )
-    )
 
 
 
@@ -1600,10 +1566,8 @@ def agent_card_payment_block(
     if payment_box(ability):
         assert ability is not None
         return payment_reward_block(state, player, ability)
-    if effect is _SOLARI_PER_PARTNER_ICON and tleilaxu_track_finished(
-        state.players[player]
-    ):
-        return AgentPaymentBlock.TLEILAXU_TRACK_END
+    if ability is not None and plain_and_paid_box(ability):
+        return plain_and_paid_block(state, player)
     return None
 
 
@@ -1710,7 +1674,6 @@ def legal_agent_card_payment_actions(
         # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
         # Combat" [card face], from its record (composed A3f).
         return either_rows(state, player, recorded)
-    owner = state.players[player]
     if source_card.agent_effect is _RESEARCH_AND_TRASH_FOR_VP:
         # Scientific Breakthrough prints the Research icon and, on its own
         # line, "[2 genetic markers]: Trash this card -> 1 VP" [card face].
@@ -1731,22 +1694,9 @@ def legal_agent_card_payment_actions(
             ),
             DomainAction(action_id="trash_agent_card_self_for_vp", actor=player),
         )
-    if source_card.agent_effect is _SOLARI_PER_PARTNER_ICON:
-        # Slig Farmer: the Solari land first, so they may pay the five; the
-        # five are not offered once the advance would do nothing (OQ-071).
-        if (
-            owner.resources.solari + _partner_icon_count(state, context)
-            < SLIG_FARMER_PRICE
-            or agent_card_payment_block(state, player, source_card.agent_effect)
-            is not None
-        ):
-            return ()
-        return (
-            DomainAction(action_id="resolve_agent_card_effect", actor=player),
-            DomainAction(
-                action_id="pay_agent_card_five_solari_for_tleilaxu", actor=player
-            ),
-        )
+    if recorded is not None and plain_and_paid_box(recorded):
+        # Slig Farmer, from its record (cleanup-2d).
+        return plain_and_paid_rows(state, player, recorded)
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor, from its record (composed A3f).
         return lose_rows(state, player)
@@ -1933,7 +1883,6 @@ def _apply_payment_choice(
 
     if recorded is not None and graft_trash_box(recorded):
         return _apply_graft_trash(state, action, recorded, context, source)
-    owner = state.players[action.actor]
     if action.action_id == "take_agent_card_combat_icon":
         # High Priority Travel's Combat half; the grant writes the frame, so
         # the context is re-read before the box closes.
@@ -1996,32 +1945,8 @@ def _apply_payment_choice(
                 ),
             ),
         )
-    if action.action_id == "pay_agent_card_five_solari_for_tleilaxu":
-        # Slig Farmer: the per-icon Solari land, then five pay the track.
-        icon_solari = _partner_icon_count(state, context)
-        paid_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + icon_solari - SLIG_FARMER_PRICE,
-            ),
-        )
-        next_state = advance_after_effect(
-            state, context, replace_player(state.players, paid_owner)
-        )
-        advanced = advance_tleilaxu(next_state, action.actor, 1)
-        return RuleResult(
-            state=advanced.state,
-            events=(
-                *(
-                    (resources_gained_event(source, action.actor, solari=icon_solari),)
-                    if icon_solari
-                    else ()
-                ),
-                resources_paid_event(source, action.actor, solari=SLIG_FARMER_PRICE),
-                *advanced.events,
-            ),
-        )
+    if recorded is not None and plain_and_paid_box(recorded):
+        return apply_plain_and_paid(state, action.actor, recorded, context, source)
     if recorded is not None and choose_two_box(recorded):
         return apply_chosen_reward(state, action, recorded)
     raise RuntimeError(f"no Agent-card payment handles {action.action_id}")
@@ -3459,25 +3384,6 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
     )
 
 
-def _hook_slig_farmer(state: GameState) -> RuleResult:
-    """Slig Farmer without the payment: "Gain 1 solari per Agent icon on the
-    other grafted card" alone (the payment row pays it too)."""
-
-    context, player, _, owner, event_source = _box_subject(state)
-    gained_solari = _partner_icon_count(state, context)
-    next_owner = replace(
-        owner,
-        resources=replace(
-            owner.resources, solari=owner.resources.solari + gained_solari
-        ),
-    )
-    next_state, event = _close_box(state, context, next_owner, BoxOutcome.RESOLVED)
-    gains = (
-        (resources_gained_event(event_source, player, solari=gained_solari),)
-        if gained_solari
-        else ()
-    )
-    return RuleResult(state=next_state, events=(*gains, event))
 
 
 def _hook_beasts_spoils(state: GameState) -> RuleResult:
@@ -3542,7 +3448,6 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "long_live_the_fighters": _hook_long_live_the_fighters,
             "beasts_spoils": _hook_beasts_spoils,
             "scientific_breakthrough": _hook_scientific_breakthrough,
-            "slig_farmer": _hook_slig_farmer,
         }
     )
 )

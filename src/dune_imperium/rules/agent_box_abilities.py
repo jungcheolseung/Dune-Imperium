@@ -84,6 +84,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainVictoryPoints,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
@@ -127,6 +128,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.action_shapes import Source, Verb, template_id
+from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
@@ -649,6 +651,7 @@ def resolve_box(state: GameState) -> RuleResult:
         or ability.hook is not None
         or (
             len(ability.sections) != 1
+            and not plain_and_paid_box(ability)
             and not choose_two_box(ability)
             and not trash_box(ability)
             and not discard_box(ability)
@@ -748,6 +751,18 @@ def resolve_box(state: GameState) -> RuleResult:
             owner, line, context, card_id, source, player
         )
         gains = _gains_event(line.rewards, source, player)
+        if any(
+            isinstance(reward, GainSolariPerPartnerAgentIcon) for reward in line.rewards
+        ) and (icon_solari := partner_icon_count(state, context)):
+            # Slig Farmer's plain line [Slig Farmer card].
+            next_owner = replace(
+                next_owner,
+                resources=replace(
+                    next_owner.resources,
+                    solari=next_owner.resources.solari + icon_solari,
+                ),
+            )
+            gains = (resources_gained_event(source, player, solari=icon_solari),)
     working = replace(base, players=replace_player(base.players, next_owner))
     if available and any(
         isinstance(reward, GrantCombatDeployment) for reward in line.rewards
@@ -2279,6 +2294,141 @@ def graft_trash_rows(
                 arguments=(("card_id", card_id),) if names_card else (),
             )
             for card_id in targets
+        ),
+    )
+
+
+# --- A plain line beside a paid arrow (cleanup-2d) ------------------------------------
+#
+# "Gain 1 solari per Agent icon on the other grafted card, You may pay 5
+# solari -> Advance the Tleilaxu track" [Slig Farmer card]: the plain line
+# lands first, so its Solari may pay the arrow. While the arrow can be paid
+# and would buy something (OQ-071) the rows are the plain resolution and
+# the payment (``pay_agent_card_five_solari_for_tleilaxu``, which pays the
+# plain line too); otherwise the plain resolution alone, which
+# ``resolve_box`` gives.
+
+
+def plain_and_paid_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is a plain per-icon gain beside a Solari arrow to
+    the Tleilaxu track."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.MANDATORY
+        or ability.structure is not AbilityStructure.SEQUENCE
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 2
+    ):
+        return False
+    plain, paid = ability.sections
+    return (
+        not plain.costs
+        and plain.condition is None
+        and all(
+            isinstance(reward, GainSolariPerPartnerAgentIcon)
+            for reward in plain.rewards
+        )
+        and len(paid.costs) == 1
+        and isinstance(paid.costs[0], PayResources)
+        and paid.costs[0].spice == paid.costs[0].water == 0
+        and paid.costs[0].solari > 0
+        and paid.condition is None
+        and paid.rewards == (AdvanceTleilaxu(1),)
+    )
+
+
+def plain_and_paid_price(ability: Ability) -> int:
+    cost = ability.sections[1].costs[0]
+    assert isinstance(cost, PayResources)
+    return cost.solari
+
+
+def partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> int:
+    """The Agent icons the other grafted card has right now
+    (``GainSolariPerPartnerAgentIcon``)."""
+
+    partner = other_grafted_card_id(context)
+    if not partner:
+        return 0
+    player = context.get("turn_owner")
+    if isinstance(player, bool) or not isinstance(player, int):
+        raise RuntimeError("Agent-turn effect frame has invalid owner")
+    owner = state.players[player]
+    opponents = tuple(seat for seat in state.players if seat.player_id != player)
+    # Long Reach in play does not count as its own "another Bene Gesserit
+    # card in play" [Long Reach card].
+    return len(
+        effective_agent_icons(
+            personal_card_for_instance(partner),
+            owner,
+            grafted=True,
+            opponents=opponents,
+            card_instance_id=partner,
+        )
+    )
+
+
+def plain_and_paid_block(state: GameState, player: int) -> AgentPaymentBlock | None:
+    """Why the arrow would buy nothing now: the Tleilaxu token at the track's
+    end (OQ-071)."""
+
+    if tleilaxu_track_finished(state.players[player]):
+        return AgentPaymentBlock.TLEILAXU_TRACK_END
+    return None
+
+
+def plain_and_paid_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    _, context = current_agent_effect_context(state)
+    owner = state.players[player]
+    if (
+        owner.resources.solari + partner_icon_count(state, context)
+        < plain_and_paid_price(ability)
+        or plain_and_paid_block(state, player) is not None
+    ):
+        return ()
+    return (
+        DomainAction(action_id=_PLAIN_ROW, actor=player),
+        DomainAction(action_id="pay_agent_card_five_solari_for_tleilaxu", actor=player),
+    )
+
+
+def apply_plain_and_paid(
+    state: GameState,
+    player: int,
+    ability: Ability,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    """Pay the plain line, then the arrow out of it (the caller adds the
+    box's event)."""
+
+    icon_solari = partner_icon_count(state, context)
+    price = plain_and_paid_price(ability)
+    owner = state.players[player]
+    paid_owner = replace(
+        owner,
+        resources=replace(
+            owner.resources, solari=owner.resources.solari + icon_solari - price
+        ),
+    )
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, paid_owner)
+    )
+    advanced = advance_tleilaxu(next_state, player, 1)
+    return RuleResult(
+        state=advanced.state,
+        events=(
+            *(
+                (resources_gained_event(source, player, solari=icon_solari),)
+                if icon_solari
+                else ()
+            ),
+            resources_paid_event(source, player, solari=price),
+            *advanced.events,
         ),
     )
 

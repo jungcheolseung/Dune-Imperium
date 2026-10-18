@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainVictoryPoints,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
@@ -716,9 +717,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Slig Farmer: "Gain 1 solari per Agent icon on the other grafted
             # card, You may pay 5 solari -> Advance the Tleilaxu track" -- the
-            # payment row pays the Solari too.
+            # payment row pays the Solari too (cleanup-2d).
             _BOX.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU: (
-                _hook("slig_farmer")
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        _line(GainSolariPerPartnerAgentIcon()),
+                        EffectSection(
+                            rewards=(AdvanceTleilaxu(1),),
+                            costs=(PayResources(solari=5),),
+                        ),
+                    ),
+                )
             ),
             # Stitched Horror: "Choose two: Gain 1 water / Recruit 1 troop /
             # Trash a card / Advance the Tleilaxu track" -- both named before
