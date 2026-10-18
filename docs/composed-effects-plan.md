@@ -845,6 +845,28 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   멈춤" 장면 — 이제 승자가 있으면 그 멈춤에 Conflict 승리가 보임; 마무리에서 함께 다시 고름). 판이 달라짐: golden `everything`(결정 순서는
   같고 창 관측만), tips-v1(125 → 124 → 123, 옮겨진 국면 모두 상태가 처음 갈라지는 곳이 Conflict 끝·정리 단계).
 
+### 정리-2c 사건 문법 (2026-10-18, 사용자 "2c 진행해자")
+
+정리-2c가 사건을 바꿀 때 따르는 규칙. 한 번에 모든 사건을 다시 쓰지 않고, 묶음(2c-1~2c-6)마다 그 묶음이 건드리는 사건에 적용한다.
+화면은 사건의 종류와 payload만 받는다(id는 서버 밖으로 나가지 않는다), 그래서 종류·payload가 바뀌는 곳마다 화면 표(`EVENT_LABELS`,
+`LOG_EVENT_ICONS`, `VP_CAUSE_KINDS`, `NEUTRAL_EVENT_KINDS` 등)와 서버 표를 함께 고친다.
+
+- **종류:** `<무엇>_<과거분사>`(`resources_gained`, `card_trashed`). 결과에 따라 종류를 고르지 않는다(되도록).
+- **id:** `<출처>:<무엇>`. 출처는 그 효과의 출처 문자열 하나다(Agent 칸 `round:R:player:P:agent_card:<instance>`, 보드
+  `round:R:player:P:board:<space>`, 책략 `round:R:player:P:intrigue:<instance>`, Reveal 이득 `round:R:player:P:reveal_gain:<source>` …).
+  공용 도우미는 출처 뒤에 자기 낱말 하나만 붙이고, 출처에 이미 있는 낱말을 되풀이하지 않는다. id는 유일하지 않아도 된다(같은 일의 되풀이).
+- **payload 키:** 행위 좌석 `player`(다른 좌석은 `from_player`/`to_player`/`recipient`/`victim`/`visitor`), 개수 `count`, 자원
+  `solari`/`spice`/`water`, VP `victory_points`, 카드 `card_id`, 출처 `source`(출처 문자열 — 화면이 카드·칸 이름으로 읽는다), 칸 `space_id`.
+  얻은 양은 0이면 싣지 않는다. 목록은 쉼표 문자열이 아니라 목록으로(2c-6).
+- **판단 3 — 자원 얻기:** `resources_gained` 하나(`rules/gain_events.py`). id `<출처>:resources`, payload `player`·`source`·얻은 자원 키.
+  획득 보너스(`acquisition_resource_gained`), 연구 보너스(`research_resources_gained`), Reveal 이득(`reveal_resources_gained`)과 Reveal
+  선택의 Solari·spice(`reveal_solari_gained`, `contract_reveal_spice_gained`)를 합쳤고, 사건이 없던 책략·Scouts 줄의 자원 얻기에도 낸다
+  (공용 해석기 `apply_rewards`, 줄마다 하나 — 그 줄의 첫 얻기 자리에).
+- **판단 4 — VP:** 출처 사건의 `victory_points` 키. 책략·Scouts 줄의 VP는 그 줄의 `resources_gained`, CHOAM Transports의 Endgame VP도
+  `resources_gained`(출처 `…:endgame_tech:choam_transports`), Tech 획득 아이콘(Sardaukar High Command)은 `tech_acquire_effect_resolved`
+  의 키(같은 사건에 Solari 아이콘의 양도 `solari`로). `victory_points_gained`는 없어졌다. 다른 사건 이름은 그대로(Conflict 보상, 계약,
+  Reveal For Humanity 등은 이미 키로 싣는다).
+
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
 - 내용: 행동을 `동사(대상, slot=k)`로 바꾸고 묶인 행동을 조각 행동으로 나눈다. `slot`은 대기 능력 목록의 자리다(지금
