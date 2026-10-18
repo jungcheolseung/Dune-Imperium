@@ -693,7 +693,6 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
     assert dict(result.events[-1].payload) == {
         "player": 0,
         "tech_id": "servo_receivers",
-        "troops": 1,
     }
     # Nothing else was pending at Assembly Hall: the owner's turn stays open
     # until its end is pressed, which then moves on (OQ-095).

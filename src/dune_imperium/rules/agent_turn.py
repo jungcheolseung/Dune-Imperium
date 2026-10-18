@@ -781,7 +781,11 @@ def _apply_tuek_sietch_visit(
         )
         if trigger.space_id == "tuek_sietch" and trigger.opponent is not own
     )
-    source = f"round:{round_number}:player:{visitor}:tuek_sietch_visit"
+    # The ability is Esmar's: its events are named after the Leader and its
+    # own event comes last (cleanup-2c-4).
+    source = (
+        f"round:{round_number}:player:{esmar.player_id}:leader:{esmar.leader_id}"
+    )
     if own:
         if not isinstance(reward, GainResources):
             raise RuntimeError("Tuek's Sietch pays its owner's visit in Solari")
@@ -792,13 +796,13 @@ def _apply_tuek_sietch_visit(
             ),
         )
         return replace(state, players=replace_player(state.players, paid)), (
+            resources_gained_event(source, esmar.player_id, solari=reward.solari),
             GameEvent(
-                event_id=source,
+                event_id=f"{source}:resolved",
                 kind="leader_ability_resolved",
                 payload=(
                     ("leader_id", str(esmar.leader_id)),
                     ("player", esmar.player_id),
-                    ("solari", reward.solari),
                 ),
             ),
         )
@@ -808,17 +812,16 @@ def _apply_tuek_sietch_visit(
         state, esmar.player_id, reward.count, source=source
     )
     return drawn.state, (
+        *drawn.events,
         GameEvent(
-            event_id=source,
+            event_id=f"{source}:resolved",
             kind="leader_ability_resolved",
             payload=(
-                ("intrigue", reward.count),
                 ("leader_id", str(esmar.leader_id)),
                 ("player", esmar.player_id),
                 ("visitor", visitor),
             ),
         ),
-        *drawn.events,
     )
 
 

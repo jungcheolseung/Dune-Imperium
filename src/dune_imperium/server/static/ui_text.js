@@ -984,13 +984,9 @@ const UI_TEXT = {
     "ko": "{leader} 능력",
     "en": "{leader} ability"
   },
-  "panels.log_leader_ability_spice_gained": {
-    "ko": "{{ability}}({{leader}})로 {spice} 획득",
-    "en": "{spice} Gained from {{ability}} ({{leader}})"
-  },
-  "panels.log_bonus_spice_taken": {
-    "ko": "보너스 {spice} {{count}} 가져와 획득",
-    "en": "Took {{count}} bonus {spice} and gained it"
+  "panels.log_leader_ability_resolved": {
+    "ko": "{{ability}}({{leader}})",
+    "en": "{{ability}} ({{leader}})"
   },
   "panels.neutral_round_started": {
     "ko": "라운드 {{round}} 시작",

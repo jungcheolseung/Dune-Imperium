@@ -1032,7 +1032,9 @@ def apply_piece(
             else:
                 taken = replace(taken, tally=0)
                 tactician, tactics_events = advance_tactics_token(
-                    result.state.players[player], from_conflict, source=step_source
+                    result.state.players[player],
+                    from_conflict,
+                    round_number=result.state.round_number,
                 )
                 result = RuleResult(
                     state=replace(

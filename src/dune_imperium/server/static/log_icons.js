@@ -118,7 +118,6 @@ const LOG_EVENT_ICONS = {
   // Resources and Victory Points.
   contract_icons_converted_to_solari: "solari",
   leader_signet_solari_paid: "solari",
-  leader_ability_spice_gained: "spice",
   leader_signet_spice_paid: "spice",
   maker_spice_added: "spice",
   reveal_spice_paid: "spice",
@@ -143,6 +142,9 @@ const LOG_EVENT_ICONS = {
   scouts_shield_wall_rebuilt: "shield_wall",
   shield_wall_destroyed: "shield_wall",
   shield_wall_kept: "shield_wall",
+  leader_signet_declined: "signet_ring",
+  leader_signet_expired: "signet_ring",
+  leader_signet_lapsed: "signet_ring",
   leader_signet_resolved: "signet_ring",
   leader_signet_started: "signet_ring",
   // Immortality and the Tech module.
@@ -207,10 +209,28 @@ function logIconTile(key, label) {
   return tile;
 }
 
+/* A resources_gained line's picture: what was gained, when it is one thing
+   (the gain kinds it replaced each had theirs, cleanup-2c); none for a
+   mixed gain. */
+const GAIN_ICONS = [
+  ["victory_points", "victory_point"],
+  ["solari", "solari"],
+  ["spice", "spice"],
+  ["water", "water"],
+];
+
+function gainIconKey(payload) {
+  const gained = GAIN_ICONS.filter(([field]) => payload[field]);
+  return gained.length === 1 ? gained[0][1] : null;
+}
+
 function logEventIcon(event) {
+  if (!state.catalog) return null;
   const template = LOG_EVENT_ICONS[event.kind];
-  if (!template || !state.catalog) return null;
-  const key = logIconKey(template, event.payload || {});
+  const key =
+    event.kind === "resources_gained"
+      ? gainIconKey(event.payload || {})
+      : template && logIconKey(template, event.payload || {});
   if (!key) return null;
   return logIconTile(key, phraseText(EVENT_LABELS[event.kind] || ""));
 }

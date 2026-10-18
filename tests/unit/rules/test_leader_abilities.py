@@ -135,8 +135,13 @@ def test_warmaster_signet_recruits_one_deployable_troop() -> None:
     assert resolved.troops_supply == owner.troops_supply - 1
     assert context["troops_recruited"] == 1
     assert context["pending_agent_effect"] is False
-    assert result.events[0].kind == "leader_signet_resolved"
-    assert dict(result.events[0].payload)["troops"] == 1
+    # The box's own event, last, names the card and the seat (cleanup-2c-4).
+    assert [event.kind for event in result.events] == ["leader_signet_resolved"]
+    assert result.events[-1].event_id == "round:1:player:0:leader_signet:resolved"
+    assert dict(result.events[-1].payload) == {
+        "card_id": _signet_instance(),
+        "player": 0,
+    }
 
 
 def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
@@ -153,7 +158,11 @@ def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].troops_garrison == 12
-    assert dict(result.events[0].payload)["troops"] == 0
+    # The shortfall has its own event; the box's event is last.
+    assert [event.kind for event in result.events] == [
+        "troops_recruit_short",
+        "leader_signet_resolved",
+    ]
 
 
 def _fill_coffers_icon(key: str) -> DomainAction:
@@ -203,7 +212,7 @@ def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
     assert [
         dict(event.payload)["effect"]
         for event in closed.events
-        if event.kind == "agent_card_effect_unavailable"
+        if event.kind == "leader_signet_unavailable"
     ] == ["spice"]
 
 
@@ -730,7 +739,12 @@ def test_personal_training_spy_stage_can_pass_up_the_recall_first(
     assert "spy_recalled_this_turn" not in context or (
         context["spy_recalled_this_turn"] is False
     )
-    assert [event.kind for event in result.events] == ["spy_placement_unavailable"]
+    # The refusal ends the box: its event is the last, declined.
+    assert [event.kind for event in result.events] == [
+        "spy_placement_unavailable",
+        "leader_signet_declined",
+    ]
+    assert result.events[-1].event_id == "round:1:player:0:leader_signet:declined"
 
 
 def test_personal_training_spy_stage_with_a_spy_in_supply_must_place() -> None:
@@ -1439,7 +1453,10 @@ def test_arrakis_informant_can_pass_up_the_recall_first_without_supply() -> None
         dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
     )
-    assert [event.kind for event in declined.events] == ["spy_placement_unavailable"]
+    assert [event.kind for event in declined.events] == [
+        "spy_placement_unavailable",
+        "leader_signet_declined",
+    ]
 
     # Once a Spy is recalled it has to be placed on a City post.
     recalled = apply_leader_spy_action(placed, actions[3]).state
@@ -1573,15 +1590,20 @@ def test_smuggle_spice_pays_staban_for_spied_maker_visits() -> None:
     # Smuggle Spice: another player's Agent on a spied Maker space pays one
     # Spice [Staban Tuek card].
     assert result.state.players[1].resources.spice == 1
-    # The log reads this payload as it is: the seat paid, the visited space,
-    # the amount and the visitor. It names no Leader, so panels.js
-    # EVENT_IMPLIED_LEADER names Staban Tuek and Smuggle Spice from the
-    # catalog; the payload stays put (it is in saved games' state hashes).
-    smuggled = [e for e in result.events if e.kind == "leader_ability_spice_gained"]
-    assert [dict(event.payload) for event in smuggled] == [
-        {"player": 1, "space_id": "hagga_basin", "spice": 1, "visitor": 0}
+    # The payout is a plain resource gain whose source names the Leader
+    # (cleanup-2c-4: the log reads a ``leader`` source as the Leader's name).
+    smuggled = [
+        e
+        for e in result.events
+        if e.kind == "resources_gained"
+        and dict(e.payload)["source"] == "round:1:player:1:leader:staban_tuek"
     ]
+    assert [dict(event.payload) for event in smuggled] == [
+        {"player": 1, "source": "round:1:player:1:leader:staban_tuek", "spice": 1}
+    ]
+    assert smuggled[0].event_id == "round:1:player:1:leader:staban_tuek:resources"
     assert smuggled[0].visible_to is None
+    assert not any(e.kind == "leader_ability_spice_gained" for e in result.events)
 
 
 def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:

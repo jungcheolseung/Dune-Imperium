@@ -1624,7 +1624,9 @@ def apply_reveal_troop_retreat(
     # Conflict, advance your Tactics token that many spaces" [Chani card];
     # Commanders are troops [Bloodlines p. 4], and this one source moves the
     # token once [FAQ p. 1].
-    next_owner, tactics_events = advance_tactics_token(next_owner, 2, source=source)
+    next_owner, tactics_events = advance_tactics_token(
+        next_owner, 2, round_number=state.round_number
+    )
     remaining = state.decision_stack[:-1]
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
@@ -2039,7 +2041,9 @@ def apply_reveal_troop_sacrifice(
     # handled separately" [FAQ p. 1], so the two troops advance the token
     # once, and a pass past the end still only resets it [Bloodlines p. 12].
     tactician, tactics_events = advance_tactics_token(
-        working.players[action.actor], zones.count("conflict"), source=source
+        working.players[action.actor],
+        zones.count("conflict"),
+        round_number=state.round_number,
     )
     working = replace(working, players=replace_player(working.players, tactician))
     if zones.count("conflict"):
@@ -3537,15 +3541,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         if tile_resources is not None:
             late_gains.append(tile_resources)
         events.append(
-            GameEvent(
-                event_id=f"round:{state.round_number}:player:{player}:tech:{tech_id}:late",
-                kind="tech_reveal_bonus",
-                payload=(
-                    ("player", player),
-                    ("solari", solari),
-                    ("strength", sword),
-                    ("tech_id", tech_id),
-                ),
+            _tech_reveal_bonus(
+                f"round:{state.round_number}:player:{player}:reveal",
+                player,
+                tech_id,
             )
         )
     if late_tech:
@@ -4975,16 +4974,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             # Combat space [Bloodlines p. 5].
             next_state = grant_combat_icon(next_state, action.actor)
     events.extend(
-        GameEvent(
-            event_id=f"{event.event_id}:tech:{tech_id}",
-            kind="tech_reveal_bonus",
-            payload=(
-                ("player", action.actor),
-                ("solari", TECH_REVEAL_GAINS_BY_ID[tech_id].solari),
-                ("strength", TECH_REVEAL_GAINS_BY_ID[tech_id].swords),
-                ("tech_id", tech_id),
-            ),
-        )
+        _tech_reveal_bonus(event.event_id, action.actor, tech_id)
         for tech_id in tech_granted
     )
     events.extend(
@@ -5286,5 +5276,24 @@ def add_units_to_reveal(
                 kind="reveal_strength_gained",
                 payload=(("amount", strength_delta), ("player", player)),
             ),
+        ),
+    )
+
+
+def _tech_reveal_bonus(source: str, player: int, tech_id: str) -> GameEvent:
+    """A Tech tile's Reveal bonus, named after the Reveal (``<reveal>:tech:
+    <tile>``, whether at the Reveal's start or granted late) and without its
+    zero amounts (cleanup-2c-4); the Solari is gained with the Reveal's
+    gains."""
+
+    gains = TECH_REVEAL_GAINS_BY_ID[tech_id]
+    return GameEvent(
+        event_id=f"{source}:tech:{tech_id}",
+        kind="tech_reveal_bonus",
+        payload=(
+            ("player", player),
+            *((("solari", gains.solari),) if gains.solari else ()),
+            *((("strength", gains.swords),) if gains.swords else ()),
+            ("tech_id", tech_id),
         ),
     )

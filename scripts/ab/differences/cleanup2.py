@@ -666,6 +666,17 @@ _AT_THE_WINDOWS = frozenset(
 )
 
 
+def _carry_key(event: dict[str, object]) -> str:
+    """An event's text for carrying it between steps: a Tactics advance by
+    its seat and count alone (cleanup-2c-4 renamed it and moved its gain to
+    a ``resources_gained``)."""
+
+    if event["kind"] == "tactics_token_advanced":
+        data = _payload(event)
+        return f"tactics:{data['player']}:{data['count']}"
+    return _row_key(event)
+
+
 def _carried(event: dict[str, object]) -> bool:
     event_id = str(event["event_id"])
     return (
@@ -1189,7 +1200,6 @@ _BOX_KINDS = frozenset(
         "agent_card_effect_declined",
         "agent_card_effect_lapsed",
         "agent_card_effect_expired",
-        "leader_signet_unavailable",
     }
 )
 # The refusals each answer used to name its own way.
@@ -1229,8 +1239,6 @@ def _pairs_with(kind: str, data: dict[str, object], base: dict[str, object]) -> 
     match kind:
         case "agent_card_effect_declined":
             return base_kind in _BASE_DECLINES
-        case "leader_signet_unavailable":
-            return base_kind == "agent_card_effect_unavailable"
     return base_kind == kind
 
 
@@ -1335,10 +1343,15 @@ def agent_card_source_of(event: dict[str, object]) -> str:
 
 
 def _adopt_base_ids(
-    old: Step, out: list[dict[str, object]], roots: tuple[str, ...]
+    old: Step,
+    out: list[dict[str, object]],
+    roots: tuple[str, ...],
+    *,
+    any_seat: bool = False,
 ) -> bool:
     """Give an event the candidate names after one of ``roots`` the base's
-    id, where the base logged the same event of that seat under another
+    id, where the base logged the same event of that seat (of any seat with
+    ``any_seat``: Esmar's draw was named after the visitor) under another
     name in the step (in place); whether any was renamed."""
 
     spare = [
@@ -1356,10 +1369,11 @@ def _adopt_base_ids(
             or event in old.events
         ):
             continue
+        prefix = root.group(1).rsplit(":player:", 1)[0] if any_seat else root.group(1)
         for base in spare:
             if (
                 base["kind"] == event["kind"]
-                and str(base["event_id"]).startswith(root.group(1))
+                and str(base["event_id"]).startswith(prefix)
                 and _same_payload(base, event)
             ):
                 out[position] = base
@@ -1382,6 +1396,124 @@ def _in_base_order(
     for text, event in zip(texts, out, strict=True):
         by_text.setdefault(text, []).append(event)
     return [by_text[text].pop(0) for text in order]
+
+
+# --- Cleanup-2c-4: Leader and Tech events --------------------------------------
+
+_SIGNET_KINDS = frozenset(
+    f"leader_signet_{outcome}"
+    for outcome in ("resolved", "declined", "unavailable", "lapsed", "expired")
+)
+# The base's events a Signet box's event stands for, by outcome.
+_SIGNET_BASE: dict[str, frozenset[str]] = {
+    "leader_signet_resolved": frozenset(
+        {"leader_signet_resolved", "agent_card_effect_resolved"}
+    ),
+    "leader_signet_declined": frozenset(
+        {
+            "leader_signet_payment_declined",
+            "leader_card_trash_declined",
+            "agent_card_effect_declined",
+        }
+    ),
+    "leader_signet_unavailable": frozenset(
+        {"leader_signet_unavailable", "agent_card_effect_unavailable"}
+    ),
+    "leader_signet_lapsed": frozenset({"agent_card_effect_lapsed"}),
+    "leader_signet_expired": frozenset({"agent_card_effect_expired"}),
+}
+_LEADER_SOURCE = re.compile(r"^round:\d+:player:\d+:leader:([a-z_]+)$")
+_SIGNET_SOURCE = re.compile(r"^round:\d+:player:\d+:leader_signet(?::[a-z_]+)?$")
+
+
+def _signet_pairs_with(event: dict[str, object], base: dict[str, object]) -> bool:
+    data = _payload(event)
+    base_data = _payload(base)
+    if base["kind"] not in _SIGNET_BASE[str(event["kind"])]:
+        return False
+    if base_data.get("player") != data.get("player"):
+        return False
+    for key in ("card_id", "tech_id"):
+        if key in base_data and base_data[key] != data.get(key):
+            return False
+    return "effect" not in base_data or base_data["effect"] == data.get("effect")
+
+
+def _staban_base(base: dict[str, object], data: dict[str, object]) -> bool:
+    """Staban's Smuggle Spice as the base logged it."""
+
+    return (
+        base["kind"] == "leader_ability_spice_gained"
+        and _payload(base).get("player") == data["player"]
+        and _payload(base).get("spice") == data.get("spice")
+    )
+
+
+def _leader_and_tech_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c-4 (docs/composed-effects-plan.md, "2c-4"): the Signet
+    Ring box's event (``leader_signet_<outcome>``, one per box, last) reads
+    back as the base's event for it -- ``leader_signet_resolved`` with its
+    amounts, a refusal of its own kind, or the Agent box's kind the base
+    used for its lapse, fizzle and expiry -- or as nothing; the Signet's and
+    a Leader ability's gains as the base's (none, or the ability's own
+    event that carried them: Staban's ``leader_ability_spice_gained``); a
+    Leader ability's event, the Tactics track's, a Tech Reveal bonus and a
+    Tech trash as the base's of that seat and tile; then the base's
+    order."""
+
+    used: set[int] = set()
+    out: list[dict[str, object]] = []
+    changed = False
+
+    def take(event: dict[str, object], matches: object) -> bool:
+        for index, base in enumerate(old.events):
+            if index not in used and matches(base):  # type: ignore[operator]
+                used.add(index)
+                out.append(base)
+                return True
+        return False
+
+    for event in candidate.events:
+        kind = str(event["kind"])
+        data = _payload(event)
+        if kind in _SIGNET_KINDS:
+            changed = True
+            if event in old.events:
+                take(event, lambda base, event=event: base == event)
+            else:
+                take(event, lambda base, event=event: _signet_pairs_with(event, base))
+            continue
+        if kind == "resources_gained":
+            source = str(data["source"])
+            leader = _LEADER_SOURCE.match(source)
+            if leader is not None and leader.group(1) == "staban_tuek":
+                changed = True
+                take(event, lambda base, data=data: _staban_base(base, data))
+                continue
+            if leader is not None or _SIGNET_SOURCE.match(source):
+                changed = True
+                continue
+        keys: tuple[str, ...] = ()
+        if kind == "leader_ability_resolved":
+            keys = ("player", "leader_id")
+        elif kind in ("tactics_token_advanced",):
+            keys = ("player", "count")
+        elif kind in ("tech_reveal_bonus", "tech_trashed"):
+            keys = ("player", "tech_id")
+        if keys and event not in old.events:
+            match = _same_event(old, used, event, keys)
+            if match is not None:
+                used.add(match)
+                out.append(old.events[match])
+                changed = True
+                continue
+            if data.get("leader_id") == "staban_tuek":
+                # Smuggle Spice had only its gain's event.
+                changed = True
+                continue
+        out.append(event)
+    changed |= _adopt_base_ids(old, out, (":leader:",), any_seat=True)
+    candidate.events = _in_base_order(old, out) if changed else out
 
 
 # --- Cleanup-2c-3: board, Conflict and Contract events ------------------------
@@ -1533,7 +1665,8 @@ def _box_owed_draw_named(old: Step, candidate: Step) -> None:
 
 
 _BOX_SHUFFLE = re.compile(
-    r"^round:(\d+):player:(\d+):(?:agent_card(?:_discard|_payment)?|shigawire)"
+    r"^round:(\d+):player:(\d+):"
+    r"(?:agent_card(?:_discard|_payment)?|shigawire|hungry_for_spice|leader)"
     r"(?::.+)?:discard_shuffle$"
 )
 
@@ -1609,22 +1742,28 @@ def _conflict_end_events(old: Step, candidate: Step) -> None:
     specimens and acquisition with its play: such an event moves to the base
     step that logged it, in the base's order."""
 
-    base = Counter(_row_key(e) for e in old.events)
+    base = Counter(_carry_key(e) for e in old.events)
     # While a base step answered early is still ahead, everything the
     # candidate went on to log after it belongs to that later step.
     deferring = any(index > old.index for index in _ahead())
     kept: list[dict[str, object]] = []
     for event in candidate.events:
-        text = _row_key(event)
+        text = _carry_key(event)
         if (_carried(event) or deferring) and base[text] == 0:
             _CONFLICT_END_CARRY.append(event)
             continue
         kept.append(event)
-    have = Counter(_row_key(e) for e in kept)
+    have = Counter(_carry_key(e) for e in kept)
     for event in list(_CONFLICT_END_CARRY):
-        text = _row_key(event)
+        text = _carry_key(event)
         if base[text] > have[text]:
-            kept.append(event)
+            # The base's own event (a Tactics advance carried here is named
+            # after the Leader in the candidate, cleanup-2c-4).
+            kept.append(
+                next(e for e in old.events if _carry_key(e) == text)
+                if event["kind"] == "tactics_token_advanced"
+                else event
+            )
             have[text] += 1
             _CONFLICT_END_CARRY.remove(event)
     texts = [_row_key(e) for e in kept]
@@ -1657,6 +1796,12 @@ RULES = (
         why="cleanup-2c-3: board icons named <space>:<icon>, board and Control "
         "gains, zero-free Conflict and Contract payloads, source events last",
         new=_board_conflict_contract_in_base_form,
+    ),
+    Rule(
+        name="leader_and_tech_events",
+        why="cleanup-2c-4: the Signet box's own event, Leader abilities named "
+        "after the Leader, their gains, zero-free Tech Reveal bonuses",
+        new=_leader_and_tech_in_base_form,
     ),
     Rule(
         name="agent_box_shuffle",

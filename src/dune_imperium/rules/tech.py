@@ -1049,7 +1049,7 @@ def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
             ),
             events=(
                 GameEvent(
-                    event_id=f"{source}:trashed",
+                    event_id=f"{source}:tech_trashed",
                     kind="tech_trashed",
                     payload=(
                         ("player", player),

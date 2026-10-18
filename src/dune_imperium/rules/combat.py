@@ -1611,12 +1611,7 @@ def _return_conflict_units(
         for player in state.players
     )
     advanced = [
-        advance_tactics_token(
-            player,
-            lost,
-            source=f"round:{state.round_number}:player:{player.player_id}:"
-            "combat_cleanup",
-        )
+        advance_tactics_token(player, lost, round_number=state.round_number)
         for player, lost in zip(players, losses, strict=True)
     ]
     return RuleResult(

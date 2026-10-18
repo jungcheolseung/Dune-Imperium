@@ -80,7 +80,11 @@ from dune_imperium.rules.acquisition import (
     acquire_reserve_for_intrigue,
     acquisition_spy_frame,
 )
-from dune_imperium.rules.box_events import BoxNeedsRows
+from dune_imperium.rules.box_events import (
+    BoxNeedsRows,
+    BoxOutcome,
+    signet_box_event,
+)
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -113,6 +117,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.influence import (
     gain_faction_influence,
     influence_amount,
@@ -357,10 +362,12 @@ def use_leader_signet_for_tech(
     if owner.leader_id == "steersman_y_rkoon" or not leader_signet_is_implemented(
         owner.leader_id
     ):
-        unavailable = GameEvent(
-            event_id=f"{source}:leader_signet_unavailable",
-            kind="leader_signet_unavailable",
-            payload=(("player", player),),
+        (unavailable,) = _name_servo_tile(
+            (
+                signet_box_event(
+                    source, SERVO_SIGNET_CARD_ID, player, BoxOutcome.UNAVAILABLE
+                ),
+            )
         )
         if advance_agent_frame:
             _, agent_context = current_agent_effect_context(state)
@@ -457,6 +464,36 @@ def _name_servo_tile(events: tuple[GameEvent, ...]) -> tuple[GameEvent, ...]:
     )
 
 
+def _signet_card_id(context: Mapping[str, ActionValue]) -> str:
+    card_id = context.get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Signet Ring context has invalid card")
+    return card_id
+
+
+def _signet_box(
+    source: str,
+    context: Mapping[str, ActionValue],
+    player: int,
+    outcome: BoxOutcome,
+    *,
+    effect: str | None = None,
+) -> GameEvent:
+    """The Signet Ring box's ending event (cleanup-2c-4): the one event an
+    action that ends the box leaves, last among that action's events. The
+    card is the context's (the Signet Ring, a Ghola's copy of its box, or
+    Servo-Receivers' tile, which the log names by ``tech_id``)."""
+
+    (event,) = _name_servo_tile(
+        (
+            signet_box_event(
+                source, _signet_card_id(context), player, outcome, effect=effect
+            ),
+        )
+    )
+    return event
+
+
 def resolve_leader_signet(state: GameState) -> RuleResult:
     """Resolve the current player's Signet Ring ability [Main pp. 6, 20]."""
 
@@ -502,13 +539,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         next_state = _store_signet(state, context, state.players)
         return RuleResult(
             state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:unavailable",
-                    kind="leader_signet_unavailable",
-                    payload=(("card_id", card_id), ("player", player)),
-                ),
-            ),
+            events=(_signet_box(source, context, player, BoxOutcome.UNAVAILABLE),),
         )
     elif owner.leader_id == "lady_margot_fenring":
         # Reached only when Arrakis Informant offers no placement: every post
@@ -520,13 +551,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         next_state = _store_signet(state, context, state.players)
         return RuleResult(
             state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:unavailable",
-                    kind="leader_signet_unavailable",
-                    payload=(("card_id", card_id), ("player", player)),
-                ),
-            ),
+            events=(_signet_box(source, context, player, BoxOutcome.UNAVAILABLE),),
         )
     elif owner.leader_id in (
         "staban_tuek",
@@ -557,13 +582,12 @@ def _resolve_automatic_signet(
     (composed A6c): Warmaster, Lead the Way, Harkonnen Advisor, Judge of the
     Change, and Fill Coffers through Servo-Receivers (OQ-062), which has no
     Agent box to keep its spice waiting, so the Alliance is judged now -- the
-    Signet Ring card's box resolves those two as icons instead. One
-    ``leader_signet_resolved`` event names what the lines gave, a line whose
-    condition fails at 0; a draw follows its event.
+    Signet Ring card's box resolves those two as icons instead. What the
+    lines gave is one ``resources_gained`` (a line whose condition fails
+    adds nothing), then the box's ``leader_signet_resolved``, last.
     """
 
     owner = state.players[player]
-    card_id = context["card_id"]
     first = record.sections[0].rewards[0]
     if isinstance(first, DrawPersonalCards):
         # Lead the Way: draw one card [Muad'Dib card].
@@ -575,15 +599,10 @@ def _resolve_automatic_signet(
             first.count,
             source=source,
         )
-        event = GameEvent(
-            event_id=source,
-            kind="leader_signet_resolved",
-            payload=(("card_id", card_id), ("cards", first.count), ("player", player)),
-        )
-        return RuleResult(state=draw.state, events=(event, *draw.events))
+        event = _signet_box(source, context, player, BoxOutcome.RESOLVED)
+        return RuleResult(state=draw.state, events=(*draw.events, event))
     next_owner = owner
-    gained: dict[str, int] = {}
-    payload: dict[str, ActionValue] = {"card_id": card_id, "player": player}
+    gained: dict[str, int] = {"solari": 0, "spice": 0, "water": 0}
     recruit_shortfall: tuple[GameEvent, ...] = ()
     for line in record.sections:
         holds = line.condition is None or _signet_condition_holds(
@@ -604,7 +623,6 @@ def _resolve_automatic_signet(
                     recruit_shortfall = recruit_shortfall_events(
                         source, player, count, recruited
                     )
-                    payload["troops"] = recruited
                 case RecruitUndeployableTroops(count=count):
                     # Warmaster minus the deployment: it joins the garrison,
                     # is not counted as recruited, and one garrison troop
@@ -621,16 +639,11 @@ def _resolve_automatic_signet(
                     recruit_shortfall = recruit_shortfall_events(
                         source, player, count, recruited
                     )
-                    payload["troops"] = recruited
                 case GainResources(solari=solari, spice=spice, water=water):
-                    for key, amount in (
-                        ("solari", solari),
-                        ("spice", spice),
-                        ("water", water),
-                    ):
-                        if amount:
-                            gained[key] = gained.get(key, 0) + (amount if holds else 0)
                     if holds:
+                        gained["solari"] += solari
+                        gained["spice"] += spice
+                        gained["water"] += water
                         next_owner = replace(
                             next_owner,
                             resources=replace(
@@ -640,19 +653,24 @@ def _resolve_automatic_signet(
                                 water=next_owner.resources.water + water,
                             ),
                         )
-    payload.update(gained)
     context["pending_agent_effect"] = False
     next_state = _store_signet(
         state,
         context,
         replace_player(state.players, next_owner),
     )
-    event = GameEvent(
-        event_id=source,
-        kind="leader_signet_resolved",
-        payload=tuple(sorted(payload.items())),
+    return RuleResult(
+        state=next_state,
+        events=(
+            *(
+                (resources_gained_event(source, player, **gained),)
+                if any(gained.values())
+                else ()
+            ),
+            *recruit_shortfall,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
     )
-    return RuleResult(state=next_state, events=(event, *recruit_shortfall))
 
 
 def _signet_condition_holds(
@@ -956,13 +974,8 @@ def apply_feyd_track_action(
                 ),
             )
             context["pending_agent_effect"] = False
-            events.append(
-                GameEvent(
-                    event_id=source,
-                    kind="leader_signet_resolved",
-                    payload=(("player", player), ("spice", 2)),
-                )
-            )
+            events.append(resources_gained_event(source, player, spice=2))
+            events.append(_signet_box(source, context, player, BoxOutcome.RESOLVED))
         elif target.reward is FeydTrackReward.TROOP_AND_SPY:
             moved_owner, recruited = recruit_troops(moved_owner, 1)
             previous = context.get("troops_recruited")
@@ -995,13 +1008,7 @@ def apply_feyd_track_action(
         next_state = _store_signet(state, context, state.players)
         return RuleResult(
             state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:trash_declined",
-                    kind="leader_card_trash_declined",
-                    payload=(("player", player),),
-                ),
-            ),
+            events=(_signet_box(source, context, player, BoxOutcome.DECLINED),),
         )
 
     if action.action_id == "trash_leader_card":
@@ -1050,7 +1057,11 @@ def apply_feyd_track_action(
         )
         return RuleResult(
             state=next_state,
-            events=(*events, *trashed.events),
+            events=(
+                *events,
+                *trashed.events,
+                _signet_box(source, context, player, BoxOutcome.RESOLVED),
+            ),
         )
 
     if action.action_id == "decline_leader_spy_placement":
@@ -1067,6 +1078,7 @@ def apply_feyd_track_action(
                     kind="spy_placement_unavailable",
                     payload=(("player", player),),
                 ),
+                _signet_box(source, context, player, BoxOutcome.DECLINED),
             ),
         )
 
@@ -1117,6 +1129,7 @@ def apply_feyd_track_action(
                     ("source", "leader_signet"),
                 ),
             ),
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
     )
 
@@ -1763,13 +1776,7 @@ def apply_leader_signet_payment(
         next_state = _store_signet(state, context, state.players)
         return RuleResult(
             state=next_state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="leader_signet_payment_declined",
-                    payload=(("player", player),),
-                ),
-            ),
+            events=(_signet_box(source, context, player, BoxOutcome.DECLINED),),
         )
 
     if owner.leader_id == "staban_tuek":
@@ -1807,13 +1814,8 @@ def apply_leader_signet_payment(
                 context,
                 replace_player(state.players, next_owner),
             )
-            events.append(
-                GameEvent(
-                    event_id=source,
-                    kind="leader_signet_resolved",
-                    payload=(("player", player), ("water", water)),
-                )
-            )
+            events.append(resources_gained_event(source, player, water=water))
+            events.append(_signet_box(source, context, player, BoxOutcome.RESOLVED))
             return RuleResult(state=next_state, events=tuple(events))
         case (DrawIntrigueCards(count=intrigue), TroopToMemory()):
             pass
@@ -1842,16 +1844,13 @@ def apply_leader_signet_payment(
         context,
         intrigue_draw.state.players,
     )
-    events.append(
-        GameEvent(
-            event_id=source,
-            kind="leader_signet_resolved",
-            payload=(("memories", memories_gained), ("player", player)),
-        )
-    )
     return RuleResult(
         state=next_state,
-        events=(*events, *intrigue_draw.events),
+        events=(
+            *events,
+            *intrigue_draw.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
     )
 
 
@@ -1878,12 +1877,8 @@ def _apply_chani_water_payment(
     return RuleResult(
         state=drawn.state,
         events=(
-            GameEvent(
-                event_id=source,
-                kind="leader_signet_resolved",
-                payload=(("cards", 2), ("player", player), ("water", 1)),
-            ),
             *drawn.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
     )
 
@@ -1948,7 +1943,13 @@ def apply_leader_troop_retreat(
     context = _signet_context(reconciled)
     context["pending_agent_effect"] = False
     next_state = _store_signet(reconciled, context, reconciled.players)
-    return RuleResult(state=next_state, events=retreated.events)
+    return RuleResult(
+        state=next_state,
+        events=(
+            *retreated.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
 
 
 def apply_leader_agent_deploy(
@@ -1994,6 +1995,7 @@ def apply_leader_agent_deploy(
                 kind="leader_agent_deployed",
                 payload=(("player", player), ("space_id", space_id)),
             ),
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
     )
 
@@ -2033,15 +2035,13 @@ def apply_leader_bonus_spice(
     return RuleResult(
         state=next_state,
         events=(
-            GameEvent(
-                event_id=source,
-                kind="leader_signet_resolved",
-                payload=(
-                    ("bonus_spice", delta),
-                    ("player", player),
-                    ("space_id", space_id),
-                ),
+            # Taking a bonus spice off a Maker space gives the spice.
+            *(
+                (resources_gained_event(source, player, spice=1),)
+                if delta < 0
+                else ()
             ),
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
     )
 
@@ -2061,7 +2061,13 @@ def apply_fenring_signet_trash(
     trashed = _trash_for_signet(state, context, player, card_id, source=source)
     context["pending_agent_effect"] = False
     next_state = _store_signet(trashed.state, context, trashed.state.players)
-    return RuleResult(state=next_state, events=trashed.events)
+    return RuleResult(
+        state=next_state,
+        events=(
+            *trashed.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
 
 
 def _apply_staban_bonus_payment(
@@ -2096,11 +2102,8 @@ def _apply_staban_bonus_payment(
         return RuleResult(
             state=next_state,
             events=(
-                GameEvent(
-                    event_id=source,
-                    kind="leader_signet_resolved",
-                    payload=(("player", player), ("solari", 3), ("spice", 1)),
-                ),
+                resources_gained_event(source, player, solari=3),
+                _signet_box(source, context, player, BoxOutcome.RESOLVED),
             ),
         )
 
@@ -2123,12 +2126,13 @@ def _apply_staban_bonus_payment(
         context,
         intrigue_draw.state.players,
     )
-    event = GameEvent(
-        event_id=source,
-        kind="leader_signet_resolved",
-        payload=(("intrigue", 1), ("player", player), ("solari", 2)),
+    return RuleResult(
+        state=next_state,
+        events=(
+            *intrigue_draw.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
     )
-    return RuleResult(state=next_state, events=(event, *intrigue_draw.events))
 
 
 def apply_shaddam_signet_choice(
@@ -2170,16 +2174,9 @@ def apply_shaddam_signet_choice(
         return RuleResult(
             state=next_state,
             events=(
-                GameEvent(
-                    event_id=source,
-                    kind="leader_signet_resolved",
-                    payload=(
-                        ("player", player),
-                        ("solari", 1),
-                        ("troops", recruited),
-                    ),
-                ),
+                resources_gained_event(source, player, solari=1),
                 *recruit_shortfall_events(source, player, 1, recruited),
+                _signet_box(source, context, player, BoxOutcome.RESOLVED),
             ),
         )
 
@@ -2205,17 +2202,13 @@ def apply_shaddam_signet_choice(
         context,
         gained.state.players,
     )
-    event = GameEvent(
-        event_id=source,
-        kind="leader_signet_resolved",
-        payload=(
-            ("faction", faction_value),
-            ("influence", 1),
-            ("player", player),
-            ("solari", 3),
+    return RuleResult(
+        state=next_state,
+        events=(
+            *gained.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
     )
-    return RuleResult(state=next_state, events=(event, *gained.events))
 
 
 def units_deployment_blocked(state: GameState, player: int) -> bool:
@@ -2264,6 +2257,7 @@ def apply_leader_signet_spy(
                     kind="spy_placement_unavailable",
                     payload=(("player", player),),
                 ),
+                _signet_box(source, context, player, BoxOutcome.DECLINED),
             ),
         )
     post_id = dict(action.arguments).get("post_id")
@@ -2308,19 +2302,20 @@ def apply_leader_signet_spy(
         context,
         replace_player(state.players, next_owner),
     )
+    placed = GameEvent(
+        event_id=f"{source}:spy_placed:{post_id}",
+        kind="spy_placed",
+        payload=(
+            ("player", player),
+            ("post_id", post_id),
+            ("source", "leader_signet"),
+        ),
+    )
+    if context.get("pending_agent_effect") is True:
+        return RuleResult(state=next_state, events=(placed,))
     return RuleResult(
         state=next_state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:spy_placed:{post_id}",
-                kind="spy_placed",
-                payload=(
-                    ("player", player),
-                    ("post_id", post_id),
-                    ("source", "leader_signet"),
-                ),
-            ),
-        ),
+        events=(placed, _signet_box(source, context, player, BoxOutcome.RESOLVED)),
     )
 
 
@@ -2375,11 +2370,12 @@ def apply_leader_signet_acquire(
             source=source,
         )
     next_state = acquired.result.state
+    resolved = _signet_box(source, context, player, BoxOutcome.RESOLVED)
     if acquired.places_spy:
         next_state = next_state.push_decision(
             acquisition_spy_frame(next_state, player, acquired.instance_id)
         )
-        return RuleResult(state=next_state, events=acquired.result.events)
+        return RuleResult(state=next_state, events=(*acquired.result.events, resolved))
     if acquired.takes_contract:
         contracts = begin_contract_gain(
             next_state,
@@ -2389,9 +2385,9 @@ def apply_leader_signet_acquire(
         )
         return RuleResult(
             state=contracts.state,
-            events=(*acquired.result.events, *contracts.events),
+            events=(*acquired.result.events, *contracts.events, resolved),
         )
-    return RuleResult(state=next_state, events=acquired.result.events)
+    return RuleResult(state=next_state, events=(*acquired.result.events, resolved))
 
 
 def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResult:
@@ -2419,11 +2415,8 @@ def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResu
         return RuleResult(
             state=next_state,
             events=(
-                GameEvent(
-                    event_id=source,
-                    kind="leader_signet_resolved",
-                    payload=(("player", player), ("spice", 1)),
-                ),
+                resources_gained_event(source, player, spice=1),
+                _signet_box(source, context, player, BoxOutcome.RESOLVED),
             ),
         )
     if action.action_id == "resolve_agent_card_effect":
@@ -2495,18 +2488,14 @@ def _resolve_kota_reward(
         del context[SIGNET_REWARDS_KEY]
     working = _store_signet(state, context)
     reward_source = f"{source}:{key}"
-    event = GameEvent(
-        event_id=reward_source,
-        kind="leader_signet_resolved",
-        payload=((key, 1), ("player", player)),
-    )
+    event = _signet_box(source, context, player, BoxOutcome.RESOLVED, effect=key)
     if key == "intrigue":
         drawn = draw_or_queue_intrigue_cards(working, player, 1, source=reward_source)
     else:
         drawn = draw_or_request_personal_cards(
             working, player, 1, source=reward_source
         )
-    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+    return RuleResult(state=drawn.state, events=(*drawn.events, event))
 
 
 def apply_leader_card_trash(
@@ -2557,15 +2546,10 @@ def apply_irulan_signet_trash(
                 ),
             ),
         )
-        events.append(
-            GameEvent(
-                event_id=f"{source}:spice",
-                kind="leader_signet_resolved",
-                payload=(("player", player), ("spice", 2)),
-            )
-        )
+        events.append(resources_gained_event(source, player, spice=2))
     context["pending_agent_effect"] = False
     next_state = _store_signet(trashed.state, context, players)
+    events.append(_signet_box(source, context, player, BoxOutcome.RESOLVED))
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -2587,9 +2571,7 @@ def apply_smuggle_spice(
     events: list[GameEvent] = []
     next_players = players
     for candidate in players:
-        # The log names the Leader of ``leader_ability_spice_gained`` from
-        # its kind alone (panels.js EVENT_IMPLIED_LEADER), so only Staban's
-        # record pays here (``_check_leader_records``).
+        # Only Staban's record pays here (``_check_leader_records``).
         if (
             candidate.player_id == actor
             or candidate.leader_id != "staban_tuek"
@@ -2612,18 +2594,20 @@ def apply_smuggle_spice(
                 ),
             ),
         )
-        events.append(
-            GameEvent(
-                event_id=(
-                    f"round:{round_number}:player:{candidate.player_id}:"
-                    f"smuggle_spice:{space_id}:{actor}"
-                ),
-                kind="leader_ability_spice_gained",
-                payload=(
-                    ("player", candidate.player_id),
-                    ("space_id", space_id),
-                    ("spice", reward.spice),
-                    ("visitor", actor),
+        # The Leader's ability: its gain, then its own event, named after
+        # the Leader as Esmar's and the Assassin's are (cleanup-2c-4).
+        leader = f"round:{round_number}:player:{candidate.player_id}:leader:staban_tuek"
+        events.extend(
+            (
+                resources_gained_event(leader, candidate.player_id, spice=reward.spice),
+                GameEvent(
+                    event_id=f"{leader}:resolved",
+                    kind="leader_ability_resolved",
+                    payload=(
+                        ("leader_id", "staban_tuek"),
+                        ("player", candidate.player_id),
+                        ("visitor", actor),
+                    ),
                 ),
             )
         )
@@ -3097,17 +3081,22 @@ def grant_hungry_for_spice(
             continue
         paid = replace(seat, hungry_for_spice_owed=False)
         state = replace(state, players=replace_player(state.players, paid))
-        source = f"round:{state.round_number}:player:{seat.player_id}:hungry_for_spice"
+        # The Leader's ability: named after the Leader, its draw then its
+        # own event (cleanup-2c-4).
+        source = (
+            f"round:{state.round_number}:player:{seat.player_id}:leader:"
+            "steersman_y_rkoon"
+        )
         drawn = draw_or_request_personal_cards(state, seat.player_id, 1, source=source)
         state = drawn.state
-        events.append(_hungry_for_spice_event(source, seat.player_id))
         events.extend(drawn.events)
+        events.append(_hungry_for_spice_event(source, seat.player_id))
     return RuleResult(state=state, events=tuple(events))
 
 
 def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
     return GameEvent(
-        event_id=source,
+        event_id=f"{source}:resolved",
         kind="leader_ability_resolved",
         payload=(
             ("leader_id", "steersman_y_rkoon"),

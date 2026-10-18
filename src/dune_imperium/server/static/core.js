@@ -287,6 +287,8 @@ const PROVENANCE_KINDS = {
   board: "spaces",
   /* A Control marker's bonus ("round:3:player:1:control:arrakeen"). */
   control: "spaces",
+  /* A Leader's ability ("round:3:player:1:leader:esmar_tuek"). */
+  leader: "leaders",
   contract: "contracts",
   agent_card: "cards",
   imperium: "cards",

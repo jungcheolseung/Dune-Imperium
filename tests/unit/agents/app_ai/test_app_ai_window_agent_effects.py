@@ -1510,7 +1510,7 @@ def test_feyd_pay_to_trash_empty_pick_leaves_it_unused(junk: bool) -> None:
     taken, after = _drive(state, seat, trash)
     assert not any(a.action_id == "trash_leader_card" for a in taken)
     assert _ids(taken)[-1] == "finish_agent_turn"
-    assert _lapsed(after, seat) == ["agent_card_effect_lapsed"]
+    assert _lapsed(after, seat) == ["leader_signet_lapsed"]
 
 
 def test_feyd_spy_stage_places_with_place_spy_custom() -> None:
@@ -1585,7 +1585,7 @@ def test_staban_landsraad_trade_not_worth_it_lapses() -> None:
     taken, after = _drive(state, seat, patches)
     assert f"place_leader_spy:{landsraad}" in _ids(taken)
     assert not any(a.action_id.startswith("pay_leader_signet") for a in taken)
-    assert _lapsed(after, seat) == ["agent_card_effect_lapsed"]
+    assert _lapsed(after, seat) == ["leader_signet_lapsed"]
 
 
 def test_irulan_trashes_a_junk_starter() -> None:
@@ -1647,7 +1647,7 @@ def test_lady_jessica_spice_agony_pays_only_above_one_spice(
     )
     taken, after = _drive(state, seat, NO_DEPLOY)
     assert ("pay_leader_signet_spice" in _ids(taken)) is pays
-    assert _lapsed(after, seat) == ([] if pays else ["agent_card_effect_lapsed"])
+    assert _lapsed(after, seat) == ([] if pays else ["leader_signet_lapsed"])
 
 
 @pytest.mark.parametrize(("water", "pays"), [(3.0, True), (0.1, False)])
@@ -1664,7 +1664,7 @@ def test_water_of_life_pays_when_positive(water: float, pays: bool) -> None:
     }
     taken, after = _drive(state, seat, patches)
     assert ("pay_leader_signet_spice" in _ids(taken)) is pays
-    assert _lapsed(after, seat) == ([] if pays else ["agent_card_effect_lapsed"])
+    assert _lapsed(after, seat) == ([] if pays else ["leader_signet_lapsed"])
 
 
 @pytest.mark.parametrize("returns", [True, False])

@@ -78,3 +78,41 @@ def agent_box_event(
             ("player", player),
         ),
     )
+
+
+def signet_box_event(
+    source: str,
+    card_id: str,
+    player: int,
+    outcome: BoxOutcome,
+    *,
+    effect: str | None = None,
+) -> GameEvent:
+    """The Signet Ring box's event (cleanup-2c-4): the Leader's ability, so
+    its own kind ``leader_signet_<outcome>``, otherwise as
+    ``agent_box_event`` -- id ``<source>:<outcome>`` (``<source>`` is
+    ``round:R:player:P:leader_signet``; ``<source>:<icon>:<outcome>`` for
+    an icon), payload the card (the Signet Ring, or a Ghola copying its box)
+    and the seat."""
+
+    match outcome:
+        case BoxOutcome.RESOLVED:
+            kind = "leader_signet_resolved"
+        case BoxOutcome.DECLINED:
+            kind = "leader_signet_declined"
+        case BoxOutcome.UNAVAILABLE:
+            kind = "leader_signet_unavailable"
+        case BoxOutcome.LAPSED:
+            kind = "leader_signet_lapsed"
+        case BoxOutcome.EXPIRED:
+            kind = "leader_signet_expired"
+    named = source if effect is None else f"{source}:{effect}"
+    return GameEvent(
+        event_id=f"{named}:{outcome.value}",
+        kind=kind,
+        payload=(
+            ("card_id", card_id),
+            *((("effect", effect),) if effect is not None else ()),
+            ("player", player),
+        ),
+    )

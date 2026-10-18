@@ -597,7 +597,7 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
             state=replace(working, players=replace_player(working.players, trashed)),
             events=(
                 GameEvent(
-                    event_id=f"{source}:trashed",
+                    event_id=f"{source}:tech_trashed",
                     kind="tech_trashed",
                     payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
                 ),

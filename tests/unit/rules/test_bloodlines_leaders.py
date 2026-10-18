@@ -179,7 +179,8 @@ def test_tactician_advances_for_units_lost_when_the_conflict_end_step_opens() ->
     assert seat.resources.spice == 1  # the sixth space
     advanced = [e for e in offered.events if e.kind == "tactics_token_advanced"]
     assert [dict(event.payload)["count"] for event in advanced] == [4]
-    assert advanced[0].event_id.endswith(":combat_cleanup:tactics")
+    # The track is Chani's: named after the Leader (cleanup-2c-4).
+    assert advanced[0].event_id == "round:1:player:0:leader:chani:tactics"
     assert not offered.state.decision_stack
 
     result = finish_combat(offered.state)
@@ -308,8 +309,12 @@ def test_fedaykin_maneuver_retreats_any_number_or_draws_two_cards() -> None:
     # No troop is recruited.
     assert seat.troops_supply == 7 and seat.troops_garrison == 3
     assert dict(paid.decision_stack[-1].context)["troops_recruited"] == 0
-    resolved = next(e for e in result.events if e.kind == "leader_signet_resolved")
-    assert dict(resolved.payload) == {"cards": 2, "player": 0, "water": 1}
+    # The box's event is the last one and carries only the card and the seat
+    # (cleanup-2c-4); the draw has its own events before it.
+    assert [e.kind for e in result.events].count("leader_signet_resolved") == 1
+    resolved = result.events[-1]
+    assert resolved.kind == "leader_signet_resolved"
+    assert dict(resolved.payload) == {"card_id": SIGNET, "player": 0}
 
 
 def test_fedaykin_maneuver_draw_shuffles_the_discard_when_the_deck_is_short() -> None:
@@ -1562,20 +1567,15 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     taken = taken_result.state
     assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
     assert taken.players[0].resources.spice == 1
-    # The log's reading (panels.js logEventPayload): bonus_spice is the
-    # space's change, so -1 is the spice the Signet's player took and
-    # gained, +1 the one placed on Tuek's Sietch.
+    # The spice the Signet's player took is a gain of its own, then the
+    # box's event; placing one on Tuek's Sietch gains nothing (cleanup-2c-4).
+    source = "round:1:player:0:leader_signet"
     assert [(e.kind, dict(e.payload)) for e in taken_result.events] == [
-        (
-            "leader_signet_resolved",
-            {"bonus_spice": -1, "player": 0, "space_id": "hagga_basin"},
-        )
+        ("resources_gained", {"player": 0, "source": source, "spice": 1}),
+        ("leader_signet_resolved", {"card_id": SIGNET, "player": 0}),
     ]
     assert [(e.kind, dict(e.payload)) for e in placed_result.events] == [
-        (
-            "leader_signet_resolved",
-            {"bonus_spice": 1, "player": 0, "space_id": "tuek_sietch"},
-        )
+        ("leader_signet_resolved", {"card_id": SIGNET, "player": 0}),
     ]
 
 

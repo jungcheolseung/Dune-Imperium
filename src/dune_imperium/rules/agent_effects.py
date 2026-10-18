@@ -88,7 +88,12 @@ from dune_imperium.rules.agent_box_abilities import (
     trashes_remaining,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
-from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
+from dune_imperium.rules.box_events import (
+    BoxNeedsRows,
+    BoxOutcome,
+    agent_box_event,
+    signet_box_event,
+)
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
@@ -2267,13 +2272,16 @@ def _expired_partner_box(
     partner = other_grafted_card_id(context)
     waiting = context.get("graft_pending_effect") is True
     icons = _graft_pending_icons(context)
+    signet = bool(partner) and _is_signet_box(context, partner)
     held = _waiting_box_holds_space_influence(context)
     context["graft_pending_effect"] = False
     context["graft_pending_icons"] = ""
     _release_space_influence(context, held=held)
     if not waiting or not partner:
         return ()
-    return _box_events(state.round_number, player, partner, BoxOutcome.EXPIRED, icons)
+    return _box_events(
+        state.round_number, player, partner, BoxOutcome.EXPIRED, icons, signet=signet
+    )
 
 
 def _graft_pending_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
@@ -2289,9 +2297,18 @@ def _box_events(
     card_instance_id: str,
     outcome: BoxOutcome,
     icons: tuple[str, ...],
+    *,
+    signet: bool = False,
 ) -> tuple[GameEvent, ...]:
-    """A box's ending: one event per icon it still had, else the box's."""
+    """A box's ending: one event per icon it still had, else the box's (the
+    Leader's own kind for a Signet Ring's box, cleanup-2c-4)."""
 
+    if signet:
+        source = f"round:{round_number}:player:{player}:leader_signet"
+        return tuple(
+            signet_box_event(source, card_instance_id, player, outcome, effect=key)
+            for key in icons or (None,)
+        )
     source = agent_card_source(round_number, player, card_instance_id)
     if not icons:
         return (agent_box_event(source, card_instance_id, player, outcome),)
@@ -2299,6 +2316,19 @@ def _box_events(
         agent_box_event(source, card_instance_id, player, outcome, effect=key)
         for key in icons
     )
+
+
+def _is_signet_box(context: Mapping[str, ActionValue], card_instance_id: str) -> bool:
+    """Whether ``card_instance_id``'s box in this frame is a Signet Ring's
+    (the card's own, or a Ghola's copy of it)."""
+
+    if card_instance_id == context.get("card_id"):
+        card = active_agent_card(context)
+    else:
+        card = borrowed_agent_card(
+            personal_card_for_instance(card_instance_id), str(context["card_id"])
+        )
+    return card.agent_effect is PersonalCardAgentEffect.LEADER_SIGNET
 
 
 def _apply_payment_choice(
@@ -2778,7 +2808,7 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     owner = state.players[player]
     # Each expired box with the icons it still had (none for a box resolved
     # as one action): one event per icon, as the turn's end lapses them.
-    expired: list[tuple[str, tuple[str, ...]]] = []
+    expired: list[tuple[str, tuple[str, ...], bool]] = []
     # Cards whose box is done but whose added draw was waiting.
     expired_draws: list[str] = []
     if (
@@ -2788,7 +2818,13 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         and context.get("agent_card_self_trashed") is not True
         and not _still_owned(owner, card_instance_id)
     ):
-        expired.append((card_instance_id, pending_agent_icons(context)))
+        expired.append(
+            (
+                card_instance_id,
+                pending_agent_icons(context),
+                _is_signet_box(context, card_instance_id),
+            )
+        )
         context["pending_agent_effect"] = False
         context["pending_agent_icons"] = ""
     graft_card_id = other_grafted_card_id(context)
@@ -2803,7 +2839,13 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     ):
         # The grafted partner's un-activated box expires the same way
         # (Beguiling Pheromones trashing it, FAQ p. 1).
-        expired.append((graft_card_id, _graft_pending_icons(context)))
+        expired.append(
+            (
+                graft_card_id,
+                _graft_pending_icons(context),
+                _is_signet_box(context, graft_card_id),
+            )
+        )
         context["graft_pending_effect"] = False
         context["graft_pending_icons"] = ""
     for boost_card_id in pending_boost_draws(context):
@@ -2816,7 +2858,7 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         # box (OQ-022; user ruling 2026-10-10, OQ-106) -- a Ghola's copy of
         # it with the Ghola (OQ-107).
         drop_boost_draw(context, boost_card_id)
-        if boost_card_id not in (card for card, _ in expired):
+        if boost_card_id not in (card for card, _, _ in expired):
             expired_draws.append(boost_card_id)
     if not expired and not expired_draws:
         return result
@@ -2827,9 +2869,14 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     events = (
         *(
             event
-            for expired_id, icons in expired
+            for expired_id, icons, signet in expired
             for event in _box_events(
-                state.round_number, player, expired_id, BoxOutcome.EXPIRED, icons
+                state.round_number,
+                player,
+                expired_id,
+                BoxOutcome.EXPIRED,
+                icons,
+                signet=signet,
             )
         ),
         *(
@@ -3129,7 +3176,12 @@ def resolve_agent_card_icon(
         return resolve_box_icon(state, action)
     key = str(dict(action.arguments)["effect"])
     owner = state.players[player]
-    source = agent_card_source(state.round_number, player, card_instance_id)
+    source = (
+        # The Signet Ring's box is the Leader's ability (cleanup-2c-4).
+        f"round:{state.round_number}:player:{player}:leader_signet"
+        if effect is PersonalCardAgentEffect.LEADER_SIGNET
+        else agent_card_source(state.round_number, player, card_instance_id)
+    )
     finish_agent_icon(context, key)
 
     extra_events: tuple[GameEvent, ...] = ()
@@ -3245,12 +3297,13 @@ def resolve_agent_card_icon(
         )
         next_state = draw.state
         draw_events = draw.events
-    event = agent_box_event(
-        source,
-        card_instance_id,
+    (event,) = _box_events(
+        state.round_number,
         player,
+        card_instance_id,
         BoxOutcome.RESOLVED if available else BoxOutcome.UNAVAILABLE,
-        effect=key,
+        (key,),
+        signet=effect is PersonalCardAgentEffect.LEADER_SIGNET,
     )
     return RuleResult(
         state=next_state,
@@ -3371,16 +3424,18 @@ def fizzle_pending_agent_icons(state: GameState) -> RuleResult:
     if context.get("pending_agent_effect") is not True or not keys:
         raise ValueError("the pending Agent box has no icons to retire")
     player, card_instance_id, _ = _effect_subject(context)
-    source = agent_card_source(state.round_number, player, card_instance_id)
+    signet = _is_signet_box(context, card_instance_id)
     for key in keys:
         finish_agent_icon(context, key)
     return RuleResult(
         state=advance_after_effect(state, context),
-        events=tuple(
-            agent_box_event(
-                source, card_instance_id, player, BoxOutcome.UNAVAILABLE, effect=key
-            )
-            for key in keys
+        events=_box_events(
+            state.round_number,
+            player,
+            card_instance_id,
+            BoxOutcome.UNAVAILABLE,
+            keys,
+            signet=signet,
         ),
     )
 
@@ -3619,7 +3674,7 @@ def lapse_optional_boxes(state: GameState) -> RuleResult:
             continue
         _, context = current_agent_effect_context(view)
         player, card_instance_id, _ = _effect_subject(context)
-        source = agent_card_source(state.round_number, player, card_instance_id)
+        signet = _is_signet_box(context, card_instance_id)
         icons = pending_agent_icons(context)
         for key in icons:
             finish_agent_icon(context, key)
@@ -3628,15 +3683,15 @@ def lapse_optional_boxes(state: GameState) -> RuleResult:
             context.pop(key, None)
         working = advance_after_effect(view, context)
         events.extend(
-            agent_box_event(
-                source, card_instance_id, player, BoxOutcome.LAPSED, effect=key
+            _box_events(
+                state.round_number,
+                player,
+                card_instance_id,
+                BoxOutcome.LAPSED,
+                icons,
+                signet=signet,
             )
-            for key in icons
         )
-        if not icons:
-            events.append(
-                agent_box_event(source, card_instance_id, player, BoxOutcome.LAPSED)
-            )
     return RuleResult(state=working, events=tuple(events))
 
 

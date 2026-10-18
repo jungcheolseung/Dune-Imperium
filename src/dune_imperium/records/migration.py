@@ -2374,7 +2374,8 @@ def _reshuffle_renamed(
 
 
 _BOX_SHUFFLE = re.compile(
-    r"^round:\d+:player:\d+:(?:agent_card(?:_discard|_payment)?|shigawire):"
+    r"^round:\d+:player:\d+:"
+    r"(?:agent_card(?:_discard|_payment)?|shigawire|hungry_for_spice|leader):"
 )
 
 
@@ -2389,9 +2390,11 @@ def _box_reshuffle_renamed(
     Codec v149 (cleanup-2c-2) names every draw of an Agent box after the box
     (``round:R:player:P:agent_card:<card>``), where an older engine named
     some after the card's definition, ``agent_card_discard``,
-    ``agent_card_payment`` or Urgent Shigawire's ``shigawire:<card>``; the
-    reshuffle a short draw asks for carries that name. Renamed as
-    ``_reshuffle_renamed`` does, for a box's draw on both sides.
+    ``agent_card_payment`` or Urgent Shigawire's ``shigawire:<card>``, and
+    (cleanup-2c-4) Hungry for Spice's after the Leader
+    (``round:R:player:P:leader:steersman_y_rkoon``, was ``hungry_for_spice``);
+    the reshuffle a short draw asks for carries that name. Renamed as
+    ``_reshuffle_renamed`` does, for such a draw on both sides.
     """
 
     if not (

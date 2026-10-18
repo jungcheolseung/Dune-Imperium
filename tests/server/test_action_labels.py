@@ -173,7 +173,11 @@ def _implied_leaders() -> dict[str, str]:
     rows = dict(
         re.findall(r'^\s{2}([a-z_]+): \{\s*leader: "([a-z_]+)"', block.group(1), re.M)
     )
-    assert rows, "no EVENT_IMPLIED_LEADER row read: the pattern is broken"
+    # The table may be empty (cleanup-2c-4), but a row the pattern cannot
+    # read must not pass for a missing one.
+    assert len(rows) == block.group(1).count("leader:"), (
+        "an EVENT_IMPLIED_LEADER row was not read: the pattern is broken"
+    )
     return rows
 
 
@@ -182,15 +186,14 @@ def test_an_implied_leader_event_has_one_emitter_naming_that_leader() -> None:
 
     User report 2026-10-10: Staban Tuek's Smuggle Spice payout read "지도자
     능력으로 스파이스 획득" with neither the Leader nor the ability named. The
-    payload stays as it is (it is in every saved game's state hash), so the
-    client names them from a table, panels.js EVENT_IMPLIED_LEADER. That
-    table is right only while the kind has one emitter in the engine and the
-    emitter pays that Leader alone: Smuggle Spice, "Whenever another player
-    sends an Agent to a Maker board space you are spying on: Spice 1."
-    [Staban Tuek card] (docs/implementation-audits/leaders.md).
+    client then named them from a table, panels.js EVENT_IMPLIED_LEADER, which
+    is right only while the kind has one emitter in the engine and the emitter
+    pays that Leader alone. Cleanup-2c-4 made Smuggle Spice a plain
+    ``resources_gained`` whose source names the Leader
+    (``round:R:player:P:leader:staban_tuek``), so the table is empty now; the
+    check stays for a kind that is added to it again.
     """
     implied = _implied_leaders()
-    assert implied["leader_ability_spice_gained"] == "staban_tuek"
     for kind, leader in implied.items():
         emitters = _event_emitters(kind)
         assert len(emitters) == 1, (
@@ -207,20 +210,19 @@ def test_an_implied_leader_event_has_one_emitter_naming_that_leader() -> None:
         assert leader in named, (
             f"{kind}: {path.name} {function.name} never names {leader}"
         )
-    path, function, _ = _event_emitters("leader_ability_spice_gained")[0]
-    assert (path.name, function.name) == ("leader_abilities.py", "apply_smuggle_spice")
 
 
-def test_only_esmar_s_signet_writes_bonus_spice_on_a_signet_event() -> None:
-    """panels.js logEventPayload reads a negative ``bonus_spice`` of
-    ``leader_signet_resolved`` as a bonus spice taken into the Signet
-    player's supply (Esmar Tuek's Smuggle Spice, "Take 1 bonus spice from a
-    Maker board space" [Esmar Tuek card], tests/unit/rules/
-    test_bloodlines_leaders.py pins the payload). Another writer of that
-    pair would need its own reading."""
+def test_no_signet_event_writes_bonus_spice() -> None:
+    """Esmar Tuek's Smuggle Spice ("Place 1 bonus spice on Tuek's Sietch -or-
+    take 1 bonus spice from a Maker board space" [Esmar Tuek card]) used to
+    write the space's ``bonus_spice`` change on ``leader_signet_resolved``,
+    which panels.js logEventPayload read as a bonus spice taken. The Signet
+    box's event carries only the card and the seat now (cleanup-2c-4: what
+    the ability gave is a ``resources_gained``, tests/unit/rules/
+    test_bloodlines_leaders.py pins it), so no writer is left."""
     writers = [
         (path.name, function.name)
         for path, function, keys in _event_emitters("leader_signet_resolved")
         if "bonus_spice" in keys
     ]
-    assert writers == [("leader_abilities.py", "apply_leader_bonus_spice")]
+    assert writers == []
