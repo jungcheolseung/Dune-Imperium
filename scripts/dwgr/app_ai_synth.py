@@ -88,8 +88,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GenerateSpecimens,
+    InfluenceAtLeast,
     IntrigueTiming,
     LoseInfluence,
+    OpponentSandwormInConflict,
     PayResources,
     PeekTopCard,
     PlaceSpy,
@@ -1155,19 +1157,32 @@ def sardaukar_records() -> list[Record]:
         }
         # The printed amount; Fierce's "+1 with an opposing sandworm" is its
         # ability's (§2.2).
+        lines = skill.ability.sections
         strength = (
-            skill.strength
-            + skill.strength_if_landsraad_agent
-            + skill.strength_if_emperor_influence
+            sum(
+                reward.amount
+                for line in lines
+                if not isinstance(line.condition, OpponentSandwormInConflict)
+                for reward in line.rewards
+                if isinstance(reward, GainCombatStrength)
+            )
             + skill.trash_for_strength
+        )
+        emperor = next(
+            (
+                line.condition.amount
+                for line in lines
+                if isinstance(line.condition, InfluenceAtLeast)
+            ),
+            0,
         )
         _put(attrs, "Strength", strength)
         _put(attrs, "Persuasion", skill.reveal_persuasion)
         _put(attrs, "Spice", skill.reveal_spice)
         _put(attrs, "Troops", skill.reveal_troops)
-        if skill.emperor_influence_required:
+        if emperor:
             attrs["InfluenceRequirements"] = (
-                {"Amount": skill.emperor_influence_required, "Faction": "Emperor"},
+                {"Amount": emperor, "Faction": "Emperor"},
             )
         attrs["WormAbilityIDs"] = (SKILL_ABILITIES[skill.skill_id],)
         short = "SkillArchetypes.AppStyle." + pascal(skill.name)

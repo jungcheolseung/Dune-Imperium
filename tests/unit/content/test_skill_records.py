@@ -35,7 +35,9 @@ def test_every_skill_takes_its_effect_from_its_record() -> None:
             else AbilityTiming.IN_CONFLICT
         )
         assert timing is expected
-    assert SKILLS_BY_ID["loyal"].emperor_influence_required == 3
+    assert SKILLS_BY_ID["loyal"].ability.sections[0].condition == InfluenceAtLeast(
+        Faction.EMPEROR, 3
+    )
     assert SKILLS_BY_ID["desperate"].trash_for_strength == 3
 
 

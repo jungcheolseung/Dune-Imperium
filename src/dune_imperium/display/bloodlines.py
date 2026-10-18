@@ -10,6 +10,17 @@ from typing import Final
 
 from dune_imperium.content.bloodlines.sardaukar import SkillDefinition
 from dune_imperium.content.bloodlines.tech import TechAbility, TechTile
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    EffectSection,
+    GainCombatStrength,
+    GainResources,
+    InfluenceAtLeast,
+    OpponentSandwormInConflict,
+    RecruitTroops,
+    RevealPersuasion,
+    RevealSwords,
+)
 
 TECH_ABILITY_TEXT: Final = MappingProxyType(
     {
@@ -159,36 +170,31 @@ TECH_ABILITY_TEXT_KO: Final = MappingProxyType(
 )
 
 
-def skill_effect_text(skill: SkillDefinition) -> str:
-    """Render one Skill tile's printed effect."""
+def _skill_line_text(line: EffectSection) -> str:
+    match line.condition, line.rewards:
+        case None, (RevealPersuasion(amount=amount),):
+            return f"Reveal Turn: +{amount} Persuasion"
+        case None, (GainResources(spice=spice),):
+            return f"Reveal Turn: Gain {spice} spice"
+        case None, (RecruitTroops(count=count),):
+            return f"Reveal Turn: Recruit {count} troop"
+        case None, (RevealSwords(amount=amount),):
+            return f"Reveal Turn: Trash this → +{amount} swords"
+        case None, (GainCombatStrength(amount=amount),):
+            return f"+{amount} sword"
+        case AgentOnSpaceWithIcon(), (GainCombatStrength(amount=amount),):
+            return f"If you have an Agent on a Landsraad board space: +{amount} swords"
+        case OpponentSandwormInConflict(), (GainCombatStrength(amount=amount),):
+            return f"If any opponent has a sandworm in the Conflict: +{amount} sword"
+        case InfluenceAtLeast(amount=threshold), (GainCombatStrength(amount=amount),):
+            return f"Emperor Influence {threshold}+: +{amount} swords"
+    raise ValueError(f"no Skill text for {line!r}")
 
-    parts: list[str] = []
-    if skill.reveal_persuasion:
-        parts.append(f"Reveal Turn: +{skill.reveal_persuasion} Persuasion")
-    if skill.reveal_spice:
-        parts.append(f"Reveal Turn: Gain {skill.reveal_spice} spice")
-    if skill.reveal_troops:
-        parts.append(f"Reveal Turn: Recruit {skill.reveal_troops} troop")
-    if skill.trash_for_strength:
-        parts.append(f"Reveal Turn: Trash this → +{skill.trash_for_strength} swords")
-    if skill.strength:
-        parts.append(f"+{skill.strength} sword")
-    if skill.strength_if_landsraad_agent:
-        parts.append(
-            "If you have an Agent on a Landsraad board space: "
-            f"+{skill.strength_if_landsraad_agent} swords"
-        )
-    if skill.strength_if_opponent_sandworm:
-        parts.append(
-            "If any opponent has a sandworm in the Conflict: "
-            f"+{skill.strength_if_opponent_sandworm} sword"
-        )
-    if skill.strength_if_emperor_influence:
-        parts.append(
-            f"Emperor Influence {skill.emperor_influence_required}+: "
-            f"+{skill.strength_if_emperor_influence} swords"
-        )
-    return ". ".join(parts)
+
+def skill_effect_text(skill: SkillDefinition) -> str:
+    """Render one Skill tile's printed effect, line by line of its record."""
+
+    return ". ".join(_skill_line_text(line) for line in skill.ability.sections)
 
 
 def tech_acquire_text(tile: TechTile) -> str:
@@ -247,36 +253,34 @@ def skill_effect_text_ko(skill: SkillDefinition) -> str:
     threshold as plain trailing text, not the counted form.
     """
 
-    parts: list[str] = []
-    if skill.reveal_persuasion:
-        parts.append(f"{{reveal_turn}}: +{{persuasion:{skill.reveal_persuasion}}}")
-    if skill.reveal_spice:
-        parts.append(f"{{reveal_turn}}: {{spice:{skill.reveal_spice}}}")
-    if skill.reveal_troops:
-        parts.append(f"{{reveal_turn}}: {{troop:{skill.reveal_troops}}}")
-    if skill.trash_for_strength:
-        parts.append(
-            f"{{reveal_turn}}: 이 기술 토큰 {{trash}} {{arrow_right}}"
-            f" +{{sword:{skill.trash_for_strength}}}"
-        )
-    if skill.strength:
-        parts.append(f"+{{sword:{skill.strength}}}")
-    if skill.strength_if_landsraad_agent:
-        parts.append(
-            "랜드스래드 게임판 장소에 {agent}가 있다면: "
-            f"+{{sword:{skill.strength_if_landsraad_agent}}}"
-        )
-    if skill.strength_if_opponent_sandworm:
-        parts.append(
-            "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면: "
-            f"+{{sword:{skill.strength_if_opponent_sandworm}}}"
-        )
-    if skill.strength_if_emperor_influence:
-        parts.append(
-            f"{{influence_emperor}} {skill.emperor_influence_required} 이상: "
-            f"+{{sword:{skill.strength_if_emperor_influence}}}"
-        )
-    return ". ".join(parts)
+    return ". ".join(_skill_line_text_ko(line) for line in skill.ability.sections)
+
+
+def _skill_line_text_ko(line: EffectSection) -> str:
+    match line.condition, line.rewards:
+        case None, (RevealPersuasion(amount=amount),):
+            return f"{{reveal_turn}}: +{{persuasion:{amount}}}"
+        case None, (GainResources(spice=spice),):
+            return f"{{reveal_turn}}: {{spice:{spice}}}"
+        case None, (RecruitTroops(count=count),):
+            return f"{{reveal_turn}}: {{troop:{count}}}"
+        case None, (RevealSwords(amount=amount),):
+            return (
+                f"{{reveal_turn}}: 이 기술 토큰 {{trash}} {{arrow_right}}"
+                f" +{{sword:{amount}}}"
+            )
+        case None, (GainCombatStrength(amount=amount),):
+            return f"+{{sword:{amount}}}"
+        case AgentOnSpaceWithIcon(), (GainCombatStrength(amount=amount),):
+            return f"랜드스래드 게임판 장소에 {{agent}}가 있다면: +{{sword:{amount}}}"
+        case OpponentSandwormInConflict(), (GainCombatStrength(amount=amount),):
+            return (
+                "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면: "
+                f"+{{sword:{amount}}}"
+            )
+        case InfluenceAtLeast(amount=threshold), (GainCombatStrength(amount=amount),):
+            return f"{{influence_emperor}} {threshold} 이상: +{{sword:{amount}}}"
+    raise ValueError(f"no Skill text for {line!r}")
 
 
 def tech_acquire_text_ko(tile: TechTile) -> str:

@@ -14,6 +14,7 @@ from typing import Final
 from dune_imperium.content.bloodlines.skill_abilities import SKILL_ABILITIES
 from dune_imperium.content.schema import SourceDocument, SourceRef
 from dune_imperium.content.uprising.abilities import (
+    Ability,
     AbilityMark,
     AbilityStructure,
     AbilityTiming,
@@ -28,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     RevealPersuasion,
     RevealSwords,
+    Reward,
     TrashCard,
 )
 from dune_imperium.content.uprising.types import AgentIcon
@@ -64,25 +66,14 @@ class SkillKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SkillDefinition:
-    """One Sardaukar Commander Skill and its printed effect."""
+    """One Sardaukar Commander Skill. Its printed effect is its record
+    (``skill_abilities``, composed A7a), read through ``ability`` and the
+    Reveal properties below (cleanup 2e): the strength lines and their
+    conditions are the record's ``IN_CONFLICT`` lines."""
 
     skill_id: str
     name: str
     kind: SkillKind
-    # Reveal turn bonuses, granted once when the Reveal begins with a
-    # Commander in the Conflict.
-    reveal_persuasion: int = 0
-    reveal_spice: int = 0
-    # Troops recruited in the Reveal turn (Hardy's troop icon).
-    reveal_troops: int = 0
-    # "Reveal Turn: Trash this -> 3 swords" (Desperate): an optional arrow.
-    trash_for_strength: int = 0
-    # Combat strength while a Commander is in the Conflict.
-    strength: int = 0
-    strength_if_landsraad_agent: int = 0
-    strength_if_opponent_sandworm: int = 0
-    strength_if_emperor_influence: int = 0
-    emperor_influence_required: int = 0
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (4,)),
         SourceRef(SourceDocument.CARD_FACE, (1,)),
@@ -91,16 +82,55 @@ class SkillDefinition:
     def __post_init__(self) -> None:
         if not self.skill_id or not self.name:
             raise ValueError("Skills require stable IDs and names")
-        if (self.emperor_influence_required > 0) != (
-            self.strength_if_emperor_influence > 0
-        ):
-            raise ValueError("an Emperor Influence bonus needs its threshold")
+
+    @property
+    def ability(self) -> Ability:
+        """The tile's printed effect."""
+
+        return SKILL_ABILITIES[self.skill_id]
+
+    def _reveal_reward(self, mark: AbilityMark) -> Reward | None:
+        ability = self.ability
+        if ability.timing is not AbilityTiming.REVEAL or ability.mark is not mark:
+            return None
+        ((reward,),) = (line.rewards for line in ability.sections)
+        return reward
+
+    @property
+    def reveal_persuasion(self) -> int:
+        """"Reveal Turn: N Persuasion", granted once when the Reveal begins
+        with a Commander in the Conflict."""
+
+        reward = self._reveal_reward(AbilityMark.AUTOMATIC)
+        return reward.amount if isinstance(reward, RevealPersuasion) else 0
+
+    @property
+    def reveal_spice(self) -> int:
+        """"Reveal Turn: N spice"."""
+
+        reward = self._reveal_reward(AbilityMark.AUTOMATIC)
+        return reward.spice if isinstance(reward, GainResources) else 0
+
+    @property
+    def reveal_troops(self) -> int:
+        """Troops recruited in the Reveal turn (Hardy's troop icon)."""
+
+        reward = self._reveal_reward(AbilityMark.AUTOMATIC)
+        return reward.count if isinstance(reward, RecruitTroops) else 0
+
+    @property
+    def trash_for_strength(self) -> int:
+        """"Reveal Turn: Trash this -> 3 swords" (Desperate): an optional
+        arrow."""
+
+        reward = self._reveal_reward(AbilityMark.OPTIONAL)
+        return reward.amount if isinstance(reward, RevealSwords) else 0
 
 
 def _skill(skill_id: str, name: str) -> SkillDefinition:
-    """One Skill, its kind and printed effect compiled from its record
-    (composed A7a); raises ``ValueError`` for a record the fields cannot
-    hold."""
+    """One Skill and its kind, its record checked against what the rules
+    read (composed A7a); raises ``ValueError`` for a record they cannot
+    pay."""
 
     ability = SKILL_ABILITIES[skill_id]
     if (
@@ -110,12 +140,12 @@ def _skill(skill_id: str, name: str) -> SkillDefinition:
         or ability.structure is not AbilityStructure.SEQUENCE
     ):
         raise ValueError(f"{skill_id}: a Skill pays every printed line")
-    fields: dict[str, int] = {}
+    fields: set[str] = set()
 
     def put(field: str, amount: int) -> None:
         if field in fields:
             raise ValueError(f"{skill_id}: {field} printed twice")
-        fields[field] = amount
+        fields.add(field)
 
     if ability.timing is AbilityTiming.REVEAL:
         kind = SkillKind.REVEAL
@@ -160,20 +190,7 @@ def _skill(skill_id: str, name: str) -> SkillDefinition:
                     raise ValueError(f"{skill_id}: no Skill field holds {line!r}")
     else:
         raise ValueError(f"{skill_id}: a Skill pays on the Reveal or in the Conflict")
-    return SkillDefinition(
-        skill_id,
-        name,
-        kind,
-        reveal_persuasion=fields.get("reveal_persuasion", 0),
-        reveal_spice=fields.get("reveal_spice", 0),
-        reveal_troops=fields.get("reveal_troops", 0),
-        trash_for_strength=fields.get("trash_for_strength", 0),
-        strength=fields.get("strength", 0),
-        strength_if_landsraad_agent=fields.get("strength_if_landsraad_agent", 0),
-        strength_if_opponent_sandworm=fields.get("strength_if_opponent_sandworm", 0),
-        strength_if_emperor_influence=fields.get("strength_if_emperor_influence", 0),
-        emperor_influence_required=fields.get("emperor_influence_required", 0),
-    )
+    return SkillDefinition(skill_id, name, kind)
 
 
 # The seven Skills (their effects are the records in ``skill_abilities.py``).

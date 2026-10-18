@@ -78,7 +78,7 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # deliberately (with FEATURE_VERSION when the reflection changes): an entity
 # checkpoint stores the digest and is refused under another one, so a card
 # data fix also retires every entity file written before it.
-_GOLDEN_DIGEST = "261827acbb4bc16f5b83379712d98ac89978c414a30c7340c8aa89a9ec66f3e8"
+_GOLDEN_DIGEST = "d973a12c640c9133c9c033a46a4d3c200539247c981729f64e60619a5511fdf8"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

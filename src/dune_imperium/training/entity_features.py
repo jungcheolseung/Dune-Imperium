@@ -16,6 +16,11 @@ field, with a column marking its class (so ``GainResources`` and
 no feature. Each vocabulary keeps the columns some member uses, scaled by
 the column's largest magnitude so every feature lies in ``[-1, 1]``.
 
+Where cleanup 2e dropped a compiled copy of a record (a Skill's effect
+fields, ...), the record itself is read instead (``_records``): the same
+reflection over the ``Ability``, its columns prefixed by its timing
+(docs/composed-effects-plan.md 4.4; A8 extends this to every vocabulary).
+
 ``FEATURE_DIGEST`` covers every vocabulary's ids, columns and values; an
 ``entity`` checkpoint stores it and is refused under another table, like the
 slot table (``training.slots``). Change the reflection only with
@@ -54,8 +59,10 @@ from dune_imperium.adapters.observation_encoding import (
 )
 from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
 from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_TILES_BY_ID
+from dune_imperium.content.bloodlines.tech_abilities import TECH_ACQUIRE_ABILITIES
 from dune_imperium.content.immortality.board import RESEARCH_SPACES_BY_ID
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+from dune_imperium.content.uprising.abilities import Ability
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import (
@@ -76,7 +83,7 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_CARDS_BY_ID,
 )
 
-FEATURE_VERSION: Final = 1
+FEATURE_VERSION: Final = 2
 # Fields that name or cite an entity rather than describe what it does.
 _SKIPPED_FIELDS: Final = frozenset(
     {"card", "name", "title", "sources", "source", "catalog_url", "required_leader_id"}
@@ -171,6 +178,22 @@ def _with(base: dict[str, float], extra: Mapping[str, float]) -> dict[str, float
     return {**base, **extra}
 
 
+def _records(*abilities: Ability) -> dict[str, float]:
+    """Printed ability records' features, each prefixed by its timing; a
+    hook (a flow kept as code, a ``str`` the reflection skips) is a column
+    of its own."""
+
+    features: dict[str, float] = {}
+    for ability in abilities:
+        prefix = ability.timing.value
+        record = featurize(ability, prefix)
+        if ability.hook is not None:
+            record[f"{prefix}.hook={ability.hook}"] = 1.0
+        for key, amount in record.items():
+            features[key] = features.get(key, 0.0) + amount
+    return features
+
+
 @cache
 def vocabularies() -> dict[str, Vocabulary]:
     """Every vocabulary the ``entity`` network embeds, by name."""
@@ -225,12 +248,30 @@ def vocabularies() -> dict[str, Vocabulary]:
         _table(
             "tech",
             TECH_IDS,
-            [featurize(TECH_TILES_BY_ID[tech_id]) for tech_id in TECH_IDS],
+            [
+                _with(
+                    featurize(TECH_TILES_BY_ID[tech_id]),
+                    _records(
+                        *(
+                            ()
+                            if (acquire := TECH_ACQUIRE_ABILITIES.get(tech_id)) is None
+                            else (acquire,)
+                        )
+                    ),
+                )
+                for tech_id in TECH_IDS
+            ],
         ),
         _table(
             "skill",
             SKILL_IDS,
-            [featurize(SKILLS_BY_ID[skill_id]) for skill_id in SKILL_IDS],
+            [
+                _with(
+                    featurize(SKILLS_BY_ID[skill_id]),
+                    _records(SKILLS_BY_ID[skill_id].ability),
+                )
+                for skill_id in SKILL_IDS
+            ],
         ),
         _table(
             "research",
