@@ -13,7 +13,10 @@
    - round: a Round starts (its Conflict revealed): a clear bell (A3);
    - combat: the combat phase starts: a low gong (A5);
    - scouts: an Arrakeen Scouts item is revealed: three quick marimba
-     notes rising (A4).
+     notes rising (A4);
+   - idle: a seat this screen plays has left its decision untouched for
+     15 seconds (session.js watchIdle, user request 2026-10-19): two short
+     beeps, the one square-wave sound, so it reads as a warning.
    The phase sounds go with their banners (effects.js drawPhaseBanner), so
    they keep the AI pace and never sound for a moment that happened before
    the page loaded. A review plays none.
@@ -68,6 +71,9 @@ const SOUNDS = {
   ],
   scouts: [523.3, 659.3, 784].map((freq, index) => ({
     type: "triangle", freq, start: index * 0.09, decay: 0.25, peak: 0.16,
+  })),
+  idle: [0, 0.22].map((start) => ({
+    type: "square", freq: 987.8, start, hold: 0.08, decay: 0.06, peak: 0.05,
   })),
 };
 

@@ -394,11 +394,16 @@ function renderSeats() {
         phraseText(count) + (index < zoneCounts.length - 1 ? " ·" : "");
       zones.appendChild(part);
     });
-    /* The zones line opens the seat's two public lists: the deck pool (the
-       draw deck and the hidden part of the hand together, OQ-010 ruling 6)
-       and the discard pile. The hand strip's own discard count opens the
-       discard pile alone, so only this opener asks for the pool. */
-    if ((player.deck_pool || []).length || player.discard_pile.length) {
+    /* The zones line opens the seat's public lists: the deck pool (the
+       draw deck and the hidden part of the hand together, OQ-010 ruling 6),
+       the hand cards that entered it publicly (hand_public) and the discard
+       pile. The hand strip's own discard count opens the discard pile alone,
+       so only this opener asks for the pool. */
+    if (
+      (player.deck_pool || []).length ||
+      (player.hand_public || []).length ||
+      player.discard_pile.length
+    ) {
       zones.classList.add("clickable");
       zones.title = t("panels.seat_piles_view");
       /* Same "mine" test as this seat panel's own "you" badge above, with a
@@ -737,8 +742,9 @@ function fillPileViewer(content) {
 
 /* What a key shows in the current state, or null when there is nothing to
    show. The openers read the same fields: a seat's public discard pile
-   (and, for a seat panel's key with `pool`, its public deck pool before
-   it), the Intrigue discard (newest first) and the seat's own deck_cards. */
+   (and, for a seat panel's key with `pool`, its public deck pool and its
+   publicly entered hand cards before it), the Intrigue discard (newest
+   first) and the seat's own deck_cards. */
 function pileViewerContent(key) {
   const view = state.view;
   if (!view) return null;
@@ -754,9 +760,28 @@ function pileViewerContent(key) {
     : t("panels.seat_discard", { seat: t("common.seat", { seat: key.seat }) });
   const discard = pileListContent([[title, player ? player.discard_pile : []]]);
   if (!key.pool) return discard;
+  const sections = [];
   const pool = deckPoolSection(key, player ? player.deck_pool || [] : []);
-  if (!pool) return discard;
-  return { sections: [pool, ...(discard ? discard.sections : [])] };
+  if (pool) sections.push(pool);
+  /* A card acquired straight to the hand (Price is No Object, Corrinth
+     City, a Bond return) is public there (hand_public, OQ-010) and so not
+     in the pool; without this section the viewer lost it until it left
+     the hand (user report 2026-10-19). */
+  const handPublic = player ? player.hand_public || [] : [];
+  if (handPublic.length) {
+    const handTitle = key.mine
+      ? t("panels.my_hand_public", { count: handPublic.length })
+      : t("panels.seat_hand_public", {
+          seat: t("common.seat", { seat: key.seat }),
+          count: handPublic.length,
+        });
+    sections.push({
+      title: handTitle,
+      cards: handPublic.map((id) => visualCard(id, { className: "small" })),
+    });
+  }
+  if (discard) sections.push(...discard.sections);
+  return sections.length ? { sections } : null;
 }
 
 /* A seat's deck pool as a viewer section: the cards of its draw deck and of
