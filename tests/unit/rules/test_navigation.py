@@ -31,6 +31,7 @@ from dune_imperium.core.observation import observe_state
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import advance_after_effect
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue import legal_intrigue_choice_actions
 from dune_imperium.rules.navigation import (
@@ -41,7 +42,10 @@ from dune_imperium.rules.navigation import (
     legal_navigation_setup_actions,
     navigation_play_is_queued,
 )
-from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.reveal_turn import (
+    GENERATED_PERSUASION_KEY,
+    begin_reveal_turn,
+)
 from dune_imperium.rules.setup import create_initial_state
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -431,6 +435,42 @@ def test_card_three_in_slot_four_adds_permanent_reveal_persuasion() -> None:
     )
     plain = _play_option(early, 0)
     assert plain.players[0].reveal_persuasion_bonus == 0
+
+
+def test_card_three_from_slot_four_pays_the_reveal_it_is_played_in() -> None:
+    """ "For the rest of the game, during each of your Reveal turns, [1
+    Persuasion]" [Navigation Card 3 card]: played in the owner's own Reveal
+    turn (Influence 2 reached during it), that Reveal is one of them, so its
+    Persuasion goes up at once, as generated Persuasion (Command (6+)
+    [Bloodlines p. 5]), and the seat keeps the bonus for later Reveals
+    (OQ-110, project reading; the Reveal used to pay nothing until the
+    next one)."""
+
+    slots = (_card(6), _card(7), _card(9), _card(3))
+    owner = _steersman(slots, navigation_played=(), influence=Influence(fremen=1))
+    played = replace(
+        owner,
+        navigation_slots=(_card(3),),
+        navigation_played=slots[:3],
+        hand=(DAGGER,),
+    )
+    revealed = begin_reveal_turn(
+        _turn_state(played), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 0
+    opened = _reach_two(revealed, Faction.FREMEN)
+    assert opened.players[0].navigation_active_slot == 4
+    done = _play_option(opened, 0)
+    assert done.players[0].reveal_persuasion_bonus == 1
+    assert done.players[0].resources.solari == 2
+    reveal = next(
+        frame
+        for frame in reversed(done.decision_stack)
+        if frame.kind == FrameKind.REVEAL
+    )
+    context = dict(reveal.context)
+    assert context["persuasion"] == 1
+    assert context[GENERATED_PERSUASION_KEY] == 1
 
 
 def test_card_four_in_slot_one_buys_the_spice_must_flow_for_water() -> None:
