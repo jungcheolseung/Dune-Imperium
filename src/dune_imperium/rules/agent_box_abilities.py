@@ -1785,6 +1785,7 @@ def apply_intrigue_payment(
 # is named ``<box>``; the box's event comes last once the box is done.
 
 _TRASH_ICON: Final = TrashPersonalCard()
+_THIS_CARD: Final = TrashCard(this_card=True)
 
 
 def trash_box(ability: Ability | None) -> bool:
@@ -1809,15 +1810,14 @@ def trash_box(ability: Ability | None) -> bool:
     ):
         return not ability.armed_icons
     first, *rest = ability.sections
-    costs = first.costs
+    costs = tuple(cost for cost in first.costs if isinstance(cost, TrashCard))
     if (
         not 1 <= len(costs) <= 2
-        or not all(isinstance(cost, TrashCard) for cost in costs)
+        or len(costs) != len(first.costs)
         # "this card and an Emperor card from your hand" [Treacherous
         # Maneuver card]: the pick, then the card itself.
-        or (len(costs) == 2 and costs[1] != TrashCard(this_card=True))
-        or costs[0] == TrashCard(this_card=True) and len(costs) == 2
-        or first.costs[0].other_in_play is not None
+        or (len(costs) == 2 and (costs[1] != _THIS_CARD or costs[0] == _THIS_CARD))
+        or costs[0].other_in_play is not None
         or any(line.costs for line in rest)
         or any(
             line.condition is not None
