@@ -108,6 +108,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
+    KeepPrintedReveal,
     LookAtIntrigueKeepOne,
     LoseFactionInfluence,
     LoseGarrisonTroops,
@@ -940,6 +941,10 @@ def reward_text_ko(reward: Reward) -> str:
                 "이번 차례에 당신이 {agent}를 보낸 장소를 정탐 중인 다른 "
                 "플레이어는 그 {spy}를 이동해야 함"
             )
+        case KeepPrintedReveal(value=value):
+            # Quotes ``tokens_ko.py``'s Desert Power / Priority Contracts
+            # lines ("{persuasion} 유지", "{spice} 유지").
+            return f"{{{value.value}}} 유지"
         case GainSolariPerPartnerAgentIcon():
             # Quotes ``tokens_ko.py``'s Slig Farmer line.
             return "다른 {graft} 카드의 {agent} 아이콘마다 {solari:1}"

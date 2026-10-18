@@ -57,16 +57,19 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GrantCombatDeployment,
     HasAlliance,
+    KeepPrintedReveal,
     LoseInfluence,
     LoseTroops,
     PayResources,
     PlaceSpy,
+    PrintedRevealValue,
     RecallSpy,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
     Reward,
     SpiesPlacedAtLeast,
+    SummonSandworm,
     TakeContract,
     TakeHighCouncilSeat,
     TechTilesAtLeast,
@@ -513,6 +516,74 @@ def _deployable_garrison_troops(state: GameState, player: int) -> int:
         - undeployable_troops_this_turn(state, player),
         0,
     )
+
+
+def held_reveal_value(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> EffectSection | None:
+    """The other line of a choice that holds the card's printed value back
+    ("Keep the Persuasion" / "Keep the spice", OQ-069), or None."""
+
+    if effect is None:
+        return None
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    if (
+        ability is None
+        or ability.hook is not None
+        or ability.structure is not AbilityStructure.ONE_OF
+        or len(ability.sections) != 2
+        or len(ability.sections[0].rewards) != 1
+        or not isinstance(ability.sections[0].rewards[0], KeepPrintedReveal)
+    ):
+        return None
+    return ability.sections[1]
+
+
+def _held_value(effect: PersonalCardRevealChoiceEffect) -> PrintedRevealValue:
+    reward = reveal_choice_ability(effect).sections[0].rewards[0]
+    assert isinstance(reward, KeepPrintedReveal)
+    return reward.value
+
+
+def card_holds_reveal_value(
+    card: PersonalCardDefinition, value: PrintedRevealValue
+) -> bool:
+    """Whether one of the card's Reveal choices holds its printed ``value``."""
+
+    return any(
+        held_reveal_value(effect) is not None and _held_value(effect) is value
+        for effect in card.reveal_choice_effects
+    )
+
+
+def _sandworm_line(effect: PersonalCardRevealChoiceEffect | str | None) -> int:
+    """"Pay N water -> Summon and deploy a sandworm" beside the held value
+    [Desert Power card]: N, or 0 for another choice."""
+
+    line = held_reveal_value(effect)
+    if (
+        line is None
+        or line.rewards != (SummonSandworm(requires_maker_hooks=True),)
+        or len(line.costs) != 1
+        or not isinstance(line.costs[0], PayResources)
+    ):
+        return 0
+    return line.costs[0].water
+
+
+def _trash_for_vp_line(effect: PersonalCardRevealChoiceEffect | str | None) -> int:
+    """"Trash this card -> Gain N VP" beside the held value [Priority
+    Contracts card]: N, or 0 for another choice."""
+
+    line = held_reveal_value(effect)
+    if (
+        line is None
+        or line.costs != (TrashCard(this_card=True),)
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], GainVictoryPoints)
+    ):
+        return 0
+    return line.rewards[0].amount
 
 
 def _reveal_choice_frame_matching(
@@ -1427,10 +1498,7 @@ def legal_reveal_sandworm_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value
-    ):
+    if not _sandworm_line(_effect_value(context)):
         return ()
     actions: list[DomainAction] = [
         DomainAction(action_id="decline_reveal_sandworm", actor=player),
@@ -1466,7 +1534,8 @@ def apply_reveal_sandworm_action(
         # 2 Persuasion, so Command (6+) and every other total only count them
         # from here (user ruling 2026-09-26), for a seat without Maker Hooks
         # too (option (B), user ruling 2026-09-30).
-        remaining = add_reveal_persuasion(state.decision_stack[:-1], 2)
+        held = personal_card_for_instance(card_id).reveal_persuasion
+        remaining = add_reveal_persuasion(state.decision_stack[:-1], held)
         return RuleResult(
             state=replace(state, decision_stack=remaining),
             events=(
@@ -1479,7 +1548,7 @@ def apply_reveal_sandworm_action(
                     event_id=f"{source}:persuasion",
                     kind="reveal_persuasion_gained",
                     payload=(
-                        ("amount", 2),
+                        ("amount", held),
                         ("card_id", card_id),
                         ("player", action.actor),
                     ),
@@ -1489,12 +1558,14 @@ def apply_reveal_sandworm_action(
 
     if reveal_sandworm_block(state, action.actor) is not None:
         raise RuntimeError("Desert Power sandworm choice is unavailable")
+    water = _sandworm_line(_effect_value(context))
     owner = state.players[action.actor]
     if replaces_sandworms(owner):
         # Arrakis Planetologist: the water still buys the choice, the
         # sandworm becomes its replacement [Liet Kynes card].
         paid = replace(
-            owner, resources=replace(owner.resources, water=owner.resources.water - 1)
+            owner,
+            resources=replace(owner.resources, water=owner.resources.water - water),
         )
         popped = replace(
             state,
@@ -1523,7 +1594,7 @@ def apply_reveal_sandworm_action(
     )
     next_owner = replace(
         owner,
-        resources=replace(owner.resources, water=owner.resources.water - 1),
+        resources=replace(owner.resources, water=owner.resources.water - water),
         sandworms_conflict=owner.sandworms_conflict + 1,
         combat_strength=owner.combat_strength + strength_delta,
         units_deployed_turn=owner.units_deployed_turn + 1,
@@ -1543,7 +1614,7 @@ def apply_reveal_sandworm_action(
                     ("amount", 1),
                     ("card_id", card_id),
                     ("player", action.actor),
-                    ("water", 1),
+                    ("water", water),
                 ),
             ),
             GameEvent(
@@ -1678,10 +1749,7 @@ def legal_contract_reveal_choice_actions(
     if (
         not isinstance(frame.decision, PlayerDecision)
         or frame.decision.owner != player
-        or context.get("reveal_choice_effect")
-        != (
-            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS.value
-        )
+        or not _trash_for_vp_line(_effect_value(context))
     ):
         return ()
     card_id = context.get("reveal_card_id")
@@ -1691,8 +1759,10 @@ def legal_contract_reveal_choice_actions(
     # The self-trash is the cost of the Victory Point, so it is adjudicated
     # at resolution time [Main pp. 9, 20]: a card another effect already
     # trashed while this choice was pending can no longer pay it.
+    line = held_reveal_value(_effect_value(context))
+    assert line is not None
     if (
-        len(state.players[player].completed_contract_ids) >= 4
+        _target_condition_holds(line.condition, state.players[player], None)
         and card_id in state.players[player].in_play
     ):
         actions.append(_sourced("trash_contract_reveal_for_vp", player, card_id))
@@ -1749,8 +1819,9 @@ def apply_contract_reveal_choice(
     # [Main p. 10] [FAQ p. 4]; the Reveal's Combat icon deploys it
     # [Bloodlines pp. 5, 12].
     trashed = credit_trash_recruits(trashed, action.actor)
+    points = _trash_for_vp_line(_effect_value(context))
     owner = trashed.state.players[action.actor]
-    next_owner = replace(owner, victory_points=owner.victory_points + 1)
+    next_owner = replace(owner, victory_points=owner.victory_points + points)
     next_state = replace(
         trashed.state,
         players=replace_player(trashed.state.players, next_owner),
@@ -1761,7 +1832,7 @@ def apply_contract_reveal_choice(
         payload=(
             ("card_id", card_id),
             ("player", action.actor),
-            ("victory_points", 1),
+            ("victory_points", points),
         ),
     )
     return RuleResult(state=next_state, events=(*trashed.events, event))
@@ -2712,10 +2783,7 @@ def _desert_power_persuasion_pending(card: PersonalCardDefinition) -> bool:
     없음' 회색").
     """
 
-    return (
-        PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-        in card.reveal_choice_effects
-    )
+    return card_holds_reveal_value(card, PrintedRevealValue.PERSUASION)
 
 
 def _card_reveal_persuasion(card: PersonalCardDefinition) -> int:
@@ -2909,11 +2977,7 @@ def _reveal_effect_is_eligible(
         # so a fourth Contract completed later this Reveal (OQ-028 (b)) can
         # never add the Victory Point on top of spice already paid.
         and not (
-            effect.spice > 0
-            and (
-                PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-                in card.reveal_choice_effects
-            )
+            effect.spice > 0 and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
         )
     )
 
@@ -4023,15 +4087,11 @@ def _reveal_choice_effect_is_available(
         # 2026-09-30); ``legal_reveal_sandworm_actions`` gates the sandworm
         # branch itself through ``reveal_sandworm_block`` (Maker Hooks, water,
         # a Conflict, the Shield Wall).
-        or effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-        or (spy_pair_persuasion(effect) > 0 and len(owner.spy_post_ids) >= 2)
-        # The spice branch needs nothing, so this choice always opens; its
+        # The spice branch of Priority Contracts needs nothing either; its
         # trash branch is offered only with four completed Contracts at
         # resolution (legal_contract_reveal_choice_actions).
-        or effect
-        is (
-            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-        )
+        or held_reveal_value(effect) is not None
+        or (spy_pair_persuasion(effect) > 0 and len(owner.spy_post_ids) >= 2)
     )
 
 
@@ -4095,8 +4155,6 @@ def _build_reveal_choice_frame(
 REVEAL_CHOICE_HOOKS: Final = frozenset(
     {
         "command_acquisition",
-        "desert_power",
-        "priority_contracts",
     }
 )
 

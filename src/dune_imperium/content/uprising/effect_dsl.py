@@ -1305,6 +1305,22 @@ class OpponentsMoveSpiesFromVisitedSpace:
     Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
 
 
+class PrintedRevealValue(StrEnum):
+    """A revealed card's own printed value a choice holds back."""
+
+    PERSUASION = "persuasion"
+    SPICE = "spice"
+
+
+@dataclass(frozen=True, slots=True)
+class KeepPrintedReveal:
+    """"Keep the Persuasion" [Desert Power card] / "Keep the spice" [Priority
+    Contracts card]: the card's own printed Reveal value, held from every
+    total until this line is chosen (OQ-069; OQ-028 (b) addition)."""
+
+    value: PrintedRevealValue
+
+
 @dataclass(frozen=True, slots=True)
 class GainSolariPerPartnerAgentIcon:
     """Gain 1 Solari per Agent icon on the other grafted card [Slig Farmer
@@ -1606,6 +1622,7 @@ type Reward = (
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon
+    | KeepPrintedReveal
     | AcquireBankCommander
     | RevealPersuasion
     | RevealSwords

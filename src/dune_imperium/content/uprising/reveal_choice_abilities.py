@@ -46,16 +46,19 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GrantCombatDeployment,
     HasAlliance,
+    KeepPrintedReveal,
     LoseInfluence,
     LoseTroops,
     PayResources,
     PlaceSpy,
+    PrintedRevealValue,
     RecallSpy,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
     Reward,
     SpiesPlacedAtLeast,
+    SummonSandworm,
     TakeContract,
     TakeHighCouncilSeat,
     TechTilesAtLeast,
@@ -241,15 +244,28 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             # 1 water -> Summon and deploy a sandworm" -- the printed Persuasion
             # is held from every total until chosen (OQ-069).
             _CHOICE.MAY_PAY_WATER_FOR_SANDWORM: _choice(
+                _line(KeepPrintedReveal(PrintedRevealValue.PERSUASION)),
+                _line(
+                    SummonSandworm(requires_maker_hooks=True),
+                    costs=(PayResources(water=1),),
+                ),
                 mark=_MANDATORY,
-                hook="desert_power",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Priority Contracts, Delivery Agreement: "If you have completed 4 or
             # more Contracts: Choose one: Keep the spice / Trash this card -> Gain
-            # 1 VP" -- the card's printed spice is paid only by this choice.
+            # 1 VP" -- the card's printed spice is paid only by this choice,
+            # which always opens; the four Contracts are judged on the trash
+            # line when it resolves (OQ-028 (b) addition).
             _CHOICE.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS: _choice(
+                _line(KeepPrintedReveal(PrintedRevealValue.SPICE)),
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(TrashCard(this_card=True),),
+                    condition=CompletedContractsAtLeast(4),
+                ),
                 mark=_MANDATORY,
-                hook="priority_contracts",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Delivery Logistics: "Choose one: 1 Persuasion / Contract".
             _CHOICE.PERSUASION_OR_CONTRACT: _choice(
