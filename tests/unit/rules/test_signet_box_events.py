@@ -272,7 +272,7 @@ def test_a_gain_is_a_resources_gained_of_the_signets_source() -> None:
     )
     events = _events_of(water, _action(water, "pay_leader_signet_spice"))
     assert [kind for kind, _ in events] == [
-        "leader_signet_spice_paid",
+        "resources_paid",
         "resources_gained",
         "leader_signet_resolved",
     ]
@@ -292,6 +292,7 @@ def test_a_gain_is_a_resources_gained_of_the_signets_source() -> None:
     after_spy = _apply(staban, landsraad).state
     events = _events_of(after_spy, _action(after_spy, "pay_leader_signet_spice"))
     assert events == [
+        ("resources_paid", {"player": 0, "source": SOURCE, "spice": 1}),
         ("resources_gained", {"player": 0, "source": SOURCE, "solari": 3}),
         ("leader_signet_resolved", {"card_id": SIGNET, "player": 0}),
     ]

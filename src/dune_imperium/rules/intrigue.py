@@ -83,6 +83,7 @@ from dune_imperium.rules.frames import (
     turn_start_is_open,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_paid_event
 from dune_imperium.rules.intrigue_triggers import (
     open_contract_reveal,
     waits_for_reveal_turn,
@@ -301,17 +302,10 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     ]
-    if cost is not None:
+    if cost is not None and (cost.solari or cost.spice or cost.water):
         events.append(
-            GameEvent(
-                event_id=f"{source}:cost",
-                kind="intrigue_cost_paid",
-                payload=(
-                    ("player", player),
-                    ("solari", cost.solari),
-                    ("spice", cost.spice),
-                    ("water", cost.water),
-                ),
+            resources_paid_event(
+                source, player, solari=cost.solari, spice=cost.spice, water=cost.water
             )
         )
 
@@ -722,17 +716,14 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
             payload=(("card_id", card_id), ("player", player), ("section", index)),
         )
     ]
-    if cost is not None:
+    if cost is not None and (cost.solari or cost.spice or cost.water):
         events.append(
-            GameEvent(
-                event_id=f"{line_source}:cost",
-                kind="intrigue_cost_paid",
-                payload=(
-                    ("player", player),
-                    ("solari", cost.solari),
-                    ("spice", cost.spice),
-                    ("water", cost.water),
-                ),
+            resources_paid_event(
+                line_source,
+                player,
+                solari=cost.solari,
+                spice=cost.spice,
+                water=cost.water,
             )
         )
     return _resolve_paid_option(

@@ -1043,7 +1043,7 @@ def test_spacing_guilds_favor_may_pay_three_spice_for_influence() -> None:
     assert result.state.players[0].resources.spice == 0
     assert result.state.players[0].influence.fremen == 1
     assert [event.kind for event in result.events] == [
-        "reveal_spice_paid",
+        "resources_paid",
         "influence_gained",
     ]
 

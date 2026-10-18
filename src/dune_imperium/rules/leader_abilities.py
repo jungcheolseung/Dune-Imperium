@@ -117,7 +117,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import (
     gain_faction_influence,
     influence_amount,
@@ -1034,13 +1034,7 @@ def apply_feyd_track_action(
                 state,
                 players=replace_player(state.players, paid_owner),
             )
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:solari_paid",
-                    kind="leader_signet_solari_paid",
-                    payload=(("amount", 1), ("player", player)),
-                )
-            )
+            events.append(resources_paid_event(source, player, solari=1))
         trashed = _trash_for_signet(
             working,
             context,
@@ -1790,13 +1784,7 @@ def apply_leader_signet_payment(
         resources=replace(owner.resources, spice=owner.resources.spice - cost.spice),
         spice_spent_turn=owner.spice_spent_turn + cost.spice,
     )
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:spice_paid",
-            kind="leader_signet_spice_paid",
-            payload=(("amount", cost.spice), ("player", player)),
-        )
-    ]
+    events: list[GameEvent] = [resources_paid_event(source, player, spice=cost.spice)]
 
     match line.rewards:
         case (GainResources(water=water),):
@@ -1834,10 +1822,7 @@ def apply_leader_signet_payment(
     )
     working = replace(state, players=replace_player(state.players, next_owner))
     intrigue_draw = draw_or_queue_intrigue_cards(
-        working,
-        player,
-        intrigue,
-        source=f"{source}:intrigue_draw",
+        working, player, intrigue, source=source
     )
     next_state = _store_signet(
         intrigue_draw.state,
@@ -1877,6 +1862,7 @@ def _apply_chani_water_payment(
     return RuleResult(
         state=drawn.state,
         events=(
+            resources_paid_event(source, player, water=1),
             *drawn.events,
             _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
@@ -1907,13 +1893,7 @@ def _apply_listeners_payment(
     )
     return RuleResult(
         state=next_state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:spice_paid",
-                kind="leader_signet_spice_paid",
-                payload=(("amount", 1), ("player", player)),
-            ),
-        ),
+        events=(resources_paid_event(source, player, spice=1),),
     )
 
 
@@ -2102,6 +2082,7 @@ def _apply_staban_bonus_payment(
         return RuleResult(
             state=next_state,
             events=(
+                resources_paid_event(source, player, spice=1),
                 resources_gained_event(source, player, solari=3),
                 _signet_box(source, context, player, BoxOutcome.RESOLVED),
             ),
@@ -2115,12 +2096,7 @@ def _apply_staban_bonus_payment(
         resources=replace(owner.resources, solari=owner.resources.solari - 2),
     )
     working = replace(state, players=replace_player(state.players, next_owner))
-    intrigue_draw = draw_or_queue_intrigue_cards(
-        working,
-        player,
-        1,
-        source=f"{source}:intrigue_draw",
-    )
+    intrigue_draw = draw_or_queue_intrigue_cards(working, player, 1, source=source)
     next_state = _store_signet(
         intrigue_draw.state,
         context,
@@ -2129,6 +2105,7 @@ def _apply_staban_bonus_payment(
     return RuleResult(
         state=next_state,
         events=(
+            resources_paid_event(source, player, solari=2),
             *intrigue_draw.events,
             _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
@@ -2205,6 +2182,7 @@ def apply_shaddam_signet_choice(
     return RuleResult(
         state=next_state,
         events=(
+            resources_paid_event(source, player, solari=3),
             *gained.events,
             _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
@@ -2817,13 +2795,15 @@ def apply_leader_board_repeat(
                 )
                 for key in passed_up
             ),
+            # The payment, then the Leader ability's own event (cleanup-2c-6).
+            resources_paid_event(source, player, water=1),
             GameEvent(
-                event_id=source,
-                kind="leader_board_repeat_paid",
+                event_id=f"{source}:resolved",
+                kind="leader_ability_resolved",
                 payload=(
+                    ("leader_id", str(owner.leader_id)),
                     ("player", player),
                     ("space_id", space_id),
-                    ("water", 1),
                 ),
             ),
         ),

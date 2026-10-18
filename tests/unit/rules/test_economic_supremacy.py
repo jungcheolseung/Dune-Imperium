@@ -247,9 +247,16 @@ def test_the_paid_arrows_are_logged_one_event_each() -> None:
     solari = apply_combat_reward_optional_payment(state, action)
     spice = apply_combat_reward_optional_payment(solari.state, action)
 
-    assert [dict(event.payload) for event in (*solari.events, *spice.events)] == [
-        {"cost": 6, "player": 0, "resource": "solari", "victory_points": 1},
-        {"cost": 4, "player": 0, "resource": "spice", "victory_points": 1},
+    # Each arrow: its payment, then the VP it bought (cleanup-2c-6).
+    first = "round:1:combat_reward:optional:0:0"
+    second = "round:1:combat_reward:optional:1:0"
+    assert [
+        (event.kind, dict(event.payload)) for event in (*solari.events, *spice.events)
+    ] == [
+        ("resources_paid", {"player": 0, "source": first, "solari": 6}),
+        ("resources_gained", {"player": 0, "source": first, "victory_points": 1}),
+        ("resources_paid", {"player": 0, "source": second, "spice": 4}),
+        ("resources_gained", {"player": 0, "source": second, "victory_points": 1}),
     ]
     assert solari.events[0].event_id != spice.events[0].event_id
 

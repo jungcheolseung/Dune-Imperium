@@ -295,7 +295,7 @@ def test_a_refusal_announces_its_source_s_event() -> None:
     )
     assert declined.result.state is state
     assert [(event.event_id, event.kind) for event in declined.result.events] == [
-        (f"s:slot:{entry.step}:trash_declined", "intrigue_trash_declined")
+        (f"s:slot:{entry.step}:trash_declined", "optional_trash_declined")
     ]
     assert declined.entry == replace(entry, step=entry.step + 1)
 

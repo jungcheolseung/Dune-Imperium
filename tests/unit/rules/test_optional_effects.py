@@ -313,7 +313,8 @@ def test_the_repeat_lapses_an_unused_desert_tactics_trash_first() -> None:
 
     assert [event.kind for event in repeated.events] == [
         "board_effect_lapsed",
-        "leader_board_repeat_paid",
+        "resources_paid",
+        "leader_ability_resolved",
     ]
     assert dict(repeated.events[0].payload) == {
         "effect": BOARD_ICON_TRASH,

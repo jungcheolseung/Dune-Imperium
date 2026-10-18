@@ -258,7 +258,8 @@ def test_corrinth_city_atomically_discards_two_and_pays_five_for_vp() -> None:
         "card_discarded",
         "personal_card_discard_effect_resolved",
         "card_discarded",
-        "corrinth_city_payment_resolved",
+        "resources_paid",
+        "resources_gained",
         "agent_card_effect_resolved",
     ]
     assert result.events[-1] == _box_event(corrinth_city, BoxOutcome.RESOLVED)
@@ -1414,7 +1415,7 @@ def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
     box = agent_card_source(1, 0, junction)
     assert [event.kind for event in paid.events] == [
         "intrigue_card_trashed",
-        "agent_card_payment_resolved",
+        "resources_paid",
         "resources_gained",
         "agent_card_effect_resolved",
     ]
@@ -1717,7 +1718,7 @@ def test_smugglers_haven_may_pay_four_spice_for_one_vp() -> None:
 
     assert result.state.players[0].resources.spice == 0
     assert result.state.players[0].victory_points == 2
-    assert result.events[0].kind == "agent_card_payment_resolved"
+    assert result.events[0].kind == "resources_paid"
 
 
 def test_smugglers_haven_trade_may_be_declined() -> None:
@@ -2216,7 +2217,7 @@ def test_ecological_testing_station_may_pay_water_to_draw_two() -> None:
     assert result.state.players[0].resources.water == 0
     assert result.state.players[0].hand == (first, second)
     assert result.state.players[0].deck == ()
-    assert result.events[0].kind == "agent_card_payment_resolved"
+    assert result.events[0].kind == "resources_paid"
 
 
 def test_ecological_testing_station_payment_may_be_declined() -> None:

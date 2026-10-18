@@ -142,7 +142,7 @@ from dune_imperium.rules.effects import (
     spice_gained_this_turn,
 )
 from dune_imperium.rules.frames import FrameKind, context_int, replace_player
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -982,10 +982,10 @@ def apply_payment(
     )
     resource, spent = _paid_resource(cost)
     events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:paid",
-            kind="agent_card_payment_resolved",
-            payload=(("player", player), ("resource", resource), ("spent", spent)),
+        resources_paid_event(
+            source,
+            player,
+            **{"specimens" if resource == "specimen" else resource: spent},
         ),
         *_gains_event(ability.sections[0].rewards, source, player),
     ]
@@ -1609,18 +1609,7 @@ def apply_intrigue_payment(
                 ),
                 spice_spent_turn=owner.spice_spent_turn + spice,
             )
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("card_id", card_id),
-                        ("player", player),
-                        ("resource", "spice"),
-                        ("spent", spice),
-                    ),
-                )
-            )
+            events.append(resources_paid_event(source, player, spice=spice))
         for reward in ability.sections[0].rewards:
             match reward:
                 case GainVictoryPoints(amount=amount):

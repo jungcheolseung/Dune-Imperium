@@ -1171,7 +1171,10 @@ def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
             {"effect": "trash", "player": 0, "space_id": "desert_tactics"},
         )
     ]
-    assert paid_result.events[-1].kind == "leader_board_repeat_paid"
+    assert [event.kind for event in paid_result.events[-2:]] == [
+        "resources_paid",
+        "leader_ability_resolved",
+    ]
     paid = paid_result.state
     paid_context = dict(paid.decision_stack[-1].context)
     assert paid_context["pending_board_icons"] == "troops,trash"

@@ -108,7 +108,7 @@ from dune_imperium.rules.frames import (
     reveal_is_open_for,
     with_context,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -2115,15 +2115,7 @@ def apply_reveal_spice_influence(
         1,
         event_prefix=f"{source}:gained:{faction_value}",
     )
-    payment_event = GameEvent(
-        event_id=f"{source}:paid",
-        kind="reveal_spice_paid",
-        payload=(
-            ("amount", 3),
-            ("card_id", card_id),
-            ("player", action.actor),
-        ),
-    )
+    payment_event = resources_paid_event(source, action.actor, spice=3)
     return RuleResult(
         state=replace(
             gained.state,

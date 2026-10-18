@@ -1,4 +1,5 @@
-"""The one resource-gain event (leaf: core imports only).
+"""The one resource-gain event, and its mirror for payments (leaf: core
+imports only).
 
 Composed-effects cleanup-2c, rule decision 3 (user decision 2026-10-17,
 docs/composed-effects-plan.md 5 "정한 규칙 판단" 3): a resource gain leaves the
@@ -51,6 +52,40 @@ def resources_gained_event(
                     ("player", player),
                     ("source", source),
                     *((key, amount) for key, amount in gained.items() if amount),
+                )
+            )
+        ),
+    )
+
+
+def resources_paid_event(
+    source: str,
+    player: int,
+    *,
+    solari: int = 0,
+    spice: int = 0,
+    water: int = 0,
+    specimens: int = 0,
+) -> GameEvent:
+    """The event of ``player`` paying the given amounts for ``source``
+    (cleanup-2c-6, the mirror of ``resources_gained_event``): id
+    ``<source>:paid``, payload ``player``, ``source`` and only the keys
+    paid, never a zero."""
+
+    paid = {"solari": solari, "specimens": specimens, "spice": spice, "water": water}
+    if any(amount < 0 for amount in paid.values()):
+        raise ValueError("a payment cannot be negative")
+    if not any(paid.values()):
+        raise ValueError("a payment event must pay something")
+    return GameEvent(
+        event_id=f"{source}:paid",
+        kind="resources_paid",
+        payload=tuple(
+            sorted(
+                (
+                    ("player", player),
+                    ("source", source),
+                    *((key, amount) for key, amount in paid.items() if amount),
                 )
             )
         ),

@@ -480,9 +480,9 @@ def test_an_optional_arrow_offers_its_payment_while_it_can_pay() -> None:
     box = agent_card_source(1, 0, card)
     payment, *rest = paid.events
     assert (payment.kind, payment.event_id, payment.payload) == (
-        "agent_card_payment_resolved",
+        "resources_paid",
         f"{box}:paid",
-        (("player", 0), ("resource", "spice"), ("spent", 4)),
+        (("player", 0), ("source", box), ("spice", 4)),
     )
     assert rest == [
         resources_gained_event(box, 0, victory_points=1),
@@ -511,12 +511,12 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
         placed, DomainAction("pay_agent_card_two_specimens", 0)
     )
     assert paid.state.players[0].specimens == 0
+    box = agent_card_source(1, 0, card)
     assert paid.events[0].payload == (
         ("player", 0),
-        ("resource", "specimen"),
-        ("spent", 2),
+        ("source", box),
+        ("specimens", 2),
     )
-    box = agent_card_source(1, 0, card)
     assert paid.events[0].event_id == f"{box}:paid"
     advances = paid.events[1:-1]
     assert advances

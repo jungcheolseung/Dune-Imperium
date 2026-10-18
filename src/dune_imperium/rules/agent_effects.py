@@ -138,7 +138,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     with_context,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.graft_boxes import (
     active_box,
     box_card_id,
@@ -2199,15 +2199,8 @@ def apply_corrinth_city_payment(
         events=(
             *first_discard.events,
             *second_discard.events,
-            GameEvent(
-                event_id=f"{source}:paid",
-                kind="corrinth_city_payment_resolved",
-                payload=(
-                    ("player", action.actor),
-                    ("solari", 5),
-                    ("victory_points", 1),
-                ),
-            ),
+            resources_paid_event(source, action.actor, solari=5),
+            resources_gained_event(source, action.actor, victory_points=1),
             agent_box_event(source, source_card_id, action.actor, BoxOutcome.RESOLVED),
         ),
     )
@@ -2363,21 +2356,8 @@ def _apply_payment_choice(
         generated = generate_specimens(trashed.state, action.actor, 1, source=source)
         return RuleResult(
             state=generated.state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("card_id", partner),
-                        ("player", action.actor),
-                        ("resource", "card"),
-                        ("spent", 1),
-                    ),
-                ),
-                *trashed.events,
-                *expired,
-                *generated.events,
-            ),
+            # The cost is the trash; its own event says so (cleanup-2c-6).
+            events=(*trashed.events, *expired, *generated.events),
         )
     if action.action_id == "take_agent_card_combat_icon":
         # High Priority Travel's Combat half; the grant writes the frame, so
@@ -2463,15 +2443,7 @@ def _apply_payment_choice(
                     if icon_solari
                     else ()
                 ),
-                GameEvent(
-                    event_id=f"{source}:paid",
-                    kind="agent_card_payment_resolved",
-                    payload=(
-                        ("player", action.actor),
-                        ("resource", "solari"),
-                        ("spent", SLIG_FARMER_PRICE),
-                    ),
-                ),
+                resources_paid_event(source, action.actor, solari=SLIG_FARMER_PRICE),
                 *advanced.events,
             ),
         )
@@ -2589,13 +2561,7 @@ def _apply_arrakis_revolt_payment(
         spice_spent_turn=owner.spice_spent_turn + 2,
     )
     paid = replace(state, players=replace_player(state.players, next_owner))
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:paid",
-            kind="agent_card_payment_resolved",
-            payload=(("player", action.actor), ("resource", "spice"), ("spent", 2)),
-        )
-    ]
+    events: list[GameEvent] = [resources_paid_event(source, action.actor, spice=2)]
     if action.action_id == "pay_agent_card_spice_for_sandworm_and_shield_wall":
         destroyed = destroy_shield_wall(
             paid,
@@ -2687,16 +2653,7 @@ def _apply_control_the_spice_payment(
     return RuleResult(
         state=open_optional_trash(next_state, player, source),
         events=(
-            GameEvent(
-                event_id=f"{source}:paid",
-                kind="agent_card_payment_resolved",
-                payload=(
-                    ("player", player),
-                    ("resource", "spice"),
-                    ("spent", CONTROL_THE_SPICE_PRICE),
-                    ("troops", recruited),
-                ),
-            ),
+            resources_paid_event(source, player, spice=CONTROL_THE_SPICE_PRICE),
             *recruit_shortfall_events(source, player, 1, recruited),
         ),
     )

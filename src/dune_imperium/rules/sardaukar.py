@@ -563,9 +563,10 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
         return RuleResult(
             state=popped,
             events=(
+                # One kind for a refused optional trash (cleanup-2c-6).
                 GameEvent(
-                    event_id=f"{source}:kept",
-                    kind="tech_trash_declined",
+                    event_id=f"{source}:trash_declined",
+                    kind="optional_trash_declined",
                     payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
                 ),
             ),

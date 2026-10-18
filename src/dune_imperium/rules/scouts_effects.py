@@ -100,7 +100,7 @@ from dune_imperium.rules.frames import (
     turn_owner_of,
     update_turn_recruits,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     alliance_recipients_after_influence_loss,
@@ -715,15 +715,8 @@ def _apply_automatic(
             return RuleResult(
                 state=next_state,
                 events=(
-                    GameEvent(
-                        event_id=f"{source}:paid",
-                        kind="scouts_cost_paid",
-                        payload=(
-                            ("player", player),
-                            ("solari", solari),
-                            ("spice", spice),
-                            ("water", water),
-                        ),
+                    resources_paid_event(
+                        source, player, solari=solari, spice=spice, water=water
                     ),
                 ),
             )
@@ -755,14 +748,12 @@ def _apply_automatic(
                 specimens=owner.specimens - paid_count,
                 troops_supply=owner.troops_supply + paid_count,
             )
+            if not paid_count:
+                return RuleResult(state=state)
             return _owner_event(
                 state,
                 next_owner,
-                GameEvent(
-                    event_id=f"{source}:scouts_specimens_paid",
-                    kind="scouts_specimens_paid",
-                    payload=(("count", paid_count), ("player", player)),
-                ),
+                resources_paid_event(source, player, specimens=paid_count),
             )
         case RecruitToConflict(count=count):
             deployed = min(count, owner.troops_supply)

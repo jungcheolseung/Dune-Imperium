@@ -712,7 +712,9 @@ def rewards_wait(entry: PendingAbility) -> bool:
 # confirmation of an acquisition piece is announced by the frame that
 # orders the acquisition, which names the card too.)
 _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
-    "decline_intrigue_trash": ("trash_declined", "intrigue_trash_declined"),
+    # One kind for a refused optional trash, wherever it is offered
+    # (cleanup-2c-6).
+    "decline_intrigue_trash": ("trash_declined", "optional_trash_declined"),
     "decline_intrigue_tleilaxu": (
         "tleilaxu_declined",
         "intrigue_tleilaxu_acquisition_declined",

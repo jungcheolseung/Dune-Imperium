@@ -964,13 +964,11 @@ const VP_CAUSE_KINDS = new Set([
   "alliance_lost",
   "conflict_won",
   "combat_reward_gained",
-  "combat_reward_paid",
   "battle_icons_matched",
   "endgame_wild_matched",
   "card_acquired",
   "agent_card_trashed_for_vp",
   "contract_reveal_card_trashed_for_vp",
-  "corrinth_city_payment_resolved",
   "contract_completed",
   "tleilaxu_advanced",
   "tleilaxu_track_end",
@@ -981,11 +979,9 @@ const VP_CAUSE_KINDS = new Set([
   "tech_acquire_effect_resolved",
   "agent_card_effect_resolved",
   "agent_card_reward_chosen",
-  /* Two steps that score without a point event of their own (2026-10-11
-     review, 27 of 2,576 rows in 75 games): a Combat reward paid by
-     recalling Spies, and an Agent box's arrow payment. */
+  /* A Combat reward paid by recalling Spies scores on its own event
+     (2026-10-11 review); a paid arrow's point is a resources_gained. */
   "spies_recalled",
-  "agent_card_payment_resolved",
 ]);
 
 /* Whether this page may read the ledger: always on an open server; on a

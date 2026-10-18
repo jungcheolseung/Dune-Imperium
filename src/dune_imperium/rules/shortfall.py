@@ -70,19 +70,15 @@ def refill_shortfall(state: GameState, player: int) -> RuleResult:
     next_state = replace(state, players=replace_player(state.players, next_owner))
     if troops and turn_owner_of(state) == player:
         next_state = update_turn_recruits(next_state, troops_recruited=troops)
-    # The step index and what is still waiting keep two refills apart, even
-    # two of one seat inside one step's automatic chain.
+    # Ids need not be unique: two refills of one seat share it (cleanup-2c-6;
+    # it used to count the event log), and a zero is left out.
     event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:player:{player}:shortfall_refilled:"
-            f"{len(state.event_log)}:{next_owner.ungained_troops}:"
-            f"{next_owner.ungained_specimens}"
-        ),
+        event_id=f"round:{state.round_number}:player:{player}:shortfall_refilled",
         kind="shortfall_refilled",
         payload=(
             ("player", player),
-            ("specimens", specimens),
-            ("troops", troops),
+            *((("specimens", specimens),) if specimens else ()),
+            *((("troops", troops),) if troops else ()),
         ),
     )
     return RuleResult(state=next_state, events=(event,))

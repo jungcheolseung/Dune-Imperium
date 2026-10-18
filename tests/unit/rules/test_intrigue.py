@@ -224,7 +224,7 @@ def test_market_opportunity_offers_each_affordable_exchange() -> None:
     assert result.state.players[0].resources == Resources(solari=5, spice=0, water=1)
     assert [event.kind for event in result.events] == [
         "intrigue_played",
-        "intrigue_cost_paid",
+        "resources_paid",
         "resources_gained",
     ]
 

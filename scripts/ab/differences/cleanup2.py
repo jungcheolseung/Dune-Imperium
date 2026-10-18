@@ -1636,6 +1636,134 @@ def _tracks_in_base_form(old: Step, candidate: Step) -> None:
     candidate.events = _in_base_order(old, out) if changed else out
 
 
+# --- Cleanup-2c-6: payments and refusals ---------------------------------------
+
+_PAID_KEYS = ("solari", "spice", "water", "specimens")
+
+
+def _base_paid(base: dict[str, object]) -> dict[str, int] | None:
+    """What a base payment event says was paid, or None for another kind."""
+
+    data = _payload(base)
+    kind = base["kind"]
+
+    def amount(key: str) -> int:
+        return int(str(data.get(key, 0)))
+
+    match kind:
+        case "intrigue_cost_paid" | "scouts_cost_paid":
+            return {key: amount(key) for key in ("solari", "spice", "water")}
+        case "agent_card_payment_resolved":
+            resource = str(data["resource"])
+            if resource == "card":
+                return None
+            key = "specimens" if resource == "specimen" else resource
+            return {key: amount("spent")}
+        case "corrinth_city_payment_resolved" | "research_bonus_paid":
+            return {"solari": amount("solari")}
+        case "combat_reward_paid":
+            return {str(data["resource"]): amount("cost")}
+        case "reveal_spice_paid" | "leader_signet_spice_paid":
+            return {"spice": amount("amount")}
+        case "leader_signet_solari_paid":
+            return {"solari": amount("amount")}
+        case "leader_board_repeat_paid":
+            return {"water": amount("water")}
+        case "scouts_specimens_paid":
+            return {"specimens": amount("count")}
+    return None
+
+
+def _same_paid(paid: dict[str, int], data: dict[str, object]) -> bool:
+    return all(
+        paid.get(key, 0) == int(str(data.get(key, 0))) for key in _PAID_KEYS
+    )
+
+
+# Base payments the candidate logs no payment for: a card paid (its trash
+# says so), and a cost or a specimen payment of nothing.
+def _unpaid_base(base: dict[str, object]) -> bool:
+    paid = _base_paid(base)
+    if base["kind"] == "agent_card_payment_resolved":
+        return str(_payload(base)["resource"]) == "card"
+    return paid is not None and not any(paid.values())
+
+
+def _payments_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c-6 (docs/composed-effects-plan.md, "2c-6"), before the
+    gains rule: a ``resources_paid`` reads as the base's payment event of
+    that seat and those amounts (nine kinds, four conventions), or as
+    nothing (the Signet payments the base left out); what a paid Conflict
+    reward bought had no event of its own; Reverend Mother's repeat had only
+    its payment's event; the refused optional trashes had kinds of their
+    own; the refusals lost their zero amounts."""
+
+    used: set[int] = set()
+    out: list[dict[str, object]] = []
+    changed = False
+    repeat = any(base["kind"] == "leader_board_repeat_paid" for base in old.events)
+    for event in candidate.events:
+        kind = str(event["kind"])
+        data = _payload(event)
+        if kind == "resources_paid":
+            changed = True
+            match = next(
+                (
+                    index
+                    for index, base in enumerate(old.events)
+                    if index not in used
+                    and _payload(base).get("player") == data["player"]
+                    and (paid := _base_paid(base)) is not None
+                    and any(paid.values())
+                    and _same_paid(paid, data)
+                ),
+                None,
+            )
+            if match is not None:
+                used.add(match)
+                out.append(old.events[match])
+            continue
+        if kind == "resources_gained" and ":combat_reward:optional:" in str(
+            data["source"]
+        ):
+            changed = True
+            continue
+        if kind == "leader_ability_resolved" and repeat and "space_id" in data:
+            changed = True
+            continue
+        bases: tuple[str, ...] = ()
+        if kind == "optional_trash_declined" and event not in old.events:
+            bases = (
+                "combat_reward_trash_declined",
+                "intrigue_trash_declined",
+                "tech_trash_declined",
+            )
+        elif kind == "combat_reward_declined" and event not in old.events:
+            bases = ("combat_reward_declined",)
+        if bases:
+            match = next(
+                (
+                    index
+                    for index, base in enumerate(old.events)
+                    if index not in used
+                    and base["kind"] in bases
+                    and _payload(base).get("player") == data["player"]
+                ),
+                None,
+            )
+            if match is not None:
+                used.add(match)
+                out.append(old.events[match])
+                changed = True
+                continue
+        out.append(event)
+    for index, base in enumerate(old.events):
+        if index not in used and _unpaid_base(base):
+            out.insert(min(index, len(out)), base)
+            changed = True
+    candidate.events = _in_base_order(old, out) if changed else out
+
+
 # --- Cleanup-2c-3: board, Conflict and Contract events ------------------------
 
 _BOARD_SOURCE = re.compile(r"^round:\d+:player:\d+:board:[a-z_]+$")
@@ -1849,29 +1977,31 @@ def _box_shuffle_decision(old: Step, candidate: Step) -> None:
         candidate.decision[0] = old.decision[0]
 
 
-def _shortfall_id(event: dict[str, object]) -> tuple[str, ...] | None:
-    """A ``shortfall_refilled`` id without its event-log count
-    (``round:R:player:P:shortfall_refilled:<count>:T:S``)."""
+def _shortfall_key(event: dict[str, object]) -> tuple[object, ...] | None:
+    """A ``shortfall_refilled`` by seat and amounts: the base's id counted
+    the logged events (``…:shortfall_refilled:<count>:T:S``), and
+    cleanup-2c-6 dropped the count and the zero amounts."""
 
-    parts = str(event["event_id"]).split(":")
-    if event["kind"] != "shortfall_refilled" or len(parts) != 8:
+    if event["kind"] != "shortfall_refilled":
         return None
-    return (*parts[:5], *parts[6:], _row_key(event["payload"]))
+    data = _payload(event)
+    return (data["player"], data.get("troops", 0), data.get("specimens", 0))
 
 
 def _shortfall_counts(old: Step, candidate: Step) -> None:
-    """The ``shortfall_refilled`` ids count the logged events, and the
-    candidate logs fewer at a Conflict's end (no ``intrigue_trigger_fired``,
-    the Harvest Cells steps gone): the base's id where only the count
-    differs."""
+    """A ``shortfall_refilled`` reads as the base's of that seat and those
+    amounts (cleanup-2c-6; the base's count also moved with the candidate's
+    fewer logged events at a Conflict's end)."""
 
-    base = {_shortfall_id(e): e["event_id"] for e in old.events}
-    base.pop(None, None)
-    have = {e["event_id"] for e in old.events}
-    for event in candidate.events:
-        key = _shortfall_id(event)
-        if key is not None and event["event_id"] not in have and key in base:
-            event["event_id"] = base[key]
+    spare = [e for e in old.events if _shortfall_key(e) is not None]
+    for position, event in enumerate(candidate.events):
+        key = _shortfall_key(event)
+        if key is None or event in old.events:
+            continue
+        base = next((e for e in spare if _shortfall_key(e) == key), None)
+        if base is not None:
+            spare.remove(base)
+            candidate.events[position] = base
 
 
 def _conflict_end_events(old: Step, candidate: Step) -> None:
@@ -1942,6 +2072,12 @@ RULES = (
         why="cleanup-2c-5: Scouts gains as resources_gained, one Row redeal "
         "event, zero-free Skill Reveal bonuses",
         new=_scouts_and_row_in_base_form,
+    ),
+    Rule(
+        name="payment_events",
+        why="cleanup-2c-6: one resources_paid for every payment, one kind for "
+        "a refused optional trash, zero-free refusals",
+        new=_payments_in_base_form,
     ),
     Rule(
         name="agent_box_shuffle",

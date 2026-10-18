@@ -54,7 +54,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     with_context,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
     draw_or_hold_intrigue_cards,
@@ -885,11 +885,7 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(
         state=advanced.state,
         events=(
-            GameEvent(
-                event_id=f"{source}:paid",
-                kind="research_bonus_paid",
-                payload=(("player", player), ("solari", SEVEN_SOLARI_COST)),
-            ),
+            resources_paid_event(source, player, solari=SEVEN_SOLARI_COST),
             *advanced.events,
         ),
     )

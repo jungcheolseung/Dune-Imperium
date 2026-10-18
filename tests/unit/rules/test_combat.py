@@ -1618,7 +1618,7 @@ def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
     assert result.state.players[0].discard_pile == ("keep_me",)
     assert result.state.players[0].trashed == ()
     assert _settle(result.state).combat_rewards_resolved is True
-    assert result.events[0].kind == "combat_reward_trash_declined"
+    assert result.events[0].kind == "optional_trash_declined"
 
 
 def test_trade_dispute_returns_trashed_reserve_card_to_its_stack() -> None:

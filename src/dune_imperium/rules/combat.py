@@ -44,6 +44,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
@@ -794,18 +795,31 @@ def apply_combat_reward_optional_payment(
         decision_stack=remaining,
         combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
+    source = (
+        f"round:{state.round_number}:combat_reward:optional:"
+        f"{choice_index}:{action.actor}"
+    )
+    if paid:
+        # The payment, then what it bought (cleanup-2c-6).
+        return RuleResult(
+            state=next_state,
+            events=(
+                resources_paid_event(source, action.actor, **{resource: cost}),
+                *(
+                    (
+                        resources_gained_event(
+                            source, action.actor, victory_points=victory_points
+                        ),
+                    )
+                    if victory_points
+                    else ()
+                ),
+            ),
+        )
     event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:combat_reward:optional:"
-            f"{choice_index}:{action.actor}"
-        ),
-        kind=("combat_reward_paid" if paid else "combat_reward_declined"),
-        payload=(
-            ("cost", cost if paid else 0),
-            ("player", action.actor),
-            ("resource", resource),
-            ("victory_points", victory_points if paid else 0),
-        ),
+        event_id=source,
+        kind="combat_reward_declined",
+        payload=(("player", action.actor), ("resource", resource)),
     )
     return RuleResult(state=next_state, events=(event,))
 
@@ -911,10 +925,15 @@ def apply_combat_reward_spy_recall(
             f"{choice_index}:{action.actor}"
         ),
         kind=("spies_recalled" if paid else "combat_reward_declined"),
+        # No zero amounts (cleanup-2c-6, the event grammar).
         payload=(
-            ("player", action.actor),
-            ("spies", spy_count if paid else 0),
-            ("victory_points", victory_points if paid else 0),
+            (
+                ("player", action.actor),
+                ("spies", spy_count),
+                ("victory_points", victory_points),
+            )
+            if paid
+            else (("player", action.actor),)
         ),
     )
     return RuleResult(state=next_state, events=(event,))
@@ -963,14 +982,16 @@ def apply_combat_reward_trash(
     if declined:
         card_id = ""
         working_state = state
+        # One kind for a refused optional trash, wherever it is offered
+        # (cleanup-2c-6).
         events = (
             GameEvent(
                 event_id=(
                     f"round:{state.round_number}:combat_reward:trash:"
-                    f"{choice_index}:{action.actor}"
+                    f"{choice_index}:{action.actor}:trash_declined"
                 ),
-                kind="combat_reward_trash_declined",
-                payload=(("card_id", card_id), ("player", action.actor)),
+                kind="optional_trash_declined",
+                payload=(("player", action.actor),),
             ),
         )
     else:

@@ -31,7 +31,6 @@ const LOG_EVENT_ICONS = {
   combat_intrigue_finished: "log:conflict",
   combat_intrigue_started: "log:conflict",
   combat_reward_gained: "log:conflict",
-  combat_reward_paid: "log:conflict",
   conflict_end_trigger_offered: "log:conflict",
   conflict_revealed: "log:conflict",
   conflict_won: "log:conflict",
@@ -91,7 +90,6 @@ const LOG_EVENT_ICONS = {
   reveal_started: "persuasion",
   tleilaxu_card_acquired: "persuasion",
   // Intrigue cards.
-  intrigue_cost_paid: "log:intrigue_played",
   intrigue_effect_used: "log:intrigue_played",
   intrigue_kept_faceup: "log:intrigue_played",
   intrigue_played: "log:intrigue_played",
@@ -117,13 +115,8 @@ const LOG_EVENT_ICONS = {
   alliance_transferred: "alliance:{faction}",
   // Resources and Victory Points.
   contract_icons_converted_to_solari: "solari",
-  leader_signet_solari_paid: "solari",
-  leader_signet_spice_paid: "spice",
   maker_spice_added: "spice",
-  reveal_spice_paid: "spice",
   scouts_maker_spice_added: "spice",
-  leader_board_repeat_paid: "water",
-  corrinth_city_payment_resolved: "victory_point",
   reveal_victory_point_gained: "victory_point",
   game_finished: "log:vp_winner",
   // Contracts, Control, the Maker and the Shield Wall.
@@ -147,13 +140,11 @@ const LOG_EVENT_ICONS = {
   leader_signet_resolved: "signet_ring",
   leader_signet_started: "signet_ring",
   // Immortality and the Tech module.
-  scouts_specimens_paid: "specimen",
   specimen_returned: "specimen",
   specimens_generated: "specimen",
   family_atomics_used: "log:family_atomics",
   genetic_marker_reached: "log:research",
   research_advanced: "log:research",
-  research_bonus_paid: "log:research",
   tleilaxu_advanced: "log:tleilaxu",
   tleilaxu_track_end: "log:tleilaxu",
   secret_project_chosen: "log:tech",
@@ -208,14 +199,15 @@ function logIconTile(key, label) {
   return tile;
 }
 
-/* A resources_gained line's picture: what was gained, when it is one thing
-   (the gain kinds it replaced each had theirs, cleanup-2c); none for a
-   mixed gain. */
+/* A resources_gained or resources_paid line's picture: what was gained or
+   paid, when it is one thing (the kinds they replaced each had theirs,
+   cleanup-2c); none for a mixed one. */
 const GAIN_ICONS = [
   ["victory_points", "victory_point"],
   ["solari", "solari"],
   ["spice", "spice"],
   ["water", "water"],
+  ["specimens", "specimen"],
 ];
 
 function gainIconKey(payload) {
@@ -227,7 +219,7 @@ function logEventIcon(event) {
   if (!state.catalog) return null;
   const template = LOG_EVENT_ICONS[event.kind];
   const key =
-    event.kind === "resources_gained"
+    event.kind === "resources_gained" || event.kind === "resources_paid"
       ? gainIconKey(event.payload || {})
       : template && logIconKey(template, event.payload || {});
   if (!key) return null;

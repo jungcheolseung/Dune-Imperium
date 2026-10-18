@@ -282,7 +282,7 @@ def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
     assert after.units_deployed_turn == 1
     assert _context(result.state)["pending_agent_effect"] is False
     assert [event.kind for event in result.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "shield_wall_destroyed",
         "sandworm_deployed",
         "agent_card_effect_resolved",
@@ -310,7 +310,7 @@ def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
     assert kept.state.players[0].sandworms_conflict == 1
     assert kept.state.players[0].resources.spice == 0
     assert [event.kind for event in kept.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "sandworm_deployed",
         "agent_card_effect_resolved",
     ]
@@ -392,7 +392,7 @@ def test_arrakis_revolt_keeps_no_wall_payment_under_the_emperor_ban() -> None:
     assert removed.state.shield_wall_present is False
     assert removed.state.players[0].sandworms_conflict == 0
     assert [event.kind for event in removed.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "shield_wall_destroyed",
         "sandworm_summon_unavailable",
         "agent_card_effect_resolved",

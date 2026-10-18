@@ -1767,7 +1767,7 @@ def test_plasteel_blades_with_no_skill_to_gain_asks_with_only_the_keep() -> None
     assert len(rows) == 2  # two face-up identities, both held
     kept = apply_skill_choice(opened.state, keep)
     assert kept.state.players[0].tech_ids == ("plasteel_blades",)
-    assert [event.kind for event in kept.events] == ["tech_trash_declined"]
+    assert [event.kind for event in kept.events] == ["optional_trash_declined"]
 
     # The tile left play before the choice opened: nothing to ask.
     gone = replace(
