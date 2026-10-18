@@ -63,6 +63,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Final
 
+from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
@@ -105,6 +106,7 @@ from dune_imperium.rules.frames import (
 from dune_imperium.rules.graft_boxes import (
     BOX_ACTION_IDS,
     active_box,
+    box_is_pending,
     is_grafted_turn,
     row_box,
     state_with_active_box,
@@ -1948,6 +1950,195 @@ def _research_icon_order(
     return None
 
 
+# Codec v149 (cleanup-2d-5, user decision 2026-10-18: "원칙대로 아이콘마다
+# 나누자"): Clandestine Meeting, Occupation and In High Places resolve each
+# icon as its own step (OQ-027); an older engine resolved both with one
+# ``resolve_agent_card_effect``, In High Places then opening the shared Spy
+# frame under its draw. The icon moves in the recording engine's order.
+_SPLIT_BOX_MOVES: Final[
+    dict[PersonalCardAgentEffect, tuple[tuple[str, tuple[tuple[str, str], ...]], ...]]
+] = {
+    PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
+        ("choose_agent_card_influence", (("faction", "bene_gesserit"),)),
+        ("resolve_agent_card_effect", (("effect", "intrigue"),)),
+    ),
+    PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON: (
+        ("take_agent_card_combat_icon", ()),
+        ("resolve_agent_card_effect", (("effect", "cards"),)),
+    ),
+    PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
+        ("resolve_agent_card_effect", (("effect", "cards"),)),
+    ),
+}
+_IN_HIGH_PLACES: Final = (
+    PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
+)
+# The shared Spy frame's moves -> In High Places' box Spy rows.
+_FRAME_SPY: Final = {
+    "place_spy_on_space": "place_agent_card_spy",
+    "recall_spy_for_placement": "recall_spy_for_agent_card",
+    "decline_spy_placement": "decline_agent_card_spy",
+}
+
+
+def _split_box(
+    state: GameState, box: int
+) -> tuple[PersonalCardAgentEffect, tuple[str, ...]] | None:
+    """The split box ``box`` of the Agent-effect frame on top, pending, with
+    its pending icons; None otherwise."""
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if box == 1 and not is_grafted_turn(context):
+        return None
+    if not box_is_pending(context, box):
+        return None
+    _, active = current_agent_effect_context(state_with_active_box(state, box))
+    effect = active_agent_card(active).agent_effect
+    if effect not in _SPLIT_BOX_MOVES:
+        return None
+    return effect, pending_agent_icons(active)
+
+
+def _split_icon_moves(
+    engine: UprisingRulesEngine, state: GameState, player: int, box: int
+) -> list[DomainAction]:
+    """The split box's icon moves this engine offers, in the recorded order,
+    or the other when the first holds the second (an owed draw of its
+    Influence bonus)."""
+
+    found = _split_box(state, box)
+    if found is None:
+        return []
+    effect = found[0]
+    legal = engine.legal_actions(state, player)
+    moves = []
+    for action_id, arguments in _SPLIT_BOX_MOVES[effect]:
+        move = DomainAction(action_id=action_id, actor=player, arguments=arguments)
+        move = tagged(move, 1) if box == 1 else move
+        if move not in legal:
+            return []
+        moves.append(move)
+    if len(moves) == 2:
+        after = engine.apply(state, moves[0]).state
+        if moves[1] not in engine.legal_actions(after, player):
+            moves.reverse()
+    return moves
+
+
+def _split_box_icon(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded resolution of a box split per icon, as its first icon."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id == "resolve_agent_card_effect"
+        and "effect" not in dict(step.arguments)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    box = row_box(step) or 0
+    found = _split_box(state, box)
+    if found is None or set(found[1]) != set(AGENT_BOX_ABILITIES[found[0]].icons):
+        return None
+    moves = _split_icon_moves(engine, state, step.actor, box)
+    return moves[0] if moves else None
+
+
+def _split_box_follow(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """The split box's other icon right after the first (not In High
+    Places' Spy, which the record's frame step answers)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    box = row_box(step) or 0
+    found = _split_box(state, box)
+    if found is None or found[0] is _IN_HIGH_PLACES:
+        return None
+    effect, pending = found
+    moves = {
+        (action_id, arguments) for action_id, arguments in _SPLIT_BOX_MOVES[effect]
+    }
+    if (step.action_id, untagged(step).arguments) not in moves or len(pending) != 1:
+        return None
+    for action_id, arguments in _SPLIT_BOX_MOVES[effect]:
+        move = DomainAction(action_id=action_id, actor=step.actor, arguments=arguments)
+        move = tagged(move, 1) if box == 1 else move
+        if move != step and move in engine.legal_actions(state, step.actor):
+            return move
+    return None
+
+
+def _split_box_spy(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded move in In High Places' old Spy frame, as its Spy row."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id in _FRAME_SPY
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    for box in (0, 1):
+        found = _split_box(state, box)
+        if found is None or found[0] is not _IN_HIGH_PLACES or "spy" not in found[1]:
+            continue
+        move = DomainAction(
+            action_id=_FRAME_SPY[step.action_id],
+            actor=step.actor,
+            arguments=step.arguments,
+        )
+        move = tagged(move, 1) if box == 1 else move
+        if move in engine.legal_actions(state, step.actor):
+            return move
+    return None
+
+
+def _signet_without_option(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded anti-jam refusal of a Signet stage, as its confirm
+    (codec v149, cleanup-2f)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and untagged(step).action_id == "decline_leader_signet_payment"
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    confirm = DomainAction(
+        action_id="resolve_leader_signet_without_option",
+        actor=step.actor,
+        arguments=step.arguments,
+    )
+    return confirm if confirm in engine.legal_actions(state, step.actor) else None
+
+
 def _tech_influence_confirm(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -2841,5 +3032,36 @@ BRIDGES: tuple[Bridge, ...] = (
         _renamed_draw_reshuffle,
         before_codec=149,
         rewrites=True,
+    ),
+    # Codec v149 (cleanup-2d-5) resolves Clandestine Meeting, Occupation and
+    # In High Places icon by icon: the recorded resolution is the first
+    # icon, the other follows at once (In High Places' Spy at the record's
+    # frame step).
+    Bridge("split_box_icon", _split_box_icon, before_codec=149, rewrites=True),
+    Bridge("split_box_follow", _split_box_follow, before_codec=149, follows=True),
+    Bridge("split_box_spy", _split_box_spy, before_codec=149, rewrites=True),
+    # Codec v149 (cleanup-2f, the 2026-09-30 principle): a Signet stage with
+    # nothing to do confirms instead of its anti-jam refusal, and a Conflict
+    # trash reward with no card opens its window with a confirm.
+    Bridge(
+        "signet_without_option",
+        _signet_without_option,
+        before_codec=149,
+        rewrites=True,
+    ),
+    Bridge(
+        "combat_trash_without_card",
+        _decline_in(
+            FrameKind.COMBAT_REWARD_TRASH,
+            "resolve_combat_trash_without_card",
+            frozenset(
+                {
+                    "decline_combat_reward_trash",
+                    "trash_combat_reward_card",
+                    "resolve_combat_trash_without_card",
+                }
+            ),
+        ),
+        before_codec=149,
     ),
 )

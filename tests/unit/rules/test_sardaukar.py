@@ -1493,11 +1493,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 140  # v147: the ``source``-named Reveal choice rows
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
     )
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
-        DomainAction("decline_sardaukar_commander", 1),
         DomainAction("recruit_sardaukar_commander", 3),
         DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),
         DomainAction("deploy_commanders", 0, (("count", 7),)),

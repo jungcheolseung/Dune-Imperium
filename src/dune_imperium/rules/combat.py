@@ -25,7 +25,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.card_bonds import counted_in_play, trashable_cards
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.effects import (
@@ -649,13 +649,9 @@ def _pay_next_combat_reward(
                         group,
                     )
                 )
-    trash_candidates = (
-        *next_owner.hand,
-        *next_owner.discard_pile,
-        *counted_in_play(next_owner),
-    )
-    trash_count = reward.trash_cards * amount if trash_candidates else 0
-    for _ in range(trash_count):
+    # With no card to trash the frame still opens and its owner confirms
+    # (user ruling 2026-09-30, cleanup-2f).
+    for _ in range(reward.trash_cards * amount):
         frames_in_order.append(
             _trash_card_frame(
                 state,
@@ -939,6 +935,9 @@ def apply_combat_reward_spy_recall(
     return RuleResult(state=next_state, events=(event,))
 
 
+COMBAT_TRASH_NO_CARD: Final = "resolve_combat_trash_without_card"
+
+
 def legal_combat_reward_trash_actions(
     state: GameState,
     player: int,
@@ -953,7 +952,11 @@ def legal_combat_reward_trash_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    owner = state.players[player]
+    cards = trashable_cards(state.players[player])
+    if not cards:
+        # No card to trash: its owner confirms (user ruling 2026-09-30, "결정
+        # 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"; cleanup-2f).
+        return (DomainAction(action_id=COMBAT_TRASH_NO_CARD, actor=player),)
     return (
         DomainAction(action_id="decline_combat_reward_trash", actor=player),
         *(
@@ -962,7 +965,7 @@ def legal_combat_reward_trash_actions(
                 actor=player,
                 arguments=(("card_id", card_id),),
             )
-            for card_id in trashable_cards(owner)
+            for card_id in cards
         ),
     )
 
@@ -979,7 +982,19 @@ def apply_combat_reward_trash(
     choice_index = context_int(dict(frame.context), "choice_index")
     declined = action.action_id == "decline_combat_reward_trash"
     events: tuple[GameEvent, ...]
-    if declined:
+    if action.action_id == COMBAT_TRASH_NO_CARD:
+        working_state = state
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:combat_reward:trash_unavailable:"
+                    f"{choice_index}:{action.actor}"
+                ),
+                kind="combat_reward_trash_unavailable",
+                payload=(("choice_index", choice_index), ("player", action.actor)),
+            ),
+        )
+    elif declined:
         card_id = ""
         working_state = state
         # One kind for a refused optional trash, wherever it is offered

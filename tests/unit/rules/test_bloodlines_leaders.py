@@ -1579,6 +1579,32 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     ]
 
 
+def test_smuggle_spice_with_neither_half_is_confirmed() -> None:
+    # Tuek's Sietch missing and no bonus spice anywhere: the mandatory
+    # choose-one can do nothing, and its owner confirms (user ruling
+    # 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다";
+    # cleanup-2f) instead of a refusal kept only so the frame cannot jam.
+    owner = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
+    state = _play(
+        _esmar_state(
+            owner,
+            maker_bonus_spice=(
+                ("deep_desert", 0),
+                ("hagga_basin", 0),
+                ("imperial_basin", 0),
+            ),
+        ),
+        SIGNET,
+        "arrakeen",
+    )
+    confirm = DomainAction(action_id="resolve_leader_signet_without_option", actor=0)
+    assert legal_leader_signet_actions(state, 0) == (confirm,)
+    result = apply_leader_signet_payment(state, confirm)
+    assert [(e.kind, dict(e.payload)) for e in result.events] == [
+        ("leader_signet_unavailable", {"card_id": SIGNET, "player": 0}),
+    ]
+
+
 def test_makers_phase_feeds_tueks_sietch_like_the_other_maker_spaces() -> None:
     from dune_imperium.rules.phases import resolve_makers
 

@@ -441,4 +441,89 @@ SPLIT_BOXES = Rule(
     moves=_split_moves,
 )
 
-RULES = (SPLIT_BOXES, SPY_PASS_FIRST, RETREAT_EVENT)
+# --- 2f: confirms where nothing can be done (user decision 2026-10-18) -------
+#
+# The 2026-09-30 principle ("결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+# 연다"): a Signet stage left with nothing to do confirms
+# (``resolve_leader_signet_without_option``) instead of its anti-jam
+# refusal, and a Conflict trash reward with no card to trash opens its window
+# with only ``resolve_combat_trash_without_card``.
+_SIGNET_DECLINE = "decline_leader_signet_payment"
+_SIGNET_NO_OPTION = "resolve_leader_signet_without_option"
+_TRASH_NO_CARD = "resolve_combat_trash_without_card"
+
+
+def _signet_confirm_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
+    """The base's anti-jam refusal is the candidate's confirm."""
+
+    if old.step[0] != "a" or old.step[1] != _SIGNET_DECLINE:
+        return None
+    confirm = next(
+        (action for action in at.legal if action.action_id == _SIGNET_NO_OPTION),
+        None,
+    )
+    if confirm is None or any(a.action_id == _SIGNET_DECLINE for a in at.legal):
+        return None
+    return (confirm,)
+
+
+def _signet_confirm_rows(old: Step, candidate: Step) -> None:
+    """The confirm row and its event in the base's refusal form."""
+
+    if isinstance(candidate.decision, list) and isinstance(old.decision, list):
+        rows = candidate.decision[1]
+        if (
+            isinstance(rows, list)
+            and any(isinstance(r, dict) and r.get("action_id") == _SIGNET_NO_OPTION for r in rows)
+            and any(
+                isinstance(r, dict) and r.get("action_id") == _SIGNET_DECLINE
+                for r in old.decision[1]
+            )
+        ):
+            for row in rows:
+                if row.get("action_id") == _SIGNET_NO_OPTION:
+                    row["action_id"] = _SIGNET_DECLINE
+            if isinstance(candidate.page, list) and isinstance(old.page, list):
+                candidate.page = old.page
+    for event in candidate.events:
+        if event["kind"] == "leader_signet_unavailable" and old.step[1] == _SIGNET_DECLINE:
+            event["kind"] = "leader_signet_declined"
+            event["event_id"] = str(event["event_id"]).removesuffix(
+                ":unavailable"
+            ) + ":declined"
+
+
+SIGNET_CONFIRM = Rule(
+    name="signet_confirm",
+    why="cleanup-2f: a Signet stage with nothing to do confirms instead of "
+    "its anti-jam refusal (the 2026-09-30 principle)",
+    new=_signet_confirm_rows,
+    moves=_signet_confirm_moves,
+)
+
+
+def _trash_confirm_answer(at: At) -> DomainAction | None:
+    """The candidate's new window of a cardless Conflict trash reward."""
+
+    if len(at.legal) == 1 and at.legal[0].action_id == _TRASH_NO_CARD:
+        return at.legal[0]
+    return None
+
+
+def _trash_confirm_events(old: Step, candidate: Step) -> None:
+    candidate.events = [
+        event
+        for event in candidate.events
+        if event["kind"] != "combat_reward_trash_unavailable"
+    ]
+
+
+TRASH_CONFIRM = Rule(
+    name="trash_confirm",
+    why="cleanup-2f: a Conflict trash reward with no card opens its window "
+    "with a confirm (the 2026-09-30 principle)",
+    new=_trash_confirm_events,
+    answer=_trash_confirm_answer,
+)
+
+RULES = (SPLIT_BOXES, SIGNET_CONFIRM, TRASH_CONFIRM, SPY_PASS_FIRST, RETREAT_EVENT)

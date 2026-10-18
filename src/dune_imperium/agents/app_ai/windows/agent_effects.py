@@ -834,6 +834,7 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "decline_leader_card_trash",
         "decline_leader_signet_payment",
         "decline_leader_spy_placement",
+        "resolve_leader_signet_without_option",
         "deploy_troops",
         "discard_agent_card",
         "finish_agent_turn",
@@ -3095,6 +3096,12 @@ def _tleilaxu_master(t: _Turn) -> None:
 
 def _leader_choices(t: _Turn) -> None:
     leader_id = t.run.ctx.me.leader_id
+    without = t.run.first("resolve_leader_signet_without_option")
+    if without is not None:
+        # A Signet stage with nothing it can do (cleanup-2f): its confirm is
+        # an End-Turn chore.
+        t.chores.append(without)
+        return
     if leader_id == "feyd_rautha_harkonnen":
         _feyd(t)
     elif leader_id == "lady_margot_fenring":

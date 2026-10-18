@@ -397,6 +397,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "decline_leader_card_trash": _row(_V.DECLINE, _S.LEADER, of=_V.TRASH, tag=_BOX),
     "decline_leader_signet_payment": _row(_V.DECLINE, _S.LEADER, of=_V.PAY, tag=_BOX),
+    "resolve_leader_signet_without_option": _row(
+        _V.RESOLVE_EMPTY, _S.LEADER, of=_V.CHOOSE, tag=_BOX
+    ),
     "decline_leader_spy_placement": _row(
         _V.DECLINE, _S.LEADER, of=_V.PLACE_SPY, tag=_BOX
     ),
@@ -419,11 +422,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "trash_leader_card": _row(_V.TRASH, _S.LEADER, _T.PERSONAL_CARD, tag=_BOX),
     "trash_leader_tech": _row(_V.TRASH, _S.LEADER, _T.TECH, tag=_BOX),
     "use_other_memories": _row(_V.USE, _S.LEADER),
-    "decline_other_memories": _row(_V.DECLINE, _S.LEADER, of=_V.USE),
     "pay_leader_board_repeat": _row(_V.PAY, _S.LEADER, variant="board_repeat"),
-    "decline_leader_board_repeat": _row(
-        _V.DECLINE, _S.LEADER, of=_V.PAY, variant="board_repeat"
-    ),
     "place_navigation_card": _row(_V.CHOOSE, _S.LEADER, _T.NAVIGATION_CARD),
     "play_navigation": _row(_V.PLAY, _S.LEADER, _T.OPTION),
     "decline_navigation": _row(_V.DECLINE, _S.LEADER, of=_V.PLAY),
@@ -520,14 +519,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.CHOOSE, _S.BOARD_SPACE, variant="tuek_sietch_card"
     ),
     "trash_card_for_desert_tactics": _row(_V.TRASH, _S.BOARD_SPACE, _T.PERSONAL_CARD),
-    "resolve_desert_tactics_without_trash": _row(
-        _V.RESOLVE_EMPTY, _S.BOARD_SPACE, of=_V.TRASH
-    ),
     "trash_intrigue_for_imperial_privilege": _row(
         _V.TRASH, _S.BOARD_SPACE, _T.INTRIGUE_CARD
-    ),
-    "decline_imperial_privilege_intrigue": _row(
-        _V.DECLINE, _S.BOARD_SPACE, of=_V.TRASH
     ),
     "recall_agent_for_imperial_privilege": _row(
         _V.RECALL_AGENT, _S.BOARD_SPACE, _T.SPACE
@@ -565,6 +558,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_combat_reward_spy": _row(_V.DECLINE, _S.CONFLICT, of=_V.PLACE_SPY),
     "trash_combat_reward_card": _row(_V.TRASH, _S.CONFLICT, _T.PERSONAL_CARD),
     "decline_combat_reward_trash": _row(_V.DECLINE, _S.CONFLICT, of=_V.TRASH),
+    "resolve_combat_trash_without_card": _row(
+        _V.RESOLVE_EMPTY, _S.CONFLICT, of=_V.TRASH
+    ),
     "deploy_control_defense": _row(_V.DEPLOY, _S.CONFLICT, variant="control_defense"),
     "decline_control_defense": _row(_V.DECLINE, _S.CONFLICT, of=_V.DEPLOY),
     # --- Contracts -----------------------------------------------------------
@@ -678,7 +674,6 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # --- Sardaukar Commanders ------------------------------------------------
     "acquire_sardaukar_commander": _row(_V.ACQUIRE, _S.COMMANDER, _T.SKILL),
     "recruit_sardaukar_commander": _row(_V.RECRUIT, _S.COMMANDER),
-    "decline_sardaukar_commander": _row(_V.DECLINE, _S.COMMANDER, of=_V.ACQUIRE),
     "choose_skill": _row(_V.CHOOSE, _S.COMMANDER, _T.SKILL),
     "decline_skill": _row(_V.DECLINE, _S.COMMANDER, of=_V.CHOOSE),
     "resolve_commander_without_skill": _row(

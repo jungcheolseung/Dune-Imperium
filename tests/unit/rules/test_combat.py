@@ -1577,11 +1577,26 @@ def test_trade_dispute_trashes_from_hand_discard_and_in_play() -> None:
     assert state.combat_rewards_resolved is True
 
 
-def test_trade_dispute_skips_trash_when_no_card_is_available() -> None:
-    result = resolve_combat_rewards(_reward_state("trade_dispute")).state
+def _confirm_trash_without_card(state: GameState, seat: int) -> GameState:
+    confirm = DomainAction(action_id="resolve_combat_trash_without_card", actor=seat)
+    assert legal_combat_reward_trash_actions(state, seat) == (confirm,)
+    result = apply_combat_reward_trash(state, confirm)
+    assert [event.kind for event in result.events] == [
+        "combat_reward_trash_unavailable"
+    ]
+    return _settle(result.state)
 
-    assert result.decision_stack == ()
-    assert result.combat_rewards_resolved is True
+
+def test_trade_dispute_trash_without_a_card_is_confirmed() -> None:
+    # With no card to trash the reward still opens its window, which offers
+    # only the confirm (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는
+    # 곳도 모두 결정 창을 연다"; cleanup-2f), the 2nd place's after the 1st.
+    state = resolve_combat_rewards(_reward_state("trade_dispute")).state
+    state = _confirm_trash_without_card(state, 0)
+    state = _confirm_trash_without_card(state, 1)
+
+    assert state.decision_stack == ()
+    assert state.combat_rewards_resolved is True
 
 
 def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
@@ -1593,17 +1608,14 @@ def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
     actions = legal_combat_reward_trash_actions(state, 0)
     state = apply_combat_reward_trash(state, actions[1]).state
 
-    assert legal_combat_reward_trash_actions(state, 0) == (
-        DomainAction(action_id="decline_combat_reward_trash", actor=0),
-    )
-    state = apply_combat_reward_trash(
-        state,
-        legal_combat_reward_trash_actions(state, 0)[0],
-    ).state
+    # The second trash finds no card: its window offers only the confirm
+    # (cleanup-2f), and so does the cardless 2nd place's.
+    state = _confirm_trash_without_card(state, 0)
+    state = _confirm_trash_without_card(state, 1)
 
     assert state.players[0].trashed == ("only_card",)
     assert state.decision_stack == ()
-    assert _settle(state).combat_rewards_resolved is True
+    assert state.combat_rewards_resolved is True
 
 
 def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
@@ -1617,8 +1629,10 @@ def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
 
     assert result.state.players[0].discard_pile == ("keep_me",)
     assert result.state.players[0].trashed == ()
-    assert _settle(result.state).combat_rewards_resolved is True
     assert result.events[0].kind == "optional_trash_declined"
+    # The cardless 2nd place confirms its own (cleanup-2f).
+    state = _confirm_trash_without_card(_settle(result.state), 1)
+    assert state.combat_rewards_resolved is True
 
 
 def test_trade_dispute_returns_trashed_reserve_card_to_its_stack() -> None:

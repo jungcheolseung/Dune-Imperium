@@ -1593,10 +1593,14 @@ def _old_icon_condition_holds(
             is PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
             and is_grafted(context)
         )
-    # Tread in Darkness's draw became its own icon, judging the Bond.
+    # Tread in Darkness's draw became its own icon, judging the Bond; so did
+    # In High Places' (cleanup-2d-5, user decision 2026-10-18).
     if (
         effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+        in (
+            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+            PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
+        )
         and key == "cards"
     ):
         card_id = context.get("card_id")

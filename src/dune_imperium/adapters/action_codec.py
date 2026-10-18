@@ -637,6 +637,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward",
             "decline_combat_reward_spy",
             "decline_combat_reward_trash",
+            # A Conflict reward trash with no card to trash is confirmed
+            # (cleanup-2f, the 2026-09-30 principle).
+            "resolve_combat_trash_without_card",
             # A Conflict reward Influence choice with every eligible Faction
             # at the top is confirmed (OQ-060).
             "resolve_combat_influence_without_faction",
@@ -647,13 +650,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
             "decline_control_defense",
-            "decline_leader_board_repeat",
             "decline_leader_card_trash",
             "decline_leader_signet_payment",
+            # A mandatory Signet stage with nothing it can do is confirmed
+            # (cleanup-2f, the 2026-09-30 principle).
+            "resolve_leader_signet_without_option",
             # A Leader's Spy may pass up the recall-first without a Spy in
             # supply [Main pp. 11, 20].
             "decline_leader_spy_placement",
-            "decline_other_memories",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "decline_reveal_influence_exchange",
@@ -694,7 +698,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_high_council_from_reveal",
             "pay_combat_reward",
             "resolve_agent_card_effect",
-            "resolve_desert_tactics_without_trash",
             "resolve_espionage_without_spy",
             # The generic Spy placement frame's way out when nothing can be
             # placed (every ruleset since the Emperor track's Spy uses it).
@@ -962,7 +965,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "keep_shield_wall",
             "decline_intrigue_trash",
             "decline_intrigue_spy",
-            "decline_imperial_privilege_intrigue",
             # Imperial Privilege's recall with no target is confirmed (the
             # card draw is the space's own ``cards`` icon, codec v142).
             "resolve_imperial_privilege_without_recall",
@@ -1233,7 +1235,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = [
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "decline_sardaukar_commander",
             "recruit_sardaukar_commander",
             # Bought without a Skill when none is choosable (OQ-031).
             "acquire_sardaukar_commander",

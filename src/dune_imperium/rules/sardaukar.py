@@ -4,8 +4,8 @@ Three decision points are added when the option is on:
 
 - The Commander waiting on a visited board space is one more freely ordered
   effect of the visit: pay 2 Solari to acquire and recruit it and choose one
-  face-up Skill (``acquire_sardaukar_commander``), or decline
-  (``decline_sardaukar_commander``) [Bloodlines p. 4]. Without a choosable
+  face-up Skill (``acquire_sardaukar_commander``) [Bloodlines p. 4]; left
+  unused it lapses when the turn ends (OQ-095 (2)). Without a choosable
   Skill the Commander is acquired without one (OQ-031).
 - A Commander a card effect acquires (Sardaukar Standard's bank Commander,
   OQ-035) and Plasteel Blades' extra Skill open a Skill choice

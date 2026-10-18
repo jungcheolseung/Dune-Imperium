@@ -679,6 +679,7 @@ def tech_secret_project(run: DecisionRun) -> DomainAction | None:
 _SIGNET_IDS: Final = frozenset(
     {
         "decline_leader_signet_payment",
+        "resolve_leader_signet_without_option",
         "retreat_leader_troops",
         "pay_leader_signet_water",
         "trash_leader_card",

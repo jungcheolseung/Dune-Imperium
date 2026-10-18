@@ -1253,6 +1253,14 @@ def signet_influence_withheld(state: GameState, player: int) -> bool:
     )
 
 
+# A mandatory Signet stage with nothing it can do now: its owner confirms
+# instead of the engine skipping it unasked (user ruling 2026-09-30, "결정 창
+# 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"; cleanup-2f) -- Corrino
+# Liaison's and Listeners' Spy after a recall-first, Smuggle Spice with
+# neither half possible.
+SIGNET_NO_OPTION: Final = "resolve_leader_signet_without_option"
+
+
 def legal_leader_signet_actions(
     state: GameState,
     player: int,
@@ -1398,10 +1406,10 @@ def legal_leader_signet_actions(
             # The recall-first began the Spy half of the "— OR —": "If you
             # have no Spies in your supply when you need to place one, you
             # may first recall one of your Spies" [Main p. 11]; after it only
-            # the placement remains (OQ-057 (14)). The decline is kept only
-            # so the frame cannot jam.
+            # the placement remains (OQ-057 (14)); with nothing left to
+            # place, its owner confirms (the 2026-09-30 principle, cleanup-2f).
             return spy_choices or (
-                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+                DomainAction(action_id=SIGNET_NO_OPTION, actor=player),
             )
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
@@ -1422,9 +1430,9 @@ def legal_leader_signet_actions(
         # visit may then collect it the same turn [Bloodlines p. 12]. The
         # face prints no "may" and no arrow, so it is a mandatory choose-one:
         # "Most effects from a board space or card you play are mandatory"
-        # [FAQ p. 3]. The refusal remains only when neither half is possible
-        # (Tuek's Sietch missing and no bonus spice anywhere), so the frame
-        # cannot jam.
+        # [FAQ p. 3]. When neither half is possible (Tuek's Sietch missing
+        # and no bonus spice anywhere) its owner confirms (the 2026-09-30
+        # principle, cleanup-2f).
         bonus = dict(state.maker_bonus_spice)
         choices = (
             *(
@@ -1442,9 +1450,7 @@ def legal_leader_signet_actions(
                 if amount > 0
             ),
         )
-        return choices or (
-            DomainAction(action_id="decline_leader_signet_payment", actor=player),
-        )
+        return choices or (DomainAction(action_id=SIGNET_NO_OPTION, actor=player),)
 
     if owner.leader_id == "duncan_idaho":
         # Into the Fray: the Agent sent this turn may join the Conflict
@@ -1502,10 +1508,10 @@ def legal_leader_signet_actions(
         if context.get("leader_spy_recalled") is True:
             # Both halves place a Spy, so after the recall-first [Main p. 11]
             # either may still be chosen, but not the decline: the recalled
-            # Spy must be placed (OQ-057 (14)). The decline is kept only so
-            # the frame cannot jam.
+            # Spy must be placed (OQ-057 (14)); with nothing left to place,
+            # its owner confirms (the 2026-09-30 principle, cleanup-2f).
             return listeners or (
-                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+                DomainAction(action_id=SIGNET_NO_OPTION, actor=player),
             )
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
@@ -1749,11 +1755,16 @@ def apply_leader_signet_payment(
     context.pop("listeners_paid", None)
     context.pop("leader_spy_recalled", None)
 
-    if action.action_id == "decline_leader_signet_payment":
+    if action.action_id in ("decline_leader_signet_payment", SIGNET_NO_OPTION):
         next_state = _store_signet(state, context, state.players)
+        outcome = (
+            BoxOutcome.UNAVAILABLE
+            if action.action_id == SIGNET_NO_OPTION
+            else BoxOutcome.DECLINED
+        )
         return RuleResult(
             state=next_state,
-            events=(_signet_box(source, context, player, BoxOutcome.DECLINED),),
+            events=(_signet_box(source, context, player, outcome),),
         )
 
     if owner.leader_id == "staban_tuek":

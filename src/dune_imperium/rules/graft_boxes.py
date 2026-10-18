@@ -254,6 +254,7 @@ BOX_ACTION_IDS: Final = frozenset(
         "pay_leader_signet_spice",
         "pay_leader_signet_solari",
         "decline_leader_signet_payment",
+        "resolve_leader_signet_without_option",
         "gain_leader_signet_troop",
         "choose_leader_signet_influence",
         "acquire_leader_imperium",

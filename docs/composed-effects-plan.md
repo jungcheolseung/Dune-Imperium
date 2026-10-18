@@ -712,6 +712,14 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      Combat 아이콘 없는 배치는 카드 문장이 배치를 허락하므로 맞고("You may deploy or retreat 1 troop"), Harkonnen Advisor의 배치 금지
      troop을 빼지 않는 것은 OQ-038 (b) 위반이라 고친다(2d-3). **사용자 결정(2026-10-18, "원칙대로 아이콘마다 나누자"):** 아이콘 두
      개를 한 번에 해결하는 칸 셋(Clandestine Meeting, Occupation, In High Places)은 OQ-027 확장대로 아이콘마다 나눈다(2d-5, 행이 바뀜).
+     **구현(2026-10-18, 브랜치 `cleanup2`):** 비 Scouts hook 62 → 30(Agent 칸 4: beasts_spoils·long_live_the_fighters·possible_futures·
+     scientific_breakthrough, Reveal 1, 지도자 4, 인장 10, 보드 4, Tech 5, guild_spy·litany 2). 2d-1(A 11개)·2d-2(Agent 묶음 VF·GT·KD·PV)·
+     2d-3(Reveal 묶음 AA·UM·HV, Shadout Mapes의 OQ-038 (b))·2d-4: Spy 배치를 `spy_placement.spy_options` 하나로(넘기기 줄이 언제나 먼저,
+     OQ-057 (14) 2026-10-14 보강의 "먼저 회수는 칸을 열 때만"을 모든 Spy 자리에), 보드 선택 아이콘 다섯을 기록 줄로(`_recorded_choice`),
+     쌍둥이 공용화(`trashable_cards`, `recall_agent_targets`·`recall_board_agent`, `open_combat_deployment`, `retreat_units`, 새
+     `rules/sandworms.py`의 `sandworm_block`, `_acquisition_effects`·`open_acquisition_frames`). 2d-5: 세 칸을 아이콘마다(OQ-027 "카드 Agent
+     box 확장 3", 새 codec 템플릿 없음; 앱 AI 창은 앱의 두 능력에 맞춤). 같음 확인은 2c 끝 기록 200판, 선언된 차이 `split_boxes`·
+     `retreat_event`·`spy_pass_first`(`scripts/ab/differences/cleanup2d.py`)만. 옛 기보 다리 `split_box_icon`·`split_box_follow`·`split_box_spy`.
   5. **정리-2e — 옮겨 받는 옛 표 없애기:** 망에 무관한 것 먼저(Flip, Reclaimed Forces 상수, Tleilaxu 트랙, Tech Reveal 줄, Scouts, 보드
      아이콘), 나머지(Conflict·계약, Reveal 이득, Tech 획득, 기술 타일)는 2c·2d에서 그 사건이 바뀔 때 함께. `ResearchBonus`는 저장·화면·휴리스틱이
      읽는 키라 파생 키로 남긴다. `TakeContract` 문구("face-up").
@@ -720,7 +728,10 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      `decline_imperial_privilege_intrigue`)을 codec·처리 표·이름표에서 뺀다(옛 기보는 다리가 이름으로 거른다). (나) 의무 단계에
      "막히지 않게" 남긴 거절(Fenring Corrino Liaison·Mohiam Listeners의 먼저 회수 뒤, Esmar Smuggle Spice의 두 갈래 불가)은
      "할 수 있는 것 없음 · 확인" 줄로(2026-09-30 원칙, 2a의 확인 줄과 같은 모양). (다) 낼 카드가 없는 Conflict 폐기 보상은 확인
-     창을 연다(같은 원칙).
+     창을 연다(같은 원칙). **구현(2026-10-18):** (가) 다섯 템플릿을 뺐다(catalog 기본 −4, Bloodlines −5). (나) 새 템플릿
+     `resolve_leader_signet_without_option`(사건 `leader_signet_unavailable`), (다) 새 템플릿 `resolve_combat_trash_without_card`(사건
+     `combat_reward_trash_unavailable`); 둘 다 모든 catalog. 옛 기보 다리 `signet_without_option`·`combat_trash_without_card`, 선언된 차이
+     `signet_confirm`·`trash_confirm`(200판에는 두 경우가 나오지 않음).
   5c. **정리-2c-7 — payload 목록(사용자 결정 2026-10-18, "목록으로 바꾸자. 깔끔하게."):** 쉼표 문자열로 이은 id 목록(2c-6 4번)을
      진짜 목록으로 — 사건 payload 값 형에 목록을 더하고(행동 인자 형은 그대로), 직렬화·`PlayerView`·화면이 나누던 곳을 함께 바꾼다.
   6. **A8:** 조사 결과 지금 플레이 망(MLP `readapt-v147-4400.pt`)은 카드 특성을 읽지 않는다 — 기록에서 만드는 망 특성(4.4)은 엔티티 망
