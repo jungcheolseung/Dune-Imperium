@@ -285,6 +285,8 @@ function researchSpaceName(spaceId, withBonus) {
    ("board:arrakeen", "contract:contract:espionage_i", "imperium:x:0"). */
 const PROVENANCE_KINDS = {
   board: "spaces",
+  /* A Control marker's bonus ("round:3:player:1:control:arrakeen"). */
+  control: "spaces",
   contract: "contracts",
   agent_card: "cards",
   imperium: "cards",

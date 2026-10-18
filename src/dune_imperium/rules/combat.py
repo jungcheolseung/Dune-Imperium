@@ -481,7 +481,24 @@ def _pay_next_combat_reward(
         )
     amount = assignment.multiplier
     owner = players[assignment.player]
+    reward_source = (
+        f"round:{state.round_number}:combat_reward:{assignment.player}:"
+        f"{assignment.rank.value}"
+    )
     drawn = intrigue_deck[: reward.intrigue * amount]
+    # The cards dealt now leave a draw event, as every Intrigue draw does
+    # (cleanup-2c-3); a short deck queues the rest as before.
+    drawn_events = (
+        (
+            GameEvent(
+                event_id=f"{reward_source}:intrigue_draw:{len(intrigue_deck)}",
+                kind="intrigue_card_drawn",
+                payload=(("count", len(drawn)), ("player", assignment.player)),
+            ),
+        )
+        if drawn
+        else ()
+    )
     intrigue_deck = intrigue_deck[len(drawn) :]
     if reward.intrigue * amount > len(drawn):
         # Deck exhausted: the dispatcher reshuffles the discard [FAQ p. 2].
@@ -662,7 +679,8 @@ def _pay_next_combat_reward(
             )
         )
     reward_event = _combat_reward_event(state, assignment, reward)
-    events.append(reward_event)
+    # The reward's own event comes last among its events (cleanup-2c-3).
+    events.extend(drawn_events)
     events.extend(
         recruit_shortfall_events(
             reward_event.event_id,
@@ -671,6 +689,7 @@ def _pay_next_combat_reward(
             recruited,
         )
     )
+    events.append(reward_event)
 
     frames = tuple(reversed(frames_in_order))
     next_state = replace(
@@ -2036,38 +2055,45 @@ def _combat_reward_event(
     reward: ConflictReward,
 ) -> GameEvent:
     contract_solari = 0 if state.config.choam_module else reward.contracts * 2
+    payload = (
+        ("choose_influence", reward.choose_influence * assignment.multiplier),
+        ("contracts", reward.contracts * assignment.multiplier),
+        ("control_space_id", reward.control_space_id or ""),
+        (
+            "faction",
+            reward.influence_faction.value
+            if reward.influence_faction is not None
+            else "",
+        ),
+        (
+            "faction_influence",
+            reward.faction_influence * assignment.multiplier,
+        ),
+        ("intrigue", reward.intrigue * assignment.multiplier),
+        ("multiplier", assignment.multiplier),
+        ("player", assignment.player),
+        ("rank", assignment.rank.value),
+        (
+            "solari",
+            (reward.solari + contract_solari) * assignment.multiplier,
+        ),
+        ("spice", reward.spice * assignment.multiplier),
+        ("troops", reward.troops * assignment.multiplier),
+        ("victory_points", reward.victory_points * assignment.multiplier),
+        ("water", reward.water * assignment.multiplier),
+    )
     return GameEvent(
         event_id=(
             f"round:{state.round_number}:combat_reward:{assignment.player}:"
             f"{assignment.rank.value}"
         ),
         kind="combat_reward_gained",
-        payload=(
-            ("choose_influence", reward.choose_influence * assignment.multiplier),
-            ("contracts", reward.contracts * assignment.multiplier),
-            ("control_space_id", reward.control_space_id or ""),
-            (
-                "faction",
-                reward.influence_faction.value
-                if reward.influence_faction is not None
-                else "",
-            ),
-            (
-                "faction_influence",
-                reward.faction_influence * assignment.multiplier,
-            ),
-            ("intrigue", reward.intrigue * assignment.multiplier),
-            ("multiplier", assignment.multiplier),
-            ("player", assignment.player),
-            ("rank", assignment.rank.value),
-            (
-                "solari",
-                (reward.solari + contract_solari) * assignment.multiplier,
-            ),
-            ("spice", reward.spice * assignment.multiplier),
-            ("troops", reward.troops * assignment.multiplier),
-            ("victory_points", reward.victory_points * assignment.multiplier),
-            ("water", reward.water * assignment.multiplier),
+        # A reward's zero amounts are left out (cleanup-2c-3, the event
+        # grammar); the rank, the seat and the sandworm multiplier stay.
+        payload=tuple(
+            (key, value)
+            for key, value in payload
+            if value or key in ("multiplier", "player", "rank")
         ),
     )
 

@@ -401,7 +401,6 @@ const EVENT_LABELS = {
   contract_reveal_card_trashed_for_vp: "이 카드 폐기 → {victory_point} 1",
   contract_trashed: "{contract} 폐기",
   contracts_revealed: "{contract} 공개",
-  control_bonus_gained: "{control} 보너스 획득",
   corrinth_city_payment_resolved: "코린트 시티: 5 {solari} 지불 → {victory_point} 1",
   corrinth_city_payment_started: "코린트 시티: 첫 카드 선택",
   endgame_intrigue_passed: "패스",

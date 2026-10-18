@@ -63,6 +63,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_start_is_open,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
 from dune_imperium.rules.scouts_modifiers import (
@@ -1195,17 +1196,12 @@ def _apply_control_visit_bonus(
         next_controller if player.player_id == next_controller.player_id else player
         for player in state.players
     )
-    event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:control_bonus:{space_id}:"
-            f"{controller.player_id}"
-        ),
-        kind="control_bonus_gained",
-        payload=(
-            ("amount", 1),
-            ("player", controller.player_id),
-            ("resource", resource),
-            ("space_id", space_id),
-        ),
+    # The controller's resource gain, named after the Control marker on the
+    # space (rule decision 3, cleanup-2c-3).
+    event = resources_gained_event(
+        f"round:{state.round_number}:player:{controller.player_id}:control:"
+        f"{space_id}",
+        controller.player_id,
+        **{resource: 1},
     )
     return replace(state, players=players), event

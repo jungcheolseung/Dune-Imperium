@@ -64,6 +64,7 @@ from dune_imperium.rules.effects import (
     RecruitTroopsEffect,
 )
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
@@ -209,8 +210,12 @@ def test_dutiful_service_resolves_board_reward_and_keeps_faction_pending() -> No
     assert context["pending_board_effect"] is False
     assert context["pending_board_icons"] == ""
     assert context["pending_faction_influence"] is True
-    assert result.events[0].kind == "board_effect_resolved"
-    assert dict(result.events[0].payload) == {
+    # The gain, then the icon's event (cleanup-2c-3).
+    source = f"round:{placed.round_number}:player:0:board:dutiful_service"
+    assert result.events[0] == resources_gained_event(source, 0, solari=2)
+    assert result.events[1].kind == "board_effect_resolved"
+    assert result.events[1].event_id == f"{source}:resources"
+    assert dict(result.events[1].payload) == {
         "effect": "resources",
         "player": 0,
         "space_id": "dutiful_service",
@@ -738,6 +743,7 @@ def test_sietch_tabr_water_can_destroy_shield_wall() -> None:
     assert result.state.players[0].resources.water == 2
     assert result.state.shield_wall_present is False
     assert tuple(event.kind for event in result.events) == (
+        "resources_gained",
         "shield_wall_destroyed",
         "board_effect_resolved",
     )

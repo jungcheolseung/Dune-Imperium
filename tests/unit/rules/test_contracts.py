@@ -603,9 +603,10 @@ def test_acquiring_the_spice_must_flow_completes_acquire_contract() -> None:
     assert owner.resources.solari == 3
     assert owner.influence.spacing_guild == 1
     assert owner.victory_points == 2
+    # The completion's own event comes last (cleanup-2c-3).
     assert [event.kind for event in result.events][-2:] == [
-        "contract_completed",
         "influence_gained",
+        "contract_completed",
     ]
 
 

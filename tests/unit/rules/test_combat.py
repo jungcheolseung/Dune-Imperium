@@ -357,21 +357,13 @@ def test_combat_reward_event_records_the_reward_s_victory_points() -> None:
     first_place = next(
         event for event in reward_events if dict(event.payload)["rank"] == 1
     )
+    # Zero amounts are left out (cleanup-2c-3, the event grammar).
     assert dict(first_place.payload) == {
-        "choose_influence": 0,
-        "contracts": 0,
         "control_space_id": "arrakeen",
-        "faction": "",
-        "faction_influence": 0,
-        "intrigue": 0,
         "multiplier": 1,
         "player": 0,
         "rank": 1,
-        "solari": 0,
-        "spice": 0,
-        "troops": 0,
         "victory_points": 1,
-        "water": 0,
     }
 
 

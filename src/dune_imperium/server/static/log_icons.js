@@ -136,7 +136,6 @@ const LOG_EVENT_ICONS = {
   contract_taken: "contract",
   contracts_revealed: "contract",
   scouts_contracts_cleared: "contract",
-  control_bonus_gained: "control",
   scouts_marker_returned: "control",
   reveal_sandworm_deployed: "sandworm",
   sandworm_deployed: "sandworm",

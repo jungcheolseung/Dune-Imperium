@@ -74,6 +74,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     top_frame_of_kind,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import advance_research
 from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
@@ -579,11 +580,21 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     intrigue_draw_count = 0
     research = False
     recruit_shortfall: tuple[GameEvent, ...] = ()
+    gains: tuple[GameEvent, ...] = ()
     match _icon_effect(effects, key):
         case ResearchEffect():
             research = True
         case GainResourcesEffect() as effect:
             next_owner = _gain_resources(owner, effect)
+            gains = (
+                resources_gained_event(
+                    source,
+                    player,
+                    solari=effect.solari,
+                    spice=effect.spice,
+                    water=effect.water,
+                ),
+            )
         case DrawImperiumCardsEffect() as effect:
             personal_draw_count = effect.count
         case DrawIntrigueCardsEffect() as effect:
@@ -594,7 +605,7 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
                 context_int(context, "troops_recruited", owner=_FRAME_LABEL) + recruited
             )
             recruit_shortfall = recruit_shortfall_events(
-                f"{source}:{key}", player, effect.count, recruited
+                source, player, effect.count, recruited
             )
         case None if key == BOARD_ICON_HIGH_COUNCIL:
             next_owner = replace(owner, high_council=True)
@@ -695,12 +706,13 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(
         state=next_state,
         events=(
+            *gains,
+            *recruit_shortfall,
             *intrigue_events,
             *draw_events,
             *contract_events,
             *steal_events,
             event,
-            *recruit_shortfall,
         ),
     )
 
@@ -928,7 +940,7 @@ def apply_sietch_tabr_action(
         taken = take_desert_riding_token(
             state,
             action.actor,
-            source=f"round:{state.round_number}:player:{action.actor}:sietch_tabr",
+            source=f"round:{state.round_number}:player:{action.actor}:board:sietch_tabr",
         )
         state = taken.state
         token_events = taken.events
@@ -955,14 +967,21 @@ def apply_sietch_tabr_action(
         for candidate in state.players
     )
     effect_state = replace(state, players=players)
-    events: list[GameEvent] = [*token_events]
+    sietch_source = (
+        f"round:{state.round_number}:player:{action.actor}:board:sietch_tabr"
+    )
+    events: list[GameEvent] = [
+        *token_events,
+        resources_gained_event(sietch_source, action.actor, water=1),
+    ]
+    if action.action_id == "take_sietch_tabr_supplies":
+        events.extend(
+            recruit_shortfall_events(sietch_source, action.actor, 1, recruited)
+        )
     if action.action_id == "take_sietch_tabr_water_and_destroy_wall":
         destruction = destroy_shield_wall(
             effect_state,
-            event_id=(
-                f"round:{state.round_number}:player:{action.actor}:shield_wall:"
-                "sietch_tabr"
-            ),
+            event_id=f"{sietch_source}:shield_wall",
             source="sietch_tabr",
         )
         effect_state = destruction.state
@@ -970,12 +989,9 @@ def apply_sietch_tabr_action(
 
     finish_board_icon(context, BOARD_ICON_SIETCH_TABR)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
-    sietch_source = (
-        f"round:{state.round_number}:player:{action.actor}:board:sietch_tabr"
-    )
     events.append(
         GameEvent(
-            event_id=sietch_source,
+            event_id=f"{sietch_source}:{BOARD_ICON_SIETCH_TABR}",
             kind="board_effect_resolved",
             payload=(
                 ("action_id", action.action_id),
@@ -985,10 +1001,6 @@ def apply_sietch_tabr_action(
             ),
         )
     )
-    if action.action_id == "take_sietch_tabr_supplies":
-        events.extend(
-            recruit_shortfall_events(sietch_source, action.actor, 1, recruited)
-        )
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -1468,10 +1480,7 @@ def apply_imperial_privilege_action(
                 owner,
                 player=action.actor,
                 source="imperial_privilege",
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"agent_recalled:imperial_privilege:conflict"
-                ),
+                event_id=f"{source}:agent_recalled:conflict",
             )
         else:
             space_value = dict(action.arguments).get("space_id")
@@ -1488,10 +1497,7 @@ def apply_imperial_privilege_action(
                 ),
             )
             recall_event = GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"agent_recalled:imperial_privilege:{space_id}"
-                ),
+                event_id=f"{source}:agent_recalled:{space_id}",
                 kind="agent_recalled",
                 payload=(
                     ("player", action.actor),
@@ -1510,7 +1516,7 @@ def apply_imperial_privilege_action(
         recall_events = (
             recall_event,
             GameEvent(
-                event_id=source,
+                event_id=f"{source}:{BOARD_ICON_IMPERIAL_PRIVILEGE}",
                 kind="board_effect_resolved",
                 payload=(
                     ("action_id", action.action_id),
@@ -1562,6 +1568,18 @@ def apply_imperial_privilege_action(
 
     finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
+    events.append(
+        GameEvent(
+            event_id=f"{source}:{BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE}",
+            kind="board_effect_resolved",
+            payload=(
+                ("action_id", action.action_id),
+                ("effect", BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE),
+                ("player", action.actor),
+                ("space_id", "imperial_privilege"),
+            ),
+        )
+    )
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -1586,7 +1604,7 @@ def _resolve_imperial_privilege_without_recall(
             payload=(("player", player),),
         ),
         GameEvent(
-            event_id=source,
+            event_id=f"{source}:{BOARD_ICON_IMPERIAL_PRIVILEGE}",
             kind="board_effect_resolved",
             payload=(
                 ("action_id", "resolve_imperial_privilege_without_recall"),
@@ -1651,22 +1669,26 @@ def apply_tuek_sietch_action(
     effect_state = replace(state, players=players, maker_bonus_spice=maker_bonus_spice)
     next_state = advance_after_effect(effect_state, context, players)
     source = f"round:{state.round_number}:player:{action.actor}:board:tuek_sietch"
+    gains = (
+        (resources_gained_event(source, action.actor, spice=bonus_spice + spice),)
+        if bonus_spice + spice
+        else ()
+    )
     event = GameEvent(
-        event_id=source,
+        event_id=f"{source}:{BOARD_ICON_TUEK_SIETCH}",
         kind="board_effect_resolved",
         payload=(
             ("action_id", action.action_id),
-            ("bonus_spice", bonus_spice),
+            *((("bonus_spice", bonus_spice),) if bonus_spice else ()),
             ("effect", BOARD_ICON_TUEK_SIETCH),
             ("player", action.actor),
             ("space_id", "tuek_sietch"),
-            ("spice", bonus_spice + spice),
         ),
     )
     if spice:
-        return RuleResult(state=next_state, events=(event,))
+        return RuleResult(state=next_state, events=(*gains, event))
     drawn = draw_or_request_personal_cards(next_state, action.actor, 1, source=source)
-    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+    return RuleResult(state=drawn.state, events=(*gains, *drawn.events, event))
 
 
 # The Maker spaces [Main p. 15]; Imperial Basin's printed row is spice alone
@@ -1886,28 +1908,32 @@ def apply_maker_space_action(
         maker_bonus_spice=maker_bonus_spice,
     )
     next_state = advance_after_effect(effect_state, context, players)
+    source = f"round:{state.round_number}:player:{action.actor}:board:{space_id}"
+    gains = (
+        (resources_gained_event(source, action.actor, spice=bonus_spice + base_spice),)
+        if bonus_spice + base_spice
+        else ()
+    )
     event = GameEvent(
-        event_id=(f"round:{state.round_number}:player:{action.actor}:board:{space_id}"),
+        event_id=f"{source}:{BOARD_ICON_MAKER}",
         kind="board_effect_resolved",
         payload=(
             ("action_id", action.action_id),
-            ("bonus_spice", bonus_spice),
+            *((("bonus_spice", bonus_spice),) if bonus_spice else ()),
             ("effect", BOARD_ICON_MAKER),
             ("player", action.actor),
-            ("sandworms", sandworms),
+            *((("sandworms", sandworms),) if sandworms else ()),
             ("space_id", space_id),
-            ("spice", bonus_spice + base_spice),
         ),
     )
     if replaced:
         replacement = replace_sandworms(
-            next_state,
-            action.actor,
-            replaced,
-            source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
+            next_state, action.actor, replaced, source=source
         )
-        return RuleResult(state=replacement.state, events=(event, *replacement.events))
-    return RuleResult(state=next_state, events=(event, *token_events))
+        return RuleResult(
+            state=replacement.state, events=(*gains, *replacement.events, event)
+        )
+    return RuleResult(state=next_state, events=(*token_events, *gains, event))
 
 
 def _gain_resources(

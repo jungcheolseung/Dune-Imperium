@@ -464,7 +464,6 @@ const LABELS_EN = {
     "contract_reveal_card_trashed_for_vp": "Trash This Card → 1 {victory_point}",
     "contract_trashed": "{contract} Trashed",
     "contracts_revealed": "{contract} Revealed",
-    "control_bonus_gained": "{control} Bonus Gained",
     "corrinth_city_payment_resolved": "Corrinth City: 5 {solari} Paid → 1 {victory_point}",
     "corrinth_city_payment_started": "Corrinth City: First Card Chosen",
     "endgame_intrigue_passed": "Passed",

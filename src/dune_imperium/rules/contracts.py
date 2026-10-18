@@ -783,17 +783,12 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
         )
     ]
     if definition.completes_immediately and not definition.requires_intrigue_trash:
-        completion_id = (
-            f"{source_value}:contract_completed:{action.actor}:{instance_value}"
-        )
         events.append(
             GameEvent(
-                event_id=completion_id,
+                event_id=f"{source_value}:contract:{instance_value}:completed",
                 kind="contract_completed",
-                payload=(
-                    ("contract_id", instance_value),
-                    ("player", action.actor),
-                    ("solari", definition.reward.solari),
+                payload=_completion_payload(
+                    instance_value, action.actor, solari=definition.reward.solari
                 ),
             )
         )
@@ -1258,30 +1253,48 @@ def _complete_contract_without_choices(
     event = GameEvent(
         event_id=f"{source}:completed",
         kind="contract_completed",
-        payload=(
-            ("contract_id", instance_id),
-            ("contracts", reward.contracts),
-            ("influence", reward.influence),
-            (
-                "influence_faction",
+        payload=_completion_payload(
+            instance_id,
+            player,
+            contracts=reward.contracts,
+            influence=reward.influence,
+            influence_faction=(
                 ""
                 if reward.influence_faction is None
-                else reward.influence_faction.value,
+                else reward.influence_faction.value
             ),
-            ("personal_cards", reward.personal_cards),
-            ("player", player),
-            ("recall_agents", reward.recall_agents),
-            ("solari", reward.solari),
-            ("spies", reward.spies),
-            ("troops", recruited),
-            ("water", reward.water),
+            personal_cards=reward.personal_cards,
+            recall_agents=reward.recall_agents,
+            solari=reward.solari,
+            spies=reward.spies,
+            troops=recruited,
+            water=reward.water,
         ),
     )
     shortfall_events = recruit_shortfall_events(
         f"{source}:completed", player, reward.troops, recruited
     )
+    # The completion's own event comes last among its events (cleanup-2c-3).
     return RuleResult(
-        state=next_state, events=(event, *influence_events, *shortfall_events)
+        state=next_state, events=(*influence_events, *shortfall_events, event)
+    )
+
+
+def _completion_payload(
+    instance_id: str, player: int, **rewards: int | str
+) -> tuple[tuple[str, int | str], ...]:
+    """``contract_completed``'s payload: the Contract, the seat and the
+    rewards it paid, never a zero (one shape for every completion,
+    cleanup-2c-3)."""
+
+    return tuple(
+        sorted(
+            (
+                ("contract_id", instance_id),
+                ("player", player),
+                *((key, value) for key, value in rewards.items() if value),
+            )
+        )
     )
 
 
@@ -1465,17 +1478,17 @@ def apply_contract_intrigue_trash(
             kind="intrigue_card_trashed",
             payload=(("card_id", card_id), ("player", player)),
         ),
-        GameEvent(
-            event_id=f"{source}:completed",
-            kind="contract_completed",
-            payload=(
-                ("contract_id", instance_id),
-                ("intrigue_cards", reward.intrigue_cards),
-                ("personal_cards", reward.personal_cards),
-                ("player", player),
-            ),
-        ),
     ]
+    completed = GameEvent(
+        event_id=f"{source}:completed",
+        kind="contract_completed",
+        payload=_completion_payload(
+            instance_id,
+            player,
+            intrigue_cards=reward.intrigue_cards,
+            personal_cards=reward.personal_cards,
+        ),
+    )
     if reward.intrigue_cards:
         drawn = draw_or_queue_intrigue_cards(
             next_state,
@@ -1494,7 +1507,7 @@ def apply_contract_intrigue_trash(
         )
         next_state = drawn.state
         events.extend(drawn.events)
-    return RuleResult(state=next_state, events=tuple(events))
+    return RuleResult(state=next_state, events=(*events, completed))
 
 
 # --- Bloodlines Earn Any Alliance -----------------------------------------------------
