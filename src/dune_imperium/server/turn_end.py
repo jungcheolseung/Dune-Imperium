@@ -8,12 +8,14 @@ server holds the remaining unit ends (a Leader pick, Conflict rewards, a
 Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료",
 as long as the seat still has a step of the unit to take back; a step that
 reveals something itself cannot be taken back and is instead held by the
-browser and sent with "확정 ▶" (``sent_by_turn_end``, see below).
+browser and sent with "확정 ▶" (``sent_by_turn_end``, see below). Inside a
+turn the browser holds only the few irreversible steps ``HELD_IN_TURN``
+names (Long Live the Fighters' second pick, user decision 2026-10-19).
 The last Leader pick has its own explicit ``finish_leader_draft`` so setup
 cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine
 already keeps, so the server needs no rule logic of its own; this module is
-that reading and nothing else.
+that reading, and that one short list of action ids, and nothing else.
 
 A seat's *unit* is its own run of decisions: an Agent or Reveal turn in
 Player Turns, or its share of a phase outside them (a Leader pick, a Combat

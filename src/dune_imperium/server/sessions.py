@@ -3071,12 +3071,12 @@ def _serialize_action(
     acquisition that refills the Row, a Scouts line that draws a card): the
     browser only holds it and sends it with the seat's "확정 ▶" press, so
     the seat may still pick another one before that ("확정 전에 다른 곳에
-    두고 싶을 수 있잖아", user, 2026-10-08) -- it is read from the stack and
-    ``undoable`` alone. Inside a turn, a step listed in
-    ``turn_end.HELD_IN_TURN`` (Long Live the Fighters' second pick, user
+    두고 싶을 수 있잖아", user, 2026-10-08). Inside a turn, a step listed
+    in ``turn_end.HELD_IN_TURN`` (Long Live the Fighters' second pick, user
     decision 2026-10-19) is held the same way whenever it cannot be taken
-    back. A unit's last step that only runs into a reveal
-    after it stops at the engine's pause before that reveal instead
+    back. The mark is read from the stack, the action id and ``undoable``
+    alone. A unit's last step that only runs into a reveal after it stops
+    at the engine's pause before that reveal instead
     (rules/pauses.py), whatever the seats hold, and is held by the server
     with its undo, so neither mark depends on another seat's hidden cards
     (it did before the pauses: a Harvest Cells in another hand stopped the

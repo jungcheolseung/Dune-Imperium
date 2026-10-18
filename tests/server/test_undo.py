@@ -1384,6 +1384,12 @@ def test_long_live_the_fighters_discard_is_held_when_glowglobes_seals_it(
     assert all(row["undoable"] is not glowglobes for row in discards)
     assert all(row["sent_by_turn_end"] is glowglobes for row in discards)
 
+    # Sent (with "확정 ▶" when held), the commit seals both picks with
+    # Glowglobes, and leaves both in the window without it.
+    summary = _play_raw(manager, summary, index=_int(discards[0]["index"]))
+    window = [row for row in _rows(summary["undo"]) if row["seat"] == 0]
+    assert window == ([] if glowglobes else [{"seat": 0, "steps": 2}])
+
 
 # ------------------------------------------------ Arrakis Planetologist
 
