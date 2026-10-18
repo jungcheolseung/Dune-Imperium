@@ -101,6 +101,17 @@ INTERRUPT_KINDS: Final = frozenset(
 # OQ-095 (6)) -- so no press follows it.
 TURN_PASS_EVENTS: Final = frozenset({"turn_passed", "turn_start_card_played"})
 
+# In-turn steps the browser also holds for "확정 ▶" whenever they cannot be
+# taken back (``sent_by_turn_end``). Long Live the Fighters' second pick
+# commits the draw, the discard and the trash at once ("Look at the top 3
+# cards, Draw 1, Discard 1, Trash 1" [Long Live the Fighters card]); with
+# Glowglobes ("look at the top card of your deck at any time" [Glowglobes
+# Tech tile]) the deck's new top card then shows to its owner, a reveal that
+# closes the undo window (OQ-010) over the first pick too. Held, the seat may
+# still pick another discard or take its draw pick back (user decision
+# 2026-10-19, after a misclicked draw that could not be undone).
+HELD_IN_TURN: Final = frozenset({"select_long_live_fighters_discard"})
+
 # Events that mean a seat has taken its turn: an Agent went out, or the
 # turn was passed. A Reveal turn ends only through ``finish_reveal``, which
 # is explicit.

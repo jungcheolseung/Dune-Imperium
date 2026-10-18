@@ -1304,6 +1304,87 @@ def test_cunning_trash_can_be_taken_back_and_its_draw_cannot() -> None:
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
 
 
+# ------------------------------------------------ Long Live the Fighters
+
+
+@pytest.mark.parametrize("glowglobes", [False, True])
+def test_long_live_the_fighters_discard_is_held_when_glowglobes_seals_it(
+    glowglobes: bool,
+) -> None:
+    """Long Live the Fighters' second pick commits "Draw 1, Discard 1, Trash 1"
+    at once [Long Live the Fighters card]. With Glowglobes ("look at the top
+    card of your deck at any time" [Glowglobes Tech tile]) the deck's new top
+    card then shows to its owner, which closes the undo window over the draw
+    pick too (OQ-010). Its rows are then held by the browser for "확정 ▶"
+    (``sent_by_turn_end``, ``turn_end.HELD_IN_TURN``), so a misclicked draw
+    can still be taken back before the commit (user decision 2026-10-19).
+    Without Glowglobes the pick reveals nothing and is sent as usual.
+
+    Seed 0 with Bloodlines and the Tech Module: seat 0's first turn, given
+    the card (and the tile) by hand; the served flags and the window are
+    checked.
+    """
+
+    long_live = "imperium:long_live_the_fighters:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST, game_seed=0, bloodlines=True, tech_module=True
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    tiles = ("glowglobes",) if glowglobes else ()
+    session.state = replace(
+        session.state,
+        tech_stacks=tuple(
+            tuple(tile for tile in stack if tile not in tiles)
+            for stack in session.state.tech_stacks
+        ),
+        tech_trash=tuple(
+            tile for tile in session.state.tech_trash if tile not in tiles
+        ),
+        players=(
+            replace(owner, hand=(*owner.hand, long_live), tech_ids=tiles),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+
+    def served() -> list[dict[str, object]]:
+        return _rows(manager.legal_actions(game_id, 0)["actions"])
+
+    placement = next(
+        row
+        for row in served()
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("card_id") == long_live
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    look = next(
+        row
+        for row in served()
+        if row["action_id"] == "resolve_agent_card_effect"
+        and row["arguments"] == {}
+    )
+    # Looking at the top three reveals them to their owner: that seals.
+    assert look["undoable"] is False
+    summary = _play_raw(manager, summary, index=_int(look["index"]))
+
+    draws = served()
+    assert {row["action_id"] for row in draws} == {"select_long_live_fighters_draw"}
+    assert all(row["undoable"] is True for row in draws)
+    assert all(row["sent_by_turn_end"] is False for row in draws)
+    summary = _play_raw(manager, summary, index=_int(draws[0]["index"]))
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+
+    discards = served()
+    assert {row["action_id"] for row in discards} == {
+        "select_long_live_fighters_discard"
+    }
+    assert all(row["undoable"] is not glowglobes for row in discards)
+    assert all(row["sent_by_turn_end"] is glowglobes for row in discards)
+
+
 # ------------------------------------------------ Arrakis Planetologist
 
 
