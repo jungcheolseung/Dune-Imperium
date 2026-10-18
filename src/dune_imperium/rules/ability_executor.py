@@ -1569,7 +1569,7 @@ def apply_automatic_rewards(
 def _gain_reveal_persuasion_now(
     before: GameState, after: GameState, player: int
 ) -> GameState:
-    """Pay "Persuasion during your Reveal turn this round" into an open Reveal.
+    """Pay "Persuasion during your Reveal turn(s)" into an open Reveal.
 
     Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
     round" [Tleilaxu Puppet card]. A Plot may be played at any time during
@@ -1578,15 +1578,28 @@ def _gain_reveal_persuasion_now(
     turn gains the Persuasion in that Reveal; ``begin_reveal_turn`` only
     adds the round bonus when a later Reveal starts. It is generated
     Persuasion, so it counts toward Command (6+) [Bloodlines p. 5].
+
+    Navigation Card 3 from slot 4: "For the rest of the game, during each
+    of your Reveal turns, [1 Persuasion]" [Navigation Card 3 card]. Played
+    in the owner's own Reveal turn (Influence 2 reached by a Reveal effect
+    or a Plot there), that Reveal is one of them and pays the Persuasion
+    too (OQ-110, project reading); the lasting bonus stays on the seat for
+    every later Reveal, where ``begin_reveal_turn`` adds it.
     """
 
-    gained = (
-        after.players[player].reveal_persuasion_round_bonus
-        - before.players[player].reveal_persuasion_round_bonus
+    owner = after.players[player]
+    round_gained = max(
+        0,
+        owner.reveal_persuasion_round_bonus
+        - before.players[player].reveal_persuasion_round_bonus,
     )
+    lasting_gained = max(
+        0,
+        owner.reveal_persuasion_bonus - before.players[player].reveal_persuasion_bonus,
+    )
+    gained = round_gained + lasting_gained
     if gained <= 0 or not reveal_is_open_for(after, player):
         return after
-    owner = after.players[player]
     return replace(
         after,
         players=replace_player(
@@ -1594,7 +1607,7 @@ def _gain_reveal_persuasion_now(
             replace(
                 owner,
                 reveal_persuasion_round_bonus=(
-                    owner.reveal_persuasion_round_bonus - gained
+                    owner.reveal_persuasion_round_bonus - round_gained
                 ),
             ),
         ),
