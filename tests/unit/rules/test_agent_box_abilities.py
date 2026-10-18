@@ -830,13 +830,14 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
         assert not discard_box(ability) and not payment_box(ability)
 
 
-def test_five_trash_boxes_and_what_they_read_as() -> None:
+def test_six_trash_boxes_and_what_they_read_as() -> None:
     """Composed A3e: black trash icons (Calculus of Power's one, Ruthless
     Leadership's two under its Commander condition) and arrows paid by a
     trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge, Elite
-    Forces' armed draw and troop with the Combat paid at once). Only
-    Ruthless Leadership resolves as one action -- its condition failing --
-    the others through their rows alone."""
+    Forces' armed draw and troop with the Combat paid at once; Treacherous
+    Maneuver's two trashes for the visited Faction's 2 instead of 1 since
+    cleanup-2d). Only Ruthless Leadership resolves as one action -- its
+    condition failing -- the others through their rows alone."""
 
     trash = {
         effect: ability
@@ -849,7 +850,13 @@ def test_five_trash_boxes_and_what_they_read_as() -> None:
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+        _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
     }
+    treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)
+    assert trash[treacherous].sections[0].costs == (hand, TrashCard(this_card=True))
+    assert cost_text_ko(hand) in AGENT_EFFECT_TEXT_KO[treacherous]
+    assert "an Emperor card from your hand" in AGENT_EFFECT_TEXT[treacherous]
     elite = trash[_BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS]
     assert elite.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS)
     assert len(elite.sections) == 3
@@ -869,6 +876,8 @@ def test_five_trash_boxes_and_what_they_read_as() -> None:
     assert reward_text_ko(pledge) in AGENT_EFFECT_TEXT_KO[gambit]
     with pytest.raises(ValueError, match="one place"):
         TrashCard(hand_only=True, this_card=True)
+    with pytest.raises(ValueError, match="in hand"):
+        TrashCard(faction=Faction.EMPEROR)
 
 
 def test_ruthless_leadership_waits_for_a_commander() -> None:
@@ -1184,9 +1193,8 @@ def test_the_optional_hooks_say_so_in_their_records() -> None:
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.hook is not None and ability.mark is AbilityMark.OPTIONAL
     } == {
-        "treacherous_maneuver",
         "corrinth_city",
         "arrakis_revolt",
         "dissecting_kit",
     }
-    assert len(box_hook_names()) == 13
+    assert len(box_hook_names()) == 12

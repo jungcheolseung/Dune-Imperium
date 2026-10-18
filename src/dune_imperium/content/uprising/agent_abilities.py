@@ -633,9 +633,24 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.LOOK_AT_TOP_THREE: _hook("long_live_the_fighters"),
             # Treacherous Maneuver: "You may trash this card and an Emperor card
             # from your hand -> Gain 2 Influence instead of 1 Influence with the
-            # visited Faction".
-            _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: _hook(
-                "treacherous_maneuver", mark=AbilityMark.OPTIONAL
+            # visited Faction" -- a trash box: the hand's Emperor card is the
+            # pick, this card follows it (cleanup-2d).
+            _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(
+                            GainInfluence(
+                                visited_space=True, times=2, replaces_space=True
+                            ),
+                        ),
+                        costs=(
+                            TrashCard(hand_only=True, faction=Faction.EMPEROR),
+                            TrashCard(this_card=True),
+                        ),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
             # Corrinth City: "You may discard 2 cards and pay 5 solari -> Gain 1
             # VP" -- the two discards picked one by one (its own rows).

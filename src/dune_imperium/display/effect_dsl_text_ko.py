@@ -681,6 +681,10 @@ def cost_text_ko(cost: Cost) -> str:
         case TrashCard(other_in_play=faction) if faction is not None:
             # Quotes ``tokens_ko.py``'s Calculus of Power line.
             return f"{{in_play}}의 다른 {_faction_name_ko(faction)} 카드 {{trash}}"
+        case TrashCard(hand_only=True, faction=faction) if faction is not None:
+            # Quotes ``tokens_ko.py``'s Treacherous Maneuver line ("핸드의
+            # 황제 카드 {trash}").
+            return f"핸드의 {_faction_name_ko(faction)} 카드 {{trash}}"
         case TrashCard(hand_only=True):
             # Quotes ``tokens_ko.py``'s Elite Forces line.
             return "핸드에서 카드 1장 {trash}"

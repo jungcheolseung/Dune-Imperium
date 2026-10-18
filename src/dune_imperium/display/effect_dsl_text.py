@@ -454,6 +454,9 @@ def cost_text(cost: Cost) -> str:
             )
         case TrashCard(other_in_play=faction) if faction is not None:
             return f"Trash another {_faction_name(faction)} card in play"
+        case TrashCard(hand_only=True, faction=faction) if faction is not None:
+            # "an Emperor card from your hand" [Treacherous Maneuver card].
+            return f"Trash an {_faction_name(faction)} card from your hand"
         case TrashCard(hand_only=True):
             return "Trash a card from your hand"
         case TrashCard(this_card=True):

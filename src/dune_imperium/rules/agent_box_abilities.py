@@ -157,7 +157,11 @@ from dune_imperium.rules.immortality import (
     advance_tleilaxu,
     tleilaxu_track_finished,
 )
-from dune_imperium.rules.influence import gain_faction_influence, influence_amount
+from dune_imperium.rules.influence import (
+    MAX_INFLUENCE,
+    gain_faction_influence,
+    influence_amount,
+)
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
@@ -480,6 +484,54 @@ def holds_space_influence(ability: Ability | None) -> bool:
     )
 
 
+def _replace_space_influence(context: dict[str, ActionValue]) -> None:
+    """The box's gain replaces the visited space's 1 [Main p. 9]: the space's
+    own step is used up, and a partner box that held it and expires later
+    does not bring it back."""
+
+    context["pending_faction_influence"] = False
+    context[SPACE_INFLUENCE_REPLACED] = True
+
+
+def replacing_gain_block(
+    owner: PlayerState, gain: GainInfluence, context: Mapping[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """Why an optional arrow's "N Influence instead of 1" buys nothing now
+    [Treacherous Maneuver card]: it replaces the visited space's own single
+    gain, "기본 1 대신 총 2" [Main p. 9] (docs/rules/player-turns.md), so it
+    is offered only while that gain is still pending -- an Agent infiltrated
+    onto a space without a Faction [Main p. 11] has none (OQ-046), and once
+    the space's 1 is gained there is nothing left to replace. Near the
+    track's top (``MAX_INFLUENCE``) the N end where the 1 would, so the cost
+    would buy nothing: "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수
+    있을 때만 제시한다" (OQ-071, user decision 2026-09-29)."""
+
+    space_id = context.get("space_id")
+    visited = (
+        BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
+    )
+    if context.get("pending_faction_influence") is not True or visited is None:
+        return OptionalEffectBlock(OptionalBlockKind.NO_FACTION_GAIN)
+    held = influence_amount(owner.influence, visited)
+    if held > MAX_INFLUENCE - gain.times:
+        return OptionalEffectBlock(
+            OptionalBlockKind.FACTION_NEAR_TOP, held=held, faction=visited.value
+        )
+    return None
+
+
+def _replacing_gain(ability: Ability) -> GainInfluence | None:
+    return next(
+        (
+            reward
+            for line in ability.sections
+            for reward in line.rewards
+            if isinstance(reward, GainInfluence) and reward.replaces_space
+        ),
+        None,
+    )
+
+
 def _visited_faction(context: Mapping[str, ActionValue]) -> Faction:
     """The Faction of the space the Agent was sent to (the placement judged
     it, ``AtFactionSpace``)."""
@@ -687,7 +739,7 @@ def resolve_box(state: GameState) -> RuleResult:
             if reward.visited_space:
                 faction = _visited_faction(context)
                 if reward.replaces_space:
-                    context[SPACE_INFLUENCE_REPLACED] = True
+                    _replace_space_influence(context)
             else:
                 assert reward.factions is not None and not reward.requires_choice
                 faction = reward.factions[0]
@@ -1757,9 +1809,14 @@ def trash_box(ability: Ability | None) -> bool:
     ):
         return not ability.armed_icons
     first, *rest = ability.sections
+    costs = first.costs
     if (
-        len(first.costs) != 1
-        or not isinstance(first.costs[0], TrashCard)
+        not 1 <= len(costs) <= 2
+        or not all(isinstance(cost, TrashCard) for cost in costs)
+        # "this card and an Emperor card from your hand" [Treacherous
+        # Maneuver card]: the pick, then the card itself.
+        or (len(costs) == 2 and costs[1] != TrashCard(this_card=True))
+        or costs[0] == TrashCard(this_card=True) and len(costs) == 2
         or first.costs[0].other_in_play is not None
         or any(line.costs for line in rest)
         or any(
@@ -1776,6 +1833,7 @@ def trash_box(ability: Ability | None) -> bool:
         return False
     return all(
         isinstance(reward, (DrawPersonalCards, GrantCombatDeployment))
+        or (isinstance(reward, GainInfluence) and reward.visited_space)
         for line in ability.sections[len(ability.armed_icons) :]
         for reward in line.rewards
     )
@@ -1808,6 +1866,9 @@ def trash_targets(
 
     owner = state.players[player]
     cost = _trash_cost(ability)
+    gain = _replacing_gain(ability)
+    if gain is not None and replacing_gain_block(owner, gain, context) is not None:
+        return ()
     if cost is not None and cost.this_card:
         # "Trash this card" (OQ-022: a card already trashed by another
         # effect expired before this choice was offered).
@@ -1815,6 +1876,14 @@ def trash_targets(
         if isinstance(card_id, str) and card_id in owner.in_play:
             return (card_id,)
         return ()
+    if cost is not None and cost.hand_only and cost.faction is not None:
+        # "an Emperor card from your hand": another card than the box's own.
+        return tuple(
+            card_id
+            for card_id in owner.hand
+            if card_id != context.get("card_id")
+            and cost.faction in personal_card_for_instance(card_id).factions
+        )
     if cost is not None and cost.hand_only:
         return owner.hand
     # A Row card borrowed with Usurp is not "in play" ("A grafted card in
@@ -1832,11 +1901,18 @@ def trash_block(
     kind = OptionalBlockKind
     if not _trash_conditions_hold(owner, ability):
         return OptionalEffectBlock(kind.NO_COMMANDER_IN_CONFLICT)
+    gain = _replacing_gain(ability)
+    if gain is not None and (
+        block := replacing_gain_block(owner, gain, context)
+    ) is not None:
+        return block
     if trash_targets(state, player, ability, context):
         return None
     cost = _trash_cost(ability)
     if cost is not None and cost.this_card:
         return OptionalEffectBlock(kind.NOT_IN_PLAY)
+    if cost is not None and cost.faction is Faction.EMPEROR:
+        return OptionalEffectBlock(kind.NO_EMPEROR_CARD)
     if cost is not None and cost.hand_only:
         return OptionalEffectBlock(kind.HAND, 1, 0)
     return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
@@ -1919,6 +1995,15 @@ def apply_trash(
         # The card trashed itself as its own cost, so its rewards still pay
         # out (OQ-022).
         context["agent_card_self_trashed"] = True
+    if len(ability.sections[0].costs) == 2:
+        # "this card and an Emperor card": the card trashes itself after the
+        # pick, as part of its own effect (a card trashed by an earlier
+        # effect expired before this choice was offered, OQ-022).
+        itself = trash_personal_card(trashed.state, player, box_card_id, source=source)
+        keep_trash_recruits(context, itself)
+        trashed = RuleResult(
+            state=itself.state, events=(*trashed.events, *itself.events)
+        )
     factions = personal_card_for_instance(card_id).factions
     met = tuple(
         not isinstance(line.condition, TrashedCardHasFaction)
@@ -1949,6 +2034,21 @@ def apply_trash(
     if context["pending_agent_effect"] is True:
         # Armed rewards wait as icons; the box is not done.
         done = ()
+    for reward in paid:
+        if isinstance(reward, GainInfluence) and reward.visited_space:
+            faction = _visited_faction(context)
+            if reward.replaces_space:
+                _replace_space_influence(context)
+            gained = gain_faction_influence(
+                trashed.state,
+                player,
+                faction,
+                reward.times,
+                event_prefix=f"{source}:influence:{faction.value}",
+            )
+            trashed = RuleResult(
+                state=gained.state, events=(*trashed.events, *gained.events)
+            )
     next_state = advance_after_effect(trashed.state, context, trashed.state.players)
     draws = sum(
         reward.count for reward in paid if isinstance(reward, DrawPersonalCards)

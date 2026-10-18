@@ -542,6 +542,8 @@ class TrashCard:
     hand_only: bool = False
     this_card: bool = False
     other_in_play: Faction | None = None
+    # "an Emperor card from your hand" [Treacherous Maneuver card].
+    faction: Faction | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -551,6 +553,8 @@ class TrashCard:
             > 1
         ):
             raise ValueError("a trash cost names one place to take the card from")
+        if self.faction is not None and not self.hand_only:
+            raise ValueError("a trash cost names a Faction only for a card in hand")
 
 
 @dataclass(frozen=True, slots=True)

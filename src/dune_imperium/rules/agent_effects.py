@@ -158,9 +158,7 @@ from dune_imperium.rules.immortality import (
     tleilaxu_track_finished,
 )
 from dune_imperium.rules.influence import (
-    MAX_INFLUENCE,
     gain_faction_influence,
-    influence_amount,
     influence_can_rise,
 )
 from dune_imperium.rules.intrigue_deck import (
@@ -1496,7 +1494,6 @@ def legal_agent_card_trash_actions(
         return trash_rows(state, player, recorded)
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
     ):
         return ()
@@ -1525,45 +1522,10 @@ def legal_agent_card_trash_actions(
 # offers card by card (Tread in Darkness's trash icon is a choice icon of
 # its own, ``agent_icon_block``).
 _TRASH_BOXES: Final = frozenset(
-    {
-        PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-    }
-)
-_TREACHEROUS_MANEUVER = (
-    PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    {PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON}
 )
 
 
-def _treacherous_maneuver_block(
-    owner: PlayerState, context: Mapping[str, ActionValue]
-) -> OptionalEffectBlock | None:
-    """Treacherous Maneuver's arrow without the Influence it would replace.
-
-    "Gain two Influence instead of one" [Treacherous Maneuver card]
-    replaces the visited space's own single gain, "기본 1 대신 총 2"
-    [Main p. 9] (docs/rules/player-turns.md). The arrow is offered only
-    while that gain is still pending: an Agent infiltrated onto a space
-    without a Faction [Main p. 11] has no Influence to gain (OQ-046), and
-    once the space's 1 is gained there is nothing left to replace. With the
-    visited Faction at 5 or 6 the track's top (``MAX_INFLUENCE``) makes two
-    instead of one end where the 1 would, so the two trashed cards would
-    buy nothing: "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을
-    때만 제시한다" (OQ-071, user decision 2026-09-29).
-    """
-
-    space_id = context.get("space_id")
-    visited_faction = (
-        BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
-    )
-    if context.get("pending_faction_influence") is not True or visited_faction is None:
-        return OptionalEffectBlock(OptionalBlockKind.NO_FACTION_GAIN)
-    held = influence_amount(owner.influence, visited_faction)
-    if held > MAX_INFLUENCE - 2:
-        return OptionalEffectBlock(
-            OptionalBlockKind.FACTION_NEAR_TOP, held=held, faction=visited_faction.value
-        )
-    return None
 
 
 def _agent_card_trash_targets(
@@ -1572,17 +1534,6 @@ def _agent_card_trash_targets(
     """The cards the active Agent box's trash may take now."""
 
     owner = state.players[player]
-    effect = active_agent_card(context).agent_effect
-    if effect is _TREACHEROUS_MANEUVER:
-        if _treacherous_maneuver_block(owner, context) is not None:
-            return ()
-        _, source_card_id, _ = _effect_subject(context)
-        return tuple(
-            card_id
-            for card_id in owner.hand
-            if card_id != source_card_id
-            and Faction.EMPEROR in personal_card_for_instance(card_id).factions
-        )
     # A Row card borrowed with Usurp is not "in play" ("A grafted card in
     # the Imperium Row isn't considered to be 'in play.'" [Immortality
     # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
@@ -1612,17 +1563,9 @@ def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock
         return trash_block(state, player, recorded, context)
     if effect not in _TRASH_BOXES:
         return None
-    owner = state.players[player]
-    kind = OptionalBlockKind
-    if effect is _TREACHEROUS_MANEUVER:
-        block = _treacherous_maneuver_block(owner, context)
-        if block is not None:
-            return block
     if _agent_card_trash_targets(state, player, context):
         return None
-    if effect is _TREACHEROUS_MANEUVER:
-        return OptionalEffectBlock(kind.NO_EMPEROR_CARD)
-    return OptionalEffectBlock(kind.NO_CARD_TO_TRASH)
+    return OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_TRASH)
 
 
 def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult:
@@ -1684,49 +1627,6 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             trashed.state.players,
         )
         return RuleResult(state=next_state, events=(*trashed.events, done))
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
-    ):
-        # A card trashed by a freely ordered effect expires before this
-        # choice is offered (OQ-022), so the source is still in play here
-        # and trashes itself as part of its own effect.
-        source_trashed = trash_personal_card(
-            trashed.state,
-            action.actor,
-            source_card_id,
-            source=source,
-        )
-        # The self-trash's own troops (none on a shipped card yet) survive
-        # the write-back below, like the paid card's above.
-        _keep_trash_recruits(context, source_trashed)
-        space_id = context.get("space_id")
-        if not isinstance(space_id, str):
-            raise RuntimeError("Agent-turn effect frame has invalid space")
-        faction = BOARD_SPACES_BY_ID[space_id].faction
-        if faction is None:
-            raise RuntimeError("Treacherous Maneuver requires a Faction space")
-        # One gain of 2 replaces the space's pending 1, so its thresholds
-        # and Alliance resolve as for any two-step gain and the space's own
-        # ``resolve_faction_influence`` step is used up.
-        context["pending_faction_influence"] = False
-        context[_SPACE_INFLUENCE_REPLACED] = True
-        gained = gain_faction_influence(
-            source_trashed.state,
-            action.actor,
-            faction,
-            2,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        next_state = advance_after_effect(
-            gained.state,
-            context,
-            gained.state.players,
-        )
-        return RuleResult(
-            state=next_state,
-            events=(*trashed.events, *source_trashed.events, *gained.events, done),
-        )
     next_state = advance_after_effect(
         trashed.state,
         context,
@@ -4001,7 +3901,6 @@ _BOX_HOOKS: Final[Mapping[str, Callable[[GameState], RuleResult]]] = (
             "possible_futures": _hook_possible_futures,
             # The boxes no stage of the plan listed (composed A3g).
             "long_live_the_fighters": _hook_long_live_the_fighters,
-            "treacherous_maneuver": _hook_rows_only,
             "corrinth_city": _hook_rows_only,
             "arrakis_revolt": _hook_rows_only,
             "beasts_spoils": _hook_beasts_spoils,
