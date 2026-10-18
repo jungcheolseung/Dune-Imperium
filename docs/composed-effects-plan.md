@@ -720,6 +720,12 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
      `rules/sandworms.py`의 `sandworm_block`, `_acquisition_effects`·`open_acquisition_frames`). 2d-5: 세 칸을 아이콘마다(OQ-027 "카드 Agent
      box 확장 3", 새 codec 템플릿 없음; 앱 AI 창은 앱의 두 능력에 맞춤). 같음 확인은 2c 끝 기록 200판, 선언된 차이 `split_boxes`·
      `retreat_event`·`spy_pass_first`(`scripts/ab/differences/cleanup2d.py`)만. 옛 기보 다리 `split_box_icon`·`split_box_follow`·`split_box_spy`.
+     **관문(2d·2f·2c-7 함께, fc9643f7):** 같음 확인 2c 끝 기준 200판 same, d892cd6c 기준 누적 200판 same; 기보 v148·v147 각 exact 78·
+     equal 369·transient 1,513·persistent 39·diverged 1(2c 관문과 같은 한 판)·failed 0(다리 split_box_icon 472·follow 339·spy 148번);
+     pytest 8,089·ruff·mypy; 소크 840판(목록 항목까지 보는 사건 가시성 검사) 실패 0; 속도 호출당 +4.2·−1.9·+2.4%; E2E 60 통과·실패 7(2c와
+     같은 시드 전제). 독립 리뷰의 막는 문제 하나(아이콘으로 나눈 칸의 남은 Spy·Combat 아이콘 곁에 턴 종료가 나옴 — 턴 종료 판정이 다섯째
+     제공자를 안 봄)를 c92b0613로 고쳤다([lessons](lessons.md) 2026-10-18). 그 밖에 기보 다리 하나(Urgent Shigawire 뽑기가 먼저 든 In High
+     Places, 916b2be2)와 둘째 폐기 창의 거절 다리, 다리 단위 테스트, 사건 가시성 검사의 목록 항목.
   5. **정리-2e — 옮겨 받는 옛 표 없애기:** 망에 무관한 것 먼저(Flip, Reclaimed Forces 상수, Tleilaxu 트랙, Tech Reveal 줄, Scouts, 보드
      아이콘), 나머지(Conflict·계약, Reveal 이득, Tech 획득, 기술 타일)는 2c·2d에서 그 사건이 바뀔 때 함께. `ResearchBonus`는 저장·화면·휴리스틱이
      읽는 키라 파생 키로 남긴다. `TakeContract` 문구("face-up").
