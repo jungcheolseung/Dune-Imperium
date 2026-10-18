@@ -304,7 +304,7 @@ def test_an_icon_waits_for_its_condition_and_resolves_last_in_its_events() -> No
     assert result.state.players[0].resources.solari == 2
     source = agent_card_source(1, 0, card)
     assert result.events == (
-        resources_gained_event(f"{source}:solari", 0, solari=2),
+        resources_gained_event(source, 0, solari=2),
         agent_box_event(source, card, 0, BoxOutcome.RESOLVED, effect="solari"),
     )
 

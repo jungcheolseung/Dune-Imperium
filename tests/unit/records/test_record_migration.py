@@ -1883,7 +1883,16 @@ def _where(record: migration.MigratedRecord) -> dict[str, list[int]]:
             # summon (cleanup-2b; [211, 212] while each had its window).
             {"intrigue_held_rewards": [46], "planetologist_intrigue": [211, 211]},
         ),
-        ("v141-heuristic-150", {"piter_reward": [557, 557], "owed_draw": [558]}),
+        (
+            "v141-heuristic-150",
+            # The reshuffle at 420 is an Agent box icon's draw, named after
+            # the box (codec v149, cleanup-2c-3).
+            {
+                "piter_reward": [557, 557],
+                "owed_draw": [558],
+                "reshuffle_renamed": [420],
+            },
+        ),
         (
             "v141-no-immortality-no-go_to_11-heuristic-1211",
             # The reshuffle at 789 is an Agent box's, named after the box

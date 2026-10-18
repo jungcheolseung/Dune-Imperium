@@ -24,12 +24,13 @@ from dune_imperium.core.events import GameEvent
 class BoxOutcome(StrEnum):
     """How an Agent box (or one of its icons or lines) ended."""
 
-    # Its effect was used, if only in part.
+    # Its effect was carried out (the action that ended it did what it asked).
     RESOLVED = "resolved"
-    # The owner refused it with a refusal row.
+    # The owner refused it -- or what was left of it -- with a refusal row.
     DECLINED = "declined"
-    # A printed condition or target was missing: nothing happened (a
-    # mandatory box fizzling at the turn's end, OQ-057 (1)).
+    # A printed condition or target was missing, so its effect could not be
+    # done: it fizzled (OQ-057 (1)); what the rules still pay -- Long Reach's
+    # Faction already named, OQ-060 -- is logged before it.
     UNAVAILABLE = "unavailable"
     # An optional box left unused when the turn ended (OQ-095 (2)).
     LAPSED = "lapsed"
@@ -48,9 +49,12 @@ def agent_box_event(
     outcome: BoxOutcome,
     *,
     effect: str | None = None,
+    unit: str | None = None,
 ) -> GameEvent:
     """The event of ``box`` (``effects.agent_card_source``) ending as
-    ``outcome``; ``effect`` names the icon or line that ended."""
+    ``outcome``; ``effect`` names the icon or line that ended, and ``unit``
+    the id's name for it when two of a box's units share an icon (Urgent
+    Shigawire's added draw, ``boost``, beside the box's own ``cards``)."""
 
     match outcome:
         case BoxOutcome.RESOLVED:
@@ -63,9 +67,10 @@ def agent_box_event(
             kind = "agent_card_effect_lapsed"
         case BoxOutcome.EXPIRED:
             kind = "agent_card_effect_expired"
-    unit = box if effect is None else f"{box}:{effect}"
+    name = unit or effect
+    named = box if name is None else f"{box}:{name}"
     return GameEvent(
-        event_id=f"{unit}:{outcome.value}",
+        event_id=f"{named}:{outcome.value}",
         kind=kind,
         payload=(
             ("card_id", card_id),

@@ -2197,7 +2197,7 @@ def apply_corrinth_city_payment(
             *first_discard.events,
             *second_discard.events,
             GameEvent(
-                event_id=f"{source}:resolved",
+                event_id=f"{source}:paid",
                 kind="corrinth_city_payment_resolved",
                 payload=(
                     ("player", action.actor),
@@ -2266,19 +2266,38 @@ def _expired_partner_box(
 
     partner = other_grafted_card_id(context)
     waiting = context.get("graft_pending_effect") is True
+    icons = _graft_pending_icons(context)
     held = _waiting_box_holds_space_influence(context)
     context["graft_pending_effect"] = False
     context["graft_pending_icons"] = ""
     _release_space_influence(context, held=held)
     if not waiting or not partner:
         return ()
-    return (
-        agent_box_event(
-            agent_card_source(state.round_number, player, partner),
-            partner,
-            player,
-            BoxOutcome.EXPIRED,
-        ),
+    return _box_events(state.round_number, player, partner, BoxOutcome.EXPIRED, icons)
+
+
+def _graft_pending_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """The icons the other grafted card's waiting box still has."""
+
+    value = context.get("graft_pending_icons", "")
+    return tuple(str(value).split(",")) if value else ()
+
+
+def _box_events(
+    round_number: int,
+    player: int,
+    card_instance_id: str,
+    outcome: BoxOutcome,
+    icons: tuple[str, ...],
+) -> tuple[GameEvent, ...]:
+    """A box's ending: one event per icon it still had, else the box's."""
+
+    source = agent_card_source(round_number, player, card_instance_id)
+    if not icons:
+        return (agent_box_event(source, card_instance_id, player, outcome),)
+    return tuple(
+        agent_box_event(source, card_instance_id, player, outcome, effect=key)
+        for key in icons
     )
 
 
@@ -2381,6 +2400,21 @@ def _apply_payment_choice(
                 ),
                 *trashed.events,
                 *researched.events,
+                # The Research line, done by this same action, ends with its
+                # own event (the trash line's is the payment's, after it).
+                *(
+                    (
+                        agent_box_event(
+                            source,
+                            card_instance_id,
+                            action.actor,
+                            BoxOutcome.RESOLVED,
+                            effect=AGENT_ICON_RESEARCH,
+                        ),
+                    )
+                    if research_owed
+                    else ()
+                ),
             ),
         )
     if action.action_id == "pay_agent_card_five_solari_for_tleilaxu":
@@ -2742,7 +2776,9 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     context = dict(frame.context)
     player, card_instance_id, _ = _effect_subject(context)
     owner = state.players[player]
-    expired: list[str] = []
+    # Each expired box with the icons it still had (none for a box resolved
+    # as one action): one event per icon, as the turn's end lapses them.
+    expired: list[tuple[str, tuple[str, ...]]] = []
     # Cards whose box is done but whose added draw was waiting.
     expired_draws: list[str] = []
     if (
@@ -2752,9 +2788,9 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         and context.get("agent_card_self_trashed") is not True
         and not _still_owned(owner, card_instance_id)
     ):
+        expired.append((card_instance_id, pending_agent_icons(context)))
         context["pending_agent_effect"] = False
         context["pending_agent_icons"] = ""
-        expired.append(card_instance_id)
     graft_card_id = other_grafted_card_id(context)
     if (
         context.get("graft_pending_effect") is True
@@ -2767,9 +2803,9 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     ):
         # The grafted partner's un-activated box expires the same way
         # (Beguiling Pheromones trashing it, FAQ p. 1).
+        expired.append((graft_card_id, _graft_pending_icons(context)))
         context["graft_pending_effect"] = False
         context["graft_pending_icons"] = ""
-        expired.append(graft_card_id)
     for boost_card_id in pending_boost_draws(context):
         if _still_owned(owner, boost_card_id) or _left_play_by_own_effect(
             context, boost_card_id
@@ -2780,7 +2816,7 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         # box (OQ-022; user ruling 2026-10-10, OQ-106) -- a Ghola's copy of
         # it with the Ghola (OQ-107).
         drop_boost_draw(context, boost_card_id)
-        if boost_card_id not in expired:
+        if boost_card_id not in (card for card, _ in expired):
             expired_draws.append(boost_card_id)
     if not expired and not expired_draws:
         return result
@@ -2790,13 +2826,11 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     next_state = advance_after_effect(state, context)
     events = (
         *(
-            agent_box_event(
-                agent_card_source(state.round_number, player, expired_id),
-                expired_id,
-                player,
-                BoxOutcome.EXPIRED,
+            event
+            for expired_id, icons in expired
+            for event in _box_events(
+                state.round_number, player, expired_id, BoxOutcome.EXPIRED, icons
             )
-            for expired_id in expired
         ),
         *(
             agent_box_event(
@@ -2805,6 +2839,7 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
                 player,
                 BoxOutcome.EXPIRED,
                 effect=AGENT_ICON_CARDS,
+                unit=_BOOST_UNIT,
             )
             for expired_id in expired_draws
         ),
@@ -2971,10 +3006,10 @@ def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
     card_instance_id = boost_draw_card(context, row_box(action))
     drop_boost_draw(context, card_instance_id)
     # "added to its Agent box: draw a card" [Urgent Shigawire card]: a draw
-    # icon of the boosted card's box.
+    # of the boosted card's box, its own unit beside the box's printed icons.
     source = agent_card_source(state.round_number, player, card_instance_id)
     drawn = draw_or_request_personal_cards(
-        advance_after_effect(state, context), player, 1, source=f"{source}:cards"
+        advance_after_effect(state, context), player, 1, source=source
     )
     return RuleResult(
         state=drawn.state,
@@ -2986,11 +3021,14 @@ def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
                 player,
                 BoxOutcome.RESOLVED,
                 effect=AGENT_ICON_CARDS,
+                unit=_BOOST_UNIT,
             ),
         ),
     )
 
 
+# The id's name of Urgent Shigawire's added draw (``agent_box_event``'s unit).
+_BOOST_UNIT: Final = "boost"
 _NOT_PRINTED: Final = NOT_PRINTED_BLOCK
 
 
@@ -3105,7 +3143,7 @@ def resolve_agent_card_icon(
         context["troops_recruited"] = previous + recruited
         extra_events = (
             *extra_events,
-            *recruit_shortfall_events(f"{source}:{key}", player, amount, recruited),
+            *recruit_shortfall_events(source, player, amount, recruited),
         )
         return recruited_owner
 
@@ -3114,7 +3152,7 @@ def resolve_agent_card_icon(
         extra_events = (
             *extra_events,
             resources_gained_event(
-                f"{source}:{key}", player, solari=solari, spice=spice, water=water
+                source, player, solari=solari, spice=spice, water=water
             ),
         )
         return replace(
@@ -3189,7 +3227,7 @@ def resolve_agent_card_icon(
     intrigue_events: tuple[GameEvent, ...] = ()
     if intrigue_draw_count:
         intrigue_draw = draw_or_queue_intrigue_cards(
-            effect_state, player, intrigue_draw_count, source=f"{source}:{key}"
+            effect_state, player, intrigue_draw_count, source=source
         )
         effect_state = intrigue_draw.state
         intrigue_events = intrigue_draw.events
@@ -3203,7 +3241,7 @@ def resolve_agent_card_icon(
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(
-            next_state, player, personal_draw_count, source=f"{source}:{key}"
+            next_state, player, personal_draw_count, source=source
         )
         next_state = draw.state
         draw_events = draw.events

@@ -42,13 +42,14 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     grant_combat_icon,
     legal_combat_deployments,
     legal_troop_withdrawals,
 )
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import (
@@ -319,6 +320,15 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     # Past the second genetic marker a Research icon draws a card instead.
     assert len(owner.hand) == 1
     assert "card_trashed" in {event.kind for event in result.events}
+    # The one action did both lines: the Research line's event, then the
+    # box's (cleanup-2c-2 review).
+    box = agent_card_source(two.round_number, 0, breakthrough)
+    assert result.events[-2:] == (
+        agent_box_event(
+            box, breakthrough, 0, BoxOutcome.RESOLVED, effect="research"
+        ),
+        agent_box_event(box, breakthrough, 0, BoxOutcome.RESOLVED),
+    )
     kept = resolve_agent_card_effect(two).state.players[0]
     assert breakthrough in kept.in_play and kept.victory_points == 1
 

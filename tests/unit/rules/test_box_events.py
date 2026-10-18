@@ -5,6 +5,7 @@ ends leaves exactly one event saying how it ended, named ``<box>:<outcome>``.
 """
 
 from collections import Counter
+from dataclasses import replace
 
 import pytest
 
@@ -46,6 +47,22 @@ def test_an_icon_s_event_names_the_icon_too() -> None:
     )
 
 
+def test_a_unit_names_a_second_unit_with_the_same_icon() -> None:
+    """Urgent Shigawire's added draw beside the box's own ``cards`` icon."""
+
+    event = agent_box_event(
+        _BOX,
+        "imperium:long_reach:0",
+        1,
+        BoxOutcome.RESOLVED,
+        effect="cards",
+        unit="boost",
+    )
+
+    assert event.event_id == f"{_BOX}:boost:resolved"
+    assert dict(event.payload)["effect"] == "cards"
+
+
 def test_every_outcome_has_its_own_kind() -> None:
     kinds = {
         agent_box_event(_BOX, "imperium:long_reach:0", 1, outcome).kind
@@ -73,21 +90,35 @@ def _waiting_boxes(state: GameState) -> set[str]:
     return waiting
 
 
-@pytest.mark.parametrize("seed", [3, 11])
-def test_a_box_that_stops_waiting_leaves_its_event_once(seed: int) -> None:
-    """Random all-option games with Immortality: a step after which a box no
-    longer waits logs that box's event, and no step logs one box's (or one
-    icon's) event twice. The Signet Ring's box is left out: its events are
-    the Leader's (stage 2c-4)."""
+_ALL = RulesetConfig(
+    choam_module=True,
+    promo_cards=True,
+    bloodlines=True,
+    tech_module=True,
+    immortality=True,
+)
+
+
+@pytest.mark.parametrize(
+    ("config", "seed"),
+    [
+        (_ALL, 3),
+        (_ALL, 11),
+        (_ALL, 710),
+        (RulesetConfig(immortality=True, promo_cards=True), 1104),
+        (replace(_ALL, epic_game=True, arrakeen_scouts=True), 5),
+        (replace(_ALL, epic_game=True, go_to_11=True), 8),
+    ],
+)
+def test_a_box_that_stops_waiting_leaves_its_event_once(
+    config: RulesetConfig, seed: int
+) -> None:
+    """Random games with Immortality: a step after which a box no longer
+    waits logs that box's event, and no step logs one box's (or one icon's)
+    event twice. A Signet Ring's box -- the card's or a Ghola's copy of it
+    -- logs the Leader's events instead (stage 2c-4)."""
 
     engine = UprisingRulesEngine()
-    config = RulesetConfig(
-        choam_module=True,
-        promo_cards=True,
-        bloodlines=True,
-        tech_module=True,
-        immortality=True,
-    )
     state = engine.reset(config, seed)
     agents = [RandomAgent(seed=100 * seed + seat) for seat in range(4)]
     chance = ChanceResolver(seed=seed)
@@ -106,15 +137,13 @@ def test_a_box_that_stops_waiting_leaves_its_event_once(seed: int) -> None:
                 engine.observe(state, decision.owner), legal
             )
         result = engine.apply(state, move)
-        logged = [
-            dict(event.payload)
-            for event in result.events
-            if event.kind in _BOX_KINDS
-        ]
-        units = Counter((entry["card_id"], entry.get("effect")) for entry in logged)
+        boxed = [event for event in result.events if event.kind in _BOX_KINDS]
+        units = Counter(event.event_id for event in boxed)
         assert all(count == 1 for count in units.values()), (move, units)
+        logged = [dict(event.payload) for event in boxed]
+        signet = any(event.kind.startswith("leader_signet") for event in result.events)
         for card in _waiting_boxes(state) - _waiting_boxes(result.state):
-            if ":signet_ring:" in card:
+            if signet or ":signet_ring:" in card:
                 continue
             closed_boxes += 1
             assert any(entry["card_id"] == card for entry in logged), (move, card)

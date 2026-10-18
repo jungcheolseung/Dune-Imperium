@@ -2,34 +2,33 @@
 
 docs/composed-effects-plan.md 5 (A2). A personal card whose Agent box has a
 record in ``content.uprising.agent_abilities`` is resolved here instead of
-by its own branch of ``agent_effects``. Nothing a seat is offered, sees or
-is told changes: the Agent-turn effect frame keeps its keys
-(``pending_agent_effect``, ``pending_agent_icons``), the rows stay
-``resolve_agent_card_effect`` and ``resolve_agent_card_effect(effect=…)``,
-and the events keep their names, ids, payloads and order.
+by its own branch of ``agent_effects``. The Agent-turn effect frame keeps
+its keys (``pending_agent_effect``, ``pending_agent_icons``) and the rows
+stay ``resolve_agent_card_effect`` and ``resolve_agent_card_effect(effect=…)``;
+the events follow the cleanup-2c grammar (docs/composed-effects-plan.md,
+"정리-2c 사건 문법").
 
 The events follow two conventions, one per way a box resolves:
 
 - **One action** (``resolve_box``): the owner's gains (resources, troops,
   the Bene Gesserit boost, the card back to hand), a fixed Faction's
-  Influence (prefix ``<box>:influence:<faction>``) and an Intrigue draw
-  (source ``<box>:intrigue_draw``) are applied before the frame is written
-  back; then the box's event ``<box>`` (``agent_card_effect_resolved``, or
-  ``agent_card_effect_unavailable`` when a printed condition fails); then the
-  follow-ups that may push a frame above it, named ``<box>`` -- a Contract,
-  Research, the Tleilaxu track, specimens, the Intrigue peek, the optional
-  trash frame -- and a personal draw named after the card's *definition*
-  (``round:R:player:P:agent_card:<card>``); the opponents' decisions last,
-  pushed last-printed first so they are answered in printed order (Covert
-  Operation's discards ``<box>:opponent:<seat>``, Holy War's losses
-  ``<box>:unit_loss:<seat>`` before its Spy moves, OQ-036). The event list is
-  the box's event, the draws' and follow-ups' events, then any recruit
-  shortfall.
+  Influence (prefix ``<box>:influence:<faction>``) and an Intrigue draw are
+  applied before the frame is written back; then the follow-ups that may
+  push a frame above it -- a Contract, Research, the Tleilaxu track,
+  specimens, the Intrigue peek, the optional trash frame -- and a personal
+  draw; the opponents' decisions last, pushed last-printed first so they are
+  answered in printed order (Covert Operation's discards
+  ``<box>:opponent:<seat>``, Holy War's losses ``<box>:unit_loss:<seat>``
+  before its Spy moves, OQ-036). Everything is named after ``<box>``. The
+  event list is the gains' ``resources_gained``, the Influence, draws' and
+  follow-ups' events, any recruit shortfall, then the box's event
+  ``<box>:resolved`` (``<box>:unavailable`` when a printed condition fails;
+  ``rules/box_events.py``, cleanup-2c-2).
 - **Icon by icon** (``resolve_box_icon``, OQ-027): the icon's gains, a recruit
-  shortfall named ``<box>:<icon>``, and an Intrigue draw named ``<box>:<icon>``
-  before the write-back; specimens (``<box>:specimen``) then Research
-  (``<box>:research``) and a personal draw (``<box>:<icon>``) after it; the
-  icon's event ``<box>:<icon>:resolved`` comes last.
+  shortfall and an Intrigue draw, all named ``<box>``, before the write-back;
+  specimens (``<box>:specimen``) then Research (``<box>:research``) and a
+  personal draw (``<box>``) after it; the icon's event
+  ``<box>:<icon>:resolved`` comes last.
 
 ``<box>`` is ``effects.agent_card_source``. A printed condition is judged
 when the box resolves (OQ-028); while it fails the single row is withheld
@@ -768,15 +767,17 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
         else:
             available = False
     elif available:
+        # What an icon does is named after its box; the icon names only its
+        # own event (cleanup-2c-3, as a board space's icons).
         next_owner, shortfall = _owner_gains(
-            owner, line, context, card_id, f"{source}:{key}", player
+            owner, line, context, card_id, source, player
         )
-        shortfall = (*_gains_event(line.rewards, f"{source}:{key}", player), *shortfall)
+        shortfall = (*_gains_event(line.rewards, source, player), *shortfall)
     effect_state = replace(base, players=replace_player(base.players, next_owner))
     intrigue_events: tuple[GameEvent, ...] = ()
     if available and (intrigue := _intrigue_draws(line)):
         drawn = draw_or_queue_intrigue_cards(
-            effect_state, player, intrigue, source=f"{source}:{key}"
+            effect_state, player, intrigue, source=source
         )
         effect_state, intrigue_events = drawn.state, drawn.events
     next_state = advance_after_effect(effect_state, context)
@@ -801,7 +802,7 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
     draw_events: tuple[GameEvent, ...] = ()
     if available and (draws := _personal_draws(line, owner)):
         drawn_cards = draw_or_request_personal_cards(
-            next_state, player, draws, source=f"{source}:{key}"
+            next_state, player, draws, source=source
         )
         next_state, draw_events = drawn_cards.state, drawn_cards.events
     event = agent_box_event(

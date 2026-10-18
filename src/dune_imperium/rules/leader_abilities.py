@@ -80,6 +80,7 @@ from dune_imperium.rules.acquisition import (
     acquire_reserve_for_intrigue,
     acquisition_spy_frame,
 )
+from dune_imperium.rules.box_events import BoxNeedsRows
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -494,7 +495,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         # empty observation post because the thirteen posts outnumber the
         # twelve Spies.
         if legal_feyd_track_actions(state, player):
-            raise RuntimeError("Personal Training requires a player choice")
+            raise BoxNeedsRows("Personal Training requires a player choice")
         if isinstance(context.get("feyd_track_stage"), str):
             raise RuntimeError("Personal Training stage lost its choices")
         context["pending_agent_effect"] = False
@@ -514,7 +515,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         # connected to a City board space is occupied and no recall can open
         # one, so the Spy placement is lost.
         if legal_leader_signet_actions(state, player):
-            raise RuntimeError("Arrakis Informant requires a player choice")
+            raise BoxNeedsRows("Arrakis Informant requires a player choice")
         context["pending_agent_effect"] = False
         next_state = _store_signet(state, context, state.players)
         return RuleResult(
@@ -541,7 +542,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         # the twelve Spies) and Chronicler's Insight always offers a decline,
         # so their choice providers never leave the generic resolution; the
         # Bloodlines Signets above all carry a decline or a sure choice.
-        raise RuntimeError("this Leader's Signet Ring requires a player choice")
+        raise BoxNeedsRows("this Leader's Signet Ring requires a player choice")
     raise RuntimeError("this Leader's Signet Ring ability is not implemented")
 
 

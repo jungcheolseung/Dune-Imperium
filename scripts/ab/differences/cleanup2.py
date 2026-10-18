@@ -1263,12 +1263,14 @@ def _box_events_in_base_form(old: Step, candidate: Step) -> None:
     used: set[int] = set()
     out: list[dict[str, object]] = []
     graft_trash = old.step[0] == "a" and old.step[1] in _GRAFT_TRASHES
+    changed = False
     for event in candidate.events:
         kind = str(event["kind"])
         if kind == "resources_gained" and _BOX_SOURCE.match(
             str(_payload(event)["source"])
         ):
             out.extend(_box_gains(old, event))
+            changed = True
             continue
         if kind not in _BOX_KINDS:
             out.append(event)
@@ -1287,6 +1289,7 @@ def _box_events_in_base_form(old: Step, candidate: Step) -> None:
             out.append(event)
             continue
         data = _payload(event)
+        changed = True
         match = next(
             (
                 index
@@ -1300,33 +1303,56 @@ def _box_events_in_base_form(old: Step, candidate: Step) -> None:
             out.append(old.events[match])
         elif kind == "agent_card_effect_expired" and not graft_trash:
             # An expiry the base logged a step later (``_expiry_at_the_trash``
-            # carries it): its base id.
-            box = str(event["event_id"]).split(":expired")[0]
-            box = box.removesuffix(":cards")
-            out.append(
-                _base_event(
-                    f"{box}:effect_expired",
-                    kind,
-                    {"card_id": data["card_id"], "player": data["player"]},
-                )
+            # carries it): its base id, once per box (the candidate logs one
+            # per icon the box still had).
+            box = agent_card_source_of(event)
+            expired = _base_event(
+                f"{box}:effect_expired",
+                kind,
+                {"card_id": data["card_id"], "player": data["player"]},
             )
+            if expired not in out:
+                out.append(expired)
     for index, base in enumerate(old.events):
         if index not in used and "crysknife" in _payload(base):
             # The Beast's Spoils logged its box at its gains, the candidate
             # once the Crysknife's trash is done.
             out.insert(min(index, len(out)), base)
-    # Events named after the box the base named otherwise.
+            changed = True
+    changed |= _adopt_base_ids(old, out, (":agent_card:",))
+    # The base's order only where this rule translated something: an
+    # undeclared reorder elsewhere still shows.
+    candidate.events = _in_base_order(old, out) if changed else out
+
+
+def agent_card_source_of(event: dict[str, object]) -> str:
+    """The box an Agent box's event names (``<box>:...:<outcome>``)."""
+
+    data = _payload(event)
+    event_id = str(event["event_id"])
+    card = str(data["card_id"])
+    return event_id[: event_id.index(card) + len(card)]
+
+
+def _adopt_base_ids(
+    old: Step, out: list[dict[str, object]], roots: tuple[str, ...]
+) -> bool:
+    """Give an event the candidate names after one of ``roots`` the base's
+    id, where the base logged the same event of that seat under another
+    name in the step (in place); whether any was renamed."""
+
     spare = [
         base
         for base in old.events
         if base["event_id"] not in {e["event_id"] for e in out}
         and base["kind"] not in _BOX_KINDS
     ]
+    renamed = False
     for position, event in enumerate(out):
         root = _SEAT_ROOT.match(str(event["event_id"]))
         if (
             root is None
-            or ":agent_card:" not in str(event["event_id"])
+            or not any(word in str(event["event_id"]) for word in roots)
             or event in old.events
         ):
             continue
@@ -1338,15 +1364,134 @@ def _box_events_in_base_form(old: Step, candidate: Step) -> None:
             ):
                 out[position] = base
                 spare.remove(base)
+                renamed = True
                 break
+    return renamed
+
+
+def _in_base_order(
+    old: Step, out: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """``out`` in the base's order when it holds the same events."""
+
     texts = [_row_key(e) for e in out]
     order = [_row_key(e) for e in old.events]
-    if texts != order and sorted(texts) == sorted(order):
-        by_text: dict[str, list[dict[str, object]]] = {}
-        for text, event in zip(texts, out, strict=True):
-            by_text.setdefault(text, []).append(event)
-        out = [by_text[text].pop(0) for text in order]
-    candidate.events = out
+    if texts == order or sorted(texts) != sorted(order):
+        return out
+    by_text: dict[str, list[dict[str, object]]] = {}
+    for text, event in zip(texts, out, strict=True):
+        by_text.setdefault(text, []).append(event)
+    return [by_text[text].pop(0) for text in order]
+
+
+# --- Cleanup-2c-3: board, Conflict and Contract events ------------------------
+
+_BOARD_SOURCE = re.compile(r"^round:\d+:player:\d+:board:[a-z_]+$")
+_CONTROL_SOURCE = re.compile(r"^round:(\d+):player:(\d+):control:([a-z_]+)$")
+# A Conflict reward's own Intrigue cards (the cards it deals itself).
+_REWARD_DEAL = re.compile(r"^round:\d+:combat_reward:\d+:\d+:intrigue_draw:\d+$")
+_NAMED_SPACES = frozenset(
+    {
+        "hagga_basin",
+        "imperial_basin",
+        "deep_desert",
+        "sietch_tabr",
+        "tuek_sietch",
+        "imperial_privilege",
+    }
+)
+
+
+def _same_event(
+    old: Step, used: set[int], event: dict[str, object], keys: tuple[str, ...]
+) -> int | None:
+    """The base event of the step with ``event``'s kind and the same
+    ``keys`` in its payload, not yet taken."""
+
+    data = _payload(event)
+    for index, base in enumerate(old.events):
+        if index in used or base["kind"] != event["kind"]:
+            continue
+        base_data = _payload(base)
+        if all(base_data.get(key) == data.get(key) for key in keys):
+            return index
+    return None
+
+
+def _board_conflict_contract_in_base_form(old: Step, candidate: Step) -> None:
+    """Cleanup-2c-3 (docs/composed-effects-plan.md, "2c-3"): the candidate's
+    board, Conflict reward and Contract events read back as the base's.
+
+    A board icon of the six spaces that had no icon key, a Conflict reward
+    and a Contract completion are the base's event of that space, seat and
+    icon / rank / Contract (their payloads lost their zeros and the board
+    ones their spice, now a gain; the state compares the amounts); board
+    and Control gains and a reward's Intrigue draw had no event (the
+    Control bonus had ``control_bonus_gained``); Imperial Privilege's trade
+    had no board event; the rest named after the board are renamed; then
+    the base's order."""
+
+    used: set[int] = set()
+    out: list[dict[str, object]] = []
+    changed = False
+    for event in candidate.events:
+        kind = event["kind"]
+        data = _payload(event)
+        if kind == "resources_gained":
+            source = str(data["source"])
+            control = _CONTROL_SOURCE.match(source)
+            if control is not None:
+                changed = True
+                round_number, player, space = control.groups()
+                ((resource, amount),) = (
+                    (key, value)
+                    for key, value in data.items()
+                    if key in ("solari", "spice", "water")
+                )
+                out.append(
+                    _base_event(
+                        f"round:{round_number}:control_bonus:{space}:{player}",
+                        "control_bonus_gained",
+                        {
+                            "amount": amount,
+                            "player": int(player),
+                            "resource": resource,
+                            "space_id": space,
+                        },
+                    )
+                )
+                continue
+            if _BOARD_SOURCE.match(source):
+                changed = True
+                continue
+        if kind == "intrigue_card_drawn" and _REWARD_DEAL.match(str(event["event_id"])):
+            changed = True
+            continue
+        if kind == "board_effect_resolved" and (
+            data.get("effect") == "imperial_privilege_intrigue"
+        ):
+            changed = True
+            continue
+        keys: tuple[str, ...] = ()
+        if kind == "board_effect_resolved" and data.get("space_id") in _NAMED_SPACES:
+            keys = ("player", "space_id", "effect")
+        elif kind == "combat_reward_gained":
+            keys = ("player", "rank")
+        elif kind == "contract_completed":
+            keys = ("player", "contract_id")
+        if keys:
+            match = _same_event(old, used, event, keys)
+            if match is not None:
+                used.add(match)
+                out.append(old.events[match])
+                changed = True
+                continue
+        out.append(event)
+    changed |= _adopt_base_ids(old, out, (":board:",))
+    candidate.events = _in_base_order(old, out) if changed else out
+
+
+
 
 
 def _same_payload(base: dict[str, object], event: dict[str, object]) -> bool:
@@ -1506,6 +1651,12 @@ RULES = (
         why="cleanup-2c-2: one box event per Agent box, named <box>:<outcome>; "
         "box sources, gains and refusals unified",
         new=_box_events_in_base_form,
+    ),
+    Rule(
+        name="board_conflict_contract_events",
+        why="cleanup-2c-3: board icons named <space>:<icon>, board and Control "
+        "gains, zero-free Conflict and Contract payloads, source events last",
+        new=_board_conflict_contract_in_base_form,
     ),
     Rule(
         name="agent_box_shuffle",
