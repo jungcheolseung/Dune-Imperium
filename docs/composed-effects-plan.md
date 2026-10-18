@@ -729,6 +729,15 @@ A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 �
   5. **정리-2e — 옮겨 받는 옛 표 없애기:** 망에 무관한 것 먼저(Flip, Reclaimed Forces 상수, Tleilaxu 트랙, Tech Reveal 줄, Scouts, 보드
      아이콘), 나머지(Conflict·계약, Reveal 이득, Tech 획득, 기술 타일)는 2c·2d에서 그 사건이 바뀔 때 함께. `ResearchBonus`는 저장·화면·휴리스틱이
      읽는 키라 파생 키로 남긴다. `TakeContract` 문구("face-up").
+     **구현(2026-10-19, 브랜치 `cleanup2`):** (1) 망에 무관한 여섯(9a8bbe61) — 보드 아이콘은 기록의 DSL 조각 그대로(`*Effect` 다섯 클래스
+     없앰), `TechTile.flips`는 Flip 기록을, Reveal은 타일의 자동 Reveal 줄(`tech_reveal_line`, 불러올 때 검사)을, Reclaimed Forces는 기록
+     줄(`reclaimed_forces_reward`)을, Tleilaxu 트랙 규칙은 칸 기록을 읽고(`TleilaxuBonus`는 화면 이름표 키로만), Scouts 줄은 기록의
+     `EffectSection` 그대로(`ScoutsOption` 없앰). (2) Skill·Tech 획득(f07a1895) — `SkillDefinition`·`TechTile`이 효과 필드를 저장하지
+     않고 기록을 읽는 속성으로(Skill 전투력은 기록의 `IN_CONFLICT` 줄과 조건을 직접 평가, 문구는 기록 줄마다 같은 낱말로). 엔티티
+     특성은 없어진 필드 대신 기록을 읽는다(시점 접두어 반사 + hook 칸, 4.4의 방식; `FEATURE_VERSION` 2, 지문은 A8까지 임시).
+     (3) `TakeContract` 문구(71e2fed6) — DSL이 "Take 1 face-up Contract"/"앞면 {contract} 1개 가져옴"으로(개인 카드 문구와 같게).
+     `ResearchBonus`는 파생 키로 그대로. 확인: 매 단계 2c 끝 기록 200판 same(선언된 차이 그대로), 화면 문구·브라우저 카탈로그·
+     codec 행이 40판에서 바이트 단위로 같음(`tmp/claude/4767ed6a/c2/2e/parity.py`; (3)은 바뀐 Contract 문구만).
   5b. **정리-2f — 거절·확인 줄 정리(사용자 결정 2026-10-18, "모두 추천 값대로"):** (가) 엔진이 더는 내놓지 않는 거절 템플릿
      (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, `resolve_desert_tactics_without_trash`,
      `decline_imperial_privilege_intrigue`)을 codec·처리 표·이름표에서 뺀다(옛 기보는 다리가 이름으로 거른다). (나) 의무 단계에
