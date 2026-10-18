@@ -40,8 +40,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     GainInfluence,
     GainResources,
+    GainVictoryPoints,
+    GenerateSpecimens,
     GrantCombatDeployment,
+    HasAlliance,
     LoseInfluence,
+    LoseTroops,
     PayResources,
     PlaceSpy,
     RecallSpy,
@@ -170,10 +174,16 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 mark=_OPTIONAL,
             ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
-            # one Faction -> Gain 1 VP" (both from one Faction).
+            # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red
+            # chevrons; like gaining two, the steps are not split between
+            # Factions [Main p. 20].
             _CHOICE.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE: _choice(
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(LoseInfluence(2, one_faction=True),),
+                    condition=HasAlliance(Faction.BENE_GESSERIT),
+                ),
                 mark=_OPTIONAL,
-                hook="influence_for_vp",
             ),
             # Shadout Mapes: "You may deploy or retreat 1 troop".
             _CHOICE.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _choice(
@@ -189,8 +199,8 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(
+                _line(GenerateSpecimens(2), costs=(LoseTroops(2, troops_only=True),)),
                 mark=_OPTIONAL,
-                hook="troops_for_specimens",
             ),
             # --- Mandatory: a Spy icon (OQ-057 (14)), a printed "-OR-", a gain ---
             # Public Spectacle, Wheels within Wheels (and Covert Operation's

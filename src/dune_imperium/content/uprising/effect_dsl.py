@@ -594,6 +594,9 @@ class LoseInfluence:
     """
 
     count: int = 1
+    # "lose 2 Influence with one Faction" [For Humanity card]: every step
+    # from the same Faction.
+    one_faction: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -622,6 +625,9 @@ class LoseTroops:
 
     count: int = 1
     from_conflict: bool = False
+    # Troops only, from either zone: no Sardaukar Commander [Tleilaxu
+    # Surgeon card] (OQ-053).
+    troops_only: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:

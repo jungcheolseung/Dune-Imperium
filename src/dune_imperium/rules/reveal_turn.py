@@ -51,8 +51,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     GainInfluence,
     GainResources,
+    GainVictoryPoints,
+    GenerateSpecimens,
     GrantCombatDeployment,
+    HasAlliance,
     LoseInfluence,
+    LoseTroops,
     PayResources,
     PlaceSpy,
     RecallSpy,
@@ -428,6 +432,63 @@ def retreat_pair_reward(
     if isinstance(reward, RevealSwords | RevealPersuasion) and reward.per is None:
         return reward
     return None
+
+
+def influence_loss_reward(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> tuple[int, int, Faction | None] | None:
+    """"[Faction] Alliance: You may lose N Influence with one Faction -> Gain
+    M VP" [For Humanity card]: (N, M, the Alliance's Faction), or None."""
+
+    line = _arrow_line(effect)
+    if (
+        line is None
+        or len(line.costs) != 1
+        or not isinstance(line.costs[0], LoseInfluence)
+        or not line.costs[0].one_faction
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], GainVictoryPoints)
+        or not (line.condition is None or isinstance(line.condition, HasAlliance))
+    ):
+        return None
+    alliance = line.condition
+    faction = alliance.faction if isinstance(alliance, HasAlliance) else None
+    return line.costs[0].count, line.rewards[0].amount, faction
+
+
+def troop_loss_specimens(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> int:
+    """"You may lose 2 troops -> Generate N specimens" [Tleilaxu Surgeon card]
+    (troops only, either zone, OQ-053): N, or 0 for another choice."""
+
+    line = _arrow_line(effect)
+    if (
+        line is None
+        or line.costs != (LoseTroops(2, troops_only=True),)
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], GenerateSpecimens)
+    ):
+        return 0
+    return line.rewards[0].count
+
+
+def _reveal_choice_frame_matching(
+    state: GameState, player: int, matches: Callable[[str], object]
+) -> dict[str, ActionValue] | None:
+    """The top ``REVEAL_CHOICE`` context of ``player``'s if its choice's
+    record ``matches``."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    context = dict(frame.context)
+    effect_value = _effect_value(context)
+    if effect_value is None or not matches(effect_value):
+        return None
+    return context
 
 
 def _target_reward_line(effect: PersonalCardRevealChoiceEffect) -> EffectSection:
@@ -1828,10 +1889,6 @@ def _reveal_choice_card_source(
     )
 
 
-# For Humanity's arrow cost: a "?" Influence diamond with two red chevrons,
-# two Influence with one chosen Faction [For Humanity card]; like gaining two,
-# the two steps cannot be split between Factions [Main p. 20].
-_FOR_HUMANITY_INFLUENCE_COST = 2
 
 
 def _stepwise_alliance_recipients(
@@ -1904,17 +1961,17 @@ def legal_reveal_influence_loss_actions(
     pending = pending_choice_rows(state, player, legal_reveal_influence_loss_actions)
     if pending is not None:
         return pending
-    context = _reveal_choice_frame_context(state, player, _LOSE_INFLUENCE_FOR_VP)
-    if context is None:
+    context = _reveal_choice_frame_matching(state, player, influence_loss_reward)
+    loss = influence_loss_reward(_effect_value(context or {}))
+    if context is None or loss is None:
         return ()
+    cost = loss[0]
     actions: list[DomainAction] = []
     owner = state.players[player]
     for faction in Faction:
-        if influence_amount(owner.influence, faction) < _FOR_HUMANITY_INFLUENCE_COST:
+        if influence_amount(owner.influence, faction) < cost:
             continue
-        recipients = _stepwise_alliance_recipients(
-            state, player, faction, _FOR_HUMANITY_INFLUENCE_COST
-        )
+        recipients = _stepwise_alliance_recipients(state, player, faction, cost)
         recipient_options: tuple[int | None, ...] = (
             tuple(recipients) if len(recipients) > 1 else (None,)
         )
@@ -1957,16 +2014,20 @@ def apply_reveal_influence_loss(
         isinstance(recipient, bool) or not isinstance(recipient, int)
     ):
         raise RuntimeError("Reveal Influence loss has invalid recipient")
+    loss = influence_loss_reward(_effect_value(context))
+    if loss is None:
+        raise RuntimeError("Reveal Influence-loss frame names no such arrow")
+    cost, points, _ = loss
     lost = _lose_influence_stepwise(
         popped,
         action.actor,
         Faction(faction_value),
-        _FOR_HUMANITY_INFLUENCE_COST,
+        cost,
         event_prefix=f"{source}:lost:{faction_value}",
         alliance_recipient=recipient,
     )
     owner = lost.state.players[action.actor]
-    next_owner = replace(owner, victory_points=owner.victory_points + 1)
+    next_owner = replace(owner, victory_points=owner.victory_points + points)
     return RuleResult(
         state=replace(
             lost.state, players=replace_player(lost.state.players, next_owner)
@@ -1979,7 +2040,7 @@ def apply_reveal_influence_loss(
                 payload=(
                     ("card_id", card_id),
                     ("player", action.actor),
-                    ("victory_points", 1),
+                    ("victory_points", points),
                 ),
             ),
         ),
@@ -2093,7 +2154,7 @@ def legal_reveal_troop_sacrifice_actions(
     pending = pending_choice_rows(state, player, legal_reveal_troop_sacrifice_actions)
     if pending is not None:
         return pending
-    context = _reveal_choice_frame_context(state, player, _LOSE_TROOPS_FOR_SPECIMENS)
+    context = _reveal_choice_frame_matching(state, player, troop_loss_specimens)
     if context is None:
         return ()
     owner = state.players[player]
@@ -2157,7 +2218,8 @@ def apply_reveal_troop_sacrifice(
         working = replace(
             working, decision_stack=add_reveal_strength(working.decision_stack, delta)
         )
-    generated = generate_specimens(working, action.actor, 2, source=source)
+    specimens = troop_loss_specimens(_effect_value(context))
+    generated = generate_specimens(working, action.actor, specimens, source=source)
     return RuleResult(state=generated.state, events=(*events, *generated.events))
 
 
@@ -3862,12 +3924,10 @@ def _reveal_choice_effect_is_available(
         (
             # For Humanity: the Alliance and two Influence with one Faction
             # to lose, judged when the choice opens (OQ-028).
-            effect
-            is _LOSE_INFLUENCE_FOR_VP
-            and Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
+            (loss := influence_loss_reward(effect)) is not None
+            and (loss[2] is None or loss[2].value in owner.alliance_faction_ids)
             and any(
-                influence_amount(owner.influence, faction)
-                >= _FOR_HUMANITY_INFLUENCE_COST
+                influence_amount(owner.influence, faction) >= loss[0]
                 for faction in Faction
             )
         )
@@ -3882,7 +3942,7 @@ def _reveal_choice_effect_is_available(
         )
         or (
             # Tleilaxu Surgeon: any two troops, from either zone (OQ-053).
-            effect is _LOSE_TROOPS_FOR_SPECIMENS
+            troop_loss_specimens(effect) > 0
             and owner.troops_garrison + owner.troops_conflict >= 2
         )
         or (
@@ -4003,9 +4063,7 @@ def _build_reveal_choice_frame(
 REVEAL_CHOICE_HOOKS: Final = frozenset(
     {
         "command_acquisition",
-        "influence_for_vp",
         "deploy_or_retreat_troop",
-        "troops_for_specimens",
         "desert_power",
         "priority_contracts",
     }

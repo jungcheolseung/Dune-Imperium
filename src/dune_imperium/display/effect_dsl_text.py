@@ -410,6 +410,9 @@ def cost_text(cost: Cost) -> str:
             if water:
                 parts.append(f"{water} water")
             return "Pay " + ", ".join(parts)
+        case LoseInfluence(count=count, one_faction=True):
+            # "lose 2 Influence with one Faction" [For Humanity card].
+            return f"Lose {count} Influence with one Faction"
         case LoseInfluence(count=count):
             return f"Lose {count} Influence"
         case LoseTroops(count=count, from_conflict=from_conflict):

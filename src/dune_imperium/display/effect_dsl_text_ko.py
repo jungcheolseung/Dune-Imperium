@@ -624,6 +624,9 @@ def cost_text_ko(cost: Cost) -> str:
             # "Paying a cost | 비용 지불" [Main p. 20]; SOV order puts the
             # verb after the joined resource list.
             return ", ".join(parts) + " 지불"
+        case LoseInfluence(count=count, one_faction=True):
+            # Quotes ``tokens_ko.py``'s For Humanity line.
+            return f"한 팩션과 {{influence_any:{count}}} 잃기"
         case LoseInfluence(count=count):
             # {influence_lose} is the client's own combined "Lose N
             # Influence" icon (``ICON_RULES``' "Lose (\d+) Influence" rule),
