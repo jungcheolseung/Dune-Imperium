@@ -503,6 +503,40 @@ B3-4 (가) 차례 안에서 완수한 계약의 보상은 차례의 줄([OQ-112]
   (`records.saves.human_decisions`)는 기록된 걸음(마지막 단계)만 결정으로 내므로, 다시 채굴할 때는 효과·카드 고르기도 결정으로
   내게 고쳐야 한다(B1부터 같은 한계).
 
+### B3b 세부 설계 (2026-10-20)
+
+**차례 안에서 완수한 계약의 보상 = 차례의 줄(B3-4 (가), OQ-112 (4)).** 지금(B2)은 완수한 자리에 보상 창(`contract_reward_icons`)을
+쌓는다. 계약을 그 주인의 차례 안에서(Agent 차례·Reveal·차례 frame이 열려 있을 때) 완수하면, 창 대신 보상의 아이콘마다 차례 줄
+(`turn_rows`, 새 종류 `contract_icon`: 출처 = 완수의 사건 출처, 값 = 계약과 아이콘)을 그 차례 frame에 둔다. 차례 줄이므로 그 frame의
+다른 효과와 함께 어느 순서로든 고르고(효과 단계: `gain`·`recruit`·`gain_influence`·`draw`·`take`·`place_spy`·`recall_agent`,
+`source=contract`, `printed`=계약, `icon`=아이콘), 모두 의무라 다 받기 전엔 턴 종료가 막힌다(`turn_rows.holds_the_end`). 고르는
+아이콘(계약·Spy·Agent 소환)은 지금처럼 제 frame을 연다. Agent 소환의 "이번 차례에 보낸 Agent 말고"[Main p. 20]는 줄을 받을 때 그 차례의
+Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 안에서만 받으므로 같다). CHOAM Transports의 카드는 지금처럼 완수
+직후(OQ-106 13, A 순서). 차례 밖의 완수(Conflict 보상 중의 동맹 계약, Combat의 책략 등)는 지금처럼 창이다. 창을 효과 frame 위로
+들어 옮기던 우회(`_lift_contract_windows`, Solari 구매 중 Acquire 계약)와 황제 트랙 Spy·Friends Everywhere가 창 밑에서 기다리던 예외는
+차례 안에선 필요 없어진다(줄끼리는 순서가 자유).
+
+- **AI·기보·같음 확인:** 휴리스틱·앱 AI·rollout은 옛 엔진이 하던 대로 완수 직후 아이콘을 옛 고정 순서로 받는다
+  (`agents.engine_order`가 차례 줄의 계약 아이콘도 답함 — 효과 단계 frame이면 그 첫 단계로). 옛 기록은 B2의 다리처럼 완수 직후 줄을
+  옛 순서로 받는 다리로, 같음 확인은 정해진 차이로 맞춘다. 창이 다른 frame 위에 쌓이던 경우(카드가 Spy도 놓는 구매의 획득 계약 등)는
+  줄이 그 frame이 닫힌 뒤에 나오므로 순서가 달라진다 — 정해진 차이로 적는다.
+
+**Reveal frame을 효과 → 대상으로(B3b-2).** `EFFECT_STEP_FRAMES`에 `reveal`을 더한다. 조사는 tmp(사실표)에, 대응은 이렇다:
+
+- **구매**(`source=purchase`, `printed`=시장): `acquire_imperium`(Imperium Row)·`acquire_reserve`(Reserve)·`acquire_tleilaxu`(Tleilaxu Row,
+  `to_deck_top`은 마지막 줄에)·`acquire_reclaimed_forces`(`choice`가 대상)·`acquire_manipulated_imperium`(그 좌석이 따로 둔 카드) — 시장마다
+  효과 줄 `acquire` 하나, 대상 줄 `choose_imperium_card`·`choose_reserve_card`·`choose_tleilaxu_card`(새 종류)·`choose_option`.
+- **Reveal 선택**(`source=reveal_card`, `printed`=카드 종류 — 지금의 `source` 인자 그대로, 한 카드만 내는 id는 그 카드를 고정값으로):
+  Spy 놓기·회수(둘 회수는 첫 초소 → 둘째 초소), 폐기, 영향력(교환은 잃을 진영 → 얻을 진영 → 동맹 받을 좌석), 지불, 병력 이동·후퇴(수량은
+  그 줄에), Corrinth City·Delivery Logistics·Desert Power·계약 Reveal의 갈래, Engineered Miracle의 Row 카드 획득. 같은 카드 두 장이 같은
+  선택을 기다리면 줄 하나(먼저 낸 장부터, 지금처럼).
+- **지도자·기술·Tech:** Lady Amber의 후퇴 둘(`option`), Feyd의 Spy 회수, Commander 기술 폐기(`printed`=기술), Forbidden Weapons(전투력 +
+  영향력 잃기 → 진영, 또는 Tech 폐기), Panopticon의 Spy(초소는 열리는 Spy frame에서).
+- **그대로 두는 것:** Reveal의 모은 이득(`gain_reveal_resources` 등 — B3e에서 카드별 기록 줄로 바꿀 때), 거절·빈 확인(B3d), 차례 줄
+  (연구 보너스·선택 폐기·트리거 뽑기·트랙 Spy·Commander 모집·소위원회, B3c), 병력 배치·책략·표본·Family Atomics·턴 종료. Reveal 선택이
+  제 frame(`reveal_choice`, 회수 먼저 뒤에)에서 나오는 행은 B3d(한 효과의 frame은 대상 줄만)까지 그대로라, 그 id들은 codec에 옛
+  template도 남긴다(`OFFERED_AS_WHOLE`).
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로
