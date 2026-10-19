@@ -3465,3 +3465,82 @@ def test_a_record_stamped_with_this_codec_gets_no_agent_turn_bridges(
     assert current.divergence is not None
     assert current.divergence.recorded_index == first
     assert not current.bridge_counts()
+
+
+# --- CHOAM Transports' card before a Contract's reward rows (codec v150) -------
+# User decision 2026-10-19 ("A로 가자"): the card is the owner's only step right
+# after the completion, before every row of the reward (OQ-106 13, OQ-112). An
+# older engine paid the reward's automatic part inside the completion and drew
+# the card after it.
+
+
+def _transports_completed(*, empty_deck: bool) -> GameState:
+    """Seat 0 has just completed Arrakeen I with CHOAM Transports in play."""
+
+    from tests.unit.rules.test_owed_draws import _transports_turn
+
+    placed = _transports_turn()
+    if empty_deck:
+        seat = placed.players[0]
+        placed = replace(
+            placed,
+            players=(
+                replace(seat, deck=(), discard_pile=(*seat.discard_pile, *seat.deck)),
+                *placed.players[1:],
+            ),
+        )
+    complete = DomainAction(
+        "complete_contract", 0, (("instance_id", "contract:arrakeen_i"),)
+    )
+    return ENGINE.apply(placed, complete).state
+
+
+def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> None:
+    state = _transports_completed(empty_deck=False)
+    decision = ENGINE.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    draw = DomainAction("draw_owed_card", 0)
+    assert ENGINE.legal_actions(state, 0) == (draw,)
+    row = DomainAction("resolve_contract_reward_icon", 0, (("effect", "resources"),))
+    shuffle = ChanceOutcome(
+        "round:1:player:0:contract:x:reward:personal_draw:discard_shuffle",
+        ("player:0:starter:dagger:0",),
+    )
+    for recorded in (row, shuffle):
+        taken = migration._transports_card_first(ENGINE, state, decision, recorded)
+        assert taken == draw
+    # The record's own draw is the card itself, applied as recorded.
+    assert migration._transports_card_first(ENGINE, state, decision, draw) is None
+    # Once drawn, nothing waits behind it.
+    drawn = ENGINE.apply(state, draw).state
+    after = ENGINE.current_decision(drawn)
+    assert isinstance(after, PlayerDecision)
+    assert migration._transports_card_first(ENGINE, drawn, after, row) is None
+
+
+def test_a_reshuffle_is_renamed_only_between_transports_and_a_reward_draw() -> None:
+    state = _transports_completed(empty_deck=True)
+    state = ENGINE.apply(state, DomainAction("draw_owed_card", 0)).state
+    decision = ENGINE.current_decision(state)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.decision_id.endswith(":tech_draw:discard_shuffle")
+    pile = tuple(decision.options)
+    reward = "round:1:player:0:contract:contract:x:reward:personal_draw:discard_shuffle"
+    renamed = migration._transports_reshuffle_renamed(
+        ENGINE, state, decision, ChanceOutcome(reward, pile)
+    )
+    assert renamed == ChanceOutcome(decision.decision_id, pile)
+    # Not another pile, and not between two other draws.
+    assert (
+        migration._transports_reshuffle_renamed(
+            ENGINE, state, decision, ChanceOutcome(reward, pile[:-1])
+        )
+        is None
+    )
+    other = "round:1:player:0:board:x:discard_shuffle"
+    assert (
+        migration._transports_reshuffle_renamed(
+            ENGINE, state, decision, ChanceOutcome(other, pile)
+        )
+        is None
+    )

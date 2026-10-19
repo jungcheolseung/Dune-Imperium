@@ -1936,8 +1936,9 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     docs/rules/designer-rulings-audit.md). The card is the seat's own
     ``draw_owed_card`` step, the one right after the completion with nothing
     else of the seat's in between (user decision 2026-10-10, OQ-106: "가 로
-    가자") but the reward's automatic icon rows (stage B2, OQ-112), so the
-    completion stays in the undo window and the draw closes it (OQ-010).
+    가자"), before the reward's icon rows too (stage B2, OQ-112; user
+    decision 2026-10-19), so the completion stays in the undo window and the
+    draw closes it (OQ-010).
     Before, the completion drew the card in its own step.
 
     Seed 1 with CHOAM, Bloodlines and Tech: seat 0's first turn, given CHOAM
@@ -1989,25 +1990,16 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     assert seat.completed_contract_ids == (contract,)
     assert seat.hand == before.players[0].hand  # nothing drawn yet
     # Stage B2 (OQ-112): the reward waits in its window, Arrakeen I's water
-    # a row of its own; the card is owed once the reward's automatic icons
-    # are resolved -- the order the completion kept before, the reward and
-    # then the card -- so the row stays in the undo window too.
-    (water,) = _served(manager, game_id)
-    assert water["action_id"] == "resolve_contract_reward_icon"
-    assert water["arguments"] == {"effect": "resources"}
-    assert water["undoable"] is True
-    summary = _play_raw(manager, summary, index=_int(water["index"]))
-    assert seat.hand == manager._get(game_id).state.players[0].hand
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
+    # a row of its own, and the card comes right after the completion,
+    # before it (user decision 2026-10-19).
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     rows = _served(manager, game_id)
     assert [row["action_id"] for row in rows] == ["draw_owed_card"]
     assert rows[0]["undoable"] is False
     assert rows[0]["detail"] == "CHOAM Transports"
     assert rows[0]["detail_ko"] == "초암 수송선"
 
-    summary = manager.undo(
-        game_id, seat=0, revision=_int(summary["revision"]), steps=2
-    )
+    summary = manager.undo(game_id, seat=0, revision=_int(summary["revision"]))
     assert manager._get(game_id).state == before
 
     complete = next(
@@ -2016,14 +2008,15 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
         if row["action_id"] == "complete_contract"
     )
     summary = _play_raw(manager, summary, index=_int(complete["index"]))
-    (water,) = _served(manager, game_id)
-    summary = _play_raw(manager, summary, index=_int(water["index"]))
     (draw,) = _served(manager, game_id)
     summary = _play_raw(manager, summary, index=_int(draw["index"]))
     seat = manager._get(game_id).state.players[0]
     assert len(seat.hand) == len(before.players[0].hand) + 1
     assert seat.owed_draws == ()
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    (water,) = _served(manager, game_id)
+    assert water["arguments"] == {"effect": "resources"}
+    assert water["undoable"] is True
 
 
 def test_muad_dibs_reveal_can_be_taken_back_before_its_intrigue_card() -> None:

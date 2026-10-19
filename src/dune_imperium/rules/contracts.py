@@ -1183,12 +1183,10 @@ def _complete_contract(
         completed_contract_ids=(*owner.completed_contract_ids, instance_id),
         contracts_completed_turn=owner.contracts_completed_turn + 1,
     )
-    if not _has_automatic_icons(instance_id):
-        # CHOAM Transports' draw: the owner's next step in its own turn,
-        # else the engine's post-step draw (user decision 2026-10-10,
-        # OQ-106). A reward with automatic icons owes it once they are
-        # resolved, or before its first choice (``apply_contract_reward_icon``).
-        next_owner = owe_contract_completion_draw(state, next_owner)
+    # CHOAM Transports' draw: the owner's next step in its own turn, else
+    # the engine's post-step draw (user decision 2026-10-10, OQ-106) -- right
+    # after the completion, before every row of its reward (OQ-112).
+    next_owner = owe_contract_completion_draw(state, next_owner)
     event = GameEvent(
         event_id=f"{source}:completed",
         kind="contract_completed",
@@ -1238,15 +1236,6 @@ _LEGACY_CONTRACT_ORDER: Final = (
     "spy",
     "deep_cover_spy",
 )
-# The icons a Contract reward resolves without a choice. They count as the
-# completion itself, as they did when the engine paid them inside the
-# completing step before stage B2: CHOAM Transports' "When you complete a
-# contract: draw a card" [Tech tile], which "can't be deferred" (Message from
-# designer, OQ-106 13), comes once they are resolved -- or, should the owner
-# take one of the reward's choices first, right before that choice opens.
-_AUTOMATIC_CONTRACT_ICONS: Final = frozenset(
-    {"troops", "resources", "faction_influence", "intrigue", "cards"}
-)
 _CONTRACT_ICONS_KEY: Final = "icons"
 _CONTRACT_PRINTED_KEY: Final = "printed"
 
@@ -1283,36 +1272,6 @@ def contract_reward_icons(instance_id: str) -> tuple[tuple[str, Reward], ...]:
     ability = CONTRACT_ABILITIES[definition.copy_of or definition.card.card_id]
     (line,) = ability.sections
     return tuple((_contract_icon_kind(piece), piece) for piece in line.rewards)
-
-
-def _has_automatic_icons(instance_id: str) -> bool:
-    return any(
-        kind in _AUTOMATIC_CONTRACT_ICONS
-        for kind, _piece in contract_reward_icons(instance_id)
-    )
-
-
-def _completion_draw_due(
-    instance_id: str, before: tuple[str, ...], kind: str, after: tuple[str, ...]
-) -> bool:
-    """Whether resolving ``kind`` (``before`` -> ``after`` still to resolve)
-    owes CHOAM Transports' card now (``_AUTOMATIC_CONTRACT_ICONS``): the
-    reward has automatic icons, the card was not owed yet -- neither all of
-    them nor a choice was resolved before -- and this row is a choice or the
-    last automatic one."""
-
-    if not _has_automatic_icons(instance_id):
-        return False
-    printed = {icon for icon, _piece in contract_reward_icons(instance_id)}
-    choices_done = any(
-        icon not in before for icon in printed - _AUTOMATIC_CONTRACT_ICONS
-    )
-    automatic_left = any(icon in _AUTOMATIC_CONTRACT_ICONS for icon in before)
-    if choices_done or not automatic_left:
-        return False
-    return kind not in _AUTOMATIC_CONTRACT_ICONS or not any(
-        icon in _AUTOMATIC_CONTRACT_ICONS for icon in after
-    )
 
 
 def contract_icon_piece(instance_id: str, kind: str) -> Reward:
@@ -1412,7 +1371,6 @@ def apply_contract_reward_icon(state: GameState, action: DomainAction) -> RuleRe
     icons = list(_contract_window_icons(frame))
     if not isinstance(kind, str) or kind not in icons:
         raise ValueError(f"no {kind!r} icon waits in this Contract reward")
-    before = tuple(icons)
     icons.remove(kind)
     context = dict(frame.context)
     instance_id = str(context["contract_id"])
@@ -1557,10 +1515,6 @@ def apply_contract_reward_icon(state: GameState, action: DomainAction) -> RuleRe
             )
         case _:
             raise ValueError(f"{kind!r} is not a Contract reward icon")
-    if _completion_draw_due(instance_id, before, kind, tuple(icons)):
-        # CHOAM Transports' card (``_AUTOMATIC_CONTRACT_ICONS``).
-        owed = owe_contract_completion_draw(state, state.players[player])
-        state = replace(state, players=replace_player(state.players, owed))
     events.append(
         GameEvent(
             event_id=f"{source}:reward_icon:{len(icons)}",
@@ -1634,8 +1588,6 @@ def apply_contract_intrigue_trash(
     owner = state.players[player]
     if instance_id not in owner.active_contract_ids:
         raise RuntimeError("the Immediate Contract awaiting its trash must be active")
-    # CHOAM Transports' draw is owed once the reward's two draws are done
-    # (``apply_contract_reward_icon``).
     next_owner = replace(
         owner,
         intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
@@ -1645,6 +1597,8 @@ def apply_contract_intrigue_trash(
         completed_contract_ids=(*owner.completed_contract_ids, instance_id),
         contracts_completed_turn=owner.contracts_completed_turn + 1,
     )
+    # CHOAM Transports' draw, right after the completion (``_complete_contract``).
+    next_owner = owe_contract_completion_draw(state, next_owner)
     remaining = state.decision_stack[:-1]
     next_state = with_trashed_intrigue(
         replace(

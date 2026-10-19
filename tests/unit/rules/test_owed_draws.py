@@ -465,11 +465,10 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     assert complete in ENGINE.legal_actions(placed, 0)
 
     # v150 (stage B2, OQ-112): the Contract's reward is a window of icon rows;
-    # the card is owed once its automatic icons (here the water) are resolved.
-    opened = ENGINE.apply(placed, complete).state
-    assert opened.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
-    assert opened.players[0].owed_draws == ()
-    completed = answer_reward_windows(ENGINE, opened)
+    # the card is the owner's only step right after the completion, before
+    # every row (here the water; user decision 2026-10-19).
+    completed = ENGINE.apply(placed, complete).state
+    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
     seat = completed.players[0]
     assert seat.completed_contract_ids == ("contract:arrakeen_i",)
     assert seat.hand == hand_before  # the completion draws nothing
@@ -482,6 +481,10 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     drawn = ENGINE.apply(completed, DRAW_CARD).state
     assert len(drawn.players[0].hand) == len(hand_before) + 1
     assert drawn.players[0].owed_draws == ()
+    assert drawn.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert drawn.players[0].resources.water == seat.resources.water
+    drawn = answer_reward_windows(ENGINE, drawn)
+    assert drawn.players[0].resources.water == seat.resources.water + 1
     offered = ENGINE.legal_actions(drawn, 0)
     assert DRAW_CARD not in offered
     assert {"resolve_board_effect", "deploy_troops"} <= {
@@ -489,14 +492,13 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     }
 
 
-def test_choam_transports_card_comes_before_a_contract_reward_choice() -> None:
-    """Research Station I's reward is 2 Solari and a Spy. The Contract's
-    automatic icons count as its completion (as when the engine paid them
-    inside the completing step), so CHOAM Transports' card waits for them;
-    but its owner may take the Spy row first, and the card, which "can't be
-    deferred" (Message from designer, OQ-106 13), is then drawn before the
-    Spy is placed -- once, not again after the Solari row (stage B2, OQ-112;
-    independent review 2026-10-19)."""
+def test_choam_transports_card_comes_before_every_reward_row() -> None:
+    """Research Station I's reward is 2 Solari and a Spy. CHOAM Transports'
+    card "is triggered as soon as the contract is completed and can't be
+    deferred" (Message from designer), the owner's only step right after
+    the completion (OQ-106 13); the reward's rows are each an effect of
+    their own (OQ-112), so the card comes before all of them, the Solari
+    as well as the Spy, and only once (user decision 2026-10-19)."""
 
     from tests.unit.rules.test_bloodlines_contracts import _owner, _state
 
@@ -515,23 +517,24 @@ def test_choam_transports_card_comes_before_a_contract_reward_choice() -> None:
     )
     state = complete_contract_by_effect(state, 0, contract, source="round:1:test").state
     assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
-    assert state.players[0].owed_draws == ()
+    assert ENGINE.legal_actions(state, 0) == (DRAW_CARD,)
+    hand = len(state.players[0].hand)
+    state = ENGINE.apply(state, DRAW_CARD).state
+    assert len(state.players[0].hand) == hand + 1
+    assert {
+        dict(action.arguments)["effect"] for action in ENGINE.legal_actions(state, 0)
+    } == {"resources", "spy"}
 
     state = ENGINE.apply(
         state, DomainAction("resolve_contract_reward_icon", 0, (("effect", "spy"),))
     ).state
     assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
-    assert ENGINE.legal_actions(state, 0) == (DRAW_CARD,)
-    hand = len(state.players[0].hand)
-    state = ENGINE.apply(state, DRAW_CARD).state
-    assert len(state.players[0].hand) == hand + 1
     place = next(
         action
         for action in ENGINE.legal_actions(state, 0)
         if action.action_id == "place_contract_spy"
     )
     state = ENGINE.apply(state, place).state
-    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
     solari = state.players[0].resources.solari
     state = ENGINE.apply(
         state,

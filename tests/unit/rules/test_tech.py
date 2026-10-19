@@ -2755,8 +2755,8 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
     turn = _turn_state(owner, stacks=((), (), ()), config=TECH_CHOAM)
     combat = replace(turn, phase=GamePhase.COMBAT, decision_stack=())
     # ``receive_contract`` leaves the tile active; its taker's step completes
-    # it and opens its reward window (stage B2, OQ-112), whose Solari row is
-    # the Contract's automatic part: the draw is owed once it is paid.
+    # it and opens its reward window (stage B2, OQ-112): the draw is owed
+    # with the completion, before the window's Solari row.
     def take_immediate(state: GameState) -> GameState:
         taken = replace(
             state,
@@ -2770,23 +2770,20 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
         ).state
 
     opened = take_immediate(combat)
-    assert opened.players[0].completed_contract_ids == ("contract:immediate",)
-    assert opened.decision_stack[-1].kind == "contract_reward_icons"
-    assert opened.players[0].tech_cards_owed == 0
-    state = settle_reward_window(opened)
-    completed = state.players[0]
+    completed = opened.players[0]
     assert completed.completed_contract_ids == ("contract:immediate",)
+    assert opened.decision_stack[-1].kind == "contract_reward_icons"
     assert completed.tech_cards_owed == 1
     assert completed.owed_draws == ()
-    drawn = draw_owed_tech_cards(RuleResult(state=state)).state
+    drawn = draw_owed_tech_cards(RuleResult(state=opened)).state
     assert len(drawn.players[0].hand) == 5 + 1
     assert drawn.players[0].tech_cards_owed == 0
+    paid = settle_reward_window(drawn).players[0]
+    assert paid.resources.solari == completed.resources.solari + 2
     # Inside the owner's own turn it is the owner's own step right after
     # the completion ("can't be deferred", Message from designer; user
     # decision 2026-10-10, OQ-106), tests/unit/rules/test_owed_draws.py.
-    held_opened = take_immediate(turn)
-    assert held_opened.players[0].owed_draws == ()
-    held = settle_reward_window(held_opened).players[0]
+    held = take_immediate(turn).players[0]
     assert held.tech_cards_owed == 0
     assert [entry[:2] for entry in held.owed_draws] == [("card", "choam_transports")]
 

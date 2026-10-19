@@ -102,6 +102,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import (
     OWED_CARD,
     OWED_INTRIGUE,
+    OWED_ORIGIN_CHOAM_TRANSPORTS,
     FrameKind,
     own_turn_frame_index,
     replace_player,
@@ -290,6 +291,9 @@ def migrate_record(
     # Start clears it). Such a step is dropped only while no Intrigue choice
     # of the seat is on top, where a rewards step of another card stands.
     harvest_due: Counter[int] = Counter()
+    # Seats whose CHOAM Transports card ``TRANSPORTS_CARD_FIRST`` took before
+    # the record drew it; that recorded draw is dropped when it comes.
+    transports_taken: Counter[int] = Counter()
 
     def harvest_rewards_due(index: int, recorded: ReplayStep, at: GameState) -> bool:
         """Drop the recorded Harvest Cells rewards step a recording engine
@@ -484,6 +488,15 @@ def migrate_record(
                     if gone is not None:
                         dropped.append((index, gone))
                         break
+                if (
+                    bridged is None
+                    and isinstance(recorded, DomainAction)
+                    and recorded.action_id == "draw_owed_card"
+                    and transports_taken[recorded.actor] > 0
+                ):
+                    transports_taken[recorded.actor] -= 1
+                    dropped.append((index, TRANSPORTS_CARD_DROPPED))
+                    break
                 if bridged is None:
                     divergence = Divergence(
                         recorded_index=index,
@@ -498,6 +511,9 @@ def migrate_record(
                     continue
                 state = engine.apply(state, answer).state
                 migrated.append(MigratedStep(answer, None, bridge.name))
+                if bridge.name == TRANSPORTS_CARD_FIRST:
+                    assert isinstance(answer, DomainAction)
+                    transports_taken[answer.actor] += 1
                 continue
             before, mark = state, len(migrated)
             migrated.append(
@@ -3025,6 +3041,74 @@ def _combat_reward_icon(
     return answer
 
 
+# Stage B2 (user decision 2026-10-19): CHOAM Transports' card is the
+# owner's only step right after a Contract's completion, before every row of
+# its reward (OQ-106 13, OQ-112). An engine before codec v150 paid the
+# reward's automatic part inside the completion and drew the card after it,
+# so its record may hold the reward's own card draw (and the reshuffle that
+# draw asked for) before the card; such a record's step then waits behind
+# the card, which ``_transports_card_first`` takes, and its recorded card is
+# dropped once it comes (``TRANSPORTS_CARD_DROPPED``).
+TRANSPORTS_CARD_FIRST: Final = "transports_card_first"
+TRANSPORTS_CARD_DROPPED: Final = "transports_card_taken_first"
+
+
+def _transports_card_first(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Take CHOAM Transports' card where it is the owner's only step and the
+    recorded step is not it (see ``TRANSPORTS_CARD_FIRST``)."""
+
+    if not isinstance(decision, PlayerDecision):
+        return None
+    if isinstance(step, DomainAction) and step.action_id == "draw_owed_card":
+        return None
+    owner = state.players[decision.owner]
+    if not any(entry[1] == OWED_ORIGIN_CHOAM_TRANSPORTS for entry in owner.owed_draws):
+        return None
+    draw = DomainAction(action_id="draw_owed_card", actor=decision.owner)
+    return draw if engine.legal_actions(state, decision.owner) == (draw,) else None
+
+
+def _transports_reshuffle_renamed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Give a recorded discard reshuffle the id of the one this engine asks
+    when CHOAM Transports' card and a Contract reward's card draw swapped
+    places (``TRANSPORTS_CARD_FIRST``): the one of the two that finds the
+    deck empty asks for it, under its own name. The same seat's same pile,
+    the recorded order kept."""
+
+    del engine
+    if not (
+        isinstance(step, ChanceOutcome)
+        and isinstance(decision, ChanceDecision)
+        and step.decision_id != decision.decision_id
+        and state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    ):
+        return None
+    player = dict(state.decision_stack[-1].context).get("player")
+    prefix = f"round:{state.round_number}:player:{player}:"
+    names = (step.decision_id, decision.decision_id)
+    if not all(
+        name.startswith(prefix) and name.endswith(_DISCARD_SHUFFLE) for name in names
+    ) or Counter(step.values) != Counter(decision.options):
+        return None
+    transports = [name for name in names if name.endswith(":tech_draw:discard_shuffle")]
+    reward = [
+        name for name in names if name.endswith(":reward:personal_draw:discard_shuffle")
+    ]
+    if len(transports) != 1 or len(reward) != 1:
+        return None
+    return ChanceOutcome(decision.decision_id, step.values)
+
+
 BRIDGES: tuple[Bridge, ...] = (
     Bridge("pause", _pause),
     # Right after the recorded step that opened the window (the recording
@@ -3037,6 +3121,13 @@ BRIDGES: tuple[Bridge, ...] = (
         follows=True,
     ),
     Bridge("combat_reward_icon", _combat_reward_icon, before_codec=150),
+    Bridge(TRANSPORTS_CARD_FIRST, _transports_card_first, before_codec=150),
+    Bridge(
+        "transports_reshuffle_renamed",
+        _transports_reshuffle_renamed,
+        before_codec=150,
+        rewrites=True,
+    ),
     # Codec v141 (e7eef001) opens the Conflict-end Intrigue window on public
     # facts, so it now asks seats an older engine skipped because they held
     # no card for it; such a seat could only decline.

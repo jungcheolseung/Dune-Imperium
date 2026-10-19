@@ -775,7 +775,7 @@ _GOLDEN_DIGESTS = {
         2984,
     ),
     "everything": (
-        "62fa4f696ea46684793ce9f9215f2ae532bb2030ec73f7f656d08ae8efd7bdff",
+        "f4cba0ab1b272f7bbecce5b2b9f85b4a5849ee42d52b3d7f73587d4a93d48819",
         3796,
     ),
     "draft": ("ddd905e555561cb935a255e8dec9a4dd52a821ed08feee16e0ba6a27c3474d64", 2516),

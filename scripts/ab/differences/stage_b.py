@@ -15,6 +15,7 @@ placement compares as its two moves: the state after both is the base's.
 
 import json
 import re
+from collections import Counter
 from typing import Any
 
 from equivalence_rules import At, Rule, Step
@@ -308,20 +309,29 @@ def _without_reward(views: list[Any]) -> list[Any]:
 
     out = _without_frame(views)
     for view in out:
+        view.pop("decision_owner", None)
+        view.pop("intrigue_deck_size", None)
         for player in view.get("players") or ():
             for key in (
                 "resources",
                 "troops_supply",
                 "troops_garrison",
+                "troops_conflict",
+                "combat_strength",
                 "ungained_troops",
                 "influence",
                 "intrigue_count",
+                "intrigue_card_count",
+                "victory_points",
                 "alliances",
             ):
                 player.pop(key, None)
         private = view.get("private")
         if isinstance(private, dict):
             private.pop("intrigue_cards", None)
+            # The deck's top card the seat knows, which a reward's card
+            # draw moves.
+            private.pop("peeked_card_id", None)
     return out
 
 
@@ -362,7 +372,230 @@ def _immediate_through_trigger(old: Step, candidate: Step) -> None:
     ]
 
 
+# What a game's earlier steps left for later ones (module state, one game at
+# a time per worker): a Contract's reward events the base had where the
+# candidate's rows still wait behind an immediate draw, the windows waiting,
+# the CHOAM Transports cards taken before the record drew them.
+_GAME: dict[str, Any] = {
+    "last": -1,
+    "moved": [],
+    "since": -1,
+    "windows": {},
+    "taken": Counter(),
+    "swapped": None,
+}
+_WAIT_STEPS = 3
+
+
+def _game_step(index: int) -> None:
+    """Start afresh when a new game begins (its steps count from 0 again)."""
+
+    if index < _GAME["last"]:
+        _GAME.update(moved=[], since=-1, windows={}, taken=Counter(), swapped=None)
+    _GAME["last"] = index
+
+
+def _event_key(event: dict[str, Any]) -> str:
+    return json.dumps(event, sort_keys=True)
+
+
+def _moved_rewards(
+    old: Step, candidate: Step, waiting: list[str], late: set[str]
+) -> None:
+    """Move a waiting Contract reward's events from the base's step to the
+    candidate's later one, and leave the state they moved unchecked in
+    between (a few steps at most; past that a difference shows)."""
+
+    if late:
+        # The rows of a window whose completion came a step earlier (an
+        # event the base has here too, such as the reshuffle a row's card
+        # draw asked for, stays).
+        base = Counter(map(_event_key, old.events))
+        kept = []
+        for event in candidate.events:
+            key = _event_key(event)
+            if base[key] > 0:
+                base[key] -= 1
+            elif any(
+                str(event["event_id"]).startswith(f"{source}:reward")
+                or str(event["event_id"]).startswith(f"{source}:contract_reward")
+                for source in late
+            ):
+                continue
+            kept.append(event)
+        candidate.events = kept
+    if _GAME["moved"] and old.index - _GAME["since"] <= _WAIT_STEPS:
+        base = Counter(map(_event_key, old.events))
+        kept = []
+        for event in candidate.events:
+            key = _event_key(event)
+            if base[key] > 0:
+                base[key] -= 1
+            elif key in _GAME["moved"]:
+                _GAME["moved"].remove(key)
+                continue
+            kept.append(event)
+        candidate.events = kept
+    elif _GAME["moved"]:
+        _GAME["moved"] = []
+    if waiting:
+        theirs = Counter(map(_event_key, candidate.events))
+        rest = []
+        for event in old.events:
+            key = _event_key(event)
+            if theirs[key] > 0:
+                theirs[key] -= 1
+                rest.append(event)
+            else:
+                _GAME["moved"].append(key)
+        old.events = rest
+        _GAME["since"] = old.index
+    # The step's views are those before it: a window waiting then still
+    # shows its reward unpaid. Its state is after it.
+    waited = bool(_GAME["windows"])
+    _GAME["windows"] = {
+        source: since
+        for source, since in {
+            **_GAME["windows"],
+            **dict.fromkeys(waiting, old.index),
+        }.items()
+        if source not in late and old.index - since <= _WAIT_STEPS
+    }
+    if waited and _without_reward(candidate.views) == _without_reward(old.views):
+        candidate.views_text = old.views_now()
+        candidate._views = None
+    if _GAME["windows"] or _GAME["moved"] or any(_GAME["taken"].values()):
+        candidate.state_unchecked = True
+
+
+def _shuffle_seat(decision_id: str) -> str | None:
+    """The seat whose discard pile a reshuffle decision shuffles."""
+
+    if not decision_id.endswith(":discard_shuffle") or ":player:" not in decision_id:
+        return None
+    return decision_id.split(":player:", 1)[1].split(":", 1)[0]
+
+
+def _swapped_reshuffle(recorded: str, asked: str) -> bool:
+    """A CHOAM Transports card's reshuffle against a Contract reward draw's,
+    of the same seat: whichever of the two draws found the deck empty."""
+
+    names = (recorded, asked)
+    return (
+        recorded != asked
+        and _shuffle_seat(recorded) is not None
+        and _shuffle_seat(recorded) == _shuffle_seat(asked)
+        and sum(name.endswith(":tech_draw:discard_shuffle") for name in names) == 1
+        and sum(
+            name.endswith(":reward:personal_draw:discard_shuffle") for name in names
+        )
+        == 1
+    )
+
+
+def _transports_moves(old: Step, at: At) -> tuple[Any, ...] | None:
+    """The candidate's moves where CHOAM Transports' card comes first (the
+    user decision of 2026-10-19; records bridge ``transports_card_first``):
+    a recorded step that waits behind the card takes the card first, the
+    record's own card draw then vanishes, and a reshuffle recorded under the
+    other draw's name is asked under the candidate's."""
+
+    _game_step(old.index)
+    taken: Counter[int] = _GAME["taken"]
+    if old.step[0] == "c":
+        if isinstance(at.decision, ChanceDecision) and _swapped_reshuffle(
+            str(old.step[1]), at.decision.decision_id
+        ):
+            if sorted(at.decision.options) == sorted(old.step[2]):
+                return (ChanceOutcome(at.decision.decision_id, tuple(old.step[2])),)
+    if not isinstance(at.decision, PlayerDecision):
+        return None
+    owner = at.decision.owner
+    draw = DomainAction(action_id="draw_owed_card", actor=owner)
+    if old.step[0] == "a" and old.step[1] == "draw_owed_card":
+        if taken[owner] > 0 and draw not in at.legal:
+            taken[owner] -= 1
+            return ()
+        return None
+    if at.legal != (draw,) or not any(
+        entry[1] == "choam_transports" for entry in at.state.players[owner].owed_draws
+    ):
+        return None
+    after = at.engine.apply(at.state, draw).state
+    taken[owner] += 1
+    if old.step[0] != "c":
+        return (draw,)
+    # The recorded reshuffle: the card's own (the deck was empty), or the
+    # Contract's card draw's once the window's rows are answered.
+    moves: list[Any] = [draw]
+    for _ in range(8):
+        decision = at.engine.current_decision(after)
+        if isinstance(decision, ChanceDecision):
+            name = decision.decision_id
+            if name == old.step[1] or (
+                _swapped_reshuffle(str(old.step[1]), name)
+                and sorted(decision.options) == sorted(old.step[2])
+            ):
+                _GAME["swapped"] = (old.index, name, str(old.step[1]))
+                return (*moves, ChanceOutcome(name, tuple(old.step[2])))
+            break
+        if not isinstance(decision, PlayerDecision):
+            break
+        row = legacy_contract_reward_icon(after, decision.owner)
+        if row is None or row not in at.engine.legal_actions(after, decision.owner):
+            break
+        moves.append(row)
+        after = at.engine.apply(after, row).state
+    return (draw,)
+
+
+def _reshuffle_in_base_form(old: Step, candidate: Step) -> None:
+    """A renamed reshuffle's decision and event read as the base's; so does
+    a recorded reshuffle the candidate asked behind CHOAM Transports' card,
+    under the card's decision (``_transports_moves``)."""
+
+    swapped = _GAME.get("swapped")
+    if swapped is not None and swapped[0] == old.index:
+        _GAME["swapped"] = None
+        asked, recorded = swapped[1], swapped[2]
+        candidate.decision = old.decision
+        candidate.page = old.page
+        if _without_reward(candidate.views) == _without_reward(old.views):
+            candidate.views_text = old.views_now()
+            candidate._views = None
+        asked_id = asked.removesuffix("discard_shuffle") + "discard_shuffled"
+        recorded_id = recorded.removesuffix("discard_shuffle") + "discard_shuffled"
+        candidate.events = [
+            {**event, "event_id": recorded_id}
+            if event["event_id"] == asked_id
+            else event
+            for event in candidate.events
+        ]
+        return
+    if old.step[0] != "c" or candidate.decision == old.decision:
+        return
+    if not isinstance(candidate.decision, list) or not isinstance(old.decision, list):
+        return
+    asked, recorded = str(candidate.decision[0]), str(old.decision[0])
+    if (
+        _swapped_reshuffle(recorded, asked)
+        and sorted(candidate.decision[1]) == sorted(old.decision[1])
+        and candidate.decision[2:] == old.decision[2:]
+    ):
+        candidate.decision = old.decision
+        asked_id = asked.removesuffix("discard_shuffle") + "discard_shuffled"
+        recorded_id = recorded.removesuffix("discard_shuffle") + "discard_shuffled"
+        candidate.events = [
+            {**event, "event_id": recorded_id}
+            if event["event_id"] == asked_id
+            else event
+            for event in candidate.events
+        ]
+
+
 def _reward_events_in_base_form(old: Step, candidate: Step) -> None:
+    _game_step(old.index)
+    _reshuffle_in_base_form(old, candidate)
     _owed_draw_settled_early(old, candidate)
     _owed_draw_before_window(old, candidate)
     _immediate_through_trigger(old, candidate)
@@ -397,6 +630,19 @@ def _reward_events_in_base_form(old: Step, candidate: Step) -> None:
             for seat in range(4)
             for name in ("tech_cards_owed", "deck", "hand", "discard_pile")
         }
+    for event in candidate.events:
+        if event["kind"] != "contract_completed":
+            continue
+        # CHOAM Transports' card owed outside its owner's turn is drawn by
+        # the engine's post-step hook, which waits while a chance decision
+        # is on top: the base completed the Contract under the pause before
+        # the next recipient, the candidate under its reward window, which
+        # draws the card a step earlier.
+        seat = dict(event["payload"])["player"]
+        candidate.fields_unchecked |= {
+            f"players[{seat}].{name}"
+            for name in ("tech_cards_owed", "deck", "hand", "discard_pile")
+        }
     resolved = {
         dict(event["payload"]).get("contract_id")
         for event in candidate.events
@@ -408,25 +654,12 @@ def _reward_events_in_base_form(old: Step, candidate: Step) -> None:
             continue
         fields = dict(event["payload"])
         if fields["contract_id"] not in resolved:
-            # An immediate draw earned in the same step (a Bene Gesserit 4
-            # Intrigue card, Imperial Birthright; OQ-106) comes before the
-            # reward window: the base paid the reward inside the step, the
-            # candidate after that draw, so the base's reward events and the
-            # fields they moved come a step later (the next step compares in
-            # full).
+            # An immediate draw earned in the same step (CHOAM Transports'
+            # card, OQ-106 13 and the user decision of 2026-10-19; a Bene
+            # Gesserit 4 Intrigue card) comes before the reward window: the
+            # base paid the reward inside the step, the candidate after that
+            # draw (and the reshuffle it may ask for).
             waiting.append(str(event["event_id"]).removesuffix(":completed"))
-            candidate.fields_unchecked |= {
-                f"players[{fields['player']}].{name}" for name in _REWARD_FIELDS
-            }
-    if waiting:
-        old.events = [
-            event
-            for event in old.events
-            if not any(
-                str(event["event_id"]).startswith(f"{source}:reward")
-                for source in waiting
-            )
-        ]
     # The rows of a window whose completion came a step earlier: their
     # events are the base's, there.
     completed_here = {
@@ -439,16 +672,7 @@ def _reward_events_in_base_form(old: Step, candidate: Step) -> None:
         for event in candidate.events
         if event["kind"] == _CONTRACT_ICON_EVENT
     } - completed_here
-    if late:
-        candidate.events = [
-            event
-            for event in candidate.events
-            if not any(
-                str(event["event_id"]).startswith(f"{source}:reward")
-                or str(event["event_id"]).startswith(f"{source}:contract_reward")
-                for source in late
-            )
-        ]
+    _moved_rewards(old, candidate, waiting, late)
     if not any(icon_event(event) for event in candidate.events):
         return
     summaries = _summed_rewards(candidate.events)
@@ -553,6 +777,7 @@ COMBAT_REWARD_ICONS = Rule(
     "Contract's owner, resolves its icons one row each, in any order",
     old=_drops_reward_summary,
     new=_reward_events_in_base_form,
+    moves=_transports_moves,
     answer=_reward_answer,
 )
 
