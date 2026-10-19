@@ -148,7 +148,10 @@ from dune_imperium.rules.frames import FrameKind
 # deciding the next step sees what it picked (an Intrigue card's option step
 # had not shown the card): appended as ``private_effect_pick_intrigue``,
 # ``_faction``, ``_post``, ``_tech`` and ``_battle`` (a Conflict or Objective
-# card), one segment per kind of target a path picks before its last.
+# card), one segment per kind of target a path picks before its last, and
+# ``private_effect_pick_second_faction`` for a second one (Captured
+# Mentat's Faction gained, after the one lost: their order decides which
+# Alliance is handed on).
 OBSERVATION_VERSION: Final = 33
 _SEATS: Final = 4
 
@@ -420,6 +423,8 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_effect_pick_post", len(POST_IDS)),
             ("private_effect_pick_tech", len(TECH_IDS)),
             ("private_effect_pick_battle", len(BATTLE_CARD_IDS)),
+            # v33: a second picked target before the last (a Faction).
+            ("private_effect_pick_second_faction", len(FACTION_IDS)),
         )
     )
     return tuple(lengths)
@@ -673,11 +678,11 @@ def _write_effect_pick(
 
     if not rows:
         return
-    for action_id, target in rows[1:]:
-        segment, argument, index_of = _PICKED_TARGETS[action_id]
+    for position, (action_id, target) in enumerate(rows[1:]):
+        segments, argument, index_of = _PICKED_TARGETS[action_id]
         value = dict(target)[argument]
         assert isinstance(value, str)
-        values[_OFFSET[segment] + index_of(value)] += 1
+        values[_OFFSET[segments[position]] + index_of(value)] += 1
     verb, arguments = rows[0]
     reference = dict(arguments)
     values[_OFFSET["private_effect_pick_verb"] + _VERB_INDEX[verb]] = 1
@@ -912,38 +917,43 @@ def _skill_identity_index(instance_id: str) -> int:
     return _SKILL_INDEX[skill_for_instance(instance_id).skill_id]
 
 
-# A picked target's segment, the argument that names it and its index, by
-# its target row (``rules.effect_steps.Choose``): every kind a path picks
-# before its last (a test checks the step table against it).
-_PICKED_TARGETS: Final[Mapping[str, tuple[str, str, Callable[[str], int]]]] = {
+# A picked target's segments by its position among the targets picked so
+# far (the first, the second), the argument that names it and its index, by
+# its target row (``rules.effect_steps.Choose``): every kind and position a
+# path picks before its last (a test checks the step table against it). Only
+# Captured Mentat's exchange picks two before its last, both Factions: the
+# Faction lost, then the one gained, before the Alliance's recipient.
+_PICKED_TARGETS: Final[
+    Mapping[str, tuple[tuple[str, ...], str, Callable[[str], int]]]
+] = {
     "choose_intrigue_card": (
-        "private_effect_pick_intrigue",
+        ("private_effect_pick_intrigue",),
         "card_id",
         _intrigue_identity_index,
     ),
     "choose_faction": (
-        "private_effect_pick_faction",
+        ("private_effect_pick_faction", "private_effect_pick_second_faction"),
         "faction",
         lambda value: _FACTION_INDEX[value],
     ),
     "choose_post": (
-        "private_effect_pick_post",
+        ("private_effect_pick_post",),
         "post_id",
         lambda value: _POST_INDEX[value],
     ),
     "choose_tech": (
-        "private_effect_pick_tech",
+        ("private_effect_pick_tech",),
         "tech_id",
         lambda value: _TECH_INDEX[value],
     ),
     "choose_conflict_card": (
-        "private_effect_pick_battle",
+        ("private_effect_pick_battle",),
         "card_id",
         lambda value: _BATTLE_CARD_INDEX[value],
     ),
 }
-PICKED_TARGET_SEGMENTS: Final[Mapping[str, str]] = {
-    action_id: segment for action_id, (segment, _, _) in _PICKED_TARGETS.items()
+PICKED_TARGET_SEGMENTS: Final[Mapping[str, tuple[str, ...]]] = {
+    action_id: segments for action_id, (segments, _, _) in _PICKED_TARGETS.items()
 }
 
 

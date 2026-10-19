@@ -97,6 +97,7 @@ _ZONE_VOCABULARY: Final = {
     "private_effect_pick_post": "post",
     "private_effect_pick_tech": "tech",
     "private_effect_pick_battle": "battle",
+    "private_effect_pick_second_faction": "faction",
     "imperium_removed": "personal",
     "intrigue_resolving": "intrigue",
     "intrigue_discard": "intrigue",

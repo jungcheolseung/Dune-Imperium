@@ -465,6 +465,8 @@ B3-4 (가) 차례 안에서 완수한 계약의 보상은 차례의 줄([OQ-112]
   같은 줄이 두 온 행동을 가리키거나 한 길이 다른 길 중간에서 끝나면 오류(소크가 잡는다).
 - **보는 사람:** 고르기는 그 frame의 context(`effect_pick`, JSON); 보기 `private.effect_pick`; 관측 v33 `private_effect_pick_verb·source·
   card·box·targets`(엔티티 망은 카드 칸을 엔티티로); 사건 `effect_picked`는 그 좌석에게만; 서버 로그는 고르기 단계를 봉인한다.
+  (2026-10-20 B3c-1 리뷰 뒤: 마지막 전에 고른 대상도 정체로 — `private_effect_pick_intrigue·faction·post·tech·battle`, 두 번째로 고른
+  진영은 `private_effect_pick_second_faction`(Captured Mentat의 잃는 진영 → 얻는 진영 순서가 넘길 Alliance를 정한다); 5,440 → 5,593열.)
 - **AI:** `PlacementMemory`가 효과 단계 결정을 온 행동으로 보여 주고(규칙의 순서 그대로) 고른 온 행동의 남은 줄을 기억한다 —
   휴리스틱·앱 AI 판이 효과 단계를 끈 엔진과 수순까지 같다(전 옵션 휴리스틱 4판·앱 AI 3판 대조, 다른 것은 고르기 사건뿐). 온
   행동 목록을 넘기는 호출자(온 행동을 `apply_whole`로 두는 걸음)에게는 온 행동 그대로 고른다. rollout AI는 후보를 `apply_whole`로

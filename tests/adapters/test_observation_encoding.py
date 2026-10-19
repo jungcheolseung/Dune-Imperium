@@ -8,6 +8,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
     CONFLICT_IDS,
+    FACTION_IDS,
     INTRIGUE_IDS,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
@@ -96,7 +97,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # far (1), 45 + 21 + 139 + 1 + 1 columns (5,233 -> 5,440).
     # Also v33 (the B3c-1 review): the targets picked so far by identity --
     # Intrigue card 90, Faction 4, post 13, Tech 18, Conflict or Objective
-    # card 24 (5,440 -> 5,589).
+    # card 24, and a second picked Faction 4 (5,440 -> 5,593).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -140,8 +141,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 13
         + 18
         + 24
+        + 4
     )
-    assert OBSERVATION_SIZE == 5_589
+    assert OBSERVATION_SIZE == 5_593
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -198,10 +200,13 @@ def test_layout_is_versioned_and_contiguous() -> None:
         "private_effect_pick_post",
         "private_effect_pick_tech",
         "private_effect_pick_battle",
+        "private_effect_pick_second_faction",
     )
     for before, after in zip(pick_segments, pick_segments[1:], strict=False):
         assert segment_slice(before).stop == segment_slice(after).start
-    assert segment_slice("private_effect_pick_battle").stop == OBSERVATION_SIZE
+    assert segment_slice("private_effect_pick_second_faction").stop == (
+        OBSERVATION_SIZE
+    )
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -372,18 +377,73 @@ def test_the_option_step_shows_the_seat_the_card_it_picked() -> None:
 
 def test_every_target_picked_before_a_paths_last_has_a_segment() -> None:
     # A target row a path picks before its last stays in the seat's pick:
-    # its kind must be shown by identity (``PICKED_TARGET_SEGMENTS``).
+    # its kind, at its position, must be shown by identity
+    # (``PICKED_TARGET_SEGMENTS``).
     from dune_imperium.adapters.observation_encoding import PICKED_TARGET_SEGMENTS
     from dune_imperium.rules.effect_steps import STEP_SPECS
 
     picked_first = {
-        kind.action_id
+        (kind.action_id, position)
         for spec in STEP_SPECS.values()
-        for _name, kind in spec.targets[:-1]
+        for position, (_name, kind) in enumerate(spec.targets[:-1])
     }
-    assert picked_first <= set(PICKED_TARGET_SEGMENTS)
-    for segment in PICKED_TARGET_SEGMENTS.values():
-        segment_slice(segment)
+    for action_id, position in picked_first:
+        assert position < len(PICKED_TARGET_SEGMENTS[action_id]), action_id
+    for segments in PICKED_TARGET_SEGMENTS.values():
+        for segment in segments:
+            segment_slice(segment)
+
+
+def test_the_recipient_step_shows_which_faction_was_lost_and_which_gained() -> None:
+    # The review of the fix above: Captured Mentat's exchange picks the
+    # Faction lost, then the one gained, then the Alliance's recipient; the
+    # two Factions' order decides which Alliance is handed on, so the seat
+    # must see it at the recipient step.
+    from tests.unit.rules.test_reveal_turn import _imperium_instance, _state
+
+    from dune_imperium.core import Influence
+
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        hand=(_imperium_instance("captured_mentat"),),
+        influence=Influence(emperor=4, spacing_guild=4),
+        alliance_faction_ids=("emperor", "spacing_guild"),
+    )
+    state = _state(owner)
+    rivals = tuple(
+        PlayerState(player_id=seat, influence=Influence(emperor=4, spacing_guild=4))
+        for seat in (1, 2)
+    )
+    state = replace(state, players=(state.players[0], *rivals, state.players[3]))
+    state = engine.apply(state, DomainAction("reveal_turn", 0)).state
+    exchange = next(
+        row
+        for row in engine.legal_actions(state, 0)
+        if row.action_id == "exchange_influence"
+    )
+    picked = engine.apply(state, exchange).state
+
+    def recipient_step(lost: str, gained: str) -> GameState:
+        at = picked
+        for faction in (lost, gained):
+            at = engine.apply(
+                at, DomainAction("choose_faction", 0, (("faction", faction),))
+            ).state
+        return at
+
+    one = recipient_step("emperor", "spacing_guild")
+    other = recipient_step("spacing_guild", "emperor")
+    assert engine.legal_actions(one, 0) == engine.legal_actions(other, 0)
+    first = segment_slice("private_effect_pick_faction")
+    second = segment_slice("private_effect_pick_second_faction")
+    for at, lost, gained in (
+        (one, "emperor", "spacing_guild"),
+        (other, "spacing_guild", "emperor"),
+    ):
+        view = encode_player_view(engine.observe(at, 0))
+        assert view[first] == tuple(int(f == lost) for f in FACTION_IDS)
+        assert view[second] == tuple(int(f == gained) for f in FACTION_IDS)
 
 
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
@@ -966,21 +1026,23 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # picked so far, 149 columns appended. The same games: each digest over the
 # first 5,440 columns of every vector is the previous pin, and the new
 # columns are set only while a seat holds a picked target (12 to 18 views a
-# game).
+# game). Then the second picked Faction's 4 columns: each digest over the
+# first 5,589 columns is the pin before them, and no game here picks two
+# Factions before an exchange's recipient.
 _GOLDEN_DIGESTS = {
-    "base": ("eeaee4239fffdd88b2251c8f58fc719c5f23c51abe93b03c17d9678fbf345bc1", 2780),
-    "choam": ("d4a3b591e0b081f532bb7408e04e1cfc8591fa52ec95c272347389611f2b6423", 2668),
+    "base": ("516149642bde50a6c3084f6b7f7985a2960aac5c0ed5ca889ff131fc1aa5d004", 2780),
+    "choam": ("aeb2574a7f2fb055843ef79074c0f8158681432b364196e4c46bcfb66a502a1e", 2668),
     "promo_bloodlines_tech": (
-        "5922651e4e1a4b9cd66ba4fdbd54b88ec27cd0911b657198df324a2ad4acca5d",
+        "4d73dd472669432a2ebb3ff9413f45c8733ab265ba7ce198bb035dc4113aae3c",
         3188,
     ),
     "everything": (
-        "7ca8375e5073ec93a38b8dcaf88f5db50b18b4a0a794a57a7e56129616aec8d9",
+        "fe2c26e938c03cdfbdb192bfd7afd59db533e3f45c949691f2f2895c61be1827",
         3340,
     ),
-    "draft": ("59e37c5dc4c0fbdd0d904a5f3d76b1ba85098834da40e13fb7ca01f94c42dea5", 2788),
+    "draft": ("5cb1cda6e154162ff7e9e036833e5018e32c08c6c3b4c6f22d440a924e997e78", 2788),
     "scouts": (
-        "07f3863e1b404fe8fbe638dc3333513502d5f3f05a66ebb026a5934bfb52cd30",
+        "d40737007a55f6e86f44df86f6a5552c68b268b098036f854103113c3af559ee",
         3172,
     ),
 }
