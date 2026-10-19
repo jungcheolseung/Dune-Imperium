@@ -1852,14 +1852,12 @@
   `contract_reward_icons`; 줄은 기록 조각 하나씩, 고를 것 있는 줄은 예전 선택 창을 연다(`rules/combat.py`, `rules/contracts.py`;
   자세히는 [stage-b-plan.md](../stage-b-plan.md) "B2 구현"). AI 좌석과 옛 기보는 옛 고정 순서로 답한다(`agents/engine_order.py`).
 - 다른 판정과 만나는 곳(구현 결정, project convention):
-  - CHOAM Transports의 카드(OQ-106 13 — "The card draw from CHOAM Transports is triggered as soon as the contract is completed and
-    can't be deferred." (Message from designer)): 계약 보상의 자동 줄(병력, 자원, 고정 영향력, 책략·카드 draw)은 완수의 일부로 본다
-    (옛 엔진이 완수 단계 안에서 준 것). 카드는 그 줄들을 다 받은 뒤, 또는 소유자가 선택 줄(Spy, 회수, 계약)을 먼저 고르면 그 선택이
-    열리기 전에 소유자의 유일한 단계가 된다 — 어느 선택도 카드보다 먼저 오지 않는다.
-  - 같은 단계에서 생긴 다른 곧바른 draw(OQ-106 14: Bene Gesserit 4의 책략, Imperial Birthright)는 그 단계에서 열린 계약 보상 창보다
-    먼저다 — 그 계약은 같은 Influence 단계의 다른 효과이고, 곧바른 draw는 "그 바로 다음"이라 사이에 다른 효과가 들지 않는다. 옛
-    엔진은 계약 보상을 그 단계 안에서 줬으므로 순서가 달라지는 곳이고, Suspensor Suits가 있으면 결과도 달라질 수 있다(draw의
-    troop이 supply에서 먼저 나간다).
+  - 같은 단계에서 생긴 곧바른 draw(OQ-106 13·14: CHOAM Transports의 카드 — "The card draw from CHOAM Transports is triggered as soon
+    as the contract is completed and can't be deferred." (Message from designer) — Bene Gesserit 4의 책략, Imperial Birthright)는 그
+    계약 보상 창의 모든 줄보다 먼저다(사용자 결정 2026-10-19 "A로 가자"). 보상의 아이콘은 위 1대로 각자 독립 효과이고, 곧바른
+    draw는 "그 바로 다음"이라 사이에 다른 행동이 들지 않는다. 옛 엔진은 계약 보상의 자동 부분을 완수 단계 안에서 줬으므로 순서가
+    달라지는 곳이다 — "자동 줄은 완수의 일부"로 보는 절충(옛 순서 유지)은 원칙 문구와 맞지 않아 택하지 않았다. Suspensor Suits가
+    있으면 결과도 달라질 수 있다(Bene Gesserit 4 책략의 troop이 supply에서 먼저 나간다).
   - 차례 밖에서 기다리는 Emperor track Spy([OQ-057](#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (15))와 Friends
     Everywhere 선택은 Conflict 보상 선택을 기다리듯 계약 보상 창 아래에서도 기다린다(영향력 4가 동맹도 얻어 Earn Any Alliance를
     완수하는 경우; 옛 엔진은 그 보상을 그 단계 안에서 줬으므로 옛 순서와 같다).

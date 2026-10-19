@@ -281,17 +281,18 @@ B2-3 자원 묶음은 줄 하나. 기록은 [OQ-112](rules/open-questions.md#oq-
   (`acquisition._lift_contract_windows`; 처음 구현은 효과 frame이 맨 위가 아니라 멈췄다 — 문제집 재채굴과 테스트 이전이 잡음).
   (c) 게임이 끝나는 단계에서 동맹을 얻어 Earn Any Alliance가 완수되면(Endgame Navigation 카드의 Influence) 아무도 결정에 답하지
   않으므로 창을 옛 순서로 곧바로 받는다(`contracts._settle_finished_reward`; 독립 리뷰가 끝난 판에 남은 창을 잡음).
-- **CHOAM Transports의 카드(OQ-106 13 곧바른 단계):** 계약 보상의 자동 줄(병력, 자원, 고정 영향력, 책략·카드 draw)은 완수의
-  일부로 본다 — 옛 엔진이 완수 단계 안에서 준 것들이다. 카드는 그 줄들을 다 받은 뒤 빚지고, 소유자가 선택 줄(Spy, 회수, 계약)을
-  먼저 고르면 그 선택이 열리기 전에 빚진다(`contracts._completion_draw_due`). 처음 구현은 자동 줄 뒤에만 빚져, 선택 줄을 먼저 고르면
-  카드가 그 선택 뒤로 밀려 "미룰 수 없다"(디자이너 판정)를 어겼다(독립 리뷰). 카드를 완수 바로 뒤, 모든 줄 앞으로 옮기는 안도
-  시험했는데, 계약 자신의 카드 draw와 CHOAM Transports의 draw 가운데 어느 쪽이 빈 덱을 섞는지가 바뀌어 옛 기보 2,000판 가운데
-  20여 판이 기록된 reshuffle과 갈리고 휴리스틱 판도 master와 달라져 되돌렸다 — 자동 줄은 고르는 것이 없는 줄이어서 카드를
-  "미루는" 길이 되지 않는다.
-- **옛 순서와 달라지는 곳:** 같은 단계에서 생긴 곧바른 draw(OQ-106 14: Bene Gesserit 4의 책략, Imperial Birthright)는 그 단계에서
-  열린 계약 보상 창보다 먼저다 — OQ-106의 "그 바로 다음, 다른 효과는 사이에 들지 않는다"가 다른 효과(그 Influence가 완수시킨
-  계약)의 보상 줄에도 닿는다. 옛 엔진은 계약 보상을 그 단계 안에서 줬다. 대개 한 단계의 상태 차이로 끝나지만, Suspensor Suits가
-  있으면 순서가 결과를 바꾼다(아래 기보 1판).
+- **옛 순서와 달라지는 곳(원칙대로, 사용자 결정 2026-10-19 "A로 가자"):** 같은 단계에서 생긴 곧바른 draw(OQ-106 13·14: CHOAM
+  Transports의 카드, Bene Gesserit 4의 책략, Imperial Birthright)는 그 계약 보상 창의 모든 줄보다 먼저다 — OQ-106의 "그 바로 다음,
+  사이에 다른 행동이 들지 않는다"가 계약 보상 줄(OQ-112로 각자 독립 효과)에도 닿는다. 옛 엔진은 계약 보상의 자동 부분을 완수 단계
+  안에서 주고 카드를 그 뒤에 뽑았다. 처음 구현은 옛 순서를 지키려고 Transports 카드만 자동 줄 뒤에 빚졌는데, 선택 줄을 먼저 고르면
+  카드가 그 선택 뒤로 밀려 "미룰 수 없다"(디자이너 판정)를 어겼고(독립 리뷰), "자동 줄은 완수의 일부"로 보는 절충안도 원칙 문구와
+  맞지 않아 사용자가 A(완수 바로 뒤, 모든 줄 앞)를 골랐다. 결과는 대개 같다: 계약 자신에게 카드 draw가 있고 덱이 그 순간 비면
+  섞기를 요청하는 draw가 바뀔 뿐 같은 덱 순서에서 같은 카드를 뽑는다. Suspensor Suits가 있으면 Bene Gesserit 4 책략의 순서가 결과를
+  바꾼다(아래 기보 1판).
+- **옛 기보를 위한 다리(Transports 카드):** `transports_card_first`(codec 150 미만) — 기록의 단계가 카드 뒤에서 기다리면(기록은 계약의
+  카드 draw와 그 reshuffle을 먼저 적었다) 카드를 먼저 뽑고, 기록된 카드 draw는 올 때 버린다(`TRANSPORTS_CARD_DROPPED`);
+  `transports_reshuffle_renamed` — 두 draw 가운데 빈 덱을 만난 쪽이 바뀌어 다른 이름으로 묻는 같은 좌석·같은 버림 더미의 reshuffle을
+  기록된 순서로 받는다(v142의 `reshuffle_renamed`와 같은 모양).
 - **화면:** 사람 좌석은 줄을 누른다(`display/actions.py`의 줄 문구, `static/labels*.js`·`log_icons.js`·`panels.js`의 사건·VP 원인,
   `render.js`의 전투 결과 줄이 수령자의 조각 사건을 모은다 — 출처가 보상 자신인 `resources_gained`만; 보상의 계약으로 받은
   Immediate의 Solari는 넣지 않는다, 독립 리뷰). 차례 밖 보상의 마지막 줄 뒤에 멈춤·공개가 오면 예전처럼 "턴 종료 ▶"까지
@@ -299,14 +300,18 @@ B2-3 자원 묶음은 줄 하나. 기록은 [OQ-112](rules/open-questions.md#oq-
 - **같음 확인:** 정해진 차이 `scripts/ab/differences/stage_b.py`의 `combat_reward_icons` — 옛 수령자 한 단계 뒤에 새 줄들을 옛
   순서로 답하고, 머리와 조각 사건을 다시 더해 옛 `combat_reward_gained`와 값까지 비교한다(Influence 고르기 수만 빼고 — sandworm의
   둘째 몫은 다음 기록 단계에서 답한다). 나머지 사건은 줄의 사건이 단계의 다른 사건 뒤에 오므로 순서 없이 비교한다. 곧바른 draw가
-  창보다 먼저인 곳은 그 좌석의 보상 필드를 한 단계 비교에서 뺀다. 처음 판은 머리·조각 사건을 양쪽에서 버려 값을 비교하지 않았고,
-  그래서 CHOAM에서 계약 줄의 사건에 계약 수가 빠진 것(전투 결과 줄에서 계약 아이콘이 사라짐)을 놓쳤다(독립 리뷰).
+  창보다 먼저인 곳은 옛 단계의 보상 사건을 후보가 줄을 받는 단계로 옮겨 정확히 맞추고, 그 사이(많아야 세 단계) 상태 비교를 빼고
+  보기는 보상 필드만 빼고 비교한다. Transports 카드가 먼저인 곳은 기보 다리와 같은 모양으로 후보의 수를 짠다: 카드 뒤에서 기다리는
+  기록 단계 앞에 카드를 두고, 기록된 카드 draw는 없애고, 다른 draw의 이름으로 기록된 같은 버림 더미의 reshuffle은 후보의 이름으로
+  묻는다(`_transports_moves`). 처음 판은 머리·조각 사건을 양쪽에서 버려 값을 비교하지 않았고, 그래서 CHOAM에서 계약 줄의 사건에
+  계약 수가 빠진 것(전투 결과 줄에서 계약 아이콘이 사라짐)을 놓쳤다(독립 리뷰).
 - **측정:** 같음 확인 200판 같음(192,672걸음; 줄 Conflict 9,456개·계약 1,280개를 옛 순서로 답함). 옛 기보 2,000판(v149-86086c6d)
-  equal 1,948 · transient 51 · diverged 1 — transient는 49판이 곧바른 draw가 계약 창보다 먼저인 한 단계, 1판은 책략 줄의 reshuffle
-  chance 뒤에 남은 자동 줄, 1판은 CHOAM Transports 카드가 reshuffle chance와 엇갈린 두 단계; diverged 1판(full.h4.98)은 Bene
-  Gesserit 4의 책략을 계약(Earn Any Alliance) 병력 줄보다 먼저 뽑아 Suspensor Suits가 supply의 마지막 병력을 Conflict로 보내고,
-  병력 줄이 recruit할 병력이 없어 Conflict 순위가 바뀐다. 소크 무작위 700판·휴리스틱 400판 실패 0(처음 돌림에서 (a)의 불변식을 잡음),
-  pytest 8,117 통과, ruff·mypy 깨끗, E2E 68개 모두 통과.
+  equal 1,574 · transient 425 · diverged 1. transient는 모두 곧바른 draw가 계약 창의 줄보다 먼저여서 생기는 한두 단계의 차이다 —
+  기록은 완수 단계에서 보상을 받고 카드를 뒤에 뽑았는데 이 엔진은 카드를 먼저 뽑고 줄을 뒤에 받으므로, 그 사이 기록된 단계에서 보상
+  필드(자원·병력·영향력·VP, 계약의 카드·책략 draw)와 Transports 카드의 owed_draws·덱·손이 다르고, 줄을 받는 즉시 같아진다(옛 순서를
+  지키던 판은 51판이었다). diverged 1판(full.h4.98)은 Bene Gesserit 4의 책략을 계약(Earn Any Alliance) 병력 줄보다 먼저 뽑아 Suspensor
+  Suits가 supply의 마지막 병력을 Conflict로 보내고, 병력 줄이 recruit할 병력이 없어 Conflict 순위가 바뀐다. 소크 무작위 700판·휴리스틱
+  400판 실패 0(처음 돌림에서 (a)의 불변식을 잡음), pytest 8,119 통과, ruff·mypy 깨끗, E2E 68개 모두 통과.
   문제집 tips-v1 99개 재채굴(휴리스틱 82개는 같은 판·같은 자리, 줄이 끼어 선택 목록만 길다; 5081 망의 판은 망이 줄을 직접 골라
   달라짐), 사람 판 문제 279/285(B1과 같은 6곳).
 - **테스트 이전:** 실패 226개를 옮겼다(돕는 함수 `tests/support/reward_windows.py`: 엔진으로 줄을 옛 순서로 답하는
