@@ -711,3 +711,83 @@ def test_a_problem_at_another_target_is_asked_at_the_target_step(
     assert position.right == mine[-1]
     path = path_of(base, whole)
     assert path is not None and position.wrong == path[len(mine) - 1]
+
+
+def test_a_problem_at_a_named_reveal_choice_is_asked_before_its_effect_step(
+    tmp_path: Path,
+) -> None:
+    # Stage B3b-2: a record before codec v147 names a Reveal choice's card
+    # (``reveal_source_by_order``) and this engine takes the named whole
+    # action as its effect steps; the step that ends it stays the
+    # ``effect_last_step`` bridge's, so a problem there is asked where the
+    # two moves part, before the person picked the effect. Step 830 of this
+    # v141 record: seat 2's Calculus of Power trash, beside Shrouded
+    # Counsel's.
+    from dune_imperium.records.migration import migrate_record, walk
+    from dune_imperium.rules import UprisingRulesEngine
+
+    document = json.loads(
+        (DATA / "v141-no-immortality-no-go_to_11-heuristic-1211.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    document["seats"] = ["heuristic"] * 4
+    document["seats"][2] = "human"
+    path = tmp_path / f"{'c' * 32}.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    game = read_saved_game(path)
+    engine = UprisingRulesEngine()
+    record = migrate_record(game.parsed.replay, engine)
+    base: GameState | None = None
+    mine: list[DomainAction] = []
+    for state, migrated in walk(record, engine):
+        step = migrated.step
+        if migrated.recorded_index is None and migrated.bridge == "effect_step":
+            if not mine:
+                base = state
+            assert isinstance(step, DomainAction)
+            mine.append(step)
+            continue
+        if migrated.recorded_index == 830:
+            assert migrated.bridge == "effect_last_step"
+            assert migrated.named_by == "reveal_source_by_order"
+            assert isinstance(step, DomainAction)
+            mine.append(step)
+            break
+        base, mine = None, []
+    assert base is not None and len(mine) == 2
+    other = next(
+        whole
+        for whole in engine.whole_actions(base, 2)
+        if whole.action_id == "acquire_reserve"
+    )
+    recorded = game.parsed.replay.steps[830]
+    assert isinstance(recorded, DomainAction)
+    common = {
+        "game": "c" * 8,
+        "step": 830,
+        "round": base.round_number,
+        "seat": 2,
+        "human": _text(recorded),
+    }
+    judged = [
+        {**common, "effect_order": True, "values": [[0, 1], [0, 1]], "human_col": 1}
+    ]
+    confirmed = [
+        {
+            **common,
+            "first": "human",
+            "second": "human",
+            "mean": 0.1,
+            "error": 0.01,
+            "p_human": 0.1,
+            "net_first": _text(other),
+        }
+    ]
+    suite = build_suite([game], judged, confirmed, "test")
+    (position,) = resolve(suite).values()
+
+    assert isinstance(position, Resolved), position
+    assert position.state == base
+    assert position.right == mine[0]
+    assert position.wrong == first_step(base, other)

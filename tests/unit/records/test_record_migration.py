@@ -2336,7 +2336,14 @@ def test_a_reveal_choice_takes_the_card_the_recording_engine_had_on_top(
 
     assert record.complete, record.divergence
     # The Reveal frame takes a named whole action as its effect steps (stage
-    # B3b-2): the step that ends it keeps the naming bridge and its whole.
+    # B3b-2): the step that ends it is the ``effect_last_step`` bridge's,
+    # with the naming bridge and the whole action beside it.
+    def naming(migrated: migration.MigratedStep) -> str | None:
+        if migrated.named_by is not None:
+            assert migrated.bridge == migration.EFFECT_LAST_STEP
+            return migrated.named_by
+        return migrated.bridge
+
     def named(migrated: migration.MigratedStep) -> DomainAction:
         whole = migrated.whole or migrated.step
         assert isinstance(whole, DomainAction)
@@ -2345,11 +2352,11 @@ def test_a_reveal_choice_takes_the_card_the_recording_engine_had_on_top(
     by_order = {
         migrated.recorded_index: dict(named(migrated).arguments)["source"]
         for migrated in record.steps
-        if migrated.bridge == migration.REVEAL_SOURCE_BY_ORDER
+        if naming(migrated) == migration.REVEAL_SOURCE_BY_ORDER
     }
     assert by_order == ordered
     for migrated in record.steps:
-        if migrated.bridge in migration.REVEAL_SOURCE_NAMES:
+        if naming(migrated) in migration.REVEAL_SOURCE_NAMES:
             whole = named(migrated)
             recorded = replay.steps[migrated.recorded_index or 0]
             assert isinstance(recorded, DomainAction)

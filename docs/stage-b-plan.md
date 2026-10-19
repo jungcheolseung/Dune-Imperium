@@ -593,9 +593,10 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
 - **codec:** 기본 2,985행(−146 온 template, +28 줄; 대상 줄은 B3a에서 이미 있던 것), CHOAM −154/+32, Bloodlines까지 −222/+53, 옵션 전부
   9,855 → 9,603. `action_shapes`: 효과 줄 동사 `exchange_influence`·`lose_influence`·`keep`, 대상 줄 `choose_tleilaxu_card`, 효과 줄
   인자 `zones`. 엔티티 망의 `printed` 힌트에 Skill(특징 digest 다시 고정); 시장 이름은 이름표.
-- **기보:** 옛 기록의 Reveal 온 행동은 B3a의 다리(`effect_step`·`effect_last_step`)가 줄로 펼친다. v147 전 기록의 Reveal 선택 이름
-  붙이기(`reveal_source`·`reveal_source_by_order`)가 끝낸 온 행동은 마지막 단계에 그 다리 이름을 처음 붙인 대로 남기고, 기록된 단계에
-  그 단계가 끝낸 온 행동을 함께 둔다(`MigratedStep.whole`).
+- **기보:** 옛 기록의 Reveal 온 행동은 B3a의 다리(`effect_step`·`effect_last_step`)가 줄로 펼친다. 기록된 단계에 그 단계가 끝낸
+  온 행동(`MigratedStep.whole`)과, v147 전 기록이면 그 온 행동에 카드를 붙인 다리(`reveal_source`·`reveal_source_by_order`, 처음 붙인
+  대로; `MigratedStep.named_by`)를 함께 둔다 — 단계의 다리 이름은 `effect_last_step` 그대로라 문제집 도구가 효과의 마지막 단계를 찾는
+  방식이 그대로다(독립 리뷰: 다리 이름을 이름 붙이기로 바꾼 첫 구현은 사람 판 문제 2곳을 잘못된 단계에서 물었다).
 - **측정:** 같음 확인 200판 같음(온 행동 52,117번이 길로, B3b-1보다 Reveal 13,170번 더); 기보 2,000판 같음 1,568 · 일시 차이 431 ·
   갈림 1(B3b-1과 같음; 다리 `effect_last_step` 597,305걸음·`effect_step` 217,285걸음); 휴리스틱 20판·앱 AI 10판이 이전 커밋과
   최종 상태·사건이 같고 고르기 걸음만 늘었다; 소크 1,400판 실패 0; 관측 고정 digest 여섯은 첫 Reveal의 구매 여럿에서 갈려 다시

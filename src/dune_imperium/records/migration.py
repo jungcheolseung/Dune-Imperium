@@ -212,6 +212,11 @@ class MigratedStep:
     # For a recorded whole action taken as effect steps (stage B3), the
     # whole action (as a bridge named it) its last step ends; None otherwise.
     whole: ReplayStep | None = None
+    # For a record before codec v147, the Reveal-choice bridge that named
+    # that whole action (``REVEAL_SOURCE_NAMES``, as first named, before an
+    # effect step narrowed the cards offering it; stage B3b-2); the step's
+    # own ``bridge`` stays ``effect_last_step``.
+    named_by: str | None = None
 
 
 def _apply_answer(
@@ -415,7 +420,7 @@ def migrate_record(
         # B3): what the ``follows`` bridges read, as the recording engine did.
         whole = recorded
         # The Reveal-choice bridge that named the whole action this step's
-        # last effect step ends (stage B3b-2): the step keeps its name, as
+        # last effect step ends (stage B3b-2, ``MigratedStep.named_by``), as
         # first named, before an effect step narrowed the offered cards.
         named_by: str | None = None
         first_naming: str | None = None
@@ -582,10 +587,11 @@ def migrate_record(
                 MigratedStep(
                     step,
                     index,
-                    named_by or rewritten_by,
+                    rewritten_by,
                     box,
                     reveal_source,
                     whole if rewritten_by == EFFECT_LAST_STEP else None,
+                    named_by,
                 )
             )
             if graft is not None:
