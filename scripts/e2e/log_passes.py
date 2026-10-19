@@ -77,21 +77,21 @@ VIEWPORT = {"width": 1440, "height": 900}
 
 # heuristic seed 7 with every expansion is the same game log_words.py already
 # verified reaches a Combat/Endgame Intrigue pass (check_coverage there); the
-# base game reuses it with every expansion box off. Of 360 seeds scanned with
-# every expansion and the Leader draft on, as the setup page opens
-# (2026-10-14, codec v146; 2026-10-09 it was seeds 16, 36 and 41 of 60, but the
-# Agent turn's decline actions went away and the heuristic's games moved), 8,
-# 10, 17, 90, 104, 164, 173, 216, 229, 235, 240 and 328 have a seat's
-# Conflict reward choice followed by the CONFLICT_END pause, which shows
-# nothing, and then by that seat's own decline (reward_then_decline): the
-# decline must start a fold, not join the reward card. 235 also folds two
-# seats' declines (240 does not).
+# base game reuses it with every expansion box off. Of 400 seeds (0-399)
+# scanned with every expansion and the Leader draft on, as the setup page
+# opens (2026-10-19, codec v149; 2026-10-14, codec v146 it was seeds 8, 10,
+# 17, 90, 104, 164, 173, 216, 229, 235, 240 and 328 of 360, and 2026-10-09
+# seeds 16, 36 and 41 of 60, but each change to the heuristic's games moved
+# them), only seed 103 has a seat's Conflict reward choice followed by the
+# CONFLICT_END pause, which shows nothing, and then by that seat's own
+# decline (reward_then_decline): the decline must start a fold, not join the
+# reward card. Seed 103 also folds two seats' declines.
 GAMES = (
     {"label": "base game", "seed": 7, "expansions": ()},
     {"label": "all-expansion game", "seed": 7, "expansions": RULE_OPTIONS},
     {
         "label": "all-expansion game, a decline after its own reward",
-        "seed": 235,
+        "seed": 103,
         "expansions": RULE_OPTIONS,
         "reward_then_decline": True,
     },

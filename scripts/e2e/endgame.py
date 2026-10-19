@@ -18,10 +18,17 @@ likely to lose them all to the next such move.
 
 Seed 6 lost them too when graft-boxes (codec v143) offered both grafted Agent
 boxes from the start and the heuristic began playing grafted turns
-differently: it ended with no Commander in any garrison. Seed 10 is the first
+differently: it ended with no Commander in any garrison. Seed 10 was the first
 seed from 0 on, through the page's own setup payload (every expansion, the
 Leader draft, Go to 11 and Epic Game Mode on, as the checked boxes send it),
 where three seats hold one.
+
+Seed 10 lost them in turn at codec v149 (the cleanup-2 engine changes moved
+the heuristic seats' games again): it ended with no Commander in any
+garrison. Scanning seeds 0-39 the same way (2026-10-19, codec v149: the
+page's payload sent through `GameSessionManager.create_game`, the standings
+read from `summary`), seed 3 is the first where three seats hold one (ranks 1,
+2 and 4, the last holding two).
 """
 
 from __future__ import annotations
@@ -45,7 +52,7 @@ from common import (
 
 check = Check()
 
-SEED = 10
+SEED = 3
 EXPANSIONS = ("choam", "bloodlines", "tech", "immortality", "promo")
 
 

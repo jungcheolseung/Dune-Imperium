@@ -21,7 +21,13 @@ from open_mode import settled
 
 check = Check()
 
-SEED = 7
+# The finished heuristic game of this seed must leave a High Council seat and
+# a Swordmaster to read in the review's seat status lines. Seed 7 held no
+# Swordmaster once codec v149 moved the heuristic seats' games (cleanup-2);
+# seed 0 is the first seed where both exist, read from the final state of the
+# game the page's payload creates (all five expansions, the Leader draft, Go
+# to 11 and Epic Game Mode on, as the boxes send it; scanned 2026-10-19).
+SEED = 0
 EXPANSIONS = ("choam", "bloodlines", "tech", "immortality", "promo")
 
 # Every Hangul run on the page: visible text and the attributes a person or a

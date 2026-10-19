@@ -136,7 +136,12 @@ GAMES = (
     # 1-299 finds seed 20 first (again with Family Atomics, the Feyd track,
     # research and the three v146 events, and with v147's unused Reveal
     # choice and Reveal choice rows naming their card with ``source``).
-    {"seats": ["random"] * 4, "game_seed": 20, "policy_seed": 20, **EVERY_EXPANSION},
+    # Codec v149 (the cleanup-2 engine changes) moves seed 20 off its Secrets
+    # steal. The same scan over random seeds 1-257 (2026-10-19) finds seed 22
+    # first (again with Family Atomics, the Feyd track, research, the three
+    # v146 events and v147's unused Reveal choice and Reveal choice rows; the
+    # exchanged Influence stays with seed 25).
+    {"seats": ["random"] * 4, "game_seed": 22, "policy_seed": 22, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -164,10 +169,19 @@ GAMES = (
     # troops, a mission's pieces on posts and an auction won (no single seed of
     # the 299 reaches them all with a round modifier too; seed 22 has the
     # modifier).
+    # Codec v149 (the cleanup-2 engine changes) moves seed 36 off Clear the
+    # Market, Mating Season, the secret picks revealed and the mission troops
+    # (it keeps Mercenaries), and seed 22 below has none of the first three
+    # either. A scan of the same games through GameSessionManager over random
+    # seeds 1-235 (2026-10-19) finds seed 106 first that, with seed 22 below,
+    # reaches every Scouts surface again (the draws, the item kinds, a round
+    # modifier, Clear the Market, a mission's pieces and troops, an auction
+    # won, Mercenaries, the secret picks revealed and Mating Season; seed 22
+    # has the round modifier and the mission troops).
     {
         "seats": ["random"] * 4,
-        "game_seed": 36,
-        "policy_seed": 36,
+        "game_seed": 106,
+        "policy_seed": 106,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
