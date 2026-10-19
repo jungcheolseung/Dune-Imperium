@@ -1486,6 +1486,13 @@ function describeAction(action, options = {}) {
     /* A Reveal choice's card: it already leads (detail_title, or the
        logged step's source above). */
     if (key === "source" && REVEAL_SOURCE_ACTIONS.has(action.action_id)) continue;
+    /* An optional trash on the turn names the trash icon it uses by what
+       printed it (stage B3c-2b): `printed` says it (a card, a Tech tile, a
+       research space, the leader); its kind and box are the engine's. */
+    if (
+      action.action_id === "trash_optional_card" &&
+      (key === "source" || key === "printed_box")
+    ) continue;
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     if (key === "effect" && typeof value === "string") {
       /* action.detail is the server's English effect fragment; it is printed

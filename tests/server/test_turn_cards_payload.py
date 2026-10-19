@@ -534,8 +534,9 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
                 ),
             ),
         )
+        # A window's trash names no trash icon (stage B3c-2b).
         assert box_losing_trash(ENGINE, state, 0) == (
-            ("trash_optional_card", THIS_TURN),
+            ("trash_optional_card", THIS_TURN, ()),
         )
         assert box_losing_trash(ENGINE, state, 1) == ()
         trash = DomainAction(
@@ -626,8 +627,14 @@ def test_a_research_trash_of_a_pending_signet_ring_is_flagged() -> None:
         state = apply_whole(ENGINE, state, action).state
     _, pending = turn_cards(state)
     assert pending == (signet,)
-    trash = DomainAction("trash_optional_card", 0, (("card_id", signet),))
-    assert box_losing_trash(ENGINE, state, 0) == (("trash_optional_card", signet),)
+    # The research space's trash icon, waiting on the turn (stage B3c-2b).
+    icon = (("printed", "c3r3"), ("source", "research"))
+    trash = DomainAction(
+        "trash_optional_card", 0, tuple(sorted((("card_id", signet), *icon)))
+    )
+    assert box_losing_trash(ENGINE, state, 0) == (
+        ("trash_optional_card", signet, icon),
+    )
     result = apply_whole(ENGINE, state, trash)
     assert [
         dict(event.payload)["card_id"]
@@ -649,7 +656,7 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
     # Pheromones' box (box 1) may trash Face Dancer, the other grafted card
     # (its box is lost), or itself (its own cost).
     assert box_losing_trash(ENGINE, grafted, 0) == (
-        ("trash_grafted_card_for_influence", FACE_DANCER),
+        ("trash_grafted_card_for_influence", FACE_DANCER, ()),
     )
     assert box_losing_trash(ENGINE, grafted, 2) == ()
 
@@ -661,7 +668,7 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
     }
     # The row names no card: it always trashes the partner.
     assert box_losing_trash(ENGINE, kit, 0) == (
-        ("trash_grafted_card_for_specimen", FACE_DANCER),
+        ("trash_grafted_card_for_specimen", FACE_DANCER, ()),
     )
 
 

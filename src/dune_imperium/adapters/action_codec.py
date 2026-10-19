@@ -100,8 +100,14 @@ from dune_imperium.rules.effect_steps import (
     steps_for,
 )
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
-from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER, research_icon_spaces
+from dune_imperium.rules.immortality import (
+    RESEARCH_ICON_ORDER,
+    research_icon_spaces,
+    research_trash_spaces,
+)
+from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
+from dune_imperium.rules.tech import optional_trash_tech_ids
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -1342,12 +1348,63 @@ def _effect_step_templates(
             named = tuple(
                 (None, face) for face in faces if own is None or face in own
             )
+        elif spec.printed == Printed.NAMED:
+            # An optional trash waiting on the turn, by every entity that
+            # may print one (stage B3c-2b); a grafted turn's second card's
+            # effect row carries ``box=1``.
+            for printer, entity, box in _optional_trash_printers(
+                config, box_cards, faces
+            ):
+                boxed = DomainAction(
+                    template.action_id,
+                    0,
+                    tuple(
+                        sorted(
+                            (
+                                *template.arguments,
+                                *((("printed_box", 1),) if box else ()),
+                            )
+                        )
+                    ),
+                )
+                for row in steps_for(boxed, entity, printer):
+                    rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
+            continue
         else:
             named = ((None, None),)
         for source, printed in named:
             for row in steps_for(whole, printed, source):
                 rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
     return tuple(rows)
+
+
+def _optional_trash_printers(
+    config: RulesetConfig,
+    box_cards: Mapping[tuple[str, str], tuple[str, ...]],
+    faces: tuple[str, ...],
+) -> tuple[tuple[Source, str, int], ...]:
+    """The entities that may print an optional trash waiting on the turn
+    (``optional_trash.trash_printer``): a card whose Agent box may trash (box
+    1 too with grafting), a Tech tile's acquire or Flip trash, a research
+    pair's trash, Arrakis Planetologist's leader."""
+
+    boxes = (0, 1) if config.immortality else (0,)
+    return (
+        *(
+            (Source.AGENT_CARD, card, box)
+            for card in box_cards.get(("trash", ""), ())
+            for box in boxes
+        ),
+        *(
+            (Source.TECH, tech_id, 0)
+            for tech_id in (optional_trash_tech_ids() if config.tech_module else ())
+        ),
+        *(
+            (Source.RESEARCH, space, 0)
+            for space in (research_trash_spaces() if config.immortality else ())
+        ),
+        *((Source.LEADER, face, 0) for face in faces if face == PLANETOLOGIST_LEADER),
+    )
 
 
 # The leader faces whose Signet or leader ability offers a leader row; the

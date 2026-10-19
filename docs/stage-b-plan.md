@@ -700,6 +700,32 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   최종 상태·사건이 같음(고르기 걸음만 늘어남); 소크 900판 실패 0; 문제집 tips-v1 다시 채굴(휴리스틱 82곳 같은 국면 — 24곳은 앞선
   고르기 걸음만큼 선택 기록이 길어짐, 체크포인트 망 몫 19 → 23곳, 모두 105곳).
 
+### B3c-2b 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **엔진:** 차례에 기다리는 선택 폐기가 그 폐기 아이콘을 인쇄한 개체를 기록한다(`turn_rows` 항목의 값
+  `optional_trash.trash_printer`: `agent_card|<카드>`(graft 상대 칸은 `|1`), `tech|<타일>`, `research|<칸>`, `leader|<지도자 면>`).
+  행은 카드마다·기록된 개체마다 하나(같은 개체 둘은 결과가 같아 줄 하나, 새 것부터) `trash_optional_card(card_id, source, printed[,
+  printed_box])` — `box`가 아닌 `printed_box`인 것은 `box=1`이 행을 Agent 칸으로 보내는 인자이기 때문(`graft_boxes.BOX_ARGUMENT`).
+  처리기는 행이 고른 개체의 가장 새 항목을 쓴다(옛 "자기 칸 먼저" 고르기는 엔진에서 빠졌다). 규칙 근거는 OQ-022 보강(2026-10-20).
+- **효과 단계:** 새 규칙 `Printed.NAMED`(온 행동이 자기 `source`·`printed`·`printed_box` 인자로 효과를 가리킴) — `trash(source=<종류>,
+  printed=<개체>[, box=1])` → `choose_personal_card`. 창(차례 밖)은 그대로 `trash_optional_card(card_id)`(`OFFERED_AS_WHOLE`).
+- **AI·기보·도구:** 휴리스틱·앱 AI·rollout은 옛 엔진이 골랐을 아이콘의 행만 본다(`engine_order.older_engine_wholes`,
+  `optional_trash.legacy_trash_whole`). 옛 기록의 `trash_optional_card(card_id)`는 다리 `optional_trash_icon`(codec 150 미만, 다시 쓰기)이
+  같은 고르기로 아이콘을 붙이고, 붙잡아 둔 차례 걸음도 같다. 같음 확인의 효과 단계 규칙은 옛 온 행동을 그 행으로 읽고, 화면의 행 목록은
+  카드마다 기다리는 아이콘 수만큼으로 늘려 비교한다.
+- **화면:** 행은 "아이콘 출처: <카드·타일·연구 칸·지도자>"로 보이고(`printed`; `source`·`printed_box`는 숨김), 이 턴 카드의 칸을 잃는
+  폐기 표시(`box_losing_trash`)는 아이콘까지 맞춰 고른다(같은 카드라도 자기 칸의 아이콘이면 잃지 않는다).
+- **codec:** 기본 그대로, Bloodlines 설정 +1(Liet Kynes의 `trash` 줄), 옵션 전부 9,482 → 9,487(`trash` 효과 줄: 연구 c3r3·c7r5,
+  Tech planetary_array·spy_drones, 지도자 liet_kynes; 카드 칸의 `trash` 줄은 이미 있었다).
+- **측정:** 같음 확인 200판 같음(온 행동 58,908번이 길로, B3c-2a보다 656번 더); 기보 2,000판 같음 1,568 · 일시 차이 431 · 갈림 1(그대로);
+  휴리스틱 20판·앱 AI 10판이 이전 커밋과 최종 상태·사건이 같음; 소크 900판 실패 0; 관측 고정 digest 둘(everything 505번째,
+  promo_bloodlines_tech 317번째 결정 — 처음 차례 안 선택 폐기에서 무작위 좌석의 행 수가 달라 갈림) 다시 고정; 탐색 좌석 되돌리기 시드
+  40 → 46; Harvest Cells 기보 테스트의 걸음 번호 한 칸; 문제집 tips-v1 다시 채굴(휴리스틱 82곳 같은 국면, 체크포인트 망 몫 23 → 22곳,
+  모두 104곳); E2E는 `log_words`만 실패(무작위 판이 지키는 화면 하나에 닿지 않음 — 시드 밀림, v150 묶음에서 다시 고름), `trash_zone`
+  픽스처는 칸을 잃는 행을 아이콘까지 적게 고쳐 통과.
+- **관문 줄이기(2026-10-20):** 하위 단계마다 전체 관문(같음 확인·기보 대조·문제집 재채굴·E2E)을 돌리느라 단계마다 1시간 반~2시간이
+  걸렸다(CLAUDE.md는 묶음 끝에 한 번). B3d부터는 단계마다 전체 pytest·소크·같은 판 비교만, 나머지는 v150 병합 직전에 한 번.
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로

@@ -626,6 +626,17 @@
 
 - 보강(2026-10-12, Throne Room Politics의 자기 trash; codec v145, Ghola 복사 작업의 독립 리뷰에서 발견): "recruit + 선택 trash 아이콘" box의 선택 trash로 카드 자신을 trash하면 그것은 위 디자이너 판정의 "카드가 **자기 효과로** 자신을 trash하는 경우"이고, OQ-027 확장의 "카드가 자기 비용이나 자기 아이콘으로 play 영역을 떠난 경우 남은 아이콘은 계속 지급"이다. 그래서 그 카드에 남은 것 — Urgent Shigawire의 draw는 "added to its Agent box" `[Urgent Shigawire card]`이고 box의 일부다(OQ-106 1) — 은 소멸하지 않는다. 전에는 선택 trash 창(`rules/optional_trash.py`)이 자기 trash 표시(`agent_card_self_trashed`/`graft_card_self_trashed`)를 남기지 않아 이 만료 훅이 다른 효과의 trash처럼 draw를 지웠다. Ghola가 Throne Room Politics를 복사하면 같은 일이 Ghola에도 생겼다. 이제 창을 연 것이 그 카드 자신의 box이면(창의 source가 그 box의 것, `effects.agent_card_source`) 자기 trash로 표시한다. 다른 효과가 연 trash 창(보드 칸, graft 상대의 box)으로 trash하면 그대로 만료된다 — Ghola의 복사한 trash 아이콘으로 Throne Room Politics를 trash하면 Throne Room Politics의 draw는 소멸하고 Ghola의 것은 남는다. 테스트: `tests/unit/rules/test_graft_boxes.py`(`test_throne_room_politics_trashing_itself_keeps_its_added_draw`, `test_a_ghola_copy_s_draw_lapses_only_with_ghola`). 옛 기보: 다리 `boost_draw_at_turn_end`(codec 145 미만, [human-records.md](../human-records.md)).
 
+- 보강(2026-10-20, stage B3c-2b; 판정 변경 없음, 결정 모델만): 소유자 자신의 turn에 선택 trash가 둘 이상 기다리면(카드 box의 것, Tech
+  타일의 것, 연구 칸의 것, Arrakis Planetologist의 것) 어느 아이콘으로 카드를 trash하느냐가 위 보강대로 결과를 바꾼다 — 자기 box의
+  아이콘이면 box의 남은 것이 지급되고, 다른 효과의 아이콘이면 만료된다. 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 원하는 순서로
+  해결하므로("You may carry out all these effects in any order" `[Main p. 9]`, OQ-027) 아이콘을 고르는 것도 소유자다. 전에는 엔진이 대신
+  골랐다("그 카드 자신의 box에서 온 것 먼저, 아니면 다른 카드 box가 아닌 것 중 새 것, 아니면 새 것"). 이제 기다리는 trash가 그 아이콘을
+  인쇄한 개체를 기록하고(`optional_trash.trash_printer`), 행은 `trash(source=<개체 종류>, printed=<개체>)` → `choose_personal_card`로
+  아이콘을 먼저, 카드를 다음에 고른다(stage B 결정 3, docs/stage-b-plan.md "B3c-2 세부 설계"). 같은 개체가 인쇄한 둘은 결과가 같아 줄
+  하나(새 것부터). 휴리스틱·앱 AI·rollout과 옛 기록은 옛 엔진의 고르기를 그대로 따른다(`legacy_trash_whole`, 기보 다리
+  `optional_trash_icon`). 차례 밖의 창은 그대로(아이콘이 하나). 테스트: `tests/unit/rules/test_agent_box_abilities.py::test_the_seat_picks_which_waiting_trash_icon_trashes_a_card`,
+  `tests/unit/rules/test_graft_boxes.py`(`test_throne_room_politics_trashing_itself_keeps_its_added_draw`, `test_a_ghola_copy_s_draw_lapses_only_with_ghola`).
+
 ## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
 
 - 상태: `DECIDED`

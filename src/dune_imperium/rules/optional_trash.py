@@ -11,17 +11,29 @@ waits on the turn as rows with no refusal and lapses unused at the turn-end
 press, and the Planetologist's Intrigue card waits beside it (user decision
 2026-10-17, cleanup-2b; ``turn_rows``). Combat, the Arrakeen Scouts step and
 a Scouts line keep the window.
+
+A waiting trash records the entity that printed its icon (stage B3c-2b,
+``trash_printer``): a card's Agent box, a Tech tile, a research space, the
+leader. Each icon is an effect of its own, resolved in its owner's order
+("You may carry out all these effects in any order" [Main p. 9], OQ-027),
+and which one trashes a card matters: a card trashed by its own box's icon
+keeps the rest of its box, one trashed by another effect loses it (OQ-022,
+2026-10-12). So the seat picks the icon, then the card
+(``trash_optional_card(card_id, source, printed[, printed_box])``); the engine no
+longer picks it for the seat (``legacy_trash_whole`` keeps the older
+engine's pick for the scripted agents and older records).
 """
 
 from copy import replace
 
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.effects import agent_card_source
@@ -61,11 +73,46 @@ def optional_trash_frame(
     )
 
 
-def open_optional_trash(state: GameState, player: int, source: str) -> GameState:
-    """Offer one optional trash: a row waiting on ``player``'s own turn, or
-    a window of its own elsewhere (cleanup-2b, ``turn_rows.queue``)."""
+def trash_printer(printer: Source, printed: str, box: int = 0) -> str:
+    """The value a waiting trash records for the entity that printed its
+    icon (module docstring): ``"<source>|<printed>"``, with ``"|1"`` for a
+    grafted turn's second card."""
 
-    queued = turn_rows.queue(state, player, (turn_rows.OPTIONAL_TRASH, source, ""))
+    return f"{printer.value}|{printed}" + ("|1" if box == 1 else "")
+
+
+def printer_arguments(value: str) -> tuple[tuple[str, ActionValue], ...]:
+    """A waiting trash's printer as a whole action's ``source``, ``printed``
+    and ``printed_box`` arguments (not ``box``, which routes a row to an
+    Agent box, ``graft_boxes.BOX_ARGUMENT``)."""
+
+    printer, printed, *box = value.split("|")
+    return (
+        ("printed", printed),
+        *((("printed_box", 1),) if box == ["1"] else ()),
+        ("source", printer),
+    )
+
+
+def _printer_value(action: DomainAction) -> str | None:
+    arguments = dict(action.arguments)
+    printer, printed = arguments.get("source"), arguments.get("printed")
+    if not isinstance(printer, str) or not isinstance(printed, str):
+        return None
+    box = 1 if arguments.get("printed_box") == 1 else 0
+    return trash_printer(Source(printer), printed, box)
+
+
+def open_optional_trash(
+    state: GameState, player: int, source: str, *, printer: str
+) -> GameState:
+    """Offer one optional trash: a row waiting on ``player``'s own turn,
+    recording its ``printer`` (``trash_printer``), or a window of its own
+    elsewhere (cleanup-2b, ``turn_rows.queue``)."""
+
+    queued = turn_rows.queue(
+        state, player, (turn_rows.OPTIONAL_TRASH, source, printer)
+    )
     if queued is not None:
         return queued
     return state.push_decision(optional_trash_frame(player, source))
@@ -75,9 +122,16 @@ def open_planetologist_replacement(
     state: GameState, player: int, source: str
 ) -> GameState:
     """Offer one replacement's optional trash and its Intrigue card: two rows
-    waiting on ``player``'s own turn, or one window holding both elsewhere."""
+    waiting on ``player``'s own turn, or one window holding both elsewhere.
+    The leader prints both."""
 
-    queued = turn_rows.queue(state, player, (turn_rows.OPTIONAL_TRASH, source, ""))
+    owner = state.players[player]
+    leader = owner.leader_face_id or owner.leader_id
+    assert leader is not None, "a sandworm is replaced only for a leader"
+    printer = trash_printer(Source.LEADER, leader)
+    queued = turn_rows.queue(
+        state, player, (turn_rows.OPTIONAL_TRASH, source, printer)
+    )
     if queued is None:
         return state.push_decision(optional_trash_frame(player, source, intrigue=True))
     held = turn_rows.queue(
@@ -108,10 +162,12 @@ def legal_optional_trash_actions(
 ) -> tuple[DomainAction, ...]:
     """Offer every owned card in hand, discard pile or play, plus a decline.
 
-    Inside the owner's turn the waiting trashes are offered as one row per
-    card with no decline, and a waiting Planetologist Intrigue card as one
-    draw row (cleanup-2b); each press takes the newest waiting effect its row
-    serves (``apply_optional_trash``).
+    Inside the owner's turn the waiting trashes are offered with no decline,
+    one row per card and per entity that printed a waiting trash (stage
+    B3c-2b; two of one printer resolve alike, so one row, the newest first),
+    and a waiting Planetologist Intrigue card as one draw row (cleanup-2b);
+    each press takes the newest waiting effect its row serves
+    (``apply_optional_trash``).
     """
 
     owner = state.players[player]
@@ -120,7 +176,7 @@ def legal_optional_trash_actions(
         waiting = _waiting_kinds(state, player)
         trash = turn_rows.OPTIONAL_TRASH in waiting
         return (
-            *(_trash_rows(owner, player) if trash else ()),
+            *(_printed_trash_rows(state, owner, player) if trash else ()),
             *(
                 (DomainAction(action_id="draw_planetologist_intrigue", actor=player),)
                 if turn_rows.PLANETOLOGIST_INTRIGUE in waiting
@@ -152,6 +208,80 @@ def _trash_rows(owner: PlayerState, player: int) -> tuple[DomainAction, ...]:
     )
 
 
+def _waiting_printers(state: GameState, player: int) -> tuple[str, ...]:
+    """The printers of the trashes waiting on ``player``'s turn frame, each
+    once, the newest first."""
+
+    frame = turn_rows.rows_frame(state, player)
+    items = () if frame is None else turn_rows.pending(frame)
+    return tuple(
+        dict.fromkeys(
+            value
+            for kind, _source, value in reversed(items)
+            if kind == turn_rows.OPTIONAL_TRASH
+        )
+    )
+
+
+def _trash_arguments(card_id: str, printer: str) -> tuple[tuple[str, ActionValue], ...]:
+    return tuple(sorted((("card_id", card_id), *printer_arguments(printer))))
+
+
+def _printed_trash_rows(
+    state: GameState, owner: PlayerState, player: int
+) -> tuple[DomainAction, ...]:
+    printers = _waiting_printers(state, player)
+    return tuple(
+        DomainAction(
+            action_id="trash_optional_card",
+            actor=player,
+            arguments=_trash_arguments(card_id, printer),
+        )
+        for card_id in trashable_cards(owner)
+        for printer in printers
+    )
+
+
+def legacy_trash_whole(
+    state: GameState, player: int, card_id: str
+) -> DomainAction | None:
+    """The row trashing ``card_id`` with the trash the engine before stage
+    B3c-2b picked itself, when trashes wait on ``player``'s turn: a card's
+    own box's trash first, so it keeps what is left of its box (OQ-022);
+    else the newest one no other card in play opened with its own box (left
+    for that card); else the newest. Newest first is the order the windows,
+    stacked as they were raised, answered. The scripted agents and older
+    records keep this pick (``agents.engine_order``, the records bridge)."""
+
+    frame = turn_rows.rows_frame(state, player)
+    if frame is None:
+        return None
+    trashes = [
+        item
+        for item in reversed(turn_rows.pending(frame))
+        if item[0] == turn_rows.OPTIONAL_TRASH
+    ]
+    if not trashes:
+        return None
+    own_box = agent_card_source(state.round_number, player, card_id)
+    # The trashes a card in play opened with its own box: kept for that card,
+    # whose self-trash only they credit.
+    own_boxes = {
+        agent_card_source(state.round_number, player, played)
+        for played in state.players[player].in_play
+    }
+    item = (
+        next((item for item in trashes if item[1] == own_box), None)
+        or next((item for item in trashes if item[1] not in own_boxes), None)
+        or trashes[0]
+    )
+    return DomainAction(
+        action_id="trash_optional_card",
+        actor=player,
+        arguments=_trash_arguments(card_id, item[2]),
+    )
+
+
 def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
     """Trash the chosen card, or close the frame without trashing."""
 
@@ -177,13 +307,11 @@ def _take_turn_row(state: GameState, action: DomainAction) -> RuleResult:
     """Take a row waiting on the owner's turn (cleanup-2b).
 
     A draw row takes the newest waiting Planetologist Intrigue card. A trash
-    row takes the newest waiting trash -- they are the same icon, "trash a
-    card" from hand, discard pile or play [Main p. 20] -- except that a
-    card's own box's trash is taken when that card is the one trashed, so
-    it keeps what is left of its box (OQ-022, ``_own_box_trash``), and is
-    left for that card when another one is trashed while a plain trash
-    waits. Newest first is the order the windows, stacked as they were
-    raised, answered.
+    row takes the newest waiting trash its row's printer printed (stage
+    B3c-2b): the card is trashed by that icon, so a card's own box's trash
+    leaves it what is left of its box and another trash does not (OQ-022,
+    ``_own_box_trash``). Newest first is the order the windows, stacked as
+    they were raised, answered.
     """
 
     player = action.actor
@@ -195,23 +323,11 @@ def _take_turn_row(state: GameState, action: DomainAction) -> RuleResult:
     frame = turn_rows.rows_frame(state, player)
     if frame is None:
         raise ValueError("the owner's turn frame is not on top")
-    card_id = str(dict(action.arguments)["card_id"])
-    own_box = agent_card_source(state.round_number, player, card_id)
-    # The trashes a card in play opened with its own box: kept for that card,
-    # whose self-trash only they credit.
-    own_boxes = {
-        agent_card_source(state.round_number, player, played)
-        for played in state.players[player].in_play
-    }
-    trashes = [
+    printer = _printer_value(action)
+    item = next(
         item
         for item in reversed(turn_rows.pending(frame))
-        if item[0] == turn_rows.OPTIONAL_TRASH
-    ]
-    item = (
-        next((item for item in trashes if item[1] == own_box), None)
-        or next((item for item in trashes if item[1] not in own_boxes), None)
-        or trashes[0]
+        if item[0] == turn_rows.OPTIONAL_TRASH and item[2] == printer
     )
     return _trash_or_decline(turn_rows.take(state, player, item), action, item[1])
 

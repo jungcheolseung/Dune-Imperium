@@ -226,7 +226,7 @@ def _turn_end_offered(state: GameState) -> bool:
 
 
 def _trash_waits_on_the_agent_turn(
-    state: GameState, *, specimen_waits: bool = False
+    state: GameState, printer: str, *, specimen_waits: bool = False
 ) -> None:
     """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
     own Agent turn an optional "[trash a card]" icon opens no window; it
@@ -234,13 +234,14 @@ def _trash_waits_on_the_agent_turn(
     holds no turn end back. With ``specimen_waits`` the research space's
     specimen waits beside it as a mandatory row of its own, which does hold
     the end (user decision 2026-10-17, composed-effects plan 5, rule decision
-    5; OQ-027 [Main p. 9])."""
+    5; OQ-027 [Main p. 9]). The trash records ``printer``, the entity that
+    printed its icon (stage B3c-2b)."""
 
     top = state.decision_stack[-1]
     assert top.kind == FrameKind.AGENT_EFFECTS
     assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
         *(((turn_rows.RESEARCH_ICON, "specimen"),) if specimen_waits else ()),
-        (turn_rows.OPTIONAL_TRASH, ""),
+        (turn_rows.OPTIONAL_TRASH, printer),
     ]
     legal = {a.action_id for a in legal_optional_trash_actions(state, 0)}
     assert legal == {"trash_optional_card"}
@@ -1119,7 +1120,7 @@ def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> Non
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    _trash_waits_on_the_agent_turn(resolved)
+    _trash_waits_on_the_agent_turn(resolved, "agent_card|throne_room_politics")
 
     trash = next(
         a
@@ -1265,7 +1266,7 @@ def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    _trash_waits_on_the_agent_turn(resolved)
+    _trash_waits_on_the_agent_turn(resolved, "agent_card|throne_room_politics")
 
     trash = next(
         a
@@ -1593,7 +1594,7 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     # p. 9]): the specimen waits as a mandatory row beside the trash, and holds
     # the turn's end until it is taken.
     assert advanced.players[0].specimens == 0
-    _trash_waits_on_the_agent_turn(advanced, specimen_waits=True)
+    _trash_waits_on_the_agent_turn(advanced, "research|c3r3", specimen_waits=True)
 
     # The trash is taken first; the specimen still waits.
     trash = next(

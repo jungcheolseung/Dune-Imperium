@@ -41,6 +41,8 @@ from dune_imperium.rules.effect_steps import (
     presents_steps,
     without_pick,
 )
+from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.optional_trash import legacy_trash_whole
 
 _PLACEMENT = "agent_turn"
 _CARD_PICK = "choose_agent_card"
@@ -862,6 +864,54 @@ def _whole(step: tuple[Any, ...]) -> DomainAction | None:
     return DomainAction(action_id=step[1], actor=step[2], arguments=arguments)
 
 
+# The candidate's whole actions (any engine instance gives the same list).
+_RULES = UprisingRulesEngine()
+
+
+def _unnamed_trash(whole: DomainAction) -> str | None:
+    """The card of a base's optional trash that names no trash icon."""
+
+    arguments = dict(whole.arguments)
+    if whole.action_id != "trash_optional_card" or "printed" in arguments:
+        return None
+    return str(arguments["card_id"])
+
+
+def _named_trash(state: Any, whole: DomainAction) -> DomainAction:
+    """A base's optional trash on the turn as the candidate's row with the
+    trash icon the base picked itself (stage B3c-2b,
+    ``optional_trash.legacy_trash_whole``); any other whole as it is."""
+
+    card = _unnamed_trash(whole)
+    if card is None:
+        return whole
+    return legacy_trash_whole(state, whole.actor, card) or whole
+
+
+def _with_trash_icons(
+    state: Any, owner: int, wholes: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """The base's whole actions as the candidate offers them: a card's
+    optional trash on the turn once per waiting trash icon (stage B3c-2b)."""
+
+    if all(_unnamed_trash(whole) is None for whole in wholes):
+        return wholes
+    offered = _RULES.whole_actions(state, owner)
+    expanded: list[DomainAction] = []
+    for whole in wholes:
+        card = _unnamed_trash(whole)
+        named = tuple(
+            action
+            for action in offered
+            if card is not None
+            and action.action_id == whole.action_id
+            and dict(action.arguments).get("card_id") == card
+            and "printed" in dict(action.arguments)
+        )
+        expanded.extend(named or (whole,))
+    return tuple(expanded)
+
+
 def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
     """The base's whole action as the candidate's steps."""
 
@@ -869,7 +919,7 @@ def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
     whole = _whole(old.step)
     if whole is None or not presents_steps(at.state):
         return None
-    return path_of(without_pick(at.state), whole)
+    return path_of(without_pick(at.state), _named_trash(at.state, whole))
 
 
 def _empty_effect_pick_dropped(candidate: Step) -> None:
@@ -911,7 +961,8 @@ def _effect_steps_in_base_form(old: Step, candidate: Step) -> None:
         )
         for row in base
     )
-    if canonical(present(at.state, wholes)) != candidate.decision[1]:
+    shown = _with_trash_icons(without_pick(at.state), at.decision.owner, wholes)
+    if canonical(present(at.state, shown)) != candidate.decision[1]:
         return
     from engine_equivalence import _page
 

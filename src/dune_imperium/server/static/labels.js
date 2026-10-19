@@ -771,6 +771,7 @@ const PAYLOAD_KEY_LABELS = {
   player: "플레이어",
   players: "플레이어",
   post_id: "관측소",
+  printed: "아이콘 출처",
   rank: "순위",
   reached_faction: "도달한 트랙",
   recall_agents: "에이전트 소환 수",

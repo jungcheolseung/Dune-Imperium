@@ -162,6 +162,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.graft_boxes import ACTIVE_BOX_KEY
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -178,7 +179,7 @@ from dune_imperium.rules.intrigue_deck import (
     with_trashed_intrigue,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
-from dune_imperium.rules.optional_trash import open_optional_trash
+from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import turn_space_spy_frames
@@ -433,6 +434,20 @@ def box_icon_block(
 
 
 # --- Resolution --------------------------------------------------------------------
+
+
+def _box_trash_printer(context: Mapping[str, ActionValue]) -> str:
+    """The printer an optional trash the active box opens records (stage
+    B3c-2b): the box's card by type, box 1 for a grafted turn's second card
+    (as ``effect_steps.Printed.BOX_CARD`` names a box's effects)."""
+
+    card_id = context["card_id"]
+    assert isinstance(card_id, str)
+    return trash_printer(
+        Source.AGENT_CARD,
+        personal_card_for_instance(card_id).card.card_id,
+        1 if context.get(ACTIVE_BOX_KEY) == 1 else 0,
+    )
 
 
 def _subject(context: dict[str, ActionValue]) -> tuple[int, str]:
@@ -824,7 +839,9 @@ def resolve_box(state: GameState) -> RuleResult:
             case TrashPersonalCard():
                 # The black trash icon on a frame of its own, named after the
                 # box so a self-trash keeps its card's effects (OQ-022).
-                next_state = open_optional_trash(next_state, player, source)
+                next_state = open_optional_trash(
+                    next_state, player, source, printer=_box_trash_printer(context)
+                )
         if step is not None:
             next_state = step.state
             follow_ups.extend(step.events)
@@ -1202,7 +1219,9 @@ def apply_payment(
             case TrashPersonalCard():
                 # The black trash icon stays optional once the cost is paid
                 # [FAQ p. 3], on a frame of its own named after the box.
-                next_state = open_optional_trash(next_state, player, source)
+                next_state = open_optional_trash(
+                    next_state, player, source, printer=_box_trash_printer(context)
+                )
             case AdvanceTleilaxu(count=count):
                 step = advance_tleilaxu(next_state, player, count)
             case DrawPersonalCards(count=count):
@@ -2761,7 +2780,10 @@ def apply_chosen_reward(
                 events.extend(advanced.events)
             case TrashPersonalCard():
                 next_state = open_optional_trash(
-                    next_state, player, f"{source}:{index + 1}"
+                    next_state,
+                    player,
+                    f"{source}:{index + 1}",
+                    printer=_box_trash_printer(context),
                 )
     return RuleResult(state=next_state, events=tuple(events))
 

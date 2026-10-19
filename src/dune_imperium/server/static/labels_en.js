@@ -716,6 +716,7 @@ const LABELS_EN = {
     "player": "Player",
     "players": "Players",
     "post_id": "Post",
+    "printed": "Icon from",
     "rank": "Rank",
     "reached_faction": "Track reached",
     "recall_agents": "Recall Agents",

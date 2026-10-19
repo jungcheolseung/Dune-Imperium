@@ -938,7 +938,9 @@ def test_a_search_seat_restores_without_searching_again(
     # than 10, then more than 5 in the next 30); seed 39 gave 26 and 31.
     # Stage B3b-2 (the Reveal frame's effects come effect first) changes the
     # codec's rows again and seed 39 gives 10 and 8; seed 40 gives 16 and 16.
-    original = _advance(manager, manager.create_game(seats, game_seed=40), 30)
+    # Stage B3c-2b (an optional trash's icon row) moves them again: seed 40
+    # gives 10 and 22; seed 46 gives 29 and 27.
+    original = _advance(manager, manager.create_game(seats, game_seed=46), 30)
     game_id = _text(original["game_id"])
     session = manager._sessions[game_id]
     assert _seat_steps(session.steps, {1}) > 10

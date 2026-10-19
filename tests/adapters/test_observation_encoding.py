@@ -1029,16 +1029,23 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # game). Then the second picked Faction's 4 columns: each digest over the
 # first 5,589 columns is the pin before them, and no game here picks two
 # Factions before an exchange's recipient.
+# Re-pinned for stage B3c-2b (OQ-022 2026-10-20 note): an optional trash on
+# the owner's turn is its trash icon's row, then the card. An export of the
+# previous commit (1e621400) gives each game's per-decision trace equal to
+# this one up to the first in-turn optional trash (everything at decision
+# 505, a research space's; promo_bloodlines_tech at 317, Spy Drones'), where
+# the random seat draws over the fewer rows and the games part; the other
+# four games offer none and stay pinned.
 _GOLDEN_DIGESTS = {
     "base": ("516149642bde50a6c3084f6b7f7985a2960aac5c0ed5ca889ff131fc1aa5d004", 2780),
     "choam": ("aeb2574a7f2fb055843ef79074c0f8158681432b364196e4c46bcfb66a502a1e", 2668),
     "promo_bloodlines_tech": (
-        "4d73dd472669432a2ebb3ff9413f45c8733ab265ba7ce198bb035dc4113aae3c",
-        3188,
+        "e8e7626c6087e5061d8d63be11cd12c9e3eb1b7a13d46bdc9ec25e7853fec780",
+        3284,
     ),
     "everything": (
-        "fe2c26e938c03cdfbdb192bfd7afd59db533e3f45c949691f2f2895c61be1827",
-        3340,
+        "fc0b2b644450066d2a093998c47c30957a914b54bac29fe793c5c2709a72010a",
+        3616,
     ),
     "draft": ("5cb1cda6e154162ff7e9e036833e5018e32c08c6c3b4c6f22d440a924e997e78", 2788),
     "scouts": (

@@ -1510,8 +1510,25 @@ BOX_ZERO = DomainAction("resolve_agent_card_effect", 0)
 BOX_ONE = DomainAction("resolve_agent_card_effect", 0, (("box", 1),))
 
 
-def _trash(card_id: str) -> DomainAction:
-    return DomainAction("trash_optional_card", 0, (("card_id", card_id),))
+def _trash(card_id: str, printed: str, box: int = 0) -> DomainAction:
+    """The waiting optional trash of ``printed``'s box (``box`` 1 for the
+    graft partner) trashing ``card_id`` (stage B3c-2b: the row names the
+    trash icon)."""
+
+    return DomainAction(
+        "trash_optional_card",
+        0,
+        tuple(
+            sorted(
+                (
+                    ("card_id", card_id),
+                    ("printed", printed),
+                    ("source", "agent_card"),
+                    *((("printed_box", 1),) if box else ()),
+                )
+            )
+        ),
+    )
 
 
 def _expired(result: Transition) -> list[object]:
@@ -1533,7 +1550,7 @@ def test_throne_room_politics_trashing_itself_keeps_its_added_draw() -> None:
         _state((THRONE,), bene_gesserit_boost_pending=True), THRONE, "arrakeen"
     )
     boxed = apply_whole(ENGINE, state, BOX_ZERO).state
-    trashed = apply_whole(ENGINE, boxed, _trash(THRONE))
+    trashed = apply_whole(ENGINE, boxed, _trash(THRONE, "throne_room_politics"))
     assert THRONE in trashed.state.players[0].trashed
     assert _expired(trashed) == []
     assert agent_effects.resolves_boost_draw(trashed.state, BOX_ZERO_DRAW)
@@ -1559,12 +1576,13 @@ def test_a_ghola_copy_s_draw_lapses_only_with_ghola() -> None:
     assert effects.pending_boost_draws(context) == (THRONE, GHOLA)
     copy = apply_whole(ENGINE, state, BOX_ONE).state
 
-    own = apply_whole(ENGINE, copy, _trash(GHOLA))
+    # Ghola's copied trash icon is box 1's, printed on Ghola.
+    own = apply_whole(ENGINE, copy, _trash(GHOLA, "ghola", 1))
     assert _expired(own) == []
     _, context = current_agent_effect_context(own.state)
     assert effects.pending_boost_draws(context) == (THRONE, GHOLA)
 
-    other = apply_whole(ENGINE, copy, _trash(THRONE))
+    other = apply_whole(ENGINE, copy, _trash(THRONE, "ghola", 1))
     assert _expired(other) == [THRONE]
     _, context = current_agent_effect_context(other.state)
     assert effects.pending_boost_draws(context) == (GHOLA,)

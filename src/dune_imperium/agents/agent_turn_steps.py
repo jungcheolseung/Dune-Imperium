@@ -25,6 +25,7 @@ steps without asking again.
 
 from collections.abc import Callable
 
+from dune_imperium.agents.engine_order import older_engine_wholes
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.engine import RuleResult, Transition
@@ -119,7 +120,8 @@ def _effect_wholes(
     if not presents_steps(state):
         return None
     offered = set(legal_actions)
-    every = _ENGINE.whole_actions(state, player)
+    # These agents keep the older engine's own picks (``engine_order``).
+    every = older_engine_wholes(state, player, _ENGINE.whole_actions(state, player))
     if any(whole in offered and whole != first_step(state, whole) for whole in every):
         # The caller lists the whole actions themselves (a walk applying
         # them with ``apply_whole``): the choice is one of them, as it is.

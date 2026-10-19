@@ -612,9 +612,11 @@ def test_research_advance_takes_a_reveal_research_keys_space() -> None:
 def _get_card_to_trash(state: GameState, rng_seed: int = 0) -> str | None:
     seat = _seat(state)
     profile = make_profile(state, seat, rng_seed=rng_seed)
+    # The whole actions: on the turn a trash is its icon's row, then the
+    # card (stage B3c-2b).
     refs = [
         str(arg(a, "card_id"))
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "trash_optional_card"
     ]
     cards = tuple(card_entity(r, seat) for r in refs)
@@ -642,10 +644,12 @@ def _waiting_trash(**changes: object) -> GameState:
     on top (cleanup-2b): its rows beside the Reveal's others, no decline."""
 
     state, seat = _research_seat(**changes)
+    # The research space's trash, recording its printer (stage B3c-2b).
+    source = _trash_source(state, seat)
     queued = turn_rows.queue(
         state.pop_decision(),
         seat,
-        (turn_rows.OPTIONAL_TRASH, _trash_source(state, seat), ""),
+        (turn_rows.OPTIONAL_TRASH, source, f"research|{source.rsplit(':', 1)[1]}"),
     )
     assert queued is not None
     return queued
@@ -758,8 +762,12 @@ def test_a_waiting_planetologist_card_is_drawn_first() -> None:
     state, seat = _research_seat()
     source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
     turn = state.pop_decision()
-    for kind in (turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE):
-        queued = turn_rows.queue(turn, seat, (kind, source, ""))
+    # The trash records the leader that printed it (stage B3c-2b).
+    for kind, value in (
+        (turn_rows.OPTIONAL_TRASH, "leader|liet_kynes"),
+        (turn_rows.PLANETOLOGIST_INTRIGUE, ""),
+    ):
+        queued = turn_rows.queue(turn, seat, (kind, source, value))
         assert queued is not None
         turn = queued
     action = W.optional_trash_now(_run(turn))

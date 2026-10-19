@@ -38,6 +38,7 @@ import logging
 from typing import Final
 
 from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
@@ -134,9 +135,17 @@ def _turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
     )
 
 
+# A trash row's arguments that name the trash icon it uses (an optional
+# trash waiting on the turn, stage B3c-2b): two rows of one card differ by
+# them, and only one of them may lose the card's box.
+ICON_ARGUMENTS: Final = ("printed", "printed_box", "source")
+
+type LosingRow = tuple[str, str, tuple[tuple[str, ActionValue], ...]]
+
+
 def box_losing_trash(
     engine: UprisingRulesEngine, state: GameState, seat: int
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[LosingRow, ...]:
     """``_box_losing_trash``, or no rows if it fails (display only, as
     ``turn_cards``)."""
 
@@ -149,8 +158,10 @@ def box_losing_trash(
 
 def _box_losing_trash(
     engine: UprisingRulesEngine, state: GameState, seat: int
-) -> tuple[tuple[str, str], ...]:
-    """Return the ``(action_id, card_id)`` trash rows that would lose a box.
+) -> tuple[LosingRow, ...]:
+    """Return the ``(action_id, card_id, icon arguments)`` trash rows that
+    would lose a box (``ICON_ARGUMENTS``: the trash icon an optional trash
+    row uses, none for the others).
 
     Only for ``seat`` while it owns the pending decision, and only its legal
     trash rows (``TRASH_CARD_ACTIONS``) naming a card of the open Agent turn
@@ -179,7 +190,7 @@ def _box_losing_trash(
     _, pending = turn_cards(state)
     if not pending:
         return ()
-    losing: list[tuple[str, str]] = []
+    losing: list[LosingRow] = []
     # The whole actions (stage B3: a trash with the card it trashes).
     for action in engine.whole_actions(state, seat):
         if action.action_id not in TRASH_CARD_ACTIONS:
@@ -201,7 +212,12 @@ def _box_losing_trash(
             _LOGGER.exception("the dry run of %s failed", action.action_id)
             continue
         if _box_expired(result.events, card_id) or _box_doomed(result.state, card_id):
-            losing.append((action.action_id, card_id))
+            icon = tuple(
+                (key, value)
+                for key, value in action.arguments
+                if key in ICON_ARGUMENTS
+            )
+            losing.append((action.action_id, card_id, icon))
     return tuple(losing)
 
 

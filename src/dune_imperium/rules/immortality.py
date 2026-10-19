@@ -48,6 +48,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
     OWED_CARD,
@@ -72,6 +73,7 @@ from dune_imperium.rules.market_events import imperium_row_cleared_event
 from dune_imperium.rules.optional_trash import (
     open_optional_trash,
     optional_trash_frame,
+    trash_printer,
 )
 from dune_imperium.rules.scouts_missions import (
     HELIX,
@@ -98,6 +100,7 @@ __all__ = [
     "move_research_token",
     "research_bonus_block",
     "research_icon_spaces",
+    "research_trash_spaces",
     "spend_specimens",
 ]
 
@@ -495,7 +498,11 @@ def _resolve_research_bonus(
                     )
                 )
             if icons[1] == ICON_TRASH:
-                return RuleResult(state=open_optional_trash(queued, player, source))
+                # The trash icon is the research space's own (stage B3c-2b).
+                printer = trash_printer(Source.RESEARCH, source.rsplit(":", 1)[1])
+                return RuleResult(
+                    state=open_optional_trash(queued, player, source, printer=printer)
+                )
             paired = turn_rows.queue(
                 queued, player, (turn_rows.RESEARCH_ICON, source, icons[1])
             )
@@ -570,6 +577,17 @@ RESEARCH_ICON_ORDER: Final = (
     ICON_INTRIGUE,
     ICON_CARD,
 )
+
+
+def research_trash_spaces() -> tuple[str, ...]:
+    """The research spaces whose pair prints an optional trash icon (stage
+    B3c-2b, ``optional_trash.trash_printer``)."""
+
+    return tuple(
+        space.space_id
+        for space in RESEARCH_SPACES_BY_ID.values()
+        if space.bonus is ResearchBonus.TRASH_AND_SPECIMEN
+    )
 
 
 def research_icon_spaces(icon: str) -> tuple[str, ...]:

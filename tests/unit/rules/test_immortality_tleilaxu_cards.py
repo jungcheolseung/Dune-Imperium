@@ -230,7 +230,11 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     assert [
         (kind, value)
         for kind, _source, value in turn_rows.pending(bonus.decision_stack[-1])
-    ] == [(turn_rows.RESEARCH_ICON, "specimen"), (turn_rows.OPTIONAL_TRASH, "")]
+    ] == [
+        (turn_rows.RESEARCH_ICON, "specimen"),
+        # The trash records the research space that printed it (B3c-2b).
+        (turn_rows.OPTIONAL_TRASH, "research|c3r3"),
+    ]
     # Only the Research icon's own specimen so far; c3r3's waits.
     assert bonus.players[0].specimens == 1
     assert "decline_optional_trash" not in {
@@ -238,8 +242,11 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     }
     assert bonus.players[0].hand == (DAGGER,)
     assert len(bonus.players[0].deck) == deck_size
+    # c3r3's own trash icon (stage B3c-2b: the row names it).
     trash = DomainAction(
-        action_id="trash_optional_card", actor=0, arguments=(("card_id", DAGGER),)
+        action_id="trash_optional_card",
+        actor=0,
+        arguments=(("card_id", DAGGER), ("printed", "c3r3"), ("source", "research")),
     )
     assert trash in engine.whole_actions(bonus, 0)
 
@@ -286,8 +293,11 @@ def test_industrial_espionage_draw_first_lets_the_bonus_trash_the_drawn_card() -
             arguments=(("space_id", "c3r3"),),
         ),
     ).state
+    # c3r3's own trash icon (stage B3c-2b: the row names it).
     trash = DomainAction(
-        action_id="trash_optional_card", actor=0, arguments=(("card_id", card),)
+        action_id="trash_optional_card",
+        actor=0,
+        arguments=(("card_id", card), ("printed", "c3r3"), ("source", "research")),
     )
     trashed = apply_whole(engine, bonus, trash).state
 

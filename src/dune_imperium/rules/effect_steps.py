@@ -115,6 +115,12 @@ class Printed(StrEnum):
     # window's own space, or on the turn frame the newest waiting icon of
     # the whole action's kind -- the one ``apply_research_icon`` takes.
     RESEARCH_SPACE = "research_space"
+    # The whole action names its effect's source and printed entity in its
+    # own ``source`` and ``printed`` arguments (and ``printed_box`` for a
+    # grafted turn's second card): an optional trash waiting on the turn,
+    # whose printer the waiting item records (stage B3c-2b,
+    # ``optional_trash.trash_printer``).
+    NAMED = "named"
 
 
 @dataclass(frozen=True, slots=True)
@@ -602,6 +608,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "draw_planetologist_intrigue": _spec(
         _V.DRAW, _S.LEADER, _LEADER, icon="intrigue"
     ),
+    # An optional trash waiting on the turn, by the entity that printed its
+    # icon (stage B3c-2b), then the card.
+    "trash_optional_card": _spec(_V.TRASH, _S.REF, Printed.NAMED, targets=_CARD),
 })
 
 # The frames whose waiting effects are offered effect first (module doc).
@@ -617,9 +626,9 @@ EFFECT_STEP_FRAMES: Final = frozenset({
 # Whole ids of ``STEP_SPECS`` a frame outside ``EFFECT_STEP_FRAMES`` still
 # offers as they are (the Tech acquisition window, Servo-Receivers' Signet
 # frame, a Contract's reward window, a revealed card's own choice frame, a
-# research window outside the turn, the Planetologist's window -- stage B3d
-# gives those target rows); every other whole id of the table is offered
-# only as steps, so the action catalog drops it.
+# research window outside the turn, the Planetologist's and the optional
+# trash's window -- stage B3d gives those target rows); every other whole id
+# of the table is offered only as steps, so the action catalog drops it.
 OFFERED_AS_WHOLE: Final = frozenset({
     "acquire_leader_imperium",
     "acquire_leader_reserve",
@@ -668,6 +677,7 @@ OFFERED_AS_WHOLE: Final = frozenset({
     "trash_intrigue_for_research_bonus",
     "trash_leader_card",
     "trash_leader_tech",
+    "trash_optional_card",
     "trash_reveal_card",
 })
 
@@ -713,6 +723,9 @@ def printed_from_state(
         return spec.source, window
     if rule == Printed.RESEARCH_SPACE:
         return spec.source, _research_space(state, whole)
+    if rule == Printed.NAMED:
+        arguments = dict(whole.arguments)
+        return Source(str(arguments["source"])), arguments["printed"]
     return spec.source, _leader_face(state, whole)
 
 
@@ -764,16 +777,23 @@ def path_of(state: GameState, whole: DomainAction) -> tuple[DomainAction, ...] |
 
     spec = STEP_SPECS.get(whole.action_id)
     if spec is None or (
-        not isinstance(spec.printed, Printed)
+        (spec.printed == Printed.NAMED or not isinstance(spec.printed, Printed))
         and not spec.printed.startswith(_FIXED)
-        and spec.printed not in dict(whole.arguments)
+        and _printed_argument(spec) not in dict(whole.arguments)
     ):
-        # Not shown as steps (a reward window's row names no Contract).
+        # Not shown as steps (a reward window's row names no Contract, an
+        # optional trash window's no printer).
         return None
     named = printed_from_state(state, whole)
     if named is None:
         return steps_for(whole)
     return steps_for(whole, named[1], named[0])
+
+
+def _printed_argument(spec: StepSpec) -> str:
+    """The whole action's argument naming its printed entity."""
+
+    return "printed" if spec.printed == Printed.NAMED else spec.printed
 
 
 def steps_for(
@@ -788,7 +808,13 @@ def steps_for(
     spec = STEP_SPECS[whole.action_id]
     arguments = dict(whole.arguments)
     box = arguments.pop("box", 0)
-    if not isinstance(spec.printed, Printed):
+    if spec.printed == Printed.NAMED:
+        # The source and printed entity are the ref's (given here), and so
+        # is a grafted turn's second card (``printed_box``).
+        arguments.pop("source", None)
+        arguments.pop("printed", None)
+        box = arguments.pop("printed_box", box)
+    elif not isinstance(spec.printed, Printed):
         printed = (
             spec.printed.removeprefix(_FIXED)
             if spec.printed.startswith(_FIXED)

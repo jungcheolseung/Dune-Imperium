@@ -1564,13 +1564,23 @@ function turnCardSuffixes(entries, suffixes) {
 
 /* Whether the server's dry run says this trash row loses an Agent box of
    the open Agent turn (view.box_losing_trash, sent with the seat's own
-   rows only). A row naming no card (Dissecting Kit) matches on its action. */
+   rows only). A row naming no card (Dissecting Kit) matches on its action.
+   An optional trash on the turn also names the trash icon it uses
+   (source, printed, printed_box; stage B3c-2b): a card trashed by its own
+   box's icon keeps its box, by another icon it loses it, so the icon must
+   match too. */
+const TRASH_ICON_KEYS = ["source", "printed", "printed_box"];
+
 function losesBox(action) {
   const cardId = action.arguments.card_id;
   const losing = (state.view && state.view.box_losing_trash) || [];
   return losing.some(
     (row) => row.action_id === action.action_id
       && (typeof cardId !== "string" || row.card_id === cardId)
+      && TRASH_ICON_KEYS.every(
+        (key) => (row[key] === undefined ? null : row[key])
+          === (action.arguments[key] === undefined ? null : action.arguments[key])
+      )
   );
 }
 

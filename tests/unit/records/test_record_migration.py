@@ -1920,7 +1920,16 @@ def test_a_card_s_own_trash_keeps_its_draw_for_the_recorded_end() -> None:
     state = _arrakeen_graft(
         throne, "tleilaxu:ghola:0", skip=draws, bene_gesserit_boost_pending=True
     )
-    trash = DomainAction("trash_optional_card", 0, (("card_id", throne),))
+    # Its own box's trash icon (stage B3c-2b: the row names the icon).
+    trash = DomainAction(
+        "trash_optional_card",
+        0,
+        (
+            ("card_id", throne),
+            ("printed", "throne_room_politics"),
+            ("source", "agent_card"),
+        ),
+    )
     decline = DomainAction("decline_optional_trash", 0)
     while True:
         legal = ENGINE.whole_actions(state, 0)
@@ -2602,6 +2611,10 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     trash = DomainAction(
         action_id="trash_optional_card", actor=0, arguments=(("card_id", LIET_RECON),)
     )
+    trash_row = DomainAction(
+        "trash", 0, (("printed", "liet_kynes"), ("source", "leader"))
+    )
+    pick_card = DomainAction("choose_personal_card", 0, (("card_id", LIET_RECON),))
 
     record = migrate_record(
         _v142_record(turn, play, rewards, draw, trash, keep, codec=148),
@@ -2620,11 +2633,23 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
         (rewards, 1, None),
         (keep, 4, None),
         (draw_row, 2, migration.TURN_ROW_HELD),
-        (trash, 3, migration.TURN_ROW_HELD),
+        (trash_row, None, "effect_step"),
+        (pick_card, 3, migration.TURN_ROW_HELD),
     ]
-    # The held draw is taken as its effect row (stage B3c-2a), which ends
-    # the recorded whole action.
+    # The held draw is taken as its effect row (stage B3c-2a), and the held
+    # trash as the leader's trash icon, then the card (stage B3c-2b): each
+    # last step ends the recorded whole action, the trash with the icon the
+    # recording engine used.
     assert record.steps[5].whole == draw
+    assert record.steps[7].whole == DomainAction(
+        "trash_optional_card",
+        0,
+        (
+            ("card_id", LIET_RECON),
+            ("printed", "liet_kynes"),
+            ("source", "leader"),
+        ),
+    )
     assert record.state.players[0].trashed == (LIET_RECON,)
     assert len(record.state.players[0].intrigue_cards) == 1
 
@@ -3014,10 +3039,12 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # reward icon rows moved them again, from 95, 891 and 98 ... 862,
     # stage B3's effect rows again, from 102, 947 and 105 ... 918, stage
     # B3b-2's Reveal effect rows again, from 104, 980 and 107 ... 949, and
-    # stage B3c-1's played cards again, from 111, 1045 and 114 ... 1014;
+    # stage B3c-1's played cards again, from 111, 1045 and 114 ... 1014,
+    # stage B3c-2b's optional trash icon rows again, from 1106 and 953,
+    # 1073;
     # ``play`` is the step that ends the Harvest Cells play, its card.)
     game = _this_engine_game(175)
-    play, rewards = 120, 1106
+    play, rewards = 120, 1107
     assert _whole(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -3030,7 +3057,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {123, 245, 375, 495, 649, 806, 953, 1073} <= starts
+    assert {123, 245, 375, 495, 649, 806, 954, 1074} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3054,7 +3081,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 1106
+    rewards = 1107
     starts = {
         index
         for index, step in enumerate(game.steps)

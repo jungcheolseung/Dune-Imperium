@@ -60,6 +60,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -98,7 +99,7 @@ from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
     use_leader_signet_for_tech,
 )
-from dune_imperium.rules.optional_trash import open_optional_trash
+from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
@@ -763,7 +764,9 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         working = contracts.state
         events.extend(contracts.events)
     if effect == "trash":
-        working = open_optional_trash(working, player, source)
+        working = open_optional_trash(
+            working, player, source, printer=trash_printer(Source.TECH, tech_id)
+        )
     if effect.startswith("spy_"):
         working = spy_placement_frame(
             working, player, ALL_POST_IDS, source=source, deep_cover=True
@@ -903,7 +906,12 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                         working, players=replace_player(working.players, seat)
                     )
                 case TrashPersonalCard():
-                    working = open_optional_trash(working, player, source)
+                    working = open_optional_trash(
+                        working,
+                        player,
+                        source,
+                        printer=trash_printer(Source.TECH, tech_id),
+                    )
     return RuleResult(state=working, events=tuple(events))
 
 
@@ -916,6 +924,24 @@ def _flip_ability(tech_id: str) -> Ability:
         if record.timing is AbilityTiming.FLIP
     )
     return flip
+
+
+def optional_trash_tech_ids() -> tuple[str, ...]:
+    """The tiles that print an optional trash: an acquire ``trash`` icon or a
+    Flip line's (stage B3c-2b, ``optional_trash.trash_printer``)."""
+
+    return tuple(
+        tile.tech_id
+        for tile in TECH_TILES
+        if "trash" in tile.acquire_effect_keys
+        or any(
+            isinstance(reward, TrashPersonalCard)
+            for record in TECH_ABILITIES[tile.tech_id]
+            if record.timing is AbilityTiming.FLIP
+            for line in record.sections
+            for reward in line.rewards
+        )
+    )
 
 
 def _grants_combat_icon(flip: Ability) -> bool:

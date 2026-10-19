@@ -142,7 +142,7 @@ from dune_imperium.server.session_log import (
     undo_history,
     undo_window,
 )
-from dune_imperium.server.turn_cards import box_losing_trash, turn_cards
+from dune_imperium.server.turn_cards import LosingRow, box_losing_trash, turn_cards
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
     HELD_IN_TURN,
@@ -3058,7 +3058,7 @@ def _serialize_view(
     state: GameState,
     *,
     disclose: bool = False,
-    box_losing: tuple[tuple[str, str], ...] = (),
+    box_losing: tuple[LosingRow, ...] = (),
 ) -> JsonObject:
     """Serialize a view with the public round-by-round Conflict history.
 
@@ -3092,8 +3092,10 @@ def _serialize_view(
     review, and kept beside the other public table facts here rather than
     in ``PlayerView``, so the AI observation's encoding stays as it was.
 
-    ``box_losing_trash`` lists, as ``{action_id, card_id}``, the decision
-    owner's legal trash rows that would lose such a box (``box_losing``,
+    ``box_losing_trash`` lists, as ``{action_id, card_id}`` (and, for an
+    optional trash on the turn, the trash icon it uses: ``source``,
+    ``printed``, ``printed_box``), the decision owner's legal trash rows
+    that would lose such a box (``box_losing``,
     from ``turn_cards.box_losing_trash``'s dry runs): a card trashing itself
     by its own effect keeps its rewards (OQ-022), so a pending box alone
     does not say it. Like the legal rows it describes, it is filled only in
@@ -3120,8 +3122,8 @@ def _serialize_view(
     serialized["turn_card_ids"] = list(played)
     serialized["pending_box_card_ids"] = list(pending)
     serialized["box_losing_trash"] = [
-        {"action_id": action_id, "card_id": card_id}
-        for action_id, card_id in box_losing
+        {"action_id": action_id, "card_id": card_id, **dict(icon)}
+        for action_id, card_id, icon in box_losing
     ]
     if disclose:
         serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))

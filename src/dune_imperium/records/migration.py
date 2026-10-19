@@ -132,7 +132,10 @@ from dune_imperium.rules.immortality import OWED_ORIGIN_RESEARCH, RESEARCH_ICON_
 from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
-from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
+from dune_imperium.rules.optional_trash import (
+    INTRIGUE_PENDING_KEY,
+    legacy_trash_whole,
+)
 from dune_imperium.rules.owed_draws import next_owed_draw
 from dune_imperium.rules.pauses import SCOUTS_REWARD
 from dune_imperium.rules.reveal_turn import (
@@ -375,17 +378,20 @@ def migrate_record(
             last = held_step
             picks: list[MigratedStep] = []
             stepped = at
+            # A held optional trash takes the trash icon the recording
+            # engine picked (stage B3c-2b).
+            target = _named_trash(at, held_step) or held_step
             if (
                 presents_steps(at)
-                and held_step not in engine.legal_actions(at, held_step.actor)
-                and held_step in engine.whole_actions(at, held_step.actor)
+                and target not in engine.legal_actions(at, target.actor)
+                and target in engine.whole_actions(at, target.actor)
             ):
-                whole = held_step
-                while steps_after(stepped, held_step) > 0:
-                    row = first_step(stepped, held_step)
+                whole = target
+                while steps_after(stepped, target) > 0:
+                    row = first_step(stepped, target)
                     stepped = engine.apply(stepped, row).state
                     picks.append(MigratedStep(row, None, "effect_step"))
-                last = first_step(stepped, held_step)
+                last = first_step(stepped, target)
             try:
                 after = engine.apply(stepped, last).state
             except IllegalActionError:
@@ -2345,6 +2351,42 @@ def _effect_last_step(
     return move if move in engine.legal_actions(state, move.actor) else None
 
 
+OPTIONAL_TRASH_ICON: Final = "optional_trash_icon"
+
+
+def _named_trash(state: GameState, step: ReplayStep) -> DomainAction | None:
+    """A recorded optional trash that names no trash icon (before codec
+    v150), as the row with the icon the recording engine picked itself
+    (``optional_trash.legacy_trash_whole``), while trashes wait on its
+    actor's turn frame on top; None for any other step."""
+
+    if not isinstance(step, DomainAction) or step.action_id != "trash_optional_card":
+        return None
+    arguments = dict(step.arguments)
+    if "printed" in arguments:
+        return None
+    return legacy_trash_whole(state, step.actor, str(arguments["card_id"]))
+
+
+def _optional_trash_icon(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded optional trash on its owner's turn, as the row naming the
+    trash icon it used (stage B3c-2b, ``_named_trash``)."""
+
+    if not isinstance(decision, PlayerDecision) or not isinstance(step, DomainAction):
+        return None
+    if decision.owner != step.actor:
+        return None
+    named = _named_trash(state, step)
+    if named is None or named not in engine.whole_actions(state, step.actor):
+        return None
+    return named
+
+
 def _split_box_icon(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -3525,6 +3567,12 @@ BRIDGES: tuple[Bridge, ...] = (
         EFFECT_LAST_STEP, _effect_last_step, before_codec=150, rewrites=True
     ),
     Bridge("effect_step", _effect_step, before_codec=150),
+    # Codec v150 (stage B3c-2b): an optional trash on the owner's turn names
+    # the trash icon it uses; a recorded one takes the icon the recording
+    # engine picked itself.
+    Bridge(
+        OPTIONAL_TRASH_ICON, _optional_trash_icon, before_codec=150, rewrites=True
+    ),
     Bridge("split_box_icon", _split_box_icon, before_codec=149, rewrites=True),
     Bridge("split_box_follow", _split_box_follow, before_codec=149, follows=True),
     Bridge("split_box_spy", _split_box_spy, before_codec=149, rewrites=True),

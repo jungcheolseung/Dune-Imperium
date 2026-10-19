@@ -356,7 +356,8 @@ def test_trash_and_specimen_waits_on_the_turn_as_two_rows() -> None:
     assert top.kind == "turn"
     assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
         (turn_rows.RESEARCH_ICON, "specimen"),
-        (turn_rows.OPTIONAL_TRASH, ""),
+        # The trash records the research space that printed it (B3c-2b).
+        (turn_rows.OPTIONAL_TRASH, "research|c3r3"),
     ]
     assert pending_research_icons(chosen.state, 0) == ("specimen",)
     offered = legal_optional_trash_actions(chosen.state, 0)
@@ -639,7 +640,8 @@ def test_specimen_and_trash_let_the_trash_come_first() -> None:
     waiting = turn_rows.pending(state.decision_stack[-1])
     assert [(kind, value) for kind, _source, value in waiting] == [
         (turn_rows.RESEARCH_ICON, "specimen"),
-        (turn_rows.OPTIONAL_TRASH, ""),
+        # The trash records the research space that printed it (B3c-2b).
+        (turn_rows.OPTIONAL_TRASH, "research|c3r3"),
     ]
     offered = {a.action_id for a in engine.whole_actions(state, 0)}
     assert {"resolve_research_icon", "trash_optional_card"} <= offered

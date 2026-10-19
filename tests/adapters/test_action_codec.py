@@ -580,6 +580,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # rows join.
         - 159
         + 29
+        # v150 (stage B3c-2b): Arrakis Planetologist's optional trash names
+        # its leader (trash(source=leader, printed=liet_kynes)).
+        + 1
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
