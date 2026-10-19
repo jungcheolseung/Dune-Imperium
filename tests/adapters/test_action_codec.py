@@ -133,10 +133,13 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # combination gives way to a choose_agent_card per card (and graft)
         # and a place_agent per space variant.
         - 1634
+        # v150 (stage B2, OQ-112): a Conflict reward's icon rows, one per
+        # icon kind but the Bloodlines-only Deep Cover Spy.
+        + 14
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged.
-    assert first.size == 2917
+    assert first.size == 2931
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -160,8 +163,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 2917
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 2917 + len(
+    assert ActionCodec(RulesetConfig()).size == 2931
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 2931 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -286,6 +289,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # replace its card-and-space agent_turn templates (see
         # test_catalog_is_fixed...).
         - 1735
+        # v150 (stage B2, OQ-112): a Conflict reward's icon rows (14) and a
+        # completed Contract's (9).
+        + 14
+        + 9
     )
 
     try:
@@ -423,6 +430,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # replace its card-and-space agent_turn templates (see
         # test_catalog_is_fixed...).
         - 6425
+        # v150 (stage B2, OQ-112): a Conflict reward's icon rows, with the
+        # Deep Cover Spy (15), and a completed Contract's (9).
+        + 15
+        + 9
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

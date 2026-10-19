@@ -796,7 +796,9 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     # which moved seed 7 off it; seed 12 was the only one of 0-39 reaching
     # it under this index-0 walk. Re-searched 2026-10-14 -- v146: optional
     # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
-    # moved seed 12 off it; of 0-79 seeds 22, 56 and 72 reach it.)
+    # moved seed 12 off it; of 0-79 seeds 22, 56 and 72 reach it. Stage B2
+    # holds seat 0's Conflict reward rows before a pause, so the walk now
+    # meets summaries without a decision; seed 22 still reaches the shape.)
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=22, bloodlines=True)
     game_id = str(summary["game_id"])
@@ -804,7 +806,8 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
         manager,
         game_id,
         summary,
-        lambda s: _obj(s["decision"])["kind"] == "opponent_unit_loss"
+        lambda s: s["decision"] is not None
+        and _obj(s["decision"])["kind"] == "opponent_unit_loss"
         and _obj(s["decision"])["owner"] == 0,
     )
     assert summary["confirmation"] is None
@@ -1636,14 +1639,17 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # is the first of 0-59 (27 and 59 reach it too). Codec v150 (stage B1,
     # OQ-111): the Agent turn is a card pick and a space pick, which changes
     # the walk's lists again; re-searched, seed 3 is the first of 0-59 (25,
-    # 26, 30, 37, 46, 49, 50 and 57 reach it too).
+    # 26, 30, 37, 46, 49, 50 and 57 reach it too). Stage B2 (OQ-112): a
+    # Conflict reward's icons are rows the walk draws over; re-searched,
+    # seed 2 is the first of 0-59 (5, 7, 18, 23, 26, 35, 43, 44 and 49 reach
+    # it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=3)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=2)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(3 * 9973 + 1)
+    rng = random.Random(2 * 9973 + 1)
 
     found = False
     for _ in range(6000):
@@ -1929,7 +1935,14 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     assert session.state.decision_stack[-1].kind == FrameKind.PAUSE
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
-    assert _seat0_undo(summary) == [{"seat": 0, "steps": 1}]
+    # The unit is the reward's three icon rows (stage B2, OQ-112: Control,
+    # Solari, the Spy's row) and the Spy; none of them reveals anything.
+    assert [
+        entry.step.action_id
+        for entry in session.log[-4:]
+        if isinstance(entry, LoggedStep) and isinstance(entry.step, DomainAction)
+    ] == ["resolve_combat_reward_icon"] * 3 + ["place_combat_reward_spy"]
+    assert _seat0_undo(summary) == [{"seat": 0, "steps": 4}]
     assert manager.legal_actions(game_id, 0)["actions"] == []
 
     summary = manager.undo(game_id, 0, _int(summary["revision"]), 1)
@@ -2012,7 +2025,8 @@ def test_a_hold_before_a_chance_outcome_survives_save_and_restore() -> None:
     restored_id = str(restored["game_id"])
     assert restored["confirmation"] == 0
     assert restored["decision"] is None
-    assert _seat0_undo(restored) == [{"seat": 0, "steps": 1}]
+    # The reward's three icon rows and its Spy (stage B2).
+    assert _seat0_undo(restored) == [{"seat": 0, "steps": 4}]
 
     live = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
     twin = manager.confirm_turn(restored_id, 0, _int(restored["revision"]))
@@ -3245,7 +3259,10 @@ def test_an_auto_decline_replays_and_stays_sealed_after_a_load() -> None:
     # The same seed 7 game, saved right before the request that runs into
     # the auto-decline and right after it: a load of the first regenerates
     # the decline when that request is repeated, a load of the second
-    # replays it as recorded and keeps it sealed.
+    # replays it as recorded and keeps it sealed. Since stage B2 that
+    # request is seat 0's press: its Conflict reward row is held before the
+    # pause in front of the next recipient, and the press runs on through
+    # the other rewards into the Conflict-end window.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=7, immortality=True)
     game_id = str(summary["game_id"])
@@ -3262,17 +3279,16 @@ def test_an_auto_decline_replays_and_stays_sealed_after_a_load() -> None:
     summary = _walk_first_actions(manager, game_id, summary, sent, stop)
     [index] = _server_declines(session, sent)
     document, earlier = saves[-1]
-    assert earlier["confirmation"] is None
+    assert earlier["confirmation"] == 0
 
     restored = manager.restore_game(document)
     restored_id = str(restored["game_id"])
     replayed = manager._get(restored_id)
-    owner = _int(_obj(restored["decision"])["owner"])
-    restored = manager.apply_action(
+    assert restored["confirmation"] == 0
+    restored = manager.confirm_turn(
         restored_id,
-        owner,
-        _int(restored["revision"]),
         0,
+        _int(restored["revision"]),
         undo_count=_int(restored["undo_count"]),
     )
     assert replayed.steps == session.steps

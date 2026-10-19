@@ -67,6 +67,7 @@ from tests.unit.display.test_unavailable import (
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import PlacementMemory
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
 from dune_imperium.content.immortality.board import (
     ResearchBonus,
@@ -311,9 +312,16 @@ IDS = [
 
 
 def _decisions(
-    config: RulesetConfig, seed: int
+    config: RulesetConfig, seed: int, *, windows_in_any_order: bool = False
 ) -> Iterator[tuple[GameState, int, tuple[DomainAction, ...]]]:
-    """Every player decision of a seeded random game, with its legal list."""
+    """Every player decision of a seeded random game, with its legal list.
+
+    A Conflict or Contract reward window (stage B2, OQ-112) is yielded like any
+    decision, so every check below meets its rows; the walk answers it in the
+    older engine's fixed order and draws nothing for it, so a seed plays the
+    game it played before the windows existed. ``windows_in_any_order`` draws
+    its answer like any other (its own games, for the checks that want the
+    windows' rows answered in every order)."""
 
     state = ENGINE.reset(config, seed)
     resolver = ChanceResolver(seed=seed)
@@ -327,8 +335,14 @@ def _decisions(
         assert isinstance(decision, PlayerDecision)
         legal = ENGINE.legal_actions(state, decision.owner)
         yield state, decision.owner, legal
-        # One draw per placement, as when it was one action (stage B1).
-        action = memory.choose(state, decision.owner, legal, rng.choice)
+        action = (
+            None
+            if windows_in_any_order
+            else engine_order_answer(state, decision.owner, legal)
+        )
+        if action is None:
+            # One draw per placement, as when it was one action (stage B1).
+            action = memory.choose(state, decision.owner, legal, rng.choice)
         state = ENGINE.apply(state, action).state
 
 
@@ -341,16 +355,23 @@ def _is_legal(row: dict[str, Any], legal: tuple[DomainAction, ...]) -> bool:
     )
 
 
-@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
-def test_greyed_out_rows_are_never_legal_and_never_leak(
+def _check_greyed_out_rows(
     config: RulesetConfig,
-) -> None:
+    seeds: range,
+    *,
+    windows_in_any_order: bool = False,
+) -> tuple[set[str], set[str], int]:
+    """The greyed-out rows' invariants at every decision of the seeded games:
+    (the surfaces met, the row keys met, the decisions with rows)."""
+
     surfaces: set[str] = set()
     keys: set[str] = set()
     checked = 0
-    for seed in range(2):
+    for seed in seeds:
         rng = random.Random(1000 + seed)
-        for state, seat, legal in _decisions(config, seed):
+        for state, seat, legal in _decisions(
+            config, seed, windows_in_any_order=windows_in_any_order
+        ):
             found = cast(dict[str, Any] | None, unavailable_choices(state, seat, legal))
             if found is not None:
                 json.dumps(found)
@@ -377,6 +398,31 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
             hidden_legal = ENGINE.legal_actions(hidden, seat)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, seat, hidden_legal) == found
+    return surfaces, keys, checked
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_greyed_out_rows_hold_with_the_reward_windows_answered_in_any_order(
+    config: RulesetConfig,
+) -> None:
+    """Stage B2 (OQ-112): a Conflict or Contract reward's rows resolve in any
+    order. The seeded games of the test below answer a window in the older
+    engine's order; here one game per ruleset draws its answer like any other
+    decision, so the rows, and the choices behind them, are met in the other
+    orders too (the same invariants at every decision, the windows' own
+    included)."""
+
+    _, _, checked = _check_greyed_out_rows(
+        config, range(1), windows_in_any_order=True
+    )
+    assert checked > 0
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_greyed_out_rows_are_never_legal_and_never_leak(
+    config: RulesetConfig,
+) -> None:
+    surfaces, keys, checked = _check_greyed_out_rows(config, range(2))
     assert checked > 0
     assert "acquire" in surfaces and "intrigue" in surfaces
     if config == RulesetConfig():

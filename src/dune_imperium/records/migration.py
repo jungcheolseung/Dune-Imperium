@@ -92,6 +92,8 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
 from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.combat import legacy_combat_reward_icon
+from dune_imperium.rules.contracts import legacy_contract_reward_icon
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
@@ -2995,8 +2997,46 @@ def _reopened_since_press(state: GameState, player: int) -> bool:
     return False
 
 
+def _combat_reward_icon(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Resolve a Conflict reward's, or a completed Contract's, icons in the
+    order the recording engine paid them (stage B2, OQ-112).
+
+    Before codec v150 a recipient's reward was paid in one step in a fixed
+    order -- its automatic part, then its choice frames in the order they
+    were answered (``rules.combat.legacy_combat_reward_icon``); this engine
+    asks the recipient for each icon in a window of its own. A choice icon
+    opens its frame, which the record's own step then answers.
+    """
+
+    del step
+    if not isinstance(decision, PlayerDecision):
+        return None
+    answer = legacy_combat_reward_icon(
+        state, decision.owner
+    ) or legacy_contract_reward_icon(state, decision.owner)
+    # An owed draw of the owner's own turn comes first (OQ-106).
+    if answer is None or answer not in engine.legal_actions(state, decision.owner):
+        return None
+    return answer
+
+
 BRIDGES: tuple[Bridge, ...] = (
     Bridge("pause", _pause),
+    # Right after the recorded step that opened the window (the recording
+    # engine paid the reward inside it), and wherever a window still waits
+    # when the next recorded step comes (one another bridge's step opened).
+    Bridge(
+        "combat_reward_icon_follow",
+        _combat_reward_icon,
+        before_codec=150,
+        follows=True,
+    ),
+    Bridge("combat_reward_icon", _combat_reward_icon, before_codec=150),
     # Codec v141 (e7eef001) opens the Conflict-end Intrigue window on public
     # facts, so it now asks seats an older engine skipped because they held
     # no card for it; such a seat could only decline.

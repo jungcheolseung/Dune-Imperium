@@ -13,6 +13,7 @@ import random
 from dataclasses import replace
 from typing import Any, cast
 
+from tests.support.reward_windows import answer_reward_windows
 from tests.unit.rules.test_immortality_intrigue import (
     _combat_state,
     _fighter,
@@ -1780,7 +1781,9 @@ def _sardaukar_ii(**owner_fields: Any) -> GameState:
         for action in ENGINE.legal_actions(placed, 0)
         if action.action_id == "complete_contract"
     )
-    completed = ENGINE.apply(placed, complete).state
+    # The reward waits in its window (stage B2, OQ-112); answer it up to the
+    # recall frame its recall icon opens.
+    completed = answer_reward_windows(ENGINE, ENGINE.apply(placed, complete).state)
     assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
     return completed
 
@@ -1992,7 +1995,8 @@ _INFLUENCE_CONFIRM = DomainAction(
 
 
 def _combat_reward(conflict_id: str, influence: Influence) -> GameState:
-    """Seat 0 alone wins ``conflict_id``: its reward windows are open."""
+    """Seat 0 alone wins ``conflict_id``: its reward windows are open (the
+    reward window's rows are answered up to the first choice, stage B2)."""
 
     owner = PlayerState(player_id=0, combat_strength=8, influence=influence)
     state = _state(
@@ -2005,7 +2009,7 @@ def _combat_reward(conflict_id: str, influence: Influence) -> GameState:
         combat_intrigue_complete=True,
         intrigue_deck=("intrigue:0", "intrigue:1"),
     )
-    return resolve_combat_rewards(state).state
+    return answer_reward_windows(ENGINE, resolve_combat_rewards(state).state)
 
 
 def _influence_rows(found: dict[str, Any]) -> dict[str, tuple[str, str, str]]:
@@ -3039,9 +3043,13 @@ def test_conflict_reward_icons_wait_for_the_seat_s_rewards_to_end() -> None:
         conflict_first_place_influence_bonus=1,
         intrigue_deck=("intrigue:0", "intrigue:1"),
     )
-    rewards = resolve_combat_rewards(state).state
+    # The reward window's rows are answered up to the Contract market its
+    # Contract icon opens (stage B2, OQ-112).
+    rewards = answer_reward_windows(ENGINE, resolve_combat_rewards(state).state)
     assert ENGINE.legal_actions(rewards, 0) == (_HOLD,)
     held = ENGINE.apply(rewards, _HOLD).state
+    assert held.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    held = answer_reward_windows(ENGINE, held)
     assert held.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
 
     row = _rows(_found(held), "waiting")[f"waiting:held_contracts:{_IMMEDIATE}"]
@@ -3495,9 +3503,10 @@ def reward_window(
         combat_intrigue_complete=True,
         intrigue_deck=("intrigue:0", "intrigue:1"),
     )
-    state = resolve_combat_rewards(state).state
+    state = answer_reward_windows(ENGINE, resolve_combat_rewards(state).state)
     while state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
         state = ENGINE.apply(state, ENGINE.legal_actions(state, 0)[0]).state
+        state = answer_reward_windows(ENGINE, state)
     return state
 
 
@@ -3566,7 +3575,7 @@ def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
     assert dict(ready.decision_stack[-1].context)["resource"] == "solari"
     assert ENGINE.legal_actions(ready, 0) == (_DECLINE_REWARD, _PAY)
     assert unavailable_choices(ready, 0, ENGINE.legal_actions(ready, 0)) is None
-    paid = ENGINE.apply(ready, _PAY).state
+    paid = answer_reward_windows(ENGINE, ENGINE.apply(ready, _PAY).state)
     assert dict(paid.decision_stack[-1].context)["resource"] == "spice"
     assert ENGINE.legal_actions(paid, 0) == (_DECLINE_REWARD,)
     row = _reward_payment_row(paid, "pay_combat_reward")
@@ -3574,7 +3583,9 @@ def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
         "Needs 4 spice (you have 3)",
         "{spice:4} 필요 (보유 3)",
     )
-    declined = ENGINE.apply(ready, _DECLINE_REWARD).state
+    declined = answer_reward_windows(
+        ENGINE, ENGINE.apply(ready, _DECLINE_REWARD).state
+    )
     assert (
         _reward_payment_row(declined, "pay_combat_reward")["reason_ko"]
         == "{spice:4} 필요 (보유 3)"
@@ -3584,9 +3595,10 @@ def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
         "spice_freighters", sandworm=True, resources=Resources(spice=3)
     )
     assert ENGINE.legal_actions(twice, 0) == (_DECLINE_REWARD, _PAY)
-    again = ENGINE.apply(twice, _PAY).state
+    again = answer_reward_windows(ENGINE, ENGINE.apply(twice, _PAY).state)
     while again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
         again = ENGINE.apply(again, ENGINE.legal_actions(again, 0)[0]).state
+        again = answer_reward_windows(ENGINE, again)
     assert again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
     assert ENGINE.legal_actions(again, 0) == (_DECLINE_REWARD,)
     assert _reward_payment_row(again, "pay_combat_reward")["reason_ko"] == (

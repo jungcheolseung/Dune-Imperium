@@ -288,7 +288,9 @@ def test_labelling_seats_at_a_mixed_full_table_choose_like_checkpoint_seats(
     A labelling seat is built as a tournament ``checkpoint:`` seat of the same
     seed is, so over the first ~200 decisions every one of its choices equals
     the plain seat's, while it records rows (each with the frame of its
-    decision) and the ``app_ai`` seats record nothing.
+    decision) and the ``app_ai`` seats record nothing. (The first 240 since
+    stage B2: the Conflict reward windows' rows are decisions too, and seat
+    1 decided only 19 times in the first 200.)
     """
 
     teacher = _checkpoint(tmp_path, FULL)
@@ -316,7 +318,7 @@ def test_labelling_seats_at_a_mixed_full_table_choose_like_checkpoint_seats(
     chance = ChanceResolver(seed=17)
     decisions = compared = 0
     seen_rows = dict.fromkeys(labelling, 0)
-    while decisions < 200 and state.phase is not GamePhase.FINISHED:
+    while decisions < 240 and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
             state = engine.apply(state, chance.resolve(decision)).state

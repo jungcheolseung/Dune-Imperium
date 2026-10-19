@@ -758,21 +758,30 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # pick (base 65 vectors, choam 55, promo_bloodlines_tech 55, everything 62,
 # draft 64, scouts 59; none in another seat's), and the encoder files differ
 # from the v32 ones only by the appended segments.
+# Re-pinned for stage B2 (OQ-112, codec v150, observation v33): a Conflict
+# reward recipient resolves its reward icon by icon in a window, and a
+# completed Contract's reward waits in one too. An export of the previous
+# commit (bc0d0a7f) gives each game's per-decision trace (the four views'
+# digest, the frame on top, the action taken) equal to this one up to the
+# first window, round 1's first recipient (base at decision 93, choam 68,
+# promo_bloodlines_tech 55, everything 79, draft 48, scouts 68), which the
+# older engine paid inside the step before; there the random seat draws over
+# the window's rows and the games part.
 _GOLDEN_DIGESTS = {
-    "base": ("84e83acda31343e17043af4c40552f6aa751c49ebb9faf88ae92be4db672b0c6", 2772),
-    "choam": ("e6a48d74cf8d650327ea625a07faf9061a6353a79a9ab33cf7e3b64944d537fb", 2404),
+    "base": ("1fc5a1ec7a26ccbfcbcde802514c30c8094d409eb67ff6184c987060c489d85f", 2768),
+    "choam": ("018025c4440c166a06a9909c0178e34d9965931cdc733c74ee277b3cd6ae2f3a", 2776),
     "promo_bloodlines_tech": (
-        "d58785f83f360b72d10c5dc8c5971ac3c2e36ccdbff32ef02fa3b8d3590f27a5",
-        2956,
+        "233624bfa4b955c2f12a358ebe25776614e6f27b50a324edd8e1bacaee7c9d82",
+        2984,
     ),
     "everything": (
-        "b2b84c09d1fd3c6dca91fffd0b245743c0232a582d106b27c336180ca2914e3f",
-        3136,
+        "62fa4f696ea46684793ce9f9215f2ae532bb2030ec73f7f656d08ae8efd7bdff",
+        3796,
     ),
-    "draft": ("ffc7c4f1a1b20f979ef1ff7609fa06519e6a204f6c8ad15b3646397dd8e54e08", 2680),
+    "draft": ("ddd905e555561cb935a255e8dec9a4dd52a821ed08feee16e0ba6a27c3474d64", 2516),
     "scouts": (
-        "aec89899367c8f59a851ea946b8ad75ea48d4e0262b7c55b70b91b4f945c4fab",
-        2740,
+        "fd0467274482a30312889c6224886102ca40a3524f0e1d18d08c28a7274cef8f",
+        2564,
     ),
 }
 _GOLDEN_CONFIGS = {

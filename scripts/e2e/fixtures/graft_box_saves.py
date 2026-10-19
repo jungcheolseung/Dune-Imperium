@@ -42,6 +42,7 @@ import re
 import sys
 from pathlib import Path
 
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.display.actions import agent_box_headers, agent_box_of_rows
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
@@ -147,9 +148,16 @@ def walk(seed: int) -> dict[str, object] | None:
         if case is not None:
             saved = store.write(manager.save_game(gid, name=NAME))
             return {"save_id": saved["save_id"], "seed": seed, **case}
-        summary = manager.apply_action(
-            gid, owner, summary["revision"], rng.randrange(len(actions))
+        # A reward's icon rows (stage B2) are answered in the engine's older
+        # fixed order without a draw (``agents.engine_order``), so the walk
+        # is the one it was.
+        scripted = engine_order_answer(session.state, owner, actions)
+        index = (
+            actions.index(scripted)
+            if scripted is not None
+            else rng.randrange(len(actions))
         )
+        summary = manager.apply_action(gid, owner, summary["revision"], index)
     return None
 
 

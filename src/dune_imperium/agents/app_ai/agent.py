@@ -48,6 +48,7 @@ from dune_imperium.agents.app_ai.data.constants import TABLES
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows import DecisionRun, Memory, handler_for
 from dune_imperium.agents.app_ai.windows.common import TRIGGERED_DRAWS
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
@@ -121,6 +122,11 @@ class AppAIAgent:
         Agent-turn step (stage B1) is judged as the placements it stands
         for, one decision per placement (``agents.agent_turn_steps``)."""
 
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            # The app pays a Conflict reward without asking (stage B2 rows,
+            # ``agents.engine_order``).
+            return scripted
         return self._placements.choose(
             state,
             observation.player,

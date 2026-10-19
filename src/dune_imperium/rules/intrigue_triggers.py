@@ -509,6 +509,18 @@ def apply_trigger_contract_action(
             *(trashed_id for trashed_id in revealed if trashed_id != instance_id),
         ),
     )
+    completion: tuple[GameEvent, ...] = ()
+    if definition.completes_immediately and not definition.requires_intrigue_trash:
+        # Imported here: ``contracts`` reaches this module through card draws.
+        from dune_imperium.rules.contracts import complete_immediate_contract
+
+        # An Immediate tile completes the moment it is taken [Main p. 16];
+        # its reward waits in its window (OQ-112).
+        completed = complete_immediate_contract(
+            next_state, player, instance_id, source=f"{source}:contract:{instance_id}"
+        )
+        next_state = completed.state
+        completion = completed.events
     return RuleResult(
         state=next_state,
         events=(
@@ -531,6 +543,7 @@ def apply_trigger_contract_action(
                 for trashed_id in revealed
                 if trashed_id != instance_id
             ),
+            *completion,
         ),
     )
 

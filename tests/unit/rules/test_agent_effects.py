@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
@@ -6251,7 +6252,11 @@ def test_cargo_runner_counts_a_contract_completed_earlier_in_the_turn() -> None:
     # One completed contract: neither line is offered yet; both wait.
     assert _offered_icons(placed) == set()
     completion = legal_contract_completion_actions(placed, 0)[0]
-    completed = apply_contract_completion(placed, completion).state
+    # The completion's reward waits in its window (stage B2, OQ-112); the
+    # Agent box's lines come back when its row is paid.
+    completed = settle_reward_window(
+        apply_contract_completion(placed, completion).state
+    )
     assert _offered_icons(completed) == {"cards"}
 
     result = resolve_agent_card_icon(completed, _icon_action(completed, "cards"))
@@ -6291,7 +6296,9 @@ def test_cargo_runner_second_line_waits_for_a_fourth_contract_in_the_turn() -> N
     assert agent_card_effect_is_unavailable(drew_one)
 
     completion = legal_contract_completion_actions(drew_one, 0)[0]
-    fourth = apply_contract_completion(drew_one, completion).state
+    fourth = settle_reward_window(
+        apply_contract_completion(drew_one, completion).state
+    )
     assert len(fourth.players[0].completed_contract_ids) == 4
     assert _offered_icons(fourth) == {"cards_second"}
     assert not agent_card_effect_is_unavailable(fourth)

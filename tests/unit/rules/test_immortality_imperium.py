@@ -8,6 +8,7 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -624,8 +625,18 @@ def test_earn_any_alliance_completed_by_the_turn_end_payment_reopens_to_deploy()
     pressed = engine.apply(ready, DomainAction("finish_agent_turn", 0))
     kinds = [event.kind for event in pressed.events]
     assert kinds.index("alliance_gained") < kinds.index("contract_completed")
-    assert kinds[-1] == "agent_turn_reopened"
+    # The Contract's reward waits in its window (stage B2, OQ-112): the two
+    # troops are its rows, and the turn reopens once they are recruited.
+    assert pressed.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
     reopened = pressed.state
+    row_events: list[str] = []
+    while (
+        row := engine_order_answer(reopened, 0, engine.legal_actions(reopened, 0))
+    ) is not None:
+        step = engine.apply(reopened, row)
+        reopened = step.state
+        row_events.extend(event.kind for event in step.events)
+    assert row_events[-1] == "agent_turn_reopened"
     offered = engine.legal_actions(reopened, 0)
     deploys = [a for a in offered if a.action_id == "deploy_troops"]
     assert deploys

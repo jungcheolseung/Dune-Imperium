@@ -540,6 +540,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_gather_intelligence": _row(_V.DECLINE, _S.SPY, of=_V.RECALL_SPY),
     "place_track_spy": _row(_V.PLACE_SPY, _S.INFLUENCE_TRACK),
     # --- Conflict ------------------------------------------------------------
+    # One icon of a recipient's reward window (stage B2, OQ-112).
+    "resolve_combat_reward_icon": _row(_V.RESOLVE, _S.CONFLICT, _T.OPTION),
     "pay_combat_reward": _row(_V.PAY, _S.CONFLICT),
     "decline_combat_reward": _row(_V.DECLINE, _S.CONFLICT, of=_V.PAY),
     "choose_combat_reward_influence": _row(_V.GAIN_INFLUENCE, _S.CONFLICT, _T.FACTION),
@@ -564,6 +566,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_control_defense": _row(_V.DECLINE, _S.CONFLICT, of=_V.DEPLOY),
     # --- Contracts -----------------------------------------------------------
     "take_contract": _row(_V.TAKE, _S.CONTRACT, _T.CONTRACT),
+    # One icon of a completed Contract's reward window (stage B2, OQ-112).
+    "resolve_contract_reward_icon": _row(_V.RESOLVE, _S.CONTRACT, _T.OPTION),
     # Nothing in the market can be taken now: the icons wait, or fizzle
     # with an empty market (OQ-059).
     "hold_contract_icons": _row(

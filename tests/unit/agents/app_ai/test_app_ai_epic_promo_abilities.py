@@ -18,6 +18,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai.abilities import PORTS, abilities_of
@@ -53,6 +54,7 @@ from dune_imperium.agents.app_ai.testing import (
     play_until,
     with_player,
 )
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import Resources
 from dune_imperium.core.state import GameState
@@ -724,7 +726,14 @@ def test_economic_supremacy_charges_in_the_engine_reward_frames(seed: int) -> No
     charges = [a for a in granted if isinstance(a, e._EconomicSupremacyPayAbility)]
     assert len(charges) == len(granted) == 2
     by_cost = {(a.solari_cost, a.spice_cost): a for a in charges}
-    frames = [dict(frame.context) for frame in state.decision_stack]
+    # The winner's reward window (stage B2, OQ-112) opens each charge's frame
+    # as its row is answered: meet them one after the other, declining each.
+    frames: list[dict[str, Any]] = []
+    walk = state
+    while walk.decision_stack[-1].kind == "combat_reward_optional":
+        frames.append(dict(walk.decision_stack[-1].context))
+        decline = DomainAction(action_id="decline_combat_reward", actor=winner)
+        walk = answer_reward_windows(ENGINE, ENGINE.apply(walk, decline).state)
     assert len(frames) in (2, 4)
     for context in frames:
         cost = context["cost"]

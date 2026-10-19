@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.pauses import pause_outcome
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
@@ -955,14 +956,18 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
     assert fighting.players[0].agent_in_conflict == 1
 
     completion = legal_agent_card_contract_completion_actions(fighting, 0)[0]
-    completed = apply_agent_card_contract_completion(fighting, completion)
+    windowed = apply_agent_card_contract_completion(fighting, completion)
 
+    # The Recall Agent icon is the reward window's one row (stage B2,
+    # OQ-112); its press opens the recall window.
+    assert windowed.state.decision_stack[-1].kind == "contract_reward_icons"
+    completed = settle_reward_window(windowed.state)
     # The reward's recall window opens with only the confirm (user ruling
     # 2026-09-30); confirming fizzles it.
     confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
-    assert completed.state.decision_stack[-1].kind == "contract_reward_recall"
-    assert legal_contract_recall_actions(completed.state, 0) == (confirm,)
-    fizzled = apply_contract_recall_action(completed.state, confirm)
+    assert completed.decision_stack[-1].kind == "contract_reward_recall"
+    assert legal_contract_recall_actions(completed, 0) == (confirm,)
+    fizzled = apply_contract_recall_action(completed, confirm)
     assert any(
         event.kind == "contract_recall_unavailable" for event in fizzled.events
     )
@@ -2739,6 +2744,7 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
     # Faction where you have 1 or less Influence" [Panopticon Tech tile].
     from dune_imperium.content.uprising.contracts import contract_instance_ids
     from dune_imperium.rules.contract_tiles import receive_contract
+    from dune_imperium.rules.contracts import complete_immediate_contract
     from dune_imperium.rules.phases import resolve_recall_or_endgame
     from dune_imperium.rules.tech import draw_owed_tech_cards
 
@@ -2748,18 +2754,39 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
     # engine's post-step draw.
     turn = _turn_state(owner, stacks=((), (), ()), config=TECH_CHOAM)
     combat = replace(turn, phase=GamePhase.COMBAT, decision_stack=())
-    completed = receive_contract(combat, owner, "contract:immediate")
+    # ``receive_contract`` leaves the tile active; its taker's step completes
+    # it and opens its reward window (stage B2, OQ-112), whose Solari row is
+    # the Contract's automatic part: the draw is owed once it is paid.
+    def take_immediate(state: GameState) -> GameState:
+        taken = replace(
+            state,
+            players=(
+                receive_contract(state, state.players[0], "contract:immediate"),
+                *state.players[1:],
+            ),
+        )
+        return complete_immediate_contract(
+            taken, 0, "contract:immediate", source="round:1:test"
+        ).state
+
+    opened = take_immediate(combat)
+    assert opened.players[0].completed_contract_ids == ("contract:immediate",)
+    assert opened.decision_stack[-1].kind == "contract_reward_icons"
+    assert opened.players[0].tech_cards_owed == 0
+    state = settle_reward_window(opened)
+    completed = state.players[0]
     assert completed.completed_contract_ids == ("contract:immediate",)
     assert completed.tech_cards_owed == 1
     assert completed.owed_draws == ()
-    state = replace(combat, players=(completed, *combat.players[1:]))
     drawn = draw_owed_tech_cards(RuleResult(state=state)).state
     assert len(drawn.players[0].hand) == 5 + 1
     assert drawn.players[0].tech_cards_owed == 0
     # Inside the owner's own turn it is the owner's own step right after
     # the completion ("can't be deferred", Message from designer; user
     # decision 2026-10-10, OQ-106), tests/unit/rules/test_owed_draws.py.
-    held = receive_contract(turn, owner, "contract:immediate")
+    held_opened = take_immediate(turn)
+    assert held_opened.players[0].owed_draws == ()
+    held = settle_reward_window(held_opened).players[0]
     assert held.tech_cards_owed == 0
     assert [entry[:2] for entry in held.owed_draws] == [("card", "choam_transports")]
 

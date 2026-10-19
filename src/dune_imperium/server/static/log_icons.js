@@ -31,6 +31,7 @@ const LOG_EVENT_ICONS = {
   combat_intrigue_finished: "log:conflict",
   combat_intrigue_started: "log:conflict",
   combat_reward_gained: "log:conflict",
+  combat_reward_icon_resolved: "log:conflict",
   conflict_end_trigger_offered: "log:conflict",
   conflict_revealed: "log:conflict",
   conflict_won: "log:conflict",
@@ -121,6 +122,7 @@ const LOG_EVENT_ICONS = {
   game_finished: "log:vp_winner",
   // Contracts, Control, the Maker and the Shield Wall.
   contract_completed: "contract",
+  contract_reward_icon_resolved: "contract",
   contract_icons_fizzled: "contract",
   contract_icons_held: "contract",
   contract_icons_reopened: "contract",

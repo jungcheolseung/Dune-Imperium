@@ -192,10 +192,16 @@ GAMES = (
     # surface (seed 2: Clear the Market, Mercenaries, the secret picks
     # revealed and an auction won; seed 13 below: a round modifier, Mating
     # Season, a mission's pieces and troops and an auction won).
+    # Stage B2 (OQ-112: random seats draw over a Conflict reward's icon rows)
+    # moves seed 2 off the secret picks revealed and seed 13 off Mating
+    # Season. The same headless scan over random seeds 1-200 (2026-10-19)
+    # finds the pair 7 and 20 first (seed 7: a round modifier, Clear the
+    # Market, a mission's pieces and troops, an auction won and the secret
+    # picks revealed; seed 20 below: Mating Season and Mercenaries).
     {
         "seats": ["random"] * 4,
-        "game_seed": 2,
-        "policy_seed": 2,
+        "game_seed": 7,
+        "policy_seed": 7,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -231,9 +237,9 @@ GAMES = (
         # Codec v146 moves seed 22 off Mating Season (the game above has it);
         # it keeps the round modifier, mission troops and an auction won.
         # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
-        # above (see there).
-        "game_seed": 13,
-        "policy_seed": 13,
+        # above (see there), and since stage B2 seed 20 with seed 7.
+        "game_seed": 20,
+        "policy_seed": 20,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

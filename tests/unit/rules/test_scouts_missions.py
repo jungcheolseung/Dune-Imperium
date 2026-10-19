@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from tests.unit.rules.test_combat import _answer_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
@@ -519,11 +520,18 @@ def test_prison_planet_marker_is_taken_back_for_a_third_control() -> None:
         current_conflict_ids=("siege_of_arrakeen",),
         combat_intrigue_complete=True,
     )
-    result = resolve_combat_rewards(state)
-    after = result.state
+    # v150 (stage B2, OQ-112): the winner answers a window of reward rows;
+    # its control row takes the space (and the marker back).
+    opened = resolve_combat_rewards(state)
+    answered = _answer_window(opened.state)
+    after = answered.state
     assert after.players[0].control_space_ids[-1] == "arrakeen"
     assert not [row for row in after.scouts_goods if row[4] == 0]
-    taken = [e for e in result.events if e.kind == "scouts_prison_marker_taken"]
+    taken = [
+        e
+        for e in (*opened.events, *answered.events)
+        if e.kind == "scouts_prison_marker_taken"
+    ]
     assert [dict(e.payload) for e in taken] == [{"player": 0, "spice_returned": 2}]
 
 

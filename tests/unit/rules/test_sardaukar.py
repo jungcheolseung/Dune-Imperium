@@ -1498,6 +1498,10 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # become 129 card and space picks.
         - 1763
         + 129
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon``, a row per
+        # icon a Conflict reward prints (14 without Bloodlines' Deep Cover
+        # Spy).
+        + 14
     )
 
     actions = (

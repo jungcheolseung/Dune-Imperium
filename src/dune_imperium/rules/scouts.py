@@ -739,7 +739,10 @@ def four_bonus_choice_is_queued(state: GameState) -> bool:
     """Whether a Friends Everywhere choice can open now.
 
     Like the Emperor track's Spy (``spy_moves.track_spy_is_queued``): after
-    any pending chance frame and after a Conflict's own reward choices.
+    any pending chance frame, after a Conflict's own reward choices and
+    after a completed Contract's reward window (an Influence 4 that also
+    completes Earn Any Alliance, whose reward came inside that step before
+    stage B2, OQ-112).
     """
 
     if not state.scouts_four_bonus_choices:
@@ -748,6 +751,8 @@ def four_bonus_choice_is_queued(state: GameState) -> bool:
     if frame is None:
         return True
     if isinstance(frame.decision, ChanceDecision):
+        return False
+    if frame.kind == FrameKind.CONTRACT_REWARD_ICONS:
         return False
     return not str(frame.kind).startswith("combat_reward")
 

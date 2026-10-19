@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents import HeuristicAgent
@@ -54,6 +55,7 @@ from dune_imperium.rules.agent_turn import (
     legal_agent_actions,
 )
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.contracts import legacy_contract_reward_icon
 from dune_imperium.rules.effect_interpreter import OptionBlock, option_unplayable_reason
 from dune_imperium.rules.effects import spice_gained_this_turn
 from dune_imperium.rules.frames import FrameKind, end_turn_start
@@ -4574,7 +4576,9 @@ def _take_first_contract(state: GameState, actor: int) -> GameState:
     take = next(
         a for a in engine.legal_actions(state, actor) if a.action_id == "take_contract"
     )
-    return engine.apply(state, take).state
+    # v150 (stage B2, OQ-112): the immediate Contract's reward is a window of
+    # icon rows, answered here before the loop is looked at again.
+    return answer_reward_windows(engine, engine.apply(state, take).state)
 
 
 def test_a_combat_intrigue_that_opens_a_contract_market_restarts_the_passes() -> None:
@@ -4760,9 +4764,22 @@ def test_a_loop_emptied_behind_a_window_announces_the_end_when_it_closes() -> (
         if a.action_id == "take_contract"
     )
     taken = engine.apply(retreated.state, take)
-    kinds = [event.kind for event in taken.events]
+    # v150 (stage B2, OQ-112): the immediate Contract's reward is a window of
+    # icon rows; the loop's end follows once the window closes.
+    assert taken.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert _finished(taken.events) == []
+    events = list(taken.events)
+    state = taken.state
+    while (answer := legacy_contract_reward_icon(state, 0)) is not None:
+        step = engine.apply(state, answer)
+        state = step.state
+        events.extend(step.events)
+    kinds = [event.kind for event in events]
+    assert kinds.index("contract_reward_icon_resolved") < kinds.index(
+        "combat_intrigue_finished"
+    )
     assert kinds.index("contract_taken") < kinds.index("combat_intrigue_finished")
     assert kinds.index("combat_intrigue_finished") < kinds.index("combat_cleaned_up")
-    (finished,) = _finished(taken.events)
+    (finished,) = _finished(tuple(events))
     assert finished.event_id == "round:1:combat_intrigue:emptied"
     assert finished.payload == ()

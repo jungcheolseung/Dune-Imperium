@@ -84,7 +84,10 @@ from dune_imperium.training.slots import (  # noqa: E402
 # Re-pinned for observation v32: 161 keys appended after every older one
 # (``decision_owner``, ``leader_draft_pool``, ``agent_box``); the 1,140 v31
 # keys keep their order and index, so SLOT_VERSION stays (re-link by key).
-_GOLDEN_DIGEST = "d0c34d0a5d3d02c667e35667326e301b8f05e86746247b0802c22c2aaf59fdb4"
+# Re-pinned for observation v33 (stage B2): the two reward windows' decision
+# kinds end the ``decision_kind`` field, so the keys after it move by two;
+# SLOT_VERSION stays and an older slot file re-links its rows by key.
+_GOLDEN_DIGEST = "7277e962c9c2f9c5ca2c27ffbdf14a44e3d5a0b31330f01bd583c95cf2305c9c"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -298,7 +301,8 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         }
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
     # v28: 1_139 -> 1_140 (conflict:economic_supremacy). v32: + 4 + 18 + 139.
-    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_301
+    # Stage B2 (v33): + 2, the Conflict and Contract reward windows' kinds.
+    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10

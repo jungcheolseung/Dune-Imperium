@@ -3,10 +3,13 @@
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
+from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
@@ -14,6 +17,12 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
     ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AtBoardSpace,
+    EffectSection,
+    GainResources,
+    TakeContract,
 )
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -27,7 +36,9 @@ from dune_imperium.core import (
     Resources,
     canonical_state_hash,
 )
+from dune_imperium.core.events import GameEvent
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules.acquisition import (
     apply_reserve_acquisition,
     legal_reserve_acquisitions,
@@ -35,8 +46,10 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.contracts import (
     apply_contract_action,
+    apply_contract_reward_icon,
     begin_contract_gain,
     contract_recall_targets,
+    legacy_contract_reward_icon,
     legal_contract_actions,
     legal_contract_completion_actions,
 )
@@ -180,11 +193,14 @@ def test_immediate_contract_completes_and_grants_two_solari_when_taken() -> None
 
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == ("contract:immediate",)
-    assert owner.resources.solari == 2
     assert [event.kind for event in result.events] == [
         "contract_taken",
         "contract_completed",
     ]
+    # The reward waits in its window (stage B2, OQ-112); its row pays it.
+    assert result.state.decision_stack[-1].kind == "contract_reward_icons"
+    assert owner.resources.solari == 0
+    assert settle_reward_window(result.state).players[3].resources.solari == 2
 
 
 def test_engine_converts_a_second_icon_after_the_last_contract_is_taken() -> None:
@@ -250,12 +266,15 @@ def test_matching_space_contracts_are_mandatory_orderable_agent_effects() -> Non
         if dict(action.arguments).get("instance_id") == "contract:arrakeen_i"
     )
     first = engine.apply(placed, first_action).state
+    # The first Contract's reward window is on top until its rows are paid.
+    first = answer_reward_windows(engine, first)
     second_action = next(
         action
         for action in engine.legal_actions(first, 0)
         if dict(action.arguments).get("instance_id") == "contract:arrakeen_ii"
     )
     second = engine.apply(first, second_action).state
+    second = answer_reward_windows(engine, second)
     owner = second.players[0]
 
     assert owner.active_contract_ids == ()
@@ -313,7 +332,7 @@ def test_contract_spy_without_supply_may_pass_up_the_recall_first(
         for action in engine.legal_actions(placed, 0)
         if action.action_id == "complete_contract"
     )
-    completed = engine.apply(placed, completion).state
+    completed = answer_reward_windows(engine, engine.apply(placed, completion).state)
     assert completed.decision_stack[-1].kind == "contract_reward_spy"
     actions = engine.legal_actions(completed, 0)
     assert [action.action_id for action in actions] == [
@@ -417,10 +436,13 @@ def test_harvest_contracts_sum_maker_and_agent_card_spice() -> None:
             if dict(action.arguments)["instance_id"] == "contract:harvest_3"
         ),
     ).state
+    # The first completion's reward window is paid before the next Contract.
+    first = answer_reward_windows(engine, first)
     second = engine.apply(
         first,
         legal_contract_completion_actions(first, 0)[0],
     ).state
+    second = answer_reward_windows(engine, second)
 
     assert second.players[0].resources.solari == 7
 
@@ -601,13 +623,27 @@ def test_acquiring_the_spice_must_flow_completes_acquire_contract() -> None:
 
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == ("contract:acquire",)
+    # The completion's own event comes last (cleanup-2c-3); its reward waits
+    # in a window (stage B2, OQ-112) whose rows pay it.
+    assert [event.kind for event in result.events][-1] == "contract_completed"
+    assert result.state.decision_stack[-1].kind == "contract_reward_icons"
+    assert owner.resources.solari == 0
+    state = result.state
+    reward_events: list[GameEvent] = []
+    while (row := legacy_contract_reward_icon(state, 0)) is not None:
+        step = apply_contract_reward_icon(state, row)
+        state = step.state
+        reward_events.extend(step.events)
+    owner = state.players[0]
+
     assert owner.resources.solari == 3
     assert owner.influence.spacing_guild == 1
     assert owner.victory_points == 2
-    # The completion's own event comes last (cleanup-2c-3).
-    assert [event.kind for event in result.events][-2:] == [
+    assert [event.kind for event in reward_events] == [
+        "resources_gained",
+        "contract_reward_icon_resolved",
         "influence_gained",
-        "contract_completed",
+        "contract_reward_icon_resolved",
     ]
 
 
@@ -629,6 +665,21 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
         reward=ContractReward(solari=1, contracts=1),
     )
     monkeypatch.setitem(CONTRACTS_BY_ID, "test_jumpstart", jumpstart)
+    # The reward window reads the tile's ability record (stage B2, OQ-112).
+    monkeypatch.setattr(
+        contracts_rules,
+        "CONTRACT_ABILITIES",
+        {
+            **CONTRACT_ABILITIES,
+            "test_jumpstart": Ability(
+                timing=AbilityTiming.CONTRACT,
+                sections=(
+                    EffectSection(rewards=(GainResources(solari=1), TakeContract(1))),
+                ),
+                requirement=AtBoardSpace("espionage"),
+            ),
+        },
+    )
     state = _agent_contract_state(
         "player:0:starter:diplomacy:0",
         "contract:test_jumpstart",
@@ -640,10 +691,13 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
     )
     placed = _place_agent(state, "espionage")
     engine = UprisingRulesEngine()
-    completed = engine.apply(
-        placed,
-        legal_contract_completion_actions(placed, 0)[0],
-    ).state
+    completed = answer_reward_windows(
+        engine,
+        engine.apply(
+            placed,
+            legal_contract_completion_actions(placed, 0)[0],
+        ).state,
+    )
 
     assert [
         dict(action.arguments)["instance_id"]
@@ -670,10 +724,13 @@ def test_sardaukar_contract_draws_two_personal_cards() -> None:
     )
     placed = _place_agent(state, "sardaukar")
     engine = UprisingRulesEngine()
-    completed = engine.apply(
-        placed,
-        legal_contract_completion_actions(placed, 0)[0],
-    ).state
+    completed = answer_reward_windows(
+        engine,
+        engine.apply(
+            placed,
+            legal_contract_completion_actions(placed, 0)[0],
+        ).state,
+    )
 
     assert completed.players[0].hand == deck
     assert completed.players[0].deck == ()
@@ -692,10 +749,13 @@ def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
     state = replace(state, players=(owner, *state.players[1:]))
     placed = _place_agent(state, "sardaukar")
     engine = UprisingRulesEngine()
-    completed = engine.apply(
-        placed,
-        legal_contract_completion_actions(placed, 0)[0],
-    ).state
+    completed = answer_reward_windows(
+        engine,
+        engine.apply(
+            placed,
+            legal_contract_completion_actions(placed, 0)[0],
+        ).state,
+    )
 
     # The printed reward recalls one of your Agents, and the just-sent Agent
     # is not a valid target [Main p. 20]; with a target there is no confirm.
@@ -728,9 +788,20 @@ def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
     )
     placed = _place_agent(state, "sardaukar")
     engine = UprisingRulesEngine()
-    transition = engine.apply(
+    completion = engine.apply(
         placed,
         legal_contract_completion_actions(placed, 0)[0],
+    )
+    # The Recall Agent icon is the reward window's one row (stage B2, OQ-112);
+    # its press opens the recall window.
+    assert completion.state.decision_stack[-1].kind == "contract_reward_icons"
+    transition = engine.apply(
+        completion.state,
+        DomainAction(
+            action_id="resolve_contract_reward_icon",
+            actor=0,
+            arguments=(("effect", "recall_agent"),),
+        ),
     )
 
     frame = transition.state.decision_stack[-1]
@@ -738,7 +809,8 @@ def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
     assert isinstance(frame.decision, PlayerDecision)
     assert frame.decision.prompt == "No other Agent to recall"
     assert not any(
-        event.kind == "contract_recall_unavailable" for event in transition.events
+        event.kind == "contract_recall_unavailable"
+        for event in (*completion.events, *transition.events)
     )
     confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
     assert contract_recall_targets(transition.state, 0) == ()
@@ -762,10 +834,13 @@ def test_contract_troops_increase_combat_deployment_limit() -> None:
     )
     placed = _place_agent(state, "heighliner")
     engine = UprisingRulesEngine()
-    completed = engine.apply(
-        placed,
-        legal_contract_completion_actions(placed, 0)[0],
-    ).state
+    completed = answer_reward_windows(
+        engine,
+        engine.apply(
+            placed,
+            legal_contract_completion_actions(placed, 0)[0],
+        ).state,
+    )
     deployment_counts = {
         dict(action.arguments)["count"]
         for action in engine.legal_actions(completed, 0)

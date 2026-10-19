@@ -80,6 +80,7 @@ OTHER_FRAME_KEYS = frozenset(
         "acquisition_card_id",
         "acquisition_spy_recalled",
         "advance_agent_frame",
+        "choice_index",
         "choice_sword_card_ids",
         "chose",
         "chosen_factions",
@@ -100,6 +101,7 @@ OTHER_FRAME_KEYS = frozenset(
         "granted_reveal_effects",
         "guild_spy_fired",
         "hand",
+        "icons",
         "infiltrate_post_id",
         "intrigue_pending",
         "leader_intrigue_granted",
@@ -1150,8 +1152,9 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     )
     # v147 added the base catalog's ``source``-named Reveal rows (+140); v150
     # (stage B1) replaced the base catalog's 1,763 ``agent_turn`` rows with
-    # 129 card and space picks (4,551 - 1,763 + 129).
-    assert ActionCodec(RulesetConfig()).size == 2917
+    # 129 card and space picks (4,551 - 1,763 + 129); v150 (stage B2, OQ-112)
+    # added a Conflict reward's 14 icon rows.
+    assert ActionCodec(RulesetConfig()).size == 2917 + 14
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)
     twins = {t for t in codec.catalog if ("box", 1) in t.arguments}

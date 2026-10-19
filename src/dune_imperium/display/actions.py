@@ -21,9 +21,20 @@ the same engine tables and card data the rules execute.
 """
 
 import re
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
-from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    EffectSection,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    LoseInfluence,
+    RecruitTroops,
+    Reward,
+    TakeContract,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reveal_choice_abilities import (
@@ -37,6 +48,8 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.display.cards import agent_box_text, agent_box_text_ko
+from dune_imperium.display.effect_dsl_text import reward_text, section_text
+from dune_imperium.display.effect_dsl_text_ko import reward_text_ko, section_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import scouts_action_text
 from dune_imperium.display.spaces import (
@@ -52,11 +65,16 @@ from dune_imperium.rules.agent_effects import (
     resolves_boost_draw,
 )
 from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
+from dune_imperium.rules.combat import REWARD_ICON_ACTION, reward_icon_piece
+from dune_imperium.rules.contracts import (
+    CONTRACT_REWARD_ICON_ACTION,
+    contract_icon_piece,
+)
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
 from dune_imperium.rules.graft_boxes import (
     active_box,
     box_card_id,
@@ -620,6 +638,82 @@ def research_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
     return _RESEARCH_ICON_TEXT[str(dict(action.arguments)["effect"])]
 
 
+def combat_reward_icon_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Describe one icon of a Conflict reward recipient's window
+    (``resolve_combat_reward_icon``, stage B2): the record piece that prints
+    it, with a sandworm's double on an automatic icon's amount."""
+
+    if action.action_id != REWARD_ICON_ACTION:
+        return None
+    frame = owned_top_frame(state, FrameKind.COMBAT_REWARD_ICONS, action.actor)
+    if frame is None or not state.current_conflict_ids:
+        return None
+    context = dict(frame.context)
+    rank = context["rank"]
+    multiplier = context["multiplier"]
+    assert isinstance(rank, int) and isinstance(multiplier, int)
+    kind = str(dict(action.arguments)["effect"])
+    piece = reward_icon_piece(state.current_conflict_ids[-1], rank, kind)
+    match piece:
+        case EffectSection():
+            return section_text(piece), section_text_ko(piece)
+        case None:
+            # Pivotal Gambit's pledged Influence, which no record prints.
+            pledged = GainInfluence()
+            return reward_text(pledged), reward_text_ko(pledged)
+        case TakeContract(count=count) if not state.config.choam_module:
+            # Without the CHOAM Module a Contract icon is 2 Solari
+            # [Main pp. 16, 20].
+            solari = GainResources(solari=2 * count * multiplier)
+            return reward_text(solari), reward_text_ko(solari)
+    scaled = _scaled_reward(piece, multiplier)
+    return reward_text(scaled), reward_text_ko(scaled)
+
+
+def contract_reward_icon_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Describe one icon of a completed Contract's reward window
+    (``resolve_contract_reward_icon``, stage B2): the record piece that
+    prints it."""
+
+    if action.action_id != CONTRACT_REWARD_ICON_ACTION:
+        return None
+    frame = owned_top_frame(state, FrameKind.CONTRACT_REWARD_ICONS, action.actor)
+    if frame is None:
+        return None
+    instance_id = str(dict(frame.context)["contract_id"])
+    piece = contract_icon_piece(instance_id, str(dict(action.arguments)["effect"]))
+    return reward_text(piece), reward_text_ko(piece)
+
+
+def _scaled_reward(piece: Reward, multiplier: int) -> Reward:
+    """An automatic icon's piece with a sandworm's double on its amount."""
+
+    if multiplier == 1:
+        return piece
+    match piece:
+        case GainResources(solari=solari, spice=spice, water=water):
+            return GainResources(
+                solari=solari * multiplier,
+                spice=spice * multiplier,
+                water=water * multiplier,
+            )
+        case DrawIntrigueCards(count=count):
+            return DrawIntrigueCards(count=count * multiplier)
+        case RecruitTroops(count=count):
+            return replace(piece, count=count * multiplier)
+        case TakeContract(count=count):
+            return replace(piece, count=count * multiplier)
+        case GainVictoryPoints(amount=amount):
+            return replace(piece, amount=amount * multiplier)
+        case GainInfluence(times=times, factions=(_,)):
+            return replace(piece, times=times * multiplier)
+    return piece
+
+
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
     """Describe one queued Tech reward and its currently chosen branch."""
 
@@ -761,6 +855,11 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     tech = tech_acquire_action_text(action) or research_icon_action_text(action)
     if tech is not None:
         return tech[0]
+    icon = combat_reward_icon_action_text(
+        state, action
+    ) or contract_reward_icon_action_text(state, action)
+    if icon is not None:
+        return icon[0]
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[0]
@@ -830,6 +929,11 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     tech = tech_acquire_action_text(action) or research_icon_action_text(action)
     if tech is not None:
         return tech[1]
+    icon = combat_reward_icon_action_text(
+        state, action
+    ) or contract_reward_icon_action_text(state, action)
+    if icon is not None:
+        return icon[1]
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[1]

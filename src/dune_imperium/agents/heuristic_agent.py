@@ -22,6 +22,7 @@ from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.agents.agent_turn_steps import PlacementMemory
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
     ResearchBonus,
@@ -1401,8 +1402,12 @@ class HeuristicAgent:
         """``choose_action``, with an Agent-turn step (stage B1) scored as the
         placements it stands for, one decision per placement
         (``agents.agent_turn_steps``): the state only supplies the seat's
-        own placements."""
+        own placements. A Conflict reward's icons are answered in the
+        engine's older order (``agents.engine_order``)."""
 
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            return scripted
         return self._placements.choose(
             state,
             observation.player,

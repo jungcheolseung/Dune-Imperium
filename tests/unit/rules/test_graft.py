@@ -485,6 +485,14 @@ def test_twisted_mentat_recalls_this_turns_agent_from_the_conflict() -> None:
     )
 
 
+# Sardaukar II's one reward icon (stage B2, OQ-112).
+RECALL_ROW = DomainAction(
+    action_id="resolve_contract_reward_icon",
+    actor=0,
+    arguments=(("effect", "recall_agent"),),
+)
+
+
 def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     # User ruling (2026-09-26, verbatim): "Duncan Idaho(Bloodlines) Into the
     # Fray의 Agent를 Imperial Privilege로 recall 가능 이니까 recall agent
@@ -499,6 +507,7 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     from dune_imperium.rules.contracts import (
         apply_contract_completion,
         apply_contract_recall_action,
+        apply_contract_reward_icon,
         legal_contract_completion_actions,
         legal_contract_recall_actions,
     )
@@ -535,12 +544,19 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
         for action in legal_contract_completion_actions(fighting, 0)
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
-    completed = apply_contract_completion(fighting, completion)
+    completion_step = apply_contract_completion(fighting, completion)
+    # The Recall Agent icon is the reward window's one row (stage B2,
+    # OQ-112); its press opens the recall window.
+    assert completion_step.state.decision_stack[-1].kind == (
+        FrameKind.CONTRACT_REWARD_ICONS
+    )
+    completed = apply_contract_reward_icon(completion_step.state, RECALL_ROW)
 
     # The reward no longer fizzles: the earlier turn's Conflict Agent is
     # recallable, even though there is no board Agent at all (OQ-068).
     assert not any(
-        event.kind == "contract_recall_unavailable" for event in completed.events
+        event.kind == "contract_recall_unavailable"
+        for event in (*completion_step.events, *completed.events)
     )
     recalls = legal_contract_recall_actions(completed.state, 0)
     assert [action.action_id for action in recalls] == [
@@ -569,6 +585,7 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
     from dune_imperium.rules.contracts import (
         apply_contract_completion,
         apply_contract_recall_action,
+        apply_contract_reward_icon,
         legal_contract_completion_actions,
         legal_contract_recall_actions,
     )
@@ -602,7 +619,13 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
         for action in legal_contract_completion_actions(fighting, 0)
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
-    completed = apply_contract_completion(fighting, completion)
+    completion_step = apply_contract_completion(fighting, completion)
+    # The Recall Agent icon is the reward window's one row (stage B2,
+    # OQ-112); its press opens the recall window.
+    assert completion_step.state.decision_stack[-1].kind == (
+        FrameKind.CONTRACT_REWARD_ICONS
+    )
+    completed = apply_contract_reward_icon(completion_step.state, RECALL_ROW)
 
     # The recall window opens with only the confirm (user ruling
     # 2026-09-30); its press fizzles the reward.

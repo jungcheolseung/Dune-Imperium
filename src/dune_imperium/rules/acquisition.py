@@ -256,6 +256,28 @@ def apply_acquisition_spy_action(
     return RuleResult(state=next_state, events=(event,))
 
 
+def _lift_contract_windows(
+    before: GameState, after: GameState
+) -> tuple[GameState, tuple[DecisionFrame, ...]]:
+    """Take the Contract reward windows ``complete_acquire_contracts`` pushed
+    over ``before``'s stack off ``after``.
+
+    An Agent-turn acquisition writes its effect frame back
+    (``advance_after_effect``), which needs that frame on top; the windows
+    go back on top once the handler is done, so the rewards are answered
+    first, as the engine paid them inside the acquisition before stage B2
+    (OQ-112).
+    """
+
+    depth = len(before.decision_stack)
+    windows = after.decision_stack[depth:]
+    if after.decision_stack[:depth] != before.decision_stack or any(
+        frame.kind != FrameKind.CONTRACT_REWARD_ICONS for frame in windows
+    ):
+        raise RuntimeError("an Acquire Contract pushed something but its windows")
+    return replace(after, decision_stack=before.decision_stack), windows
+
+
 def _resume_after_acquisition_spy(state: GameState) -> GameState:
     """Advance the Agent turn under a finished acquisition Spy, if any.
 
@@ -562,31 +584,18 @@ def _acquire_reserve_to_hand_with_solari(
         reserve_stacks=reserve_stacks,
         scouts_discount_used=discount_used,
     )
-    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         card_id,
         source=source,
     )
-    contract_recruited = (
-        completed.state.players[action.actor].troops_garrison
-        - garrison_before_contracts
-    )
-    if contract_recruited:
-        # Same stale-context trap as the Imperium-card path: an Acquire
-        # Contract's troop reward would otherwise sit only in
-        # ``complete_acquire_contracts``'s own state, which
-        # ``advance_after_effect`` below discards in favor of ``context``
-        # [Main p. 10] [FAQ p. 4].
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + contract_recruited
-    next_state = advance_after_effect(
-        completed.state,
-        context,
-        completed.state.players,
+    # An Acquire Contract's troops come on its window's row, which credits
+    # this Agent turn's recruits itself [Main p. 10] [FAQ p. 4].
+    lifted, windows = _lift_contract_windows(prepared, completed.state)
+    next_state = advance_after_effect(lifted, context, lifted.players)
+    next_state = replace(
+        next_state, decision_stack=(*next_state.decision_stack, *windows)
     )
     event = GameEvent(
         event_id=source,
@@ -682,28 +691,16 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
-    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         definition.card.card_id,
         source=source,
     )
-    prepared = completed.state
+    # An Acquire Contract's troops come on its window's row, which credits
+    # this Agent turn's recruits itself; the windows go on top at the end.
+    prepared, windows = _lift_contract_windows(prepared, completed.state)
     acquisition_events = (*acquisition_events, *completed.events)
-    contract_recruited = (
-        prepared.players[action.actor].troops_garrison - garrison_before_contracts
-    )
-    if contract_recruited:
-        # Same trap as the acquire box above: an Acquire Contract's own
-        # troop reward completed here would otherwise sit only in
-        # ``complete_acquire_contracts``'s own state update, which the
-        # ``advance_after_effect`` calls below discard in favor of
-        # ``context``.
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + contract_recruited
     if places_spy:
         next_state = replace(
             prepared,
@@ -737,7 +734,9 @@ def _acquire_imperium_to_hand_with_solari(
     tracked = apply_acquisition_track_effects(
         next_state, action.actor, definition, source=source
     )
-    next_state = tracked.state
+    next_state = replace(
+        tracked.state, decision_stack=(*tracked.state.decision_stack, *windows)
+    )
     acquisition_events = (*acquisition_events, *tracked.events)
     event = GameEvent(
         event_id=source,

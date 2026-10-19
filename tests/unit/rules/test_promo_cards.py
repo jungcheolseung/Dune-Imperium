@@ -9,6 +9,8 @@ documents leave open are recorded in ``docs/rules/open-questions.md``.
 
 from dataclasses import replace
 
+from tests.support.reward_windows import settle_reward_window
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.uprising.imperium import (
@@ -46,13 +48,16 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat import (
+    apply_combat_reward_influence,
     face_up_battle_icons,
     finish_combat,
+    legal_combat_reward_influence_actions,
     offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind, top_frame
 from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.optional_trash import apply_optional_trash
 from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
@@ -113,11 +118,20 @@ def _context(state: GameState) -> dict[str, object]:
 
 
 def _influence_frames(state: GameState) -> list[DecisionFrame]:
-    return [
-        frame
-        for frame in state.decision_stack
-        if frame.kind == "combat_reward_influence"
-    ]
+    """The Influence choices the recipient's reward window opens, one after
+    the other (stage B2, OQ-112: each is a row of the window), each answered
+    with its first legal Faction so the next one opens."""
+
+    frames: list[DecisionFrame] = []
+    while True:
+        state = settle_reward_window(state)
+        frame = top_frame(state)
+        if frame is None or frame.kind != FrameKind.COMBAT_REWARD_INFLUENCE:
+            return frames
+        frames.append(frame)
+        assert isinstance(frame.decision, PlayerDecision)
+        choice = legal_combat_reward_influence_actions(state, frame.decision.owner)[0]
+        state = apply_combat_reward_influence(state, choice).state
 
 
 def _payment_ids(state: GameState) -> list[str]:
@@ -771,6 +785,10 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # become 132 card and space picks.
         - 1806
         + 132
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon``, a row per
+        # icon a Conflict reward prints (14 here; Bloodlines adds the Deep
+        # Cover Spy).
+        + 14
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -797,6 +815,10 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # rows become 136 card and space picks.
         - 1911
         + 136
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon`` (14) and,
+        # with the CHOAM module, ``resolve_contract_reward_icon`` (9).
+        + 14
+        + 9
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

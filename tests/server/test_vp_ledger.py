@@ -187,8 +187,9 @@ def test_rewards_battle_icons_and_endgame_matches_score_in_their_step() -> None:
 
     rewards = [
         (index, payload)
-        for index, payload in _events(session, "combat_reward_gained")
-        # A reward's zero amounts are left out of its payload (cleanup-2c-3).
+        # A reward's Victory Points come on their icon row (stage B2,
+        # OQ-112); the other rows leave the amount out.
+        for index, payload in _events(session, "combat_reward_icon_resolved")
         if _int(payload.get("victory_points", 0)) > 0
     ]
     assert rewards
@@ -208,8 +209,9 @@ def test_rewards_battle_icons_and_endgame_matches_score_in_their_step() -> None:
 
 
 def test_chance_steps_count_for_the_points_they_move() -> None:
-    """A chance outcome can move Victory Points (the pause before a Conflict
-    reward carries the reward); its row names that chance entry."""
+    """A chance outcome can move Victory Points (the pause before the
+    Conflict's end carries its Battle icon matches; since stage B2 a reward's
+    points come on its own icon row); its row names that chance entry."""
 
     manager, game_id = _finished()
     session = manager._get(game_id)

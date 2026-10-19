@@ -830,6 +830,14 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
                 if name not in set(old_names[encoder])
             ]
             layer.weight[:, new] = 0.0
+        # Slot keys of an embedded field the file never had (the v33
+        # decision kinds of stage B2's reward windows) start at zero too.
+        unknown = [
+            SLOT_KEYS.index(f"decision_kind:{kind}")
+            for kind in ("combat_reward_icons", "contract_reward_icons")
+        ]
+        assert not {SLOT_KEYS[index] for index in unknown} & set(old_keys)
+        original.slot_key_own[unknown] = 0.0
         hidden = original.trunk(observations)
         assert torch.equal(moved.trunk(observations), hidden)
         assert torch.equal(

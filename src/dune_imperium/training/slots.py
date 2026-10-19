@@ -123,7 +123,9 @@ _REFERENCE_PHASE: Final = GamePhase.PLAYER_TURNS
 # (rules/pauses.py) is a chance decision, never on top when a seat is
 # observed, so it has no row: the table, and every slot checkpoint written
 # before the pause existed, stays as it was (observation v30's kind index
-# appends it last, so no listed kind moves).
+# appends it last, so no listed kind moves). The kinds appended after it
+# (stage B2's reward windows, v33) keep their encoded index, which counts
+# the pause (``_identity``'s universe is every kind).
 _DECIDED_FRAME_KINDS: Final = tuple(
     kind for kind in _FRAME_KINDS if kind != FrameKind.PAUSE.value
 )
@@ -234,6 +236,7 @@ def _build_fields() -> tuple[SlotField, ...]:
             "decision_kind",
             "global_scalars",
             _scalar("global_scalars", _GLOBAL_DECISION_KIND),
+            _FRAME_KINDS,
             _DECIDED_FRAME_KINDS,
         ),
         _identity(

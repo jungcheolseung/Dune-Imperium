@@ -759,6 +759,7 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         events.extend(_taken_events(source, mission_id, player, resource, amount))
     # One face-down card per visit (OQ-078): a Contract or an Intrigue card.
     card_row = _takeable_card(state, space_id)
+    immediate_contract: str | None = None
     if card_row is not None:
         cards.remove(card_row)
         mission_id, _, card_id = card_row
@@ -766,6 +767,10 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
             if _is_immediate(card_id):
                 raise RuntimeError("the Immediate never reaches the Research Station")
             owner = receive_contract(state, owner, card_id)
+            if contract_for_instance(card_id).completes_immediately:
+                # An Immediate tile completes the moment it is taken
+                # [Main p. 16]; its reward waits in its window (OQ-112).
+                immediate_contract = card_id
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:contract",
@@ -804,6 +809,18 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         scouts_parked=tuple(parked),
     )
     next_state = advance_after_effect(working, context, working.players)
+    if immediate_contract is not None:
+        # Imported here: ``contracts`` reaches this module through card draws.
+        from dune_imperium.rules.contracts import complete_immediate_contract
+
+        completed = complete_immediate_contract(
+            next_state,
+            player,
+            immediate_contract,
+            source=f"{source}:contract:{immediate_contract}",
+        )
+        next_state = completed.state
+        events.extend(completed.events)
     return RuleResult(state=next_state, events=tuple(events))
 
 

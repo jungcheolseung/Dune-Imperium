@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
@@ -2867,6 +2868,10 @@ def test_a_fourth_contract_completed_mid_reveal_offers_spice_or_vp_never_both(
     assert reveal_pending_gains(dict(revealed.decision_stack[-1].context)) == ()
     bought = take(revealed, "acquire_reserve", "the_spice_must_flow")
     assert len(bought.players[0].completed_contract_ids) == 4
+    # The Acquire Contract's reward waits in its window (stage B2, OQ-112);
+    # the Reveal choices return when its rows are paid.
+    assert bought.decision_stack[-1].kind == "contract_reward_icons"
+    bought = answer_reward_windows(engine, bought)
     assert tuple(
         action.action_id for action in legal_contract_reveal_choice_actions(bought, 0)
     ) == ("keep_contract_reveal_spice", "trash_contract_reveal_for_vp")
@@ -4019,7 +4024,11 @@ def test_interstellar_trade_pays_for_the_spice_must_flow_contract_it_helped_buy(
         if event.kind == "reveal_effect_granted_late"
     ] == [1]
 
-    spent = buy(bought.state, "prepare_the_way").state
+    # The Contract's reward waits in its window (stage B2, OQ-112); the
+    # purchase menu returns when its rows are paid.
+    assert bought.state.decision_stack[-1].kind == "contract_reward_icons"
+    paid = answer_reward_windows(engine, bought.state)
+    spent = buy(paid, "prepare_the_way").state
     assert _reveal_frame_context(spent)["persuasion"] == 0
 
 

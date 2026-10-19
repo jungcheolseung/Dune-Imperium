@@ -14,11 +14,14 @@ turn-start play, and every hold is confirmed at once. Seed 28 is the first
 of 0-199 whose walk meets such a turn start: seat 0 in round 8, holding
 Litany Against Fear and Withdrawn, with a Plot (Crysknife) that leaves it on
 its turn frame. The walk saves there, plays that Plot, goes on, and records
-every step (52, 50 of them actions) up to seat 0's next turn start
+every step up to seat 0's next turn start
 (Withdrawn legal again), so the page can replay them and must open the
 window once more. (Stage B1 split the Agent turn into a card pick and a space
 pick, so the same walk records two steps for each of the two placements it
-makes there: 50 steps, 48 of them actions, before.) (Seed 185 until codec
+makes there: 50 steps, 48 of them actions, before. Stage B2 asks a reward
+icon by icon, which the walk answers in the engine's older order without a
+draw, so it is the same walk again with the reward rows recorded too: 58
+steps, 55 of them actions.) (Seed 185 until codec
 v147 moved the AI-free walks: a Reveal choice became a row of the Reveal, so
 every seat's legal list changed; seed 185 then had both plays at that next
 turn too.)
@@ -36,6 +39,7 @@ import sys
 from pathlib import Path
 
 from dune_imperium.agents.agent_turn_steps import placements_for_steps
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
 from dune_imperium.server.persistence import SaveStore
@@ -136,6 +140,16 @@ for _step in range(STEPS):
                 game_id, owner, summary["revision"], plots[0]
             )
             continue
+    # A reward's icon rows (stage B2) are answered in the engine's older
+    # fixed order without a draw, so seed 28 is still the walk described
+    # above (``agents.engine_order``).
+    scripted = engine_order_answer(session.state, owner, actions)
+    if scripted is not None:
+        index = actions.index(scripted)
+        if found is not None:
+            steps.append(["action", owner, index])
+        summary = manager.apply_action(game_id, owner, summary["revision"], index)
+        continue
     shown = placements_for_steps(session.state, owner, actions)
     if shown is None:
         choices = [

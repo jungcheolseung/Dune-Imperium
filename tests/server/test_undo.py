@@ -586,8 +586,10 @@ def _play_seat0_until(
         # before the game ends (re-searched 2026-10-01; seeds 1 and 3 of 0-5
         # reach it). Seed 0 since codec v150 (stage B1, OQ-111: the Agent
         # turn is a card pick and a space pick, which moves the random walk;
-        # of 0-11, seeds 0, 2, 3, 8 and 11 reach it).
-        ("acquire_tleilaxu", "immortality", 0),
+        # of 0-11, seeds 0, 2, 3, 8 and 11 reach it). Seed 1 since stage B2
+        # (OQ-112: a Conflict reward's icons are rows the walk draws over;
+        # of 0-15, seeds 1, 3, 7, 8, 9, 10, 14 and 15 reach it).
+        ("acquire_tleilaxu", "immortality", 1),
         # The stack's next tile turns face up [Bloodlines p. 6].
         ("acquire_tech", "tech_module", 0),
     ],
@@ -1934,8 +1936,9 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     docs/rules/designer-rulings-audit.md). The card is the seat's own
     ``draw_owed_card`` step, the one right after the completion with nothing
     else of the seat's in between (user decision 2026-10-10, OQ-106: "가 로
-    가자"), so the completion stays in the undo window and the draw closes
-    it (OQ-010). Before, the completion drew the card in its own step.
+    가자") but the reward's automatic icon rows (stage B2, OQ-112), so the
+    completion stays in the undo window and the draw closes it (OQ-010).
+    Before, the completion drew the card in its own step.
 
     Seed 1 with CHOAM, Bloodlines and Tech: seat 0's first turn, given CHOAM
     Transports and the Arrakeen I Contract by hand; the undo replays from
@@ -1985,14 +1988,26 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     seat = manager._get(game_id).state.players[0]
     assert seat.completed_contract_ids == (contract,)
     assert seat.hand == before.players[0].hand  # nothing drawn yet
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    # Stage B2 (OQ-112): the reward waits in its window, Arrakeen I's water
+    # a row of its own; the card is owed once the reward's automatic icons
+    # are resolved -- the order the completion kept before, the reward and
+    # then the card -- so the row stays in the undo window too.
+    (water,) = _served(manager, game_id)
+    assert water["action_id"] == "resolve_contract_reward_icon"
+    assert water["arguments"] == {"effect": "resources"}
+    assert water["undoable"] is True
+    summary = _play_raw(manager, summary, index=_int(water["index"]))
+    assert seat.hand == manager._get(game_id).state.players[0].hand
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
     rows = _served(manager, game_id)
     assert [row["action_id"] for row in rows] == ["draw_owed_card"]
     assert rows[0]["undoable"] is False
     assert rows[0]["detail"] == "CHOAM Transports"
     assert rows[0]["detail_ko"] == "초암 수송선"
 
-    summary = manager.undo(game_id, seat=0, revision=_int(summary["revision"]))
+    summary = manager.undo(
+        game_id, seat=0, revision=_int(summary["revision"]), steps=2
+    )
     assert manager._get(game_id).state == before
 
     complete = next(
@@ -2001,6 +2016,8 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
         if row["action_id"] == "complete_contract"
     )
     summary = _play_raw(manager, summary, index=_int(complete["index"]))
+    (water,) = _served(manager, game_id)
+    summary = _play_raw(manager, summary, index=_int(water["index"]))
     (draw,) = _served(manager, game_id)
     summary = _play_raw(manager, summary, index=_int(draw["index"]))
     seat = manager._get(game_id).state.players[0]

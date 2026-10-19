@@ -46,6 +46,7 @@ from itertools import islice
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import settle_reward_window
 from tests.unit.rules.test_bloodlines_leaders import RECON as LIET_RECON
 from tests.unit.rules.test_bloodlines_leaders import _turn_state as _liet_turn_state
 from tests.unit.rules.test_immortality import _agent_research, _at
@@ -340,13 +341,46 @@ def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> se
     """The steps of ``replay`` an engine of ``codec`` would not have recorded:
     before v142 the steps it made inside another (``_held_steps``), before
     v149 the confirms of a Scouts choice with nothing to take, which it
-    skipped unasked (``_no_option_steps``)."""
+    skipped unasked (``_no_option_steps``), and before v150 the icon rows
+    of a reward it paid in one step (``_reward_icon_steps``)."""
 
     return (
         set(drop or ())
         | (set(_held_steps(replay)) if codec < 142 else set())
         | (_no_option_steps(replay) if codec < 149 else set())
+        | (_reward_icon_steps(replay) if codec < 150 else set())
     )
+
+
+REWARD_ICON_BRIDGES = ("combat_reward_icon_follow", "combat_reward_icon")
+
+
+@functools.cache
+def _reward_icon_steps(replay: GameReplay) -> frozenset[int]:
+    """The icon rows of a Conflict or Contract reward's window (stage B2,
+    OQ-112). The heuristic answers them in the order an engine before v150
+    paid the reward (``agents.engine_order``), which the reward bridges
+    replay."""
+
+    return frozenset(
+        index
+        for index, step in enumerate(replay.steps)
+        if isinstance(step, DomainAction)
+        and step.action_id
+        in ("resolve_combat_reward_icon", "resolve_contract_reward_icon")
+    )
+
+
+def _reward_icon_counts(
+    record: migration.MigratedRecord, replay: GameReplay
+) -> Counter[str]:
+    """``record``'s bridge counts less those of the reward bridges, which
+    between them must have added every icon row back."""
+
+    counts = Counter(record.bridge_counts())
+    added = sum(counts.pop(name, 0) for name in REWARD_ICON_BRIDGES)
+    assert added == len(_reward_icon_steps(replay))
+    return counts
 
 
 def _no_option_steps(replay: GameReplay) -> set[int]:
@@ -454,7 +488,7 @@ def test_pauses_an_older_engine_never_recorded_are_answered(
     record = migrate_record(_older(game, 139, pauses))
 
     assert record.complete
-    assert record.bridge_counts() == {
+    assert _reward_icon_counts(record, game) == {
         "pause": len(pauses - set(_held_steps(game))),
         **_held_counts(game),
         **_no_option_counts(game),
@@ -504,7 +538,7 @@ def test_a_scouts_seat_with_nothing_to_take_is_answered_only_before_v149(
     assert after.divergence is not None
     first = min(confirms)
     assert after.divergence.recorded_index == first - sum(
-        1 for index in confirms if index < first
+        1 for index in _dropped(game, 149, confirms) if index < first
     )
 
 
@@ -598,7 +632,7 @@ def test_a_combat_intrigue_pass_is_answered_only_for_records_before_v139(
 
     before = migrate_record(_older(game, 138, {dropped}))
     assert before.complete
-    assert before.bridge_counts() == {
+    assert _reward_icon_counts(before, game) == {
         "combat_intrigue_pass": 1,
         **_held_counts(game),
         **_no_option_counts(game),
@@ -718,7 +752,7 @@ def test_a_card_effect_recorded_before_v137_named_its_icon_is_rewritten(
     older, position = _older_with(game, 136, index, plain)
     before = migrate_record(older)
     assert before.complete
-    assert before.bridge_counts() == {
+    assert _reward_icon_counts(before, game) == {
         "agent_card_effect_named": 1,
         **_held_counts(game),
         **_no_option_counts(game),
@@ -745,8 +779,12 @@ def _with_graft_switches(replay: GameReplay) -> GameReplay:
     state = ENGINE.reset(replay.ruleset, replay.seed)
     steps: list[ReplayStep] = []
     active = 0
-    for step in replay.steps:
-        if isinstance(step, DomainAction):
+    rows = _reward_icon_steps(replay)
+    for index, step in enumerate(replay.steps):
+        if index in rows:
+            # Paid in one step before codec v150 (``_dropped``).
+            pass
+        elif isinstance(step, DomainAction):
             _, plain, box = route_box_action(state, step)
             if box is not None and box != active:
                 steps.append(DomainAction("switch_graft_card", step.actor))
@@ -791,7 +829,7 @@ def test_a_record_with_graft_switches_migrates_to_the_box_rows(
 
     assert record.complete, record.divergence
     assert [migrated.step for migrated in record.steps] == list(game.steps)
-    assert record.bridge_counts() == {
+    assert _reward_icon_counts(record, game) == {
         "graft_switch": switches,
         "graft_box": boxed,
     }
@@ -1003,6 +1041,7 @@ def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
     assert set(record.bridge_counts()) <= {
         *_held_counts(game),
         *_no_option_counts(game),
+        *REWARD_ICON_BRIDGES,
     }
     assert [migrated.step for migrated in record.steps] == _steps(game.steps[:index])
 
@@ -1038,7 +1077,10 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
 
     before = migrate_record(_older(game, 141))
     assert before.complete, before.divergence
-    assert before.bridge_counts() == {**_held_counts(game), **_no_option_counts(game)}
+    assert _reward_icon_counts(before, game) == {
+        **_held_counts(game),
+        **_no_option_counts(game),
+    }
     assert before.bridge_counts()["owed_draw"] == len(owed)
     assert [migrated.step for migrated in before.steps] == _steps(game.steps)
     assert canonical_state_hash(before.state) == game.expected_state_hash
@@ -1071,7 +1113,10 @@ def test_a_scouts_line_draw_an_older_engine_drew_at_once_follows_its_choice() ->
 
     before = migrate_record(_older(game, 141))
     assert before.complete, before.divergence
-    assert before.bridge_counts() == {**_held_counts(game), **_no_option_counts(game)}
+    assert _reward_icon_counts(before, game) == {
+        **_held_counts(game),
+        **_no_option_counts(game),
+    }
     choices = [
         previous.step
         for previous, migrated in zip(before.steps, before.steps[1:], strict=False)
@@ -1372,21 +1417,32 @@ def test_follows_bridges_that_never_settle_end_the_record_at_their_step(
     # Piter's troop loss (recorded 557) is followed by two rewards; with
     # room for one, the step's follows do not settle, so the record stops
     # on that step, in the state before it, instead of looping or going on
-    # with a reward missing.
+    # with a reward missing. Since codec v150 a Conflict reward's icon rows
+    # follow the step that paid the reward too (stage B2), so the first
+    # step that needs two follows comes earlier, and the record stops there.
     replay = _fixture("v141-heuristic-150")
     complete = migrate_record(replay)
     assert _fired_after(complete, "piter_reward") == [557, 557]
+    follows = Counter(
+        after
+        for bridge in migration.BRIDGES
+        if bridge.follows
+        for after in _fired_after(complete, bridge.name)
+    )
+    assert follows[557] == 2
+    first = min(index for index, count in follows.items() if count >= 2)
+    assert first < 557
     before = next(
-        state for state, migrated in walk(complete) if migrated.recorded_index == 557
+        state for state, migrated in walk(complete) if migrated.recorded_index == first
     )
     monkeypatch.setattr(migration, "MAX_FOLLOWS_PER_STEP", 1)
 
     record = migrate_record(replay)
 
     assert record.divergence is not None
-    assert record.divergence.recorded_index == 557
+    assert record.divergence.recorded_index == first
     assert "did not settle" in record.divergence.reason
-    assert record.steps[-1].recorded_index == 556
+    assert record.steps[-1].recorded_index == first - 1
     assert canonical_state_hash(record.state) == canonical_state_hash(before)
 
 
@@ -1991,11 +2047,19 @@ def test_a_reshuffle_is_renamed_only_for_the_same_seat_and_pile(change: str) -> 
         "a v142 record": recorded,
     }[change]
     if change == "a v142 record":
-        # This engine's own steps up to the reshuffle, its old id kept.
+        # This engine's own steps up to the reshuffle, its old id kept, but
+        # the reward icon rows a v142 engine did not have (codec v150).
         migrated = migrate_record(replace(replay, steps=replay.steps[:108]))
         replay = replace(
             replay,
-            steps=(*(step.step for step in migrated.steps), recorded),
+            steps=(
+                *(
+                    step.step
+                    for step in migrated.steps
+                    if step.bridge not in REWARD_ICON_BRIDGES
+                ),
+                recorded,
+            ),
             action_codec_version=142,
         )
         index = len(replay.steps) - 1
@@ -2757,9 +2821,10 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # 1-500 meeting every precondition below, the v148 record of its game
     # migrating completely. (Codec v150, stage B1, makes every Agent turn two
     # steps, so this game's step numbers are later than they were -- 87, 821
-    # and round starts 90 ... 794 -- and its moves are the same.)
+    # and round starts 90 ... 794 -- and its moves are the same; stage B2's
+    # reward icon rows moved them again, from 95, 891 and 98 ... 862.)
     game = _this_engine_game(175)
-    play, rewards = 95, 891
+    play, rewards = 102, 947
     assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -2772,7 +2837,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {98, 195, 293, 392, 515, 643, 757, 862} <= starts
+    assert {105, 209, 317, 422, 553, 689, 810, 918} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -2796,7 +2861,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 891
+    rewards = 947
     starts = {
         index
         for index, step in enumerate(game.steps)
@@ -3284,7 +3349,10 @@ def test_the_cleanup_2f_refusals_are_the_confirms() -> None:
 
     from dune_imperium.rules.combat import resolve_combat_rewards
 
-    rewarded = resolve_combat_rewards(_reward_state("trade_dispute")).state
+    # The reward's resources and Contract rows first, up to its trash.
+    rewarded = settle_reward_window(
+        resolve_combat_rewards(_reward_state("trade_dispute")).state
+    )
     decision = _decided(rewarded)
     confirm = DomainAction(action_id="resolve_combat_trash_without_card", actor=0)
     # The recorded refusal of a trash with no card left is the confirm; a
@@ -3320,14 +3388,19 @@ def test_the_cleanup_2f_refusals_are_the_confirms() -> None:
 
 def _as_one_agent_turn(game: GameReplay) -> tuple[GameReplay, int]:
     """``game`` as a v149 engine recorded it: each card pick and the space
-    pick right after it merged into the one ``agent_turn``. Returns the
-    record and the number of placements."""
+    pick right after it merged into the one ``agent_turn``, and no reward
+    icon rows (``_dropped``). Returns the record and the number of
+    placements."""
 
     steps: list[ReplayStep] = []
     merged = 0
     index = 0
+    rows = _reward_icon_steps(game)
     while index < len(game.steps):
         step = game.steps[index]
+        if index in rows:
+            index += 1
+            continue
         if isinstance(step, DomainAction) and step.action_id == "choose_agent_card":
             space = game.steps[index + 1]
             assert isinstance(space, DomainAction) and space.action_id == "place_agent"
@@ -3361,7 +3434,7 @@ def test_a_recorded_agent_turn_is_split_into_its_card_and_space_picks(
 
     assert record.complete, record.divergence
     assert [migrated.step for migrated in record.steps] == _steps(game.steps)
-    assert record.bridge_counts() == {
+    assert _reward_icon_counts(record, game) == {
         "agent_card_pick": placements,
         "agent_space_pick": placements,
     }

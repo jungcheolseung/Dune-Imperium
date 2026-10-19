@@ -5,10 +5,13 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
@@ -16,6 +19,11 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
     ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
 )
 from dune_imperium.core import (
     DecisionFrame,
@@ -28,6 +36,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     legal_agent_card_icon_actions,
@@ -1820,6 +1829,29 @@ def _fake_signet_troop_contract(card_id: str, target: str) -> ContractDefinition
     )
 
 
+def _install_fake_signet_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract to the content tables, with the ability
+    record its reward window reads (stage B2, OQ-112)."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_signet_troop_contract(card_id, target)
+    )
+    monkeypatch.setattr(
+        contracts_rules,
+        "CONTRACT_ABILITIES",
+        {
+            **CONTRACT_ABILITIES,
+            card_id: Ability(
+                timing=AbilityTiming.CONTRACT,
+                sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+                requirement=AcquiredCard(target),
+            ),
+        },
+    )
+
+
 def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1837,10 +1869,8 @@ def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
     # 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137). The
     # press then reopens his own next turn with nothing carried over.
     target = "imperium:sardaukar_soldier:0"
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire_signet",
-        _fake_signet_troop_contract("fake_troop_acquire_signet", "sardaukar_soldier"),
+    _install_fake_signet_troop_contract(
+        monkeypatch, "fake_troop_acquire_signet", "sardaukar_soldier"
     )
     owner = PlayerState(
         player_id=0,
@@ -1877,21 +1907,25 @@ def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
         if action.action_id == "acquire_leader_imperium"
     )
     result = apply_leader_signet_acquire(placed, acquire)
+    # v150 (stage B2, OQ-112): the completed Contract's reward is a window of
+    # icon rows, answered here before the turn is looked at again.
+    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    settled = settle_reward_window(result.state)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
-    assert result.state.players[0].completed_contract_ids == (
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_signet",
     )
-    top = result.state.decision_stack[-1]
+    top = settled.decision_stack[-1]
     assert top.kind == FrameKind.AGENT_EFFECTS
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context)["troops_recruited"] == 1
     engine = UprisingRulesEngine()
-    assert [action.action_id for action in engine.legal_actions(result.state, 0)] == [
+    assert [action.action_id for action in engine.legal_actions(settled, 0)] == [
         "finish_agent_turn"
     ]
 
-    closed = finish_agent_turn(result.state)
+    closed = finish_agent_turn(settled)
     top = closed.decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0

@@ -9,6 +9,7 @@ Leader audit.
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
@@ -956,7 +957,11 @@ def test_sardaukar_ii_recalls_an_earlier_into_the_fray_agent_instead_of_fizzling
         for action in legal_contract_completion_actions(placed, 0)
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
-    completed = apply_contract_completion(placed, completion).state
+    # v150 (stage B2, OQ-112): the reward's recall is a row of the Contract's
+    # reward window, which opens the recall choice.
+    completed = settle_reward_window(
+        apply_contract_completion(placed, completion).state
+    )
 
     recalls = legal_contract_recall_actions(completed, 0)
     assert [action.action_id for action in recalls] == [
@@ -1010,7 +1015,9 @@ def test_sardaukar_ii_conflict_recall_updates_combat_strength_through_the_engine
         if action.action_id == "complete_contract"
         and dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
-    completed = engine.apply(placed, completion).state
+    # v150 (stage B2, OQ-112): the reward's recall is a row of the Contract's
+    # reward window, which opens the recall choice.
+    completed = answer_reward_windows(engine, engine.apply(placed, completion).state)
 
     recall = next(
         action

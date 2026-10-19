@@ -26,6 +26,7 @@ from dune_imperium.agents.agent_turn_steps import (
     apply_placement,
 )
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.agents.heuristic_agent import (
     HeuristicAgent,
     card_printed_value,
@@ -273,6 +274,9 @@ class RolloutAgent:
 
         if not legal_actions:
             raise ValueError("a rollout agent requires at least one legal action")
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            return scripted
         return self._placements.choose(
             state,
             observation.player,

@@ -989,6 +989,7 @@ const VP_CAUSE_KINDS = new Set([
   "alliance_lost",
   "conflict_won",
   "combat_reward_gained",
+  "combat_reward_icon_resolved",
   "battle_icons_matched",
   "endgame_wild_matched",
   "card_acquired",

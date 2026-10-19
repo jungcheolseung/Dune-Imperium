@@ -41,7 +41,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import turn_owner_of, turn_start_is_open
+from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
 from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 
@@ -297,8 +297,9 @@ def check_track_spy_queue(state: GameState) -> None:
 
     Only the turn owner's entries wait for its ``place_track_spy`` (user
     ruling 2026-10-04); every other entry opens at once, unless a chance
-    frame or a Conflict's own reward choices are on top
-    (``spy_moves.track_spy_is_queued``). Checked at a player decision.
+    frame, a Conflict's own reward choices or a completed Contract's reward
+    window are on top (``spy_moves.track_spy_is_queued``). Checked at a
+    player decision.
     """
 
     if not state.pending_track_spies:
@@ -307,6 +308,7 @@ def check_track_spy_queue(state: GameState) -> None:
     if top is not None and (
         isinstance(top.decision, ChanceDecision)
         or str(top.kind).startswith("combat_reward")
+        or top.kind == FrameKind.CONTRACT_REWARD_ICONS
     ):
         return
     owner = turn_owner_of(state)

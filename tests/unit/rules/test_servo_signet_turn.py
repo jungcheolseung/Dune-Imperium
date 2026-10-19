@@ -12,11 +12,14 @@ of an Agent or Reveal turn, including before the Agent is placed.
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
@@ -24,6 +27,11 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
     ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
@@ -36,6 +44,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
@@ -274,6 +283,29 @@ def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
     )
 
 
+def _install_fake_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract to the content tables, with the ability
+    record its reward window reads (stage B2, OQ-112)."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_troop_contract(card_id, target)
+    )
+    monkeypatch.setattr(
+        contracts_rules,
+        "CONTRACT_ABILITIES",
+        {
+            **CONTRACT_ABILITIES,
+            card_id: Ability(
+                timing=AbilityTiming.CONTRACT,
+                sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+                requirement=AcquiredCard(target),
+            ),
+        },
+    )
+
+
 def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -290,10 +322,8 @@ def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowa
     # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
     # (docs/rules/player-turns.md:137).
     target = "imperium:sardaukar_soldier:0"
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire",
-        _fake_troop_contract("fake_troop_acquire", target.split(":")[1]),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire", target.split(":")[1]
     )
     owner = _owner("princess_irulan", troops_garrison=2, troops_supply=10)
     base = _turn_state(owner)
@@ -316,7 +346,11 @@ def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowa
         if action.action_id == "acquire_leader_imperium"
         and dict(action.arguments).get("instance_id") == target
     )
-    resolved = ENGINE.apply(signet, acquire).state
+    acquired = ENGINE.apply(signet, acquire).state
+    # v150 (stage B2, OQ-112): the completed Contract's reward is a window of
+    # icon rows, answered before the turn frame is looked at again.
+    assert acquired.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    resolved = answer_reward_windows(ENGINE, acquired)
 
     assert [frame.kind for frame in resolved.decision_stack] == [FrameKind.TURN]
     assert resolved.players[0].troops_garrison == 3

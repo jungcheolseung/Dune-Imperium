@@ -59,6 +59,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import finish_reveal_turn
+from dune_imperium.rules.spy_moves import track_spy_is_queued
 from dune_imperium.server.turn_end import agent_turn_end_ready
 from dune_imperium.simulation import InvariantViolation, check_track_spy_queue
 
@@ -577,3 +578,75 @@ def test_the_soak_invariant_accepts_only_the_turn_owners_waiting_entries() -> No
         check_track_spy_queue(
             _owed(replace(state, phase=GamePhase.COMBAT, decision_stack=()), 1)
         )
+    # So does a completed Contract's reward window (stage B2, OQ-112).
+    window = DecisionFrame(
+        kind=FrameKind.CONTRACT_REWARD_ICONS,
+        frame_id="test:contract",
+        decision=PlayerDecision(owner=1, prompt="Gain your Contract reward"),
+    )
+    check_track_spy_queue(
+        _owed(replace(state, phase=GamePhase.COMBAT, decision_stack=(window,)), 1)
+    )
+
+
+def test_a_contract_window_the_influence_opened_comes_before_the_spy() -> None:
+    """Spice Freighters' first place: an Influence of the seat's choice and
+    a 4-spice arrow. Choosing the Emperor reaches 4 (the track's Spy) and
+    earns the Alliance, which completes Earn Any Alliance. Before stage B2
+    the engine paid that Contract inside the choice and the Spy followed the
+    Conflict's reward choices; now the Contract's rows come first, then the
+    rest of the Conflict reward, then the Spy (OQ-112, track_spy_is_queued).
+    """
+
+    from tests.unit.rules.test_pauses import (
+        _alliance_combat,
+        _pass_combat_intrigue,
+        _second,
+    )
+
+    state = _alliance_combat(
+        "spice_freighters",
+        Influence(emperor=3),
+        _second(),
+        troops_supply=2,
+        troops_garrison=6,
+    )
+    state = _pass_combat_intrigue(ENGINE, state).state
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    state = _apply(
+        state,
+        DomainAction(
+            "resolve_combat_reward_icon", 0, (("effect", "choose_influence"),)
+        ),
+    )
+    state = _apply(
+        state,
+        DomainAction(
+            "choose_combat_reward_influence", 0, (("faction", "emperor"),)
+        ),
+    )
+    assert state.players[0].influence.emperor == 4
+    assert owes_track_spy(state, 0)
+    assert [frame.kind for frame in state.decision_stack[-2:]] == [
+        FrameKind.COMBAT_REWARD_ICONS,
+        FrameKind.CONTRACT_REWARD_ICONS,
+    ]
+    assert not track_spy_is_queued(state)
+    check_track_spy_queue(state)
+
+    while state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS:
+        (row, *_) = ENGINE.legal_actions(state, 0)
+        assert row.action_id == "resolve_contract_reward_icon"
+        state = _apply(state, row)
+    assert state.players[0].troops_garrison == 6 + 2
+    # The Conflict reward's arrow is still to answer; the Spy waits for it.
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert owes_track_spy(state, 0)
+    state = _apply(
+        state,
+        DomainAction("resolve_combat_reward_icon", 0, (("effect", "optional_spice"),)),
+    )
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    state = _apply(state, DomainAction("decline_combat_reward", 0))
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert not owes_track_spy(state, 0)

@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
@@ -3227,6 +3228,11 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     owner = completed.players[0]
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == ("contract:heighliner_ii",)
+    # The tile's two troops are its reward window's row (stage B2, OQ-112).
+    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert owner.troops_garrison == garrison
+    completed = settle_reward_window(completed)
+    owner = completed.players[0]
     assert owner.troops_garrison == garrison + 2
     assert owner.contracts_completed_turn == 1
     context = dict(completed.decision_stack[-1].context)
@@ -3300,6 +3306,8 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
     )
     from dune_imperium.rules.contracts import (
         apply_contract_recall_action,
+        apply_contract_reward_icon,
+        legacy_contract_reward_icon,
         legal_contract_recall_actions,
     )
 
@@ -3316,7 +3324,15 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
         )
         action = legal_agent_card_contract_completion_actions(state, 0)[0]
         result = apply_agent_card_contract_completion(state, action)
-        return result.state, tuple(event.kind for event in result.events)
+        # The Recall Agent icon is a row of the reward window (stage B2,
+        # OQ-112); its press opens the recall window under test.
+        assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+        state, events = result.state, list(result.events)
+        while (row := legacy_contract_reward_icon(state, 0)) is not None:
+            step = apply_contract_reward_icon(state, row)
+            state = step.state
+            events.extend(step.events)
+        return state, tuple(event.kind for event in events)
 
     # With no other Agent the recall window opens with only the confirm
     # (user ruling 2026-09-30), whose press fizzles the reward.
@@ -3373,6 +3389,10 @@ def _last_to_reveal(state: GameState) -> GameState:
 
 def _recall_and_place_contract_spy(state: GameState) -> GameState:
     engine = UprisingRulesEngine()
+    # A completion opens the reward window first; the Spy icon's row opens
+    # the Spy frame (stage B2, OQ-112).
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    state = answer_reward_windows(engine, state)
     assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
     # The reward resolves on top of the owner's still-open Agent turn
     # (user ruling OQ-095 (3)), not above the next turn's frame.
@@ -4437,6 +4457,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # 174 card and space picks.
         - 6344
         + 174
+        # v150 (stage B2, OQ-112): a Conflict reward's icon rows, one per
+        # icon kind with the Bloodlines-only Deep Cover Spy (15).
+        + 15
     )
     action = DomainAction(
         action_id="trash_agent_card",
@@ -4515,7 +4538,12 @@ def test_storms_in_the_south_first_place_spy_has_deep_cover() -> None:
         combat_intrigue_complete=True,
         intrigue_deck=intrigue_deck_instance_ids(False)[:4],
     )
-    rewarded = resolve_combat_rewards(state).state
+    opened = resolve_combat_rewards(state).state
+    # The reward waits in the winner's window; its rows pay the spice and
+    # open the Deep Cover Spy frame (stage B2, OQ-112).
+    assert opened.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert opened.players[0].resources.spice == 0
+    rewarded = settle_reward_window(opened)
     assert rewarded.players[0].resources.spice == 2
     frame = rewarded.decision_stack[-1]
     assert frame.kind == FrameKind.COMBAT_REWARD_SPY
@@ -4565,7 +4593,7 @@ def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() ->
         combat_intrigue_complete=True,
         intrigue_deck=intrigue_deck_instance_ids(False)[:4],
     )
-    rewarded = resolve_combat_rewards(state).state
+    rewarded = settle_reward_window(resolve_combat_rewards(state).state)
     frame = rewarded.decision_stack[-1]
     assert frame.kind == FrameKind.COMBAT_REWARD_SPY
     assert dict(frame.context)["deep_cover"] is True

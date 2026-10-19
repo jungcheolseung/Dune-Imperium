@@ -834,7 +834,10 @@ function latestCombatResolution(seat) {
           bundle = { conflictId, laterReveals: 0, rewards: [] };
           sawRewards = true;
         }
-        bundle.rewards.push(event.payload);
+        /* The recipient's reward begins; its icons follow (stage B2). */
+        bundle.rewards.push({ ...event.payload });
+      } else if (sawRewards && isCombatRewardGain(event)) {
+        addCombatRewardGain(bundle, event);
       } else if (event.kind === "conflict_won" && sawRewards) {
         /* Cleanup names the card it hands the sole winner. */
         bundle.conflictId = event.payload.conflict_id;
@@ -890,9 +893,51 @@ function combatResultRanksText(bundle) {
     .join(" · ");
 }
 
-/* What one reward payload (combat.py's _combat_reward_event) grants, as
-   term icons in printed order. A reward already carries the sandworm
-   multiplier, so the counts here are the amounts the seat actually got. */
+/* A Conflict reward is answered icon by icon (stage B2, OQ-112): each icon
+   leaves combat_reward_icon_resolved, and its resources a resources_gained
+   whose source is the recipient's reward itself (with ":contract", a
+   Contract icon's 2 Solari without CHOAM). A Contract taken through the
+   reward pays under a longer source of its own and is no part of it. */
+const COMBAT_REWARD_SOURCE = /^round:\d+:combat_reward:\d+:\d+(?::contract)?$/;
+
+function isCombatRewardGain(event) {
+  if (event.kind === "combat_reward_icon_resolved") return true;
+  return (
+    event.kind === "resources_gained" &&
+    typeof event.payload.source === "string" &&
+    COMBAT_REWARD_SOURCE.test(event.payload.source)
+  );
+}
+
+/* Add one icon's gain to its recipient's reward in the bundle. */
+function addCombatRewardGain(bundle, event) {
+  const payload = event.payload;
+  const reward = [...bundle.rewards].reverse().find((item) => item.player === payload.player);
+  if (!reward) return;
+  const add = (key, amount) => {
+    if (amount) reward[key] = (reward[key] || 0) + amount;
+  };
+  if (event.kind === "resources_gained") {
+    add("solari", payload.solari);
+    add("spice", payload.spice);
+    add("water", payload.water);
+    return;
+  }
+  add("troops", payload.troops);
+  add("intrigue", payload.intrigue);
+  add("victory_points", payload.victory_points);
+  add("contracts", payload.effect === "contract" ? payload.contracts : 0);
+  if (payload.effect === "faction_influence") {
+    reward.faction = payload.faction;
+    add("faction_influence", payload.influence);
+  }
+  if (payload.effect === "choose_influence") add("choose_influence", 1);
+  if (payload.effect === "control") reward.control_space_id = payload.space_id;
+}
+
+/* What one recipient's reward has granted so far (its icons, gathered by
+   addCombatRewardGain), as term icons in printed order. The amounts are
+   the ones the seat actually got, a sandworm's double included. */
 function combatRewardNodes(reward) {
   const nodes = [];
   const add = (term, count) => nodes.push(termNode(term, count));

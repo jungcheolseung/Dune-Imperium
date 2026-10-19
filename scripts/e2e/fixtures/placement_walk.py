@@ -7,6 +7,9 @@ so drawing over the engine's list now would walk other games. ``walk_step``
 draws over the list with the card picks shown as the whole placements they
 lead to, in the engine's order (``agents.agent_turn_steps``), and plays a
 drawn placement as its two steps: the walk is the one it was, seed for seed.
+Stage B2 (OQ-112) asks a Conflict or Contract reward icon by icon; the walk
+answers those rows in the engine's older fixed order without a draw, as the
+AI seats do (``agents.engine_order``), so the walk stays the one it was.
 
 Imported by the fixture scripts beside it (their directory is on
 ``sys.path`` when they run).
@@ -19,6 +22,7 @@ from dune_imperium.agents.agent_turn_steps import (
     PLACEMENT_ACTION,
     placements_for_steps,
 )
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.core.actions import DomainAction
 
 type Pick = Callable[[tuple[DomainAction, ...]], DomainAction]
@@ -33,6 +37,11 @@ def walk_step(
 
     session = manager._get(game_id)
     actions = session.engine.legal_actions(session.state, owner)
+    scripted = engine_order_answer(session.state, owner, actions)
+    if scripted is not None:
+        index = actions.index(scripted)
+        summary = manager.apply_action(game_id, owner, summary["revision"], index)
+        return summary, scripted
     steps = placements_for_steps(session.state, owner, actions)
     if steps is None:
         chosen = pick(actions)

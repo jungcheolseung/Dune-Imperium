@@ -5,9 +5,12 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
+from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
@@ -15,6 +18,11 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
     ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
@@ -30,6 +38,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
@@ -1336,6 +1345,29 @@ def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
     )
 
 
+def _install_fake_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract to the content tables, with the ability
+    record its reward window reads (stage B2, OQ-112)."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_troop_contract(card_id, target)
+    )
+    monkeypatch.setattr(
+        contracts_rules,
+        "CONTRACT_ABILITIES",
+        {
+            **CONTRACT_ABILITIES,
+            card_id: Ability(
+                timing=AbilityTiming.CONTRACT,
+                sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+                requirement=AcquiredCard(target),
+            ),
+        },
+    )
+
+
 def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1351,10 +1383,8 @@ def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_tu
     # ``complete_acquire_contracts`` already updated, so exactly one credit
     # survives.
     sardaukar = _imperium_instance("sardaukar_soldier")
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire",
-        _fake_troop_contract("fake_troop_acquire", "sardaukar_soldier"),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire", "sardaukar_soldier"
     )
     others = tuple(
         instance_id
@@ -1381,11 +1411,14 @@ def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_tu
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
-    assert result.state.players[0].completed_contract_ids == (
-        "contract:fake_troop_acquire",
-    )
-    _, context = current_agent_effect_context(result.state)
+    # The Contract's troop is its reward window's row (stage B2, OQ-112):
+    # the completion is announced, the row recruits and credits the turn.
+    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert result.state.players[0].troops_garrison == garrison
+    settled = settle_reward_window(result.state)
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.players[0].completed_contract_ids == ("contract:fake_troop_acquire",)
+    _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1
 
 
@@ -1394,15 +1427,12 @@ def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_
 ) -> None:
     # Same Contract reward as above, but through the acquisition-bonus
     # branch that pushes a Spy-placement frame instead of calling
-    # ``advance_after_effect``: there the credit that survives is
-    # ``complete_acquire_contracts``'s own, already written into the
-    # Agent-turn effect frame before this handler's local ``context`` copy
-    # is (harmlessly) discarded.
+    # ``advance_after_effect``. The Contract's troop is a row of its reward
+    # window (stage B2, OQ-112), on top of the Spy frame as the engine paid
+    # the reward inside the acquisition before; the row credits the turn.
     strike_fleet = _imperium_instance("strike_fleet")
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire_spy",
-        _fake_troop_contract("fake_troop_acquire_spy", "strike_fleet"),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire_spy", "strike_fleet"
     )
     others = tuple(
         instance_id
@@ -1432,12 +1462,20 @@ def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
+    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert result.state.decision_stack[-2].kind == FrameKind.ACQUISITION_SPY
+    assert result.state.players[0].troops_garrison == garrison
     assert result.state.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_spy",
     )
-    assert result.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
-    context = dict(result.state.decision_stack[-2].context)
+    settled = settle_reward_window(result.state)
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    spied = apply_acquisition_spy_action(
+        settled, legal_acquisition_spy_actions(settled, 0)[0]
+    ).state
+    assert spied.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    context = dict(spied.decision_stack[-1].context)
     assert context["troops_recruited"] == 1
 
 
@@ -1447,10 +1485,8 @@ def test_acquire_contract_troop_reward_joins_the_solari_reserve_acquisitions_tur
     # Same Contract reward through the Reserve-with-Solari handler
     # (``_acquire_reserve_to_hand_with_solari``), which always calls
     # ``advance_after_effect`` and so always keeps its own local credit.
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire_reserve",
-        _fake_troop_contract("fake_troop_acquire_reserve", "prepare_the_way"),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire_reserve", "prepare_the_way"
     )
     state = replace(
         _price_agent_state(solari=2, choam_module=True),
@@ -1470,9 +1506,13 @@ def test_acquire_contract_troop_reward_joins_the_solari_reserve_acquisitions_tur
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
-    assert result.state.players[0].completed_contract_ids == (
+    # The Contract's troop is its reward window's row (stage B2, OQ-112).
+    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert result.state.players[0].troops_garrison == garrison
+    settled = settle_reward_window(result.state)
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_reserve",
     )
-    _, context = current_agent_effect_context(result.state)
+    _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1

@@ -15,10 +15,12 @@ from dune_imperium.adapters.pettingzoo_env import (  # noqa: E402
     WINNER_REWARD,
 )
 from dune_imperium.agents import (  # noqa: E402
+    Agent,
     StateAgent,
     make_agent,
     network_search_agent,
 )
+from dune_imperium.agents.engine_order import engine_order_answer  # noqa: E402
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
     SearchResult,
@@ -1006,6 +1008,24 @@ def test_a_combat_intrigue_that_only_adds_strength_is_recognised() -> None:
     assert not adds_only_strength(DomainAction("pass_combat_intrigue", 0))
 
 
+def _heuristic_choice(
+    engine: UprisingRulesEngine,
+    agent: Agent,
+    state: GameState,
+    actions: tuple[DomainAction, ...],
+) -> DomainAction:
+    """The heuristic's answer to the decision; a Conflict or Contract reward
+    window (stage B2, OQ-112) is answered in the older engine's fixed order,
+    as the heuristic does in play (``agents.engine_order``), so a seed plays
+    the game it played before the windows existed."""
+
+    owner = actions[0].actor
+    scripted = engine_order_answer(state, owner, actions)
+    if scripted is not None:
+        return scripted
+    return agent.choose_action(engine.observe(state, owner), actions)
+
+
 def _combat_intrigue_choices(
     config: RulesetConfig, seed: int
 ) -> list[tuple[GameState, int, tuple[DomainAction, ...]]]:
@@ -1027,9 +1047,7 @@ def _combat_intrigue_choices(
             adds_only_strength(action) for action in actions
         ):
             found.append((state, decision.owner, actions))
-        choice = agents[decision.owner].choose_action(
-            engine.observe(state, decision.owner), actions
-        )
+        choice = _heuristic_choice(engine, agents[decision.owner], state, actions)
         state = engine.apply(state, choice).state
     return found
 
@@ -1102,7 +1120,7 @@ def _before_the_lead(config: RulesetConfig, seed: int) -> GameState:
                 return last[seat]
         else:
             last[seat] = state
-        choice = agents[seat].choose_action(engine.observe(state, seat), actions)
+        choice = _heuristic_choice(engine, agents[seat], state, actions)
         state = engine.apply(state, choice).state
     raise AssertionError("no such decision in the game")  # pragma: no cover
 

@@ -84,6 +84,7 @@ from dune_imperium.rules.card_draw import (
 from dune_imperium.rules.combat import (
     apply_combat_influence_without_faction,
     apply_combat_intrigue_pass,
+    apply_combat_reward_icon,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
     apply_combat_reward_spy,
@@ -96,6 +97,7 @@ from dune_imperium.rules.combat import (
     combat_participants_are_stale,
     finish_combat,
     legal_combat_intrigue_actions,
+    legal_combat_reward_icon_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
     legal_combat_reward_spy_actions,
@@ -125,6 +127,7 @@ from dune_imperium.rules.contracts import (
     apply_contract_hold,
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
+    apply_contract_reward_icon,
     apply_contract_spy_action,
     combat_held_contract_owner,
     complete_alliance_contracts,
@@ -134,6 +137,7 @@ from dune_imperium.rules.contracts import (
     legal_contract_actions,
     legal_contract_intrigue_trash_actions,
     legal_contract_recall_actions,
+    legal_contract_reward_icon_actions,
     legal_contract_spy_actions,
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
@@ -519,6 +523,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_scouts_rewards_first_actions,
     ),
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
+    FrameKind.CONTRACT_REWARD_ICONS: (legal_contract_reward_icon_actions,),
     FrameKind.CONTRACT_REWARD_RECALL: (legal_contract_recall_actions,),
     FrameKind.CONTRACT_INTRIGUE_TRASH: (legal_contract_intrigue_trash_actions,),
     FrameKind.CONTROL_DEFENSE: (
@@ -535,6 +540,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
+    FrameKind.COMBAT_REWARD_ICONS: (legal_combat_reward_icon_actions,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (legal_combat_reward_influence_actions,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
         legal_distinct_combat_reward_influence_actions,
@@ -865,6 +871,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
     "hold_contract_icons": apply_contract_hold,
     "resolve_contract_icons_without_contract": apply_contract_fizzle,
+    "resolve_contract_reward_icon": apply_contract_reward_icon,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
@@ -879,6 +886,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_combat_reward": apply_combat_reward_optional_payment,
     "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
     "decline_combat_reward": _apply_decline_combat_reward,
+    "resolve_combat_reward_icon": apply_combat_reward_icon,
     "trash_combat_reward_card": apply_combat_reward_trash,
     "decline_combat_reward_trash": apply_combat_reward_trash,
     "resolve_combat_trash_without_card": apply_combat_reward_trash,

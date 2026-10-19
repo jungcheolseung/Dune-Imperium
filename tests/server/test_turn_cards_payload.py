@@ -435,7 +435,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 185 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 4 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -464,12 +464,15 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     (stage B1, OQ-111): the Agent turn is a card pick and a space pick, so
     every random walk is a different one; searched from 0 for the position
     (walk only), seed 185 is the first, and 227 and 682 of 0-899 reach it
-    too.)"""
+    too. Stage B2 (OQ-112): a Conflict reward's icons are rows the walk
+    draws over; searched again from 0 (walk only), seed 4 is the first,
+    seat 0 in round 6 through the Research Station, and 510, 532, 560 and
+    602 of 0-899 reach it too.)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 185, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 4, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:4", "reserve:prepare_the_way:7")
+    assert (card, earlier) == ("reserve:prepare_the_way:4", "reserve:prepare_the_way:6")
     session = manager._get(game_id)
     before = (
         session.state,

@@ -57,6 +57,7 @@ from dune_imperium.adapters.observation_encoding import (
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.rules.action_shapes import ACTION_SHAPES
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.entity_features import (
     FEATURE_DIGEST,
     SLOT_HINTS,
@@ -184,6 +185,12 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 # read as numbers before, and still are, so a v31 file moved onto v32
 # computes the same function: its new inputs start at zero.
 FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
+# Slot keys a later observation version added to a field a v31 file already
+# embedded: the decision kinds of stage B2's reward windows (v33).
+_KEYS_SINCE_V31: Final = frozenset(
+    f"decision_kind:{kind.value}"
+    for kind in (FrameKind.COMBAT_REWARD_ICONS, FrameKind.CONTRACT_REWARD_ICONS)
+)
 # Encoder inputs by name, for moving a file's first-layer columns.
 _ENCODER_WEIGHTS: Final = {
     "seat": "seat_encoder.0.weight",
@@ -288,7 +295,12 @@ def legacy_inputs(
             "input names to move by"
         )
     places = [place for place in field_places() if place.name not in FIELDS_KEPT_RAW]
-    keys = tuple(key for place in places for key in place.keys)
+    keys = tuple(
+        key
+        for place in places
+        for key in place.keys
+        if key not in _KEYS_SINCE_V31
+    )
     return encoder_input_names(layout, places, width), keys
 
 

@@ -174,6 +174,7 @@ const ACTION_LABELS = {
   reveal_turn: "{reveal_turn} 턴 시작",
   summon_maker_sandworms: "{sandworm} 부르기",
   take_contract: "{contract} 획득",
+  resolve_contract_reward_icon: "{contract} 보상",
   hold_contract_icons: "{contract} 아이콘 보류 — 지금 가져갈 {contract} 없음",
   resolve_contract_icons_without_contract: "{contract} 아이콘 소멸 — 지금 가져갈 {contract} 없음",
   take_high_council_from_reveal: "원로회 자리 차지",
@@ -294,6 +295,7 @@ const ACTION_LABELS = {
   trash_intrigue_for_research_bonus: "{research} 보너스: {trash_intrigue} → 카드 + {intrigue}",
   pay_research_bonus: "{research} 보너스: 7 {solari} → {tleilaxu} ×2",
   resolve_research_icon: "{research} 칸 아이콘",
+  resolve_combat_reward_icon: "{combat} 보상",
   decline_research_bonus: "{research} 보너스: 받지 않음",
   return_specimen: "{specimen}을 {supply}로 되돌리기",
   use_family_atomics: "가문 핵 토큰 소비: {imperium_row} 다시 채우기",
@@ -355,8 +357,10 @@ const EVENT_LABELS = {
   conflict_won: "{conflict} 승리",
   combat_standing: "{combat} 순위",
   combat_reward_gained: "{combat} 보상",
+  combat_reward_icon_resolved: "{combat} 보상 받음",
   contract_taken: "{contract} 획득",
   contract_completed: "{contract} 완료",
+  contract_reward_icon_resolved: "{contract} 보상 받음",
   personal_discard_shuffled: "{discard_pile} 섞기",
   game_finished: "게임 종료",
   leader_drafted: "{leader} 선택 완료",
@@ -596,6 +600,20 @@ const EFFECT_ICON_LABELS = {
   trash_self: "이 카드 폐기",
   troops: "{troop} {recruit} ({garrison})",
   water: "{water} 획득",
+  /* A Conflict reward's icons (stage B2, rules/combat.py
+     COMBAT_REWARD_ICON_KINDS); resources, intrigue, troops, contract and
+     trash share the keys above. */
+  victory_points: "{victory_point} 획득",
+  faction_influence: "정해진 진영의 영향력",
+  control: "{control}",
+  choose_influence: "{influence_any}",
+  distinct_influence: "서로 다른 진영의 {influence_any}",
+  optional_solari: "{solari} 내고 {victory_point} (선택)",
+  optional_spice: "{spice} 내고 {victory_point} (선택)",
+  optional_recall_spies: "{spy} 회수하고 {victory_point} (선택)",
+  spy: "{spy} 배치",
+  deep_cover_spy: "잠복 {spy} 배치",
+  recall_agent: "{agent} 회수",
 };
 const RESEARCH_BONUS_LABELS = {
   none: "",

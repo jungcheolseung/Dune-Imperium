@@ -3,8 +3,10 @@
 Before this, nothing on screen said who won a Conflict or what the viewing
 seat got: the last Combat Intrigue pass jumped straight to the next
 decision (the next round's turn choice, or -- for the winner -- a reward
-choice whose prompt never says it is a reward). The reward is a public log
-event (combat_reward_gained, conflict_won); render.js's combatResultLine
+choice whose prompt never says it is a reward). The reward is public in the log
+(combat_reward_gained begins each recipient's reward, and since stage B2 each
+icon it resolves leaves combat_reward_icon_resolved and, for resources, a
+resources_gained; conflict_won); render.js's combatResultLine
 now reads it and shows one muted line above the banner's prompt from the
 moment a Conflict resolves until the viewing seat's own next turn-taking
 step (`place_agent` / `reveal_turn` / `play_turn_start_card`; an Agent turn's
@@ -128,6 +130,51 @@ def create_game(
     return page.evaluate("state.gameId")
 
 
+# The source of a Conflict reward icon's resources (a Contract icon's 2
+# Solari without CHOAM too), rules/combat.py.
+REWARD_SOURCE = re.compile(r"round:\d+:combat_reward:\d+:\d+(?::contract)?")
+
+
+def _reward_gain(kind: str, payload: dict) -> bool:
+    if kind == "combat_reward_icon_resolved":
+        return True
+    return kind == "resources_gained" and bool(
+        REWARD_SOURCE.fullmatch(str(payload.get("source", "")))
+    )
+
+
+def _add_reward_gain(bundle: dict, kind: str, payload: dict) -> None:
+    """One icon's gain on its recipient's reward (independently of
+    render.js's addCombatRewardGain)."""
+    reward = next(
+        (r for r in reversed(bundle["rewards"]) if r["player"] == payload["player"]),
+        None,
+    )
+    if reward is None:
+        return
+
+    def add(key: str, amount: object) -> None:
+        if isinstance(amount, int) and amount:
+            reward[key] = reward.get(key, 0) + amount
+
+    if kind == "resources_gained":
+        for key in ("solari", "spice", "water"):
+            add(key, payload.get(key))
+        return
+    effect = payload.get("effect")
+    for key in ("troops", "intrigue", "victory_points"):
+        add(key, payload.get(key))
+    if effect == "contract":
+        add("contracts", payload.get("contracts"))
+    elif effect == "faction_influence":
+        reward["faction"] = payload["faction"]
+        add("faction_influence", payload.get("influence"))
+    elif effect == "choose_influence":
+        add("choose_influence", 1)
+    elif effect == "control":
+        reward["control_space_id"] = payload["space_id"]
+
+
 def find_resolution(entries: list[dict], seat: int) -> dict | None:
     """Independent re-derivation of render.js's latestCombatResolution,
     read straight off the raw log entries -- this checks the engine's
@@ -148,7 +195,11 @@ def find_resolution(entries: list[dict], seat: int) -> dict | None:
                 if not saw_rewards:
                     bundle = {"conflict_id": conflict_id, "rewards": []}
                     saw_rewards = True
-                bundle["rewards"].append(payload)
+                # The recipient's reward begins; its icons follow, one row
+                # each (stage B2, OQ-112).
+                bundle["rewards"].append(dict(payload))
+            elif saw_rewards and bundle is not None and _reward_gain(kind, payload):
+                _add_reward_gain(bundle, kind, payload)
             elif kind == "combat_cleaned_up" and not saw_rewards:
                 bundle = None
         if (

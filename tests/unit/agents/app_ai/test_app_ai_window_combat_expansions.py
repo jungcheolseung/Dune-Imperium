@@ -13,6 +13,7 @@ from dataclasses import replace
 from functools import cache
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai import AppAIAgent
@@ -80,7 +81,12 @@ def _find(state: GameState, action_id: str, **args: object) -> DomainAction:
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action, legal_actions=_legal(state)).state
+    """Apply ``action``; a Conflict reward window it leaves on top is answered
+    in the older engine's order up to the first choice its icons open (stage
+    B2, OQ-112), so the reward frames are met one after the other as before."""
+
+    applied = ENGINE.apply(state, action, legal_actions=_legal(state)).state
+    return answer_reward_windows(ENGINE, applied)
 
 
 @cache
@@ -98,8 +104,9 @@ def _combat(config: RulesetConfig, seed: int, conflict: str | None = None) -> Ga
 
 
 def _rewards(state: GameState, **winner: object) -> GameState:
-    """Every combatant passes: the engine pays the rewards and stacks the
-    reward frames. ``winner`` adjusts the sole leader first."""
+    """Every combatant passes: the engine opens the reward window, whose rows
+    are answered in the older engine's order up to the first reward frame
+    (stage B2, OQ-112). ``winner`` adjusts the sole leader first."""
 
     seat = rank_combat(state.players, first_player=state.first_player).winner
     assert seat is not None
@@ -108,7 +115,7 @@ def _rewards(state: GameState, **winner: object) -> GameState:
         state = ENGINE.apply(
             state, DomainAction("pass_combat_intrigue", _seat(state))
         ).state
-    return state
+    return answer_reward_windows(ENGINE, state)
 
 
 def _pledged(state: GameState) -> GameState:

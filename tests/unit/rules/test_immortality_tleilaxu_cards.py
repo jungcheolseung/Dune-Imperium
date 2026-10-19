@@ -9,6 +9,7 @@ rules [Immortality pp. 10-11] and the FAQ's Beguiling Pheromones ruling
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
@@ -1797,6 +1798,10 @@ def test_usurped_replacement_eyes_spice_completes_a_harvest_contract_in_turn() -
     )
     completed = engine.apply(pressed, completion).state
     assert harvest in completed.players[0].completed_contract_ids
+    # The Contract's reward waits in its window (stage B2, OQ-112); the end
+    # is offered again once its rows are paid.
+    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    completed = answer_reward_windows(engine, completed)
     closed, _ = _press_finish(completed)
     assert closed.decision_stack[-1].kind == FrameKind.TURN
 
@@ -1856,6 +1861,9 @@ def test_a_turn_reopened_for_a_contract_keeps_its_deployment_window() -> None:
         if a.action_id == "complete_contract"
     )
     completed = engine.apply(pressed, completion).state
+    # The Contract's 3 Solari are a row of its reward window (stage B2,
+    # OQ-112): the Commander can be paid for once it is answered.
+    completed = answer_reward_windows(engine, completed)
     recruit = next(
         a
         for a in engine.legal_actions(completed, 0)

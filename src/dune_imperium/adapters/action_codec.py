@@ -81,6 +81,8 @@ from dune_imperium.content.uprising.types import (
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
+from dune_imperium.rules.combat import COMBAT_REWARD_ICON_KINDS
+from dune_imperium.rules.contracts import CONTRACT_REWARD_ICON_KINDS
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
@@ -731,6 +733,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "use_other_memories",
         )
     )
+    # A Conflict reward recipient resolves its reward icon by icon (stage B2,
+    # OQ-112); a Deep Cover Spy is printed only on Bloodlines Conflicts.
+    templates.extend(
+        ActionTemplate(
+            action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
+        )
+        for kind in COMBAT_REWARD_ICON_KINDS
+        if kind != "deep_cover_spy" or config.bloodlines
+    )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
         ActionTemplate(
@@ -888,6 +899,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
             )
     if config.choam_module:
+        # A completed Contract's reward, icon by icon (stage B2, OQ-112).
+        templates.extend(
+            ActionTemplate(
+                action_id="resolve_contract_reward_icon", arguments=(("effect", kind),)
+            )
+            for kind in CONTRACT_REWARD_ICON_KINDS
+        )
         for action_id in ("take_contract", "complete_contract"):
             templates.extend(
                 ActionTemplate(

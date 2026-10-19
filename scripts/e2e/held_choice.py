@@ -285,15 +285,19 @@ def scenario_reward_spy(browser, base: str) -> None:
     check.ok(page.locator(".held-send-row").count() == 0, "B1: no 확정 ▶ row")
     info = page.inner_text("#decision-info")
     check.ok("다음:" not in info, "B1: no next-seat line", info)
+    # The unit is the reward's three icon rows (stage B2, OQ-112; the last
+    # opened the Spy) and the Spy; none reveals anything, so the row offers
+    # the last step and all four.
     undo = [u for u in summary["undo"] if u["seat"] == 0]
+    buttons = page.locator(".undo-row button")
     check.ok(
-        undo == [{"seat": 0, "steps": 1}]
-        and page.locator(".undo-row button").count() == 1,
-        "B1: the undo row offers one step",
-        undo,
+        undo == [{"seat": 0, "steps": 4}]
+        and buttons.all_inner_texts() == ["되돌리기 (1단계)", "4단계 모두 되돌리기"],
+        "B1: the undo row offers the Spy alone and the whole unit",
+        (undo, buttons.all_inner_texts()),
     )
 
-    page.locator(".undo-row button").click()
+    buttons.first.click()
     assert settled(page, 20)
     summary = page.evaluate("state.summary")
     check.ok(

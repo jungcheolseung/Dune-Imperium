@@ -212,6 +212,13 @@ def track_spy_is_queued(state: GameState) -> bool:
     first recall a Spy when the supply is empty [Main pp. 11, 20]. The turn
     owner's own entries never open here: they wait for ``place_track_spy``
     (user ruling 2026-10-04, overriding OQ-057 (15)).
+
+    A completed Contract's reward window holds it too: the Influence that
+    reached 4 may also earn an alliance and so complete Earn Any Alliance,
+    whose reward the engine paid inside that step before stage B2. The Spy
+    came after it then, and comes after its icon rows now (OQ-112); a
+    choice row's own frame (a Contract Spy, a recall) does not hold it,
+    as that frame did not before.
     """
 
     if _open_track_spy_index(state) is None:
@@ -220,6 +227,8 @@ def track_spy_is_queued(state: GameState) -> bool:
     if frame is None:
         return True
     if isinstance(frame.decision, ChanceDecision):
+        return False
+    if frame.kind == FrameKind.CONTRACT_REWARD_ICONS:
         return False
     return not str(frame.kind).startswith("combat_reward")
 

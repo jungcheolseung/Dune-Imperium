@@ -13,6 +13,7 @@ are the owner's very next step instead (``frames.draw_is_immediate``).
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
@@ -29,7 +30,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.player import Influence
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
-from dune_imperium.rules.frames import OWED_INTRIGUE, hold_draw
+from dune_imperium.rules.frames import OWED_INTRIGUE, FrameKind, hold_draw
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.owed_draws import (
     legal_owed_draw_actions,
@@ -463,7 +464,12 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     )
     assert complete in ENGINE.legal_actions(placed, 0)
 
-    completed = ENGINE.apply(placed, complete).state
+    # v150 (stage B2, OQ-112): the Contract's reward is a window of icon rows;
+    # the card is owed once its automatic icons (here the water) are resolved.
+    opened = ENGINE.apply(placed, complete).state
+    assert opened.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert opened.players[0].owed_draws == ()
+    completed = answer_reward_windows(ENGINE, opened)
     seat = completed.players[0]
     assert seat.completed_contract_ids == ("contract:arrakeen_i",)
     assert seat.hand == hand_before  # the completion draws nothing
@@ -481,3 +487,56 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     assert {"resolve_board_effect", "deploy_troops"} <= {
         action.action_id for action in offered
     }
+
+
+def test_choam_transports_card_comes_before_a_contract_reward_choice() -> None:
+    """Research Station I's reward is 2 Solari and a Spy. The Contract's
+    automatic icons count as its completion (as when the engine paid them
+    inside the completing step), so CHOAM Transports' card waits for them;
+    but its owner may take the Spy row first, and the card, which "can't be
+    deferred" (Message from designer, OQ-106 13), is then drawn before the
+    Spy is placed -- once, not again after the Solari row (stage B2, OQ-112;
+    independent review 2026-10-19)."""
+
+    from tests.unit.rules.test_bloodlines_contracts import _owner, _state
+
+    from dune_imperium.rules.contracts import complete_contract_by_effect
+
+    contract = "contract:research_station_i"
+    owner = _owner(active_contract_ids=(contract,))
+    base = _state(owner)
+    state = replace(
+        base,
+        config=replace(base.config, tech_module=True),
+        players=(
+            replace(owner, tech_ids=("choam_transports",)),
+            *base.players[1:],
+        ),
+    )
+    state = complete_contract_by_effect(state, 0, contract, source="round:1:test").state
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert state.players[0].owed_draws == ()
+
+    state = ENGINE.apply(
+        state, DomainAction("resolve_contract_reward_icon", 0, (("effect", "spy"),))
+    ).state
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
+    assert ENGINE.legal_actions(state, 0) == (DRAW_CARD,)
+    hand = len(state.players[0].hand)
+    state = ENGINE.apply(state, DRAW_CARD).state
+    assert len(state.players[0].hand) == hand + 1
+    place = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "place_contract_spy"
+    )
+    state = ENGINE.apply(state, place).state
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    solari = state.players[0].resources.solari
+    state = ENGINE.apply(
+        state,
+        DomainAction("resolve_contract_reward_icon", 0, (("effect", "resources"),)),
+    ).state
+    assert state.players[0].resources.solari == solari + 2
+    assert state.players[0].owed_draws == ()
+    assert state.players[0].tech_cards_owed == 0

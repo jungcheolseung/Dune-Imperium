@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement
@@ -90,10 +91,16 @@ def _take(state: GameState, seat: int, card: str) -> tuple[GameState, str]:
 
 
 def _settle(state: GameState) -> GameState:
+    """Resolve the chance steps, and answer a Contract reward window (stage
+    B2, OQ-112) in the older engine's order up to the first choice its icons
+    open: the window is no decision of the Agent turn this file drives."""
+
     chance = ChanceResolver(seed=1)
-    while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
+    while True:
+        state = answer_reward_windows(ENGINE, state)
+        if not isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
+            return state
         state = ENGINE.apply(state, chance.resolve(decision)).state
-    return state
 
 
 def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
