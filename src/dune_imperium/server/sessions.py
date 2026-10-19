@@ -1304,7 +1304,7 @@ class GameSessionManager:
             "game_id": session.game_id,
             "seat": seat,
             "step_count": len(steps),
-            "steps": [_review_step_label(step) for step in steps],
+            "steps": _review_step_labels(steps, entries),
             "log": _log_entries_json(entries, seat, True, 0),
             # Where steps were taken back (M11 slice 6): the live step index
             # the undo rewound to, who undid, and what was undone.
@@ -3015,6 +3015,25 @@ def _is_finished(state: GameState) -> bool:
 def _require_finished(session: GameSession) -> None:
     if not _is_finished(session.state):
         raise SessionError("replay review opens after the game finishes")
+
+
+def _review_step_labels(
+    steps: tuple[ReplayStep, ...], entries: tuple[LogEntry, ...]
+) -> list[JsonValue]:
+    """Each live step's label, as the log shows it (stage B3): the step that
+    ends a waiting effect names the whole action, and a step that only picks
+    toward it is marked ``pick`` (the review does not stop right after one)."""
+
+    live = live_steps(list(entries))
+    if len(live) != len(steps):
+        return [_review_step_label(step) for step in steps]
+    labels: list[JsonValue] = []
+    for entry in live:
+        label = _review_step_label(entry.whole or entry.step)
+        if entry.picks:
+            label["pick"] = True
+        labels.append(label)
+    return labels
 
 
 def _review_step_label(step: ReplayStep) -> JsonObject:

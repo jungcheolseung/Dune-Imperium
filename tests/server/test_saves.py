@@ -341,13 +341,13 @@ def test_a_game_of_ai_seats_only_is_reviewed_with_its_whole_log() -> None:
     # No seat could take anything back: one live log entry per step, in order.
     assert [entry["index"] for entry in log] == list(range(len(steps)))
     assert not any(entry["type"] == "undo" or entry["undone"] for entry in log)
-    # Stage B3: the review's timeline lists the engine's steps (each one a
-    # row of the seat's decision), while the log shows the last step of a
-    # waiting effect as the whole action it ends and marks a step that only
-    # picks toward it with ``pick``. Replay the steps to tell the two apart.
+    # Stage B3: the review's timeline names each step as the log does: the
+    # last step of a waiting effect as the whole action it ends, a step that
+    # only picks toward it marked ``pick``. Replay the steps to check that.
     session = manager._sessions[game_id]
     engine = session.engine
     state = engine.reset(session.config, session.game_seed)
+    picks = 0
     for step, entry, recorded in zip(steps, log, session.steps, strict=True):
         assert entry["type"] == step["type"]
         if step["type"] == "chance":
@@ -356,9 +356,13 @@ def test_a_game_of_ai_seats_only_is_reviewed_with_its_whole_log() -> None:
         else:
             assert isinstance(recorded, DomainAction)
             shown = (entry["actor"], entry["action_id"], entry["arguments"])
-            row = (step["actor"], step["action_id"], step["arguments"])
-            if entry.get("pick") or shown == row:
-                assert shown == row
+            label = (step["actor"], step["action_id"], step["arguments"])
+            assert label == shown
+            assert step.get("pick") == entry.get("pick")
+            row = (recorded.actor, recorded.action_id, dict(recorded.arguments))
+            picks += bool(step.get("pick"))
+            if step.get("pick") or label == row:
+                assert label == row
             else:
                 # A whole action that this step ends: the rules offer it
                 # here, and this step is its last (and only remaining) one.
@@ -372,6 +376,7 @@ def test_a_game_of_ai_seats_only_is_reviewed_with_its_whole_log() -> None:
                 assert steps_after(state, whole) == 0
                 assert first_step(state, whole) == recorded
         state = engine.apply(state, recorded).state
+    assert picks > 0  # the heuristic game picks effects with targets
     # Nothing is redacted once the game is over (OQ-010 ruling 4): a draw
     # names its cards to every reader, whichever seat is reviewed.
     kinds = {_text(event["kind"]) for entry in log for event in _rows(entry["events"])}
