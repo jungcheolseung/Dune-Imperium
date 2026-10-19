@@ -384,7 +384,7 @@ B2-3 자원 묶음은 줄 하나. 기록은 [OQ-112](rules/open-questions.md#oq-
 | --- | --- |
 | B3a | 자리(ref)·두 단계 제시층·관측 칸·화면 틀; Agent 효과 frame(카드 칸·보드 칸·지도자 인장·Tech) |
 | B3b | Reveal frame(구매·Reveal 선택·Tech 선택) + 차례 안 계약 보상을 차례의 줄로(B2에서 미룬 것) |
-| B3c | 차례 frame과 Combat·Endgame(책략 내기 셋 단계, 차례 시작 카드, 접합 상대, 운항, Scouts 시장, 와일드 맞추기) |
+| B3c | 차례 frame과 Combat·Endgame(책략 내기 셋 단계, 차례 시작 카드, 와일드 맞추기) + 차례 줄 (접합 상대·운항·Scouts 시장은 B3d로, 아래 "B3c 세부 설계") |
 | B3d | 이미 자기 frame인 선택들(보상 창·책략 슬롯·Scouts·지도자 frame)의 이름 바꾸기 + 거절·빈 확인 합치기 + 남은 출처별 이름 |
 | B3e | Reveal 합계(`PersonalCardRevealEffect`)를 기록 줄 읽기로(동작 그대로, 내부 정리; B2에서 미룬 것) |
 
@@ -602,6 +602,39 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   최종 상태·사건이 같고 고르기 걸음만 늘었다; 소크 1,400판 실패 0; 관측 고정 digest 여섯은 첫 Reveal의 구매 여럿에서 갈려 다시
   고정; 문제집 tips-v1 다시 채굴(휴리스틱 82곳은 같은 국면·지문, 체크포인트 망이 캔 곳은 8 → 17로 99곳); E2E 다시보기 이동은
   고르기 걸음이 넘어가는 자리를 기다리고(`common.REVIEW_LANDING`), 시드를 다시 골랐다(탐색 좌석 40, `log_words` 3 · Scouts 1과 90).
+
+### B3c 세부 설계 (2026-10-20)
+
+사실표(tmp, `b3c/facts.md`: 420판, 결정 483,494번)를 바탕으로 범위를 다시 나눈다. **B3c = 여러 효과가 함께 기다리는 frame 중 남은 것과
+차례 줄.** 한 효과를 위해 열린 frame(접합 상대 `choose_graft_partner`, 운항 카드 놓기·쓰기, Scouts 입찰·시장·임무, 책략 슬롯
+`intrigue_choice`, 보상 창)은 효과 줄 없이 대상 줄만 내는 B3d의 방식이라 계획 표의 B3c에서 B3d로 옮긴다.
+
+**B3c-1 — 카드 내기.** `EFFECT_STEP_FRAMES`에 차례 frame(`turn`), Combat 책략 창(`combat_intrigue`), Conflict 끝 책략 창
+(`conflict_end_trigger`), Endgame 창(`endgame_intrigue`)을 더한다.
+
+- **책략 내기**(계획 3c "`play(ref=책략)` → `choose_card` → `choose_option`"): `play_intrigue(card_id, option)` → 효과 줄
+  `play(source=intrigue, printed=<창>)` → `choose_intrigue_card(card_id)` → `choose_option(option)`. 창은 그 frame이 정한다(차례·Agent
+  효과·Reveal frame = `plot`, Combat = `combat`, Endgame = `endgame`; 이름표, 엔티티 아님). **갈래가 하나뿐이어도 갈래 단계를 연다**
+  (OQ-111 (2), 2026-09-30 원칙 — 카드의 갈래는 카드에 인쇄된 별개의 효과다). 같은 카드 사본 둘은 카드 줄 둘(사본 id). 고른 카드는
+  그 좌석만 안다(B3-3, 길 끝의 `intrigue_played`가 공개).
+- **Conflict 끝 책략**(Harvest Cells): `play_conflict_end_intrigue(card_id)` → `play(source=intrigue, printed=conflict_end)` →
+  `choose_intrigue_card` (갈래 없음: 그 창이 발동 갈래를 정한다).
+- **차례 시작 카드**(Litany Against Fear): `play_turn_start_card(card_id)` → `play(source=turn, printed=turn_start)` →
+  `choose_personal_card`.
+- **Endgame 와일드**(계획 "카드 → 와일드 카드"): `match_endgame_wild_icon(matching_card_id, wild_card_id)` →
+  `match(source=endgame, printed=wild_icon)` → `choose_conflict_card(card_id=맞출 카드)` → `choose_conflict_card(card_id=와일드 카드)`
+  (새 대상 종류; Conflict·목표 카드).
+- **그대로:** `reveal_turn`, B1의 카드·칸 고르기, 표본 반환·Family Atomics(가리킬 효과가 없는 차례 행동), 턴 종료·pass·거절·마침(B3d).
+  차례 frame이 효과 단계 frame이 되므로 거기의 Tech 뒤집기·획득 아이콘·계약 줄도 효과 줄로 나오고, `flip_tech`는 온 행동으로 내는 frame이
+  없어 codec에서 빠진다.
+
+**B3c-2 — 차례 줄.** 지금 차례 줄의 행(`choose_research_influence`, `trash_intrigue_for_research_bonus`, `pay_research_bonus`,
+`resolve_research_icon`, `trash_optional_card`, `draw_planetologist_intrigue`, 빚진 뽑기, 황제 트랙 Spy, 소위원회)은 어느 기다리는 효과를
+푸는지 말하지 않고, 처리기가 가장 오래된 것(연구 보너스·빚진 뽑기·트랙 Spy)이나 가장 새 것(연구 아이콘·선택 폐기 — 자기 칸의 것
+먼저·Planetologist)을 고른다. 결정 3(인쇄한 것으로 가리킨다)대로라면 효과 줄이 그 효과를 낸 개체를 말해야 하고(연구 칸, 폐기 아이콘을
+낸 카드·Tech·칸, Planetologist가 바꾼 칸, 뽑기를 빚게 한 것), 처리기도 고른 효과를 써야 한다 — 행동에 기다리는 효과의 자리를 더하는
+엔진 변경이라 B3c-1 뒤에 따로 조사해 정한다(출처 문자열에서 개체를 읽는 규칙, 같은 종류 둘이 함께 기다릴 때, 처리기의 "자기 칸 먼저"가
+규칙상 필요한지).
 
 ## 4. 위험
 
