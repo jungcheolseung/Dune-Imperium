@@ -628,7 +628,26 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   차례 frame이 효과 단계 frame이 되므로 거기의 Tech 뒤집기·획득 아이콘·계약 줄도 효과 줄로 나오고, `flip_tech`는 온 행동으로 내는 frame이
   없어 codec에서 빠진다.
 
-**B3c-2 — 차례 줄.** 지금 차례 줄의 행(`choose_research_influence`, `trash_intrigue_for_research_bonus`, `pay_research_bonus`,
+**B3c-2 세부 설계 (2026-10-20).** 아래 원래 메모를 조사(사실표 5절, 연구 칸 표, `optional_trash._take_turn_row`)로 정했다.
+
+- **B3c-2a — 이름만(규칙 처리 그대로).** 연구 보너스는 셋 다 한 칸에만 인쇄돼 있다(`influence_any` c6r6, `trash_intrigue_for_card_and_intrigue`
+  c7r3, `seven_solari_for_two_tleilaxu` c8r6): `choose_research_influence` → `gain_influence(source=research, printed=c6r6)` →
+  `choose_faction`, `trash_intrigue_for_research_bonus` → `trash(source=research, printed=c7r3)` → `choose_intrigue_card`,
+  `pay_research_bonus` → `pay(source=research, printed=c8r6)`. 연구 아이콘 `resolve_research_icon(effect)`은 `generate_specimens`/`advance`
+  (`source=research`, `icon`=아이콘, `printed`=처리기가 집을 기다리는 효과의 연구 칸 — 같은 아이콘이 두 칸에서 함께 기다리면 결과가 같으므로
+  결정 3대로 줄 하나, 지금처럼 새 것부터). Planetologist의 Intrigue `draw_planetologist_intrigue`는 그 능력을 가진 지도자가 인쇄했다
+  (`draw(source=leader, printed=<지도자 면>, icon=intrigue)`). 이 id들은 창(`research_bonus`·`optional_trash`)도 온 행동으로 내므로 codec에
+  옛 template이 남는다(B3d까지). 빚진 뽑기(`draw_owed_*`)와 황제 트랙 Spy(`place_track_spy`)는 대상 없는 "그 자체가 첫 단계"인 행이라
+  그대로 둔다(B3d의 남은 출처별 이름에서).
+- **B3c-2b — 선택 폐기가 쓰는 폐기 효과.** 선택 폐기 행 `trash_optional_card(card_id)`는 어느 폐기 아이콘을 쓰는지 말하지 않고, 처리기가
+  "그 카드 자신의 칸에서 온 폐기를 먼저, 아니면 다른 카드 칸이 아닌 것 중 새 것, 아니면 새 것"으로 대신 고른다. 어느 아이콘으로 폐기하느냐는
+  결과를 바꾼다 — 카드가 **자기 칸의 아이콘으로** 자신을 폐기하면 남은 아이콘이 계속 지급되고, 다른 효과로 폐기되면 아직 발동하지 않은
+  칸이 만료된다(OQ-022, 2026-10-12 보강). 원칙(OQ-027 "인쇄된 아이콘은 각각 독립된 효과, 소유자가 순서를 고른다", 결정 3)대로 효과 줄이
+  폐기 아이콘을 인쇄한 개체(카드 칸·Tech·지도자·연구 칸)를 말하고, 좌석이 그 효과를 고른 뒤 카드를 고르며, 처리기는 고른 효과를 쓴다.
+  행동에 그 효과의 자리(`source`·`printed`)를 더하는 엔진 변경이다. AI 좌석·옛 기록은 옛 처리기의 고르기를 그대로 따른다(옛 순서 답,
+  기보 다리).
+
+**B3c-2 — 차례 줄(원래 메모).** 지금 차례 줄의 행(`choose_research_influence`, `trash_intrigue_for_research_bonus`, `pay_research_bonus`,
 `resolve_research_icon`, `trash_optional_card`, `draw_planetologist_intrigue`, 빚진 뽑기, 황제 트랙 Spy, 소위원회)은 어느 기다리는 효과를
 푸는지 말하지 않고, 처리기가 가장 오래된 것(연구 보너스·빚진 뽑기·트랙 Spy)이나 가장 새 것(연구 아이콘·선택 폐기 — 자기 칸의 것
 먼저·Planetologist)을 고른다. 결정 3(인쇄한 것으로 가리킨다)대로라면 효과 줄이 그 효과를 낸 개체를 말해야 하고(연구 칸, 폐기 아이콘을
