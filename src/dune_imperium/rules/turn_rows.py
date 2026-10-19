@@ -56,7 +56,9 @@ RESEARCH_BONUS: Final = "research_bonus"
 """A research space's bonus choice; ``value`` is its ``ResearchBonus``."""
 
 OPTIONAL_TRASH: Final = "optional_trash"
-"""An optional "[trash a card]" icon (``rules.optional_trash``); no value."""
+"""An optional "[trash a card]" icon (``rules.optional_trash``); ``value``
+is the entity that printed it (``optional_trash.trash_printer``, stage
+B3c-2b)."""
 
 PLANETOLOGIST_INTRIGUE: Final = "planetologist_intrigue"
 """Arrakis Planetologist's Intrigue card of one replaced sandworm; no value."""

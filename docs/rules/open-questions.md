@@ -634,8 +634,12 @@
   인쇄한 개체를 기록하고(`optional_trash.trash_printer`), 행은 `trash(source=<개체 종류>, printed=<개체>)` → `choose_personal_card`로
   아이콘을 먼저, 카드를 다음에 고른다(stage B 결정 3, docs/stage-b-plan.md "B3c-2 세부 설계"). 같은 개체가 인쇄한 둘은 결과가 같아 줄
   하나(새 것부터). 휴리스틱·앱 AI·rollout과 옛 기록은 옛 엔진의 고르기를 그대로 따른다(`legacy_trash_whole`, 기보 다리
-  `optional_trash_icon`). 차례 밖의 창은 그대로(아이콘이 하나). 테스트: `tests/unit/rules/test_agent_box_abilities.py::test_the_seat_picks_which_waiting_trash_icon_trashes_a_card`,
-  `tests/unit/rules/test_graft_boxes.py`(`test_throne_room_politics_trashing_itself_keeps_its_added_draw`, `test_a_ghola_copy_s_draw_lapses_only_with_ghola`).
+  `optional_trash_icon`). 차례 밖의 창은 그대로(아이콘이 하나). 카드가 자기 아이콘으로 버려졌는지도 이제 기록된 개체로 판정한다 —
+  카드 자신의 칸(접합 차례에서의 자리까지)이 인쇄한 폐기면 자기 효과다. 그래서 "둘 고르기" 칸(Stitched Horror)의 폐기 고르기로 카드
+  자신을 버리는 것도 자기 효과가 된다(전에는 그 고르기의 번호 붙은 출처가 칸의 출처와 달라 다른 효과로 셌다 — 2026-10-20 B3c-2b
+  리뷰). 테스트: `tests/unit/rules/test_agent_box_abilities.py::test_the_seat_picks_which_waiting_trash_icon_trashes_a_card`,
+  `tests/unit/rules/test_graft_boxes.py`(`test_throne_room_politics_trashing_itself_keeps_its_added_draw`, `test_a_ghola_copy_s_draw_lapses_only_with_ghola`),
+  `tests/unit/rules/test_immortality_tleilaxu_cards.py::test_stitched_horror_pays_two_distinct_rewards`.
 
 ## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
 

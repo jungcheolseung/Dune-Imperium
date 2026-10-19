@@ -1330,3 +1330,42 @@ def test_slig_farmer_is_a_plain_line_beside_a_paid_arrow() -> None:
     gain = GainSolariPerPartnerAgentIcon()
     assert reward_text(gain) in AGENT_EFFECT_TEXT[effect]
     assert reward_text_ko(gain) in AGENT_EFFECT_TEXT_KO[effect]
+
+
+def test_scripted_agents_finish_a_trash_icon_another_chooser_picked() -> None:
+    """The scripted agents see only the older engine's pick of each card's
+    trash icon (``engine_order.older_engine_wholes``), but once an effect is
+    picked -- by a network seat whose untrained rows fall back to them --
+    they finish it as it is. The 2026-10-20 review of B3c-2b: with a research
+    space's and a Tech tile's trashes waiting, the older engine picked the
+    newer (the tile's) for every card, so after the research space's row the
+    filter left no card and both agents raised."""
+
+    from dune_imperium.agents import HeuristicAgent
+    from dune_imperium.agents.app_ai import AppAIAgent
+    from dune_imperium.rules import UprisingRulesEngine
+
+    card = "imperium:throne_room_politics:0"
+    other = "starting:0:dagger:0"
+    state = _played(
+        card,
+        PlayerState(player_id=0, discard_pile=(other,)),
+        RulesetConfig(immortality=True, bloodlines=True, choam_module=True),
+    )
+    state = resolve_agent_card_effect(state).state
+    for source, printer in (
+        ("round:1:player:0:research:c3r3", trash_printer(Source.RESEARCH, "c3r3")),
+        (
+            "round:1:player:0:tech:planetary_array:acquire",
+            trash_printer(Source.TECH, "planetary_array"),
+        ),
+    ):
+        state = open_optional_trash(state, 0, source, printer=printer)
+    engine = UprisingRulesEngine()
+    research = DomainAction("trash", 0, (("printed", "c3r3"), ("source", "research")))
+    picked = engine.apply(state, research).state
+    legal = engine.legal_actions(picked, 0)
+    assert legal and {a.action_id for a in legal} == {"choose_personal_card"}
+    view = engine.observe(picked, 0)
+    for agent in (HeuristicAgent(seed=1), AppAIAgent(seed=1, level=2)):
+        assert agent.choose_action_with_state(picked, view, legal) in legal

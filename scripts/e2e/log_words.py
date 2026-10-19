@@ -162,10 +162,13 @@ GAMES = (
     # 3 first with the steal and all of the above. Stage B3c-1 (a card is
     # played effect first) moves seed 3 off its steal and its Feyd track; the
     # same scan over random seeds 1-400 finds seed 283 first with all of it.
+    # Stage B3c-2b (an optional trash on the turn is its icon's row, then the
+    # card) moves seed 283 off its steal and its unused Reveal choice; the
+    # same scan over random seeds 1-400 finds seed 185 first with all of it.
     {
         "seats": ["random"] * 4,
-        "game_seed": 283,
-        "policy_seed": 283,
+        "game_seed": 185,
+        "policy_seed": 185,
         **EVERY_EXPANSION,
     },
     {

@@ -22,7 +22,7 @@ from dune_imperium.rules.contracts import (
     legacy_contract_icon_row,
     legacy_contract_reward_icon,
 )
-from dune_imperium.rules.effect_steps import first_step, presents_steps
+from dune_imperium.rules.effect_steps import first_step, picked_rows, presents_steps
 from dune_imperium.rules.optional_trash import legacy_trash_whole
 
 
@@ -56,8 +56,16 @@ def older_engine_wholes(
 ) -> tuple[DomainAction, ...]:
     """``wholes`` as the older engine offered them: of the rows trashing a
     card with one of the trashes waiting on the turn (stage B3c-2b), only
-    the one with the trash that engine picked itself (module docstring)."""
+    the one with the trash that engine picked itself (module docstring).
 
+    Once an effect is picked these agents only finish it: their own pick
+    goes on through ``PlacementMemory``, and a pick another chooser made (a
+    network seat whose untrained rows fall back to them) is taken as it is
+    -- the older engine's trash may be another one, and filtering by it
+    could leave no card to pick (the 2026-10-20 review of B3c-2b)."""
+
+    if picked_rows(state):
+        return wholes
     picked: dict[str, DomainAction | None] = {}
     kept: list[DomainAction] = []
     for whole in wholes:

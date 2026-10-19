@@ -689,6 +689,24 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
         for action in UprisingRulesEngine().legal_actions(trashed_and_troop, 0)
     }
     assert trashed_and_troop.players[0].troops_garrison == 4
+    # The pick's trash is the card's own box's icon (stage B3c-2b names it):
+    # trashing Stitched Horror with it is the card leaving play by its own
+    # effect, "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상
+    # 지급" (OQ-022), as Throne Room Politics' own trash (the 2026-10-20
+    # review of B3c-2b: the pick's numbered source never counted).
+    own_icon = DomainAction(
+        "trash_optional_card",
+        0,
+        (
+            ("card_id", horror),
+            ("printed", "stitched_horror"),
+            ("source", "agent_card"),
+        ),
+    )
+    itself = apply_whole(UprisingRulesEngine(), trashed_and_troop, own_icon).state
+    assert horror in itself.players[0].trashed
+    _, context = current_agent_effect_context(itself)
+    assert context["agent_card_self_trashed"] is True
 
 
 def test_ghola_s_copy_of_stitched_horror_names_its_own_two_rewards() -> None:

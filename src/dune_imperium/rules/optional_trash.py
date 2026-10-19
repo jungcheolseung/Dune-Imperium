@@ -26,6 +26,7 @@ engine's pick for the scripted agents and older records).
 
 from copy import replace
 
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -44,6 +45,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     with_context,
 )
+from dune_imperium.rules.graft_boxes import ACTIVE_BOX_KEY
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 
 # Arrakis Planetologist's Intrigue card still waiting in the frame, and
@@ -329,14 +331,21 @@ def _take_turn_row(state: GameState, action: DomainAction) -> RuleResult:
         for item in reversed(turn_rows.pending(frame))
         if item[0] == turn_rows.OPTIONAL_TRASH and item[2] == printer
     )
-    return _trash_or_decline(turn_rows.take(state, player, item), action, item[1])
+    return _trash_or_decline(
+        turn_rows.take(state, player, item), action, item[1], printer=item[2]
+    )
 
 
 def _trash_or_decline(
-    popped: GameState, action: DomainAction, source: str
+    popped: GameState,
+    action: DomainAction,
+    source: str,
+    *,
+    printer: str | None = None,
 ) -> RuleResult:
     """Trash the chosen card from ``popped`` (the trash taken off its frame
-    or the turn), or log the window's decline."""
+    or the turn, with the entity that printed it when it waited on the
+    turn), or log the window's decline."""
 
     if action.action_id == "decline_optional_trash":
         return RuleResult(
@@ -358,7 +367,7 @@ def _trash_or_decline(
         and top.decision.owner == action.actor
     )
     if credited_in_place:
-        popped = _own_box_trash(popped, action.actor, source, card_id)
+        popped = _own_box_trash(popped, action.actor, source, card_id, printer)
     trashed = trash_personal_card(popped, action.actor, card_id, source=source)
     if not credited_in_place:
         # trash_personal_card's own crediting (card_trash._with_recruited_
@@ -381,7 +390,11 @@ def _trash_or_decline(
 
 
 def _own_box_trash(
-    state: GameState, player: int, source: str, card_id: str
+    state: GameState,
+    player: int,
+    source: str,
+    card_id: str,
+    printer: str | None = None,
 ) -> GameState:
     """Mark a box whose own trash icon trashes its own card.
 
@@ -390,20 +403,31 @@ def _own_box_trash(
     what remains of its box -- Urgent Shigawire's draw "added to its Agent
     box" -- still pays out: "카드가 자기 효과로 자신을 trash하는 경우 인쇄된
     이득은 정상 지급" (OQ-022 designer ruling; the OQ-027 extension's "자기
-    비용이나 자기 아이콘으로"). The box opened this frame when ``source`` is
-    its own (``effects.agent_card_source``); a trash another effect opened
-    (a board space, the other grafted card's box) is not the card's own.
+    비용이나 자기 아이콘으로"). A trash waiting on the turn names the box
+    that printed it (``printer``, stage B3c-2b): the card's own box, at its
+    place in the turn (box 1 for a grafted turn's second card), is the
+    card's own icon -- a "Choose two" box's trash pick too (the 2026-10-20
+    review: its numbered source never matched). A window's trash is the
+    card's own when the box opened it (``effects.agent_card_source``); a
+    trash another effect opened (a board space, the other grafted card's
+    box) is not the card's own.
     """
 
-    if source != agent_card_source(state.round_number, player, card_id):
-        return state
     frame = state.decision_stack[-1]
     context = dict(frame.context)
+    active = 1 if context.get(ACTIVE_BOX_KEY) == 1 else 0
     if context.get("card_id") == card_id:
-        key = "agent_card_self_trashed"
+        key, box = "agent_card_self_trashed", active
     elif context.get("graft_card_id") == card_id:
-        key = "graft_card_self_trashed"
+        key, box = "graft_card_self_trashed", 1 - active
     else:
+        return state
+    if printer is not None:
+        card_type = personal_card_for_instance(card_id).card.card_id
+        own = printer == trash_printer(Source.AGENT_CARD, card_type, box)
+    else:
+        own = source == agent_card_source(state.round_number, player, card_id)
+    if not own:
         return state
     return replace_top_frame(state, with_context(frame, {**context, key: True}))
 
