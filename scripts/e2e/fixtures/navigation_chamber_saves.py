@@ -23,14 +23,25 @@ from collections import Counter
 from pathlib import Path
 
 from dune_imperium.agents import HeuristicAgent
+from dune_imperium.rules.agent_turn import (
+    CARD_PICK_ACTION,
+    agent_card_pick,
+    executable_placements,
+)
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
 
 store = SaveStore(Path(sys.argv[1]))
 
 
-def ready(actions) -> bool:
-    placements = [a for a in actions if a.action_id == "agent_turn"]
+def ready(state, owner, actions) -> bool:
+    # The card picks of a fresh Agent turn (stage B1): the page offers the
+    # whole placements they lead to.
+    if agent_card_pick(state, owner) is not None or not any(
+        a.action_id == CARD_PICK_ACTION for a in actions
+    ):
+        return False
+    placements = executable_placements(state, owner)
     refinery = {}
     for action in placements:
         arguments = dict(action.arguments)
@@ -73,7 +84,7 @@ for seed in range(40):
         if (
             holder == owner
             and session.state.decision_stack[-1].kind == "turn"
-            and ready(actions)
+            and ready(session.state, owner, actions)
         ):
             meta = store.write(manager.save_game(gid, name="navigation-chamber"))
             print(json.dumps({"navigation-chamber": meta["save_id"], "seat": owner}))
@@ -91,8 +102,8 @@ for seed in range(40):
             chosen = buy
             holder = owner
         else:
-            chosen = agents[owner].choose_action(
-                session.engine.observe(session.state, owner), actions
+            chosen = agents[owner].choose_action_with_state(
+                session.state, session.engine.observe(session.state, owner), actions
             )
         summary = manager.apply_action(
             gid, owner, summary["revision"], actions.index(chosen)

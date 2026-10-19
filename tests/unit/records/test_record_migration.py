@@ -63,6 +63,7 @@ from tests.unit.rules.test_tech import (
 )
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -81,6 +82,7 @@ from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
@@ -879,14 +881,13 @@ def _grafted_turn(placed: str, partner: str, space_id: str) -> GameState:
     )
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == placed
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["card_id"] == placed
         and dict(action.arguments)["space_id"] == space_id
         and dict(action.arguments).get("graft") is True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    state = ENGINE.apply(state, placement).state
+    state = apply_placement(ENGINE, state, placement).state
     choice = DomainAction("choose_graft_partner", 0, arguments=(("card_id", partner),))
     return ENGINE.apply(state, choice).state
 
@@ -1438,14 +1439,13 @@ def _usurped_eyes_turn() -> GameState:
     )
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == dagger
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["card_id"] == dagger
         and dict(action.arguments)["space_id"] == "assembly_hall"
         and "graft" not in dict(action.arguments)
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    state = ENGINE.apply(state, placement).state
+    state = apply_placement(ENGINE, state, placement).state
     owner = state.players[0]
     borrowed = replace(owner, in_play=(*owner.in_play, eyes), usurped_row_card_id=eyes)
     state = replace(state, players=(borrowed, *state.players[1:]))
@@ -1562,14 +1562,13 @@ def _arrakeen_graft(
     )
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == placed
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["card_id"] == placed
         and dict(action.arguments)["space_id"] == space_id
         and dict(action.arguments).get("graft") is True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    state = ENGINE.apply(state, placement).state
+    state = apply_placement(ENGINE, state, placement).state
     state = ENGINE.apply(
         state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
     ).state
@@ -2750,15 +2749,17 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # next recorded Round Start pause; a record of an engine before v140 has no
     # pauses, so the count stays. Another Intrigue card's own rewards step by
     # that seat -- its choice frame on top -- must still apply. Seed 175: seat
-    # 3 plays Harvest Cells in round 1 (87, finished at 89) and Insider
-    # Information in round 9 (rewards at 821); the pauses of the game are
+    # 3 plays Harvest Cells in round 1 (95, finished at 97) and Insider
+    # Information in round 9 (rewards at 891); the pauses of the game are
     # left out of its record as an older engine left them out. Seed 65 until
     # cleanup-2d split three Agent boxes per icon (2026-10-18) moved its game
     # (its step 575 is now seat 1's Agent turn); 175 is the first seed of
     # 1-500 meeting every precondition below, the v148 record of its game
-    # migrating completely.
+    # migrating completely. (Codec v150, stage B1, makes every Agent turn two
+    # steps, so this game's step numbers are later than they were -- 87, 821
+    # and round starts 90 ... 794 -- and its moves are the same.)
     game = _this_engine_game(175)
-    play, rewards = 87, 821
+    play, rewards = 95, 891
     assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -2771,7 +2772,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {90, 179, 269, 360, 474, 593, 698, 794} <= starts
+    assert {98, 195, 293, 392, 515, 643, 757, 862} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -2795,7 +2796,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 821
+    rewards = 891
     starts = {
         index
         for index, step in enumerate(game.steps)
@@ -3308,3 +3309,86 @@ def test_the_cleanup_2f_refusals_are_the_confirms() -> None:
         )
         == confirm
     )
+
+
+# --- The Agent turn as a card pick and a space pick (codec v150) ---------------
+# Stage B1 (OQ-111): a placement is ``choose_agent_card`` and then
+# ``place_agent``; a record of an older engine holds it as one ``agent_turn``
+# (the card, its graft choice and the space's arguments), which the bridges
+# ``agent_card_pick`` and ``agent_space_pick`` split.
+
+
+def _as_one_agent_turn(game: GameReplay) -> tuple[GameReplay, int]:
+    """``game`` as a v149 engine recorded it: each card pick and the space
+    pick right after it merged into the one ``agent_turn``. Returns the
+    record and the number of placements."""
+
+    steps: list[ReplayStep] = []
+    merged = 0
+    index = 0
+    while index < len(game.steps):
+        step = game.steps[index]
+        if isinstance(step, DomainAction) and step.action_id == "choose_agent_card":
+            space = game.steps[index + 1]
+            assert isinstance(space, DomainAction) and space.action_id == "place_agent"
+            steps.append(
+                DomainAction(
+                    action_id="agent_turn",
+                    actor=step.actor,
+                    arguments=tuple(sorted((*step.arguments, *space.arguments))),
+                )
+            )
+            merged += 1
+            index += 2
+            continue
+        steps.append(step)
+        index += 1
+    return replace(game, steps=tuple(steps), action_codec_version=149), merged
+
+
+def test_a_recorded_agent_turn_is_split_into_its_card_and_space_picks(
+    game: GameReplay,
+) -> None:
+    older, placements = _as_one_agent_turn(game)
+    assert placements >= 20
+    assert not any(
+        isinstance(step, DomainAction)
+        and step.action_id in ("choose_agent_card", "place_agent")
+        for step in older.steps
+    )
+
+    record = migrate_record(older)
+
+    assert record.complete, record.divergence
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    assert record.bridge_counts() == {
+        "agent_card_pick": placements,
+        "agent_space_pick": placements,
+    }
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+    # The space pick is the record's own step, rewritten; the card pick is
+    # added before it.
+    rewritten = [m for m in record.steps if m.bridge == "agent_space_pick"]
+    assert rewritten and all(
+        isinstance(m.step, DomainAction) and m.step.action_id == "place_agent"
+        for m in rewritten
+    )
+
+
+def test_a_record_stamped_with_this_codec_gets_no_agent_turn_bridges(
+    game: GameReplay,
+) -> None:
+    older, _ = _as_one_agent_turn(game)
+    first = next(
+        index
+        for index, step in enumerate(older.steps)
+        if isinstance(step, DomainAction) and step.action_id == "agent_turn"
+    )
+
+    current = migrate_record(replace(older, action_codec_version=ACTION_CODEC_VERSION))
+
+    # An ``agent_turn`` is not an action of this engine: no bridge of the
+    # older engines answers or rewrites it, and the record stops there.
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == first
+    assert not current.bridge_counts()

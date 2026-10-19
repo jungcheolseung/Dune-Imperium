@@ -280,9 +280,12 @@ def _step(
 
 
 def test_an_undone_step_leaves_the_ledger_and_its_log_entry_stays() -> None:
-    manager, game_id, summary = _human_game()
+    # Seed 1 (seed 0 until codec v150, stage B1, OQ-111: the Agent turn is a
+    # card pick and a space pick, which moves the random walk off seed 0; of
+    # 0-59, seeds 1, 3, 4, 5 and most of the rest reach the position).
+    manager, game_id, summary = _human_game(1)
     session = manager._get(game_id)
-    rng = random.Random(0)
+    rng = random.Random(1)
     for _ in range(2000):
         before = _seat_points(session)
         state_before = session.state

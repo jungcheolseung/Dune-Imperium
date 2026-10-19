@@ -138,7 +138,8 @@ def test_a_plot_ends_the_start_on_the_still_open_turn_frame() -> None:
     assert not _starts_open(plotted)
     # Only the two cards go: the Agent and Reveal turns are still the choice.
     ids = {action.action_id for action in _offered(plotted)}
-    assert {"agent_turn", "reveal_turn"} <= ids
+    # (The Agent turn's first step is its card pick, stage B1.)
+    assert {"choose_agent_card", "reveal_turn"} <= ids
     # The mark is part of the state (hashed, kept by undo and replay).
     unmarked = replace(
         plotted,

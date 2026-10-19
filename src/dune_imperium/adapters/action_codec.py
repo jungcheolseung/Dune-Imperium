@@ -532,7 +532,15 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # window this engine keeps open (``conflict_end_reopened``). (2c) Event
 # kinds, ids and payloads follow the event grammar of the plan's "정리-2c 사건
 # 문법" (no action changes; the state hash changes with the event log).
-ACTION_CODEC_VERSION = 149
+# v150 (stage B, docs/stage-b-plan.md; one raise for the whole stage, on
+# branch ``stage-b``): (B1, user decision 2026-10-19, OQ-111) the Agent turn
+# is a card pick ``choose_agent_card(card_id[, graft])`` and then a space pick
+# ``place_agent(space_id[, cost_option][, discount][, infiltrate_post_id])``
+# in place of the one ``agent_turn`` template per card-and-space combination
+# (26,372 rows of the all-options catalog); the pick waits in the turn frame,
+# seen only by its seat. Older records split each ``agent_turn`` with the
+# bridges ``agent_card_pick`` and ``agent_space_pick`` (records.migration).
+ACTION_CODEC_VERSION = 150
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -2037,6 +2045,41 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
 
 
 def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """The Agent turn's card picks and space picks (stage B1): every card
+    (with its graft choice) that has a placement somewhere, and every space
+    variant some card can reach."""
+
+    picks: dict[tuple[str, bool], None] = {}
+    spaces: dict[tuple[tuple[str, ActionValue], ...], None] = {}
+    for placement in _agent_placement_templates(config):
+        arguments = dict(placement.arguments)
+        card = arguments["card_id"]
+        assert isinstance(card, str)
+        picks.setdefault((card, arguments.get("graft") is True), None)
+        spaces.setdefault(
+            tuple(
+                item
+                for item in placement.arguments
+                if item[0] not in ("card_id", "graft")
+            ),
+            None,
+        )
+    return (
+        *(
+            ActionTemplate(
+                action_id="choose_agent_card",
+                arguments=(("card_id", card), *((("graft", True),) if graft else ())),
+            )
+            for card, graft in picks
+        ),
+        *(
+            ActionTemplate(action_id="place_agent", arguments=arguments)
+            for arguments in spaces
+        ),
+    )
+
+
+def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Emperor's Invitation (Bloodlines) can give any card the Emperor icon
     # for a turn, so the option's catalogs also hold every card's Emperor
     # placements.

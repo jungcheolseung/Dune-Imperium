@@ -33,7 +33,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 149
+    assert ACTION_CODEC_VERSION == 150
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -128,10 +128,15 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # (resolve_leader_signet_without_option,
         # resolve_combat_trash_without_card).
         - 2
+        # v150 (stage B1, OQ-111): the Agent turn is a card pick and a space
+        # pick, so the one agent_turn template per card-and-space
+        # combination gives way to a choose_agent_card per card (and graft)
+        # and a place_agent per space variant.
+        - 1634
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged.
-    assert first.size == 4551
+    assert first.size == 2917
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -155,8 +160,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4551
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4551 + len(
+    assert ActionCodec(RulesetConfig()).size == 2917
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 2917 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -277,6 +282,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # (resolve_leader_signet_without_option,
         # resolve_combat_trash_without_card).
         - 2
+        # v150 (stage B1, OQ-111): the Agent turn's card and space picks
+        # replace its card-and-space agent_turn templates (see
+        # test_catalog_is_fixed...).
+        - 1735
     )
 
     try:
@@ -410,6 +419,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # leave (decline_sardaukar_commander among them) and two confirms
         # join.
         - 3
+        # v150 (stage B1, OQ-111): the Agent turn's card and space picks
+        # replace its card-and-space agent_turn templates (see
+        # test_catalog_is_fixed...).
+        - 6425
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -591,17 +604,21 @@ def test_long_live_the_fighters_choices_round_trip() -> None:
 
 
 def test_subversive_advisor_agent_turn_round_trips() -> None:
+    # Stage B1: the Agent turn is a card pick, then a space pick.
     codec = ActionCodec(RulesetConfig())
-    action = DomainAction(
-        action_id="agent_turn",
+    pick = DomainAction(
+        action_id="choose_agent_card",
         actor=0,
-        arguments=(
-            ("card_id", "imperium:subversive_advisor:0"),
-            ("space_id", "dutiful_service"),
-        ),
+        arguments=(("card_id", "imperium:subversive_advisor:0"),),
+    )
+    space = DomainAction(
+        action_id="place_agent",
+        actor=0,
+        arguments=(("space_id", "dutiful_service"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=0) == action
+    for action in (pick, space):
+        assert codec.decode(codec.encode(action), actor=0) == action
 
 
 def test_agent_card_solari_acquisition_round_trips() -> None:
@@ -677,20 +694,14 @@ def test_reveal_spy_placement_choice_round_trips() -> None:
 def test_starting_card_actions_share_an_index_between_players() -> None:
     codec = ActionCodec(RulesetConfig())
     first = DomainAction(
-        action_id="agent_turn",
+        action_id="choose_agent_card",
         actor=0,
-        arguments=(
-            ("card_id", "player:0:starter:dagger:0"),
-            ("space_id", "assembly_hall"),
-        ),
+        arguments=(("card_id", "player:0:starter:dagger:0"),),
     )
     second = DomainAction(
-        action_id="agent_turn",
+        action_id="choose_agent_card",
         actor=3,
-        arguments=(
-            ("card_id", "player:3:starter:dagger:0"),
-            ("space_id", "assembly_hall"),
-        ),
+        arguments=(("card_id", "player:3:starter:dagger:0"),),
     )
 
     assert codec.encode(first) == codec.encode(second)
@@ -699,11 +710,11 @@ def test_starting_card_actions_share_an_index_between_players() -> None:
 
 def test_infiltrate_agent_action_round_trips_with_selected_spy() -> None:
     codec = ActionCodec(RulesetConfig())
+    # The selected Spy belongs to the space pick (stage B1).
     action = DomainAction(
-        action_id="agent_turn",
+        action_id="place_agent",
         actor=2,
         arguments=(
-            ("card_id", "player:2:starter:dagger:0"),
             (
                 "infiltrate_post_id",
                 "landsraad-assembly-hall-gather-support",
@@ -717,30 +728,36 @@ def test_infiltrate_agent_action_round_trips_with_selected_spy() -> None:
 
 def test_reserve_agent_action_round_trips_without_actor_rewriting() -> None:
     codec = ActionCodec(RulesetConfig())
-    action = DomainAction(
-        action_id="agent_turn",
+    pick = DomainAction(
+        action_id="choose_agent_card",
         actor=2,
-        arguments=(
-            ("card_id", "reserve:prepare_the_way:7"),
-            ("space_id", "assembly_hall"),
-        ),
+        arguments=(("card_id", "reserve:prepare_the_way:7"),),
+    )
+    space = DomainAction(
+        action_id="place_agent",
+        actor=2,
+        arguments=(("space_id", "assembly_hall"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=2) == action
+    for action in (pick, space):
+        assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_imperium_agent_action_round_trips_with_stable_instance_id() -> None:
     codec = ActionCodec(RulesetConfig())
-    action = DomainAction(
-        action_id="agent_turn",
+    pick = DomainAction(
+        action_id="choose_agent_card",
         actor=2,
-        arguments=(
-            ("card_id", "imperium:maula_pistol:0"),
-            ("space_id", "arrakeen"),
-        ),
+        arguments=(("card_id", "imperium:maula_pistol:0"),),
+    )
+    space = DomainAction(
+        action_id="place_agent",
+        actor=2,
+        arguments=(("space_id", "arrakeen"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=2) == action
+    for action in (pick, space):
+        assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_agent_card_trash_round_trips_with_actor_owned_starting_card() -> None:

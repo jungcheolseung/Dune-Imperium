@@ -233,8 +233,10 @@ def _play_with_ground_truth(
         if (
             step.owner is not None
             and step.action is not None
-            and step.action.action_id == "agent_turn"
+            and step.action.action_id == "place_agent"
         ):
+            # Since stage B1 the space is named by the Agent turn's second
+            # step, the space pick.
             space_id = dict(step.action.arguments).get("space_id")
             if isinstance(space_id, str):
                 space = BOARD_SPACES_BY_ID.get(space_id)

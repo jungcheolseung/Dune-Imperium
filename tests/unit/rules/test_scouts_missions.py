@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID
 from dune_imperium.content.uprising.intrigue import twisted_intrigue_instance_ids
@@ -24,6 +25,7 @@ from dune_imperium.core.observation import known_card_seats
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
 
@@ -148,12 +150,11 @@ def _turn_for(state: GameState, seat: int = 0) -> GameState:
 def _send_agent(state: GameState, space_id: str) -> GameState:
     placement = next(
         a
-        for a in ENGINE.legal_actions(state, 0)
-        if a.action_id == "agent_turn"
-        and dict(a.arguments)["space_id"] == space_id
+        for a in executable_placements(state, 0)
+        if dict(a.arguments)["space_id"] == space_id
         and dict(a.arguments)["card_id"] == CARD_FOR[space_id]
     )
-    return ENGINE.apply(state, placement).state
+    return apply_placement(ENGINE, state, placement).state
 
 
 def _visit(state: GameState, space_id: str, **choice: str) -> GameState:

@@ -865,11 +865,12 @@ def check_box_rows(page, language: str) -> None:
 # action, since it never asks the server for one (this is exactly what let
 # this exact gap through review once already). Seed 0 with the Leader
 # draft off hands seat 0's own deterministic first-legal-action policy a
-# single "Deploy -- Reconnaissance, Arrakeen" step, which immediately
+# single "Deploy -- Reconnaissance, Arrakeen" placement (its card pick, then
+# its space pick), which immediately
 # offers a real two-icon "다음에 해결할 에이전트 차례 효과 선택" decision:
 # two resolve_board_effect actions, "보드 효과 해결 — 1[troop]" and
 # "— 1[draw]" (Arrakeen: Recruit 1 troop, Draw 1 card,
-# `docs/rules/board-spaces.md`), reached in exactly one step. This drives
+# `docs/rules/board-spaces.md`), reached in exactly two steps. This drives
 # that decision end to end and reads the actions' own serialized
 # detail/detail_ko (server/sessions.py), not a hand-built object.
 REAL_BOARD_ROW_SEED = 0
@@ -926,14 +927,17 @@ def _reach_real_board_resolution_rows(page, base: str, *, lang: str) -> list[dic
         page, base, humans=(0,), seed=REAL_BOARD_ROW_SEED, lang=lang
     )
     settled(page)
-    # A human seat's own agent_turn actions render through the staged
+    # A human seat's own Agent turn renders through the staged
     # card-then-space picker (staged_turn.py), not a flat #actions list --
     # applyAction(index) is the same function that picker ends up calling
-    # once a pick names exactly one action (session.js), so this submits
-    # the real first legal action (index 0) the same way the live UI would,
-    # without needing to drive the staged clicks themselves.
-    page.evaluate("applyAction(0)")
-    assert settled(page, 20)
+    # once a pick names exactly one placement (session.js, turn.js
+    # applyPlacement), so this submits the real first legal actions the same
+    # way the live UI would, without needing to drive the staged clicks
+    # themselves. The Agent turn is two steps (the card pick, then the space
+    # pick; stage B1), so the first legal row is taken twice.
+    for _ in range(2):
+        page.evaluate("applyAction(0)")
+        assert settled(page, 20)
     return page.evaluate(REAL_BOARD_ROWS_JS)
 
 

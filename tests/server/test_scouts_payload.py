@@ -16,12 +16,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.scouts_effects import offer_scouts_choice, offer_secret_reward
 from dune_imperium.rules.scouts_secrets import SECRET_ITEM
 from dune_imperium.server.sessions import GameSessionManager, _serialize_action
@@ -73,12 +75,11 @@ def _council_step(state: GameState) -> dict[str, Any]:
 
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "high_council"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "high_council"
         and "dagger" in str(dict(action.arguments)["card_id"])
     )
-    placed = ENGINE.apply(state, placement).state
+    placed = apply_placement(ENGINE, state, placement).state
     legal = ENGINE.legal_actions(placed, 0)
     council = DomainAction(
         action_id="resolve_board_effect",
@@ -212,12 +213,11 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
     step stays undoable like the visit's other effects."""
     placement = next(
         action
-        for action in ENGINE.legal_actions(_state(3), 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "high_council"
+        for action in executable_placements(_state(3), 0)
+        if dict(action.arguments)["space_id"] == "high_council"
         and "dagger" in str(dict(action.arguments)["card_id"])
     )
-    placed = ENGINE.apply(_state(3), placement).state
+    placed = apply_placement(ENGINE, _state(3), placement).state
     seated = ENGINE.apply(
         placed,
         DomainAction(

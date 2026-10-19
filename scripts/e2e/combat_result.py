@@ -7,7 +7,8 @@ choice whose prompt never says it is a reward). The reward is a public log
 event (combat_reward_gained, conflict_won); render.js's combatResultLine
 now reads it and shows one muted line above the banner's prompt from the
 moment a Conflict resolves until the viewing seat's own next turn-taking
-step (`agent_turn` / `reveal_turn` / `play_turn_start_card`).
+step (`place_agent` / `reveal_turn` / `play_turn_start_card`; an Agent turn's
+card pick, `choose_agent_card`, does not end it, only the space pick does).
 
 This drives a human seat 0 (three heuristic seats) to the first Combat
 resolution in a base game and in an all-expansion game, and checks the
@@ -71,7 +72,18 @@ SETUP_REVEAL_SEED = 21
 
 # Mirrors render.js's OWN_TURN_ACTION_IDS: the action ids that start the
 # viewing seat's own next turn, at which point the line must be gone.
-OWN_TURN_ACTION_IDS = {"agent_turn", "reveal_turn", "play_turn_start_card"}
+OWN_TURN_ACTION_IDS = {"place_agent", "reveal_turn", "play_turn_start_card"}
+# The Agent turn's first step: picking the card. The line outlives it (only
+# the space pick, `place_agent`, starts the turn).
+CARD_PICK_ACTION_ID = "choose_agent_card"
+# Which way each scenario's seat takes its own next turn when it can (the
+# card pick, then the space pick, or a Reveal); the other path is the
+# fallback when that one is not on offer.
+PREFERRED_TURN_START = {
+    "base": CARD_PICK_ACTION_ID,
+    "expansions": "reveal_turn",
+    "setup-reveal": CARD_PICK_ACTION_ID,
+}
 
 HANGUL = re.compile("[가-힣]")
 # "AI" is the heuristic seat kind's Korean label suffix (SEAT_KINDS,
@@ -157,9 +169,11 @@ def _choose_action_js() -> str:
       const deploy = A.filter((a) => a.action_id === 'deploy_troops');
       if (deploy.length) return deploy[0].index;
       const combat = {combat};
-      const toCombat = A.find((a) => a.action_id === 'agent_turn'
-        && combat.includes(a.arguments.space_id));
-      if (toCombat) return toCombat.index;
+      // An Agent turn is two steps: the placement's card pick, then (at the
+      // next call, with the card picked) the space pick that completes it.
+      const toCombat = placementActions().find((a) =>
+        combat.includes(a.arguments.space_id));
+      if (toCombat) return toCombat.pickIndex ?? toCombat.index;
       return A[0].index;
     }})()"""
 
@@ -339,9 +353,11 @@ def check_persistence(page, label: str, conflict_name: str | None) -> None:
             time.sleep(0.05)
             continue
         ids = {action["action_id"] for action in actions}
-        starting = ids & OWN_TURN_ACTION_IDS
+        # The card pick opens an Agent turn; the line must outlive it.
+        starting = sorted(ids & (OWN_TURN_ACTION_IDS | {CARD_PICK_ACTION_ID}))
         if starting:
-            action_id = next(iter(starting))
+            preferred = PREFERRED_TURN_START.get(label)
+            action_id = preferred if preferred in starting else starting[0]
             index = next(a["index"] for a in actions if a["action_id"] == action_id)
             check.ok(
                 True, f"{label}: still shown right up to the seat's own next {action_id}"
@@ -357,6 +373,26 @@ def check_persistence(page, label: str, conflict_name: str | None) -> None:
                 f"(rounds {sorted(rounds)})",
                 unnamed[:3],
             )
+            if action_id == CARD_PICK_ACTION_ID:
+                page.evaluate(f"applyAction({index})")
+                assert settled(page, 20)
+                picked = combat_result_dom(page)
+                check.ok(
+                    picked is not None,
+                    f"{label}: still shown after the card pick, before the space pick",
+                    picked,
+                )
+                spaces = page.evaluate("state.actions ? state.actions.actions : []")
+                place = next(
+                    (a for a in spaces if a["action_id"] == "place_agent"), None
+                )
+                if not check.ok(
+                    place is not None,
+                    f"{label}: the card pick leaves the space pick to take",
+                    [a["action_id"] for a in spaces],
+                ):
+                    return
+                action_id, index = "place_agent", place["index"]
             page.evaluate(f"applyAction({index})")
             assert settled(page, 20)
             after = combat_result_dom(page)

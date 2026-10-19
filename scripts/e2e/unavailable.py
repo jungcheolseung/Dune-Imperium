@@ -308,7 +308,7 @@ for seed in seeds:
             sys.exit(0)
         legal = session.engine.legal_actions(session.state, 0)
         view = session.engine.observe(session.state, 0)
-        index = legal.index(agent.choose_action(view, legal))
+        index = legal.index(agent.choose_action_with_state(session.state, view, legal))
         manager.apply_action(game_id, 0, int(payload["revision"]), index)
 print(json.dumps(None))
 """
@@ -1115,7 +1115,9 @@ for seed in seeds:
             break
         legal = session.engine.legal_actions(session.state, seat)
         view = session.engine.observe(session.state, seat)
-        index = legal.index(agents[seat].choose_action(view, legal))
+        index = legal.index(
+            agents[seat].choose_action_with_state(session.state, view, legal)
+        )
         manager.apply_action(game_id, seat, int(payload["revision"]), index)
 print(json.dumps(None))
 """

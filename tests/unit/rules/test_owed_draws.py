@@ -15,6 +15,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core import (
     ChanceDecision,
@@ -26,6 +27,7 @@ from dune_imperium.core import (
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.player import Influence
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import OWED_INTRIGUE, hold_draw
 from dune_imperium.rules.influence import gain_faction_influence
@@ -61,11 +63,10 @@ def _soldier(state: GameState) -> str:
 def _at_desert_tactics(state: GameState) -> GameState:
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "desert_tactics"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "desert_tactics"
     )
-    return ENGINE.apply(state, placement).state
+    return apply_placement(ENGINE, state, placement).state
 
 
 def _trash_soldier(state: GameState, soldier: str) -> GameState:
@@ -236,11 +237,10 @@ def _hungry_turn() -> tuple[GameState, int, str, str]:
     state = replace(state, players=tuple(players))
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, seat)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "desert_tactics"
+        for action in executable_placements(state, seat)
+        if dict(action.arguments)["space_id"] == "desert_tactics"
     )
-    return ENGINE.apply(state, placement).state, seat, weak, kept
+    return apply_placement(ENGINE, state, placement).state, seat, weak, kept
 
 
 def test_a_card_owed_by_hungry_for_spice_waits_so_a_discard_trash_comes_first() -> (
@@ -324,11 +324,10 @@ def _faction_space_turn(
     )
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == space_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
     )
-    return ENGINE.apply(state, placement).state
+    return apply_placement(ENGINE, state, placement).state
 
 
 @pytest.mark.parametrize(
@@ -443,11 +442,10 @@ def _transports_turn() -> GameState:
     )
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "arrakeen"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
     )
-    return ENGINE.apply(state, placement).state
+    return apply_placement(ENGINE, state, placement).state
 
 
 def test_choam_transports_card_is_the_owners_next_step_after_the_completion() -> (

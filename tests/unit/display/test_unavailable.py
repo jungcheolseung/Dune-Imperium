@@ -21,6 +21,7 @@ from tests.unit.rules.test_immortality_intrigue import (
 from tests.unit.rules.test_tech import _combat_acquire_frame
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_SETUP_SPACE_IDS,
@@ -64,6 +65,7 @@ from dune_imperium.display.unavailable import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue, resolve_combat_rewards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import OptionBlock
@@ -1216,12 +1218,8 @@ def test_a_withheld_agent_box_waits_greyed_out_until_its_condition_holds() -> No
 
     card = "reserve:prepare_the_way:0"
     state = _state(PlayerState(player_id=0, hand=(card,)))
-    placement = next(
-        action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-    )
-    placed = ENGINE.apply(state, placement).state
+    placement = next(iter(executable_placements(state, 0)))
+    placed = apply_placement(ENGINE, state, placement).state
     assert placed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert _legal(placed, "resolve_agent_card_effect") == []
 
@@ -1256,7 +1254,8 @@ def test_empty_gather_intelligence_is_offered_without_greyed_or_waiting_rows() -
     owner = PlayerState(
         player_id=0, hand=(card,), spy_post_ids=(post.post_id,), spies_supply=2
     )
-    placed = ENGINE.apply(
+    placed = apply_placement(
+        ENGINE,
         _state(owner),
         DomainAction(
             action_id="agent_turn",
@@ -1399,12 +1398,11 @@ def _agent_turn(
 ) -> GameState:
     action = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)
         == {"card_id": card, "space_id": space, **arguments}
     )
-    return ENGINE.apply(state, action).state
+    return apply_placement(ENGINE, state, action).state
 
 
 def _payment_row(state: GameState) -> dict[str, Any]:
@@ -1660,11 +1658,10 @@ _NO_OTHER_AGENT = (
 def _place(state: GameState, space_id: str) -> GameState:
     action = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == space_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
     )
-    return ENGINE.apply(state, action).state
+    return apply_placement(ENGINE, state, action).state
 
 
 def _imperial_owner(**owner_fields: Any) -> PlayerState:
@@ -2178,11 +2175,10 @@ def _at_shipping(influence: Influence) -> GameState:
     state = _state(owner)
     place = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "shipping"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "shipping"
     )
-    return ENGINE.apply(state, place).state
+    return apply_placement(ENGINE, state, place).state
 
 
 def test_shipping_greys_the_factions_at_the_top() -> None:
@@ -2406,19 +2402,23 @@ def _council_seat(spice: int, display: tuple[str, ...]) -> GameState:
         round_number=2,
         scouts_subcommittees=display,
     )
-    for action in (
+    state = apply_placement(
+        ENGINE,
+        state,
         DomainAction(
             action_id="agent_turn",
             actor=0,
             arguments=(("card_id", DAGGER), ("space_id", "high_council")),
         ),
+    ).state
+    state = ENGINE.apply(
+        state,
         DomainAction(
             action_id="resolve_board_effect",
             actor=0,
             arguments=(("effect", "high_council"),),
         ),
-    ):
-        state = ENGINE.apply(state, action).state
+    ).state
     assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     return state
 
@@ -2998,11 +2998,10 @@ def test_held_contract_icons_wait_greyed_out_for_the_rest_of_the_turn() -> None:
     )
     place = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments) == {"card_id": mentat, "space_id": "accept_contract"}
+        for action in executable_placements(state, 0)
+        if dict(action.arguments) == {"card_id": mentat, "space_id": "accept_contract"}
     )
-    placed = ENGINE.apply(state, place).state
+    placed = apply_placement(ENGINE, state, place).state
     icon = DomainAction(
         action_id="resolve_board_effect", actor=0, arguments=(("effect", "contract"),)
     )

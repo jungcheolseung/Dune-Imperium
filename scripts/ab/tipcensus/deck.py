@@ -101,7 +101,7 @@ from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.endgame import FinalStanding
 from dune_imperium.rules.frames import FrameKind
 
-from .base import Collector, Columns, Step, payload
+from .base import Collector, Columns, Step, payload, placement
 
 FACTION_ICONS = frozenset(
     (
@@ -519,7 +519,8 @@ PER_REVEALED: frozenset[str] = frozenset(
 def _agent_side(s: Step, p: int) -> bool:
     """Return whether seat ``p``'s new ``in_play`` card(s) this step are Agent-side.
 
-    "agent_turn" is the placement action itself. A Graft partner is chosen
+    The placement (since stage B1 the space pick, ``placement``) is the
+    Agent-side step itself. A Graft partner is chosen
     under a separate action ID (``choose_graft_partner``), but it still
     enters play while seat ``p``'s ``FrameKind.AGENT_EFFECTS`` frame is open
     (``rules/agent_turn.py`` pushes it at placement; it stays open after the
@@ -532,7 +533,7 @@ def _agent_side(s: Step, p: int) -> bool:
     choice frame can sit above it.
     """
 
-    if s.action is not None and s.action.action_id == "agent_turn":
+    if placement(s) is not None:
         return True
     return any(
         frame.kind == FrameKind.AGENT_EFFECTS

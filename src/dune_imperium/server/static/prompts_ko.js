@@ -16,6 +16,7 @@ const PROMPT_KO = {
   "Choose a different faction to gain one Influence": "{influence_any} 1을 얻을 다른 {faction} 선택",
   "Choose a faction to gain one Influence": "{influence_any} 1을 얻을 {faction} 선택",
   "Choose an Agent turn or Reveal turn": "{agent_turn} 또는 {reveal_turn} 선택",
+  "Choose a space for the Agent": "{agent} 보낼 칸 선택",
   "Choose an Observation Post for the Contract Spy": "{contract} 보상 {spy}를 배치할 {observation_post} 선택",
   "Choose an Observation Post for the Contract Spy with Deep Cover": "{contract} 보상 잠복 {spy}를 배치할 {observation_post} 선택",
   "Choose an Observation Post for the acquired Spy": "획득한 {spy}를 배치할 {observation_post} 선택",

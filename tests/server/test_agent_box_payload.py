@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
@@ -24,6 +25,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.server import sessions
 from dune_imperium.server.sessions import GameSessionManager, JsonObject
 
@@ -73,14 +75,13 @@ def _graft(card: str, partner: str, space: str = "dutiful_service") -> GameState
     state = _turn((card, partner))
     place = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("card_id") == card
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("card_id") == card
         and dict(action.arguments).get("space_id") == space
         and dict(action.arguments).get("graft") is True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    placed = ENGINE.apply(state, place).state
+    placed = apply_placement(ENGINE, state, place).state
     choice = DomainAction(
         action_id="choose_graft_partner", actor=0, arguments=(("card_id", partner),)
     )

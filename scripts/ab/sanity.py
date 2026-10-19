@@ -62,7 +62,12 @@ def play(spec, hook_counter=None):
             continue
         actions = engine.legal_actions(state, decision.owner)
         observation = engine.observe(state, decision.owner)
-        action = agents[decision.owner].choose_action(observation, actions)
+        agent = agents[decision.owner]
+        action = (
+            agent.choose_action_with_state(state, observation, actions)
+            if hasattr(agent, "choose_action_with_state")
+            else agent.choose_action(observation, actions)
+        )
         taken.append(action)
         state = engine.apply(state, action, legal_actions=actions).state
     else:

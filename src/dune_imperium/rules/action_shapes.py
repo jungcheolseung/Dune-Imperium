@@ -135,7 +135,9 @@ class Target(StrEnum):
     """What an action's arguments pick."""
 
     NONE = "none"
-    CARD_AND_SPACE = "card_and_space"
+    # The space an Agent goes to, with its cost option, discount and
+    # infiltration (stage B1: the card is picked first).
+    AGENT_SPACE = "agent_space"
     IMPERIUM_CARD = "imperium_card"
     RESERVE_CARD = "reserve_card"
     TLEILAXU_CARD = "tleilaxu_card"
@@ -171,21 +173,14 @@ class Tag(StrEnum):
 # The argument names each target may use (tags excluded).
 TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.NONE: frozenset(),
-    Target.CARD_AND_SPACE: frozenset(
-        {
-            "card_id",
-            "cost_option",
-            "discount",
-            "graft",
-            "infiltrate_post_id",
-            "space_id",
-        }
+    Target.AGENT_SPACE: frozenset(
+        {"cost_option", "discount", "infiltrate_post_id", "space_id"}
     ),
     Target.IMPERIUM_CARD: frozenset({"instance_id"}),
     Target.RESERVE_CARD: frozenset({"card_id"}),
     Target.TLEILAXU_CARD: frozenset({"instance_id", "to_deck_top"}),
     Target.RECLAIMED_FORCES: frozenset({"choice"}),
-    Target.PERSONAL_CARD: frozenset({"card_id"}),
+    Target.PERSONAL_CARD: frozenset({"card_id", "graft"}),
     Target.INTRIGUE_CARD: frozenset(
         {"card_id", "instance_id", "intrigue_card_id", "option", "player"}
     ),
@@ -257,7 +252,11 @@ def _row(
 # Read-only: ``template_id`` caches its answers on this table.
 ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # --- The turn ------------------------------------------------------------
-    "agent_turn": _row(_V.PLACE_AGENT, _S.TURN, _T.CARD_AND_SPACE),
+    # Stage B1: the Agent turn's card pick, then its space pick.
+    "choose_agent_card": _row(
+        _V.CHOOSE, _S.TURN, _T.PERSONAL_CARD, variant="agent_card"
+    ),
+    "place_agent": _row(_V.PLACE_AGENT, _S.TURN, _T.AGENT_SPACE),
     "reveal_turn": _row(_V.START_REVEAL, _S.TURN),
     "finish_agent_turn": _row(_V.FINISH, _S.TURN, variant="agent"),
     "finish_reveal": _row(_V.FINISH, _S.TURN, variant="reveal"),

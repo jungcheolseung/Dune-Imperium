@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
@@ -799,7 +800,11 @@ def test_contract_completion_actions_replay_from_the_same_state() -> None:
     def play() -> GameState:
         state = initial
         for step in steps:
-            state = engine.apply(state, step).state
+            if step is placement:
+                # A whole placement: the Agent turn's two steps (stage B1).
+                state = apply_placement(engine, state, step).state
+            else:
+                state = engine.apply(state, step).state
         return state
 
     first = play()

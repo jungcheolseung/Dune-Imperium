@@ -73,7 +73,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import (
     FIXED_OUTCOME_SUFFIX,
     ChanceOutcome,
@@ -90,6 +90,7 @@ from dune_imperium.rules.agent_effect_frame import (
     route_box_action,
 )
 from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
+from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.effects import (
     active_agent_card,
@@ -972,7 +973,7 @@ class _GraftSlot:
     def applied(self, state: GameState, step: ReplayStep) -> None:
         if not isinstance(step, DomainAction):
             return
-        if step.action_id in ("agent_turn", "choose_graft_partner"):
+        if step.action_id in ("agent_turn", "place_agent", "choose_graft_partner"):
             self.box = 0
         elif step.action_id == "finish_agent_turn":
             frame = state.decision_stack[-1] if state.decision_stack else None
@@ -2029,6 +2030,73 @@ def _split_icon_moves(
     return moves
 
 
+def _placement_parts(
+    step: ReplayStep,
+) -> tuple[str, bool, tuple[tuple[str, ActionValue], ...]] | None:
+    """A recorded ``agent_turn`` placement (before codec v150) as its card,
+    its graft choice and its space arguments; None for any other step."""
+
+    if not (isinstance(step, DomainAction) and step.action_id == "agent_turn"):
+        return None
+    arguments = dict(step.arguments)
+    card = arguments.get("card_id")
+    if not isinstance(card, str):
+        return None
+    space = tuple(
+        item for item in step.arguments if item[0] not in ("card_id", "graft")
+    )
+    return card, arguments.get("graft") is True, space
+
+
+def _agent_card_pick(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Before a recorded placement, the card pick this engine asks first
+    (stage B1, OQ-111)."""
+
+    parts = _placement_parts(step)
+    if (
+        parts is None
+        or not isinstance(step, DomainAction)
+        or not isinstance(decision, PlayerDecision)
+        or decision.owner != step.actor
+        or agent_card_pick(state, step.actor) is not None
+    ):
+        return None
+    card, graft, _ = parts
+    move = DomainAction(
+        action_id="choose_agent_card",
+        actor=step.actor,
+        arguments=(("card_id", card), *((("graft", True),) if graft else ())),
+    )
+    return move if move in engine.legal_actions(state, step.actor) else None
+
+
+def _agent_space_pick(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded placement, once its card is picked, as the space pick."""
+
+    parts = _placement_parts(step)
+    if (
+        parts is None
+        or not isinstance(step, DomainAction)
+        or not isinstance(decision, PlayerDecision)
+    ):
+        return None
+    card, graft, space = parts
+    if agent_card_pick(state, step.actor) != (card, graft):
+        return None
+    move = DomainAction(action_id="place_agent", actor=step.actor, arguments=space)
+    return move if move in engine.legal_actions(state, step.actor) else None
+
+
 def _split_box_icon(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -3079,6 +3147,11 @@ BRIDGES: tuple[Bridge, ...] = (
     # In High Places icon by icon: the recorded resolution is the first
     # icon, the other follows at once (In High Places' Spy at the record's
     # frame step).
+    # Codec v150 (stage B1, OQ-111): an Agent turn is a card pick and then a
+    # space pick; a recorded placement takes the pick first, then itself as
+    # the space pick.
+    Bridge("agent_space_pick", _agent_space_pick, before_codec=150, rewrites=True),
+    Bridge("agent_card_pick", _agent_card_pick, before_codec=150),
     Bridge("split_box_icon", _split_box_icon, before_codec=149, rewrites=True),
     Bridge("split_box_follow", _split_box_follow, before_codec=149, follows=True),
     Bridge("split_box_spy", _split_box_spy, before_codec=149, rewrites=True),

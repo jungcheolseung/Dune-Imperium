@@ -29,6 +29,9 @@ def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
         "secret_project_tech_id": "",
         "scouts_secret_picks": (),
         "scouts_bid": -1,
+        # Stage B1: the Agent card the seat picked and has not placed yet.
+        "agent_card_pick": "",
+        "agent_card_pick_graft": False,
     }
     actions = snapshot["legal_actions"]
     assert isinstance(actions, list)

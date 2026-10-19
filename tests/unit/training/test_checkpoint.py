@@ -537,15 +537,15 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
 ) -> None:
     # A file written under v27 knows neither the v28 Epic card nor its flag,
     # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, nor
-    # v31's Agent boxes, nor v32's deck pools, and still has the 90-column
-    # intrigue_trash segment
+    # v31's Agent boxes, nor v32's deck pools, nor v33's picked Agent card
+    # (139 + 1 columns), and still has the 90-column intrigue_trash segment
     # v30 removed (OQ-061): each v27 segment's columns keep their place at
-    # its start, the 24 + 8 + 4 + 4 + 556 new columns start at zero, the trash
-    # columns are dropped, and a game without the option, without a waiting
-    # shortfall, without an owed track Spy, without an Intrigue trash and
-    # without an open Agent turn at the compared decisions (every new and
-    # every dropped column 0; seed 6's 80 steps trash no Intrigue card)
-    # scores exactly as the v27 network did.
+    # its start, the 24 + 8 + 4 + 4 + 556 + 140 new columns start at zero, the
+    # trash columns are dropped, and a game without the option, without a
+    # waiting shortfall, without an owed track Spy, without an Intrigue trash
+    # and without an open Agent turn or a picked Agent card at the compared
+    # decisions (every new and every dropped column 0; seed 6's 80 steps trash
+    # no Intrigue card) scores exactly as the v27 network did.
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)
     current = tmp_path / "current.pt"
@@ -566,6 +566,8 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             "track_spies_owed",
             "agent_boxes",
             *(f"seat{seat}_deck_pool" for seat in range(4)),
+            "private_agent_card_pick",
+            "private_agent_card_pick_graft",
         ):
             continue
         length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
@@ -580,7 +582,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             layout.append(("intrigue_trash", offset, 90))
             offset += 90
     assert ("intrigue_trash", 289, 90) in layout
-    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8 - 4 - 4 - 556 + 90
+    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8 - 4 - 4 - 556 - 140 + 90
     state["body.0.weight"] = torch.cat(columns, dim=1)
     older = tmp_path / "v27.pt"
     torch.save(
@@ -607,7 +609,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (4_587 - 90, 24 + 8 + 4 + 4 + 556, 90)
+    ) == (4_587 - 90, 24 + 8 + 4 + 4 + 556 + 140, 90)
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
         codec.size,
         0,

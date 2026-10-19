@@ -560,7 +560,9 @@ class NetworkSearchAgent:
                 if fallback is None:
                     fallback = HeuristicAgent(seed=chance_seed)
                 owner = decision.owner
-                action = fallback.choose_action(engine.observe(state, owner), offered)
+                action = fallback.choose_action_with_state(
+                    state, engine.observe(state, owner), offered
+                )
             else:
                 owner = decision.owner
                 encoded = self._encode(engine.observe(state, owner))

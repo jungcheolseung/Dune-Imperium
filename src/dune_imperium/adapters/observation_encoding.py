@@ -130,7 +130,12 @@ from dune_imperium.rules.frames import FrameKind
 # card a seat bought vanished from its observation once the discard pile was
 # shuffled into the deck, though every seat saw it bought. Every older column
 # keeps its offset; a v31 checkpoint migrates by segment and starts them at 0.
-OBSERVATION_VERSION: Final = 32
+# v33 (stage B1, OQ-111): the Agent turn is a card pick and then a space pick,
+# so the seat deciding the space must see the card it picked: appended as
+# ``private_agent_card_pick`` (by identity) and ``private_agent_card_pick_graft``
+# (1 when it is grafted). No other seat sees the pick. Every older column
+# keeps its offset; a v32 checkpoint migrates by segment and starts them at 0.
+OBSERVATION_VERSION: Final = 33
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -382,6 +387,9 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
                 (f"seat{seat}_deck_pool", len(PERSONAL_CARD_IDS))
                 for seat in range(_SEATS)
             ),
+            # v33: the seat's own picked Agent card and its graft flag.
+            ("private_agent_card_pick", len(PERSONAL_CARD_IDS)),
+            ("private_agent_card_pick_graft", 1),
         )
     )
     return tuple(lengths)
@@ -613,6 +621,14 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         offset = _OFFSET[f"seat{seat_offset}_deck_pool"]
         for card_id in view.players[(observer + seat_offset) % _SEATS].deck_pool:
             values[offset + _PERSONAL_INDEX[card_id]] += 1
+    _write_personal_counts(
+        values,
+        _OFFSET["private_agent_card_pick"],
+        (view.private.agent_card_pick,) if view.private.agent_card_pick else (),
+    )
+    values[_OFFSET["private_agent_card_pick_graft"]] = int(
+        view.private.agent_card_pick_graft
+    )
     return tuple(values)
 
 

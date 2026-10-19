@@ -53,8 +53,8 @@ def find(name: str, options: dict, wanted: tuple[str, ...], store: SaveStore) ->
                         }
             owner = summary["decision"]["owner"]
             actions = session.engine.legal_actions(session.state, owner)
-            chosen = agents[owner].choose_action(
-                session.engine.observe(session.state, owner), actions
+            chosen = agents[owner].choose_action_with_state(
+                session.state, session.engine.observe(session.state, owner), actions
             )
             summary = manager.apply_action(
                 gid, owner, summary["revision"], actions.index(chosen)

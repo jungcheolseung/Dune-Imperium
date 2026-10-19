@@ -11,6 +11,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.agents import (
     Agent,
     HeuristicAgent,
+    RandomAgent,
     RolloutAgent,
     StateAgent,
     determinize,
@@ -173,7 +174,11 @@ def test_determinize_keeps_the_contracts_coercive_negotiation_revealed() -> None
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
-        action = policy.choose_action(engine.observe(state, decision.owner), actions)
+        # From the state, as the runner hands it (stage B1: the heuristic
+        # picks its Agent-turn card from the placements it weighs).
+        action = policy.choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
+        )
         state = engine.apply(state, action).state
     assert len(state.contract_bank) >= 5
     frame = DecisionFrame(
@@ -400,10 +405,12 @@ class _StateSpy:
 def test_runner_hands_the_state_to_state_agents() -> None:
     spy = _StateSpy()
     assert isinstance(spy, StateAgent)
-    assert not isinstance(HeuristicAgent(seed=0), StateAgent)
+    # The heuristic is a StateAgent since stage B1 (it weighs a whole Agent
+    # placement from the state), so the view-only seats are random ones.
+    assert not isinstance(RandomAgent(seed=0), StateAgent)
     agents: tuple[Agent, ...] = (
         spy,
-        *(HeuristicAgent(seed=seat) for seat in range(1, 4)),
+        *(RandomAgent(seed=seat) for seat in range(1, 4)),
     )
 
     simulation = run_policy_game(UprisingRulesEngine(), RulesetConfig(), 4, agents)

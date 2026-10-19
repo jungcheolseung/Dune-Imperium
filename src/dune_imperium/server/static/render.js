@@ -807,7 +807,7 @@ function appendTurnEndRow(container, label, onClick, action = null, kind = "turn
 
 /* The action ids that start the viewing seat's own next turn, at which
    point an older combat result stops being news. */
-const OWN_TURN_ACTION_IDS = new Set(["agent_turn", "reveal_turn", "play_turn_start_card"]);
+const OWN_TURN_ACTION_IDS = new Set(["place_agent", "reveal_turn", "play_turn_start_card"]);
 
 /* The reward group for the most recently resolved Conflict the given seat
    has seen, or null when none has resolved yet, it already resolved with
@@ -1137,6 +1137,22 @@ function waitingHint(seat) {
   return info.online ? "" : t("render.waiting_hint_offline");
 }
 
+/* How many steps the seat's last move took: a placement the staged turn
+   sent is its card pick and its space pick (stage B1), taken back together
+   as it was made; anything else is one step. */
+function lastMoveSteps(available) {
+  const live = ((state.log && state.log.entries) || []).filter(
+    (entry) => entry.type === "action" && !entry.undone
+  );
+  const [pick, space] = live.slice(-2);
+  const placement =
+    available >= 2 &&
+    pick && space &&
+    pick.actor === state.viewSeat && space.actor === state.viewSeat &&
+    pick.action_id === "choose_agent_card" && space.action_id === "place_agent";
+  return placement ? 2 : 1;
+}
+
 /* Undo controls for the viewing seat (M11 slice 6): a single-step button
    and, when more than one step is available, a take-back-everything button. */
 function appendUndoRow(container) {
@@ -1152,7 +1168,8 @@ function appendUndoRow(container) {
   one.type = "button";
   one.textContent = t("render.undo_one_step");
   one.disabled = state.busy;
-  one.addEventListener("click", () => submitUndo(state.viewSeat, 1));
+  const last = lastMoveSteps(entry.steps);
+  one.addEventListener("click", () => submitUndo(state.viewSeat, last));
   row.appendChild(one);
 
   if (entry.steps > 1) {
@@ -2166,6 +2183,8 @@ function actionItem(action, onApply, zone, boxed = false) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
   wrap.dataset.index = String(action.index);
+  /* A staged Agent turn's placement (turn.js placementActions). */
+  if (typeof action.placement === "number") wrap.dataset.placement = String(action.placement);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   if (typeof action.box === "number") wrap.dataset.box = String(action.box);
   const button = document.createElement("button");

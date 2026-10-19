@@ -12,9 +12,6 @@ from copy import replace
 from typing import Final
 
 from dune_imperium.config import RulesetConfig
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, DynamicCost
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -59,9 +56,13 @@ from dune_imperium.rules.agent_effects import (
     resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import (
-    apply_agent_action,
+    agent_card_pick,
+    agent_card_pick_actions,
+    agent_space_pick_actions,
+    apply_agent_card_pick,
+    apply_agent_space_pick,
     apply_turn_start_card,
-    legal_agent_actions,
+    executable_placements,
     legal_turn_start_card_actions,
 )
 from dune_imperium.rules.board_effects import (
@@ -73,7 +74,6 @@ from dune_imperium.rules.board_effects import (
     apply_shipping_action,
     apply_sietch_tabr_action,
     apply_tuek_sietch_action,
-    board_effect_is_implemented,
     resolve_board_effect,
     secrets_steal_is_pending,
 )
@@ -209,7 +209,6 @@ from dune_imperium.rules.leader_abilities import (
     apply_shaddam_signet_choice,
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
-    leader_signet_is_implemented,
     legal_feyd_track_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
@@ -441,35 +440,16 @@ def _executable_agent_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Withhold Agent placements whose board effect is not implemented yet."""
+    """The Agent turn's step (stage B1): a card pick, or the picked card's
+    space picks."""
 
-    return tuple(
-        action
-        for action in legal_agent_actions(state, player)
-        if _agent_action_is_executable(state, action)
+    pick = agent_card_pick(state, player)
+    if pick is None:
+        return agent_card_pick_actions(player, executable_placements(state, player))
+    card, graft = pick
+    return agent_space_pick_actions(
+        player, executable_placements(state, player, card), card, graft
     )
-
-
-def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
-    arguments = dict(action.arguments)
-    card_id = arguments["card_id"]
-    space_id = arguments["space_id"]
-    if not isinstance(card_id, str) or not isinstance(space_id, str):
-        return False
-    if personal_card_for_instance(
-        card_id
-    ).agent_effect is PersonalCardAgentEffect.LEADER_SIGNET and not (
-        leader_signet_is_implemented(state.players[action.actor].leader_id)
-    ):
-        return False
-    requested_option = arguments.get("cost_option")
-    if isinstance(requested_option, int) and not isinstance(requested_option, bool):
-        cost_option = requested_option
-    elif BOARD_SPACES_BY_ID[space_id].dynamic_cost is DynamicCost.SWORDMASTER:
-        cost_option = int(any(player.swordmaster_acquired for player in state.players))
-    else:
-        cost_option = 0
-    return board_effect_is_implemented(state, space_id, cost_option)
 
 
 LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
@@ -657,7 +637,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_decline_card": apply_take,
     "scouts_return_specimens": apply_scouts_return_specimens,
     # Turn choice and Plot Intrigue
-    "agent_turn": apply_agent_action,
+    "choose_agent_card": apply_agent_card_pick,
+    "place_agent": apply_agent_space_pick,
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
@@ -1007,6 +988,10 @@ class UprisingRulesEngine(RulesEngine):
         immediate = immediate_owed_draw_actions(state, player)
         if immediate:
             return immediate
+        if frame.kind == FrameKind.TURN and agent_card_pick(state, player) is not None:
+            # A picked Agent card waits for its space and nothing else
+            # (stage B1, OQ-111).
+            return _executable_agent_actions(state, player)
         providers = LEGAL_ACTION_PROVIDERS.get(frame.kind)
         if providers is None:
             raise RuntimeError(f"unknown decision frame kind: {frame.kind}")

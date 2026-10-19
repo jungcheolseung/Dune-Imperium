@@ -22,6 +22,7 @@ from dune_imperium.adapters.observation_encoding import (
     segment_slice,
 )
 from dune_imperium.agents import RandomAgent
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -49,6 +50,7 @@ from dune_imperium.rules import (
     leader_abilities,
 )
 from dune_imperium.rules.agent_icons import card_is_boosted
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind
@@ -533,17 +535,35 @@ def _state(hand: tuple[str, ...], **owner: object) -> GameState:
     )
 
 
+def _spaces_offered(state: GameState, card_id: str) -> set[str]:
+    """The spaces the Agent turn offers ``card_id``: pick the card (each of
+    its picks), read the ``place_agent`` rows (stage B1)."""
+
+    spaces: set[str] = set()
+    for pick in ENGINE.legal_actions(state, 0):
+        if (
+            pick.action_id == "choose_agent_card"
+            and dict(pick.arguments)["card_id"] == card_id
+        ):
+            picked = ENGINE.apply(state, pick).state
+            spaces |= {
+                str(dict(action.arguments)["space_id"])
+                for action in ENGINE.legal_actions(picked, 0)
+                if action.action_id == "place_agent"
+            }
+    return spaces
+
+
 def _graft(state: GameState, card_id: str, space_id: str, partner: str) -> GameState:
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == card_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["card_id"] == card_id
         and dict(action.arguments)["space_id"] == space_id
         and dict(action.arguments).get("graft") is True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    placed = ENGINE.apply(state, placement).state
+    placed = apply_placement(ENGINE, state, placement).state
     choice = DomainAction(
         "choose_graft_partner", 0, arguments=(("card_id", partner),)
     )
@@ -824,14 +844,13 @@ def _settle_space(state: GameState) -> GameState:
 def _place_alone(state: GameState, card_id: str, space_id: str) -> GameState:
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == card_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["card_id"] == card_id
         and dict(action.arguments)["space_id"] == space_id
         and dict(action.arguments).get("graft") is not True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    return ENGINE.apply(state, placement).state
+    return apply_placement(ENGINE, state, placement).state
 
 
 def test_stitched_horror_holds_the_turn_end_until_it_names_two() -> None:
@@ -1129,8 +1148,10 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     assert not any(
         ("box", 1) in template.arguments for template in plain.catalog
     )
-    # v147 added the base catalog's ``source``-named Reveal rows (+140).
-    assert ActionCodec(RulesetConfig()).size == 4551
+    # v147 added the base catalog's ``source``-named Reveal rows (+140); v150
+    # (stage B1) replaced the base catalog's 1,763 ``agent_turn`` rows with
+    # 129 card and space picks (4,551 - 1,763 + 129).
+    assert ActionCodec(RulesetConfig()).size == 2917
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)
     twins = {t for t in codec.catalog if ("box", 1) in t.arguments}
@@ -1192,14 +1213,13 @@ PARTNER_DRAW = DomainAction("resolve_agent_card_effect", 0, (("box", 1), *CARDS)
 def _placed(state: GameState, card_id: str, space_id: str) -> GameState:
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == card_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["card_id"] == card_id
         and dict(action.arguments)["space_id"] == space_id
         and dict(action.arguments).get("graft") is True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    return ENGINE.apply(state, placement).state
+    return apply_placement(ENGINE, state, placement).state
 
 
 def _choose_partner(state: GameState, partner: str) -> Transition:
@@ -1299,12 +1319,7 @@ def test_a_usurp_partner_from_the_row_takes_the_boost() -> None:
             *base.players[1:],
         ),
     )
-    assert not any(
-        action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == USURP
-        and dict(action.arguments)["space_id"] == "arrakeen"
-        for action in ENGINE.legal_actions(unboosted, 0)
-    )
+    assert "arrakeen" not in _spaces_offered(unboosted, USURP)
     placed = _placed(base, USURP, "arrakeen")
     assert {
         dict(action.arguments)["card_id"]

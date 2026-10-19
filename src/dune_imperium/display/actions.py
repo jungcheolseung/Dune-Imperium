@@ -51,6 +51,7 @@ from dune_imperium.rules.agent_effects import (
     box_in_progress,
     resolves_boost_draw,
 )
+from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
@@ -860,3 +861,33 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     if row_box is None and resolves_boost_draw(state, action):
         return f"{agent_card_icon_text_ko(None, key)} ({_SHIGAWIRE_KO})"
     return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)
+
+
+def agent_placements(
+    state: GameState, seat: int, actions: tuple[DomainAction, ...]
+) -> tuple[tuple[int, DomainAction], ...] | None:
+    """The placements an Agent-turn card pick leads to (stage B1), for the
+    page's staged turn: one ``(row, placement)`` per card-and-space
+    placement, ``row`` the index in ``actions`` of the card pick that starts
+    it, ``placement`` the whole move as ``rules.agent_turn``
+    ``executable_placements`` builds it (card, graft choice, space, cost
+    option, discount, infiltration). The page picks a card and a space in
+    either order, as before the split, and sends the card pick and then the
+    matching space pick. None when the decision holds no card pick. Display
+    only: the legal rows are unchanged.
+    """
+
+    rows: dict[tuple[object, bool], int] = {}
+    for index, action in enumerate(actions):
+        if action.action_id == CARD_PICK_ACTION:
+            arguments = dict(action.arguments)
+            rows[(arguments["card_id"], arguments.get("graft") is True)] = index
+    if not rows:
+        return None
+    entries: list[tuple[int, DomainAction]] = []
+    for placement in executable_placements(state, seat):
+        arguments = dict(placement.arguments)
+        row = rows.get((arguments["card_id"], arguments.get("graft") is True))
+        if row is not None:
+            entries.append((row, placement))
+    return tuple(entries)

@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
@@ -32,6 +33,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.frames import FrameKind
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -91,6 +93,11 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
         actor=top.owner,
         arguments=tuple(sorted(arguments.items())),
     )
+    if action_id == "agent_turn":
+        # A whole placement (card and space): the Agent turn's two steps.
+        placements = executable_placements(state, top.owner)
+        assert action in placements, (action, placements)
+        return apply_placement(ENGINE, state, action).state
     legal = ENGINE.legal_actions(state, top.owner)
     assert action in legal, (action, legal)
     return ENGINE.apply(state, action, legal_actions=legal).state

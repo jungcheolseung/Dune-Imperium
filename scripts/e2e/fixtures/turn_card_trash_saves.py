@@ -46,6 +46,8 @@ import re
 import sys
 from pathlib import Path
 
+from placement_walk import walk_step
+
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
@@ -175,9 +177,10 @@ for name, seed, want_pending in CASES:
                     ],
                 }
                 break
-        summary = manager.apply_action(
-            gid, owner, summary["revision"], rng.randrange(len(actions))
-        )
+        # An Agent placement is drawn as one choice, as before stage B1
+        # (``placement_walk``), so the seeds keep their games.
+        # ``choice`` draws as ``randrange`` over the list did.
+        summary, _ = walk_step(manager, gid, owner, summary, rng.choice)
 
 missing = {name for name, _, _ in CASES} - set(found)
 if missing:

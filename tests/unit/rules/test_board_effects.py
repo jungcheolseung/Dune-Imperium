@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.board import BOARD_SPACES, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
@@ -33,7 +34,11 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import resolve_faction_influence
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.board_effects import (
     AUTOMATIC_BOARD_ICONS,
     CHOICE_DRIVEN_SPACE_IDS,
@@ -1582,7 +1587,9 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
         ),
     )
     engine = UprisingRulesEngine()
-    declined = engine.apply(state, _action_to(state, "imperial_privilege")).state
+    declined = apply_placement(
+        engine, state, _action_to(state, "imperial_privilege")
+    ).state
     assert any(
         action.action_id == "recall_agent_for_imperial_privilege"
         for action in engine.legal_actions(declined, 0)
@@ -2035,11 +2042,10 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
     engine = UprisingRulesEngine()
     to_secrets = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "secrets"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "secrets"
     )
-    placed = engine.apply(state, to_secrets).state
+    placed = apply_placement(engine, state, to_secrets).state
 
     pending = engine.apply(placed, _board_action(placed, "intrigue"))
     decision = pending.next_decision

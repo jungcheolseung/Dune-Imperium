@@ -282,7 +282,8 @@ def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
         )
         return ENGINE.apply(current, action).state
 
-    state = act(state, "agent_turn", card_id=ambassador, space_id="assembly_hall")
+    state = act(state, "choose_agent_card", card_id=ambassador)
+    state = act(state, "place_agent", space_id="assembly_hall")
     state = act(state, "resolve_board_effect")
     # The visit's optional Acquire Tech needs no refusal and lapses at the
     # turn end (OQ-095 (2), user ruling 2026-10-14).
@@ -971,7 +972,8 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
         )
         return ENGINE.apply(current, action).state
 
-    visited = act(state, "agent_turn", card_id=dagger, space_id="assembly_hall")
+    visited = act(state, "choose_agent_card", card_id=dagger)
+    visited = act(visited, "place_agent", space_id="assembly_hall")
     visited = act(visited, "resolve_board_effect", effect="intrigue")
     bought = act(visited, "acquire_tech", tech_id="glowglobes")
     bought = act(bought, "resolve_tech_acquire_effect", faction="emperor")
@@ -1004,7 +1006,8 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     assert dict(top.context).get("troops_recruited") in (None, 0)
 
     # The next Agent turn's Combat deploy: only the two garrison troops.
-    placed = act(closed, "agent_turn", card_id=desert_planet, space_id="hagga_basin")
+    picked = act(closed, "choose_agent_card", card_id=desert_planet)
+    placed = act(picked, "place_agent", space_id="hagga_basin")
     counts = [
         dict(action.arguments)["count"]
         for action in legal_combat_deployments(placed, 0)

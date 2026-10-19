@@ -80,6 +80,7 @@ from dune_imperium.display import (
     agent_box_headers,
     agent_box_of_rows,
     agent_box_row_title,
+    agent_placements,
     effect_action_text,
     effect_action_text_ko,
     reveal_choice_headers,
@@ -88,6 +89,10 @@ from dune_imperium.display import (
 from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import (
+    agent_card_pick,
+    agent_space_pick_actions,
+)
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
@@ -123,6 +128,7 @@ from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.session_log import (
     SEALED_ACTION_IDS,
     SEALED_REVEAL_EVENTS,
+    SEALED_SHOWN_KEYS,
     LogEntry,
     LoggedStep,
     LoggedUndo,
@@ -165,6 +171,10 @@ SEARCH_SEAT: Final = "search"
 # The banner prompt once nothing mandatory is left in an Agent turn
 # (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
 AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
+# The banner prompt while the turn's Agent card is picked and waits for its
+# space (stage B1, OQ-111); the turn frame keeps its own prompt. That a card
+# was picked is public (the log shows the pick, sealed), which card is not.
+AGENT_SPACE_PROMPT: Final = "Choose a space for the Agent"
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): the Steam app's computer opponent
 # ``app_ai`` (Hard), ``app_ai_medium`` or ``app_ai_easy`` (about 1-2 ms a
@@ -1410,6 +1420,14 @@ class GameSessionManager:
         ``source`` argument's definition id to say whose it is. None, and
         no ``reveal_choice`` on any row, for any other decision; display
         only, a failure is logged and leaves them out.
+
+        ``agent_placements`` lists, while the seat may pick its Agent turn's
+        card (stage B1, OQ-111), every placement those card picks lead to
+        (``_serialize_placements``): the page's staged turn works on whole
+        placements as before the split and sends the card pick and then the
+        matching space pick. Each entry's ``undoable``, shortfall and
+        previews are those of both steps together. None for any other
+        decision; display only, a failure is logged and leaves it None.
         """
 
         actions = (
@@ -1423,7 +1441,18 @@ class GameSessionManager:
         headers: list[dict[str, object]] | None = None
         choices: list[dict[str, object]] | None = None
         choice_of: tuple[str | None, ...] = (None,) * len(actions)
+        placements: list[JsonValue] | None = None
         if actions:
+            try:
+                listed = agent_placements(session.state, seat, actions)
+                if listed is not None:
+                    placements = _serialize_placements(session, seat, actions, listed)
+            except Exception:
+                _LOGGER.exception(
+                    "Agent placements failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
             try:
                 unavailable = unavailable_choices(session.state, seat, actions)
             except Exception:
@@ -1477,6 +1506,7 @@ class GameSessionManager:
             "unavailable": None if unavailable is None else _jsonify(unavailable),
             "agent_boxes": None if headers is None else _jsonify(headers),
             "reveal_choices": None if choices is None else _jsonify(choices),
+            "agent_placements": placements,
         }
 
     def _online_seats_locked(self, session: GameSession) -> frozenset[int]:
@@ -2107,7 +2137,13 @@ class GameSessionManager:
                 # Nothing mandatory is left in the seat's Agent turn: it may
                 # still play a Plot, deploy or return a specimen, and ends
                 # the turn with its one press (OQ-095). Public facts only.
-                "prompt": AGENT_TURN_END_PROMPT if ready else pending.prompt,
+                "prompt": (
+                    AGENT_TURN_END_PROMPT
+                    if ready
+                    else AGENT_SPACE_PROMPT
+                    if agent_card_pick(state, pending.owner) is not None
+                    else pending.prompt
+                ),
                 "turn_end_ready": ready,
             }
             # The Persuasion still unspent in a Reveal, for the buyer's
@@ -2921,6 +2957,7 @@ def _log_entry_json(
             payload["values"] = list(step.values)
         return payload
     redact = not finished and step.actor != seat
+    shown = SEALED_SHOWN_KEYS.get(step.action_id) if redact and entry.sealed else None
     arguments = {
         key: (
             "(비공개)"
@@ -2928,6 +2965,7 @@ def _log_entry_json(
             else value
         )
         for key, value in step.arguments
+        if shown is None or key in shown
     }
     return {
         "index": index,
@@ -3099,7 +3137,31 @@ def _serialize_action(
     read off the action alone, and only the seat's own rows carry it.
     """
 
-    outcome = _dry_run(session, action)
+    serialized: JsonObject = {
+        "index": index,
+        "action_id": action.action_id,
+        "arguments": _jsonify(dict(action.arguments)),
+        "detail": effect_action_text(session.state, action),
+        "detail_ko": effect_action_text_ko(session.state, action),
+        **_dry_run_fields(session, action, _dry_run(session, action)),
+    }
+    if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
+        serialized["turn_start"] = True
+    title = agent_box_row_title(session.state, action)
+    if title is not None:
+        serialized["detail_title"], serialized["detail_title_ko"] = title
+    return serialized
+
+
+def _dry_run_fields(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> JsonObject:
+    """What a row says about its dry run: ``undoable``, ``sent_by_turn_end``,
+    the shortfall ``warning``/``shortfall``, ``strength_after`` and, when
+    they apply, ``reveal_preview`` and ``subcommittee_preview``
+    (``_serialize_action``). ``outcome`` is the dry run of ``action`` from
+    the session's state, None when the engine refused it."""
+
     # An explicit turn end, a turn-passing card and a step of a pressed end's
     # own follow-up seal the turn they end (``_settle_locked``).
     undoable = (
@@ -3118,11 +3180,6 @@ def _serialize_action(
     outcome = preview_outcome(action, outcome)
     shortfalls = shortfall_outcome(session.engine, outcome)
     serialized: JsonObject = {
-        "index": index,
-        "action_id": action.action_id,
-        "arguments": _jsonify(dict(action.arguments)),
-        "detail": effect_action_text(session.state, action),
-        "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
         "sent_by_turn_end": (
             not undoable
@@ -3136,17 +3193,69 @@ def _serialize_action(
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
-    if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
-        serialized["turn_start"] = True
-    title = agent_box_row_title(session.state, action)
-    if title is not None:
-        serialized["detail_title"], serialized["detail_title_ko"] = title
     revealed = reveal_preview(action, outcome)
     if revealed is not None:
         serialized["reveal_preview"] = revealed
     offer = subcommittee_preview(session, action, outcome)
     if offer is not None:
         serialized["subcommittee_preview"] = offer
+    return serialized
+
+
+def _serialize_placements(
+    session: GameSession,
+    seat: int,
+    actions: tuple[DomainAction, ...],
+    placements: tuple[tuple[int, DomainAction], ...],
+) -> list[JsonValue]:
+    """Serialize the placements an Agent-turn card pick leads to
+    (``display.actions.agent_placements``, stage B1).
+
+    Each entry is ``index`` (the card pick's row, which the page sends
+    first), ``placement`` (its position in this list, a key for the page),
+    ``arguments`` (the whole placement's) and what a row says about its dry
+    run (``_dry_run_fields``), here the dry run of both steps: the page
+    sends the card pick and then the space pick as one move, so whether it
+    can be taken back, its shortfalls and previews are the space pick's as
+    reached through the card pick. Each card pick is dry-run once for all
+    its placements.
+    """
+
+    engine = session.engine
+    picked: dict[int, tuple[RuleResult, tuple[DomainAction, ...]] | None] = {}
+    serialized: list[JsonValue] = []
+    for key, (row, placement) in enumerate(placements):
+        if row not in picked:
+            try:
+                result = engine.apply(
+                    session.state, actions[row], legal_actions=actions
+                )
+                after = RuleResult(state=result.state, events=result.events)
+                picked[row] = (after, engine.legal_actions(after.state, seat))
+            except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+                picked[row] = None
+        outcome: RuleResult | None = None
+        step = picked[row]
+        if step is not None:
+            after, legal = step
+            card, graft = agent_card_pick(after.state, seat) or ("", False)
+            try:
+                (space,) = agent_space_pick_actions(seat, (placement,), card, graft)
+                placed = engine.apply(after.state, space, legal_actions=legal)
+            except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+                pass
+            else:
+                outcome = RuleResult(
+                    state=placed.state, events=(*after.events, *placed.events)
+                )
+        serialized.append(
+            {
+                "index": row,
+                "placement": key,
+                "arguments": _jsonify(dict(placement.arguments)),
+                **_dry_run_fields(session, placement, outcome),
+            }
+        )
     return serialized
 
 

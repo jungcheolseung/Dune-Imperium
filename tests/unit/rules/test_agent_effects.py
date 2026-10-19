@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -56,7 +57,11 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
     resolve_faction_influence,
 )
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.board_effects import (
     apply_maker_space_action,
     apply_sietch_tabr_action,
@@ -1337,10 +1342,10 @@ def test_steersman_conflict_recall_updates_combat_strength_through_the_engine() 
     state = _steersman_conflict_state()
     placement = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments).get("space_id") == "deliver_supplies"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     assert placed.players[0].combat_strength == 2
 
     recall = next(
@@ -2576,7 +2581,7 @@ def test_bene_gesserit_operative_may_pass_up_the_recall_with_an_empty_supply() -
     # (finish_agent_turn), and before that the recall was forced.
     state, posts = _operative_state_with_every_spy_placed()
     engine = UprisingRulesEngine()
-    placed = engine.apply(state, _action_to(state, "secrets")).state
+    placed = apply_placement(engine, state, _action_to(state, "secrets")).state
 
     offered = {action.action_id for action in engine.legal_actions(placed, 0)}
     assert {"decline_agent_card_spy", "recall_spy_for_agent_card"} <= offered
@@ -2614,7 +2619,7 @@ def test_bene_gesserit_operative_spy_box_is_answered_before_the_turn_passes() ->
     state, _ = _operative_state_with_every_spy_placed()
     engine = UprisingRulesEngine()
     settled = _walk_past_other_effects(
-        engine, engine.apply(state, _action_to(state, "secrets")).state
+        engine, apply_placement(engine, state, _action_to(state, "secrets")).state
     )
 
     offered = {action.action_id for action in engine.legal_actions(settled, 0)}
@@ -2633,7 +2638,7 @@ def test_bene_gesserit_operative_must_place_once_it_recalled_first() -> None:
     state, posts = _operative_state_with_every_spy_placed()
     engine = UprisingRulesEngine()
     settled = _walk_past_other_effects(
-        engine, engine.apply(state, _action_to(state, "secrets")).state
+        engine, apply_placement(engine, state, _action_to(state, "secrets")).state
     )
     recall = DomainAction(
         action_id="recall_spy_for_agent_card",
@@ -3523,7 +3528,7 @@ def test_a_passed_up_agent_box_spy_stays_passed_after_a_plot_refills_the_supply(
     )
     state = _recall_card_state("bene_gesserit_operative", posts)
     engine = UprisingRulesEngine()
-    placed = engine.apply(state, _action_to(state, "secrets")).state
+    placed = apply_placement(engine, state, _action_to(state, "secrets")).state
     passed = engine.apply(
         placed, DomainAction(action_id="decline_agent_card_spy", actor=0)
     ).state
@@ -4321,7 +4326,8 @@ def test_long_live_the_fighters_can_start_after_board_draw_reshuffles_discard() 
     fourth = _instance("reconnaissance")
     state = _long_live_state((), discard_pile=(first, second, third, fourth))
     engine = UprisingRulesEngine()
-    placed = engine.apply(
+    placed = apply_placement(
+        engine,
         state,
         _action_to(state, "arrakeen"),
     ).state
@@ -6506,7 +6512,7 @@ def test_agent_card_spy_placement_needs_a_spy_in_supply_at_that_moment() -> None
         ),
     )
     engine = UprisingRulesEngine()
-    placed = engine.apply(state, _action_to(state, "espionage")).state
+    placed = apply_placement(engine, state, _action_to(state, "espionage")).state
 
     recalled = engine.apply(
         placed,

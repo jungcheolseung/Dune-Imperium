@@ -23,6 +23,7 @@ from dune_imperium.adapters.observation_encoding import (
     encode_player_view,
     segment_slice,
 )
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -41,6 +42,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.observation import observe_state
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import (
     FINISH_DEPLOYMENT_KEY,
     FINISH_RECRUITS_KEY,
@@ -137,10 +139,10 @@ def _at_dutiful_service(emperor: int = 3) -> GameState:
     state = _turn_state(owner)
     visit = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments).get("space_id") == "dutiful_service"
     )
-    return _apply(state, visit)
+    return apply_placement(ENGINE, state, visit).state
 
 
 def _reveal(owner: PlayerState | None = None) -> GameState:
@@ -251,11 +253,10 @@ def test_the_designers_imperial_privilege_example_is_now_allowed() -> None:
 
     visit = next(
         action
-        for action in ENGINE.legal_actions(reached, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "imperial_privilege"
+        for action in executable_placements(reached, 0)
+        if dict(action.arguments)["space_id"] == "imperial_privilege"
     )
-    sent = _apply(reached, visit)
+    sent = apply_placement(ENGINE, reached, visit).state
     # Gather Intelligence comes first, alone (its early return stays ahead).
     assert set(_ids(sent)) == {"decline_gather_intelligence", "gather_intelligence"}
     recalled = _apply(sent, _first(sent, "gather_intelligence"))

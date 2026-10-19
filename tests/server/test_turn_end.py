@@ -23,6 +23,7 @@ Every seed below was found by a scratch search over seeds, not guessed.
 """
 
 import random
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
@@ -30,6 +31,7 @@ from typing import Final
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -51,6 +53,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.state import canonical_state_hash
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import (
     _conflict_end_trigger_cards,
     _conflict_losses,
@@ -83,6 +86,11 @@ from dune_imperium.server.turn_end import (
     unit_over,
     unit_seat,
 )
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py); reached by path instead.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from server_placement import place_agent  # type: ignore[import-not-found]  # noqa: E402
 
 # The AI seats play the rubric-priced 2026-09-10 table pinned in the registry,
 # not ``heuristic`` (see tests/server/test_undo.py): the scripted seeds below
@@ -691,18 +699,17 @@ def test_a_usurp_trash_after_the_press_is_part_of_that_press(
         assert taken["confirmation"] is None
         return taken
 
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    take(
-        next(
-            a
-            for a in actions
-            if a["action_id"] == "agent_turn"
-            and _obj(a["arguments"]).get("card_id") == _USURP
-            and _obj(a["arguments"]).get("space_id") == space_id
-            and _obj(a["arguments"]).get("graft") is True
-            and "infiltrate_post_id" not in _obj(a["arguments"])
-        )
+    # The placement is a card pick and then a space pick (stage B1).
+    placed = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == _USURP
+        and arguments.get("space_id") == space_id
+        and arguments.get("graft") is True
+        and "infiltrate_post_id" not in arguments,
     )
+    assert placed["confirmation"] is None
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     summary = take(
         next(
@@ -840,15 +847,13 @@ def _holy_war_game(loser: PlayerState) -> tuple[GameSessionManager, str]:
     summary = manager.create_game(TWO_HUMANS, game_seed=0, bloodlines=True)
     game_id = str(summary["game_id"])
     manager._get(game_id).state = state
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    send = next(
-        a
-        for a in actions
-        if a["action_id"] == "agent_turn"
-        and _obj(a["arguments"]).get("card_id") == _HOLY_WAR
-        and _obj(a["arguments"]).get("space_id") == "assembly_hall"
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == _HOLY_WAR
+        and arguments.get("space_id") == "assembly_hall",
     )
-    summary = manager.apply_action(game_id, 0, 0, _int(send["index"]))
     # Assembly Hall's own Intrigue card first, so only the box is left.
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     board = next(a for a in actions if a["action_id"] == "resolve_board_effect")
@@ -986,14 +991,9 @@ def test_a_humans_own_covert_operation_does_not_hold_it_mid_turn() -> None:
     session = manager._get(game_id)
     session.state = state
 
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    agent_turn = next(
-        a
-        for a in actions
-        if a["action_id"] == "agent_turn"
-        and _obj(a["arguments"])["space_id"] == "assembly_hall"
+    summary = place_agent(
+        manager, game_id, 0, lambda arguments: arguments["space_id"] == "assembly_hall"
     )
-    summary = manager.apply_action(game_id, 0, 0, _int(agent_turn["index"]))
     assert summary["confirmation"] is None
 
     # Assembly Hall's own Gather Intelligence choice comes first and must be
@@ -1069,7 +1069,11 @@ def _covert_operation_game(
     game_id = str(summary["game_id"])
     manager._get(game_id).state = state
     summary = manager.summary(game_id)
-    for wanted in ("agent_turn", "decline_gather_intelligence", "resolve_board_effect"):
+    summary = place_agent(
+        manager, game_id, 0, lambda arguments: arguments["space_id"] == "assembly_hall"
+    )
+    assert summary["confirmation"] is None
+    for wanted in ("decline_gather_intelligence", "resolve_board_effect"):
         actions = _rows(manager.legal_actions(game_id, 0)["actions"])
         entry = next(
             a
@@ -1117,6 +1121,16 @@ def test_an_owed_emperor_track_spy_holds_the_turn_end_ready_flag() -> None:
     session.state = state
 
     def take(action_id: str, space_id: str | None = None) -> JsonObject:
+        if action_id == "agent_turn":
+            # A card pick and then a space pick (stage B1).
+            placed: JsonObject = place_agent(
+                manager,
+                game_id,
+                0,
+                lambda arguments: space_id is None
+                or arguments.get("space_id") == space_id,
+            )
+            return placed
         actions = _rows(manager.legal_actions(game_id, 0)["actions"])
         chosen = next(
             a
@@ -1185,6 +1199,14 @@ def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
     )
 
     def take(state: GameState, action_id: str, **arguments: object) -> GameState:
+        if action_id == "agent_turn":
+            # A card pick and then a space pick (stage B1).
+            placement = next(
+                action
+                for action in executable_placements(state, 0)
+                if all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+            )
+            return apply_placement(_ENGINE, state, placement).state
         action = next(
             action
             for action in _ENGINE.legal_actions(state, 0)
@@ -1245,6 +1267,14 @@ def _bought_glowglobes(influence: Influence) -> GameState:
     )
 
     def take(state: GameState, action_id: str, **arguments: object) -> GameState:
+        if action_id == "agent_turn":
+            # A card pick and then a space pick (stage B1).
+            placement = next(
+                action
+                for action in executable_placements(state, 0)
+                if all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+            )
+            return apply_placement(_ENGINE, state, placement).state
         action = next(
             action
             for action in _ENGINE.legal_actions(state, 0)
@@ -1347,14 +1377,13 @@ def _resolve_what_is_offered(
     )
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("card_id") == hand[0]
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("card_id") == hand[0]
         and dict(action.arguments).get("space_id") == space_id
         and (dict(action.arguments).get("graft") is True) == bool(graft_partner)
         and "cost_option" not in dict(action.arguments)
     )
-    state = _ENGINE.apply(state, place).state
+    state = apply_placement(_ENGINE, state, place).state
     if graft_partner is not None:
         partner = DomainAction(
             action_id="choose_graft_partner",
@@ -1604,14 +1633,17 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # first of 0-39 (round 8; 16, 20, 23, 28 and 36 reached it too). v146:
     # optional Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14),
     # which changes the random walk's legal lists; re-searched then, seed 2
-    # is the first of 0-59 (27 and 59 reach it too).
+    # is the first of 0-59 (27 and 59 reach it too). Codec v150 (stage B1,
+    # OQ-111): the Agent turn is a card pick and a space pick, which changes
+    # the walk's lists again; re-searched, seed 3 is the first of 0-59 (25,
+    # 26, 30, 37, 46, 49, 50 and 57 reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=2)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=3)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(2 * 9973 + 1)
+    rng = random.Random(3 * 9973 + 1)
 
     found = False
     for _ in range(6000):
@@ -1746,9 +1778,14 @@ def test_undoing_back_to_the_turn_start_closes_the_unit() -> None:
     session = manager._get(game_id)
     turn_start_revision = _int(summary["revision"])
 
+    # A placement is a card pick and then a space pick (stage B1): the pick
+    # alone takes no turn yet, the space opens the unit.
     summary = manager.apply_action(game_id, 0, turn_start_revision, 0)
-    assert session.open_units.get(0) == 0
+    assert 0 not in session.open_units
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
+    assert session.open_units.get(0) == 1
     window = next(row for row in _rows(summary["undo"]) if row["seat"] == 0)
+    assert window["steps"] == 2
 
     summary = manager.undo(
         game_id, 0, _int(summary["revision"]), _int(window["steps"])
@@ -1759,10 +1796,13 @@ def test_undoing_back_to_the_turn_start_closes_the_unit() -> None:
     decision = _obj(summary["decision"])
     assert decision["kind"] == "turn" and decision["owner"] == 0
 
-    # A different board space (index 1, not index 0) played to its natural
-    # end: the unit opens again, never holds, and the press closes it.
+    # A different card (index 1, not index 0) and its first space played to
+    # their natural end: the unit opens again, never holds, and the press
+    # closes it.
     summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 1)
-    assert session.open_units.get(0) == 0
+    assert 0 not in session.open_units
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
+    assert session.open_units.get(0) == 1
     presses = 0
     for _ in range(60):
         assert summary["confirmation"] is None
@@ -1818,7 +1858,9 @@ def test_undoing_a_leader_pick_closes_its_unit_and_a_new_pick_holds_once() -> No
 # policy for seat 0. v146: optional Agent-turn effects offer no refusal
 # (OQ-095 (2), 2026-10-14), which moved the reward-Spy seed 19 off its
 # shape; re-searched then, seed 20 is the first of 0-59 (23, 26, 35, 43
-# and 46 reach it too).
+# and 46 reach it too). Codec v150 (stage B1, OQ-111): the Agent turn is a
+# card pick and a space pick, which moves seat 0's walk off seed 20; seed 18
+# is the first of 0-59 now (34 and 40 reach it too).
 
 
 def _walk_to_held_end_before_chance(
@@ -1862,16 +1904,16 @@ def _seat0_undo(summary: JsonObject) -> list[dict[str, object]]:
 
 
 def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
-    # Seed 20, base game: seat 0's Conflict reward Spy is its unit's last
+    # Seed 18, base game: seat 0's Conflict reward Spy is its unit's last
     # step, and the next round opens by reshuffling seat 0's discard pile
     # (the "1007" shape). The press comes before that reshuffle, so the Spy
     # can still be taken back and put on another post.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=20)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=18)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     summary, choice, logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 20, "place_combat_reward_spy"
+        manager, game_id, summary, 18, "place_combat_reward_spy"
     )
 
     # The row told the seat it could take the Spy back, and it can: nothing
@@ -1900,7 +1942,7 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
         if row["action_id"] == "place_combat_reward_spy"
         and row["arguments"] != choice["arguments"]
     ]
-    assert posts, "seed 20 offers the reward Spy another post"
+    assert posts, "seed 18 offers the reward Spy another post"
     assert all(row["strength_after"] is None for row in posts)
     summary = manager.apply_action(
         game_id, 0, _int(summary["revision"]), _int(posts[0]["index"])
@@ -1920,15 +1962,18 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
 
 
 def test_a_scouts_line_holds_before_the_next_scouts_card() -> None:
-    # Seed 11, Arrakeen Scouts: seat 0 is the last to answer a mission, and
+    # Seed 44, Arrakeen Scouts: seat 0 is the last to answer a mission, and
     # the next item of the schedule is drawn right after (the "1007" shape
-    # of the second press). The press comes before that draw.
+    # of the second press). The press comes before that draw. (Seed 11 until
+    # codec v150, stage B1: the Agent turn is a card pick and a space pick,
+    # which moves seat 0's walk; of 0-199, seeds 44, 86, 101, 131, 175, 179,
+    # 183, 186 and 193 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=11, arrakeen_scouts=True)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=44, arrakeen_scouts=True)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     summary, choice, logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 11, "scouts_join_mission"
+        manager, game_id, summary, 44, "scouts_join_mission"
     )
 
     assert choice["undoable"] is True
@@ -1957,10 +2002,10 @@ def test_a_hold_before_a_chance_outcome_survives_save_and_restore() -> None:
     # hold, and pressing there plays on exactly as the live game does: the
     # reshuffle and every AI answer after it come out the same.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=20)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=18)
     game_id = str(summary["game_id"])
     summary, _choice, _logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 20, "place_combat_reward_spy"
+        manager, game_id, summary, 18, "place_combat_reward_spy"
     )
 
     restored = manager.restore_game(manager.save_game(game_id))
@@ -2284,12 +2329,15 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # 43 and 46 reach it too). Since the engine pauses before the Round
     # Start draw (rules/pauses.py, codec v140) the answer is held there for
     # the defender's press, as every unit end with something left to take
-    # back. Live and restored sessions must agree.
+    # back. Live and restored sessions must agree. Codec v150 (stage B1,
+    # OQ-111): the Agent turn is a card pick and a space pick, which moves
+    # the walk off seed 2; seed 0 is the first of 0-59 (18, 20, 34, 35, 44
+    # and 48 reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=2)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(2)
+    rng = random.Random(0)
 
     found = False
     choice: dict[str, object] = {}
@@ -2864,15 +2912,19 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
     # meets a case (on the previous commit's engine it does at step 374,
     # round 8, seat 0's reward beside seat 2); 96 is the first seed after it
     # whose walk does (step 368, round 8, seat 0's reward beside seat 2).
+    # Seed 10 since codec v150 (stage B1, OQ-111: the Agent turn is a card
+    # pick and a space pick, which moves every random walk): searched from 0
+    # under this whole test, 10 is the first, and 37, 45, 47, 51, 66, 67, 79
+    # and 92 of 0-95 reach it too.
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
-        game_seed=96,
+        game_seed=10,
         immortality=True,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(96)
+    rng = random.Random(10)
     compared = 0
     for _ in range(9000):
         if summary["finished"]:

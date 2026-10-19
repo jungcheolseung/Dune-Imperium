@@ -153,7 +153,10 @@ def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
 
 
 def _place(state: GameState, space_id: str) -> GameState:
-    return _apply(state, "agent_turn", card_id=CONTROL, space_id=space_id)
+    """The Agent turn's two steps (stage B1): pick the card, then the space."""
+
+    picked = _apply(state, "choose_agent_card", card_id=CONTROL)
+    return _apply(picked, "place_agent", space_id=space_id)
 
 
 def _ids(state: GameState) -> set[str]:
@@ -204,10 +207,11 @@ def test_control_the_spice_goes_only_to_spice_trade_spaces() -> None:
         influence=Influence(spacing_guild=2),
     )
 
+    picked = _apply(_state(owner), "choose_agent_card", card_id=CONTROL)
     spaces = {
         dict(action.arguments)["space_id"]
-        for action in _legal(_state(owner))
-        if action.action_id == "agent_turn"
+        for action in _legal(picked)
+        if action.action_id == "place_agent"
     }
 
     assert spaces == SPICE_TRADE_SPACES

@@ -98,7 +98,10 @@ def _act(state: GameState, action_id: str, **arguments: object) -> GameState:
 
 
 def _send_agent(state: GameState, space_id: str) -> GameState:
-    return _act(state, "agent_turn", card_id=DIPLOMACY, space_id=space_id)
+    """Send the Diplomacy to ``space_id``: the Agent turn's two steps (B1)."""
+
+    picked = _act(state, "choose_agent_card", card_id=DIPLOMACY)
+    return _act(picked, "place_agent", space_id=space_id)
 
 
 def _acquire_servo(state: GameState) -> GameState:

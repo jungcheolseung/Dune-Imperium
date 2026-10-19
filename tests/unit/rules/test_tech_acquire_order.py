@@ -11,6 +11,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.board import Faction
@@ -26,6 +27,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.tech import (
@@ -83,7 +85,15 @@ def buy(state: GameState, tech_id: str) -> GameState:
 
 
 def place(state: GameState) -> GameState:
-    return act(state, "agent_turn", space_id="assembly_hall")
+    """The first placement at the Assembly Hall, as the Agent turn's two steps
+    (stage B1)."""
+
+    placement = next(
+        placement
+        for placement in executable_placements(state, 0)
+        if dict(placement.arguments)["space_id"] == "assembly_hall"
+    )
+    return apply_placement(ENGINE, state, placement).state
 
 
 @pytest.mark.parametrize("tech_id", ["glowglobes", "navigation_chamber"])

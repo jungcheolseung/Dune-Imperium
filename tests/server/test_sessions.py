@@ -2,14 +2,17 @@
 
 import json
 import logging
+import sys
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.server.sessions import (
     GameSessionManager,
     JsonObject,
@@ -18,6 +21,14 @@ from dune_imperium.server.sessions import (
     StaleRevisionError,
     UnknownGameError,
     _serialize_view,
+)
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py); reached by path instead.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from server_placement import (  # type: ignore[import-not-found]  # noqa: E402
+    place_agent,
+    placements_of,
 )
 
 ALL_AI = ("heuristic", "random", "heuristic", "random")
@@ -214,14 +225,16 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=21)
     game_id = _text(summary["game_id"])
-    placements = _rows(manager.legal_actions(game_id, 0)["actions"])
-    assert all(entry["detail"] is None for entry in placements)
-    assert all(entry["detail_ko"] is None for entry in placements)
-    assert _obj(placements[0]["arguments"])["space_id"] == "assembly_hall"
+    listing = manager.legal_actions(game_id, 0)
+    rows = _rows(listing["actions"])
+    assert all(entry["detail"] is None for entry in rows)
+    assert all(entry["detail_ko"] is None for entry in rows)
+    # Stage B1: a placement is a card pick and then a space pick; the first
+    # placement is the Dagger to Assembly Hall.
+    first = placements_of(listing)[0]
+    assert _obj(first["arguments"])["space_id"] == "assembly_hall"
 
-    summary = manager.apply_action(
-        game_id, seat=0, revision=_int(summary["revision"]), index=0
-    )
+    summary = place_agent(manager, game_id, 0, lambda arguments: True)
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     assert [
         (entry["action_id"], _obj(entry["arguments"])["effect"], entry["detail"])
@@ -253,23 +266,26 @@ def _play_until(
         if summary.get("confirmation") == 0:
             manager.confirm_turn(game_id, 0, _int(summary["revision"]))
             continue
-        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        listing = manager.legal_actions(game_id, 0)
+        actions = _rows(listing["actions"])
         if any(entry["action_id"] == wanted for entry in actions):
             return actions
-        chosen = next(
-            (
-                entry
-                for entry in actions
-                if entry["action_id"] == "agent_turn"
-                and _obj(entry["arguments"]).get("space_id") in prefer
-            ),
-            actions[0],
-        )
+        # A placement is a card pick and then a space pick (stage B1): a
+        # preferred space is reached by both posts, any other step by the
+        # first row.
+        if any(
+            _obj(entry["arguments"]).get("space_id") in prefer
+            for entry in placements_of(listing)
+        ):
+            place_agent(
+                manager, game_id, 0, lambda arguments: arguments["space_id"] in prefer
+            )
+            continue
         manager.apply_action(
             game_id,
             seat=0,
             revision=_int(summary["revision"]),
-            index=_int(chosen["index"]),
+            index=_int(actions[0]["index"]),
         )
     raise AssertionError(f"{wanted} was never offered")
 
@@ -956,10 +972,10 @@ def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> No
         state = GameState(**values)  # type: ignore[arg-type]
         place = next(
             action
-            for action in engine.legal_actions(state, 0)
+            for action in executable_placements(state, 0)
             if dict(action.arguments).get("space_id") == "assembly_hall"
         )
-        return engine.apply(state, place).state
+        return apply_placement(engine, state, place).state
 
     def warnings(state: GameState) -> dict[str, tuple[object, object]]:
         session = SimpleNamespace(engine=engine, state=state)
@@ -1108,10 +1124,10 @@ def test_imperial_privilege_trash_then_draw_is_not_warned_short() -> None:
     )
     place = next(
         action
-        for action in engine.legal_actions(turn, 0)
+        for action in executable_placements(turn, 0)
         if dict(action.arguments).get("space_id") == "imperial_privilege"
     )
-    state = engine.apply(turn, place).state
+    state = apply_placement(engine, turn, place).state
 
     def warnings(state: GameState) -> dict[str, tuple[object, object]]:
         session = SimpleNamespace(engine=engine, state=state)
@@ -1205,10 +1221,10 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
     )
     place = next(
         action
-        for action in engine.legal_actions(turn, 0)
+        for action in executable_placements(turn, 0)
         if dict(action.arguments).get("space_id") == "imperial_privilege"
     )
-    state = engine.apply(turn, place).state
+    state = apply_placement(engine, turn, place).state
 
     def warnings(state: GameState) -> dict[str, tuple[object, object]]:
         session = SimpleNamespace(engine=engine, state=state)
@@ -1444,11 +1460,10 @@ def test_serialized_agent_box_rows_name_the_card_and_its_box() -> None:
     engine = UprisingRulesEngine()
     place = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "dutiful_service"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "dutiful_service"
     )
-    placed = engine.apply(state, place).state
+    placed = apply_placement(engine, state, place).state
     session = SimpleNamespace(engine=engine, state=placed)
     rows = [
         _serialize_action(index, action, session)  # type: ignore[arg-type]
@@ -1516,12 +1531,11 @@ def test_serialized_control_the_spice_payment_says_what_it_buys() -> None:
     # Accept Contract: a Spice Trade space, Control the Spice's Agent icon.
     placement = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)
         == {"card_id": control, "space_id": "accept_contract"}
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     session = SimpleNamespace(engine=engine, state=placed)
     details = {
         entry["action_id"]: (entry["detail"], entry["detail_ko"])

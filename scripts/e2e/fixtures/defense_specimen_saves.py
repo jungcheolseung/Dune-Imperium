@@ -63,8 +63,8 @@ for seed in (179, *range(60)):
                 )
                 sys.exit(0)
         actions = session.engine.legal_actions(state, owner)
-        chosen = agents[owner].choose_action(
-            session.engine.observe(state, owner), actions
+        chosen = agents[owner].choose_action_with_state(
+            state, session.engine.observe(state, owner), actions
         )
         summary = manager.apply_action(
             gid, owner, summary["revision"], actions.index(chosen)

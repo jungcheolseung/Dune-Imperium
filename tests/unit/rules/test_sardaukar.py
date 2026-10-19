@@ -1494,6 +1494,10 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 140  # v147: the ``source``-named Reveal choice rows
         - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the base catalog's 1,763 ``agent_turn`` rows
+        # become 129 card and space picks.
+        - 1763
+        + 129
     )
 
     actions = (

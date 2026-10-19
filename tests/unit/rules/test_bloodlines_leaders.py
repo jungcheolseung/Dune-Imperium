@@ -11,6 +11,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -26,7 +27,11 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.board_effects import (
     apply_maker_space_action,
     legal_board_effect_actions,
@@ -993,10 +998,10 @@ def test_sardaukar_ii_conflict_recall_updates_combat_strength_through_the_engine
     state = _turn_state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
     placement = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments).get("space_id") == "sardaukar"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     assert placed.players[0].combat_strength == 2
 
     completion = next(

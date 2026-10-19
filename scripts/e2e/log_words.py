@@ -141,7 +141,13 @@ GAMES = (
     # first (again with Family Atomics, the Feyd track, research, the three
     # v146 events and v147's unused Reveal choice and Reveal choice rows; the
     # exchanged Influence stays with seed 25).
-    {"seats": ["random"] * 4, "game_seed": 22, "policy_seed": 22, **EVERY_EXPANSION},
+    # Stage B1 (codec v150) asks an Agent turn as a card pick and then a space
+    # pick, so random seats draw the card and the space in turn and seed 22
+    # loses its Secrets steal. A headless scan of the same games over random
+    # seeds 1-120 (2026-10-19) finds seed 39 first with the steal and Family
+    # Atomics, the Feyd track, research, the three v146 events and v147's
+    # unused Reveal choice and Reveal choice rows.
+    {"seats": ["random"] * 4, "game_seed": 39, "policy_seed": 39, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -178,10 +184,18 @@ GAMES = (
     # modifier, Clear the Market, a mission's pieces and troops, an auction
     # won, Mercenaries, the secret picks revealed and Mating Season; seed 22
     # has the round modifier and the mission troops).
+    # Stage B1 (codec v150: random seats draw an Agent turn's card and space
+    # in turn) moves seed 106 off the mission troops and Mercenaries, and
+    # seed 22 below off them too; no seed of 1-160 pairs with seed 22 again.
+    # A headless scan of the Scouts games over random seeds 1-160
+    # (2026-10-19) finds the pair 2 and 13 first that reaches every Scouts
+    # surface (seed 2: Clear the Market, Mercenaries, the secret picks
+    # revealed and an auction won; seed 13 below: a round modifier, Mating
+    # Season, a mission's pieces and troops and an auction won).
     {
         "seats": ["random"] * 4,
-        "game_seed": 106,
-        "policy_seed": 106,
+        "game_seed": 2,
+        "policy_seed": 2,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -216,8 +230,10 @@ GAMES = (
         # mission troops and an auction won.
         # Codec v146 moves seed 22 off Mating Season (the game above has it);
         # it keeps the round modifier, mission troops and an auction won.
-        "game_seed": 22,
-        "policy_seed": 22,
+        # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
+        # above (see there).
+        "game_seed": 13,
+        "policy_seed": 13,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

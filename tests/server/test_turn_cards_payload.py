@@ -30,6 +30,7 @@ from typing import Any
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import encode_player_view
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -49,7 +50,7 @@ from dune_imperium.core.observation import (
     PrivatePlayerView,
     PublicPlayerView,
 )
-from dune_imperium.rules.agent_turn import legal_agent_actions
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import legal_graft_partner_actions
@@ -127,13 +128,13 @@ def _place(
 ) -> GameState:
     action = next(
         action
-        for action in legal_agent_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments)["card_id"] == card_id
         and dict(action.arguments)["space_id"] == space_id
         and (dict(action.arguments).get("graft") is True) == graft
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    return ENGINE.apply(state, action).state
+    return apply_placement(ENGINE, state, action).state
 
 
 def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> GameState:
@@ -434,7 +435,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 603 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 185 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -459,12 +460,16 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     turn goes on, which moved the walk off seed 763. Searched from 0 under
     this whole test, seed 538 is the first, through an Agent card's Research
     (Bene Tleilax Researcher, c3r3), and 603 the first through the Research
-    Station: seat 2, round 8, Research c3r3, "trash and specimen".)"""
+    Station: seat 2, round 8, Research c3r3, "trash and specimen". Codec v150
+    (stage B1, OQ-111): the Agent turn is a card pick and a space pick, so
+    every random walk is a different one; searched from 0 for the position
+    (walk only), seed 185 is the first, and 227 and 682 of 0-899 reach it
+    too.)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 603, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 185, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:7", "reserve:prepare_the_way:0")
+    assert (card, earlier) == ("reserve:prepare_the_way:4", "reserve:prepare_the_way:7")
     session = manager._get(game_id)
     before = (
         session.state,

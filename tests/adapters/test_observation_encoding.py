@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 32
+    assert OBSERVATION_VERSION == 33
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -78,6 +78,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # flag each, 4 columns (4,533 -> 4,537; docs/graft-boxes-plan.md 4.7).
     # v32: each relative seat's deck pool, one count per personal-card
     # identity, 4 x 139 columns (4,537 -> 5,093; OQ-010 ruling 6).
+    # v33: the seat's own picked Agent card (one count per personal-card
+    # identity) and its graft flag, 139 + 1 columns (5,093 -> 5,233; stage
+    # B1, OQ-111).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -109,8 +112,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4
         + 4
         + 4 * 139
+        + 139
+        + 1
     )
-    assert OBSERVATION_SIZE == 5_093
+    assert OBSERVATION_SIZE == 5_233
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -144,7 +149,16 @@ def test_layout_is_versioned_and_contiguous() -> None:
             segment_slice(f"seat{seat}_deck_pool").stop
             == segment_slice(f"seat{seat + 1}_deck_pool").start
         )
-    assert segment_slice("seat3_deck_pool").stop == OBSERVATION_SIZE
+    # v33 appends the picked Agent card and its graft flag last.
+    assert (
+        segment_slice("seat3_deck_pool").stop
+        == segment_slice("private_agent_card_pick").start
+    )
+    assert (
+        segment_slice("private_agent_card_pick").stop
+        == segment_slice("private_agent_card_pick_graft").start
+    )
+    assert segment_slice("private_agent_card_pick_graft").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -187,6 +201,35 @@ def test_waiting_shortfalls_use_the_appended_columns_by_relative_seat() -> None:
     assert encode_player_view(engine.observe(state, 1))[columns] == (
         2, 1, 0, 0, 0, 0, 0, 0,
     )
+
+
+def test_the_picked_agent_card_is_encoded_for_its_own_seat_only() -> None:
+    # v33 (stage B1, OQ-111): the Agent turn is a card pick and then a space
+    # pick, and the seat deciding the space sees the card it picked; no other
+    # seat's vector holds it.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=5)
+    assert state.first_player is not None
+    owner = state.first_player
+    pick = next(
+        action
+        for action in engine.legal_actions(state, owner)
+        if action.action_id == "choose_agent_card"
+    )
+    picked = engine.apply(state, pick).state
+
+    card_columns = segment_slice("private_agent_card_pick")
+    graft_column = segment_slice("private_agent_card_pick_graft")
+    before = encode_player_view(engine.observe(state, owner))
+    assert not any(before[card_columns]) and not any(before[graft_column])
+    for observer in range(4):
+        encoded = encode_player_view(engine.observe(picked, observer))
+        if observer == owner:
+            assert sum(encoded[card_columns]) == 1
+            assert tuple(encoded[graft_column]) == (0,)
+        else:
+            assert not any(encoded[card_columns])
+            assert not any(encoded[graft_column])
 
 
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
@@ -704,21 +747,32 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # previous commit (02886db5) reproduces the pin just above, and the decision
 # trace is again equal at every decision (3,484 vectors); the views at the
 # same three windows now show the Conflict card already won.
+# Re-pinned for observation v33 and codec v150 (stage B1, OQ-111): the Agent
+# turn is a card pick and then a space pick, and the seat deciding the space
+# sees its picked card in the appended ``private_agent_card_pick`` and
+# ``..._graft`` columns. A random seat now draws its card from the picks and
+# then its space from the picked card's placements, so every game's
+# trajectory moves at its first Agent turn (decision 0 or 1) and no earlier
+# pin can be reproduced from these games. What was checked instead: the
+# columns are nonzero only in the picking seat's own vector at its space
+# pick (base 65 vectors, choam 55, promo_bloodlines_tech 55, everything 62,
+# draft 64, scouts 59; none in another seat's), and the encoder files differ
+# from the v32 ones only by the appended segments.
 _GOLDEN_DIGESTS = {
-    "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
-    "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
+    "base": ("84e83acda31343e17043af4c40552f6aa751c49ebb9faf88ae92be4db672b0c6", 2772),
+    "choam": ("e6a48d74cf8d650327ea625a07faf9061a6353a79a9ab33cf7e3b64944d537fb", 2404),
     "promo_bloodlines_tech": (
-        "01f019b151058725d311914a27cc186130431739da940c456cf7efc99cd7bccb",
-        3160,
+        "d58785f83f360b72d10c5dc8c5971ac3c2e36ccdbff32ef02fa3b8d3590f27a5",
+        2956,
     ),
     "everything": (
-        "6e3062f46938aeb93b72abc7d6f27fabb452faf2993ee430eed04ccb2acc952e",
-        3484,
+        "b2b84c09d1fd3c6dca91fffd0b245743c0232a582d106b27c336180ca2914e3f",
+        3136,
     ),
-    "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),
+    "draft": ("ffc7c4f1a1b20f979ef1ff7609fa06519e6a204f6c8ad15b3646397dd8e54e08", 2680),
     "scouts": (
-        "8af0f0e6c1b3297e146d044a4cfd592a6720745d3e8735c22a13c5089d1f087a",
-        3028,
+        "aec89899367c8f59a851ea946b8ad75ea48d4e0262b7c55b70b91b4f945c4fab",
+        2740,
     ),
 }
 _GOLDEN_CONFIGS = {

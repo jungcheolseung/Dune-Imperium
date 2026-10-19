@@ -2,10 +2,11 @@
 
 Each test reaches a real Agent turn (the first turn of a game, with the
 deciding seat's hand, resources and board pieces adjusted, then a real
-``agent_turn``), builds the ``DecisionRun`` the agent would build, and
-asserts the exact action the window answers. Profile values a branch depends
-on are pinned on the fresh ``Profile`` instance. ``intrigue_play_sources``
-(another window's, possibly unfinished) is stubbed.
+Agent-turn placement: its card pick and its space pick), builds the
+``DecisionRun`` the agent would build, and asserts the exact action the window
+answers. Profile values a branch depends on are pinned on the fresh
+``Profile`` instance. ``intrigue_play_sources`` (another window's, possibly
+unfinished) is stubbed.
 """
 
 import random
@@ -16,6 +17,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.agent import AppAIAgent
 from dune_imperium.agents.app_ai.context import Board
@@ -37,6 +39,7 @@ from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.evaluation.tournament import rotated_leader_ids
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
@@ -98,6 +101,18 @@ def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
     return _settle(ENGINE.apply(state, action, legal_actions=legal).state)
 
 
+def _send(state: GameState, seat: int, ref: str, space: str) -> GameState:
+    """Send the card ``ref`` of ``seat`` to ``space``: the first placement
+    among ``executable_placements`` that does it, applied as the card pick
+    and the space pick."""
+
+    for placement in executable_placements(state, seat):
+        args = dict(placement.arguments)
+        if args.get("card_id") == ref and args.get("space_id") == space:
+            return _settle(apply_placement(ENGINE, state, placement).state)
+    raise AssertionError(f"{ref} cannot go to {space}")
+
+
 def _place(
     card: str,
     space: str,
@@ -118,17 +133,7 @@ def _place(
         state = with_player(state, seat, **changes)
     if state_changes:
         state = with_state(state, **state_changes)
-    legal = ENGINE.legal_actions(state, seat)
-    for action in legal:
-        args = dict(action.arguments)
-        if (
-            action.action_id == "agent_turn"
-            and args.get("card_id") == ref
-            and args.get("space_id") == space
-        ):
-            state = ENGINE.apply(state, action, legal_actions=legal).state
-            return _settle(state), seat, ref
-    raise AssertionError(f"{card} cannot go to {space}")
+    return _send(state, seat, ref, space), seat, ref
 
 
 def _run(
@@ -1743,15 +1748,7 @@ def _holding(
     )
     state = with_player(state, seat, active_contract_ids=contracts)
     state, ref = _take(state, seat, "reconnaissance")
-    legal = ENGINE.legal_actions(state, seat)
-    action = next(
-        a
-        for a in legal
-        if a.action_id == "agent_turn"
-        and dict(a.arguments).get("card_id") == ref
-        and dict(a.arguments).get("space_id") == "arrakeen"
-    )
-    return _apply(state, seat, action), seat
+    return _send(state, seat, ref, "arrakeen"), seat
 
 
 def test_plain_contracts_run_immediately_spy_contracts_wait() -> None:
@@ -1795,13 +1792,7 @@ def test_recall_agent_contract_offers_the_other_agents() -> None:
         resources=Resources(solari=0, spice=4, water=1),
     )
     state, ref = _take(state, seat, "diplomacy")
-    action = next(
-        a
-        for a in ENGINE.legal_actions(state, seat)
-        if dict(a.arguments).get("card_id") == ref
-        and dict(a.arguments).get("space_id") == "sardaukar"
-    )
-    state = _apply(state, seat, action)
+    state = _send(state, seat, ref, "sardaukar")
     assert state.players[seat].agent_locations == ("arrakeen", "sardaukar")
     offered: list[tuple[str, ...]] = []
 
@@ -1857,13 +1848,7 @@ def test_contract_runs_before_a_clearing_influence_step() -> None:
             resources=Resources(solari=0, spice=1, water=1),
         )
         state, ref = _take(state, seat, "diplomacy")
-        action = next(
-            a
-            for a in ENGINE.legal_actions(state, seat)
-            if dict(a.arguments).get("card_id") == ref
-            and dict(a.arguments).get("space_id") == "espionage"
-        )
-        state = _apply(state, seat, action)
+        state = _send(state, seat, ref, "espionage")
         taken, _ = _drive(
             state, seat, {**NO_DEPLOY, "spy_value": _summer(1.0)}, limit=3
         )
@@ -1949,13 +1934,7 @@ def _contract_turn(card: str, bene_gesserit: int) -> list[str]:
         influence=Influence(bene_gesserit=bene_gesserit),
     )
     state, ref = _take(state, seat, card)
-    action = next(
-        a
-        for a in ENGINE.legal_actions(state, seat)
-        if dict(a.arguments).get("card_id") == ref
-        and dict(a.arguments).get("space_id") == "deliver_supplies"
-    )
-    taken, _ = _drive(_apply(state, seat, action), seat, NO_DEPLOY)
+    taken, _ = _drive(_send(state, seat, ref, "deliver_supplies"), seat, NO_DEPLOY)
     return _ids(taken)
 
 

@@ -159,13 +159,16 @@ LINES_JS = """(() => {
 
 
 # CHOOSE_JS steered to the High Council: send an Agent there whenever the
-# seat can, then take the seat.
+# seat can, then take the seat. An Agent turn is two steps: the placement's
+# card pick first, then (at the next call, with the card picked) the space
+# pick that completes it.
 COUNCIL_JS = CHOOSE_JS.replace(
     "  const own = state.view.private || {};",
-    """  const council = actions.findIndex((a) =>
-    (a.action_id === 'agent_turn' && a.arguments.space_id === 'high_council')
-    || (a.action_id === 'resolve_board_effect'
-        && a.arguments.effect === 'high_council'));
+    """  const placed = placementActions().find(
+    (a) => a.arguments.space_id === 'high_council');
+  const council = placed ? (placed.pickIndex ?? placed.index)
+    : actions.findIndex((a) => a.action_id === 'resolve_board_effect'
+        && a.arguments.effect === 'high_council');
   if (council >= 0) return council;
   const own = state.view.private || {};""",
 )

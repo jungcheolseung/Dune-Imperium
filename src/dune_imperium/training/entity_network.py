@@ -87,6 +87,7 @@ _ZONE_VOCABULARY: Final = {
     "trashed": "personal",
     "private_hand": "personal",
     "private_peeked_card": "personal",
+    "private_agent_card_pick": "personal",
     "imperium_removed": "personal",
     "intrigue_resolving": "intrigue",
     "intrigue_discard": "intrigue",

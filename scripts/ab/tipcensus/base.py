@@ -24,6 +24,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.evaluation.tournament import MatchSpec
+from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.endgame import FinalStanding
 
 Columns = dict[str, Any]
@@ -56,6 +57,28 @@ def arguments(action: DomainAction) -> dict[str, Any]:
     """The action arguments as a dict."""
 
     return dict(action.arguments)
+
+
+def placement(s: Step) -> dict[str, Any] | None:
+    """The Agent placement the step made, as card-and-space arguments: since
+    stage B1 the space pick (``place_agent``), with the card picked a step
+    earlier and waiting in the turn frame. None for any other step."""
+
+    if s.action is None or s.action.action_id != "place_agent":
+        return None
+    pick = agent_card_pick(s.pre, s.action.actor)
+    if pick is None:
+        return None
+    card, graft = pick
+    grafted = {"graft": True} if graft else {}
+    return {**arguments(s.action), "card_id": card, **grafted}
+
+
+def agent_turn_offered(s: Step) -> bool:
+    """Whether the step's decision offers an Agent turn (its card pick, or
+    the picked card's space pick)."""
+
+    return any(a.action_id in ("choose_agent_card", "place_agent") for a in s.legal)
 
 
 class Collector:

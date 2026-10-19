@@ -39,8 +39,17 @@ from dune_imperium.core.state import GameState
 # Actions whose arguments are the acting seat's secret: Arrakeen Scouts'
 # secret pick and sealed bid (docs/rules/arrakeen-scouts.md 7, 8.1). A
 # single action id carries the value in its arguments, so the id itself
-# tells nothing.
-SEALED_ACTION_IDS: Final = frozenset({"scouts_secret_pick", "scouts_bid"})
+# tells nothing. An Agent turn's card pick is sealed too (stage B1, OQ-111
+# (1): only its seat sees it until the space pick plays the card): its card
+# may be one the table already knows in hand, and its graft choice is no
+# card at all, so redacting the hidden card ids alone would leave them.
+SEALED_ACTION_IDS: Final = frozenset(
+    {"scouts_secret_pick", "scouts_bid", "choose_agent_card"}
+)
+# The argument keys a sealed step shows other seats, redacted, when only
+# some of its choices carry the rest: a card pick with ``graft`` would say
+# it is a graft by its keys alone. Any other sealed step shows all its keys.
+SEALED_SHOWN_KEYS: Final = {"choose_agent_card": ("card_id",)}
 # Events of the step that reveals sealed choices when they fall due.
 SEALED_REVEAL_EVENTS: Final = frozenset(
     {"scouts_secret_revealed", "scouts_bid_revealed"}

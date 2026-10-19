@@ -61,8 +61,8 @@ for seed in range(30):
         if len(found) == 2:
             print(json.dumps(found))
             sys.exit(0)
-        chosen = agents[owner].choose_action(
-            session.engine.observe(session.state, owner), actions
+        chosen = agents[owner].choose_action_with_state(
+            session.state, session.engine.observe(session.state, owner), actions
         )
         summary = manager.apply_action(
             gid, owner, summary["revision"], actions.index(chosen)

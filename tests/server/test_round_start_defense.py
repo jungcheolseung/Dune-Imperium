@@ -50,18 +50,21 @@ def _int(value: object) -> int:
 
 
 def test_a_human_defender_answers_before_the_draw_and_may_take_it_back() -> None:
-    # Same walk as test_turn_end's restore test: seed 2 reaches a seat-0
-    # Control defense under an rng.Random(2).choice policy.
+    # Same walk as test_turn_end's restore test: seed 0 reaches a seat-0
+    # Control defense under an rng.Random(0).choice policy.
     # (Re-searched 2026-10-01: every Agent turn now waits for its owner's
     # finish_agent_turn (OQ-095), which moved seed 13 off it; 0, 7, 12, 22
     # and 23 of 0-39 reached it. Re-searched 2026-10-14 -- v146: optional
     # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
-    # moved seed 0 off it; 2, 20, 26, 35, 43 and 46 of 0-59 reach it.)
+    # moved seed 0 off it; 2, 20, 26, 35, 43 and 46 of 0-59 reach it.
+    # Codec v150 (stage B1, OQ-111): the Agent turn is a card pick and a
+    # space pick, which moves the walk off seed 2; seed 0 is the first of 0-59
+    # again (18, 20, 34, 35, 44 and 48 reach it too).)
     manager = GameSessionManager()
-    summary: JsonObject = manager.create_game(HUMAN_FIRST, game_seed=2)
+    summary: JsonObject = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(2)
+    rng = random.Random(0)
 
     found = False
     for _ in range(40_000):

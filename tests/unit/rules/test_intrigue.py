@@ -9,6 +9,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents import HeuristicAgent
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     DeployFromGarrison,
@@ -47,7 +48,11 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
 )
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effect_interpreter import OptionBlock, option_unplayable_reason
 from dune_imperium.rules.effects import spice_gained_this_turn
@@ -692,11 +697,10 @@ def test_troops_recruited_before_placing_the_agent_may_still_be_deployed() -> No
     assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 1
     to_arrakeen = next(
         action
-        for action in engine.legal_actions(recruited, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "arrakeen"
+        for action in executable_placements(recruited, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
     )
-    placed = engine.apply(recruited, to_arrakeen).state
+    placed = apply_placement(engine, recruited, to_arrakeen).state
 
     assert dict(placed.decision_stack[-1].context)["troops_recruited"] == 1
     deployments = {
@@ -724,11 +728,10 @@ def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
     engine = UprisingRulesEngine()
     to_arrakeen = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "arrakeen"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
     )
-    placed = engine.apply(state, to_arrakeen).state
+    placed = apply_placement(engine, state, to_arrakeen).state
     assert placed.players[0].spice_spent_turn == 0
     assert spice_gained_this_turn(placed.players[0]) == 0
 
@@ -1278,11 +1281,10 @@ def test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision() ->
     engine = UprisingRulesEngine()
     to_hall = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "assembly_hall"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "assembly_hall"
     )
-    placed = engine.apply(state, to_hall).state
+    placed = apply_placement(engine, state, to_hall).state
 
     pending = engine.apply(placed, _board_icon_action("intrigue"))
     decision = pending.next_decision
@@ -1314,11 +1316,10 @@ def test_owed_intrigue_draw_stops_short_with_nothing_to_shuffle() -> None:
     engine = UprisingRulesEngine()
     to_hall = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "assembly_hall"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "assembly_hall"
     )
-    placed = engine.apply(state, to_hall).state
+    placed = apply_placement(engine, state, to_hall).state
 
     done = engine.apply(placed, _board_icon_action("intrigue"))
 
@@ -1770,7 +1771,8 @@ def test_cunning_trash_of_eliminate_allies_before_placement_joins_the_combat_tur
     assert trashed.players[0].troops_garrison == 3 + 2
     assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
 
-    placed = engine.apply(
+    placed = apply_placement(
+        engine,
         trashed,
         next(
             a
@@ -3497,7 +3499,7 @@ def _deployed_three_at_arrakeen(
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "arrakeen"
     )
-    placed = engine.apply(state, to_arrakeen).state
+    placed = apply_placement(engine, state, to_arrakeen).state
     # Recruit one troop by Plot so three troops may be deployed [Main p. 12].
     recruited = engine.apply(
         placed, _play(placed, _intrigue("shaddam_s_favor"))

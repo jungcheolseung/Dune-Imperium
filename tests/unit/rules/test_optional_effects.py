@@ -10,6 +10,7 @@ refusal and does not hold the end back; the press lapses it.
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -24,6 +25,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
@@ -81,13 +83,12 @@ def _send(state: GameState, space_id: str, card_id: str | None = None) -> GameSt
 
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == space_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
         and (card_id is None or dict(action.arguments)["card_id"] == card_id)
         and len(action.arguments) == 2
     )
-    state = ENGINE.apply(state, placement).state
+    state = apply_placement(ENGINE, state, placement).state
     while True:
         step = next(
             (
@@ -221,8 +222,8 @@ def test_a_spy_placement_passed_up_keeps_its_refusal() -> None:
     )
     space_id = next(
         dict(action.arguments)["space_id"]
-        for action in ENGINE.legal_actions(start, 0)
-        if action.action_id == "agent_turn" and len(action.arguments) == 2
+        for action in executable_placements(start, 0)
+        if len(action.arguments) == 2
     )
     state = _send(start, str(space_id))
     legal = _ids(state)

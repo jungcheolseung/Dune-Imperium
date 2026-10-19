@@ -94,8 +94,9 @@ SLOT_VERSION: Final = 1
 # scalar 5), the Leader draft pool's six slots and the open Agent turn's two
 # box cards (``agent_boxes``). Their fields are appended after every older
 # field, so every older key keeps its index (checkpoints re-link by key,
-# SLOT_VERSION kept).
-SLOT_OBSERVATION_VERSION: Final = 32
+# SLOT_VERSION kept). v33 (stage B1) appends the seat's own picked Agent card,
+# read as a count zone, not a slot: no key changes.
+SLOT_OBSERVATION_VERSION: Final = 33
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

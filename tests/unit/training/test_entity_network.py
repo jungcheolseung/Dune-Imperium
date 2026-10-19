@@ -312,6 +312,7 @@ _COUNTED = {
             "trashed",
             "private_hand",
             "private_peeked_card",
+            "private_agent_card_pick",
             "imperium_removed",
         ),
         "personal",
@@ -715,6 +716,15 @@ def test_an_entity_file_without_its_feature_table_is_refused_under_another(
         load_checkpoint(path)
 
 
+def _after_v31(segment: str) -> bool:
+    """Whether an observation segment was appended after v31: v32's deck pools
+    and v33's picked Agent card (stage B1)."""
+
+    return segment.endswith("_deck_pool") or segment.startswith(
+        "private_agent_card_pick"
+    )
+
+
 def test_the_v31_input_names_are_pinned() -> None:
     """``legacy_inputs`` names a v31 file's inputs from today's tables; pinned
     so that a later change of the slot table or the zone list cannot change
@@ -723,7 +733,7 @@ def test_the_v31_input_names_are_pinned() -> None:
     input and the 1,140 slot keys identical, in order); the keys' digest is
     the v31 slot table's own golden digest."""
 
-    layout = [row for row in observation_layout() if not row[0].endswith("_deck_pool")]
+    layout = [row for row in observation_layout() if not _after_v31(row[0])]
     names, keys = legacy_inputs(31, layout, 64)
 
     def digest(rows: Sequence[str]) -> str:
@@ -755,19 +765,18 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
 ) -> None:
     """A file written before observation v32 (no stored input names, no deck
-    pool zones, no v32 slot fields) loads with every old input in its new
-    place and the new ones at zero: on observations whose deck pools are
-    empty it scores exactly as before (the v32 slot fields' columns are
-    still read as numbers too, ``FIELDS_KEPT_RAW``)."""
+    pool zones, no v33 picked Agent card, no v32 slot fields) loads with every
+    old input in its new place and the new ones at zero: on observations whose
+    deck pools and picked card are empty it scores exactly as before (the v32
+    slot fields' columns are still read as numbers too,
+    ``FIELDS_KEPT_RAW``)."""
 
     network = _network(_FULL)
     path = _saved(tmp_path, _FULL)
     document = checkpoint_module._read(path)
     # Cut the file down to what v31 code wrote.
     old_layout = [
-        row
-        for row in document["observation_layout"]
-        if not row[0].endswith("_deck_pool")
+        row for row in document["observation_layout"] if not _after_v31(row[0])
     ]
     old_names, old_keys = legacy_inputs(31, old_layout, network.entity_width)
     state = dict(document["state_dict"])
@@ -796,7 +805,11 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     assert isinstance(moved, EntityNetwork)
     assert info.migration is not None
     assert info.migration.from_observation_version == 31
-    assert info.migration.observation_new == network.entity_width * (1 + 3)
+    # Four deck-pool zones (v32) and the picked Agent card's zone and graft
+    # flag (v33, stage B1) are the inputs the file never had.
+    assert info.migration.observation_new == network.entity_width * (1 + 3) + (
+        network.entity_width + 1
+    )
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)

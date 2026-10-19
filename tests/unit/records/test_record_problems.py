@@ -114,10 +114,19 @@ def test_a_suite_keeps_the_agreed_positions_and_their_record(
     ]
     record = loaded.records[GAME]
     assert "log" not in record and record["format_version"] == 1
+    # The person's move is the one the judge saw: the recorded step as the
+    # migration replays it (a recorded placement is this engine's space pick
+    # once its card is picked, codec v150).
+    judged_moves = {row["step"]: row["human"] for row in judged}
     for problem in loaded.problems:
         recorded = game.parsed.replay.steps[problem.recorded_index]
-        assert problem.person == recorded
-        assert (problem.right == recorded) == (problem.family == "human_right")
+        assert isinstance(recorded, DomainAction)
+        assert _text(problem.person) == judged_moves[problem.recorded_index]
+        assert problem.person == recorded or (
+            recorded.action_id == "agent_turn"
+            and problem.person.action_id == "place_agent"
+        )
+        assert (problem.right == problem.person) == (problem.family == "human_right")
 
 
 def test_every_position_resolves_on_this_engine(game: SavedGame) -> None:
@@ -254,10 +263,13 @@ def test_a_person_move_a_bridge_rewrote_is_frozen_in_its_migrated_form(
 ) -> None:
     game = _game_with_human(tmp_path, 3)
     recorded = game.parsed.replay.steps
+    # A placement's space pick is rewritten too (codec v150); this test is
+    # about the box resolution the cleanup bridges rewrite.
     decision = next(
         decision
         for decision in human_decisions(game)
         if decision.chosen != recorded[decision.recorded_index]
+        and decision.chosen.action_id != "place_agent"
     )
     assert decision.chosen.action_id == "resolve_agent_card_effect"
     other = next(

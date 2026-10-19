@@ -671,8 +671,22 @@ def test_bene_tleilax_researcher_reveals_marker_persuasion() -> None:
 def test_grafted_cards_round_trip_through_the_codec() -> None:
     codec = ActionCodec(IMMORTALITY)
     state = _state(_owner((FACE_DANCER, INITIATE, DAGGER)))
-    for action in legal_agent_actions(state, 0):
-        assert codec.decode(codec.encode(action), 0) == action
+    # The Agent turn's card picks (the graft ones too) and, once a card is
+    # picked, its space picks (stage B1).
+    engine = UprisingRulesEngine()
+    picks = [
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "choose_agent_card"
+    ]
+    assert any(dict(pick.arguments).get("graft") is True for pick in picks)
+    for pick in picks:
+        assert codec.decode(codec.encode(pick), 0) == pick
+        picked = engine.apply(state, pick).state
+        spaces = engine.legal_actions(picked, 0)
+        assert spaces
+        for action in spaces:
+            assert codec.decode(codec.encode(action), 0) == action
     placed = apply_agent_action(
         state, _placements(state)[(INITIATE, "dutiful_service", True)]
     )

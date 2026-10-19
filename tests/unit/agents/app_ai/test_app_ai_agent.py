@@ -171,7 +171,9 @@ def test_immediate_draws_are_answered_before_any_window(
 
     from dataclasses import replace
 
+    from dune_imperium.agents.agent_turn_steps import apply_placement
     from dune_imperium.agents.app_ai import agent as agent_module
+    from dune_imperium.rules.agent_turn import executable_placements
     from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, hold_draw
 
     config = RulesetConfig(choam_module=True, bloodlines=True, tech_module=True)
@@ -179,11 +181,10 @@ def test_immediate_draws_are_answered_before_any_window(
     state = engine.reset(config, 1)
     placement = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "arrakeen"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     owner = hold_draw(
         hold_draw(placed.players[0], OWED_CARD, "choam_transports", "test:card"),
         OWED_INTRIGUE,

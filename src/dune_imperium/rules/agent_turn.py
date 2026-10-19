@@ -1,6 +1,7 @@
 """Legal action enumeration and placement for an Uprising Agent turn."""
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import (
@@ -35,6 +36,10 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import (
+    AGENT_CARD_PICK_GRAFT_KEY,
+    AGENT_CARD_PICK_KEY,
+)
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import turn_rows
@@ -48,7 +53,10 @@ from dune_imperium.rules.agent_icons import (
     effective_agent_icons,
     is_bond_partner,
 )
-from dune_imperium.rules.board_effects import board_icons_for
+from dune_imperium.rules.board_effects import (
+    board_effect_is_implemented,
+    board_icons_for,
+)
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
@@ -61,15 +69,208 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     recruited_commander_count,
     replace_player,
+    replace_top_frame,
     turn_start_is_open,
+    with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
-from dune_imperium.rules.leader_abilities import apply_smuggle_spice
+from dune_imperium.rules.leader_abilities import (
+    apply_smuggle_spice,
+    leader_signet_is_implemented,
+)
 from dune_imperium.rules.scouts_modifiers import (
     ignores_influence_requirements_this_round,
     space_is_combat,
 )
+
+# Stage B1 (docs/stage-b-plan.md 3a, OQ-111): an Agent turn is a card pick
+# (``choose_agent_card``), then a space pick (``place_agent``) -- in the
+# real game one motion, "reveal a card from your hand and send an Agent to a
+# board space matching one of its Agent icons" [Main p. 9]. The pick waits
+# in the turn frame's context, which no other seat's view shows; only a card
+# (with its graft choice) that has a placement can be picked, and while the
+# pick waits only its placements are offered, so no pick leads nowhere. The
+# placements themselves are the card-and-space combinations below
+# (``legal_agent_actions``), which the space pick names without the card.
+CARD_PICK_ACTION: Final = "choose_agent_card"
+SPACE_PICK_ACTION: Final = "place_agent"
+# The placement arguments that belong to the card pick.
+_CARD_PICK_ARGUMENTS: Final = frozenset({"card_id", "graft"})
+
+
+def agent_card_pick(state: GameState, player: int) -> tuple[str, bool] | None:
+    """The card (and whether it is grafted) ``player`` picked for the Agent
+    turn and has not placed yet, or None."""
+
+    frame = owned_top_frame(state, FrameKind.TURN, player)
+    if frame is None:
+        return None
+    context = dict(frame.context)
+    card = context.get(AGENT_CARD_PICK_KEY)
+    if not isinstance(card, str):
+        return None
+    return card, context.get(AGENT_CARD_PICK_GRAFT_KEY) is True
+
+
+def agent_card_pick_actions(
+    player: int, placements: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """One card pick per (card, graft) that has a placement, in hand order."""
+
+    picks: dict[tuple[str, bool], None] = {}
+    for placement in placements:
+        arguments = dict(placement.arguments)
+        card = arguments["card_id"]
+        assert isinstance(card, str)
+        picks.setdefault((card, arguments.get("graft") is True), None)
+    return tuple(
+        DomainAction(
+            action_id=CARD_PICK_ACTION,
+            actor=player,
+            arguments=(("card_id", card), *((("graft", True),) if graft else ())),
+        )
+        for card, graft in picks
+    )
+
+
+def agent_space_pick_actions(
+    player: int, placements: tuple[DomainAction, ...], card: str, graft: bool
+) -> tuple[DomainAction, ...]:
+    """The picked card's placements, named without the card."""
+
+    actions: list[DomainAction] = []
+    for placement in placements:
+        arguments = dict(placement.arguments)
+        if arguments["card_id"] != card or (arguments.get("graft") is True) != graft:
+            continue
+        actions.append(
+            DomainAction(
+                action_id=SPACE_PICK_ACTION,
+                actor=player,
+                arguments=tuple(
+                    item
+                    for item in placement.arguments
+                    if item[0] not in _CARD_PICK_ARGUMENTS
+                ),
+            )
+        )
+    return tuple(actions)
+
+
+def apply_agent_card_pick(state: GameState, action: DomainAction) -> RuleResult:
+    """Keep the picked card in the turn frame; only its seat sees it."""
+
+    player = action.actor
+    frame = owned_top_frame(state, FrameKind.TURN, player)
+    if frame is None or agent_card_pick(state, player) is not None:
+        raise ValueError("no Agent card can be picked now")
+    arguments = dict(action.arguments)
+    card = arguments.get("card_id")
+    if not isinstance(card, str):
+        raise ValueError("an Agent card pick names its card")
+    graft = arguments.get("graft") is True
+    context = dict(frame.context)
+    context[AGENT_CARD_PICK_KEY] = card
+    if graft:
+        context[AGENT_CARD_PICK_GRAFT_KEY] = True
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:player:{player}:agent_card_pick",
+        kind="agent_card_picked",
+        payload=(
+            ("card_id", card),
+            *((("graft", True),) if graft else ()),
+            ("player", player),
+        ),
+        visible_to=(player,),
+    )
+    return RuleResult(
+        state=replace_top_frame(state, with_context(frame, context)), events=(event,)
+    )
+
+
+def apply_agent_space_pick(state: GameState, action: DomainAction) -> RuleResult:
+    """Place the Agent for the picked card: the pick and the space make the
+    card-and-space placement ``apply_agent_action`` commits."""
+
+    player = action.actor
+    pick = agent_card_pick(state, player)
+    frame = owned_top_frame(state, FrameKind.TURN, player)
+    if pick is None or frame is None:
+        raise ValueError("no Agent card is waiting for its space")
+    card, graft = pick
+    context = dict(frame.context)
+    context.pop(AGENT_CARD_PICK_KEY)
+    context.pop(AGENT_CARD_PICK_GRAFT_KEY, None)
+    unpicked = replace_top_frame(state, with_context(frame, context))
+    placement = DomainAction(
+        action_id="agent_turn",
+        actor=player,
+        arguments=tuple(
+            sorted(
+                (
+                    *action.arguments,
+                    ("card_id", card),
+                    *((("graft", True),) if graft else ()),
+                )
+            )
+        ),
+    )
+    return apply_agent_action(unpicked, placement)
+
+
+# The last ``executable_placements`` answer, for the very same state object:
+# the engine lists a decision's card picks from it and an agent that weighs
+# whole placements (``agents.agent_turn_steps``) asks again for that state.
+# The entry holds its state, so the identity test cannot match another one.
+_last_placements: (
+    tuple[GameState, int, str | None, tuple[DomainAction, ...]] | None
+) = None
+
+
+def executable_placements(
+    state: GameState, player: int, card: str | None = None
+) -> tuple[DomainAction, ...]:
+    """The seat's legal Agent placements (``card`` alone, when given), less
+    those whose board effect or Signet Ring is not implemented yet: what the
+    Agent turn's card and space picks are made of (stage B1)."""
+
+    global _last_placements
+    last = _last_placements
+    if last is not None and last[0] is state and last[1:3] == (player, card):
+        return last[3]
+    placements = (
+        legal_agent_actions(state, player)
+        if card is None
+        else legal_agent_actions_for_card(state, player, card)
+    )
+    found = tuple(
+        action for action in placements if _agent_action_is_executable(state, action)
+    )
+    _last_placements = (state, player, card, found)
+    return found
+
+
+def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
+    arguments = dict(action.arguments)
+    card_id = arguments["card_id"]
+    space_id = arguments["space_id"]
+    if not isinstance(card_id, str) or not isinstance(space_id, str):
+        return False
+    if personal_card_for_instance(
+        card_id
+    ).agent_effect is PersonalCardAgentEffect.LEADER_SIGNET and not (
+        leader_signet_is_implemented(state.players[action.actor].leader_id)
+    ):
+        return False
+    requested_option = arguments.get("cost_option")
+    if isinstance(requested_option, int) and not isinstance(requested_option, bool):
+        cost_option = requested_option
+    elif BOARD_SPACES_BY_ID[space_id].dynamic_cost is DynamicCost.SWORDMASTER:
+        cost_option = int(any(player.swordmaster_acquired for player in state.players))
+    else:
+        cost_option = 0
+    return board_effect_is_implemented(state, space_id, cost_option)
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:

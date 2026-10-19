@@ -466,11 +466,11 @@ def combined_scenarios(page, rec, limit: int = 700) -> None:
         "pass_combat_intrigue": False,
     }
     combat_js = f"""(() => {{
-      const A = state.actions.actions;
       const combat = {json.dumps(COMBAT)};
-      const toCombat = A.find((a) => a.action_id === 'agent_turn'
-        && combat.includes(a.arguments.space_id));
-      return toCombat ? toCombat.index : 0;
+      // The card pick first, then (at the next call) the space pick.
+      const toCombat = placementActions().find((a) =>
+        combat.includes(a.arguments.space_id));
+      return toCombat ? (toCombat.pickIndex ?? toCombat.index) : 0;
     }})()"""
     for _ in range(limit):
         assert settled(page, 20)

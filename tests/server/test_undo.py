@@ -1,7 +1,9 @@
 """Tests for action undo and the session log (M11 slice 6, OQ-010 boundary)."""
 
 import random
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -36,6 +38,15 @@ from dune_imperium.server.sessions import (
     _log_entry_json,
 )
 
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py); reached by path instead.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from server_placement import (  # type: ignore[import-not-found]  # noqa: E402
+    find_placement,
+    place_agent,
+    place_space,
+)
+
 # The AI seats play the rubric-priced 2026-09-10 table pinned in the registry,
 # not ``heuristic``: the scripted revisions below follow that table's moves,
 # and ``heuristic`` is retuned as the baseline improves (2026-09-11 demoted
@@ -50,8 +61,13 @@ HUMAN_FIRST = (
 # Seed 14's scripted revisions moved one step earlier with codec v146:
 # optional Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), so
 # seat 3 no longer declines its optional Signet Ring step before ending its
-# first turn; the press lapses it. Seat 0's first Agent turn now opens at
-# revision 10 and its Dutiful Service visit is served at revision 11.
+# first turn; the press lapses it. Seat 0's first Agent turn then opened at
+# revision 10 and its Dutiful Service visit was served at revision 11.
+# With codec v150 an Agent turn is a card pick and a space pick (stage B1,
+# OQ-111): seats 2 and 3, who play before seat 0, spend one more step each,
+# so seat 0's first Agent turn opens at revision 12, its card pick (Diplomacy)
+# is revision 13 and its Dutiful Service visit is served at revision 14, with
+# both steps in the undo window.
 
 
 def _obj(value: object) -> dict[str, object]:
@@ -384,6 +400,8 @@ def test_a_turn_ending_in_a_reveal_still_waits_for_its_press() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=21)
     game_id = str(summary["game_id"])
+    # The placement is two steps (stage B1): the card pick, then its space.
+    summary = _play_raw(manager, summary)
     summary = _play_raw(manager, summary)
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     assert [(entry["action_id"], entry["undoable"]) for entry in actions] == [
@@ -503,7 +521,7 @@ def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 11)
+    summary = _play_until_revision(manager, summary, 14)
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
 
     # Dutiful Service's Solari icon and the Emperor Influence reveal nothing.
@@ -566,8 +584,10 @@ def _play_seat0_until(
         # Seed 1: since every Agent turn waits for its finish_agent_turn
         # (OQ-095), seed 0's random walk never makes the purchase legal
         # before the game ends (re-searched 2026-10-01; seeds 1 and 3 of 0-5
-        # reach it).
-        ("acquire_tleilaxu", "immortality", 1),
+        # reach it). Seed 0 since codec v150 (stage B1, OQ-111: the Agent
+        # turn is a card pick and a space pick, which moves the random walk;
+        # of 0-11, seeds 0, 2, 3, 8 and 11 reach it).
+        ("acquire_tleilaxu", "immortality", 0),
         # The stack's next tile turns face up [Bloodlines p. 6].
         ("acquire_tech", "tech_module", 0),
     ],
@@ -639,30 +659,30 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 11)
+    summary = _play_until_revision(manager, summary, 14)
     view_before = manager.view(game_id, 0)
     actions_before = manager.legal_actions(game_id, 0)
     steps_before = list(manager._get(game_id).steps)
     summary = _play(manager, summary)
-    assert summary["revision"] == 12
-    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+    assert summary["revision"] == 15
+    assert summary["undo"] == [{"seat": 0, "steps": 3}]
     undone_step = manager._get(game_id).steps[-1]
 
     with pytest.raises(StaleRevisionError):
-        manager.undo(game_id, seat=0, revision=11, steps=1)
-    with pytest.raises(SessionError, match="at most 2"):
-        manager.undo(game_id, seat=0, revision=12, steps=3)
+        manager.undo(game_id, seat=0, revision=14, steps=1)
+    with pytest.raises(SessionError, match="at most 3"):
+        manager.undo(game_id, seat=0, revision=15, steps=4)
     with pytest.raises(SessionError, match="at most"):
-        manager.undo(game_id, seat=0, revision=12, steps=0)
+        manager.undo(game_id, seat=0, revision=15, steps=0)
     with pytest.raises(SeatAccessError):
-        manager.undo(game_id, seat=1, revision=12, steps=1)
+        manager.undo(game_id, seat=1, revision=15, steps=1)
 
     assert summary["undo_count"] == 0
-    rewound = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=0)
+    rewound = manager.undo(game_id, seat=0, revision=15, steps=1, undo_count=0)
 
-    assert rewound["revision"] == 11
+    assert rewound["revision"] == 14
     assert rewound["undo_count"] == 1
-    assert rewound["undo"] == [{"seat": 0, "steps": 1}]
+    assert rewound["undo"] == [{"seat": 0, "steps": 2}]
     assert manager.view(game_id, 0) == view_before
     assert manager.legal_actions(game_id, 0) == actions_before
     session = manager._get(game_id)
@@ -678,7 +698,7 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     # A different choice continues the game from the rewound decision.
     assert len(_rows(actions_before["actions"])) >= 2
     resumed = _play(manager, rewound, index=1)
-    assert _int(resumed["revision"]) >= 12
+    assert _int(resumed["revision"]) >= 15
     assert manager._get(game_id).steps[len(steps_before)] != undone_step
 
     # The undo generation guards a stale client: a request carrying the
@@ -703,8 +723,8 @@ def test_the_log_is_served_per_seat_with_undo_markers() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 11)
-    summary = manager.undo(game_id, seat=0, revision=11, steps=1)
+    summary = _play_until_revision(manager, summary, 14)
+    summary = manager.undo(game_id, seat=0, revision=14, steps=1)
 
     log = manager.log(game_id, 0)
     entries = _rows(log["entries"])
@@ -785,8 +805,8 @@ def test_log_entries_redact_hidden_arguments_and_private_events() -> None:
 def _game_with_an_undo(manager: GameSessionManager) -> JsonObject:
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 11)
-    summary = manager.undo(game_id, seat=0, revision=11, steps=1)
+    summary = _play_until_revision(manager, summary, 14)
+    summary = manager.undo(game_id, seat=0, revision=14, steps=1)
     return _play(manager, summary, index=1)
 
 
@@ -821,7 +841,8 @@ def test_saves_carry_the_undo_history_and_restore_the_same_log() -> None:
 def _game_with_two_single_step_undos(
     manager: GameSessionManager,
 ) -> tuple[JsonObject, list[ReplayStep]]:
-    """Seed 14 at revision 12: seat 0 takes back its two steps one at a time.
+    """Seed 14 at revision 15: seat 0 takes back its last two steps one at a
+    time (its Dutiful Service visit and the effect after it).
 
     The second undo flags a step logged before the first undo's marker, so
     the log ends ``A(undone), B(undone), undo(1), undo(1)``: a marker takes
@@ -831,12 +852,12 @@ def _game_with_two_single_step_undos(
 
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 11)
+    summary = _play_until_revision(manager, summary, 14)
     summary = _play(manager, summary)
-    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+    assert summary["undo"] == [{"seat": 0, "steps": 3}]
     taken_back = list(manager._get(game_id).steps[-2:])
-    summary = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=0)
-    summary = manager.undo(game_id, seat=0, revision=11, steps=1, undo_count=1)
+    summary = manager.undo(game_id, seat=0, revision=15, steps=1, undo_count=0)
+    summary = manager.undo(game_id, seat=0, revision=14, steps=1, undo_count=1)
     return summary, taken_back
 
 
@@ -855,7 +876,7 @@ def test_two_single_step_undos_in_a_row_save_and_restore() -> None:
     document = manager.save_game(game_id)
     restored = manager.restore_game(document)
     restored_id = str(restored["game_id"])
-    assert restored["revision"] == summary["revision"] == 10
+    assert restored["revision"] == summary["revision"] == 13
     assert restored["undo_count"] == summary["undo_count"] == 2
     assert restored["undo"] == summary["undo"]
     assert manager._get(restored_id).log == manager._get(game_id).log
@@ -871,11 +892,11 @@ def test_undo_history_names_each_single_step_undo_separately() -> None:
     summary, (first, second) = _game_with_two_single_step_undos(manager)
     history = undo_history(manager._get(str(summary["game_id"])).log)
 
-    # Both undos rewound the timeline that stands to its tenth live step:
-    # the first took back the later step, the second the earlier one.
+    # Both undos rewound the timeline that stands to its thirteenth live
+    # step: the first took back the later step, the second the earlier one.
     assert [(position, marker.count) for position, marker, _ in history] == [
-        (10, 1),
-        (10, 1),
+        (13, 1),
+        (13, 1),
     ]
     assert [[entry.step for entry in undone] for _, _, undone in history] == [
         [second],
@@ -890,13 +911,13 @@ def test_an_undo_across_a_new_step_restores_with_its_own_steps() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 11)
+    summary = _play_until_revision(manager, summary, 14)
     summary = _play(manager, summary)
     first = manager._get(game_id).steps[-2]
-    summary = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=0)
+    summary = manager.undo(game_id, seat=0, revision=15, steps=1, undo_count=0)
     summary = _play_raw(manager, summary, index=1)
     replacement = manager._get(game_id).steps[-1]
-    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+    assert summary["undo"] == [{"seat": 0, "steps": 3}]
     summary = manager.undo(
         game_id,
         seat=0,
@@ -978,12 +999,12 @@ def test_review_reports_where_steps_were_taken_back() -> None:
     assert len(history) == 1
     assert history[0]["seat"] == 0
     assert history[0]["count"] == 1
-    # The undo rewound to live step 10 (revision 10 = ten steps applied).
-    assert history[0]["step"] == 10
+    # The undo rewound to live step 13 (revision 13 = thirteen steps applied).
+    assert history[0]["step"] == 13
     undone = _rows(history[0]["undone"])
     assert len(undone) == 1
     assert undone[0]["type"] == "action" and undone[0]["actor"] == 0
-    assert _rows(review["steps"])[10] != undone[0]
+    assert _rows(review["steps"])[13] != undone[0]
 
 
 # ------------------------------------------------- a confirmed hand-over
@@ -1074,18 +1095,22 @@ def _play_seat0_to_imperial_privilege(
             row["action_id"] == "recall_agent_for_imperial_privilege" for row in actions
         ):
             return summary
-        index = 0
-        if manager._get(game_id).state.players[0].agent_locations:
-            index = next(
-                (
-                    _int(row["index"])
-                    for row in actions
-                    if row["action_id"] == "agent_turn"
-                    and _obj(row["arguments"]).get("space_id") == "imperial_privilege"
-                ),
-                0,
+        if manager._get(game_id).state.players[0].agent_locations and (
+            find_placement(
+                manager.legal_actions(game_id, 0),
+                lambda arguments: arguments["space_id"] == "imperial_privilege",
             )
-        summary = _play_raw(manager, summary, index=index)
+            is not None
+        ):
+            # A placement is a card pick and then a space pick (stage B1).
+            summary = place_agent(
+                manager,
+                game_id,
+                0,
+                lambda arguments: arguments["space_id"] == "imperial_privilege",
+            )
+            continue
+        summary = _play_raw(manager, summary, index=0)
     raise AssertionError("Imperial Privilege was never reached")
 
 
@@ -1100,8 +1125,8 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     with no slot to decline first (OQ-095 (2), user ruling 2026-10-14).
 
     Seed 0: seat 0, playing its first action, reaches Imperial Privilege
-    with another Agent on the board; the placement itself is the one step
-    its undo window holds there.
+    with another Agent on the board; the placement itself (a card pick and a
+    space pick, stage B1) is what its undo window holds there.
     """
 
     manager = GameSessionManager()
@@ -1120,7 +1145,7 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     assert draw["arguments"] == {"effect": "cards"}
     assert draw["undoable"] is False
     assert "decline_imperial_privilege_intrigue" not in rows
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
 
     recall = rows["recall_agent_for_imperial_privilege"]
     assert recall["undoable"] is True
@@ -1133,8 +1158,8 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     owner = manager._get(game_id).state.players[0]
     assert space not in owner.agent_locations
     assert owner.hand == hand_before  # the recall draws nothing
-    # The placement and the recall.
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    # The card pick, the space pick and the recall.
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
 
     rewound = manager.undo(
         game_id,
@@ -1144,7 +1169,7 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     )
     assert space in manager._get(game_id).state.players[0].agent_locations
     assert manager.legal_actions(game_id, 0) == actions_before
-    assert _rows(rewound["undo"]) == [{"seat": 0, "steps": 1}]
+    assert _rows(rewound["undo"]) == [{"seat": 0, "steps": 2}]
 
     # Recalled again, then drawn: the draw seals the window.
     rows = served()
@@ -1208,21 +1233,24 @@ def test_urgent_shigawire_placement_can_be_taken_back_and_its_draw_cannot() -> N
     def served() -> list[dict[str, object]]:
         return _rows(manager.legal_actions(game_id, 0)["actions"])
 
-    placement = next(
-        row
-        for row in served()
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("card_id") == truthtrance
-        and _obj(row["arguments"]).get("space_id") == "gather_support"
+    # The placement is a card pick and then a space pick (stage B1); both
+    # reveal nothing and stay in the undo window.
+    placement = find_placement(
+        manager.legal_actions(game_id, 0),
+        lambda arguments: arguments.get("card_id") == truthtrance
+        and arguments.get("space_id") == "gather_support",
     )
-    assert placement["undoable"] is True
+    assert placement is not None
+    assert served()[_int(placement["index"])]["undoable"] is True
     hand_before = manager._get(game_id).state.players[0].hand
 
     summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    assert all(row["undoable"] is True for row in served())
+    summary = place_space(manager, game_id, 0, placement)
     placed = manager._get(game_id).state.players[0]
     assert placed.hand == tuple(c for c in hand_before if c != truthtrance)
     assert placed.bene_gesserit_boost_pending is False
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
     draw = next(
         row
         for row in served()
@@ -1353,13 +1381,9 @@ def test_long_live_the_fighters_discard_is_held_when_glowglobes_seals_it(
     def served() -> list[dict[str, object]]:
         return _rows(manager.legal_actions(game_id, 0)["actions"])
 
-    placement = next(
-        row
-        for row in served()
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("card_id") == long_live
+    summary = place_agent(
+        manager, game_id, 0, lambda arguments: arguments.get("card_id") == long_live
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     look = next(
         row
         for row in served()
@@ -1429,13 +1453,12 @@ def test_planetologist_summon_can_be_taken_back_and_its_intrigue_cannot() -> Non
     def served() -> list[dict[str, object]]:
         return _rows(manager.legal_actions(game_id, 0)["actions"])
 
-    placement = next(
-        row
-        for row in served()
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("space_id") == "hagga_basin"
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("space_id") == "hagga_basin",
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     summon = next(
         row for row in served() if row["action_id"] == "summon_maker_sandworms"
     )
@@ -1444,7 +1467,7 @@ def test_planetologist_summon_can_be_taken_back_and_its_intrigue_cannot() -> Non
 
     summary = _play_raw(manager, summary, index=_int(summon["index"]))
     assert manager._get(game_id).state.players[0].intrigue_cards == intrigue_before
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     rows = served()
     draw = next(
         row for row in rows if row["action_id"] == "draw_planetologist_intrigue"
@@ -1501,14 +1524,13 @@ def test_piter_troop_cost_can_be_taken_back_and_its_draw_cannot() -> None:
         ),
     )
     summary = manager.summary(game_id)
-    placement = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("card_id") == piter
-        and _obj(row["arguments"]).get("space_id") == "assembly_hall"
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == piter
+        and arguments.get("space_id") == "assembly_hall",
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     cost = next(
         row
         for row in _served(manager, game_id)
@@ -1520,7 +1542,7 @@ def test_piter_troop_cost_can_be_taken_back_and_its_draw_cannot() -> None:
 
     summary = _play_raw(manager, summary, index=_int(cost["index"]))
     assert manager._get(game_id).state.players[0].hand == hand_before
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     draw = next(
         row
         for row in _served(manager, game_id)
@@ -1572,14 +1594,13 @@ def test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot() -> No
         ),
     )
     summary = manager.summary(game_id)
-    placement = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("card_id") == signet
-        and _obj(row["arguments"]).get("space_id") == "assembly_hall"
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == signet
+        and arguments.get("space_id") == "assembly_hall",
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     trash = next(
         row
         for row in _served(manager, game_id)
@@ -1587,7 +1608,7 @@ def test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot() -> No
     )
     assert trash["undoable"] is True
     summary = _play_raw(manager, summary, index=_int(trash["index"]))
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     rewards = [
         row
         for row in _served(manager, game_id)
@@ -1746,13 +1767,13 @@ def test_research_direction_reaching_a_tleilaxu_intrigue_can_be_taken_back() -> 
         ),
     )
     summary = manager.summary(game_id)
-    placement = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]) == {"card_id": city, "space_id": "research_station"}
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments
+        == {"card_id": city, "space_id": "research_station"},
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     research = next(
         row
         for row in _served(manager, game_id)
@@ -1770,7 +1791,7 @@ def test_research_direction_reaching_a_tleilaxu_intrigue_can_be_taken_back() -> 
     summary = _play_raw(manager, summary, index=_int(direction["index"]))
     moved = manager._get(game_id).state.players[0]
     assert moved.tleilaxu_space == 2 and moved.intrigue_cards == ()
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
     draw = next(
         row
         for row in _served(manager, game_id)
@@ -1808,13 +1829,12 @@ def test_trashing_sardaukar_soldier_can_be_taken_back_and_its_card_cannot() -> N
         players=(replace(owner, discard_pile=(soldier,)), *session.state.players[1:]),
     )
     summary = manager.summary(game_id)
-    placement = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("space_id") == "desert_tactics"
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("space_id") == "desert_tactics",
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     trash = next(
         row
         for row in _served(manager, game_id)
@@ -1825,7 +1845,7 @@ def test_trashing_sardaukar_soldier_can_be_taken_back_and_its_card_cannot() -> N
     summary = _play_raw(manager, summary, index=_int(trash["index"]))
     trashed = manager._get(game_id).state.players[0]
     assert trashed.trashed == (soldier,) and trashed.intrigue_cards == ()
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     draw = next(
         row
         for row in _served(manager, game_id)
@@ -1876,13 +1896,12 @@ def test_a_harvest_can_be_taken_back_before_its_hungry_for_spice_card() -> None:
         ),
     )
     summary = manager.summary(game_id)
-    placement = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]) == {"card_id": desert, "space_id": "deep_desert"}
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments == {"card_id": desert, "space_id": "deep_desert"},
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     spice = next(
         row
         for row in _served(manager, game_id)
@@ -1893,7 +1912,7 @@ def test_a_harvest_can_be_taken_back_before_its_hungry_for_spice_card() -> None:
     summary = _play_raw(manager, summary, index=_int(spice["index"]))
     seat = manager._get(game_id).state.players[0]
     assert seat.hand == hand_before  # nothing drawn yet
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     rows = _served(manager, game_id)
     assert all(row["action_id"] != "finish_agent_turn" for row in rows)
     draw = next(row for row in rows if row["action_id"] == "draw_owed_card")
@@ -1952,13 +1971,9 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     )
     _replay_from(monkeypatch, session, session.state)
     summary = manager.summary(game_id)
-    placement = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "agent_turn"
-        and _obj(row["arguments"]).get("space_id") == "arrakeen"
+    summary = place_agent(
+        manager, game_id, 0, lambda arguments: arguments.get("space_id") == "arrakeen"
     )
-    summary = _play_raw(manager, summary, index=_int(placement["index"]))
     complete = next(
         row
         for row in _served(manager, game_id)
@@ -1970,7 +1985,7 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     seat = manager._get(game_id).state.players[0]
     assert seat.completed_contract_ids == (contract,)
     assert seat.hand == before.players[0].hand  # nothing drawn yet
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     rows = _served(manager, game_id)
     assert [row["action_id"] for row in rows] == ["draw_owed_card"]
     assert rows[0]["undoable"] is False
@@ -2126,10 +2141,9 @@ def test_leverage_faction_can_be_taken_back_and_its_intrigue_cannot() -> None:
         )
 
     steps: tuple[tuple[str, dict[str, object]], ...] = (
-        (
-            "agent_turn",
-            {"card_id": "player:0:starter:dagger:0", "space_id": "high_council"},
-        ),
+        # The visit is a card pick and a space pick (stage B1).
+        ("choose_agent_card", {"card_id": "player:0:starter:dagger:0"}),
+        ("place_agent", {"space_id": "high_council"}),
         ("resolve_board_effect", {"effect": "high_council"}),
         ("choose_subcommittee", {}),
         ("join_subcommittee", {"subcommittee_id": "leverage"}),
@@ -2144,7 +2158,7 @@ def test_leverage_faction_can_be_taken_back_and_its_intrigue_cannot() -> None:
     intrigue_before = manager._get(game_id).state.players[0].intrigue_cards
     summary = _play_raw(manager, summary, index=_int(choice["index"]))
     assert manager._get(game_id).state.players[0].intrigue_cards == intrigue_before
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 7}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 8}]
     rows = _served(manager, game_id)
     assert [row["action_id"] for row in rows] == ["scouts_rewards_first"]
     assert rows[0]["undoable"] is False

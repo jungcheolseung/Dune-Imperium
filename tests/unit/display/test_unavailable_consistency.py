@@ -50,6 +50,7 @@ import random
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import replace
+from functools import partial
 from typing import Any, cast
 
 import pytest
@@ -64,6 +65,7 @@ from tests.unit.display.test_unavailable import (
 )
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import PlacementMemory
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
 from dune_imperium.content.immortality.board import (
@@ -316,6 +318,7 @@ def _decisions(
     state = ENGINE.reset(config, seed)
     resolver = ChanceResolver(seed=seed)
     rng = random.Random(seed)
+    memory = PlacementMemory()
     while state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
@@ -324,7 +327,9 @@ def _decisions(
         assert isinstance(decision, PlayerDecision)
         legal = ENGINE.legal_actions(state, decision.owner)
         yield state, decision.owner, legal
-        state = ENGINE.apply(state, rng.choice(legal)).state
+        # One draw per placement, as when it was one action (stage B1).
+        action = memory.choose(state, decision.owner, legal, rng.choice)
+        state = ENGINE.apply(state, action).state
 
 
 def _is_legal(row: dict[str, Any], legal: tuple[DomainAction, ...]) -> bool:
@@ -1865,6 +1870,33 @@ _PRIVILEGE_RECALLS = frozenset(
 )
 
 
+def _privilege_choice(
+    state: GameState,
+    owner: int,
+    rng: random.Random,
+    delayed: list[int],
+    shown: tuple[DomainAction, ...],
+) -> DomainAction:
+    """One draw of ``_privilege_decisions`` over ``shown`` (the legal list,
+    an Agent turn's step shown as its placements: stage B1)."""
+
+    choices = [
+        action
+        for action in shown
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("space_id") == "imperial_privilege"
+    ]
+    waiting = imperial_privilege_recall_targets(state, owner)
+    if not choices and waiting is not None:
+        later = [a for a in shown if a.action_id not in _PRIVILEGE_RECALLS]
+        if later and delayed[0] < 4:
+            choices = later
+            delayed[0] += 1
+    else:
+        delayed[0] = 0
+    return rng.choice(choices or shown)
+
+
 def _privilege_decisions(
     config: RulesetConfig, seed: int
 ) -> Iterator[tuple[GameState, int, tuple[DomainAction, ...]]]:
@@ -1877,7 +1909,8 @@ def _privilege_decisions(
     state = ENGINE.reset(config, seed)
     resolver = ChanceResolver(seed=seed)
     rng = random.Random(seed)
-    delayed = 0
+    memory = PlacementMemory()
+    delayed = [0]
     while state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
@@ -1886,20 +1919,14 @@ def _privilege_decisions(
         assert isinstance(decision, PlayerDecision)
         legal = ENGINE.legal_actions(state, decision.owner)
         yield state, decision.owner, legal
-        choices = [
-            action
-            for action in legal
-            if action.action_id == "agent_turn"
-            and dict(action.arguments).get("space_id") == "imperial_privilege"
-        ]
-        waiting = imperial_privilege_recall_targets(state, decision.owner)
-        if not choices and waiting is not None:
-            later = [a for a in legal if a.action_id not in _PRIVILEGE_RECALLS]
-            if later and delayed < 4:
-                choices, delayed = later, delayed + 1
-        else:
-            delayed = 0
-        state = ENGINE.apply(state, rng.choice(choices or legal)).state
+        # One draw per placement, as when it was one action (stage B1).
+        action = memory.choose(
+            state,
+            decision.owner,
+            legal,
+            partial(_privilege_choice, state, decision.owner, rng, delayed),
+        )
+        state = ENGINE.apply(state, action).state
 
 
 @pytest.mark.parametrize("config", CONFIGS, ids=IDS)

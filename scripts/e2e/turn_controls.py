@@ -163,9 +163,10 @@ def deployment(page, rec) -> None:
         "state.actions.actions"
         ".filter((a) => a.action_id === 'deploy_troops').length > 1",
         f"""(() => {{ const combat = {json.dumps(COMBAT)};
-          const a = state.actions.actions.find((x) => x.action_id === 'agent_turn'
-            && combat.includes(x.arguments.space_id));
-          return a ? a.index : 0; }})()""",
+          // The card pick first, then (at the next call) the space pick.
+          const a = placementActions().find((x) =>
+            combat.includes(x.arguments.space_id));
+          return a ? (a.pickIndex ?? a.index) : 0; }})()""",
     )
     if not check.ok(reached, "the seat may send more than one troop"):
         return
@@ -288,9 +289,10 @@ def narrow_deployment(base: str, browser) -> None:
         "state.actions.actions"
         ".filter((a) => a.action_id === 'deploy_troops').length > 1",
         f"""(() => {{ const combat = {json.dumps(COMBAT)};
-          const a = state.actions.actions.find((x) => x.action_id === 'agent_turn'
-            && combat.includes(x.arguments.space_id));
-          return a ? a.index : 0; }})()""",
+          // The card pick first, then (at the next call) the space pick.
+          const a = placementActions().find((x) =>
+            combat.includes(x.arguments.space_id));
+          return a ? (a.pickIndex ?? a.index) : 0; }})()""",
     )
     if not check.ok(reached, "narrow: the seat may send troops"):
         context.close()

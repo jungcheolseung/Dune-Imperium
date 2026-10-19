@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -38,6 +39,7 @@ from dune_imperium.display.actions import (
     research_icon_action_text,
 )
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -221,11 +223,10 @@ def _pay_spice(
     )
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments) == {"card_id": card, "space_id": space_id}
+        for action in executable_placements(state, 0)
+        if dict(action.arguments) == {"card_id": card, "space_id": space_id}
     )
-    placed = _ENGINE.apply(state, place).state
+    placed = apply_placement(_ENGINE, state, place).state
     payment = next(
         action
         for action in _ENGINE.legal_actions(placed, 0)
@@ -449,12 +450,11 @@ def _ghola_box(partner: str, **owner: object) -> GameState:
     )
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("card_id") == _GHOLA
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("card_id") == _GHOLA
         and dict(action.arguments).get("graft") is True
     )
-    placed = _ENGINE.apply(state, place).state
+    placed = apply_placement(_ENGINE, state, place).state
     graft = next(
         action
         for action in _ENGINE.legal_actions(placed, 0)
@@ -535,11 +535,10 @@ def test_urgent_shigawire_draw_is_named_apart_from_the_box_draw() -> None:
         )
         place = next(
             action
-            for action in _ENGINE.legal_actions(state, 0)
-            if action.action_id == "agent_turn"
-            and dict(action.arguments).get("space_id") == "secrets"
+            for action in executable_placements(state, 0)
+            if dict(action.arguments).get("space_id") == "secrets"
         )
-        placed = _ENGINE.apply(state, place).state
+        placed = apply_placement(_ENGINE, state, place).state
         text, text_ko = _icon_text(placed, "cards")
         assert text == english
         if korean is not None:
@@ -611,13 +610,12 @@ def _place(state: GameState, card: str, partner: str | None = None) -> GameState
 
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("card_id") == card
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("card_id") == card
         and dict(action.arguments).get("space_id") == "dutiful_service"
         and (dict(action.arguments).get("graft") is True) == (partner is not None)
     )
-    placed = _ENGINE.apply(state, place).state
+    placed = apply_placement(_ENGINE, state, place).state
     if partner is None:
         return placed
     graft = next(
@@ -787,11 +785,10 @@ def test_keyed_icon_rows_are_led_by_their_card() -> None:
     )
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("space_id") == "assembly_hall"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("space_id") == "assembly_hall"
     )
-    placed = _ENGINE.apply(state, place).state
+    placed = apply_placement(_ENGINE, state, place).state
     rows = {
         dict(action.arguments)["effect"]: _row(placed, action)
         for action in _ENGINE.legal_actions(placed, 0)
@@ -902,11 +899,10 @@ def test_a_single_card_turn_has_one_box() -> None:
     )
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("space_id") == "assembly_hall"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("space_id") == "assembly_hall"
     )
-    placed = _ENGINE.apply(state, place).state
+    placed = apply_placement(_ENGINE, state, place).state
     boxes = _boxes(placed)
 
     icons = [

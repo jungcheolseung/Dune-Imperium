@@ -2,7 +2,7 @@
 
 Each test reaches a real Agent turn of a Bloodlines game (the first turn of
 the seat whose leader matters, the seat's hand and board pieces adjusted,
-then a real ``agent_turn``), builds the ``DecisionRun`` the agent would build
+then a real Agent-turn placement), builds the ``DecisionRun`` the agent would build
 and asserts the source the window builds for the app-style ability or the
 exact action it answers (docs/app-ai/bloodlines-cards.md §8,
 bloodlines-systems.md §2.3, §3.4, §4, §6). Profile values or ability answers
@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.agents.app_ai.abilities import bloodlines_cards as bc
 from dune_imperium.agents.app_ai.abilities import bloodlines_systems as bs
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request
@@ -41,6 +42,7 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 
 BL = RulesetConfig(choam_module=True, bloodlines=True, tech_module=True)
@@ -103,7 +105,9 @@ def _game(config: RulesetConfig, leader: str | None) -> tuple[GameState, int]:
         ):
             return state, owner
         legal = ENGINE.legal_actions(state, owner)
-        action = agents[owner].choose_action(ENGINE.observe(state, owner), legal)
+        action = agents[owner].choose_action_with_state(
+            state, ENGINE.observe(state, owner), legal
+        )
         state = ENGINE.apply(state, action, legal_actions=legal).state
     raise AssertionError("no turn reached")
 
@@ -152,18 +156,16 @@ def _place(
         state = with_state(state, **adjust)
     if before:
         state = _with_units(state, seat, **before)
-    legal = ENGINE.legal_actions(state, seat)
     placements = [
         action
-        for action in legal
-        if action.action_id == "agent_turn"
-        and arg(action, "card_id") == ref
+        for action in executable_placements(state, seat)
+        if arg(action, "card_id") == ref
         and (space is None or arg(action, "space_id") == space)
         and arg(action, "infiltrate_post_id") is None
         and arg(action, "graft") is not True
     ]
     assert placements, f"{card} cannot go to {space}"
-    state = _apply(state, seat, placements[0])
+    state = _settle(apply_placement(ENGINE, state, placements[0]).state)
     assert state.decision_stack[-1].kind == "agent_effects"
     return state, seat, ref
 

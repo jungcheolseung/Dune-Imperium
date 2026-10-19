@@ -228,7 +228,10 @@ def _freeze_play_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_no_other_view_log_or_summary_depends_on_a_seats_deck(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    manager, game_id = _midgame()
+    # Seed 1: seed 5's walk (the default) leaves seat 0 with an empty hand
+    # since codec v150 (its Agent turns are two steps, which moves the random
+    # walk), and this test trades a hidden hand card.
+    manager, game_id = _midgame(seed=1)
     _freeze_play_clock(monkeypatch)
     session = manager._get(game_id)
     original = session.state

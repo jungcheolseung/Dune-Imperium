@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
@@ -1813,20 +1814,42 @@ def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
     engine = UprisingRulesEngine()
     dagger = next(c for c in STARTERS if ":dagger:" in c)
     state = _state(_owner(intrigue_cards=(card,), hand=(dagger,), deck=()))
+
+    def spaces(current: GameState) -> list[DomainAction]:
+        # The Agent turn's two steps (stage B1): pick the Dagger, read the
+        # space picks it is offered.
+        pick = next(
+            a
+            for a in engine.legal_actions(current, 0)
+            if a.action_id == "choose_agent_card"
+            and dict(a.arguments)["card_id"] == dagger
+        )
+        picked = engine.apply(current, pick).state
+        return [
+            a for a in engine.legal_actions(picked, 0) if a.action_id == "place_agent"
+        ]
+
     assert not any(
-        dict(a.arguments)["space_id"] == "dutiful_service"
-        for a in legal_agent_actions(state, 0)
+        dict(a.arguments)["space_id"] == "dutiful_service" for a in spaces(state)
     )
     invited = engine.apply(state, _play_intrigue(card, 1)).state
     assert invited.players[0].granted_agent_icon_turn == "emperor"
+    codec = ActionCodec(BLOODLINES)
+    pick = next(
+        a
+        for a in engine.legal_actions(invited, 0)
+        if a.action_id == "choose_agent_card"
+    )
+    assert codec.decode(codec.encode(pick), 0) == pick
+    picked = engine.apply(invited, pick).state
     action = next(
         a
-        for a in legal_agent_actions(invited, 0)
-        if dict(a.arguments)["space_id"] == "dutiful_service"
+        for a in engine.legal_actions(picked, 0)
+        if a.action_id == "place_agent"
+        and dict(a.arguments)["space_id"] == "dutiful_service"
     )
-    codec = ActionCodec(BLOODLINES)
     assert codec.decode(codec.encode(action), 0) == action
-    placed = apply_agent_action(invited, action).state
+    placed = engine.apply(picked, action).state
     assert "dutiful_service" in placed.players[0].agent_locations
 
 
@@ -2734,7 +2757,7 @@ def test_urgent_shigawire_draw_is_its_own_step_after_the_placement() -> None:
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "secrets"
     )
-    placed = engine.apply(state, placement)
+    placed = apply_placement(engine, state, placement)
     owner = placed.state.players[0]
     assert owner.bene_gesserit_boost_pending is False
     assert owner.hand == ()
@@ -2796,7 +2819,7 @@ def test_urgent_shigawire_draw_may_wait_for_a_trash_from_the_discard_pile() -> N
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "desert_tactics"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     trash = DomainAction(
         action_id="trash_card_for_desert_tactics",
         actor=0,
@@ -2843,7 +2866,7 @@ def test_urgent_shigawire_draw_joins_a_box_with_its_own_card_draw() -> None:
             for action in legal_agent_actions(state, 0)
             if dict(action.arguments)["space_id"] == "secrets"
         )
-        working = engine.apply(state, placement).state
+        working = apply_placement(engine, state, placement).state
         draws = 0
         while _boost_draw() in (legal := engine.legal_actions(working, 0)):
             assert legal.count(_boost_draw()) == 1
@@ -2875,7 +2898,7 @@ def test_urgent_shigawire_draw_lapses_with_a_box_trashed_by_another_effect() -> 
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "desert_tactics"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     trashed = engine.apply(
         placed,
         DomainAction(
@@ -3797,7 +3820,8 @@ def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
     assert moved.players[1].spies_recalled_turn == 0
 
     engine = UprisingRulesEngine()
-    sent = engine.apply(
+    sent = apply_placement(
+        engine,
         moved,
         next(
             action
@@ -4409,6 +4433,10 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # v149 (cleanup-2f): five refusals out (decline_sardaukar_commander
         # among them), two confirms in.
         - 3
+        # v150 (stage B1): this catalog's 6,344 ``agent_turn`` rows become
+        # 174 card and space picks.
+        - 6344
+        + 174
     )
     action = DomainAction(
         action_id="trash_agent_card",

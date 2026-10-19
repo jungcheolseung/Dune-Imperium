@@ -358,7 +358,8 @@ def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
         ("acquire_tech", (("tech_id", "servo_receivers"),)),
         ("resolve_tech_acquire_effect", (("effect", "signet"),)),
         ("gain_leader_signet_troop", ()),
-        ("agent_turn", (("card_id", revolt), ("space_id", "arrakeen"))),
+        ("choose_agent_card", (("card_id", revolt),)),
+        ("place_agent", (("space_id", "arrakeen"),)),
     ):
         action = next(
             action
@@ -766,6 +767,10 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 141
         - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the promo catalog's 1,806 ``agent_turn`` rows
+        # become 132 card and space picks.
+        - 1806
+        + 132
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -788,6 +793,10 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 145
         - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the CHOAM promo catalog's 1,911 ``agent_turn``
+        # rows become 136 card and space picks.
+        - 1911
+        + 136
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

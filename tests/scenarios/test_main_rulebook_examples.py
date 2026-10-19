@@ -1,6 +1,7 @@
 """Golden scenarios derived from the official Uprising rulebook examples."""
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -12,6 +13,7 @@ from dune_imperium.core import (
     PlayerState,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.phases import resolve_makers, resolve_recall_or_endgame
 
 
@@ -65,11 +67,12 @@ def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> No
     engine = UprisingRulesEngine()
     visit = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments).get("space_id") == "imperial_basin"
     )
 
-    state = engine.apply(state, visit).state
+    # The visit is a card pick and then a space pick (stage B1).
+    state = apply_placement(engine, state, visit).state
     effect_actions = engine.legal_actions(state, 0)
     assert "summon_maker_sandworms" not in {
         action.action_id for action in effect_actions

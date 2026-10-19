@@ -14,9 +14,11 @@ the charges are exact.
 """
 
 import json
+import sys
 import threading
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -37,6 +39,11 @@ from dune_imperium.server.pacing import MAX_WAIT_SECONDS, TURN_BANNER_SECONDS
 from dune_imperium.server.persistence import parse_save_document, read_saved_clock
 from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.sessions import GameSessionManager, JsonObject
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py); reached by path instead.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from server_placement import place_agent  # type: ignore[import-not-found]  # noqa: E402
 
 # Seats that follow a fixed table (see tests/server/test_turn_end.py), so the
 # seeds below keep their shapes when the baseline heuristic is retuned.
@@ -257,16 +264,14 @@ def _holy_war_for_four_humans(
     session.log.clear()
     session.open_units.clear()
     session.undo_floor = 0
-    actions = manager.legal_actions(game_id, 0)["actions"]
-    assert isinstance(actions, list)
-    send = next(
-        _obj(a)
-        for a in actions
-        if _obj(a)["action_id"] == "agent_turn"
-        and _obj(_obj(a)["arguments"]).get("card_id") == _HOLY_WAR
-        and _obj(_obj(a)["arguments"]).get("space_id") == "assembly_hall"
+    # A placement is a card pick and then a space pick (stage B1).
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == _HOLY_WAR
+        and arguments.get("space_id") == "assembly_hall",
     )
-    summary = manager.apply_action(game_id, 0, 0, _int(send["index"]))
     for action_id in ("resolve_board_effect", "resolve_agent_card_effect"):
         actions = manager.legal_actions(game_id, 0)["actions"]
         assert isinstance(actions, list)

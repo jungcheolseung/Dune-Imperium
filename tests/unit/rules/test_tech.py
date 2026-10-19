@@ -17,6 +17,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     encode_player_view,
 )
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.bloodlines.tech import (
     TECH_IDS,
     TECH_TILES,
@@ -47,7 +48,11 @@ from dune_imperium.core import (
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     resolve_board_effect,
@@ -354,7 +359,8 @@ def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() ->
         )
         return engine.apply(current, action).state
 
-    placed = take(state, "agent_turn", card_id=desert_power, space_id="hagga_basin")
+    picked = take(state, "choose_agent_card", card_id=desert_power)
+    placed = take(picked, "place_agent", space_id="hagga_basin")
     gained = take(placed, "resolve_agent_card_effect")  # Desert Power: +2 spice
     plotted = take(take(gained, "play_intrigue"), "choose_intrigue_discard")
     bought = take(plotted, "acquire_tech", tech_id="gene_locked_vault")
@@ -858,10 +864,10 @@ def test_steersman_recall_never_offers_its_own_into_the_fray_agent() -> None:
         state = _turn_state(owner, stacks=SERVO_STACKS)
         placement = next(
             action
-            for action in engine.legal_actions(state, 0)
+            for action in executable_placements(state, 0)
             if dict(action.arguments).get("space_id") == "assembly_hall"
         )
-        placed = engine.apply(state, placement).state
+        placed = apply_placement(engine, state, placement).state
         acquire = next(
             action
             for action in engine.legal_actions(placed, 0)
@@ -929,10 +935,10 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
     state = _turn_state(owner, stacks=SERVO_STACKS, config=TECH_CHOAM)
     placement = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments).get("space_id") == "assembly_hall"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     acquire = next(
         action
         for action in engine.legal_actions(placed, 0)
@@ -2820,14 +2826,14 @@ def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
         ),
         DomainAction("choose_tech_trash", 3),
         DomainAction("decline_skill", 0),
+        # The Agent turn is a card pick and a space pick (stage B1).
         DomainAction(
-            "agent_turn",
+            "choose_agent_card", 0, (("card_id", "player:0:starter:dagger:0"),)
+        ),
+        DomainAction(
+            "place_agent",
             0,
-            (
-                ("card_id", "player:0:starter:dagger:0"),
-                ("discount", "solari"),
-                ("space_id", "high_council"),
-            ),
+            (("discount", "solari"), ("space_id", "high_council")),
         ),
     )
     for action in actions:

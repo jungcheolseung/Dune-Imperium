@@ -164,6 +164,10 @@ class PrivatePlayerView:
     scouts_secret_picks: tuple[tuple[int, str, int], ...] = ()
     # The seat's own bid in the sealed auction running now (-1: none yet).
     scouts_bid: int = -1
+    # Stage B1 (OQ-111): the card the seat picked for its Agent turn and has
+    # not placed yet (seen by no other seat), and whether it is grafted.
+    agent_card_pick: str = ""
+    agent_card_pick_graft: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -556,6 +560,8 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             intrigue_cards=owner.intrigue_cards,
             peeked_card_id=peeked_card_id(state, player),
             peeked_intrigue_ids=peeked_intrigue_ids(state, player),
+            agent_card_pick=agent_card_pick_of(state, player)[0],
+            agent_card_pick_graft=agent_card_pick_of(state, player)[1],
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
             scouts_secret_picks=tuple(
@@ -627,6 +633,29 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         epic_game=state.config.epic_game,
         agent_boxes=agent_box_cards(state),
     )
+
+
+# The turn frame's context keys of a picked Agent card (stage B1,
+# ``rules.agent_turn``).
+AGENT_CARD_PICK_KEY = "agent_card_pick"
+AGENT_CARD_PICK_GRAFT_KEY = "agent_card_pick_graft"
+
+
+def agent_card_pick_of(state: GameState, player: int) -> tuple[str, bool]:
+    """The Agent card ``player`` picked and has not placed yet ("" if none),
+    and whether it is grafted: it waits in the seat's own turn frame, on top
+    until the space is picked."""
+
+    if not state.decision_stack:
+        return "", False
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return "", False
+    context = dict(frame.context)
+    card = context.get(AGENT_CARD_PICK_KEY)
+    if not isinstance(card, str):
+        return "", False
+    return card, context.get(AGENT_CARD_PICK_GRAFT_KEY) is True
 
 
 def peeked_card_id(state: GameState, player: int) -> str:

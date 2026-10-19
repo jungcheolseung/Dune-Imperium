@@ -119,7 +119,7 @@ EXPECTED_JS = """(from) => {
   let ended = -1;
   let opened = -1;
   for (const e of live) {
-    const taking = ['agent_turn', 'reveal_turn', 'play_turn_start_card'];
+    const taking = ['place_agent', 'reveal_turn', 'play_turn_start_card'];
     if (e.index >= from && e.type === 'action' && e.actor !== 0
         && taking.includes(e.action_id)) {
       const since = Math.max(ended, opened);

@@ -49,7 +49,10 @@ const ACTION_LABELS = {
   acquire_reserve: "카드 획득",
   acquire_reserve_with_solari: "카드 획득 ({solari})",
   advance_feyd_track: "페이드 토큰 전진",
+  /* The staged turn's whole placement (turn.js PLACEMENT_ACTION). */
   agent_turn: "{agent} 배치",
+  choose_agent_card: "{agent} 차례 카드 선택",
+  place_agent: "{agent} 배치",
   choose_agent_card_influence: "{influence_any} 선택",
   choose_combat_reward_influence: "{influence_any} 선택 ({combat} 보상)",
   choose_distinct_combat_reward_influence: "{influence_any} 선택 ({combat} 보상)",
@@ -332,6 +335,7 @@ const EVENT_LABELS = {
   troops_withdrawn: "병력 회수",
   troops_recruit_short: "병력 {recruit} 부족 ({supply} 없음)",
   shortfall_refilled: "부족분 보충 ({supply}로 돌아온 병력)",
+  agent_card_picked: "{agent} 차례 카드 선택",
   agent_turn_finished: "{agent_turn} 종료",
   agent_turn_reopened: "{agent_turn} 다시 열림",
   troops_retreated: "병력 후퇴",

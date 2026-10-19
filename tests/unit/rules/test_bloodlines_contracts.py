@@ -14,6 +14,7 @@ import pytest
 from tests.support.pauses import through_pauses
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -30,7 +31,11 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -845,12 +850,11 @@ def _accept_contract_icon() -> GameState:
     state = _state(owner, market=(IMMEDIATE,), intrigue_deck=INTRIGUE[:5])
     place = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("space_id") == "accept_contract"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("space_id") == "accept_contract"
         and dict(action.arguments).get("card_id") == mentat
     )
-    placed = engine.apply(state, place).state
+    placed = apply_placement(engine, state, place).state
     icon = DomainAction(
         action_id="resolve_board_effect",
         actor=0,

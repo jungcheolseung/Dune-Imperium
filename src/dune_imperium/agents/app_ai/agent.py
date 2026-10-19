@@ -41,6 +41,7 @@ import random
 from collections import Counter
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import PlacementMemory
 from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import AppContext
 from dune_imperium.agents.app_ai.data.constants import TABLES
@@ -87,6 +88,9 @@ class AppAIAgent:
         self.level = level
         self._rng = random.Random(seed)
         self.memory = Memory()
+        # The placement chosen at an Agent turn's card pick, for its space
+        # pick (stage B1, ``agents.agent_turn_steps``).
+        self._placements = PlacementMemory()
         # Decisions answered at random, by decision kind: no window mirrors
         # them (``<kind>``, ``view-only:<kind>``) or the window failed
         # (``error:<kind>``).
@@ -113,8 +117,23 @@ class AppAIAgent:
         observation: PlayerView,
         legal_actions: tuple[DomainAction, ...],
     ) -> DomainAction:
-        """The app AI's answer to the decision on top of ``state``."""
+        """The app AI's answer to the decision on top of ``state``. An
+        Agent-turn step (stage B1) is judged as the placements it stands
+        for, one decision per placement (``agents.agent_turn_steps``)."""
 
+        return self._placements.choose(
+            state,
+            observation.player,
+            legal_actions,
+            lambda actions: self._choose_with_state(state, observation, actions),
+        )
+
+    def _choose_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
         if not legal_actions:
             raise ValueError("app_ai requires at least one legal action")
         legal_actions = app_offered(legal_actions)
