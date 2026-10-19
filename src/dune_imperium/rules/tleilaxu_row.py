@@ -20,8 +20,7 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
-    RECLAIMED_FORCES_TLEILAXU,
-    RECLAIMED_FORCES_TROOPS,
+    reclaimed_forces_reward,
     tleilaxu_card_for_instance,
 )
 from dune_imperium.content.immortality.tleilaxu import (
@@ -306,7 +305,7 @@ def acquire_reclaimed_forces(
     if choice == "tleilaxu":
         paid = replace(state, players=replace_player(state.players, owner))
         advanced = advance_tleilaxu(
-            paid, player, RECLAIMED_FORCES_TLEILAXU, source=f"{source}:reclaimed_forces"
+            paid, player, reclaimed_forces_reward("tleilaxu").count
         )
         fired = fire_reveal_acquisition_intrigue(
             advanced.state,
@@ -318,7 +317,8 @@ def acquire_reclaimed_forces(
             state=fired.state,
             events=(event, *deal.events, *advanced.events, *fired.events),
         )
-    recruited_owner, recruited = recruit_troops(owner, RECLAIMED_FORCES_TROOPS)
+    troops = reclaimed_forces_reward("troops").count
+    recruited_owner, recruited = recruit_troops(owner, troops)
     next_state = replace(state, players=replace_player(state.players, recruited_owner))
     if tleilaxu_shop_is_open(next_state, player):
         # A Reveal-turn recruit may deploy with a Combat icon [Bloodlines
@@ -339,7 +339,7 @@ def acquire_reclaimed_forces(
             *recruit_shortfall_events(
                 f"{source}:reclaimed_forces",
                 player,
-                RECLAIMED_FORCES_TROOPS,
+                troops,
                 recruited,
             ),
             *fired.events,

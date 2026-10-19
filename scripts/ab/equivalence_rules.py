@@ -39,9 +39,16 @@ the hook returns, and lists the rules that never applied:
   empty tuple when the candidate has no step there; ``None`` when the rule does
   not apply;
 - ``answer(at)``: a move for a candidate decision the base did not have (a new
-  confirm window, an order the base fixed), or ``None``; the tool asks after
-  every step's moves until no rule answers, and adds those moves' events to the
-  step's.
+  confirm window, an order the base fixed, a choice the candidate asks before
+  the base did -- ``at.rows[at.index + 1:]`` are the steps the base recorded
+  after this one), or ``None``; the tool asks after every step's moves until
+  no rule answers, and adds those moves' events to the step's.
+
+A hook may set ``step.state_unchecked`` on either step to leave the state
+after it out of the comparison, where the candidate reaches the base's state
+a few steps later on purpose; the steps after it are compared in full again.
+``step.fields_unchecked`` leaves only the named digest fields out
+(``"players[1].hand"``, as the report names them), for that step only.
 
 ``state_fields`` names the state fields the candidate adds, drops or changes on
 purpose as ``"<Class>.<field>"``: ``"GameState.scouts_round"``, or
@@ -63,7 +70,7 @@ log) and needs its own rule.
 """
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -79,6 +86,12 @@ class Step:
     events: list[Any] = field(default_factory=list)
     views_text: str = ""
     vanish: bool = False
+    # Set by a hook: the state after this step is left out of the comparison
+    # (the candidate reaches the base's state a few steps later on purpose).
+    state_unchecked: bool = False
+    # Set by a hook: these state digest fields (``"players[1].hand"``) are
+    # left out of the comparison after this step only.
+    fields_unchecked: set[str] = field(default_factory=set)
     _views: list[Any] | None = None
 
     @property
@@ -104,6 +117,10 @@ class At:
     decision: Any
     legal: tuple[Any, ...]
     old: Step
+    # The recording's rows and the recorded step's index in them, so an
+    # answer may take a choice the base made later.
+    rows: Sequence[Any] = ()
+    index: int = -1
 
 
 @dataclass(frozen=True)

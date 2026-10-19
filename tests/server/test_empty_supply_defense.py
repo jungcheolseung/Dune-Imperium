@@ -24,10 +24,11 @@ from dune_imperium.server.sessions import GameSessionManager, JsonObject
 
 # All four seats are human to the server and played by the table pinned in
 # the registry, so the walk does not move when the heuristic is retuned.
-# Seed 14 reaches an empty-supply defense first (round 9, seat 0, one
-# specimen, Spice Refinery; 2026-10-14); the later seeds are only a fallback
-# if the engine's games move.
-SEEDS = (14, *range(60))
+# Seed 179 reaches an empty-supply defense first (round 10, seat 1, one
+# specimen; 2026-10-18, after the Conflict-end order moved every game -- no
+# seed of 0-178 does now; seed 14 until then); the later seeds are only a
+# fallback if the engine's games move.
+SEEDS = (179, *range(60))
 
 
 def _obj(value: object) -> dict[str, object]:

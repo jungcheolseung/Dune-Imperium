@@ -258,6 +258,14 @@ class AtMakerSpace:
 
 
 @dataclass(frozen=True, slots=True)
+class AtFactionSpace:
+    """The Agent was sent to a Faction space: fixed by the placement, so an
+    Agent box judges it when the card is played (OQ-028 (a)). A box reached
+    off one through a granted Spy or Agent icon (Clandestine, Resourceful,
+    Urgent Shigawire) has no visited Faction to gain with (OQ-046)."""
+
+
+@dataclass(frozen=True, slots=True)
 class FactionBond:
     """Another card of ``faction`` is in play: that Faction's Bond ("Fremen
     Bond | 프레멘의 유대감" [Main p. 20])."""
@@ -470,6 +478,7 @@ type Condition = (
     | SpiceAtLeast
     | OpponentPlayedCombatIntrigue
     | AtMakerSpace
+    | AtFactionSpace
     | FactionBond
     | SpyRecalledThisTurn
     | UnitsInConflictAtLeast
@@ -520,6 +529,14 @@ class PayResources:
         )
 
 
+class GraftedTrash(StrEnum):
+    """Which grafted card a trash takes: "the other grafted card" [Dissecting
+    Kit card], "one of the grafted cards" [Beguiling Pheromones card]."""
+
+    OTHER = "other"
+    EITHER = "either"
+
+
 @dataclass(frozen=True, slots=True)
 class TrashCard:
     """Trash one of the player's cards as an arrow's cost: one in hand, in
@@ -533,6 +550,10 @@ class TrashCard:
     hand_only: bool = False
     this_card: bool = False
     other_in_play: Faction | None = None
+    # "an Emperor card from your hand" [Treacherous Maneuver card].
+    faction: Faction | None = None
+    # A card of the graft pair (``GraftedTrash``).
+    grafted: GraftedTrash | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -542,6 +563,12 @@ class TrashCard:
             > 1
         ):
             raise ValueError("a trash cost names one place to take the card from")
+        if self.faction is not None and not self.hand_only:
+            raise ValueError("a trash cost names a Faction only for a card in hand")
+        if self.grafted is not None and (
+            self.hand_only or self.this_card or self.other_in_play is not None
+        ):
+            raise ValueError("a grafted card's trash names no other place")
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,6 +594,9 @@ class LoseInfluence:
     """
 
     count: int = 1
+    # "lose 2 Influence with one Faction" [For Humanity card]: every step
+    # from the same Faction.
+    one_faction: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -595,6 +625,9 @@ class LoseTroops:
 
     count: int = 1
     from_conflict: bool = False
+    # Troops only, from either zone: no Sardaukar Commander [Tleilaxu
+    # Surgeon card] (OQ-053).
+    troops_only: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -849,10 +882,21 @@ class GainInfluence:
     # played the card, where the player already has ``minimum_own``.
     different_from_trigger: bool = False
     minimum_own: int = 0
+    # "Gain N Influence with the visited Faction" [Overthrow card]
+    # [Subversive Advisor card]: the Faction of the space the Agent was sent
+    # to, no choice; ``replaces_space``: the N replace the space's own 1 --
+    # "기본 1 대신 총 2", never 2 + 1 [Main pp. 9, 11, 20]
+    # (docs/rules/player-turns.md).
+    visited_space: bool = False
+    replaces_space: bool = False
 
     def __post_init__(self) -> None:
         if self.times < 1:
             raise ValueError("Influence gain times must be positive")
+        if self.visited_space and self.factions is not None:
+            raise ValueError("the visited Faction is the only one a visited gain names")
+        if self.replaces_space and not self.visited_space:
+            raise ValueError("only a visited Faction's gain replaces the space's")
         if self.factions is not None:
             if not self.factions or len(self.factions) != len(set(self.factions)):
                 raise ValueError("Influence gain Factions must be unique and non-empty")
@@ -867,6 +911,8 @@ class GainInfluence:
     def requires_choice(self) -> bool:
         """Return whether the player must pick a Faction."""
 
+        if self.visited_space:
+            return False
         return self.factions is None or len(self.factions) > 1
 
 
@@ -1259,6 +1305,30 @@ class OpponentsMoveSpiesFromVisitedSpace:
     Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
 
 
+class PrintedRevealValue(StrEnum):
+    """A revealed card's own printed value a choice holds back."""
+
+    PERSUASION = "persuasion"
+    SPICE = "spice"
+
+
+@dataclass(frozen=True, slots=True)
+class KeepPrintedReveal:
+    """"Keep the Persuasion" [Desert Power card] / "Keep the spice" [Priority
+    Contracts card]: the card's own printed Reveal value, held from every
+    total until this line is chosen (OQ-069; OQ-028 (b) addition)."""
+
+    value: PrintedRevealValue
+
+
+@dataclass(frozen=True, slots=True)
+class GainSolariPerPartnerAgentIcon:
+    """Gain 1 Solari per Agent icon on the other grafted card [Slig Farmer
+    card]: borrowed and conditional icons count too -- Blank Slate's grafted
+    Faction icons, Servo-Receivers' Signet icons, a met Long Reach condition
+    -- since the card carries them (OQ-055, user ruling 2026-09-08)."""
+
+
 @dataclass(frozen=True, slots=True)
 class ReturnOtherGraftedCardAtRevealStart:
     """At the start of the owner's Reveal turn, the other grafted card goes
@@ -1551,6 +1621,8 @@ type Reward = (
     | EachOpponentLosesTroop
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
+    | GainSolariPerPartnerAgentIcon
+    | KeepPrintedReveal
     | AcquireBankCommander
     | RevealPersuasion
     | RevealSwords

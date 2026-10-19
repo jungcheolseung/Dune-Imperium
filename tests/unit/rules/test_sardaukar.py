@@ -40,7 +40,7 @@ from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     resolve_board_effect,
 )
-from dune_imperium.rules.combat import finish_combat
+from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     apply_commander_deployment,
@@ -1272,7 +1272,7 @@ def test_desperate_needs_a_commander_in_the_conflict() -> None:
     assert legal_skill_trash_actions(state, 0) == ()
 
 
-def test_combat_cleanup_returns_commanders_to_the_supply() -> None:
+def test_the_conflict_end_step_returns_commanders_to_the_supply() -> None:
     conflict_id = CONFLICTS[0].card.card_id
     owner = _seat_with_skills(
         skill_ids=(_skill("canny"),),
@@ -1297,13 +1297,117 @@ def test_combat_cleanup_returns_commanders_to_the_supply() -> None:
         ),
     )
 
-    cleaned = finish_combat(state).state.players[0]
+    # The Commanders and troops go back to the supply as the Conflict-end
+    # step opens, before the cleanup [Main p. 14] [Bloodlines p. 4]; the
+    # strength still stands until then.
+    offered = offer_conflict_end_triggers(state).state
+    returned = offered.players[0]
+    assert returned.commanders_conflict == 0
+    assert returned.commanders_supply == 1
+    assert returned.troops_conflict == 0
+    assert returned.combat_strength == 6
+    assert returned.skill_strength_applied == 2
+
+    cleaned = finish_combat(offered).state.players[0]
     assert cleaned.commanders_conflict == 0
     assert cleaned.commanders_supply == 1
     assert cleaned.troops_conflict == 0
     assert cleaned.combat_strength == 0
     assert cleaned.skill_strength_applied == 0
     assert cleaned.skill_ids == (_skill("canny"),)
+
+
+def _frozen_strength_state(conflict_id: str) -> GameState:
+    """Seat 0 wins the Conflict with 10: troops 4, a sandworm 3, a Commander
+    2 and Fierce's 1; seat 1 stands at 9, so the win depends on Fierce's
+    share staying counted after the Commander goes back."""
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("fierce"),),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+        sandworms_conflict=1,
+        has_revealed=True,
+        combat_strength=10,
+        skill_strength_applied=1,
+        intrigue_cards=("intrigue:backed_by_choam:0",),
+    )
+    rival = PlayerState(
+        player_id=1,
+        troops_supply=8,
+        troops_conflict=1,
+        has_revealed=True,
+        combat_strength=9,
+    )
+    base = _turn_state(
+        owner,
+        others=(
+            rival,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in (2, 3)),
+        ),
+    )
+    return replace(
+        base,
+        config=RulesetConfig(bloodlines=True, immortality=True),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+    )
+
+
+def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> None:
+    # "Once all rewards have been given, each player takes their troops from
+    # the Conflict" [Main p. 14] and the Combat markers return to 0 only
+    # with the rest of the cleanup. Fierce adds 1 strength "while a Commander
+    # is in the Conflict" [Bloodlines p. 4]; the winner takes the Conflict
+    # card before the troops go back (OQ-108, user decision 2026-10-18), but
+    # the strengths still stand through the windows: a sandworm keeps the seat
+    # in the Conflict, so a refresh would drop Fierce's share with the
+    # Commander's return (10 became 9) while the windows are answered.
+    conflict_id = CONFLICTS[0].card.card_id
+    state = _frozen_strength_state(conflict_id)
+
+    offered = offer_conflict_end_triggers(state)
+
+    assert offered.state.combat_end_triggers_offered
+    assert offered.state.decision_stack  # seat 0's window is open
+    # The Conflict card went to the 10 over the 9 as the step opened.
+    assert [event.kind for event in offered.events].count("conflict_won") == 1
+    assert offered.state.players[0].won_conflict_ids == (conflict_id,)
+    assert offered.state.current_conflict_ids == ()
+    seat = offered.state.players[0]
+    assert (seat.commanders_conflict, seat.troops_conflict) == (0, 0)
+    assert seat.sandworms_conflict == 1
+    refreshed = refresh_pre_reveal_strength(offered).state
+    assert refreshed.players[0].combat_strength == 10
+    assert refreshed.players[0].skill_strength_applied == 1
+    assert refreshed.players[1].combat_strength == 9
+    # What the freeze prevents: the same refresh before the windows were
+    # offered would drop Fierce's share with the Commander and read 9.
+    unfrozen = replace(offered.state, combat_end_triggers_offered=False)
+    assert refresh_pre_reveal_strength(RuleResult(state=unfrozen)).state.players[
+        0
+    ].combat_strength == 9
+
+    # The window is answered through the engine, which refreshes the
+    # strengths after every step; the card stays seat 0's, awarded once, and
+    # the cleanup zeroes the markers.
+    engine = UprisingRulesEngine()
+    transition = engine.apply(
+        refreshed, DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
+    )
+    assert [event.kind for event in transition.events].count("conflict_won") == 0
+    declined = transition.state
+    assert declined.phase is not GamePhase.COMBAT
+    winner = declined.players[0]
+    assert winner.won_conflict_ids == (conflict_id,)
+    assert declined.current_conflict_ids == ()
+    assert all(player.combat_strength == 0 for player in declined.players)
+    assert winner.skill_strength_applied == 0
 
 
 # --- state invariants -------------------------------------------------------
@@ -1389,11 +1493,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 140  # v147: the ``source``-named Reveal choice rows
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
     )
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
-        DomainAction("decline_sardaukar_commander", 1),
         DomainAction("recruit_sardaukar_commander", 3),
         DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),
         DomainAction("deploy_commanders", 0, (("count", 7),)),
@@ -1638,7 +1742,7 @@ def test_a_won_wild_conflict_is_not_matched_on_arrival() -> None:
             ),
         ),
     )
-    winner = finish_combat(state).state.players[0]
+    winner = finish_combat(offer_conflict_end_triggers(state).state).state.players[0]
     assert winner.won_conflict_ids == ("skirmish_wild",)
     # Wild icons are matched during the Endgame only [Main p. 20] [Bloodlines p. 5].
     assert winner.face_down_battle_card_ids == ()

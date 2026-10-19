@@ -24,6 +24,8 @@ _SCOUTS_ACTION_PREFIXES = (
     "trash_optional_card",
     "take_desert_riding_hooks",
     "confirm_scouts_bid",
+    # A Scouts choice with no line the seat can take (codec v149).
+    "resolve_scouts_choice_without_option",
 )
 
 
@@ -31,7 +33,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 148
+    assert ACTION_CODEC_VERSION == 149
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -119,10 +121,17 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # the plain Spy icons' pass of their recall-first (3) and Unswerving
         # Loyalty's deploy and retreat (2).
         + 140
+        # v149 (cleanup-2f, user decision 2026-10-18): four refusals the
+        # engine no longer offers leave (decline_other_memories,
+        # decline_leader_board_repeat, resolve_desert_tactics_without_trash,
+        # decline_imperial_privilege_intrigue) and two confirms join
+        # (resolve_leader_signet_without_option,
+        # resolve_combat_trash_without_card).
+        - 2
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged.
-    assert first.size == 4553
+    assert first.size == 4551
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -146,8 +155,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4553
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4553 + len(
+    assert ActionCodec(RulesetConfig()).size == 4551
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4551 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -261,6 +270,13 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # v147: the base catalog's 140 ``source``-named Reveal rows plus
         # Priority Contracts' and Delivery Agreement's spice-or-VP (2 x 2).
         + 144
+        # v149 (cleanup-2f, user decision 2026-10-18): four refusals the
+        # engine no longer offers leave (decline_other_memories,
+        # decline_leader_board_repeat, resolve_desert_tactics_without_trash,
+        # decline_imperial_privilege_intrigue) and two confirms join
+        # (resolve_leader_signet_without_option,
+        # resolve_combat_trash_without_card).
+        - 2
     )
 
     try:
@@ -390,6 +406,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # Bloodlines decks' cards (Shrouded Counsel's trash of any personal
         # card alone is one per instance).
         + 334
+        # v149 (cleanup-2f): the five refusals the engine no longer offers
+        # leave (decline_sardaukar_commander among them) and two confirms
+        # join.
+        - 3
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -852,3 +872,12 @@ def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> Non
     )
     with pytest.raises(ValueError, match="not present"):
         codec.encode(beyond)
+
+
+@pytest.mark.parametrize("bloodlines", [False, True])
+def test_c7r3_s_owed_card_encodes_with_or_without_bloodlines(bloodlines: bool) -> None:
+    # c7r3's card is owed in its owner's turn since codec v149 (cleanup-2b,
+    # rule decision 5; OQ-106): an Immortality game without Bloodlines, whose
+    # catalog held no ``draw_owed_card`` before, encodes it too.
+    codec = ActionCodec(RulesetConfig(immortality=True, bloodlines=bloodlines))
+    codec.encode(DomainAction(action_id="draw_owed_card", actor=0))

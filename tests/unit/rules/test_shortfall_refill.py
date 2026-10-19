@@ -103,7 +103,7 @@ def test_other_memories_makes_up_a_recruit_shortfall_this_turn() -> None:
     assert seat.ungained_troops == 0
     refills = [event for event in result.events if event.kind == "shortfall_refilled"]
     assert len(refills) == 1
-    assert dict(refills[0].payload) == {"player": 0, "specimens": 0, "troops": 1}
+    assert dict(refills[0].payload) == {"player": 0, "troops": 1}
     # The made-up troop is this turn's recruit.
     turn = next(
         frame

@@ -236,10 +236,10 @@ def test_immediate_trashes_a_chosen_intrigue_card_then_draws_both_rewards() -> N
     assert owner.completed_contract_ids == (IMMEDIATE,)
     assert owner.contracts_completed_turn == 1
     assert result.state.decision_stack[-1].kind == "turn"
-    assert [event.kind for event in result.events][:2] == [
-        "intrigue_card_trashed",
-        "contract_completed",
-    ]
+    # The completion's own event comes after its draws (cleanup-2c-3).
+    kinds = [event.kind for event in result.events]
+    assert kinds[0] == "intrigue_card_trashed"
+    assert kinds[-1] == "contract_completed"
 
 
 def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> None:

@@ -515,7 +515,12 @@ def _store_navigation_intent(
 # ---------------------------------------------------------------------------
 
 _TECH_IDS: Final = frozenset(
-    {"acquire_tech", "decline_tech", "resolve_tech_acquire_effect"}
+    {
+        "acquire_tech",
+        "decline_tech",
+        "resolve_tech_acquire_effect",
+        "resolve_tech_influence_without_faction",
+    }
 )
 
 
@@ -528,16 +533,21 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     else the empty answer (0.5). Our engine forces the purchase while a tile
     is affordable (no ``decline_tech``): the empty answer then buys
     ``TechTileToAcquire(1)``'s tile (D13). The acquire-effects-only frame:
-    ``tech_acquire_effect_action``.
+    ``tech_acquire_effect_action``; an Influence with every Faction at the
+    top there is confirmed last (``resolve_tech_influence_without_faction``,
+    cleanup-2b), the app having no such step (its picker skips it).
     """
 
     if not _known_only(run, _TECH_IDS):
         return None
     resolves = run.by_id("resolve_tech_acquire_effect")
+    confirm = run.first("resolve_tech_influence_without_faction")
     if resolves:
-        if len(resolves) != len(run.legal):
+        if len(resolves) + (confirm is not None) != len(run.legal):
             return None
         return tech_acquire_effect_action(run, resolves)
+    if confirm is not None:
+        return confirm
     acquires = run.by_id("acquire_tech")
     decline = run.first("decline_tech")
     if not acquires:
@@ -669,6 +679,7 @@ def tech_secret_project(run: DecisionRun) -> DomainAction | None:
 _SIGNET_IDS: Final = frozenset(
     {
         "decline_leader_signet_payment",
+        "resolve_leader_signet_without_option",
         "retreat_leader_troops",
         "pay_leader_signet_water",
         "trash_leader_card",

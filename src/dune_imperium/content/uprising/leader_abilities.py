@@ -6,11 +6,11 @@ turn [Main pp. 6, 20] -- the card's Agent box -- or through Servo-Receivers'
 acquire icon (OQ-062). Keyed by Leader face (Lady Jessica's two faces print
 different ones); Steersman Y'rkoon prints none (Plot Course stands in its
 place, and he has no Signet Ring card). ``rules.leader_abilities`` resolves
-the ones with nothing to choose from their lines in either host (one
-``leader_signet_resolved`` event), reads Spice Agony's and Water of Life's
-payment and Arrakis Informant's posts off theirs, and keeps the others as
-code under the hooks it registers (``SIGNET_HOOKS``), lines listed only
-where the DSL says the whole ability. Fill Coffers' two lines are icons
+the ones with nothing to choose from their lines in either host (their
+gains, then the box's ``leader_signet_resolved``), reads Spice Agony's and
+Water of Life's payment and Arrakis Informant's posts off theirs, and keeps
+the others as code under the hooks it registers (``SIGNET_HOOKS``), lines
+listed only where the DSL says the whole ability. Fill Coffers' two lines are icons
 resolved one action each in the Signet Ring's box (OQ-027, OQ-028).
 
 Each face's left box is ``LEADER_ABILITIES`` (composed A6e), used "at the
@@ -248,13 +248,14 @@ def _standing(hook: str) -> Ability:
 LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
     {
         # Devious Strength: "Reveal turn, once: Recall one of your placed Spies
-        # -> Gain 2 swords" (its own recall rows on the Reveal).
+        # -> Gain 2 swords" (its recall rows on the Reveal; cleanup-2d).
         "feyd_rautha_harkonnen": (
-            _left_hook(
-                AbilityTiming.REVEAL,
-                "devious_strength",
-                AbilityMark.OPTIONAL,
-                EffectSection(rewards=(RevealSwords(2),), costs=(RecallSpy(),)),
+            Ability(
+                timing=AbilityTiming.REVEAL,
+                sections=(
+                    EffectSection(rewards=(RevealSwords(2),), costs=(RecallSpy(),)),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
         ),
         # Always Smiling: "Reveal turn: If you have 6 or more strength in the
@@ -274,11 +275,12 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         ),
         # Desert Scouts: "Reveal turn: You may retreat one of your troops".
         "lady_amber_metulli": (
-            _left_hook(
-                AbilityTiming.REVEAL,
-                "desert_scouts",
-                AbilityMark.OPTIONAL,
-                EffectSection(rewards=(RetreatTroops(minimum=1, maximum=1),)),
+            Ability(
+                timing=AbilityTiming.REVEAL,
+                sections=(
+                    EffectSection(rewards=(RetreatTroops(minimum=1, maximum=1),)),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
         ),
         # Other Memories: on a Bene Gesserit space, return the memories, draw

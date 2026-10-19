@@ -28,6 +28,7 @@ from dune_imperium.rules.frames import (
     turn_owner_of,
     update_turn_recruits,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import triggered_intrigue_draw
 
 
@@ -113,14 +114,22 @@ def trash_personal_card(
                 solari=next_owner.resources.solari + assassin.solari,
             ),
         )
-        events.append(
-            GameEvent(
-                event_id=f"{source}:trash:{card_id}:assassin",
-                kind="leader_ability_resolved",
-                payload=(
-                    ("leader_id", str(next_owner.leader_id)),
-                    ("player", player),
-                    ("solari", assassin.solari),
+        # The ability is the Leader's: named after the Leader, its gain
+        # then its own event (cleanup-2c-4).
+        leader = (
+            f"round:{state.round_number}:player:{player}:leader:"
+            f"{next_owner.leader_id}"
+        )
+        events.extend(
+            (
+                resources_gained_event(leader, player, solari=assassin.solari),
+                GameEvent(
+                    event_id=f"{leader}:resolved",
+                    kind="leader_ability_resolved",
+                    payload=(
+                        ("leader_id", str(next_owner.leader_id)),
+                        ("player", player),
+                    ),
                 ),
             )
         )
@@ -217,9 +226,7 @@ def trash_personal_card(
             # the research modules import this one.
             from dune_imperium.rules.immortality import advance_tleilaxu
 
-            advanced = advance_tleilaxu(
-                result.state, player, reward.count, source=f"{source}:trash:{card_id}"
-            )
+            advanced = advance_tleilaxu(result.state, player, reward.count)
             result = RuleResult(
                 state=advanced.state, events=(*result.events, *advanced.events)
             )

@@ -92,6 +92,7 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
+    close_spent_conflict_end_window,
     combat_participants_are_stale,
     finish_combat,
     legal_combat_intrigue_actions,
@@ -106,6 +107,7 @@ from dune_imperium.rules.combat import (
     pay_combat_rewards,
     refresh_combat_participants,
     resolve_combat_rewards,
+    spent_conflict_end_window,
 )
 from dune_imperium.rules.combat_deployment import (
     apply_agent_turn_finish,
@@ -158,6 +160,7 @@ from dune_imperium.rules.immortality import (
     apply_family_atomics,
     apply_research_advance,
     apply_research_bonus,
+    apply_research_icon,
     apply_specimen_return,
     legal_family_atomics_actions,
     legal_research_advance_actions,
@@ -360,6 +363,7 @@ from dune_imperium.rules.tech import (
     apply_tech_acquisition,
     apply_tech_choice,
     apply_tech_flip,
+    apply_tech_influence_without_faction,
     deploy_suspensor_troops,
     draw_owed_tech_cards,
     legal_secret_project_actions,
@@ -483,6 +487,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_track_spy_actions,
         # A draw a Plot's trigger earned, its own step (OQ-106).
         legal_owed_draw_actions,
+        # A research bonus or trash icon a Plot raised waits on the turn
+        # (cleanup-2b).
+        legal_research_bonus_actions,
+        legal_optional_trash_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -515,6 +523,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tleilaxu_acquisitions,
         # Arrakeen Scouts: Corrinth City's seat's subcommittee (OQ-076).
         legal_subcommittee_choice_actions,
+        # A research bonus or trash icon raised in the Reveal waits on it
+        # (cleanup-2b).
+        legal_research_bonus_actions,
+        legal_optional_trash_actions,
     ),
     # A Reveal choice opened from the Reveal frame's pending list, on top
     # only while a step must follow at once (a Spy recalled for its
@@ -632,6 +644,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_rewards_first": apply_scouts_rewards_first,
     "scouts_choose_option": apply_scouts_choice_action,
     "scouts_pass": apply_scouts_choice_action,
+    "resolve_scouts_choice_without_option": apply_scouts_choice_action,
     "scouts_join_mission": apply_mission_join,
     "scouts_decline_mission": apply_mission_join,
     "scouts_collect_mission": apply_mission_collect,
@@ -715,9 +728,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_desert_riding_hooks": apply_maker_space_action,
     "summon_maker_sandworms": apply_maker_space_action,
     "choose_shipping_influence": apply_shipping_action,
-    "resolve_desert_tactics_without_trash": apply_desert_tactics_action,
     "trash_card_for_desert_tactics": apply_desert_tactics_action,
-    "decline_imperial_privilege_intrigue": apply_imperial_privilege_action,
     "trash_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_conflict_agent_for_imperial_privilege": apply_imperial_privilege_action,
@@ -733,6 +744,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_intrigue_for_research_bonus": apply_research_bonus,
     "pay_research_bonus": apply_research_bonus,
     "decline_research_bonus": apply_research_bonus,
+    "resolve_research_icon": apply_research_icon,
     "return_specimen": apply_specimen_return,
     "use_family_atomics": apply_family_atomics,
     "acquire_tleilaxu": apply_tleilaxu_acquisition,
@@ -743,6 +755,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
     "acquire_tech": apply_tech_acquisition,
     "resolve_tech_acquire_effect": apply_tech_acquire_effect,
+    "resolve_tech_influence_without_faction": apply_tech_influence_without_faction,
     "decline_tech": apply_tech_acquisition,
     "flip_tech": apply_tech_flip,
     "choose_secret_project": apply_secret_project,
@@ -756,7 +769,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "draw_owed_intrigue": apply_owed_draw,
     "draw_owed_card": apply_owed_draw,
     "decline_skill": apply_skill_choice,
-    "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
     "trash_skill_for_strength": apply_skill_trash,
     # Agent-card serial choices
@@ -811,14 +823,13 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_leader_signet_spice": apply_leader_signet_payment,
     "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,
+    "resolve_leader_signet_without_option": apply_leader_signet_payment,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
     "choose_leader_signet_influence": apply_shaddam_signet_choice,
     "use_other_memories": apply_leader_placement_ability,
-    "decline_other_memories": apply_leader_placement_ability,
     "pay_leader_board_repeat": apply_leader_board_repeat,
-    "decline_leader_board_repeat": apply_leader_board_repeat,
     # Reveal turn
     "acquire_reserve": apply_reserve_acquisition,
     "acquire_imperium": apply_imperium_acquisition,
@@ -889,8 +900,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_combat_reward": _apply_decline_combat_reward,
     "trash_combat_reward_card": apply_combat_reward_trash,
     "decline_combat_reward_trash": apply_combat_reward_trash,
+    "resolve_combat_trash_without_card": apply_combat_reward_trash,
     "play_conflict_end_intrigue": apply_conflict_end_trigger,
     "decline_conflict_end_intrigue": apply_conflict_end_trigger,
+    "finish_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,
@@ -1204,6 +1217,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # seat's Conflict rewards fizzle there (user ruling 2026-10-02,
             # L2-Q2: "보상 끝까지 보류 후 불발").
             automatic = fizzle_combat_held_contract_icons(state)
+        elif spent_conflict_end_window(state):
+            # A Conflict-end window a card was played in, back on top with
+            # its seat holding no Intrigue card, closes (OQ-103, OQ-109).
+            automatic = close_spent_conflict_end_window(state)
         elif state.decision_stack:
             break
         elif scouts_step_is_pending(state):
@@ -1225,6 +1242,12 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
                     if state.combat_rewards_paid > 0
                     else offer_conflict_end_triggers(state)
                 )
+            elif any(seat.tech_cards_owed for seat in state.players):
+                # The card Planetary Array owes for the win is drawn before
+                # the cleanup runs on into the next round (OQ-108): with a
+                # Conflict-end window open it is drawn as that step settles;
+                # with none, here (a reshuffle stops the run).
+                automatic = draw_owed_tech_cards(RuleResult(state=state))
             else:
                 automatic = finish_combat(state)
         elif state.phase is GamePhase.MAKERS:

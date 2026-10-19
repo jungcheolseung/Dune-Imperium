@@ -515,7 +515,7 @@ def apply_trigger_contract_action(
             GameEvent(
                 event_id=f"{source}:contracts_revealed",
                 kind="contracts_revealed",
-                payload=(("contract_ids", ",".join(revealed)), ("player", player)),
+                payload=(("contract_ids", tuple(revealed)), ("player", player)),
             ),
             GameEvent(
                 event_id=f"{source}:contract_taken",

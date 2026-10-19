@@ -205,19 +205,20 @@ CONTRACT_SPY_RECALL = _first(
 )
 # Round 1, seat 0 (Feyd) at Dutiful Service: Arrakeen I 1.40625, Immediate 2.86.
 MARKET = _first("contract_market", 1)
-# Round 9, seat 1 (Gurney Halleck) completed a contract at Sardaukar, its
-# other Agents on the High Council and the Deep Desert; it has Bene Gesserit
-# 2, seat 3 has 4. The recall tests put those two Agents on Arrakeen (combat,
-# value 8.0759) and Secrets (BG, value 5.125). Seed 7 reached Arrakeen and
-# Secrets themselves until 5654d7f8 (a Combat Intrigue pass right after a
-# card play no longer counts as a consecutive pass, 2026-10-07) moved its
-# game; seed 123 then reached a recall with two Agents until the user ruling
-# of 2026-10-14 (an optional effect of the Agent turn offers no refusal and
-# lapses at the turn's end, OQ-095 (2)) moved the heuristic games. 34 is the
-# first seed from 1 that reaches a recall with two Agents and passes the
-# recall tests below (of seeds 1-1499 only 34, 865, 1004, 1209 and 1430 do).
+# Round 6, seat 2 (Lady Amber Metulli) completed a contract at Sardaukar, its
+# other Agents on Arrakeen and the Swordmaster; it has Bene Gesserit 1, seat
+# 0 has 3. The recall tests put those two Agents on Arrakeen (combat) and
+# Secrets (BG). Seed 7 reached Arrakeen and Secrets themselves until
+# 5654d7f8 (a Combat Intrigue pass right after a card play no longer counts
+# as a consecutive pass, 2026-10-07) moved its game; seed 123 then reached a
+# recall with two Agents until the user ruling of 2026-10-14 (an optional
+# effect of the Agent turn offers no refusal and lapses at the turn's end,
+# OQ-095 (2)) moved the heuristic games, and seed 34 until cleanup-2d split
+# three Agent boxes per icon (2026-10-18). 865 is the first seed from 1 that
+# reaches a recall with two other Agents from Sardaukar and passes the
+# recall tests below (of seeds 1-1499 also 1004, 1209, 1382, 1430 and 1440).
 RECALL = _first(
-    "contract_reward_recall", 34, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
+    "contract_reward_recall", 865, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
 )
 # Round 3, seat 2 (Lady Amber Metulli), one Agent left, hand: Signet Ring,
 # Dune :0, Convincing Argument, Dune :1. Seed 7 reached a Covert Operation
@@ -475,8 +476,8 @@ def _arrakeen_and_secrets() -> GameState:
 
     seat = _owner(RECALL)
     assert RECALL.players[seat].agent_locations == (
-        "high_council",
-        "deep_desert",
+        "arrakeen",
+        "swordmaster",
         "sardaukar",
     )
     return with_player(
@@ -487,7 +488,8 @@ def _arrakeen_and_secrets() -> GameState:
 def test_recall_takes_the_trailing_faction_space_over_a_combat_space() -> None:
     state = _arrakeen_and_secrets()
     seat = _owner(state)
-    # Secrets: BG 2 vs 4 -> 75; Arrakeen: 50 - 8.0759.
+    # Secrets: Bene Gesserit trailing by 2 -> 75; Arrakeen: 50 minus its
+    # space value.
     assert _answer(state) == _act(
         "recall_agent_for_contract", seat, space_id="secrets"
     )
@@ -505,8 +507,8 @@ def test_recall_prefers_a_factionless_non_combat_space() -> None:
 
 def test_recall_otherwise_takes_the_lowest_space_value() -> None:
     seat = _owner(RECALL)
-    # BG 3 vs 4: no longer trailing by 2. Secrets 50 - 9.675, Arrakeen
-    # 50 - 8.0759: the lower-valued Arrakeen scores higher.
+    # Bene Gesserit 3: no longer trailing by 2. Both score 50 minus their
+    # space value: the lower-valued Arrakeen scores higher.
     state = with_player(
         _arrakeen_and_secrets(),
         seat,

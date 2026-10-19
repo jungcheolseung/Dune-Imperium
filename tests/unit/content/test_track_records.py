@@ -16,8 +16,7 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES_CHOICES,
-    RECLAIMED_FORCES_TLEILAXU,
-    RECLAIMED_FORCES_TROOPS,
+    reclaimed_forces_reward,
 )
 from dune_imperium.content.immortality.track_abilities import (
     RECLAIMED_FORCES_ABILITY,
@@ -25,9 +24,11 @@ from dune_imperium.content.immortality.track_abilities import (
     TLEILAXU_SPACE_ABILITIES,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AdvanceTleilaxu,
     EffectSection,
     GainResources,
     GenerateSpecimens,
+    RecruitTroops,
     SummonSandworm,
     TakeSetupSpice,
 )
@@ -51,7 +52,10 @@ def test_every_printed_track_bonus_comes_from_its_record() -> None:
     }
     assert TLEILAXU_TRACK[4] is TleilaxuBonus.VICTORY_POINT_AND_FIRST_SPICE
     assert RECLAIMED_FORCES_CHOICES == ("troops", "tleilaxu")
-    assert (RECLAIMED_FORCES_TROOPS, RECLAIMED_FORCES_TLEILAXU) == (2, 1)
+    assert (
+        reclaimed_forces_reward("troops"),
+        reclaimed_forces_reward("tleilaxu"),
+    ) == (RecruitTroops(2), AdvanceTleilaxu(1))
     assert len(RECLAIMED_FORCES_ABILITY.sections) == 2
 
 

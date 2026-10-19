@@ -7,8 +7,9 @@ this is: base game plus Immortality, no edited state. The game is saved at
 the first Round Start Control defense whose defender has no troop in its
 supply but a specimen -- the frame OQ-050 opens so that a specimen can be
 returned "at any time" [Immortality p. 8] for the one defending troop
-[Main pp. 10, 20]. A walk of seeds 0-39 finds seed 14 first (round 9, seat 0,
-one specimen, Spice Refinery; seed 30 also does, with seat 2).
+[Main pp. 10, 20]. Seed 179 reaches it (round 10, seat 1, one specimen;
+2026-10-18, after the Conflict-end order moved every game, no seed of 0-178
+does); seed 14 did until then (round 9, seat 0, Spice Refinery).
 
 Prints {"defense-specimen": save_id, "seat": defender, "specimens": count} as
 JSON.
@@ -27,7 +28,7 @@ STEPS = 20_000
 
 store = SaveStore(Path(sys.argv[1]))
 
-for seed in range(60):
+for seed in (179, *range(60)):
     manager = GameSessionManager()
     summary = manager.create_game(("human",) * 4, immortality=True, game_seed=seed)
     gid = summary["game_id"]

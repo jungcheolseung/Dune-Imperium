@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
+    AtFactionSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -58,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainSolariPerUnitType,
     GainSpiceWithHelixBonus,
     GainVictoryPoints,
@@ -66,6 +68,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -78,6 +81,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
+    KeepPrintedReveal,
     LookAtIntrigueKeepOne,
     LoseFactionInfluence,
     LoseGarrisonTroops,
@@ -213,6 +217,12 @@ def _retreat_troops_text(troops: RetreatTroops) -> str:
 
 
 def _gain_influence_text(gain: GainInfluence) -> str:
+    if gain.visited_space:
+        # "Gain 1 additional Influence with the visited Faction" [Overthrow
+        # card]; "Gain 2 Influence with the visited Faction" [Subversive
+        # Advisor card] (``tokens.py``).
+        more = "" if gain.replaces_space else " additional"
+        return f"Gain {gain.times}{more} Influence with the visited Faction"
     if gain.factions is not None and len(gain.factions) == 1:
         return f"Gain {gain.times} {_faction_name(gain.factions[0])} Influence"
     if gain.factions is None:
@@ -318,6 +328,9 @@ def condition_text(condition: Condition) -> str:
         case AtMakerSpace():
             # "If you are at a Maker space:" [Desert Power card].
             return "you are at a Maker space"
+        case AtFactionSpace():
+            # Never printed: a visited Faction's gain needs one (OQ-046).
+            return "you are at a Faction space"
         case FactionBond(faction=faction):
             # "If Bene Gesserit Bond:" (display/tokens.py, Southern Elders).
             return f"{_faction_name(faction)} Bond"
@@ -398,6 +411,9 @@ def cost_text(cost: Cost) -> str:
             if water:
                 parts.append(f"{water} water")
             return "Pay " + ", ".join(parts)
+        case LoseInfluence(count=count, one_faction=True):
+            # "lose 2 Influence with one Faction" [For Humanity card].
+            return f"Lose {count} Influence with one Faction"
         case LoseInfluence(count=count):
             return f"Lose {count} Influence"
         case LoseTroops(count=count, from_conflict=from_conflict):
@@ -444,6 +460,15 @@ def cost_text(cost: Cost) -> str:
             )
         case TrashCard(other_in_play=faction) if faction is not None:
             return f"Trash another {_faction_name(faction)} card in play"
+        case TrashCard(grafted=GraftedTrash.OTHER):
+            # "You may trash the other grafted card" [Dissecting Kit card].
+            return "Trash the other grafted card"
+        case TrashCard(grafted=GraftedTrash.EITHER):
+            # "Trash one of the grafted cards" [Beguiling Pheromones card].
+            return "Trash one of the grafted cards"
+        case TrashCard(hand_only=True, faction=faction) if faction is not None:
+            # "an Emperor card from your hand" [Treacherous Maneuver card].
+            return f"Trash an {_faction_name(faction)} card from your hand"
         case TrashCard(hand_only=True):
             return "Trash a card from your hand"
         case TrashCard(this_card=True):
@@ -524,7 +549,9 @@ def reward_text(reward: Reward) -> str:
         case RetreatTroops() as troops:
             return _retreat_troops_text(troops)
         case TakeContract(count=count):
-            return f"Take {count} {_plural(count, 'Contract')}"
+            # Every Contract taken is a face-up one, as the cards print it
+            # ("Take 1 face-up Contract", the personal cards' own text).
+            return f"Take {count} face-up {_plural(count, 'Contract')}"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             if to_hand_if is None:
                 return f"Acquire a card costing {max_cost} or less"
@@ -635,6 +662,13 @@ def reward_text(reward: Reward) -> str:
                 "Each opponent spying on the board space where you sent an"
                 " Agent this turn must move that Spy"
             )
+        case KeepPrintedReveal(value=value):
+            # "Keep the Persuasion" [Desert Power card], "Keep the spice"
+            # [Priority Contracts card] (``tokens.py``).
+            return f"Keep the {'Persuasion' if value == 'persuasion' else 'spice'}"
+        case GainSolariPerPartnerAgentIcon():
+            # Slig Farmer's card text (``tokens.py``).
+            return "Gain 1 solari per Agent icon on the other grafted card"
         case ReturnOtherGraftedCardAtRevealStart():
             return (
                 "At the start of your Reveal turn, return the other grafted"

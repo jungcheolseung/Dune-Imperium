@@ -67,10 +67,13 @@ EXPLICIT_TURN_END_IDS = {
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
-    # The Conflict-end window's "쓰지 않음" (OQ-103, 2026-10-09).
+    # The Conflict-end window's "쓰지 않음" (OQ-103, 2026-10-09), and its
+    # "끝내기" after a play (2026-10-18).
     "decline_conflict_end_intrigue",
+    "finish_conflict_end_intrigue",
     # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
     "confirm_scouts_bid",
+    "resolve_scouts_choice_without_option",
     # Critical Moment's open call, sent with the turn-end press (2026-10-05).
     "scouts_call",
 }

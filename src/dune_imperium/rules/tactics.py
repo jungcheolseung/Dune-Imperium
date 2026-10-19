@@ -1,4 +1,4 @@
-"""Chani's Tactics track (leaf: core imports only) [Chani card] [Bloodlines p. 12].
+"""Chani's Tactics track (leaf: core and gain events) [Chani card] [Bloodlines p. 12].
 
 The printed track has eleven spaces. A four-player game starts on the
 third space; the sixth space pays one spice and the last one water, after
@@ -10,6 +10,7 @@ from copy import replace
 
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
+from dune_imperium.rules.gain_events import resources_gained_event
 
 TACTICS_TRACK_START = 2
 TACTICS_TRACK_END = 10
@@ -26,9 +27,14 @@ def advance_tactics_token(
     player: PlayerState,
     count: int,
     *,
-    source: str,
+    round_number: int,
 ) -> tuple[PlayerState, tuple[GameEvent, ...]]:
-    """Advance the token ``count`` spaces, paying rewards as they are reached."""
+    """Advance the token ``count`` spaces, paying rewards as they are reached.
+
+    The track is the Leader's, so its events are named after the Leader
+    (``round:R:player:P:leader:chani``, cleanup-2c-4): the rewards' one
+    ``resources_gained``, then ``tactics_token_advanced``.
+    """
 
     if count < 1 or not uses_tactics_track(player):
         return player, ()
@@ -53,7 +59,14 @@ def advance_tactics_token(
             water=player.resources.water + water,
         ),
     )
+    source = f"round:{round_number}:player:{player.player_id}:leader:{player.leader_id}"
+    gains = (
+        (resources_gained_event(source, player.player_id, spice=spice, water=water),)
+        if spice or water
+        else ()
+    )
     return next_player, (
+        *gains,
         GameEvent(
             event_id=f"{source}:tactics",
             kind="tactics_token_advanced",
@@ -61,8 +74,6 @@ def advance_tactics_token(
                 ("count", count),
                 ("player", player.player_id),
                 ("space", space),
-                ("spice", spice),
-                ("water", water),
             ),
         ),
     )

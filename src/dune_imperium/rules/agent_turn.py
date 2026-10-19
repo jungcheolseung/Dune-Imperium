@@ -37,6 +37,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_box_abilities import box_ability, opens_at_placement
 from dune_imperium.rules.agent_effects import (
     agent_card_icons_at_placement,
@@ -62,6 +63,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_start_is_open,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
 from dune_imperium.rules.scouts_modifiers import (
@@ -554,6 +556,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         if turn_context.get(TECH_ACQUIRE_PENDING_KEY)
                         else ()
                     ),
+                    # A research bonus a Plot raised before the Agent went
+                    # out (cleanup-2b).
+                    *turn_rows.carried(turn_context),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (
                         # Subversive Advisor's waiting box holds the space's
@@ -776,7 +781,11 @@ def _apply_tuek_sietch_visit(
         )
         if trigger.space_id == "tuek_sietch" and trigger.opponent is not own
     )
-    source = f"round:{round_number}:player:{visitor}:tuek_sietch_visit"
+    # The ability is Esmar's: its events are named after the Leader and its
+    # own event comes last (cleanup-2c-4).
+    source = (
+        f"round:{round_number}:player:{esmar.player_id}:leader:{esmar.leader_id}"
+    )
     if own:
         if not isinstance(reward, GainResources):
             raise RuntimeError("Tuek's Sietch pays its owner's visit in Solari")
@@ -787,13 +796,13 @@ def _apply_tuek_sietch_visit(
             ),
         )
         return replace(state, players=replace_player(state.players, paid)), (
+            resources_gained_event(source, esmar.player_id, solari=reward.solari),
             GameEvent(
-                event_id=source,
+                event_id=f"{source}:resolved",
                 kind="leader_ability_resolved",
                 payload=(
                     ("leader_id", str(esmar.leader_id)),
                     ("player", esmar.player_id),
-                    ("solari", reward.solari),
                 ),
             ),
         )
@@ -803,17 +812,16 @@ def _apply_tuek_sietch_visit(
         state, esmar.player_id, reward.count, source=source
     )
     return drawn.state, (
+        *drawn.events,
         GameEvent(
-            event_id=source,
+            event_id=f"{source}:resolved",
             kind="leader_ability_resolved",
             payload=(
-                ("intrigue", reward.count),
                 ("leader_id", str(esmar.leader_id)),
                 ("player", esmar.player_id),
                 ("visitor", visitor),
             ),
         ),
-        *drawn.events,
     )
 
 
@@ -931,13 +939,6 @@ def agent_effect_is_available(
         # 14] (OQ-054, user ruling 2026-10-04), so "Return this card to your
         # hand" can never happen: the box is not left waiting for it.
         return False
-    if effect in (
-        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
-        # Reachable off a Faction space through a granted Spy or Agent icon
-        # (Clandestine, Resourceful, Urgent Shigawire): nothing to gain.
-        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
-    ):
-        return space.faction is not None
     ability = box_ability(effect)
     if ability is not None:
         # A box written as an ability record judges its placement condition
@@ -1191,17 +1192,12 @@ def _apply_control_visit_bonus(
         next_controller if player.player_id == next_controller.player_id else player
         for player in state.players
     )
-    event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:control_bonus:{space_id}:"
-            f"{controller.player_id}"
-        ),
-        kind="control_bonus_gained",
-        payload=(
-            ("amount", 1),
-            ("player", controller.player_id),
-            ("resource", resource),
-            ("space_id", space_id),
-        ),
+    # The controller's resource gain, named after the Control marker on the
+    # space (rule decision 3, cleanup-2c-3).
+    event = resources_gained_event(
+        f"round:{state.round_number}:player:{controller.player_id}:control:"
+        f"{space_id}",
+        controller.player_id,
+        **{resource: 1},
     )
     return replace(state, players=players), event

@@ -48,6 +48,11 @@ from dune_imperium.agents.app_ai.windows.agent_effects import (
     CONTROL_THE_SPICE_TRASH_INTENT,
     STITCHED_HORROR_TRASH_INTENT,
 )
+from dune_imperium.agents.app_ai.windows.common import (
+    TurnRowGap,
+    research_icon_now,
+    waiting_turn_row,
+)
 from dune_imperium.agents.app_ai.windows.intrigue import (
     INTENT,
     INTENT_AT,
@@ -56,11 +61,19 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
 from dune_imperium.agents.app_ai.windows.turn import GRAFT_PARTNER_INTENT
+from dune_imperium.content.immortality.board import ResearchBonus
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.immortality import advance_research, move_research_token
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.effects import agent_card_source
+from dune_imperium.rules.immortality import (
+    _bonus_frame,
+    advance_research,
+    move_research_token,
+    pending_research_bonuses,
+)
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.simulation.runner import run_policy_game
@@ -124,10 +137,39 @@ def _research_seat(**changes: object) -> tuple[GameState, int]:
 
 def _bonus_state(before: str, space: str, **changes: object) -> GameState:
     """The research token moved from ``before`` onto ``space`` (its bonus
-    frame or its optional trash on top)."""
+    waiting on the Reveal, or its optional trash on top)."""
 
     state, seat = _research_seat(research_space=before, **changes)
     return move_research_token(state, seat, space, source="test").state
+
+
+_BONUS_OF: dict[str, ResearchBonus] = {
+    "c6r6": ResearchBonus.INFLUENCE_ANY,
+    "c7r3": ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE,
+    "c8r6": ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU,
+}
+
+
+def _window(space: str, **changes: object) -> GameState:
+    """``space``'s bonus window, as it opens outside the owner's turn
+    (Combat, the Arrakeen Scouts step; cleanup-2b)."""
+
+    state, seat = _research_seat(research_space=space, **changes)
+    return state.push_decision(_bonus_frame(seat, _BONUS_OF[space], "test"))
+
+
+def _waiting(space: str, **changes: object) -> GameState:
+    """``space``'s bonus waiting on the seat's Reveal frame, on top
+    (cleanup-2b): its rows beside the Reveal's others."""
+
+    state, seat = _research_seat(research_space=space, **changes)
+    queued = turn_rows.queue(
+        state.pop_decision(),
+        seat,
+        (turn_rows.RESEARCH_BONUS, "test", _BONUS_OF[space].value),
+    )
+    assert queued is not None
+    return queued
 
 
 # -- registry ----------------------------------------------------------------------
@@ -155,11 +197,20 @@ def _graft_parts(state: GameState) -> tuple[str, str]:
 
 
 def test_graft_partner_takes_the_turn_windows_stored_partner() -> None:
-    state = _graft(1)  # Ghola placed at Spice Refinery, three partners
+    # Seed 71, round 3: seat 0's Face Dancer placed at the Sardaukar space,
+    # three partners in hand. Seed 1 (Ghola placed at Spice Refinery) was
+    # this window until the Conflict-end change (troops back before the
+    # windows, Harvest Cells resolving as it is played, 2026-10-18) moved
+    # every later game. Of seeds 1-120 only 31, 71, 74 and 108 first reach
+    # a Graft card placed with three partners; seed 31's evaluator pick is
+    # its last partner (the stored one below would not differ from it), so
+    # the first that works is 71.
+    state = _graft(71)
     placed, _space = _graft_parts(state)
     run = _run(state)
     partners = [str(arg(a, "card_id")) for a in run.legal]
     assert len(partners) == 3
+    assert partners[-1] != _evaluator_partner(state)[0]
     key = (GRAFT_PARTNER_INTENT, state.round_number, placed)
     run.memory.intents[key] = partners[-1]
     assert _arg(W.graft_partner(run), "card_id") == partners[-1]
@@ -184,14 +235,14 @@ def _evaluator_partner(state: GameState, rng_seed: int = 0) -> tuple[str | None,
 
 
 def test_graft_partner_without_a_stored_partner_is_graft_card_evaluator() -> None:
-    state = _graft(1)
+    state = _graft(71)
     expected, value = _evaluator_partner(state)
     assert expected is not None and value > 0  # 100 base value
     assert _arg(W.graft_partner(_run(state)), "card_id") == expected
 
 
 def test_graft_partner_ignores_an_illegal_stored_partner() -> None:
-    state = _graft(1)
+    state = _graft(71)
     placed, _space = _graft_parts(state)
     run = _run(state)
     key = (GRAFT_PARTNER_INTENT, state.round_number, placed)
@@ -208,17 +259,18 @@ def test_graft_partner_of_a_plain_card_is_the_default_random_choice(
     """``GraftCardEvaluator`` answers nothing for a non-Graft played card: the
     forced prompt falls to ``DefaultRandomChoice`` (a uniform legal partner)."""
 
-    # Seed 193, round 4: seat 3 placed its Signet Ring at Arrakeen with two
-    # Graft partners in hand (Planned Coupling, Face Dancer Initiate). Seed 3
-    # reached such a window until 5654d7f8 (a Combat Intrigue pass right
-    # after a card play no longer counts as a consecutive pass, 2026-10-07),
-    # seed 137 until the Conflict-end window opened on public facts (OQ-103,
-    # codec v141) moved its game, and seed 107 until Imperial Privilege's
-    # card draw became its own icon (2026-10-10, OQ-027 (d)) moved its game
-    # at round 3 seat 3's Imperial Privilege visit; of seeds 1-192 every
-    # first Graft window now has a Graft card placed or a plain card with one
-    # partner.
-    state = _graft(193)
+    # Seed 128, round 3: seat 1 placed its Signet Ring at Arrakeen with two
+    # Graft partners in hand. Seed 3 reached such a window until 5654d7f8 (a
+    # Combat Intrigue pass right after a card play no longer counts as a
+    # consecutive pass, 2026-10-07), seed 137 until the Conflict-end window
+    # opened on public facts (OQ-103, codec v141) moved its game, seed 107
+    # until Imperial Privilege's card draw became its own icon (2026-10-10,
+    # OQ-027 (d)) moved its game at round 3 seat 3's Imperial Privilege
+    # visit, and seed 193 until the Conflict-end change (troops back before
+    # the windows, Harvest Cells resolving as it is played, 2026-10-18) moved
+    # every later game; of seeds 1-127 every first Graft window now has a
+    # Graft card placed or a plain card with one partner.
+    state = _graft(128)
     placed, _space = _graft_parts(state)
     assert placed.endswith("signet_ring:0")
     assert _evaluator_partner(state, rng_seed)[0] is None
@@ -235,7 +287,7 @@ def test_graft_partner_with_an_unknown_partner_is_a_gap() -> None:
     """No stored partner and a candidate with no app archetype: None (the
     census shows it), never a silent pick."""
 
-    state = _graft(1)
+    state = _graft(71)
     stray = DomainAction(
         action_id="choose_graft_partner",
         actor=_seat(state),
@@ -312,7 +364,7 @@ def test_research_advance_takes_a_breakthrough_plays_space() -> None:
 
 
 def test_research_bonus_influence_is_gain_any_influence_evaluate() -> None:
-    state = _bonus_state("c5r5", "c6r6")
+    state = _window("c6r6")
     assert state.decision_stack[-1].kind == "research_bonus"
     profile = make_profile(state, _seat(state))
     tracks = tuple(track_entity(f) for f in FACTIONS)
@@ -323,6 +375,18 @@ def test_research_bonus_influence_is_gain_any_influence_evaluate() -> None:
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "choose_research_influence"
     assert _arg(action, "faction") == answer.response[0][0]
+    # Waiting on the turn, the forced Influence is taken first, the same.
+    waiting = _waiting("c6r6")
+    assert W.research_bonus_now(_run(waiting)) == action
+
+
+def test_a_research_bonus_moved_in_the_turn_waits_on_it() -> None:
+    state = _bonus_state("c5r5", "c6r6")
+    assert state.decision_stack[-1].kind != "research_bonus"
+    turn = state.pop_decision()
+    assert [b for b, _ in pending_research_bonuses(turn, _seat(state))] == [
+        ResearchBonus.INFLUENCE_ANY
+    ]
 
 
 _SPRING_THE_TRAP = "intrigue:spring_the_trap:0"
@@ -342,25 +406,29 @@ def test_research_bonus_trashes_a_junk_intrigue() -> None:
     """Spring the Trap with no Spy on the board is junk (``IsBadIntrigue``):
     ``TrashIntrigueForDrawAndIntrigue`` answers it at 5.0."""
 
-    state = _bonus_state(
-        "c6r2", "c7r3", intrigue_cards=(_SPRING_THE_TRAP,), **_no_spies()
-    )
+    state = _window("c7r3", intrigue_cards=(_SPRING_THE_TRAP,), **_no_spies())
     action = W.research_bonus(_run(state))
     assert action is not None
     assert action.action_id == "trash_intrigue_for_research_bonus"
     assert _arg(action, "card_id") == _SPRING_THE_TRAP
+    waiting = _waiting("c7r3", intrigue_cards=(_SPRING_THE_TRAP,), **_no_spies())
+    assert W.research_bonus_now(_run(waiting)) == action
 
 
 def test_research_bonus_keeps_a_useful_intrigue() -> None:
-    state = _bonus_state("c6r2", "c7r3", intrigue_cards=(_SPRING_THE_TRAP,))
+    state = _window("c7r3", intrigue_cards=(_SPRING_THE_TRAP,))
     assert state.players[_seat(state)].spy_post_ids  # not junk with a Spy out
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "decline_research_bonus"
+    # Waiting on the turn, the app leaves it on its playmat for now.
+    waiting = _waiting("c7r3", intrigue_cards=(_SPRING_THE_TRAP,))
+    assert W.research_bonus_now(_run(waiting)) is None
 
 
-def _c8r6(tleilaxu: int, solari: int) -> GameState:
+def _c8r6(tleilaxu: int, solari: int, *, waiting: bool = False) -> GameState:
     resources = replace(_research().players[1].resources, solari=solari)
-    return _bonus_state("c7r5", "c8r6", tleilaxu_space=tleilaxu, resources=resources)
+    build = _waiting if waiting else _window
+    return build("c8r6", tleilaxu_space=tleilaxu, resources=resources)
 
 
 def test_research_bonus_pays_seven_solari_for_two_tleilaxu() -> None:
@@ -368,6 +436,7 @@ def test_research_bonus_pays_seven_solari_for_two_tleilaxu() -> None:
     assert state.decision_stack[-1].kind == "research_bonus"
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "pay_research_bonus"
+    assert W.research_bonus_now(_run(_c8r6(0, 9, waiting=True))) == action
 
 
 @pytest.mark.parametrize("tleilaxu", [6, 7])
@@ -387,13 +456,14 @@ def test_research_bonus_never_pays_near_the_end_of_the_tleilaxu_track(
     )
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "decline_research_bonus"
+    assert W.research_bonus_now(_run(_c8r6(tleilaxu, 9, waiting=True))) is None
 
 
 def test_research_bonus_lapse_is_the_only_decline() -> None:
     """c7r3 with no Intrigue in hand: the window opens with the lapse only
     (``decline_research_bonus``), which is the answer."""
 
-    state = _bonus_state("c6r2", "c7r3", intrigue_cards=())
+    state = _window("c7r3", intrigue_cards=())
     run = _run(state)
     assert {a.action_id for a in run.legal} == {"decline_research_bonus"}
     action = W.research_bonus(run)
@@ -404,11 +474,104 @@ def test_research_bonus_with_an_unknown_choice_is_a_gap() -> None:
     """A bonus id the window does not know is not answered with the decline
     (regression: the handler used to fall through to ``decline``)."""
 
-    state = _bonus_state("c6r2", "c7r3", intrigue_cards=())
+    state = _window("c7r3", intrigue_cards=())
     run = _run(state)
     seat = _seat(state)
     mystery = DomainAction(action_id="mystery_research_bonus", actor=seat)
     assert W.research_bonus(_with_legal(run, mystery)) is None
+
+
+def _icon_window(
+    bonus: ResearchBonus, icons: tuple[str, ...], **changes: object
+) -> GameState:
+    """``bonus``'s window ordering ``icons``, as it opens outside the owner's
+    turn (Combat, the Arrakeen Scouts step)."""
+
+    state, seat = _research_seat(**changes)
+    return state.push_decision(_bonus_frame(seat, bonus, "test", icons=icons))
+
+
+def _icon_effects(run: DecisionRun) -> list[str]:
+    return [str(arg(a, "effect")) for a in run.by_id("resolve_research_icon")]
+
+
+def test_research_icon_now_takes_the_specimen_before_the_other_icons() -> None:
+    """User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    OQ-027 [Main p. 9]: the owner orders a research space's independent icons.
+    The app has no such order (it resolves them inside the step that moves the
+    token), so the AI takes the older engine's: specimen, Tleilaxu, trash."""
+
+    # c3r5 in the owner's turn: a specimen and a Tleilaxu advance wait as rows.
+    pair = _bonus_state("c2r4", "c3r5").pop_decision()
+    run = _run(pair)
+    assert _icon_effects(run) == ["specimen", "tleilaxu"]
+    first = research_icon_now(run)
+    assert first is not None and _arg(first, "effect") == "specimen"
+    # Whatever order the rows are listed in.
+    backwards = DecisionRun(
+        run.ctx, run.profile, tuple(reversed(run.legal)), run.rng, run.memory
+    )
+    assert _icon_effects(backwards) == ["tleilaxu", "specimen"]
+    assert research_icon_now(backwards) == first
+    # The turn's waiting-row hook takes the same row first.
+    assert waiting_turn_row(run) == first
+    taken = ENGINE.apply(pair, first).state
+    second = research_icon_now(_run(taken))
+    assert second is not None and _arg(second, "effect") == "tleilaxu"
+
+    # c3r3: the trash rows are not icon rows; the specimen goes first.
+    trash_pair = _bonus_state("c2r2", "c3r3").pop_decision()
+    trash_run = _run(trash_pair)
+    assert "trash_optional_card" in {a.action_id for a in trash_run.legal}
+    row = research_icon_now(trash_run)
+    assert row is not None and _arg(row, "effect") == "specimen"
+
+
+def test_research_icon_now_is_none_without_an_icon_row() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9]: no icon row, nothing taken (a direction frame, c7r3's
+    # arrow window).
+    assert research_icon_now(_run(_research())) is None
+    assert research_icon_now(_run(_window("c7r3", intrigue_cards=()))) is None
+
+
+@pytest.mark.parametrize(
+    ("bonus", "icons", "expected"),
+    [
+        (ResearchBonus.TRASH_AND_SPECIMEN, ("specimen", "trash"), "specimen"),
+        (ResearchBonus.TRASH_AND_SPECIMEN, ("trash", "specimen"), "specimen"),
+        (ResearchBonus.TRASH_AND_SPECIMEN, ("trash",), "trash"),
+        (ResearchBonus.TLEILAXU_AND_SPECIMEN, ("specimen", "tleilaxu"), "specimen"),
+        (ResearchBonus.TLEILAXU_AND_SPECIMEN, ("tleilaxu", "specimen"), "specimen"),
+        (ResearchBonus.TLEILAXU_AND_SPECIMEN, ("tleilaxu",), "tleilaxu"),
+        (
+            ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE,
+            ("intrigue", "cards"),
+            "intrigue",
+        ),
+        (
+            ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE,
+            ("cards", "intrigue"),
+            "intrigue",
+        ),
+        (ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE, ("cards",), "cards"),
+    ],
+)
+def test_research_bonus_takes_the_first_icon_of_an_icon_window(
+    bonus: ResearchBonus, icons: tuple[str, ...], expected: str
+) -> None:
+    """User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    OQ-027 [Main p. 9]: a window ordering a pair's icons (or c7r3's rewards)
+    has no decline; the handler answers the first icon in the fixed order
+    (``RESEARCH_ICON_ORDER``), not the order the rows are listed in."""
+
+    state = _icon_window(bonus, icons)
+    run = _run(state)
+    assert sorted(_icon_effects(run)) == sorted(icons)
+    assert {a.action_id for a in run.legal} == {"resolve_research_icon"}
+    action = W.research_bonus(run)
+    assert action is not None and action.action_id == "resolve_research_icon"
+    assert _arg(action, "effect") == expected
 
 
 def test_research_advance_with_a_space_off_the_track_is_a_gap() -> None:
@@ -458,9 +621,68 @@ def _get_card_to_trash(state: GameState, rng_seed: int = 0) -> str | None:
     return str(answer.response[0][0]) if answer.response[0] else None
 
 
+def _trash_source(state: GameState, seat: int) -> str:
+    return f"round:{state.round_number}:player:{seat}:research:c3r3"
+
+
+def _trash_window(**changes: object) -> GameState:
+    """A research space's optional trash window, as it opens outside the
+    owner's turn (Combat, the Arrakeen Scouts step; cleanup-2b)."""
+
+    state, seat = _research_seat(**changes)
+    return state.push_decision(optional_trash_frame(seat, _trash_source(state, seat)))
+
+
+def _waiting_trash(**changes: object) -> GameState:
+    """A research space's optional trash waiting on the seat's Reveal frame,
+    on top (cleanup-2b): its rows beside the Reveal's others, no decline."""
+
+    state, seat = _research_seat(**changes)
+    queued = turn_rows.queue(
+        state.pop_decision(),
+        seat,
+        (turn_rows.OPTIONAL_TRASH, _trash_source(state, seat), ""),
+    )
+    assert queued is not None
+    return queued
+
+
+def _no_junk(**changes: object) -> dict[str, object]:
+    """Only the Signet Ring (``TrashValue`` 0) can be trashed."""
+
+    me = _research().players[1]
+    signet = "player:1:starter:signet_ring:0"
+    cards = (*me.deck, *me.discard_pile, *me.in_play)
+    return {
+        "deck": tuple(c for c in cards if c != signet),
+        "hand": (signet,),
+        "discard_pile": (),
+        "in_play": (),
+        **changes,
+    }
+
+
+def test_a_research_hex_trashes_its_owners_turn_rows() -> None:
+    """Inside the owner's own turn c3r3's trash waits on the turn as rows,
+    with no decline (cleanup-2b), beside its specimen: the two icons are
+    independent effects in the owner's order (user decision 2026-10-17,
+    composed-effects plan 5, rule decision 5; OQ-027 [Main p. 9])."""
+
+    state = _bonus_state("c2r2", "c3r3")
+    seat = _seat(state)
+    reveal = state.pop_decision()
+    assert [kind for kind, _, _ in turn_rows.pending(reveal.decision_stack[-1])] == [
+        turn_rows.RESEARCH_ICON,
+        turn_rows.OPTIONAL_TRASH,
+    ]
+    ids = {a.action_id for a in ENGINE.legal_actions(reveal, seat)}
+    assert {"trash_optional_card", "resolve_research_icon"} <= ids
+    assert "decline_optional_trash" not in ids
+
+
 @pytest.mark.parametrize("rng_seed", [0, 3])
 def test_optional_trash_of_a_research_hex_is_get_card_to_trash(rng_seed: int) -> None:
-    state = _bonus_state("c2r2", "c3r3")  # specimen, then the optional trash
+    state = _trash_window()
     assert state.decision_stack[-1].kind == "optional_trash"
     expected = _get_card_to_trash(state, rng_seed)
     assert expected is not None  # the Dagger in play is junk
@@ -469,34 +691,75 @@ def test_optional_trash_of_a_research_hex_is_get_card_to_trash(rng_seed: int) ->
     assert _arg(action, "card_id") == expected
 
 
+@pytest.mark.parametrize("rng_seed", [0, 3])
+def test_a_waiting_trash_is_get_card_to_trash(rng_seed: int) -> None:
+    state = _waiting_trash()
+    expected = _get_card_to_trash(state, rng_seed)
+    assert expected is not None
+    action = W.optional_trash_now(_run(state, rng_seed=rng_seed))
+    assert action is not None and action.action_id == "trash_optional_card"
+    assert _arg(action, "card_id") == expected
+
+
 def test_optional_trash_declines_without_a_junk_card() -> None:
     """Only the Signet Ring (``TrashValue`` 0) can be trashed: "trash
     nothing" at 1.0 is the answer."""
 
-    me = _research().players[1]
-    signet = "player:1:starter:signet_ring:0"
-    cards = (*me.deck, *me.discard_pile, *me.in_play)
-    state = _bonus_state(
-        "c2r2",
-        "c3r3",
-        deck=tuple(c for c in cards if c != signet),
-        hand=(signet,),
-        discard_pile=(),
-        in_play=(),
-    )
+    state = _trash_window(**_no_junk())
     assert _get_card_to_trash(state) is None
     action = W.optional_trash(_run(state))
     assert action is not None and action.action_id == "decline_optional_trash"
 
 
+def test_a_waiting_trash_with_no_junk_card_is_answered_once() -> None:
+    """In the turn "trash nothing" takes no row: the trash waits for the
+    turn end to lapse it, and the app, which prompts once per icon, is not
+    asked again (``TRASH_ANSWERED_INTENT``)."""
+
+    state = _waiting_trash(**_no_junk())
+    seat = _seat(state)
+    memory = Memory()
+    assert W.optional_trash_now(_run(state, memory=memory)) is None
+    key = (W.TRASH_ANSWERED_INTENT, state.round_number, _trash_source(state, seat))
+    assert memory.intents[key] is True
+    assert W.optional_trash_now(_run(state, memory=memory)) is None
+
+
 def test_optional_trash_with_an_unknown_card_is_a_gap() -> None:
-    state = _bonus_state("c2r2", "c3r3")
+    state = _trash_window()
     stray = DomainAction(
         action_id="trash_optional_card",
         actor=_seat(state),
         arguments=(("card_id", _UNKNOWN_CARD),),
     )
     assert W.optional_trash(_with_legal(_run(state), stray)) is None
+
+
+def test_a_waiting_trash_with_an_unknown_card_is_a_gap() -> None:
+    state = _waiting_trash()
+    stray = DomainAction(
+        action_id="trash_optional_card",
+        actor=_seat(state),
+        arguments=(("card_id", _UNKNOWN_CARD),),
+    )
+    with pytest.raises(TurnRowGap):
+        W.optional_trash_now(_with_legal(_run(state), stray))
+
+
+def test_a_waiting_planetologist_card_is_drawn_first() -> None:
+    """Liet Kynes' replacement in the owner's turn waits as a trash and an
+    Intrigue card (cleanup-2b); the card is drawn first, as the replacement
+    paid it before the trash."""
+
+    state, seat = _research_seat()
+    source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
+    turn = state.pop_decision()
+    for kind in (turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE):
+        queued = turn_rows.queue(turn, seat, (kind, source, ""))
+        assert queued is not None
+        turn = queued
+    action = W.optional_trash_now(_run(turn))
+    assert action == DomainAction(action_id="draw_planetologist_intrigue", actor=seat)
 
 
 def test_planetologist_frame_draws_its_intrigue_first() -> None:
@@ -514,11 +777,25 @@ def test_planetologist_frame_draws_its_intrigue_first() -> None:
 _CONTROL_THE_SPICE = "player:1:starter:control_the_spice:0"
 
 
+def _agent_effects_frame(seat: int, card: str) -> DecisionFrame:
+    """The seat's own Agent-effect frame, its active card ``card``."""
+
+    return DecisionFrame(
+        kind="agent_effects",
+        frame_id="test:agent_effects",
+        decision=PlayerDecision(owner=seat, prompt="Agent effects"),
+        context=(("card_id", card),),
+    )
+
+
 def _control_the_spice_trash() -> GameState:
+    """Control the Spice's trash frame, named exactly after its box (the
+    own Agent-effect frame's active card)."""
+
     state, seat = _research_seat()
-    source = f"round:{state.round_number}:player:{seat}:agent_card_payment"
-    frame = optional_trash_frame(seat, f"{source}:{_CONTROL_THE_SPICE}")
-    return state.push_decision(frame)
+    state = state.push_decision(_agent_effects_frame(seat, _CONTROL_THE_SPICE))
+    source = agent_card_source(state.round_number, seat, _CONTROL_THE_SPICE)
+    return state.push_decision(optional_trash_frame(seat, source))
 
 
 def test_optional_trash_follows_control_the_spices_stored_answer() -> None:
@@ -557,13 +834,13 @@ def test_optional_trash_ignores_another_cards_stored_answer() -> None:
 
 
 def test_optional_trash_follows_stitched_horrors_stored_answer() -> None:
-    """Stitched Horror's trash pick (source ``...:agent_card_payment:<n>``):
-    the card its Evaluate named, keyed by the box's card."""
+    """Stitched Horror's trash pick (source ``<box>:<n>``): the card its
+    Evaluate named, keyed by the box's card."""
 
     state = first_decision("agent_effects", config=IMMORTALITY, seed=1)
     seat = _seat(state)
     card = str(dict(state.decision_stack[-1].context)["card_id"])
-    source = f"round:{state.round_number}:player:{seat}:agent_card_payment:1"
+    source = f"{agent_card_source(state.round_number, seat, card)}:1"
     state = state.push_decision(optional_trash_frame(seat, source))
     run = _run(state)
     refs = [str(arg(a, "card_id")) for a in run.by_id("trash_optional_card")]
@@ -629,27 +906,41 @@ _HARVEST_CELLS = "intrigue:harvest_cells:0"
 
 @cache
 def _conflict_end() -> GameState:
-    """A Combat state with Harvest Cells in hand, 3 troops in the Conflict and
-    only the Conflict-end window open (OQ-057)."""
+    """A Combat state with Harvest Cells in hand and only the Conflict-end
+    window open (OQ-057): the seat's three troops have already gone back to
+    its supply, which the window records as ``lost`` (user decision
+    2026-10-18)."""
 
     state = first_decision("combat_intrigue", config=IMMORTALITY, seed=2)
     seat = _seat(state)
     me = state.players[seat]
-    moved = 3 - me.troops_conflict
     state = with_player(
         state,
         seat,
         intrigue_cards=(_HARVEST_CELLS,),
-        troops_conflict=3,
-        troops_supply=me.troops_supply - moved,
+        troops_conflict=0,
+        troops_supply=me.troops_supply + me.troops_conflict,
     )
-    frame = DecisionFrame(
+    return with_state(
+        state,
+        decision_stack=(_conflict_end_frame(seat, played=False),),
+        combat_rewards_resolved=True,
+    )
+
+
+def _conflict_end_frame(seat: int, *, played: bool) -> DecisionFrame:
+    """The seat's Conflict-end window as the engine builds it: the loss in
+    its context and, once a card was played in it, ``played``."""
+
+    context: dict[str, bool | int | str] = {"lost": 3, "player": seat}
+    if played:
+        context["played"] = True
+    return DecisionFrame(
         kind="conflict_end_trigger",
         frame_id="test:conflict_end_trigger",
         decision=PlayerDecision(owner=seat, prompt="test"),
-        context=(("player", seat),),
+        context=tuple(sorted(context.items())),
     )
-    return with_state(state, decision_stack=(frame,), combat_rewards_resolved=True)
 
 
 def test_conflict_end_plays_harvest_cells_and_records_its_answer() -> None:
@@ -669,12 +960,31 @@ def test_conflict_end_plays_harvest_cells_and_records_its_answer() -> None:
     applied = ENGINE.apply(state, action, legal_actions=run.legal).state
     assert stamp == len(state.event_log)
     assert applied.event_log[stamp].kind == "intrigue_played"
+    # The card resolved at its play: the acquisition choice is on top of the
+    # window and the app's answer is the one recorded for it.
+    assert applied.decision_stack[-1].kind == "intrigue_choice"
+    assert applied.event_log[stamp + 1].kind == "specimens_generated"
+
+
+def test_conflict_end_finishes_the_window_after_a_play() -> None:
+    """Once a card was played in the window its one press reads "finish"
+    (the engine offers no decline): with nothing else to play the handler
+    answers it."""
+
+    state = _conflict_end()
+    seat = _seat(state)
+    state = with_player(state, seat, intrigue_cards=())
+    state = with_state(state, decision_stack=(_conflict_end_frame(seat, played=True),))
+    run = _run(state)
+    assert {a.action_id for a in run.legal} == {"finish_conflict_end_intrigue"}
+    action = W.conflict_end_trigger(run)
+    assert action is not None and action.action_id == "finish_conflict_end_intrigue"
 
 
 def test_conflict_end_declines_when_harvest_cells_cannot_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``Cost`` (3 troops deployed in this Conflict) failing means no key."""
+    """``Cost`` (3 troops lost at this Conflict's end) failing means no key."""
 
     monkeypatch.setattr(HarvestCellsAbility, "meets_cost", lambda self, p: False)
     action = W.conflict_end_trigger(_run(_conflict_end()))

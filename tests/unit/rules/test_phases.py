@@ -438,8 +438,9 @@ def test_a_defending_twisted_genius_draws_its_twisted_intrigue_with_the_hand() -
     (
         # Planetary Array / CHOAM Transports (``tech.draw_owed_tech_cards``).
         (1, False, "tech_draw"),
-        # Hungry for Spice (``leader_abilities.grant_hungry_for_spice``).
-        (0, True, "hungry_for_spice"),
+        # Hungry for Spice (``leader_abilities.grant_hungry_for_spice``),
+        # named after the Leader (cleanup-2c-4).
+        (0, True, "leader:steersman_y_rkoon"),
     ),
 )
 def test_an_owed_card_draw_waits_for_the_round_start_draw(

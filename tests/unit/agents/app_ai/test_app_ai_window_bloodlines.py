@@ -54,6 +54,7 @@ from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
 from dune_imperium.agents.app_ai.windows.turn import board_space_order
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.player import Influence
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind
@@ -520,6 +521,41 @@ def test_tech_acquire_influence_key_takes_the_memocorders_faction() -> None:
     assert arg(action, "effect") == "influence"  # the first owed key first
     assert answer.response is not None
     assert arg(action, "faction") == answer.response[0][0]
+
+
+def test_tech_acquire_influence_with_every_faction_at_the_top_is_confirmed() -> None:
+    # User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    # OQ-060): in Combat's acquire-effects-only frame an Influence with every
+    # Faction at 6 offers no Faction, only the confirm. The app has no such
+    # step (its picker skips it), so the window answers it last.
+    top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    confirm = DomainAction("resolve_tech_influence_without_faction", 0)
+
+    only = _effects_state("glowglobes:influence", influence=top)
+    assert _legal(only) == (confirm,)
+    assert W.tech_acquisition(_run(only)) == confirm
+
+    # Beside another owed icon it waits: the other resolves first, even
+    # though the Influence key comes first.
+    beside = _effects_state(
+        "glowglobes:influence", "plasteel_blades:solari", influence=top
+    )
+    run = _run(beside)
+    assert confirm in run.legal
+    action = W.tech_acquisition(run)
+    assert action is not None and action.action_id == "resolve_tech_acquire_effect"
+    assert arg(action, "effect") == "solari"
+    resolved = ENGINE.apply(beside, action).state
+    assert W.tech_acquisition(_run(resolved)) == confirm
+
+    # With a Faction it can still raise there is no confirm to answer.
+    open_tracks = _effects_state(
+        "glowglobes:influence", influence=replace(top, fremen=5)
+    )
+    run = _run(open_tracks)
+    assert run.first("resolve_tech_influence_without_faction") is None
+    action = W.tech_acquisition(run)
+    assert action is not None and arg(action, "faction") == "fremen"
 
 
 def test_tech_acquire_choice_key_follows_gene_locked_vault() -> None:

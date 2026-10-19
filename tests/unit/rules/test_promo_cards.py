@@ -29,6 +29,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -43,12 +44,16 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat import (
     face_up_battle_icons,
     finish_combat,
+    offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.optional_trash import apply_optional_trash
 from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
 from dune_imperium.simulation import run_random_game
@@ -238,10 +243,15 @@ def test_liet_may_pay_arrakis_revolt_and_keep_the_wall_behind_it() -> None:
     assert kept.state.shield_wall_present is True
     assert liet.sandworms_conflict == 0
     assert liet.resources.spice == 1  # 2 paid, 1 from the replacement
-    # The replacement's Intrigue card waits in its trash frame as its own
-    # step (user ruling 2026-10-10, OQ-106).
+    # The replacement's Intrigue card waits as its own step beside its trash
+    # (user ruling 2026-10-10, OQ-106), both on the owner's Agent turn as rows
+    # (user decision 2026-10-17, cleanup-2b).
     assert liet.intrigue_cards == ()
-    assert kept.state.decision_stack[-1].kind == "optional_trash"
+    assert kept.state.decision_stack[-1].kind == "agent_effects"
+    assert [
+        kind
+        for kind, _source, _value in turn_rows.pending(kept.state.decision_stack[-1])
+    ] == [turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE]
     drawn = apply_optional_trash(
         kept.state, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
     ).state
@@ -272,10 +282,14 @@ def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
     assert after.units_deployed_turn == 1
     assert _context(result.state)["pending_agent_effect"] is False
     assert [event.kind for event in result.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "shield_wall_destroyed",
         "sandworm_deployed",
+        "agent_card_effect_resolved",
     ]
+    assert result.events[-1] == agent_box_event(
+        agent_card_source(1, 0, revolt), revolt, 0, BoxOutcome.RESOLVED
+    )
 
 
 def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
@@ -296,14 +310,19 @@ def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
     assert kept.state.players[0].sandworms_conflict == 1
     assert kept.state.players[0].resources.spice == 0
     assert [event.kind for event in kept.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "sandworm_deployed",
+        "agent_card_effect_resolved",
     ]
 
     declined = apply_agent_card_payment(placed, actions["decline_agent_card_payment"])
     assert declined.state.players[0].resources.spice == 2
     assert declined.state.players[0].sandworms_conflict == 0
-    assert declined.events[0].kind == "agent_card_payment_declined"
+    assert declined.events == (
+        agent_box_event(
+            agent_card_source(1, 0, revolt), revolt, 0, BoxOutcome.DECLINED
+        ),
+    )
 
 
 def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
@@ -373,9 +392,10 @@ def test_arrakis_revolt_keeps_no_wall_payment_under_the_emperor_ban() -> None:
     assert removed.state.shield_wall_present is False
     assert removed.state.players[0].sandworms_conflict == 0
     assert [event.kind for event in removed.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "shield_wall_destroyed",
         "sandworm_summon_unavailable",
+        "agent_card_effect_resolved",
     ]
 
     # Without the wall the payment could only summon, so only declining is
@@ -586,12 +606,15 @@ def test_a_new_conflict_and_combat_cleanup_carry_no_stale_pledge() -> None:
         combat_intrigue_complete=True,
         combat_rewards_resolved=True,
     )
-    finished = finish_combat(state)
+    # The winner takes the Conflict card as the Conflict-end step opens
+    # (OQ-108, user decision 2026-10-18); the cleanup after it only closes
+    # the Combat.
+    offered = offer_conflict_end_triggers(state)
+    assert offered.state.conflict_first_place_influence_bonus == 0
+    assert [event.kind for event in offered.events] == ["conflict_won"]
+    finished = finish_combat(offered.state)
     assert finished.state.conflict_first_place_influence_bonus == 0
-    assert [event.kind for event in finished.events] == [
-        "conflict_won",
-        "combat_cleaned_up",
-    ]
+    assert [event.kind for event in finished.events] == ["combat_cleaned_up"]
 
 
 # --------------------------------------------------------- The Beast's Spoils
@@ -641,13 +664,10 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert _context(resolved.state)["troops_recruited"] == 1
     assert _context(resolved.state)["pending_agent_effect"] is True
     assert _context(resolved.state)["trashes_remaining"] == 1
-    assert dict(resolved.events[0].payload) == {
-        "card_id": spoils,
-        "crysknife": 1,
-        "player": 0,
-        "spice": 1,
-        "troops": 1,
-    }
+    # The hook step pays the spice as a gain of the box; the box is not over
+    # (its trash is still to be answered), so it leaves no box event yet.
+    box = agent_card_source(1, 0, spoils)
+    assert resolved.events == (resources_gained_event(box, 0, spice=1),)
 
     actions = legal_agent_card_trash_actions(resolved.state, 0)
     assert {dict(action.arguments).get("card_id") for action in actions} == {
@@ -663,6 +683,12 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert trashed.state.players[0].trashed == (dagger,)
     assert _context(trashed.state)["pending_agent_effect"] is False
     assert "trashes_remaining" not in _context(trashed.state)
+    # The trash answer closes the box: its event comes last.
+    assert [event.kind for event in trashed.events] == [
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
+    assert trashed.events[-1] == agent_box_event(box, spoils, 0, BoxOutcome.RESOLVED)
 
     declined = apply_agent_card_trash(
         resolved.state,
@@ -670,6 +696,7 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     )
     assert _context(declined.state)["pending_agent_effect"] is False
     assert declined.state.players[0].trashed == ()
+    assert declined.events == (agent_box_event(box, spoils, 0, BoxOutcome.DECLINED),)
 
 
 def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
@@ -738,6 +765,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v147: the base catalog's 140 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 141
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -759,6 +787,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v147: the CHOAM catalog's 144 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 145
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

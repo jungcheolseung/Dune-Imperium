@@ -188,7 +188,8 @@ def test_rewards_battle_icons_and_endgame_matches_score_in_their_step() -> None:
     rewards = [
         (index, payload)
         for index, payload in _events(session, "combat_reward_gained")
-        if _int(payload["victory_points"]) > 0
+        # A reward's zero amounts are left out of its payload (cleanup-2c-3).
+        if _int(payload.get("victory_points", 0)) > 0
     ]
     assert rewards
     for index, payload in rewards:

@@ -38,7 +38,7 @@ EXPECTED = """(from) => state.log.entries.slice(from).flatMap((entry) => {
         out.push(reveal);
       }
       if (event.kind === 'reveal_started') reveal.totals = [p.persuasion, p.strength];
-      else reveal.cards = p.card_ids.split(',');
+      else reveal.cards = p.card_ids;
     } else if (['agent_placed', 'turn_start_card_played', 'card_grafted',
         'intrigue_played', 'navigation_card_played'].includes(event.kind)) {
       out.push({index: entry.index, card: p.card_id, seat: p.player, cards: null,

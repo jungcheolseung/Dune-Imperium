@@ -55,6 +55,8 @@ IMMORTALITY = RulesetConfig(immortality=True)
 CONTAMINATOR = "tleilaxu:contaminator:0"
 SUBJECT = "tleilaxu:subject_x_137:0"
 DECLINE_CONFLICT_END = DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
+FINISH_CONFLICT_END = DomainAction(action_id="finish_conflict_end_intrigue", actor=0)
+DECLINE_ACQUIRE = DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
 
 
 def _intrigue(card_id: str) -> str:
@@ -112,7 +114,10 @@ def _fighter(troops: int, **extra: object) -> PlayerState:
 
 
 def _combat_state(
-    owner: PlayerState, *others: PlayerState, config: RulesetConfig = IMMORTALITY
+    owner: PlayerState,
+    *others: PlayerState,
+    config: RulesetConfig = IMMORTALITY,
+    first_player: int = 0,
 ) -> GameState:
     seats = [owner, *others]
     seats.extend(_seat(seat, has_revealed=True) for seat in range(len(seats), 4))
@@ -121,7 +126,7 @@ def _combat_state(
         seed=1,
         phase=GamePhase.COMBAT,
         round_number=1,
-        first_player=0,
+        first_player=first_player,
         reveal_order=(0, 1, 2, 3),
         conflict_deck=(CONFLICTS[1].card.card_id,),
         current_conflict_ids=(CONFLICTS[0].card.card_id,),
@@ -746,7 +751,11 @@ def test_harvest_cells_is_never_offered_below_three_troops_in_the_conflict() -> 
     assert all(event.kind != "intrigue_expired" for event in done.event_log)
 
 
-def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
+def test_harvest_cells_resolves_when_played_after_three_troops_are_lost() -> None:
+    # The troops are back in the supply when the window opens, so the card
+    # gives its two specimens at once and only the Tleilaxu acquisition is
+    # asked (user decision 2026-10-18, design in
+    # docs/rules/combat-and-round-end.md).
     card = _intrigue("harvest_cells")
     engine = UprisingRulesEngine()
     state = _combat_state(_fighter(3, intrigue_cards=(card,), specimens=0))
@@ -763,21 +772,16 @@ def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     owner = played.players[0]
     assert card not in owner.intrigue_faceup
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    # The specimens are the card's automatic reward, taken at the owner's
-    # chosen point (OQ-015); before them nothing is affordable.
+    # The specimens are the card's automatic reward, already taken; nothing
+    # is left to resolve.
+    assert owner.specimens == 2
     offers = {a.action_id for a in legal_intrigue_choice_actions(played, 0)}
-    assert offers == {"decline_intrigue_tleilaxu", "resolve_intrigue_rewards"}
-    rewarded = engine.apply(
-        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
-    ).state
-    assert rewarded.players[0].specimens == 2
-    offers = {a.action_id for a in legal_intrigue_choice_actions(rewarded, 0)}
     assert offers == {"acquire_intrigue_tleilaxu", "decline_intrigue_tleilaxu"}
     bought = engine.apply(
-        rewarded,
+        played,
         next(
             a
-            for a in legal_intrigue_choice_actions(rewarded, 0)
+            for a in legal_intrigue_choice_actions(played, 0)
             if a.action_id == "acquire_intrigue_tleilaxu"
             and dict(a.arguments)["instance_id"] == CONTAMINATOR
         ),
@@ -835,16 +839,14 @@ def test_harvest_cells_in_hand_may_be_played_after_the_rewards() -> None:
 
     played = engine.apply(window, actions[1]).state
     assert card not in played.players[0].intrigue_faceup
-    # The card waited for the cleanup's troop return (it is "lost" there
-    # [FAQ p. 1]); its choice opens after it, not straight after the play.
-    assert played.phase is not GamePhase.COMBAT
+    # The troops went back as the window opened (they are "lost" there
+    # [FAQ p. 1]), so the card resolved at its play: its specimens are
+    # taken and only the acquisition is left to ask.
+    assert played.phase is GamePhase.COMBAT
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    rewarded = engine.apply(
-        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
-    ).state
-    assert rewarded.players[0].specimens == 2
+    assert played.players[0].specimens == 2
     finished = engine.apply(
-        rewarded, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state
     assert card in finished.intrigue_discard
     assert finished.phase is not GamePhase.COMBAT
@@ -867,10 +869,10 @@ def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
     # "When you lose at least three troops at the end of a Conflict: [2
     # specimens]" [Harvest Cells card]; "When resolving combat, troops that
     # return to your supply are considered 'lost.'" [FAQ p. 1]; a specimen
-    # is "a troop from your supply" [Immortality p. 8]. Played in the window
-    # (OQ-057), the card used to resolve before the cleanup, so an empty
-    # supply gave no specimens although the same card waiting face up gets
-    # two. It now waits for the cleanup like that face-up card.
+    # is "a troop from your supply" [Immortality p. 8]. The Conflict's
+    # troops go back before the window opens (user decision 2026-10-18), so
+    # a seat whose supply was empty has the four troops to make its two
+    # specimens from the moment it plays the card.
     card = _intrigue("harvest_cells")
     engine = UprisingRulesEngine()
     state = _combat_state(
@@ -884,6 +886,9 @@ def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
     )
     window = _pass_through_combat(engine, state)
     assert window.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    # The four troops are already back in the supply.
+    assert window.players[0].troops_conflict == 0
+    assert window.players[0].troops_supply == 4
     played = engine.apply(
         window,
         DomainAction(
@@ -892,20 +897,16 @@ def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
             arguments=(("card_id", card),),
         ),
     ).state
-    # The cleanup ran first: the four troops are back in the supply.
-    assert played.phase is not GamePhase.COMBAT
+    assert played.phase is GamePhase.COMBAT
     assert played.players[0].troops_conflict == 0
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    rewarded = engine.apply(
-        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
-    ).state
-    assert rewarded.players[0].specimens == 2
-    assert rewarded.players[0].troops_supply == 4 - 2
+    assert played.players[0].specimens == 2
+    assert played.players[0].troops_supply == 4 - 2
 
 
 def _harvest_cells_offer(specimens: int, **extra: object) -> GameState:
-    """Harvest Cells played in the Conflict-end window, its specimens taken:
-    the "acquire a Tleilaxu card" slot is open."""
+    """Harvest Cells played in the Conflict-end window, its specimens taken
+    at the play: the "acquire a Tleilaxu card" slot is open."""
 
     card = _intrigue("harvest_cells")
     engine = UprisingRulesEngine()
@@ -917,16 +918,13 @@ def _harvest_cells_offer(specimens: int, **extra: object) -> GameState:
         **extra,
     )
     window = _pass_through_combat(engine, _combat_state(owner))
-    played = engine.apply(
+    return engine.apply(
         window,
         DomainAction(
             action_id="play_conflict_end_intrigue",
             actor=0,
             arguments=(("card_id", card),),
         ),
-    ).state
-    return engine.apply(
-        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
     ).state
 
 
@@ -1006,7 +1004,7 @@ def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
     # "To play an Intrigue card, you must meet its conditions and pay its
     # costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
     # Intrigue option needs an effect that can change something. Its
-    # specimens come from troops back in the supply after the cleanup
+    # specimens come from troops back in the supply as the window opens
     # [FAQ p. 1]; lost Sardaukar Commanders return to their own supply
     # [Bloodlines p. 4] and make none.
     first, second = _intrigue("harvest_cells"), "intrigue:harvest_cells:1"
@@ -1039,6 +1037,16 @@ def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
             if action.action_id == "play_conflict_end_intrigue"
         ]
 
+    def play(state: GameState, card_id: str) -> GameState:
+        return engine.apply(
+            state,
+            DomainAction(
+                action_id="play_conflict_end_intrigue",
+                actor=0,
+                arguments=(("card_id", card_id),),
+            ),
+        ).state
+
     # Case A: three Commanders lost, no troop to make a specimen of, and no
     # Tleilaxu card the specimens could pay for: the window opens on its
     # public facts (OQ-103) but offers only the decline.
@@ -1051,38 +1059,29 @@ def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
     assert offered(window(first, troops_supply=1, troops_garrison=11)) == [first]
     assert offered(window(first, specimens=3, troops_garrison=9)) == [first]
 
-    # Case C: two troops and a Commander lost. The first copy takes both
-    # troops; the second could make no specimen, and the two specimens buy
-    # no Tleilaxu card, so once the first is face up the window, still open
-    # while the seat holds an Intrigue card (OQ-103), offers only the
-    # decline.
+    # Case C: two troops and a Commander lost. The first copy makes its
+    # specimens from both troops at its play; the second could make no
+    # specimen, and the two specimens buy no Tleilaxu card (the first copy's
+    # acquisition slot offers only its decline), so once the first is played
+    # the window, still open while the seat holds an Intrigue card (OQ-103),
+    # offers only to finish.
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
     both = window(first, second, **mixed)
     assert offered(both) == [first, second]
-    played = engine.apply(
-        both,
-        DomainAction(
-            action_id="play_conflict_end_intrigue",
-            actor=0,
-            arguments=(("card_id", first),),
-        ),
-    ).state
+    played = play(both, first)
+    assert played.players[0].specimens == 2
+    assert played.players[0].troops_supply == 0
+    assert engine.legal_actions(played, 0) == (DECLINE_ACQUIRE,)
+    played = engine.apply(played, DECLINE_ACQUIRE).state
     assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
-    assert engine.legal_actions(played, 0) == (DECLINE_CONFLICT_END,)
+    assert engine.legal_actions(played, 0) == (FINISH_CONFLICT_END,)
     assert offered(played) == []
     assert second in played.players[0].intrigue_cards
     # A third troop lost leaves the second copy a specimen to make.
     three = window(
         first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
     )
-    staged = engine.apply(
-        three,
-        DomainAction(
-            action_id="play_conflict_end_intrigue",
-            actor=0,
-            arguments=(("card_id", first),),
-        ),
-    ).state
+    staged = engine.apply(play(three, first), DECLINE_ACQUIRE).state
     assert offered(staged) == [second]
 
 
@@ -1127,8 +1126,14 @@ def test_the_conflict_end_window_opens_on_public_facts_only() -> None:
     offered = _offer(engine, _combat_state(_fighter(3, intrigue_cards=(PLAIN,))))
     assert _windows(offered.state) == [0]
     assert engine.legal_actions(offered.state, 0) == (DECLINE_CONFLICT_END,)
+    # The step awards the Conflict card first (OQ-108, user decision
+    # 2026-10-18), then opens the window.
     assert [(event.kind, dict(event.payload)) for event in offered.events] == [
-        ("conflict_end_trigger_offered", {"player": 0})
+        (
+            "conflict_won",
+            {"conflict_id": CONFLICTS[0].card.card_id, "player": 0},
+        ),
+        ("conflict_end_trigger_offered", {"player": 0}),
     ]
 
     declined = engine.apply(offered.state, DECLINE_CONFLICT_END)
@@ -1174,7 +1179,7 @@ def test_the_conflict_end_window_opens_on_public_facts_only() -> None:
     holding = _fighter(3, intrigue_cards=(PLAIN,))
     assert not opens(holding, discard=HARVEST_CELLS)
     # Face up counts as public too (here a copy another seat with three
-    # troops in the Conflict laid down, waiting for the cleanup).
+    # troops in the Conflict holds face up).
     other = _seat(
         1,
         has_revealed=True,
@@ -1225,7 +1230,11 @@ def test_the_conflict_end_window_stays_open_while_the_seat_holds_intrigue() -> N
     # After a play the window stays open while the seat still holds an
     # Intrigue card, a public fact, and closes with an empty hand; closing it
     # only when no other copy could be played told the table whether a
-    # second Harvest Cells was in the hand (OQ-103).
+    # second Harvest Cells was in the hand (OQ-103). The played card has
+    # resolved by then, so the one press left in the window finishes it.
+    # Whether the hand is empty is judged when the window comes back on top,
+    # after the card's acquisition is answered (OQ-109, user decision
+    # 2026-10-18), not at the play.
     engine = UprisingRulesEngine()
     play = DomainAction(
         action_id="play_conflict_end_intrigue",
@@ -1240,21 +1249,261 @@ def test_the_conflict_end_window_stays_open_while_the_seat_holds_intrigue() -> N
     played = engine.apply(window, play).state
 
     assert _windows(played) == [0]
-    assert played.players[0].intrigue_faceup == (HARVEST_CELLS[0],)
-    assert engine.legal_actions(played, 0) == (DECLINE_CONFLICT_END,)
-    declined = engine.apply(played, DECLINE_CONFLICT_END).state
-    # The cleanup ran and fired the face-up copy, whose choice is open.
-    assert declined.phase is not GamePhase.COMBAT
-    assert declined.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    assert PLAIN in declined.players[0].intrigue_cards
+    # The card resolved at its play: it is not left face up and its
+    # acquisition choice (the specimens are already taken) sits on the window.
+    assert played.players[0].intrigue_faceup == ()
+    assert played.players[0].specimens == 2
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    answered = engine.apply(
+        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
+    assert answered.phase is GamePhase.COMBAT
+    assert answered.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert engine.legal_actions(answered, 0) == (FINISH_CONFLICT_END,)
+    finished = engine.apply(answered, FINISH_CONFLICT_END).state
+    assert finished.phase is not GamePhase.COMBAT
+    assert PLAIN in finished.players[0].intrigue_cards
+    assert HARVEST_CELLS[0] in finished.intrigue_discard
 
-    # The last card played: the window closes at once.
+    # The last card played: the window stays under its acquisition choice and
+    # closes once that is answered (OQ-109), with no press of its own.
     alone = _offer(
         engine, _combat_state(_fighter(3, intrigue_cards=(HARVEST_CELLS[0],)))
     ).state
     closed = engine.apply(alone, play).state
-    assert _windows(closed) == []
-    assert closed.phase is not GamePhase.COMBAT
+    assert _windows(closed) == [0]
+    assert closed.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    done = engine.apply(closed, DECLINE_ACQUIRE).state
+    assert _windows(done) == []
+    assert done.phase is not GamePhase.COMBAT
+
+
+def test_a_spent_conflict_end_window_closes_without_a_press_or_an_event() -> None:
+    # OQ-109, user decision 2026-10-18 ("그래 둘다 B가 맞겠다"): after a play
+    # the window always stays (marked played) and closes automatically only
+    # when it comes back on top with its seat holding no Intrigue card. A seat
+    # that played its only card needs no "finish" press, and the engine's
+    # close leaves no event of its own, as the close at the play never had one.
+    engine = UprisingRulesEngine()
+    play = DomainAction(
+        action_id="play_conflict_end_intrigue",
+        actor=0,
+        arguments=(("card_id", HARVEST_CELLS[0]),),
+    )
+    # Seat 1, the second window (under seat 0's on the stack), holds a card
+    # too; seat 0 is the First Player.
+    state = _combat_state(
+        _fighter(3, intrigue_cards=(HARVEST_CELLS[0],), specimens=0),
+        _seat(
+            1,
+            has_revealed=True,
+            troops_supply=9,
+            troops_garrison=0,
+            troops_conflict=3,
+            combat_strength=2,
+            intrigue_cards=(PLAIN,),
+        ),
+    )
+    window = _offer(engine, state).state
+    assert _windows(window) == [1, 0]  # bottom to top: seat 0's is on top
+    top = window.decision_stack[-1]
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 0
+
+    played = engine.apply(window, play).state
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    assert _windows(played) == [1, 0]
+
+    declined = engine.apply(played, DECLINE_ACQUIRE)
+
+    # Seat 0's window is gone without a press and without an event of its
+    # own; the next seat's window is the one open.
+    assert _windows(declined.state) == [1]
+    assert declined.state.players[0].intrigue_cards == ()
+    assert declined.state.phase is GamePhase.COMBAT
+    top = declined.state.decision_stack[-1]
+    assert top.kind == FrameKind.CONFLICT_END_TRIGGER
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    assert not {
+        "conflict_end_trigger_declined",
+        "conflict_end_trigger_finished",
+    } & {event.kind for event in declined.events}
+    assert engine.legal_actions(declined.state, 0) == ()
+    assert engine.legal_actions(declined.state, 1) == (
+        DomainAction(action_id="decline_conflict_end_intrigue", actor=1),
+    )
+
+    # With no other window, the cleanup follows the acquisition answer.
+    alone = _offer(
+        engine,
+        _combat_state(_fighter(3, intrigue_cards=(HARVEST_CELLS[0],), specimens=0)),
+    ).state
+    closed = engine.apply(engine.apply(alone, play).state, DECLINE_ACQUIRE)
+    assert closed.state.phase is not GamePhase.COMBAT
+    assert _windows(closed.state) == []
+    assert not {
+        "conflict_end_trigger_declined",
+        "conflict_end_trigger_finished",
+    } & {event.kind for event in closed.events}
+
+
+def test_harvest_cells_played_in_its_window_resolves_in_the_same_step() -> None:
+    # User decision 2026-10-18: "세포 수확은 내는 즉시 표본 2를 주고 획득
+    # 여부만 묻게 해줘 ... 낸 뒤의 '쓰지 않음'은 '끝내기'로 보이게 하고".
+    # The troops are back in the supply when the window opens ("troops that
+    # return to your supply are considered 'lost.'" [FAQ p. 1]), so the
+    # card's two specimens ("take a troop from your supply" [Immortality
+    # p. 8]) come with the play and only "You may also acquire a Tleilaxu
+    # card" is asked [Harvest Cells card].
+    engine = UprisingRulesEngine()
+    play = DomainAction(
+        action_id="play_conflict_end_intrigue",
+        actor=0,
+        arguments=(("card_id", HARVEST_CELLS[0]),),
+    )
+    window = _offer(
+        engine,
+        _combat_state(
+            _fighter(3, intrigue_cards=(HARVEST_CELLS[0], PLAIN), specimens=0)
+        ),
+    ).state
+    assert window.players[0].specimens == 0
+
+    transition = engine.apply(window, play)
+    played = transition.state
+
+    # The specimens come in the play's own step, as one event.
+    assert [event.kind for event in transition.events].count("specimens_generated") == 1
+    generated = next(e for e in transition.events if e.kind == "specimens_generated")
+    assert dict(generated.payload)["player"] == 0
+    assert [event.kind for event in transition.events][0] == "intrigue_played"
+    assert played.players[0].specimens == 2
+    assert played.players[0].troops_supply == 12 - 2
+    # The acquisition choice is on top of the window; the card is not left
+    # face up and nothing waits to be "resolved".
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    assert _windows(played) == [0]
+    assert played.players[0].intrigue_faceup == ()
+    assert all(event.kind != "intrigue_trigger_fired" for event in transition.events)
+    offers = {action.action_id for action in engine.legal_actions(played, 0)}
+    assert offers == {"acquire_intrigue_tleilaxu", "decline_intrigue_tleilaxu"}
+
+    bought = engine.apply(
+        played,
+        next(
+            action
+            for action in engine.legal_actions(played, 0)
+            if action.action_id == "acquire_intrigue_tleilaxu"
+            and dict(action.arguments)["instance_id"] == CONTAMINATOR
+        ),
+    ).state
+    assert CONTAMINATOR in bought.players[0].discard_pile
+    assert bought.players[0].specimens == 1
+    assert HARVEST_CELLS[0] in bought.intrigue_discard
+
+    # The seat still holds an Intrigue card: the window stays open, and its
+    # one press reads as finishing, not declining.
+    assert bought.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    actions = engine.legal_actions(bought, 0)
+    assert actions == (FINISH_CONFLICT_END,)
+    assert DECLINE_CONFLICT_END not in actions
+    finished = engine.apply(bought, FINISH_CONFLICT_END)
+    assert [event.kind for event in finished.events][0] == (
+        "conflict_end_trigger_finished"
+    )
+    assert _windows(finished.state) == []
+    assert finished.state.phase is not GamePhase.COMBAT
+    assert PLAIN in finished.state.players[0].intrigue_cards
+
+
+def test_two_harvest_cells_each_resolve_at_their_own_play_in_window_order() -> None:
+    # Two seats play a Harvest Cells in the same Conflict-end step. "Each
+    # seat, in turn order from the First Player" (designer ruling, OQ-002):
+    # seat 1 is the First Player, so its window is first. Each card resolves
+    # at its own play, so seat 1's specimens and acquisition are done before
+    # seat 0's window is answered, and the Intrigue discard holds the copies
+    # in the order they were played.
+    engine = UprisingRulesEngine()
+    first_copy, second_copy = HARVEST_CELLS
+
+    def play(card_id: str, seat: int) -> DomainAction:
+        return DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=seat,
+            arguments=(("card_id", card_id),),
+        )
+
+    state = _combat_state(
+        _fighter(3, intrigue_cards=(first_copy,), specimens=0),
+        _seat(
+            1,
+            has_revealed=True,
+            troops_supply=9,
+            troops_garrison=0,
+            troops_conflict=3,
+            combat_strength=6,
+            specimens=0,
+            intrigue_cards=(second_copy,),
+        ),
+        first_player=1,
+    )
+    window = _offer(engine, state).state
+    assert _windows(window) == [0, 1]
+    # The First Player's window is on top.
+    top = window.decision_stack[-1]
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+
+    played_first = engine.apply(window, play(second_copy, 1)).state
+    assert played_first.players[1].specimens == 2
+    assert played_first.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    # Seat 0 has not been asked yet and has taken nothing.
+    assert played_first.players[0].specimens == 0
+    assert first_copy in played_first.players[0].intrigue_cards
+
+    bought = engine.apply(
+        played_first,
+        next(
+            action
+            for action in engine.legal_actions(played_first, 1)
+            if action.action_id == "acquire_intrigue_tleilaxu"
+            and dict(action.arguments)["instance_id"] == CONTAMINATOR
+        ),
+    ).state
+    assert CONTAMINATOR in bought.players[1].discard_pile
+    assert bought.players[1].specimens == 1
+    assert bought.intrigue_discard == (second_copy,)
+    # Seat 1 holds another Intrigue card (a Conflict reward), so its window
+    # stays open until it finishes; seat 0's is the one below it.
+    assert bought.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert engine.legal_actions(bought, 1) == (
+        DomainAction(action_id="finish_conflict_end_intrigue", actor=1),
+    )
+    assert _windows(bought) == [0, 1]
+    bought = engine.apply(
+        bought, DomainAction(action_id="finish_conflict_end_intrigue", actor=1)
+    ).state
+    # Now seat 0's window is the one open, with its card still in hand.
+    assert _windows(bought) == [0]
+    assert bought.players[0].specimens == 0
+    assert first_copy in bought.players[0].intrigue_cards
+
+    played_second = engine.apply(bought, play(first_copy, 0)).state
+    assert played_second.players[0].specimens == 2
+    assert played_second.players[1].specimens == 1
+    assert played_second.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    answered = engine.apply(played_second, DECLINE_ACQUIRE).state
+    assert _windows(answered) == [0]
+    done = engine.apply(
+        answered, DomainAction(action_id="finish_conflict_end_intrigue", actor=0)
+    ).state
+    assert done.phase is not GamePhase.COMBAT
+    assert done.intrigue_discard == (second_copy, first_copy)
+    assert done.players[0].intrigue_faceup == ()
+    assert done.players[1].intrigue_faceup == ()
+    assert [
+        dict(event.payload)["player"]
+        for event in done.event_log
+        if event.kind == "specimens_generated"
+    ] == [1, 0]
 
 
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:
@@ -1265,3 +1514,76 @@ def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:
     for action in legal_intrigue_choice_actions(played, 0):
         assert codec.decode(codec.encode(action), 0) == action
     assert replace(state).combat_intrigue_players == ()
+
+
+def test_a_card_drawn_in_the_acquisition_can_be_played_in_the_same_window() -> None:
+    # OQ-109, decided (b) by the user on 2026-10-18 ("그래 둘다 B가 맞겠다"):
+    # Harvest Cells resolves at its play, so the Tleilaxu card its acquisition
+    # buys can draw an Intrigue card while the seat's window is still open --
+    # here Subject X-137's acquire box moves the Tleilaxu track onto its
+    # Intrigue space, which draws the other Harvest Cells. The window always
+    # stays after a play and closes only when it comes back on top with the
+    # seat holding no Intrigue card, so the drawn copy can be played in it
+    # whether or not the seat held another card at the first play.
+    engine = UprisingRulesEngine()
+    first, second = HARVEST_CELLS
+
+    def play(card_id: str) -> DomainAction:
+        return DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", card_id),),
+        )
+
+    def after_acquisition(hand: tuple[str, ...]) -> GameState:
+        owner = _fighter(4, intrigue_cards=hand, specimens=0, tleilaxu_space=1)
+        state = _combat_state(owner)
+        state = replace(state, intrigue_deck=(second, *state.intrigue_deck))
+        window = _offer(engine, state).state
+        played = engine.apply(window, play(first)).state
+        acquire = next(
+            action
+            for action in engine.legal_actions(played, 0)
+            if action.action_id == "acquire_intrigue_tleilaxu"
+            and dict(action.arguments)["instance_id"] == SUBJECT
+        )
+        return engine.apply(played, acquire).state
+
+    # A seat holding another card sees the window with the drawn copy.
+    holding = after_acquisition((first, PLAIN))
+    assert holding.players[0].intrigue_cards == (PLAIN, second)
+    assert holding.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert engine.legal_actions(holding, 0) == (FINISH_CONFLICT_END, play(second))
+    finished = engine.apply(holding, FINISH_CONFLICT_END).state
+    assert finished.phase is not GamePhase.COMBAT
+    assert finished.players[0].intrigue_cards == (PLAIN, second)
+
+    # A seat whose hand the play emptied sees the very same window: the
+    # drawn copy is the only card it holds, and it may be played.
+    alone = after_acquisition((first,))
+    assert alone.players[0].intrigue_cards == (second,)
+    assert alone.phase is GamePhase.COMBAT
+    assert _windows(alone) == [0]
+    assert alone.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert engine.legal_actions(alone, 0) == (FINISH_CONFLICT_END, play(second))
+    assert engine.legal_actions(alone, 0) == engine.legal_actions(holding, 0)
+
+    specimens = alone.players[0].specimens
+    again = engine.apply(alone, play(second))
+    assert [event.kind for event in again.events][0] == "intrigue_played"
+    assert again.state.players[0].specimens == specimens + 2
+    assert again.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    assert _windows(again.state) == [0]
+
+    # Everything answered and the hand empty: the window closes with no
+    # press and no event of its own, and the cleanup follows.
+    done = engine.apply(again.state, DECLINE_ACQUIRE)
+    assert done.state.players[0].intrigue_cards == ()
+    assert _windows(done.state) == []
+    assert done.state.phase is not GamePhase.COMBAT
+    assert not {
+        "conflict_end_trigger_declined",
+        "conflict_end_trigger_finished",
+    } & {event.kind for event in done.events}
+    assert first in done.state.intrigue_discard
+    assert second in done.state.intrigue_discard

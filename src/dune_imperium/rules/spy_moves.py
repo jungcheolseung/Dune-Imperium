@@ -33,6 +33,7 @@ from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 # The turn's own frames, where the owner's waiting Emperor track Spy is
@@ -352,43 +353,32 @@ def legal_spy_placement_actions(
     allowed = frozenset(
         context_str(context, "allowed_post_ids", owner="Spy placement frame").split(",")
     )
-    owner = state.players[player]
-    if context.get("deep_cover") is True:
-        targets = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id in allowed and post.post_id not in owner.spy_post_ids
-        )
-    else:
-        targets = empty_observation_post_ids(state, allowed)
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    options = spy_options(
+        state, player, allowed, shared_post=context.get("deep_cover") is True
+    )
+    return (
+        *(
+            (DomainAction(action_id="decline_spy_placement", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_placement",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_spy_on_space",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    decline = DomainAction(action_id="decline_spy_placement", actor=player)
-    if targets and owner.spy_post_ids:
-        # No Spy in supply: "you may first recall one of your Spies for no
-        # effect" [Main pp. 11, 20]. Placing is only mandatory with a Spy in
-        # the supply (the erratum to [Main p. 11], OQ-057), so the recall
-        # can be passed up; once it is made the Spy has to be placed.
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_placement",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    # Nothing can be placed (every allowed post is occupied, or no Spy).
-    return (decline,)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_spy_placement(state: GameState, action: DomainAction) -> RuleResult:

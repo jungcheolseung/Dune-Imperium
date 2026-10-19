@@ -3,7 +3,7 @@
 from copy import replace
 from enum import StrEnum
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
@@ -13,7 +13,6 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contract_tiles import (
@@ -26,8 +25,9 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     eligible_agent_contract_ids,
     pending_agent_contract_ids,
+    recall_agent_targets,
+    recall_board_agent,
     recall_conflict_agent,
-    recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
     turn_agent_in_conflict,
@@ -45,9 +45,9 @@ from dune_imperium.rules.intrigue_deck import (
     with_trashed_intrigue,
 )
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 
@@ -249,41 +249,32 @@ def legal_contract_spy_actions(
         or "contract_spy_id" not in context
     ):
         return ()
-    owner = state.players[player]
-    if context.get("deep_cover") is True:
-        # Spy with Deep Cover ignores opponents' Spies; only the owner's
-        # own Spies block a post [Bloodlines pp. 5, 12].
-        targets = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id not in owner.spy_post_ids
-        )
-    else:
-        targets = empty_observation_post_ids(state)
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    options = spy_options(
+        state, player, None, shared_post=context.get("deep_cover") is True
+    )
+    return (
+        *(
+            (DomainAction(action_id="decline_contract_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_contract",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_contract_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    decline = DomainAction(action_id="decline_contract_spy", actor=player)
-    if targets and owner.spy_post_ids:
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_contract",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    # Nothing can be placed (no free post, or no Spy at all).
-    return (decline,)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_contract_spy_action(
@@ -410,33 +401,10 @@ def contract_recall_targets(state: GameState, player: int) -> tuple[str, ...] | 
         return None
     context = dict(frame.context)
     excluded = context.get("excluded_space_id")
-    return _recall_targets(
+    return recall_agent_targets(
         state.players[player],
-        excluded if isinstance(excluded, str) else "",
+        excluded_space_id=excluded if isinstance(excluded, str) else "",
         turn_agent_in_conflict=context.get("turn_agent_in_conflict") is True,
-    )
-
-
-def _recall_targets(
-    owner: PlayerState, excluded_space_id: str, *, turn_agent_in_conflict: bool
-) -> tuple[str, ...]:
-    """The owner's other board spaces, then "conflict" for an earlier turn's
-    Into the Fray Agent (``recallable_conflict_agents``)."""
-
-    return (
-        *(
-            space_id
-            for space_id in owner.agent_locations
-            if space_id != excluded_space_id
-        ),
-        *(
-            ("conflict",)
-            if recallable_conflict_agents(
-                owner, sent_this_turn=turn_agent_in_conflict
-            )
-            > 0
-            else ()
-        ),
     )
 
 
@@ -477,21 +445,12 @@ def apply_contract_recall_action(
         space_id = dict(action.arguments).get("space_id")
         if not isinstance(space_id, str):
             raise RuntimeError("Contract recall choice has invalid space ID")
-        next_owner = replace(
+        next_owner, event = recall_board_agent(
             owner,
-            agents_available=owner.agents_available + 1,
-            agent_locations=tuple(
-                location for location in owner.agent_locations if location != space_id
-            ),
-        )
-        event = GameEvent(
+            space_id,
+            player=action.actor,
+            source=source,
             event_id=f"{source}:reward:recall:{space_id}",
-            kind="agent_recalled",
-            payload=(
-                ("player", action.actor),
-                ("source", source),
-                ("space_id", space_id),
-            ),
         )
     next_state = replace(
         state.pop_decision(),
@@ -783,17 +742,12 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
         )
     ]
     if definition.completes_immediately and not definition.requires_intrigue_trash:
-        completion_id = (
-            f"{source_value}:contract_completed:{action.actor}:{instance_value}"
-        )
         events.append(
             GameEvent(
-                event_id=completion_id,
+                event_id=f"{source_value}:contract:{instance_value}:completed",
                 kind="contract_completed",
-                payload=(
-                    ("contract_id", instance_value),
-                    ("player", action.actor),
-                    ("solari", definition.reward.solari),
+                payload=_completion_payload(
+                    instance_value, action.actor, solari=definition.reward.solari
                 ),
             )
         )
@@ -1258,30 +1212,48 @@ def _complete_contract_without_choices(
     event = GameEvent(
         event_id=f"{source}:completed",
         kind="contract_completed",
-        payload=(
-            ("contract_id", instance_id),
-            ("contracts", reward.contracts),
-            ("influence", reward.influence),
-            (
-                "influence_faction",
+        payload=_completion_payload(
+            instance_id,
+            player,
+            contracts=reward.contracts,
+            influence=reward.influence,
+            influence_faction=(
                 ""
                 if reward.influence_faction is None
-                else reward.influence_faction.value,
+                else reward.influence_faction.value
             ),
-            ("personal_cards", reward.personal_cards),
-            ("player", player),
-            ("recall_agents", reward.recall_agents),
-            ("solari", reward.solari),
-            ("spies", reward.spies),
-            ("troops", recruited),
-            ("water", reward.water),
+            personal_cards=reward.personal_cards,
+            recall_agents=reward.recall_agents,
+            solari=reward.solari,
+            spies=reward.spies,
+            troops=recruited,
+            water=reward.water,
         ),
     )
     shortfall_events = recruit_shortfall_events(
         f"{source}:completed", player, reward.troops, recruited
     )
+    # The completion's own event comes last among its events (cleanup-2c-3).
     return RuleResult(
-        state=next_state, events=(event, *influence_events, *shortfall_events)
+        state=next_state, events=(*influence_events, *shortfall_events, event)
+    )
+
+
+def _completion_payload(
+    instance_id: str, player: int, **rewards: int | str
+) -> tuple[tuple[str, int | str], ...]:
+    """``contract_completed``'s payload: the Contract, the seat and the
+    rewards it paid, never a zero (one shape for every completion,
+    cleanup-2c-3)."""
+
+    return tuple(
+        sorted(
+            (
+                ("contract_id", instance_id),
+                ("player", player),
+                *((key, value) for key, value in rewards.items() if value),
+            )
+        )
     )
 
 
@@ -1322,9 +1294,9 @@ def _begin_contract_reward_choice(
         # resolve after the turn has passed (it can be the turn's last
         # effect), so it is carried in the frame's context instead of
         # re-derived from a closed Agent-turn effect frame.
-        targets = _recall_targets(
+        targets = recall_agent_targets(
             state.players[player],
-            excluded_space_id,
+            excluded_space_id=excluded_space_id,
             turn_agent_in_conflict=turn_agent_in_conflict,
         )
         frame = DecisionFrame(
@@ -1465,17 +1437,17 @@ def apply_contract_intrigue_trash(
             kind="intrigue_card_trashed",
             payload=(("card_id", card_id), ("player", player)),
         ),
-        GameEvent(
-            event_id=f"{source}:completed",
-            kind="contract_completed",
-            payload=(
-                ("contract_id", instance_id),
-                ("intrigue_cards", reward.intrigue_cards),
-                ("personal_cards", reward.personal_cards),
-                ("player", player),
-            ),
-        ),
     ]
+    completed = GameEvent(
+        event_id=f"{source}:completed",
+        kind="contract_completed",
+        payload=_completion_payload(
+            instance_id,
+            player,
+            intrigue_cards=reward.intrigue_cards,
+            personal_cards=reward.personal_cards,
+        ),
+    )
     if reward.intrigue_cards:
         drawn = draw_or_queue_intrigue_cards(
             next_state,
@@ -1494,7 +1466,7 @@ def apply_contract_intrigue_trash(
         )
         next_state = drawn.state
         events.extend(drawn.events)
-    return RuleResult(state=next_state, events=tuple(events))
+    return RuleResult(state=next_state, events=(*events, completed))
 
 
 # --- Bloodlines Earn Any Alliance -----------------------------------------------------

@@ -43,12 +43,16 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import (
+    agent_card_source,
+    current_agent_effect_context,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.owed_draws import apply_owed_draw
@@ -364,8 +368,12 @@ def test_price_is_no_object_acquisition_gains_two_solari() -> None:
     assert result.state.players[0].resources.solari == 2
     assert tuple(event.kind for event in result.events) == (
         "card_acquired",
-        "acquisition_resource_gained",
+        "resources_gained",
     )
+    gained = result.events[1]
+    assert gained.event_id == f"{dict(gained.payload)['source']}:resources"
+    assert dict(gained.payload)["solari"] == 2
+    assert ":acquire:" in str(dict(gained.payload)["source"])
 
 
 def _price_agent_state(
@@ -674,7 +682,10 @@ def test_price_is_no_object_resolves_the_acquired_cards_bonus() -> None:
     assert [entry[:2] for entry in result.state.players[0].owed_draws] == [
         ("intrigue", f"acquire:{overthrow}")
     ]
-    assert tuple(event.kind for event in result.events) == ("card_acquired",)
+    assert tuple(event.kind for event in result.events) == (
+        "card_acquired",
+        "agent_card_effect_resolved",
+    )
     drawn = apply_owed_draw(
         result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
     )
@@ -788,7 +799,12 @@ def test_price_is_no_object_may_decline_its_acquisition() -> None:
 
     assert result.state.players[0].resources.solari == 3
     assert result.state.players[0].hand == ()
-    assert result.events[0].kind == "agent_card_acquisition_declined"
+    price = _imperium_instance("price_is_no_object")
+    assert result.events == (
+        agent_box_event(
+            agent_card_source(1, 0, price), price, 0, BoxOutcome.DECLINED
+        ),
+    )
 
 
 def test_price_is_no_object_skips_acquisition_without_solari() -> None:
@@ -908,6 +924,7 @@ def test_price_is_no_object_preserves_steersman_acquisition_influence() -> None:
     assert [event.kind for event in result.events] == [
         "card_acquired",
         "influence_gained",
+        "agent_card_effect_resolved",
     ]
 
 

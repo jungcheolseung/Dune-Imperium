@@ -42,9 +42,25 @@ import functools
 import json
 from collections import Counter
 from dataclasses import replace
+from itertools import islice
 from pathlib import Path
 
 import pytest
+from tests.unit.rules.test_bloodlines_leaders import RECON as LIET_RECON
+from tests.unit.rules.test_bloodlines_leaders import _turn_state as _liet_turn_state
+from tests.unit.rules.test_immortality import _agent_research, _at
+from tests.unit.rules.test_immortality_intrigue import (
+    HARVEST_CELLS,
+    PLAIN,
+)
+from tests.unit.rules.test_immortality_intrigue import _combat_state as _window_combat
+from tests.unit.rules.test_immortality_intrigue import _fighter as _window_fighter
+from tests.unit.rules.test_immortality_intrigue import _offer as _window_offer
+from tests.unit.rules.test_tech import (
+    _bought_glowglobes,
+    _combat_acquire_frame,
+    _planetary_array_conflict_end,
+)
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.agents.registry import make_agent
@@ -57,22 +73,28 @@ from dune_imperium.content.uprising.starting_cards import starting_deck_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, is_fixed_outcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
-from dune_imperium.core.player import PlayerState, Resources
+from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.records import migration
 from dune_imperium.records.migration import migrate_record, walk
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import active_box
+from dune_imperium.rules.immortality import (
+    OWED_ORIGIN_RESEARCH,
+    advance_research,
+    pending_research_bonuses,
+)
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
+from dune_imperium.rules.pauses import CONTINUE
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
-from dune_imperium.rules.scouts_effects import reward_was_chosen
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION, reward_was_chosen
 from dune_imperium.server.persistence import parse_save_document
 from dune_imperium.simulation.runner import run_policy_game
 
@@ -112,12 +134,17 @@ OQ106_FIXTURES: dict[str, dict[str, list[int]]] = {
     # the payment's id), and the Research follows that chance; at 368
     # (round 5) a Research past the second genetic marker settles first and
     # the cards' reshuffle (369) comes after it, as v141 drew them. A Deep
-    # Desert summon for Liet Kynes (two Intrigue cards) at 199.
+    # Desert summon for Liet Kynes (two Intrigue cards) at 199: both wait on
+    # the Agent turn as rows since codec v149 (cleanup-2b), so both are
+    # taken right after the summon (one window at a time before). The Intrigue
+    # trash of c7r3 at 233 holds its card and Intrigue card as two owed draws
+    # of the research space since codec v149 (cleanup-2b, rule decision 5), and
+    # the same bridge takes them right after it, the Intrigue card first.
     "v141-no-tech_module-app_ai-9711": {
         "piter_reward": [169, 170, 368, 368],
         "reshuffle_renamed": [170, 369],
-        "planetologist_intrigue": [199, 200],
-        "owed_draw": [235, 290, 371],
+        "planetologist_intrigue": [199, 199],
+        "owed_draw": [233, 233, 235, 290, 371],
     },
     # Reverse Engineering in a Servo-Receivers frame (round 1).
     "v141-no-immortality-no-go_to_11-random-4094": {
@@ -143,8 +170,10 @@ OQ106_FIXTURES: dict[str, dict[str, list[int]]] = {
         "scouts_reward_pause": [307],
     },
     # Imperial Birthright (225) and Overthrow's card (269), which recorded
-    # 272 trashes from hand in an Intrigue choice that offers no owed draw.
-    "v141-app_ai-1050": {"owed_draw": [225, 269]},
+    # 272 trashes from hand in an Intrigue choice that offers no owed draw;
+    # the reshuffle of an Agent box's draw at 195 is named after the box
+    # (codec v149, cleanup-2c-2).
+    "v141-app_ai-1050": {"owed_draw": [225, 269], "reshuffle_renamed": [195]},
     # Hungry for Spice (round 4), whose draw reshuffles: the recorded chance
     # at 257 answers it.
     "v141-no-tech_module-no-immortality-no-go_to_11-random-9167": {
@@ -162,6 +191,12 @@ OQ106_FIXTURES: dict[str, dict[str, list[int]]] = {
         "scouts_held_draw": [259, 261, 263],
         "unpredictable_foe_draw": [430],
     },
+}
+# Bridges of codec v149 a fixture of ``OQ106_FIXTURES`` also uses (kept out of
+# that table, which records where each OQ-106 bridge fires): the Harvest Cells
+# acquisition its recorded cleanup answered, taken right after the play.
+V149_FIXTURE_BRIDGES: dict[str, set[str]] = {
+    "v141-no-tech_module-app_ai-9711": {"harvest_cells_at_once"},
 }
 FULL = RulesetConfig(
     players=4,
@@ -190,20 +225,23 @@ def _this_engine_game(seed: int) -> GameReplay:
 def game() -> GameReplay:
     """A whole heuristic game on this engine with every module on.
 
-    Seed 102, seed 1 until codec v146: optional Agent-turn effects no longer
+    Seed 187; seed 1 until codec v146: optional Agent-turn effects no longer
     offer a refusal (OQ-095 (2), user ruling 2026-10-14), which moved seed
     1's game off these tests' preconditions -- a seat now deploys troops
     before drawing the Intrigue card a Research owes it (an older engine
     drew it inside the Research, so the bridge takes it first), and no seat
-    places with Navigation Chamber's discount any more. Of seeds 1-200,
-    95, 96, 102, 141, 149, 154, 182, 186, 187 and 194 meet every test on
-    this fixture but the triggered-draw one, which needs a game whose only
-    split steps are owed draws and has a seed of its own; 102's game also
-    holds an Imperial Privilege draw and an Arrakeen Scouts line draw, so
-    the older records built from it take those bridges too.
+    places with Navigation Chamber's discount any more. Seed 102 then, until
+    codec v149 (cleanup-2a) asked Scouts seats with nothing to take, an
+    extra decision that moved 102's game off them the same way; of the
+    seeds that met them then (95, 96, 102, 141, 149, 154, 182, 186, 187,
+    194), 95 still did. Seed 95 until cleanup-2b kept an in-turn optional
+    trash on the turn as rows (a seat now takes a Reveal's Research before
+    an owed Intrigue card); of those ten, 187 still meets them all. The
+    triggered-draw test needs a game whose only split steps are owed draws
+    and has a seed of its own.
     """
 
-    return _this_engine_game(102)
+    return _this_engine_game(187)
 
 
 def _states(replay: GameReplay) -> list[GameState]:
@@ -297,9 +335,27 @@ def _held_steps(replay: GameReplay) -> dict[int, str]:
 
 
 def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> set[int]:
-    """The steps of ``replay`` an engine of ``codec`` would not have recorded."""
+    """The steps of ``replay`` an engine of ``codec`` would not have recorded:
+    before v142 the steps it made inside another (``_held_steps``), before
+    v149 the confirms of a Scouts choice with nothing to take, which it
+    skipped unasked (``_no_option_steps``)."""
 
-    return set(drop or ()) | (set(_held_steps(replay)) if codec < 142 else set())
+    return (
+        set(drop or ())
+        | (set(_held_steps(replay)) if codec < 142 else set())
+        | (_no_option_steps(replay) if codec < 149 else set())
+    )
+
+
+def _no_option_steps(replay: GameReplay) -> set[int]:
+    return _only_choice_in(replay, FrameKind.SCOUTS_CHOICE, SCOUTS_NO_OPTION)
+
+
+def _no_option_counts(replay: GameReplay) -> dict[str, int]:
+    """The bridge counts of those confirms in a record before v149."""
+
+    found = len(_no_option_steps(replay))
+    return {"scouts_no_option_window": found} if found else {}
 
 
 def _older(replay: GameReplay, codec: int, drop: set[int] | None = None) -> GameReplay:
@@ -399,6 +455,7 @@ def test_pauses_an_older_engine_never_recorded_are_answered(
     assert record.bridge_counts() == {
         "pause": len(pauses - set(_held_steps(game))),
         **_held_counts(game),
+        **_no_option_counts(game),
     }
     assert [migrated.step for migrated in record.steps] == _steps(game.steps)
     assert canonical_state_hash(record.state) == game.expected_state_hash
@@ -428,6 +485,101 @@ def test_conflict_end_windows_are_declined_only_for_records_before_v141(
     )
 
 
+def test_a_scouts_seat_with_nothing_to_take_is_answered_only_before_v149(
+    game: GameReplay,
+) -> None:
+    # Cleanup-2a asks such a seat; an older engine skipped it unasked.
+    confirms = _only_choice_in(game, FrameKind.SCOUTS_CHOICE, SCOUTS_NO_OPTION)
+    assert confirms
+
+    before = migrate_record(_older(game, 148))
+    assert before.complete
+    assert before.bridge_counts()["scouts_no_option_window"] == len(confirms)
+    assert [migrated.step for migrated in before.steps] == _steps(game.steps)
+    assert canonical_state_hash(before.state) == game.expected_state_hash
+
+    after = migrate_record(_older(game, 149, confirms))
+    assert after.divergence is not None
+    first = min(confirms)
+    assert after.divergence.recorded_index == first - sum(
+        1 for index in confirms if index < first
+    )
+
+
+def test_an_in_turn_research_decline_is_dropped_only_before_v149(
+    game: GameReplay,
+) -> None:
+    # Cleanup-2b: a research bonus raised in its owner's turn waits on the
+    # turn with no refusal, so an older engine's in-turn
+    # ``decline_research_bonus`` has no counterpart; it leaves the same
+    # state, and is dropped once this engine refuses it.
+    states = _states(game)
+    index = next(
+        i
+        for i, (state, step) in enumerate(zip(states, game.steps, strict=True))
+        if isinstance(step, DomainAction)
+        and pending_research_bonuses(state, step.actor)
+    )
+    seat = _actor(game, index)
+    decline = DomainAction(action_id="decline_research_bonus", actor=seat)
+
+    def with_decline(codec: int) -> tuple[GameReplay, int]:
+        older = _older(game, codec)
+        position = _position(game, codec, index)
+        steps = (*older.steps[:position], decline, *older.steps[position:])
+        return replace(older, steps=steps), position
+
+    before, position = with_decline(148)
+    record = migrate_record(before)
+    assert record.complete, record.divergence
+    assert (position, "turn_row_refusal") in record.dropped
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+
+    after, position = with_decline(149)
+    stamped = migrate_record(after)
+    assert stamped.divergence is not None
+    assert stamped.divergence.recorded_index == position
+
+
+def test_an_in_turn_trash_decline_is_dropped_only_before_v149(
+    game: GameReplay,
+) -> None:
+    # Cleanup-2b: an optional trash raised in its owner's turn waits on the
+    # turn with no refusal, so an older engine's in-turn
+    # ``decline_optional_trash`` has no counterpart either.
+    states = _states(game)
+    index = next(
+        i
+        for i, (state, step) in enumerate(zip(states, game.steps, strict=True))
+        if isinstance(step, DomainAction)
+        and (frame := turn_rows.rows_frame(state, step.actor)) is not None
+        and any(
+            kind == turn_rows.OPTIONAL_TRASH for kind, _, _ in turn_rows.pending(frame)
+        )
+    )
+    seat = _actor(game, index)
+    decline = DomainAction(action_id="decline_optional_trash", actor=seat)
+
+    def with_decline(codec: int) -> tuple[GameReplay, int]:
+        older = _older(game, codec)
+        position = _position(game, codec, index)
+        steps = (*older.steps[:position], decline, *older.steps[position:])
+        return replace(older, steps=steps), position
+
+    before, position = with_decline(148)
+    record = migrate_record(before)
+    assert record.complete, record.divergence
+    assert (position, "turn_row_refusal") in record.dropped
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+
+    after, position = with_decline(149)
+    stamped = migrate_record(after)
+    assert stamped.divergence is not None
+    assert stamped.divergence.recorded_index == position
+
+
 def test_a_combat_intrigue_pass_is_answered_only_for_records_before_v139(
     game: GameReplay,
 ) -> None:
@@ -444,7 +596,11 @@ def test_a_combat_intrigue_pass_is_answered_only_for_records_before_v139(
 
     before = migrate_record(_older(game, 138, {dropped}))
     assert before.complete
-    assert before.bridge_counts() == {"combat_intrigue_pass": 1, **_held_counts(game)}
+    assert before.bridge_counts() == {
+        "combat_intrigue_pass": 1,
+        **_held_counts(game),
+        **_no_option_counts(game),
+    }
     assert [migrated.step for migrated in before.steps] == _steps(game.steps)
     assert canonical_state_hash(before.state) == game.expected_state_hash
 
@@ -563,6 +719,7 @@ def test_a_card_effect_recorded_before_v137_named_its_icon_is_rewritten(
     assert before.bridge_counts() == {
         "agent_card_effect_named": 1,
         **_held_counts(game),
+        **_no_option_counts(game),
     }
     assert before.steps[index].step == recorded
     assert before.steps[index].recorded_index == position
@@ -842,7 +999,10 @@ def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
 
     assert record.divergence is not None
     assert record.divergence.recorded_index == position
-    assert set(record.bridge_counts()) <= set(_held_counts(game))
+    assert set(record.bridge_counts()) <= {
+        *_held_counts(game),
+        *_no_option_counts(game),
+    }
     assert [migrated.step for migrated in record.steps] == _steps(game.steps[:index])
 
 
@@ -852,24 +1012,33 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # the trigger, so its record has no such step. Dropped from this
     # engine's record (whose heuristic takes each at once), each is taken
     # right after its trigger again, so the game comes back step for step.
-    # Seed 10's game, whose only split steps are its three owed draws: this
-    # test ran on the fixture's seed 1 until codec v146 (OQ-095 (2), user
-    # ruling 2026-10-14), whose game then also held an Imperial Privilege
-    # draw and a Scouts reward pause and drew one owed Intrigue card a step
-    # late. Of seeds 1-200 only 2, 10 and 88 split nothing but owed draws,
-    # and seed 2 takes one late.
-    game = _this_engine_game(10)
+    # Seed 21's game (one owed draw, the Intrigue card of a research space);
+    # its other split steps are dropped with the draw and taken back by
+    # their own bridges. (Seed 10 until codec v149, whose game
+    # split nothing but its three owed draws, one of three such seeds of
+    # 1-200; cleanup-2a's Scouts confirms moved every game, none of 1-200
+    # splits only owed draws now, and seed 10's heuristic takes one owed
+    # Intrigue card a step late. Seeds 5, 6 and 20 were then the first that
+    # brought every owed draw back; cleanup-2b's turn rows moved them too,
+    # and of 1-60 seeds 4, 12, 21, 22, 26, 43, 48 and 53 did; the
+    # Conflict-end change (2026-10-18: troops back before the windows,
+    # Harvest Cells resolving as it is played) moved them again, and of
+    # 1-60 seeds 21, 22 and 48 do. The fixture's
+    # seed 1 drew one a step late until codec v146, OQ-095 (2).)
+    game = _this_engine_game(21)
     owed = {
         index
         for index, step in enumerate(game.steps)
         if isinstance(step, DomainAction) and step.action_id.startswith("draw_owed_")
     }
     assert owed
-    assert set(_held_steps(game)) == owed
+    held = _held_steps(game)
+    assert {index for index, name in held.items() if name == "owed_draw"} == owed
 
-    before = migrate_record(_older(game, 141, owed))
+    before = migrate_record(_older(game, 141))
     assert before.complete, before.divergence
-    assert before.bridge_counts() == {"owed_draw": len(owed)}
+    assert before.bridge_counts() == {**_held_counts(game), **_no_option_counts(game)}
+    assert before.bridge_counts()["owed_draw"] == len(owed)
     assert [migrated.step for migrated in before.steps] == _steps(game.steps)
     assert canonical_state_hash(before.state) == game.expected_state_hash
 
@@ -882,21 +1051,26 @@ def test_a_scouts_line_draw_an_older_engine_drew_at_once_follows_its_choice() ->
     # Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw printed after
     # one of an Arrakeen Scouts line's reward choices as the line's own
     # ``scouts_rewards_first``, then its only action; an older engine drew
-    # it in the choice's step, so its record has no such step. Seed 5's
-    # heuristic game holds two (round 4, Water Discipline's card after its
-    # trash; round 8, Leverage's Intrigue card). Dropped from this engine's
+    # it in the choice's step, so its record has no such step. Seed 15's
+    # heuristic game holds one (round 8, CHOAM Negotiations' Intrigue card
+    # after its contract). Dropped from this engine's
     # record with the game's other held steps, each is taken right after
     # the same choice again. (Seed 3 until codec v146: optional Agent-turn
     # effects offer no refusal since then, OQ-095 (2), and seed 3's game no
-    # longer holds such a draw; seed 5 is the first of 1-200 that does.)
-    game = _this_engine_game(5)
+    # longer holds such a draw; seed 5, whose game held two (round 4, Water
+    # Discipline's card after its trash; round 8, Leverage's Intrigue card),
+    # was the first of 1-200 that did until the Conflict-end change
+    # (2026-10-18: troops back before the windows, Harvest Cells resolving
+    # as it is played) moved every game; of 1-60 seeds 15, 29, 48, 50 and 60
+    # hold one that comes back step for step, and 15 is the first.)
+    game = _this_engine_game(15)
     held = _held_steps(game)
     scouts = [index for index, name in held.items() if name == "scouts_held_draw"]
     assert scouts
 
     before = migrate_record(_older(game, 141))
     assert before.complete, before.divergence
-    assert before.bridge_counts() == _held_counts(game)
+    assert before.bridge_counts() == {**_held_counts(game), **_no_option_counts(game)}
     choices = [
         previous.step
         for previous, migrated in zip(before.steps, before.steps[1:], strict=False)
@@ -953,7 +1127,10 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
             141,
             {"prison_planet_commanders_only", "scouts_held_draw", "owed_draw"},
         ),
-        *((name, 141, set(fired)) for name, fired in OQ106_FIXTURES.items()),
+        *(
+            (name, 141, set(fired) | V149_FIXTURE_BRIDGES.get(name, set()))
+            for name, fired in OQ106_FIXTURES.items()
+        ),
         ("v145-no-immortality-no-go_to_11-heuristic-208", 145, set()),
     ],
 )
@@ -977,7 +1154,14 @@ def test_records_of_older_engines_replay_to_their_end(
     # Codec v147 (OQ-095 (7) addition) drops a Reveal choice's defer and
     # resume and an optional Reveal choice's refusal: every pending choice is
     # offered at once and the recorded ``finish_reveal`` lapses one left
-    # unused. Every other recorded step applies.
+    # unused. Codec v149 (cleanup-2b) drops an in-turn refusal of a research
+    # bonus or an optional trash: it waits on the turn as rows and the
+    # recorded turn end lapses it. Codec v149 (user decision 2026-10-18:
+    # Harvest Cells resolves as it is played) also drops the
+    # ``resolve_intrigue_rewards`` an older engine asked at its cleanup for
+    # a Harvest Cells played in the Conflict-end window: its specimens come
+    # with the play here, so the step has no counterpart. Every other
+    # recorded step applies.
     switches = [
         index
         for index, step in enumerate(replay.steps)
@@ -1000,6 +1184,11 @@ def test_records_of_older_engines_replay_to_their_end(
                 for refusal in migration._OPTIONAL_REVEAL_REFUSALS
             ),
             ("decline_reveal_spy_recall", migration.REVEAL_REFUSAL_BY_ORDER),
+            *(
+                (refusal, migration.TURN_ROW_REFUSAL_DROPPED)
+                for refusal in migration._TURN_ROW_REFUSALS
+            ),
+            ("resolve_intrigue_rewards", migration.HARVEST_CELLS_REWARDS_DROPPED),
         ), (index, step, reason)
     assert [
         index
@@ -1690,12 +1879,29 @@ def _where(record: migration.MigratedRecord) -> dict[str, list[int]]:
         *OQ106_FIXTURES.items(),
         (
             "v141-heuristic-1023",
-            {"intrigue_held_rewards": [46], "planetologist_intrigue": [211, 212]},
+            # Two replacements in the Agent turn, both drawn after the
+            # summon (cleanup-2b; [211, 212] while each had its window).
+            {"intrigue_held_rewards": [46], "planetologist_intrigue": [211, 211]},
         ),
-        ("v141-heuristic-150", {"piter_reward": [557, 557], "owed_draw": [558]}),
+        (
+            "v141-heuristic-150",
+            # The reshuffle at 420 is an Agent box icon's draw, named after
+            # the box (codec v149, cleanup-2c-3).
+            {
+                "piter_reward": [557, 557],
+                "owed_draw": [558],
+                "reshuffle_renamed": [420],
+            },
+        ),
         (
             "v141-no-immortality-no-go_to_11-heuristic-1211",
-            {"scouts_held_draw": [471], "owed_draw": [710]},
+            # The reshuffle at 789 is an Agent box's, named after the box
+            # (codec v149, cleanup-2c-2).
+            {
+                "scouts_held_draw": [471],
+                "owed_draw": [710],
+                "reshuffle_renamed": [789],
+            },
         ),
         ("v135-app_ai-3", {"owed_draw": [195]}),
     ],
@@ -1717,24 +1923,30 @@ def test_oq106_bridges_add_each_split_step_right_after_its_recorded_step(
 
 
 @pytest.mark.parametrize("name", ["v141-heuristic-150", *OQ106_FIXTURES])
-def test_a_migrated_record_stamped_v142_needs_no_bridge(name: str) -> None:
+def test_a_migrated_record_stamped_with_this_codec_needs_no_bridge(name: str) -> None:
     # The migrated steps, with every split step in its place, are a record
-    # of this engine: stamped v142 they replay as they are. A follows bridge
-    # open to them would take a split step before the record does.
+    # of this engine: stamped with its codec they replay as they are. A
+    # follows bridge open to them would take a split step before the record
+    # does. (Stamped v142 until codec v149 made a research space's icons
+    # steps of their own: a record of v142 to v148 has none of those rows, so
+    # the ``research_icon_order`` follows bridge, open to it, would add the
+    # row the migrated steps already hold. The v142 bridges alone are kept
+    # away from a v142 stamp by the test above.)
     migrated = migrate_record(_fixture(name))
     replay = replace(
         migrated.replay,
         steps=tuple(step.step for step in migrated.steps),
         expected_state_hash=canonical_state_hash(migrated.state),
-        action_codec_version=142,
+        action_codec_version=ACTION_CODEC_VERSION,
     )
 
     assert migrate_record(replay).exact
 
 
 def test_a_recorded_reshuffle_takes_the_id_of_the_one_this_engine_asks() -> None:
-    # Insider Information's held draw reshuffles under ``...:rewards:draw``;
-    # v141 recorded the same seat's same pile under ``...:draw``.
+    # Insider Information's held draw reshuffles under ``...:rewards`` (the
+    # line's own ``:draw`` dropped, codec v149 cleanup-2c-5); v141 recorded
+    # the same seat's same pile under ``...:draw``.
     replay = _fixture("v141-heuristic-1027")
     recorded = replay.steps[108]
     assert isinstance(recorded, ChanceOutcome)
@@ -1745,7 +1957,7 @@ def test_a_recorded_reshuffle_takes_the_id_of_the_one_this_engine_asks() -> None
     assert renamed.bridge == "reshuffle_renamed"
     assert isinstance(renamed.step, ChanceOutcome)
     assert renamed.step == ChanceOutcome(
-        recorded.decision_id.replace(":draw:", ":rewards:draw:"), recorded.values
+        recorded.decision_id.replace(":draw:", ":rewards:"), recorded.values
     )
 
 
@@ -2013,3 +2225,1086 @@ def test_a_recorded_recall_pass_takes_the_plain_spy_icon_on_top() -> None:
         == migration.REVEAL_REFUSAL_BY_ORDER
     )
     assert slot.frames == []
+
+
+# --- an Influence picked at the top (cleanup-2b, codec v149) -----------------
+# User decision 2026-10-17 (composed-effects plan 5, rule decision 1; OQ-060,
+# OQ-057 (1)): Shipping's and a Tech tile's acquire "Influence with any
+# Faction" no longer offer a Faction at 6. An older engine let a record pick
+# one (nothing gained); this engine drops that step in a turn, where the
+# recorded turn end lapses the icon, and confirms it in Combat's acquire
+# frame, which has no turn end.
+
+_TOP = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+_TECH_PICK = DomainAction(
+    "resolve_tech_acquire_effect",
+    0,
+    (("effect", "influence"), ("faction", "emperor"), ("tech_id", "glowglobes")),
+)
+
+
+def test_influence_at_the_top_names_a_pick_of_a_faction_at_six() -> None:
+    state = _bought_glowglobes(replace(_TOP, fremen=2))
+    shipping = DomainAction(
+        "choose_shipping_influence", 0, (("faction", "emperor"),)
+    )
+    assert migration._influence_at_the_top(state, shipping)
+    assert migration._influence_at_the_top(state, _TECH_PICK)
+    # A Faction below 6 was a real gain; so is another seat's pick (seat 1
+    # holds no cube at 6), another effect, and an action without a Faction.
+    below = DomainAction("choose_shipping_influence", 0, (("faction", "fremen"),))
+    assert not migration._influence_at_the_top(state, below)
+    assert not migration._influence_at_the_top(
+        state, replace(_TECH_PICK, actor=1)
+    )
+    solari = DomainAction(
+        "resolve_tech_acquire_effect",
+        0,
+        (("effect", "solari"), ("tech_id", "plasteel_blades")),
+    )
+    assert not migration._influence_at_the_top(state, solari)
+    assert not migration._influence_at_the_top(state, _PRESS)
+
+
+def test_a_combat_tech_influence_picked_at_the_top_is_confirmed_instead() -> None:
+    combat = _combat_acquire_frame(_TOP)
+    decision = combat.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    confirm = DomainAction("resolve_tech_influence_without_faction", 0)
+
+    assert migration._tech_influence_confirm(ENGINE, combat, decision, _TECH_PICK) == (
+        confirm
+    )
+    # A Faction that can still rise was a real pick, and this engine offers
+    # no confirm for it.
+    open_combat = _combat_acquire_frame(replace(_TOP, emperor=3, fremen=5))
+    open_decision = open_combat.decision_stack[-1].decision
+    assert isinstance(open_decision, PlayerDecision)
+    assert (
+        migration._tech_influence_confirm(
+            ENGINE, open_combat, open_decision, _TECH_PICK
+        )
+        is None
+    )
+    # In a turn the bridge stays out: the step is dropped instead.
+    turn = _bought_glowglobes(_TOP)
+    turn_decision = turn.decision_stack[-1].decision
+    assert isinstance(turn_decision, PlayerDecision)
+    assert (
+        migration._tech_influence_confirm(ENGINE, turn, turn_decision, _TECH_PICK)
+        is None
+    )
+
+    # Walked as a codec v148 record: the pick comes back as the confirm.
+    record = migrate_record(
+        _v142_record(combat, _TECH_PICK, codec=148), _StartingAt(combat)
+    )
+    assert record.divergence is None
+    assert [(m.step, m.bridge) for m in record.steps] == [
+        (confirm, "tech_influence_confirm")
+    ]
+
+
+def test_a_turn_tech_influence_picked_at_the_top_is_dropped_before_the_press() -> None:
+    turn = _bought_glowglobes(_TOP)
+
+    record = migrate_record(
+        _v142_record(turn, _TECH_PICK, _PRESS, codec=148), _StartingAt(turn)
+    )
+
+    assert record.divergence is None
+    assert record.dropped == ((0, migration.INFLUENCE_AT_TOP_DROPPED),)
+    assert [m.step for m in record.steps] == [_PRESS]
+    # A record of codec v149 met the decision itself: nothing is dropped.
+    current = migrate_record(
+        _v142_record(turn, _TECH_PICK, codec=149), _StartingAt(turn)
+    )
+    assert current.dropped == ()
+    assert current.divergence is not None
+
+
+def test_a_turn_tech_influence_picked_at_the_top_beside_a_free_faction_diverges() -> (
+    None
+):
+    # Known divergence (cleanup-2b, rule decision 1; OQ-060): an older engine
+    # offered a Faction at 6 beside one that could still rise and the record
+    # picked it, gaining nothing. This engine offers only the Faction below 6
+    # and the icon holds the turn end until taken, so the recorded press has
+    # no counterpart: the pick is dropped and the record stops at the press.
+    turn = _bought_glowglobes(Influence(emperor=6, spacing_guild=6, bene_gesserit=6))
+
+    record = migrate_record(
+        _v142_record(turn, _TECH_PICK, _PRESS, codec=148), _StartingAt(turn)
+    )
+
+    assert record.dropped == ((0, migration.INFLUENCE_AT_TOP_DROPPED),)
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == 1
+
+
+def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None:
+    # Cleanup-2b (rule decision 2, OQ-095 (2)): Liet Kynes' replacement from
+    # Unexpected Allies' sandworm waits on the turn as rows, offered once the
+    # card's Shield Wall choice is answered; an older engine opened the
+    # replacement's window above that choice and the record drew and trashed
+    # there. Those steps are held and applied as soon as this engine offers
+    # them, before the next recorded step (``TURN_ROW_HELD``).
+    card = "intrigue:unexpected_allies:0"
+    turn = _liet_turn_state(
+        PlayerState(
+            player_id=0,
+            leader_id="liet_kynes",
+            hand=(LIET_RECON,),
+            intrigue_cards=(card,),
+            resources=Resources(water=2),
+        )
+    )
+    play = next(
+        a
+        for a in ENGINE.legal_actions(turn, 0)
+        if a.action_id == "play_intrigue" and dict(a.arguments)["card_id"] == card
+    )
+    opened = ENGINE.apply(turn, play).state
+    legal = ENGINE.legal_actions(opened, 0)
+    # The sandworm first, the Shield Wall choice still open.
+    rewards = next(a for a in legal if a.action_id == "resolve_intrigue_rewards")
+    keep = next(a for a in legal if a.action_id == "keep_shield_wall")
+    draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    trash = DomainAction(
+        action_id="trash_optional_card", actor=0, arguments=(("card_id", LIET_RECON),)
+    )
+
+    record = migrate_record(
+        _v142_record(turn, play, rewards, draw, trash, keep, codec=148),
+        _StartingAt(turn),
+    )
+
+    assert record.divergence is None, record.divergence
+    assert [(m.step, m.recorded_index, m.bridge) for m in record.steps] == [
+        (play, 0, None),
+        (rewards, 1, None),
+        (keep, 4, None),
+        (draw, 2, migration.TURN_ROW_HELD),
+        (trash, 3, migration.TURN_ROW_HELD),
+    ]
+    assert record.state.players[0].trashed == (LIET_RECON,)
+    assert len(record.state.players[0].intrigue_cards) == 1
+
+
+# --- a research space's icons, each its own step (cleanup-2b, codec v149) ----
+# User decision 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027
+# [Main p. 9] ("한 공간에 인쇄된 아이콘은 각각 독립된 효과이며, 소유자는 각
+# 아이콘을 별개 행동으로 원하는 순서에 해결한다"): a pair space's specimen,
+# Tleilaxu advance and optional trash, and c7r3's card and Intrigue card, are
+# separate steps in the owner's order. An older engine resolved them inside the
+# step that moved the token or paid the cost, in ``RESEARCH_ICON_ORDER``.
+
+_HELD = "intrigue:ambush:1"
+
+
+def _icon_row(effect: str) -> DomainAction:
+    return DomainAction("resolve_research_icon", 0, (("effect", effect),))
+
+
+def _draw(deck: str) -> DomainAction:
+    return DomainAction(f"draw_owed_{deck}", 0)
+
+
+def _icon_order(state: GameState) -> ReplayStep | None:
+    """What the ``research_icon_order`` bridge adds now, after a recorded step."""
+
+    decision = ENGINE.current_decision(state)
+    assert decision is not None
+    return migration._research_icon_order(ENGINE, state, decision, _PRESS)
+
+
+def _on_another_turn(space: str, **owner: object) -> GameState:
+    """Seat 0 on ``space`` while seat 1 is the turn's owner: seat 0's research
+    is no turn of its own, so a research space opens its window."""
+
+    turn = DecisionFrame(
+        kind="turn",
+        frame_id="round:1:turn:1",
+        decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+    )
+    return replace(_at(space, **owner), decision_stack=(turn,))
+
+
+def _agent_fork(space: str, target: str, **owner: object) -> GameState:
+    """Seat 0's Agent turn, its token on ``space`` moved on to ``target``."""
+
+    fork = _agent_research(space, **owner)
+    return ENGINE.apply(
+        fork,
+        DomainAction("choose_research_space", 0, (("space_id", target),)),
+    ).state
+
+
+def _answers(state: GameState, *, steps: int) -> list[ReplayStep | None]:
+    """The bridge's answers one after another, each applied to the state."""
+
+    answers: list[ReplayStep | None] = []
+    for _ in range(steps):
+        answer = _icon_order(state)
+        answers.append(answer)
+        if answer is None:
+            break
+        state = ENGINE.apply(state, answer).state
+    return answers
+
+
+def test_a_pairs_icons_follow_in_the_order_an_older_engine_resolved_them() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # c3r5 in the Agent turn: the specimen, then the Tleilaxu advance.
+    tleilaxu = _agent_fork("c2r4", "c3r5")
+    assert _answers(tleilaxu, steps=3) == [
+        _icon_row("specimen"),
+        _icon_row("tleilaxu"),
+        None,
+    ]
+    # c3r3: only the specimen; its optional trash stays the owner's own step,
+    # answered by the record.
+    trash = _agent_fork("c2r4", "c3r3")
+    assert _answers(trash, steps=2) == [_icon_row("specimen"), None]
+
+
+def test_a_window_s_icons_follow_in_the_same_order() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # Outside the owner's turn the window offers the rows; the trash icon too,
+    # which opens the optional-trash window the record answers.
+    for target, expected in (
+        ("c3r5", ["specimen", "tleilaxu"]),
+        ("c3r3", ["specimen", "trash"]),
+    ):
+        fork = _on_another_turn("c2r4")
+        advanced = advance_research(fork, 0, source="test").state
+        window = ENGINE.apply(
+            advanced,
+            DomainAction("choose_research_space", 0, (("space_id", target),)),
+        ).state
+        assert window.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+        assert _answers(window, steps=2) == [_icon_row(effect) for effect in expected]
+
+
+def test_c7r3_s_rewards_follow_as_its_owed_draws_or_its_window_rows() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    pay = DomainAction("trash_intrigue_for_research_bonus", 0, (("card_id", _HELD),))
+    # In the Agent turn: the Intrigue card, then the card, then nothing.
+    turn = ENGINE.apply(_agent_fork("c6r2", "c7r3", intrigue_cards=(_HELD,)), pay).state
+    assert _answers(turn, steps=3) == [_draw("intrigue"), _draw("card"), None]
+    # Outside the turn: the window's two rows in the same order.
+    fork = _on_another_turn("c6r2", intrigue_cards=(_HELD,))
+    advanced = advance_research(fork, 0, source="test").state
+    arrow = ENGINE.apply(
+        advanced, DomainAction("choose_research_space", 0, (("space_id", "c7r3"),))
+    ).state
+    window = ENGINE.apply(arrow, pay).state
+    assert _answers(window, steps=3) == [
+        _icon_row("intrigue"),
+        _icon_row("cards"),
+        None,
+    ]
+
+
+def test_the_research_icon_bridge_adds_nothing_where_nothing_waits() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # No icon row and no c7r3 draw: a turn with nothing owed, the fork's own
+    # direction frame, and a draw owed by something else.
+    assert _icon_order(_at("c0r3")) is None
+    fork = _agent_research("c2r4")
+    assert _icon_order(fork) is None
+    owner = fork.players[0]
+    other = replace(owner, owed_draws=(("card", "tleilaxu_track", "test:other"),))
+    assert _icon_order(replace(fork, players=(other, *fork.players[1:]))) is None
+    # A c7r3 draw that is not offered on this frame is not forced either.
+    stuck = replace(
+        owner, owed_draws=(("card", OWED_ORIGIN_RESEARCH, "test:card"),)
+    )
+    stuck_state = replace(fork, players=(stuck, *fork.players[1:]))
+    assert _draw("card") not in ENGINE.legal_actions(stuck_state, 0)
+    assert _icon_order(stuck_state) is None
+    # A pending chance is not a seat's decision.
+    chance = ChanceDecision("test:chance", "Shuffle", ("a", "b"))
+    assert migration._research_icon_order(ENGINE, fork, chance, _PRESS) is None
+
+
+def test_a_record_before_v149_gets_the_icons_right_after_the_moving_step() -> None:
+    # User decision 2026-10-17, composed-effects plan 5, rule decision 5;
+    # OQ-027 [Main p. 9].
+    # An older engine's record: the move to c3r5 alone, then the turn's end.
+    # The bridge adds the specimen and the Tleilaxu advance right after the
+    # move; a record of codec v149 has its own rows, and meets the held end.
+    fork = _agent_research("c2r4")
+    move = DomainAction("choose_research_space", 0, (("space_id", "c3r5"),))
+
+    record = migrate_record(
+        _v142_record(fork, move, _PRESS, codec=148), _StartingAt(fork)
+    )
+
+    assert record.divergence is None
+    assert [(m.step, m.bridge) for m in record.steps] == [
+        (move, None),
+        (_icon_row("specimen"), "research_icon_order"),
+        (_icon_row("tleilaxu"), "research_icon_order"),
+        (_PRESS, None),
+    ]
+    owner = record.state.players[0]
+    assert (owner.specimens, owner.tleilaxu_space) == (1, 1)
+
+    current = migrate_record(
+        _v142_record(fork, move, _PRESS, codec=149), _StartingAt(fork)
+    )
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == 1
+    assert "research_icon_order" not in current.bridge_counts()
+
+
+# --- Harvest Cells resolves as it is played (codec v149, 2026-10-18) ---------
+# User decision 2026-10-18: the Conflict's troops go back before the
+# Conflict-end windows, and Harvest Cells gives its two specimens as it is
+# played and asks only "You may also acquire a Tleilaxu card" [Harvest Cells
+# card; Immortality p. 8; FAQ p. 1]. An older engine fired a played copy at its
+# cleanup, after every window: its recorded acquisition answer comes after the
+# other seats' windows, behind a "resolve the rewards" step this engine has no
+# counterpart for, and its window's press after a play was the decline again.
+
+_HARVEST_CELLS_RECORD = "v141-no-tech_module-app_ai-9711"
+
+
+def _harvest_cells_play_in(replay: GameReplay) -> int:
+    """The index of the record's one Harvest Cells play in a Conflict-end
+    window."""
+
+    plays = [
+        index
+        for index, step in enumerate(replay.steps)
+        if isinstance(step, DomainAction)
+        and step.action_id == "play_conflict_end_intrigue"
+    ]
+    assert len(plays) == 1
+    assert str(dict(_step_of(replay, plays[0]).arguments)["card_id"]).startswith(
+        "intrigue:harvest_cells:"
+    )
+    return plays[0]
+
+
+def _step_of(replay: GameReplay, index: int) -> DomainAction:
+    step = replay.steps[index]
+    assert isinstance(step, DomainAction)
+    return step
+
+
+def test_a_harvest_cells_acquisition_recorded_at_the_cleanup_follows_its_play() -> (
+    None
+):
+    # v141-no-tech_module-app_ai-9711: seat 1 plays Harvest Cells at 148, seat
+    # 2 declines its window at 149, and the recording engine's cleanup asks
+    # seat 1 "resolve the rewards" (150) and then the acquisition (151).
+    # This engine asks the acquisition right after the play (the specimens
+    # already taken), so the owner's later answer is applied there and
+    # skipped where it was recorded.
+    replay = _fixture(_HARVEST_CELLS_RECORD)
+    play = _harvest_cells_play_in(replay)
+    answer = _step_of(replay, play + 3)
+    assert (play, answer.action_id, answer.actor) == (
+        148,
+        "acquire_intrigue_tleilaxu",
+        _actor(replay, play),
+    )
+    assert _step_of(replay, play + 1).action_id == "decline_conflict_end_intrigue"
+    assert _actor(replay, play + 1) != answer.actor
+    assert _step_of(replay, play + 2).action_id == "resolve_intrigue_rewards"
+
+    record = migrate_record(replay)
+
+    assert record.complete, record.divergence
+    position = next(
+        position
+        for position, migrated in enumerate(record.steps)
+        if migrated.recorded_index == play
+    )
+    asked, window = record.steps[position + 1], record.steps[position + 2]
+    assert asked.bridge == migration.HARVEST_CELLS_AT_ONCE
+    assert asked.step == answer
+    assert asked.recorded_index == play + 3 > play
+    # The other seat's recorded window comes after the pulled-forward answer.
+    assert (window.recorded_index, window.bridge) == (play + 1, None)
+    assert record.bridge_counts()[migration.HARVEST_CELLS_AT_ONCE] == 1
+    # The record's answer applies once: its own place holds no second step.
+    assert [migrated.recorded_index for migrated in record.steps].count(play + 3) == 1
+    # This engine asked it: the Harvest Cells acquisition sat on the window,
+    # with the play's two specimens already taken.
+    before, _migrated = next(islice(walk(record), position + 1, None))
+    top = before.decision_stack[-1]
+    assert top.kind == FrameKind.INTRIGUE_CHOICE
+    assert ":conflict_end:" in str(dict(top.context)["source"])
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == answer.actor
+    assert any(
+        event.kind == "specimens_generated" for event in before.event_log[-3:]
+    )
+
+
+def test_the_rewards_step_asked_at_a_harvest_cells_cleanup_is_dropped() -> None:
+    replay = _fixture(_HARVEST_CELLS_RECORD)
+    play = _harvest_cells_play_in(replay)
+    rewards = play + 2
+    step = _step_of(replay, rewards)
+    assert step.action_id == "resolve_intrigue_rewards"
+    assert step.actor == _actor(replay, play)
+
+    record = migrate_record(replay)
+
+    assert record.complete, record.divergence
+    assert [
+        (index, reason)
+        for index, reason in record.dropped
+        if reason == migration.HARVEST_CELLS_REWARDS_DROPPED
+    ] == [(rewards, migration.HARVEST_CELLS_REWARDS_DROPPED)]
+    assert rewards not in {migrated.recorded_index for migrated in record.steps}
+
+
+def test_a_decline_recorded_after_a_play_is_rewritten_to_the_finish() -> None:
+    # An older engine offered the window's decline again after a card was
+    # played in it (the window stays open while the seat holds Intrigue,
+    # OQ-103); this engine's press there reads "finish". Seed 4: seat 1
+    # plays a Harvest Cells (776), acquires Ghola with it (777), and ends the
+    # window with ``finish_conflict_end_intrigue`` (778). No
+    # fixture of ``data/`` has a window that stayed open after a play, so the
+    # record is this engine's own game, with that press recorded as the
+    # decline.
+    game = _this_engine_game(4)
+    finishes = [
+        index
+        for index, step in enumerate(game.steps)
+        if isinstance(step, DomainAction)
+        and step.action_id == "finish_conflict_end_intrigue"
+    ]
+    assert len(finishes) == 1  # the one press this test turns into a decline
+    finish = finishes[0]
+    seat = _actor(game, finish)
+    assert _step_of(game, finish - 2).action_id == "play_conflict_end_intrigue"
+    assert _actor(game, finish - 2) == seat
+    declined = DomainAction("decline_conflict_end_intrigue", seat)
+    older, position = _older_with(game, 148, finish, declined)
+
+    record = migrate_record(older)
+
+    assert record.complete, record.divergence
+    assert record.bridge_counts()["conflict_end_finish"] == 1
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    rewritten = record.steps[finish]
+    assert rewritten.recorded_index == position
+    assert rewritten.bridge == "conflict_end_finish"
+    assert rewritten.step == _step_of(game, finish)
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+
+    # Stamped with this codec the decline is not legal there, and no bridge
+    # of the older engines answers it.
+    steps = list(game.steps)
+    steps[finish] = declined
+    current = migrate_record(replace(game, steps=tuple(steps)))
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == finish
+    assert "conflict_end_finish" not in current.bridge_counts()
+
+
+def test_a_decline_is_rewritten_only_where_the_window_stays_open_after_a_play() -> (
+    None
+):
+    game = _this_engine_game(4)
+    states = _states(game)
+    declines = finishes = 0
+    for index, step in enumerate(game.steps):
+        if not isinstance(step, DomainAction) or step.action_id not in (
+            "decline_conflict_end_intrigue",
+            "finish_conflict_end_intrigue",
+        ):
+            continue
+        state = states[index]
+        decision = ENGINE.current_decision(state)
+        assert isinstance(decision, PlayerDecision)
+        press = migration._conflict_end_finish(
+            ENGINE,
+            state,
+            decision,
+            DomainAction("decline_conflict_end_intrigue", step.actor),
+        )
+        if step.action_id == "finish_conflict_end_intrigue":
+            # After a play: the recorded decline reads as the finish.
+            assert press == step
+            finishes += 1
+        else:
+            # Before any play the decline is legal as it is recorded.
+            assert press is None
+            declines += 1
+    assert declines and finishes
+
+
+def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
+    # A record's Harvest Cells owes its "resolve the rewards" step until the
+    # next recorded Round Start pause; a record of an engine before v140 has no
+    # pauses, so the count stays. Another Intrigue card's own rewards step by
+    # that seat -- its choice frame on top -- must still apply. Seed 175: seat
+    # 3 plays Harvest Cells in round 1 (87, finished at 89) and Insider
+    # Information in round 9 (rewards at 821); the pauses of the game are
+    # left out of its record as an older engine left them out. Seed 65 until
+    # cleanup-2d split three Agent boxes per icon (2026-10-18) moved its game
+    # (its step 575 is now seat 1's Agent turn); 175 is the first seed of
+    # 1-500 meeting every precondition below, the v148 record of its game
+    # migrating completely.
+    game = _this_engine_game(175)
+    play, rewards = 87, 821
+    assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
+    assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
+    assert _actor(game, rewards) == _actor(game, play)
+    top = _states(game)[rewards].decision_stack[-1]
+    assert top.kind == FrameKind.INTRIGUE_CHOICE
+    assert dict(top.context)["card_id"] == "intrigue:insider_information:0"
+    starts = {
+        index
+        for index, step in enumerate(game.steps)
+        if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
+    }
+    # round starts between the two
+    assert {90, 179, 269, 360, 474, 593, 698, 794} <= starts
+    older = _older(game, 148, starts)
+
+    record = migrate_record(older)
+
+    assert record.complete, record.divergence
+    assert migration.HARVEST_CELLS_REWARDS_DROPPED not in {
+        reason for _, reason in record.dropped
+    }
+    # The migrated steps are the game's own, the bridged pauses back in
+    # their places; the rewards step is the record's, unbridged.
+    assert [migrated.step for migrated in record.steps] == _steps(game.steps)
+    assert record.steps[rewards].step == _step_of(game, rewards)
+    assert record.steps[rewards].bridge is None
+
+
+def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The same record as above, with the check for the seat's Intrigue choice
+    # on top removed: the due count would drop Insider Information's rewards
+    # step as if it were a Harvest Cells', and the record would stop there.
+    # That is what the check keeps from happening.
+    game = _this_engine_game(175)
+    rewards = 821
+    starts = {
+        index
+        for index, step in enumerate(game.steps)
+        if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
+    }
+    older = _older(game, 148, starts)
+    # The record's index of that step: the pauses and the Scouts confirms the
+    # record left out are before it.
+    before = sum(1 for start in starts if start < rewards)
+    index = _position(game, 148, rewards) - before
+    assert older.steps[index] == _step_of(game, rewards)
+    monkeypatch.setattr(
+        migration, "_intrigue_choice_on_top", lambda state, player: False
+    )
+
+    record = migrate_record(older)
+
+    assert (index, migration.HARVEST_CELLS_REWARDS_DROPPED) in record.dropped
+    assert record.divergence is not None
+
+
+# --- The Conflict card first, and a window that stays open (codec v149) --------
+# User decision 2026-10-18 ("그래 둘다 B가 맞겠다"): the winner takes the Conflict
+# card, and Planetary Array's card is drawn, as the Conflict-end step opens
+# (OQ-108); a window a card was played in stays open while its seat holds an
+# Intrigue card, judged as it comes back on top (OQ-109). An older engine drew
+# that card at its cleanup or after the next round's hand, so its reshuffle of
+# the seat's discard comes under another decision, and it had closed a window
+# this engine keeps open. The three bridges below answer those.
+
+
+def _planetary_array_reshuffle() -> tuple[GameState, ChanceDecision, tuple[str, ...]]:
+    """The state at Planetary Array's tech-draw reshuffle, the decision this
+    engine asks as the Conflict card is awarded, and the recorded order."""
+
+    discard = starting_deck_instance_ids(0)[5:8]
+    _engine, offered = _planetary_array_conflict_end((), discard)
+    decision = ENGINE.current_decision(offered.state)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
+    return offered.state, decision, tuple(reversed(discard))
+
+
+def _asking(state: GameState, decision_id: str) -> tuple[GameState, ChanceDecision]:
+    """The same state, the chance on top asking under another decision id."""
+
+    top = state.decision_stack[-1]
+    assert isinstance(top.decision, ChanceDecision)
+    renamed = replace(top, decision=replace(top.decision, decision_id=decision_id))
+    asked = replace(state, decision_stack=(*state.decision_stack[:-1], renamed))
+    decision = ENGINE.current_decision(asked)
+    assert isinstance(decision, ChanceDecision)
+    return asked, decision
+
+
+def test_a_window_this_engine_keeps_open_is_finished_where_the_record_went_on() -> (
+    None
+):
+    # Seat 0 plays a Harvest Cells holding another Intrigue card and answers
+    # its acquisition: the window comes back on top and stays open (OQ-109).
+    window = _window_offer(
+        ENGINE,
+        _window_combat(_window_fighter(3, intrigue_cards=(HARVEST_CELLS[0], PLAIN))),
+    ).state
+    played = ENGINE.apply(
+        window,
+        DomainAction("play_conflict_end_intrigue", 0, (("card_id", HARVEST_CELLS[0]),)),
+    ).state
+    after_play = ENGINE.current_decision(played)
+    assert after_play is not None
+    opened = ENGINE.current_decision(window)
+    assert opened is not None
+    kept = ENGINE.apply(played, DomainAction("decline_intrigue_tleilaxu", 0)).state
+    decision = ENGINE.current_decision(kept)
+    finish = DomainAction("finish_conflict_end_intrigue", 0)
+    assert isinstance(decision, PlayerDecision) and decision.owner == 0
+    assert kept.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert finish in ENGINE.legal_actions(kept, 0)
+
+    def reopened(step: ReplayStep) -> ReplayStep | None:
+        return migration._conflict_end_reopened(ENGINE, kept, decision, step)
+
+    # The recording engine had closed the window, so its next step belongs to
+    # another seat, or to a chance: this engine answers the finish first.
+    other_window = DomainAction("decline_conflict_end_intrigue", 1)
+    play_there = DomainAction(
+        "play_conflict_end_intrigue", 1, (("card_id", HARVEST_CELLS[1]),)
+    )
+    pause = ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,))
+    for later in (other_window, play_there, pause):
+        assert reopened(later) == finish
+    # The seat's own window step answers the window itself.
+    for own in (
+        finish,
+        DomainAction("decline_conflict_end_intrigue", 0),
+        DomainAction("play_conflict_end_intrigue", 0, (("card_id", PLAIN),)),
+    ):
+        assert reopened(own) is None
+
+    # Only a window a card was played in: the unplayed one, or the acquisition
+    # choice on top of the played one, is no reopened window.
+    assert (
+        migration._conflict_end_reopened(ENGINE, window, opened, other_window) is None
+    )
+    assert (
+        migration._conflict_end_reopened(ENGINE, played, after_play, other_window)
+        is None
+    )
+    # Nor a chance on top.
+    chance_state, chance, _ = _planetary_array_reshuffle()
+    assert migration._conflict_end_reopened(ENGINE, chance_state, chance, pause) is None
+    # It is a bridge of the older records only, run before the recorded step.
+    bridge = next(b for b in migration.BRIDGES if b.name == "conflict_end_reopened")
+    assert (bridge.before_codec, bridge.rewrites, bridge.follows) == (149, False, False)
+
+    # Through the dispatch an older record sees: another seat's recorded
+    # decline is that seat's, so ``conflict_end_finish`` (a rewrite, earlier
+    # in BRIDGES) leaves it and the reopened window is finished before it
+    # (it used to take that decline as seat 0's finish, 2026-10-18 review).
+    older = tuple(
+        b for b in migration.BRIDGES if b.before_codec is None or 148 < b.before_codec
+    )
+    bridged = migration._bridge(ENGINE, kept, other_window, older)
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == ("conflict_end_reopened", finish)
+    # The seat's own recorded decline is still rewritten to its finish.
+    own_bridged = migration._bridge(
+        ENGINE, kept, DomainAction("decline_conflict_end_intrigue", 0), older
+    )
+    assert own_bridged is not None
+    assert (own_bridged[0].name, own_bridged[1]) == ("conflict_end_finish", finish)
+
+
+def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win() -> (
+    None
+):
+    # The recording engine drew Planetary Array's card at a cleanup that also
+    # fired a Harvest Cells, under the same decision this engine asks as the
+    # Conflict card is awarded.
+    state, decision, shuffled = _planetary_array_reshuffle()
+    recorded = ChanceOutcome(decision.decision_id, shuffled)
+    elsewhere = ChanceOutcome("round:2:player:0:discard_shuffle", shuffled)
+    pause = ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,))
+    filler = DomainAction("finish_conflict_end_intrigue", 0)
+
+    def earlier(
+        steps: tuple[ReplayStep, ...], index: int = 0, consumed: set[int] | None = None
+    ) -> tuple[int, ReplayStep] | None:
+        return migration._tech_draw_earlier(
+            ENGINE, state, steps, index, consumed or set()
+        )
+
+    assert earlier((filler, elsewhere, recorded)) == (2, recorded)
+    # Looked for from the step the record stands at, and taken once.
+    assert earlier((recorded, filler), index=1) is None
+    assert earlier((filler, recorded), consumed={1}) is None
+    # None is looked for past the recording's next pause.
+    assert earlier((pause, recorded)) is None
+    # Only the draw of the win: not another chance, another phase, or a state
+    # whose windows were not offered yet.
+    plain, _ = _asking(state, "round:2:player:0:discard_shuffle")
+    assert (
+        migration._tech_draw_earlier(ENGINE, plain, (recorded,), 0, set()) is None
+    )
+    for changed in (
+        replace(state, phase=GamePhase.MAKERS),
+        replace(state, combat_end_triggers_offered=False),
+    ):
+        assert (
+            migration._tech_draw_earlier(ENGINE, changed, (recorded,), 0, set())
+            is None
+        )
+    # The bridge names tell the two apart: the same decision, or the same
+    # cards under another one.
+    assert migration._asked_earlier_bridge(recorded, recorded) == (
+        migration.TECH_DRAW_AT_THE_WIN
+    )
+    moved = ChanceOutcome(decision.decision_id, shuffled)
+    assert migration._asked_earlier_bridge(moved, elsewhere) == (
+        migration.RESHUFFLE_MOVED
+    )
+    harvest = DomainAction("acquire_intrigue_tleilaxu", 0)
+    assert migration._asked_earlier_bridge(harvest, harvest) == (
+        migration.HARVEST_CELLS_AT_ONCE
+    )
+    # The dispatch tries the same decision first, then the moved reshuffle.
+    asked = migration._asked_earlier(ENGINE, state, (filler, recorded), 0, set())
+    assert asked == (1, recorded)
+    asked = migration._asked_earlier(ENGINE, state, (filler, elsewhere), 0, set())
+    assert asked == (1, ChanceOutcome(decision.decision_id, shuffled))
+
+
+def test_a_reshuffle_of_the_same_cards_is_taken_under_this_engines_decision() -> None:
+    # This engine takes a seat's deck card a round earlier than the recording
+    # engine did, so it shuffles the discard at the win (or at the next Round
+    # Start) where the recording engine shuffled the same cards for that
+    # card after the next round's hand, under another decision. The recorded
+    # permutation is taken now.
+    state, decision, shuffled = _planetary_array_reshuffle()
+    cards = tuple(sorted(decision.options))
+    filler = DomainAction("finish_conflict_end_intrigue", 0)
+    later = ChanceOutcome("round:2:player:0:discard_shuffle", shuffled)
+    taken = ChanceOutcome(decision.decision_id, shuffled)
+
+    def moved(
+        steps: tuple[ReplayStep, ...],
+        *,
+        asked: tuple[GameState, ChanceDecision] | None = None,
+        consumed: set[int] | None = None,
+    ) -> tuple[int, ReplayStep] | None:
+        at = asked[0] if asked else state
+        return migration._reshuffle_earlier(ENGINE, at, steps, 0, consumed or set())
+
+    assert moved((filler, later)) == (1, taken)
+    # The order is the record's, whatever order the engine lists the cards in.
+    assert sorted(shuffled) == list(cards)
+    assert moved((later,), consumed={0}) is None
+
+    # Another seat's reshuffle is not this seat's.
+    assert moved((ChanceOutcome("round:2:player:1:discard_shuffle", shuffled),)) is None
+    # Other cards: one the engine's shuffle does not hold, or one fewer.
+    swapped = (*shuffled[:-1], "player:0:starter:other:9")
+    assert moved((ChanceOutcome("round:2:player:0:discard_shuffle", swapped),)) is None
+    assert (
+        moved((ChanceOutcome("round:2:player:0:discard_shuffle", shuffled[:-1]),))
+        is None
+    )
+    # Not a personal reshuffle of the seat (an Intrigue deck's, a pause).
+    assert moved((ChanceOutcome("round:2:intrigue:discard_shuffle", shuffled),)) is None
+    assert moved((ChanceOutcome("round:2:player:0:pause", shuffled),)) is None
+
+    # Only a seat holding Planetary Array: the card comes from the tile.
+    seat = state.players[0]
+    bare = replace(
+        state,
+        players=(replace(seat, tech_ids=()), *state.players[1:]),
+    )
+    assert migration._reshuffle_earlier(ENGINE, bare, (later,), 0, set()) is None
+
+    # One of the two reshuffles must be that card's draw. Neither is when this
+    # engine asks the round start's own shuffle and the record has another
+    # round's; the other way round, this engine's draw takes a round start's.
+    plain = _asking(state, "round:2:player:0:discard_shuffle")
+    next_round = ChanceOutcome("round:3:player:0:discard_shuffle", shuffled)
+    assert moved((next_round,), asked=plain) is None
+    drawn = ChanceOutcome("round:2:player:0:tech_draw:discard_shuffle", shuffled)
+    assert moved((drawn,), asked=plain) == (
+        0,
+        ChanceOutcome("round:2:player:0:discard_shuffle", shuffled),
+    )
+
+    # Looked for within the recording's next rounds only.
+    reach = migration._RESHUFFLE_LOOKAHEAD
+    assert moved((filler,) * (reach - 1) + (later,)) == (reach - 1, taken)
+    assert moved((filler,) * reach + (later,)) is None
+
+    # Not a chance at all: the window it stands before is no reshuffle.
+    window = _window_offer(
+        ENGINE, _window_combat(_window_fighter(3, intrigue_cards=(PLAIN,)))
+    ).state
+    assert migration._reshuffle_earlier(ENGINE, window, (later,), 0, set()) is None
+
+
+_DISCARD = ":discard_shuffle"
+_INTRIGUE = ":intrigue_shuffle"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "suffix", "renamed"),
+    (
+        # A caller's extra word dropped (cleanup-2c-5, 2c-6), with a seat in
+        # the name or none (an Arrakeen Scouts reward's).
+        ("round:2:player:1:x:draw", "round:2:player:1:x", _DISCARD, True),
+        ("round:2:scouts:a:draw", "round:2:scouts:a", _DISCARD, True),
+        (
+            "round:2:player:1:intrigue:a:0:1:intrigue",
+            "round:2:player:1:intrigue:a:0:1",
+            _INTRIGUE,
+            True,
+        ),
+        (
+            "round:2:player:1:leader_signet:intrigue_draw",
+            "round:2:player:1:leader_signet",
+            _INTRIGUE,
+            True,
+        ),
+        # A research pair's icon: the opener's name, now the track space's.
+        (
+            "round:2:player:1:board:research_station:research:c3r3:card",
+            "round:2:player:1:research:c3r3",
+            _DISCARD,
+            True,
+        ),
+        (
+            "round:2:player:1:board:research_station:research:c7r3:intrigue",
+            "round:2:player:1:research:c7r3",
+            _INTRIGUE,
+            True,
+        ),
+        # A Tleilaxu space's draw: the mover's name, now the track space's.
+        (
+            "round:2:player:1:agent_card:imperium:x:0:tleilaxu:3",
+            "round:2:player:1:tleilaxu:3",
+            _INTRIGUE,
+            True,
+        ),
+        # An Arrakeen Scouts reward's research (no seat in the name) moved
+        # the seat's token (corpus record full.ha.75).
+        (
+            "round:5:scouts:competitive_study_late:reward:research:research:c7r3:card",
+            "round:5:player:2:research:c7r3",
+            _DISCARD,
+            True,
+        ),
+        # Esmar Tuek's draw for a visit: the visitor's seat, now Esmar's.
+        (
+            "round:2:player:3:tuek_sietch_visit",
+            "round:2:player:1:leader:esmar_tuek",
+            _INTRIGUE,
+            True,
+        ),
+        # Not renames: another seat, another space, another round's Esmar
+        # draw, an unrelated name.
+        (
+            "round:2:player:0:board:research_station:research:c3r3:card",
+            "round:2:player:1:research:c3r3",
+            _DISCARD,
+            False,
+        ),
+        (
+            "round:2:player:1:board:research_station:research:c3r1:card",
+            "round:2:player:1:research:c3r3",
+            _DISCARD,
+            False,
+        ),
+        (
+            "round:1:player:3:tuek_sietch_visit",
+            "round:2:player:1:leader:esmar_tuek",
+            _INTRIGUE,
+            False,
+        ),
+        ("round:2:player:1:board:arrakeen", "round:2:player:1:x", _DISCARD, False),
+        # A seated name never becomes a seatless one.
+        (
+            "round:2:player:1:research:c3r3:card",
+            "round:2:scouts:x:research:c3r3",
+            _DISCARD,
+            False,
+        ),
+    ),
+)
+def test_cleanup2c_renames_only_a_draw_it_explains(
+    old: str, new: str, suffix: str, renamed: bool
+) -> None:
+    """Codec v149 renamed draws by the event grammar, and the reshuffle a
+    short draw asks for with them (2026-10-18 review: the Intrigue
+    reshuffle's renames had no bridge)."""
+
+    assert migration._cleanup2c_renamed(old + suffix, new + suffix, suffix) is renamed
+
+
+# --- Codec v149: the split boxes and the confirms (cleanup-2d-5, 2f) -----------
+# An older engine resolved Clandestine Meeting, Occupation and In High Places
+# with one ``resolve_agent_card_effect`` (In High Places' Spy in the shared
+# placement frame), refused a Signet stage with nothing to do, and either
+# skipped a Conflict trash with no card or offered only its refusal there.
+
+
+def _decided(state: GameState) -> PlayerDecision | ChanceDecision:
+    decision = ENGINE.current_decision(state)
+    assert decision is not None
+    return decision
+
+
+def _box_args(action: ReplayStep) -> dict[str, object]:
+    assert isinstance(action, DomainAction)
+    return dict(action.arguments)
+
+
+def test_a_recorded_box_resolution_plays_its_icons_one_by_one() -> None:
+    from tests.unit.rules.test_immortality_imperium import (
+        FACE_DANCER,
+        _card,
+        _graft,
+        _owner,
+        _place,
+        _state,
+    )
+
+    occupation = _card("occupation")
+    state = _place(
+        _state(_owner((occupation,), troops_garrison=3)), occupation, "arrakeen"
+    )
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    first = migration._split_box_icon(
+        ENGINE, state, _decided(state), plain
+    )
+    assert first == DomainAction(action_id="take_agent_card_combat_icon", actor=0)
+    after = ENGINE.apply(state, first).state
+    follow = migration._split_box_follow(
+        ENGINE, after, _decided(after), first
+    )
+    assert follow == DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
+    )
+    done = ENGINE.apply(after, follow).state
+    assert (
+        migration._split_box_follow(ENGINE, done, _decided(done), follow)
+        is None
+    )
+
+    # Box 1 of a grafted turn: Clandestine Meeting's Influence, then its card.
+    meeting = _card("clandestine_meeting")
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, meeting))), FACE_DANCER, "dutiful_service", meeting
+    )
+    plain_box1 = DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("box", 1),)
+    )
+    first = migration._split_box_icon(
+        ENGINE, grafted, _decided(grafted), plain_box1
+    )
+    assert isinstance(first, DomainAction)
+    assert first.action_id == "choose_agent_card_influence"
+    assert _box_args(first) == {"box": 1, "faction": "bene_gesserit"}
+    after = ENGINE.apply(grafted, first).state
+    follow = migration._split_box_follow(
+        ENGINE, after, _decided(after), first
+    )
+    assert follow is not None and _box_args(follow) == {"box": 1, "effect": "intrigue"}
+
+
+def test_in_high_places_old_spy_frame_moves_are_its_spy_rows() -> None:
+    from tests.unit.rules.test_agent_effects import _in_high_places_on_secrets
+
+    placed, _ = _in_high_places_on_secrets()
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    draw = migration._split_box_icon(
+        ENGINE, placed, _decided(placed), plain
+    )
+    assert draw == DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
+    )
+    drawn = ENGINE.apply(placed, draw).state
+    # The Spy waits for the record's frame step, not for a follow.
+    assert (
+        migration._split_box_follow(ENGINE, drawn, _decided(drawn), draw)
+        is None
+    )
+    post = (("post_id", "bene-gesserit-espionage-secrets"),)
+    spy = migration._split_box_spy(
+        ENGINE,
+        drawn,
+        _decided(drawn),
+        DomainAction(action_id="place_spy_on_space", actor=0, arguments=post),
+    )
+    assert spy == DomainAction(
+        action_id="place_agent_card_spy", actor=0, arguments=post
+    )
+
+
+def test_the_cleanup_2f_refusals_are_the_confirms() -> None:
+    from tests.unit.rules.test_bloodlines_leaders import SIGNET, _esmar_state, _play
+    from tests.unit.rules.test_combat import _reward_state
+
+    esmar = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
+    state = _play(
+        _esmar_state(
+            esmar,
+            maker_bonus_spice=(
+                ("deep_desert", 0),
+                ("hagga_basin", 0),
+                ("imperial_basin", 0),
+            ),
+        ),
+        SIGNET,
+        "arrakeen",
+    )
+    assert migration._signet_without_option(
+        ENGINE,
+        state,
+        _decided(state),
+        DomainAction(action_id="decline_leader_signet_payment", actor=0),
+    ) == DomainAction(action_id="resolve_leader_signet_without_option", actor=0)
+
+    from dune_imperium.rules.combat import resolve_combat_rewards
+
+    rewarded = resolve_combat_rewards(_reward_state("trade_dispute")).state
+    decision = _decided(rewarded)
+    confirm = DomainAction(action_id="resolve_combat_trash_without_card", actor=0)
+    # The recorded refusal of a trash with no card left is the confirm; a
+    # record that never had the window gets it answered before its next step.
+    assert (
+        migration._combat_trash_declined_without_card(
+            ENGINE,
+            rewarded,
+            decision,
+            DomainAction(action_id="decline_combat_reward_trash", actor=0),
+        )
+        == confirm
+    )
+    window = next(
+        bridge
+        for bridge in migration.BRIDGES
+        if bridge.name == "combat_trash_without_card"
+    )
+    assert (
+        window.answer(
+            ENGINE, rewarded, decision, DomainAction(action_id="reveal_turn", actor=1)
+        )
+        == confirm
+    )

@@ -305,7 +305,7 @@ def test_earn_any_alliance_completes_at_the_conflict_end_pause() -> None:
     assert top.frame_id == f"round:2:conflict_end{FIXED_OUTCOME_SUFFIX}"
     # The pause frame carries nothing but its point.
     assert top.context == (("point", "conflict_end"),)
-    assert [completed["troops"] for completed in _completions(paid.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [0]
     shortfalls = [
         dict(event.payload)
         for event in paid.events
@@ -337,7 +337,7 @@ def test_earn_any_alliance_takes_only_what_the_supply_holds() -> None:
     paid = _pass_combat_intrigue(engine, state)
 
     assert paid.state.decision_stack[-1].kind == FrameKind.PAUSE
-    assert [completed["troops"] for completed in _completions(paid.events)] == [1]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [1]
     assert _troops(paid.state) == (0, 8, 4)
     after = _to_round_start(engine, paid.state)
     assert _troops(after.state) == (4, 8, 0)
@@ -366,7 +366,7 @@ def test_earn_any_alliance_completes_at_the_pause_before_the_next_recipient() ->
     assert top.kind == FrameKind.PAUSE
     assert top.frame_id == f"round:2:reward:1:rewards{FIXED_OUTCOME_SUFFIX}"
     assert top.context == (("point", "rewards"),)
-    assert [completed["troops"] for completed in _completions(chosen.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(chosen.events)] == [0]
     assert _troops(chosen.state) == (0, 8, 4)
     after = _to_round_start(engine, chosen.state)
     assert _completions(after.events) == []
@@ -387,7 +387,7 @@ def test_earn_any_alliance_completes_before_the_seat_s_reward_choice() -> None:
     paid = _pass_combat_intrigue(engine, state)
 
     assert paid.state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-    assert [completed["troops"] for completed in _completions(paid.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [0]
     assert _troops(paid.state) == (0, 8, 4)
 
 
@@ -395,8 +395,9 @@ def test_earn_any_alliance_completes_before_a_conflict_end_window_opens() -> Non
     # With Immortality, four units in the Conflict and an Intrigue card, the
     # seat gets a Conflict-end window once the pause is answered (OQ-103).
     # The Contract completed in the step that took the Alliance; neither the
-    # window nor the cleanup after it completes it again. The held card is
-    # one the Intrigue deck (INTRIGUE[:6]) does not also hold.
+    # window nor the cleanup after it completes it again, although the four
+    # troops are already back in the supply when the window opens. The held
+    # card is one the Intrigue deck (INTRIGUE[:6]) does not also hold.
     engine = UprisingRulesEngine()
     state = _alliance_combat(
         "protect_the_sietches",
@@ -407,12 +408,12 @@ def test_earn_any_alliance_completes_before_a_conflict_end_window_opens() -> Non
 
     paid = _pass_combat_intrigue(engine, state)
     assert paid.state.decision_stack[-1].kind == FrameKind.PAUSE
-    assert [completed["troops"] for completed in _completions(paid.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [0]
 
     window = engine.apply(paid.state, pause_outcome(paid.state))
     assert window.state.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     assert _completions(window.events) == []
-    assert _troops(window.state) == (0, 8, 4)
+    assert _troops(window.state) == (4, 8, 0)
     after = _to_round_start(engine, window.state)
     assert _completions(after.events) == []
     assert _troops(after.state) == (4, 8, 0)

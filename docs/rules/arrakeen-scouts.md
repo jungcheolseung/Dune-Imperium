@@ -143,7 +143,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 
 `[Scouts event: <이름>]`. 표의 "추첨표"는 한 라운드 추첨표에서 그 이벤트가 차지하는 선택지 수다(2.3절).
 
-- **선택형.** "각자 선택"인 이벤트는 First Player부터 차례로 한 가지를 고른다(앱 영어의 "in turn order"; 한국어판에는 빠져 있다. Moment of Revelation의 문구에는 순서 말이 없어 같은 순서가 프로젝트 convention이다, OQ-071). "또는 패스"가 있으면 선택하지 않아도 된다. 패스가 없으면 반드시 하나를 해야 하며, 할 수 없는 쪽은 고를 수 없다(한 쪽만 할 수 있어도 결정은 열리고 할 수 없는 쪽은 회색으로 보인다). 둘 다 할 수 없으면 아무 일도 없다(도움말, OQ-071).
+- **선택형.** "각자 선택"인 이벤트는 First Player부터 차례로 한 가지를 고른다(앱 영어의 "in turn order"; 한국어판에는 빠져 있다. Moment of Revelation의 문구에는 순서 말이 없어 같은 순서가 프로젝트 convention이다, OQ-071). "또는 패스"가 있으면 선택하지 않아도 된다. 패스가 없으면 반드시 하나를 해야 하며, 할 수 없는 쪽은 고를 수 없다(한 쪽만 할 수 있어도 결정은 열리고 할 수 없는 쪽은 회색으로 보인다). 둘 다 할 수 없으면 아무 일도 없다(도움말, OQ-071) — 그래도 그 좌석에게 결정 창이 열려 회색 줄과 "할 수 있는 선택 없음 — 확인"을 보인다(2026-10-17 사용자 결정, 정리-2a, OQ-071 보강).
 - **이번 라운드 규칙 변경.** 공개된 라운드가 끝날 때까지 적용된다.
 
 | id | 이름 (공식 한국어) | 계열 | 추첨표 | 라운드 | 내용 |
@@ -286,6 +286,7 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 
 ## 11. 구현 상태
 
+- 2026-10-17 정리-2a(효과 조각 엔진 전환 정리-2, 브랜치 `cleanup2`, codec v149, 사용자 결정 "정한 규칙 판단" 6): 할 수 있는 줄이 없는 좌석에게도 `scouts_choice` 창을 연다(이벤트·판매·공개된 비밀 선택의 비용 줄). 줄은 이유와 함께 회색, 유일한 행동 `resolve_scouts_choice_without_option`(한 번 누름, 배너 "할 수 있는 선택 없음 · 턴 종료")이 전과 같은 `scouts_choice_skipped`를 낸다. 건너뛴 좌석 알림은 없앴다. 옛 기록은 다리 `scouts_no_option_window`(OQ-071).
 - 2026-10-10 OQ-106 셋째 묶음(사용자 판정 "그 외에는 전부 나누자", project convention; codec v142에 함께, 템플릿 변화 없음).
   - 줄의 보상 하나가 소유자의 선택이었으면(Faction, 선택 trash, Spy 배치, Contract, Research 방향) 그 뒤에 인쇄된 숨은 draw는 줄의 자기 단계로 남아 `scouts_rewards_first`("남은 보상 받기") 하나로 뽑는다: Leverage, Water Discipline, Spies for Hire 후반 1위, CHOAM Negotiations 후반 1위. 비용 칸의 선택(Rotating Doors의 Intrigue trash)은 보상과 한 단위로 남는다.
   - 봉인 경매의 두 번째 이후 각 승자의 보상 앞에 멈춤(`rules/pauses.py` `SCOUTS_REWARD`): Competitive Study 2위의 Research(두 번째 genetic marker 뒤의 draw, 한 갈래 전진)가 1위의 방향 선택 단계에서 일어나지 않는다.

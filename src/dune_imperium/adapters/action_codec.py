@@ -82,6 +82,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
+from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -493,7 +494,45 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # changes (the engine equivalence gate: 200 games step by step); only the
 # decision stack's form does, so saves from v147 are refused by the version
 # check while a v147 record replays as it is.
-ACTION_CODEC_VERSION = 148
+# v149 (composed-effects cleanup-2, docs/composed-effects-plan.md 5 "정리-2
+# 계획"; one raise for the whole cleanup, on branch ``cleanup2`` until it
+# merges with A8): (2a, user decision 2026-10-17 applying the 2026-09-30
+# ruling "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다", OQ-071) an
+# Arrakeen Scouts choice with no line the seat can take -- an event's or a
+# sale's, or a revealed secret pick's costed line -- opens for that seat
+# too, its lines greyed with their reasons, and its one row
+# ``resolve_scouts_choice_without_option`` (new template, Scouts catalogs)
+# emits the ``scouts_choice_skipped`` an older engine emitted without
+# asking. Older records cross the window with the bridge
+# ``scouts_no_option_window``. (2b, user decisions 2026-10-17, OQ-095 (2) and
+# OQ-060) a research bonus and an optional trash raised in the owner's own
+# turn wait on the turn as rows with no refusal and lapse at the turn-end
+# press (Arrakis Planetologist's Intrigue card waits beside its trash and
+# holds the end); Shipping's and a Tech tile's acquire "Influence with any
+# Faction" offer no Faction at the top and, with every one there, wait and
+# lapse, or in Combat confirm with ``resolve_tech_influence_without_faction``
+# (new template, Tech catalogs); a research space's paired icons and c7r3's
+# rewards are each their own step in the owner's order
+# (``resolve_research_icon``, five new templates, Immortality catalogs; owed
+# draws for c7r3 in the turn). Older records drop the in-turn refusals and
+# the picks at the top, confirm in Combat (``tech_influence_confirm``) and
+# take the research icons in their old order (``research_icon_order``).
+# (Conflict end, user decision 2026-10-18) every reward, then the Conflict's
+# troops and Commanders back to the supply, then each seat's Conflict-end
+# window, then the rest of the cleanup: Harvest Cells resolves as it is
+# played (its specimens at once, then its acquisition) and the window's
+# press after a play is ``finish_conflict_end_intrigue`` (new template,
+# Immortality catalogs). Older records answer the acquisition as it is
+# asked (``harvest_cells_at_once``), drop its rewards step and rewrite the
+# press (``conflict_end_finish``). (OQ-108, OQ-109, same decision) the winner
+# takes the Conflict card, and Planetary Array's card, before the troops go
+# back, and a played window stays open while its seat holds an Intrigue card,
+# judged as it comes back on top; older records take a moved reshuffle of the
+# same cards (``tech_draw_at_the_win``, ``reshuffle_moved``) and finish a
+# window this engine keeps open (``conflict_end_reopened``). (2c) Event
+# kinds, ids and payloads follow the event grammar of the plan's "정리-2c 사건
+# 문법" (no action changes; the state hash changes with the event log).
+ACTION_CODEC_VERSION = 149
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -598,6 +637,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward",
             "decline_combat_reward_spy",
             "decline_combat_reward_trash",
+            # A Conflict reward trash with no card to trash is confirmed
+            # (cleanup-2f, the 2026-09-30 principle).
+            "resolve_combat_trash_without_card",
             # A Conflict reward Influence choice with every eligible Faction
             # at the top is confirmed (OQ-060).
             "resolve_combat_influence_without_faction",
@@ -608,13 +650,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
             "decline_control_defense",
-            "decline_leader_board_repeat",
             "decline_leader_card_trash",
             "decline_leader_signet_payment",
+            # A mandatory Signet stage with nothing it can do is confirmed
+            # (cleanup-2f, the 2026-09-30 principle).
+            "resolve_leader_signet_without_option",
             # A Leader's Spy may pass up the recall-first without a Spy in
             # supply [Main pp. 11, 20].
             "decline_leader_spy_placement",
-            "decline_other_memories",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "decline_reveal_influence_exchange",
@@ -655,7 +698,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_high_council_from_reveal",
             "pay_combat_reward",
             "resolve_agent_card_effect",
-            "resolve_desert_tactics_without_trash",
             "resolve_espionage_without_spy",
             # The generic Spy placement frame's way out when nothing can be
             # placed (every ruleset since the Emperor track's Spy uses it).
@@ -923,7 +965,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "keep_shield_wall",
             "decline_intrigue_trash",
             "decline_intrigue_spy",
-            "decline_imperial_privilege_intrigue",
             # Imperial Privilege's recall with no target is confirmed (the
             # card draw is the space's own ``cards`` icon, codec v142).
             "resolve_imperial_privilege_without_recall",
@@ -1194,7 +1235,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = [
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "decline_sardaukar_commander",
             "recruit_sardaukar_commander",
             # Bought without a Skill when none is choosable (OQ-031).
             "acquire_sardaukar_commander",
@@ -1600,6 +1640,8 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             ActionTemplate(action_id="scouts_choose_option", arguments=(("option", i),))
             for i in range(_MAX_SCOUTS_OPTIONS)
         ),
+        # The same choice with no line the seat can take: take nothing.
+        ActionTemplate(action_id="resolve_scouts_choice_without_option"),
     ]
     return tuple(templates)
 
@@ -1642,6 +1684,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Harvest Cells, played only after the rewards and before the
             # cleanup (OQ-057 (11), user ruling 2026-10-06).
             "decline_conflict_end_intrigue",
+            # The window's end once a card was played in it (codec v149,
+            # cleanup-2, user decision 2026-10-18: "끝내기").
+            "finish_conflict_end_intrigue",
             "pay_research_bonus",
             "return_specimen",
             "use_family_atomics",
@@ -1668,6 +1713,16 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for zones in ("garrison,garrison", "garrison,conflict", "conflict,conflict")
     )
+    # A research space's paired icons and c7r3's rewards, each its own step
+    # in the owner's order (codec v149, cleanup-2b, rule decision 5).
+    templates.extend(
+        ActionTemplate(action_id="resolve_research_icon", arguments=(("effect", icon),))
+        for icon in RESEARCH_ICON_ORDER
+    )
+    if not config.bloodlines:
+        # c7r3's card, owed in the owner's turn; the Bloodlines catalog has
+        # it already (Hungry for Spice, CHOAM Transports).
+        templates.append(ActionTemplate(action_id="draw_owed_card"))
     # Piter's troop cost, Stitched Horror's picks, Beguiling Pheromones'
     # grafted-card trash.
     templates.extend(
@@ -1858,7 +1913,12 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
 def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Tech Module choices [Bloodlines pp. 6-7] (``rules.tech``)."""
 
-    templates: list[ActionTemplate] = [ActionTemplate(action_id="decline_tech")]
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id="decline_tech"),
+        # An acquire Influence with every Faction at the top, outside a
+        # turn (codec v149, cleanup-2b).
+        ActionTemplate(action_id="resolve_tech_influence_without_faction"),
+    ]
     for tile in TECH_TILES:
         base: tuple[tuple[str, ActionValue], ...] = (("tech_id", tile.tech_id),)
         variants: list[tuple[tuple[str, ActionValue], ...]] = []

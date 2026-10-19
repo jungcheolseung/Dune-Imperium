@@ -22,8 +22,8 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     Cost,
+    EffectSection,
     GainResources,
-    PayResources,
     Reward,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -109,32 +109,6 @@ type ScoutsCost = Cost
 type ScoutsReward = Reward
 
 
-@dataclass(frozen=True, slots=True)
-class ScoutsOption:
-    """One cost -> reward line. Either side may be empty: an item whose line
-    only takes something away (Crackdown) has no reward, and a free reward
-    (Readiness) has no cost. Costs are paid in full before any reward."""
-
-    costs: tuple[ScoutsCost, ...] = ()
-    rewards: tuple[ScoutsReward, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not self.costs and not self.rewards:
-            raise ValueError("an option costs or gives something")
-        if len(self.costs) != len(set(self.costs)):
-            raise ValueError("an option cannot repeat the same cost")
-
-    @property
-    def resource_cost(self) -> PayResources | None:
-        """Return the summed Solari/spice/water cost, if any."""
-
-        total: PayResources | None = None
-        for cost in self.costs:
-            if isinstance(cost, PayResources):
-                total = cost if total is None else total + cost
-        return total
-
-
 # --- Subcommittees ---------------------------------------------------------------
 
 
@@ -149,7 +123,7 @@ class Subcommittee:
     subcommittee_id: str
     name: str
     tier: int
-    option: ScoutsOption
+    option: EffectSection
     pools: tuple[ScoutsPool, ...]
     app: AppDefinition
     choam_only: bool = False
@@ -227,7 +201,7 @@ class Mission:
     parked_troops: int = 0
     troop_source: TroopSource | None = None
     seat_goods: GainResources | None = None
-    choices: tuple[ScoutsOption, ...] = ()
+    choices: tuple[EffectSection, ...] = ()
     goods: GainResources | None = None
     goods_cards: int = 0
 
@@ -294,7 +268,7 @@ class SecretChoice:
     after that round's Scout step starts. ``grouped`` picks resolve together
     in turn order; the others one seat at a time (the app's screens)."""
 
-    option: ScoutsOption
+    option: EffectSection
     delay: int
     grouped: bool = False
 
@@ -321,7 +295,7 @@ class ScoutsEvent:
     app: AppDefinition
     choam_only: bool = False
     no_choam_only: bool = False
-    options: tuple[ScoutsOption, ...] = ()
+    options: tuple[EffectSection, ...] = ()
     passable: bool = False
     automatic: AutomaticEffect | None = None
     modifier: RoundModifier | None = None
@@ -428,7 +402,7 @@ class ScoutsSale:
 
     sale_id: str
     name: str
-    options: tuple[ScoutsOption, ...]
+    options: tuple[EffectSection, ...]
     pools: tuple[ScoutsPool, ...]
     app: AppDefinition
 

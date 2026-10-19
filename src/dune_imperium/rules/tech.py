@@ -85,10 +85,12 @@ from dune_imperium.rules.frames import (
     update_turn_recruits,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
+    influence_can_rise,
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -96,7 +98,7 @@ from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
     use_leader_signet_for_tech,
 )
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import open_optional_trash
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
@@ -110,6 +112,7 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
+from dune_imperium.rules.turn_rows import tech_influence_blocked, tech_influence_lapsed
 
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
@@ -201,14 +204,22 @@ def legal_tech_acquire_effect_actions(
     frame = _acquire_effect_host(state, player)
     if frame is None:
         return ()
+    owner = state.players[player]
     actions: list[DomainAction] = []
+    blocked = False
     for key in pending_tech_acquire_effects(frame):
         tech_id, effect = key.split(":")
         tile = TECH_TILES_BY_ID[tech_id]
+        blocked = blocked or tech_influence_blocked(key, owner)
         for arguments in tech_acquire_effect_arguments(tile, effect):
-            if (
-                dict(arguments).get("destroy_shield_wall")
-                and not state.shield_wall_present
+            values = dict(arguments)
+            if values.get("destroy_shield_wall") and not state.shield_wall_present:
+                continue
+            # A "choose a Faction" never offers a Faction at the top (OQ-060;
+            # user decision 2026-10-17, composed-effects plan 5, rule
+            # decision 1, which removes the old exception for these icons).
+            if "faction" in values and not influence_can_rise(
+                owner, Faction(str(values["faction"]))
             ):
                 continue
             actions.append(
@@ -218,7 +229,48 @@ def legal_tech_acquire_effect_actions(
                     arguments=arguments,
                 )
             )
+    if blocked and dict(frame.context).get("acquire_effects_only") is True:
+        # Outside a turn (Battlefield Research in Combat) no press lapses a
+        # blocked Influence: its owner confirms it, as a Conflict reward's
+        # (OQ-060, ``resolve_combat_influence_without_faction``).
+        actions.append(
+            DomainAction(
+                action_id="resolve_tech_influence_without_faction", actor=player
+            )
+        )
     return tuple(actions)
+
+
+def apply_tech_influence_without_faction(
+    state: GameState, action: DomainAction
+) -> RuleResult:
+    """Confirm the acquire Influences with every Faction at the top: each
+    lapses with an event (``turn_rows.tech_influence_lapsed``)."""
+
+    if action not in legal_tech_acquire_effect_actions(state, action.actor):
+        raise ValueError("action is not a legal Tech acquire effect")
+    player = action.actor
+    owner = state.players[player]
+    frame = state.decision_stack[-1]
+    keys = pending_tech_acquire_effects(frame)
+    lapsed = tuple(key for key in keys if tech_influence_blocked(key, owner))
+    pending = tuple(key for key in keys if key not in lapsed)
+    context = dict(frame.context)
+    if pending:
+        context[TECH_ACQUIRE_PENDING_KEY] = ",".join(pending)
+    else:
+        context.pop(TECH_ACQUIRE_PENDING_KEY, None)
+    working = replace(
+        state, decision_stack=(*state.decision_stack[:-1], with_context(frame, context))
+    )
+    if not pending:
+        working = working.pop_decision()
+    return RuleResult(
+        state=working,
+        events=tuple(
+            tech_influence_lapsed(player, state.round_number, key) for key in lapsed
+        ),
+    )
 
 
 def tech_cost(
@@ -644,11 +696,28 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
     source = (
         f"round:{state.round_number}:player:{player}:tech:{tech_id}:acquire:{effect}"
     )
+    # What the icon gained rides on its event (rule decision 4: VP, like any
+    # amount gained, is a key of the source event's payload).
+    amounts = {
+        "solari": tile.acquire_solari if effect == "solari" else 0,
+        "victory_points": (
+            tile.acquire_victory_points if effect == "victory_points" else 0
+        ),
+    }
     events: list[GameEvent] = [
         GameEvent(
             event_id=source,
             kind="tech_acquire_effect_resolved",
-            payload=(("effect", effect), ("player", player), ("tech_id", tech_id)),
+            payload=tuple(
+                sorted(
+                    (
+                        ("effect", effect),
+                        ("player", player),
+                        ("tech_id", tech_id),
+                        *((key, amount) for key, amount in amounts.items() if amount),
+                    )
+                )
+            ),
         )
     ]
     owner = working.players[player]
@@ -662,13 +731,6 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
     if effect == "victory_points":
         owner = replace(
             owner, victory_points=owner.victory_points + tile.acquire_victory_points
-        )
-        events.append(
-            GameEvent(
-                event_id=f"{source}:victory_points",
-                kind="victory_points_gained",
-                payload=(("amount", tile.acquire_victory_points), ("player", player)),
-            )
         )
     if effect == "troops":
         owner, recruited = recruit_troops(owner, tile.acquire_troops)
@@ -701,7 +763,7 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         working = contracts.state
         events.extend(contracts.events)
     if effect == "trash":
-        working = working.push_decision(optional_trash_frame(player, source))
+        working = open_optional_trash(working, player, source)
     if effect.startswith("spy_"):
         working = spy_placement_frame(
             working, player, ALL_POST_IDS, source=source, deep_cover=True
@@ -841,9 +903,7 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                         working, players=replace_player(working.players, seat)
                     )
                 case TrashPersonalCard():
-                    working = working.push_decision(
-                        optional_trash_frame(player, source)
-                    )
+                    working = open_optional_trash(working, player, source)
     return RuleResult(state=working, events=tuple(events))
 
 
@@ -989,7 +1049,7 @@ def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
             ),
             events=(
                 GameEvent(
-                    event_id=f"{source}:trashed",
+                    event_id=f"{source}:tech_trashed",
                     kind="tech_trashed",
                     payload=(
                         ("player", player),
@@ -1149,14 +1209,8 @@ def apply_endgame_tech_effects(state: GameState) -> RuleResult:
                         state, players=replace_player(state.players, scored)
                     )
                     events.append(
-                        GameEvent(
-                            event_id=f"{source}:{tile.tech_id}",
-                            kind="victory_points_gained",
-                            payload=(
-                                ("amount", amount),
-                                ("player", player),
-                                ("source", "tech"),
-                            ),
+                        resources_gained_event(
+                            f"{source}:{tile.tech_id}", player, victory_points=amount
                         )
                     )
                 case EffectSection(
@@ -1274,8 +1328,8 @@ def _check_tech_records() -> None:
                 ):
                     raise ValueError(f"{tech_id}: no such Tech trigger")
             elif record.timing is not AbilityTiming.REVEAL:
-                # The automatic Reveal lines are checked as they compile
-                # (``tech.TECH_REVEAL_GAINS``).
+                # The automatic Reveal lines are checked on load
+                # (``tech.tech_reveal_line``).
                 raise ValueError(
                     f"{tech_id}: no {record.timing} ability without a hook"
                 )
@@ -1288,7 +1342,7 @@ def draw_owed_tech_cards(result: RuleResult) -> RuleResult:
     """Draw the cards CHOAM Transports and Planetary Array owe after a step.
 
     Both tiles pay inside another effect's resolution (a contract
-    completion, the Combat cleanup), where a discard reshuffle could not be
+    completion, the Conflict card's award), where a discard reshuffle could not be
     pushed safely; the owing seat records the count and this hook draws
     once the transition has settled. A pending chance frame defers it to
     the next transition, like Hungry for Spice.

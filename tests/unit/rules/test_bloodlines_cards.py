@@ -697,7 +697,11 @@ def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
         _state(_owner(hand=(card,), sandworms_conflict=1)), card, "arrakeen"
     )
     result = resolve_agent_card_effect(with_worm)
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    # The Intrigue draw comes first; the box's own event is last.
+    assert [event.kind for event in result.events] == [
+        "intrigue_card_drawn",
+        "agent_card_effect_resolved",
+    ]
     assert len(result.state.players[0].intrigue_cards) == 1
 
     revealed = _reveal(_state(_six_persuasion_hand(card)))
@@ -4402,6 +4406,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # Faction and Unswerving Loyalty's deploy and retreat of a troop or a
         # Commander.
         + 122 + 29 + 1 + 2 * 13 + 5 * 2 * 13 + 2 * 3 + 4 + 4 + 2 * 2
+        # v149 (cleanup-2f): five refusals out (decline_sardaukar_commander
+        # among them), two confirms in.
+        - 3
     )
     action = DomainAction(
         action_id="trash_agent_card",

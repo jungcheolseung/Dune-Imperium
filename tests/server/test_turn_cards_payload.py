@@ -434,7 +434,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 243 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 603 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -442,18 +442,29 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     was. (v146: optional Agent-turn effects offer no refusal (OQ-095 (2),
     2026-10-14), which moved seed 23's random walk off this position, and
     Other Memories without a refusal (same day) moved its replacement seed
-    43 off it again; re-searched, seeds 111 and 223 are the only ones of
+    43 off it again; re-searched, seeds 111 and 223 were the only ones of
     0-299. v147: personal-card Reveal choices are rows on the Reveal frame
     beside the purchases, with no defer/resume and no refusal, so a random
     walk picks from a different list at such a Reveal; neither 111 nor 223
-    reaches the position any more, and searched on from
-    112, seed 243 is the first that does: seat 3 (Lady Jessica), round 6,
-    Research c7r5.)"""
+    reached the position any more, and searched on from 112, seed 243 was
+    the first that did. Cleanup-2b (user decision 2026-10-17, OQ-095 (2)):
+    the Research bonus's trash no longer opens a window; it waits on the
+    Agent turn as a row among the turn's others, with no refusal, so the
+    random walk moved off seed 243 once more. Searched from 0 for the
+    position, seeds 0-758 missed; 759 reached it through an Intrigue card's
+    Research (Breakthrough, c7r5) and 763 was the first through the Research
+    Station. A research space's two icons are steps of their own too (user
+    decision 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027
+    [Main p. 9]): the specimen waits as a row beside the trash and the Agent
+    turn goes on, which moved the walk off seed 763. Searched from 0 under
+    this whole test, seed 538 is the first, through an Agent card's Research
+    (Bene Tleilax Researcher, c3r3), and 603 the first through the Research
+    Station: seat 2, round 8, Research c3r3, "trash and specimen".)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 243, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 603, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:1", "reserve:prepare_the_way:7")
+    assert (card, earlier) == ("reserve:prepare_the_way:7", "reserve:prepare_the_way:0")
     session = manager._get(game_id)
     before = (
         session.state,
@@ -572,9 +583,47 @@ def test_feyds_signet_ring_trashed_by_its_own_box_keeps_its_rewards() -> None:
         and dict(action.arguments)["card_id"] == signet
     )
     result = ENGINE.apply(session.state, trash)
-    assert "agent_card_effect_expired" not in {event.kind for event in result.events}
+    kinds = {event.kind for event in result.events}
+    assert not kinds & {"agent_card_effect_expired", "leader_signet_expired"}
     _, pending = turn_cards(result.state)
     assert pending == ()
+
+
+def test_a_research_trash_of_a_pending_signet_ring_is_flagged() -> None:
+    """Feyd-Rautha plays the Signet Ring at Research Station with its box
+    still pending; the Research to c3r3 offers an optional trash with the
+    Signet Ring among the cards. That trash is not the box's own step, so it
+    loses the box, which logs ``leader_signet_expired`` (cleanup-2c-4), and
+    the row is flagged (2026-10-18 review: only the Agent box's kind was
+    read)."""
+
+    signet = next(card for card in STARTERS if ":signet_ring:" in card)
+    state = _state((signet,))
+    owner = replace(
+        state.players[0],
+        leader_id="feyd_rautha_harkonnen",
+        research_space="c2r2",
+        family_atomics=False,
+        resources=Resources(solari=6, spice=6, water=3),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = _place(state, signet, "research_station")
+    for action in (
+        DomainAction("resolve_board_effect", 0, (("effect", "research"),)),
+        DomainAction("choose_research_space", 0, (("space_id", "c3r3"),)),
+    ):
+        assert action in ENGINE.legal_actions(state, 0)
+        state = ENGINE.apply(state, action).state
+    _, pending = turn_cards(state)
+    assert pending == (signet,)
+    trash = DomainAction("trash_optional_card", 0, (("card_id", signet),))
+    assert box_losing_trash(ENGINE, state, 0) == (("trash_optional_card", signet),)
+    result = ENGINE.apply(state, trash)
+    assert [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "leader_signet_expired"
+    ] == [signet]
 
 
 def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:

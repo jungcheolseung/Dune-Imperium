@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
     AdvanceTleilaxu,
+    AtFactionSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
@@ -64,10 +65,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainVictoryPoints,
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantCombatDeployment,
     HasAlliance,
@@ -467,19 +470,10 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 armed_icons=("cards", "research"),
             ),
             # Control the Spice: "You may pay 1 spice -> You may trash a card,
-            # Recruit 1 troop" -- its payment names the box's card and carries
-            # the troop count, and the trash is a frame of its own, so the flow
-            # stays code (``agent_effects`` hook ``control_the_spice``).
-            _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: Ability(
-                timing=AbilityTiming.AGENT_BOX,
-                sections=(
-                    EffectSection(
-                        rewards=(TrashPersonalCard(), RecruitTroops(1)),
-                        costs=(PayResources(spice=1),),
-                    ),
-                ),
-                mark=AbilityMark.OPTIONAL,
-                hook="control_the_spice",
+            # Recruit 1 troop" -- a paid arrow (``apply_payment``): the troop
+            # now, the black trash icon on a frame of its own (cleanup-2d).
+            _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: _pay(
+                PayResources(spice=1), TrashPersonalCard(), RecruitTroops(1)
             ),
             # --- A plain line beside a choice line (composed effects, A3f) ------
             # Southern Faith: "Choose one: Draw 1 card / If Bene Gesserit Bond:
@@ -537,6 +531,19 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ("influence", _line(GainInfluence())),
                 ("trash_self", _line(TrashThisCard())),
             ),
+            # Clandestine Meeting: "[Bene Gesserit Influence] [Intrigue card]"
+            # -- the Influence answered by its one-Faction row (cleanup-2d-5,
+            # user decision 2026-10-18: "원칙대로 아이콘마다 나누자").
+            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _icons(
+                ("influence", _line(GainInfluence(factions=(_BG,)))),
+                ("intrigue", _line(DrawIntrigueCards(1))),
+            ),
+            # Occupation: "[draw 1] [Combat]" [Immortality p. 16] -- the Combat
+            # icon answered by ``take_agent_card_combat_icon`` (cleanup-2d-5).
+            _BOX.DRAW_ONE_AND_COMBAT_ICON: _icons(
+                ("cards", _line(DrawPersonalCards(1))),
+                ("combat", _line(GrantCombatDeployment())),
+            ),
             # Steersman: "Draw 1 card, Recall 1 Agent".
             _BOX.DRAW_ONE_AND_RECALL_AGENT: _icons(
                 ("cards", _line(DrawPersonalCards(1))),
@@ -559,6 +566,20 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 structure=AbilityStructure.SEPARATE,
                 requirement=_BG_BOND,
                 icons=("trash", "cards"),
+            ),
+            # In High Places: "If you have another Bene Gesserit card in play:
+            # [draw 1 card] [Spy]" -- as Tread in Darkness, the Bond opens the
+            # box and is judged again on each icon (OQ-028); the Spy icon is
+            # answered by the box's Spy rows (cleanup-2d-5).
+            _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                    _line(PlaceSpy(), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("cards", "spy"),
             ),
             # --- Optional arrows with no target (composed effects, A3b) ---------
             # Ecological Testing Station.
@@ -594,36 +615,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ReturnOtherGraftedCardAtRevealStart()
             ),
             # --- Special flows (hooks) -------------------------------------------
-            # Seek Allies: "Trash this card." -- the trash's events alone.
-            _BOX.TRASH_SELF: _hook("seek_allies", TrashThisCard()),
-            # Overthrow: one more Influence with the visited Faction, with no
-            # event of its own; reachable only on a Faction space (the
-            # placement code's rule, not a printed condition).
-            _BOX.GAIN_VISITED_FACTION_INFLUENCE: _hook("overthrow"),
-            # Lisan al Gaib: the Fremen Influence, its events alone.
-            _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _hook(
-                "lisan_al_gaib",
-                GainInfluence(factions=(Faction.FREMEN,)),
-                condition=_BG_BOND,
+            # Seek Allies: "Trash this card." [Main p. 20] -- the box trashes
+            # its own card (cleanup-2d).
+            _BOX.TRASH_SELF: _box(TrashThisCard()),
+            # Overthrow: "Gain 1 additional Influence with the visited
+            # Faction"; nothing to gain off a Faction space (OQ-046).
+            _BOX.GAIN_VISITED_FACTION_INFLUENCE: _box(
+                GainInfluence(visited_space=True), requirement=AtFactionSpace()
             ),
-            # Clandestine Meeting: its Intrigue draw is named ``<box>:intrigue``.
-            _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: _hook(
-                "clandestine_meeting",
-                GainInfluence(factions=(_BG,)),
-                DrawIntrigueCards(1),
-            ),
-            # Occupation: the Combat grant rewrites the frame; the draw is
-            # named ``<box>:draw``.
-            _BOX.DRAW_ONE_AND_COMBAT_ICON: _hook(
-                "occupation", DrawPersonalCards(1), GrantCombatDeployment()
-            ),
-            # In High Places: the Spy frame under the draw, both named ``<box>``.
-            _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: _hook(
-                "in_high_places",
-                DrawPersonalCards(1),
-                PlaceSpy(),
-                condition=_BG_BOND,
-                requirement=_BG_BOND,
+            # Lisan al Gaib: the Fremen Influence, the Bond judged when the box
+            # resolves (a grafted partner may give it).
+            _BOX.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
+                GainInfluence(factions=(Faction.FREMEN,)), condition=_BG_BOND
             ),
             # --- Special flows of the boxes no stage listed (composed A3g) -------
             # Their rows, events and frames are their own. A record lists its
@@ -631,10 +634,11 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # whole has no line (a part alone would misread as the box), its
             # printed text in the comment.
             # Subversive Advisor: "Gain 2 Influence with the visited Faction,
-            # Trash this card" -- the 2 replace the space's 1 (never 2 + 1);
-            # reachable only on a Faction space (``agent_turn``).
-            _BOX.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF: _hook(
-                "subversive_advisor"
+            # Trash this card" -- the 2 replace the space's 1 (never 2 + 1).
+            _BOX.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF: _box(
+                GainInfluence(visited_space=True, times=2, replaces_space=True),
+                TrashThisCard(),
+                requirement=AtFactionSpace(),
             ),
             # Long Live the Fighters: "If you have 3 or more cards in your deck:
             # Look at the top 3 cards, Draw 1, Discard 1, Trash 1" -- the
@@ -642,12 +646,28 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.LOOK_AT_TOP_THREE: _hook("long_live_the_fighters"),
             # Treacherous Maneuver: "You may trash this card and an Emperor card
             # from your hand -> Gain 2 Influence instead of 1 Influence with the
-            # visited Faction".
-            _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: _hook(
-                "treacherous_maneuver", mark=AbilityMark.OPTIONAL
+            # visited Faction" -- a trash box: the hand's Emperor card is the
+            # pick, this card follows it (cleanup-2d).
+            _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(
+                            GainInfluence(
+                                visited_space=True, times=2, replaces_space=True
+                            ),
+                        ),
+                        costs=(
+                            TrashCard(hand_only=True, faction=Faction.EMPEROR),
+                            TrashCard(this_card=True),
+                        ),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
             # Corrinth City: "You may discard 2 cards and pay 5 solari -> Gain 1
-            # VP" -- the two discards picked one by one (its own rows).
+            # VP" -- the two discards picked one by one, then all paid at once
+            # (a discard-and-pay arrow, cleanup-2d).
             _BOX.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: Ability(
                 timing=AbilityTiming.AGENT_BOX,
                 sections=(
@@ -657,11 +677,10 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
                 mark=AbilityMark.OPTIONAL,
-                hook="corrinth_city",
             ),
             # Arrakis Revolt: "If Maker Hooks: You may pay 2 spice -> You may
             # remove the Shield Wall, Summon 1 sandworm" -- the removal folded
-            # into the payment row (OQ-026).
+            # into the payment row (OQ-026; a wall-and-worm arrow, cleanup-2d).
             _BOX.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS: (
                 Ability(
                     timing=AbilityTiming.AGENT_BOX,
@@ -675,7 +694,6 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                         ),
                     ),
                     mark=AbilityMark.OPTIONAL,
-                    hook="arrakis_revolt",
                 )
             ),
             # The Beast's Spoils: "Gain rewards for your face-up battle icons:
@@ -683,14 +701,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Ornithopter: Recruit 1 troop".
             _BOX.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON: _hook("beasts_spoils"),
             # Long Reach: "Choose two Factions: Gain 1 Influence with each" --
-            # both named before either is paid.
-            _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: _hook(
-                "long_reach", GainInfluence(times=2, distinct=True)
+            # both named before either is paid (a target choice, cleanup-2d).
+            _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: _box(
+                GainInfluence(times=2, distinct=True)
             ),
             # Dissecting Kit: "You may trash the other grafted card -> Generate
-            # 1 specimen".
-            _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: _hook(
-                "dissecting_kit", mark=AbilityMark.OPTIONAL
+            # 1 specimen" (cleanup-2d).
+            _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: _pay(
+                TrashCard(grafted=GraftedTrash.OTHER), GenerateSpecimens(1)
             ),
             # Scientific Breakthrough: "Research, If 2 genetic markers: You may
             # trash this card -> Gain 1 VP" -- the trash line judged once the
@@ -710,19 +728,45 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Slig Farmer: "Gain 1 solari per Agent icon on the other grafted
             # card, You may pay 5 solari -> Advance the Tleilaxu track" -- the
-            # payment row pays the Solari too.
+            # payment row pays the Solari too (cleanup-2d).
             _BOX.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU: (
-                _hook("slig_farmer")
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        _line(GainSolariPerPartnerAgentIcon()),
+                        EffectSection(
+                            rewards=(AdvanceTleilaxu(1),),
+                            costs=(PayResources(solari=5),),
+                        ),
+                    ),
+                )
             ),
             # Stitched Horror: "Choose two: Gain 1 water / Recruit 1 troop /
             # Trash a card / Advance the Tleilaxu track" -- both named before
-            # either is paid.
-            _BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU: _hook("stitched_horror"),
+            # either is paid (cleanup-2d).
+            _BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(GainResources(water=1)),
+                    _line(RecruitTroops(1)),
+                    _line(TrashPersonalCard()),
+                    _line(AdvanceTleilaxu(1)),
+                ),
+                structure=AbilityStructure.CHOOSE_TWO,
+            ),
             # Beguiling Pheromones: "If you sent an Agent to a Faction space this
             # turn: Trash one of the grafted cards, Gain 1 Influence with that
             # Faction".
-            _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE: _hook(
-                "beguiling_pheromones"
+            # Its "If you sent an Agent to a Faction space this turn" is the
+            # visited Faction's gain (no Faction, nothing offered; cleanup-2d).
+            _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainInfluence(visited_space=True),),
+                        costs=(TrashCard(grafted=GraftedTrash.EITHER),),
+                    ),
+                ),
             ),
             # --- Icon by icon (OQ-027) -------------------------------------------
             # Hidden Missive.

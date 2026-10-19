@@ -24,37 +24,52 @@ from collections.abc import Callable, Mapping
 from copy import replace
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Final
+from typing import Final, NamedTuple
 
 from dune_imperium.content.bloodlines.sardaukar import (
     SkillDefinition,
     skill_for_instance,
 )
 from dune_imperium.content.bloodlines.tech import (
-    TECH_REVEAL_GAINS,
-    TECH_REVEAL_GAINS_BY_ID,
+    TECH_TILES,
     TechAbility,
     has_tech,
+    tech_reveal_line,
 )
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityStructure,
+)
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
     CompletedContractsAtLeast,
     Condition,
+    DeployFromGarrison,
     DrawIntrigueCards,
     EffectSection,
+    FactionBond,
     GainInfluence,
     GainResources,
+    GainVictoryPoints,
+    GenerateSpecimens,
     GrantCombatDeployment,
+    HasAlliance,
+    KeepPrintedReveal,
+    LoseInfluence,
+    LoseTroops,
     PayResources,
     PlaceSpy,
+    PrintedRevealValue,
     RecallSpy,
+    RetreatTroops,
     RevealPersuasion,
     RevealSwords,
     Reward,
     SpiesPlacedAtLeast,
+    SummonSandworm,
     TakeContract,
     TakeHighCouncilSeat,
     TechTilesAtLeast,
@@ -80,13 +95,19 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.card_bonds import (
+    counted_in_play,
+    has_faction_bond,
+    trashable_cards,
+)
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     deployment_rooms,
     grant_combat_icon,
     reconcile_deployment_after_retreat,
     undeployable_troops,
+    undeployable_troops_this_turn,
 )
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
@@ -107,6 +128,7 @@ from dune_imperium.rules.frames import (
     reveal_is_open_for,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -132,6 +154,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
     spied_factions,
+    spy_recall_posts,
 )
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -336,11 +359,268 @@ def target_reward_choice(ability: Ability | None) -> bool:
     )
 
 
+# --- Arrows read from their records (cleanup-2d) ----------------------------
+#
+# "You may pay X -> Y" Reveal choices whose rows and payment keep their own
+# names but whose amounts and shape come from the record: Spacing Guild's
+# Favor (spice -> a chosen Faction's Influence), Captured Mentat (1
+# Influence lost -> 1 gained), In High Places (two Spies recalled ->
+# Persuasion), Chani, Clever Tactician and Command Center (two troops
+# retreated -> swords or Persuasion). No refusal is offered; unused, they
+# lapse when the Reveal ends (OQ-095 (7) addition).
+
+
+def _arrow_line(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> EffectSection | None:
+    """The one line of an optional Reveal arrow record."""
+
+    if effect is None:
+        return None
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    if (
+        ability is None
+        or ability.hook is not None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.structure is not AbilityStructure.SEQUENCE
+        or len(ability.sections) != 1
+    ):
+        return None
+    return ability.sections[0]
+
+
+def spice_influence_price(effect: PersonalCardRevealChoiceEffect | str | None) -> int:
+    """"You may pay N spice -> Gain 1 Influence with a chosen Faction": N, or
+    0 for another choice."""
+
+    line = _arrow_line(effect)
+    if line is None or line.rewards != (GainInfluence(),) or len(line.costs) != 1:
+        return 0
+    cost = line.costs[0]
+    if isinstance(cost, PayResources) and cost.solari == cost.water == 0:
+        return cost.spice
+    return 0
+
+
+def is_influence_exchange(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
+    """"You may lose 1 Influence with a chosen Faction -> Gain 1 Influence
+    with a chosen Faction" [Captured Mentat card]."""
+
+    line = _arrow_line(effect)
+    return (
+        line is not None
+        and line.costs == (LoseInfluence(1),)
+        and line.rewards == (GainInfluence(),)
+    )
+
+
+def spy_pair_persuasion(effect: PersonalCardRevealChoiceEffect | str | None) -> int:
+    """"You may recall 2 Spies -> +N Persuasion" [In High Places card]: N, or
+    0 for another choice."""
+
+    line = _arrow_line(effect)
+    if (
+        line is None
+        or line.costs != (RecallSpy(2),)
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], RevealPersuasion)
+        or line.rewards[0].per is not None
+    ):
+        return 0
+    return line.rewards[0].amount
+
+
+def retreat_pair_reward(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> RevealSwords | RevealPersuasion | None:
+    """"You may retreat 2 troops -> +N swords / +N Persuasion" [Chani, Clever
+    Tactician card] [Command Center card]: the reward, or None."""
+
+    line = _arrow_line(effect)
+    if line is None or line.costs != (RetreatTroops(2, 2),) or len(line.rewards) != 1:
+        return None
+    reward = line.rewards[0]
+    if isinstance(reward, RevealSwords | RevealPersuasion) and reward.per is None:
+        return reward
+    return None
+
+
+def influence_loss_reward(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> tuple[int, int, Faction | None] | None:
+    """"[Faction] Alliance: You may lose N Influence with one Faction -> Gain
+    M VP" [For Humanity card]: (N, M, the Alliance's Faction), or None."""
+
+    line = _arrow_line(effect)
+    if (
+        line is None
+        or len(line.costs) != 1
+        or not isinstance(line.costs[0], LoseInfluence)
+        or not line.costs[0].one_faction
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], GainVictoryPoints)
+        or not (line.condition is None or isinstance(line.condition, HasAlliance))
+    ):
+        return None
+    alliance = line.condition
+    faction = alliance.faction if isinstance(alliance, HasAlliance) else None
+    return line.costs[0].count, line.rewards[0].amount, faction
+
+
+def troop_loss_specimens(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> int:
+    """"You may lose 2 troops -> Generate N specimens" [Tleilaxu Surgeon card]
+    (troops only, either zone, OQ-053): N, or 0 for another choice."""
+
+    line = _arrow_line(effect)
+    if (
+        line is None
+        or line.costs != (LoseTroops(2, troops_only=True),)
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], GenerateSpecimens)
+    ):
+        return 0
+    return line.rewards[0].count
+
+
+def troop_move_choice(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
+    """"You may deploy or retreat 1 troop" [Shadout Mapes card], maybe under a
+    Bond [Unswerving Loyalty card]."""
+
+    if effect is None:
+        return False
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    return (
+        ability is not None
+        and ability.hook is None
+        and ability.mark is AbilityMark.OPTIONAL
+        and ability.structure is AbilityStructure.ONE_OF
+        and [line.rewards for line in ability.sections]
+        == [(DeployFromGarrison(1),), (RetreatTroops(1, 1),)]
+        and all(
+            line.condition is None or isinstance(line.condition, FactionBond)
+            for line in ability.sections
+        )
+    )
+
+
+def _troop_move_bond(effect: PersonalCardRevealChoiceEffect) -> Faction | None:
+    condition = reveal_choice_ability(effect).sections[0].condition
+    return condition.faction if isinstance(condition, FactionBond) else None
+
+
+def _deployable_garrison_troops(state: GameState, player: int) -> int:
+    """Garrison troops a Reveal card's deploy may move: Harkonnen Advisor's
+    troop stays out -- "Reveal turn에서도 Harkonnen Advisor의 troop은 배치
+    불가로 남는다" (OQ-062 (b), "You can't deploy this troop to the Conflict
+    this turn." [Piter De Vries card], OQ-038 (b))."""
+
+    return max(
+        state.players[player].troops_garrison
+        - undeployable_troops_this_turn(state, player),
+        0,
+    )
+
+
+def held_reveal_value(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> EffectSection | None:
+    """The other line of a choice that holds the card's printed value back
+    ("Keep the Persuasion" / "Keep the spice", OQ-069), or None."""
+
+    if effect is None:
+        return None
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    if (
+        ability is None
+        or ability.hook is not None
+        or ability.structure is not AbilityStructure.ONE_OF
+        or len(ability.sections) != 2
+        or len(ability.sections[0].rewards) != 1
+        or not isinstance(ability.sections[0].rewards[0], KeepPrintedReveal)
+    ):
+        return None
+    return ability.sections[1]
+
+
+def _held_value(effect: PersonalCardRevealChoiceEffect) -> PrintedRevealValue:
+    reward = reveal_choice_ability(effect).sections[0].rewards[0]
+    assert isinstance(reward, KeepPrintedReveal)
+    return reward.value
+
+
+def card_holds_reveal_value(
+    card: PersonalCardDefinition, value: PrintedRevealValue
+) -> bool:
+    """Whether one of the card's Reveal choices holds its printed ``value``."""
+
+    return any(
+        held_reveal_value(effect) is not None and _held_value(effect) is value
+        for effect in card.reveal_choice_effects
+    )
+
+
+def _sandworm_line(effect: PersonalCardRevealChoiceEffect | str | None) -> int:
+    """"Pay N water -> Summon and deploy a sandworm" beside the held value
+    [Desert Power card]: N, or 0 for another choice."""
+
+    line = held_reveal_value(effect)
+    if (
+        line is None
+        or line.rewards != (SummonSandworm(requires_maker_hooks=True),)
+        or len(line.costs) != 1
+        or not isinstance(line.costs[0], PayResources)
+    ):
+        return 0
+    return line.costs[0].water
+
+
+def _trash_for_vp_line(effect: PersonalCardRevealChoiceEffect | str | None) -> int:
+    """"Trash this card -> Gain N VP" beside the held value [Priority
+    Contracts card]: N, or 0 for another choice."""
+
+    line = held_reveal_value(effect)
+    if (
+        line is None
+        or line.costs != (TrashCard(this_card=True),)
+        or len(line.rewards) != 1
+        or not isinstance(line.rewards[0], GainVictoryPoints)
+    ):
+        return 0
+    return line.rewards[0].amount
+
+
+def _reveal_choice_frame_matching(
+    state: GameState, player: int, matches: Callable[[str], object]
+) -> dict[str, ActionValue] | None:
+    """The top ``REVEAL_CHOICE`` context of ``player``'s if its choice's
+    record ``matches``."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    context = dict(frame.context)
+    effect_value = _effect_value(context)
+    if effect_value is None or not matches(effect_value):
+        return None
+    return context
+
+
 def _target_reward_line(effect: PersonalCardRevealChoiceEffect) -> EffectSection:
     ability = reveal_choice_ability(effect)
     if not target_reward_choice(ability):
         raise ValueError(f"{effect} is not a target -> reward Reveal choice")
     return ability.sections[0]
+
+
+def _effect_value(context: Mapping[str, ActionValue]) -> str | None:
+    """The choice a ``REVEAL_CHOICE`` frame resolves, or None."""
+
+    value = context.get("reveal_choice_effect")
+    return value if isinstance(value, str) else None
 
 
 def _target_condition_holds(
@@ -394,7 +674,7 @@ def _target_reward_targets(
                 and faction in personal_card_for_instance(candidate).factions
             )
     if line.rewards == (TrashPersonalCard(),):
-        return (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+        return trashable_cards(owner)
     return tuple(
         faction.value for faction in Faction if influence_can_rise(owner, faction)
     )
@@ -741,11 +1021,7 @@ def resolve_printed_or(state: GameState, action: DomainAction) -> RuleResult:
                     owner.resources, solari=owner.resources.solari + solari
                 ),
             )
-            event = GameEvent(
-                event_id=f"{source}:solari",
-                kind="reveal_solari_gained",
-                payload=(("amount", solari), ("card_id", card_id), ("player", player)),
-            )
+            event = resources_gained_event(source, player, solari=solari)
         case TakeHighCouncilSeat():
             (price,) = line.costs
             assert isinstance(price, PayResources)
@@ -884,7 +1160,10 @@ def legal_reveal_spy_actions(
                     card_id,
                     (("post_id", post_id),),
                 )
-                for post_id in owner.spy_post_ids
+                # Only a recall that opens a post (OQ-057 (14) addition).
+                for post_id in spy_recall_posts(
+                    state, player, empty_observation_post_ids(state)
+                )
             ),
         )
     ability = reveal_choice_ability(effect)
@@ -900,10 +1179,7 @@ def legal_reveal_spy_actions(
     # pay such a cost on a card" [Main p. 20] [FAQ p. 3]: no refusal; unused,
     # it lapses when the Reveal ends (OQ-095 (7) addition, user ruling
     # 2026-10-14).
-    if (
-        effect
-        is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION
-    ):
+    if spy_pair_persuasion(effect):
         return tuple(
             DomainAction(
                 action_id="recall_spies_for_reveal",
@@ -940,10 +1216,7 @@ def legal_reveal_influence_exchange_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE.value
-    ):
+    if not is_influence_exchange(_effect_value(context)):
         return ()
     actions: list[DomainAction] = []
     owner = state.players[player]
@@ -1199,13 +1472,11 @@ def legal_reveal_spice_influence_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE.value
-    ):
+    price = spice_influence_price(_effect_value(context))
+    if not price:
         return ()
     owner = state.players[player]
-    if owner.resources.spice < 3:
+    if owner.resources.spice < price:
         return ()
     # Three spice for Influence no cube can take is not offered (OQ-060,
     # OQ-071).
@@ -1235,10 +1506,7 @@ def legal_reveal_sandworm_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value
-    ):
+    if not _sandworm_line(_effect_value(context)):
         return ()
     actions: list[DomainAction] = [
         DomainAction(action_id="decline_reveal_sandworm", actor=player),
@@ -1274,7 +1542,8 @@ def apply_reveal_sandworm_action(
         # 2 Persuasion, so Command (6+) and every other total only count them
         # from here (user ruling 2026-09-26), for a seat without Maker Hooks
         # too (option (B), user ruling 2026-09-30).
-        remaining = add_reveal_persuasion(state.decision_stack[:-1], 2)
+        held = personal_card_for_instance(card_id).reveal_persuasion
+        remaining = add_reveal_persuasion(state.decision_stack[:-1], held)
         return RuleResult(
             state=replace(state, decision_stack=remaining),
             events=(
@@ -1287,7 +1556,7 @@ def apply_reveal_sandworm_action(
                     event_id=f"{source}:persuasion",
                     kind="reveal_persuasion_gained",
                     payload=(
-                        ("amount", 2),
+                        ("amount", held),
                         ("card_id", card_id),
                         ("player", action.actor),
                     ),
@@ -1297,12 +1566,14 @@ def apply_reveal_sandworm_action(
 
     if reveal_sandworm_block(state, action.actor) is not None:
         raise RuntimeError("Desert Power sandworm choice is unavailable")
+    water = _sandworm_line(_effect_value(context))
     owner = state.players[action.actor]
     if replaces_sandworms(owner):
         # Arrakis Planetologist: the water still buys the choice, the
         # sandworm becomes its replacement [Liet Kynes card].
         paid = replace(
-            owner, resources=replace(owner.resources, water=owner.resources.water - 1)
+            owner,
+            resources=replace(owner.resources, water=owner.resources.water - water),
         )
         popped = replace(
             state,
@@ -1331,7 +1602,7 @@ def apply_reveal_sandworm_action(
     )
     next_owner = replace(
         owner,
-        resources=replace(owner.resources, water=owner.resources.water - 1),
+        resources=replace(owner.resources, water=owner.resources.water - water),
         sandworms_conflict=owner.sandworms_conflict + 1,
         combat_strength=owner.combat_strength + strength_delta,
         units_deployed_turn=owner.units_deployed_turn + 1,
@@ -1351,7 +1622,7 @@ def apply_reveal_sandworm_action(
                     ("amount", 1),
                     ("card_id", card_id),
                     ("player", action.actor),
-                    ("water", 1),
+                    ("water", water),
                 ),
             ),
             GameEvent(
@@ -1413,10 +1684,7 @@ def legal_reveal_troop_retreat_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if context.get("reveal_choice_effect") not in (
-        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH.value,
-        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value,
-    ):
+    if retreat_pair_reward(_effect_value(context)) is None:
         return ()
     card_id = context.get("reveal_card_id")
     if not isinstance(card_id, str):
@@ -1489,10 +1757,7 @@ def legal_contract_reveal_choice_actions(
     if (
         not isinstance(frame.decision, PlayerDecision)
         or frame.decision.owner != player
-        or context.get("reveal_choice_effect")
-        != (
-            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS.value
-        )
+        or not _trash_for_vp_line(_effect_value(context))
     ):
         return ()
     card_id = context.get("reveal_card_id")
@@ -1502,8 +1767,10 @@ def legal_contract_reveal_choice_actions(
     # The self-trash is the cost of the Victory Point, so it is adjudicated
     # at resolution time [Main pp. 9, 20]: a card another effect already
     # trashed while this choice was pending can no longer pay it.
+    line = held_reveal_value(_effect_value(context))
+    assert line is not None
     if (
-        len(state.players[player].completed_contract_ids) >= 4
+        _target_condition_holds(line.condition, state.players[player], None)
         and card_id in state.players[player].in_play
     ):
         actions.append(_sourced("trash_contract_reveal_for_vp", player, card_id))
@@ -1543,17 +1810,7 @@ def apply_contract_reveal_choice(
                 state.pop_decision(),
                 players=replace_player(state.players, next_owner),
             ),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:spice",
-                    kind="contract_reveal_spice_gained",
-                    payload=(
-                        ("amount", spice),
-                        ("card_id", card_id),
-                        ("player", action.actor),
-                    ),
-                ),
-            ),
+            events=(resources_gained_event(source, action.actor, spice=spice),),
         )
 
     prepared = state.pop_decision()
@@ -1570,8 +1827,9 @@ def apply_contract_reveal_choice(
     # [Main p. 10] [FAQ p. 4]; the Reveal's Combat icon deploys it
     # [Bloodlines pp. 5, 12].
     trashed = credit_trash_recruits(trashed, action.actor)
+    points = _trash_for_vp_line(_effect_value(context))
     owner = trashed.state.players[action.actor]
-    next_owner = replace(owner, victory_points=owner.victory_points + 1)
+    next_owner = replace(owner, victory_points=owner.victory_points + points)
     next_state = replace(
         trashed.state,
         players=replace_player(trashed.state.players, next_owner),
@@ -1582,7 +1840,7 @@ def apply_contract_reveal_choice(
         payload=(
             ("card_id", card_id),
             ("player", action.actor),
-            ("victory_points", 1),
+            ("victory_points", points),
         ),
     )
     return RuleResult(state=next_state, events=(*trashed.events, event))
@@ -1610,51 +1868,51 @@ def apply_reveal_troop_retreat(
     if owner.troops_conflict < troops or owner.commanders_conflict < commanders:
         raise RuntimeError("Reveal troop-retreat payment requires two troops")
     remaining_units = owner.units_in_conflict - 2
-    persuasion_choice = context.get("reveal_choice_effect") == (
-        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
+    reward = retreat_pair_reward(_effect_value(context))
+    if reward is None:
+        raise RuntimeError("Reveal troop-retreat frame names no retreat arrow")
+    persuasion_choice = isinstance(reward, RevealPersuasion)
+    # Each retreated troop or Commander takes its 2 strength along, and with
+    # no unit left there is no strength at all [Main pp. 12, 14]
+    # [Bloodlines p. 4]; Tactician advances once for the two (``retreat_units``,
+    # [Chani card] [FAQ p. 1]).
+    retreated = retreat_units(
+        state, action.actor, source, troops=troops, commanders=commanders
     )
-    if not remaining_units:
-        # No unit left, no strength, swords or not [Main p. 12].
-        next_strength = 0
-    elif persuasion_choice:
-        # Command Center pays Persuasion, not swords: each retreated troop or
-        # Commander takes its 2 strength along [Main pp. 12, 14]
-        # [Bloodlines p. 4].
-        next_strength = max(owner.combat_strength - 2 * 2, 0)
-    else:
-        # Chani, Clever Tactician: the 4 troop strength becomes 4 swords.
-        next_strength = owner.combat_strength
-    next_owner = replace(
-        owner,
-        troops_garrison=owner.troops_garrison + troops,
-        troops_conflict=owner.troops_conflict - troops,
-        commanders_garrison=owner.commanders_garrison + commanders,
-        commanders_conflict=owner.commanders_conflict - commanders,
-        combat_strength=next_strength,
-    )
-    # Tactician: "Whenever you retreat or lose any number of troops from the
-    # Conflict, advance your Tactics token that many spaces" [Chani card];
-    # Commanders are troops [Bloodlines p. 4], and this one source moves the
-    # token once [FAQ p. 1].
-    next_owner, tactics_events = advance_tactics_token(next_owner, 2, source=source)
+    next_owner = retreated.state.players[action.actor]
+    if remaining_units and not persuasion_choice:
+        # Chani, Clever Tactician: the 4 troop strength becomes 4 swords
+        # (Command Center pays Persuasion instead).
+        next_owner = replace(next_owner, combat_strength=owner.combat_strength)
+    next_strength = next_owner.combat_strength
     remaining = state.decision_stack[:-1]
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
         remaining = add_reveal_strength(remaining, strength_delta)
     if persuasion_choice:
         # Command Center (Bloodlines): "Retreat two troops -> +2 Persuasion".
-        remaining = add_reveal_persuasion(remaining, 2)
+        remaining = add_reveal_persuasion(remaining, reward.amount)
         reward_event = GameEvent(
             event_id=f"{source}:persuasion",
             kind="reveal_persuasion_gained",
-            payload=(("amount", 2), ("card_id", card_id), ("player", action.actor)),
+            payload=(
+                ("amount", reward.amount),
+                ("card_id", card_id),
+                ("player", action.actor),
+            ),
         )
     else:
-        remaining = add_reveal_optional_sword_strength(remaining, 4, card_id=card_id)
+        remaining = add_reveal_optional_sword_strength(
+            remaining, reward.amount, card_id=card_id
+        )
         reward_event = GameEvent(
             event_id=f"{source}:strength",
             kind="reveal_strength_gained",
-            payload=(("amount", 4), ("card_id", card_id), ("player", action.actor)),
+            payload=(
+                ("amount", reward.amount),
+                ("card_id", card_id),
+                ("player", action.actor),
+            ),
         )
     return RuleResult(
         state=replace(
@@ -1662,15 +1920,7 @@ def apply_reveal_troop_retreat(
             players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
-        events=(
-            GameEvent(
-                event_id=f"{source}:troops_retreated",
-                kind="troops_retreated",
-                payload=(("count", 2), ("player", action.actor)),
-            ),
-            *tactics_events,
-            reward_event,
-        ),
+        events=(*retreated.events, reward_event),
     )
 
 
@@ -1739,10 +1989,6 @@ def _reveal_choice_card_source(
     )
 
 
-# For Humanity's arrow cost: a "?" Influence diamond with two red chevrons,
-# two Influence with one chosen Faction [For Humanity card]; like gaining two,
-# the two steps cannot be split between Factions [Main p. 20].
-_FOR_HUMANITY_INFLUENCE_COST = 2
 
 
 def _stepwise_alliance_recipients(
@@ -1815,17 +2061,17 @@ def legal_reveal_influence_loss_actions(
     pending = pending_choice_rows(state, player, legal_reveal_influence_loss_actions)
     if pending is not None:
         return pending
-    context = _reveal_choice_frame_context(state, player, _LOSE_INFLUENCE_FOR_VP)
-    if context is None:
+    context = _reveal_choice_frame_matching(state, player, influence_loss_reward)
+    loss = influence_loss_reward(_effect_value(context or {}))
+    if context is None or loss is None:
         return ()
+    cost = loss[0]
     actions: list[DomainAction] = []
     owner = state.players[player]
     for faction in Faction:
-        if influence_amount(owner.influence, faction) < _FOR_HUMANITY_INFLUENCE_COST:
+        if influence_amount(owner.influence, faction) < cost:
             continue
-        recipients = _stepwise_alliance_recipients(
-            state, player, faction, _FOR_HUMANITY_INFLUENCE_COST
-        )
+        recipients = _stepwise_alliance_recipients(state, player, faction, cost)
         recipient_options: tuple[int | None, ...] = (
             tuple(recipients) if len(recipients) > 1 else (None,)
         )
@@ -1868,16 +2114,20 @@ def apply_reveal_influence_loss(
         isinstance(recipient, bool) or not isinstance(recipient, int)
     ):
         raise RuntimeError("Reveal Influence loss has invalid recipient")
+    loss = influence_loss_reward(_effect_value(context))
+    if loss is None:
+        raise RuntimeError("Reveal Influence-loss frame names no such arrow")
+    cost, points, _ = loss
     lost = _lose_influence_stepwise(
         popped,
         action.actor,
         Faction(faction_value),
-        _FOR_HUMANITY_INFLUENCE_COST,
+        cost,
         event_prefix=f"{source}:lost:{faction_value}",
         alliance_recipient=recipient,
     )
     owner = lost.state.players[action.actor]
-    next_owner = replace(owner, victory_points=owner.victory_points + 1)
+    next_owner = replace(owner, victory_points=owner.victory_points + points)
     return RuleResult(
         state=replace(
             lost.state, players=replace_player(lost.state.players, next_owner)
@@ -1890,7 +2140,7 @@ def apply_reveal_influence_loss(
                 payload=(
                     ("card_id", card_id),
                     ("player", action.actor),
-                    ("victory_points", 1),
+                    ("victory_points", points),
                 ),
             ),
         ),
@@ -1912,9 +2162,7 @@ def legal_reveal_troop_move_actions(
     pending = pending_choice_rows(state, player, legal_reveal_troop_move_actions)
     if pending is not None:
         return pending
-    context = _reveal_choice_frame_context(
-        state, player, PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-    )
+    context = _reveal_choice_frame_matching(state, player, troop_move_choice)
     if context is None:
         return ()
     card_id, _ = _reveal_choice_card_source(state, player, context, "troop_move")
@@ -1929,7 +2177,7 @@ def legal_reveal_troop_move_actions(
         for action_id, troops, commanders in (
             (
                 "deploy_reveal_card_troop",
-                owner.troops_garrison,
+                _deployable_garrison_troops(state, player),
                 owner.commanders_garrison,
             ),
             (
@@ -2004,7 +2252,7 @@ def legal_reveal_troop_sacrifice_actions(
     pending = pending_choice_rows(state, player, legal_reveal_troop_sacrifice_actions)
     if pending is not None:
         return pending
-    context = _reveal_choice_frame_context(state, player, _LOSE_TROOPS_FOR_SPECIMENS)
+    context = _reveal_choice_frame_matching(state, player, troop_loss_specimens)
     if context is None:
         return ()
     owner = state.players[player]
@@ -2051,7 +2299,9 @@ def apply_reveal_troop_sacrifice(
     # handled separately" [FAQ p. 1], so the two troops advance the token
     # once, and a pass past the end still only resets it [Bloodlines p. 12].
     tactician, tactics_events = advance_tactics_token(
-        working.players[action.actor], zones.count("conflict"), source=source
+        working.players[action.actor],
+        zones.count("conflict"),
+        round_number=state.round_number,
     )
     working = replace(working, players=replace_player(working.players, tactician))
     if zones.count("conflict"):
@@ -2066,7 +2316,8 @@ def apply_reveal_troop_sacrifice(
         working = replace(
             working, decision_stack=add_reveal_strength(working.decision_stack, delta)
         )
-    generated = generate_specimens(working, action.actor, 2, source=source)
+    specimens = troop_loss_specimens(_effect_value(context))
+    generated = generate_specimens(working, action.actor, specimens, source=source)
     return RuleResult(state=generated.state, events=(*events, *generated.events))
 
 
@@ -2108,12 +2359,13 @@ def apply_reveal_spice_influence(
     if not isinstance(faction_value, str):
         raise RuntimeError("Reveal Spice payment has invalid Faction")
     owner = state.players[action.actor]
-    if owner.resources.spice < 3:
-        raise RuntimeError("Reveal Influence payment requires three Spice")
+    price = spice_influence_price(_effect_value(context))
+    if owner.resources.spice < price:
+        raise RuntimeError("Reveal Influence payment requires its spice")
     owner = replace(
         owner,
-        resources=replace(owner.resources, spice=owner.resources.spice - 3),
-        spice_spent_turn=owner.spice_spent_turn + 3,
+        resources=replace(owner.resources, spice=owner.resources.spice - price),
+        spice_spent_turn=owner.spice_spent_turn + price,
     )
     paid = replace(state, players=replace_player(state.players, owner))
     gained = gain_faction_influence(
@@ -2123,15 +2375,7 @@ def apply_reveal_spice_influence(
         1,
         event_prefix=f"{source}:gained:{faction_value}",
     )
-    payment_event = GameEvent(
-        event_id=f"{source}:paid",
-        kind="reveal_spice_paid",
-        payload=(
-            ("amount", 3),
-            ("card_id", card_id),
-            ("player", action.actor),
-        ),
-    )
+    payment_event = resources_paid_event(source, action.actor, spice=price)
     return RuleResult(
         state=replace(
             gained.state,
@@ -2315,6 +2559,7 @@ def apply_reveal_spy_action(
         raise RuntimeError("Reveal Spy choice has invalid post IDs")
     owner = state.players[action.actor]
     next_owner = recall_spy(recall_spy(owner, first_post_id), second_post_id)
+    persuasion = spy_pair_persuasion(effect)
     events = (
         _spy_recalled_event(state, action.actor, card_id, first_post_id),
         _spy_recalled_event(state, action.actor, card_id, second_post_id),
@@ -2322,7 +2567,7 @@ def apply_reveal_spy_action(
             event_id=f"{source}:persuasion",
             kind="reveal_persuasion_gained",
             payload=(
-                ("amount", 3),
+                ("amount", persuasion),
                 ("card_id", card_id),
                 ("player", action.actor),
             ),
@@ -2331,7 +2576,7 @@ def apply_reveal_spy_action(
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),
-        decision_stack=add_reveal_persuasion(state.decision_stack[:-1], 3),
+        decision_stack=add_reveal_persuasion(state.decision_stack[:-1], persuasion),
     )
     return RuleResult(state=next_state, events=events)
 
@@ -2525,10 +2770,7 @@ def _desert_power_persuasion_pending(card: PersonalCardDefinition) -> bool:
     없음' 회색").
     """
 
-    return (
-        PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-        in card.reveal_choice_effects
-    )
+    return card_holds_reveal_value(card, PrintedRevealValue.PERSUASION)
 
 
 def _card_reveal_persuasion(card: PersonalCardDefinition) -> int:
@@ -2638,10 +2880,36 @@ def fire_guild_spy_on_spice_must_flow(
 COMMAND_PERSUASION = 6
 """Persuasion a Reveal turn must generate for "Command (6+)" [Bloodlines p. 5]."""
 
+
+
+class _TechRevealPay(NamedTuple):
+    """What a Tech tile's automatic Reveal Turn line pays, read from its
+    record (``tech_reveal_line``)."""
+
+    persuasion: int = 0
+    solari: int = 0
+    swords: int = 0
+
+
+def _tech_reveal_pay(tech_id: str) -> _TechRevealPay:
+    line = tech_reveal_line(tech_id)
+    match () if line is None else line.rewards:
+        case (RevealPersuasion(amount=amount),):
+            return _TechRevealPay(persuasion=amount)
+        case (GainResources(solari=solari),):
+            return _TechRevealPay(solari=solari)
+        case (RevealSwords(amount=amount),):
+            return _TechRevealPay(swords=amount)
+    return _TechRevealPay()
+
+
 # Tech tiles with a "Reveal Turn: Command (6+)" line, and the Reveal-frame
 # key recording which have paid this Reveal.
 _COMMAND_TECH = tuple(
-    (gain.tech_id, gain.ability) for gain in TECH_REVEAL_GAINS if gain.command
+    (tile.tech_id, tile.ability)
+    for tile in TECH_TILES
+    if (line := tech_reveal_line(tile.tech_id)) is not None
+    and line.condition == CommandReached()
 )
 _TECH_GRANTED_KEY = "tech_granted"
 # Skills whose Reveal-turn bonus this Reveal already paid ("Each one works
@@ -2722,11 +2990,7 @@ def _reveal_effect_is_eligible(
         # so a fourth Contract completed later this Reveal (OQ-028 (b)) can
         # never add the Victory Point on top of spice already paid.
         and not (
-            effect.spice > 0
-            and (
-                PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-                in card.reveal_choice_effects
-            )
+            effect.spice > 0 and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
         )
     )
 
@@ -3141,16 +3405,8 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
             events=(
-                GameEvent(
-                    event_id=event_id,
-                    kind="reveal_resources_gained",
-                    payload=(
-                        ("player", player),
-                        ("solari", solari),
-                        ("source", source),
-                        ("spice", spice),
-                        ("water", water),
-                    ),
+                resources_gained_event(
+                    event_id, player, solari=solari, spice=spice, water=water
                 ),
             ),
         )
@@ -3170,7 +3426,7 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
         if kind == "specimens":
             return generate_specimens(settled, player, count, source=event_id)
         if kind == "tleilaxu":
-            return advance_tleilaxu(settled, player, count, source=event_id)
+            return advance_tleilaxu(settled, player, count)
         # A Reveal-box Research icon (Tleilaxu Master): each action advances
         # once, so the two icons may be resolved apart with other Reveal
         # effects between them (designer ruling, OQ-057); the advance may
@@ -3367,19 +3623,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 ("troops", str(skill.reveal_troops), f"skill:{skill.skill_id}")
             )
         events.append(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:reveal:"
-                    f"skill:{skill.skill_id}:late"
-                ),
-                kind="skill_reveal_bonus",
-                payload=(
-                    ("persuasion", skill.reveal_persuasion),
-                    ("player", player),
-                    ("skill_id", skill.skill_id),
-                    ("spice", skill.reveal_spice),
-                    ("troops", skill.reveal_troops),
-                ),
+            _skill_reveal_bonus(
+                f"round:{state.round_number}:player:{player}:reveal", player, skill
             )
         )
     if late_skills:
@@ -3545,8 +3790,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         and has_tech(next_owner.tech_ids, ability)
     )
     for tech_id in late_tech:
-        solari = TECH_REVEAL_GAINS_BY_ID[tech_id].solari
-        sword = TECH_REVEAL_GAINS_BY_ID[tech_id].swords
+        _, solari, sword = _tech_reveal_pay(tech_id)
         if sword:
             frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
         next_owner = replace(
@@ -3557,15 +3801,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         if tile_resources is not None:
             late_gains.append(tile_resources)
         events.append(
-            GameEvent(
-                event_id=f"round:{state.round_number}:player:{player}:tech:{tech_id}:late",
-                kind="tech_reveal_bonus",
-                payload=(
-                    ("player", player),
-                    ("solari", solari),
-                    ("strength", sword),
-                    ("tech_id", tech_id),
-                ),
+            _tech_reveal_bonus(
+                f"round:{state.round_number}:player:{player}:reveal",
+                player,
+                tech_id,
             )
         )
     if late_tech:
@@ -3738,7 +3977,6 @@ _INFLUENCE_GAIN_CHOICES: Final = frozenset(
     {
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
-        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE,
     }
 )
 
@@ -3757,9 +3995,9 @@ def reveal_influence_choice_blocked(
     page greys the waiting choice out with this test (``display.unavailable``).
     """
 
-    return effect in _INFLUENCE_GAIN_CHOICES and not any(
-        influence_can_rise(owner, faction) for faction in Faction
-    )
+    return (
+        effect in _INFLUENCE_GAIN_CHOICES or spice_influence_price(effect) > 0
+    ) and not any(influence_can_rise(owner, faction) for faction in Faction)
 
 
 def _reveal_choice_effect_is_available(
@@ -3802,19 +4040,26 @@ def _reveal_choice_effect_is_available(
         (
             # For Humanity: the Alliance and two Influence with one Faction
             # to lose, judged when the choice opens (OQ-028).
-            effect
-            is _LOSE_INFLUENCE_FOR_VP
-            and Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
+            (loss := influence_loss_reward(effect)) is not None
+            and (loss[2] is None or loss[2].value in owner.alliance_faction_ids)
             and any(
-                influence_amount(owner.influence, faction)
-                >= _FOR_HUMANITY_INFLUENCE_COST
+                influence_amount(owner.influence, faction) >= loss[0]
                 for faction in Faction
             )
         )
         or (
-            # Shadout Mapes: a Commander is a troop [Bloodlines p. 4].
-            effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-            and owner.troops_garrison
+            # Shadout Mapes, Unswerving Loyalty: a unit to move -- a Commander
+            # is a troop [Bloodlines p. 4], Harkonnen Advisor's troop stays
+            # in the garrison (OQ-062 (b)); Unswerving Loyalty's "Fremen
+            # Bond" -- "one or more other Fremen cards in play" [Main p. 20] --
+            # judged when the choice opens like the other Reveal conditions
+            # (OQ-028).
+            troop_move_choice(effect)
+            and (
+                (bond := _troop_move_bond(effect)) is None
+                or has_faction_bond(cards_in_play, card_id, bond)
+            )
+            and _deployable_garrison_troops(state, player)
             + owner.commanders_garrison
             + owner.troops_conflict
             + owner.commanders_conflict
@@ -3822,12 +4067,13 @@ def _reveal_choice_effect_is_available(
         )
         or (
             # Tleilaxu Surgeon: any two troops, from either zone (OQ-053).
-            effect is _LOSE_TROOPS_FOR_SPECIMENS
+            troop_loss_specimens(effect) > 0
             and owner.troops_garrison + owner.troops_conflict >= 2
         )
         or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
+            # Chani, Clever Tactician and Command Center: Sardaukar
+            # Commanders are troops for the retreat [Bloodlines p. 4].
+            retreat_pair_reward(effect) is not None
             and owner.troops_conflict + owner.commanders_conflict >= 2
         )
         or (
@@ -3838,58 +4084,26 @@ def _reveal_choice_effect_is_available(
             and card_id in cards_in_play
         )
         or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
+            is_influence_exchange(effect)
             and any(
                 influence_amount(owner.influence, faction) > 0 for faction in Faction
             )
         )
         or (
-            effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
-            and owner.resources.spice >= 3
+            (price := spice_influence_price(effect)) > 0
+            and owner.resources.spice >= price
             and not reveal_influence_choice_blocked(owner, effect)
-        )
-        or (
-            # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat one
-            # of your troops" [Unswerving Loyalty card] -- "one or more other
-            # Fremen cards in play" [Main p. 20], judged when the choice opens
-            # like the other Reveal conditions (OQ-028); then Shadout Mapes'
-            # own condition (a troop to move).
-            effect is _FREMEN_BOND_TROOP_MOVE
-            and has_faction_bond(cards_in_play, card_id, Faction.FREMEN)
-            and _reveal_choice_effect_is_available(
-                state,
-                player,
-                owner,
-                cards_in_play,
-                card_id,
-                PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
-            )
-        )
-        or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
-            # Sardaukar Commanders are troops for the retreat [Bloodlines p. 4].
-            and owner.troops_conflict + owner.commanders_conflict >= 2
         )
         # The Persuasion branch is always choosable, so the choice always
         # opens, with or without Maker Hooks (option (B), user ruling
         # 2026-09-30); ``legal_reveal_sandworm_actions`` gates the sandworm
         # branch itself through ``reveal_sandworm_block`` (Maker Hooks, water,
         # a Conflict, the Shield Wall).
-        or effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-        or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION
-            and len(owner.spy_post_ids) >= 2
-        )
-        # The spice branch needs nothing, so this choice always opens; its
+        # The spice branch of Priority Contracts needs nothing either; its
         # trash branch is offered only with four completed Contracts at
         # resolution (legal_contract_reveal_choice_actions).
-        or effect
-        is (
-            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-        )
+        or held_reveal_value(effect) is not None
+        or (spy_pair_persuasion(effect) > 0 and len(owner.spy_post_ids) >= 2)
     )
 
 
@@ -3952,16 +4166,7 @@ def _build_reveal_choice_frame(
 # Contracts' printed spice).
 REVEAL_CHOICE_HOOKS: Final = frozenset(
     {
-        "recall_two_spies",
-        "influence_exchange",
-        "spice_for_influence",
-        "retreat_two_troops",
         "command_acquisition",
-        "influence_for_vp",
-        "deploy_or_retreat_troop",
-        "troops_for_specimens",
-        "desert_power",
-        "priority_contracts",
     }
 )
 
@@ -4708,9 +4913,9 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         # round" [card face].
         total += owner.reveal_persuasion_round_bonus
         total += sum(
-            gain.persuasion
-            for gain in TECH_REVEAL_GAINS
-            if not gain.command and has_tech(owner.tech_ids, gain.ability)
+            _tech_reveal_pay(tile.tech_id).persuasion
+            for tile in TECH_TILES
+            if has_tech(owner.tech_ids, tile.ability)
         )
         return total
 
@@ -4726,9 +4931,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for tech_id, ability in _COMMAND_TECH
         if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
     )
-    tech_sword = sum(
-        TECH_REVEAL_GAINS_BY_ID[tech_id].swords for tech_id in tech_granted
-    )
+    tech_sword = sum(_tech_reveal_pay(tech_id).swords for tech_id in tech_granted)
 
     card_strengths = tuple(
         (
@@ -4812,11 +5015,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
         *(
             resource_gain_entry(
-                f"tech:{gain.tech_id}",
-                solari=gain.solari if gain.tech_id in tech_granted else 0,
+                f"tech:{tile.tech_id}",
+                solari=solari if tile.tech_id in tech_granted else 0,
             )
-            for gain in TECH_REVEAL_GAINS
-            if gain.solari
+            for tile in TECH_TILES
+            if (solari := _tech_reveal_pay(tile.tech_id).solari)
         ),
     )
     pending_gains: tuple[RevealGain, ...] = (
@@ -4910,6 +5113,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         context.append(
             (TECH_ACQUIRE_PENDING_KEY, turn_context[TECH_ACQUIRE_PENDING_KEY])
         )
+    # A research bonus a Plot raised before the Reveal (cleanup-2b).
+    context.extend(turn_rows.carried(turn_context))
     if carried_undeployable:
         context.append(("undeployable_troops", carried_undeployable))
     if carried_commanders:
@@ -4975,7 +5180,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     shown = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:revealed",
         kind="cards_revealed",
-        payload=(("card_ids", ",".join(revealed)), ("player", action.actor)),
+        payload=(("card_ids", tuple(revealed)), ("player", action.actor)),
     )
     events: list[GameEvent] = [event, shown]
     for card_id, effect in reveal_effects:
@@ -4993,30 +5198,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             # Combat space [Bloodlines p. 5].
             next_state = grant_combat_icon(next_state, action.actor)
     events.extend(
-        GameEvent(
-            event_id=f"{event.event_id}:tech:{tech_id}",
-            kind="tech_reveal_bonus",
-            payload=(
-                ("player", action.actor),
-                ("solari", TECH_REVEAL_GAINS_BY_ID[tech_id].solari),
-                ("strength", TECH_REVEAL_GAINS_BY_ID[tech_id].swords),
-                ("tech_id", tech_id),
-            ),
-        )
+        _tech_reveal_bonus(event.event_id, action.actor, tech_id)
         for tech_id in tech_granted
     )
     events.extend(
-        GameEvent(
-            event_id=f"{event.event_id}:skill:{skill.skill_id}",
-            kind="skill_reveal_bonus",
-            payload=(
-                ("persuasion", skill.reveal_persuasion),
-                ("player", action.actor),
-                ("skill_id", skill.skill_id),
-                ("spice", skill.reveal_spice),
-                ("troops", skill.reveal_troops),
-            ),
-        )
+        _skill_reveal_bonus(event.event_id, action.actor, skill)
         for skill in active_skills
         if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_troops
     )
@@ -5078,7 +5264,13 @@ def legal_finish_reveal_actions(
         # (OQ-044), and its placement window offers only the decline when no
         # Spy can reach a post, so nothing lapses unasked.
         return ()
-    if context.get(TECH_ACQUIRE_PENDING_KEY):
+    if turn_rows.tech_acquire_effects_hold_the_end(context, state.players[player]):
+        # An owed Tech acquire icon (OQ-098), but not an Influence with
+        # every Faction at the top, which the press lapses (cleanup-2b).
+        return ()
+    if turn_rows.holds_the_end(state, player):
+        # c6r6's Influence waiting on the Reveal, with a Faction it can raise
+        # (cleanup-2b).
         return ()
     if owes_track_spy(state, player):
         # The Emperor track's Influence 4 Spy waits in the turn and must be
@@ -5124,6 +5316,9 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             frame_context(state.decision_stack[-1])
         )
     )
+    # So do the research bonuses waiting on the Reveal (cleanup-2b); the
+    # frame goes with the turn.
+    lapsed_events = (*lapsed_events, *turn_rows.lapse(state, action.actor).events)
     # Face-up Intrigue whose window was this Reveal turn expires with it.
     expired = expire_reveal_faceup_intrigue(state, action.actor)
     working = expired.state
@@ -5295,5 +5490,48 @@ def add_units_to_reveal(
                 kind="reveal_strength_gained",
                 payload=(("amount", strength_delta), ("player", player)),
             ),
+        ),
+    )
+
+
+def _tech_reveal_bonus(source: str, player: int, tech_id: str) -> GameEvent:
+    """A Tech tile's Reveal bonus, named after the Reveal (``<reveal>:tech:
+    <tile>``, whether at the Reveal's start or granted late) and without its
+    zero amounts (cleanup-2c-4); the Solari is gained with the Reveal's
+    gains."""
+
+    gains = _tech_reveal_pay(tech_id)
+    return GameEvent(
+        event_id=f"{source}:tech:{tech_id}",
+        kind="tech_reveal_bonus",
+        payload=(
+            ("player", player),
+            *((("solari", gains.solari),) if gains.solari else ()),
+            *((("strength", gains.swords),) if gains.swords else ()),
+            ("tech_id", tech_id),
+        ),
+    )
+
+
+def _skill_reveal_bonus(
+    source: str, player: int, skill: SkillDefinition
+) -> GameEvent:
+    """A Skill tile's Reveal bonus, as a Tech tile's (``_tech_reveal_bonus``):
+    named after the Reveal, without its zero amounts (cleanup-2c-5); the
+    spice and the troop are gained with the Reveal's gains."""
+
+    return GameEvent(
+        event_id=f"{source}:skill:{skill.skill_id}",
+        kind="skill_reveal_bonus",
+        payload=(
+            *(
+                (("persuasion", skill.reveal_persuasion),)
+                if skill.reveal_persuasion
+                else ()
+            ),
+            ("player", player),
+            ("skill_id", skill.skill_id),
+            *((("spice", skill.reveal_spice),) if skill.reveal_spice else ()),
+            *((("troops", skill.reveal_troops),) if skill.reveal_troops else ()),
         ),
     )

@@ -136,7 +136,12 @@ GAMES = (
     # 1-299 finds seed 20 first (again with Family Atomics, the Feyd track,
     # research and the three v146 events, and with v147's unused Reveal
     # choice and Reveal choice rows naming their card with ``source``).
-    {"seats": ["random"] * 4, "game_seed": 20, "policy_seed": 20, **EVERY_EXPANSION},
+    # Codec v149 (the cleanup-2 engine changes) moves seed 20 off its Secrets
+    # steal. The same scan over random seeds 1-257 (2026-10-19) finds seed 22
+    # first (again with Family Atomics, the Feyd track, research, the three
+    # v146 events and v147's unused Reveal choice and Reveal choice rows; the
+    # exchanged Influence stays with seed 25).
+    {"seats": ["random"] * 4, "game_seed": 22, "policy_seed": 22, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -164,10 +169,19 @@ GAMES = (
     # troops, a mission's pieces on posts and an auction won (no single seed of
     # the 299 reaches them all with a round modifier too; seed 22 has the
     # modifier).
+    # Codec v149 (the cleanup-2 engine changes) moves seed 36 off Clear the
+    # Market, Mating Season, the secret picks revealed and the mission troops
+    # (it keeps Mercenaries), and seed 22 below has none of the first three
+    # either. A scan of the same games through GameSessionManager over random
+    # seeds 1-235 (2026-10-19) finds seed 106 first that, with seed 22 below,
+    # reaches every Scouts surface again (the draws, the item kinds, a round
+    # modifier, Clear the Market, a mission's pieces and troops, an auction
+    # won, Mercenaries, the secret picks revealed and Mating Season; seed 22
+    # has the round modifier and the mission troops).
     {
         "seats": ["random"] * 4,
-        "game_seed": 36,
-        "policy_seed": 36,
+        "game_seed": 106,
+        "policy_seed": 106,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -290,6 +304,11 @@ async ({gameId}) => {
     if (!table || typeof table !== "object") continue;
     for (const entry of Object.values(table)) {
       if (entry && typeof entry.name === "string") names.add(entry.name);
+      // A Leader face's ability name, as the page shows it: Korean from the
+      // Korean print, English for Reverend Mother Jessica, whose face has
+      // no Korean scan (docs/rules/glossary-ko.md); its board repeat's line
+      // names it (cleanup-2c review).
+      if (entry && typeof entry.ability === "string") names.add(entry.ability);
     }
   }
   return {out, names: [...names], posts: Object.keys(state.catalog.posts)};
@@ -379,7 +398,7 @@ def check_coverage(records: list[dict]) -> None:
         "a Feyd track step": lambda s: s == "payload feyd_token_advanced.to_space",
         "a Skill instance": lambda s: s.endswith(".skill_instance_id"),
         "Family Atomics' removed cards": lambda s: s
-        == "payload family_atomics_used.removed",
+        == "payload imperium_row_cleared.removed",
         "an exchanged Influence": lambda s: s == "action exchange_reveal_influence",
         "a Secrets steal": lambda s: s.startswith("chance ") and ":secrets:steal:" in s,
         "a Combat/Endgame Intrigue pass": lambda s: s.startswith("action ")
@@ -473,30 +492,34 @@ def check_log(records, names, posts) -> None:
 
 # Lines whose words come from somewhere other than the event's own label
 # (user report 2026-10-10), rendered with the page's functions in both
-# languages: Staban Tuek's Smuggle Spice payout names the ability and the
-# Leader (panels.js EVENT_IMPLIED_LEADER, the catalog's names), the "game"
+# languages: Staban Tuek's Smuggle Spice -- its gain names him (the
+# ``leader`` source), its ``leader_ability_resolved`` names the ability and
+# the Leader (panels.js logEventHead, the catalog's names) -- the "game"
 # card holding it is titled for a Leader ability, and Esmar Tuek's Signet
-# taking a bonus spice says the spice was gained (not "-1").
+# taking a bonus spice is a gain line (cleanup-2c-4).
 NAMED_JS = r"""() => {
   const out = {};
   const calls = [];
   const realPrettify = window.prettify;
   window.prettify = (id) => { calls.push(String(id)); return realPrettify(id); };
-  const smuggle = {kind: "leader_ability_spice_gained",
-    payload: {player: 0, space_id: "hagga_basin", spice: 1, visitor: 3}};
-  const taken = {kind: "leader_signet_resolved",
-    payload: {bonus_spice: -1, player: 2, space_id: "hagga_basin"}};
+  const gain = {kind: "resources_gained",
+    payload: {player: 0, source: "round:1:player:0:leader:staban_tuek", spice: 1}};
+  const smuggle = {kind: "leader_ability_resolved",
+    payload: {leader_id: "staban_tuek", player: 0, visitor: 3}};
+  const taken = {kind: "resources_gained",
+    payload: {player: 2, source: "round:1:player:2:leader_signet", spice: 1}};
   const placed = {kind: "leader_signet_resolved",
-    payload: {bonus_spice: 1, player: 2, space_id: "tuek_sietch"}};
+    payload: {card_id: "player:2:starter:signet_ring:0", player: 2}};
   try {
     for (const lang of ["ko", "en"]) {
       setLanguage(lang, false);
       const staban = lookup("staban_tuek", "leaders");
       const group = {kind: "neutral", firstIndex: 1, lastIndex: 1,
-        items: [{event: smuggle, index: 1}]};
+        items: [{event: gain, index: 1}, {event: smuggle, index: 1}]};
       out[lang] = {
         leader: staban.name,
         ability: staban.ability,
+        gain: logEventLine(gain).textContent,
         smuggle: logEventLine(smuggle).textContent,
         title: neutralTitle(group),
         taken: logEventLine(taken).textContent,
@@ -516,11 +539,11 @@ def check_named_lines(page, posts: list[str], names: list[str]) -> None:
     shown = page.evaluate(NAMED_JS)
     check.ok(not shown["pretty"], "named lines: prettify() is never called", shown)
     expected = {
-        "ko": ("스타반 튜엑", "스파이스 밀수", "지도자 능력", "보너스 스파이스 1"),
-        "en": ("Staban Tuek", "Smuggle Spice", "Leader ability", "Took 1 bonus spice"),
+        "ko": ("스타반 튜엑", "스파이스 밀수", "지도자 능력"),
+        "en": ("Staban Tuek", "Smuggle Spice", "Leader ability"),
     }
-    verbs = {"ko": "획득", "en": "gained"}
-    for lang, (leader, ability, title, gained) in expected.items():
+    verbs = {"ko": "획득", "en": "Gained"}
+    for lang, (leader, ability, title) in expected.items():
         row = shown[lang]
         check.ok(
             (row["leader"], row["ability"]) == (leader, ability),
@@ -533,23 +556,28 @@ def check_named_lines(page, posts: list[str], names: list[str]) -> None:
             row["smuggle"],
         )
         check.ok(
+            leader in row["gain"] and verbs[lang] in row["gain"],
+            f"{lang}: Smuggle Spice's gain names the Leader",
+            row["gain"],
+        )
+        check.ok(
             row["title"] == title,
             f"{lang}: the card holding it is titled for a Leader ability",
             row["title"],
         )
         check.ok(
-            gained in row["taken"]
-            and verbs[lang] in row["taken"]
+            verbs[lang] in row["taken"]
+            and "1" in row["taken"]
             and "-1" not in row["taken"],
             f"{lang}: Esmar's Signet taking a bonus spice says it was gained",
             row["taken"],
         )
         check.ok(
-            "1" in row["placed"] and gained not in row["placed"],
-            f"{lang}: placing a bonus spice keeps its plain line",
+            verbs[lang] not in row["placed"],
+            f"{lang}: placing a bonus spice gains nothing",
             row["placed"],
         )
-        texts = [row["smuggle"], row["title"], row["taken"], row["placed"]]
+        texts = [row["gain"], row["smuggle"], row["title"], row["taken"], row["placed"]]
         ids = [
             found for text in texts if (found := engine_ids(strip(text, names), posts))
         ]

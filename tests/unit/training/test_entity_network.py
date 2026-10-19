@@ -48,8 +48,10 @@ from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
     SelfPlayRunner,
     SelfPlaySpec,
+    entity_features,  # noqa: E402
 )
 from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
+from dune_imperium.training import entity_network as entity_network_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
     load_checkpoint,
     observation_layout,
@@ -59,12 +61,14 @@ from dune_imperium.training.checkpoint import (  # noqa: E402
 from dune_imperium.training.distill import legal_log_probs  # noqa: E402
 from dune_imperium.training.entity_features import (  # noqa: E402
     FEATURE_DIGEST,
+    Vocabulary,
     resolve,
     resolve_argument,
     vocabularies,
 )
 from dune_imperium.training.entity_network import (  # noqa: E402
     EntityNetwork,
+    action_parts,
     action_vocabulary,
     legacy_inputs,
 )
@@ -78,7 +82,7 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # deliberately (with FEATURE_VERSION when the reflection changes): an entity
 # checkpoint stores the digest and is refused under another one, so a card
 # data fix also retires every entity file written before it.
-_GOLDEN_DIGEST = "261827acbb4bc16f5b83379712d98ac89978c414a30c7340c8aa89a9ec66f3e8"
+_GOLDEN_DIGEST = "2a09fa17b9ae0a02bc731f49c0e3edcc3ad378239d4f16be63e1f5854226a5e0"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -176,6 +180,48 @@ def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
     personal = tables["personal"]
     assert {"acquisition_cost", ":ImperiumCardEntry"} <= set(personal.columns)
     assert FEATURE_DIGEST == _GOLDEN_DIGEST
+
+
+def test_what_an_entity_does_is_read_from_its_records() -> None:
+    """Stage A8 (docs/composed-effects-plan.md 4.4): the effect columns come
+    from the printed ability records, under the box each fills, and the
+    definition fields that only name or tally them are left out."""
+
+    tables = vocabularies()
+    personal = set(tables["personal"].columns)
+    assert {"agent:Ability", "reveal:Ability", "reveal_choice:Ability"} <= personal
+    assert "agent.hook=beasts_spoils" in personal  # a flow kept as code
+    assert not any(
+        column.startswith(("agent_effect", "reveal_effects", "reveal_choice_effects"))
+        for column in personal
+    )
+    assert {"first:Ability", "third:Ability"} <= set(tables["conflict"].columns)
+    assert not any(c.startswith("rewards") for c in tables["conflict"].columns)
+    assert "contract:Ability" in tables["contract"].columns
+    assert "board0:Ability" in tables["space"].columns
+    assert {"signet:Ability", "alternate_signet:Ability"} <= set(
+        tables["leader"].columns
+    )
+    assert not any(c.startswith("ability=") for c in tables["tech"].columns)
+    assert not any(c.startswith("bonus=") for c in tables["research"].columns)
+    # The records tell every card, Leader and tile apart (copies aside).
+    for name in ("personal", "leader", "tech", "space", "conflict"):
+        table = tables[name]
+        assert len({row.tobytes() for row in table.features}) == table.size, name
+
+
+def test_an_action_is_built_from_its_shape() -> None:
+    """Two actions with one verb share its part, whichever effect they answer."""
+
+    trash_agent = set(action_parts("trash_agent_card"))
+    trash_reveal = set(action_parts("trash_reveal_card"))
+    assert "verb=trash" in trash_agent & trash_reveal
+    assert trash_agent != trash_reveal
+    catalog = ActionCodec(_EVERY_OPTION).catalog
+    vocabulary = action_vocabulary(template_keys(catalog))
+    assert len({action_parts(kind) for kind in vocabulary.kinds}) == len(
+        vocabulary.kinds
+    )
 
 
 def test_ids_resolve_by_the_argument_that_names_them() -> None:
@@ -539,11 +585,12 @@ def test_another_ruleset_keeps_every_shared_action_score(
             assert network.action_logits(hidden, torch.tensor(fresh)).abs().sum() > 0
     new_parts = action_vocabulary(new_keys)
     old_parts = action_vocabulary(old_keys)
-    for position, kind in enumerate(new_parts.kinds):
-        row = network.kind_embed.weight[position]
-        if kind in old_parts.kinds:
+    # Shape parts move by name (row 0 is the pad).
+    for position, part in enumerate(new_parts.parts):
+        row = network.part_embed.weight[position + 1]
+        if part in old_parts.parts:
             assert torch.equal(
-                row, original.kind_embed.weight[old_parts.kinds.index(kind)]
+                row, original.part_embed.weight[old_parts.parts.index(part) + 1]
             )
         else:
             assert not row.any()
@@ -592,6 +639,79 @@ def test_an_entity_file_is_refused_under_another_feature_table(tmp_path: Path) -
     document["observation_version"] = 30
     torch.save(document, path)
     with pytest.raises(ValueError, match="carries no input names"):
+        load_checkpoint(path)
+
+
+def test_a_changed_feature_table_moves_an_entity_file_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A card record fixed after a file was written (stage A8): the file is
+    moved by name instead of refused. Every entity whose own features did not
+    change computes exactly what it did, even where a column's scale moved; a
+    new column starts at zero."""
+
+    path = _saved(tmp_path, _BASE)
+    original, _ = load_checkpoint(path)
+    assert isinstance(original, EntityNetwork)
+    with torch.no_grad():
+        before = original.entity_table()
+    tables = dict(vocabularies())
+    tech = tables["tech"]
+    raw = tech.features * np.array(tech.scales, dtype=np.float32)
+    # Tile 1's first column grows past every other tile's (that column's
+    # scale moves for all of them), the last column goes, and a new column
+    # names tile 2 only.
+    raw[1, 0] = np.abs(raw[:, 0]).max() * 2
+    last = len(tech.columns) - 1
+    touched = {1, 2} | set(np.nonzero(raw[:, last])[0].tolist())
+    extra = np.zeros((tech.size, 1), dtype=np.float32)
+    extra[2, 0] = 3.0
+    raw = np.concatenate([raw[:, :last], extra], axis=1)
+    scales = np.abs(raw).max(axis=0)
+    tables["tech"] = Vocabulary(
+        name="tech",
+        ids=tech.ids,
+        columns=(*tech.columns[:last], "test.new_column"),
+        features=raw / scales,
+        scales=tuple(float(value) for value in scales),
+    )
+    for module in (entity_features, entity_network_module):
+        monkeypatch.setattr(module, "vocabularies", lambda: tables)
+        monkeypatch.setattr(module, "FEATURE_DIGEST", "1" * 64)
+
+    moved, info = load_checkpoint(path)
+    assert isinstance(moved, EntityNetwork)
+    assert info.migration is not None and info.migration.features_moved
+    assert (
+        info.migration.feature_columns_new,
+        info.migration.feature_columns_dropped,
+        info.migration.entities_new,
+    ) == (1, 1, 0)
+    assert "entity features" in info.migration.describe()
+    assert not moved.state_dict()["entity_project.tech.weight"][:, -1].any()
+    with torch.no_grad():
+        after = moved.entity_table()
+    start = moved.entity_offsets["tech"]
+    for row in range(after.shape[0]):
+        index = row - start
+        if 0 <= index < tech.size and index in touched:
+            continue
+        torch.testing.assert_close(after[row], before[row])
+    assert not torch.allclose(after[start + 1], before[start + 1])
+
+
+def test_an_entity_file_without_its_feature_table_is_refused_under_another(
+    tmp_path: Path,
+) -> None:
+    """A file written before files stored their feature table cannot be moved
+    by name, so another table still refuses it."""
+
+    path = _saved(tmp_path, _BASE)
+    document = checkpoint_module._read(path)
+    del document["entity_tables"]
+    document["arch"]["feature_digest"] = "0" * 64
+    torch.save(document, path)
+    with pytest.raises(ValueError, match="feature table"):
         load_checkpoint(path)
 
 

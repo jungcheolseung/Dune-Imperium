@@ -4,6 +4,12 @@ from dataclasses import dataclass
 
 from dune_imperium.core.actions import ActionValue
 
+# An event payload value: an action value, or a list of ids or of seat or
+# round numbers (cleanup-2c-7, user decision 2026-10-18: "목록으로 바꾸자.
+# 깔끔하게." -- once comma-joined strings). Action arguments keep
+# ``ActionValue``.
+type EventValue = ActionValue | tuple[str, ...] | tuple[int, ...]
+
 
 @dataclass(frozen=True, slots=True)
 class GameEvent:
@@ -15,7 +21,7 @@ class GameEvent:
 
     event_id: str
     kind: str
-    payload: tuple[tuple[str, ActionValue], ...] = ()
+    payload: tuple[tuple[str, EventValue], ...] = ()
     visible_to: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -30,6 +36,15 @@ class GameEvent:
         ):
             raise ValueError("visible_to players must be unique")
 
+        for key, value in self.payload:
+            if isinstance(value, tuple) and not (
+                all(isinstance(item, str) for item in value)
+                or all(
+                    isinstance(item, int) and not isinstance(item, bool)
+                    for item in value
+                )
+            ):
+                raise ValueError(f"event payload list {key!r} mixes its kinds")
         keys = tuple(key for key, _ in self.payload)
         if len(keys) != len(set(keys)):
             raise ValueError("event payload names must be unique")

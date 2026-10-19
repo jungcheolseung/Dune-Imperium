@@ -179,7 +179,7 @@ def _finish_draft_setup(
         GameEvent(
             event_id="setup:leader_draft:unused",
             kind="leader_draft_unused",
-            payload=(("leader_ids", ",".join(unused)),),
+            payload=(("leader_ids", tuple(unused)),),
         )
     )
     return RuleResult(

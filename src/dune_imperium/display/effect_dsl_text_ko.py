@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     AllianceTaken,
     AtBoardSpace,
+    AtFactionSpace,
     AtMakerSpace,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -85,6 +86,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
+    GainSolariPerPartnerAgentIcon,
     GainSolariPerUnitType,
     GainSpiceWithHelixBonus,
     GainVictoryPoints,
@@ -93,6 +95,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
+    GraftedTrash,
     GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -105,6 +108,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
+    KeepPrintedReveal,
     LookAtIntrigueKeepOne,
     LoseFactionInfluence,
     LoseGarrisonTroops,
@@ -363,6 +367,12 @@ def _gain_influence_text_ko(gain: GainInfluence) -> str:
     하나"); an explicit Faction subset joins with "또는" (korean-card-style.md rule
     6's "—OR—" → "—또는—", extended to an inline word list).
     """
+    if gain.visited_space:
+        # "방문한 팩션 {influence_any} 1 추가" (Overthrow) and "방문한 팩션
+        # {influence_any:2}" (Subversive Advisor), ``tokens_ko.py``.
+        if gain.replaces_space:
+            return f"방문한 팩션 {{influence_any:{gain.times}}}"
+        return f"방문한 팩션 {{influence_any}} {gain.times} 추가"
 
     if gain.factions is not None and len(gain.factions) == 1:
         return f"{{influence_{gain.factions[0].value}:{gain.times}}}"
@@ -498,6 +508,9 @@ def condition_text_ko(condition: Condition) -> str:
         case AtMakerSpace():
             # Quotes ``tokens_ko.py``'s "메이커 장소에 있다면:" (Desert Power).
             return "메이커 장소에 있다면"
+        case AtFactionSpace():
+            # Never printed; "게임판의 팩션 장소" [Main p. 7] (glossary-ko.md).
+            return "팩션 장소에 있다면"
         case FactionBond(faction=faction):
             # "Fremen Bond | 프레멘의 유대감" (glossary-ko.md, [Main p. 20]);
             # ``tokens_ko.py``'s "베네 게세리트의 유대감이면:".
@@ -612,6 +625,9 @@ def cost_text_ko(cost: Cost) -> str:
             # "Paying a cost | 비용 지불" [Main p. 20]; SOV order puts the
             # verb after the joined resource list.
             return ", ".join(parts) + " 지불"
+        case LoseInfluence(count=count, one_faction=True):
+            # Quotes ``tokens_ko.py``'s For Humanity line.
+            return f"한 팩션과 {{influence_any:{count}}} 잃기"
         case LoseInfluence(count=count):
             # {influence_lose} is the client's own combined "Lose N
             # Influence" icon (``ICON_RULES``' "Lose (\d+) Influence" rule),
@@ -671,6 +687,16 @@ def cost_text_ko(cost: Cost) -> str:
         case TrashCard(other_in_play=faction) if faction is not None:
             # Quotes ``tokens_ko.py``'s Calculus of Power line.
             return f"{{in_play}}의 다른 {_faction_name_ko(faction)} 카드 {{trash}}"
+        case TrashCard(grafted=GraftedTrash.OTHER):
+            # Quotes ``tokens_ko.py``'s Dissecting Kit line.
+            return "다른 {graft} 카드 {trash}"
+        case TrashCard(grafted=GraftedTrash.EITHER):
+            # Quotes ``tokens_ko.py``'s Beguiling Pheromones line.
+            return "{graft}한 카드 중 하나 {trash}"
+        case TrashCard(hand_only=True, faction=faction) if faction is not None:
+            # Quotes ``tokens_ko.py``'s Treacherous Maneuver line ("핸드의
+            # 황제 카드 {trash}").
+            return f"핸드의 {_faction_name_ko(faction)} 카드 {{trash}}"
         case TrashCard(hand_only=True):
             # Quotes ``tokens_ko.py``'s Elite Forces line.
             return "핸드에서 카드 1장 {trash}"
@@ -756,9 +782,9 @@ def reward_text_ko(reward: Reward) -> str:
         case RetreatTroops() as troops:
             return _retreat_troops_text_ko(troops)
         case TakeContract(count=count):
-            # Quotes ``display/structs.py``'s established "{contract} N개
-            # 가져옴" (its own ``contract_reward_text_ko``).
-            return f"{{contract}} {count}개 가져옴"
+            # The personal cards' own "앞면 {contract} N개 가져옴" (every
+            # Contract taken is a face-up one, as the cards print it).
+            return f"앞면 {{contract}} {count}개 가져옴"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             base = f"비용이 {max_cost} 이하인 카드 {{acquire}}"
             if to_hand_if is None:
@@ -915,6 +941,13 @@ def reward_text_ko(reward: Reward) -> str:
                 "이번 차례에 당신이 {agent}를 보낸 장소를 정탐 중인 다른 "
                 "플레이어는 그 {spy}를 이동해야 함"
             )
+        case KeepPrintedReveal(value=value):
+            # Quotes ``tokens_ko.py``'s Desert Power / Priority Contracts
+            # lines ("{persuasion} 유지", "{spice} 유지").
+            return f"{{{value.value}}} 유지"
+        case GainSolariPerPartnerAgentIcon():
+            # Quotes ``tokens_ko.py``'s Slig Farmer line.
+            return "다른 {graft} 카드의 {agent} 아이콘마다 {solari:1}"
         case ReturnOtherGraftedCardAtRevealStart():
             # Quotes ``tokens_ko.py``'s Chairdog line.
             return (

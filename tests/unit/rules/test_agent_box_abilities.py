@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AtFactionSpace,
     AtMakerSpace,
     CompleteContract,
     DiscardedCardHasFaction,
@@ -41,6 +42,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     ForceEnemyRetreat,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainResources,
+    GainSolariPerPartnerAgentIcon,
+    GainVictoryPoints,
+    GraftedTrash,
     GraftedWithFaction,
     HasAlliance,
     InfluenceAtLeast,
@@ -74,22 +79,31 @@ from dune_imperium.display.effect_dsl_text_ko import (
 )
 from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
     AgentPaymentBlock,
+    choose_two_box,
     condition_block,
     discard_box,
+    discard_pay_block,
+    discard_pay_box,
     discard_spy,
     either_box,
+    graft_trash_box,
     intrigue_box,
     lose_box,
     opens_at_placement,
     optional_arrow,
     payment_box,
+    plain_and_paid_box,
     target_piece,
     trash_box,
+    wall_and_worm_box,
+    wall_and_worm_needs_hooks,
+    wall_and_worm_spice,
 )
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
@@ -99,10 +113,10 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
     AUTOMATIC_AGENT_ICONS,
-    CONTROL_THE_SPICE_PRICE,
     OPTIONAL_AGENT_ICONS,
     agent_box_influence_blocked,
     agent_card_cost_block,
+    agent_card_effect_is_unavailable,
     agent_card_icons_at_placement,
     agent_card_payment_block,
     agent_icon_block,
@@ -122,16 +136,21 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.effect_interpreter import (
-    condition_holds,
-    spy_placement_allowed_post_ids,
-)
+from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
+from dune_imperium.rules.effect_interpreter import condition_holds
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     agent_card_source,
     short_of,
 )
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+    open_optional_trash,
+)
+from dune_imperium.rules.spy_placement import spy_placement_allowed_post_ids
 
 _BOX = PersonalCardAgentEffect
 
@@ -167,6 +186,10 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.DRAW_ONE_AND_RECALL_AGENT: ("cards", "recall"),
         _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: ("recall",),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
+        # Split per icon (cleanup-2d-5, user decision 2026-10-18).
+        _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
+        _BOX.DRAW_ONE_AND_COMBAT_ICON: ("cards", "combat"),
+        _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: ("cards", "spy"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -182,7 +205,7 @@ def test_placement_requirements_are_fixed_by_the_placement() -> None:
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.requirement is not None
     }
-    assert requirements == {AtMakerSpace, FactionBond}
+    assert requirements == {AtMakerSpace, AtFactionSpace, FactionBond}
     harvester = AGENT_BOX_ABILITIES[_BOX.GAIN_SPICE_IF_MAKER_SPACE]
     owner = PlayerState(player_id=0)
     maker = next(space for space in BOARD_SPACES if space.maker)
@@ -294,14 +317,15 @@ def test_an_icon_waits_for_its_condition_and_resolves_last_in_its_events() -> No
     )
     assert result.state.players[0].resources.solari == 2
     source = agent_card_source(1, 0, card)
-    assert [(event.kind, event.event_id) for event in result.events] == [
-        ("agent_card_effect_resolved", f"{source}:solari:resolved")
-    ]
+    assert result.events == (
+        resources_gained_event(source, 0, solari=2),
+        agent_box_event(source, card, 0, BoxOutcome.RESOLVED, effect="solari"),
+    )
 
 
-def test_one_action_box_puts_its_event_first_and_draws_by_card_name() -> None:
-    """Prepare the Way: one action; its draw is named after the card's
-    definition, so every Reserve copy draws from the same source."""
+def test_one_action_box_puts_its_event_last_and_draws_by_its_box() -> None:
+    """Prepare the Way: one action; its draw is named after the box, and the
+    box's event comes last (cleanup-2c-2)."""
 
     card = "reserve:prepare_the_way:3"
     waiting = _played(card, PlayerState(player_id=0, deck=("imperium:x:0",)))
@@ -318,11 +342,11 @@ def test_one_action_box_puts_its_event_first_and_draws_by_card_name() -> None:
         ),
     )
     resolved = resolve_agent_card_effect(ready)
-    assert resolved.events[0].event_id == agent_card_source(1, 0, card)
-    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    box = agent_card_source(1, 0, card)
+    assert resolved.events[-1] == agent_box_event(box, card, 0, BoxOutcome.RESOLVED)
     assert resolved.state.players[0].hand == ("starting:0:dagger:0",)
     # An empty deck shows the draw's source: the reshuffle is named after the
-    # card, whichever copy drew.
+    # box.
     shuffling = _played(
         card,
         PlayerState(
@@ -332,14 +356,13 @@ def test_one_action_box_puts_its_event_first_and_draws_by_card_name() -> None:
         ),
     )
     reshuffle = resolve_agent_card_effect(shuffling).state.decision_stack[-1]
-    assert reshuffle.frame_id == (
-        "round:1:player:0:agent_card:prepare_the_way:discard_shuffle:personal_draw"
-    )
+    assert reshuffle.frame_id == f"{box}:discard_shuffle:personal_draw"
 
 
-def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> None:
-    """The troop first; the black trash icon on a frame named after the box,
-    so a self-trash keeps its card's effects (OQ-022)."""
+def test_throne_room_politics_recruits_then_queues_its_trash_on_the_turn() -> None:
+    """The troop first; the black trash icon waits on the Agent turn as rows
+    with no refusal, queued under the box's own source so a self-trash keeps
+    its card's effects (OQ-022; cleanup-2b, OQ-095 (2))."""
 
     card = "imperium:throne_room_politics:0"
     placed = _played(
@@ -351,15 +374,70 @@ def test_throne_room_politics_recruits_then_offers_its_trash_on_a_frame() -> Non
     troops = placed.players[0].troops_garrison
     assert result.state.players[0].troops_garrison == troops + 1
     frame = result.state.decision_stack[-1]
-    assert frame.kind == FrameKind.OPTIONAL_TRASH
-    assert dict(frame.context)["source"] == agent_card_source(1, 0, card)
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.pending(frame) == (
+        (turn_rows.OPTIONAL_TRASH, agent_card_source(1, 0, card), ""),
+    )
+    legal = legal_optional_trash_actions(result.state, 0)
+    # The card itself sits in play: it may trash itself (OQ-022). No refusal.
+    assert [(a.action_id, dict(a.arguments)) for a in legal] == [
+        ("trash_optional_card", {"card_id": card})
+    ]
     assert result.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_a_self_trash_takes_the_trash_its_own_box_opened() -> None:
+    """With two trashes waiting, the card whose own Agent box opened one of
+    them is trashed by that one, so it keeps what is left of its box (OQ-022:
+    "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"); any
+    other card takes the newest waiting trash, the order the windows, stacked
+    as they were raised, answered (cleanup-2b, OQ-095 (2))."""
+
+    card = "imperium:throne_room_politics:0"
+    other = "starting:0:dagger:0"
+    placed = _played(
+        card,
+        PlayerState(player_id=0, discard_pile=(other,)),
+        RulesetConfig(immortality=True, bloodlines=True, choam_module=True),
+    )
+    own = agent_card_source(1, 0, card)
+    elsewhere = "round:1:player:0:test:second_trash"
+    # The box's trash first, a second one raised after it: the newest waiting
+    # trash is not the box's own.
+    waiting = open_optional_trash(resolve_agent_card_effect(placed).state, 0, elsewhere)
+    frame = waiting.decision_stack[-1]
+    assert turn_rows.pending(frame) == (
+        (turn_rows.OPTIONAL_TRASH, own, ""),
+        (turn_rows.OPTIONAL_TRASH, elsewhere, ""),
+    )
+    offered = legal_optional_trash_actions(waiting, 0)
+    assert {dict(a.arguments)["card_id"] for a in offered} == {card, other}
+
+    def trash(card_id: str) -> GameState:
+        action = DomainAction("trash_optional_card", 0, (("card_id", card_id),))
+        return apply_optional_trash(waiting, action).state
+
+    # The box's own card: its trash is taken, the other stays waiting, and
+    # the box is marked as self-trashed.
+    itself = trash(card)
+    assert itself.players[0].trashed == (card,)
+    assert turn_rows.pending(itself.decision_stack[-1]) == (
+        (turn_rows.OPTIONAL_TRASH, elsewhere, ""),
+    )
+    assert dict(itself.decision_stack[-1].context)["agent_card_self_trashed"] is True
+    # Any other card: the newest trash is taken and the box's own still waits.
+    stranger = trash(other)
+    assert stranger.players[0].trashed == (other,)
+    assert turn_rows.pending(stranger.decision_stack[-1]) == (
+        (turn_rows.OPTIONAL_TRASH, own, ""),
+    )
+    assert "agent_card_self_trashed" not in dict(stranger.decision_stack[-1].context)
 
 
 def test_pointing_the_way_draws_its_intrigue_before_the_write_back() -> None:
     """Pointing the Way waits for a sandworm in the Conflict, then draws its
     Intrigue card under the box's ``:intrigue_draw`` source; the box's event
-    comes first. (The equivalence games never resolve it.)"""
+    comes last. (The equivalence games never resolve it.)"""
 
     card = "imperium:pointing_the_way:0"
     config = RulesetConfig(bloodlines=True)
@@ -376,8 +454,8 @@ def test_pointing_the_way_draws_its_intrigue_before_the_write_back() -> None:
     result = resolve_agent_card_effect(ready)
     source = agent_card_source(1, 0, card)
     assert [(event.kind, event.event_id) for event in result.events] == [
-        ("agent_card_effect_resolved", source),
-        ("intrigue_card_drawn", f"{source}:intrigue_draw:intrigue_draw:1"),
+        ("intrigue_card_drawn", f"{source}:intrigue_draw:1"),
+        ("agent_card_effect_resolved", f"{source}:resolved"),
     ]
     assert result.state.players[0].intrigue_cards == ("intrigue:bribery:0",)
 
@@ -400,7 +478,8 @@ def test_every_hook_record_names_a_special_flow() -> None:
 def test_an_optional_arrow_offers_its_payment_while_it_can_pay() -> None:
     """Smuggler's Haven, "You may pay 4 spice -> Gain 1 VP" (composed A3b):
     the payment row while the spice is there, only the raw refusal (dropped
-    in the turn) once it is not; the payment's event has no card id."""
+    in the turn) once it is not; the payment's event is named after the box
+    and has no card id, and the box's event comes last."""
 
     card = "imperium:smuggler_s_haven:0"
     rich = _played(card, PlayerState(player_id=0, resources=Resources(spice=4)))
@@ -412,12 +491,16 @@ def test_an_optional_arrow_offers_its_payment_while_it_can_pay() -> None:
     owner = paid.state.players[0]
     assert (owner.resources.spice, owner.spice_spent_turn) == (0, 4)
     assert owner.victory_points == rich.players[0].victory_points + 1
-    assert [(e.kind, e.event_id, e.payload) for e in paid.events] == [
-        (
-            "agent_card_payment_resolved",
-            "round:1:player:0:agent_card_payment:paid",
-            (("player", 0), ("resource", "spice"), ("spent", 4)),
-        )
+    box = agent_card_source(1, 0, card)
+    payment, *rest = paid.events
+    assert (payment.kind, payment.event_id, payment.payload) == (
+        "resources_paid",
+        f"{box}:paid",
+        (("player", 0), ("source", box), ("spice", 4)),
+    )
+    assert rest == [
+        resources_gained_event(box, 0, victory_points=1),
+        agent_box_event(box, card, 0, BoxOutcome.RESOLVED),
     ]
     poor = _played(card, PlayerState(player_id=0, resources=Resources(spice=3)))
     assert legal_agent_card_payment_actions(poor, 0) == (
@@ -429,7 +512,7 @@ def test_an_optional_arrow_offers_its_payment_while_it_can_pay() -> None:
 def test_a_payment_that_buys_nothing_is_withheld() -> None:
     """Tleilaxu Surgeon: spending two specimens is not offered once the
     Tleilaxu token is at the track's end (OQ-071); otherwise it advances the
-    token twice under the payment's ``:tleilaxu`` source."""
+    token twice under the box's ``:tleilaxu`` source."""
 
     card = "imperium:tleilaxu_surgeon:0"
     config = RulesetConfig(immortality=True)
@@ -442,16 +525,20 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
         placed, DomainAction("pay_agent_card_two_specimens", 0)
     )
     assert paid.state.players[0].specimens == 0
+    box = agent_card_source(1, 0, card)
     assert paid.events[0].payload == (
         ("player", 0),
-        ("resource", "specimen"),
-        ("spent", 2),
+        ("source", box),
+        ("specimens", 2),
     )
+    assert paid.events[0].event_id == f"{box}:paid"
+    advances = paid.events[1:-1]
+    assert advances
+    # The Tleilaxu track names its own events (cleanup-2c-5).
     assert all(
-        event.event_id.startswith("round:1:player:0:agent_card_payment:tleilaxu")
-        for event in paid.events[1:]
+        event.event_id.startswith("round:1:player:0:tleilaxu:") for event in advances
     )
-    assert paid.events[1:]
+    assert paid.events[-1] == agent_box_event(box, card, 0, BoxOutcome.RESOLVED)
     finished = replace(
         placed,
         players=(
@@ -468,9 +555,10 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the four records it was written for, and
-    refuses a record it would pay wrongly (a reward it does not give, a
-    cost no row names): such a box keeps its own code."""
+    """The payment shape takes the five records it was written for (Control
+    the Spice since cleanup-2d), and refuses a record it would pay wrongly
+    (a reward it does not give, a cost no row names): such a box keeps its
+    own code."""
 
     payments = {
         effect
@@ -482,9 +570,10 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_FOUR_SPICE_FOR_VP,
         _BOX.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+        _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     }
     for cost, rewards in (
-        (PayResources(spice=1), (TrashPersonalCard(), RecruitTroops(1))),
+        (PayResources(spice=1), (GainInfluence(),)),
         (PayResources(solari=5), (AdvanceTleilaxu(1),)),
     ):
         optional = Ability(
@@ -517,6 +606,7 @@ def test_a_chosen_influence_offers_every_rising_faction_and_waits_without_one() 
     source = agent_card_source(1, 0, card)
     prefix = f"{source}:influence:spacing_guild"
     assert gained.events[0].event_id == f"{prefix}:influence"
+    assert gained.events[-1] == agent_box_event(source, card, 0, BoxOutcome.RESOLVED)
     context = dict(gained.state.decision_stack[-1].context)
     assert context["pending_agent_effect"] is False
     top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
@@ -527,7 +617,7 @@ def test_a_chosen_influence_offers_every_rising_faction_and_waits_without_one() 
     assert not agent_box_influence_blocked(placed, 0)
     fizzled = resolve_agent_card_effect(stuck)
     assert [(e.kind, e.event_id) for e in fizzled.events] == [
-        ("agent_card_effect_unavailable", source)
+        ("agent_card_effect_unavailable", f"{source}:unavailable")
     ]
 
 
@@ -548,14 +638,15 @@ def test_public_spectacle_waits_for_a_recalled_spy() -> None:
         ),
     )
     assert len(legal_agent_card_influence_actions(recalled, 0)) == 4
-    with pytest.raises(RuntimeError, match="requires a player choice"):
+    with pytest.raises(BoxNeedsRows, match="resolves through its target choice"):
         resolve_agent_card_effect(recalled)
 
 
-def test_six_boxes_choose_one_target_and_read_as_their_cards() -> None:
+def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
     """Composed A3c: a mandatory line that is one target choice -- a
-    Faction, a Spy's post, an enemy unit, a Contract -- and no other record
-    is read as one; the new pieces read as the printed text."""
+    Faction, a Spy's post, an enemy unit, a Contract; Long Reach's two
+    distinct Factions since cleanup-2d -- and no other record is read as
+    one; the new pieces read as the printed text."""
 
     targets = {
         effect: type(piece)
@@ -569,6 +660,7 @@ def test_six_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: PlaceSpy,
         _BOX.FORCE_OPPONENT_TROOP_RETREAT: ForceEnemyRetreat,
         _BOX.COMPLETE_ONE_CONTRACT: CompleteContract,
+        _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: GainInfluence,
     }
     for effect in (
         _BOX.PLACE_SPY,
@@ -651,7 +743,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
     assert legal_agent_card_opponent_retreat_actions(tactics, 0) == ()
     fizzled = resolve_agent_card_effect(tactics)
     assert [(e.kind, e.event_id) for e in fizzled.events] == [
-        ("agent_card_effect_unavailable", source)
+        ("agent_card_effect_unavailable", f"{source}:unavailable")
     ]
     enemy = replace(
         tactics.players[2],
@@ -666,7 +758,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         dict(row.arguments)
         for row in legal_agent_card_opponent_retreat_actions(engaged, 0)
     ] == [{"player": 2}, {"commanders": 1, "player": 2}]
-    with pytest.raises(RuntimeError, match="enemy retreat"):
+    with pytest.raises(BoxNeedsRows, match="target choice"):
         resolve_agent_card_effect(engaged)
 
     owner = PlayerState(player_id=0, active_contract_ids=("contract:heighliner_ii",))
@@ -675,7 +767,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         dict(row.arguments)["instance_id"]
         for row in legal_agent_card_contract_completion_actions(demands, 0)
     ] == ["contract:heighliner_ii"]
-    with pytest.raises(ValueError, match="complete_contract_by_card"):
+    with pytest.raises(BoxNeedsRows, match="target choice"):
         resolve_agent_card_effect(demands)
 
 
@@ -754,13 +846,14 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
         assert not discard_box(ability) and not payment_box(ability)
 
 
-def test_five_trash_boxes_and_what_they_read_as() -> None:
+def test_six_trash_boxes_and_what_they_read_as() -> None:
     """Composed A3e: black trash icons (Calculus of Power's one, Ruthless
     Leadership's two under its Commander condition) and arrows paid by a
     trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge, Elite
-    Forces' armed draw and troop with the Combat paid at once). Only
-    Ruthless Leadership resolves as one action -- its condition failing --
-    the others through their rows alone."""
+    Forces' armed draw and troop with the Combat paid at once; Treacherous
+    Maneuver's two trashes for the visited Faction's 2 instead of 1 since
+    cleanup-2d). Only Ruthless Leadership resolves as one action -- its
+    condition failing -- the others through their rows alone."""
 
     trash = {
         effect: ability
@@ -773,7 +866,13 @@ def test_five_trash_boxes_and_what_they_read_as() -> None:
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+        _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
     }
+    treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)
+    assert trash[treacherous].sections[0].costs == (hand, TrashCard(this_card=True))
+    assert cost_text_ko(hand) in AGENT_EFFECT_TEXT_KO[treacherous]
+    assert "an Emperor card from your hand" in AGENT_EFFECT_TEXT[treacherous]
     elite = trash[_BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS]
     assert elite.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS)
     assert len(elite.sections) == 3
@@ -793,6 +892,8 @@ def test_five_trash_boxes_and_what_they_read_as() -> None:
     assert reward_text_ko(pledge) in AGENT_EFFECT_TEXT_KO[gambit]
     with pytest.raises(ValueError, match="one place"):
         TrashCard(hand_only=True, this_card=True)
+    with pytest.raises(ValueError, match="in hand"):
+        TrashCard(faction=Faction.EMPEROR)
 
 
 def test_ruthless_leadership_waits_for_a_commander() -> None:
@@ -810,7 +911,7 @@ def test_ruthless_leadership_waits_for_a_commander() -> None:
     commanding = replace(alone, players=(owner, *alone.players[1:]))
     rows = legal_agent_card_trash_actions(commanding, 0)
     assert rows[0].action_id == "decline_agent_card_trash"
-    with pytest.raises(RuntimeError, match="trash effect requires"):
+    with pytest.raises(BoxNeedsRows, match="trash effect requires"):
         resolve_agent_card_effect(commanding)
 
 
@@ -882,11 +983,14 @@ def test_arrakis_observer_announces_its_spice_and_waits_on_its_spy() -> None:
     rows = legal_agent_card_discard_actions(placed, 0)
     discard = next(row for row in rows if row.action_id == "discard_agent_card")
     paid = apply_agent_card_discard(placed, discard)
-    source = "round:1:player:0:agent_card_discard"
-    assert [(e.kind, e.event_id) for e in paid.events][-1] == (
-        "agent_card_effect_resolved",
-        f"{source}:{guild}:spice",
+    # The spice is a gain of the box; the box is not over, so it has no event.
+    source = agent_card_source(1, 0, card)
+    assert paid.events == (
+        paid.events[0],
+        resources_gained_event(source, 0, spice=2),
     )
+    assert paid.events[0].kind == "card_discarded"
+    assert paid.events[0].event_id == f"{source}:discard:{guild}"
     context = dict(paid.state.decision_stack[-1].context)
     assert context["agent_card_spy_pending"] is True
     assert context["pending_agent_effect"] is True
@@ -894,14 +998,16 @@ def test_arrakis_observer_announces_its_spice_and_waits_on_its_spy() -> None:
     assert spy_rows and {row.action_id for row in spy_rows} == {"place_agent_card_spy"}
     # The one-action resolution of the Spy step: refused while it has rows,
     # else the Spy marks go and the box is unavailable (OQ-057 (1)).
-    with pytest.raises(RuntimeError, match="place-Spy"):
+    with pytest.raises(BoxNeedsRows, match="place-Spy"):
         resolve_agent_card_effect(paid.state)
     seat = paid.state.players[0]
     boxed = replace(seat, spies_supply=0, spy_post_ids=(), spies_boxed=3)
     stuck = replace(paid.state, players=(boxed, *paid.state.players[1:]))
     assert legal_agent_card_spy_actions(stuck, 0) == ()
     fizzled = resolve_agent_card_effect(stuck)
-    assert [e.kind for e in fizzled.events] == ["agent_card_effect_unavailable"]
+    assert fizzled.events == (
+        agent_box_event(source, card, 0, BoxOutcome.UNAVAILABLE),
+    )
     after = dict(fizzled.state.decision_stack[-1].context)
     assert "agent_card_spy_pending" not in after
     assert after["pending_agent_effect"] is False
@@ -911,7 +1017,9 @@ def test_piter_loses_a_unit_then_arms_its_rewards() -> None:
     """Composed A3f: Piter, Genius Advisor's "You may lose 1 troop -> Draw 2
     cards, Research" -- a troop or a Sardaukar Commander per zone (OQ-105),
     then both rewards armed (OQ-106); with no unit only the refusal, and the
-    one-action resolution keeps its old answer (unavailable)."""
+    dry run answers that the box is unavailable (cleanup-2c-2: every optional
+    arrow alike, and the one-action resolution leaves an optional box to its
+    rows)."""
 
     piter = AGENT_BOX_ABILITIES[_BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH]
     assert lose_box(piter) and not optional_arrow(piter)
@@ -932,23 +1040,23 @@ def test_piter_loses_a_unit_then_arms_its_rewards() -> None:
     assert [row.action_id for row in legal_agent_card_payment_actions(bare, 0)] == [
         "decline_agent_card_payment"
     ]
-    assert [e.kind for e in resolve_agent_card_effect(bare).events] == [
-        "agent_card_effect_unavailable"
-    ]
+    assert agent_card_effect_is_unavailable(bare)
+    with pytest.raises(BoxNeedsRows):
+        resolve_agent_card_effect(bare)
 
 
-def test_control_the_spice_is_a_payment_hook() -> None:
-    """Control the Spice keeps its payment flow as code (its paid event names
-    the card and carries the troops, its trash is a frame of its own): the
-    record names the hook, prints the line, and the one-action resolution
-    refuses as before."""
+def test_control_the_spice_is_a_payment_box() -> None:
+    """Control the Spice's arrow is the payment shape's since cleanup-2d:
+    the troop now, the black trash icon on a frame of its own
+    (``tests/unit/rules/test_control_the_spice.py`` plays it)."""
 
     spice = AGENT_BOX_ABILITIES[_BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT]
-    assert spice.hook == "control_the_spice"
+    assert spice.hook is None
     assert spice.mark is AbilityMark.OPTIONAL
     (line,) = spice.sections
-    assert line.costs == (PayResources(spice=CONTROL_THE_SPICE_PRICE),)
-    assert not payment_box(spice) and not trash_box(spice)
+    assert line.costs == (PayResources(spice=1),)
+    assert line.rewards == (TrashPersonalCard(), RecruitTroops(1))
+    assert payment_box(spice) and not trash_box(spice)
 
 
 def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
@@ -1091,20 +1199,100 @@ def test_three_boxes_resolve_as_one_action_with_their_own_pieces() -> None:
             assert reward_text_ko(reward) in AGENT_EFFECT_TEXT_KO[effect]
 
 
-def test_the_optional_hooks_say_so_in_their_records() -> None:
-    """The boxes kept as hooks (composed A3, A3g) that are printed as an
-    optional effect -- an arrow cost [FAQ p. 3] -- are marked so in their
-    records; no separate table lists them any more."""
+def test_no_optional_box_is_a_hook_any_more() -> None:
+    """The optional boxes once kept as hooks (composed A3, A3g) are records
+    since cleanup-2d; the boxes still kept as hooks are mandatory flows."""
 
-    assert {
+    assert not {
         ability.hook
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.hook is not None and ability.mark is AbilityMark.OPTIONAL
-    } == {
-        "control_the_spice",
-        "treacherous_maneuver",
-        "corrinth_city",
-        "arrakis_revolt",
-        "dissecting_kit",
     }
-    assert len(box_hook_names()) == 20
+    assert box_hook_names() == {
+        "beasts_spoils",
+        "long_live_the_fighters",
+        "possible_futures",
+        "scientific_breakthrough",
+    }
+    revolt = AGENT_BOX_ABILITIES[
+        _BOX.MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+    ]
+    assert wall_and_worm_box(revolt)
+    assert wall_and_worm_spice(revolt) == 2 and wall_and_worm_needs_hooks(revolt)
+
+
+def test_the_grafted_card_trashes_are_records() -> None:
+    """Dissecting Kit and Beguiling Pheromones (cleanup-2d): a grafted card's
+    trash for a specimen (optional, "the other grafted card") or for the
+    visited Faction's Influence (mandatory, "one of the grafted cards"),
+    read as the cards print them."""
+
+    kit_effect = _BOX.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN
+    pheromones_effect = _BOX.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+    kit = AGENT_BOX_ABILITIES[kit_effect]
+    pheromones = AGENT_BOX_ABILITIES[pheromones_effect]
+    assert graft_trash_box(kit) and graft_trash_box(pheromones)
+    assert kit.mark is AbilityMark.OPTIONAL
+    assert pheromones.mark is AbilityMark.MANDATORY
+    assert kit.sections[0].costs == (TrashCard(grafted=GraftedTrash.OTHER),)
+    assert pheromones.sections[0].costs == (TrashCard(grafted=GraftedTrash.EITHER),)
+    assert pheromones.sections[0].rewards == (GainInfluence(visited_space=True),)
+    for effect, ability in ((kit_effect, kit), (pheromones_effect, pheromones)):
+        cost = ability.sections[0].costs[0]
+        assert cost_text(cost).lower() in AGENT_EFFECT_TEXT[effect].lower()
+        assert cost_text_ko(cost) in AGENT_EFFECT_TEXT_KO[effect]
+    with pytest.raises(ValueError, match="no other place"):
+        TrashCard(hand_only=True, grafted=GraftedTrash.OTHER)
+
+
+def test_stitched_horror_is_a_choose_two_record() -> None:
+    """Stitched Horror's "Choose two" (cleanup-2d): four one-reward lines,
+    picked by their keys in printed order; a "Choose two" needs lines to
+    choose from."""
+
+    horror = AGENT_BOX_ABILITIES[_BOX.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU]
+    assert choose_two_box(horror)
+    assert horror.structure is AbilityStructure.CHOOSE_TWO
+    assert [line.rewards for line in horror.sections] == [
+        (GainResources(water=1),),
+        (RecruitTroops(1),),
+        (TrashPersonalCard(),),
+        (AdvanceTleilaxu(1),),
+    ]
+    with pytest.raises(ValueError, match="two or more lines"):
+        Ability(
+            AbilityTiming.AGENT_BOX,
+            (EffectSection(rewards=(GainResources(water=1),)),),
+            structure=AbilityStructure.CHOOSE_TWO,
+        )
+
+
+def test_corrinth_city_is_a_discard_and_pay_record() -> None:
+    """Corrinth City's arrow (cleanup-2d): two discards and five Solari for a
+    Victory Point, judged as a whole, its rows keeping the card's names."""
+
+    corrinth = AGENT_BOX_ABILITIES[_BOX.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP]
+    assert discard_pay_box(corrinth) and corrinth.hook is None
+    (line,) = corrinth.sections
+    assert line.costs == (DiscardFromHand(2), PayResources(solari=5))
+    assert line.rewards == (GainVictoryPoints(1),)
+    owner = PlayerState(player_id=0, resources=Resources(solari=4), hand=("a", "b"))
+    assert discard_pay_block(owner, corrinth) == short_of(
+        OptionalBlockKind.SOLARI, 5, 4
+    )
+
+
+def test_slig_farmer_is_a_plain_line_beside_a_paid_arrow() -> None:
+    """Slig Farmer (cleanup-2d): the per-icon Solari, then "You may pay 5
+    solari -> Advance the Tleilaxu track", read as the card prints them."""
+
+    effect = _BOX.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+    farmer = AGENT_BOX_ABILITIES[effect]
+    assert plain_and_paid_box(farmer) and farmer.hook is None
+    plain, paid = farmer.sections
+    assert plain.rewards == (GainSolariPerPartnerAgentIcon(),)
+    assert paid.costs == (PayResources(solari=5),)
+    assert paid.rewards == (AdvanceTleilaxu(1),)
+    gain = GainSolariPerPartnerAgentIcon()
+    assert reward_text(gain) in AGENT_EFFECT_TEXT[effect]
+    assert reward_text_ko(gain) in AGENT_EFFECT_TEXT_KO[effect]

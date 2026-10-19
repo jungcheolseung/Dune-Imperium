@@ -1,12 +1,14 @@
 """Shared Observation Post occupancy operations."""
 
 from copy import replace
+from dataclasses import dataclass
 
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
     Faction,
 )
+from dune_imperium.content.uprising.effect_dsl import PlaceSpy
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
@@ -55,6 +57,105 @@ def solo_occupied_post_ids(
     )
 
 
+def spy_placement_posts(
+    state: GameState,
+    player: int,
+    allowed_post_ids: frozenset[str] | None = None,
+    *,
+    shared_post: bool = False,
+) -> tuple[str, ...]:
+    """The posts a placement may use now: the empty allowed ones, or with
+    ``shared_post`` any allowed post the owner's own Spy does not hold --
+    "you also have the option to ignore any opponents' Spies ... (You can't
+    place the Spy where you already have a Spy of your own.)" [Bloodlines
+    p. 5] (Spy with Deep Cover, Distraction)."""
+
+    if shared_post:
+        own = set(state.players[player].spy_post_ids)
+        return tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id not in own
+            and (allowed_post_ids is None or post.post_id in allowed_post_ids)
+        )
+    return empty_observation_post_ids(state, allowed_post_ids)
+
+
+def spy_recall_posts(
+    state: GameState,
+    player: int,
+    placements: tuple[str, ...],
+    allowed_post_ids: frozenset[str] | None = None,
+    *,
+    shared_post: bool = False,
+) -> tuple[str, ...]:
+    """The owner's Spies a recall-first may take with an empty supply: "If
+    you have no Spies in your supply when you need to place one, you may
+    first recall one of your Spies" [Main pp. 11, 20] -- any while a
+    placement post is free; otherwise only one whose recall frees an
+    allowed post: with ``shared_post`` any of the owner's allowed posts,
+    else a post the owner's Spy holds alone (a post shared with another
+    player's Spy stays occupied, ``solo_occupied_post_ids``)."""
+
+    owner = state.players[player]
+    if placements:
+        return owner.spy_post_ids
+    if shared_post:
+        return tuple(
+            post_id
+            for post_id in owner.spy_post_ids
+            if allowed_post_ids is None or post_id in allowed_post_ids
+        )
+    return solo_occupied_post_ids(state, player, allowed_post_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class SpyOptions:
+    """What a Spy placement offers now (``spy_options``): posts to place on,
+    Spies to recall first, and whether the pass-up row (first) is offered."""
+
+    place: tuple[str, ...] = ()
+    recall: tuple[str, ...] = ()
+    pass_up: bool = False
+
+
+def spy_options(
+    state: GameState,
+    player: int,
+    allowed_post_ids: frozenset[str] | None = None,
+    *,
+    shared_post: bool = False,
+    recalled: bool = False,
+    stuck_passes: bool = True,
+) -> SpyOptions:
+    """One placement's choices, whatever offers it.
+
+    Placing is mandatory while a Spy is in the supply and a post is free (the
+    erratum to [Main p. 11], OQ-057 (14)). Without a Spy "you may first
+    recall one of your Spies" [Main pp. 11, 20]: the pass-up comes first,
+    then the recalls that open a post (``spy_recall_posts``, OQ-057 (14)
+    addition 2026-10-14); once a recall-first was made (``recalled``) the
+    placement is owed and the pass-up is gone. With nothing to place or
+    recall a host either passes (``stuck_passes``) or waits for the turn's
+    end and fizzles (an Agent box, a Leader Signet, OQ-057 (1)).
+    """
+
+    owner = state.players[player]
+    posts = spy_placement_posts(
+        state, player, allowed_post_ids, shared_post=shared_post
+    )
+    if owner.spies_supply > 0:
+        if posts:
+            return SpyOptions(place=posts)
+        return SpyOptions(pass_up=stuck_passes)
+    recalls = spy_recall_posts(
+        state, player, posts, allowed_post_ids, shared_post=shared_post
+    )
+    if not recalls:
+        return SpyOptions(pass_up=stuck_passes and not recalled)
+    return SpyOptions(recall=recalls, pass_up=not recalled)
+
+
 def observation_post_ids_for_factions(
     factions: tuple[Faction, ...],
 ) -> frozenset[str]:
@@ -85,6 +186,28 @@ def observation_post_ids_for_agent_icons(
             for space_id in post.connected_space_ids
         )
     )
+
+
+def _refuse_visited_space(reward: PlaceSpy) -> None:
+    # The space visited this turn is the Agent box's to know
+    # (``agent_box_abilities.agent_spy_rows``, Double Agent).
+    if reward.visited_space:
+        raise TypeError(f"{reward!r} is judged with its Agent box")
+
+
+def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
+    """Return the posts a limited placement may use; None when unlimited.
+
+    "Some effects limit placement. For example: '[Spy] on [City]' means the
+    observation post must connect to a [City] board space." [Main p. 20]
+    """
+
+    _refuse_visited_space(reward)
+    if reward.factions is not None:
+        return observation_post_ids_for_factions(reward.factions)
+    if reward.agent_icons is not None:
+        return observation_post_ids_for_agent_icons(reward.agent_icons)
+    return None
 
 
 def is_spying_on_space(player: PlayerState, space_id: str) -> bool:

@@ -7,7 +7,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -277,7 +277,7 @@ def _play_with_faction_oracle(spec: T.MatchSpec) -> list[dict[str, int]]:
             if not isinstance(player, int) or faction not in net[0]:
                 continue
             sign = 1 if event.kind == "influence_gained" else -1
-            net[player][faction] += sign * int(data["amount"])
+            net[player][faction] += sign * cast(int, data["amount"])
         state = result.state
     else:
         raise RuntimeError(f"step limit reached for seed {spec.game_seed}")
@@ -345,12 +345,11 @@ def test_source_category_routes_navigation_gains_to_leader(
         category("round:9:combat_reward:distinct_influence:3:2:fremen:influence")
         == "combat_reward"
     )
-    # Immortality's Agent-box paid resource choice aliases to "agent_card",
-    # not a stray "agent_card_payment" bucket.
+    # Immortality's Agent-box paid resource choice is named after the box.
     assert (
         category(
-            "round:5:player:2:agent_card_payment:research:research:c1r1:"
-            "influence:fremen:influence"
+            "round:5:player:2:agent_card:imperium:scientific_breakthrough:0:"
+            "research:research:c1r1:influence:fremen:influence"
         )
         == "agent_card"
     )
@@ -476,12 +475,63 @@ def test_navigation_gain_is_bucketed_leader_in_a_real_game(
     # Agent-card (Experimentation's research step) and 1 acquisition
     # (Imperial Throneship) gain: 14 total (independent replay, no collector
     # imports; the previous commit's engine gives the values pinned before).
+    # Re-derived 2026-10-18 for cleanup-2b (codec v149: in-turn research
+    # bonuses and optional trashes as turn rows, a research space's two
+    # icons as their own steps in the owner's order, no Influence offered at
+    # the top for Shipping and Tech acquire): seed 31 first diverges at
+    # round 4, seat 1's Experimentation research step (c3r5, step 273 of the
+    # game), whose Specimens and Tleilaxu-track icons are now offered as two
+    # ``resolve_research_icon`` rows instead of resolving in that one move
+    # (step 274 no longer offers ``draw_owed_intrigue``). Seat 1 still fills
+    # the role: a scan of full seeds 1-200 listing every Influence gain with
+    # a "navigation" token whose id prefix is the bare-visit shape gives seed
+    # 31 seat 1 first on this engine and on a ``git archive`` export of the
+    # previous commit (a1b692f0), then seeds 53, 61 and 83, so the seed
+    # stays. Its round-6 Bene Gesserit visit still takes Bene Gesserit from
+    # 1 to 2, but the Navigation card's slot 1 now gains a Fremen (was an
+    # Emperor) and the later gains differ: 7 visits (rounds 1, 1, 3, 6, 6, 7
+    # and 8; 5 on starter cards, 2 on bought ones), 1 Navigation, 4 Intrigue
+    # (Imperium Politics, Tenuous Bond, Withdrawal Agreement, Sietch
+    # Ritual), 2 Agent-card (Experimentation's research step in round 5 and
+    # a starter Diplomacy trashed for an Emperor in round 8) and 2 Endgame
+    # Panopticon Tech gains: 16 total (independent replay, no collector
+    # imports; on the previous commit's engine it recounts the values pinned
+    # before).
+    # Re-counted 2026-10-18 for the Conflict-end order (user decision
+    # 2026-10-18, codec v149: the Conflict's troops and Commanders go back to
+    # the supply before the Conflict-end windows, and Harvest Cells resolves
+    # the moment it is played): seed 31 first diverges at round 8, seat 3's
+    # Conflict-end window (step 792 of the game, counting chance steps from
+    # 0). Seat 3 plays Harvest Cells at step 791 on both engines, but now its
+    # 2 specimens come with the play, so step 792 offers its Tleilaxu
+    # acquisition (seat 3 takes Subject X-137) where the previous engine
+    # offered ``decline_conflict_end_intrigue`` and only then the
+    # acquisition. Seat 1 still fills the role: a scan of full seeds 1-200
+    # listing every Influence gain with a "navigation" token whose id prefix
+    # is the bare-visit shape gives seed 31 seat 1 first again, on this
+    # engine and on a ``git archive`` export of the previous commit
+    # (7ae17717), then seeds 53, 61 and 83, so the seed stays. Its round-6
+    # Navigation gain (a Bene Gesserit visit on the bought Branching Path,
+    # slot 1 gains a Fremen) comes at step 476, long before the divergence,
+    # and so do its visits through round 7; the game now reaches Endgame in
+    # round 9, when seat 2's Conflict win takes it to 10 Victory Points (it
+    # ended in round 10 with the Conflict deck empty).
+    # Seat 1's own events now contain 7 visits (rounds 1, 1, 3, 6, 6, 7 and
+    # 8; 5 on starter cards, 2 on bought ones), 1 Navigation, 2 Intrigue
+    # (Imperium Politics, Tenuous Bond), 2 Agent-card (Experimentation's
+    # research step in round 5 and a starter Diplomacy trashed for an Emperor
+    # in round 8) and 2 Endgame Panopticon Tech gains (Spacing Guild and
+    # Fremen, was Spacing Guild and Bene Gesserit): 14 total (independent
+    # replay, no collector imports; was 16 with two more Intrigue gains,
+    # Withdrawal Agreement in round 9 and Sietch Ritual in round 10, which
+    # the shorter game no longer reaches; on the previous commit's engine it
+    # recounts the values pinned before).
     game = tip_census.play(_spec(True, 31), ("influence",))
     seat = game["seats"][1]
     assert seat["leader"] == "steersman_y_rkoon"
     sources = seat["infl.sources"]
     assert sources.get("leader") == 1
-    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 9
+    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 7
     assert seat["infl.gained"] == 14
 
 
@@ -892,55 +942,102 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # Spies left on the board. An independent replay (no collector imports)
     # recounted both seats' Influence events by source; the Spy and Reveal
     # columns are the collectors' own.
-    game = tip_census.play(_spec(True, 201), ("influence",))
-    seat = game["seats"][1]
+    # Re-derived 2026-10-18 for cleanup-2b (codec v149: in-turn research
+    # bonuses and optional trashes as turn rows, a research space's two
+    # icons as their own steps in the owner's order, no Influence offered at
+    # the top for Shipping and Tech acquire): seed 201 first diverges at
+    # round 8, seat 3's Scientific Breakthrough research step (c7r3, step 669
+    # of the game), whose Intrigue trash for the research bonus is now
+    # followed by the owed card as its own ``draw_owed_intrigue`` /
+    # ``draw_owed_card`` rows instead of drawing at once (step 670 no longer
+    # offers ``finish_agent_turn``); seed 36 at round 5, seat 3's
+    # Experimentation research step (c3r5, step 331), whose two icons are now
+    # two ``resolve_research_icon`` rows (step 332 no longer offers
+    # ``draw_owed_intrigue``). Seed 201 seat 1 keeps its Influence sources,
+    # gains, loss and Fremen 2 round but trashes no Spy, holds no Maker
+    # Hooks and has three Spies left on the board, and seed 36 seat 1 has no
+    # Reveal-card source, Fremen 2 or Maker Hooks, so neither fills its role
+    # any more (on a ``git archive`` export of the previous commit, a1b692f0,
+    # the independent replay below recounts every column pinned before).
+    # Full seeds 1-200 now give seed 51 seat 2 alone in the first role (the
+    # same in seeds 1-559; seeds 980 and 1144 follow in 1-1200) and seeds
+    # 112 (seat 0) and 162 (seat 2) in the second (335 follows in 1-559); on
+    # the previous commit's engine the same scan gives seeds 201 (seat 1)
+    # and 441 (seat 3) and seeds 36 (seat 1) and 412 (seat 1) over seeds
+    # 1-559. The pins are the first of each. Seed 112 seat 0 also passes the
+    # 2026-10-06 pass-over (it uses Gather Intelligence, recalls a Spy
+    # otherwise and declines an Infiltrate), so its Gather Intelligence and
+    # other-recall columns are non-zero, which seed 36's were not. Seed 51
+    # seat 2 (Muad'Dib): Tech (Panopticon's Endgame Spacing Guild gain),
+    # Intrigue (Sietch Ritual, Imperium Politics), Agent-card (Guild
+    # Impersonator) and four Conflict-reward gains (two Distinct Influence
+    # rewards), two losses (Backed by CHOAM, Questionable Methods); its Spy
+    # is trashed for Advanced Data Analysis (a High Council buy in round 9)
+    # and five are recalled otherwise (Insider Information, Spy Network
+    # twice, Panopticon's placement and an Emperor track bonus placement);
+    # one of three Infiltrates taken (round 10, two declined before it);
+    # Gather Intelligence four times (rounds 2, 3, 8, 10) and Infiltrate
+    # once at a 6/5 lag; Fremen 2 in round 7, Maker Hooks in round 8; one
+    # Spy left on the board. Seed 112 seat 0 (Steersman Y'rkoon): Imperial
+    # Throneship's acquisition bonus is the acquisition source and Pointing the
+    # Way's Reveal the Reveal-card source, beside a Navigation gain (a round-5
+    # Bene Gesserit visit; its slot 0 loss is one of the eight losses, the
+    # others Forbidden Weapons' Reveal), two Tech gains (Navigation Chamber's
+    # and Glowglobes' acquire icons) and eight visits; Fremen 2 and Maker Hooks
+    # both in round 8; Gather Intelligence in rounds 9 and 10 and an Infiltrate
+    # in round 10 (one of two taken) at a fractional 7/3 lag; two other recalls
+    # (Arrakeen II's Contract and a Navigation card); two Spies left on the
+    # board. An independent replay (no collector imports) recounted every
+    # column below from the games' own events, decision action sets and the
+    # state after each step, and matched the collectors exactly.
+    game = tip_census.play(_spec(True, 51), ("influence",))
+    seat = game["seats"][2]
     assert seat["infl.sources"] == {
-        "visit:starter": 3,
-        "visit:bought": 6,
-        "intrigue": 1,
-        "combat_reward": 1,
+        "visit:starter": 5,
+        "visit:bought": 5,
+        "intrigue": 2,
+        "combat_reward": 4,
         "agent_card": 1,
         "tech": 1,
     }
-    assert seat["infl.gained"] == 13
-    assert seat["infl.lost"] == 1
-    assert seat["infl.fremen2_round"] == 6
-    assert seat["infl.hooks_round"] == 10
-    assert seat["lands.reveal_cards"] == pytest.approx(3.3)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(5.2)
+    assert seat["infl.gained"] == 18
+    assert seat["infl.lost"] == 2
+    assert seat["infl.fremen2_round"] == 7
+    assert seat["infl.hooks_round"] == 8
+    assert seat["lands.reveal_cards"] == pytest.approx(3.4)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(6.9)
     assert seat["spy.placed"] == 12
-    assert seat["spy.used_gather"] == 3
-    assert seat["spy.recalled_other"] == 4
+    assert seat["spy.used_gather"] == 4
+    assert seat["spy.recalled_other"] == 5
     assert seat["spy.trashed"] == 1
-    assert seat["spy.on_board_end"] == 2
+    assert seat["spy.on_board_end"] == 1
     assert seat["spy.use_lag"] == pytest.approx(6 / 5)
     assert seat["spy.infiltrate_offered"] == 3
-    assert seat["spy.infiltrate_taken"] == 2
+    assert seat["spy.infiltrate_taken"] == 1
 
-    game = tip_census.play(_spec(True, 36), ("influence",))
-    seat = game["seats"][1]
+    game = tip_census.play(_spec(True, 112), ("influence",))
+    seat = game["seats"][0]
     assert seat["infl.sources"] == {
-        "visit:starter": 5,
-        "visit:bought": 3,
-        "intrigue": 1,
+        "visit:starter": 4,
+        "visit:bought": 4,
+        "leader": 1,
         "reveal_card": 1,
-        "combat_reward": 4,
-        "agent_card": 1,
         "acquisition": 1,
+        "tech": 2,
     }
-    assert seat["infl.gained"] == 16
-    assert seat["infl.lost"] == 1
+    assert seat["infl.gained"] == 13
+    assert seat["infl.lost"] == 8
     assert seat["infl.fremen2_round"] == 8
-    assert seat["infl.hooks_round"] == 9
-    assert seat["lands.reveal_cards"] == pytest.approx(35 / 9)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(46 / 9)
-    assert seat["spy.placed"] == 6
-    assert seat["spy.used_gather"] == 0
-    assert seat["spy.recalled_other"] == 0
+    assert seat["infl.hooks_round"] == 8
+    assert seat["lands.reveal_cards"] == pytest.approx(3.4)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(5.9)
+    assert seat["spy.placed"] == 7
+    assert seat["spy.used_gather"] == 2
+    assert seat["spy.recalled_other"] == 2
     assert seat["spy.on_board_end"] == 2
-    assert seat["spy.use_lag"] == pytest.approx(3 / 4)
-    assert seat["spy.infiltrate_offered"] == 5
-    assert seat["spy.infiltrate_taken"] == 4
+    assert seat["spy.use_lag"] == pytest.approx(7 / 3)
+    assert seat["spy.infiltrate_offered"] == 2
+    assert seat["spy.infiltrate_taken"] == 1
 
 
 def test_subversive_advisor_credits_the_visit_and_the_card_effect(

@@ -44,13 +44,13 @@ from typing import Final
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.combat_deployment import (
     FINISHING_KEY,
     legal_agent_turn_finish_actions,
 )
 from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
 from dune_imperium.rules.frames import (
-    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owes_held_draw,
     owes_track_spy,
@@ -69,9 +69,17 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         # with nothing to play (OQ-103, user decision 2026-10-09): "쓰지
         # 않음" ends the seat's part with one press, like a pass.
         "decline_conflict_end_intrigue",
+        # Its end once a card was played in the window (user decision
+        # 2026-10-18: "끝내기"): the window stays open after a play while
+        # the seat holds Intrigue (OQ-103), and this one press closes it.
+        "finish_conflict_end_intrigue",
         # Arrakeen Scouts: confirming a sealed bid is the seat's turn end;
         # until then it may change the bid (D5, docs/arrakeen-scouts-design.md).
         "confirm_scouts_bid",
+        # A Scouts choice with no line the seat can take asks it anyway
+        # (cleanup-2a, OQ-071); its one confirm says the seat takes nothing,
+        # like a pass, so one press ends the seat's part.
+        "resolve_scouts_choice_without_option",
         # Critical Moment's open call (0 a pass) is one action per amount, so
         # the browser sends it with the turn-end press after the stepper set
         # the amount ("경매 ... 턴 종료를 눌러야 확정되게 해줘", user,
@@ -316,7 +324,12 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     if owes_track_spy(state, owner) or owes_held_draw(state, owner):
         return None
     # A Tech tile's acquire effects still waiting hold the end back too
-    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``).
-    if context.get(TECH_ACQUIRE_PENDING_KEY):
+    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``), but
+    # not an Influence with every Faction at the top (cleanup-2b).
+    if turn_rows.tech_acquire_effects_hold_the_end(context, state.players[owner]):
+        return None
+    # So does c6r6's Influence waiting with a Faction it can raise
+    # (cleanup-2b; public facts: the frame's context, the seat's Influence).
+    if turn_rows.holds_the_end(state, owner):
         return None
     return owner

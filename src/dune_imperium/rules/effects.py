@@ -7,9 +7,17 @@ from dataclasses import replace as replace_card
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     contract_for_instance,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+    Research,
 )
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
@@ -27,72 +35,16 @@ from dune_imperium.rules.frames import (
     owes_track_spy,
     reset_turn_counters,
 )
+from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.strength import conflict_agent_strength
+from dune_imperium.rules.turn_rows import PENDING_KEY
 
-
-@dataclass(frozen=True, slots=True)
-class GainResourcesEffect:
-    """Gain public spendable resources from the bank."""
-
-    solari: int = 0
-    spice: int = 0
-    water: int = 0
-
-    def __post_init__(self) -> None:
-        if min(self.solari, self.spice, self.water) < 0:
-            raise ValueError("resource gains must not be negative")
-        if self.solari == self.spice == self.water == 0:
-            raise ValueError("a resource-gain effect must gain something")
-
-
-@dataclass(frozen=True, slots=True)
-class DrawImperiumCardsEffect:
-    """Draw cards from the current player's personal deck."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("card draw count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class DrawIntrigueCardsEffect:
-    """Draw hidden cards from the shared Intrigue deck."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("Intrigue draw count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class RecruitTroopsEffect:
-    """Recruit as many troops as possible up to ``count``."""
-
-    count: int
-
-    def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("troop recruit count must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class ResearchEffect:
-    """Advance the research token (Immortality's revised Research Station).
-
-    "Draw two cards and research" [Immortality p. 16]; the advance may open
-    a direction choice for the owner [Immortality p. 6].
-    """
-
-
+# A board space's automatic icon is its record's own gain piece (cleanup 2e):
+# the Solari/spice/water gain, the personal card draw, the Intrigue draw, the
+# troop recruit and the Research icon ("Draw two cards and research"
+# [Immortality p. 16]).
 type AutomaticEffect = (
-    GainResourcesEffect
-    | DrawImperiumCardsEffect
-    | DrawIntrigueCardsEffect
-    | RecruitTroopsEffect
-    | ResearchEffect
+    GainResources | DrawPersonalCards | DrawIntrigueCards | RecruitTroops | Research
 )
 
 
@@ -175,6 +127,13 @@ def open_next_turn(state: GameState, player: int) -> GameState:
         raise RuntimeError("a turn cannot pass over an owed Emperor track Spy")
     if owes_held_draw(state, player):
         raise RuntimeError("a turn cannot pass over a waiting triggered draw")
+    if any(
+        frame.kind == FrameKind.TURN and dict(frame.context).get(PENDING_KEY)
+        for frame in state.decision_stack
+    ):
+        # Effects that wait on the turn (cleanup-2b) come only from an action
+        # of the turn, after which no turn-passing play is offered.
+        raise RuntimeError("a turn cannot pass over effects waiting on it")
     next_player = next_unrevealed_player(state, player)
     players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
@@ -622,7 +581,11 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
     next one.
     """
 
-    _owner_effect_frame(state, owner)
+    effect_frame = _owner_effect_frame(state, owner)
+    if dict(effect_frame.context).get(PENDING_KEY):
+        # The press lapses what waits on the turn (cleanup-2b), and a
+        # mandatory one holds the end back.
+        raise RuntimeError("an Agent turn cannot close over effects waiting on it")
     seat = state.players[owner]
     if seat.usurped_row_card_id:
         raise RuntimeError("the Usurped card is trashed before the turn closes")
@@ -657,18 +620,50 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
     )
 
 
-def mandatory_board_icons_pending(context: Mapping[str, ActionValue]) -> bool:
+# Shipping's "Influence with a chosen Faction" (``board_effects.SHIPPING``
+# and ``board_effects.BOARD_ICON_INFLUENCE``, spelled here like the ids
+# above).
+_SHIPPING_INFLUENCE: Final = ("shipping", "influence")
+
+
+def blocked_board_icons(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> frozenset[str]:
+    """The visit's mandatory icons that can only lapse now.
+
+    Shipping's "Influence with a chosen Faction" with every Faction at the
+    top offers no Faction (OQ-060: "합법 행동 provider는 이미 6인 진영을
+    제시하지 않으므로") and, like an Agent box's Influence there, waits for
+    the turn's end, whose press lapses it (OQ-057 (1); user decision
+    2026-10-17, composed-effects plan 5, rule decision 1). An Influence loss
+    later in the turn offers it again.
+    """
+
+    space, icon = _SHIPPING_INFLUENCE
+    if context.get("space_id") != space or not board_icon_is_pending(context, icon):
+        return frozenset()
+    if any(influence_can_rise(owner, faction) for faction in Faction):
+        return frozenset()
+    return frozenset({icon})
+
+
+def mandatory_board_icons_pending(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> bool:
     """Whether a mandatory effect of the visited space still waits.
 
     The visit's optional icons (``OPTIONAL_BOARD_ICONS``) do not count: an
     unused one lapses when the turn ends (OQ-095 (2), user ruling
-    2026-10-14).
+    2026-10-14). Nor does one that can only lapse (``blocked_board_icons``).
     """
 
     if context.get("pending_board_effect") is not True:
         return False
     icons = pending_board_icons(context)
-    return not icons or any(key not in OPTIONAL_BOARD_ICONS for key in icons)
+    blocked = blocked_board_icons(context, owner)
+    return not icons or any(
+        key not in OPTIONAL_BOARD_ICONS and key not in blocked for key in icons
+    )
 
 
 def agent_turn_has_other_pending_effects(
@@ -694,8 +689,9 @@ def agent_turn_has_other_pending_effects(
         # (user ruling 2026-10-14).
         False if ignore_agent_effect else context["pending_agent_effect"],
         False if ignore_agent_effect else context.get("graft_pending_effect", False),
-        # The visit's optional icons do not count (``OPTIONAL_BOARD_ICONS``).
-        mandatory_board_icons_pending(context),
+        # The visit's optional icons do not count (``OPTIONAL_BOARD_ICONS``),
+        # nor one that can only lapse (``blocked_board_icons``).
+        mandatory_board_icons_pending(context, _turn_owner(context, players)),
         context["pending_faction_influence"],
         # Urgent Shigawire's added draw is offered whatever the box does
         # (user ruling 2026-10-10, OQ-106).
@@ -795,6 +791,72 @@ def recallable_conflict_agents(owner: PlayerState, *, sent_this_turn: bool) -> i
     return max(0, owner.agent_in_conflict - (1 if sent_this_turn else 0))
 
 
+def recall_agent_targets(
+    owner: PlayerState, *, excluded_space_id: str, turn_agent_in_conflict: bool
+) -> tuple[str, ...]:
+    """Where a Recall Agent effect may take one of ``owner``'s Agents from.
+
+    "Return one of your other Agents on the board to your Leader (not the
+    Agent you sent during this turn)." [Main p. 20]: the owner's board
+    spaces but ``excluded_space_id`` (this turn's), then "conflict" for an
+    earlier turn's Into the Fray Agent (``recallable_conflict_agents``,
+    OQ-037 (d), OQ-068). Imperial Privilege's "Recall one of your other
+    Agents from the board" [Board Guide p. 2], the Contract reward and an
+    Agent box's Recall Agent icon read this.
+    """
+
+    return (
+        *(
+            space_id
+            for space_id in owner.agent_locations
+            if space_id != excluded_space_id
+        ),
+        *(
+            ("conflict",)
+            if recallable_conflict_agents(owner, sent_this_turn=turn_agent_in_conflict)
+            > 0
+            else ()
+        ),
+    )
+
+
+def recall_board_agent(
+    owner: PlayerState,
+    space_id: str,
+    *,
+    player: int,
+    source: str,
+    event_id: str,
+    source_key: str = "source",
+) -> tuple[PlayerState, GameEvent]:
+    """Return the owner with its Agent on ``space_id`` recalled, and its
+    event: the Agent returns to its Leader [Main p. 20]. ``source_key``
+    names the payload key ``source`` is filed under, as in
+    ``recall_conflict_agent``."""
+
+    next_owner = replace(
+        owner,
+        agents_available=owner.agents_available + 1,
+        agent_locations=tuple(
+            location for location in owner.agent_locations if location != space_id
+        ),
+    )
+    event = GameEvent(
+        event_id=event_id,
+        kind="agent_recalled",
+        payload=tuple(
+            sorted(
+                (
+                    ("player", player),
+                    (source_key, source),
+                    ("space_id", space_id),
+                )
+            )
+        ),
+    )
+    return next_owner, event
+
+
 def recall_conflict_agent(
     owner: PlayerState,
     *,
@@ -876,3 +938,12 @@ def spice_gained_this_turn(owner: PlayerState) -> int:
     """
 
     return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
+
+
+def _turn_owner(
+    context: Mapping[str, ActionValue], players: tuple[PlayerState, ...]
+) -> PlayerState:
+    owner = context.get("turn_owner")
+    if isinstance(owner, bool) or not isinstance(owner, int):
+        raise RuntimeError("Agent-turn effect frame has invalid turn owner")
+    return players[owner]

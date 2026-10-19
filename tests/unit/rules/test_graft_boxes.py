@@ -49,6 +49,7 @@ from dune_imperium.rules import (
     leader_abilities,
 )
 from dune_imperium.rules.agent_icons import card_is_boosted
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import (
@@ -114,10 +115,12 @@ OTHER_FRAME_KEYS = frozenset(
         "persuasion_generated",
         "picked",
         "placed_reaches",
+        "played",
         "played_at_priority",
         "player",
         "purpose",
         "remaining",
+        "research_icons",
         "resource",
         "reveal_card_id",
         "reveal_choice_effect",
@@ -713,7 +716,16 @@ def test_a_choose_two_that_cannot_go_on_frees_the_other_box_and_the_end() -> (
         coupled = _apply(coupled, "resolve_board_effect")
     assert agent_effects.graft_boxes_are_stalled(coupled)
     finished = ENGINE.apply(coupled, DomainAction("finish_agent_turn", 0))
-    assert finished.events[0].kind == "agent_card_effect_unavailable"
+    # The named Faction is paid first, then the box ends unavailable (the box's
+    # event comes last among the events the box produced, cleanup-2c-2).
+    assert finished.events[0].kind == "influence_gained"
+    unavailable = agent_box_event(
+        effects.agent_card_source(1, 0, LONG_REACH),
+        LONG_REACH,
+        0,
+        BoxOutcome.UNAVAILABLE,
+    )
+    assert unavailable in finished.events
     assert finished.state.players[0].influence.emperor == 4
 
 
@@ -1118,7 +1130,7 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
         ("box", 1) in template.arguments for template in plain.catalog
     )
     # v147 added the base catalog's ``source``-named Reveal rows (+140).
-    assert ActionCodec(RulesetConfig()).size == 4553
+    assert ActionCodec(RulesetConfig()).size == 4551
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)
     twins = {t for t in codec.catalog if ("box", 1) in t.arguments}

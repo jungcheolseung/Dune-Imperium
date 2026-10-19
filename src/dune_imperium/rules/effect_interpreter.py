@@ -14,7 +14,6 @@ from enum import StrEnum
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
-    OBSERVATION_POSTS,
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
@@ -26,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     AdvanceTleilaxu,
     AllConditions,
+    AtFactionSpace,
     AtMakerSpace,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
@@ -112,7 +112,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
@@ -129,6 +129,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player, turn_owner_of
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -147,15 +148,15 @@ from dune_imperium.rules.intrigue_deck import (
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
-from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import connected_post_ids
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
-    observation_post_ids_for_agent_icons,
-    observation_post_ids_for_factions,
     solo_occupied_post_ids,
+    spy_placement_allowed_post_ids,
+    spy_placement_posts,
 )
 
 type ChoiceSlot = (
@@ -334,6 +335,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             )
         case (
             AtMakerSpace()
+            | AtFactionSpace()
             | FactionBond()
             | Grafted()
             | SpyRecalledThisTurn()
@@ -593,35 +595,12 @@ def spy_placement_targets(
     [Bloodlines p. 5].
     """
 
-    _refuse_visited_space(reward)
-    if reward.shared_post:
-        own = set(state.players[player].spy_post_ids)
-        return tuple(
-            post.post_id for post in OBSERVATION_POSTS if post.post_id not in own
-        )
-    return empty_observation_post_ids(state, spy_placement_allowed_post_ids(reward))
-
-
-def _refuse_visited_space(reward: PlaceSpy) -> None:
-    # The space visited this turn is the Agent box's to know
-    # (``agent_box_abilities.agent_spy_rows``, Double Agent).
-    if reward.visited_space:
-        raise TypeError(f"{reward!r} is judged with its Agent box")
-
-
-def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
-    """Return the posts a limited placement may use; None when unlimited.
-
-    "Some effects limit placement. For example: '[Spy] on [City]' means the
-    observation post must connect to a [City] board space." [Main p. 20]
-    """
-
-    _refuse_visited_space(reward)
-    if reward.factions is not None:
-        return observation_post_ids_for_factions(reward.factions)
-    if reward.agent_icons is not None:
-        return observation_post_ids_for_agent_icons(reward.agent_icons)
-    return None
+    return spy_placement_posts(
+        state,
+        player,
+        spy_placement_allowed_post_ids(reward),
+        shared_post=reward.shared_post,
+    )
 
 
 def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> bool:
@@ -961,15 +940,7 @@ def reward_can_change_something(
             # Hooks it asks for, or against a Shield Wall-protected Conflict
             # [Main p. 20] unless Arrakis Planetologist replaces the
             # sandworm [Liet Kynes card].
-            return (
-                bool(state.current_conflict_ids)
-                and not units_deployment_blocked(state, player)
-                and not (needs_hooks and not owner.maker_hooks)
-                and (
-                    replaces_sandworms(owner)
-                    or not current_conflict_is_shield_wall_protected(state)
-                )
-            )
+            return sandworm_block(state, player, needs_hooks=needs_hooks) is None
         case DeployFromGarrison():
             return sum(deployable_garrison_units(state, player)) >= 1
         case RetreatTroops(minimum=minimum):
@@ -979,9 +950,7 @@ def reward_can_change_something(
         case TrashPersonalCard(hand_only=hand_only):
             # A Row card borrowed with Usurp is not "in play" (OQ-054); a
             # bonus for the trashed card's cost is not an effect of its own.
-            if hand_only:
-                return bool(owner.hand)
-            return bool(owner.hand or owner.discard_pile or counted_in_play(owner))
+            return bool(trashable_cards(owner, hand_only=hand_only))
         case PlaceSpy():
             return spy_placement_possible(state, player, reward)
         case AcquireCardUpTo(max_cost=max_cost):
@@ -1294,8 +1263,8 @@ def _trigger_option_block(
     owner's Reveal turn is open, a card must still be acquirable in it
     (``_reveal_acquisition_ahead``); before the Reveal the whole Reveal
     turn is still ahead. Harvest Cells is judged by its Conflict-end window
-    instead (``combat._conflict_end_trigger_cards``), which projects the
-    troops the cleanup returns to the supply.
+    instead (``combat._conflict_end_trigger_cards``), which reads the
+    supply the Conflict's troops went back to before the window opened.
     """
 
     if not isinstance(option.trigger, OnRevealAcquisitionThisRound):
@@ -1455,6 +1424,10 @@ def apply_rewards(
     specimens = 0
     tleilaxu_advances = 0
     researches = 0
+    # The line's gains, one ``resources_gained`` where its first gain stands
+    # (rule decisions 3 and 4, ``rules/gain_events.py``).
+    gains = {"solari": 0, "spice": 0, "water": 0, "victory_points": 0}
+    gain_at: int | None = None
     for reward in rewards:
         match reward:
             case Research():
@@ -1480,15 +1453,14 @@ def apply_rewards(
                         water=owner.resources.water + water,
                     ),
                 )
+                gain_at = len(events) if gain_at is None else gain_at
+                gains["solari"] += solari
+                gains["spice"] += spice
+                gains["water"] += water
             case GainVictoryPoints(amount=amount):
                 owner = replace(owner, victory_points=owner.victory_points + amount)
-                events.append(
-                    GameEvent(
-                        event_id=f"{source}:victory_points",
-                        kind="victory_points_gained",
-                        payload=(("amount", amount), ("player", player)),
-                    )
-                )
+                gain_at = len(events) if gain_at is None else gain_at
+                gains["victory_points"] += amount
             case RecruitTroops(count=count):
                 owner, recruited = recruit_troops(owner, count)
                 troops_recruited += recruited
@@ -1507,20 +1479,13 @@ def apply_rewards(
                 raise ValueError("Influence choices must be resolved as choice slots")
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
-                and not (needs_hooks and not owner.maker_hooks)
-                and state.current_conflict_ids
-                and not units_deployment_blocked(state, player)
+                and sandworm_block(state, player, needs_hooks=needs_hooks) is None
             ):
                 # Arrakis Planetologist: the replacement, even under the
                 # Shield Wall [Liet Kynes card]; paid by the caller.
                 sandworms_replaced += count
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks):
-                if (
-                    (needs_hooks and not owner.maker_hooks)
-                    or not state.current_conflict_ids
-                    or current_conflict_is_shield_wall_protected(state)
-                    or units_deployment_blocked(state, player)
-                ):
+                if sandworm_block(state, player, needs_hooks=needs_hooks) is not None:
                     # No effect against a Shield Wall-protected Conflict
                     # [Main p. 20], without the required Maker Hooks, or
                     # while Emperor of the Known Universe blocks deployment
@@ -1617,6 +1582,8 @@ def apply_rewards(
             case _:
                 raise TypeError(f"unsupported reward: {reward!r}")
 
+    if gain_at is not None and any(gains.values()):
+        events.insert(gain_at, resources_gained_event(source, player, **gains))
     next_state = replace(state, players=replace_player(state.players, owner))
     for index, gain in enumerate(fixed_influence):
         assert gain.factions is not None
@@ -1633,24 +1600,19 @@ def apply_rewards(
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.
-        drawn = draw_intrigue_cards(
-            next_state, player, intrigue_draws, source=f"{source}:intrigue"
-        )
+        drawn = draw_intrigue_cards(next_state, player, intrigue_draws, source=source)
         next_state = drawn.state
         events.extend(drawn.events)
     if specimens:
-        generated = generate_specimens(
-            next_state, player, specimens, source=f"{source}:specimens"
-        )
+        generated = generate_specimens(next_state, player, specimens, source=source)
         next_state = generated.state
         events.extend(generated.events)
     if tleilaxu_advances:
-        advanced = advance_tleilaxu(
-            next_state, player, tleilaxu_advances, source=f"{source}:tleilaxu"
-        )
+        advanced = advance_tleilaxu(next_state, player, tleilaxu_advances)
         next_state = advanced.state
         events.extend(advanced.events)
     for index in range(researches):
+        # Each Research its own source: two may each open a direction frame.
         researched = advance_research(
             next_state, player, source=f"{source}:research:{index}"
         )
@@ -1658,7 +1620,7 @@ def apply_rewards(
         events.extend(researched.events)
     if personal_draws:
         drawn = draw_or_request_personal_cards(
-            next_state, player, personal_draws, source=f"{source}:draw"
+            next_state, player, personal_draws, source=source
         )
         next_state = drawn.state
         events.extend(drawn.events)

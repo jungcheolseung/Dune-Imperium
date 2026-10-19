@@ -57,11 +57,11 @@ def _pre_endgame_tech_state(
             continue
         data = payload(event)
         player = int(data["player"])
-        if event.kind == "victory_points_gained":
+        if event.kind == "resources_gained":
             # CHOAM Transports: "Endgame: worth 1 VP if you have completed
             # four or more contracts" [Bloodlines Tech tile] -- a flat VP
-            # gain.
-            tech_vp[player] += int(data["amount"])
+            # gain, on the one gain event (cleanup-2c).
+            tech_vp[player] += int(data.get("victory_points", 0))
         elif (
             event.kind == "influence_gained"
             and influence_amount(
@@ -136,10 +136,10 @@ class EndgameCollector(Collector):
         data = payload(event)
         option_value = data.get("option")
         if option_value is None:
-            # A face-up Trigger card (e.g. Harvest Cells) fires through
-            # rules/combat.py's Conflict-end trigger path
-            # (``resolve_faceup_trigger_option``), which plays it without
-            # choosing one of ``entry.options`` by index -- always Combat
+            # A Conflict-end trigger card (Harvest Cells) is played in
+            # rules/combat.py's Conflict-end window and resolves there
+            # (``intrigue.resolve_conflict_end_trigger``) without choosing
+            # one of ``entry.options`` by index -- always Combat
             # timing, never one of the three battle-icon cards or an
             # Endgame-timing option, so it is outside what these columns
             # count.

@@ -25,6 +25,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     apply_maker_space_action,
@@ -56,6 +57,7 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.units import retreat_units
@@ -147,13 +149,16 @@ def _cleanup_state(chani: PlayerState) -> GameState:
     )
 
 
-def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
+def test_tactician_advances_for_units_lost_when_the_conflict_end_step_opens() -> None:
     # "Chani (Leader) -- When resolving combat, troops that return to your
     # supply are considered 'lost.' Each different source of retreating or
     # losing troops is handled separately" [FAQ p. 1]; Tactician advances
     # "that many spaces, earning rewards as you reach them" [Chani card].
-    # Commanders are troops [Bloodlines p. 4].
-    from dune_imperium.rules.combat import finish_combat
+    # Commanders are troops [Bloodlines p. 4]. The troops return to the
+    # supply once all rewards are given [Main p. 14], before the Conflict-end
+    # windows, so the token advances as those windows are offered (user
+    # decision 2026-10-18) and the cleanup after them advances nothing more.
+    from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
 
     chani = PlayerState(
         player_id=0,
@@ -166,23 +171,29 @@ def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
         commanders_conflict=1,
         combat_strength=8,
     )
-    result = finish_combat(_cleanup_state(chani))
-    seat = result.state.players[0]
+    offered = offer_conflict_end_triggers(_cleanup_state(chani))
+    seat = offered.state.players[0]
     assert seat.troops_conflict == 0 and seat.troops_supply == 12
+    assert seat.commanders_conflict == 0 and seat.commanders_supply == 1
     assert seat.tactics_track_space == 6
     assert seat.resources.spice == 1  # the sixth space
-    assert any(
-        event.kind == "tactics_token_advanced" and dict(event.payload)["count"] == 4
-        for event in result.events
-    )
+    advanced = [e for e in offered.events if e.kind == "tactics_token_advanced"]
+    assert [dict(event.payload)["count"] for event in advanced] == [4]
+    # The track is Chani's: named after the Leader (cleanup-2c-4).
+    assert advanced[0].event_id == "round:1:player:0:leader:chani:tactics"
+    assert not offered.state.decision_stack
 
-    # The cleanup is one source: passing the end pays the water once and
+    result = finish_combat(offered.state)
+    assert result.state.players[0].tactics_track_space == 6
+    assert all(event.kind != "tactics_token_advanced" for event in result.events)
+
+    # The loss is one source: passing the end pays the water once and
     # resets without advancing for the extra troops [Bloodlines p. 12].
     near_end = replace(chani, tactics_track_space=8)
-    seat = finish_combat(_cleanup_state(near_end)).state.players[0]
-    assert seat.tactics_track_space == 2
-    assert seat.resources.water == 1 + 1
-    assert seat.resources.spice == 0
+    reset = offer_conflict_end_triggers(_cleanup_state(near_end)).state.players[0]
+    assert reset.tactics_track_space == 2
+    assert reset.resources.water == 1 + 1
+    assert reset.resources.spice == 0
 
 
 def test_tactician_advances_once_for_one_multi_troop_loss() -> None:
@@ -298,8 +309,12 @@ def test_fedaykin_maneuver_retreats_any_number_or_draws_two_cards() -> None:
     # No troop is recruited.
     assert seat.troops_supply == 7 and seat.troops_garrison == 3
     assert dict(paid.decision_stack[-1].context)["troops_recruited"] == 0
-    resolved = next(e for e in result.events if e.kind == "leader_signet_resolved")
-    assert dict(resolved.payload) == {"cards": 2, "player": 0, "water": 1}
+    # The box's event is the last one and carries only the card and the seat
+    # (cleanup-2c-4); the draw has its own events before it.
+    assert [e.kind for e in result.events].count("leader_signet_resolved") == 1
+    resolved = result.events[-1]
+    assert resolved.kind == "leader_signet_resolved"
+    assert dict(resolved.payload) == {"card_id": SIGNET, "player": 0}
 
 
 def test_fedaykin_maneuver_draw_shuffles_the_discard_when_the_deck_is_short() -> None:
@@ -1060,6 +1075,43 @@ def test_listeners_places_next_to_the_landsraad_or_pays_spice_for_anywhere() -> 
 # --- Liet Kynes --------------------------------------------------------------
 
 
+_DRAW_PLANETOLOGIST = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+
+
+def _waiting_kinds(state: GameState) -> list[str]:
+    """The kinds of the effects waiting on the owner's open turn frame."""
+
+    return [
+        kind for kind, _source, _value in turn_rows.pending(state.decision_stack[-1])
+    ]
+
+
+def _trash_cards(state: GameState) -> list[str]:
+    """The cards the waiting trash is offered for, in the row order."""
+
+    return [
+        str(dict(a.arguments)["card_id"])
+        for a in legal_optional_trash_actions(state, 0)
+        if a.action_id == "trash_optional_card"
+    ]
+
+
+def _trash_row(state: GameState, card_id: str) -> DomainAction:
+    return next(
+        a
+        for a in legal_optional_trash_actions(state, 0)
+        if a.action_id == "trash_optional_card"
+        and dict(a.arguments)["card_id"] == card_id
+    )
+
+
+def _can_finish(state: GameState) -> bool:
+    return any(
+        a.action_id == "finish_agent_turn"
+        for a in UprisingRulesEngine().legal_actions(state, 0)
+    )
+
+
 def test_arrakis_planetologist_ignores_sietch_tabr_and_replaces_sandworms() -> None:
     owner = PlayerState(
         player_id=0,
@@ -1080,26 +1132,32 @@ def test_arrakis_planetologist_ignores_sietch_tabr_and_replaces_sandworms() -> N
     seat = replaced.state.players[0]
     assert seat.sandworms_conflict == 0
     assert seat.resources.spice == 1
-    # The Intrigue card is its own step in the replacement's frame (user
-    # ruling 2026-10-10, OQ-106): the summon draws nothing.
+    # The Intrigue card is its own step beside the trash (user ruling
+    # 2026-10-10, OQ-106): the summon draws nothing.
     assert seat.intrigue_cards == ()
     assert "sandworms_replaced" in {event.kind for event in replaced.events}
+    # Inside the owner's own turn the replacement opens no window: its trash
+    # and Intrigue card wait on the Agent turn as rows, with no refusal
+    # (user decision 2026-10-17, cleanup-2b; OQ-095 (2)).
     frame = replaced.state.decision_stack[-1]
-    assert frame.kind == "optional_trash"
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    assert _waiting_kinds(replaced.state) == [
+        turn_rows.OPTIONAL_TRASH,
+        turn_rows.PLANETOLOGIST_INTRIGUE,
+    ]
     options = legal_optional_trash_actions(replaced.state, 0)
-    assert options[0].action_id == "decline_optional_trash"
+    assert "decline_optional_trash" not in {a.action_id for a in options}
     assert options[-1] == _DRAW_PLANETOLOGIST
-    trash_recon = next(a for a in options[1:] if dict(a.arguments)["card_id"] == RECON)
-    trashed = apply_optional_trash(replaced.state, trash_recon).state
-    assert RECON in trashed.players[0].trashed
-    assert trashed.decision_stack[-1].kind == "optional_trash"
-    assert legal_optional_trash_actions(trashed, 0) == (_DRAW_PLANETOLOGIST,)
-    drawn = apply_optional_trash(trashed, _DRAW_PLANETOLOGIST).state
+    assert RECON in _trash_cards(replaced.state)
+    trashed = apply_optional_trash(replaced.state, _trash_row(replaced.state, RECON))
+    assert RECON in trashed.state.players[0].trashed
+    assert trashed.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting_kinds(trashed.state) == [turn_rows.PLANETOLOGIST_INTRIGUE]
+    assert legal_optional_trash_actions(trashed.state, 0) == (_DRAW_PLANETOLOGIST,)
+    drawn = apply_optional_trash(trashed.state, _DRAW_PLANETOLOGIST).state
     assert len(drawn.players[0].intrigue_cards) == 1
-    assert drawn.decision_stack[-1].kind != "optional_trash"
-
-
-_DRAW_PLANETOLOGIST = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    assert _waiting_kinds(drawn) == []
+    assert legal_optional_trash_actions(drawn, 0) == ()
 
 
 def test_planetologist_intrigue_is_its_own_step_in_either_order() -> None:
@@ -1107,7 +1165,9 @@ def test_planetologist_intrigue_is_its_own_step_in_either_order() -> None:
     replacement's "[trash a card] [1 spice] [1 Intrigue]" [Liet Kynes card]
     pays the spice with the summon, while the Intrigue card waits as its own
     step beside the trash, in either order, and is drawn exactly once. The
-    summon itself reveals nothing (OQ-010).
+    summon itself reveals nothing (OQ-010). The Intrigue card is mandatory and
+    holds the turn's end; the optional trash does not, and an unused trash
+    lapses at the turn-end press (user decision 2026-10-17, OQ-095 (2)).
     """
 
     owner = PlayerState(
@@ -1126,23 +1186,69 @@ def test_planetologist_intrigue_is_its_own_step_in_either_order() -> None:
     replaced = apply_maker_space_action(placed, summon).state
     assert replaced.players[0].intrigue_cards == ()
     assert replaced.intrigue_deck == placed.intrigue_deck
+    # The Intrigue card holds the end back until it is drawn.
+    assert turn_rows.holds_the_end(replaced, 0)
+    assert not _can_finish(replaced)
 
     drawn = apply_optional_trash(replaced, _DRAW_PLANETOLOGIST).state
     assert len(drawn.players[0].intrigue_cards) == 1
-    assert drawn.decision_stack[-1].kind == "optional_trash"
+    assert drawn.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting_kinds(drawn) == [turn_rows.OPTIONAL_TRASH]
     after_draw = legal_optional_trash_actions(drawn, 0)
     assert _DRAW_PLANETOLOGIST not in after_draw
-    assert after_draw[0].action_id == "decline_optional_trash"
-    declined = apply_optional_trash(drawn, after_draw[0]).state
-    assert declined.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert len(declined.players[0].intrigue_cards) == 1
+    assert "decline_optional_trash" not in {a.action_id for a in after_draw}
+    assert RECON in _trash_cards(drawn)
+    # The trash left unused holds nothing back: pressing the end lapses it.
+    assert not turn_rows.holds_the_end(drawn, 0)
+    assert _can_finish(drawn)
+    lapsed = turn_rows.lapse(drawn, 0)
+    assert [(e.kind, e.event_id, dict(e.payload)) for e in lapsed.events] == [
+        (
+            "optional_trash_lapsed",
+            "round:1:player:0:board:hagga_basin:planetologist:0:trash_lapsed",
+            {"player": 0},
+        )
+    ]
+    assert _waiting_kinds(lapsed.state) == []
+    assert len(lapsed.state.players[0].intrigue_cards) == 1
+    assert lapsed.state.players[0].trashed == ()
+
+
+def test_planetologist_trash_first_then_intrigue_draws_exactly_once() -> None:
+    """The other order of the same two steps: the trash first, the Intrigue
+    card after it (user ruling 2026-10-10, OQ-106); the end is held only until
+    the card is drawn."""
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(RECON, DUNE),
+        maker_hooks=True,
+        resources=Resources(water=2),
+    )
+    placed = _play(_turn_state(owner), DUNE, "hagga_basin")
+    summon = next(
+        a
+        for a in legal_maker_space_actions(placed, 0)
+        if a.action_id == "summon_maker_sandworms"
+    )
+    replaced = apply_maker_space_action(placed, summon).state
+    trashed = apply_optional_trash(replaced, _trash_row(replaced, RECON)).state
+    assert trashed.players[0].intrigue_cards == ()
+    assert turn_rows.holds_the_end(trashed, 0)
+    assert not _can_finish(trashed)
+    drawn = apply_optional_trash(trashed, _DRAW_PLANETOLOGIST).state
+    assert len(drawn.players[0].intrigue_cards) == 1
+    assert not turn_rows.holds_the_end(drawn, 0)
+    assert _can_finish(drawn)
 
 
 def test_unexpected_allies_shield_wall_choice_draws_nothing_for_liet_kynes() -> None:
     """Unexpected Allies' Shield Wall choice summons the sandworm Arrakis
     Planetologist replaces; the replacement's Intrigue card is its own step
     (user ruling 2026-10-10, OQ-106), so the Shield Wall choice reveals no
-    hidden card."""
+    hidden card. Played in the owner's own turn, the step waits on the turn
+    as a row (user decision 2026-10-17, cleanup-2b)."""
 
     card = "intrigue:unexpected_allies:0"
     owner = PlayerState(
@@ -1161,31 +1267,36 @@ def test_unexpected_allies_shield_wall_choice_draws_nothing_for_liet_kynes() -> 
     )
     opened = engine.apply(state, play).state
     keep = next(
-        a
-        for a in engine.legal_actions(opened, 0)
-        if a.action_id == "keep_shield_wall"
+        a for a in engine.legal_actions(opened, 0) if a.action_id == "keep_shield_wall"
     )
     kept = engine.apply(opened, keep).state
     assert kept.players[0].intrigue_cards == ()
-    assert kept.decision_stack[-1].kind == "optional_trash"
-    assert _DRAW_PLANETOLOGIST in engine.legal_actions(kept, 0)
+    assert kept.decision_stack[-1].kind == "turn"
+    assert _waiting_kinds(kept) == [
+        turn_rows.OPTIONAL_TRASH,
+        turn_rows.PLANETOLOGIST_INTRIGUE,
+    ]
+    legal = engine.legal_actions(kept, 0)
+    assert _DRAW_PLANETOLOGIST in legal
+    assert "decline_optional_trash" not in {a.action_id for a in legal}
     drawn = engine.apply(kept, _DRAW_PLANETOLOGIST).state
     assert len(drawn.players[0].intrigue_cards) == 1
 
 
-def test_planetologist_credits_eliminate_allies_from_either_stacked_trash_frame() -> (
-    None
-):
-    # Round 3 review finding 1: apply_optional_trash's own crediting only
-    # fired when the owner's AGENT_EFFECTS frame sat directly under the
-    # OPTIONAL_TRASH frame just popped. Deep Desert replaces two sandworms,
-    # pushing two OPTIONAL_TRASH frames; trashing Eliminate Allies from the
-    # one that resolves FIRST (the frame on top, with the other OPTIONAL_
-    # TRASH still beneath it, not the owner's AGENT_EFFECTS frame) used to
-    # drop its troops. "그 turn에 어떤 출처에서 recruit했든 새 troop은
-    # Conflict에 deploy할 수 있다. 이미 garrison에 있던 troop을 다시
-    # recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다" [Main p. 10]
-    # [FAQ p. 4] (docs/rules/player-turns.md:137).
+@pytest.mark.parametrize("eliminate_allies_first", [True, False])
+def test_planetologist_credits_eliminate_allies_from_either_waiting_trash(
+    eliminate_allies_first: bool,
+) -> None:
+    # Round 3 review finding 1: a trash resolved while another replacement's
+    # optional trash was still open dropped Eliminate Allies' troops. Deep
+    # Desert replaces two sandworms; each replacement's trash now waits on
+    # the owner's Agent turn (cleanup-2b), and Eliminate Allies' "When this
+    # card is trashed: 2 troops" must reach the garrison exactly once
+    # whichever of the two trashes takes it, and be deployable.
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
+    # 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
     owner = PlayerState(
         player_id=0,
         leader_id="liet_kynes",
@@ -1202,47 +1313,78 @@ def test_planetologist_credits_eliminate_allies_from_either_stacked_trash_frame(
         if a.action_id == "summon_maker_sandworms"
     )
     replaced = apply_maker_space_action(placed, summon).state
-    assert replaced.decision_stack[-1].kind == "optional_trash"
-    assert replaced.decision_stack[-2].kind == "optional_trash"
+    assert replaced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting_kinds(replaced) == [
+        turn_rows.OPTIONAL_TRASH,
+        turn_rows.PLANETOLOGIST_INTRIGUE,
+        turn_rows.OPTIONAL_TRASH,
+        turn_rows.PLANETOLOGIST_INTRIGUE,
+    ]
 
-    top_options = legal_optional_trash_actions(replaced, 0)
-    trash_first = next(
-        a for a in top_options[1:] if dict(a.arguments)["card_id"] == ELIMINATE_ALLIES
+    first, second = (
+        (ELIMINATE_ALLIES, RECON)
+        if eliminate_allies_first
+        else (RECON, ELIMINATE_ALLIES)
     )
-    after_first = apply_optional_trash(replaced, trash_first).state
-    # The trash is applied; only its recruit count was ever at risk. The
-    # frame still holds its Intrigue card (OQ-106), so the trash was made
-    # with no Agent-turn frame on top at all.
-    assert after_first.players[0].troops_garrison == 5
-    assert after_first.decision_stack[-1].kind == "optional_trash"
-    after_first = apply_optional_trash(after_first, _DRAW_PLANETOLOGIST).state
-    assert after_first.decision_stack[-1].kind == "optional_trash"
-
-    decline_second = next(
-        a
-        for a in legal_optional_trash_actions(after_first, 0)
-        if a.action_id == "decline_optional_trash"
+    after_first = apply_optional_trash(replaced, _trash_row(replaced, first)).state
+    assert _waiting_kinds(after_first).count(turn_rows.OPTIONAL_TRASH) == 1
+    assert after_first.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    # Only the recruit count was ever at risk: the trash itself is applied.
+    assert after_first.players[0].troops_garrison == (
+        5 if eliminate_allies_first else 3
     )
-    resolved = apply_optional_trash(after_first, decline_second).state
+    after_second = apply_optional_trash(
+        after_first, _trash_row(after_first, second)
+    ).state
+    assert _waiting_kinds(after_second) == [turn_rows.PLANETOLOGIST_INTRIGUE] * 2
+    assert after_second.players[0].troops_garrison == 5
+    resolved = apply_optional_trash(after_second, _DRAW_PLANETOLOGIST).state
     resolved = apply_optional_trash(resolved, _DRAW_PLANETOLOGIST).state
     assert len(resolved.players[0].intrigue_cards) == 2
 
     assert resolved.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting_kinds(resolved) == []
     assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 2
     assert [
         dict(a.arguments)["count"] for a in legal_combat_deployments(resolved, 0)
     ] == [1, 2, 3, 4]
 
 
-def test_planetologist_single_trash_frame_does_not_double_count_eliminate_allies() -> (
-    None
-):
-    # No-double-count guard for the fix above: when the OPTIONAL_TRASH frame
-    # sits directly over the owner's AGENT_EFFECTS frame (Hagga Basin's
-    # single replacement), trash_personal_card's own crediting already
-    # counts Eliminate Allies' troops once; apply_optional_trash's new
-    # ``credit_trash_recruits`` call must not add them again
-    # [Main p. 10] [FAQ p. 4].
+def test_planetologist_second_trash_left_unused_lapses_at_the_turn_end() -> None:
+    # The replacement's trash is optional ("[trash a card]", OQ-095 (2)): with
+    # two waiting, one used and one not, only the unused one lapses, with its
+    # own event, and it holds the turn's end back no more than the used one.
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(DUNE, ELIMINATE_ALLIES, RECON),
+        maker_hooks=True,
+        troops_garrison=3,
+        troops_supply=9,
+        resources=Resources(water=3),
+    )
+    placed = _play(_turn_state(owner), DUNE, "deep_desert")
+    summon = next(
+        a
+        for a in legal_maker_space_actions(placed, 0)
+        if a.action_id == "summon_maker_sandworms"
+    )
+    replaced = apply_maker_space_action(placed, summon).state
+    working = apply_optional_trash(replaced, _trash_row(replaced, RECON)).state
+    working = apply_optional_trash(working, _DRAW_PLANETOLOGIST).state
+    working = apply_optional_trash(working, _DRAW_PLANETOLOGIST).state
+    assert _waiting_kinds(working) == [turn_rows.OPTIONAL_TRASH]
+    assert _can_finish(working)
+    lapsed = turn_rows.lapse(working, 0)
+    assert [e.kind for e in lapsed.events] == ["optional_trash_lapsed"]
+    assert _waiting_kinds(lapsed.state) == []
+
+
+def test_planetologist_single_trash_does_not_double_count_eliminate_allies() -> None:
+    # No-double-count guard for the fix above: with one replacement (Hagga
+    # Basin) the trash taken from the Agent turn's frame is credited in place
+    # by trash_personal_card; ``credit_trash_recruits`` must not add Eliminate
+    # Allies' troops again [Main p. 10] [FAQ p. 4].
     owner = PlayerState(
         player_id=0,
         leader_id="liet_kynes",
@@ -1259,19 +1401,68 @@ def test_planetologist_single_trash_frame_does_not_double_count_eliminate_allies
         if a.action_id == "summon_maker_sandworms"
     )
     replaced = apply_maker_space_action(placed, summon).state
-    assert replaced.decision_stack[-1].kind == "optional_trash"
+    assert _waiting_kinds(replaced) == [
+        turn_rows.OPTIONAL_TRASH,
+        turn_rows.PLANETOLOGIST_INTRIGUE,
+    ]
 
-    trash = next(
-        a
-        for a in legal_optional_trash_actions(replaced, 0)[1:]
-        if dict(a.arguments)["card_id"] == ELIMINATE_ALLIES
-    )
-    resolved = apply_optional_trash(replaced, trash).state
+    resolved = apply_optional_trash(
+        replaced, _trash_row(replaced, ELIMINATE_ALLIES)
+    ).state
     resolved = apply_optional_trash(resolved, _DRAW_PLANETOLOGIST).state
 
     assert resolved.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting_kinds(resolved) == []
     assert resolved.players[0].troops_garrison == 5
     assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 2
+
+
+@pytest.mark.parametrize("elsewhere", ["combat", "another_seats_turn"])
+def test_planetologist_outside_the_owners_turn_still_opens_its_window(
+    elsewhere: str,
+) -> None:
+    # Only the owner's own Agent or Reveal turn turns the replacement into
+    # rows (cleanup-2b, OQ-095 (2)); in Combat, or on another seat's turn, the
+    # replacement still opens its window with the trash's refusal and the
+    # Intrigue card as a step of its own (user ruling 2026-10-10, OQ-106).
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(RECON, DUNE),
+        resources=Resources(water=1),
+    )
+    base = _turn_state(owner)
+    if elsewhere == "combat":
+        state = replace(base, phase=GamePhase.COMBAT, decision_stack=())
+    else:
+        state = replace(
+            base,
+            decision_stack=(
+                DecisionFrame(
+                    kind="turn",
+                    frame_id="round:1:turn:1",
+                    decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+                ),
+            ),
+        )
+
+    replaced = replace_sandworms(state, 0, 1, source="test:summon")
+
+    assert replaced.state.players[0].resources.spice == 1
+    assert [event.kind for event in replaced.events] == ["sandworms_replaced"]
+    frame = replaced.state.decision_stack[-1]
+    assert frame.kind == FrameKind.OPTIONAL_TRASH
+    assert turn_rows.pending(replaced.state.decision_stack[0]) == ()
+    options = legal_optional_trash_actions(replaced.state, 0)
+    assert options[0].action_id == "decline_optional_trash"
+    assert options[-1] == _DRAW_PLANETOLOGIST
+    declined = apply_optional_trash(replaced.state, options[0])
+    assert [event.kind for event in declined.events] == ["optional_trash_declined"]
+    # The Intrigue card keeps the window open until it is drawn.
+    assert declined.state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    drawn = apply_optional_trash(declined.state, _DRAW_PLANETOLOGIST).state
+    assert len(drawn.players[0].intrigue_cards) == 1
+    assert drawn.decision_stack == state.decision_stack
 
 
 def test_judge_of_the_change_rewards_the_visited_space_kind() -> None:
@@ -1376,20 +1567,41 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     taken = taken_result.state
     assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
     assert taken.players[0].resources.spice == 1
-    # The log's reading (panels.js logEventPayload): bonus_spice is the
-    # space's change, so -1 is the spice the Signet's player took and
-    # gained, +1 the one placed on Tuek's Sietch.
+    # The spice the Signet's player took is a gain of its own, then the
+    # box's event; placing one on Tuek's Sietch gains nothing (cleanup-2c-4).
+    source = "round:1:player:0:leader_signet"
     assert [(e.kind, dict(e.payload)) for e in taken_result.events] == [
-        (
-            "leader_signet_resolved",
-            {"bonus_spice": -1, "player": 0, "space_id": "hagga_basin"},
-        )
+        ("resources_gained", {"player": 0, "source": source, "spice": 1}),
+        ("leader_signet_resolved", {"card_id": SIGNET, "player": 0}),
     ]
     assert [(e.kind, dict(e.payload)) for e in placed_result.events] == [
-        (
-            "leader_signet_resolved",
-            {"bonus_spice": 1, "player": 0, "space_id": "tuek_sietch"},
-        )
+        ("leader_signet_resolved", {"card_id": SIGNET, "player": 0}),
+    ]
+
+
+def test_smuggle_spice_with_neither_half_is_confirmed() -> None:
+    # Tuek's Sietch missing and no bonus spice anywhere: the mandatory
+    # choose-one can do nothing, and its owner confirms (user ruling
+    # 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다";
+    # cleanup-2f) instead of a refusal kept only so the frame cannot jam.
+    owner = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
+    state = _play(
+        _esmar_state(
+            owner,
+            maker_bonus_spice=(
+                ("deep_desert", 0),
+                ("hagga_basin", 0),
+                ("imperial_basin", 0),
+            ),
+        ),
+        SIGNET,
+        "arrakeen",
+    )
+    confirm = DomainAction(action_id="resolve_leader_signet_without_option", actor=0)
+    assert legal_leader_signet_actions(state, 0) == (confirm,)
+    result = apply_leader_signet_payment(state, confirm)
+    assert [(e.kind, dict(e.payload)) for e in result.events] == [
+        ("leader_signet_unavailable", {"card_id": SIGNET, "player": 0}),
     ]
 
 

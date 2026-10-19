@@ -30,6 +30,8 @@ default).
   positive line -> least loss for the Influence Reduction family, else
   ``DefaultRandomChoice``. Rebuild Infrastructure is priced by its line
   (``Spi(-1) - BWV``), so the seat always passes (computed, not hard-coded).
+  With no line the seat can take, its one row
+  (``resolve_scouts_choice_without_option``, cleanup-2a) takes nothing.
 - ``scouts_effect`` (§3.2): the current step of the line being resolved
   (frame context ``item``, ``option``, ``step``) is answered by the
   ``Evaluate`` of the line ability that owns it, looked up on the line's
@@ -149,7 +151,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
 )
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.rules.scouts_effects import option_steps, scouts_option
+from dune_imperium.rules.scouts_effects import (
+    SCOUTS_NO_OPTION,
+    option_steps,
+    scouts_option,
+)
 from dune_imperium.rules.scouts_missions import PRISON_PLANET_COMMANDER
 
 #: ``Memory.intents`` keys. ``(SUBCOMMITTEE_INTENT, round, seat) ->
@@ -160,7 +166,9 @@ from dune_imperium.rules.scouts_missions import PRISON_PLANET_COMMANDER
 SUBCOMMITTEE_INTENT: Final = "subcommittee"
 MISSION_JOIN_INTENT: Final = "scouts_mission_join"
 
-_CHOICE_IDS: Final = frozenset({"scouts_choose_option", "scouts_pass"})
+_CHOICE_IDS: Final = frozenset(
+    {"scouts_choose_option", "scouts_pass", SCOUTS_NO_OPTION}
+)
 _SUBCOMMITTEE_IDS: Final = frozenset({"join_subcommittee", "decline_subcommittee"})
 _MISSION_IDS: Final = frozenset(
     {"scouts_join_mission", "scouts_decline_mission", "scouts_return_specimens"}
@@ -248,6 +256,10 @@ def scouts_choice(run: DecisionRun) -> DomainAction | None:
 
     if not _only(run, _CHOICE_IDS):
         return None
+    # No line the seat can take: its one row takes nothing (cleanup-2a).
+    nothing = run.first(SCOUTS_NO_OPTION)
+    if nothing is not None:
+        return nothing
     item = _context_str(run, "item")
     chooses = run.by_id("scouts_choose_option")
     lines = _ints(chooses, "option")

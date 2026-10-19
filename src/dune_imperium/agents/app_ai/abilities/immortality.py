@@ -2899,15 +2899,19 @@ class HarvestCellsAbility(IntrigueAbility):
     """``Immortality.HarvestCellsAbility`` (§7.5). ``.ctor @0x4c74ee0``:
     timing 3 (CombatResolution), which ``HasMatchingTiming`` maps to the
     Combat turn. ``Cost @0x4c74fd0`` = ``TroopsDeployedThisConflict >= 3``
-    (judgement: our troops in the Conflict). Targets: the Tleilaxu Row
-    cards it may acquire (``GetHarvestCellsTargets``, UNTRACED)."""
+    (judgement: the units the seat lost at this Conflict's end, which our
+    engine records on its window once they are back in the supply,
+    ``combat.conflict_end_loss``). Targets: the Tleilaxu Row cards it may
+    acquire (``GetHarvestCellsTargets``, UNTRACED)."""
 
     timing: ClassVar[Timing] = Timing.COMBAT_RESOLUTION
     ability_timing: ClassVar[int] = COMBAT_RESOLUTION_TIMING
 
     def meets_cost(self, p: Profile) -> bool:
         # Troops: Bloodlines Commanders count (bloodlines-systems.md §1.1, D1).
-        return p.conflict_troop_count() >= 3
+        from dune_imperium.rules.combat import conflict_end_loss
+
+        return conflict_end_loss(p.ctx.state, p.ctx.seat) >= 3
 
     def is_bad_intrigue(self, p: Profile) -> bool:
         """``IsBadIntrigue @0x4c75510``: the Late arc."""

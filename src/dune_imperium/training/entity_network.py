@@ -20,7 +20,12 @@ What changes is how it reads and scores:
   through the same seat encoder (relative seat 0 is the observer), then a
   torso mixes them with the board and the private view.
 - **Actions by their parts.** A catalog action's vector is built from its
-  kind and its arguments -- an entity argument through the entity embedding,
+  shape and its arguments. The shape is the action id's row of
+  ``rules.action_shapes`` -- its verb, the effect it answers, its target,
+  and what a refusal answers -- each a learned vector, so
+  ``trash_agent_card`` and ``trash_reveal_card`` share the ``trash`` verb
+  and differ in their source only (docs/composed-effects-plan.md 4.4, stage
+  A8). Arguments: an entity argument through the entity embedding,
   a label through a learned vector per (argument, value), a number scaling a
   learned vector per argument -- and scored against the state by a dot
   product, plus a learned bias per action that starts at zero. A new action
@@ -51,6 +56,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
 )
 from dune_imperium.config import RulesetConfig
+from dune_imperium.rules.action_shapes import ACTION_SHAPES
 from dune_imperium.training.entity_features import (
     FEATURE_DIGEST,
     SLOT_HINTS,
@@ -122,6 +128,22 @@ class ActionVocabulary(NamedTuple):
     kinds: tuple[str, ...]
     keys: tuple[str, ...]
     labels: tuple[tuple[str, object], ...]
+    parts: tuple[str, ...]
+
+
+def action_parts(action_id: str) -> tuple[str, ...]:
+    """The shape parts an action id's vector sums (``ACTION_SHAPES``)."""
+
+    shape = ACTION_SHAPES[action_id]
+    return (
+        f"verb={shape.verb.value}",
+        f"source={shape.source.value}",
+        f"target={shape.target.value}",
+        *((f"of={shape.of.value}",) if shape.of is not None else ()),
+        *(f"also={verb.value}" for verb in shape.also),
+        *((f"variant={shape.variant}",) if shape.variant else ()),
+        *((f"tag={shape.tag.value}",) if shape.tag is not None else ()),
+    )
 
 
 def _argument_label(
@@ -148,10 +170,12 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
             label = _argument_label(action_id, key, value)
             if label is not None:
                 labels.setdefault(label, None)
+    kinds = tuple(sorted({action_id for action_id, _ in rows}))
     return ActionVocabulary(
-        kinds=tuple(sorted({action_id for action_id, _ in rows})),
+        kinds=kinds,
         keys=tuple(sorted({key for _, arguments in rows for key, _ in arguments})),
         labels=tuple(labels),
+        parts=tuple(sorted({part for kind in kinds for part in action_parts(kind)})),
     )
 
 
@@ -331,8 +355,8 @@ def retarget_action_parts(
     """
 
     moved = dict(state_dict)
-    moved["kind_embed.weight"] = _moved_rows(
-        state_dict["kind_embed.weight"], old.kinds, new.kinds, pad=False
+    moved["part_embed.weight"] = _moved_rows(
+        state_dict["part_embed.weight"], old.parts, new.parts, pad=True
     )
     for name in ("key_number.weight", "key_entity"):
         moved[name] = _moved_rows(state_dict[name], old.keys, new.keys, pad=True)
@@ -340,6 +364,87 @@ def retarget_action_parts(
         state_dict["label_embed.weight"], old.labels, new.labels, pad=True
     )
     return moved
+
+
+class EntityMove(NamedTuple):
+    """What ``retarget_entities`` did, for the migration report."""
+
+    columns_kept: int
+    columns_new: int
+    columns_dropped: int
+    entities_new: int
+
+
+def retarget_entities(
+    state_dict: dict[str, Tensor],
+    old: Mapping[str, Mapping[str, Sequence[Any]]],
+    new: Mapping[str, Mapping[str, Sequence[Any]]],
+) -> tuple[dict[str, Tensor], EntityMove]:
+    """Move a state dict's entity projections by feature column name and its
+    own entity vectors by id (``entity_features.feature_tables``).
+
+    A kept column's weights are rescaled by the ratio of its scales, so an
+    entity whose own features did not change computes what it did; a column,
+    entity or vocabulary the file never had starts at zero.
+    """
+
+    moved = dict(state_dict)
+    width = next(
+        value.shape[1]
+        for key, value in state_dict.items()
+        if key.startswith("entity_own.")
+    )
+    kept = fresh = dropped = new_entities = 0
+    for name, table in new.items():
+        columns = list(table["columns"])
+        ids = list(table["ids"])
+        weight_name = f"entity_project.{name}.weight"
+        bias_name = f"entity_project.{name}.bias"
+        own_name = f"entity_own.{name}"
+        weight = torch.zeros(width, max(1, len(columns)))
+        bias = torch.zeros(width)
+        own = torch.zeros(len(ids), width)
+        before = old.get(name)
+        if before is None:
+            fresh += len(columns)
+            new_entities += len(ids)
+        else:
+            old_weight = state_dict[weight_name]
+            old_scales = list(before["scales"])
+            where = {column: index for index, column in enumerate(before["columns"])}
+            scales = list(table["scales"])
+            for index, column in enumerate(columns):
+                found = where.get(column)
+                if found is None:
+                    fresh += 1
+                    continue
+                kept += 1
+                weight[:, index] = old_weight[:, found] * (
+                    scales[index] / old_scales[found]
+                )
+            dropped += len(set(before["columns"]) - set(columns))
+            bias = state_dict[bias_name].clone()
+            old_own = state_dict[own_name]
+            old_ids = {entity: index for index, entity in enumerate(before["ids"])}
+            for index, entity in enumerate(ids):
+                found = old_ids.get(entity)
+                if found is None:
+                    new_entities += 1
+                else:
+                    own[index] = old_own[found]
+        moved[weight_name] = weight
+        moved[bias_name] = bias
+        moved[own_name] = own
+    for name, table in old.items():
+        if name not in new:
+            dropped += len(table["columns"])
+            for key in (
+                f"entity_project.{name}.weight",
+                f"entity_project.{name}.bias",
+                f"entity_own.{name}",
+            ):
+                moved.pop(key, None)
+    return moved, EntityMove(kept, fresh, dropped, new_entities)
 
 
 def _group(segment: str) -> str:
@@ -373,6 +478,7 @@ class EntityNetwork(PolicyValueNetwork):
     slot_key_entity: Tensor
     slot_key_live: Tensor
     action_kind: Tensor
+    kind_parts: Tensor
     arg_key: Tensor
     arg_entity: Tensor
     arg_label: Tensor
@@ -789,8 +895,18 @@ class EntityNetwork(PolicyValueNetwork):
             arg_entity.append(row_entity + [self.entity_count] * padding)
             arg_label.append(row_label + [0] * padding)
             arg_number.append(row_number + [0.0] * padding)
+        part_index = {part: index + 1 for index, part in enumerate(vocabulary.parts)}
+        kind_parts = [
+            [part_index[part] for part in action_parts(kind)] for kind in kinds
+        ]
+        depth = max(len(row) for row in kind_parts)
         self.action_vocabulary = vocabulary
         self.register_buffer("action_kind", torch.tensor(action_kind), persistent=False)
+        self.register_buffer(
+            "kind_parts",
+            torch.tensor([row + [0] * (depth - len(row)) for row in kind_parts]),
+            persistent=False,
+        )
         self.register_buffer("arg_key", torch.tensor(arg_key), persistent=False)
         self.register_buffer("arg_entity", torch.tensor(arg_entity), persistent=False)
         self.register_buffer("arg_label", torch.tensor(arg_label), persistent=False)
@@ -800,7 +916,7 @@ class EntityNetwork(PolicyValueNetwork):
             persistent=False,
         )
         a = self.action_width
-        self.kind_embed = nn.Embedding(len(kinds), a)
+        self.part_embed = nn.Embedding(len(vocabulary.parts) + 1, a, padding_idx=0)
         self.key_number = nn.Embedding(len(keys) + 1, a, padding_idx=0)
         self.label_embed = nn.Embedding(len(labels) + 1, a, padding_idx=0)
         # One projection of an entity per argument (a card to play and a card
@@ -844,7 +960,7 @@ class EntityNetwork(PolicyValueNetwork):
         if entities is None:
             entities = self.entity_table()
         keys = self.arg_key[actions]  # [K, M]
-        vector = self.kind_embed(self.action_kind[actions])
+        vector = self.part_embed(self.kind_parts[self.action_kind[actions]]).sum(dim=1)
         vector = vector + (
             self.key_number(keys) * self.arg_number[actions].unsqueeze(-1)
         ).sum(dim=1)

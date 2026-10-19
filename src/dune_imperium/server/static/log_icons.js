@@ -31,7 +31,6 @@ const LOG_EVENT_ICONS = {
   combat_intrigue_finished: "log:conflict",
   combat_intrigue_started: "log:conflict",
   combat_reward_gained: "log:conflict",
-  combat_reward_paid: "log:conflict",
   conflict_end_trigger_offered: "log:conflict",
   conflict_revealed: "log:conflict",
   conflict_won: "log:conflict",
@@ -91,11 +90,9 @@ const LOG_EVENT_ICONS = {
   reveal_started: "persuasion",
   tleilaxu_card_acquired: "persuasion",
   // Intrigue cards.
-  intrigue_cost_paid: "log:intrigue_played",
   intrigue_effect_used: "log:intrigue_played",
   intrigue_kept_faceup: "log:intrigue_played",
   intrigue_played: "log:intrigue_played",
-  intrigue_trigger_fired: "log:intrigue_played",
   intrigue_triggered: "log:intrigue_played",
   intrigue_card_drawn: "log:intrigue",
   intrigue_card_given: "log:intrigue",
@@ -118,19 +115,9 @@ const LOG_EVENT_ICONS = {
   alliance_transferred: "alliance:{faction}",
   // Resources and Victory Points.
   contract_icons_converted_to_solari: "solari",
-  leader_signet_solari_paid: "solari",
-  reveal_solari_gained: "solari",
-  contract_reveal_spice_gained: "spice",
-  leader_ability_spice_gained: "spice",
-  leader_signet_spice_paid: "spice",
   maker_spice_added: "spice",
-  reveal_spice_paid: "spice",
-  scouts_helix_spice: "spice",
   scouts_maker_spice_added: "spice",
-  leader_board_repeat_paid: "water",
-  corrinth_city_payment_resolved: "victory_point",
   reveal_victory_point_gained: "victory_point",
-  victory_points_gained: "victory_point",
   game_finished: "log:vp_winner",
   // Contracts, Control, the Maker and the Shield Wall.
   contract_completed: "contract",
@@ -140,7 +127,6 @@ const LOG_EVENT_ICONS = {
   contract_taken: "contract",
   contracts_revealed: "contract",
   scouts_contracts_cleared: "contract",
-  control_bonus_gained: "control",
   scouts_marker_returned: "control",
   reveal_sandworm_deployed: "sandworm",
   sandworm_deployed: "sandworm",
@@ -148,17 +134,17 @@ const LOG_EVENT_ICONS = {
   scouts_shield_wall_rebuilt: "shield_wall",
   shield_wall_destroyed: "shield_wall",
   shield_wall_kept: "shield_wall",
+  leader_signet_declined: "signet_ring",
+  leader_signet_expired: "signet_ring",
+  leader_signet_lapsed: "signet_ring",
   leader_signet_resolved: "signet_ring",
   leader_signet_started: "signet_ring",
   // Immortality and the Tech module.
-  scouts_specimens_paid: "specimen",
   specimen_returned: "specimen",
   specimens_generated: "specimen",
   family_atomics_used: "log:family_atomics",
   genetic_marker_reached: "log:research",
   research_advanced: "log:research",
-  research_bonus_paid: "log:research",
-  research_resources_gained: "log:research",
   tleilaxu_advanced: "log:tleilaxu",
   tleilaxu_track_end: "log:tleilaxu",
   secret_project_chosen: "log:tech",
@@ -213,10 +199,29 @@ function logIconTile(key, label) {
   return tile;
 }
 
+/* A resources_gained or resources_paid line's picture: what was gained or
+   paid, when it is one thing (the kinds they replaced each had theirs,
+   cleanup-2c); none for a mixed one. */
+const GAIN_ICONS = [
+  ["victory_points", "victory_point"],
+  ["solari", "solari"],
+  ["spice", "spice"],
+  ["water", "water"],
+  ["specimens", "specimen"],
+];
+
+function gainIconKey(payload) {
+  const gained = GAIN_ICONS.filter(([field]) => payload[field]);
+  return gained.length === 1 ? gained[0][1] : null;
+}
+
 function logEventIcon(event) {
+  if (!state.catalog) return null;
   const template = LOG_EVENT_ICONS[event.kind];
-  if (!template || !state.catalog) return null;
-  const key = logIconKey(template, event.payload || {});
+  const key =
+    event.kind === "resources_gained" || event.kind === "resources_paid"
+      ? gainIconKey(event.payload || {})
+      : template && logIconKey(template, event.payload || {});
   if (!key) return null;
   return logIconTile(key, phraseText(EVENT_LABELS[event.kind] || ""));
 }

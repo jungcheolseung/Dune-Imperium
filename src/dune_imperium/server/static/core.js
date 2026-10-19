@@ -286,6 +286,10 @@ function researchSpaceName(spaceId, withBonus) {
    ("board:arrakeen", "contract:contract:espionage_i", "imperium:x:0"). */
 const PROVENANCE_KINDS = {
   board: "spaces",
+  /* A Control marker's bonus ("round:3:player:1:control:arrakeen"). */
+  control: "spaces",
+  /* A Leader's ability ("round:3:player:1:leader:esmar_tuek"). */
+  leader: "leaders",
   contract: "contracts",
   agent_card: "cards",
   imperium: "cards",
@@ -320,7 +324,35 @@ function sourceRef(value) {
     if (entry) return { section: kind, entry };
   }
   const entry = parts.length === 1 ? lookup(parts[0]) : null;
-  return entry ? entrySection(parts[0]) : null;
+  if (entry) return entrySection(parts[0]);
+  return trackSourceRef(parts);
+}
+
+/* The sources that name no catalog id (rules/immortality.py,
+   leader_abilities.py, combat.py): a seat's research or Tleilaxu track
+   space ("round:3:player:1:research:c3r3", "…:tleilaxu:4"), the Signet
+   Ring's box ("round:3:player:1:leader_signet") and a Conflict reward's
+   optional cost ("round:3:combat_reward:optional:0:1"). Read only when no
+   card or space is named, so a window named after what opened it keeps
+   that name. */
+function trackSourceRef(parts) {
+  const last = parts[parts.length - 1];
+  const before = parts[parts.length - 2];
+  if (parts[2] === "combat_reward") {
+    return { section: "combat_reward", entry: { name: t("core.source_combat_reward") } };
+  }
+  if (last === "leader_signet") {
+    const entry = lookup("signet_ring", "cards");
+    return entry ? { section: "cards", entry } : null;
+  }
+  if (before === "research") {
+    const name = researchSpaceName(last, false);
+    return name ? { section: "research", entry: { name } } : null;
+  }
+  if (before === "tleilaxu" && /^(?:\d+|end)$/.test(last)) {
+    return { section: "tleilaxu_track", entry: { name: t("board.tleilaxu_track") } };
+  }
+  return null;
 }
 
 /* What one engine value reads as on screen, given the field that holds it
@@ -334,8 +366,9 @@ function fieldText(key, value, siblings = {}) {
   /* The server writes the Korean marker for an argument this seat may not
      see (sessions.py); it reads in the page's language. */
   if (text === UI_TEXT["common.hidden"].ko) return t("common.hidden");
-  /* The engine joins an id list into one string ("staban_tuek,gurney_halleck",
-     Family Atomics' "removed", "garrison,garrison"). */
+  /* An id list (an event's list, joined by the log as "a,b": a Leader
+     draft's leader_ids, the Row's "removed"), or a frame context's
+     comma-joined ids ("garrison,garrison"). */
   if (text.includes(",")) {
     const parts = text
       .split(",")

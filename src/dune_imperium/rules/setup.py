@@ -845,7 +845,7 @@ def create_draft_initial_state(
             GameEvent(
                 event_id="setup:leader_draft:pool",
                 kind="leader_draft_pool_revealed",
-                payload=(("leader_ids", ",".join(pool)),),
+                payload=(("leader_ids", tuple(pool)),),
             ),
         ),
     )

@@ -21,10 +21,9 @@ from dune_imperium.content.arrakeen_scouts import (
     MISSIONS_BY_ID,
     SALES_BY_ID,
     SUBCOMMITTEES_BY_ID,
-    ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import ScoutsCost, ScoutsReward
-from dune_imperium.content.uprising.effect_dsl import PayResources
+from dune_imperium.content.uprising.effect_dsl import EffectSection, PayResources
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
@@ -249,7 +248,7 @@ def test_a_secret_pick_and_other_decisions_have_no_lines() -> None:
 def _check_rules_helpers(state: GameState, seat: int) -> None:
     """The reason helpers agree with the checks the engine offers by."""
 
-    options: list[tuple[ScoutsOption, str]] = [
+    options: list[tuple[EffectSection, str]] = [
         (subcommittee.option, excluded)
         for subcommittee in SUBCOMMITTEES_BY_ID.values()
         for excluded in ("", "high_council")
@@ -271,7 +270,7 @@ def _check_rules_helpers(state: GameState, seat: int) -> None:
             # resource cost counts with the others of its line).
             assert not option_is_affordable(state, seat, option)
             if not isinstance(step, PayResources):
-                single = ScoutsOption(costs=(cast(ScoutsCost, step),))
+                single = EffectSection(rewards=(), costs=(cast(ScoutsCost, step),))
                 assert not option_is_affordable(state, seat, single)
         else:
             reward = cast(ScoutsReward, step)

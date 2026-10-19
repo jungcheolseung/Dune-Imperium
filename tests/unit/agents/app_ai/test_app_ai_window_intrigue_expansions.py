@@ -403,7 +403,10 @@ def test_immortality_combat_intrigues_are_intrigue_keys() -> None:
 
 @cache
 def _harvest_frame() -> GameState:
-    """Seed 6, round 4: seat 3's face-up Harvest Cells fires."""
+    """Seed 6, round 6: seat 1 played its Harvest Cells in the Conflict-end
+    window; the card resolved at its play (two specimens taken, the
+    ``specimens_generated`` event just logged), so its acquisition choice
+    is on top (user decision 2026-10-18)."""
 
     def predicate(state: GameState, owner: int) -> bool:
         frame = state.decision_stack[-1]
@@ -416,6 +419,9 @@ def _harvest_frame() -> GameState:
 
 
 def _harvest(**changes: object) -> tuple[GameState, str]:
+    """The Harvest Cells acquisition choice; ``specimens`` overrides the
+    seat's count after the play's two were taken."""
+
     state = _harvest_frame()
     seat = _seat(state)
     me = state.players[seat]
@@ -431,16 +437,29 @@ def _harvest(**changes: object) -> tuple[GameState, str]:
     return state, instance
 
 
-def test_harvest_cells_takes_the_specimens_first() -> None:
-    state, _instance = _harvest()
+def test_harvest_cells_has_its_specimens_before_the_acquisition_is_asked() -> None:
+    """The card resolved when it was played: its two specimens are already
+    taken, no ``resolve_intrigue_rewards`` step waits, and the first answer
+    the app gives is the acquisition itself."""
+
+    state, instance = _harvest()
+    played = state.event_log[-1]
+    assert played.kind == "specimens_generated"
+    assert dict(played.payload) == {"count": 2, "player": _seat(state)}
     run = _run(state)
-    assert {a.action_id for a in run.legal} >= {"resolve_intrigue_rewards"}
-    assert W.intrigue_choice(run) == _find(state, "resolve_intrigue_rewards")
+    assert "resolve_intrigue_rewards" not in {a.action_id for a in run.legal}
+    action = W.intrigue_choice(run)
+    assert action is not None
+    assert action.action_id in {
+        "acquire_intrigue_tleilaxu",
+        "acquire_intrigue_reclaimed_forces",
+        "decline_intrigue_tleilaxu",
+    }
+    assert action in run.legal
 
 
 def test_harvest_cells_acquires_the_card_its_evaluate_names() -> None:
-    state, instance = _harvest(specimens=2)
-    state = _apply(state, _find(state, "resolve_intrigue_rewards"))
+    state, instance = _harvest(specimens=4)
     run = _run(state)
     offered = [
         str(arg(a, "instance_id")) for a in run.by_id("acquire_intrigue_tleilaxu")
@@ -459,8 +478,7 @@ def test_harvest_cells_acquires_the_card_its_evaluate_names() -> None:
 
 
 def test_harvest_cells_replays_the_recorded_answer_on_top_of_the_deck() -> None:
-    state, instance = _harvest(specimens=2, research_space=ONE_MARKER)
-    state = _apply(state, _find(state, "resolve_intrigue_rewards"))
+    state, instance = _harvest(specimens=4, research_space=ONE_MARKER)
     run = _run(state)
     offered = list(
         dict.fromkeys(
@@ -480,8 +498,7 @@ def test_harvest_cells_reevaluates_when_the_recorded_card_is_gone() -> None:
     """The recorded answer names a card no longer offered: the ability is
     evaluated again over the offered cards."""
 
-    state, instance = _harvest(specimens=2)
-    state = _apply(state, _find(state, "resolve_intrigue_rewards"))
+    state, instance = _harvest(specimens=4)
     run = _run(state)
     offered = list(
         dict.fromkeys(
@@ -504,8 +521,7 @@ def test_harvest_cells_reevaluates_when_the_recorded_card_is_gone() -> None:
 
 
 def test_harvest_cells_recorded_no_acquire_declines() -> None:
-    state, instance = _harvest(specimens=2)
-    state = _apply(state, _find(state, "resolve_intrigue_rewards"))
+    state, instance = _harvest(specimens=4)
     run = _run(state)
     memory = Memory()
     memory.intents[(W.INTENT, instance)] = Answer(2.0, ((),))

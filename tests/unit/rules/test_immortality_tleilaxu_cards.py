@@ -29,7 +29,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.observation import observe_state
-from dune_imperium.rules import card_trash
+from dune_imperium.rules import card_trash, turn_rows
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     apply_agent_card_discard,
@@ -42,13 +42,14 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     grant_combat_icon,
     legal_combat_deployments,
     legal_troop_withdrawals,
 )
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import (
@@ -203,8 +204,12 @@ def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
 
 def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
     # The grafted line resolved first: its Research direction and the c3r3
-    # bonus ("trash and specimen"; the trash optional [Main p. 20]) are
-    # answered while the draw icon still waits on the Agent box.
+    # bonus ("trash and specimen"; the trash optional [Main p. 20], waiting on
+    # the Agent turn as rows with no refusal, cleanup-2b) are answered while
+    # the draw icon still waits on the Agent box. The bonus's two icons are
+    # independent effects in the owner's order (user decision 2026-10-17,
+    # composed-effects plan 5, rule decision 5; OQ-027 [Main p. 9]): the
+    # specimen waits as a row of its own beside the trash, taken after it here.
     espionage = _tleilaxu("industrial_espionage")
     owner = _owner((espionage, FACE_DANCER, DAGGER), research_space="c2r2")
     deck_size = len(owner.deck)
@@ -218,7 +223,16 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
         arguments=(("space_id", "c3r3"),),
     )
     bonus = engine.apply(researched, direction).state
-    assert bonus.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert bonus.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [
+        (kind, value)
+        for kind, _source, value in turn_rows.pending(bonus.decision_stack[-1])
+    ] == [(turn_rows.RESEARCH_ICON, "specimen"), (turn_rows.OPTIONAL_TRASH, "")]
+    # Only the Research icon's own specimen so far; c3r3's waits.
+    assert bonus.players[0].specimens == 1
+    assert "decline_optional_trash" not in {
+        action.action_id for action in engine.legal_actions(bonus, 0)
+    }
     assert bonus.players[0].hand == (DAGGER,)
     assert len(bonus.players[0].deck) == deck_size
     trash = DomainAction(
@@ -228,7 +242,19 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
 
     trashed = engine.apply(bonus, trash).state
     assert trashed.players[0].trashed == (DAGGER,)
+    assert trashed.players[0].specimens == 1
+    assert [
+        (kind, value)
+        for kind, _source, value in turn_rows.pending(trashed.decision_stack[-1])
+    ] == [(turn_rows.RESEARCH_ICON, "specimen")]
+    specimen = DomainAction(
+        action_id="resolve_research_icon",
+        actor=0,
+        arguments=(("effect", "specimen"),),
+    )
+    trashed = engine.apply(trashed, specimen).state
     assert trashed.players[0].specimens == 2
+    assert turn_rows.pending(trashed.decision_stack[-1]) == ()
     assert _icon_keys(trashed) == {"cards"}
 
     drawn = resolve_agent_card_icon(trashed, _icon(trashed, "cards")).state
@@ -294,6 +320,15 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     # Past the second genetic marker a Research icon draws a card instead.
     assert len(owner.hand) == 1
     assert "card_trashed" in {event.kind for event in result.events}
+    # The one action did both lines: the Research line's event, then the
+    # box's (cleanup-2c-2 review).
+    box = agent_card_source(two.round_number, 0, breakthrough)
+    assert result.events[-2:] == (
+        agent_box_event(
+            box, breakthrough, 0, BoxOutcome.RESOLVED, effect="research"
+        ),
+        agent_box_event(box, breakthrough, 0, BoxOutcome.RESOLVED),
+    )
     kept = resolve_agent_card_effect(two).state.players[0]
     assert breakthrough in kept.in_play and kept.victory_points == 1
 
@@ -477,7 +512,7 @@ def test_guild_impersonator_needs_spice_gained_this_turn() -> None:
         .state
     )
     late = resolve_agent_card_effect(spiced)
-    assert late.events[0].kind == "agent_card_effect_resolved"
+    assert late.events[-1].kind == "agent_card_effect_resolved"
     assert late.state.players[0].influence.spacing_guild == 1
 
 
@@ -627,12 +662,22 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
     )
     # The trash waits for the second pick too.
     assert trashing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.pending(trashing.state.decision_stack[-1]) == ()
     trashed_and_troop = apply_agent_card_payment(
         trashing.state,
         _payment(trashing.state, "choose_agent_card_reward", reward="troop"),
     ).state
-    assert trashed_and_troop.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert trashed_and_troop.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+    # Both named: the trash then waits on the Agent turn as rows, with no
+    # refusal (cleanup-2b, OQ-095 (2)).
+    top = trashed_and_troop.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    assert "decline_optional_trash" not in {
+        action.action_id
+        for action in UprisingRulesEngine().legal_actions(trashed_and_troop, 0)
+    }
     assert trashed_and_troop.players[0].troops_garrison == 4
 
 
@@ -1450,8 +1495,16 @@ def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> 
     _, context = current_agent_effect_context(grafted.state)
     assert context["graft_pending_effect"] is True
 
-    # Occupation's box (draw and the Combat icon) resolves like any partner.
-    drawn = resolve_agent_card_effect(_switch(grafted.state))
+    # Occupation's box (draw and the Combat icon) resolves like any partner,
+    # icon by icon (cleanup-2d-5).
+    switched = _switch(grafted.state)
+    drew = resolve_agent_card_icon(
+        switched,
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),)),
+    )
+    drawn = apply_agent_card_payment(
+        drew.state, DomainAction("take_agent_card_combat_icon", 0)
+    )
     assert len(drawn.state.players[0].hand) == 1
     # The turn stays open until its owner ends it (OQ-095), so the borrowed
     # card is still in play beside the turn end.

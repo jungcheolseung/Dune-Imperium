@@ -978,7 +978,8 @@ const vpLedger = {
    expansion) and the review's 75 found one in nearly every scoring step;
    a step with none still shows its own head. */
 const VP_CAUSE_KINDS = new Set([
-  "victory_points_gained",
+  /* A line's gain (cleanup-2c: its Victory Points are a payload key). */
+  "resources_gained",
   "reveal_victory_point_gained",
   "influence_gained",
   "influence_lost",
@@ -988,13 +989,11 @@ const VP_CAUSE_KINDS = new Set([
   "alliance_lost",
   "conflict_won",
   "combat_reward_gained",
-  "combat_reward_paid",
   "battle_icons_matched",
   "endgame_wild_matched",
   "card_acquired",
   "agent_card_trashed_for_vp",
   "contract_reveal_card_trashed_for_vp",
-  "corrinth_city_payment_resolved",
   "contract_completed",
   "tleilaxu_advanced",
   "tleilaxu_track_end",
@@ -1005,11 +1004,9 @@ const VP_CAUSE_KINDS = new Set([
   "tech_acquire_effect_resolved",
   "agent_card_effect_resolved",
   "agent_card_reward_chosen",
-  /* Two steps that score without a point event of their own (2026-10-11
-     review, 27 of 2,576 rows in 75 games): a Combat reward paid by
-     recalling Spies, and an Agent box's arrow payment. */
+  /* A Combat reward paid by recalling Spies scores on its own event
+     (2026-10-11 review); a paid arrow's point is a resources_gained. */
   "spies_recalled",
-  "agent_card_payment_resolved",
 ]);
 
 /* Whether this page may read the ledger: always on an open server; on a
@@ -1499,20 +1496,6 @@ function logEventParts(payload, eventKind) {
     ) {
       continue;
     }
-    /* Esmar Tuek's Signet Ring, Smuggle Spice, taking a bonus spice off a
-       Maker space (rules/leader_abilities.py apply_leader_bonus_spice): the
-       payload writes the space's loss, -1, and the spice goes to the
-       Signet's player, so the line says so rather than "Bonus spice: -1".
-       Placing one on Tuek's Sietch (+1) keeps the plain pair. */
-    if (
-      key === "bonus_spice" &&
-      eventKind === "leader_signet_resolved" &&
-      typeof value === "number" &&
-      value < 0
-    ) {
-      parts.push(t("panels.log_bonus_spice_taken", { count: -value }));
-      continue;
-    }
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
     if (SEAT_PAYLOAD_KEYS.has(key)) {
@@ -1521,11 +1504,10 @@ function logEventParts(payload, eventKind) {
       parts.push(key === "player" ? seat : `${label}: ${seat}`);
       continue;
     }
-    /* Seats joined into one string: Rebuild Infrastructure's two payers,
-       "0,1" (rules/scouts_effects.py). Named bare, as "player" is. */
-    if (key === "players" && typeof value === "string") {
-      const seats = value.split(",").filter(Boolean);
-      parts.push(seats.map((seat) => t("common.seat", { seat: Number(seat) })).join(", "));
+    /* A list of seats: Rebuild Infrastructure's two payers, [0, 1]
+       (rules/scouts_effects.py). Named bare, as "player" is. */
+    if (key === "players" && Array.isArray(value)) {
+      parts.push(value.map((seat) => t("common.seat", { seat })).join(", "));
       continue;
     }
     /* Combat rewards and the like list every field; zeros say nothing. */
@@ -1581,15 +1563,10 @@ function logEventParts(payload, eventKind) {
    EVENT_LABELS (kept for a catalog without the Leader).
    tests/server/test_action_labels.py checks that each kind here has one
    emitter in the engine and that it names this Leader, so a row cannot go
-   stale silently.
-   - leader_ability_spice_gained: rules/leader_abilities.py
-     apply_smuggle_spice pays only staban_tuek, Smuggle Spice [Staban Tuek
-     card]. Its Korean particle, 로, follows that ability's name. */
+   stale silently. No kind needs a row now: Staban Tuek's Smuggle Spice is a
+   leader_ability_resolved naming him, after its resources_gained
+   (cleanup-2c-4). */
 const EVENT_IMPLIED_LEADER = {
-  leader_ability_spice_gained: {
-    leader: "staban_tuek",
-    text: "panels.log_leader_ability_spice_gained",
-  },
 };
 
 /* An event line's words before the payload. */
@@ -1598,6 +1575,20 @@ function logEventHead(event) {
   const leader = implied ? lookup(implied.leader, "leaders") : null;
   if (leader && leader.ability) {
     return tNode(implied.text, { ability: leader.ability, leader: leader.name });
+  }
+  /* A Leader's ability (Staban Tuek's Smuggle Spice, Esmar Tuek's Tuek's
+     Sietch, the Assassin, Hungry for Spice): its line names the ability and
+     the Leader from the catalog (user report 2026-10-10), its gain on the
+     resources_gained line before it (cleanup-2c-4). */
+  const named =
+    event.kind === "leader_ability_resolved" && event.payload
+      ? lookup(event.payload.leader_id, "leaders")
+      : null;
+  if (named && named.ability) {
+    return tNode("panels.log_leader_ability_resolved", {
+      ability: named.ability,
+      leader: named.name,
+    });
   }
   /* phrase(), not textContent: an event label may name a term, and the
      braces must never reach the screen. */
@@ -1626,13 +1617,14 @@ function logEventLine(event) {
    Intrigue window (rules/combat.py, rules/endgame.py) — the engine never
    emits a bare "pass" — and decline_conflict_end_intrigue a Conflict-end
    window, which opens on public facts, mostly with nothing to play
-   (OQ-103). */
+   (OQ-103), or finish_conflict_end_intrigue it once a card was played. */
 const QUIET_ACTIONS = new Set([
   "finish_agent_turn",
   "finish_reveal",
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
   "decline_conflict_end_intrigue",
+  "finish_conflict_end_intrigue",
 ]);
 
 /* Steps that stand as a card of their own (setup picks). */
@@ -1691,7 +1683,7 @@ function splitEntryEvents(entry) {
    window's own "declined" marker, or nothing at all (the pass that closes
    the window reads as flow instead, see splitEntryEvents/NEUTRAL_EVENT_KINDS
    and combat_intrigue_finished; the last Conflict-end decline runs on into
-   conflict_won). */
+   the cleanup). */
 const PASS_MARKER_KINDS = new Set([
   "combat_intrigue_passed",
   "endgame_intrigue_passed",
@@ -1829,7 +1821,7 @@ function neutralTitle(group) {
      Smuggle Spice, Esmar Tuek's Tuek's Sietch, Steersman Y'rkoon's Hungry
      for Spice (an event aimed at a seat other than the actor's lands here,
      splitEntryEvents). */
-  if (kinds.has("leader_ability_spice_gained") || kinds.has("leader_ability_resolved")) {
+  if (kinds.has("leader_ability_resolved")) {
     parts.push(t("panels.neutral_leader_ability"));
   }
   if (kinds.has("endgame_started")) parts.push(phraseText("{endgame}"));
@@ -2154,27 +2146,6 @@ function ownGlowFrom(seat, entries, seats) {
   return last + 1;
 }
 
-/* An Arrakeen Scouts choice the viewing seat could take nothing from is
-   skipped without asking (rules/scouts_effects.py, OQ-071). The log
-   records it; this also says so once, in the note, when it arrives. (A new
-   High Council seat with no subcommittee left open asks, offering only its
-   decline: OQ-076 (c).) */
-function noticeScoutsSkips(entries, from) {
-  const seat = activeSeat();
-  if (typeof seat !== "number") return;
-  const notes = [];
-  for (const entry of entries) {
-    if (entry.index < from || entry.undone || !entry.events) continue;
-    for (const event of entry.events) {
-      if (!event.payload || event.payload.player !== seat) continue;
-      if (event.kind === "scouts_choice_skipped") {
-        notes.push(t("panels.scouts_skipped", { item: scoutsItem(event.payload.item_id).name }));
-      }
-    }
-  }
-  if (notes.length) note(notes.join(" · "));
-}
-
 const LOG_EXPANDED_KEY = "dune.logExpanded";
 
 function labelLogSize(button) {
@@ -2236,7 +2207,6 @@ function renderLog() {
     } else if (log.count !== logSeen.count) {
       logSeen.freshFrom = logSeen.count;
       logSeen.count = log.count;
-      noticeScoutsSkips(log.entries, logSeen.freshFrom);
     }
     arrivedFrom = logSeen.freshFrom;
     const seat = activeSeat();

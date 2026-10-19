@@ -36,20 +36,29 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
     Cost,
+    DeployFromGarrison,
     DrawIntrigueCards,
     EffectSection,
+    FactionBond,
     GainInfluence,
     GainResources,
+    GainVictoryPoints,
+    GenerateSpecimens,
     GrantCombatDeployment,
+    HasAlliance,
+    KeepPrintedReveal,
     LoseInfluence,
+    LoseTroops,
     PayResources,
     PlaceSpy,
+    PrintedRevealValue,
     RecallSpy,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
     Reward,
     SpiesPlacedAtLeast,
+    SummonSandworm,
     TakeContract,
     TakeHighCouncilSeat,
     TechTilesAtLeast,
@@ -104,21 +113,18 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: _choice(
                 _line(RevealPersuasion(3), costs=(RecallSpy(2),)),
                 mark=_OPTIONAL,
-                hook="recall_two_spies",
             ),
             # Captured Mentat: "You may lose 1 Influence with a chosen Faction ->
             # Gain 1 Influence with a chosen Faction" -- one row names both.
             _CHOICE.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE: _choice(
                 _line(GainInfluence(), costs=(LoseInfluence(1),)),
                 mark=_OPTIONAL,
-                hook="influence_exchange",
             ),
             # Spacing Guild's Favor: "You may pay 3 spice -> Gain 1 Influence with
             # a chosen Faction" -- one row names the Faction.
             _CHOICE.MAY_PAY_THREE_SPICE_FOR_INFLUENCE: _choice(
                 _line(GainInfluence(), costs=(PayResources(spice=3),)),
                 mark=_OPTIONAL,
-                hook="spice_for_influence",
             ),
             # Calculus of Power: "You may trash another Emperor card in play ->
             # +3 swords".
@@ -133,7 +139,6 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: _choice(
                 _line(RevealSwords(4), costs=(RetreatTroops(2, 2),)),
                 mark=_OPTIONAL,
-                hook="retreat_two_troops",
             ),
             # Shrouded Counsel: "Command (6+ Persuasion): You may trash a card".
             _CHOICE.COMMAND_MAY_TRASH_CARD: _choice(
@@ -144,7 +149,6 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: _choice(
                 _line(RevealPersuasion(2), costs=(RetreatTroops(2, 2),)),
                 mark=_OPTIONAL,
-                hook="retreat_two_troops",
             ),
             # Disruption Tactics: "Trash this card -> Combat (deploy as though at
             # a Combat space)".
@@ -175,27 +179,39 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 mark=_OPTIONAL,
             ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
-            # one Faction -> Gain 1 VP" (both from one Faction).
+            # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red
+            # chevrons; like gaining two, the steps are not split between
+            # Factions [Main p. 20].
             _CHOICE.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE: _choice(
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(LoseInfluence(2, one_faction=True),),
+                    condition=HasAlliance(Faction.BENE_GESSERIT),
+                ),
                 mark=_OPTIONAL,
-                hook="influence_for_vp",
             ),
-            # Shadout Mapes: "You may deploy or retreat 1 troop".
+            # Shadout Mapes: "You may deploy or retreat 1 troop" -- the card's
+            # own permission to deploy, no Combat icon needed; a Commander is a
+            # troop [Bloodlines p. 4].
             _CHOICE.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _choice(
+                _line(DeployFromGarrison(1)),
+                _line(RetreatTroops(1, 1)),
                 mark=_OPTIONAL,
-                hook="deploy_or_retreat_troop",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat 1
             # troop".
             _CHOICE.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _choice(
+                _line(DeployFromGarrison(1), condition=FactionBond(Faction.FREMEN)),
+                _line(RetreatTroops(1, 1), condition=FactionBond(Faction.FREMEN)),
                 mark=_OPTIONAL,
-                hook="deploy_or_retreat_troop",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(
+                _line(GenerateSpecimens(2), costs=(LoseTroops(2, troops_only=True),)),
                 mark=_OPTIONAL,
-                hook="troops_for_specimens",
             ),
             # --- Mandatory: a Spy icon (OQ-057 (14)), a printed "-OR-", a gain ---
             # Public Spectacle, Wheels within Wheels (and Covert Operation's
@@ -228,15 +244,28 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             # 1 water -> Summon and deploy a sandworm" -- the printed Persuasion
             # is held from every total until chosen (OQ-069).
             _CHOICE.MAY_PAY_WATER_FOR_SANDWORM: _choice(
+                _line(KeepPrintedReveal(PrintedRevealValue.PERSUASION)),
+                _line(
+                    SummonSandworm(requires_maker_hooks=True),
+                    costs=(PayResources(water=1),),
+                ),
                 mark=_MANDATORY,
-                hook="desert_power",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Priority Contracts, Delivery Agreement: "If you have completed 4 or
             # more Contracts: Choose one: Keep the spice / Trash this card -> Gain
-            # 1 VP" -- the card's printed spice is paid only by this choice.
+            # 1 VP" -- the card's printed spice is paid only by this choice,
+            # which always opens; the four Contracts are judged on the trash
+            # line when it resolves (OQ-028 (b) addition).
             _CHOICE.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS: _choice(
+                _line(KeepPrintedReveal(PrintedRevealValue.SPICE)),
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(TrashCard(this_card=True),),
+                    condition=CompletedContractsAtLeast(4),
+                ),
                 mark=_MANDATORY,
-                hook="priority_contracts",
+                structure=AbilityStructure.ONE_OF,
             ),
             # Delivery Logistics: "Choose one: 1 Persuasion / Contract".
             _CHOICE.PERSUASION_OR_CONTRACT: _choice(

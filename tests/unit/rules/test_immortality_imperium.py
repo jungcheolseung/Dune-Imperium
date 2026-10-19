@@ -28,6 +28,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult, Transition
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -52,6 +53,7 @@ from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, owes_track_spy
 from dune_imperium.rules.graft import apply_graft_partner, legal_graft_partner_actions
+from dune_imperium.rules.optional_trash import legal_optional_trash_actions
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_gain,
     begin_reveal_turn,
@@ -196,9 +198,23 @@ def test_clandestine_meeting_needs_a_graft_and_pays_influence_and_intrigue() -> 
     )
     from dune_imperium.rules.graft_boxes import other_box_state
 
-    # The partner's box (box 1), resolved with it active.
-    resolved = resolve_agent_card_effect(other_box_state(state))
-    owner = resolved.state.players[0]
+    # The partner's box (box 1), resolved with it active: its two icons
+    # each its own effect in the owner's order (OQ-027, cleanup-2d-5), the
+    # Influence answered by its one-Faction row.
+    box = other_box_state(state)
+    influence = legal_agent_card_influence_actions(box, 0)
+    assert [dict(action.arguments)["faction"] for action in influence] == [
+        "bene_gesserit"
+    ]
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(box, 0)
+    ] == ["intrigue"]
+    gained = apply_agent_card_influence(box, influence[0]).state
+    drew = resolve_agent_card_icon(
+        gained, DomainAction("resolve_agent_card_effect", 0, (("effect", "intrigue"),))
+    )
+    owner = drew.state.players[0]
     assert owner.influence.bene_gesserit == 1
     assert len(owner.intrigue_cards) == 1
 
@@ -845,14 +861,56 @@ def test_occupation_draws_and_grants_the_combat_icon() -> None:
     state = _place(
         _state(_owner((occupation,), troops_garrison=3)), occupation, "arrakeen"
     )
-    resolved = resolve_agent_card_effect(state)
+    # "[draw 1] [Combat]": two icons in the owner's order (OQ-027,
+    # cleanup-2d-5), the Combat icon answered by its own row.
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(state, 0)
+    ] == ["cards"]
+    assert [
+        action.action_id for action in legal_agent_card_payment_actions(state, 0)
+    ] == ["take_agent_card_combat_icon"]
+    combat = apply_agent_card_payment(
+        state, DomainAction("take_agent_card_combat_icon", 0)
+    ).state
+    _, context = current_agent_effect_context(combat)
+    assert context["pending_combat_deployment"] is True
+    assert context["pending_agent_icons"] == "cards"
+    resolved = resolve_agent_card_icon(
+        combat, DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),))
+    )
     owner = resolved.state.players[0]
     assert len(owner.hand) == 1
-    _, context = current_agent_effect_context(resolved.state)
-    assert context["pending_combat_deployment"] is True
     revealed = _take_gains(_reveal(_state(_owner((occupation,)))))
     assert revealed.players[0].resources.water == 3
     assert revealed.players[0].troops_garrison == 4
+
+
+def test_occupation_turn_end_waits_for_its_combat_icon() -> None:
+    # Every effect without "may", an arrow cost or a black trash icon is
+    # mandatory (OQ-057 (1), [FAQ p. 3]), and the turn's end comes only once
+    # the mandatory ones are done (OQ-095 (2)): with its draw taken first,
+    # Occupation's Combat icon (cleanup-2d-5) still holds it.
+    occupation = _card("occupation")
+    state = _place(
+        _state(_owner((occupation,), troops_garrison=3)), occupation, "arrakeen"
+    )
+    engine = UprisingRulesEngine()
+    current = engine.apply(
+        state, DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),))
+    ).state
+    for _ in range(5):
+        space = [
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id in ("resolve_board_effect", "resolve_faction_influence")
+        ]
+        if not space:
+            break
+        current = engine.apply(current, space[0]).state
+    offered = {action.action_id for action in engine.legal_actions(current, 0)}
+    assert "take_agent_card_combat_icon" in offered
+    assert "finish_agent_turn" not in offered
 
 
 def test_organ_merchants_pays_a_specimen_for_four_solari() -> None:
@@ -1331,13 +1389,22 @@ def test_stillsuit_manufacturer_return_lapses_without_the_alliance() -> None:
     assert stillsuit in owner.in_play and stillsuit not in owner.hand
 
 
-def test_throne_room_politics_recruits_then_offers_a_trash() -> None:
+def test_throne_room_politics_recruits_then_queues_a_trash() -> None:
     throne = _card("throne_room_politics")
     resolved = resolve_agent_card_effect(
         _place(_state(_owner((throne,))), throne, "dutiful_service")
     )
     assert resolved.state.players[0].troops_garrison == 4
-    assert resolved.state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    # The black trash icon is optional: it waits on the Agent turn as rows,
+    # with no refusal (cleanup-2b, OQ-095 (2)).
+    top = resolved.state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [kind for kind, _source, _value in turn_rows.pending(top)] == [
+        turn_rows.OPTIONAL_TRASH
+    ]
+    assert "decline_optional_trash" not in {
+        a.action_id for a in legal_optional_trash_actions(resolved.state, 0)
+    }
     revealed = _take_gains(_reveal(_state(_owner((throne,)))))
     assert revealed.players[0].influence.bene_gesserit == 1
 

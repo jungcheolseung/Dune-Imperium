@@ -252,6 +252,7 @@ from dune_imperium.rules.leader_abilities import (
     signet_optional_block,
     units_deployment_blocked,
 )
+from dune_imperium.rules.owed_draws import immediate_owed_draw_actions
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -397,9 +398,15 @@ def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
     first, second = HARVEST_CELLS
     lone = _conflict_end_window(first)
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
-    played = ENGINE.apply(
+    # The first copy resolves at its play; its acquisition choice answered,
+    # the window is back with the second copy greyed out.
+    resolved = ENGINE.apply(
         _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
     ).state
+    played = ENGINE.apply(
+        resolved, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
+    assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     rng = random.Random(7)
     for state in (lone, played):
         legal = ENGINE.legal_actions(state, 0)
@@ -991,6 +998,16 @@ def _old_contract_recall(state: GameState, player: int) -> tuple[DomainAction, .
     )
 
 
+def _research_bonus_window(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``legal_research_bonus_actions`` in the window alone: since
+    cleanup-2b it also offers the bonuses waiting on the owner's turn, which
+    the old copy never saw."""
+
+    if owned_top_frame(state, FrameKind.RESEARCH_BONUS, player) is None:
+        return ()
+    return legal_research_bonus_actions(state, player)
+
+
 def _old_research_bonus(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """``immortality.legal_research_bonus_actions`` before it read
     ``research_bonus_block`` (2026-10-02). The window it answers for now
@@ -1576,10 +1593,14 @@ def _old_icon_condition_holds(
             is PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
             and is_grafted(context)
         )
-    # Tread in Darkness's draw became its own icon, judging the Bond.
+    # Tread in Darkness's draw became its own icon, judging the Bond; so did
+    # In High Places' (cleanup-2d-5, user decision 2026-10-18).
     if (
         effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+        in (
+            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+            PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
+        )
         and key == "cards"
     ):
         card_id = context.get("card_id")
@@ -1752,7 +1773,7 @@ _PAIRS: list[
     (legal_tleilaxu_acquisitions, _old_tleilaxu),
     (legal_intrigue_play_actions, _old_intrigue_plays),
     (_pending_groups, _old_pending_groups),
-    (legal_research_bonus_actions, _old_research_bonus),
+    (_research_bonus_window, _old_research_bonus),
     (legal_agent_card_recall_actions, _old_agent_card_recall),
     (legal_agent_card_icon_actions, _old_agent_card_icons),
     (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),
@@ -1950,7 +1971,10 @@ def _silent_optional_effects(
     with itself active, as the frame offers it), Imperial Privilege's
     Intrigue trade, Desert Tactics' trash, the visit's Sardaukar Commander
     and Acquire Tech, Reverend Mother's repeat and a new High Council
-    seat's subcommittee.
+    seat's subcommittee. A step the seat must take before anything else
+    -- Gather Intelligence, or a held draw that comes at once
+    (``frames.draw_is_immediate``, OQ-106: the Bene Gesserit Influence 4
+    Intrigue card) -- offers nothing else on purpose and is left out.
     """
 
     top = state.decision_stack[-1]
@@ -1959,6 +1983,7 @@ def _silent_optional_effects(
         or not isinstance(top.decision, PlayerDecision)
         or top.decision.owner != seat
         or legal_gather_intelligence_actions(state, seat)
+        or immediate_owed_draw_actions(state, seat)
     ):
         return set()
     _, context = current_agent_effect_context(state)
@@ -2367,7 +2392,7 @@ def _old_repeat_gate(state: GameState, player: int) -> bool:
     context = _own_effect_context(state, player)
     assert context is not None
     return (
-        mandatory_board_icons_pending(context)
+        mandatory_board_icons_pending(context, state.players[player])
         or state.players[player].resources.water < 1
     )
 

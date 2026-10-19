@@ -6,11 +6,10 @@ import pytest
 
 from dune_imperium.content.bloodlines import tech
 from dune_imperium.content.bloodlines.tech import (
-    FLIP_ABILITIES,
-    TECH_REVEAL_GAINS,
     TECH_TILES,
     TECH_TILES_BY_ID,
     TechAbility,
+    tech_reveal_line,
 )
 from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ABILITIES,
@@ -133,19 +132,24 @@ def test_every_tile_prints_its_ability_as_records() -> None:
         "sardaukar_high_command",
         "servo_receivers",
     }
-    assert FLIP_ABILITIES == {
+    assert {tile.ability for tile in TECH_TILES if tile.flips} == {
         TechAbility.FLIP_DRAW_INTRIGUE,
         TechAbility.FLIP_COMBAT_ICON,
         TechAbility.FLIP_SOLARI_AND_TRASH,
     }
-    assert [
-        (gain.tech_id, gain.command, gain.persuasion, gain.solari, gain.swords)
-        for gain in TECH_REVEAL_GAINS
-    ] == [
-        ("delivery_bay", True, 0, 2, 0),
-        ("self_destroying_messages", False, 1, 0, 0),
-        ("training_depot", True, 0, 0, 2),
-    ]
+    assert {
+        tile.tech_id: line
+        for tile in TECH_TILES
+        if (line := tech_reveal_line(tile.tech_id)) is not None
+    } == {
+        "delivery_bay": EffectSection(
+            rewards=(GainResources(solari=2),), condition=CommandReached()
+        ),
+        "self_destroying_messages": EffectSection(rewards=(RevealPersuasion(1),)),
+        "training_depot": EffectSection(
+            rewards=(RevealSwords(2),), condition=CommandReached()
+        ),
+    }
 
 
 def test_the_new_tech_pieces_read_as_the_tiles_print_them() -> None:
@@ -173,13 +177,15 @@ def test_the_new_tech_pieces_read_as_the_tiles_print_them() -> None:
         EffectSection(rewards=(RevealSwords(2),), condition=SpyRecalledThisTurn()),
     ],
 )
-def test_the_reveal_compiler_refuses_what_the_reveal_cannot_pay(
+def test_the_reveal_line_check_refuses_what_the_reveal_cannot_pay(
     line: EffectSection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     record = replace(TECH_ABILITIES["training_depot"][0], sections=(line,))
-    monkeypatch.setattr(tech, "TECH_ABILITIES", {"training_depot": (record,)})
+    monkeypatch.setattr(
+        tech, "TECH_ABILITIES", {**TECH_ABILITIES, "training_depot": (record,)}
+    )
     with pytest.raises(ValueError):
-        tech._reveal_gain(TECH_TILES_BY_ID["training_depot"])
+        tech._check_reveal_lines()
 
 
 @pytest.mark.parametrize(

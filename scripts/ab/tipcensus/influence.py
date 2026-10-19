@@ -90,7 +90,7 @@ FACTION_ICONS = frozenset(
 #   acquisition.py:1150           acquire_manipulated -> acquisition
 #   acquisition.py:1443           inherited (acquire_imperium_for_intrigue's
 #                                  caller: intrigue.py, leader_abilities.py or
-#                                  acquisition.py's agent_acquisition -> agent_card)
+#                                  acquisition.py's Agent box -> agent_card)
 #   immortality.py:506            inherited (Research bonus frame's opener)
 #   reveal_turn.py:376,1335,
 #     1417,1489,1885              reveal_card          (a Reveal card's Command)
@@ -106,9 +106,10 @@ FACTION_ICONS = frozenset(
 #     1681,2440,3165,3708,
 #     3755,3814,3926              agent_card            (a personal card's
 #                                  Agent-box effect)
-#   agent_effects.py:2266         agent_card_payment -> agent_card (an
-#                                  Agent-box paid resource choice, e.g.
-#                                  Immortality's ``choose_research_influence``)
+#   agent_effects.py (payments)   agent_card (an Agent-box paid resource
+#                                  choice, e.g. Immortality's
+#                                  ``choose_research_influence``; named after
+#                                  the box since cleanup-2c-2)
 #   agent_effects.py:3153         agent_card, but see the Subversive Advisor
 #                                  special case below (its Agent box replaces
 #                                  the visit's own Influence)
@@ -135,8 +136,6 @@ FACTION_ICONS = frozenset(
 _SOURCE_ALIASES = {
     "endgame_tech": "tech",
     "leader_signet": "leader",
-    "agent_acquisition": "agent_card",
-    "agent_card_payment": "agent_card",
     "acquire": "acquisition",
     "acquire_with_solari": "acquisition",
     "acquire_manipulated": "acquisition",

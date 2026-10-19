@@ -62,8 +62,8 @@ function cardPlayCues(entries) {
         if (event.kind === "reveal_started") {
           reveal.persuasion = payload.persuasion;
           reveal.strength = payload.strength;
-        } else if (typeof payload.card_ids === "string") {
-          reveal.cards = payload.card_ids.split(",").filter((id) => entryOf(id, "cards"));
+        } else if (Array.isArray(payload.card_ids)) {
+          reveal.cards = payload.card_ids.filter((id) => entryOf(id, "cards"));
         }
         continue;
       }

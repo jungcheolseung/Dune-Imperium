@@ -1,11 +1,12 @@
 """Arrakeen Scouts: one seat's cost -> reward line, and the subcommittees.
 
 ``push_scouts_effect`` opens a ``scouts_effect`` frame that resolves one
-``ScoutsOption`` for one seat: its costs in order, then its rewards in
-order (docs/rules/arrakeen-scouts.md). Each step is either automatic (paid
-or gained at once, possibly opening another module's frame: a Spy
-placement, a Contract pick, a reshuffle) or a choice this frame offers (a
-card to discard or trash, a Spy to recall, a Faction, an Agent). The frame
+item line (its record's ``EffectSection``) for one seat: its costs in
+order, then its rewards in order (docs/rules/arrakeen-scouts.md). Each step
+is either automatic (paid or gained at once, possibly opening another
+module's frame: a Spy placement, a Contract pick, a reshuffle) or a choice
+this frame offers (a card to discard or trash, a Spy to recall, a Faction,
+an Agent). The frame
 stays on the stack under any frame a step opens and moves its cursor before
 opening it, so it resumes by itself once that frame pops; the engine's
 automatic advance runs the automatic steps. A hidden draw printed after one
@@ -32,7 +33,6 @@ from dune_imperium.content.arrakeen_scouts import (
     SUBCOMMITTEES_BY_ID,
     AutomaticEffect,
     EventKind,
-    ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
     AcquireReserveCardToHand,
@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainInfluence,
@@ -100,6 +101,7 @@ from dune_imperium.rules.frames import (
     turn_owner_of,
     update_turn_recruits,
 )
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     alliance_recipients_after_influence_loss,
@@ -127,7 +129,7 @@ _OFFER_FRAME: Final = "Subcommittee offer frame"
 _ALL_POSTS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)
 _CHOICE_FRAME: Final = "Scouts choice frame"
 # Political Equilibrium, per seat: one Influence off the highest track.
-_EQUILIBRIUM: Final = ScoutsOption(costs=(LoseHighestInfluence(),))
+_EQUILIBRIUM: Final = EffectSection(rewards=(), costs=(LoseHighestInfluence(),))
 
 type ScoutsStep = ScoutsCost | ScoutsReward
 # Steps ``apply_rewards`` cannot take; the ones this module handles itself
@@ -146,7 +148,7 @@ _NOT_DSL_REWARDS: Final = (
 # --- Which option -------------------------------------------------------------------
 
 
-def scouts_option(item: str, index: int) -> ScoutsOption:
+def scouts_option(item: str, index: int) -> EffectSection:
     """Return option ``index`` of a Scouts item (a subcommittee has one)."""
 
     if item in SUBCOMMITTEES_BY_ID:
@@ -161,17 +163,17 @@ def scouts_option(item: str, index: int) -> ScoutsOption:
     if item in SALES_BY_ID:
         return SALES_BY_ID[item].options[index]
     if item in AUCTIONS_BY_ID:
-        return ScoutsOption(rewards=AUCTIONS_BY_ID[item].rank_rewards[index])
+        return EffectSection(rewards=AUCTIONS_BY_ID[item].rank_rewards[index])
     raise ValueError(f"unknown Scouts item: {item!r}")
 
 
-def option_steps(option: ScoutsOption) -> tuple[ScoutsStep, ...]:
+def option_steps(option: EffectSection) -> tuple[ScoutsStep, ...]:
     """Costs in printed order, then rewards (costs are paid in full first)."""
 
     return (*option.costs, *option.rewards)
 
 
-def option_is_affordable(state: GameState, player: int, option: ScoutsOption) -> bool:
+def option_is_affordable(state: GameState, player: int, option: EffectSection) -> bool:
     """Whether ``player`` can pay every cost of ``option`` now."""
 
     owner = state.players[player]
@@ -255,7 +257,7 @@ def reward_has_effect(
 def line_is_offered(
     state: GameState,
     player: int,
-    option: ScoutsOption,
+    option: EffectSection,
     *,
     exclude_space: str = "",
 ) -> bool:
@@ -281,7 +283,7 @@ def line_is_offered(
 def line_unavailable_reason(
     state: GameState,
     player: int,
-    option: ScoutsOption,
+    option: EffectSection,
     *,
     exclude_space: str = "",
 ) -> ScoutsStep | None:
@@ -309,7 +311,7 @@ def line_unavailable_reason(
 
 
 def _first_unpaid_cost(
-    state: GameState, player: int, option: ScoutsOption
+    state: GameState, player: int, option: EffectSection
 ) -> ScoutsCost:
     """The first cost, in printed order, that ``option_is_affordable`` fails on."""
 
@@ -326,7 +328,9 @@ def _first_unpaid_cost(
                 or water > resources.water
             ):
                 return cost
-        elif not option_is_affordable(state, player, ScoutsOption(costs=(cost,))):
+        elif not option_is_affordable(
+            state, player, EffectSection(rewards=(), costs=(cost,))
+        ):
             return cost
     return option.costs[0]  # not reached while the option is unaffordable
 
@@ -375,7 +379,7 @@ def _effect_frame(state: GameState) -> DecisionFrame | None:
     return frame if frame.kind == FrameKind.SCOUTS_EFFECT else None
 
 
-def _cursor(frame: DecisionFrame) -> tuple[int, str, ScoutsOption, int, int]:
+def _cursor(frame: DecisionFrame) -> tuple[int, str, EffectSection, int, int]:
     context = dict(frame.context)
     player = context_int(context, "player", owner=_EFFECT_FRAME)
     item = context_str(context, "item", owner=_EFFECT_FRAME)
@@ -564,7 +568,7 @@ _REWARDS_FIRST_KINDS: Final = (
 _STOP: Final = "stop"
 
 
-def _line_steps(frame: DecisionFrame, option: ScoutsOption) -> tuple[ScoutsStep, ...]:
+def _line_steps(frame: DecisionFrame, option: EffectSection) -> tuple[ScoutsStep, ...]:
     """The line's steps, without the rewards already taken ahead (``stop``)."""
 
     steps = option_steps(option)
@@ -714,15 +718,8 @@ def _apply_automatic(
             return RuleResult(
                 state=next_state,
                 events=(
-                    GameEvent(
-                        event_id=f"{source}:paid",
-                        kind="scouts_cost_paid",
-                        payload=(
-                            ("player", player),
-                            ("solari", solari),
-                            ("spice", spice),
-                            ("water", water),
-                        ),
+                    resources_paid_event(
+                        source, player, solari=solari, spice=spice, water=water
                     ),
                 ),
             )
@@ -754,14 +751,12 @@ def _apply_automatic(
                 specimens=owner.specimens - paid_count,
                 troops_supply=owner.troops_supply + paid_count,
             )
+            if not paid_count:
+                return RuleResult(state=state)
             return _owner_event(
                 state,
                 next_owner,
-                GameEvent(
-                    event_id=f"{source}:scouts_specimens_paid",
-                    kind="scouts_specimens_paid",
-                    payload=(("count", paid_count), ("player", player)),
-                ),
+                resources_paid_event(source, player, specimens=paid_count),
             )
         case RecruitToConflict(count=count):
             deployed = min(count, owner.troops_supply)
@@ -835,11 +830,9 @@ def _apply_automatic(
                         owner.resources, spice=owner.resources.spice + gained
                     ),
                 ),
-                GameEvent(
-                    event_id=f"{source}:helix_spice",
-                    kind="scouts_helix_spice",
-                    payload=(("helix", helix), ("player", player), ("spice", gained)),
-                ),
+                # A resource gain like any other (rule decision 3,
+                # cleanup-2c-5).
+                resources_gained_event(source, player, spice=gained),
             )
         case DiscardFromHand() | RecallSpy() | TrashIntrigueCard() | TrashCard():
             # A choice with nothing left to choose (checked before paying a
@@ -1281,7 +1274,7 @@ def _apply_garrison_unit_loss(
 # --- One seat's turn-order choice ---------------------------------------------------
 
 
-def _choice_options(item: str) -> tuple[ScoutsOption, ...]:
+def _choice_options(item: str) -> tuple[EffectSection, ...]:
     if item in SALES_BY_ID:
         return SALES_BY_ID[item].options
     return EVENTS_BY_ID[item].options
@@ -1295,6 +1288,20 @@ def _is_passable(item: str) -> bool:
         return True
     event = EVENTS_BY_ID[item]
     return event.passable or event.kind is EventKind.SHARED
+
+
+# The one row of a Scouts choice with no line the seat can take: it confirms
+# that the seat takes nothing (cleanup-2a; OQ-071 addendum).
+SCOUTS_NO_OPTION: Final = "resolve_scouts_choice_without_option"
+_NO_OPTION_PROMPT: Final = "Nothing in this Arrakeen Scouts item can be taken"
+
+
+def _skipped(item: str, player: int, source: str) -> GameEvent:
+    return GameEvent(
+        event_id=f"{source}:skipped",
+        kind="scouts_choice_skipped",
+        payload=(("item_id", item), ("player", player)),
+    )
 
 
 def _affordable(state: GameState, player: int, item: str) -> tuple[int, ...]:
@@ -1318,36 +1325,25 @@ def offer_scouts_choice(
     Only lines the seat can pay for, and whose cost buys something, are
     offered (``line_is_offered``). A seat that must choose and can do one
     line only still gets the choice, with the other line shown but not
-    selectable (``display.scouts.scouts_choice_lines``); one that can do
-    none is skipped without a choice (OQ-071, user ruling 2026-09-29)
-    [Scouts help]. ``volunteer`` is Rebuild Infrastructure's first seat
-    that agreed to pay (OQ-084).
+    selectable (``display.scouts.scouts_choice_lines``). One that can do
+    none takes nothing (OQ-071, user ruling 2026-09-29) [Scouts help], but
+    is asked too, its lines greyed with their reasons and one confirm
+    (``SCOUTS_NO_OPTION``) to take nothing -- "결정 창 없이 자동으로 넘어가는
+    곳도 모두 결정 창을 연다" (user ruling 2026-09-30, applied here by the
+    user's decision of 2026-10-17, cleanup-2a). ``volunteer`` is Rebuild
+    Infrastructure's first seat that agreed to pay (OQ-084).
     """
 
-    affordable = _affordable(state, player, item)
-    if not affordable:
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:skipped",
-                    kind="scouts_choice_skipped",
-                    payload=(("item_id", item), ("player", player)),
-                ),
-            ),
-        )
-    passable = _is_passable(item)
+    if not _affordable(state, player, item):
+        prompt = _NO_OPTION_PROMPT
+    elif _is_passable(item):
+        prompt = "Choose an Arrakeen Scouts option or pass"
+    else:
+        prompt = "Choose an Arrakeen Scouts option"
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_CHOICE,
         frame_id=f"{source}:choice",
-        decision=PlayerDecision(
-            owner=player,
-            prompt=(
-                "Choose an Arrakeen Scouts option or pass"
-                if passable
-                else "Choose an Arrakeen Scouts option"
-            ),
-        ),
+        decision=PlayerDecision(owner=player, prompt=prompt),
         context=(
             ("item", item),
             ("player", player),
@@ -1372,10 +1368,12 @@ def offer_only_line(
     A line without a cost just resolves. A line with a white-arrow cost is
     the seat's to take or leave: "You do not have to pay such a cost. If you
     don't pay the cost, you don't get the effect." [Main p. 20]; it is not
-    offered at all when the seat cannot pay it or when paying would buy
-    nothing (``line_is_offered``). Used by a revealed secret pick (OQ-085
-    (c), ``offer_secret_reward``); a joined subcommittee opens its line
-    directly, its cost already checked by ``joinable_subcommittees``.
+    offered when the seat cannot pay it or when paying would buy nothing
+    (``line_is_offered``), and the seat then only confirms that it takes
+    nothing, as at a choice with no line (cleanup-2a). Used by a revealed
+    secret pick (OQ-085 (c), ``offer_secret_reward``); a joined
+    subcommittee opens its line directly, its cost already checked by
+    ``joinable_subcommittees``.
     """
 
     option = scouts_option(item, index)
@@ -1390,22 +1388,17 @@ def offer_only_line(
                 exclude_space=exclude_space,
             )
         )
-    if not line_is_offered(state, player, option, exclude_space=exclude_space):
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:skipped",
-                    kind="scouts_choice_skipped",
-                    payload=(("item_id", item), ("player", player)),
-                ),
-            ),
-        )
+    offered = line_is_offered(state, player, option, exclude_space=exclude_space)
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_CHOICE,
         frame_id=f"{source}:choice",
         decision=PlayerDecision(
-            owner=player, prompt="Choose an Arrakeen Scouts option or pass"
+            owner=player,
+            prompt=(
+                "Choose an Arrakeen Scouts option or pass"
+                if offered
+                else _NO_OPTION_PROMPT
+            ),
         ),
         context=(
             ("exclude_space", exclude_space),
@@ -1437,7 +1430,8 @@ def _line_exclude_space(context: Mapping[str, object]) -> str:
 def legal_scouts_choice_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
-    """The seat's payable lines, and a pass where the item allows one."""
+    """The seat's payable lines, and a pass where the item allows one; with
+    no line to take, only the confirm that the seat takes nothing."""
 
     frame = owned_top_frame(state, FrameKind.SCOUTS_CHOICE, player)
     if frame is None:
@@ -1459,6 +1453,8 @@ def legal_scouts_choice_actions(
     else:
         passable = _is_passable(item)
         indices = _affordable(state, player, item)
+    if not indices:
+        return (DomainAction(action_id=SCOUTS_NO_OPTION, actor=player),)
     passes = (DomainAction(action_id="scouts_pass", actor=player),) if passable else ()
     return (
         *passes,
@@ -1474,7 +1470,8 @@ def legal_scouts_choice_actions(
 
 
 def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Pass, or take a line (Rebuild Infrastructure: agree to pay)."""
+    """Pass, take a line (Rebuild Infrastructure: agree to pay), or confirm
+    that there is nothing to take."""
 
     if action not in legal_scouts_choice_actions(state, action.actor):
         raise ValueError("action is not a legal Arrakeen Scouts option")
@@ -1482,6 +1479,8 @@ def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleRe
     item = context_str(context, "item", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
     popped = state.pop_decision()
+    if action.action_id == SCOUTS_NO_OPTION:
+        return RuleResult(state=popped, events=(_skipped(item, action.actor, source),))
     if action.action_id == "scouts_pass":
         return RuleResult(
             state=popped,
@@ -1567,7 +1566,7 @@ def _rebuild(
             GameEvent(
                 event_id=f"{source}:rebuilt",
                 kind="scouts_shield_wall_rebuilt",
-                payload=(("players", f"{volunteer},{player}"),),
+                payload=(("players", (volunteer, player)),),
             ),
         ),
     )

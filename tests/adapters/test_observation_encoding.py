@@ -665,16 +665,55 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # 2,972 -> 2,728) and scouts at 459 (round 7, seat 3, Captured Mentat;
 # 2,872 -> 3,028). ``adapters/observation_encoding.py`` and
 # ``core/observation.py`` are unchanged.
+# Re-pinned for codec v149 (cleanup-2b, observation still v32): a research
+# space's bonus choice raised inside its owner's own turn waits on the turn's
+# frame as rows instead of opening a window with a refusal (composed-effects
+# plan, rule decision 2; OQ-095 (2)). A scratch export of the previous
+# commit's source (93c8446b, ``git archive``) reproduces the ``everything``
+# pin exactly, and its decision trace equals this one through decision 830;
+# at 831 (round 10, seat 1, c6r6 after Breakthrough) the Influence rows
+# stand in the Agent-turn effect frame beside the box's other effects and
+# the random seat resolves a card draw first (3,580 vectors either way).
+# The other five games meet no in-turn research bonus and keep their pins.
+# Re-pinned again for cleanup-2b's optional trash (observation still v32):
+# a "[trash a card]" icon raised in its owner's own turn waits on the turn as
+# rows instead of opening a window with a refusal. An export of the previous
+# commit (72d2ad95) reproduces the two pins it moves, and each trace equals
+# this one until the first in-turn trash window: ``everything`` at decision
+# 219 (round 4, seat 0, the random seat declined there and now resolves a
+# board icon first; 3,580 -> 3,568 vectors), ``promo_bloodlines_tech`` at 545
+# (round 8, seat 1, the same trash taken from the turn's list; 3,160 either
+# way). The other four games meet no in-turn trash.
+# Re-pinned once more for cleanup-2b's research space icons (rule decision 5,
+# OQ-027): a research space's two icons, and c7r3's two rewards, are each
+# their own step in the owner's order. An export of the previous commit
+# (a1b692f0) reproduces the ``everything`` pin, and its trace equals this one
+# through decision 331; at 332 (round 5, seat 1, c3r3 reached in the Agent
+# turn) the specimen waits as a row beside the trash and the random seat
+# deploys first (3,568 -> 3,484 vectors). The other five games meet no
+# research space.
+# Re-pinned for the Conflict-end order (user decision 2026-10-18, codec v149):
+# the Conflict's troops go back to the supply before the Conflict-end
+# windows. An export of the previous commit (7ae17717) reproduces the old
+# ``everything`` pin, and its decision trace equals this one at every
+# decision (3,484 vectors either way); only the views at its three
+# Conflict-end windows (decisions 577, 648 and 649, all declines) differ, the
+# troops already in the supply there. The other five games open no window.
+# Re-pinned once more for OQ-108 and OQ-109 (user decision 2026-10-18): the
+# winner takes the Conflict card before the troops go back. An export of the
+# previous commit (02886db5) reproduces the pin just above, and the decision
+# trace is again equal at every decision (3,484 vectors); the views at the
+# same three windows now show the Conflict card already won.
 _GOLDEN_DIGESTS = {
     "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
     "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
     "promo_bloodlines_tech": (
-        "375622d5489d956b10c8e73ff7df1f0f3b5bf7eaffb9c2ebf8072d89e9096a89",
+        "01f019b151058725d311914a27cc186130431739da940c456cf7efc99cd7bccb",
         3160,
     ),
     "everything": (
-        "5823f7ba81a8863c205489d33ecbc0eaf254254093c78dec6240d7b0f8b0c2bb",
-        3580,
+        "6e3062f46938aeb93b72abc7d6f27fabb452faf2993ee430eed04ccb2acc952e",
+        3484,
     ),
     "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),
     "scouts": (

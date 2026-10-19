@@ -9,6 +9,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -31,11 +33,13 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.engine import Transition
 from dune_imperium.core.observation import observe_state, peeked_intrigue_ids
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_agent_card_acquisition,
     legal_agent_card_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_influence,
     apply_agent_card_payment,
     legal_agent_card_influence_actions,
@@ -48,10 +52,12 @@ from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.graft import (
     apply_graft_partner,
     legal_graft_partner_actions,
@@ -212,6 +218,31 @@ def _turn_end_offered(state: GameState) -> bool:
         action.action_id == "finish_agent_turn"
         for action in UprisingRulesEngine().legal_actions(state, 0)
     )
+
+
+def _trash_waits_on_the_agent_turn(
+    state: GameState, *, specimen_waits: bool = False
+) -> None:
+    """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
+    own Agent turn an optional "[trash a card]" icon opens no window; it
+    waits on the turn's effect frame as rows with no refusal and, optional,
+    holds no turn end back. With ``specimen_waits`` the research space's
+    specimen waits beside it as a mandatory row of its own, which does hold
+    the end (user decision 2026-10-17, composed-effects plan 5, rule decision
+    5; OQ-027 [Main p. 9])."""
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
+        *(((turn_rows.RESEARCH_ICON, "specimen"),) if specimen_waits else ()),
+        (turn_rows.OPTIONAL_TRASH, ""),
+    ]
+    legal = {a.action_id for a in legal_optional_trash_actions(state, 0)}
+    assert legal == {"trash_optional_card"}
+    assert "decline_optional_trash" not in {
+        a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)
+    }
+    assert _turn_end_offered(state) == (not specimen_waits)
 
 
 def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
@@ -669,7 +700,11 @@ def test_interstellar_conspiracy_needs_an_emperor_or_guild_partner() -> None:
     assert legal_agent_card_influence_actions(wrong, 0) == ()
     resolved = resolve_agent_card_effect(wrong)
     assert resolved.state.players[0].resources.spice == 3
-    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    box = agent_card_source(1, 0, conspiracy)
+    assert resolved.events == (
+        resources_gained_event(box, 0, spice=1),
+        agent_box_event(box, conspiracy, 0, BoxOutcome.RESOLVED),
+    )
     keys = _card("keys_to_power")  # Spacing Guild, Bene Gesserit
     right = _graft(_state(_owner((conspiracy, keys))), conspiracy, "arrakeen", keys)
     picks = legal_agent_card_influence_actions(right, 0)
@@ -746,6 +781,36 @@ def _mapes_reveal(
     return _reveal(refresh_pre_reveal_strength(RuleResult(state=state)).state)
 
 
+def test_shadout_mapes_leaves_harkonnen_advisors_troop_in_the_garrison() -> None:
+    # "Reveal turn에서도 Harkonnen Advisor의 troop은 배치 불가로 남는다"
+    # (OQ-062 (b); "You can't deploy this troop to the Conflict this turn."
+    # [Piter De Vries card], OQ-038 (b)): the Reveal frame's
+    # ``undeployable_troops`` keeps that troop out of Shadout Mapes' deploy
+    # too (2026-10-18; it used to count every garrison troop).
+    def with_advisor_troop(state: GameState) -> GameState:
+        frame = state.decision_stack[-1]
+        context = {**dict(frame.context), "undeployable_troops": 1}
+        return replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+
+    only_advisor = with_advisor_troop(
+        _mapes_reveal(troops_garrison=1, troops_conflict=1)
+    )
+    assert [a.action_id for a in legal_reveal_troop_move_actions(only_advisor, 0)] == [
+        "retreat_reveal_card_troop"
+    ]
+    one_more = with_advisor_troop(_mapes_reveal(troops_garrison=2, troops_conflict=1))
+    assert [a.action_id for a in legal_reveal_troop_move_actions(one_more, 0)] == [
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+    ]
+
+
 def test_shadout_mapes_deploys_a_garrison_commander() -> None:
     revealed = _mapes_reveal(
         troops_garrison=0,
@@ -819,10 +884,11 @@ def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> Non
     master = _card("tleilaxu_master")
     unmarked = _place(_state(_owner((master,))), master, "assembly_hall")
     assert legal_agent_card_acquisitions(unmarked, 0) == ()
-    assert (
-        resolve_agent_card_effect(unmarked).events[0].kind
-        == "agent_card_effect_unavailable"
-    )
+    # An optional acquisition resolves through its rows only: with none to
+    # offer, the dry run answers that the box can only lapse (cleanup-2c-2).
+    assert agent_card_effect_is_unavailable(unmarked)
+    with pytest.raises(BoxNeedsRows):
+        resolve_agent_card_effect(unmarked)
 
     imperium = imperium_deck_instance_ids(False)
     row = (_card("spiritual_fervor"), _card("for_humanity"), *imperium[2:5])
@@ -1011,8 +1077,8 @@ def test_tleilaxu_masters_last_effect_troop_counts_for_its_turn_not_the_next() -
 
 def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> None:
     # Throne Room Politics' box (troop 1 + trash) is the Agent turn's last
-    # effect, with every other seat revealed. Its OPTIONAL_TRASH frame opens
-    # on top of the owner's still-open effect frame, so Eliminate Allies'
+    # effect, with every other seat revealed. Its trash waits on the owner's
+    # still-open effect frame as rows, so Eliminate Allies'
     # trashed troops count for this turn (OQ-095 (3)) -- before OQ-095 the
     # turn had already closed and they were kept off the fresh "turn" frame
     # that reopened for the same player (2026-09-26 review round 3). "그
@@ -1044,9 +1110,7 @@ def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> Non
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    assert resolved.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
-    assert not _turn_end_offered(resolved)
+    _trash_waits_on_the_agent_turn(resolved)
 
     trash = next(
         a
@@ -1149,9 +1213,10 @@ def test_throne_room_politics_last_effect_trash_stays_out_of_a_later_reveal() ->
 
 def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -> None:
     # The same last-effect scenario as Eliminate Allies above, reached
-    # through the Sardaukar Standard trash effect instead. Its bank-Commander
+    # through the Sardaukar Standard trash effect instead (the trash waits on
+    # the owner's still-open effect frame as rows). Its bank-Commander
     # acquisition is queued and opens later through ``begin_skill_choice``,
-    # on top of the owner's still-open effect frame, so the Commander counts
+    # on top of that effect frame, so the Commander counts
     # for this turn (OQ-095 (3)). Before OQ-095 the turn had already closed
     # and the queued ``pending_skill_choices`` entry carried a
     # ``turn_closed`` marker to keep the Commander off the fresh "turn"
@@ -1191,7 +1256,7 @@ def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    assert resolved.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    _trash_waits_on_the_agent_turn(resolved)
 
     trash = next(
         a
@@ -1284,7 +1349,10 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
         if dict(a.arguments)["space_id"] == "c6r6"
     )
     advanced = engine.apply(resolved, to_influence_choice).state
-    assert advanced.decision_stack[-1].kind == "research_bonus"
+    # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
+    # mandatory, so the end waits for it.
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not _turn_end_offered(advanced)
 
     influence_choice = next(
         a
@@ -1309,6 +1377,65 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
+    # Cleanup-2b (user decision 2026-10-17; OQ-095 (2): an optional effect
+    # "holds no turn end back and offers no refusal; the press lapses it"):
+    # c8r6's "7 Solari -> two Tleilaxu" arrow raised by Experimentation's
+    # Research waits on the Agent turn, offers nothing with 3 Solari, holds
+    # no end back, and the press lapses it with ``research_bonus_lapsed``.
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        pending_research_bonuses,
+    )
+
+    owner = _owner(
+        (EXPERIMENTATION,), research_space="c7r5", resources=Resources(solari=3)
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(placed, legal_contract_actions(placed, 0)[0]).state
+    resolved = resolve_agent_card_effect(taken).state
+    to_c8r6 = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c8r6"
+    )
+    advanced = engine.apply(resolved, to_c8r6).state
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [bonus.value for bonus, _ in pending_research_bonuses(advanced, 0)] == [
+        "seven_solari_for_two_tleilaxu"
+    ]
+    assert "pay_research_bonus" not in _offered_ids(advanced)
+    assert "decline_research_bonus" not in _offered_ids(advanced)
+    assert _turn_end_offered(advanced)
+
+    pressed = engine.apply(
+        advanced, DomainAction(action_id="finish_agent_turn", actor=0)
+    )
+    lapsed = [
+        dict(e.payload) for e in pressed.events if e.kind == "research_bonus_lapsed"
+    ]
+    assert lapsed == [{"bonus": "seven_solari_for_two_tleilaxu", "player": 0}]
+    assert pressed.state.players[0].resources.solari == 3
 
 
 def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> None:
@@ -1368,7 +1495,10 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         if dict(a.arguments)["space_id"] == "c6r6"
     )
     advanced = engine.apply(resolved, to_influence_choice).state
-    assert advanced.decision_stack[-1].kind == "research_bonus"
+    # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
+    # mandatory, so the end waits for it.
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not _turn_end_offered(advanced)
 
     influence_choice = next(
         a
@@ -1407,11 +1537,12 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
 def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() -> None:
     # Experimentation's own Research icon [Immortality pp. 3, 5] as the
     # Agent turn's last effect, with every other seat revealed: the two-way
-    # fork (c2r4 -> c3r3/c3r5) and the TRASH_AND_SPECIMEN trash offer open on
-    # top of the owner's still-open effect frame, so Eliminate Allies'
-    # troops count for this turn (OQ-095 (3)). Before OQ-095 the turn had
-    # already closed and reopened a fresh "turn" frame for this same player,
-    # and a ``turn_closed`` marker on these frames kept the troops off it
+    # fork (c2r4 -> c3r3/c3r5) opens on top of the owner's still-open effect
+    # frame and the TRASH_AND_SPECIMEN trash waits on it as rows, so
+    # Eliminate Allies' troops count for this turn (OQ-095 (3)). Before
+    # OQ-095 the turn had already closed and reopened a fresh "turn" frame
+    # for this same player, and a ``turn_closed`` marker on these frames kept
+    # the troops off it
     # (2026-09-26 review round 4, minor). "그 turn에 어떤 출처에서 recruit했든
     # 새 troop은 Conflict에 deploy할 수 있다..." [Main p. 10] [FAQ p. 4]
     # (docs/rules/player-turns.md:137).
@@ -1441,9 +1572,14 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
         if dict(a.arguments)["space_id"] == "c3r3"
     )
     advanced = engine.apply(resolved, to_trash_and_specimen).state
-    assert advanced.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert not _turn_end_offered(advanced)
+    # The two icons are independent effects in the owner's order (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027 [Main
+    # p. 9]): the specimen waits as a mandatory row beside the trash, and holds
+    # the turn's end until it is taken.
+    assert advanced.players[0].specimens == 0
+    _trash_waits_on_the_agent_turn(advanced, specimen_waits=True)
 
+    # The trash is taken first; the specimen still waits.
     trash = next(
         a
         for a in legal_optional_trash_actions(advanced, 0)
@@ -1455,6 +1591,15 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     _, context = current_agent_effect_context(trashed)
     assert context["turn_owner"] == 0
     assert context["troops_recruited"] == 2
+    assert trashed.players[0].specimens == 0 and not _turn_end_offered(trashed)
+    specimen = DomainAction(
+        action_id="resolve_research_icon",
+        actor=0,
+        arguments=(("effect", "specimen"),),
+    )
+    assert specimen in engine.legal_actions(trashed, 0)
+    trashed = engine.apply(trashed, specimen).state
+    assert trashed.players[0].specimens == 1
     assert _turn_end_offered(trashed)
 
     # Pressing the end reopens this seat's own next turn without the credit.

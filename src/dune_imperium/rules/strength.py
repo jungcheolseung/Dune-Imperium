@@ -22,13 +22,21 @@ from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_STRENGTH,
     skill_for_instance,
 )
+from dune_imperium.content.uprising.abilities import AbilityTiming
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    Condition,
+    GainCombatStrength,
+    InfluenceAtLeast,
+    OpponentSandwormInConflict,
+)
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.influence import influence_amount
 
 
 def conflict_agent_strength(player: PlayerState) -> int:
@@ -76,29 +84,41 @@ def skill_strength(players: tuple[PlayerState, ...], player: int) -> int:
     owner = players[player]
     if owner.commanders_conflict <= 0 or not owner.skill_ids:
         return 0
-    landsraad_agent = any(
-        BOARD_SPACES_BY_ID[space_id].agent_icon is AgentIcon.LANDSRAAD
-        for space_id in owner.agent_locations
-        if space_id in BOARD_SPACES_BY_ID
-    )
-    opponent_sandworm = any(
-        candidate.sandworms_conflict > 0
-        for candidate in players
-        if candidate.player_id != player
-    )
+
+    def holds(condition: Condition | None) -> bool:
+        match condition:
+            case None:
+                return True
+            case AgentOnSpaceWithIcon(icon=icon):
+                return any(
+                    BOARD_SPACES_BY_ID[space_id].agent_icon is icon
+                    for space_id in owner.agent_locations
+                    if space_id in BOARD_SPACES_BY_ID
+                )
+            case OpponentSandwormInConflict():
+                return any(
+                    candidate.sandworms_conflict > 0
+                    for candidate in players
+                    if candidate.player_id != player
+                )
+            case InfluenceAtLeast(faction=faction, amount=amount):
+                return influence_amount(owner.influence, faction) >= amount
+        raise ValueError(f"no Skill strength checks {condition!r}")
+
     total = 0
     for instance_id in owner.skill_ids:
-        skill = skill_for_instance(instance_id)
-        total += skill.strength
-        if landsraad_agent:
-            total += skill.strength_if_landsraad_agent
-        if opponent_sandworm:
-            total += skill.strength_if_opponent_sandworm
-        if (
-            skill.emperor_influence_required
-            and owner.influence.emperor >= skill.emperor_influence_required
-        ):
-            total += skill.strength_if_emperor_influence
+        # The tile's strength lines are its record's (cleanup 2e), checked
+        # on load (``sardaukar._skill``).
+        ability = skill_for_instance(instance_id).ability
+        if ability.timing is not AbilityTiming.IN_CONFLICT:
+            continue
+        for line in ability.sections:
+            if holds(line.condition):
+                total += sum(
+                    reward.amount
+                    for reward in line.rewards
+                    if isinstance(reward, GainCombatStrength)
+                )
     return total
 
 
@@ -158,6 +178,14 @@ def refresh_pre_reveal_strength(result: RuleResult) -> RuleResult:
         GamePhase.PLAYER_TURNS,
         GamePhase.COMBAT,
     ):
+        return result
+    if state.phase is GamePhase.COMBAT and state.combat_end_triggers_offered:
+        # The troops and Commanders went back to the supply after the
+        # rewards (``combat.offer_conflict_end_triggers``); the strengths
+        # stand as the rewards found them until the cleanup sets every
+        # Combat marker to 0 [Main p. 14]. A sandworm still in the Conflict
+        # would otherwise let a Skill's share drop with the Commander's
+        # return [Bloodlines p. 4].
         return result
     players = list(state.players)
     for player in state.players:

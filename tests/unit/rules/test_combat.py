@@ -1,6 +1,7 @@
 """Tests for official four-player Combat ranking and ties."""
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 from tests.support.pauses import answer_pause, pause_outcome
@@ -41,6 +42,7 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_spy_recall_actions,
     legal_combat_reward_trash_actions,
     legal_distinct_combat_reward_influence_actions,
+    offer_conflict_end_triggers,
     rank_combat,
     resolve_combat_rewards,
 )
@@ -356,21 +358,13 @@ def test_combat_reward_event_records_the_reward_s_victory_points() -> None:
     first_place = next(
         event for event in reward_events if dict(event.payload)["rank"] == 1
     )
+    # Zero amounts are left out (cleanup-2c-3, the event grammar).
     assert dict(first_place.payload) == {
-        "choose_influence": 0,
-        "contracts": 0,
         "control_space_id": "arrakeen",
-        "faction": "",
-        "faction_influence": 0,
-        "intrigue": 0,
         "multiplier": 1,
         "player": 0,
         "rank": 1,
-        "solari": 0,
-        "spice": 0,
-        "troops": 0,
         "victory_points": 1,
-        "water": 0,
     }
 
 
@@ -399,10 +393,10 @@ def _standing(events: tuple[GameEvent, ...]) -> list[tuple[int, int, int, int]]:
         assert event.visible_to is None
         rows.append(
             (
-                int(payload["player"]),
-                int(payload["rank"]),
-                int(payload["strength"]),
-                int(payload["multiplier"]),
+                cast(int, payload["player"]),
+                cast(int, payload["rank"]),
+                cast(int, payload["strength"]),
+                cast(int, payload["multiplier"]),
             )
         )
     return rows
@@ -1584,11 +1578,26 @@ def test_trade_dispute_trashes_from_hand_discard_and_in_play() -> None:
     assert state.combat_rewards_resolved is True
 
 
-def test_trade_dispute_skips_trash_when_no_card_is_available() -> None:
-    result = resolve_combat_rewards(_reward_state("trade_dispute")).state
+def _confirm_trash_without_card(state: GameState, seat: int) -> GameState:
+    confirm = DomainAction(action_id="resolve_combat_trash_without_card", actor=seat)
+    assert legal_combat_reward_trash_actions(state, seat) == (confirm,)
+    result = apply_combat_reward_trash(state, confirm)
+    assert [event.kind for event in result.events] == [
+        "combat_reward_trash_unavailable"
+    ]
+    return _settle(result.state)
 
-    assert result.decision_stack == ()
-    assert result.combat_rewards_resolved is True
+
+def test_trade_dispute_trash_without_a_card_is_confirmed() -> None:
+    # With no card to trash the reward still opens its window, which offers
+    # only the confirm (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는
+    # 곳도 모두 결정 창을 연다"; cleanup-2f), the 2nd place's after the 1st.
+    state = resolve_combat_rewards(_reward_state("trade_dispute")).state
+    state = _confirm_trash_without_card(state, 0)
+    state = _confirm_trash_without_card(state, 1)
+
+    assert state.decision_stack == ()
+    assert state.combat_rewards_resolved is True
 
 
 def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
@@ -1600,17 +1609,14 @@ def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
     actions = legal_combat_reward_trash_actions(state, 0)
     state = apply_combat_reward_trash(state, actions[1]).state
 
-    assert legal_combat_reward_trash_actions(state, 0) == (
-        DomainAction(action_id="decline_combat_reward_trash", actor=0),
-    )
-    state = apply_combat_reward_trash(
-        state,
-        legal_combat_reward_trash_actions(state, 0)[0],
-    ).state
+    # The second trash finds no card: its window offers only the confirm
+    # (cleanup-2f), and so does the cardless 2nd place's.
+    state = _confirm_trash_without_card(state, 0)
+    state = _confirm_trash_without_card(state, 1)
 
     assert state.players[0].trashed == ("only_card",)
     assert state.decision_stack == ()
-    assert _settle(state).combat_rewards_resolved is True
+    assert state.combat_rewards_resolved is True
 
 
 def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
@@ -1624,8 +1630,10 @@ def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
 
     assert result.state.players[0].discard_pile == ("keep_me",)
     assert result.state.players[0].trashed == ()
-    assert _settle(result.state).combat_rewards_resolved is True
-    assert result.events[0].kind == "combat_reward_trash_declined"
+    assert result.events[0].kind == "optional_trash_declined"
+    # The cardless 2nd place confirms its own (cleanup-2f).
+    state = _confirm_trash_without_card(_settle(result.state), 1)
+    assert state.combat_rewards_resolved is True
 
 
 def test_trade_dispute_returns_trashed_reserve_card_to_its_stack() -> None:
@@ -1799,7 +1807,27 @@ def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() ->
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(state)
+    # "모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의
+    # supply에 놓고 battle icon 일치를 확인한다." [Main p. 14] -- the card is
+    # awarded as the Conflict-end step opens (OQ-108, user decision
+    # 2026-10-18), and the Conflict's units go back to the supply in the same
+    # step, before the windows (here none opens). The sandworm and the markers
+    # wait for the cleanup.
+    offered = offer_conflict_end_triggers(state)
+    assert offered.state.decision_stack == ()
+    assert offered.state.players[0].troops_supply == 9
+    assert offered.state.current_conflict_ids == ("older_tied_conflict",)
+    assert offered.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
+    assert offered.state.players[0].face_down_battle_card_ids == (
+        "objective_crysknife_1",
+        "skirmish_crysknife",
+    )
+    assert offered.state.players[0].victory_points == 2
+    assert tuple(event.kind for event in offered.events) == (
+        "conflict_won",
+        "battle_icons_matched",
+    )
+    result = finish_combat(offered.state)
     winner = result.state.players[0]
 
     assert result.state.phase is GamePhase.MAKERS
@@ -1814,11 +1842,79 @@ def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() ->
     assert all(player.troops_conflict == 0 for player in result.state.players)
     assert all(player.sandworms_conflict == 0 for player in result.state.players)
     assert all(player.combat_strength == 0 for player in result.state.players)
-    assert tuple(event.kind for event in result.events) == (
-        "conflict_won",
-        "battle_icons_matched",
-        "combat_cleaned_up",
+    # The cleanup awards nothing any more: only its own event.
+    assert tuple(event.kind for event in result.events) == ("combat_cleaned_up",)
+
+
+def test_the_conflict_card_is_awarded_before_the_units_return() -> None:
+    # "모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의
+    # supply에 놓고 battle icon 일치를 확인한다." [Main p. 14] -- the winner
+    # takes the card first (OQ-108, user decision 2026-10-18); then "each
+    # player takes their troops from the Conflict and puts them in their
+    # supply" [Main p. 14], a lost Sardaukar Commander to its own supply
+    # [Bloodlines p. 4]. That return opens the Conflict-end windows; the
+    # cleanup after them returns the sandworms and zeroes the Combat markers.
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(
+        players[0],
+        troops_supply=7,
+        troops_conflict=2,
+        commanders_supply=2,
+        commanders_conflict=1,
+        sandworms_conflict=1,
     )
+    players[1] = replace(
+        players[1],
+        troops_supply=8,
+        troops_conflict=1,
+        commanders_supply=1,
+        commanders_conflict=2,
+    )
+    state = replace(
+        state,
+        config=RulesetConfig(bloodlines=True),
+        players=tuple(players),
+        combat_rewards_resolved=True,
+    )
+
+    offered = offer_conflict_end_triggers(state)
+
+    after = offered.state
+    assert after.combat_end_triggers_offered
+    for seat, troops, commanders in ((0, 9, 3), (1, 9, 3)):
+        assert after.players[seat].troops_supply == troops
+        assert after.players[seat].commanders_supply == commanders
+    assert all(
+        player.troops_conflict == 0 and player.commanders_conflict == 0
+        for player in after.players
+    )
+    # The Conflict card is already the winner's, before the units returned
+    # (the event order is the step order); the sandworm and the Combat
+    # markers still stand until the cleanup.
+    assert after.current_conflict_ids == ()
+    assert after.players[0].won_conflict_ids == ("skirmish_crysknife",)
+    assert after.players[0].sandworms_conflict == 1
+    assert [player.combat_strength for player in after.players] == [8, 6, 4, 0]
+    assert [event.kind for event in offered.events][0] == "conflict_won"
+
+    cleaned = finish_combat(after)
+
+    assert cleaned.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
+    assert cleaned.state.current_conflict_ids == ()
+    assert cleaned.state.players[0].sandworms_conflict == 0
+    assert all(player.combat_strength == 0 for player in cleaned.state.players)
+    assert [event.kind for event in cleaned.events] == ["combat_cleaned_up"]
+
+
+def test_finish_combat_refuses_units_still_in_the_conflict() -> None:
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(players[0], troops_supply=7, troops_conflict=2)
+    state = replace(state, players=tuple(players), combat_rewards_resolved=True)
+
+    with pytest.raises(RuntimeError, match="units return before the cleanup"):
+        finish_combat(state)
 
 
 def test_first_place_tie_leaves_conflict_on_board_during_cleanup() -> None:
@@ -1827,8 +1923,11 @@ def test_first_place_tie_leaves_conflict_on_board_during_cleanup() -> None:
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(state)
+    offered = offer_conflict_end_triggers(state)
+    result = finish_combat(offered.state)
 
+    assert offered.state.current_conflict_ids == ("skirmish_desert_mouse",)
+    assert offered.events == ()
     assert result.state.current_conflict_ids == ("skirmish_desert_mouse",)
     assert all(player.won_conflict_ids == () for player in result.state.players)
     assert tuple(event.kind for event in result.events) == ("combat_cleaned_up",)

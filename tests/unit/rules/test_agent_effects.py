@@ -17,6 +17,7 @@ from dune_imperium.core import (
     ChanceOutcome,
     DecisionFrame,
     DomainAction,
+    GameEvent,
     GamePhase,
     GameState,
     Influence,
@@ -64,6 +65,7 @@ from dune_imperium.rules.board_effects import (
     legal_sietch_tabr_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
@@ -75,16 +77,14 @@ from dune_imperium.rules.contracts import (
     legal_contract_actions,
     legal_contract_completion_actions,
 )
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.owed_draws import apply_owed_draw
 from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
     legal_gather_intelligence_actions,
-)
-from dune_imperium.rules.spy_moves import (
-    apply_spy_placement,
-    legal_spy_placement_actions,
 )
 from dune_imperium.rules.strength import units_strength
 
@@ -95,6 +95,17 @@ from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
     finish_agent_turn,
     finish_agent_turn_result,
 )
+
+
+def _box_event(
+    card: str, outcome: BoxOutcome, *, effect: str | None = None
+) -> GameEvent:
+    """The event of ``card``'s Agent box ending as ``outcome`` (seat 0,
+    round 1, as every state of this module)."""
+
+    return agent_box_event(
+        agent_card_source(1, 0, card), card, 0, outcome, effect=effect
+    )
 
 
 def _instance(card_id: str) -> str:
@@ -243,8 +254,11 @@ def test_corrinth_city_atomically_discards_two_and_pays_five_for_vp() -> None:
         "card_discarded",
         "personal_card_discard_effect_resolved",
         "card_discarded",
-        "corrinth_city_payment_resolved",
+        "resources_paid",
+        "resources_gained",
+        "agent_card_effect_resolved",
     ]
+    assert result.events[-1] == _box_event(corrinth_city, BoxOutcome.RESOLVED)
 
 
 def test_corrinth_city_cost_must_be_available_before_discard_effects() -> None:
@@ -688,7 +702,7 @@ def test_desert_survival_trash_may_be_declined() -> None:
 
     assert result.state.players[0].in_play == (desert_survival,)
     assert result.state.players[0].trashed == ()
-    assert result.events[0].kind == "agent_card_trash_declined"
+    assert result.events == (_box_event(desert_survival, BoxOutcome.DECLINED),)
 
 
 def test_treacherous_maneuver_pays_both_cards_for_two_influence() -> None:
@@ -750,7 +764,9 @@ def test_treacherous_maneuver_pays_both_cards_for_two_influence() -> None:
         "card_trashed",
         "card_trashed",
         "influence_gained",
+        "agent_card_effect_resolved",
     ]
+    assert paid.events[-1] == _box_event(maneuver, BoxOutcome.RESOLVED)
     drawn = apply_owed_draw(
         paid.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
     ).state
@@ -1083,8 +1099,8 @@ def test_chani_draws_intrigue_after_deploying_a_third_unit() -> None:
     assert result.state.players[0].intrigue_cards == ("intrigue:test",)
     assert result.state.intrigue_deck == ()
     assert [event.kind for event in result.events] == [
-        "agent_card_effect_resolved",
         "intrigue_card_drawn",
+        "agent_card_effect_resolved",
     ]
 
 
@@ -1171,7 +1187,13 @@ def test_steersman_draws_and_recalls_only_another_agent() -> None:
     assert result.state.players[0].agents_available == 1
     assert result.state.players[0].agent_locations == ("deliver_supplies",)
     assert result.state.players[0].in_play == (steersman,)
-    assert [event.kind for event in result.events] == ["agent_recalled"]
+    assert [event.kind for event in result.events] == [
+        "agent_recalled",
+        "agent_card_effect_resolved",
+    ]
+    assert result.events[-1] == _box_event(
+        steersman, BoxOutcome.RESOLVED, effect="recall"
+    )
     # The card draw is the box's other printed icon (OQ-027): still pending.
     assert result.state.players[0].hand == ()
     assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
@@ -1271,7 +1293,13 @@ def test_steersman_recalls_an_earlier_into_the_fray_agent_from_the_conflict() ->
     assert seat.agents_available == 1
     assert seat.agent_locations == ("deliver_supplies",)
     assert units_strength(seat) == 0
-    assert [event.kind for event in result.events] == ["agent_recalled"]
+    assert [event.kind for event in result.events] == [
+        "agent_recalled",
+        "agent_card_effect_resolved",
+    ]
+    assert result.events[-1] == _box_event(
+        steersman_instance, BoxOutcome.RESOLVED, effect="recall"
+    )
     payload = dict(result.events[0].payload)
     assert payload["space_id"] == "conflict"
     # Review round 2 minor finding: the Conflict recall's event must keep
@@ -1380,10 +1408,20 @@ def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
     assert paid.state.players[0].intrigue_cards == (first_intrigue,)
     # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
     assert paid.state.intrigue_discard == ("intrigue:old", second_intrigue)
+    box = agent_card_source(1, 0, junction)
     assert [event.kind for event in paid.events] == [
         "intrigue_card_trashed",
-        "agent_card_payment_resolved",
+        "resources_paid",
+        "resources_gained",
+        "agent_card_effect_resolved",
     ]
+    assert paid.events[0].event_id == f"{box}:intrigue_trashed:{second_intrigue}"
+    assert paid.events[1].event_id == f"{box}:paid"
+    assert paid.events[2:] == (
+        resources_gained_event(box, 0, victory_points=1),
+        _box_event(junction, BoxOutcome.RESOLVED),
+    )
+    assert declined.events == (_box_event(junction, BoxOutcome.DECLINED),)
     assert declined.state.players[0].resources.spice == 2
     assert declined.state.players[0].victory_points == 1
     assert declined.state.players[0].intrigue_cards == (
@@ -1506,7 +1544,8 @@ def test_junction_headquarters_offers_only_decline_once_unaffordable() -> None:
         "decline_agent_card_intrigue_payment"
     ]
     declined = apply_agent_card_intrigue_payment(lowered, actions[0])
-    assert declined.events[0].kind == "agent_card_payment_declined"
+    junction = _imperium_instance("junction_headquarters")
+    assert declined.events == (_box_event(junction, BoxOutcome.DECLINED),)
     assert (
         dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
@@ -1543,7 +1582,7 @@ def test_smugglers_haven_offers_only_decline_once_unaffordable() -> None:
     actions = legal_agent_card_payment_actions(lowered, 0)
     assert [action.action_id for action in actions] == ["decline_agent_card_payment"]
     declined = apply_agent_card_payment(lowered, actions[0])
-    assert declined.events[0].kind == "agent_card_payment_declined"
+    assert declined.events == (_box_event(haven, BoxOutcome.DECLINED),)
     assert (
         dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
@@ -1584,7 +1623,7 @@ def test_corrinth_city_offers_only_decline_once_unaffordable() -> None:
         "decline_corrinth_city_payment"
     ]
     declined = apply_corrinth_city_payment(lowered, actions[0])
-    assert declined.events[0].kind == "corrinth_city_payment_declined"
+    assert declined.events == (_box_event(corrinth_city, BoxOutcome.DECLINED),)
     assert (
         dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
@@ -1613,7 +1652,11 @@ def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].resources.spice == 1
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    box = agent_card_source(1, 0, harvester)
+    assert result.events == (
+        resources_gained_event(box, 0, spice=1),
+        _box_event(harvester, BoxOutcome.RESOLVED),
+    )
 
 
 def test_smugglers_harvester_has_no_agent_effect_away_from_maker_spaces() -> None:
@@ -1671,7 +1714,7 @@ def test_smugglers_haven_may_pay_four_spice_for_one_vp() -> None:
 
     assert result.state.players[0].resources.spice == 0
     assert result.state.players[0].victory_points == 2
-    assert result.events[0].kind == "agent_card_payment_resolved"
+    assert result.events[0].kind == "resources_paid"
 
 
 def test_smugglers_haven_trade_may_be_declined() -> None:
@@ -1706,7 +1749,7 @@ def test_smugglers_haven_trade_may_be_declined() -> None:
 
     assert result.state.players[0].resources.spice == 4
     assert result.state.players[0].victory_points == 1
-    assert result.events[0].kind == "agent_card_payment_declined"
+    assert result.events == (_box_event(haven, BoxOutcome.DECLINED),)
 
 
 def test_smugglers_haven_skips_unaffordable_trade() -> None:
@@ -1844,7 +1887,11 @@ def test_northern_watermaster_gains_water_on_its_agent_turn() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].resources.water == 2
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    box = agent_card_source(1, 0, watermaster)
+    assert result.events == (
+        resources_gained_event(box, 0, water=1),
+        _box_event(watermaster, BoxOutcome.RESOLVED),
+    )
 
 
 def test_maker_keeper_gains_each_reward_for_its_matching_influence() -> None:
@@ -2166,7 +2213,7 @@ def test_ecological_testing_station_may_pay_water_to_draw_two() -> None:
     assert result.state.players[0].resources.water == 0
     assert result.state.players[0].hand == (first, second)
     assert result.state.players[0].deck == ()
-    assert result.events[0].kind == "agent_card_payment_resolved"
+    assert result.events[0].kind == "resources_paid"
 
 
 def test_ecological_testing_station_payment_may_be_declined() -> None:
@@ -2200,7 +2247,7 @@ def test_ecological_testing_station_payment_may_be_declined() -> None:
     result = apply_agent_card_payment(placed, action)
 
     assert result.state.players[0].resources.water == 2
-    assert result.events[0].kind == "agent_card_payment_declined"
+    assert result.events == (_box_event(station, BoxOutcome.DECLINED),)
 
 
 def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
@@ -2542,7 +2589,13 @@ def test_bene_gesserit_operative_may_pass_up_the_recall_with_an_empty_supply() -
     assert owner.spy_post_ids == posts
     assert owner.spies_supply == 0
     assert owner.spies_recalled_turn == 0
-    assert [event.kind for event in passed.events] == ["spy_placement_unavailable"]
+    assert [event.kind for event in passed.events] == [
+        "spy_placement_unavailable",
+        "agent_card_effect_declined",
+    ]
+    assert passed.events[-1] == _box_event(
+        _imperium_instance("bene_gesserit_operative"), BoxOutcome.DECLINED
+    )
     # The Agent turn goes on with Secrets' own icons still to resolve.
     assert passed.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     remaining = {action.action_id for action in engine.legal_actions(passed.state, 0)}
@@ -2827,9 +2880,10 @@ def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> Non
     assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
     assert result.state.intrigue_deck == ()
     assert tuple(event.kind for event in result.events) == (
-        "agent_card_effect_resolved",
         "intrigue_card_drawn",
+        "agent_card_effect_resolved",
     )
+    assert result.events[-1] == _box_event(spymaster, BoxOutcome.RESOLVED)
 
 
 def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
@@ -2913,12 +2967,12 @@ def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
     )
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
 
-    result = resolve_agent_card_effect(lowered)
-
-    assert result.events[0].kind == "agent_card_effect_unavailable"
-    assert result.state.players[0].deck == (drawn,)
-    assert result.state.players[0].spies_supply == 3
-    assert result.state.decision_stack[-1].kind != FrameKind.SPY_PLACEMENT
+    # Both icons wait for the Bond, judged on each when it resolves
+    # (OQ-028, cleanup-2d-5), and the turn's end fizzles them (OQ-057 (1)).
+    assert not legal_agent_card_icon_actions(lowered, 0)
+    assert legal_agent_card_spy_actions(lowered, 0) == ()
+    assert lowered.players[0].deck == (drawn,)
+    assert lowered.players[0].spies_supply == 3
 
 
 def test_seek_allies_box_expires_after_a_mid_frame_trash() -> None:
@@ -3043,27 +3097,33 @@ def test_in_high_places_bond_draws_a_card_and_places_a_spy() -> None:
     # observation post on the board" [Main p. 20].
     placed, drawn = _in_high_places_on_secrets()
 
-    result = resolve_agent_card_effect(placed)
+    # Two icons, each its own effect in the owner's order (OQ-027; user
+    # decision 2026-10-18, cleanup-2d-5): the draw and the box's Spy rows.
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(placed, 0)
+    ] == ["cards"]
+    choices = legal_agent_card_spy_actions(placed, 0)
+    # Mandatory with a Spy in supply, on any unoccupied post (OQ-057 (14)).
+    assert {action.action_id for action in choices} == {"place_agent_card_spy"}
+    assert len(choices) == len(OBSERVATION_POSTS)
+
+    result = resolve_agent_card_icon(placed, _icon_action(placed, "cards"))
 
     owner = result.state.players[0]
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.events[-1].kind == "agent_card_effect_resolved"
     assert drawn in owner.hand
     assert owner.resources.water == placed.players[0].resources.water
-    assert result.state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
-    choices = legal_spy_placement_actions(result.state, 0)
-    # Mandatory with a Spy in supply, on any unoccupied post (OQ-057 (14)).
-    assert {action.action_id for action in choices} == {"place_spy_on_space"}
-    assert len(choices) == len(OBSERVATION_POSTS)
     post_id = OBSERVATION_POSTS[0].post_id
-    spied = apply_spy_placement(
+    spied = apply_agent_card_spy_action(
         result.state,
         DomainAction(
-            action_id="place_spy_on_space", actor=0, arguments=(("post_id", post_id),)
+            action_id="place_agent_card_spy", actor=0, arguments=(("post_id", post_id),)
         ),
     ).state
     assert spied.players[0].spy_post_ids == (post_id,)
     assert spied.players[0].spies_supply == 2
-    # Back to the Agent turn, whose box is now resolved.
+    # The box is now resolved.
     assert spied.decision_stack[-1].kind == placed.decision_stack[-1].kind
     assert dict(spied.decision_stack[-1].context)["pending_agent_effect"] is False
 
@@ -3075,18 +3135,46 @@ def test_in_high_places_spy_may_pass_on_the_recall_with_an_empty_supply() -> Non
     posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
     placed, _ = _in_high_places_on_secrets(spies_supply=0, spy_post_ids=posts)
 
-    result = resolve_agent_card_effect(placed)
-
-    choices = legal_spy_placement_actions(result.state, 0)
+    choices = legal_agent_card_spy_actions(placed, 0)
     assert [action.action_id for action in choices] == [
-        "decline_spy_placement",
-        "recall_spy_for_placement",
-        "recall_spy_for_placement",
-        "recall_spy_for_placement",
+        "decline_agent_card_spy",
+        "recall_spy_for_agent_card",
+        "recall_spy_for_agent_card",
+        "recall_spy_for_agent_card",
     ]
-    passed = apply_spy_placement(result.state, choices[0]).state
+    passed = apply_agent_card_spy_action(placed, choices[0]).state
     assert passed.players[0].spy_post_ids == posts
-    assert passed.decision_stack[-1].kind == placed.decision_stack[-1].kind
+    # The Spy icon is passed up; the draw still waits.
+    assert dict(passed.decision_stack[-1].context)["pending_agent_icons"] == "cards"
+
+
+def test_in_high_places_turn_end_waits_for_its_spy() -> None:
+    # Placing is mandatory with a Spy in supply, and without one "box에 답하기
+    # 전에는 turn 종료가 제시되지 않고" (OQ-057 (14)); "턴 종료는 의무 효과가
+    # 모두 끝났을 때만 제시된다" (OQ-095 (2)). Once the draw icon is taken
+    # (cleanup-2d-5), the Spy icon still holds the turn's end.
+    engine = UprisingRulesEngine()
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    for supply, spied in ((3, ()), (0, posts)):
+        placed, _ = _in_high_places_on_secrets(spies_supply=supply, spy_post_ids=spied)
+        current = engine.apply(placed, _icon_action(placed, "cards")).state
+        for _ in range(5):
+            space = [
+                action
+                for action in engine.legal_actions(current, 0)
+                if action.action_id
+                in ("resolve_board_effect", "resolve_faction_influence")
+            ]
+            if not space:
+                break
+            current = engine.apply(current, space[0]).state
+        offered = {action.action_id for action in engine.legal_actions(current, 0)}
+        assert "finish_agent_turn" not in offered, supply
+        assert offered & {
+            "place_agent_card_spy",
+            "decline_agent_card_spy",
+            "recall_spy_for_agent_card",
+        }
 
 
 def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn() -> (
@@ -3113,29 +3201,37 @@ def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn()
         ),
     )
     engine = UprisingRulesEngine()
-    current = placed
+    box_rows = {
+        "resolve_agent_card_effect",
+        "decline_agent_card_spy",
+        "recall_spy_for_agent_card",
+        "place_agent_card_spy",
+    }
+    current = engine.apply(placed, _icon_action(placed, "cards")).state
     for _ in range(5):
         others = [
             action
             for action in engine.legal_actions(current, 0)
-            if action.action_id != "resolve_agent_card_effect"
+            if action.action_id not in box_rows
         ]
         if not others:
             break
         current = engine.apply(current, others[0]).state
-    resolved = engine.apply(
-        current, DomainAction(action_id="resolve_agent_card_effect", actor=0)
-    ).state
-    assert resolved.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
-    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
 
+    # The Spy icon is the turn's last effect (cleanup-2d-5: one of the box's
+    # icons, no frame of its own).
     recall = next(
         action
-        for action in engine.legal_actions(resolved, 0)
-        if action.action_id == "recall_spy_for_placement"
+        for action in engine.legal_actions(current, 0)
+        if action.action_id == "recall_spy_for_agent_card"
     )
-    recalled = engine.apply(resolved, recall).state
-    spied = engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
+    recalled = engine.apply(current, recall).state
+    place = next(
+        action
+        for action in engine.legal_actions(recalled, 0)
+        if action.action_id == "place_agent_card_spy"
+    )
+    spied = engine.apply(recalled, place).state
     assert spied.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert spied.players[0].spies_recalled_turn == 1
     assert [action.action_id for action in engine.legal_actions(spied, 0)] == [
@@ -3227,7 +3323,13 @@ def test_dangerous_rhetoric_trashes_itself_for_chosen_influence() -> None:
     assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
         "trash_self"
     )
-    assert tuple(event.kind for event in result.events) == ("influence_gained",)
+    assert tuple(event.kind for event in result.events) == (
+        "influence_gained",
+        "agent_card_effect_resolved",
+    )
+    assert result.events[-1] == _box_event(
+        rhetoric, BoxOutcome.RESOLVED, effect="influence"
+    )
 
     trashed = resolve_agent_card_icon(
         result.state, _icon_action(result.state, "trash_self")
@@ -3444,7 +3546,9 @@ def test_imperial_spymaster_counts_a_plot_recall_made_before_the_agent() -> None
 
     result = resolve_agent_card_effect(placed)
 
-    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.events[-1] == _box_event(
+        _imperium_instance("imperial_spymaster"), BoxOutcome.RESOLVED
+    )
     assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
 
 
@@ -3858,7 +3962,9 @@ def test_subversive_advisor_replaces_faction_influence_and_trashes_itself() -> N
     assert [event.kind for event in result.events] == [
         "influence_gained",
         "card_trashed",
+        "agent_card_effect_resolved",
     ]
+    assert result.events[-1] == _box_event(subversive, BoxOutcome.RESOLVED)
     assert {
         action.action_id for action in engine.legal_actions(result.state, 0)
     } == {"resolve_board_effect"}
@@ -5845,7 +5951,7 @@ def test_calculus_of_power_agent_box_is_an_optional_trash() -> None:
     declined = apply_agent_card_trash(placed, actions[0])
     assert declined.state.players[0].in_play == (calculus,)
     assert declined.state.players[0].trashed == ()
-    assert declined.events[0].kind == "agent_card_trash_declined"
+    assert declined.events == (_box_event(calculus, BoxOutcome.DECLINED),)
 
 
 def test_branching_path_alliance_trash_draws_intrigue_and_gains_two_spice() -> None:
@@ -6361,7 +6467,11 @@ def test_priority_contracts_takes_a_contract_or_converts_an_empty_market() -> No
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].resources.solari == 2
-    assert result.events[-1].kind == "contract_icons_converted_to_solari"
+    assert [event.kind for event in result.events] == [
+        "contract_icons_converted_to_solari",
+        "agent_card_effect_resolved",
+    ]
+    assert result.events[-1] == _box_event(priority, BoxOutcome.RESOLVED)
 
 
 def test_agent_card_spy_placement_needs_a_spy_in_supply_at_that_moment() -> None:

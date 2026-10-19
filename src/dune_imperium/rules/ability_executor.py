@@ -86,7 +86,7 @@ from dune_imperium.rules.action_shapes import (
     action_shape,
     template_id,
 )
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
     resolve_personal_card_discard_trigger,
@@ -107,8 +107,6 @@ from dune_imperium.rules.effect_interpreter import (
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
     influence_gain_candidates,
-    spy_placement_allowed_post_ids,
-    spy_placement_targets,
     trashable_discard_pile_ids,
 )
 from dune_imperium.rules.effects import (
@@ -145,7 +143,8 @@ from dune_imperium.rules.spy_moves import (
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
-    solo_occupied_post_ids,
+    spy_options,
+    spy_placement_allowed_post_ids,
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -467,14 +466,9 @@ def piece_rows(
             # borrowed with Usurp is not "in play" (OQ-054).
             if refusals and not mandatory:
                 rows.append(row(Verb.DECLINE, of=Verb.TRASH))
-            candidates = (
-                owner.hand
-                if hand_only
-                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
-            )
             rows.extend(
                 row(Verb.TRASH, Target.PERSONAL_CARD, (("card_id", card_id),))
-                for card_id in candidates
+                for card_id in trashable_cards(owner, hand_only=hand_only)
             )
         case LoseTroops(from_conflict=from_conflict):
             # The zone and, for a Sardaukar Commander, the kind (OQ-038).
@@ -597,33 +591,27 @@ def piece_rows(
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.ACQUIRE))
         case PlaceSpy():
-            targets = spy_placement_targets(state, player, piece)
-            if owner.spies_supply > 0:
-                rows.extend(
-                    row(Verb.PLACE_SPY, Target.POST, (("post_id", post_id),))
-                    for post_id in targets
-                )
-            else:
-                # With an empty supply one Spy may be recalled first
-                # [Main pp. 11, 20], only where the placement stays
-                # reachable: any Spy while a target post is free, else the
-                # sole occupant of an allowed post.
-                recallable = (
-                    owner.spy_post_ids
-                    if targets
-                    else solo_occupied_post_ids(
-                        state, player, spy_placement_allowed_post_ids(piece)
-                    )
-                )
-                rows.extend(
-                    row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
-                    for post_id in recallable
-                )
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
-            # passed up only when it cannot be made, whatever the turn.
-            if owner.spies_supply == 0 or not targets:
+            # passed up (first) only when it cannot be made, whatever the
+            # turn, and a recall-first comes only where it opens a post
+            # (``spy_options``).
+            options = spy_options(
+                state,
+                player,
+                spy_placement_allowed_post_ids(piece),
+                shared_post=piece.shared_post,
+            )
+            if options.pass_up:
                 rows.append(row(Verb.DECLINE, of=Verb.PLACE_SPY))
+            rows.extend(
+                row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
+                for post_id in options.recall
+            )
+            rows.extend(
+                row(Verb.PLACE_SPY, Target.POST, (("post_id", post_id),))
+                for post_id in options.place
+            )
     return tuple(rows)
 
 
@@ -712,7 +700,9 @@ def rewards_wait(entry: PendingAbility) -> bool:
 # confirmation of an acquisition piece is announced by the frame that
 # orders the acquisition, which names the card too.)
 _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
-    "decline_intrigue_trash": ("trash_declined", "intrigue_trash_declined"),
+    # One kind for a refused optional trash, wherever it is offered
+    # (cleanup-2c-6).
+    "decline_intrigue_trash": ("trash_declined", "optional_trash_declined"),
     "decline_intrigue_tleilaxu": (
         "tleilaxu_declined",
         "intrigue_tleilaxu_acquisition_declined",
@@ -1032,7 +1022,9 @@ def apply_piece(
             else:
                 taken = replace(taken, tally=0)
                 tactician, tactics_events = advance_tactics_token(
-                    result.state.players[player], from_conflict, source=step_source
+                    result.state.players[player],
+                    from_conflict,
+                    round_number=result.state.round_number,
                 )
                 result = RuleResult(
                     state=replace(

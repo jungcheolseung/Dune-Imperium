@@ -432,6 +432,10 @@ const UI_TEXT = {
     "ko": "연구 트랙 {{column}}-{{row}}",
     "en": "Research track {{column}}-{{row}}"
   },
+  "core.source_combat_reward": {
+    "ko": "{combat} 보상",
+    "en": "{combat} Reward"
+  },
   "help.announce_finished_winner": {
     "ko": "게임 종료 — {{name}} 승리",
     "en": "Game over — {{name}} wins"
@@ -992,13 +996,9 @@ const UI_TEXT = {
     "ko": "{leader} 능력",
     "en": "{leader} ability"
   },
-  "panels.log_leader_ability_spice_gained": {
-    "ko": "{{ability}}({{leader}})로 {spice} 획득",
-    "en": "{spice} Gained from {{ability}} ({{leader}})"
-  },
-  "panels.log_bonus_spice_taken": {
-    "ko": "보너스 {spice} {{count}} 가져와 획득",
-    "en": "Took {{count}} bonus {spice} and gained it"
+  "panels.log_leader_ability_resolved": {
+    "ko": "{{ability}}({{leader}})",
+    "en": "{{ability}} ({{leader}})"
   },
   "panels.neutral_round_started": {
     "ko": "라운드 {{round}} 시작",
@@ -1179,10 +1179,6 @@ const UI_TEXT = {
   "panels.scouts_lost_picks": {
     "ko": "쓰이지 않은 비밀 선택",
     "en": "Secret picks never due"
-  },
-  "panels.scouts_skipped": {
-    "ko": "{{item}}: 지금 할 수 있는 선택이 없어 넘어갔습니다",
-    "en": "{{item}}: nothing you could take, skipped"
   },
   "panels.standings_heading": {
     "ko": "최종 순위",
@@ -1641,6 +1637,14 @@ const UI_TEXT = {
   "render.turn_end_button_decline": {
     "ko": "쓰지 않음 · 턴 종료 ▶",
     "en": "Decline · End turn ▶"
+  },
+  "render.turn_end_button_finish": {
+    "ko": "끝내기 · 턴 종료 ▶",
+    "en": "Finish · End turn ▶"
+  },
+  "render.turn_end_button_nothing": {
+    "ko": "할 수 있는 선택 없음 · 턴 종료 ▶",
+    "en": "Nothing to take · End turn ▶"
   },
   "render.turn_end_button_with_buys": {
     "ko": "구매 끝 · 턴 종료 ▶",

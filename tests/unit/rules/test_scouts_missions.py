@@ -172,11 +172,27 @@ def _visit(state: GameState, space_id: str, **choice: str) -> GameState:
 
 
 def _taken(state: GameState) -> list[tuple[str, int]]:
-    return [
-        (str(dict(e.payload)["resource"]), int(str(dict(e.payload)["amount"])))
-        for e in state.event_log
-        if e.kind == "scouts_mission_goods_taken"
-    ]
+    """The goods a mission paid: a resource's gain just before its
+    ``scouts_mission_goods_taken`` (cleanup-2c-5), or the goods it names."""
+
+    taken: list[tuple[str, int]] = []
+    log = state.event_log
+    for index, e in enumerate(log):
+        if e.kind != "scouts_mission_goods_taken":
+            continue
+        data = dict(e.payload)
+        if "goods" in data:
+            taken.append((str(data["goods"]), 1))
+            continue
+        gained = dict(log[index - 1].payload)
+        assert log[index - 1].kind == "resources_gained"
+        ((resource, amount),) = (
+            (key, value)
+            for key, value in gained.items()
+            if key in ("solari", "spice", "water")
+        )
+        taken.append((resource, int(str(amount))))
+    return taken
 
 
 def _no_mission_icon(state: GameState) -> bool:
@@ -897,9 +913,9 @@ def test_tleilaxu_offering_turns_parked_troops_into_specimens() -> None:
     assert state.players[0].troops_supply == supply - 2
     assert state.players[0].troops_parked == 2
     specimens = state.players[0].specimens
-    state = advance_tleilaxu(state, 0, 1, source="test").state
+    state = advance_tleilaxu(state, 0, 1).state
     assert state.players[0].troops_parked == 2
-    state = advance_tleilaxu(state, 0, 1, source="test").state
+    state = advance_tleilaxu(state, 0, 1).state
     assert state.players[0].tleilaxu_space == 3
     assert state.players[0].troops_parked == 0
     assert state.players[0].specimens == specimens + 2

@@ -396,10 +396,24 @@ def _hidden_instances(state: GameState) -> frozenset[str]:
     return frozenset(known_card_seats(state))
 
 
+# Payload fields naming cards that left a face-up zone in the step: their
+# identities were public up to then, so naming them reveals nothing even
+# though they now sit in a hidden one (Clear the Market shuffles the old
+# face-up Contracts into the bank, OQ-083).
+_LEFT_FACE_UP_FIELDS: Final = frozenset({("scouts_contracts_cleared", "removed")})
+
+
 def _payload_strings(event: GameEvent) -> Iterator[tuple[str, str]]:
     for key, value in event.payload:
+        if (event.kind, key) in _LEFT_FACE_UP_FIELDS:
+            continue
         if isinstance(value, str):
             yield key, value
+        elif isinstance(value, tuple):
+            # An id list (cleanup-2c-7): each id is checked like a string.
+            for item in value:
+                if isinstance(item, str):
+                    yield key, item
 
 
 # The only payload fields a secret choice's public event may carry.

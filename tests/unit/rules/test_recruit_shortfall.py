@@ -104,7 +104,7 @@ def _resolve_troops_icon(state: GameState) -> RuleResult:
     return resolve_board_effect(state, troops_action)
 
 
-# ---------- board icon (Research Station: RecruitTroopsEffect(2)) ----------
+# ---------- board icon (Research Station: RecruitTroops(2)) ----------
 
 
 def _research_station_state() -> GameState:
