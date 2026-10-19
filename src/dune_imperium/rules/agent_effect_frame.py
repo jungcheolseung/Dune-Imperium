@@ -62,7 +62,10 @@ from dune_imperium.rules.combat_deployment import (
     legal_commander_withdrawals,
     legal_troop_withdrawals,
 )
-from dune_imperium.rules.contracts import legal_contract_completion_actions
+from dune_imperium.rules.contracts import (
+    legal_contract_completion_actions,
+    legal_contract_icon_row_actions,
+)
 from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
@@ -154,6 +157,9 @@ def legal_agent_effect_frame_actions(
         # So does a draw a trigger earned in it, taken as its own step
         # (user ruling 2026-10-10, OQ-106).
         *legal_owed_draw_actions(state, player),
+        # A Contract completed in the turn: its icons wait on it as rows
+        # (OQ-112 (4)).
+        *legal_contract_icon_row_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),

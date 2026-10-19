@@ -135,6 +135,7 @@ from dune_imperium.rules.contracts import (
     fizzle_combat_held_contract_icons,
     held_contract_icons_can_open,
     legal_contract_actions,
+    legal_contract_icon_row_actions,
     legal_contract_intrigue_trash_actions,
     legal_contract_recall_actions,
     legal_contract_reward_icon_actions,
@@ -482,6 +483,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_track_spy_actions,
         # A draw a Plot's trigger earned, its own step (OQ-106).
         legal_owed_draw_actions,
+        # A Contract completed in the turn waits on it as rows (OQ-112 (4)).
+        legal_contract_icon_row_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -507,6 +510,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # A draw a trigger earned in the turn, its own step taken in any
         # order before the Reveal ends (user ruling 2026-10-10, OQ-106).
         legal_owed_draw_actions,
+        # A Contract completed in the Reveal waits on it as rows (OQ-112 (4)).
+        legal_contract_icon_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,

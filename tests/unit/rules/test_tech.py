@@ -958,9 +958,10 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
     completion = legal_agent_card_contract_completion_actions(fighting, 0)[0]
     windowed = apply_agent_card_contract_completion(fighting, completion)
 
-    # The Recall Agent icon is the reward window's one row (stage B2,
-    # OQ-112); its press opens the recall window.
-    assert windowed.state.decision_stack[-1].kind == "contract_reward_icons"
+    # The Recall Agent icon is the reward's one row, waiting on the Agent
+    # turn (stage B3b, OQ-112 (4)); its press opens the recall window.
+    assert windowed.state.decision_stack[-1].kind == "agent_effects"
+    assert turn_rows.holds_the_end(windowed.state, 0)
     completed = settle_reward_window(windowed.state)
     # The reward's recall window opens with only the confirm (user ruling
     # 2026-09-30); confirming fizzles it.

@@ -46,6 +46,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import contracts as contracts_rules
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
@@ -348,10 +349,14 @@ def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowa
         and dict(action.arguments).get("instance_id") == target
     )
     acquired = apply_whole(ENGINE, signet, acquire).state
-    # v150 (stage B2, OQ-112): the completed Contract's reward is a window of
-    # icon rows, answered before the turn frame is looked at again.
-    assert acquired.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # v150 (stage B3b, OQ-112 (4)): the completed Contract's reward is a row
+    # of the owner's bare turn frame, answered before the frame is looked at
+    # again.
+    assert acquired.decision_stack[-1].kind == FrameKind.TURN
+    assert turn_rows.holds_the_end(acquired, 0)
+    assert acquired.players[0].troops_garrison == 2
     resolved = answer_reward_windows(ENGINE, acquired)
+    assert not turn_rows.holds_the_end(resolved, 0)
 
     assert [frame.kind for frame in resolved.decision_stack] == [FrameKind.TURN]
     assert resolved.players[0].troops_garrison == 3

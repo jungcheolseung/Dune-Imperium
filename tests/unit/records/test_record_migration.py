@@ -49,6 +49,8 @@ import pytest
 from tests.support.reward_windows import settle_reward_window
 from tests.unit.rules.test_bloodlines_leaders import RECON as LIET_RECON
 from tests.unit.rules.test_bloodlines_leaders import _turn_state as _liet_turn_state
+from tests.unit.rules.test_contracts import _agent_contract_state
+from tests.unit.rules.test_contracts import _place_agent as _place_contract_agent
 from tests.unit.rules.test_immortality import _agent_research, _at
 from tests.unit.rules.test_immortality_intrigue import (
     HARVEST_CELLS,
@@ -85,6 +87,7 @@ from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
+from dune_imperium.rules.contracts import begin_contract_gain, legal_contract_actions
 from dune_imperium.rules.effect_steps import (
     completed_whole,
     path_of,
@@ -411,16 +414,21 @@ REWARD_ICON_BRIDGES = ("combat_reward_icon_follow", "combat_reward_icon")
 @functools.cache
 def _reward_icon_steps(replay: GameReplay) -> frozenset[int]:
     """The icon rows of a Conflict or Contract reward's window (stage B2,
-    OQ-112). The heuristic answers them in the order an engine before v150
-    paid the reward (``agents.engine_order``), which the reward bridges
-    replay."""
+    OQ-112), and the effect rows of a Contract's icons waiting on its
+    owner's turn (stage B3b, OQ-112 (4)). The heuristic answers them in the
+    order an engine before v150 paid the reward (``agents.engine_order``),
+    which the reward bridges replay."""
 
+    rewards = ("resolve_combat_reward_icon", "resolve_contract_reward_icon")
+    runs = _effect_runs(replay)
     return frozenset(
         index
         for index, step in enumerate(replay.steps)
         if isinstance(step, DomainAction)
-        and step.action_id
-        in ("resolve_combat_reward_icon", "resolve_contract_reward_icon")
+        and (
+            step.action_id in rewards
+            or (index in runs and runs[index][0].action_id in rewards)
+        )
     )
 
 
@@ -431,8 +439,12 @@ def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
     bridge takes back (``_held_steps``) is that bridge's step, not these."""
 
     held = set(_held_steps(replay)) if codec < 142 else set()
+    # A Contract's in-turn icon row is the reward bridges' (stage B3b).
+    rewards = _reward_icon_steps(replay) if codec < 150 else frozenset()
     runs = [
-        picks for index, (_, picks) in _effect_runs(replay).items() if index not in held
+        picks
+        for index, (_, picks) in _effect_runs(replay).items()
+        if index not in held and index not in rewards
     ]
     return {
         "effect_step": sum(len(picks) for picks in runs),
@@ -3128,6 +3140,55 @@ def test_a_window_this_engine_keeps_open_is_finished_where_the_record_went_on() 
     assert (own_bridged[0].name, own_bridged[1]) == ("conflict_end_finish", finish)
 
 
+def test_a_frame_over_contract_rows_takes_its_recorded_pick_first() -> None:
+    # Codec v150 (stage B3b, OQ-112 (4)): a Contract completed in its owner's
+    # turn waits on it as rows, offered once the turn frame is on top again.
+    # A recording engine paid the reward at the completion, so where another
+    # frame of the owner's (a market taking a second tile) stood over the
+    # completion, the record went on with the reward's own chance steps
+    # before that frame's next pick; that pick is taken first.
+    state = replace(
+        _place_contract_agent(
+            _agent_contract_state(
+                "reserve:prepare_the_way:7", "contract:arrakeen_i"
+            ),
+            "arrakeen",
+        ),
+        face_up_contract_ids=("contract:high_council_i", "contract:heighliner_i"),
+        contract_bank=("contract:deliver_supplies",),
+    )
+    item = (turn_rows.CONTRACT_ICON, "round:1:test", "contract:arrakeen_i|resources")
+    waiting = turn_rows.queue(state, 0, item)
+    assert waiting is not None
+    market = begin_contract_gain(waiting, 0, 1, source="round:1:test:market").state
+    take = legal_contract_actions(market, 0)[0]
+    shuffle = ChanceOutcome("round:1:player:0:test:discard_shuffle", ("a", "b"))
+
+    def earlier(at: GameState, steps: tuple[ReplayStep, ...]) -> object:
+        return migration._asked_earlier(
+            ENGINE,
+            at,
+            steps,
+            0,
+            set(),
+            turn_rows_codec=False,
+            contract_rows_codec=True,
+        )
+
+    assert earlier(market, (shuffle, take)) == (
+        1,
+        take,
+        migration.CONTRACT_FRAME_FIRST,
+    )
+    # Not another seat's step, nor without rows waiting under the frame.
+    other = DomainAction("finish_agent_turn", 1)
+    assert earlier(market, (shuffle, other, take)) is None
+    bare = begin_contract_gain(state, 0, 1, source="round:1:test:market").state
+    assert earlier(bare, (shuffle, take)) is None
+    # Nor once the rows' own turn frame is on top.
+    assert earlier(waiting, (shuffle, take)) is None
+
+
 def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win() -> (
     None
 ):
@@ -3180,11 +3241,29 @@ def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win
     assert migration._asked_earlier_bridge(harvest, harvest) == (
         migration.HARVEST_CELLS_AT_ONCE
     )
-    # The dispatch tries the same decision first, then the moved reshuffle.
-    asked = migration._asked_earlier(ENGINE, state, (filler, recorded), 0, set())
-    assert asked == (1, recorded)
-    asked = migration._asked_earlier(ENGINE, state, (filler, elsewhere), 0, set())
-    assert asked == (1, ChanceOutcome(decision.decision_id, shuffled))
+    # The dispatch tries the same decision first, then the moved reshuffle,
+    # and names the bridge.
+    def asked_earlier(steps: tuple[ReplayStep, ...]) -> object:
+        return migration._asked_earlier(
+            ENGINE,
+            state,
+            steps,
+            0,
+            set(),
+            turn_rows_codec=True,
+            contract_rows_codec=False,
+        )
+
+    assert asked_earlier((filler, recorded)) == (
+        1,
+        recorded,
+        migration.TECH_DRAW_AT_THE_WIN,
+    )
+    assert asked_earlier((filler, elsewhere)) == (
+        1,
+        ChanceOutcome(decision.decision_id, shuffled),
+        migration.RESHUFFLE_MOVED,
+    )
 
 
 def test_a_reshuffle_of_the_same_cards_is_taken_under_this_engines_decision() -> None:

@@ -1372,9 +1372,11 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
     assert owner_after.influence.spacing_guild == 4
     assert owner_after.alliance_faction_ids == ("spacing_guild",)
     assert owner_after.completed_contract_ids == (earn_alliance,)
-    # The Contract's reward waits in its window (stage B2, OQ-112); its troops
-    # come with the row.
-    assert result.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The Contract's reward waits on the Agent turn as rows (stage B3b,
+    # OQ-112 (4)); its troops come with the row, and the end waits for it.
+    assert result.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result, 0)
+    assert not _turn_end_offered(result)
     result = answer_reward_windows(engine, result)
     owner_after = result.players[0]
     # The Contract completes, and its troops count for the open turn.

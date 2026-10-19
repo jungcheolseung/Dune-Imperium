@@ -2067,9 +2067,9 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     seat = manager._get(game_id).state.players[0]
     assert seat.completed_contract_ids == (contract,)
     assert seat.hand == before.players[0].hand  # nothing drawn yet
-    # Stage B2 (OQ-112): the reward waits in its window, Arrakeen I's water
-    # a row of its own, and the card comes right after the completion,
-    # before it (user decision 2026-10-19).
+    # Stage B3b (OQ-112 (4)): the reward waits on the Agent turn, Arrakeen
+    # I's water a row of its own, and the card comes right after the
+    # completion, before it (user decision 2026-10-19).
     assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     rows = _served(manager, game_id)
     assert [row["action_id"] for row in rows] == ["draw_owed_card"]
@@ -2092,8 +2092,13 @@ def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
     assert len(seat.hand) == len(before.players[0].hand) + 1
     assert seat.owed_draws == ()
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
-    (water,) = _served(manager, game_id)
-    assert water["arguments"] == {"effect": "resources"}
+    # The water row names the Contract, beside the space's own effects.
+    (water,) = [
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "resolve_contract_reward_icon"
+    ]
+    assert water["arguments"] == {"contract_id": contract, "effect": "resources"}
     assert water["undoable"] is True
 
 

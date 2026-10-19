@@ -174,6 +174,9 @@ class Tag(StrEnum):
     """The argument that places an effect among several of one kind."""
 
     BOX = "box"
+    # Which completed Contract's icon, where several wait on one turn
+    # (stage B3b, OQ-112 (4)).
+    CONTRACT = "contract_id"
     SOURCE = "source"
 
 
@@ -584,8 +587,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_control_defense": _row(_V.DECLINE, _S.CONFLICT, of=_V.DEPLOY),
     # --- Contracts -----------------------------------------------------------
     "take_contract": _row(_V.TAKE, _S.CONTRACT, _T.CONTRACT),
-    # One icon of a completed Contract's reward window (stage B2, OQ-112).
-    "resolve_contract_reward_icon": _row(_V.RESOLVE, _S.CONTRACT, _T.OPTION),
+    # One icon of a completed Contract's reward: a row of its window (stage
+    # B2, OQ-112), or of its owner's turn, naming the Contract (stage B3b,
+    # OQ-112 (4)).
+    "resolve_contract_reward_icon": _row(
+        _V.RESOLVE, _S.CONTRACT, _T.OPTION, tag=Tag.CONTRACT
+    ),
     # Nothing in the market can be taken now: the icons wait, or fizzle
     # with an empty market (OQ-059).
     "hold_contract_icons": _row(

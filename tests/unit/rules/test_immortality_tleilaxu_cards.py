@@ -1827,10 +1827,15 @@ def test_usurped_replacement_eyes_spice_completes_a_harvest_contract_in_turn() -
     )
     completed = apply_whole(engine, pressed, completion).state
     assert harvest in completed.players[0].completed_contract_ids
-    # The Contract's reward waits in its window (stage B2, OQ-112); the end
-    # is offered again once its rows are paid.
-    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The Contract's reward waits on the Agent turn as rows (stage B3b,
+    # OQ-112 (4)); the end is offered again once they are paid.
+    assert completed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completed, 0)
+    assert "finish_agent_turn" not in {
+        a.action_id for a in engine.whole_actions(completed, 0)
+    }
     completed = answer_reward_windows(engine, completed)
+    assert not turn_rows.holds_the_end(completed, 0)
     closed, _ = _press_finish(completed)
     assert closed.decision_stack[-1].kind == FrameKind.TURN
 

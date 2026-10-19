@@ -94,7 +94,10 @@ from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_dr
 from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.combat import legacy_combat_reward_icon
-from dune_imperium.rules.contracts import legacy_contract_reward_icon
+from dune_imperium.rules.contracts import (
+    legacy_contract_icon_row,
+    legacy_contract_reward_icon,
+)
 from dune_imperium.rules.effect_steps import (
     first_step,
     path_of,
@@ -309,6 +312,7 @@ def migrate_record(
     )
     drops_refusals = replay.action_codec_version < OPTIONAL_REFUSALS_CODEC
     drops_turn_row_refusals = replay.action_codec_version < TURN_ROW_REFUSALS_CODEC
+    contract_rows_wait = replay.action_codec_version < CONTRACT_TURN_ROWS_CODEC
     reveal = (
         _RevealSlot() if replay.action_codec_version < REVEAL_CHOICES_CODEC else None
     )
@@ -467,21 +471,21 @@ def migrate_record(
                 ):
                     dropped.append((index, INFLUENCE_AT_TOP_DROPPED))
                     break
-                if bridged is None and drops_turn_row_refusals:
+                if bridged is None and (drops_turn_row_refusals or contract_rows_wait):
                     earlier = _asked_earlier(
-                        engine, state, replay.steps, index, consumed
+                        engine,
+                        state,
+                        replay.steps,
+                        index,
+                        consumed,
+                        turn_rows_codec=drops_turn_row_refusals,
+                        contract_rows_codec=contract_rows_wait,
                     )
                     if earlier is not None:
-                        asked_index, asked_step = earlier
+                        asked_index, asked_step, asked_bridge = earlier
                         consumed.add(asked_index)
                         migrated.append(
-                            MigratedStep(
-                                asked_step,
-                                asked_index,
-                                _asked_earlier_bridge(
-                                    asked_step, replay.steps[asked_index]
-                                ),
-                            )
+                            MigratedStep(asked_step, asked_index, asked_bridge)
                         )
                         followed = _follow(
                             engine,
@@ -750,27 +754,93 @@ def _asked_earlier(
     steps: tuple[ReplayStep, ...],
     index: int,
     consumed: set[int],
-) -> tuple[int, ReplayStep] | None:
-    """The owner's later recorded answer to the Harvest Cells acquisition
-    this engine asks now, if it is legal here; or the later recorded
-    reshuffle of the Planetary Array card this engine draws as the Conflict
-    is won (``_tech_draw_earlier``), or of the same cards under another
-    decision (``_reshuffle_earlier``)."""
+    *,
+    turn_rows_codec: bool,
+    contract_rows_codec: bool,
+) -> tuple[int, ReplayStep, str] | None:
+    """A later recorded step this engine asks for now, with its bridge's
+    name: before codec v149, the owner's later recorded answer to the
+    Harvest Cells acquisition this engine asks now, if it is legal here; or
+    the later recorded reshuffle of the Planetary Array card this engine
+    draws as the Conflict is won (``_tech_draw_earlier``), or of the same
+    cards under another decision (``_reshuffle_earlier``). Before codec
+    v150, the owner's next pick in a frame that stands over its turn's
+    Contract rows (``_frame_before_contract_rows``)."""
 
-    owner = _harvest_cells_choice(state)
-    if owner is None:
-        return _tech_draw_earlier(
+    if turn_rows_codec:
+        owner = _harvest_cells_choice(state)
+        if owner is not None:
+            for ahead in range(index, len(steps)):
+                step = steps[ahead]
+                if (
+                    ahead in consumed
+                    or not isinstance(step, DomainAction)
+                    or step.actor != owner
+                    or step.action_id not in _HARVEST_CELLS_CHOICES
+                ):
+                    continue
+                if step in engine.whole_actions(state, owner):
+                    return ahead, step, HARVEST_CELLS_AT_ONCE
+                return None
+            return None
+        found = _tech_draw_earlier(
             engine, state, steps, index, consumed
         ) or _reshuffle_earlier(engine, state, steps, index, consumed)
-    for ahead in range(index, len(steps)):
+        if found is not None:
+            return (*found, _asked_earlier_bridge(found[1], steps[found[0]]))
+    if contract_rows_codec:
+        found = _frame_before_contract_rows(engine, state, steps, index, consumed)
+        if found is not None:
+            return (*found, CONTRACT_FRAME_FIRST)
+    return None
+
+
+# Codec v150 (stage B3b, user decision 2026-10-19 B3-4, OQ-112 (4)): a
+# Contract completed in its owner's own turn leaves its icons as rows of
+# that turn, offered once the turn frame is back on top. A recording engine
+# paid the reward at the completion, so where the completing step stood in
+# another frame of the owner's (a Contract market taking two tiles, say),
+# the record went on with the reward's own steps (a draw's reshuffle) before
+# that frame's next pick; that pick is taken first (``CONTRACT_FRAME_FIRST``),
+# then the rows (``combat_reward_icon_follow``) and the recorded steps.
+CONTRACT_TURN_ROWS_CODEC: Final = 150
+CONTRACT_FRAME_FIRST: Final = "contract_frame_first"
+# How far ahead the frame's next pick is looked for, past the reward's own
+# chance steps.
+_CONTRACT_FRAME_LOOKAHEAD: Final = 8
+
+
+def _frame_before_contract_rows(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    steps: tuple[ReplayStep, ...],
+    index: int,
+    consumed: set[int],
+) -> tuple[int, ReplayStep] | None:
+    """The owner's next recorded action, past chance steps only, where a
+    frame of the owner's stands over Contract rows waiting on its turn and
+    that action is legal here (see ``CONTRACT_TURN_ROWS_CODEC``)."""
+
+    if not state.decision_stack:
+        return None
+    top = state.decision_stack[-1]
+    if not isinstance(top.decision, PlayerDecision):
+        return None
+    owner = top.decision.owner
+    turn = own_turn_frame_index(state, owner)
+    if turn is None or turn == len(state.decision_stack) - 1:
+        return None
+    if not any(
+        kind == turn_rows.CONTRACT_ICON
+        for kind, _source, _value in turn_rows.pending(state.decision_stack[turn])
+    ):
+        return None
+    for ahead in range(index, min(len(steps), index + _CONTRACT_FRAME_LOOKAHEAD)):
         step = steps[ahead]
-        if (
-            ahead in consumed
-            or not isinstance(step, DomainAction)
-            or step.actor != owner
-            or step.action_id not in _HARVEST_CELLS_CHOICES
-        ):
+        if ahead in consumed or isinstance(step, ChanceOutcome):
             continue
+        if not isinstance(step, DomainAction) or step.actor != owner:
+            return None
         return (ahead, step) if step in engine.whole_actions(state, owner) else None
     return None
 
@@ -3135,21 +3205,26 @@ def _combat_reward_icon(
     step: ReplayStep,
 ) -> ReplayStep | None:
     """Resolve a Conflict reward's, or a completed Contract's, icons in the
-    order the recording engine paid them (stage B2, OQ-112).
+    order the recording engine paid them (stages B2 and B3b, OQ-112).
 
     Before codec v150 a recipient's reward was paid in one step in a fixed
     order -- its automatic part, then its choice frames in the order they
     were answered (``rules.combat.legacy_combat_reward_icon``); this engine
-    asks the recipient for each icon in a window of its own. A choice icon
-    opens its frame, which the record's own step then answers.
+    asks the recipient for each icon in a window of its own, or, for a
+    Contract completed in its owner's own turn, as rows of that turn
+    (OQ-112 (4), ``rules.contracts.legacy_contract_icon_row``), offered
+    once the turn frame is on top again. A choice icon opens its frame,
+    which the record's own step then answers.
     """
 
     del step
     if not isinstance(decision, PlayerDecision):
         return None
-    answer = legacy_combat_reward_icon(
-        state, decision.owner
-    ) or legacy_contract_reward_icon(state, decision.owner)
+    answer = (
+        legacy_combat_reward_icon(state, decision.owner)
+        or legacy_contract_reward_icon(state, decision.owner)
+        or legacy_contract_icon_row(state, decision.owner)
+    )
     # An owed draw of the owner's own turn comes first (OQ-106).
     if answer is None or answer not in engine.whole_actions(state, decision.owner):
         return None

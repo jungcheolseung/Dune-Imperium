@@ -153,7 +153,11 @@ GAMES = (
     # 1-200 (2026-10-20) finds seed 197 the only one with the steal and
     # Family Atomics, the Feyd track, research, the three v146 events and
     # v147's unused Reveal choice.
-    {"seats": ["random"] * 4, "game_seed": 197, "policy_seed": 197, **EVERY_EXPANSION},
+    # Stage B3b (a Contract completed in its owner's turn leaves its icons as
+    # rows of that turn, so random seats draw from another list) moves seed
+    # 197 off its Secrets steal. The same scan over random seeds 1-500
+    # (2026-10-20) finds seed 9 first with the steal and all of the above.
+    {"seats": ["random"] * 4, "game_seed": 9, "policy_seed": 9, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,

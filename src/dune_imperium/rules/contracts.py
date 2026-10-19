@@ -1,5 +1,6 @@
 """Public Contract market choices for the Uprising CHOAM Module."""
 
+from collections.abc import Mapping
 from copy import replace
 from enum import StrEnum
 from typing import Final
@@ -26,6 +27,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contract_tiles import (
     contract_intrigue_trash_frame,
@@ -46,6 +48,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     FrameKind,
+    own_turn_frame_index,
     owned_top_frame,
     replace_player,
     turn_owner_of,
@@ -148,22 +151,24 @@ def apply_contract_completion(
         completed.state.players,
     )
     turn_space_id = context.get("space_id")
-    # Fixed now, while the Agent-turn effect context is still open: whether
-    # this turn's Agent has left for the Conflict via Into the Fray, which a
-    # Recall Agent reward must exclude just like a board space (OQ-068).
+    # For a reward window, fixed now while the Agent-turn effect context is
+    # still open: whether this turn's Agent has left for the Conflict via
+    # Into the Fray, which a Recall Agent reward must exclude just like a
+    # board space (OQ-068). The turn's rows judge it when taken instead.
     reward_turn_agent_in_conflict = isinstance(
         turn_space_id, str
     ) and turn_agent_in_conflict(
         completed.state.players[action.actor], context, turn_space_id
     )
-    window = _contract_reward_window(
+    rewarded = _await_contract_reward(
+        next_state,
         action.actor,
         instance_id,
         source,
         excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
         turn_agent_in_conflict=reward_turn_agent_in_conflict,
     )
-    return RuleResult(state=next_state.push_decision(window), events=completed.events)
+    return RuleResult(state=rewarded, events=completed.events)
 
 
 def complete_acquire_contracts(
@@ -192,7 +197,7 @@ def complete_acquire_contracts(
     )
     next_state = state
     events: tuple[GameEvent, ...] = ()
-    windows: list[DecisionFrame] = []
+    completions: list[tuple[str, str]] = []
     for instance_id in matching:
         completion_source = f"{source}:contract:{instance_id}"
         completed = _complete_contract(
@@ -200,10 +205,16 @@ def complete_acquire_contracts(
         )
         next_state = completed.state
         events = (*events, *completed.events)
-        windows.append(_contract_reward_window(player, instance_id, completion_source))
-    # The first Contract's reward is answered first.
-    for window in reversed(windows):
-        next_state = next_state.push_decision(window)
+        completions.append((instance_id, completion_source))
+    # The first Contract's reward is answered first: its rows wait first on
+    # the owner's turn, its window is pushed last.
+    in_turn = turn_rows.waits_on_turn(next_state, player)
+    for instance_id, completion_source in (
+        completions if in_turn else reversed(completions)
+    ):
+        next_state = _await_contract_reward(
+            next_state, player, instance_id, completion_source
+        )
     return RuleResult(state=next_state, events=events)
 
 
@@ -741,9 +752,7 @@ def complete_immediate_contract(
     (OQ-112)."""
 
     completed = _complete_contract(state, player, instance_id, source=source)
-    pushed = completed.state.push_decision(
-        _contract_reward_window(player, instance_id, source)
-    )
+    pushed = _await_contract_reward(completed.state, player, instance_id, source)
     return RuleResult(
         state=replace(
             pushed,
@@ -1144,16 +1153,15 @@ def complete_contract_by_effect(
     """
 
     completed = _complete_contract(state, player, instance_id, source=source)
-    window = _contract_reward_window(
+    rewarded = _await_contract_reward(
+        completed.state,
         player,
         instance_id,
         source,
         excluded_space_id=excluded_space_id,
         turn_agent_in_conflict=turn_agent_in_conflict,
     )
-    return RuleResult(
-        state=completed.state.push_decision(window), events=completed.events
-    )
+    return RuleResult(state=rewarded, events=completed.events)
 
 
 def _complete_contract(
@@ -1317,6 +1325,97 @@ def _contract_reward_window(
     )
 
 
+def _await_contract_reward(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    source: str,
+    *,
+    excluded_space_id: str = "",
+    turn_agent_in_conflict: bool = False,
+) -> GameState:
+    """Where a completed Contract's reward waits: inside its owner's own
+    turn, an icon each as rows of that turn (OQ-112 (4), user decision
+    2026-10-19 B3-4: "차례 안에서 완수한 계약의 보상은 차례의 줄이다"),
+    beside the turn's other effects and holding its end; elsewhere -- in
+    Combat, in the Arrakeen Scouts step or a Scouts line, a finished game --
+    its window (``_contract_reward_window``). The window fixes what a Recall
+    Agent icon may not take now (it is answered next); a row judges it when
+    it is taken (``_turn_agent_exclusion``)."""
+
+    if turn_rows.waits_on_turn(state, player) and state.phase is not (
+        GamePhase.FINISHED
+    ):
+        for kind, _piece in contract_reward_icons(instance_id):
+            queued = turn_rows.queue(
+                state,
+                player,
+                (turn_rows.CONTRACT_ICON, source, _icon_row_value(instance_id, kind)),
+            )
+            assert queued is not None
+            state = queued
+        return state
+    return state.push_decision(
+        _contract_reward_window(
+            player,
+            instance_id,
+            source,
+            excluded_space_id=excluded_space_id,
+            turn_agent_in_conflict=turn_agent_in_conflict,
+        )
+    )
+
+
+def legal_contract_icon_row_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """A row per icon of a Contract completed in the owner's turn that waits
+    on it (OQ-112 (4)), each Contract's in printed order."""
+
+    frame = turn_rows.rows_frame(state, player)
+    if frame is None:
+        return ()
+    rows: dict[DomainAction, None] = {}
+    for kind, _source, value in turn_rows.pending(frame):
+        if kind != turn_rows.CONTRACT_ICON:
+            continue
+        instance_id, icon = _icon_row_parts(value)
+        rows.setdefault(
+            DomainAction(
+                action_id=CONTRACT_REWARD_ICON_ACTION,
+                actor=player,
+                arguments=(("contract_id", instance_id), ("effect", icon)),
+            ),
+            None,
+        )
+    return tuple(rows)
+
+
+def legacy_contract_icon_row(state: GameState, player: int) -> DomainAction | None:
+    """The row of a Contract completed in the owner's turn that the engine
+    before stage B3b paid next (its window: the oldest Contract first, its
+    icons in ``_LEGACY_CONTRACT_ORDER``), or None when none waits."""
+
+    frame = turn_rows.rows_frame(state, player)
+    if frame is None:
+        return None
+    waiting = [
+        _icon_row_parts(value)
+        for kind, _source, value in turn_rows.pending(frame)
+        if kind == turn_rows.CONTRACT_ICON
+    ]
+    if not waiting:
+        return None
+    oldest = waiting[0][0]
+    icons = {icon for instance_id, icon in waiting if instance_id == oldest}
+    icon = next(kind for kind in _LEGACY_CONTRACT_ORDER if kind in icons)
+    return DomainAction(
+        action_id=CONTRACT_REWARD_ICON_ACTION,
+        actor=player,
+        arguments=(("contract_id", oldest), ("effect", icon)),
+    )
+
+
 def _contract_window_icons(frame: DecisionFrame) -> tuple[str, ...]:
     text = dict(frame.context)[_CONTRACT_ICONS_KEY]
     return tuple(str(text).split(",")) if text else ()
@@ -1361,13 +1460,17 @@ def legacy_contract_reward_icon(state: GameState, player: int) -> DomainAction |
 
 
 def apply_contract_reward_icon(state: GameState, action: DomainAction) -> RuleResult:
-    """Resolve one icon of a completed Contract's reward (OQ-112)."""
+    """Resolve one icon of a completed Contract's reward (OQ-112): a row of
+    its window, or a row waiting on its owner's turn (OQ-112 (4))."""
 
     player = action.actor
+    arguments = dict(action.arguments)
+    kind = arguments.get("effect")
+    if "contract_id" in arguments:
+        return _apply_contract_icon_row(state, player, arguments)
     frame = owned_top_frame(state, FrameKind.CONTRACT_REWARD_ICONS, player)
     if frame is None:
         raise ValueError("no Contract reward window is open for this seat")
-    kind = dict(action.arguments).get("effect")
     icons = list(_contract_window_icons(frame))
     if not isinstance(kind, str) or kind not in icons:
         raise ValueError(f"no {kind!r} icon waits in this Contract reward")
@@ -1375,13 +1478,106 @@ def apply_contract_reward_icon(state: GameState, action: DomainAction) -> RuleRe
     context = dict(frame.context)
     instance_id = str(context["contract_id"])
     source = str(context["source"])
-    piece = contract_icon_piece(instance_id, kind)
     if icons:
         context[_CONTRACT_ICONS_KEY] = ",".join(icons)
         stack = (*state.decision_stack[:-1], with_context(frame, context))
     else:
         stack = state.decision_stack[:-1]
     state = replace(state, decision_stack=stack)
+    return _pay_contract_icon(
+        state,
+        player,
+        instance_id,
+        kind,
+        source,
+        excluded_space_id=str(context["excluded_space_id"]),
+        turn_agent_in_conflict=context["turn_agent_in_conflict"] is True,
+        remaining=len(icons),
+    )
+
+
+def _apply_contract_icon_row(
+    state: GameState, player: int, arguments: Mapping[str, ActionValue]
+) -> RuleResult:
+    """Resolve a completed Contract's icon waiting on its owner's turn."""
+
+    instance_id, kind = arguments.get("contract_id"), arguments.get("effect")
+    frame = turn_rows.rows_frame(state, player)
+    items = [
+        (item, _icon_row_parts(item[2]))
+        for item in (() if frame is None else turn_rows.pending(frame))
+        if item[0] == turn_rows.CONTRACT_ICON
+    ]
+    found = next(
+        (
+            (item, parts)
+            for item, parts in items
+            if parts[0] == instance_id and parts[1] == kind
+        ),
+        None,
+    )
+    if found is None:
+        raise ValueError(f"no {kind!r} icon of {instance_id!r} waits on this turn")
+    item, (instance, icon) = found
+    excluded_space_id, in_conflict = _turn_agent_exclusion(state, player)
+    state = turn_rows.take(state, player, item)
+    remaining = sum(1 for _, parts in items if parts[0] == instance) - 1
+    return _pay_contract_icon(
+        state,
+        player,
+        instance,
+        icon,
+        item[1],
+        excluded_space_id=excluded_space_id,
+        turn_agent_in_conflict=in_conflict,
+        remaining=remaining,
+    )
+
+
+def _turn_agent_exclusion(state: GameState, player: int) -> tuple[str, bool]:
+    """What a Recall Agent icon taken now may not recall: "not the Agent you
+    sent during this turn" [Main p. 20] -- still on the turn's space, or
+    moved to the Conflict by Into the Fray (OQ-068) -- read from the owner's
+    open Agent-turn effect frame when the row is taken, since the turn's
+    other effects may move that Agent between the completion and the row. A
+    Reveal, or a turn before its Agent is sent, sent none."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return "", False
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    space_id = context.get("space_id")
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(space_id, str):
+        return "", False
+    return space_id, turn_agent_in_conflict(state.players[player], context, space_id)
+
+
+def _icon_row_value(instance_id: str, kind: str) -> str:
+    return f"{instance_id}|{kind}"
+
+
+def _icon_row_parts(value: str) -> tuple[str, str]:
+    instance_id, kind = value.split("|")
+    return instance_id, kind
+
+
+def _pay_contract_icon(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    kind: str,
+    source: str,
+    *,
+    excluded_space_id: str,
+    turn_agent_in_conflict: bool,
+    remaining: int,
+) -> RuleResult:
+    """Pay one icon of a completed Contract's reward: an automatic icon at
+    once, a choice icon by opening its frame. ``remaining`` counts the
+    Contract's icons still waiting after this one (the event's id)."""
+
+    piece = contract_icon_piece(instance_id, kind)
     owner = state.players[player]
     events: list[GameEvent] = []
     details: list[tuple[str, ActionValue]] = []
@@ -1486,8 +1682,7 @@ def apply_contract_reward_icon(state: GameState, action: DomainAction) -> RuleRe
             # The frame opens either way, and with no target it offers only
             # the confirm ``resolve_contract_without_recall`` (user ruling
             # 2026-09-30: every automatic skip opens a decision window).
-            excluded_space_id = str(context["excluded_space_id"])
-            in_conflict = context["turn_agent_in_conflict"] is True
+            in_conflict = turn_agent_in_conflict
             targets = recall_agent_targets(
                 state.players[player],
                 excluded_space_id=excluded_space_id,
@@ -1517,7 +1712,7 @@ def apply_contract_reward_icon(state: GameState, action: DomainAction) -> RuleRe
             raise ValueError(f"{kind!r} is not a Contract reward icon")
     events.append(
         GameEvent(
-            event_id=f"{source}:reward_icon:{len(icons)}",
+            event_id=f"{source}:reward_icon:{remaining}",
             kind="contract_reward_icon_resolved",
             payload=tuple(
                 sorted(
@@ -1621,10 +1816,9 @@ def apply_contract_intrigue_trash(
             payload=(("contract_id", instance_id), ("player", player)),
         ),
     ]
-    # Its reward, an Intrigue card and a card, waits in its window (OQ-112).
-    pushed = next_state.push_decision(
-        _contract_reward_window(player, instance_id, source)
-    )
+    # Its reward, an Intrigue card and a card, waits on the owner's turn or
+    # in its window (OQ-112).
+    pushed = _await_contract_reward(next_state, player, instance_id, source)
     next_state = replace(
         pushed,
         combat_rewards_resolved=_combat_rewards_done(pushed, pushed.decision_stack),
@@ -1688,8 +1882,8 @@ def complete_alliance_contracts(result: RuleResult) -> RuleResult:
             completed = _complete_contract(
                 state, player, instance_id, source=completion_source
             )
-            state = completed.state.push_decision(
-                _contract_reward_window(player, instance_id, completion_source)
+            state = _await_contract_reward(
+                completed.state, player, instance_id, completion_source
             )
             events.extend(completed.events)
             if state.phase is GamePhase.FINISHED:

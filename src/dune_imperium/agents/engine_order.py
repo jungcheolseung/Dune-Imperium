@@ -13,16 +13,33 @@ before the rows existed; a learning agent weighs the rows itself.
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.combat import legacy_combat_reward_icon
-from dune_imperium.rules.contracts import legacy_contract_reward_icon
+from dune_imperium.rules.contracts import (
+    legacy_contract_icon_row,
+    legacy_contract_reward_icon,
+)
+from dune_imperium.rules.effect_steps import first_step, presents_steps
 
 
 def engine_order_answer(
     state: GameState, player: int, legal_actions: tuple[DomainAction, ...]
 ) -> DomainAction | None:
     """The older engine's answer to this decision, when it is one of those
-    (module docstring) and still legal; None otherwise."""
+    (module docstring) and still legal; None otherwise. A Contract completed
+    in the owner's turn waits on it as rows since stage B3b (OQ-112 (4));
+    the older engine paid it at once, so its rows come first, in that order.
+    Where the frame offers its effects effect first (stage B3), the answer
+    is the step toward the whole action."""
 
-    answer = legacy_combat_reward_icon(state, player) or legacy_contract_reward_icon(
-        state, player
+    answer = (
+        legacy_combat_reward_icon(state, player)
+        or legacy_contract_reward_icon(state, player)
+        or legacy_contract_icon_row(state, player)
     )
-    return answer if answer is not None and answer in legal_actions else None
+    if answer is None:
+        return None
+    if answer not in legal_actions and presents_steps(state):
+        try:
+            answer = first_step(state, answer)
+        except ValueError:
+            return None
+    return answer if answer in legal_actions else None

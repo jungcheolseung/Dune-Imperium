@@ -33,6 +33,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.core.events import GameEvent
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_turn import (
     apply_agent_action,
     executable_placements,
@@ -262,12 +263,13 @@ def test_immediate_trashes_a_chosen_intrigue_card_then_draws_both_rewards() -> N
     )
 
     trashed = apply_whole(engine, taken, trashes[1])
-    # The completion announces itself at once and its two draws wait in the
-    # reward window, one row each (stage B2, OQ-112).
+    # The completion announces itself at once and its two draws wait on the
+    # owner's turn, one row each (stage B3b, OQ-112 (4)).
     kinds = [event.kind for event in trashed.events]
     assert kinds[0] == "intrigue_card_trashed"
     assert kinds[-1] == "contract_completed"
-    assert trashed.state.decision_stack[-1].kind == "contract_reward_icons"
+    assert trashed.state.decision_stack[-1].kind == "turn"
+    assert turn_rows.holds_the_end(trashed.state, 0)
     assert trashed.state.players[0].completed_contract_ids == (IMMEDIATE,)
     assert trashed.state.players[0].intrigue_cards == (INTRIGUE[0],)
 
@@ -421,9 +423,11 @@ def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> Non
     assert owner.alliance_faction_ids == ("emperor",)
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
-    # The tile's reward waits in its window (stage B2, OQ-112) until its rows
-    # are paid; the completion itself is the bump step's only Contract event.
-    assert bumped.state.decision_stack[-1].kind == "contract_reward_icons"
+    # The tile's reward waits on the Agent turn as rows (stage B3b, OQ-112
+    # (4)) until they are paid; the completion itself is the bump step's only
+    # Contract event.
+    assert bumped.state.decision_stack[-1].kind == "agent_effects"
+    assert turn_rows.holds_the_end(bumped.state, 0)
     assert owner.resources.solari == 10
     assert [
         event.kind for event in bumped.events if event.kind.startswith("contract")
@@ -465,8 +469,10 @@ def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() 
     )
     owner = completed.state.players[0]
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
-    # The tile's troops come with its reward window's row (stage B2, OQ-112).
-    assert completed.state.decision_stack[-1].kind == "contract_reward_icons"
+    # The tile's troops come with its row on the Agent turn (stage B3b,
+    # OQ-112 (4)).
+    assert completed.state.decision_stack[-1].kind == "agent_effects"
+    assert turn_rows.holds_the_end(completed.state, 0)
     assert owner.troops_garrison == 3
     completed = replace(completed, state=settle_reward_window(completed.state))
     owner = completed.state.players[0]

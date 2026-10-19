@@ -40,6 +40,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import contracts as contracts_rules
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
@@ -1413,13 +1414,18 @@ def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_tu
     )
     result = apply_agent_card_acquisition(state, action)
 
-    # The Contract's troop is its reward window's row (stage B2, OQ-112):
-    # the completion is announced, the row recruits and credits the turn.
-    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The Contract's troop is a row of this Agent turn (stage B3b, OQ-112
+    # (4)): the completion is announced, the row recruits and credits the
+    # turn, and holds its end until then.
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
     assert result.state.players[0].troops_garrison == garrison
+    assert result.state.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire",
+    )
     settled = settle_reward_window(result.state)
     assert settled.players[0].troops_garrison == garrison + 1
-    assert settled.players[0].completed_contract_ids == ("contract:fake_troop_acquire",)
+    assert not turn_rows.holds_the_end(settled, 0)
     _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1
 
@@ -1429,9 +1435,9 @@ def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_
 ) -> None:
     # Same Contract reward as above, but through the acquisition-bonus
     # branch that pushes a Spy-placement frame instead of calling
-    # ``advance_after_effect``. The Contract's troop is a row of its reward
-    # window (stage B2, OQ-112), on top of the Spy frame as the engine paid
-    # the reward inside the acquisition before; the row credits the turn.
+    # ``advance_after_effect``. The Contract's troop is a row of this Agent
+    # turn (stage B3b, OQ-112 (4)), offered once the Spy is placed and the
+    # turn's frame is on top again; the row credits the turn.
     strike_fleet = _imperium_instance("strike_fleet")
     _install_fake_troop_contract(
         monkeypatch, "fake_troop_acquire_spy", "strike_fleet"
@@ -1464,20 +1470,19 @@ def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
-    assert result.state.decision_stack[-2].kind == FrameKind.ACQUISITION_SPY
+    assert result.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
     assert result.state.players[0].troops_garrison == garrison
     assert result.state.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_spy",
     )
-    settled = settle_reward_window(result.state)
-    assert settled.players[0].troops_garrison == garrison + 1
-    assert settled.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
     spied = apply_acquisition_spy_action(
-        settled, legal_acquisition_spy_actions(settled, 0)[0]
+        result.state, legal_acquisition_spy_actions(result.state, 0)[0]
     ).state
     assert spied.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    context = dict(spied.decision_stack[-1].context)
+    assert turn_rows.holds_the_end(spied, 0)
+    settled = settle_reward_window(spied)
+    assert settled.players[0].troops_garrison == garrison + 1
+    _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1
 
 
@@ -1508,8 +1513,10 @@ def test_acquire_contract_troop_reward_joins_the_solari_reserve_acquisitions_tur
     )
     result = apply_agent_card_acquisition(state, action)
 
-    # The Contract's troop is its reward window's row (stage B2, OQ-112).
-    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The Contract's troop is a row of this Agent turn (stage B3b, OQ-112
+    # (4)).
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
     assert result.state.players[0].troops_garrison == garrison
     settled = settle_reward_window(result.state)
     assert settled.players[0].troops_garrison == garrison + 1

@@ -629,9 +629,12 @@ def test_earn_any_alliance_completed_by_the_turn_end_payment_reopens_to_deploy()
     pressed = apply_whole(engine, ready, DomainAction("finish_agent_turn", 0))
     kinds = [event.kind for event in pressed.events]
     assert kinds.index("alliance_gained") < kinds.index("contract_completed")
-    # The Contract's reward waits in its window (stage B2, OQ-112): the two
-    # troops are its rows, and the turn reopens once they are recruited.
-    assert pressed.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The Contract's reward waits on the Agent turn as rows (stage B3b,
+    # OQ-112 (4)): the two troops are its rows, which the turn may not close
+    # over, so the press itself reopens it (as for a draw it owes).
+    assert kinds[-1] == "agent_turn_reopened"
+    assert pressed.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(pressed.state, 0)
     reopened = pressed.state
     row_events: list[str] = []
     while (
@@ -640,7 +643,8 @@ def test_earn_any_alliance_completed_by_the_turn_end_payment_reopens_to_deploy()
         step = apply_whole(engine, reopened, row)
         reopened = step.state
         row_events.extend(event.kind for event in step.events)
-    assert row_events[-1] == "agent_turn_reopened"
+    assert "contract_reward_icon_resolved" in row_events
+    assert "agent_turn_reopened" not in row_events
     offered = engine.whole_actions(reopened, 0)
     deploys = [a for a in offered if a.action_id == "deploy_troops"]
     assert deploys

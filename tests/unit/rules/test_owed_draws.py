@@ -28,6 +28,7 @@ from dune_imperium.core import (
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.player import Influence
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import OWED_INTRIGUE, FrameKind, hold_draw
@@ -466,11 +467,13 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     )
     assert complete in ENGINE.whole_actions(placed, 0)
 
-    # v150 (stage B2, OQ-112): the Contract's reward is a window of icon rows;
-    # the card is the owner's only step right after the completion, before
-    # every row (here the water; user decision 2026-10-19).
+    # v150 (stage B3b, OQ-112 (4)): the Contract's reward waits on this Agent
+    # turn as rows; the card is the owner's only step right after the
+    # completion, before every row (here the water; user decision
+    # 2026-10-19).
     completed = apply_whole(ENGINE, placed, complete).state
-    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert completed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completed, 0)
     seat = completed.players[0]
     assert seat.completed_contract_ids == ("contract:arrakeen_i",)
     assert seat.hand == hand_before  # the completion draws nothing
@@ -483,9 +486,11 @@ def test_choam_transports_card_is_the_owners_next_step_after_the_completion() ->
     drawn = apply_whole(ENGINE, completed, DRAW_CARD).state
     assert len(drawn.players[0].hand) == len(hand_before) + 1
     assert drawn.players[0].owed_draws == ()
-    assert drawn.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    assert drawn.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(drawn, 0)
     assert drawn.players[0].resources.water == seat.resources.water
     drawn = answer_reward_windows(ENGINE, drawn)
+    assert not turn_rows.holds_the_end(drawn, 0)
     assert drawn.players[0].resources.water == seat.resources.water + 1
     offered = ENGINE.whole_actions(drawn, 0)
     assert DRAW_CARD not in offered
@@ -518,17 +523,27 @@ def test_choam_transports_card_comes_before_every_reward_row() -> None:
         ),
     )
     state = complete_contract_by_effect(state, 0, contract, source="round:1:test").state
-    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The reward's icons wait as rows of the owner's turn (stage B3b, OQ-112
+    # (4)), which here is the bare "turn" frame; the card still comes first.
+    assert state.decision_stack[-1].kind == FrameKind.TURN
+    assert turn_rows.holds_the_end(state, 0)
     assert ENGINE.whole_actions(state, 0) == (DRAW_CARD,)
     hand = len(state.players[0].hand)
     state = apply_whole(ENGINE, state, DRAW_CARD).state
     assert len(state.players[0].hand) == hand + 1
     assert {
-        dict(action.arguments)["effect"] for action in ENGINE.whole_actions(state, 0)
+        dict(action.arguments)["effect"]
+        for action in ENGINE.whole_actions(state, 0)
+        if action.action_id == "resolve_contract_reward_icon"
     } == {"resources", "spy"}
 
     state = apply_whole(ENGINE, 
-        state, DomainAction("resolve_contract_reward_icon", 0, (("effect", "spy"),))
+        state,
+        DomainAction(
+            "resolve_contract_reward_icon",
+            0,
+            (("contract_id", contract), ("effect", "spy")),
+        ),
     ).state
     assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
     place = next(
@@ -540,8 +555,13 @@ def test_choam_transports_card_comes_before_every_reward_row() -> None:
     solari = state.players[0].resources.solari
     state = apply_whole(ENGINE, 
         state,
-        DomainAction("resolve_contract_reward_icon", 0, (("effect", "resources"),)),
+        DomainAction(
+            "resolve_contract_reward_icon",
+            0,
+            (("contract_id", contract), ("effect", "resources")),
+        ),
     ).state
     assert state.players[0].resources.solari == solari + 2
+    assert not turn_rows.holds_the_end(state, 0)
     assert state.players[0].owed_draws == ()
     assert state.players[0].tech_cards_owed == 0

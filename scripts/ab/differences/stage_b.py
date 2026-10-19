@@ -20,6 +20,7 @@ from typing import Any
 
 from equivalence_rules import At, Rule, Step
 
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, is_fixed_outcome
@@ -29,9 +30,12 @@ from dune_imperium.rules.agent_turn import (
     agent_card_pick_actions,
     agent_space_pick_actions,
 )
-from dune_imperium.rules.combat import legacy_combat_reward_icon
-from dune_imperium.rules.contracts import legacy_contract_reward_icon
+from dune_imperium.rules.contracts import (
+    legacy_contract_icon_row,
+    legacy_contract_reward_icon,
+)
 from dune_imperium.rules.effect_steps import (
+    first_step,
     path_of,
     present,
     presents_steps,
@@ -198,12 +202,12 @@ _REWARD_EVENT = "combat_reward_gained"
 
 def _reward_answer(at: At) -> Any:
     if isinstance(at.decision, PlayerDecision):
-        owner = at.decision.owner
-        answer = legacy_combat_reward_icon(
-            at.state, owner
-        ) or legacy_contract_reward_icon(at.state, owner)
-        # An owed draw of the owner's own turn comes first (OQ-106).
-        return answer if answer in at.legal else None
+        # The base paid a reward in one step: its window's rows, and since
+        # B3b the rows a Contract completed in its owner's turn leaves on it
+        # (OQ-112 (4)), are answered in the base's order, by their first
+        # step where the frame offers effects effect first. An owed draw of
+        # the owner's own turn comes first (OQ-106).
+        return engine_order_answer(at.state, at.decision.owner, at.legal)
     if isinstance(at.decision, ChanceDecision) and is_fixed_outcome(at.decision):
         later = at.rows[at.index + 1 :]
         upcoming = later[0][0] if later else None
@@ -500,6 +504,24 @@ def _swapped_reshuffle(recorded: str, asked: str) -> bool:
     )
 
 
+def _contract_row(
+    state: Any, player: int, legal: tuple[Any, ...]
+) -> DomainAction | None:
+    """The next row of a completed Contract's reward in the base's order --
+    its window's, or one waiting on its owner's turn (B3b), by its first
+    step where the frame offers effects effect first -- when it is legal."""
+
+    row = legacy_contract_reward_icon(state, player) or legacy_contract_icon_row(
+        state, player
+    )
+    if row is not None and row not in legal and presents_steps(state):
+        try:
+            row = first_step(state, row)
+        except ValueError:
+            return None
+    return row if row in legal else None
+
+
 def _transports_moves(old: Step, at: At) -> tuple[Any, ...] | None:
     """The candidate's moves where CHOAM Transports' card comes first (the
     user decision of 2026-10-19; records bridge ``transports_card_first``):
@@ -548,8 +570,10 @@ def _transports_moves(old: Step, at: At) -> tuple[Any, ...] | None:
             break
         if not isinstance(decision, PlayerDecision):
             break
-        row = legacy_contract_reward_icon(after, decision.owner)
-        if row is None or row not in at.engine.legal_actions(after, decision.owner):
+        row = _contract_row(
+            after, decision.owner, at.engine.legal_actions(after, decision.owner)
+        )
+        if row is None:
             break
         moves.append(row)
         after = at.engine.apply(after, row).state
@@ -841,8 +865,11 @@ def _effect_steps_in_base_form(old: Step, candidate: Step) -> None:
     if not _EFFECT_AT:
         return
     at = _EFFECT_AT[0]
+    # A recorded chance step the candidate reaches behind other moves (one
+    # CHOAM Transports' card, ``_transports_moves``) has no rows to read.
     if not (
-        isinstance(at.decision, PlayerDecision)
+        old.step[0] == "a"
+        and isinstance(at.decision, PlayerDecision)
         and presents_steps(at.state)
         and isinstance(old.decision, list)
         and isinstance(candidate.decision, list)

@@ -184,6 +184,18 @@ AGENT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "troops": _V.RECRUIT,
     "water": _V.GAIN,
 })
+# What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
+_CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
+    "cards": _V.DRAW,
+    "contract": _V.TAKE,
+    "deep_cover_spy": _V.PLACE_SPY,
+    "faction_influence": _V.GAIN_INFLUENCE,
+    "intrigue": _V.DRAW,
+    "recall_agent": _V.RECALL_AGENT,
+    "resources": _V.GAIN,
+    "spy": _V.PLACE_SPY,
+    "troops": _V.RECRUIT,
+})
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "cards": _V.DRAW,
@@ -404,6 +416,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "gather_intelligence": _spec(_V.RECALL_SPY, _S.SPY, _SPACE, targets=_POST),
     # --- A Contract, a Tech tile ---------------------------------------------
     "complete_contract": _spec(_V.COMPLETE_CONTRACT, _S.CONTRACT, "instance_id"),
+    # An icon of a Contract completed in the owner's turn, waiting on it
+    # (OQ-112 (4)); its window's rows name no Contract and stay as they are.
+    "resolve_contract_reward_icon": _spec(
+        _CONTRACT_ICON_VERBS, _S.CONTRACT, "contract_id", icon="arg:effect"
+    ),
     "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id"),
     "resolve_tech_acquire_effect": _spec(
         _TECH_ICON_VERBS,
@@ -437,6 +454,7 @@ OFFERED_AS_WHOLE: Final = frozenset({
     "place_leader_spy",
     "recall_spy_for_leader_placement",
     "resolve_agent_card_effect",
+    "resolve_contract_reward_icon",
     "resolve_tech_acquire_effect",
     "retreat_leader_troops",
     "take_leader_bonus_spice",
@@ -494,7 +512,13 @@ def path_of(state: GameState, whole: DomainAction) -> tuple[DomainAction, ...] |
     """The steps that stand for ``whole`` in ``state`` (without a pick), or
     None when ``whole`` is offered as it is."""
 
-    if whole.action_id not in STEP_SPECS:
+    spec = STEP_SPECS.get(whole.action_id)
+    if spec is None or (
+        not isinstance(spec.printed, Printed)
+        and not spec.printed.startswith(_FIXED)
+        and spec.printed not in dict(whole.arguments)
+    ):
+        # Not shown as steps (a reward window's row names no Contract).
         return None
     named = printed_from_state(state, whole)
     if named is None:

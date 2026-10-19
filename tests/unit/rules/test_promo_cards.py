@@ -833,6 +833,10 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # join (see above).
         - 866
         + 1043
+        # v150 (stage B3b, OQ-112 (4)): the in-turn Contract rows, 23 whole
+        # templates and their 23 effect rows.
+        + 23
+        + 23
     )
     # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
     # the card (an effect without a target is one row). The other cards that

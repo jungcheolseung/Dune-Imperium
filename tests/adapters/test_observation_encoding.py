@@ -868,21 +868,30 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # the appended columns are nonzero only in the picking seat's own vector
 # while its pick is pending (base 2 vectors, choam 10, promo_bloodlines_tech
 # 35, everything 28, draft 6, scouts 10; none in another seat's).
+# Re-pinned for stage B3b-1 (OQ-112 (4), codec v150): a Contract completed in
+# its owner's own turn leaves its icons as rows of that turn instead of a
+# reward window. An export of the previous commit (7a29d82f) gives each
+# game's per-decision trace (the four views' digest, the frame on top, the
+# deciding seat, the number of offered actions) equal to this one up to the
+# decision right after the first such completion (choam at decision 384,
+# everything 392, scouts 300), where the older engine stood in the window and
+# this one in the turn's frame with the rows beside its other effects; base,
+# promo_bloodlines_tech and draft complete no Contract and stay pinned.
 _GOLDEN_DIGESTS = {
     "base": ("8c69d4e4be9d753b52104d90dfaa67914c8f55102f45e2dc5a18208086dd35cf", 3012),
-    "choam": ("58c136cd6b484e4ad3b70d876b0959ccc4f2f5c899cb738eb55104b6522fd69d", 2508),
+    "choam": ("ef848127eadb7521f92f8ae0a70f7b30eab53017f69f549be774e8bb85073003", 2508),
     "promo_bloodlines_tech": (
         "9c2065d8f67361cd882b8332c1840b10d08981fa269857c892ac31a1ec70af90",
         3356,
     ),
     "everything": (
-        "e42f073dac7bed7bbc91c3d58c38c7819da56cfa119dc2524e64636e77f94066",
-        4152,
+        "f373d6d3a5b6616548fda4695446da63440e05dceba50450ede94dd7dd821dfe",
+        4208,
     ),
     "draft": ("a6a46b22a90adfc117ae6569e8d14ed762dee3af6adb073d9e223b0765e228e6", 2108),
     "scouts": (
-        "703849545d84bccc528bc21d0d2b8a6a805b085ac72b0dd388194724c1e17847",
-        2808,
+        "383d33be22cffeebe50350d6195eedadba5f29cbdbcfe54eebd5c6ce197bc432",
+        2816,
     ),
 }
 _GOLDEN_CONFIGS = {

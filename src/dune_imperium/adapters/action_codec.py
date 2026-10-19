@@ -87,7 +87,10 @@ from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.rules.combat import COMBAT_REWARD_ICON_KINDS
-from dune_imperium.rules.contracts import CONTRACT_REWARD_ICON_KINDS
+from dune_imperium.rules.contracts import (
+    CONTRACT_REWARD_ICON_KINDS,
+    contract_reward_icons,
+)
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
     OFFERED_AS_WHOLE,
@@ -918,6 +921,18 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for kind in CONTRACT_REWARD_ICON_KINDS
         )
+        # A Contract completed in its owner's turn: its icons wait on the
+        # turn as rows naming the Contract (stage B3b, OQ-112 (4)).
+        templates.extend(
+            dict.fromkeys(
+                ActionTemplate(
+                    action_id="resolve_contract_reward_icon",
+                    arguments=(("contract_id", instance_id), ("effect", kind)),
+                )
+                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
+                for kind, _piece in contract_reward_icons(instance_id)
+            )
+        )
         for action_id in ("take_contract", "complete_contract"):
             templates.extend(
                 ActionTemplate(
@@ -1292,7 +1307,10 @@ def _effect_step_templates(
     rows: dict[ActionTemplate, None] = {}
     for template in wholes:
         spec = STEP_SPECS.get(template.action_id)
-        if spec is None:
+        if spec is None or (
+            not isinstance(spec.printed, Printed)
+            and spec.printed not in dict(template.arguments)
+        ):
             continue
         whole = DomainAction(template.action_id, 0, template.arguments)
         named: tuple[tuple[Source | None, ActionValue | None], ...]

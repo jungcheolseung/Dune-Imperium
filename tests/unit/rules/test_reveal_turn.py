@@ -2868,10 +2868,12 @@ def test_a_fourth_contract_completed_mid_reveal_offers_spice_or_vp_never_both(
     assert reveal_pending_gains(dict(revealed.decision_stack[-1].context)) == ()
     bought = take(revealed, "acquire_reserve", "the_spice_must_flow")
     assert len(bought.players[0].completed_contract_ids) == 4
-    # The Acquire Contract's reward waits in its window (stage B2, OQ-112);
-    # the Reveal choices return when its rows are paid.
-    assert bought.decision_stack[-1].kind == "contract_reward_icons"
+    # The Acquire Contract's reward waits on the Reveal as rows (stage B3b,
+    # OQ-112 (4)), which hold its end; the choice stays with them.
+    assert bought.decision_stack[-1].kind == "reveal"
+    assert turn_rows.holds_the_end(bought, 0)
     bought = answer_reward_windows(engine, bought)
+    assert not turn_rows.holds_the_end(bought, 0)
     assert tuple(
         action.action_id for action in legal_contract_reveal_choice_actions(bought, 0)
     ) == ("keep_contract_reveal_spice", "trash_contract_reveal_for_vp")
@@ -4024,10 +4026,12 @@ def test_interstellar_trade_pays_for_the_spice_must_flow_contract_it_helped_buy(
         if event.kind == "reveal_effect_granted_late"
     ] == [1]
 
-    # The Contract's reward waits in its window (stage B2, OQ-112); the
-    # purchase menu returns when its rows are paid.
-    assert bought.state.decision_stack[-1].kind == "contract_reward_icons"
+    # The Contract's reward waits on the Reveal as rows (stage B3b, OQ-112
+    # (4)), which hold its end; the purchase is taken after they are paid.
+    assert bought.state.decision_stack[-1].kind == "reveal"
+    assert turn_rows.holds_the_end(bought.state, 0)
     paid = answer_reward_windows(engine, bought.state)
+    assert not turn_rows.holds_the_end(paid, 0)
     spent = buy(paid, "prepare_the_way").state
     assert _reveal_frame_context(spent)["persuasion"] == 0
 

@@ -380,6 +380,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # templates for 20 effect rows).
         - 848
         + 1024
+        # v150 (stage B3b, OQ-112 (4)): a Contract completed in its owner's
+        # turn leaves its icons as turn rows naming it -- a whole template
+        # per Contract and icon (23) and its effect row (23).
+        + 23
+        + 23
     )
 
     try:
@@ -539,6 +544,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # picks among them).
         - 1170
         + 1523
+        # v150 (stage B3b, OQ-112 (4)): the in-turn Contract rows, a whole
+        # template per Contract and icon (37) and its effect row (37).
+        + 37
+        + 37
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

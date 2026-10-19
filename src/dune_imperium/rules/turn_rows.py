@@ -66,6 +66,12 @@ RESEARCH_ICON: Final = "research_icon"
 ``tleilaxu``), each resolved on its own in the owner's order (rule decision
 5, OQ-027); mandatory."""
 
+CONTRACT_ICON: Final = "contract_icon"
+"""One icon of a Contract its owner completed in its own turn (OQ-112 (4),
+stage B3b): ``value`` is ``"<contract instance>|<icon>"``; a Recall Agent
+icon judges what it may not take when it is taken (``rules.contracts``);
+mandatory."""
+
 type Pending = tuple[str, str, str]
 
 _TURN_KINDS: Final = (FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
@@ -118,14 +124,28 @@ def _replace_frame(state: GameState, index: int, frame: DecisionFrame) -> GameSt
     )
 
 
+def waits_on_turn(state: GameState, player: int) -> bool:
+    """Whether an effect of ``player``'s would wait on its own open turn
+    frame (``queue``) rather than open its own window: inside the seat's own
+    turn and not in a Scouts line run in it -- a line's frame anywhere above
+    the turn frame, also under a frame the line opened (its Contract market,
+    its Research direction)."""
+
+    index = own_turn_frame_index(state, player)
+    return index is not None and not any(
+        frame.kind in _SCOUTS_KINDS for frame in state.decision_stack[index + 1 :]
+    )
+
+
 def queue(state: GameState, player: int, item: Pending) -> GameState | None:
     """Put ``item`` on ``player``'s own open turn frame, or return None
     where it opens its own window instead: outside the seat's own turn, or
     inside a Scouts line run in it."""
 
-    index = own_turn_frame_index(state, player)
-    if index is None or state.decision_stack[-1].kind in _SCOUTS_KINDS:
+    if not waits_on_turn(state, player):
         return None
+    index = own_turn_frame_index(state, player)
+    assert index is not None
     frame = state.decision_stack[index]
     return _replace_frame(state, index, _with_pending(frame, (*pending(frame), item)))
 
@@ -175,8 +195,9 @@ def take_newest(state: GameState, player: int, kind: str) -> tuple[GameState, st
 
 def holds_the_end(state: GameState, player: int) -> bool:
     """Whether a waiting effect still offers a mandatory row: c6r6 with a
-    Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition), or
-    Arrakis Planetologist's Intrigue card. Read from public facts only (the
+    Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition),
+    Arrakis Planetologist's Intrigue card, a research pair's icon, or a
+    completed Contract's icon (OQ-112 (4)). Read from public facts only (the
     frame's context, the seat's Influence), so the server's turn-end mirror
     may ask it too."""
 
@@ -185,7 +206,7 @@ def holds_the_end(state: GameState, player: int) -> bool:
         return False
     owner = state.players[player]
     return any(
-        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON)
+        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON)
         or (
             kind == RESEARCH_BONUS
             and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY

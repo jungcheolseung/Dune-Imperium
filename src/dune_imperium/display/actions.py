@@ -675,17 +675,22 @@ def combat_reward_icon_action_text(
 def contract_reward_icon_action_text(
     state: GameState, action: DomainAction
 ) -> tuple[str, str] | None:
-    """Describe one icon of a completed Contract's reward window
-    (``resolve_contract_reward_icon``, stage B2): the record piece that
-    prints it."""
+    """Describe one icon of a completed Contract's reward
+    (``resolve_contract_reward_icon``): a row of its window (stage B2) or a
+    row waiting on its owner's turn, which names the Contract (stage B3b,
+    OQ-112 (4)); the record piece that prints it."""
 
     if action.action_id != CONTRACT_REWARD_ICON_ACTION:
         return None
-    frame = owned_top_frame(state, FrameKind.CONTRACT_REWARD_ICONS, action.actor)
-    if frame is None:
-        return None
-    instance_id = str(dict(frame.context)["contract_id"])
-    piece = contract_icon_piece(instance_id, str(dict(action.arguments)["effect"]))
+    arguments = dict(action.arguments)
+    if "contract_id" in arguments:
+        instance_id = str(arguments["contract_id"])
+    else:
+        frame = owned_top_frame(state, FrameKind.CONTRACT_REWARD_ICONS, action.actor)
+        if frame is None:
+            return None
+        instance_id = str(dict(frame.context)["contract_id"])
+    piece = contract_icon_piece(instance_id, str(arguments["effect"]))
     return reward_text(piece), reward_text_ko(piece)
 
 

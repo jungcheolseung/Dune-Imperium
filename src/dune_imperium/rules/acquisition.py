@@ -256,26 +256,15 @@ def apply_acquisition_spy_action(
     return RuleResult(state=next_state, events=(event,))
 
 
-def _lift_contract_windows(
-    before: GameState, after: GameState
-) -> tuple[GameState, tuple[DecisionFrame, ...]]:
-    """Take the Contract reward windows ``complete_acquire_contracts`` pushed
-    over ``before``'s stack off ``after``.
+def _contract_rows_only(before: GameState, after: GameState) -> GameState:
+    """``after``, the state ``complete_acquire_contracts`` left over an
+    Agent-turn acquisition's ``before``: a Contract completed in its owner's
+    own turn waits on it as rows (OQ-112 (4)), so no window was pushed and
+    the effect frame stays on top for ``advance_after_effect``."""
 
-    An Agent-turn acquisition writes its effect frame back
-    (``advance_after_effect``), which needs that frame on top; the windows
-    go back on top once the handler is done, so the rewards are answered
-    first, as the engine paid them inside the acquisition before stage B2
-    (OQ-112).
-    """
-
-    depth = len(before.decision_stack)
-    windows = after.decision_stack[depth:]
-    if after.decision_stack[:depth] != before.decision_stack or any(
-        frame.kind != FrameKind.CONTRACT_REWARD_ICONS for frame in windows
-    ):
-        raise RuntimeError("an Acquire Contract pushed something but its windows")
-    return replace(after, decision_stack=before.decision_stack), windows
+    if len(after.decision_stack) != len(before.decision_stack):
+        raise RuntimeError("an Agent-turn Acquire Contract opened a window")
+    return after
 
 
 def _resume_after_acquisition_spy(state: GameState) -> GameState:
@@ -590,12 +579,10 @@ def _acquire_reserve_to_hand_with_solari(
         card_id,
         source=source,
     )
-    # An Acquire Contract's troops come on its window's row, which credits
-    # this Agent turn's recruits itself [Main p. 10] [FAQ p. 4].
-    lifted, windows = _lift_contract_windows(prepared, completed.state)
-    next_state = advance_after_effect(lifted, context, lifted.players)
-    next_state = replace(
-        next_state, decision_stack=(*next_state.decision_stack, *windows)
+    # An Acquire Contract's icons wait on this Agent turn as rows; its
+    # troops' row credits the turn's recruits itself [Main p. 10] [FAQ p. 4].
+    next_state = advance_after_effect(
+        _contract_rows_only(prepared, completed.state), context
     )
     event = GameEvent(
         event_id=source,
@@ -697,9 +684,9 @@ def _acquire_imperium_to_hand_with_solari(
         definition.card.card_id,
         source=source,
     )
-    # An Acquire Contract's troops come on its window's row, which credits
-    # this Agent turn's recruits itself; the windows go on top at the end.
-    prepared, windows = _lift_contract_windows(prepared, completed.state)
+    # An Acquire Contract's icons wait on this Agent turn as rows; its
+    # troops' row credits the turn's recruits itself.
+    prepared = _contract_rows_only(prepared, completed.state)
     acquisition_events = (*acquisition_events, *completed.events)
     if places_spy:
         next_state = replace(
@@ -734,9 +721,7 @@ def _acquire_imperium_to_hand_with_solari(
     tracked = apply_acquisition_track_effects(
         next_state, action.actor, definition, source=source
     )
-    next_state = replace(
-        tracked.state, decision_stack=(*tracked.state.decision_stack, *windows)
-    )
+    next_state = tracked.state
     acquisition_events = (*acquisition_events, *tracked.events)
     event = GameEvent(
         event_id=source,

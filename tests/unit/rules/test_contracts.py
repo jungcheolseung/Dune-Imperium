@@ -7,6 +7,7 @@ from tests.support.reward_windows import answer_reward_windows, settle_reward_wi
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
@@ -37,7 +38,7 @@ from dune_imperium.core import (
     canonical_state_hash,
 )
 from dune_imperium.core.events import GameEvent
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules.acquisition import (
     apply_reserve_acquisition,
@@ -49,10 +50,12 @@ from dune_imperium.rules.contracts import (
     apply_contract_reward_icon,
     begin_contract_gain,
     contract_recall_targets,
-    legacy_contract_reward_icon,
+    legacy_contract_icon_row,
     legal_contract_actions,
     legal_contract_completion_actions,
+    legal_contract_icon_row_actions,
 )
+from dune_imperium.rules.frames import FrameKind
 
 
 def _state(
@@ -293,6 +296,181 @@ def test_matching_space_contracts_are_mandatory_orderable_agent_effects() -> Non
     ).state
     assert placed_spy.players[0].spies_supply == 2
     assert len(placed_spy.players[0].spy_post_ids) == 1
+
+
+def _complete(
+    engine: UprisingRulesEngine, state: GameState, instance_id: str
+) -> GameState:
+    action = next(
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "complete_contract"
+        and dict(action.arguments)["instance_id"] == instance_id
+    )
+    return apply_whole(engine, state, action).state
+
+
+def _icon_row(instance_id: str, icon: str) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_contract_reward_icon",
+        actor=0,
+        arguments=(("contract_id", instance_id), ("effect", icon)),
+    )
+
+
+def test_an_in_turn_contract_reward_waits_as_rows_of_the_agent_turn() -> None:
+    # OQ-112 (4), user decision 2026-10-19 B3-4 ("차례 안에서 완수한 계약의
+    # 보상은 차례의 줄이다"): a Contract completed in its owner's own turn
+    # leaves an icon each as rows of that turn, beside its other effects and
+    # in any order, each row named by the Contract.
+    state = _agent_contract_state(
+        "reserve:prepare_the_way:7",
+        "contract:arrakeen_i",
+        "contract:arrakeen_ii",
+    )
+    engine = UprisingRulesEngine()
+    placed = _place_agent(state, "arrakeen")
+    first = _complete(engine, placed, "contract:arrakeen_ii")
+
+    assert first.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    wholes = engine.whole_actions(first, 0)
+    assert [a for a in wholes if a.action_id == "resolve_contract_reward_icon"] == [
+        _icon_row("contract:arrakeen_ii", "troops"),
+        _icon_row("contract:arrakeen_ii", "spy"),
+    ]
+    # Beside the turn's other effects: the board space's and the other
+    # Contract's completion.
+    assert {"resolve_board_effect", "complete_contract"} <= {
+        a.action_id for a in wholes
+    }
+    # The frame offers each as an effect row naming the Contract (OQ-111).
+    assert DomainAction(
+        action_id="recruit",
+        actor=0,
+        arguments=(
+            ("icon", "troops"),
+            ("printed", "contract:arrakeen_ii"),
+            ("source", "contract"),
+        ),
+    ) in engine.legal_actions(first, 0)
+
+    # The other Contract first; then the rows in another order than printed.
+    second = _complete(engine, first, "contract:arrakeen_i")
+    assert [
+        a for a in engine.whole_actions(second, 0)
+        if a.action_id == "resolve_contract_reward_icon"
+    ] == [
+        _icon_row("contract:arrakeen_ii", "troops"),
+        _icon_row("contract:arrakeen_ii", "spy"),
+        _icon_row("contract:arrakeen_i", "resources"),
+    ]
+    paid = apply_whole(
+        engine, second, _icon_row("contract:arrakeen_i", "resources")
+    ).state
+    paid = apply_whole(engine, paid, _icon_row("contract:arrakeen_ii", "troops")).state
+    owner = paid.players[0]
+    assert owner.resources.water == 11
+    assert owner.troops_garrison == 4
+    spy = apply_whole(engine, paid, _icon_row("contract:arrakeen_ii", "spy")).state
+    assert {a.action_id for a in engine.whole_actions(spy, 0)} == {
+        "place_contract_spy"
+    }
+    placed_spy = apply_whole(engine, spy, engine.whole_actions(spy, 0)[0]).state
+    assert placed_spy.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert len(placed_spy.players[0].spy_post_ids) == 1
+    assert not legal_contract_icon_row_actions(placed_spy, 0)
+
+
+def test_in_turn_contract_rows_hold_the_end_of_the_turn() -> None:
+    # Every icon is mandatory: the turn ends only once the rows are taken
+    # (``turn_rows.holds_the_end``, OQ-112 (4)), on the server's mirror too.
+    state = _agent_contract_state(
+        _imperium_instance("truthtrance"),
+        "contract:heighliner_ii",
+    )
+    engine = UprisingRulesEngine()
+    placed = _place_agent(state, "heighliner")
+    # The space's own effects first, so only the Contract's rows are left.
+    for _ in range(8):
+        space = [
+            a
+            for a in engine.whole_actions(placed, 0)
+            if a.action_id in ("resolve_board_effect", "resolve_faction_influence")
+        ]
+        if not space:
+            break
+        placed = apply_whole(engine, placed, space[0]).state
+    completed = _complete(engine, placed, "contract:heighliner_ii")
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+
+    assert turn_rows.holds_the_end(completed, 0)
+    assert finish not in engine.whole_actions(completed, 0)
+    paid = apply_whole(
+        engine, completed, _icon_row("contract:heighliner_ii", "troops")
+    ).state
+    assert not turn_rows.holds_the_end(paid, 0)
+    assert finish in engine.whole_actions(paid, 0)
+
+
+@pytest.mark.parametrize("first", ("contract:immediate", "contract:arrakeen_i"))
+def test_a_scouts_line_run_in_the_turn_keeps_its_contract_windows(first: str) -> None:
+    # A Scouts line run inside the owner's turn keeps the module's own
+    # windows (cleanup-2b, OQ-095 (2): "turn 안의 Scouts 줄"에서는 창), also
+    # under a frame the line opened: CHOAM Management's two Contracts. The
+    # Immediate tile's reward is its window whichever pick it is.
+    from dune_imperium.rules.contracts import contract_choice_frame
+    from dune_imperium.rules.scouts_effects import push_scouts_effect
+
+    state = replace(
+        _agent_contract_state("reserve:prepare_the_way:7"),
+        config=RulesetConfig(choam_module=True, arrakeen_scouts=True),
+        face_up_contract_ids=("contract:immediate", "contract:arrakeen_i"),
+        contract_bank=("contract:heighliner_i", "contract:heighliner_ii"),
+    )
+    state = push_scouts_effect(state, 0, "choam_management", 0, source="round:1:x")
+    state = state.push_decision(contract_choice_frame(0, 2, source="round:1:x:c"))
+    for pick in (first, None):
+        take = next(
+            action
+            for action in legal_contract_actions(state, 0)
+            if action.action_id == "take_contract"
+            and pick in (None, dict(action.arguments)["instance_id"])
+        )
+        state = apply_contract_action(state, take).state
+        if state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS:
+            break
+    kinds = [frame.kind for frame in state.decision_stack]
+    assert kinds[1] == FrameKind.SCOUTS_EFFECT
+    assert kinds[-1] == FrameKind.CONTRACT_REWARD_ICONS
+    assert not turn_rows.pending(state.decision_stack[0])
+    assert not turn_rows.waits_on_turn(state, 0)
+
+
+def test_the_older_order_answers_in_turn_contract_rows_first() -> None:
+    # The heuristic, the app AI and older records keep the order the engine
+    # paid a reward in before the rows (``agents.engine_order``): right after
+    # the completion, the oldest Contract first, its icons in the window's
+    # older order -- as the frame's effect row toward that whole action.
+    state = _agent_contract_state(
+        "reserve:prepare_the_way:7",
+        "contract:arrakeen_i",
+        "contract:arrakeen_ii",
+    )
+    engine = UprisingRulesEngine()
+    placed = _place_agent(state, "arrakeen")
+    second = _complete(engine, _complete(engine, placed, "contract:arrakeen_ii"), (
+        "contract:arrakeen_i"
+    ))
+
+    assert legacy_contract_icon_row(second, 0) == _icon_row(
+        "contract:arrakeen_ii", "troops"
+    )
+    answer = engine_order_answer(second, 0, engine.legal_actions(second, 0))
+    assert answer is not None and answer.action_id == "recruit"
+    assert dict(answer.arguments)["printed"] == "contract:arrakeen_ii"
+    assert engine_order_answer(second, 0, engine.whole_actions(second, 0)) == (
+        _icon_row("contract:arrakeen_ii", "troops")
+    )
 
 
 # Three posts connected to neither Arrakeen nor the Research Station, so no
@@ -625,14 +803,16 @@ def test_acquiring_the_spice_must_flow_completes_acquire_contract() -> None:
 
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == ("contract:acquire",)
-    # The completion's own event comes last (cleanup-2c-3); its reward waits
-    # in a window (stage B2, OQ-112) whose rows pay it.
+    # The completion's own event comes last (cleanup-2c-3); in its owner's
+    # Reveal its reward waits on that turn as rows (stage B3b, OQ-112 (4))
+    # that pay it and hold the Reveal's end.
     assert [event.kind for event in result.events][-1] == "contract_completed"
-    assert result.state.decision_stack[-1].kind == "contract_reward_icons"
+    assert result.state.decision_stack[-1].kind == "reveal"
+    assert turn_rows.holds_the_end(result.state, 0)
     assert owner.resources.solari == 0
     state = result.state
     reward_events: list[GameEvent] = []
-    while (row := legacy_contract_reward_icon(state, 0)) is not None:
+    while (row := legacy_contract_icon_row(state, 0)) is not None:
         step = apply_contract_reward_icon(state, row)
         state = step.state
         reward_events.extend(step.events)
@@ -794,16 +974,13 @@ def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
         placed,
         legal_contract_completion_actions(placed, 0)[0],
     )
-    # The Recall Agent icon is the reward window's one row (stage B2, OQ-112);
-    # its press opens the recall window.
-    assert completion.state.decision_stack[-1].kind == "contract_reward_icons"
-    transition = apply_whole(engine, 
+    # The Recall Agent icon is the reward's one row, waiting on the Agent
+    # turn (stage B3b, OQ-112 (4)); its press opens the recall window.
+    assert completion.state.decision_stack[-1].kind == "agent_effects"
+    transition = apply_whole(
+        engine,
         completion.state,
-        DomainAction(
-            action_id="resolve_contract_reward_icon",
-            actor=0,
-            arguments=(("effect", "recall_agent"),),
-        ),
+        _icon_row("contract:sardaukar_ii", "recall_agent"),
     )
 
     frame = transition.state.decision_stack[-1]

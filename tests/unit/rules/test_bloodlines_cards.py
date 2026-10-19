@@ -31,7 +31,7 @@ from dune_imperium.core import (
     Resources,
     Transition,
 )
-from dune_imperium.rules import card_trash
+from dune_imperium.rules import card_trash, turn_rows
 from dune_imperium.rules.acquisition import apply_reserve_acquisition
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
@@ -3234,10 +3234,13 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     owner = completed.players[0]
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == ("contract:heighliner_ii",)
-    # The tile's two troops are its reward window's row (stage B2, OQ-112).
-    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # The tile's two troops are a row of this Agent turn, which holds its end
+    # (stage B3b, OQ-112 (4)).
+    assert completed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completed, 0)
     assert owner.troops_garrison == garrison
     completed = settle_reward_window(completed)
+    assert not turn_rows.holds_the_end(completed, 0)
     owner = completed.players[0]
     assert owner.troops_garrison == garrison + 2
     assert owner.contracts_completed_turn == 1
@@ -3313,7 +3316,7 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
     from dune_imperium.rules.contracts import (
         apply_contract_recall_action,
         apply_contract_reward_icon,
-        legacy_contract_reward_icon,
+        legacy_contract_icon_row,
         legal_contract_recall_actions,
     )
 
@@ -3330,11 +3333,12 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
         )
         action = legal_agent_card_contract_completion_actions(state, 0)[0]
         result = apply_agent_card_contract_completion(state, action)
-        # The Recall Agent icon is a row of the reward window (stage B2,
-        # OQ-112); its press opens the recall window under test.
-        assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+        # The Recall Agent icon is a row of this Agent turn (stage B3b,
+        # OQ-112 (4)); its press opens the recall window under test.
+        assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+        assert turn_rows.holds_the_end(result.state, 0)
         state, events = result.state, list(result.events)
-        while (row := legacy_contract_reward_icon(state, 0)) is not None:
+        while (row := legacy_contract_icon_row(state, 0)) is not None:
             step = apply_contract_reward_icon(state, row)
             state = step.state
             events.extend(step.events)
@@ -3395,9 +3399,11 @@ def _last_to_reveal(state: GameState) -> GameState:
 
 def _recall_and_place_contract_spy(state: GameState) -> GameState:
     engine = UprisingRulesEngine()
-    # A completion opens the reward window first; the Spy icon's row opens
-    # the Spy frame (stage B2, OQ-112).
-    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # A completion leaves the reward's icons as rows of the owner's Agent
+    # turn, holding its end; the Spy icon's row opens the Spy frame (stage
+    # B3b, OQ-112 (4)).
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(state, 0)
     state = answer_reward_windows(engine, state)
     assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
     # The reward resolves on top of the owner's still-open Agent turn
@@ -3461,6 +3467,10 @@ def test_a_contract_spy_recall_after_the_last_effect_counts_for_this_turn() -> N
             (a for a in offered if a.action_id != "complete_contract"), offered[0]
         )
         current = apply_whole(engine, current, pick).state
+        if pick.action_id == "complete_contract":
+            # The completion's reward waits on this turn as rows (stage B3b,
+            # OQ-112 (4)); stop before taking any.
+            break
     placed = _recall_and_place_contract_spy(current)
 
     seat = placed.players[0]

@@ -38,6 +38,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules import contracts as contracts_rules
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     legal_agent_card_icon_actions,
@@ -1914,10 +1915,14 @@ def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
         if action.action_id == "acquire_leader_imperium"
     )
     result = apply_leader_signet_acquire(placed, acquire)
-    # v150 (stage B2, OQ-112): the completed Contract's reward is a window of
-    # icon rows, answered here before the turn is looked at again.
-    assert result.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS
+    # v150 (stage B3b, OQ-112 (4)): the completed Contract's reward is a row
+    # of this Agent turn, which holds its end; it is answered here before the
+    # turn is looked at again.
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
+    assert result.state.players[0].troops_garrison == garrison
     settled = settle_reward_window(result.state)
+    assert not turn_rows.holds_the_end(settled, 0)
 
     assert settled.players[0].troops_garrison == garrison + 1
     assert settled.players[0].completed_contract_ids == (

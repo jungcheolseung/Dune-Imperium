@@ -28,6 +28,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
@@ -486,11 +487,12 @@ def test_twisted_mentat_recalls_this_turns_agent_from_the_conflict() -> None:
     )
 
 
-# Sardaukar II's one reward icon (stage B2, OQ-112).
+# Sardaukar II's one reward icon: a row of the Agent turn it was completed in,
+# named by the Contract (stage B3b, OQ-112 (4)).
 RECALL_ROW = DomainAction(
     action_id="resolve_contract_reward_icon",
     actor=0,
-    arguments=(("effect", "recall_agent"),),
+    arguments=(("contract_id", "contract:sardaukar_ii"), ("effect", "recall_agent")),
 )
 
 
@@ -510,6 +512,7 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
         apply_contract_recall_action,
         apply_contract_reward_icon,
         legal_contract_completion_actions,
+        legal_contract_icon_row_actions,
         legal_contract_recall_actions,
     )
 
@@ -546,11 +549,11 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
     completion_step = apply_contract_completion(fighting, completion)
-    # The Recall Agent icon is the reward window's one row (stage B2,
-    # OQ-112); its press opens the recall window.
-    assert completion_step.state.decision_stack[-1].kind == (
-        FrameKind.CONTRACT_REWARD_ICONS
-    )
+    # The Recall Agent icon is the reward's one row, waiting on the Agent
+    # turn (stage B3b, OQ-112 (4)); its press opens the recall window.
+    assert completion_step.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completion_step.state, 0)
+    assert legal_contract_icon_row_actions(completion_step.state, 0) == (RECALL_ROW,)
     completed = apply_contract_reward_icon(completion_step.state, RECALL_ROW)
 
     # The reward no longer fizzles: the earlier turn's Conflict Agent is
@@ -588,6 +591,7 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
         apply_contract_recall_action,
         apply_contract_reward_icon,
         legal_contract_completion_actions,
+        legal_contract_icon_row_actions,
         legal_contract_recall_actions,
     )
 
@@ -621,11 +625,11 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
     completion_step = apply_contract_completion(fighting, completion)
-    # The Recall Agent icon is the reward window's one row (stage B2,
-    # OQ-112); its press opens the recall window.
-    assert completion_step.state.decision_stack[-1].kind == (
-        FrameKind.CONTRACT_REWARD_ICONS
-    )
+    # The Recall Agent icon is the reward's one row, waiting on the Agent
+    # turn (stage B3b, OQ-112 (4)); its press opens the recall window.
+    assert completion_step.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completion_step.state, 0)
+    assert legal_contract_icon_row_actions(completion_step.state, 0) == (RECALL_ROW,)
     completed = apply_contract_reward_icon(completion_step.state, RECALL_ROW)
 
     # The recall window opens with only the confirm (user ruling
@@ -639,6 +643,61 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
     )
     assert fizzled.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert fizzled.state.players[0].agent_in_conflict == 1
+
+
+def test_a_contract_recall_row_taken_after_into_the_fray_still_excludes_it() -> None:
+    # Stage B3b (OQ-112 (4)): the Contract's Recall Agent icon is a row of
+    # the turn, so the turn's other effects may come between the completion
+    # and the row. "Return one of your other Agents on the board to your
+    # Leader (not the Agent you sent during this turn)." [Main p. 20]
+    # (OQ-068): the row judges this turn's Agent when it is taken -- here
+    # Into the Fray moved it to the Conflict after the completion, so with
+    # no earlier Agent the recall has nothing to take.
+    from dune_imperium.rules.contracts import (
+        apply_contract_completion,
+        apply_contract_reward_icon,
+        legal_contract_completion_actions,
+        legal_contract_icon_row_actions,
+        legal_contract_recall_actions,
+    )
+
+    config = RulesetConfig(immortality=True, bloodlines=True, choam_module=True)
+    state = _state(
+        _owner(
+            (FACE_DANCER, SIGNET),
+            leader_id="duncan_idaho",
+            influence=Influence(emperor=2),
+            resources=Resources(solari=4, spice=4, water=2),
+            agents_available=2,
+            agent_in_conflict=0,
+            active_contract_ids=("contract:sardaukar_ii",),
+        ),
+        config=config,
+    )
+    grafted = _graft(state, FACE_DANCER, "sardaukar", SIGNET)
+    completion = next(
+        action
+        for action in legal_contract_completion_actions(grafted, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = apply_contract_completion(grafted, completion).state
+    assert turn_rows.holds_the_end(completed, 0)
+
+    switched = other_box_state(completed)
+    deploy = next(
+        action
+        for action in legal_leader_signet_actions(switched, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = apply_leader_agent_deploy(switched, deploy).state
+    assert fighting.players[0].agent_locations == ()
+    assert fighting.players[0].agent_in_conflict == 1
+    assert legal_contract_icon_row_actions(fighting, 0) == (RECALL_ROW,)
+
+    recalled = apply_contract_reward_icon(fighting, RECALL_ROW).state
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert recalled.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    assert legal_contract_recall_actions(recalled, 0) == (confirm,)
 
 
 def test_twisted_mentat_never_offers_an_earlier_turns_conflict_agent() -> None:
