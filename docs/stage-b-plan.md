@@ -1,6 +1,6 @@
 # B단계 설계: 행동 이름·단위 교체
 
-상태: **B1·B2·B3a·B3b-1 구현, B3b-2부터 남음** (2026-10-20, 브랜치 `stage-b`, 미병합·미푸시). 사용자 결정: B단계를 측정 실험 없이 한다 — "구조 상 B단계도 해야한다고 봐"
+상태: **B1·B2·B3a·B3b 구현, B3c부터 남음** (2026-10-20, 브랜치 `stage-b`, 미병합·미푸시). 사용자 결정: B단계를 측정 실험 없이 한다 — "구조 상 B단계도 해야한다고 봐"
 ([composed-effects-plan.md](composed-effects-plan.md) 5절 "B단계"). 아래 1절의 숫자는 master `e7e9ad4f`(codec v149)에서 셌다.
 
 ## 0. 무엇을 바꾸나
@@ -574,6 +574,33 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   30판·앱 AI 15판이 이전 커밋과 최종 상태·사건 종류·수 개수까지 같음; 계약 완수 1,425번(무작위 250판·휴리스틱 120판)의 아이콘이
   모두 지급(차례 줄로 1,354번, 창으로 71번); 관측 고정 digest 셋(choam·everything·scouts)은 첫 차례 안 완수 바로 다음 결정에서만
   갈려 다시 고정; 문제집 tips-v1 90곳 다시 채굴(같은 국면·지문, 선택 번호만 바뀜).
+
+### B3b-2 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **표:** `EFFECT_STEP_FRAMES`에 Reveal frame. 구매는 시장마다 효과 줄 `acquire(source=purchase, printed=<시장>)` 하나 — 시장 이름은
+  `imperium_row`·`set_aside`(Manipulate로 따로 둔 카드)·`reserve`·`tleilaxu_row`(Reclaimed Forces 포함, 그 갈래는 `choose_option`) —
+  다음 대상 줄 `choose_imperium_card`·`choose_reserve_card`·`choose_tleilaxu_card`(새 종류, `to_deck_top`은 그 줄에). Reveal 선택은
+  `source=reveal_card`, `printed`=카드 종류: `source` 인자가 있는 id는 그 값, 한 카드만 내는 id는 그 카드를 표에 고정(`"=<카드>"`;
+  Undercover Asset·In High Places·Captured Mentat·Spacing Guild's Favor·For Humanity·Tleilaxu Surgeon·Corrinth City·Delivery
+  Logistics·Desert Power·Engineered Miracle — 카드의 Reveal 선택 표와 맞는지 테스트가 지킨다). 동사는 행동 모양 표의 것
+  (`place_spy`·`recall_spy`·`trash`·`gain_influence`·`exchange_influence`·`pay`·`lose_influence`·`retreat`·`deploy`·`lose_unit`·`gain`·
+  `take`·`keep`·`acquire`), 둘 회수는 첫 초소 → 둘째 초소, 교환·영향력 잃기는 진영 → (잃을 진영 → 얻을 진영) → 동맹 받을 좌석
+  (`choose_seat`), 유닛 섞임(`commanders`·`zones`)은 효과 줄에. 지도자: Lady Amber의 후퇴 둘(`option` troop/commander), Feyd의 Spy 회수;
+  Commander 기술 폐기는 `source=commander, printed=<기술>`; Forbidden Weapons는 `choose(option=strength)` → 진영 → 좌석 또는
+  `choose(option=trash)`, Panopticon은 `place_spy(printed=panopticon)`. Reveal 선택 id는 카드 자신의 선택 frame(`reveal_choice`)이 아직
+  온 행동으로 내므로 codec에 옛 template도 남는다(`OFFERED_AS_WHOLE`); 구매·지도자·기술·Tech 줄은 Reveal에만 나와 옛 template이
+  빠진다. 거절(`decline_reveal_sandworm`·`decline_reveal_spy_recall`)과 모은 이득(`gain_reveal_resources` 등)은 그대로(B3d·B3e).
+- **codec:** 기본 2,985행(−146 온 template, +28 줄; 대상 줄은 B3a에서 이미 있던 것), CHOAM −154/+32, Bloodlines까지 −222/+53, 옵션 전부
+  9,855 → 9,603. `action_shapes`: 효과 줄 동사 `exchange_influence`·`lose_influence`·`keep`, 대상 줄 `choose_tleilaxu_card`, 효과 줄
+  인자 `zones`. 엔티티 망의 `printed` 힌트에 Skill(특징 digest 다시 고정); 시장 이름은 이름표.
+- **기보:** 옛 기록의 Reveal 온 행동은 B3a의 다리(`effect_step`·`effect_last_step`)가 줄로 펼친다. v147 전 기록의 Reveal 선택 이름
+  붙이기(`reveal_source`·`reveal_source_by_order`)가 끝낸 온 행동은 마지막 단계에 그 다리 이름을 처음 붙인 대로 남기고, 기록된 단계에
+  그 단계가 끝낸 온 행동을 함께 둔다(`MigratedStep.whole`).
+- **측정:** 같음 확인 200판 같음(온 행동 52,117번이 길로, B3b-1보다 Reveal 13,170번 더); 기보 2,000판 같음 1,568 · 일시 차이 431 ·
+  갈림 1(B3b-1과 같음; 다리 `effect_last_step` 597,305걸음·`effect_step` 217,285걸음); 휴리스틱 20판·앱 AI 10판이 이전 커밋과
+  최종 상태·사건이 같고 고르기 걸음만 늘었다; 소크 1,400판 실패 0; 관측 고정 digest 여섯은 첫 Reveal의 구매 여럿에서 갈려 다시
+  고정; 문제집 tips-v1 다시 채굴(휴리스틱 82곳은 같은 국면·지문, 체크포인트 망이 캔 곳은 8 → 17로 99곳); E2E 다시보기 이동은
+  고르기 걸음이 넘어가는 자리를 기다리고(`common.REVIEW_LANDING`), 시드를 다시 골랐다(탐색 좌석 40, `log_words` 3 · Scouts 1과 90).
 
 ## 4. 위험
 
