@@ -109,7 +109,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Tile | 비용 | 획득 효과(1회) | 능력 |
 | --- | --- | --- | --- |
 | Advanced Data Analysis | 3 | 획득 조건: 보드의 자기 Spy 하나를 trash(box로) | Flip → Intrigue 1 |
-| CHOAM Transports (CHOAM 전용) | 6 | contract 1 | contract를 완료할 때마다 draw 1. 소유자 자신의 turn 안에서는 완료 바로 다음의 소유자 단계(`draw_owed_card`)로, 사이에 다른 행동이 들지 않아 디자이너 판정 "can't be deferred"를 지키면서 완료는 되돌릴 수 있다([OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 곧바른 단계, 사용자 결정 2026-10-10 "가 로 가자"); turn 밖의 완료(Conflict 보상, Scouts 단계)는 완료 단계 뒤 엔진이 뽑는다. Endgame: 완료 contract 4+면 VP 1 |
+| CHOAM Transports (CHOAM 전용) | 6 | contract 1 | contract를 완료할 때마다 draw 1. 소유자 자신의 turn 안에서는 완료 바로 다음의 소유자 단계(`draw_owed_card`)로 — 계약 보상의 자동 줄은 완료의 일부로 그 앞에, 선택 줄은 그 뒤에([OQ-112](open-questions.md#oq-112--보상-한-줄-안의-아이콘-순서)) —, 사이에 다른 행동이 들지 않아 디자이너 판정 "can't be deferred"를 지키면서 완료는 되돌릴 수 있다([OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 곧바른 단계, 사용자 결정 2026-10-10 "가 로 가자"); turn 밖의 완료(Conflict 보상, Scouts 단계)는 완료 단계 뒤 엔진이 뽑는다. Endgame: 완료 contract 4+면 VP 1 |
 | Delivery Bay | 3 | draw 1 | Reveal Turn: Command (6+): Solari 2 |
 | Forbidden Weapons | 2 | Shield Wall 파괴(선택) + troop 1 | Reveal Turn: 반드시 선택 — 검 3(+ Influence 1 이상인 진영에서 Influence 1 잃기, 가능하면) 또는 spice 전부 잃고 이 tile trash |
 | Gene-Locked Vault | 2 | Intrigue 1 또는 draw 1 | 자신의 Intrigue 카드는 5장 이상일 때만 도둑맞는다 |

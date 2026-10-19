@@ -156,7 +156,7 @@ Tleilaxu Infiltrator)에 달려 있고, 짝은 놓은 뒤 `choose_graft_partner`
   탐색 AI는 뿌리 결정이 카드가 된다(후보 = 카드). 관문에서 잰다.
 - **기보:** 옛 `agent_turn(card, space, …, graft)` 한 수 앞에 `choose_agent_card(card, graft)`를 끼우고, 그 수를
   `place_agent(space, …)`로 고쳐 쓴다(구현: 다리 `agent_card_pick`·`agent_space_pick`, 아래 "B1 구현").
-- **같음 확인:** 정해진 차이 — 옛 한 수를 새 두 수로, 그 좌석 보기의 새 칸은 정돈(구현: `stage_b1.py`의 `agent_turn_steps`).
+- **같음 확인:** 정해진 차이 — 옛 한 수를 새 두 수로, 그 좌석 보기의 새 칸은 정돈(구현: `stage_b.py`의 `agent_turn_steps`).
 - **화면:** 손패 클릭이 `choose_agent_card`를 보내고, 판에는 고른 카드의 칸이 열린다. "뒤로"는 되돌리기. 카드를 고르기 전 칸
   미리보기(카드에 올렸을 때 갈 수 있는 칸)를 지키려면 서버가 카드별 놓을 곳 요약을 함께 보낸다(`reveal_preview` 같은 화면 전용 값).
 - **병합:** B1 뒤에는 플레이 MLP의 Agent 차례 행이 모두 새 행이라(휴리스틱이 대신 둠) master에 따로 넣기 어렵다. **B를 브랜치에서
@@ -183,7 +183,7 @@ Tleilaxu Infiltrator)에 달려 있고, 짝은 놓은 뒤 `choose_graft_partner`
 - **기보:** 다리 `agent_card_pick`(기록된 배치 앞에 카드 고르기를 끼움)과 `agent_space_pick`(기록된 배치를 칸 고르기로
   고쳐 씀). 문제집(사람 판 문제)은 배치가 든 문제를 두 수가 처음 갈리는 단계에서 묻는다: 카드가 다르면 카드 고르기, 같으면
   그 카드를 고른 뒤 칸 고르기, 한쪽만 배치면 카드 고르기(`records/problems.py`).
-- **같음 확인:** 정해진 차이 `scripts/ab/differences/stage_b1.py`(`agent_turn_steps`) — 옛 한 수를 새 두 수로, 카드 고르기
+- **같음 확인:** 정해진 차이 `scripts/ab/differences/stage_b.py`(`agent_turn_steps`) — 옛 한 수를 새 두 수로, 카드 고르기
   행·사건·빈 보기 칸을 옛 모양으로.
 - **독립 리뷰에서 고친 것:** 서버 로그가 카드 고르기의 값만 가려 손에 공개된 카드와 `graft: true`가 다른 좌석에 보였다 → 카드
   고르기를 봉인하고 다른 좌석에는 `card_id` 한 칸만(OQ-111 (1)). 카드만 고른 상태(새로고침·칸 고르기 되돌리기)에서 화면이 ①을 비워
@@ -240,13 +240,83 @@ B2-3 자원 묶음은 줄 하나. 기록은 [OQ-112](rules/open-questions.md#oq-
 - **계약:** 완수 때 보상 조각마다 줄 — 차례 안이면 차례의 줄(Agent 칸 아이콘처럼 턴 종료를 막는다), 차례 밖(동맹 계약, Reveal 중
   획득 계약)이면 Conflict와 같은 보상 창. 선택 아이콘이 둘 이상인 계약도 받는다(`NotImplementedError` 없앰).
 - **Reveal:** 합계 대신 기록 줄을 직접 읽는다. 조건 판정·늦은 지급·대기 목록은 그대로이고 행동은 바뀌지 않는다(대기 항목이 어느
-  카드의 어느 줄인지 담는 것만 — 이름은 B3에서 "인쇄한 것"으로).
+  카드의 어느 줄인지 담는 것만 — 이름은 B3에서 "인쇄한 것"으로). **구현하며 바꾼 것(2026-10-19):** B3로 미룬다. Reveal 자동 이득은
+  이미 OQ-045대로 종류별 행동을 소유자가 순서를 골라 받는다(결정 단위로는 이미 아이콘 하나씩이고, 자원 묶음은 OQ-112 (3)과 같다).
+  남은 것은 `PersonalCardRevealEffect`를 기록 줄 읽기로 바꾸는 내부 정리뿐인데, `reveal_turn.py`에서만 117곳·카드 정의의 필드까지
+  닿는 동작 변화 없는 큰 변경이라, 효과 해결 전체를 두 단계로 다시 짜는 B3에서 함께 한다.
+- **계약 보상 창의 자리(구현하며 바꾼 것):** 위 "차례 안이면 차례의 줄"은 B3로 미룬다. B2의 계약 보상 창은 완수한 자리에 쌓이는 창
+  (차례 안에서도 그 창의 줄을 먼저 다 받는다)이다 — 지금의 완수 흐름(선택 창 하나를 쌓음)과 같은 자리이고, 차례의 대기 목록에
+  계약 조각을 넣는 일은 모든 효과를 두 단계 줄로 바꾸는 B3와 같은 곳을 고친다.
 - **사건:** 조각마다 그 조각의 표준 사건(`resources_gained`, 병력 recruit, 책략 draw, `influence_gained`, VP는 그 사건의 키 — 정리-2c
   문법)에 출처 `combat_reward`/`contract`를 단다. `combat_reward_gained`는 수령자의 머리 사건(순위·배수)으로 남기고 합한 값은 뺀다;
   `contract_completed`도 완수 사실만. 화면의 전투 결과 줄은 그 수령자의 조각 사건들을 모아 쓴다.
 - **망·기보:** codec과 관측이 바뀐다(새 줄, 사건) — B 전체 재학습에 포함. 옛 기록은 다리 하나가 옛 고정 순서로 조각 줄들을
   답한다(연구 보너스의 `research_icon_order`와 같은 방식).
 - **같음 확인:** 정해진 차이 — 옛 수령자 한 단계를 새 조각 줄들로, 합한 사건을 조각 사건으로.
+
+### B2 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+설계에서 바뀐 것과 구현하며 정한 것:
+
+- **엔진:** Conflict 수령자마다 창 `combat_reward_icons`(행동 `resolve_combat_reward_icon`, 인자 `effect` — `rules/combat.py`
+  `_reward_window`·`apply_combat_reward_icon`), 완수한 계약마다 창 `contract_reward_icons`(`resolve_contract_reward_icon` —
+  `rules/contracts.py` `_contract_reward_window`·`apply_contract_reward_icon`). 줄은 기록(`CONFLICT_REWARD_ABILITIES`,
+  `CONTRACT_ABILITIES`; 둘째 사본은 첫 사본의 기록)의 조각을 그대로 읽는다. 고를 것 있는 조각의 줄은 예전 선택 창(영향력 고르기,
+  선택 지불, Spy 회수 지불, 서로 다른 영향력, 폐기, Spy, 계약 시장, 계약 Spy·회수)을 창 위에 연다. Immediate 계약은
+  `contract_tiles.receive_contract`가 활성으로 두고 `contracts.complete_immediate_contract`가 완수와 창을 연다(Intrigue·Scouts 길도
+  같다). 새 FrameKind 둘은 PAUSE 뒤에 붙여 관측 번호가 그대로다. 카탈로그는 기본 2,917 → 2,931행, 모든 옵션 10,436 → 10,460행.
+- **사건:** `combat_reward_gained`는 머리(multiplier·player·rank), 줄마다 `combat_reward_icon_resolved`·
+  `contract_reward_icon_resolved`(effect와 그 줄이 준 양)와 그 조각의 표준 사건(`resources_gained` 출처
+  `round:R:combat_reward:P:RANK`, 계약은 `<완수 출처>:contract_reward`). `contract_completed`는 완수 사실만.
+- **AI·기보는 옛 순서로:** 휴리스틱·앱 AI·rollout은 창을 옛 고정 순서로 답하고 무작위 흐름에서 아무것도 뽑지 않는다
+  (`agents/engine_order.py`, `legacy_combat_reward_icon`·`legacy_contract_reward_icon`) — B1의 `PlacementMemory`와 같은 이유로, 그
+  AI들의 판이 master와 수순까지 같게. 옛 기록은 다리 `combat_reward_icon_follow`(적힌 단계 바로 뒤, follows)와
+  `combat_reward_icon`(다음 적힌 단계가 받아지지 않을 때)이 같은 순서로 답한다. E2E 저장본을 만드는 걸음(`fixtures/placement_walk.py`
+  등)도 같은 순서로 답해 시드가 그대로다.
+- **옛 순서를 지키려고 정한 것(OQ-112 구현 메모):** (a) 차례 밖에서 기다리는 Emperor track Spy와 Friends Everywhere 선택은 계약
+  보상 창이 맨 위인 동안에도 기다린다(Conflict 보상 선택을 기다리듯) — 영향력 4가 동맹도 얻어 Earn Any Alliance를 완수하면 옛
+  엔진은 그 보상을 그 단계 안에서 주고 Spy를 뒤에 열었다(`spy_moves.track_spy_is_queued`, `scouts.four_bonus_choice_is_queued`,
+  불변식 `check_track_spy_queue`). 옛 기보 대조가 휴리스틱 판 8개에서 Spy를 잡았고, 독립 리뷰가 같은 모양의 Friends Everywhere를
+  짚었다. (b) Agent 차례 중 Solari로 산 카드가 Acquire 계약을 완수하면 창을 효과 frame 기록 뒤 맨 위에 다시 얹는다
+  (`acquisition._lift_contract_windows`; 처음 구현은 효과 frame이 맨 위가 아니라 멈췄다 — 문제집 재채굴과 테스트 이전이 잡음).
+  (c) 게임이 끝나는 단계에서 동맹을 얻어 Earn Any Alliance가 완수되면(Endgame Navigation 카드의 Influence) 아무도 결정에 답하지
+  않으므로 창을 옛 순서로 곧바로 받는다(`contracts._settle_finished_reward`; 독립 리뷰가 끝난 판에 남은 창을 잡음).
+- **CHOAM Transports의 카드(OQ-106 13 곧바른 단계):** 계약 보상의 자동 줄(병력, 자원, 고정 영향력, 책략·카드 draw)은 완수의
+  일부로 본다 — 옛 엔진이 완수 단계 안에서 준 것들이다. 카드는 그 줄들을 다 받은 뒤 빚지고, 소유자가 선택 줄(Spy, 회수, 계약)을
+  먼저 고르면 그 선택이 열리기 전에 빚진다(`contracts._completion_draw_due`). 처음 구현은 자동 줄 뒤에만 빚져, 선택 줄을 먼저 고르면
+  카드가 그 선택 뒤로 밀려 "미룰 수 없다"(디자이너 판정)를 어겼다(독립 리뷰). 카드를 완수 바로 뒤, 모든 줄 앞으로 옮기는 안도
+  시험했는데, 계약 자신의 카드 draw와 CHOAM Transports의 draw 가운데 어느 쪽이 빈 덱을 섞는지가 바뀌어 옛 기보 2,000판 가운데
+  20여 판이 기록된 reshuffle과 갈리고 휴리스틱 판도 master와 달라져 되돌렸다 — 자동 줄은 고르는 것이 없는 줄이어서 카드를
+  "미루는" 길이 되지 않는다.
+- **옛 순서와 달라지는 곳:** 같은 단계에서 생긴 곧바른 draw(OQ-106 14: Bene Gesserit 4의 책략, Imperial Birthright)는 그 단계에서
+  열린 계약 보상 창보다 먼저다 — OQ-106의 "그 바로 다음, 다른 효과는 사이에 들지 않는다"가 다른 효과(그 Influence가 완수시킨
+  계약)의 보상 줄에도 닿는다. 옛 엔진은 계약 보상을 그 단계 안에서 줬다. 대개 한 단계의 상태 차이로 끝나지만, Suspensor Suits가
+  있으면 순서가 결과를 바꾼다(아래 기보 1판).
+- **화면:** 사람 좌석은 줄을 누른다(`display/actions.py`의 줄 문구, `static/labels*.js`·`log_icons.js`·`panels.js`의 사건·VP 원인,
+  `render.js`의 전투 결과 줄이 수령자의 조각 사건을 모은다 — 출처가 보상 자신인 `resources_gained`만; 보상의 계약으로 받은
+  Immediate의 Solari는 넣지 않는다, 독립 리뷰). 차례 밖 보상의 마지막 줄 뒤에 멈춤·공개가 오면 예전처럼 "턴 종료 ▶"까지
+  붙잡히고, 줄은 숨은 정보를 드러내지 않으면 되돌릴 수 있다(보상 Spy를 붙잡은 단위가 이제 줄 셋 + Spy 네 단계).
+- **같음 확인:** 정해진 차이 `scripts/ab/differences/stage_b.py`의 `combat_reward_icons` — 옛 수령자 한 단계 뒤에 새 줄들을 옛
+  순서로 답하고, 머리와 조각 사건을 다시 더해 옛 `combat_reward_gained`와 값까지 비교한다(Influence 고르기 수만 빼고 — sandworm의
+  둘째 몫은 다음 기록 단계에서 답한다). 나머지 사건은 줄의 사건이 단계의 다른 사건 뒤에 오므로 순서 없이 비교한다. 곧바른 draw가
+  창보다 먼저인 곳은 그 좌석의 보상 필드를 한 단계 비교에서 뺀다. 처음 판은 머리·조각 사건을 양쪽에서 버려 값을 비교하지 않았고,
+  그래서 CHOAM에서 계약 줄의 사건에 계약 수가 빠진 것(전투 결과 줄에서 계약 아이콘이 사라짐)을 놓쳤다(독립 리뷰).
+- **측정:** 같음 확인 200판 같음(192,672걸음; 줄 Conflict 9,456개·계약 1,280개를 옛 순서로 답함). 옛 기보 2,000판(v149-86086c6d)
+  equal 1,948 · transient 51 · diverged 1 — transient는 49판이 곧바른 draw가 계약 창보다 먼저인 한 단계, 1판은 책략 줄의 reshuffle
+  chance 뒤에 남은 자동 줄, 1판은 CHOAM Transports 카드가 reshuffle chance와 엇갈린 두 단계; diverged 1판(full.h4.98)은 Bene
+  Gesserit 4의 책략을 계약(Earn Any Alliance) 병력 줄보다 먼저 뽑아 Suspensor Suits가 supply의 마지막 병력을 Conflict로 보내고,
+  병력 줄이 recruit할 병력이 없어 Conflict 순위가 바뀐다. 소크 무작위 700판·휴리스틱 400판 실패 0(처음 돌림에서 (a)의 불변식을 잡음),
+  pytest 8,117 통과, ruff·mypy 깨끗, E2E 68개 모두 통과.
+  문제집 tips-v1 99개 재채굴(휴리스틱 82개는 같은 판·같은 자리, 줄이 끼어 선택 목록만 길다; 5081 망의 판은 망이 줄을 직접 골라
+  달라짐), 사람 판 문제 279/285(B1과 같은 6곳).
+- **테스트 이전:** 실패 226개를 옮겼다(돕는 함수 `tests/support/reward_windows.py`: 엔진으로 줄을 옛 순서로 답하는
+  `answer_reward_windows`, 규칙 함수만으로 답하는 `settle_reward_window`). 무작위 걸음 시드를 다시 고른 테스트: 서버 셋(같은 좌석
+  인계, Tleilaxu 구매 되돌리기, 연구 trash의 카드 칸), E2E 둘(`log_words` Scouts 짝 7·20, `turn_end`의 서버 거절 시드 —
+  보상 받은 Conflict는 좌석이 직접 보게 되어 첫 사례가 8라운드로 늦어짐). 슬롯 망의 결정 종류 값이 PAUSE 뒤 종류에서 하나씩
+  밀리던 것을 고쳤다(`training/slots.py`: 값은 PAUSE를 센 번호, 행은 PAUSE를 뺀 종류).
+- **알아 둘 것:** B1 커밋(1d882c63)도 codec 150이라, 그 사이 이 브랜치에서 만든 저장본은 다리가 붙지 않아(다리는 150 미만만)
+  첫 Conflict 보상·계약 완수에서 갈린다. 새 템플릿이 카탈로그 중간에 들어가 B1의 v150 행 번호도 밀린다. B1로 학습한 망이나 사람
+  저장본은 없으므로 그대로 둔다(B 전체가 v150 하나로 병합된다).
 
 ## 4. 위험
 
