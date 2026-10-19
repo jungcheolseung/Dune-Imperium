@@ -877,21 +877,29 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # everything 392, scouts 300), where the older engine stood in the window and
 # this one in the turn's frame with the rows beside its other effects; base,
 # promo_bloodlines_tech and draft complete no Contract and stay pinned.
+# Re-pinned for stage B3b-2 (OQ-111, codec v150): the Reveal frame offers its
+# purchases, its revealed cards' choices and its leader, Skill and Tech rows
+# effect first (one ``acquire`` row per market, then the card). An export of
+# the previous commit (8d77f452) gives each game's per-decision trace equal
+# to this one up to the first Reveal decision offering several purchases
+# (base at decision 62, choam 59, promo_bloodlines_tech 11, everything 69,
+# draft 26, scouts 59), where the random seat draws over the fewer effect
+# rows and the games part.
 _GOLDEN_DIGESTS = {
-    "base": ("8c69d4e4be9d753b52104d90dfaa67914c8f55102f45e2dc5a18208086dd35cf", 3012),
-    "choam": ("ef848127eadb7521f92f8ae0a70f7b30eab53017f69f549be774e8bb85073003", 2508),
+    "base": ("2f58bab1445b058080228b2bcf4445387c389c2824e760146f9e44a0de68824e", 2892),
+    "choam": ("f3263c17f2a89bc928edca63f92687934ccf284b864dcf84a54c781ead486310", 2864),
     "promo_bloodlines_tech": (
-        "9c2065d8f67361cd882b8332c1840b10d08981fa269857c892ac31a1ec70af90",
-        3356,
+        "8d00284893cb55e3f51b05fe4e0c00af82f272613e881c62fdca8a1e20a73691",
+        3072,
     ),
     "everything": (
-        "f373d6d3a5b6616548fda4695446da63440e05dceba50450ede94dd7dd821dfe",
-        4208,
+        "43e8cb4ba91733f2cdff64218c48f681b9f5f1a92c58c38d37d8a911dcc72105",
+        3248,
     ),
-    "draft": ("a6a46b22a90adfc117ae6569e8d14ed762dee3af6adb073d9e223b0765e228e6", 2108),
+    "draft": ("b0295e7bc922ceec3c7c1d2ecd759790cb7160c26df11ba8a0ad3e125b142d5a", 2672),
     "scouts": (
-        "383d33be22cffeebe50350d6195eedadba5f29cbdbcfe54eebd5c6ce197bc432",
-        2816,
+        "1782aac3975f7974bd1bc61f4599bfbe094788dbf5059bad96e396827308b22d",
+        2856,
     ),
 }
 _GOLDEN_CONFIGS = {

@@ -165,9 +165,10 @@ def _pending(state: GameState) -> tuple[tuple[str, str], ...]:
 
 
 def _offered(state: GameState) -> set[str]:
-    """The ids the engine offers the owner (seat 0) in ``state``."""
+    """The ids of the whole actions the owner (seat 0) can take in ``state``
+    (stage B3b-2: the Reveal frame offers its effects effect first)."""
 
-    return {a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)}
+    return {a.action_id for a in UprisingRulesEngine().whole_actions(state, 0)}
 
 
 def _finish(state: GameState) -> Transition:
@@ -414,7 +415,7 @@ def test_a_command_choice_survives_persuasion_spent_on_a_purchase() -> None:
     assert legal_finish_reveal_actions(bought, 0) == ()
     place = legal_reveal_spy_actions(bought, 0)[0]
     assert place.action_id == "place_reveal_spy"
-    placed = UprisingRulesEngine().apply(bought, place).state
+    placed = apply_whole(UprisingRulesEngine(), bought, place).state
     assert len(placed.players[0].spy_post_ids) == 1
     assert _pending(placed) == ()
 
@@ -4484,6 +4485,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # and 1,432 rows join.
         - 1069
         + 1432
+        # v150 (stage B3b-2, OQ-111): the Reveal frame's effect and target
+        # rows replace the whole templates of the ids it adds to
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are: 212 leave and 48 rows join.
+        - 212
+        + 48
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

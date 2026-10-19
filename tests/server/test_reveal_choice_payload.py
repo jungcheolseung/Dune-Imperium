@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -163,7 +164,9 @@ def test_each_choice_row_names_its_choice_and_card_and_no_other_row_does() -> No
     # Desert Power is mandatory and offers its branch: no turn end yet.
     assert "finish_reveal" not in by_id
     assert [row["index"] for row in rows] == list(range(len(rows)))
-    assert len(rows) == len(ENGINE.legal_actions(_mixed(), 0))
+    # The payload lists whole actions (the Reveal frame's effect rows stand
+    # for them since stage B3b-2).
+    assert len(rows) == len(ENGINE.whole_actions(_mixed(), 0))
 
 
 def test_greyed_rows_name_their_choice_card_and_why() -> None:
@@ -227,10 +230,10 @@ def test_the_placement_after_a_recall_is_its_own_window_without_headers() -> Non
     )
     recall = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "recall_spy_for_reveal_placement"
     )
-    committed = ENGINE.apply(state, recall).state
+    committed = apply_whole(ENGINE, state, recall).state
     top = committed.decision_stack[-1]
     assert top.kind == FrameKind.REVEAL_CHOICE
     assert isinstance(top.decision, PlayerDecision)
@@ -271,7 +274,7 @@ def test_a_failure_is_logged_and_leaves_the_keys_out(
     assert payload["reveal_choices"] is None
     rows = _rows(payload["actions"])
     assert all("reveal_choice" not in row for row in rows)
-    assert len(rows) == len(ENGINE.legal_actions(state, 0))
+    assert len(rows) == len(ENGINE.whole_actions(state, 0))
 
 
 def test_a_rows_card_comes_from_the_server_not_the_source_id() -> None:

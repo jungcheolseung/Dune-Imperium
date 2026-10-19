@@ -356,3 +356,17 @@ def open_context(browser, name: str, viewport: dict | None = None):
     recorder.attach(page)
     page.set_default_timeout(15000)
     return context, page, recorder
+
+
+# Where a seek lands: never between a waiting effect and its target (stage
+# B3; review.js ``reviewGoto``), so a pick step goes on to its effect's end.
+REVIEW_LANDING = """(target) => {
+    const review = state.review;
+    const labels = review.meta.steps || [];
+    const back = target < review.cursor;
+    let cursor = target;
+    while (cursor > 0 && cursor < review.meta.step_count && labels[cursor - 1]?.pick) {
+        cursor += back ? -1 : 1;
+    }
+    return cursor;
+}"""

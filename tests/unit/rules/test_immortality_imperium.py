@@ -1058,7 +1058,8 @@ def _fervor_reveal(**owner: object) -> tuple[GameState, str]:
 
 
 def _buy(state: GameState, instance_id: str) -> Transition:
-    return UprisingRulesEngine().apply(
+    return apply_whole(
+        UprisingRulesEngine(),
         state,
         DomainAction(
             action_id="acquire_imperium",
@@ -1066,6 +1067,13 @@ def _buy(state: GameState, instance_id: str) -> Transition:
             arguments=(("instance_id", instance_id),),
         ),
     )
+
+
+def _kinds(result: Transition) -> list[str]:
+    """The kinds of the events of ``result``, without the seat-only
+    ``effect_picked`` events of a bought card's pick steps (stage B3b-2)."""
+
+    return [event.kind for event in result.events if event.kind != "effect_picked"]
 
 
 def _research(state: GameState, space_id: str) -> Transition:
@@ -1095,7 +1103,7 @@ def test_call_to_arms_waits_for_spiritual_fervor_s_research_direction() -> None:
     )
 
     bought = _buy(state, fervor)
-    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert _kinds(bought) == ["card_acquired"]
     assert bought.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
     owner = bought.state.players[0]
     assert (owner.troops_supply, owner.troops_garrison) == (1, 11)
@@ -1131,7 +1139,7 @@ def test_call_to_arms_follows_spiritual_fervor_s_research_with_troops_left() -> 
     garrison = state.players[0].troops_garrison
 
     bought = _buy(state, fervor)
-    assert "intrigue_triggered" not in [event.kind for event in bought.events]
+    assert "intrigue_triggered" not in _kinds(bought)
     assert bought.state.players[0].troops_garrison == garrison
 
     chosen = _research(bought.state, "c2r2")
@@ -1167,7 +1175,7 @@ def test_call_to_arms_waits_for_spiritual_fervor_s_research_draw_reshuffle() -> 
     state, fervor = _fervor_reveal(
         research_space="c8r2", intrigue_faceup=(CALL_TO_ARMS,), deck=others[:3]
     )
-    assert [event.kind for event in _buy(state, fervor).events] == [
+    assert _kinds(_buy(state, fervor)) == [
         "card_acquired",
         "research_drew_card",
         "personal_card_late_revealed",
@@ -1182,7 +1190,7 @@ def test_call_to_arms_waits_for_spiritual_fervor_s_research_draw_reshuffle() -> 
     )
     garrison = state.players[0].troops_garrison
     bought = _buy(state, fervor)
-    assert [event.kind for event in bought.events] == [
+    assert _kinds(bought) == [
         "card_acquired",
         "research_drew_card",
     ]
@@ -1209,7 +1217,7 @@ def test_spiritual_fervor_s_single_research_step_keeps_call_to_arms_in_place() -
     garrison = state.players[0].troops_garrison
 
     bought = _buy(state, fervor)
-    kinds = [event.kind for event in bought.events]
+    kinds = _kinds(bought)
     assert kinds[0] == "card_acquired" and kinds[-1] == "intrigue_triggered"
     assert kinds.index("research_advanced") < kinds.index("intrigue_triggered")
     assert bought.state.players[0].research_space == "c1r3"
@@ -1236,7 +1244,7 @@ def test_call_to_arms_comes_before_the_choice_of_a_card_fervor_s_research_drew()
     garrison = state.players[0].troops_garrison
 
     bought = _buy(state, fervor)
-    assert [event.kind for event in bought.events] == [
+    assert _kinds(bought) == [
         "card_acquired",
         "research_drew_card",
         "personal_card_late_revealed",
@@ -1260,8 +1268,10 @@ def test_call_to_arms_comes_before_the_choice_of_a_card_fervor_s_research_drew()
     assert "gain_five_reveal_solari" in offered
     assert "finish_reveal" not in offered
     solari = bought.state.players[0].resources.solari
-    taken = apply_whole(engine, 
-        bought.state, DomainAction(action_id="gain_five_reveal_solari", actor=0)
+    taken = apply_whole(
+        engine,
+        bought.state,
+        DomainAction(action_id="gain_five_reveal_solari", actor=0),
     ).state
     assert taken.players[0].resources.solari == solari + 5
     assert taken.players[0].troops_garrison == garrison + 1

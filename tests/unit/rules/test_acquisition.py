@@ -854,7 +854,7 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
         for action in legal_imperium_acquisitions(state, 0)
         if dict(action.arguments)["instance_id"] == overthrow
     )
-    assert action in UprisingRulesEngine().legal_actions(state, 0)
+    assert action in UprisingRulesEngine().whole_actions(state, 0)
 
     result = apply_imperium_acquisition(state, action)
 
@@ -988,11 +988,11 @@ def test_guild_spy_acquisition_opens_spy_placement() -> None:
     )
     acquire = next(
         action
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == guild_spy
     )
 
-    acquired = UprisingRulesEngine().apply(state, acquire)
+    acquired = apply_whole(UprisingRulesEngine(), state, acquire)
 
     assert acquired.state.players[0].discard_pile == (guild_spy,)
     assert {
@@ -1130,7 +1130,7 @@ def _strike_fleet_bought_with_an_empty_supply() -> tuple[GameState, tuple[str, .
     )
     acquire = next(
         action
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == strike_fleet
     )
 

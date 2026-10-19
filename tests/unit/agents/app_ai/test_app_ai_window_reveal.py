@@ -13,6 +13,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities import Answer, Request
@@ -87,7 +88,9 @@ def owner(state: GameState) -> int:
 
 
 def legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, owner(state))
+    # The whole actions the rules resolve (stage B3b-2: the Reveal frame
+    # offers its effects effect first, and the agents see whole actions).
+    return ENGINE.whole_actions(state, owner(state))
 
 
 def make_run(
@@ -120,7 +123,7 @@ def find(state: GameState, action_id: str, **args: object) -> DomainAction:
 
 
 def apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action, legal_actions=legal(state)).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal(state)).state
 
 
 def revealed(hand: list[str], **changes: object) -> GameState:
@@ -325,7 +328,7 @@ def test_an_optional_choice_worth_nothing_lapses_at_the_end_turn(
     )
     finish = find(state, "finish_reveal")
     assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == finish
-    events = ENGINE.apply(state, finish, legal_actions=legal(state)).events
+    events = apply_whole(ENGINE, state, finish, legal_actions=legal(state)).events
     assert [e.kind for e in events if e.kind == "reveal_choice_lapsed"] == [
         "reveal_choice_lapsed"
     ]
@@ -884,7 +887,7 @@ def test_end_turn_is_one_answer_with_optional_choices_pending(
     assert reveal.reveal_window(make_run(state, memory, constants=NO_BUYS)) == finish
     assert len(prompts) == 1
     assert memory.intents == {} and memory.data == {}
-    events = ENGINE.apply(state, finish, legal_actions=legal(state)).events
+    events = apply_whole(ENGINE, state, finish, legal_actions=legal(state)).events
     lapsed = [
         dict(e.payload)["effect"] for e in events if e.kind == "reveal_choice_lapsed"
     ]

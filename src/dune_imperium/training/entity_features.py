@@ -513,8 +513,9 @@ ARGUMENT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
     "intrigue_card_id": ("intrigue",),
     "target": ("contract",),
     # Stage B3: the entity that printed a waiting effect -- a card type, the
-    # visited space, a leader face, a Tech tile; a Contract by its instance.
-    "printed": ("personal", "space", "leader", "tech"),
+    # visited space, a leader face, a Tech tile, a Commander's Skill (B3b-2);
+    # a Contract by its instance; a market is a label.
+    "printed": ("personal", "space", "leader", "tech", "skill"),
 }
 # The vocabulary of a slot key's id, by the key's prefix (``training.slots``).
 SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {

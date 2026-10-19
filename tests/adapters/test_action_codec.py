@@ -166,11 +166,17 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # leave (792), and the rows that stand for them join (964).
         - 792
         + 964
+        # v150 (stage B3b-2): the Reveal frame offers its effects effect
+        # first too: the purchases' and the Reveal leader rows' whole
+        # templates leave (146), their effect rows and the target rows not
+        # yet in the catalog (an Alliance recipient's seat) join (28).
+        - 146
+        + 28
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
-    # (above) takes it from 2,931 to 3,103.
-    assert first.size == 3103
+    # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985.
+    assert first.size == 2985
 
 
 def _scouts_catalog_additions(
@@ -241,9 +247,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             t.action_id in {"scouts_collect_mission", "take_desert_riding_hooks"}
             for t in with_scouts.catalog
         )
-    assert ActionCodec(RulesetConfig()).size == 3103
+    assert ActionCodec(RulesetConfig()).size == 2985
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 3103 + len(
+    assert ActionCodec(base_scouts).size == 2985 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -385,6 +391,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # per Contract and icon (23) and its effect row (23).
         + 23
         + 23
+        # v150 (stage B3b-2): the Reveal frame's effect rows (see above):
+        # 154 whole templates leave and 32 rows join.
+        - 154
+        + 32
     )
 
     try:
@@ -548,6 +558,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # template per Contract and icon (37) and its effect row (37).
         + 37
         + 37
+        # v150 (stage B3b-2): the Reveal frame's effect rows: 222 whole
+        # templates leave (the Commander Skill trash among them) and 53 rows
+        # join.
+        - 222
+        + 53
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

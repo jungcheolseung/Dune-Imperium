@@ -157,7 +157,10 @@ GAMES = (
     # rows of that turn, so random seats draw from another list) moves seed
     # 197 off its Secrets steal. The same scan over random seeds 1-500
     # (2026-10-20) finds seed 9 first with the steal and all of the above.
-    {"seats": ["random"] * 4, "game_seed": 9, "policy_seed": 9, **EVERY_EXPANSION},
+    # Stage B3b-2 (the Reveal frame's effects come effect first) moves seed 9
+    # off its Secrets steal; the same scan over random seeds 1-400 finds seed
+    # 3 first with the steal and all of the above.
+    {"seats": ["random"] * 4, "game_seed": 3, "policy_seed": 3, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -212,11 +215,13 @@ GAMES = (
     # moves seed 7 off its round modifier and Clear the Market and seed 20
     # off Mercenaries. The same headless scan over random seeds 1-200
     # (2026-10-20) finds the pair 3 and 5 first (no single seed reaches every
-    # Scouts surface).
+    # Scouts surface). Stage B3b-2 (the Reveal frame's effects) moves the pair
+    # off Clear the Market, Mercenaries and Mating Season; the same scan over
+    # random seeds 1-300 finds the pair 1 and 90 first.
     {
         "seats": ["random"] * 4,
-        "game_seed": 3,
-        "policy_seed": 3,
+        "game_seed": 1,
+        "policy_seed": 1,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -252,10 +257,10 @@ GAMES = (
         # Codec v146 moves seed 22 off Mating Season (the game above has it);
         # it keeps the round modifier, mission troops and an auction won.
         # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
-        # above (see there), since stage B2 seed 20 with seed 7, and since
-        # stage B3a seed 5 with seed 3.
-        "game_seed": 5,
-        "policy_seed": 5,
+        # above (see there), since stage B2 seed 20 with seed 7, since stage
+        # B3a seed 5 with seed 3, and since stage B3b-2 seed 90 with seed 1.
+        "game_seed": 90,
+        "policy_seed": 90,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

@@ -59,6 +59,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind, with_context
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
@@ -2846,8 +2847,9 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
 
 def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
     codec = ActionCodec(TECH)
-    actions = (
-        DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),)),
+    # Stage B3b-2: the Reveal frame offers Forbidden Weapons' choice as the
+    # tile's effect row and its target rows (``effect_steps.steps_for``).
+    forbidden_weapons = (
         DomainAction("choose_tech_strength", 1),
         DomainAction("choose_tech_strength", 1, (("faction", "emperor"),)),
         DomainAction(
@@ -2856,6 +2858,12 @@ def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
             (("alliance_recipient", 0), ("faction", "fremen")),
         ),
         DomainAction("choose_tech_trash", 3),
+    )
+    for whole in forbidden_weapons:
+        for row in steps_for(whole):
+            assert codec.decode(codec.encode(row), whole.actor) == row
+    actions = (
+        DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),)),
         DomainAction("decline_skill", 0),
         # The Agent turn is a card pick and a space pick (stage B1).
         DomainAction(
@@ -2901,7 +2909,7 @@ def test_ixian_ambassador_gains_spice_and_influence_with_two_tiles() -> None:
     )
     choices = legal_reveal_influence_gain_actions(revealed.state, 0)
     assert len(choices) == 4
-    assert set(choices) <= set(UprisingRulesEngine().legal_actions(revealed.state, 0))
+    assert set(choices) <= set(UprisingRulesEngine().whole_actions(revealed.state, 0))
     gained = apply_reveal_influence_gain(revealed.state, choices[3]).state
     assert gained.players[0].influence.fremen == 1
     assert pending_reveal_choices(dict(gained.decision_stack[-1].context)) == ()
@@ -2912,7 +2920,7 @@ def test_ixian_ambassador_gains_spice_and_influence_with_two_tiles() -> None:
     )
     assert single.state.decision_stack[-1].kind == "reveal"
     assert legal_reveal_influence_gain_actions(single.state, 0) == ()
-    single_actions = UprisingRulesEngine().legal_actions(single.state, 0)
+    single_actions = UprisingRulesEngine().whole_actions(single.state, 0)
     assert "gain_reveal_influence" not in {a.action_id for a in single_actions}
     # A second tile arriving later makes the waiting choice offer its rows.
     second = replace(

@@ -1511,6 +1511,12 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # 964 rows join.
         - 792
         + 964
+        # v150 (stage B3b-2, OQ-111): the Reveal frame's effect and target
+        # rows replace the whole templates of the ids it adds to
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are: 146 leave and 28 rows join.
+        - 146
+        + 28
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an
@@ -1520,10 +1526,18 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         "sardaukar",
     )
     assert [row.action_id for row in acquire_commander] == ["acquire", "choose_skill"]
+    # Stage B3b-2: the Reveal frame offers a Skill's trash and Lady Amber's
+    # Commander retreat as effect rows (the Skill row names the Commander).
+    trash_skill = steps_for(
+        DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),))
+    )
+    retreat_commander = steps_for(
+        DomainAction("retreat_leader_commander", 3), "lady_amber_metulli"
+    )
     actions = (
         *acquire_commander,
         DomainAction("recruit_sardaukar_commander", 3),
-        DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),
+        *trash_skill,
         DomainAction("deploy_commanders", 0, (("count", 7),)),
         DomainAction("withdraw_commanders", 1, (("count", 1),)),
         DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
@@ -1535,7 +1549,7 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
             0,
             (("commanders", 2), ("source", "chani_clever_tactician")),
         ),
-        DomainAction("retreat_leader_commander", 3),
+        *retreat_commander,
         DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
     )
     for action in actions:

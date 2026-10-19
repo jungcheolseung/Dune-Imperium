@@ -226,6 +226,8 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
             "option",
             "printed",
             "zone",
+            # Tleilaxu Surgeon's two units' zones (stage B3b-2).
+            "zones",
         }
     ),
 }
@@ -808,6 +810,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             _V.COLLECT,
             _V.FLIP,
             _V.DESTROY_SHIELD_WALL,
+            # Stage B3b-2: the Reveal frame's effects.
+            _V.EXCHANGE_INFLUENCE,
+            _V.LOSE_INFLUENCE,
+            _V.KEEP,
         )
     },
     # A target row picks one target of the effect its seat picked.
@@ -815,6 +821,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_intrigue_card": _row(_V.CHOOSE, _S.REF, _T.INTRIGUE_CARD),
     "choose_imperium_card": _row(_V.CHOOSE, _S.REF, _T.IMPERIUM_CARD),
     "choose_reserve_card": _row(_V.CHOOSE, _S.REF, _T.RESERVE_CARD),
+    "choose_tleilaxu_card": _row(_V.CHOOSE, _S.REF, _T.TLEILAXU_CARD),
     "choose_post": _row(_V.CHOOSE, _S.REF, _T.POST),
     "choose_space": _row(_V.CHOOSE, _S.REF, _T.SPACE),
     "choose_track_space": _row(_V.CHOOSE, _S.REF, _T.TRACK_SPACE),

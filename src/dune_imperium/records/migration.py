@@ -209,6 +209,9 @@ class MigratedStep:
     # choice frame the recording engine had on top when the step was taken
     # (``_RevealSlot``); None otherwise.
     reveal_source: str | None = None
+    # For a recorded whole action taken as effect steps (stage B3), the
+    # whole action (as a bridge named it) its last step ends; None otherwise.
+    whole: ReplayStep | None = None
 
 
 def _apply_answer(
@@ -411,12 +414,19 @@ def migrate_record(
         # The whole action a recorded step's last effect step ends (stage
         # B3): what the ``follows`` bridges read, as the recording engine did.
         whole = recorded
+        # The Reveal-choice bridge that named the whole action this step's
+        # last effect step ends (stage B3b-2): the step keeps its name, as
+        # first named, before an effect step narrowed the offered cards.
+        named_by: str | None = None
+        first_naming: str | None = None
         box = 0 if graft is None else graft.box
         reveal_source = None if reveal is None else reveal.top_source(recorded)
         for _ in range(MAX_BRIDGES_PER_STEP):
             if reveal is not None and rewritten_by in (None, *REVEAL_SOURCE_NAMES):
                 named = reveal.named(engine, state, recorded)
                 step, rewritten_by = named if named is not None else (recorded, None)
+                if named is not None and first_naming is None:
+                    first_naming = named[1]
             if graft is not None and rewritten_by in (None, GRAFT_BOX_TAGGED):
                 boxed = graft.boxed(engine, state, recorded)
                 step, rewritten_by = (
@@ -558,6 +568,8 @@ def migrate_record(
                 if bridge.rewrites:
                     if bridge.name == EFFECT_LAST_STEP:
                         whole = step
+                        if rewritten_by in REVEAL_SOURCE_NAMES:
+                            named_by = first_naming
                     step, rewritten_by = answer, bridge.name
                     continue
                 state = _apply_answer(engine, state, answer, bridge.name, migrated)
@@ -567,7 +579,14 @@ def migrate_record(
                 continue
             before, mark = state, len(migrated)
             migrated.append(
-                MigratedStep(step, index, rewritten_by, box, reveal_source)
+                MigratedStep(
+                    step,
+                    index,
+                    named_by or rewritten_by,
+                    box,
+                    reveal_source,
+                    whole if rewritten_by == EFFECT_LAST_STEP else None,
+                )
             )
             if graft is not None:
                 graft.applied(after, step)

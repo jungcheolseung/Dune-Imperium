@@ -177,3 +177,114 @@ def test_a_recall_first_is_its_own_effect_row() -> None:
     assert {row.action_id for row in ENGINE.legal_actions(picked, 0)} == {
         "choose_post"
     }
+
+
+def test_a_fixed_printed_card_is_the_one_card_that_offers_its_id() -> None:
+    # Stage B3b-2: a Reveal choice id that no ``source`` names (one card
+    # type produces it, ``reveal_turn.SOURCED_REVEAL_ACTION_IDS``) names its
+    # card in the table instead; every card offering the id must be that
+    # one, and every sourced id must read its card from ``source``.
+    from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.content.uprising.personal_cards import (
+        personal_card_for_instance,
+    )
+    from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+    from dune_imperium.content.uprising.starting_cards import (
+        starting_deck_instance_ids,
+    )
+    from dune_imperium.rules.effect_steps import STEP_SPECS
+    from dune_imperium.rules.reveal_turn import (
+        REVEAL_CHOICE_EFFECT_ACTIONS,
+        SOURCED_REVEAL_ACTION_IDS,
+    )
+
+    instances = (
+        *imperium_deck_instance_ids(
+            True, True, bloodlines=True, tech_module=True, immortality=True
+        ),
+        *tleilaxu_deck_instance_ids(True),
+        *starting_deck_instance_ids(0, immortality=True, epic_game=True),
+        *(f"reserve:{card_id}:0" for card_id in RESERVE_STACKS_BY_ID),
+    )
+    printers: dict[str, set[str]] = {}
+    for instance in instances:
+        card = personal_card_for_instance(instance)
+        for effect in getattr(card, "reveal_choice_effects", ()):
+            for action_id in REVEAL_CHOICE_EFFECT_ACTIONS[effect]:
+                printers.setdefault(action_id, set()).add(card.card.card_id)
+    checked = 0
+    for action_id, cards in printers.items():
+        spec = STEP_SPECS.get(action_id)
+        if spec is None:
+            continue
+        assert isinstance(spec.printed, str)
+        if action_id in SOURCED_REVEAL_ACTION_IDS:
+            assert spec.printed == "source", action_id
+        else:
+            assert {spec.printed.removeprefix("=")} == cards, action_id
+            checked += 1
+    assert checked == 12
+
+
+def _reveal_frame_state(hand: tuple[str, ...], troops_conflict: int = 0) -> GameState:
+    from tests.unit.rules.test_reveal_choices import _reveal, _state
+
+    from dune_imperium.core import PlayerState
+
+    owner = PlayerState(
+        player_id=0,
+        hand=hand,
+        troops_supply=PlayerState(player_id=0).troops_supply - troops_conflict,
+        troops_conflict=troops_conflict,
+    )
+    state = _state(owner)
+    return _reveal(replace(state, reserve_stacks=(("prepare_the_way", 7),)))
+
+
+def test_a_reveal_purchase_is_its_markets_acquire_row_then_the_card() -> None:
+    # Stage B3b-2 (docs/stage-b-plan.md "B3b 세부 설계"): the Reveal frame
+    # offers its effects effect first too; a purchase is one ``acquire`` row
+    # per market, then the card (OQ-111 (2): one card still opens the step).
+    from tests.unit.rules.test_reveal_choices import STARTERS
+
+    revealed = _reveal_frame_state(STARTERS[:5])
+    acquire = DomainAction(
+        "acquire", 0, (("printed", "reserve"), ("source", "purchase"))
+    )
+    whole = DomainAction("acquire_reserve", 0, (("card_id", "prepare_the_way"),))
+    assert acquire in ENGINE.legal_actions(revealed, 0)
+    assert whole in ENGINE.whole_actions(revealed, 0)
+    assert whole not in ENGINE.legal_actions(revealed, 0)
+
+    picked = ENGINE.apply(revealed, acquire).state
+    target = DomainAction("choose_reserve_card", 0, (("card_id", "prepare_the_way"),))
+    # While the pick waits, only its targets are offered (no turn end).
+    assert ENGINE.legal_actions(picked, 0) == (target,)
+    bought = ENGINE.apply(picked, target).state
+    assert bought == apply_whole(ENGINE, revealed, whole).state
+
+
+def test_a_reveal_choice_row_names_the_card_that_printed_it() -> None:
+    # A revealed card's choice: ``source=reveal_card`` and the card type,
+    # then its target -- Calculus of Power's trash of another Emperor card.
+    from tests.unit.rules.test_reveal_choices import _card
+
+    calculus, corrinth = _card("calculus_of_power"), _card("corrinth_city")
+    revealed = _reveal_frame_state((calculus, corrinth), troops_conflict=1)
+    trash = DomainAction(
+        "trash", 0, (("printed", "calculus_of_power"), ("source", "reveal_card"))
+    )
+    assert trash in ENGINE.legal_actions(revealed, 0)
+    picked = ENGINE.apply(revealed, trash).state
+    assert ENGINE.legal_actions(picked, 0) == (
+        DomainAction("choose_personal_card", 0, (("card_id", corrinth),)),
+    )
+    assert path_of(
+        revealed,
+        DomainAction(
+            "trash_reveal_card",
+            0,
+            (("card_id", corrinth), ("source", "calculus_of_power")),
+        ),
+    ) == (trash, DomainAction("choose_personal_card", 0, (("card_id", corrinth),)))

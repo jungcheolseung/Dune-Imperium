@@ -17,6 +17,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai.abilities import (
     Answer,
     Request,
@@ -115,7 +116,9 @@ def owner(state: GameState) -> int:
 
 
 def legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, owner(state))
+    # The whole actions the rules resolve (stage B3b-2: the Reveal frame
+    # offers its effects effect first, and the agents see whole actions).
+    return ENGINE.whole_actions(state, owner(state))
 
 
 def make_run(
@@ -151,7 +154,7 @@ def find(state: GameState, action_id: str, **args: object) -> DomainAction:
 
 
 def apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action, legal_actions=legal(state)).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal(state)).state
 
 
 def turn_start(config: RulesetConfig = BL) -> GameState:

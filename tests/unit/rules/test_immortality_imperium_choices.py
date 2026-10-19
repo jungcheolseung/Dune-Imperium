@@ -196,9 +196,11 @@ def _payment(state: GameState, action_id: str) -> DomainAction:
 
 
 def _offered_ids(state: GameState) -> set[str]:
-    """Every action id seat 0 is offered now, through the engine."""
+    """Every whole action id seat 0 is offered now, through the engine
+    (stage B3b-2: the Reveal frame offers its effects effect first, so its
+    legal rows are not these ids)."""
 
-    actions = UprisingRulesEngine().legal_actions(state, 0)
+    actions = UprisingRulesEngine().whole_actions(state, 0)
     return {action.action_id for action in actions}
 
 
@@ -832,7 +834,7 @@ def test_shadout_mapes_deploys_a_garrison_commander() -> None:
         "deploy_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
     )
     assert "decline_reveal_troop_move" not in _offered_ids(revealed)
-    result = UprisingRulesEngine().apply(revealed, deploy)
+    result = apply_whole(UprisingRulesEngine(), revealed, deploy)
     owner = result.state.players[0]
     assert (owner.commanders_conflict, owner.commanders_garrison) == (1, 0)
     context = dict(result.state.decision_stack[-1].context)
@@ -857,7 +859,7 @@ def test_shadout_mapes_retreats_the_last_commander_and_its_skills() -> None:
     assert retreat == DomainAction(
         "retreat_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
     )
-    retreated = UprisingRulesEngine().apply(revealed, retreat).state
+    retreated = apply_whole(UprisingRulesEngine(), revealed, retreat).state
     owner = retreated.players[0]
     assert (owner.commanders_conflict, owner.commanders_garrison) == (0, 1)
     # No unit left in the Conflict: no strength and no active Skill; "she will

@@ -15,6 +15,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.abilities import AbilityMark
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
@@ -101,7 +102,7 @@ def _reveal(state: GameState) -> GameState:
 
 
 def _legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, 0)
+    return ENGINE.whole_actions(state, 0)
 
 
 def _ids(state: GameState) -> set[str]:
@@ -344,7 +345,7 @@ def test_two_copies_offer_their_rows_once_and_resolve_in_pending_order() -> None
     )
     pays = [a for a in _legal(revealed) if a.action_id == "pay_reveal_spice_influence"]
     assert len(pays) == len(set(pays)) == 4
-    paid = ENGINE.apply(revealed, pays[0]).state
+    paid = apply_whole(ENGINE, revealed, pays[0]).state
     assert paid.decision_stack[-1].kind == FrameKind.REVEAL
     assert _pending(paid) == ((second, "may_pay_three_spice_for_influence"),)
 
@@ -357,7 +358,7 @@ def test_a_plain_spy_with_a_spy_in_supply_holds_the_end_until_placed() -> None:
     assert "finish_reveal" not in ids
     place = _first(revealed, "place_reveal_spy", post_id=POSTS[0])
     assert dict(place.arguments)[SOURCE_ARGUMENT] == "public_spectacle"
-    placed = ENGINE.apply(revealed, place).state
+    placed = apply_whole(ENGINE, revealed, place).state
     assert placed.players[0].spy_post_ids == (POSTS[0],)
     assert _pending(placed) == ()
     assert "finish_reveal" in _ids(placed)
@@ -402,7 +403,7 @@ def test_a_command_choice_opens_once_six_persuasion_is_generated() -> None:
     assert "gain_reveal_influence" in ids
     # Pointing the Way's gain is mandatory once it can be taken.
     assert "finish_reveal" not in ids
-    gained = ENGINE.apply(chosen, _first(chosen, "gain_reveal_influence")).state
+    gained = apply_whole(ENGINE, chosen, _first(chosen, "gain_reveal_influence")).state
     assert gained.players[0].influence.emperor == 1
     assert "finish_reveal" in _ids(gained)
 
@@ -433,7 +434,7 @@ def test_source_tells_spy_network_from_arrakis_observer() -> None:
     by_observer = _first(
         revealed, "recall_spy_for_reveal", post_id=POSTS[0], source="arrakis_observer"
     )
-    recalled = ENGINE.apply(revealed, by_observer).state
+    recalled = apply_whole(ENGINE, revealed, by_observer).state
     # Arrakis Observer's three swords, not Spy Network's Intrigue card.
     assert recalled.players[0].intrigue_cards == ()
     reveal_context = dict(recalled.decision_stack[-1].context)
@@ -465,7 +466,7 @@ def test_source_tells_chani_from_command_center() -> None:
     by_center = _first(
         revealed, "retreat_two_troops_for_reveal", source="command_center"
     )
-    retreated = ENGINE.apply(revealed, by_center).state
+    retreated = apply_whole(ENGINE, revealed, by_center).state
     # Command Center's two Persuasion, not Chani's four swords.
     context = dict(retreated.decision_stack[-1].context)
     assert context["persuasion"] == persuasion + 2
@@ -500,9 +501,14 @@ def test_source_tells_pointing_the_way_from_ixian_ambassador() -> None:
     by_ambassador = _first(
         revealed, "gain_reveal_influence", faction="fremen", source="ixian_ambassador"
     )
-    gained = ENGINE.apply(revealed, by_ambassador)
+    gained = apply_whole(ENGINE, revealed, by_ambassador)
     assert gained.state.players[0].influence.fremen == 1
-    assert all(ambassador in event.event_id for event in gained.events)
+    # (the seat-only effect_picked events of the pick steps are not compared)
+    assert all(
+        ambassador in event.event_id
+        for event in gained.events
+        if event.kind != "effect_picked"
+    )
     assert _pending(gained.state) == ((pointing, "command_gain_chosen_influence"),)
     assert {
         dict(a.arguments)[SOURCE_ARGUMENT]
@@ -533,7 +539,7 @@ def test_source_tells_shadout_mapes_from_unswerving_loyalty() -> None:
     by_loyalty = _first(
         revealed, "deploy_reveal_card_troop", source="unswerving_loyalty"
     )
-    moved = ENGINE.apply(revealed, by_loyalty).state
+    moved = apply_whole(ENGINE, revealed, by_loyalty).state
     assert moved.players[0].troops_conflict == 2
     assert _pending(moved) == ((mapes, "may_deploy_or_retreat_one_troop"),)
 
@@ -591,7 +597,7 @@ def test_corrinth_city_trashed_by_calculus_of_power_offers_nothing() -> None:
     trash = _first(
         revealed, "trash_reveal_card", card_id=corrinth, source="calculus_of_power"
     )
-    trashed = ENGINE.apply(revealed, trash).state
+    trashed = apply_whole(ENGINE, revealed, trash).state
     assert corrinth not in trashed.players[0].in_play
     assert _pending(trashed) == ((corrinth, "gain_five_solari_or_take_high_council"),)
     ids = _ids(trashed)
@@ -600,8 +606,10 @@ def test_corrinth_city_trashed_by_calculus_of_power_offers_nothing() -> None:
     assert "take_high_council_from_reveal" not in ids
     assert "finish_reveal" in ids
     with pytest.raises(IllegalActionError):
-        ENGINE.apply(
-            trashed, DomainAction(action_id="gain_five_reveal_solari", actor=0)
+        apply_whole(
+            ENGINE,
+            trashed,
+            DomainAction(action_id="gain_five_reveal_solari", actor=0),
         )
     finished = ENGINE.apply(trashed, FINISH)
     assert [
@@ -633,7 +641,7 @@ def test_pointing_the_way_trashed_by_shrouded_counsel_no_longer_holds_the_end() 
     trash = _first(
         revealed, "trash_reveal_card", card_id=pointing, source="shrouded_counsel"
     )
-    trashed = ENGINE.apply(revealed, trash).state
+    trashed = apply_whole(ENGINE, revealed, trash).state
     assert pointing not in trashed.players[0].in_play
     ids = _ids(trashed)
     assert "gain_reveal_influence" not in ids
@@ -657,8 +665,10 @@ def test_a_calculus_of_power_its_twin_trashed_cannot_trash_back() -> None:
     trashes = [a for a in _legal(revealed) if a.action_id == "trash_reveal_card"]
     assert {dict(a.arguments)["card_id"] for a in trashes} == {first, second}
     strength = revealed.players[0].combat_strength
-    trashed = ENGINE.apply(
-        revealed, _first(revealed, "trash_reveal_card", card_id=second)
+    trashed = apply_whole(
+        ENGINE,
+        revealed,
+        _first(revealed, "trash_reveal_card", card_id=second),
     ).state
     assert trashed.players[0].combat_strength == strength + 3
     # The first copy's entry is used up; the second copy's is the trashed
@@ -697,7 +707,7 @@ def test_an_empty_supply_keeps_its_refusal_and_a_recall_commits_the_placement() 
     assert "finish_reveal" not in ids
 
     recall = _first(revealed, "recall_spy_for_reveal_placement", post_id=posts[0])
-    committed = ENGINE.apply(revealed, recall).state
+    committed = apply_whole(ENGINE, revealed, recall).state
     top = committed.decision_stack[-1]
     assert top.kind == FrameKind.REVEAL_CHOICE
     legal = _legal(committed)
@@ -709,7 +719,7 @@ def test_an_empty_supply_keeps_its_refusal_and_a_recall_commits_the_placement() 
 
     decline = _first(revealed, "decline_reveal_spy_recall")
     assert dict(decline.arguments)[SOURCE_ARGUMENT] == "wheels_within_wheels"
-    passed = ENGINE.apply(revealed, decline)
+    passed = apply_whole(ENGINE, revealed, decline)
     assert passed.state.decision_stack[-1].kind == FrameKind.REVEAL
     assert [e.kind for e in passed.events] == ["reveal_spy_recall_declined"]
     assert "finish_reveal" in _ids(passed.state)
@@ -719,13 +729,13 @@ def test_covert_operations_second_spy_is_a_pending_row_again() -> None:
     covert = _card("covert_operation")
     revealed = _reveal(_state(PlayerState(player_id=0, hand=(covert,))))
     first = _first(revealed, "place_reveal_spy", post_id=POSTS[0])
-    placed = ENGINE.apply(revealed, first).state
+    placed = apply_whole(ENGINE, revealed, first).state
     assert placed.decision_stack[-1].kind == FrameKind.REVEAL
     assert _pending(placed) == ((covert, "place_spy"),)
     assert "finish_reveal" not in _ids(placed)
     second = _first(placed, "place_reveal_spy", post_id=POSTS[1])
     assert dict(second.arguments)[SOURCE_ARGUMENT] == "covert_operation"
-    done = ENGINE.apply(placed, second).state
+    done = apply_whole(ENGINE, placed, second).state
     assert done.players[0].spy_post_ids == POSTS[:2]
     assert "finish_reveal" in _ids(done)
 
@@ -762,7 +772,7 @@ def test_an_acquisitions_spy_frame_stacks_on_top_of_its_choice() -> None:
     revealed = _reveal(state)
     acquire = _first(revealed, "command_acquire_row_card", instance_id=fleet)
     assert "decline_command_acquisition" not in _ids(revealed)
-    acquired = ENGINE.apply(revealed, acquire).state
+    acquired = apply_whole(ENGINE, revealed, acquire).state
     assert acquired.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
     assert {a.action_id for a in _legal(acquired)} == {"place_acquisition_spy"}
     assert miracle not in acquired.players[0].in_play

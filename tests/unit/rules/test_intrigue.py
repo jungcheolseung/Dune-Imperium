@@ -3163,6 +3163,13 @@ def _revealed_with_persuasion(
     )
 
 
+def _kinds(result: Transition) -> list[str]:
+    """The kinds of the events of ``result``, without the seat-only
+    ``effect_picked`` events of a bought card's pick steps (stage B3b-2)."""
+
+    return [event.kind for event in result.events if event.kind != "effect_picked"]
+
+
 def _assert_call_to_arms_fired_last(
     result: Transition, call: str, source: str, garrison: int
 ) -> None:
@@ -3196,7 +3203,8 @@ def test_call_to_arms_waits_for_the_acquired_card_s_spy_post() -> None:
     garrison = revealed.players[0].troops_garrison
     engine = UprisingRulesEngine()
 
-    bought = apply_whole(engine, 
+    bought = apply_whole(
+        engine,
         revealed,
         DomainAction(
             action_id="acquire_imperium",
@@ -3204,7 +3212,7 @@ def test_call_to_arms_waits_for_the_acquired_card_s_spy_post() -> None:
             arguments=(("instance_id", spy_network),),
         ),
     )
-    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert _kinds(bought) == ["card_acquired"]
     assert bought.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
     assert bought.state.players[0].troops_garrison == garrison
 
@@ -3229,7 +3237,8 @@ def test_call_to_arms_waits_for_a_set_aside_card_s_spy_post() -> None:
     garrison = revealed.players[0].troops_garrison
     engine = UprisingRulesEngine()
 
-    bought = apply_whole(engine, 
+    bought = apply_whole(
+        engine,
         revealed,
         DomainAction(
             action_id="acquire_manipulated_imperium",
@@ -3237,7 +3246,7 @@ def test_call_to_arms_waits_for_a_set_aside_card_s_spy_post() -> None:
             arguments=(("instance_id", spy_network),),
         ),
     )
-    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert _kinds(bought) == ["card_acquired"]
     assert bought.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
 
     placed = apply_whole(engine, bought.state, engine.whole_actions(bought.state, 0)[0])
@@ -3346,7 +3355,8 @@ def test_call_to_arms_waits_for_the_acquired_card_s_contract_market() -> None:
     garrison = revealed.players[0].troops_garrison
     engine = UprisingRulesEngine()
 
-    bought = apply_whole(engine, 
+    bought = apply_whole(
+        engine,
         revealed,
         DomainAction(
             action_id="acquire_imperium",
@@ -3354,7 +3364,7 @@ def test_call_to_arms_waits_for_the_acquired_card_s_contract_market() -> None:
             arguments=(("instance_id", trade),),
         ),
     )
-    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert _kinds(bought) == ["card_acquired"]
     assert bought.state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
 
     taken = apply_whole(engine, bought.state, engine.whole_actions(bought.state, 0)[0])
@@ -3374,7 +3384,8 @@ def test_call_to_arms_fires_in_the_acquisition_when_no_frame_opens() -> None:
     revealed, trade = _choam_trade_state(call, ())
     engine = UprisingRulesEngine()
 
-    bought = apply_whole(engine, 
+    bought = apply_whole(
+        engine,
         revealed,
         DomainAction(
             action_id="acquire_imperium",
@@ -3382,7 +3393,7 @@ def test_call_to_arms_fires_in_the_acquisition_when_no_frame_opens() -> None:
             arguments=(("instance_id", trade),),
         ),
     )
-    assert [event.kind for event in bought.events] == [
+    assert _kinds(bought) == [
         "card_acquired",
         "contract_icons_converted_to_solari",
         "intrigue_triggered",

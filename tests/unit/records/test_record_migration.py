@@ -2335,22 +2335,28 @@ def test_a_reveal_choice_takes_the_card_the_recording_engine_had_on_top(
     record = migrate_record(replay)
 
     assert record.complete, record.divergence
+    # The Reveal frame takes a named whole action as its effect steps (stage
+    # B3b-2): the step that ends it keeps the naming bridge and its whole.
+    def named(migrated: migration.MigratedStep) -> DomainAction:
+        whole = migrated.whole or migrated.step
+        assert isinstance(whole, DomainAction)
+        return whole
+
     by_order = {
-        migrated.recorded_index: dict(migrated.step.arguments)["source"]
+        migrated.recorded_index: dict(named(migrated).arguments)["source"]
         for migrated in record.steps
         if migrated.bridge == migration.REVEAL_SOURCE_BY_ORDER
-        and isinstance(migrated.step, DomainAction)
     }
     assert by_order == ordered
     for migrated in record.steps:
         if migrated.bridge in migration.REVEAL_SOURCE_NAMES:
-            assert isinstance(migrated.step, DomainAction)
+            whole = named(migrated)
             recorded = replay.steps[migrated.recorded_index or 0]
             assert isinstance(recorded, DomainAction)
-            source = dict(migrated.step.arguments).pop("source")
+            source = dict(whole.arguments).pop("source")
             assert source == migrated.reveal_source
             assert tuple(
-                item for item in migrated.step.arguments if item[0] != "source"
+                item for item in whole.arguments if item[0] != "source"
             ) == recorded.arguments
     # Stamped v147 the record claims this engine's flow: no v147 step runs.
     stamped = migrate_record(replace(replay, action_codec_version=147))
@@ -2966,10 +2972,11 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # migrating completely. (Codec v150, stage B1, makes every Agent turn two
     # steps, so this game's step numbers are later than they were -- 87, 821
     # and round starts 90 ... 794 -- and its moves are the same; stage B2's
-    # reward icon rows moved them again, from 95, 891 and 98 ... 862, and
-    # stage B3's effect rows again, from 102, 947 and 105 ... 918.)
+    # reward icon rows moved them again, from 95, 891 and 98 ... 862,
+    # stage B3's effect rows again, from 102, 947 and 105 ... 918, and stage
+    # B3b-2's Reveal effect rows again, from 104, 980 and 107 ... 949.)
     game = _this_engine_game(175)
-    play, rewards = 104, 980
+    play, rewards = 111, 1045
     assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -2982,7 +2989,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {107, 215, 327, 435, 570, 712, 839, 949} <= starts
+    assert {114, 230, 350, 464, 614, 763, 898, 1014} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3006,7 +3013,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 980
+    rewards = 1045
     starts = {
         index
         for index, step in enumerate(game.steps)

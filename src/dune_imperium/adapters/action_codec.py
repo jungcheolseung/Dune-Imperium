@@ -1309,6 +1309,7 @@ def _effect_step_templates(
         spec = STEP_SPECS.get(template.action_id)
         if spec is None or (
             not isinstance(spec.printed, Printed)
+            and not spec.printed.startswith("=")
             and spec.printed not in dict(template.arguments)
         ):
             continue
@@ -1346,6 +1347,10 @@ def _effect_step_templates(
 # rules tell the leaders apart by id (``leader_abilities``).
 _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "advance_feyd_track": frozenset({"feyd_rautha_harkonnen"}),
+    # The Reveal leader abilities (``leader_abilities._leader_reveal_ability``).
+    "recall_spy_for_leader": frozenset({"feyd_rautha_harkonnen"}),
+    "retreat_leader_troop": frozenset({"lady_amber_metulli"}),
+    "retreat_leader_commander": frozenset({"lady_amber_metulli"}),
     "trash_leader_card": frozenset(
         {"feyd_rautha_harkonnen", "count_hasimir_fenring", "princess_irulan"}
     ),

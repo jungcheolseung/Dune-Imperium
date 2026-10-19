@@ -84,7 +84,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # deliberately (with FEATURE_VERSION when the reflection changes): an entity
 # checkpoint stores the digest and is refused under another one, so a card
 # data fix also retires every entity file written before it.
-_GOLDEN_DIGEST = "f93247c93139ea37cb27b9bae7c0e6ee249f74110f47f416f46c5a9a840c8384"
+# Stage B3b-2: a Commander's Skill prints the Reveal's Skill trash (the
+# ``printed`` hint reads the skill vocabulary too).
+_GOLDEN_DIGEST = "7890eef2a83c428b69bc7faaaf21345ac908a91b6fd3c73bea348e4047f0f521"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -262,20 +264,24 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "card_id": {"personal", "intrigue", "battle"},
         "instance_id": {"personal", "intrigue", "contract"},
         # Stage B3: an effect row's printed entity.
-        "printed": {"personal", "space", "leader", "tech", "contract"},
+        "printed": {"personal", "space", "leader", "tech", "contract", "skill"},
     }
     seen: dict[str, set[str | None]] = {}
+    labels: set[str] = set()
     for template in ActionCodec(_EVERY_OPTION).catalog:
         for key, value in template.arguments:
             if isinstance(value, str):
                 found = resolve_argument(template.action_id, key, value)
                 seen.setdefault(key, set()).add(None if found is None else found[0])
+                if key == "printed" and found is None:
+                    labels.add(value)
     for key, allowed in hinted.items():
         # Stage B3 shows the Agent boxes' Intrigue payments by their target
         # rows, so a catalog may hold no ``intrigue_card_id`` any more.
         assert seen.get(key, set()) - {None} <= allowed, key
-    # Every printed entity of an effect row is an entity (stage B3).
-    assert None not in seen["printed"]
+    # Every printed entity of an effect row is an entity (stage B3), but the
+    # Reveal's markets, which no card or space prints (stage B3b-2).
+    assert labels == {"imperium_row", "reserve", "set_aside", "tleilaxu_row"}
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]
     assert seen["subcommittee_id"] == {None}

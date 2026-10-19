@@ -15,7 +15,8 @@ card). This module shows a whole action to the outside as a *path* of steps:
   target -- ``choose_personal_card(card_id)``, ``choose_post(post_id)`` ...
   (B3-2 (가)). A quantity (a unit mix) rides on the path's last row.
 
-A frame that offers several effects at once (``EFFECT_STEP_FRAMES``) offers
+A frame that offers several effects at once (``EFFECT_STEP_FRAMES``: the
+Agent-turn effect frame since stage B3a, the Reveal frame since B3b-2) offers
 the effect rows; an effect without a target is resolved by its row, and one
 with targets keeps the rows picked so far in the frame's context
 (``EFFECT_PICK_KEY``) and offers only the next rows of its paths -- even when
@@ -53,6 +54,7 @@ class Choose(StrEnum):
     INTRIGUE_CARD = "intrigue_card"
     IMPERIUM_CARD = "imperium_card"
     RESERVE_CARD = "reserve_card"
+    TLEILAXU_CARD = "tleilaxu_card"
     POST = "post"
     SPACE = "space"
     TRACK_SPACE = "track_space"
@@ -75,6 +77,7 @@ CHOOSE_ARGUMENT: Final[Mapping[Choose, str]] = MappingProxyType({
     Choose.INTRIGUE_CARD: "card_id",
     Choose.IMPERIUM_CARD: "instance_id",
     Choose.RESERVE_CARD: "card_id",
+    Choose.TLEILAXU_CARD: "instance_id",
     Choose.POST: "post_id",
     Choose.SPACE: "space_id",
     Choose.TRACK_SPACE: "space_id",
@@ -108,14 +111,16 @@ class StepSpec:
     ``verb`` is the effect row's id, or a table from the icon to it when one
     whole id resolves icons of different kinds (``resolve_board_effect``;
     the key ``""`` is the verb when the whole action names no icon).
-    ``printed`` is a ``Printed`` rule or the whole action's argument that
-    names the entity. ``icon`` is a constant label, ``"arg:<name>"`` for an
-    argument, or ``""`` for none. ``option`` names one of a printed choice's
-    alternatives that share a verb (Sietch Tabr's water or supplies), as the
-    effect row's ``option``. ``targets`` are the whole action's target
-    arguments in the order they are picked, ``"=<value>"`` for a target the
-    whole action's id itself names (the Conflict of a recall); an argument
-    the whole action does not carry, or carries empty, is no step of it.
+    ``printed`` is a ``Printed`` rule, the whole action's argument that
+    names the entity, or ``"=<entity>"`` for the one entity that prints the
+    id (a single card's Reveal choice, a market). ``icon`` is a constant
+    label, ``"arg:<name>"`` for an argument, or ``""`` for none. ``option``
+    names one of a printed choice's alternatives that share a verb (Sietch
+    Tabr's water or supplies), as the effect row's ``option``. ``targets``
+    are the whole action's target arguments in the order they are picked,
+    ``"=<value>"`` for a target the whole action's id itself names (the
+    Conflict of a recall); an argument the whole action does not carry, or
+    carries empty, is no step of it.
     """
 
     verb: Verb | Mapping[str, Verb]
@@ -156,6 +161,8 @@ _IMPERIUM = (("instance_id", _C.IMPERIUM_CARD),)
 _RESERVE = (("card_id", _C.RESERVE_CARD),)
 _RECALLED = (("space_id", _C.SPACE),)
 _CONFLICT = (("=conflict", _C.SPACE),)
+# Who takes an Alliance token an Influence loss hands on, when several could.
+_RECIPIENT = ("alliance_recipient", _C.SEAT)
 
 # What a visited space's automatic icon does (``board_effects``' keys).
 _BOARD_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -429,37 +436,157 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         icon="arg:effect",
         targets=(("faction", _C.FACTION), ("choice", _C.OPTION)),
     ),
+    # --- The Reveal frame (stage B3b-2): a purchase, one effect per market --
+    "acquire_imperium": _spec(
+        _V.ACQUIRE, _S.PURCHASE, "=imperium_row", targets=_IMPERIUM
+    ),
+    "acquire_manipulated_imperium": _spec(
+        _V.ACQUIRE, _S.PURCHASE, "=set_aside", targets=_IMPERIUM
+    ),
+    "acquire_reserve": _spec(_V.ACQUIRE, _S.PURCHASE, "=reserve", targets=_RESERVE),
+    # The Tleilaxu Row and Reclaimed Forces beside it; ``to_deck_top`` rides
+    # on the card's row.
+    "acquire_tleilaxu": _spec(
+        _V.ACQUIRE,
+        _S.PURCHASE,
+        "=tleilaxu_row",
+        targets=(("instance_id", _C.TLEILAXU_CARD),),
+    ),
+    "acquire_reclaimed_forces": _spec(
+        _V.ACQUIRE, _S.PURCHASE, "=tleilaxu_row", targets=(("choice", _C.OPTION),)
+    ),
+    # --- A revealed card's choice: its card type by ``source``, or the one
+    # card that prints an unsourced id (``reveal_turn.SOURCED_REVEAL_ACTION_IDS``)
+    "place_reveal_spy": _spec(_V.PLACE_SPY, _S.REVEAL_CARD, "source", targets=_POST),
+    "recall_spy_for_reveal_placement": _spec(
+        _V.RECALL_SPY, _S.REVEAL_CARD, "source", targets=_POST
+    ),
+    "gain_two_reveal_strength": _spec(_V.GAIN, _S.REVEAL_CARD, "=undercover_asset"),
+    "recall_spy_for_reveal": _spec(
+        _V.RECALL_SPY, _S.REVEAL_CARD, "source", targets=_POST
+    ),
+    "recall_spies_for_reveal": _spec(
+        _V.RECALL_SPY,
+        _S.REVEAL_CARD,
+        "=in_high_places",
+        targets=(("first_post_id", _C.POST), ("second_post_id", _C.POST)),
+    ),
+    "trash_reveal_card": _spec(_V.TRASH, _S.REVEAL_CARD, "source", targets=_CARD),
+    "gain_reveal_influence": _spec(
+        _V.GAIN_INFLUENCE, _S.REVEAL_CARD, "source", targets=_FACTION
+    ),
+    "exchange_reveal_influence": _spec(
+        _V.EXCHANGE_INFLUENCE,
+        _S.REVEAL_CARD,
+        "=captured_mentat",
+        targets=(
+            ("lost_faction", _C.FACTION),
+            ("gained_faction", _C.FACTION),
+            _RECIPIENT,
+        ),
+    ),
+    "pay_reveal_spice_influence": _spec(
+        _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION
+    ),
+    "lose_reveal_influence_for_vp": _spec(
+        _V.LOSE_INFLUENCE,
+        _S.REVEAL_CARD,
+        "=for_humanity",
+        targets=(*_FACTION, _RECIPIENT),
+    ),
+    # A unit mix (``commanders``, ``zones``) rides on the effect's row.
+    "retreat_two_troops_for_reveal": _spec(_V.RETREAT, _S.REVEAL_CARD, "source"),
+    "deploy_reveal_card_troop": _spec(_V.DEPLOY, _S.REVEAL_CARD, "source"),
+    "retreat_reveal_card_troop": _spec(_V.RETREAT, _S.REVEAL_CARD, "source"),
+    "lose_reveal_troops_for_specimens": _spec(
+        _V.LOSE_UNIT, _S.REVEAL_CARD, "=tleilaxu_surgeon"
+    ),
+    "gain_five_reveal_solari": _spec(_V.GAIN, _S.REVEAL_CARD, "=corrinth_city"),
+    "take_high_council_from_reveal": _spec(
+        _V.TAKE, _S.REVEAL_CARD, "=corrinth_city"
+    ),
+    "gain_reveal_persuasion": _spec(_V.GAIN, _S.REVEAL_CARD, "=delivery_logistics"),
+    "take_reveal_contract": _spec(_V.TAKE, _S.REVEAL_CARD, "=delivery_logistics"),
+    "keep_contract_reveal_spice": _spec(_V.KEEP, _S.REVEAL_CARD, "source"),
+    "trash_contract_reveal_for_vp": _spec(_V.TRASH, _S.REVEAL_CARD, "source"),
+    "pay_reveal_water_for_sandworm": _spec(_V.PAY, _S.REVEAL_CARD, "=desert_power"),
+    "command_acquire_row_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=engineered_miracle", targets=_IMPERIUM
+    ),
+    # --- The leader, a Commander's Skill and Tech tiles in the Reveal ------
+    "retreat_leader_troop": _spec(_V.RETREAT, _S.LEADER, _LEADER, option="troop"),
+    "retreat_leader_commander": _spec(
+        _V.RETREAT, _S.LEADER, _LEADER, option="commander"
+    ),
+    "recall_spy_for_leader": _spec(_V.RECALL_SPY, _S.LEADER, _LEADER, targets=_POST),
+    "trash_skill_for_strength": _spec(_V.TRASH, _S.COMMANDER, "skill_id"),
+    # Forbidden Weapons: three swords for an Influence, or the tile trashed.
+    "choose_tech_strength": _spec(
+        _V.CHOOSE,
+        _S.TECH,
+        "=forbidden_weapons",
+        option="strength",
+        targets=(*_FACTION, _RECIPIENT),
+    ),
+    "choose_tech_trash": _spec(
+        _V.CHOOSE, _S.TECH, "=forbidden_weapons", option="trash"
+    ),
+    "place_tech_spy": _spec(_V.PLACE_SPY, _S.TECH, "=panopticon"),
 })
 
 # The frames whose waiting effects are offered effect first (module doc).
-EFFECT_STEP_FRAMES: Final = frozenset({FrameKind.AGENT_EFFECTS})
+EFFECT_STEP_FRAMES: Final = frozenset({FrameKind.AGENT_EFFECTS, FrameKind.REVEAL})
 # Whole ids of ``STEP_SPECS`` a frame outside ``EFFECT_STEP_FRAMES`` still
-# offers as they are (the Tech rows of the turn and the Reveal, the Tech
-# acquisition window, Servo-Receivers' Signet frame); every other whole id
-# of the table is offered only as steps, so the action catalog drops it.
+# offers as they are (the Tech rows of the turn, the Tech acquisition
+# window, Servo-Receivers' Signet frame, a Contract's reward window, a
+# revealed card's own choice frame -- stage B3d gives that one target rows);
+# every other whole id of the table is offered only as steps, so the action
+# catalog drops it.
 OFFERED_AS_WHOLE: Final = frozenset({
     "acquire_leader_imperium",
     "acquire_leader_reserve",
     "acquire_tech",
     "advance_feyd_track",
     "choose_leader_signet_influence",
+    "command_acquire_row_card",
     "deploy_leader_agent",
+    "deploy_reveal_card_troop",
+    "exchange_reveal_influence",
     "flip_tech",
+    "gain_five_reveal_solari",
     "gain_leader_signet_spice",
     "gain_leader_signet_troop",
+    "gain_reveal_influence",
+    "gain_reveal_persuasion",
+    "gain_two_reveal_strength",
+    "keep_contract_reveal_spice",
+    "lose_reveal_influence_for_vp",
+    "lose_reveal_troops_for_specimens",
     "pay_leader_signet_solari",
     "pay_leader_signet_spice",
     "pay_leader_signet_water",
+    "pay_reveal_spice_influence",
+    "pay_reveal_water_for_sandworm",
     "place_leader_bonus_spice",
     "place_leader_spy",
+    "place_reveal_spy",
+    "recall_spies_for_reveal",
     "recall_spy_for_leader_placement",
+    "recall_spy_for_reveal",
+    "recall_spy_for_reveal_placement",
     "resolve_agent_card_effect",
     "resolve_contract_reward_icon",
     "resolve_tech_acquire_effect",
     "retreat_leader_troops",
+    "retreat_reveal_card_troop",
+    "retreat_two_troops_for_reveal",
+    "take_high_council_from_reveal",
     "take_leader_bonus_spice",
+    "take_reveal_contract",
+    "trash_contract_reveal_for_vp",
     "trash_leader_card",
     "trash_leader_tech",
+    "trash_reveal_card",
 })
 
 
@@ -539,7 +666,11 @@ def steps_for(
     arguments = dict(whole.arguments)
     box = arguments.pop("box", 0)
     if not isinstance(spec.printed, Printed):
-        printed = arguments.pop(spec.printed)
+        printed = (
+            spec.printed.removeprefix(_FIXED)
+            if spec.printed.startswith(_FIXED)
+            else arguments.pop(spec.printed)
+        )
     if printed is None:
         raise ValueError(f"{whole} needs its printed entity")
     icon: ActionValue | None = None

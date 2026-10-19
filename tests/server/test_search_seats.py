@@ -935,8 +935,10 @@ def test_a_search_seat_restores_without_searching_again(
     # untrained network sized by the action codec, whose rows changed with
     # the effect and target steps, so the seeds play out differently now.
     # Seed 34 left the seat only 5 steps in these 30 presses (it needs more
-    # than 10, then more than 5 in the next 30); seed 39 gives 26 and 31.
-    original = _advance(manager, manager.create_game(seats, game_seed=39), 30)
+    # than 10, then more than 5 in the next 30); seed 39 gave 26 and 31.
+    # Stage B3b-2 (the Reveal frame's effects come effect first) changes the
+    # codec's rows again and seed 39 gives 10 and 8; seed 40 gives 16 and 16.
+    original = _advance(manager, manager.create_game(seats, game_seed=40), 30)
     game_id = _text(original["game_id"])
     session = manager._sessions[game_id]
     assert _seat_steps(session.steps, {1}) > 10
