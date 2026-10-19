@@ -97,6 +97,7 @@ __all__ = [
     "legal_specimen_return_actions",
     "move_research_token",
     "research_bonus_block",
+    "research_icon_spaces",
     "spend_specimens",
 ]
 
@@ -569,6 +570,22 @@ RESEARCH_ICON_ORDER: Final = (
     ICON_INTRIGUE,
     ICON_CARD,
 )
+
+
+def research_icon_spaces(icon: str) -> tuple[str, ...]:
+    """The research spaces whose pair waits ``icon`` on its owner's turn
+    as a row (``turn_rows.RESEARCH_ICON``, ``_resolve_research_bonus``): a
+    pair's optional trash is its own row there and c7r3's rewards are owed
+    draws, so they wait as no research icon (stage B3c-2a)."""
+
+    return tuple(
+        space.space_id
+        for space in RESEARCH_SPACES_BY_ID.values()
+        if space.bonus
+        in (ResearchBonus.TRASH_AND_SPECIMEN, ResearchBonus.TLEILAXU_AND_SPECIMEN)
+        and icon != ICON_TRASH
+        and icon in _PAIRED_ICONS[space.bonus]
+    )
 _ICONS_KEY: Final = "research_icons"
 OWED_ORIGIN_RESEARCH: Final = "research_c7r3"
 """The owed draws of c7r3's rewards in the owner's turn (OQ-106)."""

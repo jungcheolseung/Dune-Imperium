@@ -679,6 +679,25 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   (되돌리기 3, 턴 종료 7·3, 탐색 좌석 기존 그대로, `log_words` 283 · Scouts 2와 209); E2E 다시보기 이동(`deck_piles`)과 `unavailable`의
   내장 조각을 효과 단계에 맞춤.
 
+### B3c-2a 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **표:** 설계대로 `choose_research_influence` → `gain_influence(source=research, printed=c6r6)` → `choose_faction`,
+  `trash_intrigue_for_research_bonus` → `trash(source=research, printed=c7r3)` → `choose_intrigue_card`, `pay_research_bonus` →
+  `pay(source=research, printed=c8r6)`, `resolve_research_icon(effect)` → `generate_specimens`/`advance`(`icon`=아이콘; 새 규칙
+  `Printed.RESEARCH_SPACE` — 연구 창이면 창의 칸, 차례 frame이면 그 아이콘을 기다리는 가장 새 항목의 칸, `apply_research_icon`이 집는
+  그것), `draw_planetologist_intrigue` → `draw(source=leader, printed=liet_kynes, icon=intrigue)`. 다섯 id 모두 창(`research_bonus`,
+  `optional_trash`)이 온 행동으로도 내므로 `OFFERED_AS_WHOLE`에 남는다. 차례에서 연구 아이콘 행이 될 수 있는 칸은
+  `immortality.research_icon_spaces`(표본 c3r3·c3r5·c7r5, 틀레이락스 c3r5 — 쌍의 선택 폐기는 자기 행, c7r3의 보상은 빚진 뽑기).
+- **기보:** 주인의 차례가 위에 올 때까지 붙잡아 둔 옛 창의 걸음(`turn_row_held`)이 그 차례 frame에서 효과 먼저로 나오면 그 걸음들로
+  옮긴다 — 고르기는 `effect_step`, 마지막 걸음은 `turn_row_held`로 붙잡힌 온 행동을 끝낸다(`MigratedStep.whole`). 문제집 도구는
+  `effect_last_step` 대신 "온 행동을 끝내는 걸음"(`whole`이 있는 걸음)을 읽는다.
+- **codec:** 기본 그대로 2,938행(이 행들은 Immortality에만), Immortality 5,088 → 5,095(`generate_specimens` 셋,
+  `advance`·`gain_influence`·`trash`·`pay` 하나씩), 옵션 전부 9,475 → 9,482. Planetologist의 `draw` 행은 Signet 상자 줄과 같은 행이라
+  이미 있었다. `action_shapes`: 효과 줄 동사 `generate_specimens`. 엔티티 망: `printed`가 연구 칸도 읽는다(특징 digest 다시 고정).
+- **측정:** 같음 확인 200판 같음; 기보 2,000판 같음 1,568 · 일시 차이 431 · 갈림 1(그대로); 휴리스틱 20판·앱 AI 10판이 이전 커밋과
+  최종 상태·사건이 같음(고르기 걸음만 늘어남); 소크 900판 실패 0; 문제집 tips-v1 다시 채굴(휴리스틱 82곳 같은 국면 — 24곳은 앞선
+  고르기 걸음만큼 선택 기록이 길어짐, 체크포인트 망 몫 19 → 23곳, 모두 105곳).
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로

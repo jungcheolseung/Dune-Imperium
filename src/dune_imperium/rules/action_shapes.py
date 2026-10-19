@@ -817,6 +817,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             # Stage B3c-1: playing a card, the Endgame wild match.
             _V.PLAY,
             _V.MATCH,
+            # Stage B3c-2a: a research space's specimen icon.
+            _V.GENERATE_SPECIMENS,
         )
     },
     # A target row picks one target of the effect its seat picked.

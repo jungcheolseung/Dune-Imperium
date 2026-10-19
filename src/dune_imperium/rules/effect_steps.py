@@ -42,6 +42,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import EFFECT_PICK_KEY, agent_box_cards
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import Source, Verb
 from dune_imperium.rules.frames import FrameKind, replace_top_frame, with_context
 
@@ -110,6 +111,10 @@ class Printed(StrEnum):
     # The Intrigue window the frame opens: ``plot`` on the seat's turn
     # frames, ``combat``, ``endgame`` (``intrigue.intrigue_window``).
     INTRIGUE_WINDOW = "intrigue_window"
+    # The research space whose icon waits (stage B3c-2a): a research
+    # window's own space, or on the turn frame the newest waiting icon of
+    # the whole action's kind -- the one ``apply_research_icon`` takes.
+    RESEARCH_SPACE = "research_space"
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +203,14 @@ AGENT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "trash_self": _V.TRASH,
     "troops": _V.RECRUIT,
     "water": _V.GAIN,
+})
+# What a research space's icon does (``immortality.RESEARCH_ICON_ORDER``).
+_RESEARCH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
+    "cards": _V.DRAW,
+    "intrigue": _V.DRAW,
+    "specimen": _V.GENERATE_SPECIMENS,
+    "tleilaxu": _V.ADVANCE,
+    "trash": _V.TRASH,
 })
 # What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
 _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -568,6 +581,27 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
             ("wild_card_id", _C.CONFLICT_CARD),
         ),
     ),
+    # --- The turn frame's research and Planetologist rows (stage B3c-2a) ---
+    # Each research bonus is printed on one research space alone.
+    "choose_research_influence": _spec(
+        _V.GAIN_INFLUENCE, _S.RESEARCH, "=c6r6", targets=_FACTION
+    ),
+    "trash_intrigue_for_research_bonus": _spec(
+        _V.TRASH,
+        _S.RESEARCH,
+        "=c7r3",
+        targets=(("card_id", _C.INTRIGUE_CARD),),
+    ),
+    "pay_research_bonus": _spec(_V.PAY, _S.RESEARCH, "=c8r6"),
+    # One icon of a research space's pair; two spaces waiting the same icon
+    # resolve alike, so one row (decision 3), the newest first as before.
+    "resolve_research_icon": _spec(
+        _RESEARCH_ICON_VERBS, _S.RESEARCH, Printed.RESEARCH_SPACE, icon="arg:effect"
+    ),
+    # Arrakis Planetologist's Intrigue card for a replaced sandworm.
+    "draw_planetologist_intrigue": _spec(
+        _V.DRAW, _S.LEADER, _LEADER, icon="intrigue"
+    ),
 })
 
 # The frames whose waiting effects are offered effect first (module doc).
@@ -582,18 +616,21 @@ EFFECT_STEP_FRAMES: Final = frozenset({
 })
 # Whole ids of ``STEP_SPECS`` a frame outside ``EFFECT_STEP_FRAMES`` still
 # offers as they are (the Tech acquisition window, Servo-Receivers' Signet
-# frame, a Contract's reward window, a revealed card's own choice frame --
-# stage B3d gives those target rows); every other whole id of the table is
-# offered only as steps, so the action catalog drops it.
+# frame, a Contract's reward window, a revealed card's own choice frame, a
+# research window outside the turn, the Planetologist's window -- stage B3d
+# gives those target rows); every other whole id of the table is offered
+# only as steps, so the action catalog drops it.
 OFFERED_AS_WHOLE: Final = frozenset({
     "acquire_leader_imperium",
     "acquire_leader_reserve",
     "acquire_tech",
     "advance_feyd_track",
     "choose_leader_signet_influence",
+    "choose_research_influence",
     "command_acquire_row_card",
     "deploy_leader_agent",
     "deploy_reveal_card_troop",
+    "draw_planetologist_intrigue",
     "exchange_reveal_influence",
     "gain_five_reveal_solari",
     "gain_leader_signet_spice",
@@ -607,6 +644,7 @@ OFFERED_AS_WHOLE: Final = frozenset({
     "pay_leader_signet_solari",
     "pay_leader_signet_spice",
     "pay_leader_signet_water",
+    "pay_research_bonus",
     "pay_reveal_spice_influence",
     "pay_reveal_water_for_sandworm",
     "place_leader_bonus_spice",
@@ -618,6 +656,7 @@ OFFERED_AS_WHOLE: Final = frozenset({
     "recall_spy_for_reveal_placement",
     "resolve_agent_card_effect",
     "resolve_contract_reward_icon",
+    "resolve_research_icon",
     "resolve_tech_acquire_effect",
     "retreat_leader_troops",
     "retreat_reveal_card_troop",
@@ -626,6 +665,7 @@ OFFERED_AS_WHOLE: Final = frozenset({
     "take_leader_bonus_spice",
     "take_reveal_contract",
     "trash_contract_reveal_for_vp",
+    "trash_intrigue_for_research_bonus",
     "trash_leader_card",
     "trash_leader_tech",
     "trash_reveal_card",
@@ -671,7 +711,32 @@ def printed_from_state(
         if window is None:
             raise ValueError(f"{whole} has no Intrigue window")
         return spec.source, window
+    if rule == Printed.RESEARCH_SPACE:
+        return spec.source, _research_space(state, whole)
     return spec.source, _leader_face(state, whole)
+
+
+def _research_space(state: GameState, whole: DomainAction) -> str:
+    """The research space whose waiting icon ``whole`` resolves
+    (``Printed.RESEARCH_SPACE``): its source ends ``:research:<space>``."""
+
+    frame = state.decision_stack[-1]
+    source: object = None
+    if frame.kind == FrameKind.RESEARCH_BONUS:
+        source = dict(frame.context).get("source")
+    else:
+        icon = dict(whole.arguments).get("effect")
+        source = next(
+            (
+                item[1]
+                for item in reversed(turn_rows.pending(frame))
+                if item[0] == turn_rows.RESEARCH_ICON and item[2] == icon
+            ),
+            None,
+        )
+    if not isinstance(source, str) or ":research:" not in source:
+        raise ValueError(f"{whole} has no waiting research icon")
+    return source.rsplit(":", 1)[1]
 
 
 # The Intrigue window each frame that offers a play opens (``intrigue_window``).

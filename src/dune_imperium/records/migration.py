@@ -365,16 +365,36 @@ def migrate_record(
     def apply_waiting(at: GameState) -> GameState | None:
         """Apply the held steps this engine now offers, oldest first, each
         with what the ``follows`` bridges add after it; None when those do
-        not settle."""
+        not settle. Where the turn frame offers the held whole action effect
+        first (stage B3), it is taken as its steps: the picks as
+        ``effect_step``, the last one held, ending the whole action."""
 
         while waiting_steps:
             held_index, held_step = waiting_steps[0]
+            whole: DomainAction | None = None
+            last = held_step
+            picks: list[MigratedStep] = []
+            stepped = at
+            if (
+                presents_steps(at)
+                and held_step not in engine.legal_actions(at, held_step.actor)
+                and held_step in engine.whole_actions(at, held_step.actor)
+            ):
+                whole = held_step
+                while steps_after(stepped, held_step) > 0:
+                    row = first_step(stepped, held_step)
+                    stepped = engine.apply(stepped, row).state
+                    picks.append(MigratedStep(row, None, "effect_step"))
+                last = first_step(stepped, held_step)
             try:
-                after = engine.apply(at, held_step).state
+                after = engine.apply(stepped, last).state
             except IllegalActionError:
                 return at
             waiting_steps.pop(0)
-            migrated.append(MigratedStep(held_step, held_index, TURN_ROW_HELD))
+            migrated.extend(picks)
+            migrated.append(
+                MigratedStep(last, held_index, TURN_ROW_HELD, whole=whole)
+            )
             followed = _follow(engine, after, held_step, bridges, migrated)
             if followed is None:
                 return None
@@ -631,13 +651,13 @@ def migrate_record(
             )
             return ended(divergence, state)
     if waiting_steps:
-        first_index, first_step = waiting_steps[0]
+        first_index, first_held = waiting_steps[0]
         settled = apply_waiting(state)
         if settled is None or waiting_steps:
             return ended(
                 Divergence(
                     recorded_index=first_index,
-                    step=first_step,
+                    step=first_held,
                     reason="a held turn-row step was never offered",
                     pending=engine.current_decision(state),
                 ),

@@ -100,7 +100,7 @@ from dune_imperium.rules.effect_steps import (
     steps_for,
 )
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
-from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
+from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER, research_icon_spaces
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -1333,6 +1333,10 @@ def _effect_step_templates(
             named = tuple((None, space) for space in spaces)
         elif spec.printed == Printed.INTRIGUE_WINDOW:
             named = tuple((None, window) for window in INTRIGUE_WINDOWS)
+        elif spec.printed == Printed.RESEARCH_SPACE:
+            waiting = dict(template.arguments).get("effect")
+            assert isinstance(waiting, str)
+            named = tuple((None, space) for space in research_icon_spaces(waiting))
         elif spec.printed == Printed.LEADER:
             own = _LEADER_ROW_FACES.get(template.action_id)
             named = tuple(
@@ -1391,6 +1395,7 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
     "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
     "use_other_memories": frozenset({"lady_jessica"}),
+    "draw_planetologist_intrigue": frozenset({"liet_kynes"}),
     "pay_leader_board_repeat": frozenset({"reverend_mother_jessica"}),
 }
 # What an Agent box's record pieces let it offer beside its plain

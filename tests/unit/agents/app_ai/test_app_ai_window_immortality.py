@@ -519,7 +519,7 @@ def test_research_icon_now_takes_the_specimen_before_the_other_icons() -> None:
     assert research_icon_now(backwards) == first
     # The turn's waiting-row hook takes the same row first.
     assert waiting_turn_row(run) == first
-    taken = ENGINE.apply(pair, first).state
+    taken = apply_whole(ENGINE, pair, first).state
     second = research_icon_now(_run(taken))
     assert second is not None and _arg(second, "effect") == "tleilaxu"
 
@@ -679,7 +679,7 @@ def test_a_research_hex_trashes_its_owners_turn_rows() -> None:
         turn_rows.RESEARCH_ICON,
         turn_rows.OPTIONAL_TRASH,
     ]
-    ids = {a.action_id for a in ENGINE.legal_actions(reveal, seat)}
+    ids = {a.action_id for a in ENGINE.whole_actions(reveal, seat)}
     assert {"trash_optional_card", "resolve_research_icon"} <= ids
     assert "decline_optional_trash" not in ids
 

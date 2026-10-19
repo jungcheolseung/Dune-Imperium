@@ -123,10 +123,9 @@ _UNORDERED_ZONES: Final = frozenset(
 # (``records.migration``, codec v150).
 _CARD_PICK_BRIDGE: Final = "agent_card_pick"
 _SPACE_PICK_BRIDGE: Final = "agent_space_pick"
-# Stage B3: the steps the migration takes toward a recorded whole action,
-# and the recorded step as its last one (``records.migration``).
+# Stage B3: the steps the migration takes toward a recorded whole action;
+# the step that ends it names it (``MigratedStep.whole``).
 _EFFECT_STEP_BRIDGE: Final = "effect_step"
-_EFFECT_LAST_STEP_BRIDGE: Final = "effect_last_step"
 _PLACEMENT: Final = "agent_turn"
 _SPACE_PICK: Final = "place_agent"
 
@@ -479,7 +478,7 @@ def _judged_positions(
                 migrated.step, DomainAction
             ):
                 moves: tuple[DomainAction, ...] = (migrated.step,)
-                if migrated.bridge in (_SPACE_PICK_BRIDGE, _EFFECT_LAST_STEP_BRIDGE):
+                if migrated.bridge == _SPACE_PICK_BRIDGE or migrated.whole is not None:
                     recorded = game.parsed.replay.steps[migrated.recorded_index]
                     assert isinstance(recorded, DomainAction)
                     moves = (migrated.step, recorded)
@@ -598,9 +597,11 @@ def resolve(
                 picks = []
                 continue
             problem = wanted[migrated.recorded_index]
+            # A step that ends a recorded whole action: the last effect step,
+            # or a held turn-row step taken effect first (stage B3c-2a).
             effect_path = (
                 (*picks, (state, migrated.step))
-                if migrated.bridge == _EFFECT_LAST_STEP_BRIDGE
+                if migrated.whole is not None
                 and isinstance(migrated.step, DomainAction)
                 else ()
             )

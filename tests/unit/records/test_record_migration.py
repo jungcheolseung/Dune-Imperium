@@ -2594,6 +2594,11 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     rewards = next(a for a in legal if a.action_id == "resolve_intrigue_rewards")
     keep = next(a for a in legal if a.action_id == "keep_shield_wall")
     draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    draw_row = DomainAction(
+        "draw",
+        0,
+        (("icon", "intrigue"), ("printed", "liet_kynes"), ("source", "leader")),
+    )
     trash = DomainAction(
         action_id="trash_optional_card", actor=0, arguments=(("card_id", LIET_RECON),)
     )
@@ -2614,9 +2619,12 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
         (path[2], 0, migration.EFFECT_LAST_STEP),
         (rewards, 1, None),
         (keep, 4, None),
-        (draw, 2, migration.TURN_ROW_HELD),
+        (draw_row, 2, migration.TURN_ROW_HELD),
         (trash, 3, migration.TURN_ROW_HELD),
     ]
+    # The held draw is taken as its effect row (stage B3c-2a), which ends
+    # the recorded whole action.
+    assert record.steps[5].whole == draw
     assert record.state.players[0].trashed == (LIET_RECON,)
     assert len(record.state.players[0].intrigue_cards) == 1
 
@@ -2679,7 +2687,9 @@ def _answers(state: GameState, *, steps: int) -> list[ReplayStep | None]:
         answers.append(answer)
         if answer is None:
             break
-        state = ENGINE.apply(state, answer).state
+        # The bridge speaks whole actions; a turn frame offers the icon
+        # effect first (stage B3c-2a).
+        state = apply_whole(ENGINE, state, answer).state
     return answers
 
 
@@ -2723,7 +2733,9 @@ def test_c7r3_s_rewards_follow_as_its_owed_draws_or_its_window_rows() -> None:
     # OQ-027 [Main p. 9].
     pay = DomainAction("trash_intrigue_for_research_bonus", 0, (("card_id", _HELD),))
     # In the Agent turn: the Intrigue card, then the card, then nothing.
-    turn = ENGINE.apply(_agent_fork("c6r2", "c7r3", intrigue_cards=(_HELD,)), pay).state
+    turn = apply_whole(
+        ENGINE, _agent_fork("c6r2", "c7r3", intrigue_cards=(_HELD,)), pay
+    ).state
     assert _answers(turn, steps=3) == [_draw("intrigue"), _draw("card"), None]
     # Outside the turn: the window's two rows in the same order.
     fork = _on_another_turn("c6r2", intrigue_cards=(_HELD,))
@@ -2776,10 +2788,19 @@ def test_a_record_before_v149_gets_the_icons_right_after_the_moving_step() -> No
     )
 
     assert record.divergence is None
+    # The bridge's whole actions are taken as their effect rows (stage
+    # B3c-2a): each icon is printed on c3r5.
+    ref = (("printed", "c3r5"), ("source", "research"))
     assert [(m.step, m.bridge) for m in record.steps] == [
         (move, None),
-        (_icon_row("specimen"), "research_icon_order"),
-        (_icon_row("tleilaxu"), "research_icon_order"),
+        (
+            DomainAction("generate_specimens", 0, (("icon", "specimen"), *ref)),
+            "research_icon_order",
+        ),
+        (
+            DomainAction("advance", 0, (("icon", "tleilaxu"), *ref)),
+            "research_icon_order",
+        ),
         (_PRESS, None),
     ]
     owner = record.state.players[0]

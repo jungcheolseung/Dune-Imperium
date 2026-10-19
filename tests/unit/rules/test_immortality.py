@@ -11,6 +11,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import (
     RESEARCH_START_ID,
     TLEILAXU_TRACK_END,
@@ -164,7 +165,7 @@ def _offered_icons(state: GameState) -> set[str]:
 
     return {
         str(dict(action.arguments)["effect"])
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
         if action.action_id == "resolve_research_icon"
     }
 
@@ -172,7 +173,7 @@ def _offered_icons(state: GameState) -> set[str]:
 def _turn_end_offered(state: GameState) -> bool:
     return any(
         action.action_id == "finish_agent_turn"
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
     )
 
 
@@ -368,7 +369,7 @@ def test_trash_and_specimen_waits_on_the_turn_as_two_rows() -> None:
     # The specimen is mandatory, so it holds the end; taking it is its own
     # step and logs what the fixed-order step used to.
     assert turn_rows.holds_the_end(chosen.state, 0)
-    taken = UprisingRulesEngine().apply(chosen.state, _icon("specimen"))
+    taken = apply_whole(UprisingRulesEngine(), chosen.state, _icon("specimen"))
     assert taken.state.players[0].specimens == 1
     assert [(e.kind, dict(e.payload)) for e in taken.events] == [
         ("specimens_generated", {"count": 1, "player": 0})
@@ -393,7 +394,7 @@ def _waits_on_the_turn(state: GameState, bonus: ResearchBonus) -> None:
     assert [waiting for waiting, _source in pending_research_bonuses(state, 0)] == [
         bonus
     ]
-    legal = {a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)}
+    legal = {a.action_id for a in UprisingRulesEngine().whole_actions(state, 0)}
     assert "decline_research_bonus" not in legal
 
 
@@ -598,7 +599,7 @@ def test_specimen_and_tleilaxu_are_two_rows_taken_in_either_order(
 
     events: list[GameEvent] = []
     for position, icon in enumerate(order):
-        taken = engine.apply(state, _icon(icon))
+        taken = apply_whole(engine, state, _icon(icon))
         state = taken.state
         events.extend(taken.events)
         remaining = set(order[position + 1 :])
@@ -640,13 +641,13 @@ def test_specimen_and_trash_let_the_trash_come_first() -> None:
         (turn_rows.RESEARCH_ICON, "specimen"),
         (turn_rows.OPTIONAL_TRASH, ""),
     ]
-    offered = {a.action_id for a in engine.legal_actions(state, 0)}
+    offered = {a.action_id for a in engine.whole_actions(state, 0)}
     assert {"resolve_research_icon", "trash_optional_card"} <= offered
     assert "decline_optional_trash" not in offered
     assert not _turn_end_offered(state)
 
     card = legal_optional_trash_actions(state, 0)[0]
-    trashed = engine.apply(state, card).state
+    trashed = apply_whole(engine, state, card).state
     owner = trashed.players[0]
     assert owner.specimens == 0 and len(owner.trashed) == 1
     # The trash was taken before the specimen; the specimen still holds the end
@@ -656,11 +657,11 @@ def test_specimen_and_trash_let_the_trash_come_first() -> None:
     ]
     assert _offered_icons(trashed) == {"specimen"}
     assert not any(
-        a.action_id == "trash_optional_card" for a in engine.legal_actions(trashed, 0)
+        a.action_id == "trash_optional_card" for a in engine.whole_actions(trashed, 0)
     )
     assert turn_rows.holds_the_end(trashed, 0) and not _turn_end_offered(trashed)
 
-    done = engine.apply(trashed, _icon("specimen")).state
+    done = apply_whole(engine, trashed, _icon("specimen")).state
     assert done.players[0].specimens == 1
     assert _turn_end_offered(done)
 
@@ -674,7 +675,7 @@ def test_an_unused_trash_lapses_at_the_press_after_the_specimen() -> None:
     fork = _agent_research("c2r4")
     state = apply_research_advance(fork, _research_choices(fork)["c3r3"]).state
 
-    taken = engine.apply(state, _icon("specimen")).state
+    taken = apply_whole(engine, state, _icon("specimen")).state
     assert _turn_end_offered(taken)
     assert [kind for kind, _s, _v in turn_rows.pending(taken.decision_stack[-1])] == [
         turn_rows.OPTIONAL_TRASH
@@ -715,17 +716,20 @@ def test_c7r3_holds_its_card_and_intrigue_draws_in_either_order(
     )
     before = state.players[0]
 
-    paid = engine.apply(state, pay)
+    paid = apply_whole(engine, state, pay)
     state = paid.state
     owner = state.players[0]
-    assert [event.kind for event in paid.events] == ["intrigue_card_trashed"]
+    # The pick step's seat-only ``effect_picked`` (stage B3c-2a) left out.
+    assert [
+        event.kind for event in paid.events if event.kind != "effect_picked"
+    ] == ["intrigue_card_trashed"]
     assert turn_rows.pending(state.decision_stack[-1]) == ()
     assert [(deck, origin) for deck, origin, _s in owner.owed_draws] == [
         ("intrigue", "research_c7r3"),
         ("card", "research_c7r3"),
     ]
     assert owner.intrigue_cards == () and owner.hand == before.hand
-    assert {a.action_id for a in engine.legal_actions(state, 0)} >= {
+    assert {a.action_id for a in engine.whole_actions(state, 0)} >= {
         "draw_owed_intrigue",
         "draw_owed_card",
     }
@@ -759,7 +763,7 @@ def test_a_pair_outside_the_turn_opens_a_window_ordering_its_icons(
     assert state.players[0].specimens == 0 and state.players[0].tleilaxu_space == 0
     assert sorted(
         (a.action_id, dict(a.arguments)["effect"])
-        for a in UprisingRulesEngine().legal_actions(state, 0)
+        for a in UprisingRulesEngine().whole_actions(state, 0)
     ) == [
         ("resolve_research_icon", "specimen"),
         ("resolve_research_icon", "tleilaxu"),

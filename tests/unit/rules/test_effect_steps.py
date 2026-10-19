@@ -376,3 +376,173 @@ def test_agents_see_the_turn_frames_play_beside_its_placements_as_a_whole() -> N
     assert answer(whole) == DomainAction(
         "play", 0, (("printed", "plot"), ("source", "intrigue"))
     )
+
+
+def _research_turn(*items: tuple[str, str, str]) -> GameState:
+    """Seat 0's own turn frame with ``items`` waiting on it, oldest first."""
+
+    from tests.unit.rules.test_immortality import _owner, _turn_state
+
+    from dune_imperium.rules import turn_rows
+
+    state: GameState | None = _turn_state(_owner())
+    for item in items:
+        assert state is not None
+        state = turn_rows.queue(state, 0, item)
+    assert state is not None
+    return state
+
+
+def _space_source(space_id: str) -> str:
+    return f"round:1:player:0:agent:research:{space_id}"
+
+
+def _research_row(verb: str, space_id: str, **extra: str) -> DomainAction:
+    arguments = {"printed": space_id, "source": "research", **extra}
+    return DomainAction(verb, 0, tuple(sorted(arguments.items())))
+
+
+def test_a_research_icon_row_names_its_space_the_newest_first() -> None:
+    # Stage B3c-2a (docs/stage-b-plan.md "B3c-2 세부 설계"): a research
+    # pair's icon is printed on its research space. Two spaces waiting the
+    # same icon resolve alike, so one row names the newest, as
+    # ``apply_research_icon`` takes it (decision 3).
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.rules import turn_rows
+
+    icon = turn_rows.RESEARCH_ICON
+    state = _research_turn(
+        (icon, _space_source("c3r3"), "specimen"),
+        (icon, _space_source("c3r5"), "tleilaxu"),
+        (icon, _space_source("c7r5"), "specimen"),
+    )
+    specimen = DomainAction("resolve_research_icon", 0, (("effect", "specimen"),))
+    newest = _research_row("generate_specimens", "c7r5", icon="specimen")
+    advance = _research_row("advance", "c3r5", icon="tleilaxu")
+    assert path_of(state, specimen) == (newest,)
+    offered = ENGINE.legal_actions(state, 0)
+    assert {newest, advance} <= set(offered)
+    assert specimen not in offered and specimen in ENGINE.whole_actions(state, 0)
+    codec = ActionCodec(state.config)
+    older = _research_row("generate_specimens", "c3r3", icon="specimen")
+    for row in (newest, advance, older):
+        codec.encode(row)
+
+    taken = ENGINE.apply(state, newest)
+    assert taken.state == apply_whole(ENGINE, state, specimen).state
+    assert [event.event_id for event in taken.events] == [
+        "round:1:player:0:research:c7r5:specimens"
+    ]
+    # The older one is still waiting, named by its own space.
+    assert path_of(taken.state, specimen) == (older,)
+    assert older in ENGINE.legal_actions(taken.state, 0)
+
+
+@pytest.mark.parametrize(
+    ("bonus", "whole", "rows"),
+    [
+        pytest.param(
+            "influence_any",
+            DomainAction("choose_research_influence", 0, (("faction", "fremen"),)),
+            (
+                _research_row("gain_influence", "c6r6"),
+                DomainAction("choose_faction", 0, (("faction", "fremen"),)),
+            ),
+            id="c6r6",
+        ),
+        pytest.param(
+            "seven_solari_for_two_tleilaxu",
+            DomainAction("pay_research_bonus", 0),
+            (_research_row("pay", "c8r6"),),
+            id="c8r6",
+        ),
+    ],
+)
+def test_a_research_bonus_row_names_the_one_space_that_prints_it(
+    bonus: str, whole: DomainAction, rows: tuple[DomainAction, ...]
+) -> None:
+    # Stage B3c-2a: each research bonus is printed on one space alone.
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.rules import turn_rows
+
+    space = rows[0].arguments[0][1]
+    assert isinstance(space, str)
+    state = _research_turn(
+        (turn_rows.RESEARCH_BONUS, _space_source(space), bonus)
+    )
+    state = replace(
+        state,
+        players=(
+            replace(
+                state.players[0],
+                resources=replace(state.players[0].resources, solari=7),
+            ),
+            *state.players[1:],
+        ),
+    )
+    assert whole in ENGINE.whole_actions(state, 0)
+    assert path_of(state, whole) == rows
+    assert rows[0] in ENGINE.legal_actions(state, 0)
+    ActionCodec(state.config).encode(rows[0])
+    stepped = state
+    for row in rows:
+        stepped = ENGINE.apply(stepped, row).state
+    assert stepped == apply_whole(ENGINE, state, whole).state
+
+
+def test_c7r3s_trash_names_its_space_then_the_intrigue_card() -> None:
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.rules import turn_rows
+
+    state = _research_turn(
+        (
+            turn_rows.RESEARCH_BONUS,
+            _space_source("c7r3"),
+            "trash_intrigue_for_card_and_intrigue",
+        )
+    )
+    card = state.intrigue_deck[0]
+    state = replace(
+        state,
+        intrigue_deck=state.intrigue_deck[1:],
+        players=(
+            replace(state.players[0], intrigue_cards=(card,)),
+            *state.players[1:],
+        ),
+    )
+    whole = DomainAction(
+        "trash_intrigue_for_research_bonus", 0, (("card_id", card),)
+    )
+    trash = _research_row("trash", "c7r3")
+    assert path_of(state, whole) == (
+        trash,
+        DomainAction("choose_intrigue_card", 0, (("card_id", card),)),
+    )
+    ActionCodec(state.config).encode(trash)
+
+
+def test_the_planetologist_intrigue_row_names_the_leader() -> None:
+    # Stage B3c-2a: Arrakis Planetologist's Intrigue card is the leader's.
+    from tests.unit.rules.test_immortality import _owner, _turn_state
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.rules.planetologist import replace_sandworms
+
+    # Liet Kynes is a Bloodlines leader.
+    state = _turn_state(
+        _owner(leader_id="liet_kynes"),
+        config=RulesetConfig(immortality=True, bloodlines=True),
+    )
+    state = replace_sandworms(state, 0, 1, source="test").state
+    whole = DomainAction("draw_planetologist_intrigue", 0)
+    row = DomainAction(
+        "draw",
+        0,
+        (("icon", "intrigue"), ("printed", "liet_kynes"), ("source", "leader")),
+    )
+    assert path_of(state, whole) == (row,)
+    assert row in ENGINE.legal_actions(state, 0)
+    assert whole not in ENGINE.legal_actions(state, 0)
+    ActionCodec(state.config).encode(row)
+    assert ENGINE.apply(state, row).state == apply_whole(ENGINE, state, whole).state
