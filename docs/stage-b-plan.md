@@ -1,6 +1,6 @@
 # B단계 설계: 행동 이름·단위 교체
 
-상태: **B1·B2·B3a 구현, B3b부터 남음** (2026-10-20, 브랜치 `stage-b`, 미병합·미푸시). 사용자 결정: B단계를 측정 실험 없이 한다 — "구조 상 B단계도 해야한다고 봐"
+상태: **B1·B2·B3a·B3b-1 구현, B3b-2부터 남음** (2026-10-20, 브랜치 `stage-b`, 미병합·미푸시). 사용자 결정: B단계를 측정 실험 없이 한다 — "구조 상 B단계도 해야한다고 봐"
 ([composed-effects-plan.md](composed-effects-plan.md) 5절 "B단계"). 아래 1절의 숫자는 master `e7e9ad4f`(codec v149)에서 셌다.
 
 ## 0. 무엇을 바꾸나
@@ -536,6 +536,44 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   (연구 보너스·선택 폐기·트리거 뽑기·트랙 Spy·Commander 모집·소위원회, B3c), 병력 배치·책략·표본·Family Atomics·턴 종료. Reveal 선택이
   제 frame(`reveal_choice`, 회수 먼저 뒤에)에서 나오는 행은 B3d(한 효과의 frame은 대상 줄만)까지 그대로라, 그 id들은 codec에 옛
   template도 남긴다(`OFFERED_AS_WHOLE`).
+
+### B3b-1 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **엔진:** 계약을 완수하는 모든 자리(칸·카드 효과·획득·Immediate·책략 폐기 Immediate·동맹 계약)가 보상을 `_await_contract_reward`로
+  넘긴다 — 주인의 차례 frame이 열려 있고(Scouts 줄 안이 아니고) 판이 끝나지 않았으면 아이콘마다 차례 줄 `contract_icon`(값 =
+  `계약|아이콘`), 아니면 지금처럼 창. 줄은
+  `resolve_contract_reward_icon(contract_id, effect)`(창의 줄은 `effect`만)로 차례·Agent 효과·Reveal frame이 맨 위일 때 나오고,
+  Agent 효과 frame에선 효과 줄(`gain`·`recruit`·`place_spy`…, `source=contract`, `printed`=계약, `icon`=아이콘)이다. 모두 의무라
+  `turn_rows.holds_the_end`가 턴 종료를 막는다(서버의 턴 종료 거울도 같은 함수). 한 계약의 여러 아이콘·여러 계약의 아이콘·차례의 다른
+  효과가 어느 순서로든 섞인다. 사건 id(`<출처>:reward_icon:<남은 수>`)와 지급 함수(`_pay_contract_icon`)는 창과 같다.
+  **Agent 소환 아이콘의 제외는 줄을 받을 때 판단한다**("not the Agent you sent during this turn" `[Main p. 20]`, OQ-068): 줄 사이에
+  Into the Fray가 그 차례의 Agent를 Conflict로 옮길 수 있고, 차례 frame(Agent를 보내기 전)에서 완수한 줄은 Agent 효과 frame으로
+  넘어가므로(`turn_rows.carried`) 완수 때 고정하면 방금 보낸 Agent를 데려올 수 있다(`_turn_agent_exclusion`, 회귀 테스트
+  `test_graft.py::test_a_contract_recall_row_taken_after_into_the_fray_still_excludes_it`). 맨 차례 frame에서 완수한 줄은 Agent
+  카드 고르기·Reveal과 함께 나오고 그 frame으로 넘어간다(연구 보너스 줄과 같다). 턴 종료 누름의 지불이 계약을 완수하면 줄이
+  남으므로 누름이 바로 차례를 다시 연다(빚진 뽑기와 같다; 예전엔 창의 병력 줄 뒤에 다시 열렸다).
+- **창을 위로 옮기던 우회 정리:** Agent 차례의 Solari 구매(`_acquire_*_to_hand_with_solari`)가 창을 떼었다 다시 얹던
+  `_lift_contract_windows`는 차례 안이라 창이 생기지 않으므로 "창이 없음"을 확인하는 `_contract_rows_only`로 바꿨다.
+  `advance_after_effect`는 frame에 지금 쌓인 차례 줄(`PENDING_KEY`)을 지킨다 — 효과가 해결되는 동안 완수된 계약의 줄을, 그 전에 읽은
+  context가 덮어쓰지 않게(Solari 구매·CHOAM Demands 길). 황제 트랙 Spy·Friends Everywhere가 창 밑에서 기다리던 예외는 차례 밖 창에
+  그대로 쓰인다(차례 안에선 창이 없다). **Scouts 줄은 맨 위가 아니어도 줄이다**(`turn_rows.waits_on_turn`): 차례 frame 위 어디에든
+  Scouts frame이 있으면 창 — CHOAM Management의 두 장 받는 시장처럼 줄이 연 frame이 맨 위일 때 Immediate 타일의 보상이 고르는
+  순서에 따라 줄·창으로 갈리던 것(독립 리뷰가 찾음)을 고쳤고, 정리-2b의 연구·폐기 줄도 같은 판정을 쓴다("turn 안의 Scouts
+  줄"에서는 창, OQ-095 (2)).
+- **다른 frame이 위에 있을 때:** 완수가 주인의 다른 frame 위에서 일어나면(획득 Spy 칸, Research 방향, 두 장 받는 계약 시장, 책략의
+  선택) 줄은 그 frame이 닫힌 뒤 나온다 — 옛 엔진은 창을 그 위에 얹어 먼저 받게 했다. 정해진 차이다.
+- **AI·기보·같음 확인:** `agents.engine_order`가 차례 줄의 계약 아이콘도 옛 순서로 답한다(`legacy_contract_icon_row`: 가장 먼저 완수한
+  계약, 그 안은 창의 옛 순서; 효과 단계 frame이면 그 줄로). 옛 기록은 B2 다리(`combat_reward_icon`, `_follow`)가 줄을 같은 순서로
+  받고, 새 다리 `contract_frame_first`(codec v150 이전)가 위 frame의 다음 고르기를 먼저 가져온다(옛 기록은 그 사이에 보상의
+  섞기를 적었다). 같음 확인 `combat_reward_icons` 규칙의 답도 `engine_order_answer`로.
+- **행동 모양:** `resolve_contract_reward_icon`에 tag `contract_id`(`Tag.CONTRACT`: 여러 계약의 아이콘 중 어느 것). codec은 계약 ×
+  아이콘마다 온 template과 그 효과 줄(CHOAM 23 + 23, Bloodlines까지 37 + 37).
+- **측정:** 같음 확인 200판 같음(같음 확인 도구가 CHOAM Transports 카드 뒤의 기회 걸음을 효과 단계 규칙에 넘기던 것 고침); 기보 2,000판
+  같음 1,568 · 일시 차이 431 · 갈림 1(B2·B3a의 그 하나; 두 장 받는 시장 사이의 Immediate 1판은 새 다리로 일시 차이; Scouts 줄
+  판정을 고친 뒤 8판이 일시 차이에서 같음으로); 휴리스틱
+  30판·앱 AI 15판이 이전 커밋과 최종 상태·사건 종류·수 개수까지 같음; 계약 완수 1,425번(무작위 250판·휴리스틱 120판)의 아이콘이
+  모두 지급(차례 줄로 1,354번, 창으로 71번); 관측 고정 digest 셋(choam·everything·scouts)은 첫 차례 안 완수 바로 다음 결정에서만
+  갈려 다시 고정; 문제집 tips-v1 90곳 다시 채굴(같은 국면·지문, 선택 번호만 바뀜).
 
 ## 4. 위험
 

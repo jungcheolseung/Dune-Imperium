@@ -1852,12 +1852,20 @@
   4. **차례 안에서 완수한 계약의 보상은 차례의 줄이다**(2026-10-19 사용자 결정 "그래 모두 추천대로 가자", B3-4): 소유자 자신의
      Agent·Reveal 차례에 완수한 계약의 보상 아이콘은 Agent 칸 아이콘처럼 그 차례의 다른 효과와 함께 줄로 나오고, 다 받기 전에는 턴
      종료가 나오지 않는다 — 차례 안의 효과는 차례의 줄이라는 원칙(OQ-095 (2), 정리-2b)과 같다. 차례 밖(Conflict 보상 도중의 동맹 계약,
-     Scouts 단계 등)은 완수한 자리의 창 그대로다. B2는 차례 안에서도 창으로 두었다(B3에서 바꾼다).
+     Scouts 단계 등)은 완수한 자리의 창 그대로다. B2는 차례 안에서도 창으로 두었고, B3b-1이 바꿨다(아래 구현).
   - 수령자 사이 순서(OQ-102), 같은 순위 안의 순서(OQ-002), sandworm 두 배(조각마다 두 몫 `[Main p. 14]`), 지배·전투 아이콘은 두 배가
     아님 `[Main p. 14]`은 그대로다.
 - 구현(B2, 브랜치 `stage-b`, codec v150): Conflict 수령자마다 창 `combat_reward_icons`, 완수한 계약마다 창
   `contract_reward_icons`; 줄은 기록 조각 하나씩, 고를 것 있는 줄은 예전 선택 창을 연다(`rules/combat.py`, `rules/contracts.py`;
   자세히는 [stage-b-plan.md](../stage-b-plan.md) "B2 구현"). AI 좌석과 옛 기보는 옛 고정 순서로 답한다(`agents/engine_order.py`).
+- 구현(B3b-1, 같은 브랜치, codec v150): 판정 4 — 주인의 차례 frame이 열려 있을 때 완수한 계약은 아이콘마다 차례 줄 `contract_icon`
+  (`resolve_contract_reward_icon(contract_id, effect)`, Agent 효과 frame에선 `source=contract` 효과 줄)을 두고, 줄은 그 차례 frame이
+  맨 위일 때 나오며 모두 턴 종료를 막는다(`turn_rows.holds_the_end`). 완수가 주인의 다른 frame(획득 Spy 칸, Research 방향, 두 장
+  받는 계약 시장, 책략의 선택) 위에서 일어나면 줄은 그 frame이 닫힌 뒤다(옛 엔진은 창을 그 위에 얹었다). Agent 소환 아이콘이
+  못 데려오는 "이번 차례에 보낸 Agent" `[Main p. 20]`(OQ-068)는 줄을 받을 때 그 차례의 Agent 효과 frame으로 판단한다(줄 사이의
+  Into the Fray, 차례 frame에서 완수해 넘어간 줄). AI 좌석·옛 기보는 줄도
+  완수 직후 옛 순서로 받는다(`legacy_contract_icon_row`, 기보 다리 `contract_frame_first`); [stage-b-plan.md](../stage-b-plan.md)
+  "B3b-1 구현".
 - 다른 판정과 만나는 곳(구현 결정, project convention):
   - 같은 단계에서 생긴 곧바른 draw(OQ-106 13·14: CHOAM Transports의 카드 — "The card draw from CHOAM Transports is triggered as soon
     as the contract is completed and can't be deferred." (Message from designer) — Bene Gesserit 4의 책략, Imperial Birthright)는 그
@@ -1867,7 +1875,9 @@
     있으면 결과도 달라질 수 있다(Bene Gesserit 4 책략의 troop이 supply에서 먼저 나간다).
   - 차례 밖에서 기다리는 Emperor track Spy([OQ-057](#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (15))와 Friends
     Everywhere 선택은 Conflict 보상 선택을 기다리듯 계약 보상 창 아래에서도 기다린다(영향력 4가 동맹도 얻어 Earn Any Alliance를
-    완수하는 경우; 옛 엔진은 그 보상을 그 단계 안에서 줬으므로 옛 순서와 같다).
+    완수하는 경우; 옛 엔진은 그 보상을 그 단계 안에서 줬으므로 옛 순서와 같다). 차례 안에선 창이 없으므로(판정 4) 주인 자신의
+    트랙 Spy는 지금처럼 그 차례의 `place_track_spy`를 기다리고, Friends Everywhere 선택은 곧바로 열린다 — 계약 줄과 차례의 다른
+    줄 사이 순서는 자유다.
   - 게임이 끝나는 단계에서 완수된 계약(Endgame Navigation 카드의 Influence로 얻은 동맹의 Earn Any Alliance)은 아무도 결정에
     답하지 않으므로 창을 옛 순서로 곧바로 받는다(옛 엔진과 같다).
 - 테스트: `tests/unit/rules/test_combat.py`, `test_contracts.py`, `test_bloodlines_contracts.py`, `test_economic_supremacy.py`,
