@@ -22,6 +22,8 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     PlayerDecision,
+    PlayerState,
+    Resources,
 )
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
@@ -92,6 +94,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # verb (one-hot over 45), source (one-hot over 21), printed personal
     # card (139), grafted-box flag (1) and the count of targets picked so
     # far (1), 45 + 21 + 139 + 1 + 1 columns (5,233 -> 5,440).
+    # Also v33 (the B3c-1 review): the targets picked so far by identity --
+    # Intrigue card 90, Faction 4, post 13, Tech 18, Conflict or Objective
+    # card 24 (5,440 -> 5,589).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -130,8 +135,13 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 139
         + 1
         + 1
+        + 90
+        + 4
+        + 13
+        + 18
+        + 24
     )
-    assert OBSERVATION_SIZE == 5_440
+    assert OBSERVATION_SIZE == 5_589
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -175,6 +185,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
         segment_slice("private_agent_card_pick").stop
         == segment_slice("private_agent_card_pick_graft").start
     )
+    # The targets picked so far follow by kind (the B3c-1 review).
     pick_segments = (
         "private_agent_card_pick_graft",
         "private_effect_pick_verb",
@@ -182,10 +193,15 @@ def test_layout_is_versioned_and_contiguous() -> None:
         "private_effect_pick_card",
         "private_effect_pick_box",
         "private_effect_pick_targets",
+        "private_effect_pick_intrigue",
+        "private_effect_pick_faction",
+        "private_effect_pick_post",
+        "private_effect_pick_tech",
+        "private_effect_pick_battle",
     )
     for before, after in zip(pick_segments, pick_segments[1:], strict=False):
         assert segment_slice(before).stop == segment_slice(after).start
-    assert segment_slice("private_effect_pick_targets").stop == OBSERVATION_SIZE
+    assert segment_slice("private_effect_pick_battle").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -314,6 +330,60 @@ def test_the_picked_effect_is_encoded_for_its_own_seat_only() -> None:
         assert not any(encoded[card])
         assert tuple(encoded[box]) == (0,)
         assert tuple(encoded[targets]) == (0,)
+
+
+def test_the_option_step_shows_the_seat_the_card_it_picked() -> None:
+    # The 2026-10-20 review of stage B3c-1: after ``play`` and
+    # ``choose_intrigue_card`` the option rows are ``choose_option(option)``
+    # alone, so the seat's view must say which card it picked -- Detonation
+    # and Market Opportunity both offer two options here.
+    from tests.unit.rules.test_intrigue import _intrigue, _turn_state
+
+    engine = UprisingRulesEngine()
+    cards = (_intrigue("detonation"), _intrigue("market_opportunity"))
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=cards,
+        resources=Resources(solari=20, spice=20, water=20),
+    )
+    state = _turn_state(owner)
+    play = DomainAction("play", 0, (("printed", "plot"), ("source", "intrigue")))
+    picked = engine.apply(state, play).state
+    chose = [
+        engine.apply(
+            picked, DomainAction("choose_intrigue_card", 0, (("card_id", card),))
+        ).state
+        for card in cards
+    ]
+    rows = [engine.legal_actions(each, 0) for each in chose]
+    assert rows[0] == rows[1] and len(rows[0]) == 2
+    views = [encode_player_view(engine.observe(each, 0)) for each in chose]
+    intrigue = segment_slice("private_effect_pick_intrigue")
+    for view, card in zip(views, ("detonation", "market_opportunity"), strict=True):
+        column = INTRIGUE_IDS.index(card)
+        assert view[intrigue][column] == 1 and sum(view[intrigue]) == 1
+    assert views[0] != views[1]
+    # No other seat sees the pick.
+    for observer in range(1, 4):
+        assert encode_player_view(engine.observe(chose[0], observer)) == (
+            encode_player_view(engine.observe(chose[1], observer))
+        )
+
+
+def test_every_target_picked_before_a_paths_last_has_a_segment() -> None:
+    # A target row a path picks before its last stays in the seat's pick:
+    # its kind must be shown by identity (``PICKED_TARGET_SEGMENTS``).
+    from dune_imperium.adapters.observation_encoding import PICKED_TARGET_SEGMENTS
+    from dune_imperium.rules.effect_steps import STEP_SPECS
+
+    picked_first = {
+        kind.action_id
+        for spec in STEP_SPECS.values()
+        for _name, kind in spec.targets[:-1]
+    }
+    assert picked_first <= set(PICKED_TARGET_SEGMENTS)
+    for segment in PICKED_TARGET_SEGMENTS.values():
+        segment_slice(segment)
 
 
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
@@ -892,20 +962,25 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # 39, everything 59, draft 35, scouts 39: the decision after the random seat's
 # play, now the card step) or the first Agent-effect frame offering a Plot
 # among several effects (promo_bloodlines_tech at 264, fewer rows).
+# Re-pinned for the B3c-1 review (v33): the seat's own pick shows the targets
+# picked so far, 149 columns appended. The same games: each digest over the
+# first 5,440 columns of every vector is the previous pin, and the new
+# columns are set only while a seat holds a picked target (12 to 18 views a
+# game).
 _GOLDEN_DIGESTS = {
-    "base": ("b767f935410be01c39894dccf54e3b27a6700fffb6be23bd295f2181c48de8c2", 2780),
-    "choam": ("c61115edc1036bcadd3ea64d74188c22b55aaa4bdc9d07962a7e85f073349401", 2668),
+    "base": ("eeaee4239fffdd88b2251c8f58fc719c5f23c51abe93b03c17d9678fbf345bc1", 2780),
+    "choam": ("d4a3b591e0b081f532bb7408e04e1cfc8591fa52ec95c272347389611f2b6423", 2668),
     "promo_bloodlines_tech": (
-        "69dd4eadd540fe0e24ec3cb1276083e6c7bac4a81bcd7d9e4ab0b66797c10d26",
+        "5922651e4e1a4b9cd66ba4fdbd54b88ec27cd0911b657198df324a2ad4acca5d",
         3188,
     ),
     "everything": (
-        "5a79721fdd837914bb5ac8dafa72af5febe1a1790c96a2e18703b28f65a4b899",
+        "7ca8375e5073ec93a38b8dcaf88f5db50b18b4a0a794a57a7e56129616aec8d9",
         3340,
     ),
-    "draft": ("02bd60509d97b94da1dde8137930e5a046f61bb9a565ba78056c00c0a60ae220", 2788),
+    "draft": ("59e37c5dc4c0fbdd0d904a5f3d76b1ba85098834da40e13fb7ca01f94c42dea5", 2788),
     "scouts": (
-        "55f31e2c2c06741cb837ac8980828608aae03f696e954c0287b4a8dfbecd86e8",
+        "07f3863e1b404fe8fbe638dc3333513502d5f3f05a66ebb026a5934bfb52cd30",
         3172,
     ),
 }

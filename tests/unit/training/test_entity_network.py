@@ -369,6 +369,7 @@ _COUNTED = {
             "intrigue_faceup",
             "private_intrigue",
             "private_peeked_intrigue",
+            "private_effect_pick_intrigue",
         ),
         "intrigue",
     ),
@@ -389,6 +390,11 @@ _COUNTED = {
     "battle_cards": "battle",
     "spy_posts": "post",
     "alliances": "faction",
+    # Stage B3: the targets picked so far (the B3c-1 review).
+    "private_effect_pick_faction": "faction",
+    "private_effect_pick_post": "post",
+    "private_effect_pick_tech": "tech",
+    "private_effect_pick_battle": "battle",
 }
 
 
@@ -851,11 +857,14 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     assert info.migration is not None
     assert info.migration.from_observation_version == 31
     # Four deck-pool zones (v32), the picked Agent card's zone and graft
-    # flag (v33, stage B1) and the picked effect's card zone, verb, source,
-    # box and target count (v33, stage B3) are the inputs the file never had.
+    # flag (v33, stage B1), the picked effect's card zone, verb, source,
+    # box and target count (v33, stage B3) and the five zones of its picked
+    # targets (v33, the B3c-1 review) are the inputs the file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
-    ) + network.entity_width + len(Verb) + len(Source) + 2
+    ) + network.entity_width + len(Verb) + len(Source) + 2 + 5 * (
+        network.entity_width
+    )
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
