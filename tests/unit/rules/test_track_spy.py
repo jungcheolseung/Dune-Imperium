@@ -23,7 +23,7 @@ from dune_imperium.adapters.observation_encoding import (
     encode_player_view,
     segment_slice,
 )
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -113,19 +113,19 @@ def _owed(state: GameState, *seats: int) -> GameState:
 
 
 def _ids(state: GameState, seat: int = 0) -> list[str]:
-    return [action.action_id for action in ENGINE.legal_actions(state, seat)]
+    return [action.action_id for action in ENGINE.whole_actions(state, seat)]
 
 
 def _first(state: GameState, action_id: str, seat: int = 0) -> DomainAction:
     return next(
         action
-        for action in ENGINE.legal_actions(state, seat)
+        for action in ENGINE.whole_actions(state, seat)
         if action.action_id == action_id
     )
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _at_dutiful_service(emperor: int = 3) -> GameState:
@@ -267,7 +267,7 @@ def test_the_designers_imperial_privilege_example_is_now_allowed() -> None:
 
     opened = _apply(recalled, PLACE)
     posts = {
-        dict(action.arguments)["post_id"] for action in ENGINE.legal_actions(opened, 0)
+        dict(action.arguments)["post_id"] for action in ENGINE.whole_actions(opened, 0)
     }
     assert IMPERIAL_PRIVILEGE_POST in posts
     placed = _place_on(opened, IMPERIAL_PRIVILEGE_POST)
@@ -315,7 +315,7 @@ def test_with_an_empty_supply_the_press_offers_the_recall_first_or_its_decline()
     owing = _owed(_turn_state(owner), 0)
     assert "place_track_spy" in _ids(owing)
     opened = _apply(owing, PLACE)
-    actions = ENGINE.legal_actions(opened, 0)
+    actions = ENGINE.whole_actions(opened, 0)
     assert actions[0] == DomainAction("decline_spy_placement", 0)
     assert {dict(a.arguments)["post_id"] for a in actions[1:]} == set(posts)
     declined = _apply(opened, actions[0])
@@ -328,7 +328,7 @@ def test_with_an_empty_supply_the_press_offers_the_recall_first_or_its_decline()
     boxed = PlayerState(player_id=0, spies_supply=0, spies_boxed=3)
     tech = RulesetConfig(bloodlines=True, tech_module=True)
     nothing = _apply(_owed(_turn_state(boxed, tech), 0), PLACE)
-    assert ENGINE.legal_actions(nothing, 0) == (
+    assert ENGINE.whole_actions(nothing, 0) == (
         DomainAction("decline_spy_placement", 0),
     )
 
@@ -395,7 +395,7 @@ def test_friends_everywhere_emperor_pick_leaves_the_spy_owed_in_the_turn() -> No
     assert opened.decision_stack[-1].kind == FrameKind.SCOUTS_FOUR_BONUS
     emperor = next(
         action
-        for action in ENGINE.legal_actions(opened, 0)
+        for action in ENGINE.whole_actions(opened, 0)
         if dict(action.arguments)["faction"] == "emperor"
     )
     chosen = _apply(opened, emperor)
@@ -429,12 +429,12 @@ def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None
     assert "play_turn_start_card" in _ids(free)
     assert DomainAction(
         "play_intrigue", 0, (("card_id", withdrawn), ("option", 0))
-    ) in ENGINE.legal_actions(free, 0)
+    ) in ENGINE.whole_actions(free, 0)
 
     owing = _change_allegiances_to_four(owner, bloodlines)
     assert owing.decision_stack[-1].kind == FrameKind.TURN
     assert owes_track_spy(owing, 0)
-    legal = ENGINE.legal_actions(owing, 0)
+    legal = ENGINE.whole_actions(owing, 0)
     offered = {action.action_id for action in legal}
     assert "place_track_spy" in offered
     assert "play_turn_start_card" not in offered
@@ -635,7 +635,7 @@ def test_a_contract_window_the_influence_opened_comes_before_the_spy() -> None:
     check_track_spy_queue(state)
 
     while state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS:
-        (row, *_) = ENGINE.legal_actions(state, 0)
+        (row, *_) = ENGINE.whole_actions(state, 0)
         assert row.action_id == "resolve_contract_reward_icon"
         state = _apply(state, row)
     assert state.players[0].troops_garrison == 6 + 2

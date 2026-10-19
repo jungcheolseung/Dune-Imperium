@@ -23,6 +23,7 @@ from dune_imperium.rules.action_shapes import (
     action_shape,
     template_id,
 )
+from dune_imperium.rules.effect_steps import OFFERED_AS_WHOLE, STEP_SPECS
 
 _FULL = RulesetConfig(
     choam_module=True,
@@ -49,9 +50,44 @@ def _catalog_arguments() -> dict[str, frozenset[str]]:
     return {action_id: frozenset(keys) for action_id, keys in names.items()}
 
 
+# Whole ids shown only as effect and target rows (stage B3): the rules
+# still resolve them by these ids, so they keep their rows, but no catalog
+# holds them.
+_STEP_ONLY = frozenset(STEP_SPECS) - OFFERED_AS_WHOLE
+
+
+@cache
+def _step_row_arguments() -> dict[str, frozenset[str]]:
+    """Each id's argument names over its effect rows (stage B3: a template
+    with a ``printed`` argument), every option enabled."""
+
+    names: dict[str, set[str]] = {}
+    for template in ActionCodec(_FULL).catalog:
+        keys = {key for key, _ in template.arguments}
+        if "printed" in keys:
+            names.setdefault(template.action_id, set()).update(keys)
+    return {action_id: frozenset(keys) for action_id, keys in names.items()}
+
+
+def _whole_arguments(action_id: str) -> frozenset[str]:
+    """The argument names of ``action_id``'s templates that are no effect
+    rows (a legacy id an effect row shares)."""
+
+    return frozenset().union(
+        *(
+            {key for key, _ in template.arguments}
+            for template in ActionCodec(_FULL).catalog
+            if template.action_id == action_id
+            and "printed" not in dict(template.arguments)
+        )
+    )
+
+
 def test_every_catalog_id_has_exactly_one_row() -> None:
     catalog = set(_catalog_arguments())
-    assert set(ACTION_SHAPES) - catalog == set(), "rows for ids no catalog has"
+    assert set(ACTION_SHAPES) - catalog == _STEP_ONLY - catalog, (
+        "rows for ids no catalog has"
+    )
     assert catalog - set(ACTION_SHAPES) == set(), "catalog ids with no row"
 
 
@@ -61,16 +97,36 @@ def test_the_base_catalog_needs_no_further_row() -> None:
 
 
 def test_each_row_tags_what_the_catalog_tags() -> None:
+    effect_rows = _step_row_arguments()
     for action_id, arguments in _catalog_arguments().items():
         shape = ACTION_SHAPES[action_id]
+        if shape.source is Source.REF and action_id in effect_rows:
+            # An effect row names its source by the ``source`` tag and may
+            # carry a grafted turn's ``box`` beside it (stage B3).
+            assert shape.tag is Tag.SOURCE, action_id
+            assert Tag.SOURCE.value in effect_rows[action_id], action_id
+            continue
+        if action_id in effect_rows:
+            # A legacy id an effect row shares (``lose_unit``): its other
+            # templates follow the row.
+            arguments = _whole_arguments(action_id)
         tags = {tag for tag in Tag if tag.value in arguments}
         assert len(tags) <= 1, action_id
         assert shape.tag == (tags.pop() if tags else None), action_id
 
 
 def test_each_row_target_covers_its_arguments() -> None:
+    effect_rows = _step_row_arguments()
     for action_id, arguments in _catalog_arguments().items():
         shape = ACTION_SHAPES[action_id]
+        if action_id in effect_rows:
+            # Stage B3: the effect rows point at their waiting effect.
+            picked = effect_rows[action_id] - {tag.value for tag in Tag}
+            assert picked <= TARGET_ARGUMENTS[Target.EFFECT], action_id
+            assert "printed" in picked, action_id
+            if shape.source is Source.REF:
+                continue
+            arguments = _whole_arguments(action_id)
         picked = arguments - {tag.value for tag in Tag}
         allowed = TARGET_ARGUMENTS[shape.target]
         assert picked <= allowed, (action_id, sorted(picked - allowed))

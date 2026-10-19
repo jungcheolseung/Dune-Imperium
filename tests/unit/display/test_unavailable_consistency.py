@@ -65,7 +65,7 @@ from tests.unit.display.test_unavailable import (
 )
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import PlacementMemory
+from dune_imperium.agents.agent_turn_steps import PlacementMemory, apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
@@ -330,10 +330,10 @@ def _decisions(
     while state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = ENGINE.apply(state, resolver.resolve(decision)).state
+            state = apply_whole(ENGINE, state, resolver.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
-        legal = ENGINE.legal_actions(state, decision.owner)
+        legal = ENGINE.whole_actions(state, decision.owner)
         yield state, decision.owner, legal
         action = (
             None
@@ -343,7 +343,7 @@ def _decisions(
         if action is None:
             # One draw per placement, as when it was one action (stage B1).
             action = memory.choose(state, decision.owner, legal, rng.choice)
-        state = ENGINE.apply(state, action).state
+        state = apply_whole(ENGINE, state, action).state
 
 
 def _is_legal(row: dict[str, Any], legal: tuple[DomainAction, ...]) -> bool:
@@ -395,7 +395,7 @@ def _check_greyed_out_rows(
                 checked += 1
             # Nothing hidden from the seat changes what it is shown.
             hidden = determinize(state, seat, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, seat)
+            hidden_legal = ENGINE.whole_actions(hidden, seat)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, seat, hidden_legal) == found
     return surfaces, keys, checked
@@ -451,27 +451,27 @@ def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
     # The first copy resolves at its play; its acquisition choice answered,
     # the window is back with the second copy greyed out.
-    resolved = ENGINE.apply(
+    resolved = apply_whole(ENGINE, 
         _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
     ).state
-    played = ENGINE.apply(
+    played = apply_whole(ENGINE, 
         resolved, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state
     assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     rng = random.Random(7)
     for state in (lone, played):
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
         assert found is not None and found["rows"]
         for _ in range(20):
             hidden = determinize(state, 0, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            hidden_legal = ENGINE.whole_actions(hidden, 0)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, 0, hidden_legal) == found
         for seat in range(1, 4):
             other = determinize(state, seat, rng)
             assert other.decision_stack[-1] == state.decision_stack[-1]
-            assert ENGINE.legal_actions(other, seat) == ()
+            assert ENGINE.whole_actions(other, seat) == ()
             assert unavailable_choices(other, seat, ()) is None
 
 
@@ -1960,10 +1960,10 @@ def _privilege_decisions(
     while state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = ENGINE.apply(state, resolver.resolve(decision)).state
+            state = apply_whole(ENGINE, state, resolver.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
-        legal = ENGINE.legal_actions(state, decision.owner)
+        legal = ENGINE.whole_actions(state, decision.owner)
         yield state, decision.owner, legal
         # One draw per placement, as when it was one action (stage B1).
         action = memory.choose(
@@ -1972,7 +1972,7 @@ def _privilege_decisions(
             legal,
             partial(_privilege_choice, state, decision.owner, rng, delayed),
         )
-        state = ENGINE.apply(state, action).state
+        state = apply_whole(ENGINE, state, action).state
 
 
 @pytest.mark.parametrize("config", CONFIGS, ids=IDS)
@@ -2599,7 +2599,7 @@ def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
                 ):
                     frame = state.decision_stack[-1]
                     owner = state.players[0]
-                    legal = ENGINE.legal_actions(state, 0)
+                    legal = ENGINE.whole_actions(state, 0)
                     if frame.kind == FrameKind.COMBAT_REWARD_SPY_RECALL:
                         assert legal == _old_combat_reward_spy_recall(state, 0)
                         spy_block = combat_reward_spy_recall_block(frame, owner)
@@ -2623,7 +2623,7 @@ def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
                         assert block.kind.value == resource
                         assert (block.needed, block.held) == (cost, have)
                         blocked += 1
-                    state = ENGINE.apply(state, decline).state
+                    state = apply_whole(ENGINE, state, decline).state
     assert blocked > 0 and open_windows > 0 and recalls > 0
 
 
@@ -2727,7 +2727,7 @@ def test_the_sietch_tabr_block_is_the_old_condition() -> None:
     compared = 0
     for wall in (True, False):
         pending = _sietch_tabr_visit(shield_wall_present=wall)
-        taken = ENGINE.apply(
+        taken = apply_whole(ENGINE, 
             pending, DomainAction(action_id="take_sietch_tabr_water", actor=0)
         ).state
         for state in (pending, taken):

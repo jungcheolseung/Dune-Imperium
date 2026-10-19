@@ -101,6 +101,7 @@ VIEWPORTS = (
 FIXTURES = """
 import json
 from dataclasses import replace
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import (
     AUCTIONS_BY_ID, EVENTS_BY_ID, MISSIONS_BY_ID, SALES_BY_ID)
 from dune_imperium.core.decisions import PlayerDecision
@@ -142,9 +143,9 @@ def step(item):
 
 # Smoke and Mirrors' first line places a Spy: the post is the board's.
 choice = step("smoke_and_mirrors")
-place = next(a for a in session.engine.legal_actions(choice, 0)
+place = next(a for a in session.engine.whole_actions(choice, 0)
              if dict(a.arguments).get("option") == 0)
-spy = session.engine.apply(choice, place).state
+spy = apply_whole(session.engine, choice, place).state
 while not spy.decision_stack:
     spy = advance_scouts_step(spy).state
 assert str(spy.decision_stack[-1].kind) == "spy_placement", spy.decision_stack[-1].kind

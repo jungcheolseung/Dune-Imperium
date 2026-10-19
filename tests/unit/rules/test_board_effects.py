@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.board import BOARD_SPACES, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
@@ -526,15 +526,15 @@ def test_espionage_reshuffles_discard_before_drawing() -> None:
     engine = UprisingRulesEngine()
     place = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "resolve_espionage_place_spy"
     )
 
-    declined = engine.apply(state, place).state
-    pending = engine.apply(declined, _board_action(declined, "cards")).state
+    declined = apply_whole(engine, state, place).state
+    pending = apply_whole(engine, declined, _board_action(declined, "cards")).state
     decision = engine.current_decision(pending)
     assert isinstance(decision, ChanceDecision)
-    finished = engine.apply(
+    finished = apply_whole(engine, 
         pending,
         ChanceOutcome(decision.decision_id, (drawn,)),
     ).state
@@ -1353,8 +1353,8 @@ def test_imperial_privilege_draw_and_recall_resolve_in_any_order(
     for done, step in enumerate(order):
         settled = {"draw", "recall"} <= set(order[:done])
         assert bool(legal_agent_turn_finish_actions(state, 0)) is settled
-        assert (_DRAW in engine.legal_actions(state, 0)) is ("draw" not in order[:done])
-        state = engine.apply(state, steps[step]).state
+        assert (_DRAW in engine.whole_actions(state, 0)) is ("draw" not in order[:done])
+        state = apply_whole(engine, state, steps[step]).state
         assert state.players[0].hand == (
             (drawn,) if "draw" in order[: done + 1] else ()
         )
@@ -1364,7 +1364,7 @@ def test_imperial_privilege_draw_and_recall_resolve_in_any_order(
     assert owner.deck == (second,)
     assert owner.agent_locations == ("imperial_privilege",)
     assert owner.intrigue_cards == ("intrigue:replacement",)
-    legal = engine.legal_actions(state, 0)
+    legal = engine.whole_actions(state, 0)
     assert _DRAW not in legal
     assert not any("imperial_privilege" in action.action_id for action in legal)
     assert legal_agent_turn_finish_actions(state, 0)
@@ -1592,10 +1592,10 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     ).state
     assert any(
         action.action_id == "recall_agent_for_imperial_privilege"
-        for action in engine.legal_actions(declined, 0)
+        for action in engine.whole_actions(declined, 0)
     )
 
-    transition = engine.apply(
+    transition = apply_whole(engine, 
         declined,
         DomainAction(
             action_id="recall_agent_for_agent_card",
@@ -1611,7 +1611,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     )
     context = dict(recalled.decision_stack[-1].context)
     assert context["pending_board_effect"] is True
-    legal = engine.legal_actions(recalled, 0)
+    legal = engine.whole_actions(recalled, 0)
     assert _CONFIRM in legal
     assert not any(
         action.action_id == "recall_agent_for_imperial_privilege" for action in legal
@@ -1621,7 +1621,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     # Steersman's own card icon is still the owner's to resolve too.
     assert decision.owner == 0
 
-    confirmed = engine.apply(recalled, _CONFIRM)
+    confirmed = apply_whole(engine, recalled, _CONFIRM)
     assert any(
         event.kind == "imperial_privilege_recall_skipped" for event in confirmed.events
     )
@@ -1632,7 +1632,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
         == "imperial_privilege_intrigue,cards"
     )
     assert deck[0] not in confirmed.state.players[0].hand
-    drew = engine.apply(confirmed.state, _DRAW).state
+    drew = apply_whole(engine, confirmed.state, _DRAW).state
     assert dict(drew.decision_stack[-1].context)["pending_board_icons"] == (
         "imperial_privilege_intrigue"
     )
@@ -1678,11 +1678,11 @@ def test_imperial_privilege_reshuffle_includes_the_trashed_intrigue() -> None:
     engine = UprisingRulesEngine()
     action = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    pending = engine.apply(state, action)
+    pending = apply_whole(engine, state, action)
     decision = pending.next_decision
 
     assert isinstance(decision, ChanceDecision)
@@ -1694,7 +1694,7 @@ def test_imperial_privilege_reshuffle_includes_the_trashed_intrigue() -> None:
     assert pending.state.pending_intrigue_draws == ()
 
     outcome = ChanceResolver(seed=5).resolve(decision)
-    resolved = engine.apply(pending.state, outcome)
+    resolved = apply_whole(engine, pending.state, outcome)
 
     # The empty deck did not crash the draw: the reshuffle completed and the
     # owed card was delivered from the freshly shuffled deck.
@@ -1714,17 +1714,19 @@ def test_imperial_privilege_may_draw_back_the_card_it_just_trashed() -> None:
     engine = UprisingRulesEngine()
     action = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    pending = engine.apply(state, action)
+    pending = apply_whole(engine, state, action)
     decision = pending.next_decision
 
     assert any(event.kind == "intrigue_card_trashed" for event in pending.events)
     assert isinstance(decision, ChanceDecision)
     assert decision.options == ("intrigue:held",)
-    resolved = engine.apply(pending.state, ChanceResolver(seed=5).resolve(decision))
+    resolved = apply_whole(
+        engine, pending.state, ChanceResolver(seed=5).resolve(decision)
+    )
 
     assert resolved.state.players[0].intrigue_cards == ("intrigue:held",)
     assert resolved.state.intrigue_deck == ()
@@ -1747,11 +1749,11 @@ def test_imperial_privilege_never_draws_back_a_trashed_twisted_card() -> None:
     engine = UprisingRulesEngine()
     action = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    trashed = engine.apply(state, action)
+    trashed = apply_whole(engine, state, action)
 
     assert not isinstance(trashed.next_decision, ChanceDecision)
     assert trashed.state.players[0].intrigue_cards == ()
@@ -1764,11 +1766,13 @@ def test_imperial_privilege_never_draws_back_a_trashed_twisted_card() -> None:
     ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
     # With another discarded card, that one is shuffled and drawn instead.
     other = replace(state, intrigue_discard=("intrigue:cunning",))
-    pending = engine.apply(other, action)
+    pending = apply_whole(engine, other, action)
     decision = pending.next_decision
     assert isinstance(decision, ChanceDecision)
     assert decision.options == ("intrigue:cunning",)
-    resolved = engine.apply(pending.state, ChanceResolver(seed=5).resolve(decision))
+    resolved = apply_whole(
+        engine, pending.state, ChanceResolver(seed=5).resolve(decision)
+    )
     assert resolved.state.players[0].intrigue_cards == ("intrigue:cunning",)
     assert resolved.state.intrigue_discard == (twisted,)
 
@@ -2047,7 +2051,7 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
     )
     placed = apply_placement(engine, state, to_secrets).state
 
-    pending = engine.apply(placed, _board_action(placed, "intrigue"))
+    pending = apply_whole(engine, placed, _board_action(placed, "intrigue"))
     decision = pending.next_decision
 
     assert isinstance(decision, ChanceDecision)
@@ -2055,7 +2059,7 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
     assert pending.state.pending_intrigue_draws == ()
 
     outcome = ChanceResolver(seed=7).resolve(decision)
-    resolved = engine.apply(pending.state, outcome)
+    resolved = apply_whole(engine, pending.state, outcome)
     next_top = resolved.state.decision_stack[-1]
 
     assert next_top.kind == "secrets_steal"

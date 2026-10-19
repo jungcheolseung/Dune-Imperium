@@ -12,6 +12,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -205,7 +206,7 @@ def test_the_partners_box_is_offered_beside_the_placed_card_s() -> None:
     assert "switch_graft_card" not in {action.action_id for action in offered}
 
     hand_before = len(grafted.players[0].hand)
-    drawn = UprisingRulesEngine().apply(grafted, resolve_partner).state
+    drawn = apply_whole(UprisingRulesEngine(), grafted, resolve_partner).state
     assert len(drawn.players[0].hand) == hand_before + 1
     _, context = current_agent_effect_context(drawn)
     # The engine resolved box 1 with it active: Face Dancer in ``card_id``.
@@ -699,14 +700,14 @@ def test_grafted_cards_round_trip_through_the_codec() -> None:
     engine = UprisingRulesEngine()
     picks = [
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "choose_agent_card"
     ]
     assert any(dict(pick.arguments).get("graft") is True for pick in picks)
     for pick in picks:
         assert codec.decode(codec.encode(pick), 0) == pick
-        picked = engine.apply(state, pick).state
-        spaces = engine.legal_actions(picked, 0)
+        picked = apply_whole(engine, state, pick).state
+        spaces = engine.whole_actions(picked, 0)
         assert spaces
         for action in spaces:
             assert codec.decode(codec.encode(action), 0) == action
@@ -748,9 +749,9 @@ def test_the_engine_never_offers_a_lone_graft_card() -> None:
         frame = state.decision_stack[-1]
         if not isinstance(frame.decision, PlayerDecision):
             break
-        actions = engine.legal_actions(state, frame.decision.owner)
+        actions = engine.whole_actions(state, frame.decision.owner)
         assert actions
-        state = engine.apply(state, actions[-1]).state
+        state = apply_whole(engine, state, actions[-1]).state
 
 
 def test_a_graft_placed_on_a_leaders_icon_keeps_its_partners() -> None:

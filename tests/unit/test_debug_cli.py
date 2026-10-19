@@ -32,6 +32,8 @@ def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
         # Stage B1: the Agent card the seat picked and has not placed yet.
         "agent_card_pick": "",
         "agent_card_pick_graft": False,
+        # Stage B3: the rows the seat picked toward one waiting effect.
+        "effect_pick": (),
     }
     actions = snapshot["legal_actions"]
     assert isinstance(actions, list)

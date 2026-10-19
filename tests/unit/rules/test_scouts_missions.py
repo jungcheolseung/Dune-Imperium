@@ -13,7 +13,7 @@ import pytest
 from tests.unit.rules.test_combat import _answer_window
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID
 from dune_imperium.content.uprising.intrigue import twisted_intrigue_instance_ids
@@ -55,7 +55,7 @@ def _base(config: RulesetConfig = CHOAM, round_number: int = 3) -> GameState:
     while isinstance(ENGINE.current_decision(state), ChanceDecision):
         decision = ENGINE.current_decision(state)
         assert isinstance(decision, ChanceDecision)
-        state = ENGINE.apply(state, resolver.resolve(decision)).state
+        state = apply_whole(ENGINE, state, resolver.resolve(decision)).state
     players = tuple(
         replace(
             player,
@@ -99,7 +99,7 @@ def _reveal(state: GameState, mission_id: str, **fields: Any) -> GameState:
     decision = frame.decision
     assert isinstance(decision, ChanceDecision)
     assert mission_id in decision.options, decision.options
-    return ENGINE.apply(
+    return apply_whole(ENGINE, 
         advanced, ChanceOutcome(decision_id=decision.decision_id, values=(mission_id,))
     ).state
 
@@ -115,9 +115,9 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal).state
 
 
 def _answer(state: GameState, joins: dict[int, str]) -> GameState:
@@ -164,13 +164,13 @@ def _visit(state: GameState, space_id: str, **choice: str) -> GameState:
     state = _send_agent(state, space_id)
     offered = [
         a
-        for a in ENGINE.legal_actions(state, 0)
+        for a in ENGINE.whole_actions(state, 0)
         if a.action_id == "scouts_collect_mission"
     ]
-    assert offered, ENGINE.legal_actions(state, 0)
+    assert offered, ENGINE.whole_actions(state, 0)
     wanted = choice.get("choice", "")
     action = next(a for a in offered if dict(a.arguments)["choice"] == wanted)
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _taken(state: GameState) -> list[tuple[str, int]]:
@@ -200,7 +200,7 @@ def _taken(state: GameState) -> list[tuple[str, int]]:
 def _no_mission_icon(state: GameState) -> bool:
     return not any(
         a.action_id == "scouts_collect_mission"
-        for a in ENGINE.legal_actions(state, _owner(state))
+        for a in ENGINE.whole_actions(state, _owner(state))
     )
 
 
@@ -335,7 +335,7 @@ def _prison_planet(troops: int, commanders: int) -> GameState:
 def _targets(state: GameState) -> list[object]:
     return [
         dict(a.arguments)["target"]
-        for a in ENGINE.legal_actions(state, _owner(state))
+        for a in ENGINE.whole_actions(state, _owner(state))
         if a.action_id == "scouts_join_mission"
     ]
 
@@ -357,7 +357,7 @@ def test_prison_planet_offers_troop_or_commander_when_both() -> None:
 
     state = _prison_planet(troops=2, commanders=1)
     assert _targets(state) == ["", "commander"]
-    info = scouts_choice_lines(state, 0, ENGINE.legal_actions(state, 0))
+    info = scouts_choice_lines(state, 0, ENGINE.whole_actions(state, 0))
     assert info is not None
     lines = info["lines"]
     assert isinstance(lines, list)
@@ -376,7 +376,7 @@ def test_prison_planet_with_troops_only_greys_out_the_commander_way() -> None:
 
     state = _prison_planet(troops=2, commanders=0)
     assert _targets(state) == [""]
-    info = scouts_choice_lines(state, 0, ENGINE.legal_actions(state, 0))
+    info = scouts_choice_lines(state, 0, ENGINE.whole_actions(state, 0))
     assert info is not None
     lines = info["lines"]
     assert isinstance(lines, list)
@@ -458,7 +458,7 @@ def test_choam_escort_recruits_or_loads_a_face_up_contract() -> None:
         ),
         "choam_escort",
     )
-    offered = {dict(a.arguments).get("target") for a in ENGINE.legal_actions(state, 0)}
+    offered = {dict(a.arguments).get("target") for a in ENGINE.whole_actions(state, 0)}
     assert offered == {None, "recruit", contract}
     state = _act(state, "scouts_join_mission", target=contract)
     assert sorted(row[1:] for row in state.scouts_goods) == [
@@ -640,7 +640,7 @@ def test_emperors_schemes_reshuffles_a_short_intrigue_deck_first() -> None:
     assert shuffle.count == len(discard)
     assert state.scouts_goods_cards == ()
     order = tuple(reversed(discard))
-    state = ENGINE.apply(
+    state = apply_whole(ENGINE, 
         state, ChanceOutcome(decision_id=shuffle.decision_id, values=order)
     ).state
     assert tuple(card for _, _, card in state.scouts_goods_cards) == (top, order[0])
@@ -672,7 +672,7 @@ def test_emperors_schemes_reshuffle_leaves_the_twisted_cards_discarded() -> None
     assert shuffle.options == discard
     assert shuffle.count == len(discard)
     order = tuple(reversed(discard))
-    state = ENGINE.apply(
+    state = apply_whole(ENGINE, 
         state, ChanceOutcome(decision_id=shuffle.decision_id, values=order)
     ).state
     assert tuple(card for _, _, card in state.scouts_goods_cards) == (top, order[0])
@@ -731,7 +731,7 @@ def test_desert_riding_trades_hagga_basin_spice_for_the_maker_hooks() -> None:
     )
     state = _send_agent(_turn_for(state), "hagga_basin")
     spice = state.players[0].resources.spice
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     # The printed row's one choice: spice, or the token; no sandworm (d).
     assert {a.action_id for a in legal} >= {
         "harvest_maker_spice",
@@ -753,7 +753,7 @@ def test_desert_riding_token_is_not_for_a_seat_with_maker_hooks() -> None:
         "hagga_basin",
     )
     assert "take_desert_riding_hooks" not in {
-        a.action_id for a in ENGINE.legal_actions(state, 0)
+        a.action_id for a in ENGINE.whole_actions(state, 0)
     }
 
 
@@ -978,7 +978,7 @@ def test_immortality_offers_the_specimen_shortfall_before_joining_a_mission() ->
     state = replace(base, players=(seat, *base.players[1:]), decision_stack=())
     state = offer_mission_join(state, 0, "weirding_warfare", source="test").state
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
-    actions = ENGINE.legal_actions(state, 0)
+    actions = ENGINE.whole_actions(state, 0)
     assert {a.action_id for a in actions} == {
         "scouts_decline_mission",
         "scouts_return_specimens",
@@ -992,7 +992,7 @@ def test_immortality_offers_the_specimen_shortfall_before_joining_a_mission() ->
     state = _act(state, "scouts_return_specimens", count=2)
     # The join frame stays open after a return: nothing pops it.
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
-    assert {a.action_id for a in ENGINE.legal_actions(state, 0)} == {
+    assert {a.action_id for a in ENGINE.whole_actions(state, 0)} == {
         "scouts_decline_mission",
         "scouts_join_mission",
     }
@@ -1020,7 +1020,7 @@ def test_immortality_offers_the_specimen_shortfall_before_choam_escort() -> None
     )
     state = replace(base, players=(seat, *base.players[1:]), decision_stack=())
     state = offer_mission_join(state, 0, "choam_escort", source="test").state
-    actions = ENGINE.legal_actions(state, 0)
+    actions = ENGINE.whole_actions(state, 0)
     assert {a.action_id for a in actions} == {
         "scouts_decline_mission",
         "scouts_return_specimens",
@@ -1033,7 +1033,7 @@ def test_immortality_offers_the_specimen_shortfall_before_choam_escort() -> None
     state = _act(state, "scouts_return_specimens", count=1)
     targets = {
         dict(a.arguments).get("target")
-        for a in ENGINE.legal_actions(state, 0)
+        for a in ENGINE.whole_actions(state, 0)
         if a.action_id == "scouts_join_mission"
     }
     assert targets == {"recruit"}

@@ -16,7 +16,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Resources
 from dune_imperium.core.replay import ReplayStep
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, effect_steps
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.access import AccessMode, Credentials
@@ -1160,8 +1160,10 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
     owner = manager._get(game_id).state.players[0]
     assert space not in owner.agent_locations
     assert owner.hand == hand_before  # the recall draws nothing
-    # The card pick, the space pick and the recall.
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    # The card pick, the space pick, and the recall as two steps of its own
+    # (stage B3: the effect row, then its target row). The window counts the
+    # engine's steps; the one undo below still takes the whole recall back.
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
 
     rewound = manager.undo(
         game_id,
@@ -1192,6 +1194,78 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
             revision=_int(summary["revision"]),
             undo_count=_int(summary["undo_count"]),
         )
+
+
+def test_an_effect_of_two_steps_is_logged_whole_and_goes_back_together() -> None:
+    """Stage B3a: an Agent-turn effect that picks a target is two steps, the
+    effect row and then its target row, taken by one press. The log shows the
+    step that ends the effect as the whole action it resolves, marks the step
+    before it ``pick`` and seals it for the other seats (its ``effect_picked``
+    event is the seat's own), and one undo takes both steps back: the seat is
+    never left between them.
+
+    Seed 0, as the Imperial Privilege recall above.
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    summary = _play_seat0_to_imperial_privilege(manager, summary)
+    recall = next(
+        row
+        for row in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if row["action_id"] == "recall_agent_for_imperial_privilege"
+    )
+    session = manager._get(game_id)
+    steps_before = len(session.steps)
+
+    summary = _play_raw(manager, summary, index=_int(recall["index"]))
+    assert len(session.steps) == steps_before + 2
+    pick_at = len(session.log) - 2
+
+    def shown(index: int, seat: int) -> JsonObject:
+        return _log_entry_json(index, session.log[index], seat, False)
+
+    own_pick, own_last = shown(pick_at, 0), shown(pick_at + 1, 0)
+    assert own_pick["pick"] is True and "pick" not in own_last
+    assert "effect_picked" in {
+        _obj(event)["kind"] for event in _rows(own_pick["events"])
+    }
+    # The last step is the whole action, as the page's row listed it.
+    assert own_last["action_id"] == "recall_agent_for_imperial_privilege"
+    assert own_last["arguments"] == recall["arguments"]
+    # Another seat sees neither the pick's event nor its arguments, and the
+    # whole action once the effect has ended.
+    other_pick, other_last = shown(pick_at, 1), shown(pick_at + 1, 1)
+    assert other_pick["pick"] is True
+    assert other_pick["events"] == []
+    # Not even what the picked effect does (OQ-111 (4)): a bare marker.
+    assert other_pick["action_id"] == "effect_picked"
+    assert _obj(other_pick["arguments"]) == {}
+    assert other_last["action_id"] == own_last["action_id"]
+    assert other_last["arguments"] == recall["arguments"]
+
+    # One undo of one step takes the target and the effect back together.
+    rewound = manager.undo(
+        game_id,
+        seat=0,
+        revision=_int(summary["revision"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert len(session.steps) == steps_before
+    assert effect_steps.picked_rows(session.state) == ()
+    assert shown(pick_at, 0)["undone"] is True
+    assert shown(pick_at + 1, 0)["undone"] is True
+    marker = session.log[-1]
+    assert isinstance(marker, LoggedUndo) and marker.count == 2
+    assert _rows(rewound["undo"]) == [{"seat": 0, "steps": 2}]
+    # The recall is offered again as one row.
+    again = [
+        row
+        for row in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if row["action_id"] == "recall_agent_for_imperial_privilege"
+    ]
+    assert [row["arguments"] for row in again] == [recall["arguments"]]
 
 
 # ------------------------------------------------ Urgent Shigawire
@@ -1610,7 +1684,9 @@ def test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot() -> No
     )
     assert trash["undoable"] is True
     summary = _play_raw(manager, summary, index=_int(trash["index"]))
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    # The placement's two steps and the tile's trash as two steps of its own
+    # (stage B3: the effect row, then its target row).
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
     rewards = [
         row
         for row in _served(manager, game_id)
@@ -1847,7 +1923,9 @@ def test_trashing_sardaukar_soldier_can_be_taken_back_and_its_card_cannot() -> N
     summary = _play_raw(manager, summary, index=_int(trash["index"]))
     trashed = manager._get(game_id).state.players[0]
     assert trashed.trashed == (soldier,) and trashed.intrigue_cards == ()
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    # The placement's two steps and the trash as two steps of its own (stage
+    # B3: the effect row, then its target row).
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
     draw = next(
         row
         for row in _served(manager, game_id)

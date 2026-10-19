@@ -11,6 +11,7 @@ player turn is open.
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core import (
     DecisionFrame,
     GamePhase,
@@ -94,7 +95,7 @@ def test_other_memories_makes_up_a_recruit_shortfall_this_turn() -> None:
         if action.action_id == "use_other_memories"
     )
 
-    result = UprisingRulesEngine().apply(placed, use)
+    result = apply_whole(UprisingRulesEngine(), placed, use)
 
     seat = result.state.players[0]
     assert seat.memories == 0
@@ -126,11 +127,11 @@ def test_a_returned_specimen_makes_up_a_recruit_shortfall() -> None:
     engine = UprisingRulesEngine()
     (returned,) = (
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "return_specimen"
     )
 
-    result = engine.apply(state, returned)
+    result = apply_whole(engine, state, returned)
 
     seat = result.state.players[0]
     assert seat.specimens == 1
@@ -247,19 +248,19 @@ def test_a_refill_during_a_reveal_counts_as_that_reveal_s_recruit() -> None:
     engine = UprisingRulesEngine()
     (reveal,) = (
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "reveal_turn"
     )
-    revealed = engine.apply(state, reveal).state
+    revealed = apply_whole(engine, state, reveal).state
     waiting = replace(revealed.players[0], ungained_troops=1)
     revealed = replace(revealed, players=(waiting, *revealed.players[1:]))
     (returned,) = (
         action
-        for action in engine.legal_actions(revealed, 0)
+        for action in engine.whole_actions(revealed, 0)
         if action.action_id == "return_specimen"
     )
 
-    result = engine.apply(revealed, returned)
+    result = apply_whole(engine, revealed, returned)
 
     assert [event.kind for event in result.events] == [
         "specimen_returned",
@@ -289,12 +290,12 @@ def test_a_scouts_line_tops_up_its_own_recruit_before_the_shortfall() -> None:
     engine = UprisingRulesEngine()
     (top_up,) = (
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "scouts_return_specimens"
         and dict(action.arguments)["count"] == 1
     )
 
-    result = engine.apply(state, top_up)
+    result = apply_whole(engine, state, top_up)
 
     seat = result.state.players[0]
     assert seat.troops_garrison == 12 and seat.troops_supply == 0

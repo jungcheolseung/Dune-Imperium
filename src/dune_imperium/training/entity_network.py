@@ -89,6 +89,8 @@ _ZONE_VOCABULARY: Final = {
     "private_hand": "personal",
     "private_peeked_card": "personal",
     "private_agent_card_pick": "personal",
+    # Stage B3: the personal card that printed the seat's picked effect.
+    "private_effect_pick_card": "personal",
     "imperium_removed": "personal",
     "intrigue_resolving": "intrigue",
     "intrigue_discard": "intrigue",

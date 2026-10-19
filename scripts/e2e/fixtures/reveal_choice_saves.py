@@ -102,7 +102,7 @@ for seed in SEEDS:
             summary = manager.confirm_turn(game_id, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         if session.state.decision_stack[-1].kind == FrameKind.REVEAL:
             # The page's own list (display.actions.reveal_choice_headers).
             choices = reveal_choice_headers(session.state, owner) or []

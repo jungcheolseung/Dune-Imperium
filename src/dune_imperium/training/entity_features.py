@@ -512,6 +512,9 @@ ARGUMENT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
     "wild_card_id": ("battle", "conflict"),
     "intrigue_card_id": ("intrigue",),
     "target": ("contract",),
+    # Stage B3: the entity that printed a waiting effect -- a card type, the
+    # visited space, a leader face, a Tech tile; a Contract by its instance.
+    "printed": ("personal", "space", "leader", "tech"),
 }
 # The vocabulary of a slot key's id, by the key's prefix (``training.slots``).
 SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -538,12 +541,16 @@ SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
 # Arguments that name a choice, never an entity, even where a value equals
 # some id (the Subcommittee ``leverage`` is also an Intrigue card's id).
 LABEL_ARGUMENTS: Final = frozenset(
-    {"choice", "effect", "reward", "subcommittee_id", "zone", "zones"}
+    # Stage B3: an effect row's printed ``icon`` and the ``option`` of an
+    # alternative or of a target row are labels too.
+    {"choice", "effect", "icon", "option", "reward", "subcommittee_id", "zone", "zones"}
 )
 # Where an argument's vocabulary depends on the action: a battle card's id
 # is often a Conflict card's id too.
 ACTION_ARGUMENT_HINTS: Final[Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("flip_battle_card", "card_id"): ("battle",),
+    # Stage B3's target rows name their target by its kind.
+    ("choose_intrigue_card", "card_id"): ("intrigue",),
 }
 
 
@@ -576,6 +583,13 @@ def feature_tables() -> dict[str, dict[str, list[Any]]]:
     }
 
 
+_LEADER_OF_FACE: Final = {
+    leader.alternate_face_id: leader_id
+    for leader_id, leader in LEADERS_BY_ID.items()
+    if leader.alternate_face_id is not None
+}
+
+
 def resolve_argument(action_id: str, key: str, value: str) -> tuple[str, int] | None:
     """The entity an action argument names, or ``None`` for a label."""
 
@@ -596,6 +610,8 @@ def resolve(value: str, prefer: tuple[str, ...] = ()) -> tuple[str, int] | None:
     index = _indexes()
     if not value:
         return None
+    # A leader's other face (Reverend Mother Jessica) is its leader card.
+    value = _LEADER_OF_FACE.get(value, value)
     for name in prefer:
         if value in index[name]:
             return name, index[name][value]

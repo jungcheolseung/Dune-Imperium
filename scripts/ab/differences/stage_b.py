@@ -24,12 +24,19 @@ from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, is_fixed_outcome
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.records.portable.trace import canonical
 from dune_imperium.rules.agent_turn import (
     agent_card_pick_actions,
     agent_space_pick_actions,
 )
 from dune_imperium.rules.combat import legacy_combat_reward_icon
 from dune_imperium.rules.contracts import legacy_contract_reward_icon
+from dune_imperium.rules.effect_steps import (
+    path_of,
+    present,
+    presents_steps,
+    without_pick,
+)
 
 _PLACEMENT = "agent_turn"
 _CARD_PICK = "choose_agent_card"
@@ -781,4 +788,91 @@ COMBAT_REWARD_ICONS = Rule(
     answer=_reward_answer,
 )
 
-RULES: tuple[Rule, ...] = (AGENT_TURN_STEPS, COMBAT_REWARD_ICONS)
+# --- B3: a waiting effect, then its target (OQ-111) -------------------------
+#
+# docs/stage-b-plan.md 3c ("B3a 세부 설계"): a frame that offers several
+# waiting effects shows each whole action -- an effect and its target -- as
+# an effect row and then its target rows (``rules.effect_steps``). A recorded
+# whole action compares as its steps; the pick waits in the frame's context
+# (left out like the whole decision stack), its seat-only ``effect_picked``
+# events are dropped and the empty pick of every recorded step's views goes.
+# At such a decision the candidate's rows are the base's whole actions shown
+# by their first steps: when they are, the base's rows stand, and the page
+# metadata is read off those whole actions, as the server reads it.
+_EFFECT_PICKED = "effect_picked"
+_EMPTY_EFFECT_PICK_TEXT = '"effect_pick":[],'
+# The candidate where the step being compared was taken (``_effect_moves``
+# sees it first; ``_effect_steps_in_base_form`` reads it).
+_EFFECT_AT: list[At] = []
+
+
+def _whole(step: tuple[Any, ...]) -> DomainAction | None:
+    if step[0] != "a":
+        return None
+    arguments = tuple((str(pair[0]), pair[1]) for pair in step[3])
+    return DomainAction(action_id=step[1], actor=step[2], arguments=arguments)
+
+
+def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
+    """The base's whole action as the candidate's steps."""
+
+    _EFFECT_AT[:] = [at]
+    whole = _whole(old.step)
+    if whole is None or not presents_steps(at.state):
+        return None
+    return path_of(without_pick(at.state), whole)
+
+
+def _empty_effect_pick_dropped(candidate: Step) -> None:
+    if candidate._views is not None:
+        for view in candidate._views:
+            private = view.get("private")
+            if isinstance(private, dict) and private.get("effect_pick") == []:
+                del private["effect_pick"]
+        return
+    candidate.views_text = candidate.views_text.replace(_EMPTY_EFFECT_PICK_TEXT, "")
+
+
+def _effect_steps_in_base_form(old: Step, candidate: Step) -> None:
+    candidate.events = [
+        event for event in candidate.events if event["kind"] != _EFFECT_PICKED
+    ]
+    _empty_effect_pick_dropped(candidate)
+    if not _EFFECT_AT:
+        return
+    at = _EFFECT_AT[0]
+    if not (
+        isinstance(at.decision, PlayerDecision)
+        and presents_steps(at.state)
+        and isinstance(old.decision, list)
+        and isinstance(candidate.decision, list)
+    ):
+        return
+    base = old.decision[1]
+    if not isinstance(base, list):
+        return
+    wholes = tuple(
+        DomainAction(
+            action_id=row["action_id"],
+            actor=row["actor"],
+            arguments=tuple((str(pair[0]), pair[1]) for pair in row["arguments"]),
+        )
+        for row in base
+    )
+    if canonical(present(at.state, wholes)) != candidate.decision[1]:
+        return
+    from engine_equivalence import _page
+
+    candidate.decision[1] = list(base)
+    candidate.page = _page(at.state, at.decision.owner, wholes)
+
+
+EFFECT_STEPS = Rule(
+    name="effect_steps",
+    why="stage B3 (docs/stage-b-plan.md 3c, OQ-111): a waiting effect is "
+    "picked before its target",
+    new=_effect_steps_in_base_form,
+    moves=_effect_moves,
+)
+
+RULES: tuple[Rule, ...] = (EFFECT_STEPS, AGENT_TURN_STEPS, COMBAT_REWARD_ICONS)

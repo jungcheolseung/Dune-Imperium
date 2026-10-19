@@ -38,7 +38,10 @@ where its two moves first part (docs/stage-b-plan.md 3a): at the card pick
 when they send different cards (each move as its card pick), at the space
 pick once the person's card is picked when they send the same one, and at
 the card pick when only one of them is a placement (the other a Reveal or a
-plot, say).
+plot, say). Stage B3 asks a waiting effect before its target the same way:
+a problem whose person's move is a whole action with a target is asked at
+the effect when the network's move resolves another effect (or none), and
+at the target once the person's effect is picked when it picks the same one.
 """
 
 import dataclasses
@@ -68,6 +71,13 @@ from dune_imperium.rules.agent_turn import (
     agent_card_pick,
     agent_card_pick_actions,
     agent_space_pick_actions,
+)
+from dune_imperium.rules.effect_steps import (
+    STEP_SPECS,
+    first_step,
+    path_of,
+    presents_steps,
+    without_pick,
 )
 from dune_imperium.rules.graft_boxes import tagged
 from dune_imperium.server.persistence import (
@@ -113,6 +123,10 @@ _UNORDERED_ZONES: Final = frozenset(
 # (``records.migration``, codec v150).
 _CARD_PICK_BRIDGE: Final = "agent_card_pick"
 _SPACE_PICK_BRIDGE: Final = "agent_space_pick"
+# Stage B3: the steps the migration takes toward a recorded whole action,
+# and the recorded step as its last one (``records.migration``).
+_EFFECT_STEP_BRIDGE: Final = "effect_step"
+_EFFECT_LAST_STEP_BRIDGE: Final = "effect_last_step"
 _PLACEMENT: Final = "agent_turn"
 _SPACE_PICK: Final = "place_agent"
 
@@ -382,8 +396,18 @@ def build_mistake_suite(
         moves, judged_state = positions[(game.game_id, index)]
         right = _action(pick["right"], moves[0].actor)
         # A recorded placement in the terms its right move names: its space
-        # pick against a space pick, the whole placement otherwise.
-        recorded = moves[0] if right.action_id == _SPACE_PICK else moves[-1]
+        # pick against a space pick, the whole placement otherwise; a
+        # recorded whole action taken as steps (stage B3) likewise its last
+        # step against a step, the whole action against a whole action.
+        recorded = (
+            moves[0]
+            if right.action_id == _SPACE_PICK
+            or (
+                moves[-1].action_id in STEP_SPECS
+                and right.action_id not in STEP_SPECS
+            )
+            else moves[-1]
+        )
         if right == recorded:
             raise ValueError(f"{pick['game']} step {index}: right is the recorded move")
         problems.append(
@@ -441,9 +465,10 @@ def _judged_positions(
     """The person's migrated move and the public state at each wanted step.
 
     A recorded placement (before codec v150) also comes whole, as recorded,
-    after its migrated space pick: a judge before codec v150 saw it whole,
-    and which of this engine's two steps a problem is asked at depends on
-    the other move (``resolve``)."""
+    after its migrated space pick, and so does a recorded whole action after
+    its last effect step (stage B3): a judge before codec v150 saw it whole,
+    and which of this engine's steps a problem is asked at depends on the
+    other move (``resolve``)."""
 
     engine = UprisingRulesEngine()
     found: dict[tuple[str, int], tuple[tuple[DomainAction, ...], dict[str, Any]]] = {}
@@ -454,7 +479,7 @@ def _judged_positions(
                 migrated.step, DomainAction
             ):
                 moves: tuple[DomainAction, ...] = (migrated.step,)
-                if migrated.bridge == _SPACE_PICK_BRIDGE:
+                if migrated.bridge in (_SPACE_PICK_BRIDGE, _EFFECT_LAST_STEP_BRIDGE):
                     recorded = game.parsed.replay.steps[migrated.recorded_index]
                     assert isinstance(recorded, DomainAction)
                     moves = (migrated.step, recorded)
@@ -553,14 +578,32 @@ def resolve(
         # recorded placement (codec v150): the position is asked there when
         # the problem's moves send different cards.
         before_pick: GameState | None = None
+        # The steps toward a waiting effect the migration put in front of a
+        # recorded whole action (stage B3), each with the state it was taken
+        # in: the position is asked where the problem's moves first part.
+        picks: list[tuple[GameState, DomainAction]] = []
         for state, migrated in walk(record, engine):
             if migrated.recorded_index is None and migrated.bridge == _CARD_PICK_BRIDGE:
                 before_pick = state
                 continue
+            if (
+                migrated.recorded_index is None
+                and migrated.bridge == _EFFECT_STEP_BRIDGE
+                and isinstance(migrated.step, DomainAction)
+            ):
+                picks.append((state, migrated.step))
+                continue
             if migrated.recorded_index not in wanted:
                 before_pick = None
+                picks = []
                 continue
             problem = wanted[migrated.recorded_index]
+            effect_path = (
+                (*picks, (state, migrated.step))
+                if migrated.bridge == _EFFECT_LAST_STEP_BRIDGE
+                and isinstance(migrated.step, DomainAction)
+                else ()
+            )
             resolved[problem.problem_id] = _position(
                 engine,
                 problem,
@@ -570,8 +613,10 @@ def resolve(
                 migrated.graft_box,
                 migrated.reveal_source,
                 before_pick if migrated.bridge == _SPACE_PICK_BRIDGE else None,
+                effect_path,
             )
             before_pick = None
+            picks = []
         dropped = dict(record.dropped)
         for problem in problems:
             if problem.problem_id in resolved:
@@ -651,6 +696,7 @@ def _position(
     graft_box: int = 0,
     reveal_source: str | None = None,
     before_pick: GameState | None = None,
+    effect_path: Sequence[tuple[GameState, DomainAction]] = (),
 ) -> Resolved | str:
     decision = engine.current_decision(state)
     if getattr(decision, "owner", None) != problem.seat:
@@ -675,6 +721,10 @@ def _position(
             if isinstance(rewritten, DomainAction):
                 network = rewritten
         return _resolved(problem, state, legal, person, network)
+    if effect_path:
+        return _effect_position(
+            engine, problem, effect_path, network, codec, graft_box, reveal_source
+        )
     # Judged in the recording engine's terms: before codec v143 with the
     # graft box that engine had active there (``MigratedStep.graft_box``).
     if codec < GRAFT_BOXES_CODEC:
@@ -695,6 +745,69 @@ def _position(
     return _resolved(problem, state, legal, person, network)
 
 
+def _effect_position(
+    engine: UprisingRulesEngine,
+    problem: HumanProblem,
+    effect_path: Sequence[tuple[GameState, DomainAction]],
+    network: DomainAction,
+    codec: int,
+    graft_box: int,
+    reveal_source: str | None,
+) -> Resolved | str:
+    """A problem whose person's move is a whole action taken as steps
+    (stage B3): asked at the first step where the two moves part -- the
+    effect when they resolve different effects (or the network's move is no
+    effect at all), the target once the person's effect is picked when they
+    pick the same one. ``effect_path`` holds each of the person's steps with
+    the state it was taken in; ``network`` is in the recording engine's
+    terms, so it is read at the state before the first step."""
+
+    seat = problem.seat
+    base = effect_path[0][0]
+    if codec < GRAFT_BOXES_CODEC:
+        held = graft_box_held(engine, base, network, graft_box)
+        if held is not None:
+            return f"the network's move {network.action_id}: {held}"
+    mine = tuple(row for _, row in effect_path)
+    stepped = next(
+        (
+            index
+            for index, (state, _) in enumerate(effect_path)
+            if network in engine.legal_actions(state, seat)
+        ),
+        None,
+    )
+    if stepped is not None:
+        # Named as a step of this engine already (a mistake picked by hand
+        # since stage B3): asked where that step is offered.
+        state = effect_path[stepped][0]
+        legal = engine.legal_actions(state, seat)
+        return _resolved(problem, state, legal, mine[stepped], network)
+    wholes = engine.whole_actions(base, seat)
+    if network not in wholes or (
+        codec < GRAFT_BOXES_CODEC and graft_box == 1 and tagged(network, 1) in wholes
+    ):
+        rewritten = rewrite_step(engine, base, network, codec, graft_box, reveal_source)
+        if isinstance(rewritten, DomainAction):
+            network = rewritten
+    theirs = path_of(without_pick(base), network) or (network,)
+    parted = next(
+        (
+            index
+            for index in range(min(len(mine), len(theirs)))
+            if mine[index] != theirs[index]
+        ),
+        min(len(mine), len(theirs)) - 1,
+    )
+    state = effect_path[parted][0]
+    legal = engine.legal_actions(state, seat)
+    return _resolved(problem, state, legal, mine[parted], theirs[parted])
+
+
+# The whole actions of a decision come from the rules' providers alone.
+_ENGINE: Final = UprisingRulesEngine()
+
+
 def _resolved(
     problem: HumanProblem,
     state: GameState,
@@ -702,6 +815,11 @@ def _resolved(
     person: DomainAction,
     network: DomainAction,
 ) -> Resolved | str:
+    if network not in legal and presents_steps(state):
+        # A move the network weighed whole (an effect with its target) is
+        # asked at the step it starts (stage B3, ``rules.effect_steps``).
+        if network in _ENGINE.whole_actions(state, problem.seat):
+            network = first_step(state, network)
     right, wrong = (
         (person, network) if problem.family == "human_right" else (network, person)
     )

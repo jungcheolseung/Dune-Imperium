@@ -28,6 +28,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import (
@@ -46,6 +47,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -130,13 +132,14 @@ def _state(
 
 
 def _legal(state: GameState, player: int = 0) -> tuple[DomainAction, ...]:
-    """The dispatcher's legal set, each action round-tripped through the codec."""
+    """The dispatcher's whole actions, each legal row round-tripped through
+    the codec."""
 
     codec = _codec(state.config)
-    actions = ENGINE.legal_actions(state, player)
-    for action in actions:
-        assert codec.decode(codec.encode(action), player) == action
-    return actions
+    for row in ENGINE.legal_actions(state, player):
+        assert codec.decode(codec.encode(row), player) == row
+    # The whole actions the rows stand for (stage B3), as the rules name them.
+    return ENGINE.whole_actions(state, player)
 
 
 def _find(state: GameState, action_id: str, **arguments: object) -> DomainAction:
@@ -149,7 +152,7 @@ def _find(state: GameState, action_id: str, **arguments: object) -> DomainAction
 
 
 def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
-    return ENGINE.apply(state, _find(state, action_id, **arguments)).state
+    return apply_whole(ENGINE, state, _find(state, action_id, **arguments)).state
 
 
 def _place(state: GameState, space_id: str) -> GameState:
@@ -340,7 +343,7 @@ def test_without_spice_no_payment_is_offered_until_a_spice_arrives() -> None:
     # (OQ-028): Imperial Basin's own spice, resolved first, pays it.
     gained = placed
     while gained.players[0].resources.spice < 1:
-        gained = ENGINE.apply(
+        gained = apply_whole(ENGINE, 
             gained,
             next(
                 action
@@ -390,7 +393,7 @@ def test_an_empty_supply_pays_the_spice_without_a_troop() -> None:
         troops_supply=0,
     )
     placed = _place(_state(owner), "accept_contract")
-    transition = ENGINE.apply(placed, _find(placed, "pay_agent_card_spice"))
+    transition = apply_whole(ENGINE, placed, _find(placed, "pay_agent_card_spice"))
 
     seat = transition.state.players[0]
     assert seat.resources.spice == 0
@@ -495,6 +498,9 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
     trash = DomainAction(
         action_id="trash_optional_card", actor=0, arguments=(("card_id", CONTROL),)
     )
+    # Stage B3a: the payment is the ``pay`` effect row of the card that
+    # prints it (an effect without a target is one row).
+    (pay,) = steps_for(DomainAction("pay_agent_card_spice", 0), "control_the_spice")
     for config in (
         EPIC,
         RulesetConfig(epic_game=True, choam_module=True, promo_cards=True),
@@ -506,8 +512,13 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
         for action in (
             trash,
             DomainAction(action_id="decline_optional_trash", actor=0),
-            DomainAction(action_id="pay_agent_card_spice", actor=0),
+            pay,
         ):
             assert codec.decode(codec.encode(action), 0) == action
     base = {template.action_id for template in _codec(RulesetConfig()).catalog}
     assert "decline_optional_trash" not in base
+    # The card's own effect row is an Epic catalog's alone, too.
+    assert not any(
+        dict(template.arguments).get("printed") == "control_the_spice"
+        for template in _codec(RulesetConfig()).catalog
+    )

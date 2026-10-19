@@ -36,7 +36,7 @@ def walk_step(
     the choice (a placement as ``agent_turn``)."""
 
     session = manager._get(game_id)
-    actions = session.engine.legal_actions(session.state, owner)
+    actions = session.engine.whole_actions(session.state, owner)
     scripted = engine_order_answer(session.state, owner, actions)
     if scripted is not None:
         index = actions.index(scripted)
@@ -54,7 +54,7 @@ def walk_step(
     )
     if chosen.action_id != PLACEMENT_ACTION:
         return summary, chosen
-    later = session.engine.legal_actions(session.state, owner)
+    later = session.engine.whole_actions(session.state, owner)
     spaces = placements_for_steps(session.state, owner, later)
     assert spaces is not None, "the card pick waits for its space pick"
     summary = manager.apply_action(

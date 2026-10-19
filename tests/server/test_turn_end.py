@@ -31,7 +31,11 @@ from typing import Final
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import (
+    apply_placement,
+    apply_whole,
+    steps_after,
+)
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -1210,13 +1214,14 @@ def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
                 if all(dict(action.arguments).get(k) == v for k, v in arguments.items())
             )
             return apply_placement(_ENGINE, state, placement).state
+        # The rules' whole actions (stage B3: the seat's rows are their steps).
         action = next(
             action
-            for action in _ENGINE.legal_actions(state, 0)
+            for action in _ENGINE.whole_actions(state, 0)
             if action.action_id == action_id
             and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
         )
-        return _ENGINE.apply(state, action).state
+        return apply_whole(_ENGINE, state, action).state
 
     visited = take(
         take(state, "agent_turn", space_id="assembly_hall"), "resolve_board_effect"
@@ -1225,14 +1230,14 @@ def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
     bought = take(visited, "acquire_tech", tech_id="glowglobes")
     assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert dict(bought.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY]
-    assert {action.action_id for action in _ENGINE.legal_actions(bought, 0)} == {
+    assert {action.action_id for action in _ENGINE.whole_actions(bought, 0)} == {
         "resolve_tech_acquire_effect"
     }
     assert agent_turn_end_ready(bought) is None
 
     resolved = take(bought, "resolve_tech_acquire_effect", faction="emperor")
     assert agent_turn_end_ready(resolved) == 0
-    assert DomainAction("finish_agent_turn", 0) in _ENGINE.legal_actions(resolved, 0)
+    assert DomainAction("finish_agent_turn", 0) in _ENGINE.whole_actions(resolved, 0)
 
 
 def _bought_glowglobes(influence: Influence) -> GameState:
@@ -1278,13 +1283,14 @@ def _bought_glowglobes(influence: Influence) -> GameState:
                 if all(dict(action.arguments).get(k) == v for k, v in arguments.items())
             )
             return apply_placement(_ENGINE, state, placement).state
+        # The rules' whole actions (stage B3: the seat's rows are their steps).
         action = next(
             action
-            for action in _ENGINE.legal_actions(state, 0)
+            for action in _ENGINE.whole_actions(state, 0)
             if action.action_id == action_id
             and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
         )
-        return _ENGINE.apply(state, action).state
+        return apply_whole(_ENGINE, state, action).state
 
     visited = take(
         take(state, "agent_turn", space_id="assembly_hall"), "resolve_board_effect"
@@ -1307,7 +1313,7 @@ def test_a_blocked_tech_acquire_influence_does_not_hold_the_turn_end_ready_flag(
         "glowglobes:influence"
     )
     assert agent_turn_end_ready(blocked) == 0
-    assert [a.action_id for a in _ENGINE.legal_actions(blocked, 0)] == [
+    assert [a.action_id for a in _ENGINE.whole_actions(blocked, 0)] == [
         "finish_agent_turn"
     ]
 
@@ -1396,7 +1402,7 @@ def _resolve_what_is_offered(
         state = _ENGINE.apply(state, partner).state
     switched = False
     while True:
-        legal = _ENGINE.legal_actions(state, 0)
+        legal = _ENGINE.whole_actions(state, 0)
         step = next((a for a in legal if a.action_id in _RESOLVING), None)
         if step is None and not switched:
             step = next((a for a in legal if a.action_id == "switch_graft_card"), None)
@@ -1405,7 +1411,7 @@ def _resolve_what_is_offered(
             return state
         if step.action_id != "switch_graft_card":
             switched = False
-        state = _ENGINE.apply(state, step).state
+        state = apply_whole(_ENGINE, state, step).state
 
 
 @pytest.mark.parametrize(
@@ -1462,7 +1468,7 @@ def test_a_box_keeping_only_blocked_icons_is_ready_to_end(
     if graft_partner is not None:
         assert context["graft_pending_effect"] is True
         assert set(str(context["graft_pending_icons"]).split(",")) == waiting
-    offered = {action.action_id for action in _ENGINE.legal_actions(state, 0)}
+    offered = {action.action_id for action in _ENGINE.whole_actions(state, 0)}
     assert "finish_agent_turn" in offered
     assert offered.isdisjoint({*_RESOLVING, "switch_graft_card"})
 
@@ -1496,7 +1502,7 @@ def test_a_waiting_single_effect_box_still_holds_the_ready_flag() -> None:
     assert context["pending_agent_effect"] is True
     assert not context.get("pending_agent_icons")
     assert "finish_agent_turn" in {
-        action.action_id for action in _ENGINE.legal_actions(state, 0)
+        action.action_id for action in _ENGINE.whole_actions(state, 0)
     }
 
     assert agent_turn_end_ready(state) is None
@@ -2787,7 +2793,12 @@ def _run_property_sweep_game(
         choice = rng.choice(actions)
         before = session.state
         finishing = finishing_seat(before) == owner
-        sent.add(len(session.steps))
+        # One request applies the chosen whole action as all of its steps
+        # (stage B3), each its own entry in ``session.steps``: all of them
+        # are the walker's, not the server's.
+        whole = session.engine.whole_actions(before, owner)[_int(choice["index"])]
+        start = len(session.steps)
+        sent.update(range(start, start + steps_after(before, whole) + 1))
         summary = manager.apply_action(
             game_id,
             owner,
@@ -3002,7 +3013,8 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
 
 def _last_recipient_rows(session: GameSession, owner: int) -> list[object]:
     rows: list[object] = []
-    for index, action in enumerate(session.engine.legal_actions(session.state, owner)):
+    # The payload's rows are the whole actions (stage B3).
+    for index, action in enumerate(session.engine.whole_actions(session.state, owner)):
         row = sessions_module._serialize_action(index, action, session)
         dry = sessions_module._dry_run(session, action)
         held = dry is not None and unit_over(dry.state, owner)
@@ -3127,7 +3139,7 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
                 assert worlds[2] == worlds[3], ("last", live.round_number, owner, seat)
                 checked += 1
                 break
-        actions = session.engine.legal_actions(live, owner)
+        actions = session.engine.whole_actions(live, owner)
         action = sessions_module._choose(
             agents[owner], live, session.engine.observe(live, owner), actions
         )

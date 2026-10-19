@@ -6,7 +6,7 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
@@ -213,7 +213,7 @@ def test_engine_converts_a_second_icon_after_the_last_contract_is_taken() -> Non
     ).state
     action = legal_contract_actions(state, 0)[0]
 
-    transition = engine.apply(state, action)
+    transition = apply_whole(engine, state, action)
 
     assert transition.state.players[0].active_contract_ids == ("contract:arrakeen_i",)
     assert transition.state.players[0].resources.solari == 2
@@ -250,7 +250,7 @@ def test_matching_space_contracts_are_mandatory_orderable_agent_effects() -> Non
     placed = _place_agent(state, "arrakeen")
     engine = UprisingRulesEngine()
 
-    legal = engine.legal_actions(placed, 0)
+    legal = engine.whole_actions(placed, 0)
     completion_ids = {
         dict(action.arguments)["instance_id"]
         for action in legal
@@ -265,15 +265,15 @@ def test_matching_space_contracts_are_mandatory_orderable_agent_effects() -> Non
         for action in legal
         if dict(action.arguments).get("instance_id") == "contract:arrakeen_i"
     )
-    first = engine.apply(placed, first_action).state
+    first = apply_whole(engine, placed, first_action).state
     # The first Contract's reward window is on top until its rows are paid.
     first = answer_reward_windows(engine, first)
     second_action = next(
         action
-        for action in engine.legal_actions(first, 0)
+        for action in engine.whole_actions(first, 0)
         if dict(action.arguments).get("instance_id") == "contract:arrakeen_ii"
     )
-    second = engine.apply(first, second_action).state
+    second = apply_whole(engine, first, second_action).state
     second = answer_reward_windows(engine, second)
     owner = second.players[0]
 
@@ -284,12 +284,12 @@ def test_matching_space_contracts_are_mandatory_orderable_agent_effects() -> Non
     )
     assert owner.resources.water == 11
     assert owner.troops_garrison == 4
-    assert {action.action_id for action in engine.legal_actions(second, 0)} == {
+    assert {action.action_id for action in engine.whole_actions(second, 0)} == {
         "place_contract_spy"
     }
-    placed_spy = engine.apply(
+    placed_spy = apply_whole(engine, 
         second,
-        engine.legal_actions(second, 0)[0],
+        engine.whole_actions(second, 0)[0],
     ).state
     assert placed_spy.players[0].spies_supply == 2
     assert len(placed_spy.players[0].spy_post_ids) == 1
@@ -329,12 +329,14 @@ def test_contract_spy_without_supply_may_pass_up_the_recall_first(
     )
     completion = next(
         action
-        for action in engine.legal_actions(placed, 0)
+        for action in engine.whole_actions(placed, 0)
         if action.action_id == "complete_contract"
     )
-    completed = answer_reward_windows(engine, engine.apply(placed, completion).state)
+    completed = answer_reward_windows(engine, apply_whole(
+        engine, placed, completion
+    ).state)
     assert completed.decision_stack[-1].kind == "contract_reward_spy"
-    actions = engine.legal_actions(completed, 0)
+    actions = engine.whole_actions(completed, 0)
     assert [action.action_id for action in actions] == [
         "decline_contract_spy",
         "recall_spy_for_contract",
@@ -342,7 +344,7 @@ def test_contract_spy_without_supply_may_pass_up_the_recall_first(
         "recall_spy_for_contract",
     ]
 
-    declined = engine.apply(completed, actions[0])
+    declined = apply_whole(engine, completed, actions[0])
     assert declined.state.decision_stack[-1].kind == "agent_effects"
     assert declined.state.players[0].spy_post_ids == _REMOTE_POSTS
     assert declined.state.players[0].spies_recalled_turn == 0
@@ -355,8 +357,8 @@ def test_contract_spy_without_supply_may_pass_up_the_recall_first(
         for action in actions
         if dict(action.arguments).get("post_id") == "arrakis-hagga-basin"
     )
-    recalled = engine.apply(completed, recall).state
-    after = engine.legal_actions(recalled, 0)
+    recalled = apply_whole(engine, completed, recall).state
+    after = engine.whole_actions(recalled, 0)
     assert {action.action_id for action in after} == {"place_contract_spy"}
     assert "arrakis-hagga-basin" in {
         dict(action.arguments)["post_id"] for action in after
@@ -376,14 +378,14 @@ def test_gather_intelligence_window_precedes_contract_completion() -> None:
     # recall is offered even with the deck and discard pile both empty
     # (OQ-099, user ruling 2026-10-07, "허용 (앱처럼)").
     assert {
-        action.action_id for action in engine.legal_actions(placed, 0)
+        action.action_id for action in engine.whole_actions(placed, 0)
     } == {"decline_gather_intelligence", "gather_intelligence"}
 
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         placed,
         next(
             action
-            for action in engine.legal_actions(placed, 0)
+            for action in engine.whole_actions(placed, 0)
             if action.action_id == "decline_gather_intelligence"
         ),
     ).state
@@ -402,22 +404,22 @@ def test_harvest_contracts_sum_maker_and_agent_card_spice() -> None:
     engine = UprisingRulesEngine()
 
     assert not legal_contract_completion_actions(placed, 0)
-    card_resolved = engine.apply(
+    card_resolved = apply_whole(engine, 
         placed,
         next(
             action
-            for action in engine.legal_actions(placed, 0)
+            for action in engine.whole_actions(placed, 0)
             if action.action_id == "resolve_agent_card_effect"
         ),
     ).state
     assert card_resolved.players[0].resources.spice == 2
     assert not legal_contract_completion_actions(card_resolved, 0)
 
-    harvested = engine.apply(
+    harvested = apply_whole(engine, 
         card_resolved,
         next(
             action
-            for action in engine.legal_actions(card_resolved, 0)
+            for action in engine.whole_actions(card_resolved, 0)
             if action.action_id == "harvest_maker_spice"
         ),
     ).state
@@ -428,7 +430,7 @@ def test_harvest_contracts_sum_maker_and_agent_card_spice() -> None:
         for action in legal_contract_completion_actions(harvested, 0)
     } == {"contract:harvest_3", "contract:harvest_4"}
 
-    first = engine.apply(
+    first = apply_whole(engine, 
         harvested,
         next(
             action
@@ -438,7 +440,7 @@ def test_harvest_contracts_sum_maker_and_agent_card_spice() -> None:
     ).state
     # The first completion's reward window is paid before the next Contract.
     first = answer_reward_windows(engine, first)
-    second = engine.apply(
+    second = apply_whole(engine, 
         first,
         legal_contract_completion_actions(first, 0)[0],
     ).state
@@ -463,19 +465,19 @@ def test_harvest_total_survives_spice_spent_later_in_the_agent_turn() -> None:
     )
     placed = _place_agent(state, "hagga_basin")
     engine = UprisingRulesEngine()
-    harvested = engine.apply(
+    harvested = apply_whole(engine, 
         placed,
         next(
             action
-            for action in engine.legal_actions(placed, 0)
+            for action in engine.whole_actions(placed, 0)
             if action.action_id == "harvest_maker_spice"
         ),
     ).state
-    paid = engine.apply(
+    paid = apply_whole(engine, 
         harvested,
         next(
             action
-            for action in engine.legal_actions(harvested, 0)
+            for action in engine.whole_actions(harvested, 0)
             if action.action_id == "pay_agent_card_spice"
         ),
     ).state
@@ -511,7 +513,7 @@ def _plot_spice_turn_state() -> GameState:
 
 def _play_crysknife_plot(state: GameState) -> GameState:
     engine = UprisingRulesEngine()
-    played = engine.apply(
+    played = apply_whole(engine, 
         state,
         DomainAction(
             action_id="play_intrigue",
@@ -525,11 +527,11 @@ def _play_crysknife_plot(state: GameState) -> GameState:
 
 def _harvest(state: GameState) -> GameState:
     engine = UprisingRulesEngine()
-    return engine.apply(
+    return apply_whole(engine, 
         state,
         next(
             action
-            for action in engine.legal_actions(state, 0)
+            for action in engine.whole_actions(state, 0)
             if action.action_id == "harvest_maker_spice"
         ),
     ).state
@@ -578,7 +580,7 @@ def test_harvest_ignores_spice_gained_on_an_earlier_turn_of_the_round() -> None:
     first = _harvest(_agent_to(plotted, _DESERT_PLANET[0], "imperial_basin"))
     assert first.players[0].resources.spice == 2
     assert not legal_contract_completion_actions(first, 0)
-    closed = engine.apply(first, DomainAction("finish_agent_turn", 0)).state
+    closed = apply_whole(engine, first, DomainAction("finish_agent_turn", 0)).state
     assert closed.decision_stack[-1].kind == "turn"
     assert dict(closed.decision_stack[-1].context)["turn_owner"] == 0
 
@@ -693,7 +695,7 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
     engine = UprisingRulesEngine()
     completed = answer_reward_windows(
         engine,
-        engine.apply(
+        apply_whole(engine, 
             placed,
             legal_contract_completion_actions(placed, 0)[0],
         ).state,
@@ -701,12 +703,12 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
 
     assert [
         dict(action.arguments)["instance_id"]
-        for action in engine.legal_actions(completed, 0)
+        for action in engine.whole_actions(completed, 0)
     ] == ["contract:high_council_i"]
 
-    taken = engine.apply(
+    taken = apply_whole(engine, 
         completed,
-        engine.legal_actions(completed, 0)[0],
+        engine.whole_actions(completed, 0)[0],
     ).state
     owner = taken.players[0]
 
@@ -726,7 +728,7 @@ def test_sardaukar_contract_draws_two_personal_cards() -> None:
     engine = UprisingRulesEngine()
     completed = answer_reward_windows(
         engine,
-        engine.apply(
+        apply_whole(engine, 
             placed,
             legal_contract_completion_actions(placed, 0)[0],
         ).state,
@@ -751,7 +753,7 @@ def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
     engine = UprisingRulesEngine()
     completed = answer_reward_windows(
         engine,
-        engine.apply(
+        apply_whole(engine, 
             placed,
             legal_contract_completion_actions(placed, 0)[0],
         ).state,
@@ -760,7 +762,7 @@ def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
     # The printed reward recalls one of your Agents, and the just-sent Agent
     # is not a valid target [Main p. 20]; with a target there is no confirm.
     assert contract_recall_targets(completed, 0) == ("arrakeen",)
-    recall_actions = engine.legal_actions(completed, 0)
+    recall_actions = engine.whole_actions(completed, 0)
     assert [action.action_id for action in recall_actions] == [
         "recall_agent_for_contract"
     ]
@@ -768,7 +770,7 @@ def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
         dict(action.arguments)["space_id"] for action in recall_actions
     ] == ["arrakeen"]
 
-    recalled = engine.apply(completed, recall_actions[0]).state
+    recalled = apply_whole(engine, completed, recall_actions[0]).state
     resolved = recalled.players[0]
 
     assert resolved.agents_available == 1
@@ -788,14 +790,14 @@ def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
     )
     placed = _place_agent(state, "sardaukar")
     engine = UprisingRulesEngine()
-    completion = engine.apply(
+    completion = apply_whole(engine, 
         placed,
         legal_contract_completion_actions(placed, 0)[0],
     )
     # The Recall Agent icon is the reward window's one row (stage B2, OQ-112);
     # its press opens the recall window.
     assert completion.state.decision_stack[-1].kind == "contract_reward_icons"
-    transition = engine.apply(
+    transition = apply_whole(engine, 
         completion.state,
         DomainAction(
             action_id="resolve_contract_reward_icon",
@@ -815,9 +817,9 @@ def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
     confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
     assert contract_recall_targets(transition.state, 0) == ()
     assert contract_recall_targets(transition.state, 1) is None
-    assert engine.legal_actions(transition.state, 0) == (confirm,)
+    assert engine.whole_actions(transition.state, 0) == (confirm,)
 
-    fizzled = engine.apply(transition.state, confirm)
+    fizzled = apply_whole(engine, transition.state, confirm)
 
     assert [event.kind for event in fizzled.events] == ["contract_recall_unavailable"]
     assert fizzled.state.decision_stack[-1].kind == "agent_effects"
@@ -836,14 +838,14 @@ def test_contract_troops_increase_combat_deployment_limit() -> None:
     engine = UprisingRulesEngine()
     completed = answer_reward_windows(
         engine,
-        engine.apply(
+        apply_whole(engine, 
             placed,
             legal_contract_completion_actions(placed, 0)[0],
         ).state,
     )
     deployment_counts = {
         dict(action.arguments)["count"]
-        for action in engine.legal_actions(completed, 0)
+        for action in engine.whole_actions(completed, 0)
         if action.action_id == "deploy_troops"
     }
 
@@ -879,7 +881,7 @@ def test_contract_completion_actions_replay_from_the_same_state() -> None:
                 # A whole placement: the Agent turn's two steps (stage B1).
                 state = apply_placement(engine, state, step).state
             else:
-                state = engine.apply(state, step).state
+                state = apply_whole(engine, state, step).state
         return state
 
     first = play()

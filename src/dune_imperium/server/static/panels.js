@@ -1729,6 +1729,9 @@ function logGroups(entries) {
     open = null;
   };
   for (const entry of entries) {
+    /* A step that only picks toward a waiting effect: the step that ends
+       the effect shows it whole (stage B3). */
+    if (entry.pick) continue;
     if (entry.type === "undo") {
       groups.push({ kind: "undo", entry });
       open = null;

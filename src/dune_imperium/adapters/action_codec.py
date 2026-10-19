@@ -29,6 +29,8 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
+from dune_imperium.content.uprising.abilities import AbilityStructure
+from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -56,6 +58,7 @@ from dune_imperium.content.uprising.leaders import (
 )
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.personal_cards import (
+    card_is_ghola,
     card_is_graft,
     card_is_usurp,
     personal_card_for_instance,
@@ -76,13 +79,22 @@ from dune_imperium.content.uprising.types import (
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
+    PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.rules.combat import COMBAT_REWARD_ICON_KINDS
 from dune_imperium.rules.contracts import CONTRACT_REWARD_ICON_KINDS
+from dune_imperium.rules.effect_steps import (
+    AGENT_ICON_VERBS,
+    OFFERED_AS_WHOLE,
+    STEP_SPECS,
+    Printed,
+    steps_for,
+)
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
@@ -1252,7 +1264,219 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for template in tuple(templates)
             if template.action_id in BOX_ACTION_IDS
         )
-    return tuple(sorted(templates, key=_template_sort_key))
+    # Stage B3: the effect and target rows that stand for the whole actions
+    # of a frame offering its waiting effects effect first.
+    wholes = tuple(templates)
+    templates = [
+        template
+        for template in wholes
+        if template.action_id not in STEP_SPECS
+        or template.action_id in OFFERED_AS_WHOLE
+    ]
+    templates.extend(_effect_step_templates(config, wholes))
+    return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
+
+
+def _effect_step_templates(
+    config: RulesetConfig, wholes: tuple[ActionTemplate, ...]
+) -> tuple[ActionTemplate, ...]:
+    """The rows ``rules.effect_steps`` shows the catalog's whole actions by
+    (stage B3): each whole template's steps, once per entity that may have
+    printed its effect when the state names it (``effect_steps.Printed``).
+    An Agent box's rows name the card types whose box can offer them
+    (``_box_effect_cards``) and, for a Signet Ring box, every leader face."""
+
+    faces = _leader_faces(config)
+    spaces = tuple(space.space_id for space in catalog_spaces(config))
+    box_cards = _box_effect_cards(config)
+    rows: dict[ActionTemplate, None] = {}
+    for template in wholes:
+        spec = STEP_SPECS.get(template.action_id)
+        if spec is None:
+            continue
+        whole = DomainAction(template.action_id, 0, template.arguments)
+        named: tuple[tuple[Source | None, ActionValue | None], ...]
+        if spec.printed == Printed.BOX_CARD:
+            effect = steps_for(whole, "", Source.AGENT_CARD)[0]
+            arguments = dict(effect.arguments)
+            icon = arguments.get("icon", "")
+            assert isinstance(icon, str)
+            cards = box_cards.get((effect.action_id, icon), ())
+            # A Signet Ring box resolves its leader's Signet: only the plain
+            # and keyed rows are the box's own, the rest are the leader's.
+            signets = faces if template.action_id == "resolve_agent_card_effect" else ()
+            named = (
+                *((Source.AGENT_CARD, card) for card in cards),
+                *((Source.LEADER, face) for face in signets),
+            )
+        elif spec.printed == Printed.VISITED_SPACE:
+            named = tuple((None, space) for space in spaces)
+        elif spec.printed == Printed.LEADER:
+            own = _LEADER_ROW_FACES.get(template.action_id)
+            named = tuple(
+                (None, face) for face in faces if own is None or face in own
+            )
+        else:
+            named = ((None, None),)
+        for source, printed in named:
+            for row in steps_for(whole, printed, source):
+                rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
+    return tuple(rows)
+
+
+# The leader faces whose Signet or leader ability offers a leader row; the
+# rules tell the leaders apart by id (``leader_abilities``).
+_LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
+    "advance_feyd_track": frozenset({"feyd_rautha_harkonnen"}),
+    "trash_leader_card": frozenset(
+        {"feyd_rautha_harkonnen", "count_hasimir_fenring", "princess_irulan"}
+    ),
+    "place_leader_spy": frozenset(
+        {
+            "feyd_rautha_harkonnen",
+            "lady_margot_fenring",
+            "staban_tuek",
+            "count_hasimir_fenring",
+            "gaius_helen_mohiam",
+        }
+    ),
+    "recall_spy_for_leader_placement": frozenset(
+        {
+            "feyd_rautha_harkonnen",
+            "lady_margot_fenring",
+            "staban_tuek",
+            "count_hasimir_fenring",
+            "gaius_helen_mohiam",
+        }
+    ),
+    "pay_leader_signet_spice": frozenset(
+        {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
+    ),
+    "pay_leader_signet_solari": frozenset({"staban_tuek"}),
+    "pay_leader_signet_water": frozenset({"chani"}),
+    "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
+    "choose_leader_signet_influence": frozenset({"shaddam_corrino_iv"}),
+    "acquire_leader_imperium": frozenset({"princess_irulan"}),
+    "acquire_leader_reserve": frozenset({"princess_irulan"}),
+    "retreat_leader_troops": frozenset({"chani"}),
+    "place_leader_bonus_spice": frozenset({"esmar_tuek"}),
+    "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
+    "deploy_leader_agent": frozenset({"duncan_idaho"}),
+    "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
+    "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
+    "use_other_memories": frozenset({"lady_jessica"}),
+    "pay_leader_board_repeat": frozenset({"reverend_mother_jessica"}),
+}
+# What an Agent box's record pieces let it offer beside its plain
+# resolution, as (effect row, icon) pairs (``effect_steps.STEP_SPECS``).
+_PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
+    "TrashPersonalCard": (("trash", ""),),
+    "TrashCard": (("trash", ""),),
+    "TrashThisCard": (("trash", ""),),
+    "TrashIntrigueCard": (("trash", ""), ("pay", "")),
+    "DiscardFromHand": (("discard", ""), ("pay", "")),
+    "PayResources": (("pay", ""),),
+    "SpendSpecimens": (("pay", ""),),
+    "GainInfluence": (("gain_influence", ""),),
+    "PlaceSpy": (("place_spy", ""), ("recall_spy", "")),
+    "RecallAgent": (("recall_agent", ""),),
+    "ForceEnemyRetreat": (("retreat", ""),),
+    "CompleteContract": (("complete_contract", ""),),
+    "LoseTroops": (("lose_unit", ""),),
+    "AcquireCardForSolari": (("acquire", ""),),
+    "AcquireCardUpTo": (("acquire", ""),),
+    "GrantCombatDeployment": (("gain", "combat"),),
+    "DestroyShieldWall": (("pay", ""),),
+    "SummonSandworm": (("pay", ""),),
+}
+# Keyed icons answered by their own rows instead of an icon row.
+_ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
+    "influence": (("gain_influence", ""),),
+    "recall": (("recall_agent", ""),),
+    "trash": (("trash", ""),),
+    "combat": (("gain", "combat"),),
+    "spy": (("place_spy", ""), ("recall_spy", "")),
+}
+_HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
+    "possible_futures": (("gain_influence", ""),),
+    "beasts_spoils": (("trash", ""),),
+    "scientific_breakthrough": (("trash", ""),),
+    "long_live_the_fighters": (),
+}
+
+
+def _box_effect_cards(
+    config: RulesetConfig,
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """For each (effect row, icon) an Agent box may offer, the card types
+    whose box can: read off the box's record (its plain resolution, keyed
+    icons, pieces and hook). A box its own code resolves, and Ghola (which
+    copies the other grafted card's box), may offer any; any card's box may
+    take Urgent Shigawire's added draw (``effect=cards``)."""
+
+    effects: dict[str, set[tuple[str, str]]] = {}
+    unread: list[str] = []
+    for instance_id in _personal_card_instance_ids(config):
+        seated = (
+            f"player:0:{instance_id}"
+            if instance_id.startswith("starter:")
+            else instance_id
+        )
+        card = personal_card_for_instance(seated)
+        card_type = card.card.card_id
+        if card_type in effects or card_type in unread:
+            continue
+        agent_effect = getattr(card, "agent_effect", None)
+        if agent_effect is PersonalCardAgentEffect.LEADER_SIGNET:
+            continue
+        mine = {("draw", "cards")}
+        effects[card_type] = mine
+        if card_is_ghola(card):
+            unread.append(card_type)
+            continue
+        if agent_effect is None:
+            continue
+        ability = agent_box_ability(agent_effect)
+        if ability is None:
+            unread.append(card_type)
+            continue
+        mine.add(("resolve", ""))
+        if ability.structure is AbilityStructure.CHOOSE_TWO:
+            mine.add(("choose", ""))
+        for key in (*ability.icons, *ability.armed_icons):
+            if key in AGENT_ICON_VERBS:
+                mine.add((AGENT_ICON_VERBS[key].value, key))
+            mine.update(_ICON_EFFECTS.get(key, ()))
+        if ability.hook is not None:
+            mine.update(_HOOK_EFFECTS[ability.hook])
+        for section in ability.sections:
+            for piece in (*section.costs, *section.rewards):
+                mine.update(_PIECE_EFFECTS.get(type(piece).__name__, ()))
+    every = set().union(*effects.values()) | {
+        (shape.verb.value, "")
+        for action_id, shape in ACTION_SHAPES.items()
+        if shape.source is Source.AGENT_CARD
+    }
+    for card_type in unread:
+        effects.setdefault(card_type, set()).update(every)
+    cards: dict[tuple[str, str], list[str]] = {}
+    for card_type, kinds in effects.items():
+        for kind in kinds:
+            cards.setdefault(kind, []).append(card_type)
+    return {kind: tuple(types) for kind, types in cards.items()}
+
+
+def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
+    faces: dict[str, None] = {}
+    for leader in leaders_for_choam(
+        config.choam_module,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    ):
+        faces.setdefault(leader.setup_face_id or leader.leader_id, None)
+        if leader.alternate_face_id is not None:
+            faces.setdefault(leader.alternate_face_id, None)
+    return tuple(faces)
 
 
 def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

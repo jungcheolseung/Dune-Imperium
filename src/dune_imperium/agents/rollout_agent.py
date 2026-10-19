@@ -20,11 +20,7 @@ import random
 from dataclasses import dataclass, field
 from functools import cache
 
-from dune_imperium.agents.agent_turn_steps import (
-    PLACEMENT_ACTION,
-    PlacementMemory,
-    apply_placement,
-)
+from dune_imperium.agents.agent_turn_steps import PlacementMemory, apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.agents.heuristic_agent import (
@@ -306,11 +302,7 @@ class RolloutAgent:
                 else None
             )
             for index, action in enumerate(candidates):
-                branched = (
-                    apply_placement(self._engine, world, action).state
-                    if action.action_id == PLACEMENT_ACTION
-                    else self._engine.apply(world, action).state
-                )
+                branched = apply_whole(self._engine, world, action).state
                 totals[index] += self._rollout(branched, seat, horizon, shared)
         best = max(totals)
         top = tuple(

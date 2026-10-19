@@ -20,6 +20,7 @@ from dune_imperium.agents import (  # noqa: E402
     make_agent,
     network_search_agent,
 )
+from dune_imperium.agents.agent_turn_steps import apply_whole  # noqa: E402
 from dune_imperium.agents.engine_order import engine_order_answer  # noqa: E402
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
@@ -46,6 +47,13 @@ from dune_imperium.training.network import PolicyValueNetwork  # noqa: E402
 from dune_imperium.training.policy import without_undo_actions  # noqa: E402
 
 
+def _stateful(agent: Agent) -> StateAgent:
+    """A heuristic seat answers with the state, as the server asks it."""
+
+    assert isinstance(agent, StateAgent)
+    return agent
+
+
 def _checkpoint(tmp_path: Path, config: RulesetConfig) -> str:
     from dune_imperium.adapters.action_codec import ActionCodec
 
@@ -66,14 +74,14 @@ def _mid_game(config: RulesetConfig, seed: int, rounds: int) -> GameState:
     while state.round_number < rounds and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
-        choice = agents[decision.owner].choose_action(
-            engine.observe(state, decision.owner), actions
+        choice = _stateful(agents[decision.owner]).choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
         )
-        state = engine.apply(state, choice).state
+        state = apply_whole(engine, state, choice).state
     return state
 
 
@@ -120,7 +128,9 @@ def _searched_decision(
     state = _mid_game(config, seed=seed, rounds=2)
     decision = engine.current_decision(state)
     while isinstance(decision, ChanceDecision):
-        state = engine.apply(state, ChanceResolver(seed=seed).resolve(decision)).state
+        state = apply_whole(
+            engine, state, ChanceResolver(seed=seed).resolve(decision)
+        ).state
         decision = engine.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     actions = engine.legal_actions(state, decision.owner)
@@ -188,7 +198,9 @@ def test_search_picks_among_the_network_s_own_best_actions(tmp_path: Path) -> No
     state = _mid_game(config, seed=5, rounds=2)
     decision = engine.current_decision(state)
     while isinstance(decision, ChanceDecision):
-        state = engine.apply(state, ChanceResolver(seed=5).resolve(decision)).state
+        state = apply_whole(
+            engine, state, ChanceResolver(seed=5).resolve(decision)
+        ).state
         decision = engine.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     actions = engine.legal_actions(state, decision.owner)
@@ -229,7 +241,7 @@ def test_the_search_answers_a_run_of_decisions_legally(tmp_path: Path) -> None:
     while searched < 8 and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
@@ -238,7 +250,7 @@ def test_the_search_answers_a_run_of_decisions_legally(tmp_path: Path) -> None:
         assert choice in actions
         if len(actions) > 1:
             searched += 1
-        state = engine.apply(state, choice, legal_actions=actions).state
+        state = apply_whole(engine, state, choice, legal_actions=actions).state
 
     assert searched == 8
 
@@ -259,7 +271,9 @@ def test_without_a_state_the_search_plays_the_network_greedily(
     state = _mid_game(config, seed=5, rounds=2)
     decision = engine.current_decision(state)
     while isinstance(decision, ChanceDecision):
-        state = engine.apply(state, ChanceResolver(seed=5).resolve(decision)).state
+        state = apply_whole(
+            engine, state, ChanceResolver(seed=5).resolve(decision)
+        ).state
         decision = engine.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     actions = engine.legal_actions(state, decision.owner)
@@ -281,16 +295,16 @@ def _first_choice(config: RulesetConfig, seed: int, effect_order: bool) -> GameS
     while state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
         if len(actions) > 1 and orders_agent_effects(state) is effect_order:
             return state
-        choice = agents[decision.owner].choose_action(
-            engine.observe(state, decision.owner), actions
+        choice = _stateful(agents[decision.owner]).choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
         )
-        state = engine.apply(state, choice).state
+        state = apply_whole(engine, state, choice).state
     raise AssertionError("no such decision in the game")  # pragma: no cover
 
 
@@ -379,9 +393,8 @@ def test_a_search_seat_finishes_a_turn_whose_boxes_offer_the_same_rows(
     def boxes_first(
         self: NetworkSearchAgent, encoded: np.ndarray, legal: Sequence[DomainAction]
     ) -> np.ndarray:
-        return np.array(
-            [float(action.action_id == "resolve_agent_card_effect") for action in legal]
-        )
+        # A box's plain resolution is its ``resolve`` effect row (stage B3).
+        return np.array([float(action.action_id == "resolve") for action in legal])
 
     monkeypatch.setattr(NetworkSearchAgent, "_scores", boxes_first)
     monkeypatch.setattr(NetworkSearchAgent, "_leaf_value", lambda self, view: 0.0)
@@ -402,8 +415,8 @@ def test_a_search_seat_finishes_a_turn_whose_boxes_offer_the_same_rows(
         choice = agent.choose_action_with_state(
             state, engine.observe(state, 0), actions
         )
-        resolved += choice.action_id == "resolve_agent_card_effect"
-        state = engine.apply(state, choice, legal_actions=actions).state
+        resolved += choice.action_id == "resolve"
+        state = apply_whole(engine, state, choice, legal_actions=actions).state
     else:  # pragma: no cover - the failure this test guards against
         pytest.fail("the search seat never ended its grafted turn")
     assert resolved == 2
@@ -581,17 +594,17 @@ def _untrained_only_states(
     while len(found) < count and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
         offered = without_undo_actions(actions)
         if len(offered) > 1 and agent._untrained_only(offered):
             found.append(state)
-        choice = players[decision.owner].choose_action(
-            engine.observe(state, decision.owner), actions
+        choice = _stateful(players[decision.owner]).choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
         )
-        state = engine.apply(state, choice).state
+        state = apply_whole(engine, state, choice).state
     return found
 
 
@@ -707,14 +720,16 @@ def _search_seat_game(
     while len(decided) < count and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
         view = engine.observe(state, decision.owner)
         if decision.owner != seat:
-            choice = others[decision.owner].choose_action(view, actions)
-            state = engine.apply(state, choice, legal_actions=actions).state
+            choice = _stateful(others[decision.owner]).choose_action_with_state(
+                state, view, actions
+            )
+            state = apply_whole(engine, state, choice, legal_actions=actions).state
             continue
         offered = without_undo_actions(actions)
         if orders_agent_effects(state):
@@ -729,7 +744,7 @@ def _search_seat_game(
         if result.searched:
             kind = "searched"
         decided.append(_Decided(state, view, actions, result, kind, _memory(agent)))
-        state = engine.apply(state, result.chosen, legal_actions=actions).state
+        state = apply_whole(engine, state, result.chosen, legal_actions=actions).state
     return decided
 
 
@@ -759,16 +774,18 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
             path, seed=11, rollouts=2, candidates=2, config=config
         )
 
-    # 80 decisions: the Immortality game's first forced decision is its
-    # 74th since observation v32 changed the fresh test network's play.
-    decided = _search_seat_game(seat_agent(), config, seed=3, seat=1, count=80)
-    assert len(decided) == 80
+    # 66 decisions: since stage B3 the fresh test network's seat makes 69 to
+    # 77 decisions before these games end (the heuristics around it play
+    # with the state); the Immortality game's first forced decision is its
+    # 40th.
+    decided = _search_seat_game(seat_agent(), config, seed=3, seat=1, count=66)
+    assert len(decided) == 66
     kinds = {entry.kind for entry in decided}
     assert {"searched", "effect order", "forced"} <= kinds
     if expansion == "arrakeen_scouts":
         assert "untrained" in kinds
 
-    for split in (9, 35, 69):
+    for split in (9, 35, 60):
         twin = seat_agent()
         for entry in decided[:split]:
             assert twin.replay_decision(
@@ -863,7 +880,7 @@ def _first_atomics_choice(config: RulesetConfig, seed: int) -> GameState:
     while state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
@@ -871,10 +888,10 @@ def _first_atomics_choice(config: RulesetConfig, seed: int) -> GameState:
             action.action_id == FAMILY_ATOMICS.action_id for action in actions
         ):
             return state
-        choice = agents[decision.owner].choose_action(
-            engine.observe(state, decision.owner), actions
+        choice = _stateful(agents[decision.owner]).choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
         )
-        state = engine.apply(state, choice).state
+        state = apply_whole(engine, state, choice).state
     raise AssertionError("no such decision in the game")  # pragma: no cover
 
 
@@ -1023,7 +1040,9 @@ def _heuristic_choice(
     scripted = engine_order_answer(state, owner, actions)
     if scripted is not None:
         return scripted
-    return agent.choose_action(engine.observe(state, owner), actions)
+    return _stateful(agent).choose_action_with_state(
+        state, engine.observe(state, owner), actions
+    )
 
 
 def _combat_intrigue_choices(
@@ -1039,7 +1058,7 @@ def _combat_intrigue_choices(
     while state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
@@ -1048,7 +1067,7 @@ def _combat_intrigue_choices(
         ):
             found.append((state, decision.owner, actions))
         choice = _heuristic_choice(engine, agents[decision.owner], state, actions)
-        state = engine.apply(state, choice).state
+        state = apply_whole(engine, state, choice).state
     return found
 
 
@@ -1108,7 +1127,7 @@ def _before_the_lead(config: RulesetConfig, seed: int) -> GameState:
     while state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
         seat = decision.owner
@@ -1121,7 +1140,7 @@ def _before_the_lead(config: RulesetConfig, seed: int) -> GameState:
         else:
             last[seat] = state
         choice = _heuristic_choice(engine, agents[seat], state, actions)
-        state = engine.apply(state, choice).state
+        state = apply_whole(engine, state, choice).state
     raise AssertionError("no such decision in the game")  # pragma: no cover
 
 

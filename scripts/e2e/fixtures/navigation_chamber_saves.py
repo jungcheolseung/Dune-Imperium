@@ -80,7 +80,7 @@ for seed in range(40):
             continue
         owner = summary["decision"]["owner"]
         session = manager._get(gid)
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         if (
             holder == owner
             and session.state.decision_stack[-1].kind == "turn"

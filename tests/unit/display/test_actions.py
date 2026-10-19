@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -229,7 +229,7 @@ def _pay_spice(
     placed = apply_placement(_ENGINE, state, place).state
     payment = next(
         action
-        for action in _ENGINE.legal_actions(placed, 0)
+        for action in _ENGINE.whole_actions(placed, 0)
         if action.action_id == "pay_agent_card_spice"
     )
     return placed, payment
@@ -295,17 +295,17 @@ def test_tenuous_bond_distinguishes_its_influence_cost_and_reward() -> None:
             ),
         ),
     )
-    state = _ENGINE.apply(
+    state = apply_whole(_ENGINE, 
         state, DomainAction("play_intrigue", 0, (("card_id", card), ("option", 0)))
     ).state
-    loss = _ENGINE.legal_actions(state, 0)[0]
+    loss = _ENGINE.whole_actions(state, 0)[0]
     assert loss.action_id == "choose_intrigue_faction"
     assert effect_action_text(state, loss) == "Lose 1 Influence"
     assert effect_action_text_ko(state, loss) == "{influence_lose:1} 하락"
     assert effect_action_text(state, replace(loss, actor=1)) is None
 
-    gained = _ENGINE.apply(state, loss).state
-    for gain in _ENGINE.legal_actions(gained, 0):
+    gained = apply_whole(_ENGINE, state, loss).state
+    for gain in _ENGINE.whole_actions(gained, 0):
         # Same action id on the very next step; a global loss label would
         # fix the cost but incorrectly mark every reward as a loss.
         assert gain.action_id == loss.action_id
@@ -457,11 +457,11 @@ def _ghola_box(partner: str, **owner: object) -> GameState:
     placed = apply_placement(_ENGINE, state, place).state
     graft = next(
         action
-        for action in _ENGINE.legal_actions(placed, 0)
+        for action in _ENGINE.whole_actions(placed, 0)
         if action.action_id == "choose_graft_partner"
         and dict(action.arguments).get("card_id") == partner
     )
-    grafted = _ENGINE.apply(placed, graft).state
+    grafted = apply_whole(_ENGINE, placed, graft).state
     assert dict(grafted.decision_stack[-1].context)["card_id"] == _GHOLA
     return grafted
 
@@ -620,15 +620,15 @@ def _place(state: GameState, card: str, partner: str | None = None) -> GameState
         return placed
     graft = next(
         action
-        for action in _ENGINE.legal_actions(placed, 0)
+        for action in _ENGINE.whole_actions(placed, 0)
         if action.action_id == "choose_graft_partner"
         and dict(action.arguments).get("card_id") == partner
     )
-    return _ENGINE.apply(placed, graft).state
+    return apply_whole(_ENGINE, placed, graft).state
 
 
 def _row(state: GameState, action: DomainAction) -> tuple[object, ...]:
-    assert action in _ENGINE.legal_actions(state, 0)
+    assert action in _ENGINE.whole_actions(state, 0)
     return (
         agent_box_row_title(state, action),
         effect_action_text(state, action),
@@ -667,13 +667,13 @@ def test_a_graft_pairs_two_rows_name_each_card_and_its_box() -> None:
 
     # With box 1 resolved (and active in the frame), box 0's row still names
     # Face Dancer: each row is read with its own box active.
-    partner_done = _ENGINE.apply(grafted, _RESOLVE_BOX_ONE).state
+    partner_done = apply_whole(_ENGINE, grafted, _RESOLVE_BOX_ONE).state
     assert _row(partner_done, _RESOLVE_BOX) == (
         ("Face Dancer", "얼굴의 춤꾼"),
         "Draw 1 card",
         "{draw:1}",
     )
-    assert _RESOLVE_BOX_ONE not in _ENGINE.legal_actions(partner_done, 0)
+    assert _RESOLVE_BOX_ONE not in _ENGINE.whole_actions(partner_done, 0)
 
 
 def test_a_bene_gesserit_partner_s_added_draw_names_its_card() -> None:
@@ -758,7 +758,7 @@ def test_a_grafted_payment_row_is_led_by_its_box_s_card() -> None:
     ghola = _ghola_box(horror)
     rows = [
         action
-        for action in _ENGINE.legal_actions(ghola, 0)
+        for action in _ENGINE.whole_actions(ghola, 0)
         if action.action_id == "choose_agent_card_reward"
     ]
     titles = {
@@ -791,7 +791,7 @@ def test_keyed_icon_rows_are_led_by_their_card() -> None:
     placed = apply_placement(_ENGINE, state, place).state
     rows = {
         dict(action.arguments)["effect"]: _row(placed, action)
-        for action in _ENGINE.legal_actions(placed, 0)
+        for action in _ENGINE.whole_actions(placed, 0)
         if action.action_id == "resolve_agent_card_effect"
     }
     assert rows == {
@@ -812,7 +812,7 @@ def test_other_rows_have_no_box_title() -> None:
     placed = _place(_turn((_SEEK_ALLIES,)), _SEEK_ALLIES)
     others = [
         action
-        for action in _ENGINE.legal_actions(placed, 0)
+        for action in _ENGINE.whole_actions(placed, 0)
         if action.action_id not in ("resolve_agent_card_effect", "switch_graft_card")
     ]
     assert others
@@ -841,7 +841,7 @@ def test_box_text_on_a_button_writes_one_icon_per_effect(
 
 
 def _boxes(state: GameState) -> dict[DomainAction, int | None]:
-    legal = _ENGINE.legal_actions(state, 0)
+    legal = _ENGINE.whole_actions(state, 0)
     return dict(zip(legal, agent_box_of_rows(state, 0, legal), strict=True))
 
 
@@ -876,7 +876,7 @@ def test_each_row_of_a_grafted_turn_names_its_box() -> None:
     ]
 
     # Box 1 acted and is the active box now: the numbers stay fixed.
-    partner_done = _ENGINE.apply(grafted, _RESOLVE_BOX_ONE).state
+    partner_done = apply_whole(_ENGINE, grafted, _RESOLVE_BOX_ONE).state
     assert _boxes(partner_done)[_RESOLVE_BOX] == 0
     headers = agent_box_headers(partner_done, 0)
     assert headers is not None
@@ -932,11 +932,11 @@ def test_a_box_held_back_by_the_other_box_s_choice_is_marked_locked() -> None:
     ghola = _ghola_box(horror)
     first_pick = next(
         action
-        for action in _ENGINE.legal_actions(ghola, 0)
+        for action in _ENGINE.whole_actions(ghola, 0)
         if action.action_id == "choose_agent_card_reward"
         and dict(action.arguments).get("box") == 1
     )
-    picked = _ENGINE.apply(ghola, first_pick).state
+    picked = apply_whole(_ENGINE, ghola, first_pick).state
     boxes = _boxes(picked)
 
     assert {box for box in boxes.values() if box is not None} == {1}
@@ -950,12 +950,12 @@ def test_a_box_held_back_by_the_other_box_s_choice_is_marked_locked() -> None:
 
 def test_only_the_seat_deciding_the_effect_frame_gets_boxes() -> None:
     grafted = _place(_turn((_FACE_DANCER, _SEEK_ALLIES)), _FACE_DANCER, _SEEK_ALLIES)
-    legal = _ENGINE.legal_actions(grafted, 0)
+    legal = _ENGINE.whole_actions(grafted, 0)
 
     assert agent_box_headers(grafted, 1) is None
     assert agent_box_of_rows(grafted, 1, legal) == (None,) * len(legal)
     # Before the placement the turn has no Agent box yet.
     start = _turn((_SEEK_ALLIES,))
-    start_legal = _ENGINE.legal_actions(start, 0)
+    start_legal = _ENGINE.whole_actions(start, 0)
     assert agent_box_headers(start, 0) is None
     assert set(agent_box_of_rows(start, 0, start_legal)) == {None}

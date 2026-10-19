@@ -1,5 +1,6 @@
 """Player-scoped, immutable observations with explicit redaction."""
 
+import json
 from copy import replace
 from dataclasses import dataclass
 from functools import cache
@@ -168,6 +169,10 @@ class PrivatePlayerView:
     # not placed yet (seen by no other seat), and whether it is grafted.
     agent_card_pick: str = ""
     agent_card_pick_graft: bool = False
+    # Stage B3 (OQ-111 (4)): the rows the seat picked toward one waiting
+    # effect and has not finished (seen by no other seat), as (action id,
+    # arguments) -- the effect row first (``rules.effect_steps``).
+    effect_pick: tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -562,6 +567,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             peeked_intrigue_ids=peeked_intrigue_ids(state, player),
             agent_card_pick=agent_card_pick_of(state, player)[0],
             agent_card_pick_graft=agent_card_pick_of(state, player)[1],
+            effect_pick=effect_pick_of(state, player),
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
             scouts_secret_picks=tuple(
@@ -656,6 +662,34 @@ def agent_card_pick_of(state: GameState, player: int) -> tuple[str, bool]:
     if not isinstance(card, str):
         return "", False
     return card, context.get(AGENT_CARD_PICK_GRAFT_KEY) is True
+
+
+# The top frame's context key of the rows picked toward one waiting effect
+# (stage B3, ``rules.effect_steps``).
+EFFECT_PICK_KEY = "effect_pick"
+
+
+def effect_pick_of(
+    state: GameState, player: int
+) -> tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...]:
+    """The rows ``player`` picked toward one waiting effect and has not
+    finished (() if none): they wait in the context of the seat's own frame,
+    on top until the effect's last row."""
+
+    if not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    encoded = dict(frame.context).get(EFFECT_PICK_KEY)
+    if not isinstance(encoded, str):
+        return ()
+    rows: list[tuple[str, tuple[tuple[str, ActionValue], ...]]] = []
+    for action_id, arguments in json.loads(encoded):
+        rows.append(
+            (str(action_id), tuple((str(name), value) for name, value in arguments))
+        )
+    return tuple(rows)
 
 
 def peeked_card_id(state: GameState, player: int) -> str:

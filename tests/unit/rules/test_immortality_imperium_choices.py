@@ -13,7 +13,8 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
-from dune_imperium.adapters import ActionCodec
+from dune_imperium.adapters import ActionCodec, ActionTemplate
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -55,6 +56,7 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -552,7 +554,9 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     engine = UprisingRulesEngine()
     decision = engine.current_decision(short.state)
     assert isinstance(decision, ChanceDecision)
-    shuffled = engine.apply(short.state, ChanceResolver(seed=5).resolve(decision)).state
+    shuffled = apply_whole(
+        engine, short.state, ChanceResolver(seed=5).resolve(decision)
+    ).state
     assert shuffled.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
     assert shuffled.intrigue_discard == ()
     peeked = peeked_intrigue_ids(shuffled, 0)
@@ -647,7 +651,9 @@ def test_imperium_ceremony_peek_never_shuffles_twisted_cards_in() -> None:
     assert isinstance(decision, ChanceDecision)
     assert decision.options == INTRIGUE[1:2]
     assert decision.count == 1
-    shuffled = engine.apply(mixed.state, ChanceResolver(seed=5).resolve(decision))
+    shuffled = apply_whole(
+        engine, mixed.state, ChanceResolver(seed=5).resolve(decision)
+    )
     assert peeked_intrigue_ids(shuffled.state, 0) == INTRIGUE[:2]
     assert shuffled.state.intrigue_discard == twisted
     # One card face down and only Twisted cards discarded: nothing to
@@ -689,9 +695,9 @@ def test_imperium_ceremony_through_the_engine() -> None:
     state = resolve_agent_card_effect(
         _place(_state(_owner((ceremony,))), ceremony, "assembly_hall")
     ).state
-    legal = engine.legal_actions(state, 0)
+    legal = engine.whole_actions(state, 0)
     assert {a.action_id for a in legal} == {"keep_peeked_intrigue"}
-    after = engine.apply(state, legal[0])
+    after = apply_whole(engine, state, legal[0])
     assert after.state.players[0].intrigue_cards == (INTRIGUE[0],)
 
 
@@ -1188,7 +1194,7 @@ def test_throne_room_politics_last_effect_trash_stays_out_of_a_later_reveal() ->
     )
 
     engine = UprisingRulesEngine()
-    played = engine.apply(
+    played = apply_whole(engine, 
         ended,
         DomainAction(
             action_id="play_intrigue",
@@ -1349,7 +1355,7 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c6r6"
     )
-    advanced = engine.apply(resolved, to_influence_choice).state
+    advanced = apply_whole(engine, resolved, to_influence_choice).state
     # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
     # mandatory, so the end waits for it.
     assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
@@ -1360,7 +1366,7 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
         for a in legal_research_bonus_actions(advanced, 0)
         if dict(a.arguments).get("faction") == "spacing_guild"
     )
-    result = engine.apply(advanced, influence_choice).state
+    result = apply_whole(engine, advanced, influence_choice).state
 
     owner_after = result.players[0]
     assert owner_after.influence.spacing_guild == 4
@@ -1425,7 +1431,7 @@ def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c8r6"
     )
-    advanced = engine.apply(resolved, to_c8r6).state
+    advanced = apply_whole(engine, resolved, to_c8r6).state
     assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert [bonus.value for bonus, _ in pending_research_bonuses(advanced, 0)] == [
         "seven_solari_for_two_tleilaxu"
@@ -1434,7 +1440,7 @@ def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
     assert "decline_research_bonus" not in _offered_ids(advanced)
     assert _turn_end_offered(advanced)
 
-    pressed = engine.apply(
+    pressed = apply_whole(engine, 
         advanced, DomainAction(action_id="finish_agent_turn", actor=0)
     )
     lapsed = [
@@ -1500,7 +1506,7 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c6r6"
     )
-    advanced = engine.apply(resolved, to_influence_choice).state
+    advanced = apply_whole(engine, resolved, to_influence_choice).state
     # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
     # mandatory, so the end waits for it.
     assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
@@ -1511,7 +1517,7 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         for a in legal_research_bonus_actions(advanced, 0)
         if dict(a.arguments).get("faction") == "emperor"
     )
-    opened = engine.apply(advanced, influence_choice).state
+    opened = apply_whole(engine, advanced, influence_choice).state
 
     # The Influence gain happens, and the queued Navigation play opens on
     # the owner's open turn.
@@ -1524,7 +1530,7 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         for a in legal_navigation_play_actions(opened, 0)
         if dict(a.arguments)["option"] == 0
     )
-    result = engine.apply(opened, play).state
+    result = apply_whole(engine, opened, play).state
 
     # Card 6 option 0 (RecruitTroops(1)) recruits its troop for this turn.
     assert result.players[0].troops_garrison == 3 + 1
@@ -1577,7 +1583,7 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c3r3"
     )
-    advanced = engine.apply(resolved, to_trash_and_specimen).state
+    advanced = apply_whole(engine, resolved, to_trash_and_specimen).state
     # The two icons are independent effects in the owner's order (user decision
     # 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027 [Main
     # p. 9]): the specimen waits as a mandatory row beside the trash, and holds
@@ -1603,8 +1609,8 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
         actor=0,
         arguments=(("effect", "specimen"),),
     )
-    assert specimen in engine.legal_actions(trashed, 0)
-    trashed = engine.apply(trashed, specimen).state
+    assert specimen in engine.whole_actions(trashed, 0)
+    trashed = apply_whole(engine, trashed, specimen).state
     assert trashed.players[0].specimens == 1
     assert _turn_end_offered(trashed)
 
@@ -1783,15 +1789,35 @@ def test_tleilaxu_surgeon_advances_chanis_tactics_once() -> None:
 
 def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
     codec = ActionCodec(IMMORTALITY)
-    base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
-    for action in (
-        DomainAction("pay_agent_card_two_specimens", 0),
-        DomainAction("trash_grafted_card_for_specimen", 0),
-        DomainAction("take_agent_card_combat_icon", 0),
-        DomainAction("acquire_reserve_by_card", 0, (("card_id", "prepare_the_way"),)),
-        DomainAction(
-            "acquire_imperium_by_card", 0, (("instance_id", _card("for_humanity")),)
+    base_templates = set(ActionCodec(RulesetConfig()).catalog)
+    base = {template.action_id for template in base_templates}
+    # Stage B3a: the Agent-effect frame offers these as the effect row of the
+    # Immortality card that prints them (then a target row, a card or a
+    # reserve stack that other catalogs may hold too); the effect rows are
+    # the templates only the Immortality catalogs hold.
+    for action, printed in (
+        (DomainAction("pay_agent_card_two_specimens", 0), "tleilaxu_surgeon"),
+        (DomainAction("trash_grafted_card_for_specimen", 0), "dissecting_kit"),
+        (DomainAction("take_agent_card_combat_icon", 0), "high_priority_travel"),
+        (
+            DomainAction(
+                "acquire_reserve_by_card", 0, (("card_id", "prepare_the_way"),)
+            ),
+            "tleilaxu_master",
         ),
+        (
+            DomainAction(
+                "acquire_imperium_by_card", 0, (("instance_id", _card("for_humanity")),)
+            ),
+            "tleilaxu_master",
+        ),
+    ):
+        rows = steps_for(action, printed)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        effect = ActionTemplate(rows[0].action_id, rows[0].arguments)
+        assert effect not in base_templates
+    for action in (
         DomainAction("lose_reveal_influence_for_vp", 0, (("faction", "fremen"),)),
         DomainAction(
             "lose_reveal_influence_for_vp",
@@ -1881,14 +1907,14 @@ def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
         imperium_row=row,
     )
     play = DomainAction("play_intrigue", 0, (("card_id", awe), ("option", 0)))
-    opened = engine.apply(state, play).state
+    opened = apply_whole(engine, state, play).state
     assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     acquire = next(
         a
-        for a in engine.legal_actions(opened, 0)
+        for a in engine.whole_actions(opened, 0)
         if dict(a.arguments).get("instance_id") == fervor
     )
-    done = engine.apply(opened, acquire).state
+    done = apply_whole(engine, opened, acquire).state
     assert [frame.kind for frame in done.decision_stack] == [
         FrameKind.TURN,
         FrameKind.RESEARCH_ADVANCE,
@@ -1905,11 +1931,11 @@ def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
     placed = _place(state, price, "dutiful_service")
     acquire = next(
         a
-        for a in engine.legal_actions(placed, 0)
+        for a in engine.whole_actions(placed, 0)
         if a.action_id == "acquire_imperium_with_solari"
         and dict(a.arguments)["instance_id"] == fervor
     )
-    done = engine.apply(placed, acquire).state
+    done = apply_whole(engine, placed, acquire).state
     assert done.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
     below = done.decision_stack[-2]
     assert below.kind == FrameKind.AGENT_EFFECTS

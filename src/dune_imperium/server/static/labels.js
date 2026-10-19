@@ -338,6 +338,7 @@ const EVENT_LABELS = {
   troops_recruit_short: "병력 {recruit} 부족 ({supply} 없음)",
   shortfall_refilled: "부족분 보충 ({supply}로 돌아온 병력)",
   agent_card_picked: "{agent} 차례 카드 선택",
+  effect_picked: "효과 선택",
   agent_turn_finished: "{agent_turn} 종료",
   agent_turn_reopened: "{agent_turn} 다시 열림",
   troops_retreated: "병력 후퇴",

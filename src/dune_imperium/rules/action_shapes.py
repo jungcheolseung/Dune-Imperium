@@ -129,6 +129,10 @@ class Source(StrEnum):
     TRIGGER = "trigger"
     SCOUTS = "scouts"
     ENDGAME = "endgame"
+    # Stage B3 (``rules.effect_steps``): an effect row names its source in
+    # its own ``source`` argument, and a target row answers the effect its
+    # seat picked.
+    REF = "ref"
 
 
 class Target(StrEnum):
@@ -161,6 +165,9 @@ class Target(StrEnum):
     MISSION = "mission"
     COUNT = "count"
     WILD_ICON = "wild_icon"
+    # Stage B3: the waiting effect an effect row points at (``ref``), with
+    # the quantity it carries when it picks no target.
+    EFFECT = "effect"
 
 
 class Tag(StrEnum):
@@ -207,6 +214,17 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.MISSION: frozenset({"target"}),
     Target.COUNT: frozenset({"count"}),
     Target.WILD_ICON: frozenset({"matching_card_id", "wild_card_id"}),
+    Target.EFFECT: frozenset(
+        {
+            "commanders",
+            "count",
+            "destroy_shield_wall",
+            "icon",
+            "option",
+            "printed",
+            "zone",
+        }
+    ),
 }
 
 
@@ -576,7 +594,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_contract_icons_without_contract": _row(
         _V.RESOLVE_EMPTY, _S.CONTRACT, of=_V.TAKE
     ),
-    "complete_contract": _row(_V.COMPLETE_CONTRACT, _S.CONTRACT, _T.CONTRACT),
+    # Stage B3: a Contract's completion is its own effect row
+    # (``rules.effect_steps``); the id is the whole action's too.
+    "complete_contract": _row(_V.COMPLETE_CONTRACT, _S.REF, _T.EFFECT, tag=_SOURCE),
     "place_contract_spy": _row(_V.PLACE_SPY, _S.CONTRACT, _T.POST),
     "recall_spy_for_contract": _row(_V.RECALL_SPY, _S.CONTRACT, _T.POST),
     "decline_contract_spy": _row(_V.DECLINE, _S.CONTRACT, of=_V.PLACE_SPY),
@@ -752,6 +772,50 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "scouts_return_specimens": _row(_V.RETURN_SPECIMEN, _S.SCOUTS, _T.COUNT),
     # --- Endgame -------------------------------------------------------------
     "match_endgame_wild_icon": _row(_V.MATCH, _S.ENDGAME, _T.WILD_ICON),
+    # --- Stage B3: effect rows and target rows (``rules.effect_steps``) -----
+    # An effect row is its verb; its ``source`` argument (the tag) names the
+    # source and ``printed``/``icon``/``option`` the waiting effect.
+    **{
+        verb.value: _row(verb, _S.REF, _T.EFFECT, tag=_SOURCE)
+        for verb in (
+            _V.RESOLVE,
+            _V.DRAW,
+            _V.GAIN,
+            _V.ADVANCE,
+            _V.TAKE,
+            _V.TRASH,
+            _V.RECRUIT,
+            _V.GAIN_INFLUENCE,
+            _V.CHOOSE,
+            _V.DISCARD,
+            _V.PAY,
+            _V.ACQUIRE,
+            _V.PLACE_SPY,
+            _V.RECALL_SPY,
+            _V.RECALL_AGENT,
+            _V.RETREAT,
+            _V.PLACE_BONUS,
+            _V.DEPLOY,
+            _V.USE,
+            _V.SUMMON_SANDWORM,
+            _V.COLLECT,
+            _V.FLIP,
+            _V.DESTROY_SHIELD_WALL,
+        )
+    },
+    # A target row picks one target of the effect its seat picked.
+    "choose_personal_card": _row(_V.CHOOSE, _S.REF, _T.PERSONAL_CARD),
+    "choose_intrigue_card": _row(_V.CHOOSE, _S.REF, _T.INTRIGUE_CARD),
+    "choose_imperium_card": _row(_V.CHOOSE, _S.REF, _T.IMPERIUM_CARD),
+    "choose_reserve_card": _row(_V.CHOOSE, _S.REF, _T.RESERVE_CARD),
+    "choose_post": _row(_V.CHOOSE, _S.REF, _T.POST),
+    "choose_space": _row(_V.CHOOSE, _S.REF, _T.SPACE),
+    "choose_track_space": _row(_V.CHOOSE, _S.REF, _T.TRACK_SPACE),
+    "choose_faction": _row(_V.CHOOSE, _S.REF, _T.FACTION),
+    "choose_contract": _row(_V.CHOOSE, _S.REF, _T.CONTRACT),
+    "choose_tech": _row(_V.CHOOSE, _S.REF, _T.TECH),
+    "choose_seat": _row(_V.CHOOSE, _S.REF, _T.UNITS),
+    "choose_option": _row(_V.CHOOSE, _S.REF, _T.OPTION),
 })
 
 

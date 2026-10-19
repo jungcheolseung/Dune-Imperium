@@ -147,7 +147,13 @@ GAMES = (
     # seeds 1-120 (2026-10-19) finds seed 39 first with the steal and Family
     # Atomics, the Feyd track, research, the three v146 events and v147's
     # unused Reveal choice and Reveal choice rows.
-    {"seats": ["random"] * 4, "game_seed": 39, "policy_seed": 39, **EVERY_EXPANSION},
+    # Stage B3a (a waiting effect is picked before its target, so random
+    # seats draw the effect and then its target) moves seed 39 off its
+    # Secrets steal. A headless scan of the same games over random seeds
+    # 1-200 (2026-10-20) finds seed 197 the only one with the steal and
+    # Family Atomics, the Feyd track, research, the three v146 events and
+    # v147's unused Reveal choice.
+    {"seats": ["random"] * 4, "game_seed": 197, "policy_seed": 197, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -198,10 +204,15 @@ GAMES = (
     # finds the pair 7 and 20 first (seed 7: a round modifier, Clear the
     # Market, a mission's pieces and troops, an auction won and the secret
     # picks revealed; seed 20 below: Mating Season and Mercenaries).
+    # Stage B3a (random seats draw a waiting effect and then its target)
+    # moves seed 7 off its round modifier and Clear the Market and seed 20
+    # off Mercenaries. The same headless scan over random seeds 1-200
+    # (2026-10-20) finds the pair 3 and 5 first (no single seed reaches every
+    # Scouts surface).
     {
         "seats": ["random"] * 4,
-        "game_seed": 7,
-        "policy_seed": 7,
+        "game_seed": 3,
+        "policy_seed": 3,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -237,9 +248,10 @@ GAMES = (
         # Codec v146 moves seed 22 off Mating Season (the game above has it);
         # it keeps the round modifier, mission troops and an auction won.
         # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
-        # above (see there), and since stage B2 seed 20 with seed 7.
-        "game_seed": 20,
-        "policy_seed": 20,
+        # above (see there), since stage B2 seed 20 with seed 7, and since
+        # stage B3a seed 5 with seed 3.
+        "game_seed": 5,
+        "policy_seed": 5,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -298,6 +310,9 @@ async ({gameId}) => {
     for (const lang of ["ko", "en"]) {
       setLanguage(lang, false);
       for (const entry of meta.log) {
+        // A step that only picks toward a waiting effect: the page's log
+        // shows the effect whole on its last step (stage B3, panels.js).
+        if (entry.pick) continue;
         if (entry.type === "chance") {
           take();
           const label = {type: "chance", decision_id: entry.decision_id,

@@ -16,6 +16,7 @@ from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -99,11 +100,11 @@ def _act(state: GameState, action_id: str, **arguments: object) -> GameState:
 
     action = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == action_id
         and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
     )
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _send_agent(state: GameState, space_id: str) -> GameState:
@@ -125,7 +126,7 @@ def _acquire_servo(state: GameState) -> GameState:
 def _deploy_counts(state: GameState) -> list[object]:
     return [
         dict(action.arguments)["count"]
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "deploy_troops"
     ]
 
@@ -153,7 +154,7 @@ def test_servo_signet_trash_keeps_eliminate_allies_troops_deployable() -> None:
     assert _deploy_counts(placed) == [1, 2]
     signet = _acquire_servo(placed)
     assert signet.decision_stack[-1].kind == FrameKind.LEADER_SIGNET
-    trashed = ENGINE.apply(
+    trashed = apply_whole(ENGINE, 
         signet,
         DomainAction(
             action_id="trash_leader_card",
@@ -220,11 +221,11 @@ def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
             continue
         decision = current.decision_stack[-1].decision
         assert isinstance(decision, PlayerDecision)
-        actions = ENGINE.legal_actions(current, decision.owner)
+        actions = ENGINE.whole_actions(current, decision.owner)
         assert actions, "a leader_signet frame must offer a choice"
         for action in actions:
             assert codec.decode(codec.encode(action), action.actor) == action
-            pending.append(ENGINE.apply(current, action).state)
+            pending.append(apply_whole(ENGINE, current, action).state)
         assert leaves + len(pending) < 400, "Signet choices must terminate"
     assert leaves >= 1
 
@@ -342,11 +343,11 @@ def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowa
 
     acquire = next(
         action
-        for action in ENGINE.legal_actions(signet, 0)
+        for action in ENGINE.whole_actions(signet, 0)
         if action.action_id == "acquire_leader_imperium"
         and dict(action.arguments).get("instance_id") == target
     )
-    acquired = ENGINE.apply(signet, acquire).state
+    acquired = apply_whole(ENGINE, signet, acquire).state
     # v150 (stage B2, OQ-112): the completed Contract's reward is a window of
     # icon rows, answered before the turn frame is looked at again.
     assert acquired.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS

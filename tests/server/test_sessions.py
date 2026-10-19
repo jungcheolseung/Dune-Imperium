@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_turn import executable_placements
@@ -981,7 +981,7 @@ def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> No
         session = SimpleNamespace(engine=engine, state=state)
         entries = (
             _serialize_action(index, action, session)  # type: ignore[arg-type]
-            for index, action in enumerate(engine.legal_actions(state, 0))
+            for index, action in enumerate(engine.whole_actions(state, 0))
         )
         return {
             str(entry["action_id"]): (entry["warning"], entry["shortfall"])
@@ -1003,11 +1003,12 @@ def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> No
         [{"kind": "intrigue", "requested": 1, "made": 0}],
     )
     same_when_determinized(empty)
-    drawn = engine.apply(
+    drawn = apply_whole(
+        engine,
         empty,
         next(
             action
-            for action in engine.legal_actions(empty, 0)
+            for action in engine.whole_actions(empty, 0)
             if action.action_id == "resolve_board_effect"
         ),
     )
@@ -1045,11 +1046,12 @@ def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> No
         [{"kind": "suspensor", "requested": 1, "made": 0}],
     )
     same_when_determinized(reshuffle)
-    shuffled = engine.apply(
+    shuffled = apply_whole(
+        engine,
         reshuffle,
         next(
             action
-            for action in engine.legal_actions(reshuffle, 0)
+            for action in engine.whole_actions(reshuffle, 0)
             if action.action_id == "resolve_board_effect"
         ),
     )
@@ -1133,7 +1135,7 @@ def test_imperial_privilege_trash_then_draw_is_not_warned_short() -> None:
         session = SimpleNamespace(engine=engine, state=state)
         entries = (
             _serialize_action(index, action, session)  # type: ignore[arg-type]
-            for index, action in enumerate(engine.legal_actions(state, 0))
+            for index, action in enumerate(engine.whole_actions(state, 0))
         )
         return {
             str(entry["action_id"]): (entry["warning"], entry["shortfall"])
@@ -1151,10 +1153,10 @@ def test_imperial_privilege_trash_then_draw_is_not_warned_short() -> None:
 
     trash = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "trash_intrigue_for_imperial_privilege"
     )
-    trashed = engine.apply(state, trash)
+    trashed = apply_whole(engine, state, trash)
     assert "intrigue_draw_short" not in [event.kind for event in trashed.events]
     assert trashed.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
     decision = trashed.next_decision
@@ -1230,7 +1232,7 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
         session = SimpleNamespace(engine=engine, state=state)
         entries = (
             _serialize_action(index, action, session)  # type: ignore[arg-type]
-            for index, action in enumerate(engine.legal_actions(state, 0))
+            for index, action in enumerate(engine.whole_actions(state, 0))
         )
         return {
             str(entry["action_id"]): (entry["warning"], entry["shortfall"])
@@ -1318,7 +1320,7 @@ def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
         entry["action_id"]: entry
         for entry in (
             _serialize_action(index, action, session)  # type: ignore[arg-type]
-            for index, action in enumerate(engine.legal_actions(placed, 0))
+            for index, action in enumerate(engine.whole_actions(placed, 0))
         )
     }
     # Bene Tleilax Lab's specimen has no troop to take from the supply.
@@ -1399,7 +1401,7 @@ def test_serialized_actions_carry_the_agent_box_icon_detail_ko() -> None:
     session = SimpleNamespace(engine=engine, state=placed)
     actions = [
         _serialize_action(index, action, session)  # type: ignore[arg-type]
-        for index, action in enumerate(engine.legal_actions(placed, 0))
+        for index, action in enumerate(engine.whole_actions(placed, 0))
     ]
     agent_card_details = {
         _obj(entry["arguments"])["effect"]: (entry["detail"], entry["detail_ko"])
@@ -1467,7 +1469,7 @@ def test_serialized_agent_box_rows_name_the_card_and_its_box() -> None:
     session = SimpleNamespace(engine=engine, state=placed)
     rows = [
         _serialize_action(index, action, session)  # type: ignore[arg-type]
-        for index, action in enumerate(engine.legal_actions(placed, 0))
+        for index, action in enumerate(engine.whole_actions(placed, 0))
     ]
     box = next(row for row in rows if row["action_id"] == "resolve_agent_card_effect")
     assert (
@@ -1541,7 +1543,7 @@ def test_serialized_control_the_spice_payment_says_what_it_buys() -> None:
         entry["action_id"]: (entry["detail"], entry["detail_ko"])
         for entry in (
             _serialize_action(index, action, session)  # type: ignore[arg-type]
-            for index, action in enumerate(engine.legal_actions(placed, 0))
+            for index, action in enumerate(engine.whole_actions(placed, 0))
         )
         if entry["action_id"]
         in ("pay_agent_card_spice", "decline_agent_card_payment")

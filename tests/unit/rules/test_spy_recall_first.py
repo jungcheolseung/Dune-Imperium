@@ -12,7 +12,7 @@ Fenring's Signet through Servo-Receivers, 2026-10-14).
 """
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -112,7 +112,7 @@ def test_an_agent_box_spy_recall_skips_a_post_shared_with_another_spy() -> None:
     state = apply_placement(ENGINE, state, placement).state
     recalls = {
         dict(action.arguments)["post_id"]
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "recall_spy_for_agent_card"
     }
     assert recalls == {bene_gesserit}
@@ -201,7 +201,7 @@ def test_the_shared_placement_frame_recalls_a_spy_that_frees_its_post() -> None:
         DomainAction("decline_spy_placement", 0),
         DomainAction("recall_spy_for_placement", 0, (("post_id", SOLO),)),
     )
-    recalled = ENGINE.apply(
+    recalled = apply_whole(ENGINE, 
         state, DomainAction("recall_spy_for_placement", 0, (("post_id", SOLO),))
     ).state
     assert legal_spy_placement_actions(recalled, 0) == (

@@ -411,6 +411,7 @@ const LABELS_EN = {
     "troops_recruit_short": "{recruit} Fell Short (No Troops in {supply})",
     "shortfall_refilled": "Shortfall Made Up (Troops Back in {supply})",
     "agent_card_picked": "Card chosen for {agent}",
+    "effect_picked": "Effect chosen",
     "agent_turn_finished": "{agent_turn} Finished",
     "agent_turn_reopened": "{agent_turn} Reopened",
     "troops_retreated": "Troops Retreated",

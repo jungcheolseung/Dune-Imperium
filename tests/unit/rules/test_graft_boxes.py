@@ -22,7 +22,7 @@ from dune_imperium.adapters.observation_encoding import (
     segment_slice,
 )
 from dune_imperium.agents import RandomAgent
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -460,14 +460,14 @@ def test_every_key_of_a_played_effect_frame_is_classified(seed: int) -> None:
                 seen.update(key for key, _ in frame.context)
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
+            state = apply_whole(engine, state, chance.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
-        legal = engine.legal_actions(state, decision.owner)
+        legal = engine.whole_actions(state, decision.owner)
         action = agents[decision.owner].choose_action(
             engine.observe(state, decision.owner), legal
         )
-        state = engine.apply(state, action, legal_actions=legal).state
+        state = apply_whole(engine, state, action, legal_actions=legal).state
     assert state.phase is GamePhase.FINISHED
     assert unclassified_keys(dict.fromkeys(seen, 0)) == ()
 
@@ -542,15 +542,15 @@ def _spaces_offered(state: GameState, card_id: str) -> set[str]:
     its picks), read the ``place_agent`` rows (stage B1)."""
 
     spaces: set[str] = set()
-    for pick in ENGINE.legal_actions(state, 0):
+    for pick in ENGINE.whole_actions(state, 0):
         if (
             pick.action_id == "choose_agent_card"
             and dict(pick.arguments)["card_id"] == card_id
         ):
-            picked = ENGINE.apply(state, pick).state
+            picked = apply_whole(ENGINE, state, pick).state
             spaces |= {
                 str(dict(action.arguments)["space_id"])
-                for action in ENGINE.legal_actions(picked, 0)
+                for action in ENGINE.whole_actions(picked, 0)
                 if action.action_id == "place_agent"
             }
     return spaces
@@ -569,7 +569,7 @@ def _graft(state: GameState, card_id: str, space_id: str, partner: str) -> GameS
     choice = DomainAction(
         "choose_graft_partner", 0, arguments=(("card_id", partner),)
     )
-    return ENGINE.apply(placed, choice).state
+    return apply_whole(ENGINE, placed, choice).state
 
 
 def _row(state: GameState, action_id: str, box: int = 0, **arguments: object) -> (
@@ -577,7 +577,7 @@ def _row(state: GameState, action_id: str, box: int = 0, **arguments: object) ->
 ):
     return next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == action_id
         and dict(action.arguments).get("box", 0) == box
         and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
@@ -587,13 +587,13 @@ def _row(state: GameState, action_id: str, box: int = 0, **arguments: object) ->
 def _apply(state: GameState, action_id: str, box: int = 0, **arguments: object) -> (
     GameState
 ):
-    return ENGINE.apply(state, _row(state, action_id, box, **arguments)).state
+    return apply_whole(ENGINE, state, _row(state, action_id, box, **arguments)).state
 
 
 def _boxes_offered(state: GameState, action_id: str) -> set[int]:
     return {
         row_box(action)
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == action_id
     }
 
@@ -606,7 +606,7 @@ def test_both_boxes_are_offered_from_the_start_in_either_order() -> None:
     state = _graft(_state((GHOLA, TANKS), troops_supply=9), GHOLA, "arrakeen", TANKS)
     assert _boxes_offered(state, "resolve_agent_card_effect") == {0, 1}
     assert "switch_graft_card" not in {
-        action.action_id for action in ENGINE.legal_actions(state, 0)
+        action.action_id for action in ENGINE.whole_actions(state, 0)
     }
     partner_first = _apply(state, "resolve_agent_card_effect", box=1)
     assert partner_first.players[0].troops_garrison == 5
@@ -617,7 +617,7 @@ def test_both_boxes_are_offered_from_the_start_in_either_order() -> None:
     both = _apply(partner_first, "resolve_agent_card_effect")
     assert both.players[0].troops_garrison == 7
     assert "resolve_agent_card_effect" not in {
-        action.action_id for action in ENGINE.legal_actions(both, 0)
+        action.action_id for action in ENGINE.whole_actions(both, 0)
     }
 
 
@@ -636,7 +636,7 @@ def test_a_choose_two_box_keeps_the_other_box_waiting_until_its_second_pick() ->
     assert not any(
         ("box", 1) not in action.arguments
         and action.action_id == "choose_agent_card_reward"
-        for action in ENGINE.legal_actions(first, 0)
+        for action in ENGINE.whole_actions(first, 0)
     )
     second = _apply(first, "choose_agent_card_reward", box=1, reward="troop")
     owner = second.players[0]
@@ -644,7 +644,7 @@ def test_a_choose_two_box_keeps_the_other_box_waiting_until_its_second_pick() ->
     # Box 0 (Stitched Horror) names its own two from all four.
     assert {
         dict(action.arguments)["reward"]
-        for action in ENGINE.legal_actions(second, 0)
+        for action in ENGINE.whole_actions(second, 0)
         if action.action_id == "choose_agent_card_reward"
     } == {"water", "troop", "trash", "tleilaxu"}
     third = _apply(second, "choose_agent_card_reward", reward="water")
@@ -664,18 +664,18 @@ def test_an_arrow_s_rewards_keep_the_other_box_waiting() -> None:
     assert _boxes_offered(state, "lose_agent_card_troop") == {0, 1}
     paid = _apply(state, "lose_agent_card_troop", zone="garrison")
     assert not any(
-        ("box", 1) in action.arguments for action in ENGINE.legal_actions(paid, 0)
+        ("box", 1) in action.arguments for action in ENGINE.whole_actions(paid, 0)
     )
     drew = _apply(paid, "resolve_agent_card_effect", effect="cards")
     assert not any(
-        ("box", 1) in action.arguments for action in ENGINE.legal_actions(drew, 0)
+        ("box", 1) in action.arguments for action in ENGINE.whole_actions(drew, 0)
     )
     researched = _apply(drew, "resolve_agent_card_effect", effect="research")
     while researched.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS:
         decision = ENGINE.current_decision(researched)
         assert isinstance(decision, PlayerDecision)
-        researched = ENGINE.apply(
-            researched, ENGINE.legal_actions(researched, decision.owner)[0]
+        researched = apply_whole(ENGINE, 
+            researched, ENGINE.whole_actions(researched, decision.owner)[0]
         ).state
     assert _boxes_offered(researched, "lose_agent_card_troop") == {1}
 
@@ -692,13 +692,13 @@ def test_the_turn_ends_while_only_the_partner_s_box_waits() -> None:
     assert context["graft_pending_effect"] is True
     while any(
         action.action_id == "resolve_board_effect"
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
     ):
         state = _apply(state, "resolve_board_effect")
     assert "finish_agent_turn" in {
-        action.action_id for action in ENGINE.legal_actions(state, 0)
+        action.action_id for action in ENGINE.whole_actions(state, 0)
     }
-    finished = ENGINE.apply(state, DomainAction("finish_agent_turn", 0))
+    finished = apply_whole(ENGINE, state, DomainAction("finish_agent_turn", 0))
     assert "agent_card_effect_unavailable" in {
         event.kind for event in finished.events
     }
@@ -728,7 +728,9 @@ def test_a_choose_two_that_cannot_go_on_frees_the_other_box_and_the_end() -> (
     assert agent_effects.box_in_progress(named)
     assert _boxes_offered(named, "resolve_agent_card_effect") == set()
     assert named.players[0].influence.emperor == 3
-    raised = ENGINE.apply(named, DomainAction("resolve_faction_influence", 0)).state
+    raised = apply_whole(
+        ENGINE, named, DomainAction("resolve_faction_influence", 0)
+    ).state
     assert raised.players[0].influence.bene_gesserit == 6
     assert not agent_effects.box_in_progress(raised)
     assert _boxes_offered(raised, "choose_agent_card_influence") == set()
@@ -737,7 +739,7 @@ def test_a_choose_two_that_cannot_go_on_frees_the_other_box_and_the_end() -> (
     while _boxes_offered(coupled, "resolve_board_effect"):
         coupled = _apply(coupled, "resolve_board_effect")
     assert agent_effects.graft_boxes_are_stalled(coupled)
-    finished = ENGINE.apply(coupled, DomainAction("finish_agent_turn", 0))
+    finished = apply_whole(ENGINE, coupled, DomainAction("finish_agent_turn", 0))
     # The named Faction is paid first, then the box ends unavailable (the box's
     # event comes last among the events the box produced, cleanup-2c-2).
     assert finished.events[0].kind == "influence_gained"
@@ -755,7 +757,7 @@ def _settle_all_but_box_one(state: GameState) -> GameState:
     """Resolve the visited space and box 0's automatic rows."""
 
     while True:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         rows = [
             action
             for action in legal
@@ -767,7 +769,7 @@ def _settle_all_but_box_one(state: GameState) -> GameState:
         ]
         if not rows:
             return state
-        state = ENGINE.apply(state, rows[0], legal_actions=legal).state
+        state = apply_whole(ENGINE, state, rows[0], legal_actions=legal).state
 
 
 @pytest.mark.parametrize(
@@ -795,20 +797,20 @@ def test_a_partner_box_with_a_choice_stays_reachable(
     )
     offered = {
         action.action_id
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if row_box(action) == 1
     }
     assert taken in offered
     assert "decline_agent_card_payment" not in offered
     row = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == taken
         and row_box(action) == 1
         and (argument is None or argument in action.arguments)
     )
     before = state.players[0]
-    after = ENGINE.apply(state, row).state.players[0]
+    after = apply_whole(ENGINE, state, row).state.players[0]
     if partner == PITER:
         assert after.troops_garrison == before.troops_garrison - 1
     else:
@@ -832,7 +834,7 @@ def _settle_space(state: GameState) -> GameState:
     """Resolve the visited space's own effects and its Faction Influence."""
 
     while True:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         rows = [
             action
             for action in legal
@@ -840,7 +842,7 @@ def _settle_space(state: GameState) -> GameState:
         ]
         if not rows:
             return state
-        state = ENGINE.apply(state, rows[0], legal_actions=legal).state
+        state = apply_whole(ENGINE, state, rows[0], legal_actions=legal).state
 
 
 def _place_alone(state: GameState, card_id: str, space_id: str) -> GameState:
@@ -872,7 +874,7 @@ def test_stitched_horror_holds_the_turn_end_until_it_names_two() -> None:
     )
     assert not agent_effects.agent_card_effect_is_unavailable(state)
     assert not agent_effects.graft_boxes_are_stalled(state)
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     assert FINISH not in legal
     assert {
         dict(action.arguments)["reward"]
@@ -880,14 +882,14 @@ def test_stitched_horror_holds_the_turn_end_until_it_names_two() -> None:
         if action.action_id == "choose_agent_card_reward"
     } == {"water", "troop", "trash", "tleilaxu"}
     named = _apply(state, "choose_agent_card_reward", reward="water")
-    assert FINISH not in ENGINE.legal_actions(named, 0)
+    assert FINISH not in ENGINE.whole_actions(named, 0)
     done = _apply(named, "choose_agent_card_reward", reward="tleilaxu")
-    assert FINISH in ENGINE.legal_actions(done, 0)
+    assert FINISH in ENGINE.whole_actions(done, 0)
     owner = done.players[0]
     before = state.players[0]
     assert owner.resources.water == before.resources.water + 1
     assert owner.tleilaxu_space == before.tleilaxu_space + 1
-    finished = ENGINE.apply(done, FINISH)
+    finished = apply_whole(ENGINE, done, FINISH)
     assert "agent_card_effect_unavailable" not in {
         event.kind for event in finished.events
     }
@@ -900,14 +902,14 @@ def test_ghola_s_copy_of_stitched_horror_holds_the_turn_end_too() -> None:
     state = _settle_space(
         _graft(_state((HORROR, GHOLA), troops_supply=9), HORROR, "arrakeen", GHOLA)
     )
-    assert FINISH not in ENGINE.legal_actions(state, 0)
+    assert FINISH not in ENGINE.whole_actions(state, 0)
     first = _apply(state, "choose_agent_card_reward", reward="water")
     horror_done = _apply(first, "choose_agent_card_reward", reward="troop")
     assert _boxes_offered(horror_done, "choose_agent_card_reward") == {1}
-    assert FINISH not in ENGINE.legal_actions(horror_done, 0)
+    assert FINISH not in ENGINE.whole_actions(horror_done, 0)
     copy_first = _apply(horror_done, "choose_agent_card_reward", box=1, reward="water")
     both_done = _apply(copy_first, "choose_agent_card_reward", box=1, reward="tleilaxu")
-    assert FINISH in ENGINE.legal_actions(both_done, 0)
+    assert FINISH in ENGINE.whole_actions(both_done, 0)
 
 
 def _arrow_box(case: str) -> GameState:
@@ -982,13 +984,13 @@ def test_an_optional_box_with_a_choice_stands_beside_the_turn_end(
     is not one that only fizzles."""
 
     state = _arrow_box(case)
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     offered = {action.action_id for action in legal}
     assert row in offered
     assert not offered & _REFUSALS
     assert FINISH in legal
     assert not agent_effects.agent_card_effect_is_unavailable(state)
-    finished = ENGINE.apply(state, FINISH)
+    finished = apply_whole(ENGINE, state, FINISH)
     assert [
         dict(event.payload)
         for event in finished.events
@@ -1010,11 +1012,11 @@ def test_an_arrow_whose_cost_cannot_be_paid_still_lets_the_turn_end(
     turn end lapses it, with nothing gained."""
 
     state = _arrow_box(case)
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     assert not {action.action_id for action in legal} & _REFUSALS
     assert agent_effects.agent_card_effect_is_unavailable(state)
     assert FINISH in legal
-    finished = ENGINE.apply(state, FINISH)
+    finished = apply_whole(ENGINE, state, FINISH)
     assert [
         dict(event.payload)
         for event in finished.events
@@ -1039,7 +1041,7 @@ def test_beguiling_pheromones_holds_the_turn_end_on_a_faction_space() -> None:
     state = _settle_space(
         _graft(_state((DIPLOMACY, PHEROMONES)), DIPLOMACY, "secrets", PHEROMONES)
     )
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     assert FINISH not in legal
     assert _boxes_offered(state, "trash_grafted_card_for_influence") == {1}
     trashed = _apply(
@@ -1048,7 +1050,7 @@ def test_beguiling_pheromones_holds_the_turn_end_on_a_faction_space() -> None:
     assert trashed.players[0].influence.bene_gesserit == (
         state.players[0].influence.bene_gesserit + 1
     )
-    assert FINISH in ENGINE.legal_actions(trashed, 0)
+    assert FINISH in ENGINE.whole_actions(trashed, 0)
 
 
 def test_dissecting_kit_without_its_partner_in_play_can_only_fizzle() -> None:
@@ -1072,7 +1074,7 @@ def test_dissecting_kit_without_its_partner_in_play_can_only_fizzle() -> None:
     )
     assert agent_effects.agent_card_effect_is_unavailable(gone)
     assert agent_effects.graft_boxes_are_stalled(_settle_space(gone))
-    assert FINISH in ENGINE.legal_actions(_settle_space(gone), 0)
+    assert FINISH in ENGINE.whole_actions(_settle_space(gone), 0)
 
 
 def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
@@ -1103,7 +1105,7 @@ def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
     declined = _apply(selected, "decline_corrinth_city_payment")
     copy_rows = {
         (action.action_id, dict(action.arguments).get("card_id"))
-        for action in ENGINE.legal_actions(declined, 0)
+        for action in ENGINE.whole_actions(declined, 0)
         if row_box(action) == 1
     }
     assert copy_rows == {("select_corrinth_city_discard", card) for card in hand}
@@ -1124,20 +1126,20 @@ def test_box_one_s_own_card_draw_leaves_the_placed_card_s_added_draw() -> None:
     )
     _, context = current_agent_effect_context(state)
     assert context["boost_draw_card_ids"] == COUPLING
-    rows = ENGINE.legal_actions(state, 0)
+    rows = ENGINE.whole_actions(state, 0)
     cards = (("effect", "cards"),)
     assert DomainAction("resolve_agent_card_effect", 0, cards) in rows
     assert (
         DomainAction("resolve_agent_card_effect", 0, (("box", 1), *cards)) in rows
     )
-    partner = ENGINE.apply(
+    partner = apply_whole(ENGINE, 
         state, DomainAction("resolve_agent_card_effect", 0, (("box", 1), *cards))
     ).state
     _, context = current_agent_effect_context(partner)
     assert context["boost_draw_card_ids"] == COUPLING
     assert context["card_id"] == INFILTRATOR
     assert "cards" not in str(context["pending_agent_icons"])
-    added = ENGINE.apply(
+    added = apply_whole(ENGINE, 
         partner, DomainAction("resolve_agent_card_effect", 0, cards)
     ).state
     _, context = current_agent_effect_context(added)
@@ -1153,15 +1155,27 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     # v147 added the base catalog's ``source``-named Reveal rows (+140); v150
     # (stage B1) replaced the base catalog's 1,763 ``agent_turn`` rows with
     # 129 card and space picks (4,551 - 1,763 + 129); v150 (stage B2, OQ-112)
-    # added a Conflict reward's 14 icon rows.
-    assert ActionCodec(RulesetConfig()).size == 2917 + 14
+    # added a Conflict reward's 14 icon rows; v150 (stage B3a, OQ-111) traded
+    # 792 whole templates for the 964 effect and target rows that stand for
+    # them in the Agent-effect frame.
+    assert ActionCodec(RulesetConfig()).size == 2917 + 14 + (964 - 792)
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)
     twins = {t for t in codec.catalog if ("box", 1) in t.arguments}
     assert twins
-    assert all(t.action_id in BOX_ACTION_IDS for t in twins)
+    # Stage B3a: a box's effect is offered as a row naming its source (the
+    # card or, for a Signet Ring box, the leader), the box number in the row;
+    # the actions the frame still offers as they are keep their ids.
+    assert all(
+        t.action_id in BOX_ACTION_IDS
+        or dict(t.arguments).get("source") in {"agent_card", "leader"}
+        for t in twins
+    )
     for template in codec.catalog:
-        if template.action_id in BOX_ACTION_IDS and template not in twins:
+        is_box_effect = dict(template.arguments).get("source") == "agent_card"
+        if (
+            template.action_id in BOX_ACTION_IDS or is_box_effect
+        ) and template not in twins:
             twin = ActionTemplate(
                 template.action_id,
                 tuple(sorted((*template.arguments, ("box", 1)))),
@@ -1226,7 +1240,7 @@ def _placed(state: GameState, card_id: str, space_id: str) -> GameState:
 
 
 def _choose_partner(state: GameState, partner: str) -> Transition:
-    return ENGINE.apply(
+    return apply_whole(ENGINE, 
         state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
     )
 
@@ -1260,13 +1274,13 @@ def test_a_bene_gesserit_partner_takes_the_boost_and_its_draw() -> None:
     assert owner.bene_gesserit_boost_pending is False
     _, context = current_agent_effect_context(state)
     assert context["boost_draw_card_ids"] == TRUTHTRANCE
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     assert PARTNER_DRAW in legal and BOX_ZERO_DRAW in legal
     assert agent_effects.resolves_boost_draw(state, PARTNER_DRAW)
     assert not agent_effects.resolves_boost_draw(state, BOX_ZERO_DRAW)
     assert FINISH not in legal
 
-    drawn = ENGINE.apply(state, PARTNER_DRAW)
+    drawn = apply_whole(ENGINE, state, PARTNER_DRAW)
     assert len(drawn.state.players[0].hand) == len(owner.hand) + 1
     assert any(
         event.kind == "agent_card_effect_resolved"
@@ -1278,9 +1292,9 @@ def test_a_bene_gesserit_partner_takes_the_boost_and_its_draw() -> None:
     # The draw is bound to its card: no box was made active for it.
     assert context["card_id"] == INFILTRATOR
     later = drawn.state
-    assert PARTNER_DRAW not in ENGINE.legal_actions(later, 0)
+    assert PARTNER_DRAW not in ENGINE.whole_actions(later, 0)
     # Infiltrator's own card-draw icon is still box 0's to take.
-    assert BOX_ZERO_DRAW in ENGINE.legal_actions(later, 0)
+    assert BOX_ZERO_DRAW in ENGINE.whole_actions(later, 0)
     # Spent: a Bene Gesserit card played later this round is not boosted.
     assert not card_is_boosted(
         personal_card_for_instance(COUPLING), later.players[0]
@@ -1326,7 +1340,7 @@ def test_a_usurp_partner_from_the_row_takes_the_boost() -> None:
     placed = _placed(base, USURP, "arrakeen")
     assert {
         dict(action.arguments)["card_id"]
-        for action in ENGINE.legal_actions(placed, 0)
+        for action in ENGINE.whole_actions(placed, 0)
         if action.action_id == "choose_graft_partner"
     } == {TRUTHTRANCE}
     grafted = _choose_partner(placed, TRUTHTRANCE)
@@ -1335,10 +1349,10 @@ def test_a_usurp_partner_from_the_row_takes_the_boost() -> None:
     assert state.players[0].bene_gesserit_boost_pending is False
     assert state.players[0].usurped_row_card_id == TRUTHTRANCE
     state = _settle_space(state)
-    assert FINISH not in ENGINE.legal_actions(state, 0)
-    drawn = ENGINE.apply(state, PARTNER_DRAW).state
+    assert FINISH not in ENGINE.whole_actions(state, 0)
+    drawn = apply_whole(ENGINE, state, PARTNER_DRAW).state
     assert len(drawn.players[0].hand) == len(state.players[0].hand) + 1
-    assert FINISH in ENGINE.legal_actions(drawn, 0)
+    assert FINISH in ENGINE.whole_actions(drawn, 0)
 
 
 def test_with_two_bene_gesserit_cards_the_placed_one_takes_the_boost() -> None:
@@ -1355,7 +1369,7 @@ def test_with_two_bene_gesserit_cards_the_placed_one_takes_the_boost() -> None:
     assert _boost_consumed(grafted) == []
     _, context = current_agent_effect_context(grafted.state)
     assert context["boost_draw_card_ids"] == COUPLING
-    legal = ENGINE.legal_actions(grafted.state, 0)
+    legal = ENGINE.whole_actions(grafted.state, 0)
     assert PARTNER_DRAW not in legal
     assert BOX_ZERO_DRAW in legal
     assert agent_effects.resolves_boost_draw(grafted.state, BOX_ZERO_DRAW)
@@ -1374,7 +1388,7 @@ def test_a_partner_that_is_not_bene_gesserit_leaves_the_boost_pending() -> None:
     assert grafted.state.players[0].bene_gesserit_boost_pending is True
     _, context = current_agent_effect_context(grafted.state)
     assert "boost_draw_card_ids" not in context
-    assert PARTNER_DRAW not in ENGINE.legal_actions(grafted.state, 0)
+    assert PARTNER_DRAW not in ENGINE.whole_actions(grafted.state, 0)
 
 
 def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
@@ -1393,9 +1407,9 @@ def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
         TRUTHTRANCE,
     ).state
     trash = DomainAction("trash_grafted_card_for_specimen", 0)
-    assert PARTNER_DRAW in ENGINE.legal_actions(state, 0)
+    assert PARTNER_DRAW in ENGINE.whole_actions(state, 0)
 
-    trashed = ENGINE.apply(state, trash)
+    trashed = apply_whole(ENGINE, state, trash)
     assert any(
         event.kind == "agent_card_effect_expired"
         and dict(event.payload)["card_id"] == TRUTHTRANCE
@@ -1403,12 +1417,12 @@ def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
     )
     _, context = current_agent_effect_context(trashed.state)
     assert "boost_draw_card_ids" not in context
-    assert PARTNER_DRAW not in ENGINE.legal_actions(trashed.state, 0)
+    assert PARTNER_DRAW not in ENGINE.whole_actions(trashed.state, 0)
     assert trashed.state.players[0].hand == state.players[0].hand
 
-    drawn_first = ENGINE.apply(state, PARTNER_DRAW).state
+    drawn_first = apply_whole(ENGINE, state, PARTNER_DRAW).state
     assert len(drawn_first.players[0].hand) == len(state.players[0].hand) + 1
-    after = ENGINE.apply(drawn_first, trash).state
+    after = apply_whole(ENGINE, drawn_first, trash).state
     assert TRUTHTRANCE in after.players[0].trashed
 
 
@@ -1448,11 +1462,11 @@ def test_a_ghola_partner_copies_the_placed_card_s_added_draw() -> None:
     state = _settle_space(state)
     hand = len(state.players[0].hand)
 
-    copy = ENGINE.apply(state, PARTNER_DRAW)
+    copy = apply_whole(ENGINE, state, PARTNER_DRAW)
     assert _drawn(copy) == [GHOLA]
-    assert FINISH not in ENGINE.legal_actions(copy.state, 0)
-    assert PARTNER_DRAW not in ENGINE.legal_actions(copy.state, 0)
-    added = ENGINE.apply(copy.state, BOX_ZERO_DRAW)
+    assert FINISH not in ENGINE.whole_actions(copy.state, 0)
+    assert PARTNER_DRAW not in ENGINE.whole_actions(copy.state, 0)
+    added = apply_whole(ENGINE, copy.state, BOX_ZERO_DRAW)
     assert _drawn(added) == [COUPLING]
     assert len(added.state.players[0].hand) == hand + 2
     _, context = current_agent_effect_context(added.state)
@@ -1477,14 +1491,14 @@ def test_a_placed_ghola_copies_its_boosted_partner_s_draw() -> None:
     assert effects.pending_boost_draws(context) == (TRUTHTRANCE, GHOLA)
     state = _settle_space(state)
     hand = len(state.players[0].hand)
-    assert FINISH not in ENGINE.legal_actions(state, 0)
+    assert FINISH not in ENGINE.whole_actions(state, 0)
 
-    ghola = ENGINE.apply(state, BOX_ZERO_DRAW)
+    ghola = apply_whole(ENGINE, state, BOX_ZERO_DRAW)
     assert _drawn(ghola) == [GHOLA]
-    partner = ENGINE.apply(ghola.state, PARTNER_DRAW)
+    partner = apply_whole(ENGINE, ghola.state, PARTNER_DRAW)
     assert _drawn(partner) == [TRUTHTRANCE]
     assert len(partner.state.players[0].hand) == hand + 2
-    assert FINISH in ENGINE.legal_actions(partner.state, 0)
+    assert FINISH in ENGINE.whole_actions(partner.state, 0)
 
 
 THRONE = "imperium:throne_room_politics:0"
@@ -1514,12 +1528,12 @@ def test_throne_room_politics_trashing_itself_keeps_its_added_draw() -> None:
     state = _place_alone(
         _state((THRONE,), bene_gesserit_boost_pending=True), THRONE, "arrakeen"
     )
-    boxed = ENGINE.apply(state, BOX_ZERO).state
-    trashed = ENGINE.apply(boxed, _trash(THRONE))
+    boxed = apply_whole(ENGINE, state, BOX_ZERO).state
+    trashed = apply_whole(ENGINE, boxed, _trash(THRONE))
     assert THRONE in trashed.state.players[0].trashed
     assert _expired(trashed) == []
     assert agent_effects.resolves_boost_draw(trashed.state, BOX_ZERO_DRAW)
-    drawn = ENGINE.apply(trashed.state, BOX_ZERO_DRAW)
+    drawn = apply_whole(ENGINE, trashed.state, BOX_ZERO_DRAW)
     assert _drawn(drawn) == [THRONE]
 
 
@@ -1539,14 +1553,14 @@ def test_a_ghola_copy_s_draw_lapses_only_with_ghola() -> None:
     )
     _, context = current_agent_effect_context(state)
     assert effects.pending_boost_draws(context) == (THRONE, GHOLA)
-    copy = ENGINE.apply(state, BOX_ONE).state
+    copy = apply_whole(ENGINE, state, BOX_ONE).state
 
-    own = ENGINE.apply(copy, _trash(GHOLA))
+    own = apply_whole(ENGINE, copy, _trash(GHOLA))
     assert _expired(own) == []
     _, context = current_agent_effect_context(own.state)
     assert effects.pending_boost_draws(context) == (THRONE, GHOLA)
 
-    other = ENGINE.apply(copy, _trash(THRONE))
+    other = apply_whole(ENGINE, copy, _trash(THRONE))
     assert _expired(other) == [THRONE]
     _, context = current_agent_effect_context(other.state)
     assert effects.pending_boost_draws(context) == (GHOLA,)

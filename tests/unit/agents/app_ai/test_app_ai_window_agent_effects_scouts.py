@@ -15,7 +15,7 @@ from collections.abc import Mapping
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.app_ai.abilities import scouts as sc
 from dune_imperium.agents.app_ai.abilities.base import Answer
 from dune_imperium.agents.app_ai.agent import AppAIAgent
@@ -59,13 +59,13 @@ def no_plots(monkeypatch: pytest.MonkeyPatch) -> None:
 def _settle(state: GameState) -> GameState:
     chance = ChanceResolver(seed=1)
     while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
-        state = ENGINE.apply(state, chance.resolve(decision)).state
+        state = apply_whole(ENGINE, state, chance.resolve(decision)).state
     return state
 
 
 def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, seat)
-    return _settle(ENGINE.apply(state, action, legal_actions=legal).state)
+    legal = ENGINE.whole_actions(state, seat)
+    return _settle(apply_whole(ENGINE, state, action, legal_actions=legal).state)
 
 
 def _place(
@@ -102,7 +102,7 @@ def _place(
 
 def _run(state: GameState, seat: int, memory: Memory | None = None) -> DecisionRun:
     profile = make_profile(state, seat)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     return DecisionRun(
         profile.ctx, profile, legal, random.Random(0), memory or Memory()
     )
@@ -132,7 +132,7 @@ def _a(seat: int, action_id: str, **arguments: str | int) -> DomainAction:
 
 
 def _ids(state: GameState, seat: int) -> set[str]:
-    return {a.action_id for a in ENGINE.legal_actions(state, seat)}
+    return {a.action_id for a in ENGINE.whole_actions(state, seat)}
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ def test_mission_collect_is_automatic_with_the_space(
     state, seat = _imperial_privilege(spice=1, solari=0)
     actions = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "scouts_collect_mission"
     ]
     assert actions == [_a(seat, "scouts_collect_mission", choice="")]
@@ -183,7 +183,7 @@ def test_imperial_reserve_pick_is_the_ability_answer(
     state, seat = _imperial_privilege(spice=1, solari=2)
     choices = {
         str(arg(a, "choice"))
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "scouts_collect_mission"
     }
     assert choices == {"spice", "solari"}

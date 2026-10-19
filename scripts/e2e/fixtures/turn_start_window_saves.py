@@ -38,7 +38,7 @@ import random
 import sys
 from pathlib import Path
 
-from dune_imperium.agents.agent_turn_steps import placements_for_steps
+from dune_imperium.agents.agent_turn_steps import apply_whole, placements_for_steps
 from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
@@ -78,7 +78,7 @@ def plays_of(rows) -> list[dict]:
 def back_to_turn(engine, state, seat, action) -> bool:
     """Whether the Plot leaves the seat on its own turn frame at once."""
 
-    after = engine.apply(state, action).state
+    after = apply_whole(engine, state, action).state
     top = after.decision_stack[-1] if after.decision_stack else None
     return (
         top is not None
@@ -104,7 +104,7 @@ for _step in range(STEPS):
         summary = manager.confirm_turn(game_id, held, summary["revision"])
         continue
     owner = summary["decision"]["owner"]
-    actions = session.engine.legal_actions(session.state, owner)
+    actions = session.engine.whole_actions(session.state, owner)
     starts = {a.action_id for a in actions if turn_start(a)}
     if found is not None and owner == found["seat"] and starts:
         if summary["revision"] != found["revision"]:
@@ -172,7 +172,7 @@ for _step in range(STEPS):
         steps.append(["action", owner, index])
     summary = manager.apply_action(game_id, owner, summary["revision"], index)
     if chosen.action_id == "agent_turn":
-        space_actions = session.engine.legal_actions(session.state, owner)
+        space_actions = session.engine.whole_actions(session.state, owner)
         shown_spaces = placements_for_steps(session.state, owner, space_actions)
         assert shown_spaces is not None
         index = space_actions.index(shown_spaces[1](chosen))

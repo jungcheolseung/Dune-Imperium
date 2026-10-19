@@ -16,6 +16,7 @@ from functools import cache
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import testing as _conftest
 from dune_imperium.agents.app_ai.abilities import (
     PORTS,
@@ -1384,7 +1385,7 @@ def _first_with(action_id: str, count: int, seed: int) -> GameState:
     deciding seat has ``count`` or more ``action_id`` actions."""
 
     def offered(state: GameState, seat: int) -> bool:
-        legal = _conftest.ENGINE.legal_actions(state, seat)
+        legal = _conftest.ENGINE.whole_actions(state, seat)
         return sum(1 for a in legal if a.action_id == action_id) >= count
 
     return _conftest.play_until(offered, config=SCOUTS, seed=seed)
@@ -1393,7 +1394,7 @@ def _first_with(action_id: str, count: int, seed: int) -> GameState:
 def _legal(state: GameState, action_id: str) -> list[DomainAction]:
     return [
         a
-        for a in _conftest.ENGINE.legal_actions(state, owner(state))
+        for a in _conftest.ENGINE.whole_actions(state, owner(state))
         if a.action_id == action_id
     ]
 
@@ -1446,7 +1447,7 @@ def test_subcommittee_offer_in_a_real_turn_frame() -> None:
         chosen = str(answer.response[0][0])
         assert values[chosen] == max(values.values())
         (choose,) = _legal(state, "choose_subcommittee")
-        frame = _conftest.ENGINE.apply(state, choose).state
+        frame = apply_whole(_conftest.ENGINE, state, choose).state
         joins = {
             dict(a.arguments)["subcommittee_id"]
             for a in _legal(frame, "join_subcommittee")

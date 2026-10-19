@@ -142,6 +142,13 @@ from dune_imperium.rules.contracts import (
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
 )
+from dune_imperium.rules.effect_steps import (
+    present,
+    presents_steps,
+    take_step,
+    whole_actions,
+    without_pick,
+)
 from dune_imperium.rules.endgame import (
     apply_endgame_intrigue_action,
     begin_endgame_intrigue,
@@ -382,6 +389,10 @@ from dune_imperium.rules.tleilaxu_row import (
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
+
+# The last state whose rules' actions were asked, its player and the actions
+# (``UprisingRulesEngine._rules_of``). Read and replaced as one reference.
+_LAST_RULES: tuple[GameState, int, tuple[DomainAction, ...]] | None = None
 type ActionHandler = Callable[[GameState, DomainAction], RuleResult]
 
 DEFAULT_LEADER_IDS = (
@@ -979,14 +990,56 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         player: int,
     ) -> tuple[DomainAction, ...]:
-        """Return the actions the top frame's providers offer to ``player``.
+        """Return the rows the top frame offers to ``player``.
 
-        While an immediate triggered draw waits for ``player`` (CHOAM
-        Transports, the Bene Gesserit Influence 4 card, Imperial Birthright,
-        an acquire box; user decision 2026-10-10, OQ-106), that draw is all
-        any of its frames offers, so nothing of the owner's comes between
-        the trigger and it.
+        The rows are the whole actions of ``_rules_actions``, each shown by
+        its next step where the frame offers its waiting effects effect
+        first (stage B3, ``rules.effect_steps``). While an immediate
+        triggered draw waits for ``player`` (CHOAM Transports, the Bene
+        Gesserit Influence 4 card, Imperial Birthright, an acquire box; user
+        decision 2026-10-10, OQ-106), that draw is all any of its frames
+        offers, so nothing of the owner's comes between the trigger and it.
         """
+
+        return present(state, self._rules_of(state, player))
+
+    def whole_actions(
+        self,
+        state: GameState,
+        player: int,
+    ) -> tuple[DomainAction, ...]:
+        """The whole actions ``player``'s legal rows stand for (stage B3).
+
+        A frame that offers its waiting effects effect first
+        (``rules.effect_steps``) shows each whole action -- an effect and its
+        target at once, as the rules resolve it -- by its next step; this is
+        the list of the whole actions themselves (during a pick, those its
+        rows lead to), for an agent that weighs an effect with its target
+        and for the page. Elsewhere it is the legal list.
+        """
+
+        return whole_actions(state, self._rules_of(state, player))
+
+    def _rules_of(self, state: GameState, player: int) -> tuple[DomainAction, ...]:
+        """``_rules_actions`` of ``state`` without its pick, kept for the last
+        state asked: one decision asks for them several times (its legal
+        rows, the whole actions an agent weighs, the step it takes), and a
+        state never changes, so the state object is the key (stage B3)."""
+
+        global _LAST_RULES
+        last = _LAST_RULES
+        if last is not None and last[0] is state and last[1] == player:
+            return last[2]
+        actions = self._rules_actions(without_pick(state), player)
+        _LAST_RULES = (state, player, actions)
+        return actions
+
+    def _rules_actions(
+        self,
+        state: GameState,
+        player: int,
+    ) -> tuple[DomainAction, ...]:
+        """The whole actions the top frame's providers offer to ``player``."""
 
         if not state.decision_stack:
             return ()
@@ -1008,6 +1061,19 @@ class UprisingRulesEngine(RulesEngine):
         )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
+        if presents_steps(state):
+            # A step toward a waiting effect only keeps the pick; the path's
+            # last step applies its whole action to the rules' own state
+            # (stage B3, ``rules.effect_steps``).
+            step = take_step(
+                state,
+                action,
+                self._rules_of(state, action.actor),
+            )
+            if step.whole is None:
+                assert step.event is not None
+                return RuleResult(state=step.state, events=(step.event,))
+            state, action = step.state, step.whole
         handled = _end_turn_start(state, action, _handle(state, action))
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal

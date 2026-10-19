@@ -63,8 +63,10 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_CARDS_BY_ID,
 )
 from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
+from dune_imperium.rules.action_shapes import Source, Verb
 from dune_imperium.rules.frames import FrameKind
 
 # v21 (2026-09-27): the Contract identity universe swaps the four Rise of
@@ -135,6 +137,13 @@ from dune_imperium.rules.frames import FrameKind
 # ``private_agent_card_pick`` (by identity) and ``private_agent_card_pick_graft``
 # (1 when it is grafted). No other seat sees the pick. Every older column
 # keeps its offset; a v32 checkpoint migrates by segment and starts them at 0.
+# Also v33 (stage B3, OQ-111 (4)): a waiting effect is picked before its
+# target, so the seat picking the target must see the effect it picked:
+# appended as ``private_effect_pick_verb`` and ``private_effect_pick_source``
+# (one-hot), ``private_effect_pick_card`` (the printed personal card, by
+# identity), ``private_effect_pick_box`` (1 for a grafted turn's second card)
+# and ``private_effect_pick_targets`` (the targets picked so far). No other
+# seat sees the pick.
 OBSERVATION_VERSION: Final = 33
 _SEATS: Final = 4
 
@@ -207,6 +216,10 @@ _FRAME_KINDS: Final = tuple(kind.value for kind in FrameKind)
 _PERSONAL_INDEX: Final = {
     card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)
 }
+_VERB_INDEX: Final = {verb.value: index for index, verb in enumerate(Verb)}
+_SOURCE_INDEX: Final = {source.value: index for index, source in enumerate(Source)}
+# The sources whose printed entity is a personal card (stage B3).
+_CARD_SOURCES: Final = frozenset({Source.AGENT_CARD.value, Source.REVEAL_CARD.value})
 _INTRIGUE_INDEX: Final = {card_id: index for index, card_id in enumerate(INTRIGUE_IDS)}
 _AGENT_LOCATION_SLOTS: Final = 3
 _SET_ASIDE_SLOTS: Final = 2
@@ -390,6 +403,12 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # v33: the seat's own picked Agent card and its graft flag.
             ("private_agent_card_pick", len(PERSONAL_CARD_IDS)),
             ("private_agent_card_pick_graft", 1),
+            # v33 (stage B3): the seat's own picked effect, by its row.
+            ("private_effect_pick_verb", len(Verb)),
+            ("private_effect_pick_source", len(Source)),
+            ("private_effect_pick_card", len(PERSONAL_CARD_IDS)),
+            ("private_effect_pick_box", 1),
+            ("private_effect_pick_targets", 1),
         )
     )
     return tuple(lengths)
@@ -629,7 +648,30 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     values[_OFFSET["private_agent_card_pick_graft"]] = int(
         view.private.agent_card_pick_graft
     )
+    _write_effect_pick(values, view.private.effect_pick)
     return tuple(values)
+
+
+def _write_effect_pick(
+    values: list[int],
+    rows: tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...],
+) -> None:
+    """The seat's own picked effect (stage B3): its row's verb, source,
+    printed personal card and box, and how many targets follow it."""
+
+    if not rows:
+        return
+    verb, arguments = rows[0]
+    reference = dict(arguments)
+    values[_OFFSET["private_effect_pick_verb"] + _VERB_INDEX[verb]] = 1
+    source = reference.get("source")
+    if isinstance(source, str):
+        values[_OFFSET["private_effect_pick_source"] + _SOURCE_INDEX[source]] = 1
+        printed = reference.get("printed")
+        if source in _CARD_SOURCES and isinstance(printed, str):
+            values[_OFFSET["private_effect_pick_card"] + _PERSONAL_INDEX[printed]] = 1
+    values[_OFFSET["private_effect_pick_box"]] = int(reference.get("box") == 1)
+    values[_OFFSET["private_effect_pick_targets"]] = len(rows) - 1
 
 
 def _write_scouts(

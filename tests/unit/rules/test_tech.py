@@ -18,7 +18,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     encode_player_view,
 )
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.bloodlines.tech import (
     TECH_IDS,
     TECH_TILES,
@@ -354,11 +354,11 @@ def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() ->
     def take(current: GameState, action_id: str, **arguments: object) -> GameState:
         action = next(
             action
-            for action in engine.legal_actions(current, 0)
+            for action in engine.whole_actions(current, 0)
             if action.action_id == action_id
             and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
         )
-        return engine.apply(current, action).state
+        return apply_whole(engine, current, action).state
 
     picked = take(state, "choose_agent_card", card_id=desert_power)
     placed = take(picked, "place_agent", space_id="hagga_basin")
@@ -498,7 +498,7 @@ def test_an_unused_offer_keeps_the_stacks_and_lapses_at_the_turn_end() -> None:
     # holds no turn end back, and the owner's press lapses it.
     state = _visit(_turn_state(_owner()), "assembly_hall")
     engine = UprisingRulesEngine()
-    assert DomainAction("finish_agent_turn", 0) in engine.legal_actions(state, 0)
+    assert DomainAction("finish_agent_turn", 0) in engine.whole_actions(state, 0)
     finished = finish_agent_turn_result(state)
     lapsed = [
         dict(event.payload)
@@ -657,12 +657,12 @@ def _end_open_agent_turn(state: GameState) -> GameState:
     engine = UprisingRulesEngine()
     while draws := [
         action
-        for action in engine.legal_actions(state, owner)
+        for action in engine.whole_actions(state, owner)
         if action.action_id in ("draw_owed_card", "draw_owed_intrigue")
     ]:
-        state = engine.apply(state, draws[0]).state
+        state = apply_whole(engine, state, draws[0]).state
     assert DomainAction("finish_agent_turn", owner) in (
-        engine.legal_actions(state, owner)
+        engine.whole_actions(state, owner)
     )
     ended: GameState = finish_agent_turn(state)
     return ended
@@ -719,20 +719,20 @@ def test_servo_receivers_opens_a_signet_choice_frame() -> None:
     engine = UprisingRulesEngine()
     state = _servo_visit("princess_irulan")
     opened = _resolve_acquired(
-        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+        apply_whole(engine, state, _tech_actions(state)["servo_receivers"]).state
     )
     frame = opened.decision_stack[-1]
     assert frame.kind == "leader_signet"
-    offered = {action.action_id for action in engine.legal_actions(opened, 0)}
+    offered = {action.action_id for action in engine.whole_actions(opened, 0)}
     # Chronicler's Insight: acquire a one-cost card, trash a hand card, or
     # neither [Princess Irulan card]; the turn waits for the choice.
     assert offered == {"decline_leader_signet_payment", "trash_leader_card"}
     trash = next(
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "trash_leader_card"
     )
-    done = engine.apply(opened, trash).state
+    done = apply_whole(engine, opened, trash).state
     assert dict(trash.arguments)["card_id"] in done.players[0].trashed
     assert all(frame.kind != "leader_signet" for frame in done.decision_stack)
     # Back in the owner's open Agent turn; its end hands over (OQ-095).
@@ -759,15 +759,15 @@ def test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray() -> None
     engine = UprisingRulesEngine()
     state = _servo_visit("duncan_idaho", agent_in_conflict=1, agents_available=1)
     opened = _resolve_acquired(
-        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+        apply_whole(engine, state, _tech_actions(state)["servo_receivers"]).state
     )
     assert opened.decision_stack[-1].kind == "leader_signet"
     deploy = next(
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "deploy_leader_agent"
     )
-    fighting = engine.apply(opened, deploy).state
+    fighting = apply_whole(engine, opened, deploy).state
     seat = fighting.players[0]
     assert seat.agent_in_conflict == 2
     assert seat.agent_locations == ()
@@ -798,22 +798,22 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
         "imperial_privilege",
     )
     opened = _resolve_acquired(
-        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+        apply_whole(engine, state, _tech_actions(state)["servo_receivers"]).state
     )
     assert opened.decision_stack[-1].kind == "leader_signet"
     deploy = next(
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "deploy_leader_agent"
     )
-    deployed = engine.apply(opened, deploy)
+    deployed = apply_whole(engine, opened, deploy)
     fighting = deployed.state
     assert fighting.players[0].agent_in_conflict == 1
     hand_before = len(fighting.players[0].hand)
 
     # The optional Intrigue trade no longer gates the recall (OQ-095 (2),
     # user ruling 2026-10-14), so the recall step is offered at once.
-    legal = {action.action_id for action in engine.legal_actions(fighting, 0)}
+    legal = {action.action_id for action in engine.whole_actions(fighting, 0)}
     assert "recall_conflict_agent_for_imperial_privilege" not in legal
     # With no other Agent the owner confirms the skipped recall (user ruling
     # 2026-09-30); the card is still drawn (OQ-023), by the space's own icon
@@ -821,7 +821,7 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     # resolved with the visit's other automatic icons, so the confirm draws
     # nothing more.
     assert "resolve_imperial_privilege_without_recall" in legal
-    confirmed = engine.apply(
+    confirmed = apply_whole(engine, 
         fighting,
         DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
     )
@@ -834,7 +834,7 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
         event.kind for event in confirmed.events
     }
     assert "resolve_board_effect" not in {
-        action.action_id for action in engine.legal_actions(confirmed.state, 0)
+        action.action_id for action in engine.whole_actions(confirmed.state, 0)
     }
 
 
@@ -871,32 +871,32 @@ def test_steersman_recall_never_offers_its_own_into_the_fray_agent() -> None:
         placed = apply_placement(engine, state, placement).state
         acquire = next(
             action
-            for action in engine.legal_actions(placed, 0)
+            for action in engine.whole_actions(placed, 0)
             if action.action_id == "acquire_tech"
         )
-        opened = _resolve_acquired(engine.apply(placed, acquire).state)
+        opened = _resolve_acquired(apply_whole(engine, placed, acquire).state)
         deploy = next(
             action
-            for action in engine.legal_actions(opened, 0)
+            for action in engine.whole_actions(opened, 0)
             if action.action_id == "deploy_leader_agent"
         )
-        return engine.apply(opened, deploy).state
+        return apply_whole(engine, opened, deploy).state
 
     alone = _fray(agent_in_conflict=0, agents_available=2)
     assert alone.players[0].agent_in_conflict == 1
     assert alone.players[0].agent_locations == ()
     assert "recall_conflict_agent_for_agent_card" not in {
-        action.action_id for action in engine.legal_actions(alone, 0)
+        action.action_id for action in engine.whole_actions(alone, 0)
     }
 
     fighting = _fray(agent_in_conflict=1, agents_available=1)
     assert fighting.players[0].agent_in_conflict == 2
     recall = next(
         action
-        for action in engine.legal_actions(fighting, 0)
+        for action in engine.whole_actions(fighting, 0)
         if action.action_id == "recall_conflict_agent_for_agent_card"
     )
-    result = engine.apply(fighting, recall).state
+    result = apply_whole(engine, fighting, recall).state
     assert result.players[0].agent_in_conflict == 1
     assert result.players[0].agents_available == 1
 
@@ -942,16 +942,16 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
     placed = apply_placement(engine, state, placement).state
     acquire = next(
         action
-        for action in engine.legal_actions(placed, 0)
+        for action in engine.whole_actions(placed, 0)
         if action.action_id == "acquire_tech"
     )
-    opened = _resolve_acquired(engine.apply(placed, acquire).state)
+    opened = _resolve_acquired(apply_whole(engine, placed, acquire).state)
     deploy = next(
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "deploy_leader_agent"
     )
-    fighting = engine.apply(opened, deploy).state
+    fighting = apply_whole(engine, opened, deploy).state
     assert fighting.players[0].agent_locations == ()
     assert fighting.players[0].agent_in_conflict == 1
 
@@ -1062,7 +1062,7 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
         expected = ("reveal", 0)
     pending = [_resolve_acquired(
-        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+        apply_whole(engine, state, _tech_actions(state)["servo_receivers"]).state
     )]
     leaves = 0
     while pending:
@@ -1074,11 +1074,11 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
                 ended = _end_open_agent_turn(current)
                 assert (ended.decision_stack[-1].kind, _decider(ended)) == ("turn", 1)
             continue
-        actions = engine.legal_actions(current, _decider(current))
+        actions = engine.whole_actions(current, _decider(current))
         assert actions, "a leader_signet frame must offer a choice"
         for action in actions:
             assert codec.decode(codec.encode(action), action.actor) == action
-            pending.append(engine.apply(current, action).state)
+            pending.append(apply_whole(engine, current, action).state)
         assert leaves + len(pending) < 400, "Signet choices must terminate"
     assert leaves >= 1
 
@@ -1949,14 +1949,14 @@ def _planetary_array_conflict_end(
     while True:
         frame = state.decision_stack[-1]
         if frame.kind == FrameKind.PAUSE:
-            transition = engine.apply(state, pause_outcome(state))
+            transition = apply_whole(engine, state, pause_outcome(state))
         else:
             assert isinstance(frame.decision, PlayerDecision)
-            actions = engine.legal_actions(state, frame.decision.owner)
+            actions = engine.whole_actions(state, frame.decision.owner)
             passing = next(
                 (a for a in actions if a.action_id.startswith("pass_")), actions[0]
             )
-            transition = engine.apply(state, passing)
+            transition = apply_whole(engine, state, passing)
         if transition.state.combat_end_triggers_offered:
             return engine, transition
         state = transition.state
@@ -1981,10 +1981,10 @@ def test_planetary_array_s_card_is_in_hand_before_any_conflict_end_window() -> N
     kinds = [event.kind for event in offered.events]
     assert kinds.index("conflict_won") < kinds.index("conflict_end_trigger_offered")
     # The window is still unanswered: it only declines (no Harvest Cells).
-    assert engine.legal_actions(offered.state, 0) == (
+    assert engine.whole_actions(offered.state, 0) == (
         DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
     )
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         offered.state,
         DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
     ).state
@@ -2011,7 +2011,7 @@ def test_planetary_array_s_empty_deck_reshuffles_before_the_window() -> None:
     assert [event.kind for event in offered.events].count("conflict_won") == 1
 
     shuffled = tuple(reversed(discard))
-    answered = engine.apply(
+    answered = apply_whole(engine, 
         offered.state, ChanceOutcome(top.decision.decision_id, shuffled)
     )
 
@@ -2066,16 +2066,16 @@ def _planetary_array_win_without_windows(
         if frame.kind == FrameKind.PAUSE:
             if dict(frame.context).get("point") == "round_start":
                 return engine, state
-            state = engine.apply(state, pause_outcome(state)).state
+            state = apply_whole(engine, state, pause_outcome(state)).state
         elif isinstance(frame.decision, ChanceDecision):
             return engine, state
         else:
             assert isinstance(frame.decision, PlayerDecision)
-            actions = engine.legal_actions(state, frame.decision.owner)
+            actions = engine.whole_actions(state, frame.decision.owner)
             passing = next(
                 (a for a in actions if a.action_id.startswith("pass_")), actions[0]
             )
-            state = engine.apply(state, passing).state
+            state = apply_whole(engine, state, passing).state
 
 
 def test_planetary_array_s_card_comes_at_the_win_with_no_window() -> None:
@@ -2104,7 +2104,9 @@ def test_planetary_array_s_empty_deck_reshuffles_in_combat_with_no_window() -> N
     assert isinstance(top.decision, ChanceDecision)
     assert top.decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
     shuffled = tuple(reversed(discard))
-    answered = engine.apply(asked, ChanceOutcome(top.decision.decision_id, shuffled))
+    answered = apply_whole(
+        engine, asked, ChanceOutcome(top.decision.decision_id, shuffled)
+    )
     seat = answered.state.players[0]
     assert seat.hand == (shuffled[0],)
     assert seat.tech_cards_owed == 0
@@ -2531,7 +2533,9 @@ def test_desert_power_command_tile_pays_only_after_the_persuasion_branch() -> No
     )
     state = _turn_state(owner, stacks=((), (), ()))
     engine = UprisingRulesEngine()
-    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
     context = dict(revealed.decision_stack[0].context)
     assert context["persuasion_generated"] == 4
     assert context["tech_granted"] == ""
@@ -2540,7 +2544,7 @@ def test_desert_power_command_tile_pays_only_after_the_persuasion_branch() -> No
 
     decline = DomainAction(action_id="decline_reveal_sandworm", actor=0)
     assert decline in legal_reveal_sandworm_actions(revealed, 0)
-    declined = engine.apply(revealed, decline).state
+    declined = apply_whole(engine, revealed, decline).state
     late_context = dict(declined.decision_stack[0].context)
     assert late_context["persuasion_generated"] == 6
     assert late_context["tech_granted"] == "training_depot"
@@ -2583,7 +2587,9 @@ def test_desert_power_command_tile_does_not_pay_on_the_sandworm_branch() -> None
     )
     state = _turn_state(owner, stacks=((), (), ()))
     engine = UprisingRulesEngine()
-    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
     context = dict(revealed.decision_stack[0].context)
     assert context["persuasion_generated"] == 4
     swords = context["sword_strength"]
@@ -2591,7 +2597,7 @@ def test_desert_power_command_tile_does_not_pay_on_the_sandworm_branch() -> None
 
     pay_water = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=0)
     assert pay_water in legal_reveal_sandworm_actions(revealed, 0)
-    paid = engine.apply(revealed, pay_water).state
+    paid = apply_whole(engine, revealed, pay_water).state
     reveal_frame = next(
         frame for frame in paid.decision_stack if frame.kind == "reveal"
     )
@@ -3380,18 +3386,18 @@ def test_reverse_engineering_takes_spice_or_trades_a_tile_for_cards() -> None:
         DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),)),
     )
     engine = UprisingRulesEngine()
-    legal = engine.legal_actions(traded, 0)
+    legal = engine.whole_actions(traded, 0)
     assert set(rewards) <= set(legal)
     assert DomainAction("finish_agent_turn", 0) not in legal
     for order in (rewards, tuple(reversed(rewards))):
         working = traded
         for reward in order:
-            working = engine.apply(working, reward).state
+            working = apply_whole(engine, working, reward).state
         seat = working.players[0]
         # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
         assert len(seat.intrigue_cards) == 1
         assert len(seat.hand) == 1
-        assert not set(rewards) & set(engine.legal_actions(working, 0))
+        assert not set(rewards) & set(engine.whole_actions(working, 0))
 
 
 def test_kota_actions_round_trip_in_the_tech_catalog() -> None:
@@ -3628,9 +3634,9 @@ def test_every_faction_at_the_top_lapses_the_acquire_influence_at_the_reveal_end
 
     assert legal_tech_acquire_effect_actions(state, 0) == ()
     engine = UprisingRulesEngine()
-    assert [a.action_id for a in engine.legal_actions(state, 0)] == ["finish_reveal"]
+    assert [a.action_id for a in engine.whole_actions(state, 0)] == ["finish_reveal"]
 
-    result = engine.apply(state, DomainAction("finish_reveal", 0))
+    result = apply_whole(engine, state, DomainAction("finish_reveal", 0))
 
     lapsed = [e for e in result.events if e.kind == "tech_acquire_effect_lapsed"]
     assert lapsed == [_influence_lapsed("navigation_chamber")]
@@ -3650,9 +3656,9 @@ def test_a_blocked_acquire_influence_still_waits_for_the_other_owed_icon() -> No
     )
 
     agent = _owing(_bought_glowglobes(_TOP), *keys)
-    assert engine.legal_actions(agent, 0) == (solari,)
-    paid = engine.apply(agent, solari).state
-    assert [a.action_id for a in engine.legal_actions(paid, 0)] == [
+    assert engine.whole_actions(agent, 0) == (solari,)
+    paid = apply_whole(engine, agent, solari).state
+    assert [a.action_id for a in engine.whole_actions(paid, 0)] == [
         "finish_agent_turn"
     ]
     lapsed = [
@@ -3663,9 +3669,9 @@ def test_a_blocked_acquire_influence_still_waits_for_the_other_owed_icon() -> No
     assert lapsed == [_influence_lapsed("glowglobes")]
 
     reveal = _owing(_revealing(_TOP), *keys)
-    assert engine.legal_actions(reveal, 0) == (solari,)
-    paid = engine.apply(reveal, solari).state
-    assert [a.action_id for a in engine.legal_actions(paid, 0)] == ["finish_reveal"]
+    assert engine.whole_actions(reveal, 0) == (solari,)
+    paid = apply_whole(engine, reveal, solari).state
+    assert [a.action_id for a in engine.whole_actions(paid, 0)] == ["finish_reveal"]
 
 
 def test_combat_acquire_influence_with_every_faction_at_the_top_is_confirmed() -> None:
@@ -3676,9 +3682,9 @@ def test_combat_acquire_influence_with_every_faction_at_the_top_is_confirmed() -
     bought = _combat_acquire_frame(_TOP)
     confirm = DomainAction("resolve_tech_influence_without_faction", 0)
     assert legal_tech_acquire_effect_actions(bought, 0) == (confirm,)
-    assert engine.legal_actions(bought, 0) == (confirm,)
+    assert engine.whole_actions(bought, 0) == (confirm,)
 
-    result = engine.apply(bought, confirm)
+    result = apply_whole(engine, bought, confirm)
 
     assert [e for e in result.events] == [_influence_lapsed("glowglobes")]
     assert [frame.kind for frame in result.state.decision_stack] == ["combat_intrigue"]
@@ -3711,9 +3717,9 @@ def test_the_combat_confirm_keeps_the_frame_for_another_owed_icon() -> None:
         _combat_acquire_frame(_TOP), "glowglobes:influence", "plasteel_blades:solari"
     )
     confirm = DomainAction("resolve_tech_influence_without_faction", 0)
-    assert confirm in engine.legal_actions(bought, 0)
+    assert confirm in engine.whole_actions(bought, 0)
 
-    result = engine.apply(bought, confirm)
+    result = apply_whole(engine, bought, confirm)
 
     assert [e.event_id for e in result.events] == [
         _influence_lapsed("glowglobes").event_id
@@ -3721,4 +3727,4 @@ def test_the_combat_confirm_keeps_the_frame_for_another_owed_icon() -> None:
     frame = result.state.decision_stack[-1]
     assert frame.kind == "tech_acquisition"
     assert dict(frame.context)[TECH_ACQUIRE_PENDING_KEY] == "plasteel_blades:solari"
-    assert confirm not in engine.legal_actions(result.state, 0)
+    assert confirm not in engine.whole_actions(result.state, 0)

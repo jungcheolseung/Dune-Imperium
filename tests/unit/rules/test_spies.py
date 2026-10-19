@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -65,11 +66,18 @@ def _placed_state() -> tuple[GameState, str]:
 
 def test_gather_intelligence_recall_draws_before_other_agent_effects() -> None:
     state, drawn = _placed_state()
-    engine_actions = UprisingRulesEngine().legal_actions(state, 0)
+    engine = UprisingRulesEngine()
+    engine_actions = engine.whole_actions(state, 0)
 
     assert {action.action_id for action in engine_actions} == {
         "decline_gather_intelligence",
         "gather_intelligence",
+    }
+    # Stage B3a: the seat is offered the recall as the Spy recall of the
+    # visited space (the effect row), the post being its target row.
+    assert {action.action_id for action in engine.legal_actions(state, 0)} == {
+        "decline_gather_intelligence",
+        "recall_spy",
     }
     gather = next(
         action for action in engine_actions if action.action_id == "gather_intelligence"
@@ -156,7 +164,7 @@ def test_gather_intelligence_recalls_with_both_piles_empty() -> None:
         arguments=(("post_id", ASSEMBLY_POST),),
     )
     assert gather in legal_gather_intelligence_actions(state, 0)
-    finished = engine.apply(state, gather).state
+    finished = apply_whole(engine, state, gather).state
 
     assert finished.players[0].hand == ()
     assert finished.players[0].spy_post_ids == ()
@@ -193,14 +201,14 @@ def test_gather_intelligence_reshuffles_discard_before_drawing() -> None:
     engine = UprisingRulesEngine()
     gather = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "gather_intelligence"
     )
 
-    pending = engine.apply(state, gather).state
+    pending = apply_whole(engine, state, gather).state
     decision = engine.current_decision(pending)
     assert isinstance(decision, ChanceDecision)
-    finished = engine.apply(
+    finished = apply_whole(engine, 
         pending,
         ChanceOutcome(decision.decision_id, (drawn,)),
     ).state

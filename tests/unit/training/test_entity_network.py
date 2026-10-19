@@ -43,6 +43,7 @@ from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
 from dune_imperium.core.state import GamePhase  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.rules.action_shapes import Source, Verb  # noqa: E402
 from dune_imperium.simulation.runner import run_policy_game  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
@@ -60,6 +61,7 @@ from dune_imperium.training.checkpoint import (  # noqa: E402
 )
 from dune_imperium.training.distill import legal_log_probs  # noqa: E402
 from dune_imperium.training.entity_features import (  # noqa: E402
+    _LEADER_OF_FACE,
     FEATURE_DIGEST,
     Vocabulary,
     resolve,
@@ -82,7 +84,7 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # deliberately (with FEATURE_VERSION when the reflection changes): an entity
 # checkpoint stores the digest and is refused under another one, so a card
 # data fix also retires every entity file written before it.
-_GOLDEN_DIGEST = "2a09fa17b9ae0a02bc731f49c0e3edcc3ad378239d4f16be63e1f5854226a5e0"
+_GOLDEN_DIGEST = "f93247c93139ea37cb27b9bae7c0e6ee249f74110f47f416f46c5a9a840c8384"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -259,6 +261,8 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "matching_card_id": {"battle"},
         "card_id": {"personal", "intrigue", "battle"},
         "instance_id": {"personal", "intrigue", "contract"},
+        # Stage B3: an effect row's printed entity.
+        "printed": {"personal", "space", "leader", "tech", "contract"},
     }
     seen: dict[str, set[str | None]] = {}
     for template in ActionCodec(_EVERY_OPTION).catalog:
@@ -267,7 +271,11 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
                 found = resolve_argument(template.action_id, key, value)
                 seen.setdefault(key, set()).add(None if found is None else found[0])
     for key, allowed in hinted.items():
-        assert seen[key] - {None} <= allowed, key
+        # Stage B3 shows the Agent boxes' Intrigue payments by their target
+        # rows, so a catalog may hold no ``intrigue_card_id`` any more.
+        assert seen.get(key, set()) - {None} <= allowed, key
+    # Every printed entity of an effect row is an entity (stage B3).
+    assert None not in seen["printed"]
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]
     assert seen["subcommittee_id"] == {None}
@@ -282,9 +290,16 @@ def test_actions_built_from_the_same_parts_are_copies_of_one_card() -> None:
     catalog = ActionCodec(_EVERY_OPTION).catalog
 
     def without_copy(index: int) -> object:
+        # A leader's two faces are one leader card; only one is up at a
+        # time, so their effect rows never meet (stage B3).
         template = catalog[index]
         return template.action_id, tuple(
-            (key, re.sub(r":\d+$", "", value) if isinstance(value, str) else value)
+            (
+                key,
+                _LEADER_OF_FACE.get(value, re.sub(r":\d+$", "", value))
+                if isinstance(value, str)
+                else value,
+            )
             for key, value in template.arguments
         )
 
@@ -313,6 +328,7 @@ _COUNTED = {
             "private_hand",
             "private_peeked_card",
             "private_agent_card_pick",
+            "private_effect_pick_card",
             "imperium_removed",
         ),
         "personal",
@@ -718,10 +734,10 @@ def test_an_entity_file_without_its_feature_table_is_refused_under_another(
 
 def _after_v31(segment: str) -> bool:
     """Whether an observation segment was appended after v31: v32's deck pools
-    and v33's picked Agent card (stage B1)."""
+    and v33's picked Agent card (stage B1) and picked effect (stage B3)."""
 
     return segment.endswith("_deck_pool") or segment.startswith(
-        "private_agent_card_pick"
+        ("private_agent_card_pick", "private_effect_pick")
     )
 
 
@@ -805,11 +821,12 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     assert isinstance(moved, EntityNetwork)
     assert info.migration is not None
     assert info.migration.from_observation_version == 31
-    # Four deck-pool zones (v32) and the picked Agent card's zone and graft
-    # flag (v33, stage B1) are the inputs the file never had.
+    # Four deck-pool zones (v32), the picked Agent card's zone and graft
+    # flag (v33, stage B1) and the picked effect's card zone, verb, source,
+    # box and target count (v33, stage B3) are the inputs the file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
-    )
+    ) + network.entity_width + len(Verb) + len(Source) + 2
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)

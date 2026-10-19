@@ -930,7 +930,13 @@ def test_a_search_seat_restores_without_searching_again(
 
     seats = ("human", search_kind, "heuristic", "random")
     manager = GameSessionManager()
-    original = _advance(manager, manager.create_game(seats, game_seed=34), 30)
+    # Seed 39, re-searched at stage B3 (seed 34 before): the search seat
+    # answers row by row (an effect row, then its target row) with an
+    # untrained network sized by the action codec, whose rows changed with
+    # the effect and target steps, so the seeds play out differently now.
+    # Seed 34 left the seat only 5 steps in these 30 presses (it needs more
+    # than 10, then more than 5 in the next 30); seed 39 gives 26 and 31.
+    original = _advance(manager, manager.create_game(seats, game_seed=39), 30)
     game_id = _text(original["game_id"])
     session = manager._sessions[game_id]
     assert _seat_steps(session.steps, {1}) > 10

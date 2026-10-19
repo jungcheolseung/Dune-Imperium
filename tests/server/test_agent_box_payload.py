@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
@@ -143,13 +143,14 @@ def test_a_box_held_back_by_the_other_box_s_choice_is_locked() -> None:
     only its own rows are offered, and the other box says it waits."""
 
     state = _graft(HORROR, GHOLA, "arrakeen")
+    # The pick is a whole action (stage B3: the seat's rows are its steps).
     first = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "choose_agent_card_reward"
         and ("box", 1) in action.arguments
     )
-    picked = ENGINE.apply(state, first).state
+    picked = apply_whole(ENGINE, state, first).state
     payload = _payload(picked)
 
     boxes = [

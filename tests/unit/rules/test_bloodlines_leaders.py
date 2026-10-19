@@ -12,7 +12,7 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -732,13 +732,13 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     engine = UprisingRulesEngine()
     assert result.state.players[0].combat_strength == 0
     draw = DomainAction("resolve_board_effect", 0, (("effect", "cards"),))
-    assert engine.legal_actions(result.state, 0) == (draw,)
-    drew = engine.apply(result.state, draw).state
+    assert engine.whole_actions(result.state, 0) == (draw,)
+    drew = apply_whole(engine, result.state, draw).state
     assert drew.players[0].hand == (RECON,)
     # Nothing is left but the owner's own end of the turn (user ruling
     # OQ-095 (1)): the turn stays open until it is pressed.
     assert drew.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert engine.legal_actions(drew, 0) == (DomainAction("finish_agent_turn", 0),)
+    assert engine.whole_actions(drew, 0) == (DomainAction("finish_agent_turn", 0),)
 
 
 def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> GameState:
@@ -795,8 +795,8 @@ def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> No
     assert seat.hand == ()
     engine = UprisingRulesEngine()
     draw = DomainAction("resolve_board_effect", 0, (("effect", "cards"),))
-    assert draw in engine.legal_actions(confirmed, 0)
-    assert engine.apply(confirmed, draw).state.players[0].hand == (RECON,)
+    assert draw in engine.whole_actions(confirmed, 0)
+    assert apply_whole(engine, confirmed, draw).state.players[0].hand == (RECON,)
 
 
 def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> None:
@@ -1011,20 +1011,22 @@ def test_sardaukar_ii_conflict_recall_updates_combat_strength_through_the_engine
 
     completion = next(
         action
-        for action in engine.legal_actions(placed, 0)
+        for action in engine.whole_actions(placed, 0)
         if action.action_id == "complete_contract"
         and dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
     # v150 (stage B2, OQ-112): the reward's recall is a row of the Contract's
     # reward window, which opens the recall choice.
-    completed = answer_reward_windows(engine, engine.apply(placed, completion).state)
+    completed = answer_reward_windows(engine, apply_whole(
+        engine, placed, completion
+    ).state)
 
     recall = next(
         action
-        for action in engine.legal_actions(completed, 0)
+        for action in engine.whole_actions(completed, 0)
         if action.action_id == "recall_conflict_agent_for_contract"
     )
-    result = engine.apply(completed, recall)
+    result = apply_whole(engine, completed, recall)
 
     assert result.state.players[0].combat_strength == 0
     assert result.state.players[0].agent_in_conflict == 0
@@ -1274,24 +1276,24 @@ def test_unexpected_allies_shield_wall_choice_draws_nothing_for_liet_kynes() -> 
     state = _turn_state(owner)
     play = next(
         a
-        for a in engine.legal_actions(state, 0)
+        for a in engine.whole_actions(state, 0)
         if a.action_id == "play_intrigue" and dict(a.arguments)["card_id"] == card
     )
-    opened = engine.apply(state, play).state
+    opened = apply_whole(engine, state, play).state
     keep = next(
-        a for a in engine.legal_actions(opened, 0) if a.action_id == "keep_shield_wall"
+        a for a in engine.whole_actions(opened, 0) if a.action_id == "keep_shield_wall"
     )
-    kept = engine.apply(opened, keep).state
+    kept = apply_whole(engine, opened, keep).state
     assert kept.players[0].intrigue_cards == ()
     assert kept.decision_stack[-1].kind == "turn"
     assert _waiting_kinds(kept) == [
         turn_rows.OPTIONAL_TRASH,
         turn_rows.PLANETOLOGIST_INTRIGUE,
     ]
-    legal = engine.legal_actions(kept, 0)
+    legal = engine.whole_actions(kept, 0)
     assert _DRAW_PLANETOLOGIST in legal
     assert "decline_optional_trash" not in {a.action_id for a in legal}
-    drawn = engine.apply(kept, _DRAW_PLANETOLOGIST).state
+    drawn = apply_whole(engine, kept, _DRAW_PLANETOLOGIST).state
     assert len(drawn.players[0].intrigue_cards) == 1
 
 

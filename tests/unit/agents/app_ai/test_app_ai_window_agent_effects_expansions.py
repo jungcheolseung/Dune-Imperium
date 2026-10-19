@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.app_ai.abilities import epic_promo as ep
 from dune_imperium.agents.app_ai.abilities import immortality as imm
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request, TargetInfo
@@ -65,13 +65,13 @@ def no_plots(monkeypatch: pytest.MonkeyPatch) -> None:
 def _settle(state: GameState) -> GameState:
     chance = ChanceResolver(seed=1)
     while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
-        state = ENGINE.apply(state, chance.resolve(decision)).state
+        state = apply_whole(ENGINE, state, chance.resolve(decision)).state
     return state
 
 
 def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, seat)
-    return _settle(ENGINE.apply(state, action, legal_actions=legal).state)
+    legal = ENGINE.whole_actions(state, seat)
+    return _settle(apply_whole(ENGINE, state, action, legal_actions=legal).state)
 
 
 def _take(state: GameState, seat: int, card: str) -> tuple[GameState, str]:
@@ -138,7 +138,7 @@ def _place(
     assert placements, f"{card} cannot go to {space}"
     state = _settle(apply_placement(ENGINE, state, placements[0]).state)
     if partner_ref is not None:
-        legal = ENGINE.legal_actions(state, seat)
+        legal = ENGINE.whole_actions(state, seat)
         pick = [
             action
             for action in legal
@@ -160,7 +160,7 @@ def _run(
     profile = make_profile(state, seat)
     for name, value in (patches or {}).items():
         setattr(profile, name, value)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     return DecisionRun(
         profile.ctx, profile, legal, random.Random(0), memory or Memory()
     )
@@ -217,7 +217,7 @@ def _drive_until(
     memory = memory or Memory()
     for _ in range(limit):
         assert state.decision_stack[-1].kind == "agent_effects"
-        legal = ENGINE.legal_actions(state, seat)
+        legal = ENGINE.whole_actions(state, seat)
         action = _answer(state, seat, patches, memory)
         assert action is not None and action in legal
         if action.action_id in action_ids:

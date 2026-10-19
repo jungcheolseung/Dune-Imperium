@@ -1198,6 +1198,18 @@ function lastMoveSteps(available) {
   return placement ? 2 : 1;
 }
 
+/* How many moves the seat's last ``steps`` steps make, as the seat made
+   them: a placement's card pick (stage B1) and a step toward a waiting
+   effect (``pick``, stage B3) go on into the seat's next step. */
+function undoMoves(steps) {
+  const live = ((state.log && state.log.entries) || []).filter(
+    (entry) => entry.type === "action" && !entry.undone
+  );
+  return live
+    .slice(-steps)
+    .filter((entry) => !entry.pick && entry.action_id !== "choose_agent_card").length;
+}
+
 /* Undo controls for the viewing seat (M11 slice 6): a single-step button
    and, when more than one step is available, a take-back-everything button. */
 function appendUndoRow(container) {
@@ -1217,10 +1229,11 @@ function appendUndoRow(container) {
   one.addEventListener("click", () => submitUndo(state.viewSeat, last));
   row.appendChild(one);
 
-  if (entry.steps > 1) {
+  const moves = undoMoves(entry.steps);
+  if (moves > 1) {
     const all = document.createElement("button");
     all.type = "button";
-    all.textContent = t("render.undo_all_steps", { steps: entry.steps });
+    all.textContent = t("render.undo_all_steps", { steps: moves });
     all.disabled = state.busy;
     all.addEventListener("click", () => submitUndo(state.viewSeat, entry.steps));
     row.appendChild(all);

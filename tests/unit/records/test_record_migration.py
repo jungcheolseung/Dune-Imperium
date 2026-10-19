@@ -64,7 +64,7 @@ from tests.unit.rules.test_tech import (
 )
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -85,6 +85,12 @@ from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
+from dune_imperium.rules.effect_steps import (
+    completed_whole,
+    path_of,
+    picked_rows,
+    without_pick,
+)
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import active_box
@@ -256,6 +262,47 @@ def _states(replay: GameReplay) -> list[GameState]:
     return states[:-1]
 
 
+EFFECT_BRIDGES = ("effect_step", "effect_last_step")
+
+
+@functools.cache
+def _effect_runs(replay: GameReplay) -> dict[int, tuple[DomainAction, tuple[int, ...]]]:
+    """The whole actions this engine's Agent-turn effect rows stand for (stage
+    B3, OQ-111): each step that ends one, with the whole action and the steps
+    before it that picked its effect and targets. An engine before codec v150
+    recorded the whole action in one step."""
+
+    runs: dict[int, tuple[DomainAction, tuple[int, ...]]] = {}
+    for index, (state, step) in enumerate(
+        zip(_states(replay), replay.steps, strict=True)
+    ):
+        if not isinstance(step, DomainAction):
+            continue
+        whole = completed_whole(state, step, ENGINE.whole_actions(state, step.actor))
+        if whole is not None:
+            picks = len(picked_rows(state))
+            runs[index] = (whole, tuple(range(index - picks, index)))
+    return runs
+
+
+def _effect_pick_steps(replay: GameReplay) -> set[int]:
+    """The steps that only pick toward a whole action (``_effect_runs``)."""
+
+    return {pick for _, picks in _effect_runs(replay).values() for pick in picks}
+
+
+def _whole(replay: GameReplay, index: int) -> DomainAction:
+    """Step ``index`` as an engine before codec v150 recorded it: the whole
+    action it ends, or the step itself."""
+
+    run = _effect_runs(replay).get(index)
+    if run is not None:
+        return run[0]
+    step = replay.steps[index]
+    assert isinstance(step, DomainAction)
+    return step
+
+
 @functools.cache
 def _held_steps(replay: GameReplay) -> dict[int, str]:
     """This engine's steps an engine before v142 made inside another step.
@@ -266,13 +313,17 @@ def _held_steps(replay: GameReplay) -> dict[int, str]:
     """
 
     held: dict[int, str] = {}
-    for index, (state, step) in enumerate(
+    runs = _effect_runs(replay)
+    for index, (state, recorded) in enumerate(
         zip(_states(replay), replay.steps, strict=True)
     ):
-        if isinstance(step, ChanceOutcome):
-            if step.decision_id.endswith(":scouts_reward:pause"):
+        if isinstance(recorded, ChanceOutcome):
+            if recorded.decision_id.endswith(":scouts_reward:pause"):
                 held[index] = "scouts_reward_pause"
             continue
+        # An engine before v142 held these as whole actions (stage B3).
+        step = runs[index][0] if index in runs else recorded
+        state = without_pick(state)
         top = state.decision_stack[-1]
         context = dict(top.context)
         effect = dict(step.arguments).get("effect")
@@ -342,13 +393,15 @@ def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> se
     before v142 the steps it made inside another (``_held_steps``), before
     v149 the confirms of a Scouts choice with nothing to take, which it
     skipped unasked (``_no_option_steps``), and before v150 the icon rows
-    of a reward it paid in one step (``_reward_icon_steps``)."""
+    of a reward it paid in one step (``_reward_icon_steps``) and the steps
+    that only pick toward a whole action (``_effect_pick_steps``)."""
 
     return (
         set(drop or ())
         | (set(_held_steps(replay)) if codec < 142 else set())
         | (_no_option_steps(replay) if codec < 149 else set())
         | (_reward_icon_steps(replay) if codec < 150 else set())
+        | (_effect_pick_steps(replay) if codec < 150 else set())
     )
 
 
@@ -371,15 +424,34 @@ def _reward_icon_steps(replay: GameReplay) -> frozenset[int]:
     )
 
 
+def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
+    """The effect bridges' counts for ``_older(replay, codec)`` (stage B3): one
+    ``effect_step`` for each pick before a whole action's last step, one
+    ``effect_last_step`` for each whole action. A whole action a ``follows``
+    bridge takes back (``_held_steps``) is that bridge's step, not these."""
+
+    held = set(_held_steps(replay)) if codec < 142 else set()
+    runs = [
+        picks for index, (_, picks) in _effect_runs(replay).items() if index not in held
+    ]
+    return {
+        "effect_step": sum(len(picks) for picks in runs),
+        "effect_last_step": len(runs),
+    }
+
+
 def _reward_icon_counts(
     record: migration.MigratedRecord, replay: GameReplay
 ) -> Counter[str]:
     """``record``'s bridge counts less those of the reward bridges, which
-    between them must have added every icon row back."""
+    between them must have added every icon row back, and those of the effect
+    bridges (stage B3), which must have expanded every whole action."""
 
     counts = Counter(record.bridge_counts())
     added = sum(counts.pop(name, 0) for name in REWARD_ICON_BRIDGES)
     assert added == len(_reward_icon_steps(replay))
+    expected = _effect_counts(replay, record.replay.action_codec_version)
+    assert {name: counts.pop(name, 0) for name in EFFECT_BRIDGES} == expected
     return counts
 
 
@@ -398,12 +470,17 @@ def _older(replay: GameReplay, codec: int, drop: set[int] | None = None) -> Game
     """``replay`` as an engine of ``codec`` would have recorded it.
 
     Besides ``drop``, a record older than v142 loses the steps that engine
-    made inside another (``_held_steps``).
+    made inside another (``_held_steps``), and one older than v150 holds each
+    whole action in one step (``_effect_runs``) instead of its effect and
+    target rows.
     """
 
     dropped = _dropped(replay, codec, drop)
+    runs = _effect_runs(replay) if codec < 150 else {}
     steps = tuple(
-        step for index, step in enumerate(replay.steps) if index not in dropped
+        runs[index][0] if index in runs else step
+        for index, step in enumerate(replay.steps)
+        if index not in dropped
     )
     return replace(replay, steps=steps, action_codec_version=codec)
 
@@ -722,22 +799,23 @@ def test_a_bridge_never_answers_a_decision_whose_answer_a_rule_change_removed(
 
 
 def _card_effect_steps(game: GameReplay) -> list[int]:
-    """Steps naming an icon where it was the only icon offered (a placed
-    card's box: a graft partner's box 1 rows carry ``box=1``, codec v143)."""
+    """Steps ending a whole action that names an icon where it was the only
+    icon offered (a placed card's box: a graft partner's box 1 rows carry
+    ``box=1``, codec v143). The whole action is what an engine before codec
+    v150 recorded (``_effect_runs``)."""
 
     states = _states(game)
     return [
         index
-        for index, step in enumerate(game.steps)
-        if isinstance(step, DomainAction)
-        and step.action_id == "resolve_agent_card_effect"
-        and tuple(key for key, _ in step.arguments) == ("effect",)
+        for index, (whole, _) in sorted(_effect_runs(game).items())
+        if whole.action_id == "resolve_agent_card_effect"
+        and tuple(key for key, _ in whole.arguments) == ("effect",)
         and [
             action
-            for action in ENGINE.legal_actions(states[index], step.actor)
+            for action in ENGINE.whole_actions(states[index], whole.actor)
             if action.action_id == "resolve_agent_card_effect"
         ]
-        == [step]
+        == [whole]
     ]
 
 
@@ -745,19 +823,25 @@ def test_a_card_effect_recorded_before_v137_named_its_icon_is_rewritten(
     game: GameReplay,
 ) -> None:
     index = _card_effect_steps(game)[0]
-    recorded = game.steps[index]
-    assert isinstance(recorded, DomainAction)
+    recorded = _whole(game, index)
     plain = DomainAction(action_id=recorded.action_id, actor=recorded.actor)
+    state = _states(game)[index]
+    decision = ENGINE.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    # The bridge names the icon; the whole action it names is then this
+    # engine's effect row (stage B3), which is the migrated step.
+    assert migration._named_card_effect(ENGINE, state, decision, plain) == recorded
 
     older, position = _older_with(game, 136, index, plain)
     before = migrate_record(older)
     assert before.complete
+    # ``effect_last_step`` rewrote the step last, so it names it (and counts
+    # in ``_reward_icon_counts``) where the icon's bridge did before it.
     assert _reward_icon_counts(before, game) == {
-        "agent_card_effect_named": 1,
         **_held_counts(game),
         **_no_option_counts(game),
     }
-    assert before.steps[index].step == recorded
+    assert before.steps[index].step == game.steps[index]
     assert before.steps[index].recorded_index == position
     assert canonical_state_hash(before.state) == game.expected_state_hash
 
@@ -780,14 +864,18 @@ def _with_graft_switches(replay: GameReplay) -> GameReplay:
     steps: list[ReplayStep] = []
     active = 0
     rows = _reward_icon_steps(replay)
+    picks = _effect_pick_steps(replay)
+    runs = _effect_runs(replay)
     for index, step in enumerate(replay.steps):
-        if index in rows:
-            # Paid in one step before codec v150 (``_dropped``).
+        # A whole action is one step before codec v150 (``_effect_runs``).
+        whole = runs[index][0] if index in runs else step
+        if index in rows or index in picks:
+            # Paid in one step, picked toward a whole action (``_dropped``).
             pass
-        elif isinstance(step, DomainAction):
-            _, plain, box = route_box_action(state, step)
+        elif isinstance(whole, DomainAction):
+            _, plain, box = route_box_action(without_pick(state), whole)
             if box is not None and box != active:
-                steps.append(DomainAction("switch_graft_card", step.actor))
+                steps.append(DomainAction("switch_graft_card", whole.actor))
                 active = box
             steps.append(plain)
         else:
@@ -813,11 +901,23 @@ def test_a_record_with_graft_switches_migrates_to_the_box_rows(
     4.10): an older record's switches are dropped and the steps box 1 took
     become its ``box=1`` rows, the same game."""
 
+    picks = _effect_pick_steps(game)
+    runs = _effect_runs(game)
     boxed = sum(
-        isinstance(step, DomainAction) and ("box", 1) in step.arguments
-        for step in game.steps
+        isinstance(step, DomainAction)
+        and ("box", 1) in _whole(game, index).arguments
+        for index, step in enumerate(game.steps)
+        if index not in picks
     )
     assert boxed
+    # A whole action of box 1 is tagged, then rewritten to its rows by
+    # ``effect_last_step``, which names the step last (stage B3); the other
+    # steps of box 1 keep ``graft_box``.
+    tagged_directly = sum(
+        isinstance(step, DomainAction) and ("box", 1) in step.arguments
+        for index, step in enumerate(game.steps)
+        if index not in picks and index not in runs
+    )
     older = _with_graft_switches(game)
     switches = sum(
         isinstance(step, DomainAction) and step.action_id == "switch_graft_card"
@@ -831,7 +931,7 @@ def test_a_record_with_graft_switches_migrates_to_the_box_rows(
     assert [migrated.step for migrated in record.steps] == list(game.steps)
     assert _reward_icon_counts(record, game) == {
         "graft_switch": switches,
-        "graft_box": boxed,
+        **({"graft_box": tagged_directly} if tagged_directly else {}),
     }
     assert canonical_state_hash(record.state) == game.expected_state_hash
     # Stamped v143 the same steps are this engine's: the switch is no action.
@@ -849,13 +949,13 @@ def test_a_network_move_judged_on_box_one_is_rewritten_to_its_row(
     engine had active (``MigratedStep.graft_box``); a switch has no row."""
 
     states = _states(game)
-    index = next(
-        index
-        for index, step in enumerate(game.steps)
-        if isinstance(step, DomainAction) and ("box", 1) in step.arguments
+    # The older engine's move is a whole action (``_effect_runs``); box 1's
+    # carries ``box=1`` here.
+    index, (step, _) = next(
+        (index, run)
+        for index, run in sorted(_effect_runs(game).items())
+        if ("box", 1) in run[0].arguments
     )
-    step = game.steps[index]
-    assert isinstance(step, DomainAction)
     plain = DomainAction(
         step.action_id,
         step.actor,
@@ -964,11 +1064,11 @@ def test_a_box_step_held_behind_the_other_box_s_selection_diverges() -> None:
     is Piter's two-card reward here, so the record stops at that step
     instead of playing on as another move."""
 
-    start = ENGINE.apply(
-        _grafted_turn(_PITER, _INFILTRATOR, "assembly_hall"), _PAY_PITER
+    start = apply_whole(
+        ENGINE, _grafted_turn(_PITER, _INFILTRATOR, "assembly_hall"), _PAY_PITER
     ).state
     # Taken as recorded the step would draw Piter's two cards.
-    assert _CARDS in ENGINE.legal_actions(start, 0)
+    assert _CARDS in ENGINE.whole_actions(start, 0)
     assert route_box_action(start, _CARDS)[2] == 0
 
     record = migrate_record(
@@ -1001,11 +1101,13 @@ def test_box_zero_s_step_held_behind_box_one_s_selection_diverges() -> None:
     assert record.divergence is not None
     assert record.divergence.recorded_index == 3
     assert "box 0's" in record.divergence.reason
-    assert [migrated.step for migrated in record.steps] == [
-        DomainAction(
-            "lose_agent_card_troop", 0, arguments=(("box", 1), ("zone", "garrison"))
-        )
-    ]
+    # The paid troop is box 1's whole action, taken as this engine's row.
+    paid = DomainAction(
+        "lose_agent_card_troop", 0, arguments=(("box", 1), ("zone", "garrison"))
+    )
+    rows = path_of(start, paid)
+    assert rows is not None
+    assert [migrated.step for migrated in record.steps] == list(rows)
     assert record.dropped == ((0, "graft_switch"), (2, "graft_switch"))
 
 
@@ -1042,6 +1144,7 @@ def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
         *_held_counts(game),
         *_no_option_counts(game),
         *REWARD_ICON_BRIDGES,
+        *EFFECT_BRIDGES,
     }
     assert [migrated.step for migrated in record.steps] == _steps(game.steps[:index])
 
@@ -1150,7 +1253,6 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
                 "pause",
                 "conflict_end_window",
                 "combat_intrigue_pass",
-                "agent_card_effect_named",
                 # Codec v142 (OQ-106): a triggered draw is its own step.
                 "owed_draw",
             },
@@ -1245,6 +1347,34 @@ def test_records_of_older_engines_replay_to_their_end(
     assert sorted((*recorded, *dropped)) == list(range(len(replay.steps)))
 
 
+def test_a_signet_ring_effect_recorded_without_its_icon_is_named_then_expanded() -> (
+    None
+):
+    # v135-app_ai-3 step 134: seat 3's Signet Ring (Lady Amber Metulli) resolved
+    # its solari icon as a plain ``resolve_agent_card_effect``, the only icon
+    # offered then (``agent_card_effect_named``, codec v137). The bridge names
+    # the icon and ``effect_last_step`` takes its row (stage B3), which names
+    # the step last, so the fixture's bridge counts do not hold the icon's.
+    replay = _fixture("v135-app_ai-3")
+    recorded = replay.steps[134]
+    assert recorded == DomainAction("resolve_agent_card_effect", 3)
+
+    record = migrate_record(replay)
+
+    assert record.complete, record.divergence
+    migrated = next(m for m in record.steps if m.recorded_index == 134)
+    assert migrated.bridge == "effect_last_step"
+    assert migrated.step == DomainAction(
+        "gain",
+        3,
+        (
+            ("icon", "solari"),
+            ("printed", "lady_amber_metulli"),
+            ("source", "leader"),
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     "name",
     [
@@ -1287,8 +1417,10 @@ def test_imperial_privilege_draws_right_after_the_recorded_recall(name: str) -> 
     for position in draws:
         before = record.steps[position - 1]
         assert before.recorded_index is not None
-        assert isinstance(before.step, DomainAction)
-        assert "imperial_privilege" in before.step.action_id
+        # The recorded recall, which this engine takes as its target row.
+        recorded = replay.steps[before.recorded_index]
+        assert isinstance(recorded, DomainAction)
+        assert "imperial_privilege" in recorded.action_id
 
 
 def _fixture(name: str) -> GameReplay:
@@ -1630,7 +1762,7 @@ def _arrakeen_graft(
     ).state
     while rest := [
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id
         in (
             "resolve_board_effect",
@@ -1639,7 +1771,7 @@ def _arrakeen_graft(
         )
         and action not in skip
     ]:
-        state = ENGINE.apply(state, rest[0]).state
+        state = apply_whole(ENGINE, state, rest[0]).state
     return state
 
 
@@ -1677,11 +1809,11 @@ def test_a_bene_gesserit_partner_s_draw_comes_right_before_the_recorded_end() ->
 
     assert bridged is not None
     assert (bridged[0].name, bridged[1]) == ("shigawire_partner_draw", _PARTNER_DRAW)
-    drawn = ENGINE.apply(state, _PARTNER_DRAW).state
+    drawn = apply_whole(ENGINE, state, _PARTNER_DRAW).state
     assert _PRESS in ENGINE.legal_actions(drawn, 0)
     # Only before the press, and only for a record before codec v144.
     other = next(
-        action for action in ENGINE.legal_actions(state, 0) if action != _PARTNER_DRAW
+        action for action in ENGINE.whole_actions(state, 0) if action != _PARTNER_DRAW
     )
     assert migration._bridge(ENGINE, state, other, older) is None
     assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(144)) is None
@@ -1713,7 +1845,7 @@ def test_a_ghola_copy_s_draw_comes_right_before_the_recorded_end() -> None:
         "boost_draw_at_turn_end",
         _GHOLA_COPY_DRAW,
     )
-    drawn = ENGINE.apply(state, _GHOLA_COPY_DRAW).state
+    drawn = apply_whole(ENGINE, state, _GHOLA_COPY_DRAW).state
     assert _PRESS in ENGINE.legal_actions(drawn, 0)
     assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(145)) is None
 
@@ -1776,7 +1908,7 @@ def test_a_card_s_own_trash_keeps_its_draw_for_the_recorded_end() -> None:
     trash = DomainAction("trash_optional_card", 0, (("card_id", throne),))
     decline = DomainAction("decline_optional_trash", 0)
     while True:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         if trash in legal:
             step = trash
         elif decline in legal:
@@ -1792,7 +1924,7 @@ def test_a_card_s_own_trash_keeps_its_draw_for_the_recorded_end() -> None:
             if not rest:
                 break
             step = rest[0]
-        state = ENGINE.apply(state, step).state
+        state = apply_whole(ENGINE, state, step).state
     assert throne in state.players[0].trashed
     assert resolves_boost_draw(state, _GHOLA_COPY_DRAW)
 
@@ -2822,9 +2954,10 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # migrating completely. (Codec v150, stage B1, makes every Agent turn two
     # steps, so this game's step numbers are later than they were -- 87, 821
     # and round starts 90 ... 794 -- and its moves are the same; stage B2's
-    # reward icon rows moved them again, from 95, 891 and 98 ... 862.)
+    # reward icon rows moved them again, from 95, 891 and 98 ... 862, and
+    # stage B3's effect rows again, from 102, 947 and 105 ... 918.)
     game = _this_engine_game(175)
-    play, rewards = 102, 947
+    play, rewards = 104, 980
     assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -2837,7 +2970,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {105, 209, 317, 422, 553, 689, 810, 918} <= starts
+    assert {107, 215, 327, 435, 570, 712, 839, 949} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -2861,7 +2994,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 947
+    rewards = 980
     starts = {
         index
         for index, step in enumerate(game.steps)
@@ -3260,14 +3393,14 @@ def test_a_recorded_box_resolution_plays_its_icons_one_by_one() -> None:
         ENGINE, state, _decided(state), plain
     )
     assert first == DomainAction(action_id="take_agent_card_combat_icon", actor=0)
-    after = ENGINE.apply(state, first).state
+    after = apply_whole(ENGINE, state, first).state
     follow = migration._split_box_follow(
         ENGINE, after, _decided(after), first
     )
     assert follow == DomainAction(
         action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
     )
-    done = ENGINE.apply(after, follow).state
+    done = apply_whole(ENGINE, after, follow).state
     assert (
         migration._split_box_follow(ENGINE, done, _decided(done), follow)
         is None
@@ -3287,7 +3420,7 @@ def test_a_recorded_box_resolution_plays_its_icons_one_by_one() -> None:
     assert isinstance(first, DomainAction)
     assert first.action_id == "choose_agent_card_influence"
     assert _box_args(first) == {"box": 1, "faction": "bene_gesserit"}
-    after = ENGINE.apply(grafted, first).state
+    after = apply_whole(ENGINE, grafted, first).state
     follow = migration._split_box_follow(
         ENGINE, after, _decided(after), first
     )
@@ -3305,7 +3438,7 @@ def test_in_high_places_old_spy_frame_moves_are_its_spy_rows() -> None:
     assert draw == DomainAction(
         action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
     )
-    drawn = ENGINE.apply(placed, draw).state
+    drawn = apply_whole(ENGINE, placed, draw).state
     # The Spy waits for the record's frame step, not for a follow.
     assert (
         migration._split_box_follow(ENGINE, drawn, _decided(drawn), draw)
@@ -3388,14 +3521,15 @@ def test_the_cleanup_2f_refusals_are_the_confirms() -> None:
 
 def _as_one_agent_turn(game: GameReplay) -> tuple[GameReplay, int]:
     """``game`` as a v149 engine recorded it: each card pick and the space
-    pick right after it merged into the one ``agent_turn``, and no reward
-    icon rows (``_dropped``). Returns the record and the number of
-    placements."""
+    pick right after it merged into the one ``agent_turn``, no reward icon
+    rows and each whole action in one step (``_dropped``, ``_effect_runs``).
+    Returns the record and the number of placements."""
 
     steps: list[ReplayStep] = []
     merged = 0
     index = 0
-    rows = _reward_icon_steps(game)
+    rows = _reward_icon_steps(game) | _effect_pick_steps(game)
+    runs = _effect_runs(game)
     while index < len(game.steps):
         step = game.steps[index]
         if index in rows:
@@ -3414,7 +3548,7 @@ def _as_one_agent_turn(game: GameReplay) -> tuple[GameReplay, int]:
             merged += 1
             index += 2
             continue
-        steps.append(step)
+        steps.append(runs[index][0] if index in runs else step)
         index += 1
     return replace(game, steps=tuple(steps), action_codec_version=149), merged
 
@@ -3467,6 +3601,139 @@ def test_a_record_stamped_with_this_codec_gets_no_agent_turn_bridges(
     assert not current.bridge_counts()
 
 
+# --- A waiting effect is picked before its target (codec v150) -----------------
+# Stage B3 (OQ-111): in an Agent turn's effect frame the seat picks the waiting
+# effect (an effect row naming its verb and the entity that printed it), then
+# each of its targets (a target row); the last row applies the effect. A
+# record of an older engine holds the whole action in one step, which the
+# bridges ``effect_step`` (the effect and each target but the last, added
+# before it) and ``effect_last_step`` (the whole action rewritten as its last
+# row) expand. The runs below are this engine's own game (``_effect_runs``).
+
+
+def _first_run(
+    game: GameReplay, action_id: str, picks: int
+) -> tuple[int, DomainAction, GameState]:
+    """The first whole action of ``action_id`` with ``picks`` steps before its
+    last, with the step that ends it and the state before its first step."""
+
+    index, (whole, steps) = next(
+        (index, run)
+        for index, run in sorted(_effect_runs(game).items())
+        if run[0].action_id == action_id and len(run[1]) == picks
+    )
+    return index, whole, _states(game)[steps[0] if steps else index]
+
+
+def _expanded(
+    game: GameReplay, action_id: str, picks: int, codec: int = 149
+) -> tuple[migration.MigratedRecord, list[DomainAction], GameState]:
+    """The record of one whole action ``_first_run`` finds, migrated from the
+    state before it, the rows this engine took for it, and the state after
+    them."""
+
+    index, whole, start = _first_run(game, action_id, picks)
+    rows = [_step_of(game, step) for step in range(index - picks, index + 1)]
+    after = _states(game)[index + 1]
+    record = migrate_record(
+        _v142_record(start, whole, codec=codec), _StartingAt(start)
+    )
+    return record, rows, after
+
+
+def test_a_whole_action_with_a_target_is_its_effect_row_then_its_target_row(
+    game: GameReplay,
+) -> None:
+    record, rows, after = _expanded(game, "trash_agent_card", 1)
+
+    assert record.complete, record.divergence
+    assert [row.action_id for row in rows] == ["trash", "choose_personal_card"]
+    assert [migrated.step for migrated in record.steps] == rows
+    # The effect row is added before the recorded step, which is rewritten as
+    # the target row.
+    assert [
+        (migrated.bridge, migrated.recorded_index) for migrated in record.steps
+    ] == [("effect_step", None), ("effect_last_step", 0)]
+    assert record.bridge_counts() == {"effect_step": 1, "effect_last_step": 1}
+    assert canonical_state_hash(record.state) == canonical_state_hash(after)
+
+
+def test_a_whole_action_with_two_targets_picks_each_before_the_last(
+    game: GameReplay,
+) -> None:
+    # A Tech tile acquired at a board space names the tile, then the post it
+    # asks for: two targets, so the effect row and the first target are added
+    # and the second is the recorded step.
+    record, rows, after = _expanded(game, "acquire_tech", 2)
+
+    assert record.complete, record.divergence
+    assert [row.action_id for row in rows] == [
+        "acquire",
+        "choose_tech",
+        "choose_post",
+    ]
+    assert [migrated.step for migrated in record.steps] == rows
+    assert [
+        (migrated.bridge, migrated.recorded_index) for migrated in record.steps
+    ] == [("effect_step", None), ("effect_step", None), ("effect_last_step", 0)]
+    assert canonical_state_hash(record.state) == canonical_state_hash(after)
+
+
+def test_a_whole_action_without_a_target_is_its_effect_row(game: GameReplay) -> None:
+    record, rows, after = _expanded(game, "resolve_board_effect", 0)
+
+    assert record.complete, record.divergence
+    (row,) = rows
+    assert row.action_id != "resolve_board_effect"
+    assert [migrated.step for migrated in record.steps] == rows
+    assert [
+        (migrated.bridge, migrated.recorded_index) for migrated in record.steps
+    ] == [("effect_last_step", 0)]
+    assert record.bridge_counts() == {"effect_last_step": 1}
+    assert canonical_state_hash(record.state) == canonical_state_hash(after)
+
+
+def test_a_whole_action_is_expanded_only_for_records_before_v150(
+    game: GameReplay,
+) -> None:
+    _, whole, start = _first_run(game, "trash_agent_card", 1)
+
+    current = migrate_record(
+        _v142_record(start, whole, codec=ACTION_CODEC_VERSION), _StartingAt(start)
+    )
+
+    # Stamped with this codec the whole action is not an action of this engine:
+    # no effect bridge answers it and the record stops on it.
+    assert current.divergence is not None
+    assert current.divergence.recorded_index == 0
+    assert current.divergence.step == whole
+    assert not current.bridge_counts()
+    assert current.steps == ()
+
+
+def test_a_target_the_effect_does_not_offer_ends_the_record_there(
+    game: GameReplay,
+) -> None:
+    _, whole, start = _first_run(game, "trash_agent_card", 1)
+    elsewhere = DomainAction(
+        whole.action_id,
+        whole.actor,
+        (("card_id", "player:0:starter:not_a_card:9"),),
+    )
+
+    record = migrate_record(
+        _v142_record(start, elsewhere, codec=149), _StartingAt(start)
+    )
+
+    # The effect row was this engine's question; the recorded card is no
+    # answer to it, which a rule change made, so the record diverges on it.
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == 0
+    assert record.divergence.step == elsewhere
+    assert [migrated.bridge for migrated in record.steps] == ["effect_step"]
+    assert "effect_last_step" not in record.bridge_counts()
+
+
 # --- CHOAM Transports' card before a Contract's reward rows (codec v150) -------
 # User decision 2026-10-19 ("A로 가자"): the card is the owner's only step right
 # after the completion, before every row of the reward (OQ-106 13, OQ-112). An
@@ -3492,7 +3759,7 @@ def _transports_completed(*, empty_deck: bool) -> GameState:
     complete = DomainAction(
         "complete_contract", 0, (("instance_id", "contract:arrakeen_i"),)
     )
-    return ENGINE.apply(placed, complete).state
+    return apply_whole(ENGINE, placed, complete).state
 
 
 def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> None:

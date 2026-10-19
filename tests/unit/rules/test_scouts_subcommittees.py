@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
@@ -98,9 +98,9 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
         placements = executable_placements(state, top.owner)
         assert action in placements, (action, placements)
         return apply_placement(ENGINE, state, action).state
-    legal = ENGINE.legal_actions(state, top.owner)
+    legal = ENGINE.whole_actions(state, top.owner)
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal).state
 
 
 def _visit_high_council(state: GameState, card_id: str = DAGGER) -> GameState:
@@ -110,12 +110,12 @@ def _visit_high_council(state: GameState, card_id: str = DAGGER) -> GameState:
     while state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS:
         board = [
             a
-            for a in ENGINE.legal_actions(state, 0)
+            for a in ENGINE.whole_actions(state, 0)
             if a.action_id == "resolve_board_effect"
         ]
         if not board:
             break
-        state = ENGINE.apply(state, board[0]).state
+        state = apply_whole(ENGINE, state, board[0]).state
     return state
 
 
@@ -151,7 +151,7 @@ def _options(state: GameState) -> set[tuple[str, str]]:
         (a.action_id, str(dict(a.arguments).get(next(iter(dict(a.arguments)), ""), "")))
         if a.arguments
         else (a.action_id, "")
-        for a in ENGINE.legal_actions(state, top.owner)
+        for a in ENGINE.whole_actions(state, top.owner)
     }
 
 
@@ -217,7 +217,7 @@ def test_appropriations_discards_a_chosen_card_for_water() -> None:
     state = _act(state, "join_subcommittee", subcommittee_id="appropriations")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
     discard = next(iter(state.players[0].hand))
-    offered = {dict(a.arguments)["card_id"] for a in ENGINE.legal_actions(state, 0)}
+    offered = {dict(a.arguments)["card_id"] for a in ENGINE.whole_actions(state, 0)}
     assert offered == set(state.players[0].hand)
     state = _act(state, "scouts_discard", card_id=discard)
     assert discard in state.players[0].discard_pile
@@ -333,7 +333,7 @@ def test_leverage_may_draw_its_intrigue_before_choosing_the_faction() -> None:
     state = _act(state, "scouts_recall_spy", post_id="arrakis-hagga-basin")
     # The recalls are the cost: nothing is taken ahead of a cost.
     assert "scouts_rewards_first" not in {
-        a.action_id for a in ENGINE.legal_actions(state, 0)
+        a.action_id for a in ENGINE.whole_actions(state, 0)
     }
     state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
     intrigue = len(state.players[0].intrigue_cards)
@@ -341,7 +341,7 @@ def test_leverage_may_draw_its_intrigue_before_choosing_the_faction() -> None:
     assert len(state.players[0].intrigue_cards) == intrigue + 1
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
     assert "scouts_rewards_first" not in {
-        a.action_id for a in ENGINE.legal_actions(state, 0)
+        a.action_id for a in ENGINE.whole_actions(state, 0)
     }
     state = _act(state, "scouts_choose_faction", faction="emperor")
     assert state.players[0].influence.emperor == 1
@@ -503,7 +503,7 @@ def test_an_offer_with_every_subcommittee_taken_greys_out_the_choice() -> None:
     )
     assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert _options(state) == {("finish_agent_turn", "")}
-    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     assert found is not None
     listed = found["rows"]
     assert isinstance(listed, list)
@@ -554,7 +554,7 @@ def test_specimen_top_up_offers_the_shortfall_before_readiness_recruits() -> Non
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
     counts = sorted(
         dict(a.arguments)["count"]
-        for a in ENGINE.legal_actions(state, 0)
+        for a in ENGINE.whole_actions(state, 0)
         if a.action_id == "scouts_return_specimens"
     )
     assert counts == [0, 1]
@@ -747,9 +747,9 @@ def test_the_corrinth_seat_gets_no_further_agent_turn_after_the_recall() -> None
         assert isinstance(top.decision, PlayerDecision)
         if top.kind == FrameKind.TURN:
             turn_owners.append(top.decision.owner)
-        legal = ENGINE.legal_actions(state, top.decision.owner)
+        legal = ENGINE.whole_actions(state, top.decision.owner)
         pick = next(a for a in legal if a.action_id in ("reveal_turn", "finish_reveal"))
-        state = ENGINE.apply(state, pick, legal_actions=legal).state
+        state = apply_whole(ENGINE, state, pick, legal_actions=legal).state
     assert turn_owners == [1, 2, 3]
     assert state.phase is GamePhase.COMBAT
 
@@ -817,10 +817,10 @@ def _into_the_fray_then_the_seat(extra_locations: tuple[str, ...]) -> GameState:
     assert state.players[0].agent_in_conflict == 1
     board = [
         a
-        for a in ENGINE.legal_actions(state, 0)
+        for a in ENGINE.whole_actions(state, 0)
         if a.action_id == "resolve_board_effect"
     ]
-    return ENGINE.apply(state, board[0]).state
+    return apply_whole(ENGINE, state, board[0]).state
 
 
 def test_contingencies_never_recalls_the_seat_taker_moved_by_into_the_fray() -> None:
@@ -873,7 +873,7 @@ def test_the_seat_buys_a_tech_tile_at_its_discount_then_joins() -> None:
     # offered beside them (OQ-095 (2), user ruling 2026-10-14).
     assert ("decline_tech", "") not in _options(state)
     assert ("finish_agent_turn", "") in _options(state)
-    state = ENGINE.apply(
+    state = apply_whole(ENGINE, 
         state, DomainAction(action_id="acquire_tech", actor=0, arguments=GLOWGLOBES)
     ).state
     assert state.players[0].tech_ids == ("glowglobes",)
@@ -907,7 +907,7 @@ def test_the_seat_joins_first_then_buys_its_tech_tile() -> None:
     assert ("choose_subcommittee", "") not in offered
     assert ("decline_subcommittee", "") not in offered
     assert ("acquire_tech", "glowglobes") in offered
-    state = ENGINE.apply(
+    state = apply_whole(ENGINE, 
         state, DomainAction(action_id="acquire_tech", actor=0, arguments=GLOWGLOBES)
     ).state
     assert state.players[0].tech_ids == ("glowglobes",)
@@ -951,7 +951,7 @@ def _waiting_rows(state: GameState) -> dict[str, dict[str, Any]]:
     """The seat's greyed-out rows (``display.unavailable``), by key."""
     from dune_imperium.display.unavailable import unavailable_choices
 
-    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     if found is None:
         return {}
     rows = found["rows"]
@@ -1090,7 +1090,7 @@ def test_the_corrinth_reveal_cannot_end_before_the_choice_is_answered() -> None:
     joins or declines before its Reveal ends, as at the High Council board
     space, and declining is always there, so the Reveal never gets stuck."""
     state = _corrinth_seat()
-    legal = {a.action_id for a in ENGINE.legal_actions(state, 0)}
+    legal = {a.action_id for a in ENGINE.whole_actions(state, 0)}
     assert "finish_reveal" not in legal
     assert "decline_subcommittee" in legal
 
@@ -1137,9 +1137,9 @@ def test_the_heuristic_joins_a_subcommittee_and_ends_its_turn() -> None:
     agent = HeuristicAgent(seed=5)
     steps = 0
     while state.decision_stack[-1].kind != FrameKind.TURN:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         action = agent.choose_action(observe_state(state, 0), legal)
-        state = ENGINE.apply(state, action, legal_actions=legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=legal).state
         steps += 1
         assert steps < 20
     assert [seat for _, seat in state.scouts_subcommittee_members] == [0]
@@ -1150,7 +1150,9 @@ def test_the_heuristic_joins_a_subcommittee_and_ends_its_turn() -> None:
         while state.decision_stack[-1].kind != FrameKind.TURN:
             top = state.decision_stack[-1].decision
             assert isinstance(top, PlayerDecision)
-            legal = ENGINE.legal_actions(state, top.owner)
-            state = ENGINE.apply(state, rng.choice(legal), legal_actions=legal).state
+            legal = ENGINE.whole_actions(state, top.owner)
+            state = apply_whole(
+                ENGINE, state, rng.choice(legal), legal_actions=legal
+            ).state
             steps += 1
             assert steps < 20

@@ -4,12 +4,17 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
-from dune_imperium.adapters.action_codec import _scouts_templates
+from dune_imperium.adapters.action_codec import (
+    ActionTemplate,
+    _scouts_templates,
+    catalog_spaces,
+)
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.simulation import run_random_round
 
 _SCOUTS_ACTION_PREFIXES = (
@@ -27,6 +32,22 @@ _SCOUTS_ACTION_PREFIXES = (
     # A Scouts choice with no line the seat can take (codec v149).
     "resolve_scouts_choice_without_option",
 )
+
+
+def _round_trip_steps(
+    codec: ActionCodec,
+    whole: DomainAction,
+    printed: str | None = None,
+) -> tuple[DomainAction, ...]:
+    """Stage B3a: the Agent-effect frame offers ``whole`` as its effect row
+    and target rows (``effect_steps.steps_for``, ``printed`` naming the card
+    type or space that printed the effect). Check that each row round trips
+    through the codec and return them."""
+
+    rows = steps_for(whole, printed)
+    for row in rows:
+        assert codec.decode(codec.encode(row), actor=whole.actor) == row
+    return rows
 
 
 def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
@@ -136,16 +157,68 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # v150 (stage B2, OQ-112): a Conflict reward's icon rows, one per
         # icon kind but the Bloodlines-only Deep Cover Spy.
         + 14
+        # v150 (stage B3a, OQ-111): the Agent-effect frame offers a waiting
+        # effect as an effect row (its verb, the entity that printed it and
+        # its icon) and then one target row per target. The whole templates
+        # of the ids in ``effect_steps.STEP_SPECS`` that no other frame still
+        # offers as they are (the per-card trash, discard and Corrinth City
+        # picks, the per-card Solari acquisitions, the per-post Spy rows ...)
+        # leave (792), and the rows that stand for them join (964).
+        - 792
+        + 964
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
-    # only, so the base catalog is unchanged.
-    assert first.size == 2931
+    # only, so the base catalog is unchanged by them. Stage B3a's net +172
+    # (above) takes it from 2,931 to 3,103.
+    assert first.size == 3103
+
+
+def _scouts_catalog_additions(
+    config: RulesetConfig, scouts_only: set[ActionTemplate]
+) -> set[ActionTemplate]:
+    """What a Scouts catalog holds beyond the catalog without the option.
+
+    Stage B3a: the Agent-effect frame offers two Scouts ids only as steps
+    (``scouts_collect_mission`` and ``take_desert_riding_hooks``), so their
+    whole templates are not in the catalog; the rows that stand for them are
+    -- the mission's ``collect`` effect row per visited space and its
+    ``choose_option`` target rows, and the Maker icon's ``take`` row.
+    """
+
+    step_only = {"scouts_collect_mission", "take_desert_riding_hooks"}
+    collect_rows = {
+        ActionTemplate(
+            "collect",
+            (
+                ("icon", "scouts_mission"),
+                ("printed", space.space_id),
+                ("source", "board_space"),
+            ),
+        )
+        for space in catalog_spaces(config)
+    }
+    choice_rows = {
+        ActionTemplate("choose_option", (("option", option),))
+        for option in ("solari", "spice")
+    }
+    maker_row = ActionTemplate(
+        "take",
+        (("icon", "maker"), ("printed", "hagga_basin"), ("source", "board_space")),
+    )
+    return {
+        *(t for t in scouts_only if t.action_id not in step_only),
+        *collect_rows,
+        *choice_rows,
+        maker_row,
+    }
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
     # Design 4.9: every Scouts template sits in one gated block, so the
     # catalogs without the option are byte for byte what they were (base
-    # 4,427) and a Scouts catalog adds exactly those templates.
+    # 4,427) and a Scouts catalog adds exactly those templates -- and, since
+    # stage B3a, the effect rows that stand for the two Scouts ids the
+    # Agent-effect frame offers only as steps.
     for options in (
         {},
         {
@@ -160,12 +233,18 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         scouts_config = RulesetConfig(arrakeen_scouts=True, **options)
         with_scouts = ActionCodec(scouts_config)
         scouts_only = set(_scouts_templates(scouts_config))
-        assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
+        added = _scouts_catalog_additions(scouts_config, scouts_only)
+        assert set(with_scouts.catalog) - set(without.catalog) == added
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 2931
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 2931 + len(
-        _scouts_templates(RulesetConfig(arrakeen_scouts=True))
+        assert not any(
+            t.action_id in {"scouts_collect_mission", "take_desert_riding_hooks"}
+            for t in with_scouts.catalog
+        )
+    assert ActionCodec(RulesetConfig()).size == 3103
+    base_scouts = RulesetConfig(arrakeen_scouts=True)
+    assert ActionCodec(base_scouts).size == 3103 + len(
+        _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
 
@@ -293,6 +372,14 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # completed Contract's (9).
         + 14
         + 9
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_catalog_is_fixed...): 848 leave, 1,024 rows join (the
+        # CHOAM catalogs also trade a completed Contract's 20 whole
+        # templates for 20 effect rows).
+        - 848
+        + 1024
     )
 
     try:
@@ -318,15 +405,25 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         actor=1,
         arguments=(("card_id", "intrigue:backed_by_choam:0"),),
     )
-    recall_conflict_privilege = DomainAction(
-        action_id="recall_conflict_agent_for_imperial_privilege", actor=1
+    # Stage B3a: the Agent-effect frame offers a recall from the Conflict as
+    # the Recall Agent effect row of its source (Imperial Privilege, a card)
+    # and then the Conflict as a ``choose_space`` target row.
+    recall_conflict_privilege = steps_for(
+        DomainAction(action_id="recall_conflict_agent_for_imperial_privilege", actor=1),
+        "imperial_privilege",
     )
     # v109 (OQ-068, 2026-09-26 user ruling): Steersman's Recall Agent icon
     # and Twisted Mentat, and the Sardaukar II / High Council token Contract
     # reward, may likewise recall an Into the Fray Agent from the Conflict.
-    recall_conflict_agent_card = DomainAction(
-        action_id="recall_conflict_agent_for_agent_card", actor=1
+    recall_conflict_agent_card = steps_for(
+        DomainAction(action_id="recall_conflict_agent_for_agent_card", actor=1),
+        "steersman",
     )
+    conflict_target = DomainAction(
+        action_id="choose_space", actor=1, arguments=(("space_id", "conflict"),)
+    )
+    assert recall_conflict_privilege[-1] == conflict_target
+    assert recall_conflict_agent_card[-1] == conflict_target
     recall_conflict_contract = DomainAction(
         action_id="recall_conflict_agent_for_contract", actor=1
     )
@@ -338,8 +435,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     actions = (
         take_contract,
         trash_intrigue,
-        recall_conflict_privilege,
-        recall_conflict_agent_card,
+        *recall_conflict_privilege,
+        *recall_conflict_agent_card,
         recall_conflict_contract,
         hold_icons,
         fizzle_icons,
@@ -434,10 +531,24 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # Deep Cover Spy (15), and a completed Contract's (9).
         + 15
         + 9
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_catalog_is_fixed...): 1,170 leave, 1,523 rows join
+        # (the Bloodlines cards' retreat, Contract and Sardaukar Commander
+        # picks among them).
+        - 1170
+        + 1523
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
+    # The two recalls' effect rows are in every catalog; the Conflict they
+    # may pick (stage B3a: the target row) needs Bloodlines.
+    recall_effect_rows = (recall_conflict_privilege[0], recall_conflict_agent_card[0])
     for action in actions:
+        if action in recall_effect_rows:
+            assert choam_only.decode(choam_only.encode(action), actor=1) == action
+            continue
         with pytest.raises(ValueError, match="not present"):
             choam_only.encode(action)
     bloodlines_only = ActionCodec(RulesetConfig(bloodlines=True))
@@ -445,20 +556,28 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         with pytest.raises(ValueError, match="not present"):
             bloodlines_only.encode(action)
     # recall_conflict_agent_for_imperial_privilege and
-    # recall_conflict_agent_for_agent_card need only Bloodlines: an Into the
-    # Fray Agent exists without the CHOAM Module (OQ-068).
-    for action in (recall_conflict_privilege, recall_conflict_agent_card):
+    # recall_conflict_agent_for_agent_card (their rows) need only Bloodlines:
+    # an Into the Fray Agent exists without the CHOAM Module (OQ-068).
+    for action in (*recall_conflict_privilege, *recall_conflict_agent_card):
         assert bloodlines_only.decode(bloodlines_only.encode(action), actor=1) == action
 
 
 def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
+    # Stage B3a: completing a Contract is an effect row naming the Contract
+    # (an effect without a target is one row).
+    complete = DomainAction(
+        action_id="complete_contract",
+        actor=1,
+        arguments=(("instance_id", "contract:arrakeen_ii"),),
+    )
+    (complete_row,) = _round_trip_steps(codec, complete)
+    assert complete_row.action_id == "complete_contract"
+    assert dict(complete_row.arguments) == {
+        "printed": "contract:arrakeen_ii",
+        "source": "contract",
+    }
     actions = (
-        DomainAction(
-            action_id="complete_contract",
-            actor=1,
-            arguments=(("instance_id", "contract:arrakeen_ii"),),
-        ),
         DomainAction(
             action_id="place_contract_spy",
             actor=1,
@@ -515,7 +634,17 @@ def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
             actor=1,
             arguments=(("effect", key),),
         )
-        assert codec.decode(codec.encode(action), actor=1) == action
+        # Stage B3a: the Agent-effect frame offers the icon as one effect row
+        # (its verb, the visited space and the icon), not as the whole
+        # action, which the catalog no longer holds.
+        (row,) = _round_trip_steps(codec, action, "arrakeen")
+        assert dict(row.arguments) == {
+            "icon": key,
+            "printed": "arrakeen",
+            "source": "board_space",
+        }
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
 
     try:
         codec.encode(DomainAction(action_id="resolve_board_effect", actor=1))
@@ -560,28 +689,33 @@ def test_reveal_choice_deferral_and_resumption_round_trip() -> None:
 
 def test_corrinth_city_staged_payment_round_trips() -> None:
     codec = ActionCodec(RulesetConfig())
-    actions = (
-        DomainAction(
-            action_id="select_corrinth_city_discard",
-            actor=0,
-            arguments=(("card_id", "imperium:spacing_guild_s_favor:0"),),
-        ),
-        DomainAction(
-            action_id="pay_corrinth_city",
-            actor=0,
-            arguments=(("card_id", "player:0:starter:dagger:0"),),
-        ),
+    # Stage B3a: each stage is an effect row (the Agent box of Corrinth
+    # City: discard, then pay) and the chosen card as its target row.
+    discard = DomainAction(
+        action_id="select_corrinth_city_discard",
+        actor=0,
+        arguments=(("card_id", "imperium:spacing_guild_s_favor:0"),),
+    )
+    pay = DomainAction(
+        action_id="pay_corrinth_city",
+        actor=0,
+        arguments=(("card_id", "player:0:starter:dagger:0"),),
     )
 
-    for action in actions:
-        assert codec.decode(codec.encode(action), actor=0) == action
+    discard_rows = _round_trip_steps(codec, discard, "corrinth_city")
+    pay_rows = _round_trip_steps(codec, pay, "corrinth_city")
+    target = "choose_personal_card"
+    assert [row.action_id for row in discard_rows] == ["discard", target]
+    assert [row.action_id for row in pay_rows] == ["pay", target]
 
 
 def test_agent_card_spice_payment_round_trips() -> None:
     codec = ActionCodec(RulesetConfig())
     action = DomainAction(action_id="pay_agent_card_spice", actor=0)
 
-    assert codec.decode(codec.encode(action), actor=0) == action
+    # Stage B3a: a payment without a target is one ``pay`` effect row.
+    (row,) = _round_trip_steps(codec, action, "junction_headquarters")
+    assert row.action_id == "pay"
 
 
 def test_desert_power_reveal_choices_round_trip() -> None:
@@ -640,7 +774,9 @@ def test_agent_card_solari_acquisition_round_trips() -> None:
         arguments=(("instance_id", "imperium:sardaukar_soldier:0"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=0) == action
+    # Stage B3a: the ``acquire`` effect row, then the card as its target.
+    rows = _round_trip_steps(codec, action, "price_is_no_object")
+    assert [row.action_id for row in rows] == ["acquire", "choose_imperium_card"]
 
 
 def test_reveal_influence_exchange_round_trips() -> None:
@@ -677,7 +813,9 @@ def test_agent_card_spy_choice_round_trips() -> None:
         arguments=(("post_id", "bene-gesserit-espionage-secrets"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=1) == action
+    # Stage B3a: the ``place_spy`` effect row, then the post as its target.
+    rows = _round_trip_steps(codec, action, "bene_gesserit_operative")
+    assert [row.action_id for row in rows] == ["place_spy", "choose_post"]
 
 
 def test_agent_card_influence_choice_round_trips() -> None:
@@ -688,7 +826,10 @@ def test_agent_card_influence_choice_round_trips() -> None:
         arguments=(("faction", "fremen"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=2) == action
+    # Stage B3a: the ``gain_influence`` effect row, then the Faction as its
+    # target.
+    rows = _round_trip_steps(codec, action, "public_spectacle")
+    assert [row.action_id for row in rows] == ["gain_influence", "choose_faction"]
 
 
 def test_reveal_spy_placement_choice_round_trips() -> None:
@@ -779,7 +920,17 @@ def test_agent_card_trash_round_trips_with_actor_owned_starting_card() -> None:
         arguments=(("card_id", "player:2:starter:dagger:0"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=2) == action
+    # Stage B3a: the ``trash`` effect row, then the card as the
+    # ``choose_personal_card`` target row, which carries the starting-card
+    # normalization (the actor's own starting card shares one index).
+    rows = _round_trip_steps(codec, action, "branching_path")
+    assert [row.action_id for row in rows] == ["trash", "choose_personal_card"]
+    other = DomainAction(
+        action_id="choose_personal_card",
+        actor=0,
+        arguments=(("card_id", "player:0:starter:dagger:0"),),
+    )
+    assert codec.encode(rows[1]) == codec.encode(other)
 
 
 def test_endgame_wild_match_round_trips_with_both_card_ids() -> None:

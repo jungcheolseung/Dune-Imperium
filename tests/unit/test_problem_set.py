@@ -10,6 +10,7 @@ from dune_imperium.cli.problems import main as problems_main
 from dune_imperium.content.uprising.effect_dsl import IntrigueTiming
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GameState
 from dune_imperium.evaluation.problem_set import (
     DEFAULT_SUITE,
     PROBLEMS,
@@ -28,6 +29,8 @@ from dune_imperium.evaluation.problem_set import (
     unrestorable,
 )
 from dune_imperium.evaluation.tournament import MatchSpec, tournament_specs
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.effect_steps import first_step
 
 
 def _full_specs(games: int, start: int = 0) -> list[MatchSpec]:
@@ -224,7 +227,10 @@ def test_a_placement_counts_the_seats_ahead() -> None:
 
 
 class _DeferFirst:
-    """Resolves some other effect first, then takes ``final`` if it can."""
+    """Resolves some other effect first, then takes ``final`` if it can.
+
+    It weighs whole actions (an effect with its target) and answers with the
+    step that stands for its choice, as the heuristic does (stage B3)."""
 
     def __init__(self, final: str) -> None:
         self.final = final
@@ -233,16 +239,28 @@ class _DeferFirst:
     def choose_action(
         self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
     ) -> DomainAction:
+        raise AssertionError("the problem set hands a state agent the state")
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
         scored = PROBLEMS["deep_desert_summon_into_contest"].scored
         assert scored is not None
-        others = [a for a in legal_actions if not scored(a)]
+        wholes = UprisingRulesEngine().whole_actions(state, observation.player)
+        others = [a for a in wholes if not scored(a)]
+        chosen = wholes[0]
         if not self.deferred and others:
             self.deferred = True
-            return others[0]
-        for action in legal_actions:
-            if action.action_id == self.final:
-                return action
-        return legal_actions[0]
+            chosen = others[0]
+        else:
+            for action in wholes:
+                if action.action_id == self.final:
+                    chosen = action
+                    break
+        return first_step(state, chosen)
 
 
 @pytest.mark.parametrize(
@@ -311,7 +329,10 @@ def test_a_network_is_scored_by_its_probability_on_the_right_answers(
         assert 0.0 < result.p_right < 1.0
         # The probabilities are the greedy agent's own: they sum to one and
         # their argmax is the action it plays.
-        engine, state, legal = restore(position)
+        engine, state, _ = restore(position)
+        # The network answers the legal rows (stage B3: an effect before its
+        # target), not the whole actions the problem reads.
+        legal = engine.legal_actions(state, position.owner)
         agent = registry.make_agent(kind, 0)
         view = engine.observe(state, position.owner)
         probabilities = policy_probabilities(agent, view, legal)

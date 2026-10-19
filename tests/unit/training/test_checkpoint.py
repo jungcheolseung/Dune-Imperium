@@ -25,6 +25,7 @@ from dune_imperium.cli.checkpoint import main as checkpoint_main  # noqa: E402
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID  # noqa: E402
 from dune_imperium.core.engine import Transition  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.rules.reveal_turn import SOURCED_REVEAL_ACTION_IDS  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
     SelfPlayRunner,
@@ -385,7 +386,8 @@ def test_source_rows_start_from_their_source_less_rows(tmp_path: Path) -> None:
     sourced = [
         i
         for i, t in enumerate(codec.catalog)
-        if any(name == "source" for name, _ in t.arguments)
+        if t.action_id in SOURCED_REVEAL_ACTION_IDS
+        and any(name == "source" for name, _ in t.arguments)
     ]
     assert len(sourced) == 140
     keep = [i for i in range(codec.size) if i not in set(sourced)]
@@ -521,6 +523,17 @@ def test_a_v20_file_reads_its_contract_columns_by_identity(tmp_path: Path) -> No
 # Supremacy to every battle-card segment, and the one-column ``epic_game``
 # segment after all the others. v27 has v25's layout (v26's frame kind was
 # removed again), so the previous layout is 4,587 columns wide.
+# Observation v33's picked effect (stage B3): no older file has it.
+_EFFECT_PICK_SEGMENTS = tuple(
+    segment.name
+    for segment in OBSERVATION_SEGMENTS
+    if segment.name.startswith("private_effect_pick")
+)
+_EFFECT_PICK_COLUMNS = sum(
+    segment.length
+    for segment in OBSERVATION_SEGMENTS
+    if segment.name in _EFFECT_PICK_SEGMENTS
+)
 _V28_GROWN_SEGMENTS = frozenset(
     {"imperium_removed", "private_hand", "private_peeked_card"}
     | {
@@ -568,6 +581,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             *(f"seat{seat}_deck_pool" for seat in range(4)),
             "private_agent_card_pick",
             "private_agent_card_pick_graft",
+            *_EFFECT_PICK_SEGMENTS,
         ):
             continue
         length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
@@ -582,7 +596,9 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             layout.append(("intrigue_trash", offset, 90))
             offset += 90
     assert ("intrigue_trash", 289, 90) in layout
-    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8 - 4 - 4 - 556 - 140 + 90
+    assert offset == 4_587 == (
+        OBSERVATION_SIZE - 24 - 8 - 4 - 4 - 556 - 140 + 90 - _EFFECT_PICK_COLUMNS
+    )
     state["body.0.weight"] = torch.cat(columns, dim=1)
     older = tmp_path / "v27.pt"
     torch.save(
@@ -609,7 +625,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (4_587 - 90, 24 + 8 + 4 + 4 + 556 + 140, 90)
+    ) == (4_587 - 90, 24 + 8 + 4 + 4 + 556 + 140 + _EFFECT_PICK_COLUMNS, 90)
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
         codec.size,
         0,

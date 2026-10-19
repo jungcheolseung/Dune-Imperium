@@ -22,7 +22,7 @@ from tests.unit.rules.test_immortality_intrigue import (
 from tests.unit.rules.test_tech import _combat_acquire_frame
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_SETUP_SPACE_IDS,
@@ -106,7 +106,9 @@ def _state(
 def _reveal(state: GameState, persuasion: int) -> GameState:
     """Start seat 0's Reveal and give it ``persuasion`` to spend."""
 
-    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    revealed = apply_whole(
+        ENGINE, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     frame = revealed.state.decision_stack[-1]
     assert frame.kind == FrameKind.REVEAL
     context = {**dict(frame.context), "persuasion": persuasion}
@@ -118,7 +120,7 @@ def _reveal(state: GameState, persuasion: int) -> GameState:
 
 
 def _found(state: GameState, seat: int = 0) -> dict[str, Any]:
-    found = unavailable_choices(state, seat, ENGINE.legal_actions(state, seat))
+    found = unavailable_choices(state, seat, ENGINE.whole_actions(state, seat))
     assert isinstance(found, dict)
     return found
 
@@ -130,7 +132,7 @@ def _rows(found: dict[str, Any], surface: str) -> dict[str, dict[str, Any]]:
 def _legal(state: GameState, action_id: str) -> list[dict[str, Any]]:
     return [
         dict(action.arguments)
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == action_id
     ]
 
@@ -474,7 +476,7 @@ def test_harvest_cells_that_could_change_nothing_greys_out_in_its_window() -> No
 
     first = HARVEST_CELLS[0]
     window = _conflict_end_window(first)
-    assert ENGINE.legal_actions(window, 0) == (
+    assert ENGINE.whole_actions(window, 0) == (
         DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
     )
 
@@ -509,10 +511,10 @@ def test_harvest_cells_that_could_change_nothing_greys_out_in_its_window() -> No
     ):
         lit = _conflict_end_window(first, **fields)
         assert _legal(lit, "play_conflict_end_intrigue") == [{"card_id": first}]
-        assert unavailable_choices(lit, 0, ENGINE.legal_actions(lit, 0)) is None
+        assert unavailable_choices(lit, 0, ENGINE.whole_actions(lit, 0)) is None
     # Nobody else is shown anything of it.
     for seat in range(1, 4):
-        legal = ENGINE.legal_actions(window, seat)
+        legal = ENGINE.whole_actions(window, seat)
         assert legal == () and unavailable_choices(window, seat, legal) is None
 
 
@@ -527,13 +529,13 @@ def test_a_second_harvest_cells_greys_out_once_the_first_takes_the_troops() -> N
     first, second = HARVEST_CELLS
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
     both = _conflict_end_window(first, second, **mixed)
-    assert unavailable_choices(both, 0, ENGINE.legal_actions(both, 0)) is None
+    assert unavailable_choices(both, 0, ENGINE.whole_actions(both, 0)) is None
 
-    played = ENGINE.apply(both, _play_conflict_end(first)).state
+    played = apply_whole(ENGINE, both, _play_conflict_end(first)).state
     # The first copy resolved at its play: its acquisition choice (nothing
     # in the pricey Row pays) is answered, and the window is back on top.
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    played = ENGINE.apply(
+    played = apply_whole(ENGINE, 
         played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state
     assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
@@ -557,12 +559,12 @@ def test_a_second_harvest_cells_greys_out_once_the_first_takes_the_troops() -> N
     three = _conflict_end_window(
         first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
     )
-    staged = ENGINE.apply(three, _play_conflict_end(first)).state
-    staged = ENGINE.apply(
+    staged = apply_whole(ENGINE, three, _play_conflict_end(first)).state
+    staged = apply_whole(ENGINE, 
         staged, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state
     assert _legal(staged, "play_conflict_end_intrigue") == [{"card_id": second}]
-    assert unavailable_choices(staged, 0, ENGINE.legal_actions(staged, 0)) is None
+    assert unavailable_choices(staged, 0, ENGINE.whole_actions(staged, 0)) is None
 
 
 def test_harvest_cells_below_its_loss_says_how_many_units_are_lost() -> None:
@@ -579,7 +581,7 @@ def test_harvest_cells_below_its_loss_says_how_many_units_are_lost() -> None:
     short_frame = replace(frame, context=(("lost", 2), ("player", 0)))
     short = replace(window, decision_stack=(*window.decision_stack[:-1], short_frame))
 
-    assert ENGINE.legal_actions(short, 0) == (
+    assert ENGINE.whole_actions(short, 0) == (
         DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
     )
     (row,) = _found(short)["rows"]
@@ -596,7 +598,7 @@ def test_a_start_of_turn_card_is_played_then_only_dimmed_after_that_point() -> N
     withdrawn = {"card_id": "intrigue:twisted_withdrawn:0", "option": 0}
 
     assert _legal(state, "play_intrigue") == [withdrawn]
-    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+    assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
     revealed = _reveal(state, 0)
     found = _found(revealed)
     assert found["rows"] == []
@@ -621,7 +623,7 @@ def test_both_start_of_turn_cards_grey_out_once_the_seat_acted() -> None:
         0,
         (("card_id", "intrigue:contingency_plan:0"), ("option", 0)),
     )
-    plotted = ENGINE.apply(state, plot).state
+    plotted = apply_whole(ENGINE, state, plot).state
     assert plotted.decision_stack[-1].kind == "turn"
     assert _legal(plotted, "play_turn_start_card") == []
     assert _legal(plotted, "play_intrigue") == []
@@ -995,7 +997,7 @@ def test_an_intrigue_row_becomes_a_play_as_soon_as_the_seat_can_pay() -> None:
         "intrigue:intrigue:imperium_politics:0:0"
     ]
     assert _legal(rich, "play_intrigue") == [politics]
-    assert unavailable_choices(rich, 0, ENGINE.legal_actions(rich, 0)) is None
+    assert unavailable_choices(rich, 0, ENGINE.whole_actions(rich, 0)) is None
 
 
 def test_finishing_a_lines_card_is_greyed_until_one_line_is_used() -> None:
@@ -1014,7 +1016,7 @@ def test_finishing_a_lines_card_is_greyed_until_one_line_is_used() -> None:
         actor=0,
         arguments=(("card_id", card), ("option", 0)),
     )
-    opened = ENGINE.apply(state, play).state
+    opened = apply_whole(ENGINE, state, play).state
     assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_EFFECTS
     assert _legal(opened, "finish_intrigue_effects") == []
     found = _found(opened)
@@ -1030,7 +1032,7 @@ def test_finishing_a_lines_card_is_greyed_until_one_line_is_used() -> None:
     assert row["action"]["action_id"] == "finish_intrigue_effects"
     assert row["action"]["arguments"] == {}
 
-    used = ENGINE.apply(
+    used = apply_whole(ENGINE, 
         opened,
         DomainAction(
             action_id="use_intrigue_effect", actor=0, arguments=(("section", 0),)
@@ -1038,7 +1040,7 @@ def test_finishing_a_lines_card_is_greyed_until_one_line_is_used() -> None:
     ).state
     assert used.decision_stack[-1].kind == FrameKind.INTRIGUE_EFFECTS
     assert _legal(used, "finish_intrigue_effects") == [{}]
-    assert unavailable_choices(used, 0, ENGINE.legal_actions(used, 0)) is None
+    assert unavailable_choices(used, 0, ENGINE.whole_actions(used, 0)) is None
 
 
 # --- Effects waiting on their condition ---
@@ -1064,7 +1066,9 @@ def test_a_pending_reveal_choice_waits_greyed_out_until_its_condition_holds() ->
             spy_post_ids=("arrakis-hagga-basin",),
         )
     )
-    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    revealed = apply_whole(
+        ENGINE, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     pending = revealed.state
     assert pending.decision_stack[-1].kind == FrameKind.REVEAL
 
@@ -1099,13 +1103,13 @@ def test_a_pending_reveal_choice_waits_greyed_out_until_its_condition_holds() ->
 
     placement = next(
         action
-        for action in ENGINE.legal_actions(pending, 0)
+        for action in ENGINE.whole_actions(pending, 0)
         if action.action_id == "place_reveal_spy"
     )
-    placed = ENGINE.apply(pending, placement).state
+    placed = apply_whole(ENGINE, pending, placement).state
     assert placed.decision_stack[-1].kind == FrameKind.REVEAL
     assert _legal(placed, "recall_spies_for_reveal")
-    found = unavailable_choices(placed, 0, ENGINE.legal_actions(placed, 0))
+    found = unavailable_choices(placed, 0, ENGINE.whole_actions(placed, 0))
     assert found is None or not _rows(found, "waiting")
 
 
@@ -1114,7 +1118,9 @@ def _waiting_reveal_row(owner: PlayerState) -> dict[str, Any]:
     waiting Reveal choice's greyed-out row."""
 
     state = _state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
-    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    revealed = apply_whole(
+        ENGINE, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL
     (row,) = _rows(_found(revealed.state), "waiting").values()
     return row
@@ -1193,14 +1199,16 @@ def test_a_choice_whose_card_another_effect_trashed_says_it_left_play() -> None:
         ),
         config=RulesetConfig(bloodlines=True, choam_module=True),
     )
-    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    revealed = apply_whole(
+        ENGINE, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     trash = next(
         action
-        for action in ENGINE.legal_actions(revealed.state, 0)
+        for action in ENGINE.whole_actions(revealed.state, 0)
         if action.action_id == "trash_reveal_card"
         and dict(action.arguments)["card_id"] == corrinth
     )
-    trashed = ENGINE.apply(revealed.state, trash).state
+    trashed = apply_whole(ENGINE, revealed.state, trash).state
     rows = _rows(_found(trashed), "waiting")
     choice = "gain_five_solari_or_take_high_council"
     assert list(rows) == [f"waiting:{corrinth}:{choice}"]
@@ -1235,7 +1243,7 @@ def test_a_withheld_agent_box_waits_greyed_out_until_its_condition_holds() -> No
         placed, players=(replace(owner, influence=influence), *placed.players[1:])
     )
     assert _legal(met, "resolve_agent_card_effect") == [{}]
-    found = unavailable_choices(met, 0, ENGINE.legal_actions(met, 0))
+    found = unavailable_choices(met, 0, ENGINE.whole_actions(met, 0))
     assert found is None or not _rows(found, "waiting")
 
 
@@ -1264,7 +1272,7 @@ def test_empty_gather_intelligence_is_offered_without_greyed_or_waiting_rows() -
             arguments=(("card_id", card), ("space_id", "assembly_hall")),
         ),
     ).state
-    legal = ENGINE.legal_actions(placed, 0)
+    legal = ENGINE.whole_actions(placed, 0)
 
     assert [
         (action.action_id, dict(action.arguments)) for action in legal
@@ -1276,7 +1284,7 @@ def test_empty_gather_intelligence_is_offered_without_greyed_or_waiting_rows() -
     assert unavailable_choices(placed, 0, legal) is None
     assert unavailable_choices(placed, 1, legal) is None
 
-    declined = ENGINE.apply(
+    declined = apply_whole(ENGINE, 
         placed, DomainAction(action_id="decline_gather_intelligence", actor=0)
     ).state
     rows = list(_rows(_found(declined), "waiting").values())
@@ -1328,7 +1336,7 @@ def test_shaddam_s_signet_influence_with_every_cube_at_the_top_is_greyed() -> No
         _state(owner, config=RulesetConfig(choam_module=True)), signet, "arrakeen"
     )
     assert "choose_leader_signet_influence" not in {
-        action.action_id for action in ENGINE.legal_actions(placed, 0)
+        action.action_id for action in ENGINE.whole_actions(placed, 0)
     }
     row = _rows(_found(placed), "choice")["choice:leader_signet_influence"]
     assert row["action"]["action_id"] == "choose_leader_signet_influence"
@@ -1348,10 +1356,10 @@ def test_a_choose_a_faction_box_with_every_cube_at_the_top_waits_with_why() -> N
     )
     while board := [
         action
-        for action in ENGINE.legal_actions(placed, 0)
+        for action in ENGINE.whole_actions(placed, 0)
         if action.action_id == "resolve_board_effect"
     ]:
-        placed = ENGINE.apply(placed, board[0]).state
+        placed = apply_whole(ENGINE, placed, board[0]).state
     assert agent_box_is_waiting(placed, 0)
     row = _rows(_found(placed), "waiting")[f"waiting:agent_box:{card}"]
     assert row["reason"] == (
@@ -1383,7 +1391,7 @@ def test_a_reveal_influence_choice_with_every_cube_at_the_top_waits_with_why() -
     owner = PlayerState(
         player_id=0, hand=(favor,), resources=Resources(spice=3), influence=_FULL
     )
-    revealed = ENGINE.apply(
+    revealed = apply_whole(ENGINE, 
         _state(owner), DomainAction(action_id="reveal_turn", actor=0)
     ).state
     row = _rows(_found(revealed), "waiting")[
@@ -1464,7 +1472,7 @@ def test_an_agent_box_draw_with_empty_piles_greys_out_its_water() -> None:
     owner = PlayerState(player_id=0, hand=(station,), resources=Resources(water=2))
     placed = _agent_turn(_state(owner), station, "fremkit")
     assert "pay_agent_card_water" not in {
-        action.action_id for action in ENGINE.legal_actions(placed, 0)
+        action.action_id for action in ENGINE.whole_actions(placed, 0)
     }
     row = _optional_box_row(placed)
     assert row["surface"] == "waiting"
@@ -1488,7 +1496,7 @@ def test_an_agent_box_draw_with_empty_piles_greys_out_its_water() -> None:
             *placed.players[1:],
         ),
     )
-    legal = ENGINE.legal_actions(refilled, 0)
+    legal = ENGINE.whole_actions(refilled, 0)
     assert "pay_agent_card_water" in {action.action_id for action in legal}
     assert unavailable_choices(refilled, 0, legal) is None
 
@@ -1530,7 +1538,7 @@ def test_tleilaxu_agent_payments_grey_out_at_the_track_end() -> None:
     placed = _agent_turn(
         _state(owner, config=config), farmer, "assembly_hall", graft=True
     )
-    grafted = ENGINE.apply(
+    grafted = apply_whole(ENGINE, 
         placed,
         DomainAction(
             action_id="choose_graft_partner",
@@ -1539,7 +1547,7 @@ def test_tleilaxu_agent_payments_grey_out_at_the_track_end() -> None:
         ),
     ).state
     assert "pay_agent_card_five_solari_for_tleilaxu" not in {
-        action.action_id for action in ENGINE.legal_actions(grafted, 0)
+        action.action_id for action in ENGINE.whole_actions(grafted, 0)
     }
     row = _payment_row(grafted)
     assert row["action"]["action_id"] == "pay_agent_card_five_solari_for_tleilaxu"
@@ -1567,7 +1575,9 @@ def _desert_power(
         **(owner_fields or {}),
     )
     state = _state(owner, **{"current_conflict_ids": ("propaganda",), **fields})
-    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    revealed = apply_whole(
+        ENGINE, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL
     assert pending_reveal_choices(dict(revealed.state.decision_stack[-1].context)) == (
         (desert_power, "may_pay_water_for_sandworm"),
@@ -1634,7 +1644,7 @@ def test_each_sandworm_block_has_its_own_reason() -> None:
 def test_no_sandworm_row_while_the_sandworm_branch_is_legal() -> None:
     state = _desert_power()
     assert _legal(state, "pay_reveal_water_for_sandworm") == [{}]
-    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+    assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
 
 
 def test_desert_power_without_maker_hooks_shows_no_waiting_row() -> None:
@@ -1718,22 +1728,22 @@ def test_imperial_privilege_with_no_other_agent_greys_out_the_recall() -> None:
 
     # The confirm draws nothing and the row goes with the pending recall;
     # the draw stays offered on its own.
-    confirmed = ENGINE.apply(
+    confirmed = apply_whole(ENGINE, 
         state,
         DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
     ).state
     assert confirmed.players[0].hand == state.players[0].hand
     assert _legal(confirmed, "resolve_board_effect") == [{"effect": "cards"}]
-    after = unavailable_choices(confirmed, 0, ENGINE.legal_actions(confirmed, 0))
+    after = unavailable_choices(confirmed, 0, ENGINE.whole_actions(confirmed, 0))
     assert after is None or not _rows(after, "choice")
 
-    drawn = ENGINE.apply(
+    drawn = apply_whole(ENGINE, 
         confirmed,
         DomainAction(
             action_id="resolve_board_effect", actor=0, arguments=(("effect", "cards"),)
         ),
     ).state
-    assert [action.action_id for action in ENGINE.legal_actions(drawn, 0)] == [
+    assert [action.action_id for action in ENGINE.whole_actions(drawn, 0)] == [
         "finish_agent_turn"
     ]
     last = _rows(_found(drawn), "choice")["choice:imperial_privilege_intrigue"]
@@ -1746,7 +1756,7 @@ def test_no_recall_row_while_imperial_privilege_has_a_target() -> None:
         {"space_id": "arrakeen"}
     ]
     assert _legal(state, "resolve_imperial_privilege_without_recall") == []
-    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     assert found is None or not _rows(found, "choice")
     # With an Intrigue card in hand the trade is offered beside the recall,
     # and nothing greys it out.
@@ -1757,7 +1767,7 @@ def test_no_recall_row_while_imperial_privilege_has_a_target() -> None:
     assert _legal(held, "trash_intrigue_for_imperial_privilege") == [
         {"card_id": card}
     ]
-    assert unavailable_choices(held, 0, ENGINE.legal_actions(held, 0)) is None
+    assert unavailable_choices(held, 0, ENGINE.whole_actions(held, 0)) is None
 
 
 def _sardaukar_ii(**owner_fields: Any) -> GameState:
@@ -1778,12 +1788,14 @@ def _sardaukar_ii(**owner_fields: Any) -> GameState:
     )
     complete = next(
         action
-        for action in ENGINE.legal_actions(placed, 0)
+        for action in ENGINE.whole_actions(placed, 0)
         if action.action_id == "complete_contract"
     )
     # The reward waits in its window (stage B2, OQ-112); answer it up to the
     # recall frame its recall icon opens.
-    completed = answer_reward_windows(ENGINE, ENGINE.apply(placed, complete).state)
+    completed = answer_reward_windows(ENGINE, apply_whole(
+        ENGINE, placed, complete
+    ).state)
     assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
     return completed
 
@@ -1795,7 +1807,7 @@ def test_a_contract_recall_with_no_other_agent_greys_out_the_recall() -> None:
 
     state = _sardaukar_ii()
     assert [
-        action.action_id for action in ENGINE.legal_actions(state, 0)
+        action.action_id for action in ENGINE.whole_actions(state, 0)
     ] == ["resolve_contract_without_recall"]
     found = _found(state)
     assert found["frame"] == FrameKind.CONTRACT_REWARD_RECALL
@@ -1809,7 +1821,7 @@ def test_a_contract_recall_with_no_other_agent_greys_out_the_recall() -> None:
 def test_no_contract_recall_row_while_the_reward_has_a_target() -> None:
     state = _sardaukar_ii(agents_available=1, agent_locations=("arrakeen",))
     assert _legal(state, "recall_agent_for_contract") == [{"space_id": "arrakeen"}]
-    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+    assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
 
 
 # --- A research bonus whose cost cannot be paid ---
@@ -1825,11 +1837,11 @@ def _research_bonus(origin: str, target: str, **owner_fields: Any) -> GameState:
     advanced = advance_research(state, 0, source="test").state
     choice = next(
         action
-        for action in ENGINE.legal_actions(advanced, 0)
+        for action in ENGINE.whole_actions(advanced, 0)
         if action.action_id == "choose_research_space"
         and dict(action.arguments)["space_id"] == target
     )
-    chosen = ENGINE.apply(advanced, choice).state
+    chosen = apply_whole(ENGINE, advanced, choice).state
     assert chosen.decision_stack[-1].kind == FrameKind.TURN
     assert pending_research_bonuses(chosen, 0)
     return chosen
@@ -1855,7 +1867,7 @@ def test_a_research_bonus_without_an_intrigue_card_greys_out_the_trash() -> None
     says it lapses."""
 
     state = _research_bonus("c6r2", "c7r3")
-    legal = {action.action_id for action in ENGINE.legal_actions(state, 0)}
+    legal = {action.action_id for action in ENGINE.whole_actions(state, 0)}
     assert not legal & {
         "trash_intrigue_for_research_bonus",
         "decline_research_bonus",
@@ -1925,7 +1937,7 @@ def test_a_research_bonus_window_outside_the_turn_greys_out_the_payment() -> Non
     window = state.push_decision(
         _bonus_frame(0, ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU, "test")
     )
-    assert [action.action_id for action in ENGINE.legal_actions(window, 0)] == [
+    assert [action.action_id for action in ENGINE.whole_actions(window, 0)] == [
         "decline_research_bonus"
     ]
     found = _found(window)
@@ -1962,7 +1974,7 @@ def test_a_research_icon_window_adds_no_greyed_out_row() -> None:
     }
     for bonus, icons in windows.items():
         window = state.push_decision(_bonus_frame(0, bonus, "test", icons=icons))
-        legal = ENGINE.legal_actions(window, 0)
+        legal = ENGINE.whole_actions(window, 0)
         assert {action.action_id for action in legal} == {"resolve_research_icon"}
         assert unavailable_choices(window, 0, legal) is None, bonus
 
@@ -1977,12 +1989,12 @@ def test_no_research_bonus_row_while_its_cost_can_be_paid() -> None:
         ),
     ]
     for state, offered in cases:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         assert any(offered in action.action_id for action in legal), offered
         assert _research_rows(unavailable_choices(state, 0, legal)) == []
     # Nor for the Influence bonus, which has no cost.
     influence = _research_bonus("c5r5", "c6r6")
-    found = unavailable_choices(influence, 0, ENGINE.legal_actions(influence, 0))
+    found = unavailable_choices(influence, 0, ENGINE.whole_actions(influence, 0))
     assert _research_rows(found) == []
 
 
@@ -2036,7 +2048,7 @@ def test_a_reward_with_every_faction_at_the_top_greys_them_beside_a_confirm() ->
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     state = _combat_reward("skirmish_crysknife", full)
     assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
-    assert ENGINE.legal_actions(state, 0) == (_INFLUENCE_CONFIRM,)
+    assert ENGINE.whole_actions(state, 0) == (_INFLUENCE_CONFIRM,)
     found = _found(state)
     assert found["frame"] == FrameKind.COMBAT_REWARD_INFLUENCE
     assert {row["action"]["action_id"] for row in found["rows"]} == {
@@ -2050,7 +2062,7 @@ def test_a_reward_with_every_faction_at_the_top_greys_them_beside_a_confirm() ->
     }
     assert found["refs"] == {}
 
-    confirmed = ENGINE.apply(state, _INFLUENCE_CONFIRM)
+    confirmed = apply_whole(ENGINE, state, _INFLUENCE_CONFIRM)
     assert "combat_reward_influence_unavailable" in {
         event.kind for event in confirmed.events
     }
@@ -2087,7 +2099,7 @@ def test_choose_two_greys_the_faction_it_already_named() -> None:
         "choose_distinct_combat_reward_influence"
     }
     assert set(_influence_rows(first)) == {"emperor", "spacing_guild", "bene_gesserit"}
-    named = ENGINE.apply(
+    named = apply_whole(ENGINE, 
         state,
         DomainAction(
             action_id="choose_distinct_combat_reward_influence",
@@ -2095,7 +2107,7 @@ def test_choose_two_greys_the_faction_it_already_named() -> None:
             arguments=(("faction", "fremen"),),
         ),
     ).state
-    assert ENGINE.legal_actions(named, 0) == (_INFLUENCE_CONFIRM,)
+    assert ENGINE.whole_actions(named, 0) == (_INFLUENCE_CONFIRM,)
     assert _influence_rows(_found(named)) == {
         "emperor": _AT_THE_TOP,
         "spacing_guild": _AT_THE_TOP,
@@ -2111,7 +2123,7 @@ def test_choose_two_greys_the_faction_it_already_named() -> None:
 def test_no_influence_row_while_every_faction_can_be_taken() -> None:
     state = _combat_reward("skirmish_crysknife", Influence())
     assert len(_legal(state, "choose_combat_reward_influence")) == 4
-    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+    assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
 
 
 def _faction_rows(
@@ -2202,7 +2214,7 @@ def test_shipping_greys_the_factions_at_the_top() -> None:
     open_tracks = _at_shipping(Influence(spacing_guild=2))
     assert len(_legal(open_tracks, "choose_shipping_influence")) == 4
     assert (
-        unavailable_choices(open_tracks, 0, ENGINE.legal_actions(open_tracks, 0))
+        unavailable_choices(open_tracks, 0, ENGINE.whole_actions(open_tracks, 0))
         is None
     )
 
@@ -2254,7 +2266,7 @@ def _unit_loss(**fields: Any) -> GameState:
 
 
 def _loss_rows(state: GameState) -> dict[str, tuple[str, str, str]]:
-    found = unavailable_choices(state, 1, ENGINE.legal_actions(state, 1))
+    found = unavailable_choices(state, 1, ENGINE.whole_actions(state, 1))
     if found is None:
         return {}
     assert found["frame"] == FrameKind.OPPONENT_UNIT_LOSS
@@ -2277,7 +2289,7 @@ def test_a_seat_with_no_unit_confirms_beside_greyed_rows() -> None:
     없음") and a confirm. Commander rows only for a seat that owns one."""
 
     state = _unit_loss(troops_supply=12, troops_garrison=0)
-    assert [a.action_id for a in ENGINE.legal_actions(state, 1)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(state, 1)] == [
         "resolve_unit_loss_without_unit"
     ]
     assert _loss_rows(state) == {
@@ -2324,8 +2336,8 @@ def test_an_empty_zone_is_greyed_beside_the_units_the_seat_can_lose() -> None:
 def test_no_unit_loss_row_for_another_seat_or_once_answered() -> None:
     state = _unit_loss(troops_supply=12, troops_garrison=0)
     # Seat 2 waits under seat 1's window: nothing is shown to it yet.
-    assert unavailable_choices(state, 2, ENGINE.legal_actions(state, 2)) is None
-    confirmed = ENGINE.apply(state, ENGINE.legal_actions(state, 1)[0]).state
+    assert unavailable_choices(state, 2, ENGINE.whole_actions(state, 2)) is None
+    confirmed = apply_whole(ENGINE, state, ENGINE.whole_actions(state, 1)[0]).state
     decision = confirmed.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision) and decision.owner == 2
     assert _loss_rows(confirmed) == {}
@@ -2334,7 +2346,7 @@ def test_no_unit_loss_row_for_another_seat_or_once_answered() -> None:
 def _legal_for(state: GameState, seat: int) -> list[tuple[str, dict[str, Any]]]:
     return [
         (action.action_id, dict(action.arguments))
-        for action in ENGINE.legal_actions(state, seat)
+        for action in ENGINE.whole_actions(state, seat)
     ]
 
 
@@ -2344,10 +2356,10 @@ def _legal_for(state: GameState, seat: int) -> list[tuple[str, dict[str, Any]]]:
 def test_nothing_is_greyed_out_for_a_seat_that_does_not_decide() -> None:
     state = _shop(0)
 
-    assert unavailable_choices(state, 1, ENGINE.legal_actions(state, 1)) is None
+    assert unavailable_choices(state, 1, ENGINE.whole_actions(state, 1)) is None
     assert unavailable_choices(state, 0, ()) is not None  # the seat's own
     empty = _state(PlayerState(player_id=0))
-    assert unavailable_choices(empty, 0, ENGINE.legal_actions(empty, 0)) is None
+    assert unavailable_choices(empty, 0, ENGINE.whole_actions(empty, 0)) is None
 
 
 def test_no_reason_is_the_generic_fallback() -> None:
@@ -2415,7 +2427,7 @@ def _council_seat(spice: int, display: tuple[str, ...]) -> GameState:
             arguments=(("card_id", DAGGER), ("space_id", "high_council")),
         ),
     ).state
-    state = ENGINE.apply(
+    state = apply_whole(ENGINE, 
         state,
         DomainAction(
             action_id="resolve_board_effect",
@@ -2461,7 +2473,7 @@ def test_a_subcommittee_choice_nothing_can_meet_waits_greyed_out() -> None:
 def test_the_subcommittee_row_goes_once_one_can_be_joined() -> None:
     state = _council_seat(2, ("relations",))
     assert _legal(state, "choose_subcommittee") == [{}]
-    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     rows = found["rows"] if found is not None else []
     assert isinstance(rows, list)
     assert "waiting:choose_subcommittee" not in {row["key"] for row in rows}
@@ -2476,7 +2488,7 @@ def test_every_subcommittee_taken_greys_the_choice_beside_the_turn_end() -> None
     waiting ones, and says it lapses."""
     state = _council_seat(5, ("relations",))
     state = replace(state, scouts_subcommittee_members=(("relations", 1),))
-    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
+    assert [action.action_id for action in ENGINE.whole_actions(state, 0)] == [
         "finish_agent_turn"
     ]
     found = _found(state)
@@ -2530,7 +2542,7 @@ def test_a_bank_commander_with_no_skill_to_choose_greys_every_skill() -> None:
     confirm (OQ-031, OQ-035 (b): the Commander comes without a Skill); every
     face-up Skill shows greyed out as already held."""
     state = _bank_skill_choice(held=(0, 2), fresh=False)
-    assert ENGINE.legal_actions(state, 0) == (
+    assert ENGINE.whole_actions(state, 0) == (
         DomainAction(action_id="resolve_commander_without_skill", actor=0),
     )
     found = _found(state)
@@ -2544,7 +2556,7 @@ def test_a_bank_commander_with_no_skill_to_choose_greys_every_skill() -> None:
 
 def test_a_held_skill_is_greyed_beside_the_ones_the_seat_can_choose() -> None:
     state = _bank_skill_choice(held=(0,), fresh=True)
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     assert {action.action_id for action in legal} == {"choose_skill"}
     offered = {dict(action.arguments)["skill_id"] for action in legal}
     found = _found(state)
@@ -2569,7 +2581,7 @@ def test_an_acquire_tech_with_every_stack_empty_greys_the_acquisition() -> None:
     owner = PlayerState(player_id=0, resources=Resources(spice=9))
     state = _state(owner, config=config, tech_stacks=((), (), ()))
     opened = push_tech_acquisition(state, 0, discount=1, source="test").state
-    assert ENGINE.legal_actions(opened, 0) == (
+    assert ENGINE.whole_actions(opened, 0) == (
         DomainAction(action_id="decline_tech", actor=0),
     )
     found = _found(opened)
@@ -2594,7 +2606,7 @@ def test_an_acquire_tech_with_every_stack_empty_greys_the_acquisition() -> None:
         discount=1,
         source="test",
     ).state
-    assert unavailable_choices(stocked, 0, ENGINE.legal_actions(stocked, 0)) is None
+    assert unavailable_choices(stocked, 0, ENGINE.whole_actions(stocked, 0)) is None
 
 
 # --- Agent-box icons withheld until the turn's end (OQ-057 (1)) ---
@@ -2607,7 +2619,7 @@ def _imperium(card_id: str) -> str:
 def _icon_rows(state: GameState) -> dict[str, tuple[str, str, str]]:
     """The greyed Agent-box icon rows, keyed by surface and icon."""
 
-    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     rows = found["rows"] if found is not None else []
     assert isinstance(rows, list)
     return {
@@ -2629,7 +2641,7 @@ def test_steersman_recall_with_no_target_is_greyed_until_the_turn_end() -> None:
     state = _place(_state(owner), "deliver_supplies")
     assert not [
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id.startswith(("recall_agent", "recall_conflict_agent"))
     ]
     no_target = (
@@ -2647,10 +2659,10 @@ def test_steersman_recall_with_no_target_is_greyed_until_the_turn_end() -> None:
     # Resolve everything else: the row stays until the press, which fizzles
     # the icon.
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
-    while finish not in (legal := ENGINE.legal_actions(state, 0)):
-        state = ENGINE.apply(state, legal[0]).state
+    while finish not in (legal := ENGINE.whole_actions(state, 0)):
+        state = apply_whole(ENGINE, state, legal[0]).state
     assert _icon_rows(state) == {"choice:agent_icon:recall": no_target}
-    finished = ENGINE.apply(state, finish)
+    finished = apply_whole(ENGINE, state, finish)
     assert any(
         event.kind == "agent_card_effect_unavailable"
         and dict(event.payload)["effect"] == "recall"
@@ -2713,7 +2725,7 @@ def test_a_grafted_box_s_greyed_icons_name_their_own_card_and_box() -> None:
         "assembly_hall",
         graft=True,
     )
-    grafted = ENGINE.apply(
+    grafted = apply_whole(ENGINE, 
         placed,
         DomainAction(
             action_id="choose_graft_partner",
@@ -2724,7 +2736,7 @@ def test_a_grafted_box_s_greyed_icons_name_their_own_card_and_box() -> None:
     partner = DomainAction(
         action_id="resolve_agent_card_effect", actor=0, arguments=(("box", 1),)
     )
-    assert partner in ENGINE.legal_actions(grafted, 0)
+    assert partner in ENGINE.whole_actions(grafted, 0)
     expected = {
         "waiting:agent_icon:troops": (
             "Hidden Missive",
@@ -2735,7 +2747,7 @@ def test_a_grafted_box_s_greyed_icons_name_their_own_card_and_box() -> None:
             "Draw 1 card (at 2 Bene Gesserit Influence)",
         ),
     }
-    for state in (grafted, ENGINE.apply(grafted, partner).state):
+    for state in (grafted, apply_whole(ENGINE, grafted, partner).state):
         rows = _rows(_found(state), "waiting")
         assert {
             key: (row["action"]["detail_title"], row["action"]["detail"])
@@ -2823,11 +2835,11 @@ def test_tread_in_darkness_draw_greys_out_once_its_bond_card_is_trashed() -> Non
     assert _icon_rows(state) == {}
     trash = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "trash_agent_card"
         and dict(action.arguments)["card_id"] == bond
     )
-    state = ENGINE.apply(state, trash).state
+    state = apply_whole(ENGINE, state, trash).state
     assert _icon_rows(state) == {
         "choice:agent_icon:cards": (
             "Needs another Bene Gesserit card in play;"
@@ -2960,7 +2972,7 @@ def test_an_unreachable_market_greys_out_the_immediate_beside_the_hold() -> None
     beside it. The held-icons row is not added on the market itself."""
 
     state = _contract_market((_IMMEDIATE,))
-    assert ENGINE.legal_actions(state, 0) == (_HOLD,)
+    assert ENGINE.whole_actions(state, 0) == (_HOLD,)
     found = _found(state)
     assert [row["key"] for row in found["rows"]] == [
         f"choice:take_contract:{_IMMEDIATE}"
@@ -2970,7 +2982,7 @@ def test_an_unreachable_market_greys_out_the_immediate_beside_the_hold() -> None
 def test_no_market_row_once_the_seat_holds_an_intrigue_card() -> None:
     state = _contract_market((_IMMEDIATE,), intrigue_cards=("intrigue:0",))
     assert _legal(state, "take_contract") == [_take(_IMMEDIATE)]
-    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+    assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
 
 
 def _held_reason(lapse_en: str, lapse_ko: str) -> tuple[str, str, str]:
@@ -3009,9 +3021,9 @@ def test_held_contract_icons_wait_greyed_out_for_the_rest_of_the_turn() -> None:
     icon = DomainAction(
         action_id="resolve_board_effect", actor=0, arguments=(("effect", "contract"),)
     )
-    opened = ENGINE.apply(placed, icon).state
-    assert ENGINE.legal_actions(opened, 0) == (_HOLD,)
-    held = ENGINE.apply(opened, _HOLD).state
+    opened = apply_whole(ENGINE, placed, icon).state
+    assert ENGINE.whole_actions(opened, 0) == (_HOLD,)
+    held = apply_whole(ENGINE, opened, _HOLD).state
     assert held.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
 
     found = _found(held)
@@ -3046,8 +3058,8 @@ def test_conflict_reward_icons_wait_for_the_seat_s_rewards_to_end() -> None:
     # The reward window's rows are answered up to the Contract market its
     # Contract icon opens (stage B2, OQ-112).
     rewards = answer_reward_windows(ENGINE, resolve_combat_rewards(state).state)
-    assert ENGINE.legal_actions(rewards, 0) == (_HOLD,)
-    held = ENGINE.apply(rewards, _HOLD).state
+    assert ENGINE.whole_actions(rewards, 0) == (_HOLD,)
+    held = apply_whole(ENGINE, rewards, _HOLD).state
     assert held.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
     held = answer_reward_windows(ENGINE, held)
     assert held.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
@@ -3080,7 +3092,7 @@ def test_icons_held_in_the_scouts_step_say_when_they_lapse() -> None:
         scouts_opening=True,
         first_player=0,
     )
-    held = ENGINE.apply(scouts, _HOLD).state
+    held = apply_whole(ENGINE, scouts, _HOLD).state
     assert held.players[0].held_contract_icons == 1
     later = replace(
         held,
@@ -3135,10 +3147,10 @@ def _resolve_the_rest(state: GameState) -> GameState:
 
     while steps := [
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id in ("resolve_board_effect", "resolve_faction_influence")
     ]:
-        state = ENGINE.apply(state, steps[0]).state
+        state = apply_whole(ENGINE, state, steps[0]).state
     return state
 
 
@@ -3167,7 +3179,7 @@ def test_smuggler_s_haven_short_of_spice_waits_then_lapses_unused() -> None:
     assert row["card_id"] == SMUGGLERS_HAVEN
     assert row["box"] == 0
     assert _why(row) == _lapsing(short, FREE_ORDER)
-    harvested = ENGINE.apply(
+    harvested = apply_whole(ENGINE, 
         basin,
         DomainAction(
             action_id="harvest_maker_spice",
@@ -3176,10 +3188,10 @@ def test_smuggler_s_haven_short_of_spice_waits_then_lapses_unused() -> None:
         ),
     ).state
     assert _legal(harvested, "pay_agent_card_spice") == [{}]
-    assert unavailable_choices(harvested, 0, ENGINE.legal_actions(harvested, 0)) is None
+    assert unavailable_choices(harvested, 0, ENGINE.whole_actions(harvested, 0)) is None
 
     done = _resolve_the_rest(_smugglers_haven("deliver_supplies"))
-    assert [action.action_id for action in ENGINE.legal_actions(done, 0)] == [
+    assert [action.action_id for action in ENGINE.whole_actions(done, 0)] == [
         "finish_agent_turn"
     ]
     row = _optional_box_row(done)
@@ -3219,7 +3231,7 @@ def test_corrinth_city_short_of_solari_or_of_cards_greys_out() -> None:
     )
     both = _resolve_the_rest(placed(3, DAGGER, "player:0:starter:dagger:1"))
     assert _legal(both, "select_corrinth_city_discard")
-    assert unavailable_choices(both, 0, ENGINE.legal_actions(both, 0)) is None
+    assert unavailable_choices(both, 0, ENGINE.whole_actions(both, 0)) is None
 
 
 def test_branching_path_without_the_alliance_or_an_intrigue_card() -> None:
@@ -3317,7 +3329,7 @@ def test_reverend_mother_s_repeat_waits_for_the_space_then_for_water() -> None:
     )
     resolved = placed
     while icons := _legal(resolved, "resolve_board_effect"):
-        resolved = ENGINE.apply(
+        resolved = apply_whole(ENGINE, 
             resolved,
             DomainAction(
                 action_id="resolve_board_effect",
@@ -3369,7 +3381,7 @@ def test_a_sardaukar_commander_short_of_solari_greys_out() -> None:
     assert _why(row) == _lapsing(short, FREE_ORDER)
     paid = _resolve_the_rest(state)
     assert _legal(paid, "acquire_sardaukar_commander")
-    assert unavailable_choices(paid, 0, ENGINE.legal_actions(paid, 0)) is None
+    assert unavailable_choices(paid, 0, ENGINE.whole_actions(paid, 0)) is None
 
     done = _resolve_the_rest(_commander_visit(1, "deliver_supplies"))
     row = _rows(_found(done), "choice")["choice:sardaukar_commander"]
@@ -3430,7 +3442,7 @@ def test_a_landsraad_tech_offer_with_no_tile_in_reach_greys_out() -> None:
     )
     lit = _landsraad_visit(3)
     assert _legal(lit, "acquire_tech")
-    assert unavailable_choices(lit, 0, ENGINE.legal_actions(lit, 0)) is None
+    assert unavailable_choices(lit, 0, ENGINE.whole_actions(lit, 0)) is None
 
 
 def test_the_optional_rows_read_nothing_hidden() -> None:
@@ -3448,17 +3460,17 @@ def test_the_optional_rows_read_nothing_hidden() -> None:
     )
     rng = random.Random(11)
     for state in states:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
         assert found is not None and found["rows"]
         for _ in range(20):
             hidden = determinize(state, 0, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            hidden_legal = ENGINE.whole_actions(hidden, 0)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, 0, hidden_legal) == found
         for seat in range(1, 4):
             other = determinize(state, seat, rng)
-            other_legal = ENGINE.legal_actions(other, seat)
+            other_legal = ENGINE.whole_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
 
 
@@ -3505,7 +3517,7 @@ def reward_window(
     )
     state = answer_reward_windows(ENGINE, resolve_combat_rewards(state).state)
     while state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
-        state = ENGINE.apply(state, ENGINE.legal_actions(state, 0)[0]).state
+        state = apply_whole(ENGINE, state, ENGINE.whole_actions(state, 0)[0]).state
         state = answer_reward_windows(ENGINE, state)
     return state
 
@@ -3526,7 +3538,7 @@ def test_a_spice_payment_short_of_spice_greys_out_beside_the_refusal() -> None:
 
     state = reward_window("spice_freighters", resources=Resources(spice=1))
     assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
-    assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+    assert ENGINE.whole_actions(state, 0) == (_DECLINE_REWARD,)
     row = _reward_payment_row(state, "pay_combat_reward")
     assert (row["reason"], row["reason_ko"], row["code"]) == (
         "Needs 3 spice (you have 1)",
@@ -3538,7 +3550,7 @@ def test_a_spice_payment_short_of_spice_greys_out_beside_the_refusal() -> None:
 
 def test_a_solari_payment_short_of_solari_names_the_solari() -> None:
     state = reward_window("battle_for_spice_refinery", resources=Resources(solari=5))
-    assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+    assert ENGINE.whole_actions(state, 0) == (_DECLINE_REWARD,)
     row = _reward_payment_row(state, "pay_combat_reward")
     assert (row["reason"], row["reason_ko"], row["code"]) == (
         "Needs 6 solari (you have 5)",
@@ -3560,8 +3572,8 @@ def test_a_payment_the_seat_can_make_is_legal_and_greys_nothing() -> None:
         ("battle_for_spice_refinery", Resources(solari=6)),
     ):
         state = reward_window(conflict_id, resources=resources)
-        assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD, _PAY)
-        assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+        assert ENGINE.whole_actions(state, 0) == (_DECLINE_REWARD, _PAY)
+        assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
 
 
 def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
@@ -3573,18 +3585,18 @@ def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
         "economic_supremacy", config=_EPIC, resources=Resources(solari=6, spice=3)
     )
     assert dict(ready.decision_stack[-1].context)["resource"] == "solari"
-    assert ENGINE.legal_actions(ready, 0) == (_DECLINE_REWARD, _PAY)
-    assert unavailable_choices(ready, 0, ENGINE.legal_actions(ready, 0)) is None
-    paid = answer_reward_windows(ENGINE, ENGINE.apply(ready, _PAY).state)
+    assert ENGINE.whole_actions(ready, 0) == (_DECLINE_REWARD, _PAY)
+    assert unavailable_choices(ready, 0, ENGINE.whole_actions(ready, 0)) is None
+    paid = answer_reward_windows(ENGINE, apply_whole(ENGINE, ready, _PAY).state)
     assert dict(paid.decision_stack[-1].context)["resource"] == "spice"
-    assert ENGINE.legal_actions(paid, 0) == (_DECLINE_REWARD,)
+    assert ENGINE.whole_actions(paid, 0) == (_DECLINE_REWARD,)
     row = _reward_payment_row(paid, "pay_combat_reward")
     assert (row["reason"], row["reason_ko"]) == (
         "Needs 4 spice (you have 3)",
         "{spice:4} 필요 (보유 3)",
     )
     declined = answer_reward_windows(
-        ENGINE, ENGINE.apply(ready, _DECLINE_REWARD).state
+        ENGINE, apply_whole(ENGINE, ready, _DECLINE_REWARD).state
     )
     assert (
         _reward_payment_row(declined, "pay_combat_reward")["reason_ko"]
@@ -3594,13 +3606,13 @@ def test_each_arrow_of_a_reward_is_judged_in_its_own_window() -> None:
     twice = reward_window(
         "spice_freighters", sandworm=True, resources=Resources(spice=3)
     )
-    assert ENGINE.legal_actions(twice, 0) == (_DECLINE_REWARD, _PAY)
-    again = answer_reward_windows(ENGINE, ENGINE.apply(twice, _PAY).state)
+    assert ENGINE.whole_actions(twice, 0) == (_DECLINE_REWARD, _PAY)
+    again = answer_reward_windows(ENGINE, apply_whole(ENGINE, twice, _PAY).state)
     while again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE:
-        again = ENGINE.apply(again, ENGINE.legal_actions(again, 0)[0]).state
+        again = apply_whole(ENGINE, again, ENGINE.whole_actions(again, 0)[0]).state
         again = answer_reward_windows(ENGINE, again)
     assert again.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
-    assert ENGINE.legal_actions(again, 0) == (_DECLINE_REWARD,)
+    assert ENGINE.whole_actions(again, 0) == (_DECLINE_REWARD,)
     assert _reward_payment_row(again, "pay_combat_reward")["reason_ko"] == (
         "{spice:3} 필요 (보유 0)"
     )
@@ -3622,7 +3634,7 @@ def test_arrakeen_s_spy_recall_short_of_spies_greys_out_the_recall() -> None:
             spy_post_ids=_post_ids(count),
         )
         assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_SPY_RECALL
-        assert ENGINE.legal_actions(state, 0) == (_DECLINE_REWARD,)
+        assert ENGINE.whole_actions(state, 0) == (_DECLINE_REWARD,)
         row = _reward_payment_row(state, _RECALL_SPIES)
         assert (row["reason"], row["reason_ko"], row["code"]) == (
             f"Needs 2 Spies of yours on the board (you have {held_en})",
@@ -3635,7 +3647,7 @@ def test_a_spy_recall_with_two_spies_on_the_board_is_legal_and_greys_nothing() -
     state = reward_window(
         "battle_for_arrakeen", spies_supply=0, spy_post_ids=_post_ids(3)
     )
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     assert legal[0] == _DECLINE_REWARD and len(legal) == 4
     assert {action.action_id for action in legal[1:]} == {_RECALL_SPIES}
     assert unavailable_choices(state, 0, legal) is None
@@ -3649,7 +3661,7 @@ def test_no_payment_row_for_a_seat_that_does_not_decide_it() -> None:
         ),
     ):
         for seat in range(1, 4):
-            legal = ENGINE.legal_actions(state, seat)
+            legal = ENGINE.whole_actions(state, seat)
             assert unavailable_choices(state, seat, legal) is None
 
 
@@ -3666,17 +3678,17 @@ def test_the_payment_rows_read_nothing_hidden() -> None:
     )
     rng = random.Random(5)
     for state in states:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         found = cast(dict[str, Any] | None, unavailable_choices(state, 0, legal))
         assert found is not None and len(found["rows"]) == 1
         for _ in range(20):
             hidden = determinize(state, 0, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            hidden_legal = ENGINE.whole_actions(hidden, 0)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, 0, hidden_legal) == found
         for seat in range(1, 4):
             other = determinize(state, seat, rng)
-            other_legal = ENGINE.legal_actions(other, seat)
+            other_legal = ENGINE.whole_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
 
 
@@ -3742,7 +3754,7 @@ def _maker_visit(
 
 
 def _maker_rows(state: GameState) -> dict[str, dict[str, Any]]:
-    raw = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    raw = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     if raw is None:
         return {}
     found = cast(dict[str, Any], raw)
@@ -3772,7 +3784,7 @@ def _legal_ids(state: GameState) -> list[str]:
 
     return [
         action.action_id
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id in _MAKER_IDS
     ]
 
@@ -3903,17 +3915,17 @@ def test_the_maker_rows_read_nothing_hidden() -> None:
     )
     rng = random.Random(8)
     for state in states:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
         assert found is not None and found["rows"]
         for _ in range(20):
             hidden = determinize(state, 0, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            hidden_legal = ENGINE.whole_actions(hidden, 0)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, 0, hidden_legal) == found
         for seat in range(1, 4):
             other = determinize(state, seat, rng)
-            other_legal = ENGINE.legal_actions(other, seat)
+            other_legal = ENGINE.whole_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
 
 
@@ -3947,7 +3959,7 @@ def _sietch_tabr_visit(**fields: Any) -> GameState:
 def _sietch_ids(state: GameState) -> list[str]:
     return [
         action.action_id
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id.startswith("take_sietch_tabr")
     ]
 
@@ -3971,16 +3983,16 @@ def test_sietch_tabr_with_the_wall_in_place_offers_the_detonation() -> None:
         "take_sietch_tabr_water",
         _DETONATE,
     ]
-    assert unavailable_choices(present, 0, ENGINE.legal_actions(present, 0)) is None
+    assert unavailable_choices(present, 0, ENGINE.whole_actions(present, 0)) is None
 
 
 def test_the_detonation_row_goes_once_the_choice_is_taken() -> None:
     gone = _sietch_tabr_visit(shield_wall_present=False)
-    taken = ENGINE.apply(
+    taken = apply_whole(ENGINE, 
         gone, DomainAction(action_id="take_sietch_tabr_water", actor=0)
     ).state
     assert _sietch_ids(taken) == []
-    found = unavailable_choices(taken, 0, ENGINE.legal_actions(taken, 0))
+    found = unavailable_choices(taken, 0, ENGINE.whole_actions(taken, 0))
     assert found is None or all(
         _DETONATE not in row["key"] for row in cast(dict[str, Any], found)["rows"]
     )
@@ -3988,18 +4000,18 @@ def test_the_detonation_row_goes_once_the_choice_is_taken() -> None:
 
 def test_the_detonation_row_reads_nothing_hidden() -> None:
     state = _sietch_tabr_visit(shield_wall_present=False)
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     found = cast(dict[str, Any] | None, unavailable_choices(state, 0, legal))
     assert found is not None and len(found["rows"]) == 1
     rng = random.Random(13)
     for _ in range(20):
         hidden = determinize(state, 0, rng)
-        hidden_legal = ENGINE.legal_actions(hidden, 0)
+        hidden_legal = ENGINE.whole_actions(hidden, 0)
         assert hidden_legal == legal
         assert unavailable_choices(hidden, 0, hidden_legal) == found
     for seat in range(1, 4):
         other = determinize(state, seat, rng)
-        other_legal = ENGINE.legal_actions(other, seat)
+        other_legal = ENGINE.whole_actions(other, seat)
         assert unavailable_choices(other, seat, other_legal) is None
 
 
@@ -4041,7 +4053,7 @@ def _leader_reveal(
     owner = PlayerState(
         player_id=0, leader_id=leader_id, hand=(DAGGER,), **owner_fields
     )
-    revealed = ENGINE.apply(
+    revealed = apply_whole(ENGINE, 
         _state(owner, config=config), DomainAction(action_id="reveal_turn", actor=0)
     ).state
     assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
@@ -4051,14 +4063,14 @@ def _leader_reveal(
 def _ability_ids(state: GameState) -> list[str]:
     return [
         action.action_id
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id
         in ("retreat_leader_troop", "retreat_leader_commander", "recall_spy_for_leader")
     ]
 
 
 def _ability_rows(state: GameState) -> dict[str, dict[str, Any]]:
-    raw = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    raw = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
     if raw is None:
         return {}
     found = cast(dict[str, Any], raw)
@@ -4134,7 +4146,7 @@ def test_the_ability_row_goes_once_it_is_used_and_for_other_leaders() -> None:
 
     posts = tuple(post.post_id for post in OBSERVATION_POSTS[:1])
     spied = _leader_reveal(_FEYD, spies_supply=2, spy_post_ids=posts)
-    used = ENGINE.apply(
+    used = apply_whole(ENGINE, 
         spied,
         DomainAction(
             action_id="recall_spy_for_leader",
@@ -4159,17 +4171,17 @@ def test_the_leader_reveal_rows_read_nothing_hidden() -> None:
     )
     rng = random.Random(17)
     for state in states:
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
         assert found is not None and found["rows"]
         for _ in range(20):
             hidden = determinize(state, 0, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            hidden_legal = ENGINE.whole_actions(hidden, 0)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, 0, hidden_legal) == found
         for seat in range(1, 4):
             other = determinize(state, seat, rng)
-            other_legal = ENGINE.legal_actions(other, seat)
+            other_legal = ENGINE.whole_actions(other, seat)
             assert unavailable_choices(other, seat, other_legal) is None
 
 
@@ -4186,11 +4198,11 @@ def _bought_glowglobes(influence: Influence) -> GameState:
     state = _resolve_the_rest(_landsraad_visit(3, influence=influence))
     buy = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "acquire_tech"
         and dict(action.arguments).get("tech_id") == "glowglobes"
     )
-    bought = ENGINE.apply(state, buy).state
+    bought = apply_whole(ENGINE, state, buy).state
     assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     return bought
 
@@ -4215,7 +4227,7 @@ def test_a_tech_acquire_influence_greys_the_factions_at_the_top() -> None:
     open_tracks = _bought_glowglobes(Influence(emperor=2))
     assert len(_legal(open_tracks, "resolve_tech_acquire_effect")) == 4
     assert (
-        unavailable_choices(open_tracks, 0, ENGINE.legal_actions(open_tracks, 0))
+        unavailable_choices(open_tracks, 0, ENGINE.whole_actions(open_tracks, 0))
         is None
     )
 
@@ -4228,7 +4240,7 @@ def test_a_tech_acquire_influence_with_every_faction_at_the_top_waits() -> None:
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     state = _bought_glowglobes(full)
     assert _legal(state, "resolve_tech_acquire_effect") == []
-    assert [a.action_id for a in ENGINE.legal_actions(state, 0)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(state, 0)] == [
         "finish_agent_turn"
     ]
     found = _found(state)

@@ -306,7 +306,7 @@ for seed in seeds:
             stored = SaveStore(saves).write(document)
             print(json.dumps({"seed": seed, "save_id": stored["save_id"]}))
             sys.exit(0)
-        legal = session.engine.legal_actions(session.state, 0)
+        legal = session.engine.whole_actions(session.state, 0)
         view = session.engine.observe(session.state, 0)
         index = legal.index(agent.choose_action_with_state(session.state, view, legal))
         manager.apply_action(game_id, 0, int(payload["revision"]), index)
@@ -1113,7 +1113,7 @@ for seed in seeds:
                 print(json.dumps({**found, "owner": owner, "answerer": seat}))
                 sys.exit(0)
             break
-        legal = session.engine.legal_actions(session.state, seat)
+        legal = session.engine.whole_actions(session.state, seat)
         view = session.engine.observe(session.state, seat)
         index = legal.index(
             agents[seat].choose_action_with_state(session.state, view, legal)

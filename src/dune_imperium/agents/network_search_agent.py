@@ -450,12 +450,16 @@ class NetworkSearchAgent:
         if self.hold_combat_lead:
             legal_actions = holds_combat_lead(state, observation.player, legal_actions)
         if not self.search_effect_order and orders_agent_effects(state):
-            return self.greedy.choose_action(observation, legal_actions)
+            return self.greedy.choose_action_with_state(
+                state, observation, legal_actions
+            )
         offered = without_undo_actions(legal_actions)
         if len(offered) == 1:
             return offered[0]
         if self._untrained_only(offered):
-            return self.greedy.choose_action(observation, legal_actions)
+            return self.greedy.choose_action_with_state(
+                state, observation, legal_actions
+            )
         encoded = self._encode(observation)
         key, fresh = self._taken.untried(
             state.round_number, observation.player, encoded, offered

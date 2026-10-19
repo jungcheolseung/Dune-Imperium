@@ -25,7 +25,7 @@ for seed in range(30):
             continue
         owner = summary["decision"]["owner"]
         session = manager._get(gid)
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         for tech_id in ("glowglobes", "navigation_chamber"):
             if tech_id in found:
                 continue

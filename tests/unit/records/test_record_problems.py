@@ -8,6 +8,7 @@ import pytest
 
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.state import GameState
 from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.records.problems import (
     HumanProblem,
@@ -23,6 +24,7 @@ from dune_imperium.records.problems import (
 )
 from dune_imperium.records.saves import SavedGame, human_decisions, read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.effect_steps import STEP_SPECS, first_step, path_of
 from dune_imperium.server.persistence import serialize_step
 from dune_imperium.training.policy import without_undo_actions
 
@@ -116,15 +118,21 @@ def test_a_suite_keeps_the_agreed_positions_and_their_record(
     assert "log" not in record and record["format_version"] == 1
     # The person's move is the one the judge saw: the recorded step as the
     # migration replays it (a recorded placement is this engine's space pick
-    # once its card is picked, codec v150).
+    # once its card is picked, codec v150; a recorded whole action is the last
+    # of its effect and target steps, stage B3).
     judged_moves = {row["step"]: row["human"] for row in judged}
+    migrated = {
+        step.recorded_index: step.step
+        for step in migrate_record(game.parsed.replay).steps
+        if step.recorded_index is not None
+    }
     for problem in loaded.problems:
         recorded = game.parsed.replay.steps[problem.recorded_index]
         assert isinstance(recorded, DomainAction)
         assert _text(problem.person) == judged_moves[problem.recorded_index]
+        assert problem.person == migrated[problem.recorded_index]
         assert problem.person == recorded or (
-            recorded.action_id == "agent_turn"
-            and problem.person.action_id == "place_agent"
+            recorded.action_id == "agent_turn" or recorded.action_id in STEP_SPECS
         )
         assert (problem.right == problem.person) == (problem.family == "human_right")
 
@@ -263,15 +271,25 @@ def test_a_person_move_a_bridge_rewrote_is_frozen_in_its_migrated_form(
 ) -> None:
     game = _game_with_human(tmp_path, 3)
     recorded = game.parsed.replay.steps
-    # A placement's space pick is rewritten too (codec v150); this test is
-    # about the box resolution the cleanup bridges rewrite.
+    # A placement's space pick and every whole action's last step are
+    # rewritten too (codec v150); this test is about the box resolution the
+    # cleanup bridge rewrites: step 134, seat 3's Signet Ring resolved with no
+    # icon named (``agent_card_effect_named``), which is its solari icon here.
+    assert recorded[134] == DomainAction("resolve_agent_card_effect", 3)
     decision = next(
         decision
         for decision in human_decisions(game)
-        if decision.chosen != recorded[decision.recorded_index]
-        and decision.chosen.action_id != "place_agent"
+        if decision.recorded_index == 134
     )
-    assert decision.chosen.action_id == "resolve_agent_card_effect"
+    assert decision.chosen == DomainAction(
+        "gain",
+        3,
+        (
+            ("icon", "solari"),
+            ("printed", "lady_amber_metulli"),
+            ("source", "leader"),
+        ),
+    )
     other = next(
         action
         for action in without_undo_actions(decision.legal_actions)
@@ -367,17 +385,18 @@ def test_the_network_move_goes_through_the_rewrite_bridges(tmp_path: Path) -> No
     record = migrate_record(game.parsed.replay, engine)
     # A position where one named card effect is offered and the seat did
     # something else: the network's move, judged in old terms, is the
-    # argument-less effect.
+    # argument-less effect (a whole action here; the rows it stands for are
+    # what the position offers, stage B3).
     for state, migrated in walk(record, engine):
         step = migrated.step
         if not isinstance(step, DomainAction) or migrated.recorded_index is None:
             continue
         named = [
             action
-            for action in engine.legal_actions(state, step.actor)
+            for action in engine.whole_actions(state, step.actor)
             if action.action_id == "resolve_agent_card_effect" and action.arguments
         ]
-        if len(named) == 1 and step.action_id != "resolve_agent_card_effect":
+        if len(named) == 1 and step not in (path_of(state, named[0]) or ()):
             break
     else:
         pytest.fail("no position with one named card effect in the record")
@@ -413,7 +432,7 @@ def test_the_network_move_goes_through_the_rewrite_bridges(tmp_path: Path) -> No
     (position,) = resolve(suite).values()
 
     assert isinstance(position, Resolved), position
-    assert position.wrong == named[0]
+    assert position.wrong == first_step(state, named[0])
 
 
 def test_a_decision_confirmed_twice_is_refused(game: SavedGame) -> None:
@@ -587,3 +606,108 @@ def test_an_ai_seat_s_mistakes_are_frozen_and_scored_by_kind(
         )
     with pytest.raises(ValueError, match="picked twice"):
         build_mistake_suite([game], [picks[0], picks[0]], note="test")
+
+
+def _effect_problem(
+    tmp_path: Path, same_effect: bool
+) -> tuple[Resolved | str, GameState, tuple[DomainAction, ...], DomainAction]:
+    """A problem at a recorded whole action with a target (stage B3: the
+    migration takes it as its effect step and then its target step), the
+    network's move another effect (``same_effect`` False) or the same effect
+    with another target. Returns the resolution, the state before the
+    effect step, the person's steps and the network's whole action."""
+
+    from dune_imperium.records.migration import migrate_record, walk
+    from dune_imperium.rules import UprisingRulesEngine
+
+    for seat in range(4):
+        game = _game_with_human(tmp_path, seat)
+        engine = UprisingRulesEngine()
+        record = migrate_record(game.parsed.replay, engine)
+        base: GameState | None = None
+        mine: list[DomainAction] = []
+        for state, migrated in walk(record, engine):
+            step = migrated.step
+            if not isinstance(step, DomainAction):
+                continue
+            if migrated.recorded_index is None and migrated.bridge == "effect_step":
+                base = state if not mine else base
+                mine.append(step)
+                continue
+            if (
+                migrated.bridge != "effect_last_step"
+                or base is None
+                or step.actor != seat
+            ):
+                base, mine = None, []
+                continue
+            mine.append(step)
+            wholes = engine.whole_actions(base, seat)
+            for whole in wholes:
+                path = path_of(base, whole) or (whole,)
+                if path == tuple(mine) or len(path) < 2 and same_effect:
+                    continue
+                if (path[0] == mine[0]) != same_effect:
+                    continue
+                assert migrated.recorded_index is not None
+                recorded = game.parsed.replay.steps[migrated.recorded_index]
+                assert isinstance(recorded, DomainAction)
+                common = {
+                    "game": "bbbbbbbb",
+                    "step": migrated.recorded_index,
+                    "round": state.round_number,
+                    "seat": seat,
+                    "human": _text(recorded),
+                }
+                judged = [
+                    {
+                        **common,
+                        "effect_order": True,
+                        "values": [[0, 1], [0, 1]],
+                        "human_col": 1,
+                    }
+                ]
+                confirmed = [
+                    {
+                        **common,
+                        "first": "human",
+                        "second": "human",
+                        "mean": 0.1,
+                        "error": 0.01,
+                        "p_human": 0.1,
+                        "net_first": _text(whole),
+                    }
+                ]
+                suite = build_suite([game], judged, confirmed, "test")
+                (position,) = resolve(suite).values()
+                return position, base, tuple(mine), whole
+            base, mine = None, []
+    pytest.fail("no whole action with a target in the record")
+
+
+def test_a_problem_at_another_effect_is_asked_before_the_effect_step(
+    tmp_path: Path,
+) -> None:
+    # Stage B3: the person's whole action is its effect and then its target;
+    # the network resolving another effect parts from it at the effect, so
+    # the position is the decision before the person picked theirs.
+    position, base, mine, whole = _effect_problem(tmp_path, same_effect=False)
+
+    assert isinstance(position, Resolved), position
+    assert position.state == base
+    assert position.right == mine[0]
+    assert position.wrong == first_step(base, whole)
+
+
+def test_a_problem_at_another_target_is_asked_at_the_target_step(
+    tmp_path: Path,
+) -> None:
+    # The same effect with another target parts at the target: asked once the
+    # person's effect is picked.
+    position, base, mine, whole = _effect_problem(tmp_path, same_effect=True)
+
+    assert isinstance(position, Resolved), position
+    assert position.state != base
+    assert position.right == mine[-1]
+    path = path_of(base, whole)
+    assert path is not None and position.wrong == path[len(mine) - 1]

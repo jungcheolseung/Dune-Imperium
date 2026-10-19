@@ -48,6 +48,7 @@ from pathlib import Path
 
 from placement_walk import walk_step
 
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
@@ -111,7 +112,7 @@ def expires_box(engine, state, owner, card_id) -> bool:
     return any(
         event.kind == "agent_card_effect_expired"
         and dict(event.payload).get("card_id") == card_id
-        for event in engine.apply(state, action).events
+        for event in apply_whole(engine, state, action).events
     )
 
 
@@ -155,7 +156,7 @@ for name, seed, want_pending in CASES:
             summary = manager.confirm_turn(gid, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         pair = twin_rows(session.state, owner, actions)
         if pair is not None:
             played, pending = frame_lists(session.state)

@@ -15,6 +15,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     encode_player_view,
 )
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_SETUP_SPACE_IDS,
     SKILL_FACE_UP,
@@ -51,6 +52,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_commander_withdrawals,
     reconcile_deployment_after_retreat,
 )
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_deployment,
@@ -301,14 +303,14 @@ def test_without_two_solari_nothing_is_offered_and_the_turn_end_lapses_it() -> N
     engine = UprisingRulesEngine()
     while steps := [
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id
         in ("resolve_faction_influence", "resolve_agent_card_effect")
     ]:
-        state = engine.apply(state, steps[0]).state
+        state = apply_whole(engine, state, steps[0]).state
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
-    assert finish in engine.legal_actions(state, 0)
-    finished = engine.apply(state, finish)
+    assert finish in engine.whole_actions(state, 0)
+    finished = apply_whole(engine, state, finish)
     assert [
         dict(event.payload)
         for event in finished.events
@@ -1148,7 +1150,7 @@ def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> Non
 
     engine = UprisingRulesEngine()
     deploy = DomainAction("deploy_commanders", 0, (("count", 1),))
-    result = engine.apply(opened, deploy)
+    result = apply_whole(engine, opened, deploy)
     deployed = result.state
     context = dict(deployed.decision_stack[-1].context)
     assert deployed.players[0].commanders_conflict == 1
@@ -1163,7 +1165,7 @@ def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> Non
 
     # Once each round: taking the spice (another transition) pays nothing more.
     (gain,) = legal_reveal_gain_actions(deployed, 0)
-    taken = engine.apply(deployed, gain).state
+    taken = apply_whole(engine, deployed, gain).state
     assert taken.players[0].resources.spice == 1
     assert dict(taken.decision_stack[-1].context)["persuasion"] == persuasion + 1
     assert legal_reveal_gain_actions(taken, 0) == ()
@@ -1194,7 +1196,7 @@ def test_a_commander_deployed_during_the_reveal_pays_hardys_troop() -> None:
     ).state
     assert legal_reveal_gain_actions(revealed, 0) == ()
     engine = UprisingRulesEngine()
-    result = engine.apply(
+    result = apply_whole(engine, 
         grant_combat_icon(revealed, 0),
         DomainAction("deploy_commanders", 0, (("count", 1),)),
     )
@@ -1206,7 +1208,7 @@ def test_a_commander_deployed_during_the_reveal_pays_hardys_troop() -> None:
     assert "water" not in dict(bonus.payload)
     supply = deployed.players[0].troops_supply
     (recruit,) = legal_reveal_gain_actions(deployed, 0)
-    recruited = engine.apply(deployed, recruit).state
+    recruited = apply_whole(engine, deployed, recruit).state
     assert recruited.players[0].troops_supply == supply - 1
     assert recruited.players[0].resources.water == 1
 
@@ -1229,7 +1231,7 @@ def test_reveal_bonuses_paid_at_the_start_are_not_paid_again_late() -> None:
     ).state
     persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
     engine = UprisingRulesEngine()
-    deployed = engine.apply(
+    deployed = apply_whole(engine, 
         grant_combat_icon(revealed, 0),
         DomainAction("deploy_commanders", 0, (("count", 1),)),
     ).state
@@ -1397,7 +1399,7 @@ def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> Non
     # strengths after every step; the card stays seat 0's, awarded once, and
     # the cleanup zeroes the markers.
     engine = UprisingRulesEngine()
-    transition = engine.apply(
+    transition = apply_whole(engine, 
         refreshed, DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
     )
     assert [event.kind for event in transition.events].count("conflict_won") == 0
@@ -1502,10 +1504,24 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # icon a Conflict reward prints (14 without Bloodlines' Deep Cover
         # Spy).
         + 14
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_action_codec.test_catalog_is_fixed...): 792 leave and
+        # 964 rows join.
+        - 792
+        + 964
     )
 
-    actions = (
+    # Stage B3a: the Commander's acquisition at the Sardaukar space is an
+    # effect row naming the space and icon, then the Skill as its target row.
+    acquire_commander = steps_for(
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
+        "sardaukar",
+    )
+    assert [row.action_id for row in acquire_commander] == ["acquire", "choose_skill"]
+    actions = (
+        *acquire_commander,
         DomainAction("recruit_sardaukar_commander", 3),
         DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),
         DomainAction("deploy_commanders", 0, (("count", 7),)),

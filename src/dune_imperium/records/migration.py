@@ -63,6 +63,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.personal_cards import (
@@ -94,6 +95,13 @@ from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.combat import legacy_combat_reward_icon
 from dune_imperium.rules.contracts import legacy_contract_reward_icon
+from dune_imperium.rules.effect_steps import (
+    first_step,
+    path_of,
+    picked_rows,
+    presents_steps,
+    without_pick,
+)
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
@@ -139,6 +147,7 @@ from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION, reward_was_chos
 # recorded step fits (each reward recipient's pause, every seat's
 # Conflict-end window, the Round Start pause); this many means the record
 # and the engine have lost each other.
+
 MAX_BRIDGES_PER_STEP = 64
 # What ``follows`` bridges add after one recorded step: a few held draws
 # (Piter's two rewards, a Tleilaxu Intrigue behind them, Hungry for Spice's
@@ -197,6 +206,37 @@ class MigratedStep:
     # choice frame the recording engine had on top when the step was taken
     # (``_RevealSlot``); None otherwise.
     reveal_source: str | None = None
+
+
+def _apply_answer(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    answer: ReplayStep,
+    bridge: str,
+    migrated: list[MigratedStep],
+) -> GameState:
+    """Apply a bridge's answer, recorded as ``bridge``'s steps.
+
+    A bridge speaks the recording engines' whole actions; where this engine
+    offers a waiting effect effect first (stage B3, ``rules.effect_steps``),
+    a whole action is taken as the steps that stand for it, each recorded
+    under the bridge."""
+
+    while (
+        isinstance(answer, DomainAction)
+        and presents_steps(state)
+        and answer not in engine.legal_actions(state, answer.actor)
+        and answer in engine.whole_actions(state, answer.actor)
+    ):
+        left = steps_after(state, answer)
+        row = first_step(state, answer)
+        state = engine.apply(state, row).state
+        migrated.append(MigratedStep(row, None, bridge))
+        if left == 0:
+            return state
+    state = engine.apply(state, answer).state
+    migrated.append(MigratedStep(answer, None, bridge))
+    return state
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +404,9 @@ def migrate_record(
                 dropped.append((index, refused))
                 continue
         step, rewritten_by = recorded, None
+        # The whole action a recorded step's last effect step ends (stage
+        # B3): what the ``follows`` bridges read, as the recording engine did.
+        whole = recorded
         box = 0 if graft is None else graft.box
         reveal_source = None if reveal is None else reveal.top_source(recorded)
         for _ in range(MAX_BRIDGES_PER_STEP):
@@ -395,7 +438,9 @@ def migrate_record(
                 # box 1's (``agent_card_effect_named``).
                 asked = (
                     tagged(step, 1)
-                    if box == 1 and isinstance(step, DomainAction)
+                    if box == 1
+                    and isinstance(step, DomainAction)
+                    and step.action_id in BOX_ACTION_IDS
                     else step
                 )
                 bridged = _bridge(engine, state, asked, bridges)
@@ -507,10 +552,11 @@ def migrate_record(
                     return ended(divergence, state)
                 bridge, answer = bridged
                 if bridge.rewrites:
+                    if bridge.name == EFFECT_LAST_STEP:
+                        whole = step
                     step, rewritten_by = answer, bridge.name
                     continue
-                state = engine.apply(state, answer).state
-                migrated.append(MigratedStep(answer, None, bridge.name))
+                state = _apply_answer(engine, state, answer, bridge.name, migrated)
                 if bridge.name == TRANSPORTS_CARD_FIRST:
                     assert isinstance(answer, DomainAction)
                     transports_taken[answer.actor] += 1
@@ -526,7 +572,13 @@ def migrate_record(
                 harvest_due[recorded.actor] += 1
             if reveal is not None:
                 reveal.applied(before, after, recorded)
-            followed = _follow(engine, after, step, bridges, migrated)
+            followed = _follow(
+                engine,
+                after,
+                whole if rewritten_by == EFFECT_LAST_STEP else step,
+                bridges,
+                migrated,
+            )
             if followed is None:
                 del migrated[mark:]
                 divergence = Divergence(
@@ -719,7 +771,7 @@ def _asked_earlier(
             or step.action_id not in _HARVEST_CELLS_CHOICES
         ):
             continue
-        return (ahead, step) if step in engine.legal_actions(state, owner) else None
+        return (ahead, step) if step in engine.whole_actions(state, owner) else None
     return None
 
 
@@ -848,7 +900,7 @@ def _conflict_end_reopened(
     finish = DomainAction(
         action_id="finish_conflict_end_intrigue", actor=decision.owner
     )
-    return finish if finish in engine.legal_actions(state, decision.owner) else None
+    return finish if finish in engine.whole_actions(state, decision.owner) else None
 
 
 _CONFLICT_END_WINDOW_STEPS: Final = frozenset(
@@ -896,7 +948,7 @@ def _conflict_end_finish(
     finish = DomainAction(
         action_id="finish_conflict_end_intrigue", actor=decision.owner
     )
-    return finish if finish in engine.legal_actions(state, decision.owner) else None
+    return finish if finish in engine.whole_actions(state, decision.owner) else None
 _TURN_ROW_STEPS: Final = frozenset(
     {
         "choose_research_influence",
@@ -984,7 +1036,7 @@ class _GraftSlot:
         ):
             return None
         candidate = tagged(step, 1)
-        if candidate in engine.legal_actions(state, step.actor):
+        if candidate in engine.whole_actions(state, step.actor):
             return candidate
         return None
 
@@ -1034,7 +1086,7 @@ def graft_box_held(
         return None
     if step not in box_actions(state, step.actor, box):
         return None
-    legal = engine.legal_actions(state, step.actor)
+    legal = engine.whole_actions(state, step.actor)
     if box == 1:
         if tagged(step, 1) in legal:
             return None
@@ -1407,7 +1459,7 @@ def _offered(
         return []
     return [
         action
-        for action in engine.legal_actions(state, step.actor)
+        for action in engine.whole_actions(state, step.actor)
         if action.action_id == step.action_id
         and tuple(
             (key, value) for key, value in action.arguments if key != SOURCE_ARGUMENT
@@ -1451,7 +1503,7 @@ def walk(
     state = engine.reset(record.replay.ruleset, record.replay.seed)
     for migrated in record.steps:
         yield state, migrated
-        state = engine.apply(state, migrated.step).state
+        state = apply_whole(engine, state, migrated.step).state
 
 
 def rewrite_step(
@@ -1488,7 +1540,7 @@ def rewrite_step(
         if step.action_id in (_DEFER, _RESUME) or (
             step.action_id in _OPTIONAL_REVEAL_REFUSALS
             and not sourced
-            and step not in engine.legal_actions(state, step.actor)
+            and step not in engine.whole_actions(state, step.actor)
         ):
             return None
         if sourced:
@@ -1569,8 +1621,7 @@ def _follow(
         if firings == MAX_FOLLOWS_PER_STEP:
             return None
         bridge, answer = found
-        state = engine.apply(state, answer).state
-        migrated.append(MigratedStep(answer, None, bridge.name))
+        state = _apply_answer(engine, state, answer, bridge.name, migrated)
         firings += 1
     return state
 
@@ -1617,7 +1668,7 @@ def _made_for(
         return False
     return step.action_id in answers or any(
         action.action_id == step.action_id
-        for action in engine.legal_actions(state, decision.owner)
+        for action in engine.whole_actions(state, decision.owner)
     )
 
 
@@ -1662,7 +1713,7 @@ def _decline_in(
         ):
             return None
         decline = DomainAction(action_id=decline_id, actor=decision.owner)
-        if decline not in engine.legal_actions(state, decision.owner):
+        if decline not in engine.whole_actions(state, decision.owner):
             return None
         return decline
 
@@ -1696,7 +1747,7 @@ def _scouts_no_option(
     ):
         return None
     confirm = DomainAction(action_id=SCOUTS_NO_OPTION, actor=decision.owner)
-    if engine.legal_actions(state, decision.owner) != (confirm,):
+    if engine.whole_actions(state, decision.owner) != (confirm,):
         return None
     return confirm
 
@@ -1734,7 +1785,7 @@ def _named_card_effect(
     box = row_box(step)
     named = [
         action
-        for action in engine.legal_actions(state, decision.owner)
+        for action in engine.whole_actions(state, decision.owner)
         if action.action_id == _CARD_EFFECT
         and row_box(action) == box
         and tuple(key for key, _ in untagged(action).arguments) == ("effect",)
@@ -1782,7 +1833,7 @@ def _privilege_draw(
         actor=step.actor,
         arguments=(("effect", "cards"),),
     )
-    return draw if draw in engine.legal_actions(state, step.actor) else None
+    return draw if draw in engine.whole_actions(state, step.actor) else None
 
 
 def _troop_from_garrison(
@@ -1808,7 +1859,7 @@ def _troop_from_garrison(
     ):
         return None
     troop = DomainAction(action_id="scouts_lose_garrison_unit", actor=decision.owner)
-    return troop if troop in engine.legal_actions(state, decision.owner) else None
+    return troop if troop in engine.whole_actions(state, decision.owner) else None
 
 
 def _prison_planet_commanders_only(
@@ -1847,7 +1898,7 @@ def _prison_planet_commanders_only(
     # offers the commander, and the join actions exist only in this frame.
     # The troop target is what tells a seat the old engine asked (it has its
     # recorded answer) from one it skipped.
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     owner = decision.owner
 
     def join(target: str) -> DomainAction:
@@ -1905,7 +1956,7 @@ def _shigawire_draw(
     )
     if state.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS or not (
         resolves_boost_draw(state, draw)
-        and draw in engine.legal_actions(state, decision.owner)
+        and draw in engine.whole_actions(state, decision.owner)
     ):
         return None
     if _ghola_draw(state, 0):
@@ -1945,7 +1996,7 @@ def _research_icon_order(
     del step
     if not isinstance(decision, PlayerDecision):
         return None
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     icons = {
         dict(action.arguments)["effect"]: action
         for action in legal
@@ -2031,7 +2082,7 @@ def _split_icon_moves(
     if found is None:
         return []
     effect, pending = found
-    legal = engine.legal_actions(state, player)
+    legal = engine.whole_actions(state, player)
     moves = []
     for key, action_id, arguments in _SPLIT_BOX_MOVES[effect]:
         if key not in pending:
@@ -2042,8 +2093,8 @@ def _split_icon_moves(
             return []
         moves.append(move)
     if len(moves) == 2:
-        after = engine.apply(state, moves[0]).state
-        if moves[1] not in engine.legal_actions(after, player):
+        after = apply_whole(engine, state, moves[0]).state
+        if moves[1] not in engine.whole_actions(after, player):
             moves.reverse()
     return moves
 
@@ -2115,6 +2166,70 @@ def _agent_space_pick(
     return move if move in engine.legal_actions(state, step.actor) else None
 
 
+EFFECT_LAST_STEP: Final = "effect_last_step"
+
+
+def _effect_path(
+    state: GameState, decision: Decision, step: ReplayStep
+) -> tuple[tuple[DomainAction, ...], int] | None:
+    """A recorded whole action (before codec v150) in a frame that offers
+    its waiting effects effect first, as its steps and how many of them are
+    picked; None for any other step."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+        and presents_steps(state)
+    ):
+        return None
+    path = path_of(without_pick(state), step)
+    if path is None:
+        return None
+    picked = len(picked_rows(state))
+    if path[:picked] != picked_rows(state) or picked >= len(path):
+        return None
+    return path, picked
+
+
+def _effect_step(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Before a recorded whole action, the next of the steps this engine
+    asks first: its effect, then each target but the last (stage B3)."""
+
+    found = _effect_path(state, decision, step)
+    if found is None:
+        return None
+    path, picked = found
+    if picked == len(path) - 1:
+        return None
+    move = path[picked]
+    return move if move in engine.legal_actions(state, move.actor) else None
+
+
+def _effect_last_step(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded whole action, once the steps before its last are picked,
+    as its last step (its effect row when it has no target)."""
+
+    found = _effect_path(state, decision, step)
+    if found is None:
+        return None
+    path, picked = found
+    if picked != len(path) - 1:
+        return None
+    move = path[picked]
+    return move if move in engine.legal_actions(state, move.actor) else None
+
+
 def _split_box_icon(
     engine: UprisingRulesEngine,
     state: GameState,
@@ -2148,7 +2263,7 @@ def _split_box_icon(
         arguments=(("effect", "cards"),),
     )
     draw = tagged(draw, 1) if box == 1 else draw
-    if "cards" in AGENT_BOX_ABILITIES[found[0]].icons and draw in engine.legal_actions(
+    if "cards" in AGENT_BOX_ABILITIES[found[0]].icons and draw in engine.whole_actions(
         state, step.actor
     ):
         return draw
@@ -2185,7 +2300,7 @@ def _split_box_follow(
             continue
         move = DomainAction(action_id=action_id, actor=step.actor, arguments=arguments)
         move = tagged(move, 1) if box == 1 else move
-        if move != step and move in engine.legal_actions(state, step.actor):
+        if move != step and move in engine.whole_actions(state, step.actor):
             return move
     return None
 
@@ -2215,7 +2330,7 @@ def _split_box_spy(
             arguments=step.arguments,
         )
         move = tagged(move, 1) if box == 1 else move
-        if move in engine.legal_actions(state, step.actor):
+        if move in engine.whole_actions(state, step.actor):
             return move
     return None
 
@@ -2241,7 +2356,7 @@ def _signet_without_option(
         actor=step.actor,
         arguments=step.arguments,
     )
-    return confirm if confirm in engine.legal_actions(state, step.actor) else None
+    return confirm if confirm in engine.whole_actions(state, step.actor) else None
 
 
 def _combat_trash_declined_without_card(
@@ -2264,7 +2379,7 @@ def _combat_trash_declined_without_card(
     confirm = DomainAction(
         action_id="resolve_combat_trash_without_card", actor=step.actor
     )
-    return confirm if confirm in engine.legal_actions(state, step.actor) else None
+    return confirm if confirm in engine.whole_actions(state, step.actor) else None
 
 
 def _tech_influence_confirm(
@@ -2284,7 +2399,7 @@ def _tech_influence_confirm(
     confirm = DomainAction(
         action_id="resolve_tech_influence_without_faction", actor=decision.owner
     )
-    return confirm if confirm in engine.legal_actions(state, decision.owner) else None
+    return confirm if confirm in engine.whole_actions(state, decision.owner) else None
 
 
 def _planetologist_intrigue(
@@ -2316,7 +2431,7 @@ def _planetologist_intrigue(
     ):
         return None
     draw = DomainAction(action_id="draw_planetologist_intrigue", actor=decision.owner)
-    return draw if draw in engine.legal_actions(state, decision.owner) else None
+    return draw if draw in engine.whole_actions(state, decision.owner) else None
 
 
 def _intrigue_held_rewards(
@@ -2349,7 +2464,7 @@ def _intrigue_held_rewards(
     ):
         return None
     held = DomainAction(action_id="resolve_intrigue_rewards", actor=decision.owner)
-    return held if engine.legal_actions(state, decision.owner) == (held,) else None
+    return held if engine.whole_actions(state, decision.owner) == (held,) else None
 
 
 _PITER = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
@@ -2422,12 +2537,12 @@ def _piter_reward(
             return None
     elif len(waiting) != 1:
         return None
-    legal = engine.legal_actions(state, player)
+    legal = engine.whole_actions(state, player)
     key = waiting[0]
     # Piter's box is the active one: box 1's rewards are its tagged rows.
     box = _top_box(state)
     if len(waiting) == 2 and _reward_icon(player, "research", box) in legal:
-        trial = engine.apply(
+        trial = apply_whole(engine, 
             state, _reward_icon(player, "research", box), legal_actions=legal
         ).state
         top = trial.decision_stack[-1]
@@ -2483,7 +2598,7 @@ def _reverse_engineering_reward(
         if state.intrigue_deck
         else _REVERSE_ENGINEERING_ORDER[::-1]
     )
-    legal = engine.legal_actions(state, player)
+    legal = engine.whole_actions(state, player)
     # In the Signet Ring's box the rewards are that box's rows: box 1's
     # tagged (codec v143). A Servo-Receivers frame is no box.
     box = _top_box(state)
@@ -2525,7 +2640,7 @@ def _scouts_held_draw(
     ):
         return None
     held = DomainAction(action_id=_SCOUTS_HELD_DRAW, actor=decision.owner)
-    return held if engine.legal_actions(state, decision.owner) == (held,) else None
+    return held if engine.whole_actions(state, decision.owner) == (held,) else None
 
 
 _SCOUTS_REWARD_PAUSE = f":{SCOUTS_REWARD}{FIXED_OUTCOME_SUFFIX}"
@@ -2600,7 +2715,7 @@ def _owed_draw(
     if not owed:
         return None
     draw = DomainAction(action_id=_OWED_DRAW_ACTIONS[owed[0][0]], actor=decision.owner)
-    return draw if draw in engine.legal_actions(state, decision.owner) else None
+    return draw if draw in engine.whole_actions(state, decision.owner) else None
 
 
 _FOE_SOURCE = "leader_reveal:unpredictable_foe"
@@ -2647,7 +2762,7 @@ def _unpredictable_foe_draw(
     else:
         return None
     draw = DomainAction(action_id="draw_reveal_intrigue", actor=player)
-    return draw if draw in engine.legal_actions(state, player) else None
+    return draw if draw in engine.whole_actions(state, player) else None
 
 
 _DISCARD_SHUFFLE = ":discard_shuffle"
@@ -2837,10 +2952,10 @@ def _refinish_agent_turn(
         or state.players[player].owed_draws
         or _made_for(engine, state, decision, step, frozenset({_FINISH_AGENT_TURN}))
         or not _reopened_since_press(state, player)
-        or press not in engine.legal_actions(state, player)
+        or press not in engine.whole_actions(state, player)
     ):
         return None
-    pressed = engine.apply(state, press)
+    pressed = apply_whole(engine, state, press)
     if any(event.kind == "agent_turn_reopened" for event in pressed.events):
         return None
     return press
@@ -2878,7 +2993,7 @@ def _shigawire_partner_draw(
     draw = _reward_icon(decision.owner, "cards", 1)
     if not (
         resolves_boost_draw(state, draw)
-        and draw in engine.legal_actions(state, decision.owner)
+        and draw in engine.whole_actions(state, decision.owner)
     ):
         return None
     if _ghola_draw(state, 1):
@@ -2924,7 +3039,7 @@ def _boost_draw_at_turn_end(
         return None
     _, context = current_agent_effect_context(state)
     in_play = state.players[decision.owner].in_play
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     for box in (0, 1):
         card_id = boost_draw_card(context, box)
         draw = _reward_icon(decision.owner, "cards", box)
@@ -2986,7 +3101,7 @@ def _box_refused_at_turn_end(
     ):
         return None
     context = dict(state.decision_stack[-1].context)
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     for box in (0, 1) if is_grafted_turn(context) else (0,):
         view = state_with_active_box(state, box)
         effect = active_agent_card(dict(view.decision_stack[-1].context)).agent_effect
@@ -3036,7 +3151,7 @@ def _combat_reward_icon(
         state, decision.owner
     ) or legacy_contract_reward_icon(state, decision.owner)
     # An owed draw of the owner's own turn comes first (OQ-106).
-    if answer is None or answer not in engine.legal_actions(state, decision.owner):
+    if answer is None or answer not in engine.whole_actions(state, decision.owner):
         return None
     return answer
 
@@ -3070,7 +3185,7 @@ def _transports_card_first(
     if not any(entry[1] == OWED_ORIGIN_CHOAM_TRANSPORTS for entry in owner.owed_draws):
         return None
     draw = DomainAction(action_id="draw_owed_card", actor=decision.owner)
-    return draw if engine.legal_actions(state, decision.owner) == (draw,) else None
+    return draw if engine.whole_actions(state, decision.owner) == (draw,) else None
 
 
 def _transports_reshuffle_renamed(
@@ -3283,6 +3398,13 @@ BRIDGES: tuple[Bridge, ...] = (
     # the space pick.
     Bridge("agent_space_pick", _agent_space_pick, before_codec=150, rewrites=True),
     Bridge("agent_card_pick", _agent_card_pick, before_codec=150),
+    # Codec v150 (stage B3, OQ-111): a waiting effect is picked before its
+    # target; a recorded whole action takes its effect and each target but
+    # the last first, then itself as the last step.
+    Bridge(
+        EFFECT_LAST_STEP, _effect_last_step, before_codec=150, rewrites=True
+    ),
+    Bridge("effect_step", _effect_step, before_codec=150),
     Bridge("split_box_icon", _split_box_icon, before_codec=149, rewrites=True),
     Bridge("split_box_follow", _split_box_follow, before_codec=149, follows=True),
     Bridge("split_box_spy", _split_box_spy, before_codec=149, rewrites=True),

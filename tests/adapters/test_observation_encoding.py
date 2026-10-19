@@ -16,9 +16,16 @@ from dune_imperium.adapters.observation_encoding import (
     encode_player_view,
     segment_slice,
 )
-from dune_imperium.core import ChanceDecision, ChanceResolver, GamePhase, PlayerDecision
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
+    DomainAction,
+    GamePhase,
+    PlayerDecision,
+)
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.action_shapes import Source, Verb
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.simulation import run_random_game
 
@@ -81,6 +88,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v33: the seat's own picked Agent card (one count per personal-card
     # identity) and its graft flag, 139 + 1 columns (5,093 -> 5,233; stage
     # B1, OQ-111).
+    # Also v33 (stage B3a, OQ-111 (4)): the seat's own picked effect, its
+    # verb (one-hot over 45), source (one-hot over 21), printed personal
+    # card (139), grafted-box flag (1) and the count of targets picked so
+    # far (1), 45 + 21 + 139 + 1 + 1 columns (5,233 -> 5,440).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -114,8 +125,13 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4 * 139
         + 139
         + 1
+        + 45
+        + 21
+        + 139
+        + 1
+        + 1
     )
-    assert OBSERVATION_SIZE == 5_233
+    assert OBSERVATION_SIZE == 5_440
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -149,7 +165,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
             segment_slice(f"seat{seat}_deck_pool").stop
             == segment_slice(f"seat{seat + 1}_deck_pool").start
         )
-    # v33 appends the picked Agent card and its graft flag last.
+    # v33 appends the picked Agent card and its graft flag, then (stage B3a)
+    # the picked effect's verb, source, card, box and target count, last.
     assert (
         segment_slice("seat3_deck_pool").stop
         == segment_slice("private_agent_card_pick").start
@@ -158,7 +175,17 @@ def test_layout_is_versioned_and_contiguous() -> None:
         segment_slice("private_agent_card_pick").stop
         == segment_slice("private_agent_card_pick_graft").start
     )
-    assert segment_slice("private_agent_card_pick_graft").stop == OBSERVATION_SIZE
+    pick_segments = (
+        "private_agent_card_pick_graft",
+        "private_effect_pick_verb",
+        "private_effect_pick_source",
+        "private_effect_pick_card",
+        "private_effect_pick_box",
+        "private_effect_pick_targets",
+    )
+    for before, after in zip(pick_segments, pick_segments[1:], strict=False):
+        assert segment_slice(before).stop == segment_slice(after).start
+    assert segment_slice("private_effect_pick_targets").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -230,6 +257,63 @@ def test_the_picked_agent_card_is_encoded_for_its_own_seat_only() -> None:
         else:
             assert not any(encoded[card_columns])
             assert not any(encoded[graft_column])
+
+
+def test_the_picked_effect_is_encoded_for_its_own_seat_only() -> None:
+    # v33 (stage B3a, OQ-111 (4)): a waiting effect is picked before its
+    # target, and the seat deciding the target sees the effect it picked
+    # (verb, source, printed card, box, targets so far); no other seat's
+    # vector holds it.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=5)
+    assert state.first_player is not None
+    owner = state.first_player
+    place = DomainAction(
+        "place_agent", owner, arguments=(("space_id", "desert_tactics"),)
+    )
+    placed = next(
+        engine.apply(picked, place).state
+        for picked in (
+            engine.apply(state, pick).state
+            for pick in engine.legal_actions(state, owner)
+            if pick.action_id == "choose_agent_card"
+        )
+        if place in engine.legal_actions(picked, owner)
+    )
+    # Desert Tactics' optional trash: an effect row, then the card to trash.
+    trash = next(
+        action
+        for action in engine.legal_actions(placed, owner)
+        if action.action_id == "trash"
+    )
+    picked = engine.apply(placed, trash).state
+    assert {row.action_id for row in engine.legal_actions(picked, owner)} == {
+        "choose_personal_card"
+    }
+
+    verb = segment_slice("private_effect_pick_verb")
+    source = segment_slice("private_effect_pick_source")
+    card = segment_slice("private_effect_pick_card")
+    box = segment_slice("private_effect_pick_box")
+    targets = segment_slice("private_effect_pick_targets")
+    assert verb.stop - verb.start == len(Verb)
+    assert source.stop - source.start == len(Source)
+    for observer in range(4):
+        before = encode_player_view(engine.observe(placed, observer))
+        assert not any(before[verb.start : targets.stop])
+        encoded = encode_player_view(engine.observe(picked, observer))
+        if observer != owner:
+            assert not any(encoded[verb.start : targets.stop])
+            continue
+        assert encoded[verb][tuple(Verb).index(Verb.TRASH)] == 1
+        assert sum(encoded[verb]) == 1
+        assert encoded[source][tuple(Source).index(Source.BOARD_SPACE)] == 1
+        assert sum(encoded[source]) == 1
+        # A board space printed the effect: no personal card, no grafted box,
+        # and no target picked yet.
+        assert not any(encoded[card])
+        assert tuple(encoded[box]) == (0,)
+        assert tuple(encoded[targets]) == (0,)
 
 
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
@@ -767,21 +851,38 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # promo_bloodlines_tech 55, everything 79, draft 48, scouts 68), which the
 # older engine paid inside the step before; there the random seat draws over
 # the window's rows and the games part.
+# Re-pinned for stage B3a (OQ-111, observation v33, codec v150): the
+# Agent-effect frame offers a waiting effect as an effect row and then its
+# target rows, and the seat picking the target sees the effect it picked in
+# the appended ``private_effect_pick_*`` columns. A random seat now draws over
+# the rows (fewer than the whole actions they stand for, and a targeted
+# effect takes two decisions), so every game's trajectory moves at its first
+# Agent-effect frame offering several effects. An export of the previous
+# commit (1bea95ad, ``git archive``) reproduces the six old pins exactly
+# (2,768, 2,776, 2,984, 3,796, 2,516 and 2,564 vectors). What was checked
+# instead, per decision: the digest of the four views without the appended
+# columns, the frame on top, the deciding seat and the number of offered
+# actions equal the old export's at each of the first 18 decisions (base), 7
+# (choam), 35 (promo_bloodlines_tech), 29 (everything), 11 (draft) and 7
+# (scouts), where the list is shorter (base: 10 whole actions, 6 rows); and
+# the appended columns are nonzero only in the picking seat's own vector
+# while its pick is pending (base 2 vectors, choam 10, promo_bloodlines_tech
+# 35, everything 28, draft 6, scouts 10; none in another seat's).
 _GOLDEN_DIGESTS = {
-    "base": ("1fc5a1ec7a26ccbfcbcde802514c30c8094d409eb67ff6184c987060c489d85f", 2768),
-    "choam": ("018025c4440c166a06a9909c0178e34d9965931cdc733c74ee277b3cd6ae2f3a", 2776),
+    "base": ("8c69d4e4be9d753b52104d90dfaa67914c8f55102f45e2dc5a18208086dd35cf", 3012),
+    "choam": ("58c136cd6b484e4ad3b70d876b0959ccc4f2f5c899cb738eb55104b6522fd69d", 2508),
     "promo_bloodlines_tech": (
-        "233624bfa4b955c2f12a358ebe25776614e6f27b50a324edd8e1bacaee7c9d82",
-        2984,
+        "9c2065d8f67361cd882b8332c1840b10d08981fa269857c892ac31a1ec70af90",
+        3356,
     ),
     "everything": (
-        "f4cba0ab1b272f7bbecce5b2b9f85b4a5849ee42d52b3d7f73587d4a93d48819",
-        3796,
+        "e42f073dac7bed7bbc91c3d58c38c7819da56cfa119dc2524e64636e77f94066",
+        4152,
     ),
-    "draft": ("ddd905e555561cb935a255e8dec9a4dd52a821ed08feee16e0ba6a27c3474d64", 2516),
+    "draft": ("a6a46b22a90adfc117ae6569e8d14ed762dee3af6adb073d9e223b0765e228e6", 2108),
     "scouts": (
-        "fd0467274482a30312889c6224886102ca40a3524f0e1d18d08c28a7274cef8f",
-        2564,
+        "703849545d84bccc528bc21d0d2b8a6a805b085ac72b0dd388194724c1e17847",
+        2808,
     ),
 }
 _GOLDEN_CONFIGS = {

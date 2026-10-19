@@ -9,10 +9,12 @@ documents leave open are recorded in ``docs/rules/open-questions.md``.
 
 from dataclasses import replace
 
+import pytest
 from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS_BY_ID,
     imperium_deck_instance_ids,
@@ -55,6 +57,7 @@ from dune_imperium.rules.combat import (
     offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, top_frame
@@ -377,11 +380,11 @@ def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
     ):
         action = next(
             action
-            for action in engine.legal_actions(state, 0)
+            for action in engine.whole_actions(state, 0)
             if action.action_id == action_id
             and all(dict(action.arguments)[key] == value for key, value in arguments)
         )
-        state = engine.apply(state, action).state
+        state = apply_whole(engine, state, action).state
     assert _context(state)["units_deploy_blocked"] is True
     return state
 
@@ -789,6 +792,13 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # icon a Conflict reward prints (14 here; Bloodlines adds the Deep
         # Cover Spy).
         + 14
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_action_codec.test_catalog_is_fixed...): 810 leave and
+        # 983 rows join (the promo cards add their own effect rows).
+        - 810
+        + 983
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -819,21 +829,43 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # with the CHOAM module, ``resolve_contract_reward_icon`` (9).
         + 14
         + 9
+        # v150 (stage B3a, OQ-111): 866 whole templates leave and 1,043 rows
+        # join (see above).
+        - 866
+        + 1043
     )
-    for action_id in (
-        "pay_agent_card_spice_for_sandworm",
-        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+    # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
+    # the card (an effect without a target is one row). The other cards that
+    # print a sandworm payment hold theirs in every catalog; the promo cards
+    # add only the rows that name them.
+    base = ActionCodec(RulesetConfig())
+    for action_id, option in (
+        ("pay_agent_card_spice_for_sandworm", "sandworm"),
+        (
+            "pay_agent_card_spice_for_sandworm_and_shield_wall",
+            "sandworm_and_shield_wall",
+        ),
     ):
         action = DomainAction(action_id=action_id, actor=1)
-        assert codec.decode(codec.encode(action), actor=1) == action
-        base = ActionCodec(RulesetConfig())
-        assert base.decode(base.encode(action), actor=1) == action
+        (row,) = steps_for(action, "arrakis_revolt")
+        assert dict(row.arguments)["option"] == option
+        assert codec.decode(codec.encode(row), actor=1) == row
+        with pytest.raises(ValueError, match="not present"):
+            base.encode(row)
+        (shared,) = steps_for(action, "branching_path")
+        assert base.decode(base.encode(shared), actor=1) == shared
+        assert codec.decode(codec.encode(shared), actor=1) == shared
+    # Pivotal Gambit's trash: the effect row, then any card of the promo
+    # catalog as its target.
     play = DomainAction(
         action_id="trash_agent_card",
         actor=2,
         arguments=(("card_id", _promo_instance("pivotal_gambit")),),
     )
-    assert codec.decode(codec.encode(play), actor=2) == play
+    rows = steps_for(play, "pivotal_gambit")
+    assert [row.action_id for row in rows] == ["trash", "choose_personal_card"]
+    for row in rows:
+        assert codec.decode(codec.encode(row), actor=2) == row
 
 
 def test_random_games_finish_with_the_promo_cards_in_both_rulesets() -> None:

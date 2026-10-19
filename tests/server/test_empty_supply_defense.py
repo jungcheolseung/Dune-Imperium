@@ -85,7 +85,9 @@ def _walk_to_empty_supply_defense() -> tuple[GameSessionManager, str, JsonObject
                 defender = state.players[owner]
                 if defender.troops_supply == 0 and defender.specimens > 0:
                     return manager, game_id, summary, owner
-            actions = session.engine.legal_actions(state, owner)
+            # The payload indexes the seat's whole actions (stage B3), which
+            # the walk applies by index below.
+            actions = session.engine.whole_actions(state, owner)
             # The agent answers from the state: its Agent-turn card pick is
             # made from the placements it weighs (stage B1).
             agent = agents[owner]

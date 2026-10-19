@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -80,7 +80,8 @@ def _council_step(state: GameState) -> dict[str, Any]:
         and "dagger" in str(dict(action.arguments)["card_id"])
     )
     placed = apply_placement(ENGINE, state, placement).state
-    legal = ENGINE.legal_actions(placed, 0)
+    # The payload indexes the seat's whole actions (stage B3).
+    legal = ENGINE.whole_actions(placed, 0)
     council = DomainAction(
         action_id="resolve_board_effect",
         actor=0,
@@ -218,7 +219,8 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
         and "dagger" in str(dict(action.arguments)["card_id"])
     )
     placed = apply_placement(ENGINE, _state(3), placement).state
-    seated = ENGINE.apply(
+    seated = apply_whole(
+        ENGINE,
         placed,
         DomainAction(
             action_id="resolve_board_effect",
@@ -226,7 +228,7 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
             arguments=(("effect", "high_council"),),
         ),
     ).state
-    legal = ENGINE.legal_actions(seated, 0)
+    legal = ENGINE.whole_actions(seated, 0)
     rows = {
         action.action_id: _serialize_action(
             legal.index(action),
@@ -241,8 +243,8 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
     assert "decline_subcommittee" not in rows
     # Opening the list is not the seat taking its seat: no preview on it.
     assert "subcommittee_preview" not in rows["choose_subcommittee"]
-    chosen = ENGINE.apply(
-        seated, DomainAction(action_id="choose_subcommittee", actor=0)
+    chosen = apply_whole(
+        ENGINE, seated, DomainAction(action_id="choose_subcommittee", actor=0)
     ).state
     join = DomainAction(
         action_id="join_subcommittee",
@@ -250,7 +252,7 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
         arguments=(("subcommittee_id", "readiness"),),
     )
     joined = _serialize_action(
-        ENGINE.legal_actions(chosen, 0).index(join),
+        ENGINE.whole_actions(chosen, 0).index(join),
         join,
         _session(chosen),  # type: ignore[arg-type]
     )

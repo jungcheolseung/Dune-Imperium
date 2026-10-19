@@ -37,6 +37,7 @@ decision owner's trash choices would lose a box.
 import logging
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
@@ -179,7 +180,8 @@ def _box_losing_trash(
     if not pending:
         return ()
     losing: list[tuple[str, str]] = []
-    for action in engine.legal_actions(state, seat):
+    # The whole actions (stage B3: a trash with the card it trashes).
+    for action in engine.whole_actions(state, seat):
         if action.action_id not in TRASH_CARD_ACTIONS:
             continue
         # The row's own box is active in ``view``: a grafted turn's box 1
@@ -194,7 +196,7 @@ def _box_losing_trash(
         if not isinstance(card_id, str) or card_id not in pending:
             continue
         try:
-            result = engine.apply(state, action)
+            result = apply_whole(engine, state, action)
         except Exception:
             _LOGGER.exception("the dry run of %s failed", action.action_id)
             continue

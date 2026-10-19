@@ -30,7 +30,7 @@ from typing import Any
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import encode_player_view
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -151,8 +151,9 @@ def _apply(state: GameState, action_id: str, **arguments: str | int) -> GameStat
     action = DomainAction(
         action_id=action_id, actor=0, arguments=tuple(sorted(arguments.items()))
     )
-    assert action in ENGINE.legal_actions(state, 0), action
-    return ENGINE.apply(state, action).state
+    # The rules' whole actions, as the seat's payload lists them (stage B3).
+    assert action in ENGINE.whole_actions(state, 0), action
+    return apply_whole(ENGINE, state, action).state
 
 
 def _lists(state: GameState) -> set[tuple[tuple[str, ...], tuple[str, ...]]]:
@@ -191,7 +192,7 @@ def test_the_card_played_this_turn_is_named_beside_the_earlier_copy() -> None:
     )
     assert any(
         action.action_id == "finish_agent_turn"
-        for action in ENGINE.legal_actions(done, 0)
+        for action in ENGINE.whole_actions(done, 0)
     )
     assert _lists(done) == {((THIS_TURN,), ())}
 
@@ -400,7 +401,8 @@ def _walk(
             continue
         owner = _obj(summary["decision"])["owner"]
         assert isinstance(owner, int)
-        actions = ENGINE.legal_actions(session.state, owner)
+        # The walk's index is the payload's: into the whole actions.
+        actions = ENGINE.whole_actions(session.state, owner)
         hit = found(session.state, owner, actions)
         if hit:
             return manager, game_id, owner, hit
@@ -504,11 +506,11 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     # The flag says what the engine does with the row.
     trash = next(
         action
-        for action in ENGINE.legal_actions(session.state, owner)
+        for action in ENGINE.whole_actions(session.state, owner)
         if action.action_id == "trash_optional_card"
         and dict(action.arguments)["card_id"] == card
     )
-    events = ENGINE.apply(session.state, trash).events
+    events = apply_whole(ENGINE, session.state, trash).events
     assert ("agent_card_effect_expired", card) in {
         (event.kind, dict(event.payload).get("card_id")) for event in events
     }
@@ -586,11 +588,11 @@ def test_feyds_signet_ring_trashed_by_its_own_box_keeps_its_rewards() -> None:
     session = manager._get(game_id)
     trash = next(
         action
-        for action in ENGINE.legal_actions(session.state, 0)
+        for action in ENGINE.whole_actions(session.state, 0)
         if action.action_id == "trash_leader_card"
         and dict(action.arguments)["card_id"] == signet
     )
-    result = ENGINE.apply(session.state, trash)
+    result = apply_whole(ENGINE, session.state, trash)
     kinds = {event.kind for event in result.events}
     assert not kinds & {"agent_card_effect_expired", "leader_signet_expired"}
     _, pending = turn_cards(result.state)
@@ -620,13 +622,13 @@ def test_a_research_trash_of_a_pending_signet_ring_is_flagged() -> None:
         DomainAction("resolve_board_effect", 0, (("effect", "research"),)),
         DomainAction("choose_research_space", 0, (("space_id", "c3r3"),)),
     ):
-        assert action in ENGINE.legal_actions(state, 0)
-        state = ENGINE.apply(state, action).state
+        assert action in ENGINE.whole_actions(state, 0)
+        state = apply_whole(ENGINE, state, action).state
     _, pending = turn_cards(state)
     assert pending == (signet,)
     trash = DomainAction("trash_optional_card", 0, (("card_id", signet),))
     assert box_losing_trash(ENGINE, state, 0) == (("trash_optional_card", signet),)
-    result = ENGINE.apply(state, trash)
+    result = apply_whole(ENGINE, state, trash)
     assert [
         dict(event.payload)["card_id"]
         for event in result.events
@@ -655,7 +657,7 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
         _state((DISSECTING_KIT, FACE_DANCER)), DISSECTING_KIT, "arrakeen", FACE_DANCER
     )
     assert "trash_grafted_card_for_specimen" in {
-        action.action_id for action in ENGINE.legal_actions(kit, 0)
+        action.action_id for action in ENGINE.whole_actions(kit, 0)
     }
     # The row names no card: it always trashes the partner.
     assert box_losing_trash(ENGINE, kit, 0) == (

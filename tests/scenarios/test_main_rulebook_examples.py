@@ -1,7 +1,7 @@
 """Golden scenarios derived from the official Uprising rulebook examples."""
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -73,15 +73,15 @@ def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> No
 
     # The visit is a card pick and then a space pick (stage B1).
     state = apply_placement(engine, state, visit).state
-    effect_actions = engine.legal_actions(state, 0)
+    effect_actions = engine.whole_actions(state, 0)
     assert "summon_maker_sandworms" not in {
         action.action_id for action in effect_actions
     }
     harvest = next(
         action for action in effect_actions if action.action_id == "harvest_maker_spice"
     )
-    state = engine.apply(state, harvest).state
-    deployments = engine.legal_actions(state, 0)
+    state = apply_whole(engine, state, harvest).state
+    deployments = engine.whole_actions(state, 0)
 
     # Two garrison troops at most [Main p. 11]; deploying none is the
     # explicit turn end (OQ-029).
@@ -98,8 +98,8 @@ def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> No
         actor=0,
         arguments=(("count", 2),),
     )
-    state = engine.apply(state, deploy_two).state
-    state = engine.apply(
+    state = apply_whole(engine, state, deploy_two).state
+    state = apply_whole(engine, 
         state, DomainAction(action_id="finish_agent_turn", actor=0)
     ).state
 
@@ -150,20 +150,20 @@ def test_main_page_13_reveal_acquires_and_immediately_refills_the_row() -> None:
     engine = UprisingRulesEngine()
     reveal = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "reveal_turn"
     )
 
-    state = engine.apply(state, reveal).state
+    state = apply_whole(engine, state, reveal).state
     context = dict(state.decision_stack[-1].context)
     assert context["persuasion"] == 3
     assert state.players[0].combat_strength == 4
     acquire = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == desert_survival
     )
-    state = engine.apply(state, acquire).state
+    state = apply_whole(engine, state, acquire).state
 
     assert state.imperium_row == (replacement, *row[1:])
     assert state.imperium_deck == other_cards[5:]
@@ -172,10 +172,10 @@ def test_main_page_13_reveal_acquires_and_immediately_refills_the_row() -> None:
 
     finish = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "finish_reveal"
     )
-    state = engine.apply(state, finish).state
+    state = apply_whole(engine, state, finish).state
 
     assert state.players[0].discard_pile == (
         desert_survival,

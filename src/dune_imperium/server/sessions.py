@@ -58,6 +58,7 @@ from pathlib import Path
 from typing import Final
 
 from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
+from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
     SEARCH_PREFIX,
@@ -93,6 +94,7 @@ from dune_imperium.rules.agent_turn import (
     agent_card_pick,
     agent_space_pick_actions,
 )
+from dune_imperium.rules.effect_steps import first_step, picked_rows
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
@@ -126,6 +128,7 @@ from dune_imperium.server.persistence import (
 )
 from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.session_log import (
+    EFFECT_PICKED_EVENT,
     SEALED_ACTION_IDS,
     SEALED_REVEAL_EVENTS,
     SEALED_SHOWN_KEYS,
@@ -892,7 +895,7 @@ class GameSessionManager:
             if held == seat:
                 # Its turn is over and its next one waits behind the press.
                 raise SessionError(f"seat {seat} has not confirmed its turn end yet")
-            actions = session.engine.legal_actions(session.state, seat)
+            actions = session.engine.whole_actions(session.state, seat)
             if not 0 <= index < len(actions):
                 raise SessionError("action index is out of range")
             action = actions[index]
@@ -902,7 +905,11 @@ class GameSessionManager:
                 session.open_units.pop(held, None)
             _human_acts_locked(session)
             before = session.state
-            _apply_step(session, action)
+            # A whole action of a frame that offers its waiting effects
+            # effect first is its steps, taken one after another (stage B3).
+            for _ in range(steps_after(session.state, action)):
+                _apply_step(session, first_step(session.state, action))
+            _apply_step(session, first_step(session.state, action))
             own_steps = len(session.steps)
             ended = self._settle_locked(session, before, action)
             passed = ended or _turn_passed(session, seat, own_steps)
@@ -986,10 +993,16 @@ class GameSessionManager:
                     f"seat {seat} may take back at most {window} step(s) now"
                 )
             keep = len(session.steps) - steps
+            rewound = _state_after(session, keep)
+            # The steps of one whole action go back together: an undo never
+            # stops between a waiting effect and its target (stage B3).
+            while picked_rows(rewound) and keep > len(session.steps) - window:
+                keep -= 1
+                rewound = _state_after(session, keep)
             _human_acts_locked(session)
-            session.state = _state_after(session, keep)
+            session.state = rewound
+            mark_undone(session.log, seat, len(session.steps) - keep)
             del session.steps[keep:]
-            mark_undone(session.log, seat, steps)
             session.undo_count += 1
             # The rewound state is again this seat's own decision.
             session.awaiting_confirmation = None
@@ -1433,7 +1446,7 @@ class GameSessionManager:
         actions = (
             ()
             if session.awaiting_confirmation == seat
-            else session.engine.legal_actions(session.state, seat)
+            else session.engine.whole_actions(session.state, seat)
         )
         lines = scouts_choice_lines(session.state, seat, actions) if actions else None
         unavailable: dict[str, object] | None = None
@@ -2958,24 +2971,35 @@ def _log_entry_json(
         return payload
     redact = not finished and step.actor != seat
     shown = SEALED_SHOWN_KEYS.get(step.action_id) if redact and entry.sealed else None
+    # The last step of a waiting effect shows the whole action it ends
+    # (stage B3); a step that only picks toward it is marked ``pick``.
+    action = entry.whole or step
     arguments = {
         key: (
             "(비공개)"
             if redact and (entry.sealed or value in entry.hidden_arguments)
             else value
         )
-        for key, value in step.arguments
+        for key, value in action.arguments
         if shown is None or key in shown
     }
-    return {
+    action_id = action.action_id
+    if entry.picks and redact:
+        # Another seat learns nothing of a half-picked effect, not even
+        # what it does (OQ-111 (4)); the step that ends it shows it whole.
+        action_id, arguments = EFFECT_PICKED_EVENT, {}
+    payload = {
         "index": index,
         "type": "action",
         "actor": step.actor,
-        "action_id": step.action_id,
+        "action_id": action_id,
         "arguments": _jsonify(arguments),
         "undone": entry.undone,
         "events": events,
     }
+    if entry.picks:
+        payload["pick"] = True
+    return payload
 
 
 def _step_summary(step: ReplayStep) -> str:
@@ -3420,7 +3444,7 @@ def _dry_run(session: GameSession, action: DomainAction) -> RuleResult | None:
     """Apply ``action`` to a copy of the state; None when the engine refuses."""
 
     try:
-        transition = session.engine.apply(session.state, action)
+        transition = apply_whole(session.engine, session.state, action)
     except Exception:  # noqa: BLE001 - a failing dry run is reported as such
         return None
     return RuleResult(state=transition.state, events=transition.events)

@@ -18,7 +18,7 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents.agent_turn_steps import apply_placement
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.agent import AppAIAgent
 from dune_imperium.agents.app_ai.context import Board
@@ -100,12 +100,12 @@ def _settle(state: GameState) -> GameState:
         state = answer_reward_windows(ENGINE, state)
         if not isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
             return state
-        state = ENGINE.apply(state, chance.resolve(decision)).state
+        state = apply_whole(ENGINE, state, chance.resolve(decision)).state
 
 
 def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, seat)
-    return _settle(ENGINE.apply(state, action, legal_actions=legal).state)
+    legal = ENGINE.whole_actions(state, seat)
+    return _settle(apply_whole(ENGINE, state, action, legal_actions=legal).state)
 
 
 def _send(state: GameState, seat: int, ref: str, space: str) -> GameState:
@@ -152,7 +152,7 @@ def _run(
     profile = make_profile(state, seat)
     for name, value in (patches or {}).items():
         setattr(profile, name, value)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     return DecisionRun(
         profile.ctx, profile, legal, random.Random(0), memory or Memory()
     )
@@ -201,7 +201,7 @@ def _drive(
             or state.decision_stack[-1].kind != "agent_effects"
         ):
             break
-        legal = ENGINE.legal_actions(state, seat)
+        legal = ENGINE.whole_actions(state, seat)
         action = legal[0] if len(legal) == 1 else _answer(state, seat, patches, memory)
         assert action is not None and action in legal
         taken.append(action)
@@ -413,7 +413,7 @@ def test_sardaukar_coordination_deploys_the_recruited_troops_once() -> None:
     state = _apply(state, seat, _a(seat, "resolve_board_effect", effect="intrigue"))
     state = _apply(state, seat, _a(seat, "deploy_troops", count=2))
     assert any(
-        a.action_id == "deploy_troops" for a in ENGINE.legal_actions(state, seat)
+        a.action_id == "deploy_troops" for a in ENGINE.whole_actions(state, seat)
     )
     assert _sources_with(state, seat, ae._deploy) == []
     assert _must(state, seat, patches) == _a(seat, "finish_agent_turn")
@@ -1346,7 +1346,7 @@ def test_placement_after_a_recall_first_is_a_follow_up(
         "best_post": best_post,
         "spy_value": _summer(-50.0),
     }
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     places = [a for a in legal if a.action_id == place_id]
     assert len(places) > 1
     assert any(a.action_id == "resolve_board_effect" for a in legal)
@@ -1377,7 +1377,7 @@ def test_corrinth_city_second_discard_without_a_stored_answer(
     )
     pays = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "pay_corrinth_city"
     ]
     target = str(dict(pays[2].arguments)["card_id"])
