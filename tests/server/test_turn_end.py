@@ -802,9 +802,11 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
     # moved seed 12 off it; of 0-79 seeds 22, 56 and 72 reach it. Stage B2
     # holds seat 0's Conflict reward rows before a pause, so the walk now
-    # meets summaries without a decision; seed 22 still reaches the shape.)
+    # meets summaries without a decision; seed 22 still reaches the shape.
+    # Stage B3c-1 plays a card effect first, which moves the random seats'
+    # games; of 0-99 seeds 7, 8 and 27 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=22, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=7, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
@@ -1648,9 +1650,11 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # 26, 30, 37, 46, 49, 50 and 57 reach it too). Stage B2 (OQ-112): a
     # Conflict reward's icons are rows the walk draws over; re-searched,
     # seed 2 is the first of 0-59 (5, 7, 18, 23, 26, 35, 43, 44 and 49 reach
-    # it too).
+    # it too). Stage B3c-1 (a card is played effect first, on the turn frame
+    # too): re-searched, seed 3 is the first of 0-79 (5, 14, 19, 21 and 24
+    # reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=2)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=3)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
@@ -3184,7 +3188,8 @@ def _server_declines(session: GameSession, sent: set[int]) -> list[int]:
 
 
 def _window_actions(session: GameSession, seat: int) -> list[str] | None:
-    """The seat's legal action ids when its Conflict-end window is on top."""
+    """The seat's whole actions when its Conflict-end window is on top (the
+    window offers a play effect first, stage B3c-1)."""
 
     state = session.state
     if not state.decision_stack:
@@ -3192,7 +3197,7 @@ def _window_actions(session: GameSession, seat: int) -> list[str] | None:
     top = state.decision_stack[-1]
     if top.kind != FrameKind.CONFLICT_END_TRIGGER:
         return None
-    return [action.action_id for action in session.engine.legal_actions(state, seat)]
+    return [action.action_id for action in session.engine.whole_actions(state, seat)]
 
 
 def _walk_first_actions(
@@ -3478,12 +3483,14 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_finish() -> None:
         _int(play["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert len(session.steps) == played + 1
+    # The play is two steps since stage B3c-1: the window's play effect,
+    # then the card.
+    assert len(session.steps) == played + 2
     # The specimens are taken; the acquisition choice sits over the window.
     assert session.state.players[0].specimens == 2
     assert session.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     assert summary["confirmation"] is None
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
     rows = _rows(manager.legal_actions(game_id, 0)["actions"])
     decline_acquisition = next(
         row for row in rows if row["action_id"] == "decline_intrigue_tleilaxu"
@@ -3498,7 +3505,7 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_finish() -> None:
     )
     assert _window_actions(session, 0) == [_FINISH]
     assert summary["confirmation"] is None
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     [row] = _rows(manager.legal_actions(game_id, 0)["actions"])
     assert row["action_id"] == _FINISH
     assert row["undoable"] is False
@@ -3510,7 +3517,7 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_finish() -> None:
         _int(row["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert session.steps[played + 2] == DomainAction(action_id=_FINISH, actor=0)
+    assert session.steps[played + 3] == DomainAction(action_id=_FINISH, actor=0)
     assert summary["confirmation"] is None
     assert _rows(summary["undo"]) == []
-    assert session.undo_floor > played + 2
+    assert session.undo_floor > played + 3

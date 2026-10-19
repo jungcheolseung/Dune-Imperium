@@ -803,6 +803,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # templates leave and 28 rows join.
         - 152
         + 28
+        # v150 (stage B3c-1): 73 whole templates leave and 26 rows join.
+        - 73
+        + 26
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -844,6 +847,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v150 (stage B3b-2): 160 whole templates leave and 32 rows join.
         - 160
         + 32
+        # v150 (stage B3c-1): 78 whole templates leave and 26 rows join.
+        - 78
+        + 26
     )
     # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
     # the card (an effect without a target is one row). The other cards that

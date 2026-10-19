@@ -26,6 +26,7 @@ import json
 import shutil
 
 from common import (
+    REVIEW_LANDING,
     SERVER_LOG_COPY,
     Check,
     chrome,
@@ -340,8 +341,12 @@ def standard_game(base: str, browser) -> None:
 
 
 def seek(page, step: int) -> None:
+    # A pick step goes on to its effect's end (stage B3, ``REVIEW_LANDING``).
+    landing = page.evaluate(REVIEW_LANDING, step)
     page.evaluate(f"stopPlayback(); reviewSeek({step})")
-    page.wait_for_function(f"state.review.cursor === {step} && refreshFlight === null")
+    page.wait_for_function(
+        f"state.review.cursor === {landing} && refreshFlight === null"
+    )
 
 
 def review_game(base: str, browser) -> None:

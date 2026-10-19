@@ -172,11 +172,19 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # yet in the catalog (an Alliance recipient's seat) join (28).
         - 146
         + 28
+        # v150 (stage B3c-1): a card is played effect first on every frame
+        # that offers a play: the play_intrigue and wild-match whole
+        # templates leave (73), the window's play rows, the Endgame match
+        # row and the target rows not yet in the catalog (the Conflict and
+        # Objective cards, two more options) join (26).
+        - 73
+        + 26
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
-    # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985.
-    assert first.size == 2985
+    # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
+    # stage B3c-1's net -47 to 2,938.
+    assert first.size == 2938
 
 
 def _scouts_catalog_additions(
@@ -247,9 +255,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             t.action_id in {"scouts_collect_mission", "take_desert_riding_hooks"}
             for t in with_scouts.catalog
         )
-    assert ActionCodec(RulesetConfig()).size == 2985
+    assert ActionCodec(RulesetConfig()).size == 2938
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 2985 + len(
+    assert ActionCodec(base_scouts).size == 2938 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -395,6 +403,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # 154 whole templates leave and 32 rows join.
         - 154
         + 32
+        # v150 (stage B3c-1): the played cards' rows (see above): 78 whole
+        # templates leave and 26 rows join.
+        - 78
+        + 26
     )
 
     try:
@@ -563,6 +575,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # join.
         - 222
         + 53
+        # v150 (stage B3c-1): the played cards' rows: 159 whole templates
+        # leave (Litany Against Fear's turn-start play among them) and 29
+        # rows join.
+        - 159
+        + 29
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -958,6 +975,8 @@ def test_agent_card_trash_round_trips_with_actor_owned_starting_card() -> None:
 
 
 def test_endgame_wild_match_round_trips_with_both_card_ids() -> None:
+    # Stage B3c-1: the match is its effect row, then the card to match, then
+    # the wild card (``effect_steps.steps_for``).
     codec = ActionCodec(RulesetConfig())
     action = DomainAction(
         action_id="match_endgame_wild_icon",
@@ -967,8 +986,16 @@ def test_endgame_wild_match_round_trips_with_both_card_ids() -> None:
             ("wild_card_id", "propaganda"),
         ),
     )
-
-    assert codec.decode(codec.encode(action), actor=1) == action
+    rows = steps_for(action)
+    assert rows == (
+        DomainAction("match", 1, (("printed", "wild_icon"), ("source", "endgame"))),
+        DomainAction(
+            "choose_conflict_card", 1, (("card_id", "objective_crysknife_1"),)
+        ),
+        DomainAction("choose_conflict_card", 1, (("card_id", "propaganda"),)),
+    )
+    for row in rows:
+        assert codec.decode(codec.encode(row), actor=1) == row
 
 
 def test_every_action_in_seeded_round_round_trips_through_codec() -> None:

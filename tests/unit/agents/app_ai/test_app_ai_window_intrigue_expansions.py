@@ -240,7 +240,7 @@ def test_research_intent_replays_only_a_breakthrough_answer() -> None:
     space = str(arg(_legal(state)[0], "space_id"))
     memory = Memory()
     memory.intents[(W.INTENT, other)] = Answer(9.0, ((f"research:{space}",),))
-    memory.intents[(W.INTENT_AT, other)] = len(state.event_log) - 1
+    memory.intents[(W.INTENT_AT, other)] = W.event_stamp(state) - 1
     assert W.recorded_answer(_run(state, memory), other) is not None
     assert W.research_intent(_run(state, memory)) is None
 
@@ -290,7 +290,7 @@ def test_counterattack_deploys_the_answer_units(units: tuple[int, ...]) -> None:
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=0))
     assert state.decision_stack[-1].kind == "intrigue_choice"
     run = _run(state, memory)
-    played_at = W._play_event_index(run.ctx, instance)
+    played_at = W.play_event_index(run.ctx, instance)
     memory.intents[(W.INTENT, instance)] = Answer(10.0, (units,))
     memory.intents[(W.INTENT_AT, instance)] = played_at
     action = W.intrigue_choice(_run(state, memory))
@@ -490,7 +490,7 @@ def test_harvest_cells_replays_the_recorded_answer_on_top_of_the_deck() -> None:
     )
     memory = Memory()
     memory.intents[(W.INTENT, instance)] = Answer(9.0, ((offered[-1],),))
-    memory.intents[(W.INTENT_AT, instance)] = W._play_event_index(run.ctx, instance)
+    memory.intents[(W.INTENT_AT, instance)] = W.play_event_index(run.ctx, instance)
     action = W.intrigue_choice(_run(state, memory))
     assert action == _find(
         state, "acquire_intrigue_tleilaxu", instance_id=offered[-1], to_deck_top=True
@@ -510,7 +510,7 @@ def test_harvest_cells_reevaluates_when_the_recorded_card_is_gone() -> None:
     )
     memory = Memory()
     memory.intents[(W.INTENT, instance)] = Answer(9.0, (("tleilaxu:gone:0",),))
-    memory.intents[(W.INTENT_AT, instance)] = W._play_event_index(run.ctx, instance)
+    memory.intents[(W.INTENT_AT, instance)] = W.play_event_index(run.ctx, instance)
     ability = HarvestCellsAbility(intrigue_entity(instance, run.ctx.seat))
     cards = tuple(card_entity(i) for i in offered)
     answer = ability.evaluate(run.profile, Request((TargetInfo(cards),)))
@@ -528,7 +528,7 @@ def test_harvest_cells_recorded_no_acquire_declines() -> None:
     run = _run(state)
     memory = Memory()
     memory.intents[(W.INTENT, instance)] = Answer(2.0, ((),))
-    memory.intents[(W.INTENT_AT, instance)] = W._play_event_index(run.ctx, instance)
+    memory.intents[(W.INTENT_AT, instance)] = W.play_event_index(run.ctx, instance)
     assert W.intrigue_choice(_run(state, memory)) == _find(
         state, "decline_intrigue_tleilaxu"
     )

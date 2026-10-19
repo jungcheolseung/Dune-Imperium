@@ -16,6 +16,7 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo
@@ -59,7 +60,9 @@ def _seat(state: GameState) -> int:
 
 
 def _legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, _seat(state))
+    # The whole actions the rules resolve (stage B3c-1: the Combat and
+    # Endgame Intrigue windows offer a play effect first).
+    return ENGINE.whole_actions(state, _seat(state))
 
 
 def _run(
@@ -85,7 +88,7 @@ def _apply(state: GameState, action: DomainAction) -> GameState:
     in the older engine's order up to the first choice its icons open (stage
     B2, OQ-112), so the reward frames are met one after the other as before."""
 
-    applied = ENGINE.apply(state, action, legal_actions=_legal(state)).state
+    applied = apply_whole(ENGINE, state, action, legal_actions=_legal(state)).state
     return answer_reward_windows(ENGINE, applied)
 
 
@@ -246,7 +249,7 @@ def _specimen_combat(want_play: bool) -> GameState:
     def predicate(state: GameState, owner: int) -> bool:
         if state.decision_stack[-1].kind != "combat_intrigue":
             return False
-        ids = {a.action_id for a in ENGINE.legal_actions(state, owner)}
+        ids = {a.action_id for a in ENGINE.whole_actions(state, owner)}
         return "return_specimen" in ids and ("play_intrigue" in ids) == want_play
 
     return play_until(predicate, config=IMMORTALITY, seed=1)

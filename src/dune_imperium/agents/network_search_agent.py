@@ -105,6 +105,7 @@ from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.policy import without_undo_actions
@@ -605,7 +606,10 @@ def holds_combat_lead(
 
     Only at the Combat Intrigue step itself, and only when ``seat``'s
     strength is above every other seat's; a tie or a deficit keeps the
-    offer. Never empty: passing is always offered there.
+    offer. Never empty: passing is always offered there. The window offers a
+    play effect first (stage B3c-1): a row whose every whole action behind
+    it plays a strength-only card -- the window's ``play`` row, a card's row,
+    an option's row -- is withheld like the whole action itself.
     """
 
     if not (
@@ -620,8 +624,22 @@ def holds_combat_lead(
         if index != seat
     ):
         return offered
-    kept = tuple(action for action in offered if not adds_only_strength(action))
+    behind: dict[DomainAction, list[DomainAction]] = {}
+    for whole in _RULES.whole_actions(state, seat):
+        behind.setdefault(first_step(state, whole), []).append(whole)
+
+    def withheld(action: DomainAction) -> bool:
+        if adds_only_strength(action):
+            return True
+        wholes = behind.get(action, ())
+        return bool(wholes) and all(adds_only_strength(whole) for whole in wholes)
+
+    kept = tuple(action for action in offered if not withheld(action))
     return kept or offered
+
+
+# The rules' whole actions of a decision; any engine instance lists the same.
+_RULES = UprisingRulesEngine()
 
 
 def adds_only_strength(action: DomainAction) -> bool:

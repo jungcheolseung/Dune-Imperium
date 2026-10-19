@@ -664,6 +664,7 @@ def maker_case(page, base: str, saves: Path) -> bool:
 CONFLICT_END_PY = """
 import json
 from dune_imperium.core import DomainAction
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.sessions import GameSessionManager
 from tests.unit.display.test_unavailable import (
@@ -672,8 +673,9 @@ from tests.unit.display.test_unavailable import (
 first, second = HARVEST_CELLS
 mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
 engine = UprisingRulesEngine()
-played = engine.apply(
-    _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
+# The window offers its play effect first (stage B3c-1).
+played = apply_whole(
+    engine, _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
 ).state
 states = {
     "commanders": _conflict_end_window(first),

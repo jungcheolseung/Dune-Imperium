@@ -18,6 +18,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -103,11 +104,13 @@ def _turn_state(
 
 
 def _offered(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, seat)
+    # The whole actions the rules resolve (stage B3c-1: the turn frame offers
+    # its effects effect first, and these tests speak whole actions).
+    return ENGINE.whole_actions(state, seat)
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _starts_open(state: GameState) -> bool:

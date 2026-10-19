@@ -85,8 +85,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # checkpoint stores the digest and is refused under another one, so a card
 # data fix also retires every entity file written before it.
 # Stage B3b-2: a Commander's Skill prints the Reveal's Skill trash (the
-# ``printed`` hint reads the skill vocabulary too).
-_GOLDEN_DIGEST = "7890eef2a83c428b69bc7faaaf21345ac908a91b6fd3c73bea348e4047f0f521"
+# ``printed`` hint reads the skill vocabulary too). Stage B3c-1: the Endgame
+# wild match's target row reads its card as a battle or Conflict card.
+_GOLDEN_DIGEST = "bea0f46dfb882484129f14a067359b8c9fbbf545064bdf1b07f35615fe87839f"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -261,7 +262,7 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "leader_id": {"leader"},
         "intrigue_card_id": {"intrigue"},
         "matching_card_id": {"battle"},
-        "card_id": {"personal", "intrigue", "battle"},
+        "card_id": {"personal", "intrigue", "battle", "conflict"},
         "instance_id": {"personal", "intrigue", "contract"},
         # Stage B3: an effect row's printed entity.
         "printed": {"personal", "space", "leader", "tech", "contract", "skill"},
@@ -280,8 +281,20 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         # rows, so a catalog may hold no ``intrigue_card_id`` any more.
         assert seen.get(key, set()) - {None} <= allowed, key
     # Every printed entity of an effect row is an entity (stage B3), but the
-    # Reveal's markets, which no card or space prints (stage B3b-2).
-    assert labels == {"imperium_row", "reserve", "set_aside", "tleilaxu_row"}
+    # Reveal's markets, which no card or space prints (stage B3b-2), and the
+    # windows a card is played in (stage B3c-1).
+    assert labels == {
+        "imperium_row",
+        "reserve",
+        "set_aside",
+        "tleilaxu_row",
+        "plot",
+        "combat",
+        "endgame",
+        "conflict_end",
+        "turn_start",
+        "wild_icon",
+    }
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]
     assert seen["subcommittee_id"] == {None}

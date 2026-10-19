@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities import intrigue as I
@@ -136,7 +137,9 @@ def make_run(
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == SEAT
     if legal is None:
-        legal = ENGINE.legal_actions(state, SEAT)
+        # The whole actions the rules resolve (stage B3c-1: the turn frame and
+        # the Combat Intrigue window offer a play effect first).
+        legal = ENGINE.whole_actions(state, SEAT)
     ctx = AppContext(state, SEAT, ENGINE.observe(state, SEAT))
     profile = Profile(ctx, TABLES[2], random.Random(0))
     for name, fn in stubs.items():
@@ -177,13 +180,13 @@ def app_play(
     assert source.evaluate is not None
     _, action = source.evaluate()
     assert action is not None
-    return ENGINE.apply(state, action, legal_actions=run.legal).state
+    return apply_whole(ENGINE, state, action, legal_actions=run.legal).state
 
 
 def step(state: GameState, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, SEAT)
+    legal = ENGINE.whole_actions(state, SEAT)
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal).state
 
 
 def kind(state: GameState) -> str:
@@ -256,8 +259,8 @@ def test_sources_one_per_card_values_actions_and_intents(
     assert memory.intents[("intrigue", iid("imperium_politics"))] == Answer(
         12.0, (("spacing_guild",),)
     )
-    assert memory.intents[("intrigue_at", iid("imperium_politics"))] == len(
-        state.event_log
+    assert memory.intents[("intrigue_at", iid("imperium_politics"))] == (
+        W.event_stamp(state)
     )
 
 
@@ -447,8 +450,8 @@ def test_lose_influence_replays_the_answer_then_falls_back(
     )
     assert W.intrigue_choice(run) == act("choose_intrigue_faction", faction="emperor")
     assert fresh.intents[("intrigue", iid("backed_by_choam"))] == Answer(0.0, None)
-    assert fresh.intents[("intrigue_at", iid("backed_by_choam"))] == len(
-        state.event_log
+    assert fresh.intents[("intrigue_at", iid("backed_by_choam"))] == (
+        W.event_stamp(state)
     )
 
 

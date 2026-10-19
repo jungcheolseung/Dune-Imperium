@@ -108,6 +108,14 @@ def _rows_with_card_picks(rows: list[Any]) -> list[Any]:
     return out
 
 
+def _row_action(row: dict[str, Any]) -> DomainAction:
+    return DomainAction(
+        action_id=row["action_id"],
+        actor=row["actor"],
+        arguments=tuple((str(pair[0]), pair[1]) for pair in row["arguments"]),
+    )
+
+
 def _empty_pick_dropped(candidate: Step) -> None:
     if candidate._views is not None:
         for view in candidate._views:
@@ -135,9 +143,26 @@ def _steps_in_base_form(old: Step, candidate: Step) -> None:
         return
     if not any(isinstance(r, dict) and r.get("action_id") == _CARD_PICK for r in rows):
         return
-    if _rows_with_card_picks(base) != rows:
+    expected = _rows_with_card_picks(base)
+    at = _EFFECT_AT[0] if _EFFECT_AT else None
+    if at is not None and presents_steps(at.state):
+        # The turn frame shows its other effects effect first too (stage
+        # B3c-1): the base's whole actions as the candidate's rows.
+        expected = canonical(
+            present(at.state, tuple(_row_action(row) for row in expected))
+        )
+    if expected != rows:
         return
     candidate.decision[1] = list(base)
+    if at is not None and presents_steps(at.state):
+        # The page metadata is read off the whole actions, as the server
+        # reads it (``EFFECT_STEPS``).
+        from engine_equivalence import _page
+
+        candidate.page = _page(
+            at.state, at.decision.owner, tuple(_row_action(row) for row in base)
+        )
+        return
     page, base_page = candidate.page, old.page
     if not (isinstance(page, list) and isinstance(base_page, list)):
         return

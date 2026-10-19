@@ -16,6 +16,7 @@ from tests.support.pauses import answer_pause
 from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS_BY_ID,
     ConflictReward,
@@ -513,7 +514,7 @@ def test_the_icon_intrigue_endgame_half_ignores_it(
         actor=0,
         arguments=(("card_id", card), ("option", 1)),
     )
-    opened = engine.apply(both, play).state
+    opened = apply_whole(engine, both, play).state
     targets = {
         dict(action.arguments)["card_id"]
         for action in engine.legal_actions(opened, 0)
@@ -543,7 +544,7 @@ def test_grasp_arrakis_may_flip_it() -> None:
         arguments=(("card_id", card), ("option", 1)),
     )
 
-    opened = engine.apply(state, play).state
+    opened = apply_whole(engine, state, play).state
     first = [
         action
         for action in engine.legal_actions(opened, 0)

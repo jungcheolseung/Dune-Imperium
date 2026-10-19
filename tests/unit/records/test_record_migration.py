@@ -1696,11 +1696,14 @@ def test_a_turn_reopened_only_for_its_held_draw_is_ended_again() -> None:
     closed = ENGINE.apply(followed, _PRESS).state
     assert closed.decision_stack[-1].kind == FrameKind.TURN
     assert ENGINE.legal_actions(closed, 1)
-    # The seat's own step in the reopened turn is not the next seat's.
+    # The seat's own step in the reopened turn is not the next seat's (an
+    # older record's step is a whole action, stage B3).
     own = next(
-        action for action in ENGINE.legal_actions(followed, 0) if action != _PRESS
+        action for action in ENGINE.whole_actions(followed, 0) if action != _PRESS
     )
-    assert migration._bridge(ENGINE, followed, own, older) is None
+    own_bridge = migration._bridge(ENGINE, followed, own, older)
+    # (An older record's whole action is taken as its effect steps, B3.)
+    assert own_bridge is None or own_bridge[0].name == "effect_step"
     # A v142 record presses the end again itself.
     assert migration._bridge(ENGINE, followed, next_seat, _bridges_for(142)) is None
     # A turn whose end was never pressed is not ended for the record.
@@ -2579,12 +2582,13 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
             resources=Resources(water=2),
         )
     )
+    # A play is its window, card and option steps (stage B3c-1).
     play = next(
         a
-        for a in ENGINE.legal_actions(turn, 0)
+        for a in ENGINE.whole_actions(turn, 0)
         if a.action_id == "play_intrigue" and dict(a.arguments)["card_id"] == card
     )
-    opened = ENGINE.apply(turn, play).state
+    opened = apply_whole(ENGINE, turn, play).state
     legal = ENGINE.legal_actions(opened, 0)
     # The sandworm first, the Shield Wall choice still open.
     rewards = next(a for a in legal if a.action_id == "resolve_intrigue_rewards")
@@ -2600,8 +2604,14 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     )
 
     assert record.divergence is None, record.divergence
+    # The recorded play is taken as its window, card and option steps
+    # (stage B3c-1): the last ends the recorded whole action.
+    path = path_of(turn, play)
+    assert path is not None and len(path) == 3
     assert [(m.step, m.recorded_index, m.bridge) for m in record.steps] == [
-        (play, 0, None),
+        (path[0], None, "effect_step"),
+        (path[1], None, "effect_step"),
+        (path[2], 0, migration.EFFECT_LAST_STEP),
         (rewards, 1, None),
         (keep, 4, None),
         (draw, 2, migration.TURN_ROW_HELD),
@@ -2907,7 +2917,8 @@ def test_a_decline_recorded_after_a_play_is_rewritten_to_the_finish() -> None:
     assert len(finishes) == 1  # the one press this test turns into a decline
     finish = finishes[0]
     seat = _actor(game, finish)
-    assert _step_of(game, finish - 2).action_id == "play_conflict_end_intrigue"
+    # The play's last step (its card, stage B3c-1) ends the whole action.
+    assert _whole(game, finish - 2).action_id == "play_conflict_end_intrigue"
     assert _actor(game, finish - 2) == seat
     declined = DomainAction("decline_conflict_end_intrigue", seat)
     older, position = _older_with(game, 148, finish, declined)
@@ -2980,11 +2991,13 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # steps, so this game's step numbers are later than they were -- 87, 821
     # and round starts 90 ... 794 -- and its moves are the same; stage B2's
     # reward icon rows moved them again, from 95, 891 and 98 ... 862,
-    # stage B3's effect rows again, from 102, 947 and 105 ... 918, and stage
-    # B3b-2's Reveal effect rows again, from 104, 980 and 107 ... 949.)
+    # stage B3's effect rows again, from 102, 947 and 105 ... 918, stage
+    # B3b-2's Reveal effect rows again, from 104, 980 and 107 ... 949, and
+    # stage B3c-1's played cards again, from 111, 1045 and 114 ... 1014;
+    # ``play`` is the step that ends the Harvest Cells play, its card.)
     game = _this_engine_game(175)
-    play, rewards = 111, 1045
-    assert _step_of(game, play).action_id == "play_conflict_end_intrigue"
+    play, rewards = 120, 1106
+    assert _whole(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
     top = _states(game)[rewards].decision_stack[-1]
@@ -2996,7 +3009,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {114, 230, 350, 464, 614, 763, 898, 1014} <= starts
+    assert {123, 245, 375, 495, 649, 806, 953, 1073} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3020,7 +3033,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 1045
+    rewards = 1106
     starts = {
         index
         for index, step in enumerate(game.steps)
@@ -3085,7 +3098,8 @@ def test_a_window_this_engine_keeps_open_is_finished_where_the_record_went_on() 
         ENGINE,
         _window_combat(_window_fighter(3, intrigue_cards=(HARVEST_CELLS[0], PLAIN))),
     ).state
-    played = ENGINE.apply(
+    played = apply_whole(
+        ENGINE,
         window,
         DomainAction("play_conflict_end_intrigue", 0, (("card_id", HARVEST_CELLS[0]),)),
     ).state

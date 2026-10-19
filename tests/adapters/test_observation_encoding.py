@@ -885,21 +885,28 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # (base at decision 62, choam 59, promo_bloodlines_tech 11, everything 69,
 # draft 26, scouts 59), where the random seat draws over the fewer effect
 # rows and the games part.
+# Re-pinned for stage B3c-1 (OQ-111, codec v150): a card is played effect
+# first -- the window's ``play`` row, then the card, then its option. An
+# export of the previous commit (000d5212) gives each game's per-decision trace
+# equal to this one up to the first Intrigue play (base at decision 28, choam
+# 39, everything 59, draft 35, scouts 39: the decision after the random seat's
+# play, now the card step) or the first Agent-effect frame offering a Plot
+# among several effects (promo_bloodlines_tech at 264, fewer rows).
 _GOLDEN_DIGESTS = {
-    "base": ("2f58bab1445b058080228b2bcf4445387c389c2824e760146f9e44a0de68824e", 2892),
-    "choam": ("f3263c17f2a89bc928edca63f92687934ccf284b864dcf84a54c781ead486310", 2864),
+    "base": ("b767f935410be01c39894dccf54e3b27a6700fffb6be23bd295f2181c48de8c2", 2780),
+    "choam": ("c61115edc1036bcadd3ea64d74188c22b55aaa4bdc9d07962a7e85f073349401", 2668),
     "promo_bloodlines_tech": (
-        "8d00284893cb55e3f51b05fe4e0c00af82f272613e881c62fdca8a1e20a73691",
-        3072,
+        "69dd4eadd540fe0e24ec3cb1276083e6c7bac4a81bcd7d9e4ab0b66797c10d26",
+        3188,
     ),
     "everything": (
-        "43e8cb4ba91733f2cdff64218c48f681b9f5f1a92c58c38d37d8a911dcc72105",
-        3248,
+        "5a79721fdd837914bb5ac8dafa72af5febe1a1790c96a2e18703b28f65a4b899",
+        3340,
     ),
-    "draft": ("b0295e7bc922ceec3c7c1d2ecd759790cb7160c26df11ba8a0ad3e125b142d5a", 2672),
+    "draft": ("02bd60509d97b94da1dde8137930e5a046f61bb9a565ba78056c00c0a60ae220", 2788),
     "scouts": (
-        "1782aac3975f7974bd1bc61f4599bfbe094788dbf5059bad96e396827308b22d",
-        2856,
+        "55f31e2c2c06741cb837ac8980828608aae03f696e954c0287b4a8dfbecd86e8",
+        3172,
     ),
 }
 _GOLDEN_CONFIGS = {

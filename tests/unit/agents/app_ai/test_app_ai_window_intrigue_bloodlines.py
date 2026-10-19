@@ -12,6 +12,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai.abilities import bloodlines_cards as bc
 from dune_imperium.agents.app_ai.abilities.base import Answer
 from dune_imperium.agents.app_ai.abilities.bloodlines_systems import (
@@ -51,7 +52,9 @@ def _seat(state: GameState) -> int:
 
 
 def _legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, _seat(state))
+    # The whole actions the rules resolve (stage B3c-1: the turn frame and the
+    # Combat and Endgame Intrigue windows offer a play effect first).
+    return ENGINE.whole_actions(state, _seat(state))
 
 
 def _run(
@@ -65,7 +68,7 @@ def _run(
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action, legal_actions=_legal(state)).state
+    return apply_whole(ENGINE, state, action, legal_actions=_legal(state)).state
 
 
 def _find(state: GameState, action_id: str, **args: object) -> DomainAction:
@@ -382,7 +385,7 @@ def test_sacred_pools_discards_the_answer_card() -> None:
         _run(state, memory),
         instance,
         Answer(5.0, ((_run(state).ctx.hand[-1],),)),
-        len(state.event_log),
+        W.event_stamp(state),
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=0))
     action = _choice(state, memory)
@@ -400,7 +403,7 @@ def test_rapid_engineering_gains_the_answer_tracks_in_order() -> None:
         _run(state, memory),
         instance,
         Answer(2.0, ((1,), ("fremen", "emperor"))),
-        len(state.event_log),
+        W.event_stamp(state),
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=1))
     first = _choice(state, memory)
@@ -421,7 +424,7 @@ def test_insider_information_recalls_the_answer_spy_and_trashes_its_junk() -> No
         _run(state, memory),
         instance,
         Answer(4.0, ((0,), (posts[1],), ())),
-        len(state.event_log),
+        W.event_stamp(state),
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=0))
     recall = _choice(state, memory)
@@ -443,7 +446,7 @@ def test_sleeper_unit_recalls_the_answer_spy() -> None:
         _run(state, memory),
         instance,
         Answer(4.0, ((1,), (posts[0],))),
-        len(state.event_log),
+        W.event_stamp(state),
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=1))
     action = _choice(state, memory)
@@ -459,7 +462,7 @@ def test_tenuous_bond_loses_the_answer_track_and_gains_the_pre_loss_pick() -> No
     state = with_player(state, seat, influence=influence)
     memory = Memory()
     run = _run(state, memory)
-    W._record(run, instance, Answer(3.0, (("emperor",),)), len(state.event_log))
+    W._record(run, instance, Answer(3.0, (("emperor",),)), W.event_stamp(state))
     swap = memory.intents[(W.INTENT_SWAP_GAIN, instance)]
     tracks = W._gain_targeting(run.ctx, "emperor")
     assert isinstance(swap, Answer)
@@ -489,7 +492,7 @@ def test_battlefield_research_retreats_its_answer_count_troops_first() -> None:
     state = with_player(state, seat, resources=resources)
     memory = Memory()
     W._record(
-        _run(state, memory), instance, Answer(2.0, ((0, 1),)), len(state.event_log)
+        _run(state, memory), instance, Answer(2.0, ((0, 1),)), W.event_stamp(state)
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=0))
     action = _choice(state, memory)
@@ -505,7 +508,7 @@ def test_the_strong_survive_retreats_one_then_trashes_junk_or_declines() -> None
     state = _units(state, seat, conflict=2)
     memory = Memory()
     W._record(
-        _run(state, memory), instance, Answer(150.0, ((1,), (0,))), len(state.event_log)
+        _run(state, memory), instance, Answer(150.0, ((1,), (0,))), W.event_stamp(state)
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=1))
     retreat = _choice(state, memory)
@@ -769,7 +772,7 @@ def test_devious_deploy_sends_a_commander_first_to_activate_a_skill() -> None:
     state = with_player(state, seat, skill_ids=("skill:fierce:0",))
     memory = Memory()
     W._record(
-        _run(state, memory), instance, Answer(100.0, ((1,), (0,))), len(state.event_log)
+        _run(state, memory), instance, Answer(100.0, ((1,), (0,))), W.event_stamp(state)
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance, option=1))
     action = _choice(state, memory)

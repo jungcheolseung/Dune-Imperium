@@ -2859,11 +2859,13 @@ def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
         ),
         DomainAction("choose_tech_trash", 3),
     )
-    for whole in forbidden_weapons:
+    # Stage B3c-1: the turn frame offers Flip Tech as its effect row and the
+    # tile's row too.
+    flip_tech = DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),))
+    for whole in (*forbidden_weapons, flip_tech):
         for row in steps_for(whole):
             assert codec.decode(codec.encode(row), whole.actor) == row
     actions = (
-        DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),)),
         DomainAction("decline_skill", 0),
         # The Agent turn is a card pick and a space pick (stage B1).
         DomainAction(

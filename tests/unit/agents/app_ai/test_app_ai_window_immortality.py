@@ -15,6 +15,7 @@ from functools import cache
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request, TargetInfo
 from dune_imperium.agents.app_ai.abilities.generic import TrashCustomAbility
@@ -57,6 +58,7 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
     INTENT,
     INTENT_AT,
     RESEARCH_INTENT,
+    event_stamp,
     intrigue_request,
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
@@ -92,7 +94,9 @@ def _run(
 ) -> DecisionRun:
     seat = _seat(state)
     profile = make_profile(state, seat, rng_seed=rng_seed)
-    actions = ENGINE.legal_actions(state, seat)
+    # The whole actions the rules resolve (stage B3c-1: the Conflict-end
+    # window offers a play effect first).
+    actions = ENGINE.whole_actions(state, seat)
     return DecisionRun(profile.ctx, profile, actions, profile.rng, memory or Memory())
 
 
@@ -356,7 +360,7 @@ def test_research_advance_takes_a_breakthrough_plays_space() -> None:
     other = next(s for s in ("c2r2", "c2r4") if f"research:{s}" != floor_pick)
     memory = Memory()
     memory.intents[(INTENT, instance)] = Answer(1.0, ((f"research:{other}",),))
-    memory.intents[(INTENT_AT, instance)] = len(base.event_log) - 1
+    memory.intents[(INTENT_AT, instance)] = event_stamp(base) - 1
     assert _arg(W.research_advance(_run(state, memory=memory)), "space_id") == other
 
 
@@ -957,13 +961,15 @@ def test_conflict_end_plays_harvest_cells_and_records_its_answer() -> None:
     assert expected.value > 0
     assert run.memory.intents[(INTENT, _HARVEST_CELLS)] == expected
     stamp = run.memory.intents[(INTENT_AT, _HARVEST_CELLS)]
-    applied = ENGINE.apply(state, action, legal_actions=run.legal).state
-    assert stamp == len(state.event_log)
-    assert applied.event_log[stamp].kind == "intrigue_played"
+    applied = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
+    # The stamp counts the log's events but the effect picks (stage B3).
+    assert stamp == event_stamp(state)
+    log = [event for event in applied.event_log if event.kind != "effect_picked"]
+    assert log[stamp].kind == "intrigue_played"
     # The card resolved at its play: the acquisition choice is on top of the
     # window and the app's answer is the one recorded for it.
     assert applied.decision_stack[-1].kind == "intrigue_choice"
-    assert applied.event_log[stamp + 1].kind == "specimens_generated"
+    assert log[stamp + 1].kind == "specimens_generated"
 
 
 def test_conflict_end_finishes_the_window_after_a_play() -> None:

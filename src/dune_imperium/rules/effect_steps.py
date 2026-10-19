@@ -16,7 +16,9 @@ card). This module shows a whole action to the outside as a *path* of steps:
   (B3-2 (가)). A quantity (a unit mix) rides on the path's last row.
 
 A frame that offers several effects at once (``EFFECT_STEP_FRAMES``: the
-Agent-turn effect frame since stage B3a, the Reveal frame since B3b-2) offers
+Agent-turn effect frame since stage B3a, the Reveal frame since B3b-2, the
+turn frame and the Combat, Conflict-end and Endgame Intrigue windows since
+B3c-1) offers
 the effect rows; an effect without a target is resolved by its row, and one
 with targets keeps the rows picked so far in the frame's context
 (``EFFECT_PICK_KEY``) and offers only the next rows of its paths -- even when
@@ -64,6 +66,8 @@ class Choose(StrEnum):
     SKILL = "skill"
     SEAT = "seat"
     OPTION = "option"
+    # A Conflict card or an Objective card (the Endgame wild match).
+    CONFLICT_CARD = "conflict_card"
 
     @property
     def action_id(self) -> str:
@@ -87,6 +91,7 @@ CHOOSE_ARGUMENT: Final[Mapping[Choose, str]] = MappingProxyType({
     Choose.SKILL: "skill_id",
     Choose.SEAT: "player",
     Choose.OPTION: "option",
+    Choose.CONFLICT_CARD: "card_id",
 })
 CHOOSE_ACTIONS: Final = frozenset(kind.action_id for kind in Choose)
 
@@ -102,6 +107,9 @@ class Printed(StrEnum):
     VISITED_SPACE = "visited_space"
     # The seat's leader (its face-up side).
     LEADER = "leader"
+    # The Intrigue window the frame opens: ``plot`` on the seat's turn
+    # frames, ``combat``, ``endgame`` (``intrigue.intrigue_window``).
+    INTRIGUE_WINDOW = "intrigue_window"
 
 
 @dataclass(frozen=True, slots=True)
@@ -532,16 +540,51 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.CHOOSE, _S.TECH, "=forbidden_weapons", option="trash"
     ),
     "place_tech_spy": _spec(_V.PLACE_SPY, _S.TECH, "=panopticon"),
+    # --- Playing a card (stage B3c-1): the window, the card, its option -----
+    # One option still opens its step (OQ-111 (2)): an option is an effect
+    # printed on the card.
+    "play_intrigue": _spec(
+        _V.PLAY,
+        _S.INTRIGUE,
+        Printed.INTRIGUE_WINDOW,
+        targets=(("card_id", _C.INTRIGUE_CARD), ("option", _C.OPTION)),
+    ),
+    # Harvest Cells' Conflict-end trigger: the window fixes its option.
+    "play_conflict_end_intrigue": _spec(
+        _V.PLAY,
+        _S.INTRIGUE,
+        "=conflict_end",
+        targets=(("card_id", _C.INTRIGUE_CARD),),
+    ),
+    # Litany Against Fear at the start of the turn.
+    "play_turn_start_card": _spec(_V.PLAY, _S.TURN, "=turn_start", targets=_CARD),
+    # The card to match, then the wild card that matches it.
+    "match_endgame_wild_icon": _spec(
+        _V.MATCH,
+        _S.ENDGAME,
+        "=wild_icon",
+        targets=(
+            ("matching_card_id", _C.CONFLICT_CARD),
+            ("wild_card_id", _C.CONFLICT_CARD),
+        ),
+    ),
 })
 
 # The frames whose waiting effects are offered effect first (module doc).
-EFFECT_STEP_FRAMES: Final = frozenset({FrameKind.AGENT_EFFECTS, FrameKind.REVEAL})
+EFFECT_STEP_FRAMES: Final = frozenset({
+    FrameKind.AGENT_EFFECTS,
+    FrameKind.REVEAL,
+    # Stage B3c-1.
+    FrameKind.TURN,
+    FrameKind.COMBAT_INTRIGUE,
+    FrameKind.CONFLICT_END_TRIGGER,
+    FrameKind.ENDGAME_INTRIGUE,
+})
 # Whole ids of ``STEP_SPECS`` a frame outside ``EFFECT_STEP_FRAMES`` still
-# offers as they are (the Tech rows of the turn, the Tech acquisition
-# window, Servo-Receivers' Signet frame, a Contract's reward window, a
-# revealed card's own choice frame -- stage B3d gives that one target rows);
-# every other whole id of the table is offered only as steps, so the action
-# catalog drops it.
+# offers as they are (the Tech acquisition window, Servo-Receivers' Signet
+# frame, a Contract's reward window, a revealed card's own choice frame --
+# stage B3d gives those target rows); every other whole id of the table is
+# offered only as steps, so the action catalog drops it.
 OFFERED_AS_WHOLE: Final = frozenset({
     "acquire_leader_imperium",
     "acquire_leader_reserve",
@@ -552,7 +595,6 @@ OFFERED_AS_WHOLE: Final = frozenset({
     "deploy_leader_agent",
     "deploy_reveal_card_troop",
     "exchange_reveal_influence",
-    "flip_tech",
     "gain_five_reveal_solari",
     "gain_leader_signet_spice",
     "gain_leader_signet_troop",
@@ -624,7 +666,23 @@ def printed_from_state(
         if not isinstance(space, str):
             raise ValueError(f"{whole} has no visited space")
         return spec.source, space
+    if rule == Printed.INTRIGUE_WINDOW:
+        window = _INTRIGUE_WINDOWS.get(state.decision_stack[-1].kind)
+        if window is None:
+            raise ValueError(f"{whole} has no Intrigue window")
+        return spec.source, window
     return spec.source, _leader_face(state, whole)
+
+
+# The Intrigue window each frame that offers a play opens (``intrigue_window``).
+_INTRIGUE_WINDOWS: Final[Mapping[str, str]] = MappingProxyType({
+    FrameKind.TURN: "plot",
+    FrameKind.AGENT_EFFECTS: "plot",
+    FrameKind.REVEAL: "plot",
+    FrameKind.COMBAT_INTRIGUE: "combat",
+    FrameKind.ENDGAME_INTRIGUE: "endgame",
+})
+INTRIGUE_WINDOWS: Final = tuple(dict.fromkeys(_INTRIGUE_WINDOWS.values()))
 
 
 def _leader_face(state: GameState, whole: DomainAction) -> str:

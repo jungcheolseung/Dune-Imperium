@@ -93,6 +93,7 @@ from dune_imperium.rules.contracts import (
 )
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
+    INTRIGUE_WINDOWS,
     OFFERED_AS_WHOLE,
     STEP_SPECS,
     Printed,
@@ -1330,6 +1331,8 @@ def _effect_step_templates(
             )
         elif spec.printed == Printed.VISITED_SPACE:
             named = tuple((None, space) for space in spaces)
+        elif spec.printed == Printed.INTRIGUE_WINDOW:
+            named = tuple((None, window) for window in INTRIGUE_WINDOWS)
         elif spec.printed == Printed.LEADER:
             own = _LEADER_ROW_FACES.get(template.action_id)
             named = tuple(

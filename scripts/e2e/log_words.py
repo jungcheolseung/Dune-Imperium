@@ -159,8 +159,15 @@ GAMES = (
     # (2026-10-20) finds seed 9 first with the steal and all of the above.
     # Stage B3b-2 (the Reveal frame's effects come effect first) moves seed 9
     # off its Secrets steal; the same scan over random seeds 1-400 finds seed
-    # 3 first with the steal and all of the above.
-    {"seats": ["random"] * 4, "game_seed": 3, "policy_seed": 3, **EVERY_EXPANSION},
+    # 3 first with the steal and all of the above. Stage B3c-1 (a card is
+    # played effect first) moves seed 3 off its steal and its Feyd track; the
+    # same scan over random seeds 1-400 finds seed 283 first with all of it.
+    {
+        "seats": ["random"] * 4,
+        "game_seed": 283,
+        "policy_seed": 283,
+        **EVERY_EXPANSION,
+    },
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -217,11 +224,13 @@ GAMES = (
     # (2026-10-20) finds the pair 3 and 5 first (no single seed reaches every
     # Scouts surface). Stage B3b-2 (the Reveal frame's effects) moves the pair
     # off Clear the Market, Mercenaries and Mating Season; the same scan over
-    # random seeds 1-300 finds the pair 1 and 90 first.
+    # random seeds 1-300 finds the pair 1 and 90 first. Stage B3c-1 (a card
+    # is played effect first) moves them again; the same scan finds the pair
+    # 2 and 209 first.
     {
         "seats": ["random"] * 4,
-        "game_seed": 1,
-        "policy_seed": 1,
+        "game_seed": 2,
+        "policy_seed": 2,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -258,9 +267,10 @@ GAMES = (
         # it keeps the round modifier, mission troops and an auction won.
         # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
         # above (see there), since stage B2 seed 20 with seed 7, since stage
-        # B3a seed 5 with seed 3, and since stage B3b-2 seed 90 with seed 1.
-        "game_seed": 90,
-        "policy_seed": 90,
+        # B3a seed 5 with seed 3, since stage B3b-2 seed 90 with seed 1, and
+        # since stage B3c-1 seed 209 with seed 2.
+        "game_seed": 209,
+        "policy_seed": 209,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

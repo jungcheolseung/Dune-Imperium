@@ -1517,6 +1517,13 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # are: 146 leave and 28 rows join.
         - 146
         + 28
+        # v150 (stage B3c-1, OQ-111): the turn frame and the Combat, Conflict-end
+        # and Endgame Intrigue windows offer a card play as their effect row
+        # (``play``, ``match``) and the card's rows: the whole templates of
+        # ``play_intrigue`` (54) and ``match_endgame_wild_icon`` (19) leave and
+        # 26 rows join.
+        - 73
+        + 26
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an
@@ -1821,8 +1828,17 @@ def test_two_wild_icons_pair_with_each_other_in_the_endgame() -> None:
         0,
         (("matching_card_id", "storms_in_the_south"), ("wild_card_id", "propaganda")),
     )
+    # Stage B3c-1: the Endgame window offers the match as its effect row and
+    # the two cards' target rows (``effect_steps.steps_for``).
     codec = ActionCodec(BLOODLINES)
-    assert codec.decode(codec.encode(match), 0) == match
+    rows = steps_for(match)
+    assert [row.action_id for row in rows] == [
+        "match",
+        "choose_conflict_card",
+        "choose_conflict_card",
+    ]
+    for row in rows:
+        assert codec.decode(codec.encode(row), 0) == row
     result = apply_endgame_intrigue_action(opened, match).state.players[0]
     assert result.victory_points == 2
     assert set(result.face_down_battle_card_ids) == {

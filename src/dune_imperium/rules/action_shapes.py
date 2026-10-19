@@ -814,6 +814,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             _V.EXCHANGE_INFLUENCE,
             _V.LOSE_INFLUENCE,
             _V.KEEP,
+            # Stage B3c-1: playing a card, the Endgame wild match.
+            _V.PLAY,
+            _V.MATCH,
         )
     },
     # A target row picks one target of the effect its seat picked.
@@ -830,6 +833,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_tech": _row(_V.CHOOSE, _S.REF, _T.TECH),
     "choose_seat": _row(_V.CHOOSE, _S.REF, _T.UNITS),
     "choose_option": _row(_V.CHOOSE, _S.REF, _T.OPTION),
+    "choose_conflict_card": _row(_V.CHOOSE, _S.REF, _T.CONFLICT_CARD),
 })
 
 

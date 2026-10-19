@@ -2850,7 +2850,8 @@ def test_call_to_arms_waits_face_up_when_played() -> None:
     assert done.players[0].intrigue_cards == ()
     assert done.players[0].intrigue_faceup == (card,)
     assert done.intrigue_discard == ()
-    assert [event.kind for event in result.events] == [
+    # (The steps' seat-only pick events are not the play's events.)
+    assert [e.kind for e in result.events if e.kind != "effect_picked"] == [
         "intrigue_played",
         "intrigue_kept_faceup",
     ]
@@ -3654,12 +3655,12 @@ def test_a_retreat_after_the_deployment_keeps_distraction_playable() -> None:
     retreated = reconcile_deployment_after_retreat(state, 0, troops=1)
     assert retreated.players[0].units_deployed_turn == 2
     assert retreated.players[0].units_deployed_peak == 3
-    assert _play(retreated, card) in UprisingRulesEngine().legal_actions(
+    assert _play(retreated, card) in UprisingRulesEngine().whole_actions(
         retreated, 0
     )
     # Without that moment (two deployed and nothing higher) it is not met.
     two = _turn_state(replace(owner, units_deployed_turn=2))
-    assert _play(two, card) not in UprisingRulesEngine().legal_actions(two, 0)
+    assert _play(two, card) not in UprisingRulesEngine().whole_actions(two, 0)
 
 
 def test_a_card_played_off_the_peak_never_raises_the_deployed_count() -> None:

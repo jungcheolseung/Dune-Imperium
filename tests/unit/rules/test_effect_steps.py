@@ -288,3 +288,91 @@ def test_a_reveal_choice_row_names_the_card_that_printed_it() -> None:
             (("card_id", corrinth), ("source", "calculus_of_power")),
         ),
     ) == (trash, DomainAction("choose_personal_card", 0, (("card_id", corrinth),)))
+
+
+def test_an_intrigue_play_is_the_window_then_the_card_then_its_option() -> None:
+    # Stage B3c-1 (docs/stage-b-plan.md "B3c 세부 설계"): ``play(ref=책략)`` ->
+    # the card -> its option; one option still opens its step (OQ-111 (2)).
+    from tests.unit.rules.test_intrigue import _intrigue, _turn_state
+
+    from dune_imperium.core import PlayerState
+
+    card = _intrigue("contingency_plan")
+    state = _turn_state(PlayerState(player_id=0, intrigue_cards=(card,)))
+    play = DomainAction("play", 0, (("printed", "plot"), ("source", "intrigue")))
+    whole = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 0)))
+    assert play in ENGINE.legal_actions(state, 0)
+    assert whole in ENGINE.whole_actions(state, 0)
+    assert path_of(state, whole) == (
+        play,
+        DomainAction("choose_intrigue_card", 0, (("card_id", card),)),
+        DomainAction("choose_option", 0, (("option", 0),)),
+    )
+
+    picked = ENGINE.apply(state, play).state
+    chose = ENGINE.apply(
+        picked, DomainAction("choose_intrigue_card", 0, (("card_id", card),))
+    )
+    # The card picked so far is the seat's alone (OQ-111 (4)).
+    assert all(event.visible_to == (0,) for event in chose.events)
+    assert ENGINE.legal_actions(chose.state, 0) == (
+        DomainAction("choose_option", 0, (("option", 0),)),
+    )
+    option = DomainAction("choose_option", 0, (("option", 0),))
+    played = ENGINE.apply(chose.state, option)
+    assert played.state.players[0].resources.solari == 2
+    assert played.state == apply_whole(ENGINE, state, whole).state
+
+
+def test_a_combat_play_names_the_combat_window() -> None:
+    from tests.unit.rules.test_intrigue import _combat_state, _intrigue
+
+    from dune_imperium.core import PlayerState
+
+    card = _intrigue("weirding_combat")
+    state = _combat_state(
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(card,),
+            troops_supply=PlayerState(player_id=0).troops_supply - 2,
+            troops_conflict=2,
+        )
+    )
+    rows = ENGINE.legal_actions(state, 0)
+    assert DomainAction("play", 0, (("printed", "combat"), ("source", "intrigue"))) in (
+        rows
+    )
+    assert DomainAction("pass_combat_intrigue", 0) in rows
+    assert not any(row.action_id == "play_intrigue" for row in rows)
+
+
+def test_agents_see_the_turn_frames_play_beside_its_placements_as_a_whole() -> None:
+    # Stage B3c-1: the turn frame shows its Agent-turn card pick as
+    # placements (B1) and, since it offers its other effects effect first,
+    # those as the whole actions they stand for -- an agent never sees the
+    # bare ``play`` row (the app AI answered it at random before this).
+    from tests.unit.rules.test_intrigue import _intrigue, _turn_state
+
+    from dune_imperium.agents.agent_turn_steps import placements_for_steps
+    from dune_imperium.content.uprising.starting_cards import (
+        starting_deck_instance_ids,
+    )
+    from dune_imperium.core import PlayerState
+
+    card = _intrigue("contingency_plan")
+    state = _turn_state(
+        PlayerState(
+            player_id=0, hand=starting_deck_instance_ids(0), intrigue_cards=(card,)
+        )
+    )
+    rows = ENGINE.legal_actions(state, 0)
+    shown = placements_for_steps(state, 0, rows)
+    assert shown is not None
+    wholes, answer = shown
+    whole = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 0)))
+    assert whole in wholes
+    assert not any(action.action_id == "play" for action in wholes)
+    assert any(action.action_id == "agent_turn" for action in wholes)
+    assert answer(whole) == DomainAction(
+        "play", 0, (("printed", "plot"), ("source", "intrigue"))
+    )

@@ -3306,10 +3306,10 @@ def test_a_trashed_stilgar_gains_nothing_from_a_later_fremen_arrival() -> None:
     assert _reveal_frame_context(revealed)["persuasion"] == 2
     cunning = next(
         action
-        for action in engine.legal_actions(revealed, 0)
+        for action in engine.whole_actions(revealed, 0)
         if action.action_id == "play_intrigue" and ("option", 1) in action.arguments
     )
-    plotted = engine.apply(revealed, cunning).state
+    plotted = apply_whole(engine, revealed, cunning).state
     trash = next(
         action
         for action in engine.legal_actions(plotted, 0)
@@ -3360,10 +3360,10 @@ def test_stilgar_adds_two_for_a_fremen_arrival_after_a_fremen_card_was_trashed()
     assert _reveal_frame_context(revealed)["persuasion"] == 4
     cunning = next(
         action
-        for action in engine.legal_actions(revealed, 0)
+        for action in engine.whole_actions(revealed, 0)
         if action.action_id == "play_intrigue" and ("option", 1) in action.arguments
     )
-    plotted = engine.apply(revealed, cunning).state
+    plotted = apply_whole(engine, revealed, cunning).state
     trash = next(
         action
         for action in engine.legal_actions(plotted, 0)

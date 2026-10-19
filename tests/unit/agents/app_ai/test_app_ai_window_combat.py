@@ -16,6 +16,7 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request
@@ -74,7 +75,9 @@ def _reach(kind: str, *, choam: bool, seed: int, want: str = "any") -> GameState
     def predicate(state: GameState, owner: int) -> bool:
         if state.decision_stack[-1].kind != kind:
             return False
-        ids = {a.action_id for a in ENGINE.legal_actions(state, owner)}
+        # The whole actions the rules resolve (stage B3c-1: the Combat and
+        # Endgame Intrigue windows offer a play effect first).
+        ids = {a.action_id for a in ENGINE.whole_actions(state, owner)}
         return _WANTS[want](ids)
 
     return play_until(predicate, choam=choam, seed=seed)
@@ -124,7 +127,7 @@ def _run(
 ) -> DecisionRun:
     seat = _seat(state)
     profile = make_profile(state, seat, rng_seed=rng_seed)
-    actions = tuple(ENGINE.legal_actions(state, seat) if legal is None else legal)
+    actions = tuple(ENGINE.whole_actions(state, seat) if legal is None else legal)
     return DecisionRun(profile.ctx, profile, actions, profile.rng, memory or Memory())
 
 
@@ -810,7 +813,7 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
         action = W.endgame_intrigue(run) if len(run.legal) > 1 else run.legal[0]
         assert action is not None
         taken.append(_args(action))
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
     assert taken == [
         ("play_intrigue", {"card_id": "intrigue:shadow_alliance:0", "option": 0}),
         (

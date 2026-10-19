@@ -40,6 +40,11 @@ from dune_imperium.core.decisions import (  # noqa: E402
 from dune_imperium.core.observation import PlayerView  # noqa: E402
 from dune_imperium.core.state import GamePhase, GameState  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.rules.effect_steps import (  # noqa: E402
+    completed_whole,
+    first_step,
+    without_pick,
+)
 from dune_imperium.rules.endgame import final_standings  # noqa: E402
 from dune_imperium.rules.frames import FrameKind  # noqa: E402
 from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
@@ -1062,13 +1067,33 @@ def _combat_intrigue_choices(
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
-        if state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE and any(
-            adds_only_strength(action) for action in actions
+        if state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE and (
+            _strength_only_rows(engine, state, decision.owner, actions)
         ):
             found.append((state, decision.owner, actions))
         choice = _heuristic_choice(engine, agents[decision.owner], state, actions)
         state = apply_whole(engine, state, choice).state
     return found
+
+
+def _strength_only_rows(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    seat: int,
+    rows: tuple[DomainAction, ...],
+) -> set[DomainAction]:
+    """The rows whose every whole action behind them plays a strength-only
+    Combat Intrigue (the window offers a play effect first, stage B3c-1)."""
+
+    behind: dict[DomainAction, list[DomainAction]] = {}
+    for whole in engine.whole_actions(state, seat):
+        behind.setdefault(first_step(state, whole), []).append(whole)
+    return {
+        row
+        for row in rows
+        if adds_only_strength(row)
+        or (row in behind and all(adds_only_strength(w) for w in behind[row]))
+    }
 
 
 def _alone_in_the_lead(state: GameState, seat: int) -> bool:
@@ -1095,22 +1120,28 @@ def test_a_search_seat_holds_strength_intrigue_only_while_alone_in_the_lead(
     assert leading and trailing
 
     for state, seat, actions in leading:
+        only = _strength_only_rows(engine, state, seat, actions)
         held = holds_combat_lead(state, seat, actions)
-        assert held == tuple(a for a in actions if not adds_only_strength(a))
+        assert held == (tuple(a for a in actions if a not in only) or actions)
+        if held == actions:
+            # Part way through a strength-only play the heuristic began (no
+            # pass mid-pick, stage B3c-1): nothing is left to hold, and a seat
+            # that holds never begins one.
+            continue
         view = engine.observe(state, seat)
         plan = NetworkSearchAgent(path, seed=1, config=config)._shortlist(
             state, view, actions
         )
         chosen = plan if isinstance(plan, DomainAction) else plan.candidates
         assert not any(
-            adds_only_strength(action)
+            action in only
             for action in ((chosen,) if isinstance(chosen, DomainAction) else chosen)
         )
         plain = NetworkSearchAgent(
             path, seed=1, config=config, hold_combat_lead=False
         )._shortlist(state, view, actions)
         assert not isinstance(plain, DomainAction)
-        assert any(adds_only_strength(action) for action in plain.candidates)
+        assert any(action in only for action in plain.candidates)
     for state, seat, actions in trailing:
         assert holds_combat_lead(state, seat, actions) == actions
 
@@ -1133,8 +1164,10 @@ def _before_the_lead(config: RulesetConfig, seed: int) -> GameState:
         seat = decision.owner
         actions = engine.legal_actions(state, seat)
         if state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE:
-            if seat in last and _alone_in_the_lead(state, seat) and any(
-                adds_only_strength(action) for action in actions
+            if (
+                seat in last
+                and _alone_in_the_lead(state, seat)
+                and _strength_only_rows(engine, state, seat, actions)
             ):
                 return last[seat]
         else:
@@ -1160,15 +1193,20 @@ def test_every_seat_of_a_playout_holds_strength_intrigue_in_the_lead(
 
     def checking(self: UprisingRulesEngine, *args: object, **kwargs: object) -> object:
         before, step = args[0], args[1]
+        # The step that ends a strength-only play (stage B3c-1: the window's
+        # play effect, its card and option are steps).
         if (
             isinstance(before, GameState)
             and isinstance(step, DomainAction)
             and before.decision_stack
             and before.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE
-            and adds_only_strength(step)
             and _alone_in_the_lead(before, step.actor)
         ):
-            violations.append(step)
+            ended = completed_whole(
+                before, step, engine.whole_actions(without_pick(before), step.actor)
+            )
+            if ended is not None and adds_only_strength(ended):
+                violations.append(ended)
         return real_apply(self, *args, **kwargs)  # type: ignore[arg-type]
 
     held: list[int] = []

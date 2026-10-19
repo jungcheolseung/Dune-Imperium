@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core import GameState, PlayerState
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -194,7 +195,8 @@ def test_playing_coercive_negotiation_is_a_reveal() -> None:
         actor=0,
         arguments=(("card_id", card), ("option", 0)),
     )
-    after = UprisingRulesEngine().apply(before, play).state
+    # The play's window, card and option steps (stage B3c-1).
+    after = apply_whole(UprisingRulesEngine(), before, play).state
     assert after.decision_stack[-1].kind == "intrigue_trigger_contract"
     assert reveals_hidden_information(before, after, actor=0) is True
 
@@ -588,8 +590,10 @@ def _play_seat0_until(
         # turn is a card pick and a space pick, which moves the random walk;
         # of 0-11, seeds 0, 2, 3, 8 and 11 reach it). Seed 1 since stage B2
         # (OQ-112: a Conflict reward's icons are rows the walk draws over;
-        # of 0-15, seeds 1, 3, 7, 8, 9, 10, 14 and 15 reach it).
-        ("acquire_tleilaxu", "immortality", 1),
+        # of 0-15, seeds 1, 3, 7, 8, 9, 10, 14 and 15 reach it). Seed 3 since
+        # stage B3c-1 (a card is played effect first, which moves the walk;
+        # of 0-15, seeds 3, 6, 7, 8, 9, 10, 14 and 15 reach it).
+        ("acquire_tleilaxu", "immortality", 3),
         # The stack's next tile turns face up [Bloodlines p. 6].
         ("acquire_tech", "tech_module", 0),
     ],
@@ -1398,7 +1402,9 @@ def test_cunning_trash_can_be_taken_back_and_its_draw_cannot() -> None:
     summary = _play_raw(manager, summary, index=_int(trash["index"]))
     trashed = manager._get(game_id).state.players[0]
     assert len(trashed.hand) == len(hand_before) - 1  # nothing drawn
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    # The play is three steps since stage B3c-1 (its window, its card, its
+    # option), then the trash.
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
     rows = served()
     assert [row["action_id"] for row in rows] == ["resolve_intrigue_rewards"]
     assert rows[0]["undoable"] is False
@@ -1787,7 +1793,8 @@ def test_influence_choice_reaching_a_bonus_can_be_taken_back_and_its_card_cannot
     chosen = manager._get(game_id).state.players[0]
     assert chosen.influence.bene_gesserit == 4
     assert chosen.intrigue_cards == before.players[0].intrigue_cards  # no draw
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    # The play's three steps (stage B3c-1), the line, the choice.
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 5}]
     rows = _served(manager, game_id)
     # The draw is all the seat may do now: not the card's finish, not the
     # turn's end.

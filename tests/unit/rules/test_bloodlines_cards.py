@@ -1332,7 +1332,8 @@ def test_return_the_favor_counts_factions_at_two_influence() -> None:
         intrigue_cards=(card,),
         influence=Influence(emperor=2, fremen=3, bene_gesserit=1),
     )
-    done = UprisingRulesEngine().apply(_combat_state(owner), _play_intrigue(card)).state
+    engine = UprisingRulesEngine()
+    done = apply_whole(engine, _combat_state(owner), _play_intrigue(card)).state
     assert done.players[0].combat_strength == 2 + 1 + 2
 
 
@@ -2080,7 +2081,7 @@ def test_adaptive_tactics_counts_a_commander_still_to_be_bought() -> None:
     # lets the Commander deploy from a space with no Combat icon.
     visited = _play(on_board, diplomacy, "dutiful_service")
     assert _play_options(visited, card) == [0]
-    played = UprisingRulesEngine().apply(visited, _play_intrigue(card)).state
+    played = apply_whole(UprisingRulesEngine(), visited, _play_intrigue(card)).state
     buy = next(
         a
         for a in legal_sardaukar_commander_actions(played, 0)
@@ -3131,7 +3132,7 @@ def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     state = _state(_owner(hand=(card,)))
     actions = legal_turn_start_card_actions(state, 0)
     assert [dict(a.arguments)["card_id"] for a in actions] == [card]
-    assert actions[0] in UprisingRulesEngine().legal_actions(state, 0)
+    assert actions[0] in UprisingRulesEngine().whole_actions(state, 0)
     # No Agent icons: the card cannot be sent anywhere.
     assert legal_agent_actions(state, 0) == ()
     passed = apply_turn_start_card(state, actions[0]).state
@@ -3149,14 +3150,11 @@ def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     # ruling 2026-10-04).
     plot = "intrigue:contingency_plan:0"
     with_plot = _state(_owner(hand=(card,), intrigue_cards=(plot,)))
-    plotted = (
-        UprisingRulesEngine()
-        .apply(
-            with_plot,
-            DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0))),
-        )
-        .state
-    )
+    plotted = apply_whole(
+        UprisingRulesEngine(),
+        with_plot,
+        DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0))),
+    ).state
     assert plotted.decision_stack[-1].kind == "turn"
     assert legal_turn_start_card_actions(plotted, 0) == ()
 
@@ -3977,7 +3975,7 @@ def test_false_orders_moves_the_spy_off_every_post_of_the_space() -> None:
     base = _state(_owner(hand=(city,), intrigue_cards=(card,)))
     base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
     state = _play(base, city, "spice_refinery")
-    played = UprisingRulesEngine().apply(state, _play_intrigue(card)).state
+    played = apply_whole(UprisingRulesEngine(), state, _play_intrigue(card)).state
     moves = legal_spy_move_actions(played, 1)
     targets = {dict(a.arguments)["post_id"] for a in moves}
     assert targets
@@ -4491,6 +4489,13 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # are: 212 leave and 48 rows join.
         - 212
         + 48
+        # v150 (stage B3c-1, OQ-111): the turn frame and the Combat, Conflict-end
+        # and Endgame Intrigue windows offer a card play as their effect row
+        # (``play``, ``match``) and the card's rows: the whole templates of
+        # ``play_intrigue`` (92), ``play_turn_start_card`` (1) and
+        # ``match_endgame_wild_icon`` (60) leave and 29 rows join.
+        - 153
+        + 29
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

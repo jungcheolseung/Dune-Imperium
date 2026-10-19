@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
@@ -538,12 +539,14 @@ def test_a_round_one_loop_that_empties_gets_a_zero_row() -> None:
     ).state
     engine = UprisingRulesEngine()
     collector = CombatCollector(_spec(False, seed=3), 4)
+    # The census steps by whole actions; a play is its window, card and
+    # option steps (stage B3c-1).
     play = next(
         a
-        for a in engine.legal_actions(state, 0)
+        for a in engine.whole_actions(state, 0)
         if a.action_id == "play_intrigue" and dict(a.arguments)["option"] == 1
     )
-    opened = engine.apply(state, play)
+    opened = apply_whole(engine, state, play)
     collector.step(Step(state, opened.state, 0, play, (), tuple(opened.events)))
     retreat = max(
         engine.legal_actions(opened.state, 0), key=lambda a: dict(a.arguments)["count"]

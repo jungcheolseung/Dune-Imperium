@@ -552,6 +552,8 @@ ACTION_ARGUMENT_HINTS: Final[Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("flip_battle_card", "card_id"): ("battle",),
     # Stage B3's target rows name their target by its kind.
     ("choose_intrigue_card", "card_id"): ("intrigue",),
+    # The Endgame wild match's two cards (stage B3c-1), as its arguments.
+    ("choose_conflict_card", "card_id"): ("battle", "conflict"),
 }
 
 

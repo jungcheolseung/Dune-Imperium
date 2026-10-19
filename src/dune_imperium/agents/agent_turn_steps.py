@@ -92,13 +92,17 @@ def placements_for_steps(
             for placement in executable_placements(state, player)
             if agent_card_pick_actions(player, (placement,))[0] in offered
         )
-        others = tuple(
+        rows = tuple(
             action for action in legal_actions if action.action_id != CARD_PICK_ACTION
         )
+        # The turn frame offers its other effects effect first too (stage
+        # B3c-1): they are shown as the whole actions they stand for.
+        effects = _effect_wholes(state, player, rows)
+        others, to_other = (rows, _same) if effects is None else effects
 
         def to_card(chosen: DomainAction) -> DomainAction:
             if chosen.action_id != PLACEMENT_ACTION:
-                return chosen
+                return to_other(chosen)
             (step,) = agent_card_pick_actions(player, (chosen,))
             return step
 
