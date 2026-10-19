@@ -636,6 +636,30 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
 엔진 변경이라 B3c-1 뒤에 따로 조사해 정한다(출처 문자열에서 개체를 읽는 규칙, 같은 종류 둘이 함께 기다릴 때, 처리기의 "자기 칸 먼저"가
 규칙상 필요한지).
 
+### B3c-1 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **표:** 설계대로 `play_intrigue`(창은 그 frame에서: `Printed.INTRIGUE_WINDOW` — 차례·Agent 효과·Reveal frame `plot`, Combat
+  `combat`, Endgame `endgame`), `play_conflict_end_intrigue`, `play_turn_start_card`, `match_endgame_wild_icon`(새 대상 종류
+  `choose_conflict_card`). `EFFECT_STEP_FRAMES`에 차례 frame·Combat·Conflict 끝·Endgame 창. `flip_tech`는 온 행동으로 내는 frame이
+  없어 `OFFERED_AS_WHOLE`에서 빠졌다. 고르기 걸음은 차례 시작을 닫지 않는다(`_apply_legal`이 고르기 단계를 차례 시작 끝내기 전에
+  돌려준다 — Withdrawn·Litany의 시작 전용 갈래가 고르는 도중에 사라지지 않는다).
+- **AI:** `PlacementMemory`가 차례 frame의 B1 카드 고르기를 배치로 보일 때 함께 나오는 나머지 줄도 온 행동으로 보인다(빠뜨렸을 때
+  앱 AI가 차례 frame의 `play` 줄을 몰라 무작위로 답했다). 앱 AI가 책략을 낼 때 남기는 "같은 판단" 표지(`intrigue_at`)는 고르기
+  사건(`effect_picked`)을 뺀 사건 수로 센다(`app_ai.windows.intrigue.event_stamp`) — 카드·갈래 고르기 사건이 `intrigue_played` 앞에
+  끼어 표지가 어긋났다. 탐색 AI의 "혼자 앞설 때 전투력만 더하는 책략은 아낀다"(`holds_combat_lead`)는 줄 뒤의 온 행동이 모두 그런
+  책략인 줄(창의 `play`, 카드, 갈래)을 거른다.
+- **codec:** 기본 2,938행(−73: `play_intrigue`·와일드 맞추기 온 template, +26: `play`·`match` 효과 줄과 Conflict·목표 카드 대상 줄),
+  CHOAM −78/+26, Bloodlines까지 −159/+29, 옵션 전부 9,603 → 9,445. `action_shapes`: 효과 줄 동사 `play`·`match`, 대상 줄
+  `choose_conflict_card`. 엔티티 망: `choose_conflict_card(card_id)`는 battle·Conflict 카드로 읽고(특징 digest 다시 고정), 창 이름은
+  이름표.
+- **도구:** 같음 확인의 B1 규칙이 차례 frame의 행을 효과 단계 표시(`present`)를 거쳐 비교하고 화면 정보를 온 행동으로 읽는다(서버처럼;
+  안 하면 200판 모두 첫 차례 frame에서 달랐다).
+- **측정:** 같음 확인 200판 같음(온 행동 57,629번이 길로, B3b-2보다 5,512번 더); 기보 2,000판 같음 1,568 · 일시 차이 431 · 갈림 1(B3b와
+  같음); 휴리스틱 20판·앱 AI 10판이 이전 커밋과 최종 상태·사건이 같음(위 두 AI 수정 뒤); 소크 1,400판 실패 0; 관측 고정 digest 여섯은 첫
+  책략 내기에서 갈려 다시 고정; 문제집 tips-v1 다시 채굴(휴리스틱 82곳 같음, 체크포인트 망 몫만 바뀌어 101곳); 무작위 걸음 시드 다시 고름
+  (되돌리기 3, 턴 종료 7·3, 탐색 좌석 기존 그대로, `log_words` 283 · Scouts 2와 209); E2E 다시보기 이동(`deck_piles`)과 `unavailable`의
+  내장 조각을 효과 단계에 맞춤.
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로
