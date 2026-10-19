@@ -727,6 +727,57 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   병합 직전 한 번으로 미루자고 제안했으나, 단계마다 전체 관문(pytest·소크·같은 판·같음 확인·기보 대조·문제집 재채굴·E2E)을 그대로
   돌린다.
 
+### B3d 세부 설계 (2026-10-20, 사실표 `tmp/claude/4767ed6a/b3d/facts.md`)
+
+**지금 모습.** 효과 단계 frame 여섯 밖에 결정 frame 45개가 있고(실제 판 400판의 결정 472,571번 중 15%), 거기서는 온 행동이 그대로
+행이다(`whole_actions` = `legal_actions`). 다섯 무리로 나뉜다.
+
+- **(A) 여러 효과를 함께 내는 창 여섯:** Conflict 보상 창(`resolve_combat_reward_icon(effect)` — 결정 19,460번의 절반이 줄 둘 이상), 계약
+  보상 창, 차례 밖 연구 창, 책략의 화살표 줄 창(`use_intrigue_effect(section)`), Tech 획득 창의 아이콘 모드
+  (`resolve_tech_acquire_effect`), Servo-Receivers의 인장 창(`leader_signet`, 지도자 인장 메뉴 17종).
+- **(B) 효과 하나를 위해 열린 frame 39개:** 보상·계약·획득의 Spy 창, 영향력 고르기 창, 책략 선택 슬롯(`intrigue_choice`, 슬롯마다 한
+  효과), Scouts frame들, 접합 상대, 운항, 차례 밖 선택 폐기 창, 연구 칸 고르기, 기술 비밀 프로젝트, 지도자 고르기 등. 행은 그 효과의
+  대상·갈래, 거절·빈 확인, 곁가지(`scouts_rewards_first`, 빚진 뽑기, `return_specimen`)다. 많은 경우 앞 frame의 효과 줄(보상 아이콘,
+  Agent 칸 아이콘, 차례 줄)을 고른 결과로 열린다.
+- **(C) 거절·빈 확인 56종**(`decline_*` 41, `resolve_*_without_*` 등 15; 그중 8은 처리기 없는 죽은 id), 72 template.
+- **(D) 차례 frame의 남은 출처별 이름:** 빚진 뽑기 `draw_owed_intrigue/card`(덱마다 한 줄, 가장 오래된 즉시 것 → 가장 오래된 것),
+  황제 트랙 Spy `place_track_spy`(가장 오래된 것), 소위원회 `choose_subcommittee`/`decline_subcommittee`, Commander 모집
+  `recruit_sardaukar_commander`(기다리는 효과 없이 차례 규칙).
+- **(E) 뜻이 둘인 id:** `lose_unit`(Holy War 창 행 = Piter·Tleilaxu Surgeon 효과 줄의 동사), `choose_skill`(대상 줄 = Skill 창의 온 행동),
+  `decline_combat_reward`(지불 거절 = Spy 둘 회수 거절).
+
+codec(옵션 전부 9,487행) 가운데 2,349행이 (A)·(B)의 온 행동 때문에 남은 옛 template이고(`OFFERED_AS_WHOLE` 49종), 그중 886행은
+Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal frame에서 단계로 나옴).
+
+**정할 것.**
+
+- **D-1 효과 하나를 위해 열린 frame(B)의 행.**
+  - (가) 대상 줄만(계획 원안 "한 효과를 위해 열린 frame은 효과 줄 없이 대상 줄만"): 그 frame을 연 앞 단계의 효과 줄(보상 아이콘,
+    Agent 칸 아이콘, 차례 줄)이 이미 효과를 골랐으니, 창은 그 효과의 대상만 낸다(보상 Spy 창 = `choose_post`). 창 안에 다른 효과가
+    갈래로 함께 나오면(Spy 공급이 비었을 때의 "먼저 회수", 계약 시장의 "보상 먼저") 그 갈래만 자기 효과 줄을 앞에 둔다. 거절은 그
+    창의 효과를 가리키는 `decline(ref)`(D-2).
+  - (나) 모든 frame을 효과 먼저로 통일: 창에서도 `place_spy(ref)` → `choose_post`. 같은 효과가 어디서나 같은 두 줄이지만, 앞 단계에서
+    고른 효과를 창이 한 번 더 묻는다(보상 아이콘 `place_spy` → 창의 `place_spy` → 초소).
+  - **추천: (가)** — 효과는 한 번 고른다. 차례 frame의 효과 줄 → 대상 줄과 같은 모양이 frame 경계를 넘어 이어질 뿐이다.
+- **D-2 거절·빈 확인:** `decline(ref)`와 `confirm_empty(ref)` 두 id로 합치고, `ref`는 거절·확인하는 효과의 자리(출처·인쇄한 개체·
+  아이콘·갈래). 지금 `decline_gather_intelligence`·`decline_reveal_sandworm` 같은 차례 frame의 거절도 같다. 처리기 없는 죽은 id 8종은
+  지운다. 턴·창을 끝내는 `finish_*`·`pass_*`는 효과의 거절이 아니므로 그대로. **추천: 이대로**(계획 원안).
+- **D-3 남은 출처별 이름(D):** 효과 줄로 — 빚진 뽑기 `draw(source=<기원 종류>, printed=<기원>, icon=intrigue|cards)`, 덱마다 한 줄,
+  `printed`는 처리기가 집을 그 항목의 기원(같은 덱 뽑기는 결과가 같아 줄 하나 — 결정 3, B3c-2a의 연구 아이콘과 같다); 황제 트랙 Spy
+  `place_spy(source=influence_track, printed=emperor)`(초소는 그 뒤 Spy 창의 대상); 소위원회 `join(source=scouts, printed=<High Council
+  칸>)`; Commander 모집 `recruit(source=commander, printed=sardaukar_commander)`. **추천: 이대로.**
+- **D-4 뜻이 둘인 id(E):** (가)에서는 저절로 풀린다 — Holy War 창은 대상 줄 `choose_unit(zone[, commanders])`(새 대상 종류), Skill 창은
+  대상 줄 `choose_skill`(같은 뜻이 됨), 두 거절은 `decline(ref)`의 서로 다른 자리.
+
+**하위 단계(단계마다 전체 관문, 사용자 결정 2026-10-20).**
+
+- **B3d-1:** (A) 여섯 창을 효과 단계 frame으로(Conflict 보상 창의 `printed`는 그 Conflict 카드, 계약 창은 그 계약, 책략 줄 창은 그 카드,
+  인장 창은 지도자, Tech 창은 그 타일 — 상태에서 읽는 새 `Printed` 규칙).
+- **B3d-2:** (B) 39 frame을 대상 줄로(D-1), 새 대상 종류(`choose_unit`·`choose_leader`·`choose_mission`·`choose_subcommittee` 등, 지금
+  대상 줄이 없는 종류), 갈래의 효과 줄.
+- **B3d-3:** 거절·빈 확인 합치기(D-2), 죽은 id 정리.
+- **B3d-4:** 남은 출처별 이름(D-3), `OFFERED_AS_WHOLE`이 비면서 옛 template이 codec에서 빠짐(Reveal 선택 21종 포함).
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로
