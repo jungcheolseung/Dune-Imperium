@@ -799,6 +799,57 @@ Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal fram
 - **측정:** pytest 8,166; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크 900판
   (codec 왕복 검사 포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면, 모두 103곳); E2E 전부(`log_words`의 Scouts 시드 2 → 4).
 
+**B3d-2 세부 설계 (2026-10-20, D-1 (가)).** 효과 하나를 위해 열린 frame 39종을 대상 줄로 낸다.
+
+- **고르는 법:** frame마다 그 frame의 효과(이하 "제 효과")를 정해 둔다. 제 효과의 온 행동은 대상 줄만으로 보이고(`path_of`가 효과 줄을
+  뺀다), 같은 frame에 함께 나오는 다른 효과(Spy 공급이 비었을 때의 "먼저 회수", 책략 카드의 자동 보상 `resolve_intrigue_rewards`)는 자기
+  효과 줄 → 대상 줄로 보인다. 대상이 없는 온 행동(돈 내고 VP `pay_combat_reward`, 통제 방어 배치, Shield Wall 터뜨리기, 맨 위 카드
+  처리 셋)은 대상 줄이 없으니 효과 줄 하나로 보인다. 거절·빈 확인·곁가지(`scouts_rewards_first`, 빚진 뽑기, `return_specimen`)는 B3d-3·
+  B3d-4까지 그대로.
+- **제 효과 표:** 대부분 frame 종류마다 정해진다(Spy 창들은 `place_spy`, 영향력 창은 `gain_influence` …). 책략 선택 슬롯
+  (`intrigue_choice`)은 슬롯이 정한다 — Spy 놓기 슬롯이면 회수가 다른 효과, Spy 회수 슬롯이면 회수가 제 효과. Scouts 효과 줄
+  (`scouts_effect`)은 걸음마다 한 효과라 모두 제 효과.
+- **새 대상 종류:** `choose_unit(zone[, commanders])`(잃을 유닛: Holy War 창, 책략의 병력 잃기, Scouts 주둔지 유닛), `choose_count(count[,
+  commanders])`(수: 책략의 배치·후퇴, Scouts 입찰·호출·후퇴·표본 반환), `choose_leader(leader_id)`(드래프트), `choose_mission(target)`(Scouts
+  임무), `choose_subcommittee(subcommittee_id)`(소위원회), `choose_navigation_card(card_id)`(운항 카드 놓기). `choose_subcommittee`가 지금
+  차례 줄의 id라, 그 차례 줄은 이 단계에서 D-3대로 `join(source=scouts, printed=<High Council 칸>)`이 된다(B3d-4에서 당겨 옴).
+  나머지는 있는 대상 줄(`choose_post`·`choose_personal_card`·`choose_faction`·`choose_option`·`choose_intrigue_card`·`choose_tech`·
+  `choose_imperium_card`·`choose_space`·`choose_contract`·`choose_track_space`·`choose_skill`·`choose_tleilaxu_card`·`choose_reserve_card`·
+  `choose_conflict_card`·`choose_seat`).
+- **고른 중간 상태:** 대상이 둘인 제 효과(Conflict 보상 Spy 둘 회수: 첫 초소 → 둘째 초소, 책략 주기: 카드 → 받는 좌석, Tech 사기: 타일 →
+  버릴 Spy 초소)는 효과 줄 없이 고른 대상부터 쌓인다; 관측의 고른 대상 칸은 효과 줄이 없는 고르기도 읽는다.
+- **나눔:** B3d-2a 보상·계약·책략·Spy·지도자·Tech·연구·운항·접합 등 Scouts 밖 frame, B3d-2b Arrakeen Scouts frame. 단계마다 전체 관문.
+
+**B3d-2a 표(Scouts 밖 31 frame).** 대상 줄만 내는 제 효과와, 효과 줄을 앞에 두는 것.
+
+| frame | 제 효과(대상 줄) | 효과 줄(갈래·대상 없음) — `printed` |
+|---|---|---|
+| 상대 카드 버리기 | `choose_personal_card` | — |
+| 획득 Spy / 계약 보상 Spy / Conflict 보상 Spy / Spy 배치 | `choose_post` | 먼저 회수 `recall_spy` → `choose_post` — 산 카드(`acquisition_card_id`), 계약(`contract_spy_id`), 이번 Conflict 카드, 그 창을 연 것(Spy 배치 창이 새로 기록) |
+| Reveal 선택 Spy | `choose_post` | — |
+| 계약 시장·책략 계약 | `choose_contract` | — |
+| 계약 보상 Agent 소환 | `choose_space`(칸 또는 `conflict`) | — |
+| 계약 책략 폐기 | `choose_intrigue_card` | — |
+| 통제 방어 | — | `deploy` — 그 통제 칸(`space_id`) |
+| Conflict 보상 영향력 둘 | `choose_faction` | — |
+| Conflict 보상 지불 | — | `pay` — 이번 Conflict 카드 |
+| Conflict 보상 Spy 둘 회수 | `choose_post` → `choose_post` | — |
+| Conflict 보상 폐기 | `choose_personal_card` | — |
+| 책략 선택 슬롯 | 슬롯의 대상(진영·Spy 초소·카드·병력 수 `choose_count`·잃을 유닛 `choose_unit`·Imperium/Tleilaxu/Reserve 카드·책략 카드 → 받는 좌석·Conflict 카드 …) | Spy 놓기 슬롯의 먼저 회수 `recall_spy`, 자동 보상 `resolve`, Shield Wall 터뜨리기 `destroy_shield_wall`, 맨 위 카드 셋(`keep`·`discard`·`draw`) — 그 책략 카드 |
+| 지도자 드래프트 | `choose_leader` | — |
+| Skill 고르기 | `choose_skill` | — |
+| 상대 Spy 옮기기 | `choose_post` | — |
+| Holy War 유닛 잃기 | `choose_unit` | — |
+| 선택 폐기 창 | `choose_personal_card` | Planetologist 책략 `draw` — 지도자 |
+| 운항 카드 놓기·쓰기 | `choose_navigation_card`·`choose_option` | — |
+| Tech 사기·비밀 프로젝트 | `choose_tech`(→ `choose_post`) | — |
+| 연구 칸 고르기 | `choose_track_space` | — |
+| 연구 보너스 창 | `choose_faction`·`choose_intrigue_card` | 7 Solari `pay` — c8r6 |
+| 접합 상대·책략 엿보기·전사들이여 | `choose_personal_card`·`choose_intrigue_card` | — |
+
+거절·빈 확인(`decline_*`, `lose_moved_spy` 등)과 곁가지는 그대로 둔다(B3d-3·B3d-4). 이 frame들의 온 행동은 모두 단계로 나오므로
+`OFFERED_AS_WHOLE`이 비고, 옛 template이 codec에서 빠진다.
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로
