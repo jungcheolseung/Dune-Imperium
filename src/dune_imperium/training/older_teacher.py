@@ -311,12 +311,18 @@ class OlderNetworkAgent:
 
     It picks the whole action the file scores highest and plays its steps
     without weighing them again (``PlacementMemory``), as ``NetworkAgent``
-    played one row when a placement was one row.
+    played one row when a placement was one row. Like ``NetworkAgent`` it
+    does not take a whole action again at an observation where it already
+    took it this round, unless nothing else is left: greedy, the file sets
+    an Arrakeen Scouts bid again and again rather than confirm it (a
+    30,000-action game in the 2026-10-21 feasibility check).
     """
 
     def __init__(self, older: OlderNetwork, *, seed: int = 0) -> None:
         self.teacher = OlderTeacher(older, seed=seed)
         self._memory = PlacementMemory()
+        self._round = -1
+        self._taken: dict[bytes, set[DomainAction]] = {}
 
     def choose_action(
         self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
@@ -336,15 +342,27 @@ class OlderNetworkAgent:
             self.teacher.counts[ENGINE_ORDER] += 1
             return answer
 
+        if observation.round_number != self._round:
+            self._round = observation.round_number
+            self._taken.clear()
+        encoded = np.asarray(encode_player_view(observation), dtype=np.int32)
+        taken = self._taken.setdefault(encoded.tobytes(), set())
+
         def decide(shown: tuple[DomainAction, ...]) -> DomainAction:
-            logits, _, rows = self.teacher.whole_scores(observation, shown, None)
+            logits, _, rows = self.teacher.whole_scores(observation, shown, encoded)
             if all(row is None for row in rows):
                 self.teacher.counts[FALLBACK] += 1
                 return self.teacher.fallback(None).choose_action_with_state(
                     state, observation, legal_actions
                 )
             self.teacher.counts[NETWORK] += 1
-            return shown[int(np.argmax(logits))]
+            fresh = [index for index, whole in enumerate(shown) if whole not in taken]
+            if fresh:
+                best = max(fresh, key=lambda index: logits[index])
+            else:
+                best = int(np.argmax(logits))
+            taken.add(shown[best])
+            return shown[best]
 
         return self._memory.choose(state, player, legal_actions, decide)
 

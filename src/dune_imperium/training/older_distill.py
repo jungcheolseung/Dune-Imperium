@@ -128,6 +128,11 @@ def play_job(job: OlderJob) -> TeacherData:
     )
     opponent = AgentBatchPolicy(job.opponent, job.opponent_seed)
     result = runner.run({LEARNER: policy, job.opponent: opponent}, job.specs)
+    truncated = [
+        episode.game_seed for episode in result.episodes if episode.truncated
+    ]
+    if truncated:
+        print(f"truncated games (seeds): {truncated}", flush=True)
     return teacher_rows(
         result.episodes,
         policy.answers,

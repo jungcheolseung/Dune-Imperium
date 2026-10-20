@@ -216,3 +216,16 @@ def test_an_older_shard_keeps_every_learner_decision_with_its_answer(
     assert ((target * played).sum(axis=1) > 0).all()
     assert np.isfinite(data.values).all()
     assert (np.diff(data.games) >= 0).all()
+
+
+def test_the_greedy_seat_does_not_repeat_a_choice_at_the_same_observation() -> None:
+    """A Scouts bid set again and again looped a game to 30,000 actions."""
+
+    state, player = _first_turn()
+    rows = _placement_rows(state, player)
+    agent = OlderNetworkAgent(_older(rows))
+    view = _ENGINE.observe(state, player)
+    legal = _ENGINE.legal_actions(state, player)
+    first = agent.choose_action_with_state(state, view, legal)
+    again = agent.choose_action_with_state(state, view, legal)
+    assert again != first
