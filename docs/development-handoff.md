@@ -21,7 +21,7 @@
 2. `git status --short`와 `git log --oneline -10`으로 작업 트리를 본다. 기존 변경은 사용자 작업으로 보고 덮어쓰지 않는다.
 3. `git fetch origin` 뒤 `git log --oneline origin/master..master`와 `master..origin/master`를 둘 다 본다. 여러
    기기에서 작업하므로 원격이 앞서 있으면 먼저 맞춘다. 비공개 에셋 저장소(`assets` → `../Dune-Imperium-assets`)도 같다.
-4. `uv sync --extra rl --extra ui --extra train` 뒤 `uv run pytest -q`, `uv run ruff check src tests`,
+4. `uv sync --extra rl --extra ui --extra train` 뒤 `uv run pytest -q -n 8`(pytest-xdist; 직렬은 Mac mini에서 약 10분, 8개로 2분 19초), `uv run ruff check src tests`,
    `uv run mypy src tests`. 결과가 아래 기준선과 다르면 코드가 옳다. 이 문서를 같은 작업에서 고친다.
 
 ## 기준선

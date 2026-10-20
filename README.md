@@ -95,7 +95,7 @@ AI끼리의 실력 비교는 [docs/evaluation/](docs/evaluation/)에 있다.
 
 ```bash
 uv sync --extra rl --extra ui --extra train
-uv run pytest
+uv run pytest -n 8          # 작업 프로세스 8개(pytest-xdist); 코어가 적으면 줄인다
 uv run ruff check src tests
 uv run mypy src tests
 ```
