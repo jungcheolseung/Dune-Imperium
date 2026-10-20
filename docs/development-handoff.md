@@ -125,9 +125,9 @@
 **도구·인프라**
 
 - **프로젝트 웹사이트:** `website/`의 Hugo 0.168.0 사이트를 Pages에 공개했다(master `b7787979`, build·deploy와 공개 URL 확인).
-  담백한 문구를 사용하고, 커밋·문서를 묶은 과거 개발일지 16편과 월별 목록·앞뒤 글·검색·RSS를 추가했다.
+  담백한 문구를 사용하고, 커밋·문서를 묶은 과거 개발일지 16편과 월별 목록·앞뒤 글·검색·RSS를 추가했다(master `89a96258` 반영).
   작성 양식·검증·배포는 [`website/README.md`](../website/README.md), 문구 원칙은 `website/AGENTS.md`.
-  **다음:** 작업별 개발일지 이어 쓰기, 게임 설치·OS 실기 확인과 릴리스·선택 모델 준비. 이번 수정은 로컬 검증 후 배포 대기.
+  **다음:** 작업별 개발일지 이어 쓰기, 게임 설치·OS 실기 확인과 릴리스·선택 모델 준비.
   [project-site-plan.md](project-site-plan.md)
 - **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
 - **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v148-02e203ce(2026-10-16, 2,000판; A1의 Play 커밋으로 만듦,
