@@ -292,3 +292,27 @@ def test_the_teacher_value_is_kept_and_can_be_the_value_target(
     train_student(student, joined, config)
     after = score_student(student, joined, train_rows)
     assert after.teacher_value_mse < 0.5 * before.teacher_value_mse
+
+
+def test_a_cosine_schedule_trains_and_ends_at_rate_zero(
+    collected: list[tuple[CollectionResult, TeacherData]],
+) -> None:
+    data = concatenate([part for _, part in collected])
+    torch.manual_seed(1)
+    student = PolicyValueNetwork(data.action_size, hidden=(32,))
+    config = StudentConfig(
+        learning_rate=3e-3,
+        warmup_steps=5,
+        minibatch_size=64,
+        epochs=2,
+        heldout_modulus=2,
+        threads=1,
+        schedule="cosine",
+    )
+    train_rows, _ = split_rows(data, config.heldout_modulus)
+    before = score_student(student, data, train_rows)
+    train_student(student, data, config)
+    after = score_student(student, data, train_rows)
+    assert after.cross_entropy < before.cross_entropy
+    with pytest.raises(ValueError, match="schedule"):
+        StudentConfig(schedule="linear")
