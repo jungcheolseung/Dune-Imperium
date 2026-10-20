@@ -982,6 +982,43 @@ D-3대로 차례 frame에 남은 출처별 이름이 효과 줄이 된다(소위
   포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면·지문·선택지, 체크포인트 망 몫 20 → 19곳, 모두 101곳); E2E 68개 전부. 독립 리뷰: 엔진·
   codec·서버·화면 결함 없음; 위의 같음 확인 규칙과 시험 하나(임무 창 표본 반환을 옛 온 행동으로 적용)를 찾음 — 둘 다 고침.
 
+### B3e 세부 설계 (2026-10-20, 사실표 `tmp/claude/4767ed6a/b3e/facts.md`)
+
+**지금 모습.** Reveal의 모은 이득은 Reveal frame 문맥의 대기 목록(`kind|payload|source`, OQ-045)이고 일곱 온 행동으로 받는다 — B3에서
+아직 효과 줄이 아닌 마지막 출처별 이름이다(Reveal frame에서 온 행동 그대로 나온다).
+
+| 지금 | 받는 항목 |
+|---|---|
+| `recruit_reveal_troops`·`draw_reveal_intrigue`·`generate_reveal_specimens`·`advance_reveal_tleilaxu`·`advance_reveal_research` | 종류마다 한 줄, 그 종류의 가장 오래된 항목(수량·출처와 무관 — OQ-045 "같은 종류끼리는 supply·덱이 같아 순서가 무의미") |
+| `gain_reveal_resources(solari, spice, water)` | 묶음마다 한 줄(묶음이 다르면 주는 것이 달라서), 그 묶음의 가장 오래된 항목 |
+| `gain_reveal_faction_influence(faction)` | 진영마다 한 줄 |
+
+- **항목을 인쇄한 것:** 카드 사본(기록 `REVEAL_GAIN_ABILITIES` 51장 55줄 — 병력 7장, 책략 2, 표본 4, Tleilaxu 1, 연구 1(Tleilaxu
+  Master, 2칸을 한 번에 1칸씩), 자원 23, 진영 2), Skill(Driven의 spice, Hardy의 병력), Tech(Delivery Bay의 Solari, Panopticon의 병력),
+  Muad'Dib의 Unpredictable Foe(책략). 한 카드가 같은 종류를 두 번 내지는 않는다. 수량이 다른 것은 I Believe의 병력 2뿐이다.
+- **내부:** 규칙은 카드의 Reveal 합계 `PersonalCardRevealEffect`(기록에서 엮어 만든 값)를 읽는다(`reveal_turn` 약 15곳, 화면, codec).
+  효과 해석기에는 Reveal 조건 일부(Command·Swordmaster·주둔지 유닛·Maker 첩보·Faction Bond)가 없다.
+
+**정할 것.**
+
+- **E-1 이득 줄의 모양.** 효과 줄 `recruit`·`draw(icon=intrigue)`·`generate_specimens`·`advance(icon=tleilaxu|research)`·`gain`·
+  `gain_influence` + 자리: 카드 `reveal_card|<카드 종류>`, Skill `commander|<skill>`, Tech `tech|<타일>`, Unpredictable Foe
+  `leader|<지도자 면>`. 대상이 없는 효과라 줄 하나로 끝난다(자원 묶음·진영은 인쇄한 것이 정한다). 남는 것은 몇 줄로 내느냐다.
+  - (가) 인쇄한 것마다 한 줄(같은 카드 사본만 하나로 — 결정 3 원문). 다른 카드 둘이 병력 1씩 주면 줄 둘.
+  - (나) 결과가 같은 것끼리 한 줄, `printed`는 처리기가 집을 항목(가장 오래된 것) — 빚진 뽑기(D-3)·연구 아이콘(B3c-2a)에서 정한 규칙
+    그대로. 결과가 다르면 따로: 병력 2(I Believe)와 병력 1은 두 줄(지금은 한 줄로 오래된 것부터), 자원은 묶음마다·진영은 진영마다(지금과
+    같음), 연구·Tleilaxu는 한 번에 1칸이라 한 줄.
+  - (다) 지금 선택지 그대로(종류마다 한 줄), `printed`는 처리기가 집을 항목. 병력 줄 하나가 그 순간 대기 순서에 따라 1명도 2명도 된다.
+  - **추천: (나)** — 이미 정해 쓰는 규칙("결과가 같으면 줄 하나, 처리기가 집는 것을 이름")을 그대로 적용하고, 결과가 다른 효과를 한 줄로
+    묶지 않는다. 엔진이 달라지는 곳은 I Believe의 병력이 다른 병력 항목과 함께 기다릴 때 어느 것을 먼저 받을지 고를 수 있게 되는 것뿐이고
+    (OQ-045대로 최종 결과는 같다), 같음 확인은 정해진 차이로 맞춘다. (가)는 결과가 같은 줄만 늘려 판단 수가 늘고, (다)는 줄의 뜻이 대기
+    순서에 달린다.
+- **E-2 기록 줄 읽기(계획 원안의 B3e).** 규칙이 `PersonalCardRevealEffect` 합계 대신 기록 줄(`REVEAL_GAIN_ABILITIES`의 `EffectSection`)을
+  읽게 한다: 빠진 조건을 효과 해석기에 더하고(Command·Swordmaster·주둔지 유닛·Maker 첩보·Faction Bond), 대기 항목과 Persuasion·검
+  합계를 기록 줄에서 만든다. 동작은 그대로다(같음 확인 200판 같음·휴리스틱/앱 AI 같은 판이 관문). **추천: 이대로**, E-1 다음 단계로.
+
+**하위 단계(단계마다 전체 관문).** B3e-1 이득 줄(E-1), B3e-2 기록 줄 읽기(E-2). 그다음 v150 하나로 병합.
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로
