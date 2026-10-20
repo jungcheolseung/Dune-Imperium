@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 기기 분담 — 재학습은 Mac mini, 그 밖의 작업은 다른 PC)
+기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 재학습 (가) 선생 어댑터 병합; ① Reveal 합계 정리는 Mac mini에서)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,9 +28,9 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist |
-| pytest | 8,191개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 19초, 직렬 10분 16초(Mac mini, 2026-10-21) |
-| Ruff · mypy | `src tests` 통과, mypy 550파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터) |
+| pytest | 8,199개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 23초, 직렬 약 10분(Mac mini, 2026-10-21) |
+| Ruff · mypy | `src tests` 통과, mypy 553파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `codex/windows-validation` 병합 트리(68종 모두 통과, 469초) |
 | action codec | **v150** (다음 번호 v151) |
 | 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
@@ -42,26 +42,25 @@
 
 ## 기기 분담 (사용자 결정 2026-10-21)
 
-재학습은 Mac mini에서 작업하고 돌린다. 그 밖의 작업은 Mac mini의 CPU 부하에 영향을 주지 않도록 다른 PC에서 한다.
+재학습은 Mac mini에서 작업하고 돌린다. 그 밖의 작업은 Mac mini의 CPU 부하에 영향을 주지 않도록 다른 PC에서 한다. 단 ① Reveal 합계
+정리는 관문이 Mac mini에만 있는 git 밖 자료를 읽으므로 Mac mini에서 한다(사용자 결정 2026-10-21 둘째: "자료를 옮겨야 다른 pc에서 가능한거면
+그냥 이 mac mini에서"). ②의 다음 학습은 아직 띄우지 않는다(같은 날 사용자). 그래서 ①을 먼저 하고, ①의 무거운 관문과 학습을 겹치지 않는다.
 
 | 기기 | 맡는 일 |
 | --- | --- |
-| Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
-| 다른 PC (Windows 11 Pro + WSL2) | ① Reveal 합계 정리, Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
+| Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ① Reveal 합계 정리, ② 재학습과 그 측정, 플레이 서버. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
+| 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
 
-- **①과 ②는 함께 진행한다.** ①의 받아들일 조건(Reveal 문구 영·한이 글자까지 같음, codec 행 목록 같음, 엔티티 `FEATURE_DIGEST`
+- **①과 ②는 서로 기다리지 않는다.** ①의 받아들일 조건(Reveal 문구 영·한이 글자까지 같음, codec 행 목록 같음, 엔티티 `FEATURE_DIGEST`
   그대로)이 지켜지면, ① 이전 코드로 학습한 ②의 망을 ① 병합 뒤에도 그대로 쓴다. ①이 codec 행·관측·엔티티 특성 가운데 하나라도
   바꿔야 하면 거기서 멈추고 사용자에게 알린다(② 망을 못 쓰게 된다). 두 작업이 같이 고칠 수 있는 코드는 `training/entity_features.py`다
   (①이 `_PERSONAL_RECORD_FIELDS`의 `reveal_effects`를 지운다). ②가 그 파일을 고쳐야 하면 ① 병합 뒤에 고친다. 인수인계·worklog의
   충돌은 병합할 때 푼다.
-- **①의 관문에 쓰는 git 밖 자료:** Mac mini의 `tmp/transfer/gate-data-2026-10-21.tar.gz`(129 MB, sha256 `40750bdad449…`, 같은 폴더의
-  `.sha256`·`SHA256SUMS`)를 다른 PC 체크아웃의 프로젝트 루트에 옮겨 `tar -xzf`로 푼다. 든 것: `local/records-corpus/v150-14c08062/`(기보 묶음,
-  exact 2,000의 기준), `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본 13개), `checkpoints/2026-09-22/exploit/champion-5081.pt`
-  (문제집 tips-v1 재채굴의 망 몫). 탐색 AI 플레이 망은 필요 없다(테스트·E2E는 작은 망을 직접 만든다). 비공개 에셋 저장소는 원격의 `c4cf579`를
-  받는다. 같음 확인의 기준 기록은 그 기기에서 시작 커밋으로 새로 만든다.
+- **①의 관문에 쓰는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v150-14c08062/`(기보 묶음, exact 2,000의 기준),
+  `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본 13개), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
+  재채굴의 망 몫). 다른 PC로 옮길 때를 위해 묶어 둔 `tmp/transfer/gate-data-2026-10-21.tar.gz`(129 MB)는 쓰지 않게 됐다.
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
   "원격 저장소 인계 주의").
-- 클라우드 세션도 Mac mini CPU를 쓰지 않지만 위 자료와 에셋이 없어 ①의 관문을 다 돌리지 못한다.
 
 ## 진행 중·다음 작업
 
@@ -71,9 +70,9 @@
 
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
-  다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리(다른 PC),
-  ② 재학습 (가)(Mac mini). 처음에는 ① 다음 ②로 정했고, 같은 날 기기를 나눠 함께 하기로 했다(위 "기기 분담"). [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
-- **① Reveal 합계 정리(동작 그대로; 사용자 결정 2026-10-21; 다른 PC — 관문 자료는 위 "기기 분담"):** 규칙(`rules/reveal_lines.py`, B3e-2)과 엔티티 특징
+  다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리,
+  ② 재학습 (가). 둘 다 Mac mini에서(위 "기기 분담"); ②의 선생 어댑터와 첫 사슬은 끝났고(아래) 다음 학습은 사용자가 정할 때 띄운다. [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
+- **① Reveal 합계 정리(동작 그대로; 사용자 결정 2026-10-21; Mac mini, 관문 자료는 위 "기기 분담"):** 규칙(`rules/reveal_lines.py`, B3e-2)과 엔티티 특징
   (`training/entity_features._personal_records`, A8부터)은 이미 Reveal 능력 기록 줄(`content/uprising/reveal_abilities.REVEAL_GAIN_ABILITIES`)을
   읽는다. 카드 문구(`display/cards._reveal_line`·`_reveal_line_ko` → `display/tokens.reveal_effect_text`·`tokens_ko.reveal_effect_text_ko`)와
   codec(`adapters/action_codec._reveal_gain_printers`·`_REVEAL_GAIN_OF`·`_reveal_resource_templates`)만 그 기록을 엮은 합계
@@ -85,17 +84,22 @@
   소크, 휴리스틱 20·앱 AI 10판이 직전 커밋과 같음, 같음 확인 200판, v150 기보 묶음 `v150-14c08062` exact 2,000, 문제집 재채굴, E2E 전부).
   같음 확인 기준은 시작 커밋에서 새로 만든다(`PYTHONPATH=src .venv/bin/python scripts/ab/engine_equivalence.py record <tmp 아래 폴더> --plan standard`;
   B단계의 기준 기록은 worktree와 함께 지웠다). 화면 문구·codec 나열이라 낮은 위험(독립 리뷰 없이 diff 확인).
-- **② 재학습 (가) — 지금 플레이 망을 "온 행동 단위 선생"으로 증류(사용자 결정 2026-10-21; Mac mini의 고정 worktree):** 플레이 망
-  `checkpoints/play/readapt-v147-4400.pt`(MLP, v147)는 v150 행동 4,311줄 가운데 84줄만 학습해 v150에서 그대로는 선생이 못 된다. 방법(**먼저
-  될지 확인**): v150 결정마다 엔진의 온 행동(`engine.whole_actions`)을 옛 엔진이 보던 모양으로 거르고(`agents.engine_order.older_engine_wholes`;
-  B3c-2b·B3e-1에서 나뉜 행동은 `printed`·`source`를 떼어 옛 모양으로), 체크포인트 파일에 든 자기 v147 template 목록으로 번호를 매겨 망의 정책을
-  얻은 뒤, 그 확률을 각 온 행동의 첫 줄(`rules.effect_steps.first_step`)로 모아 v150 행 위의 선생 분포로 쓴다. 관측 v33은 체크포인트 로더가 이미
-  옮긴다(v150에서 불러 84줄이 학습된 줄로 잡힘). 확인할 것: 옛 모양 온 행동 가운데 v147 template로 번호가 붙는 비율, 이 선생이 v150에서 앱 AI
-  어려움 상대로 옛 망 단독 실력을 내는지. 그다음 A8 사슬을 본뜬다(`checkpoints/2026-10-19/a8/chain.sh`): 증류 데이터
-  (`scripts/train/distill_entity.py data`, 80 iteration) → 엔티티 학생(`train --arch entity --own-actions`) → PPO 1e-5 800회(옵션 전부, 상대 앱 AI)
-  → 예비 비교 → 탐색 좌석 관문. 옛 망은 v150을 직접 두지 못하므로 관문의 대조군(어댑터를 쓴 옛 망, 또는 앱 AI 어려움 상대 승률)은 만들 때 정해
-  사용자에게 알린다. 지난번 시간(데이터 13분·학생 10분·PPO 2.4시간·예비 비교 18분)으로 보아 이번에는 5~7시간. 오래 도는 실행 전에 후보·레시피를
-  사용자와 다시 확인한다.
+- **② 재학습 (가) — 선생 어댑터 병합, 첫 사슬의 망은 선생보다 약함(2026-10-21):** 플레이 망 `checkpoints/play/readapt-v147-4400.pt`(MLP,
+  v147)를 v150에서 쓰는 어댑터 `training/older_teacher.py`: 결정마다 휴리스틱이 보는 온 행동(`agents.agent_turn_steps.placements_for_steps`:
+  카드+칸 `agent_turn`, 효과+대상, 옛 엔진의 고르기)에 파일의 v147 행 번호를 붙여(그대로 → `printed` 떼고 → `source`도 떼고) 파일 자신의 정책
+  머리로 점수를 매기고, softmax를 각 온 행동의 지금 줄로 모은다. 옛 엔진이 묻지 않던 결정(B2 아이콘 순서)은 그 고정 답, 번호가 하나도 안 붙으면
+  휴리스틱. 대회 좌석 `older:<path>`(탐욕, 같은 관측에서 같은 수 반복 금지 — 없으면 Scouts 입찰을 끝없이 다시 함; 플레이 서버 좌석은 아님),
+  증류 데이터 `distill_entity.py data --older`(`training/older_distill.py`), 학생 학습률 `--schedule cosine`.
+  - **될지 확인(통과):** 1 대 앱 AI 어려움 3, 1,000판씩, 옵션 전부+드래프트: 옛 망 v149(`52d0a6cc`) 54.7%, 어댑터 v150 54.8%, 같은 시드
+    **996/1,000판이 최종 VP·순위까지 같다**. 번호가 붙는 결정 94.7%, 옛 엔진 고정 답 4.8%, 휴리스틱 0.5%.
+  - **첫 사슬**(`checkpoints/2026-10-21/retrain-v150/`, `chain.sh`·`README.md`): 데이터 80 iteration 2,599,119행 17분 → 엔티티 학생 4 epoch(일치
+    87.5%, A8 95.2%) → PPO 1e-5 800회 3.6시간 → 예비 비교 **B-800 대 어댑터 선생 −7.0%p [−12.1, −1.7] 확정** → 설치 안 함. 같은 400판 단독
+    승률: 선생 56.8%, 선생 분포를 줄마다 탐욕("완벽한 학생") 57.5%, 학생 4 epoch 47.5%, 학생 cosine 12 epoch(`student12`) 52.0%, PPO 300·600·800
+    52.2%·49.0%·51.5%. 실력은 증류에서 샌다: 선생이 확신하는 수(최고 확률 > 0.9)는 99.2% 따라 하지만 선생도 갈린 수(< 0.6, 32%)에서 21%를
+    다르게 고른다.
+  - **(결정) 다음:** (1) 탐색 좌석이 어댑터로 옛 망을 쓰게 하기(망 단독은 이미 옛 실력; `NetworkSearchAgent`는 v150 행으로 망을 부르니 설계 필요),
+    (2) `student12`에서 PPO 다시(`chain2.sh` 준비됨, 약 3.5시간), (3) 증류 키우기(데이터 2배·엔티티 폭·PPO 3e-5). 고정 worktree
+    `.claude/worktrees/retrain-v150`(`chain2.sh`가 이 경로를 쓴다)과 탐색 좌석 관문 대조용 `.claude/worktrees/v149-ref`(`52d0a6cc`)를 남겼다.
 - **플레이 서버 주의:** Mac mini의 메인 체크아웃은 이미 v150이다(B단계 병합을 이 기기에서 했다). 그래서 지금 서버를 다시 띄우면
   ②의 망을 `checkpoints/play/search.pt`에 설치하기 전까지 탐색 AI 좌석이 약하다(앱 AI·휴리스틱 좌석은 그대로). 그 사이 강한 탐색
   좌석이 필요하면 B단계 직전 커밋 `52d0a6cc`(v149)의 worktree에서 서버를 띄운다(그 판의 저장본은 v150에서 열리지 않는다).
