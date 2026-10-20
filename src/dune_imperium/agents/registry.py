@@ -237,6 +237,10 @@ SEARCH_PREFIX: Final = "search:"
 # ``search:<policy path>::value=<value path>`` searches with one file's policy
 # and another file's value head at the leaves (``NetworkSearchAgent``).
 SEARCH_VALUE_SEPARATOR: Final = "::value="
+# A file of an older codec played greedily over the whole actions a current
+# decision stands for, by its own head rows: ``older:<path>``
+# (``training.older_teacher``; the stage B retrain's teacher, 2026-10-21).
+OLDER_PREFIX: Final = "older:"
 
 
 def is_background_agent_kind(kind: str) -> bool:
@@ -259,8 +263,10 @@ def is_agent_kind(kind: str) -> bool:
             SEARCH_VALUE_SEPARATOR
         )
         return bool(path) and (not separator or bool(value_path))
-    return kind in BASELINE_AGENT_FACTORIES or (
-        kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX)
+    return (
+        kind in BASELINE_AGENT_FACTORIES
+        or (kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX))
+        or (kind.startswith(OLDER_PREFIX) and len(kind) > len(OLDER_PREFIX))
     )
 
 
@@ -281,6 +287,13 @@ def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Age
         from dune_imperium.training.torch_policy import load_network_agent
 
         return load_network_agent(path, config, seed=seed)
+    if kind.startswith(OLDER_PREFIX):
+        path = kind[len(OLDER_PREFIX) :]
+        if not path:
+            raise ValueError("older agent kind needs a path")
+        from dune_imperium.training.older_teacher import load_older_agent
+
+        return load_older_agent(path, seed=seed)
     if kind.startswith(SEARCH_PREFIX):
         path, separator, value_path = kind[len(SEARCH_PREFIX) :].partition(
             SEARCH_VALUE_SEPARATOR

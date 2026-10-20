@@ -15,6 +15,11 @@ and every seat's final Victory Points (``training.teacher``), one shard an
 iteration. Games are seeded from ``--seed`` the way a training run is
 (``training.loop``), away from the teacher's own run.
 
+With ``--older`` the teacher is a file of an older codec that cannot answer
+the current rows by itself (the stage B retrain, 2026-10-21): it plays and
+answers through the whole actions each decision stands for
+(``training.older_teacher``, ``training.older_distill``).
+
 ``train`` fits one student to every shard in the folder and writes its
 best held-out epoch as ``student.pt`` with an ``epochs.jsonl`` log
 (docs/entity-network-plan.md section 5, P2).
@@ -44,6 +49,8 @@ from dune_imperium.training.entity_network import (
 )
 from dune_imperium.training.loop import TrainConfig, _iteration_specs
 from dune_imperium.training.network import PolicyValueNetwork
+from dune_imperium.training.older_distill import older_shard, worker_pool
+from dune_imperium.training.older_teacher import load_older_network
 from dune_imperium.training.teacher import (
     StudentConfig,
     StudentEpoch,
@@ -89,6 +96,8 @@ def make_data(arguments: argparse.Namespace) -> int:
     out: Path = arguments.out
     out.mkdir(parents=True, exist_ok=True)
     config = _play_rules(out, arguments.seed)
+    if arguments.older:
+        return _make_older_data(arguments, config)
     teacher, info = load_checkpoint(arguments.teacher, ruleset=config.ruleset)
     teacher.eval()
     torch.set_num_threads(arguments.threads)
@@ -137,6 +146,58 @@ def make_data(arguments: argparse.Namespace) -> int:
                 f"{truncated} truncated, {time.perf_counter() - started:.1f}s",
                 flush=True,
             )
+    return 0
+
+
+def _make_older_data(arguments: argparse.Namespace, config: TrainConfig) -> int:
+    """``make_data`` with an older-codec teacher (module docstring)."""
+
+    out: Path = arguments.out
+    older = load_older_network(arguments.teacher)
+    torch.set_num_threads(arguments.threads)
+    assert config.opponent is not None
+    (out / "data.json").write_text(
+        json.dumps(
+            {
+                "teacher": str(arguments.teacher),
+                "teacher_sha256_16": _digest(arguments.teacher),
+                "teacher_codec": older.codec_version,
+                "older": True,
+                "ruleset": config.ruleset.identifier,
+                "seed": arguments.seed,
+                "iterations": [arguments.start, arguments.start + arguments.iterations],
+                "games_per_iteration": config.games_per_iteration,
+            },
+            indent=1,
+        )
+    )
+    pool = worker_pool(arguments.workers)
+    try:
+        for iteration in range(arguments.start, arguments.start + arguments.iterations):
+            shard = out / f"shard_{iteration:04d}.npz"
+            if shard.exists():
+                continue
+            started = time.perf_counter()
+            data = older_shard(
+                pool,
+                arguments.teacher,
+                config.ruleset,
+                _iteration_specs(config, iteration),
+                first_game=iteration * config.games_per_iteration,
+                workers=arguments.workers,
+                opponent=config.opponent,
+                seed=config.seed + 1 + iteration * 1_000,
+                max_steps=config.max_steps,
+            )
+            save_teacher_data(data, shard)
+            print(
+                f"{time.strftime('%H:%M:%S')} shard {iteration}: {data.rows} rows, "
+                f"{time.perf_counter() - started:.1f}s",
+                flush=True,
+            )
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=True)
     return 0
 
 
@@ -317,6 +378,11 @@ def main(argv: list[str] | None = None) -> int:
     data.add_argument("--seed", type=int, default=11)
     data.add_argument("--workers", type=int, default=4)
     data.add_argument("--threads", type=int, default=4)
+    data.add_argument(
+        "--older",
+        action="store_true",
+        help="the teacher is an older codec's file (training.older_teacher)",
+    )
     data.set_defaults(run=make_data)
     student = commands.add_parser("train", help="fit one student to the shards")
     student.add_argument("--data", type=Path, required=True)
