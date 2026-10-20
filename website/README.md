@@ -1,7 +1,8 @@
 # Dune: Imperium AI 웹사이트
 
-프로젝트 소개·설치·사용 안내와 개발 이야기를 담는 Hugo 정적 사이트다. **사이트와 로컬 검증은 준비했으며 아직 공개하지 않았다.**
-원고 18개와 검색 페이지, 반응형 화면·분류·목차·검색·RSS·sitemap·404를 제공한다.
+프로젝트 소개·설치·사용 안내, 날짜별 개발일지와 기술 글을 담는 Hugo 정적 사이트다.
+공개 주소는 [Dune: Imperium AI](https://jungcheolseung.github.io/Dune-Imperium/)이며, 2026-10-20 첫 배포를 확인했다.
+개발일지 16편과 반응형 화면·분류·목차·검색·RSS·sitemap·404를 제공한다.
 게임 실행 패키지와 별도로 빌드하며 비공개 이미지·모델·Node.js는 필요하지 않다.
 
 ## 로컬에서 보기
@@ -38,7 +39,7 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 홈·문서·검색·한글 조합 입력·글 분류·320/390px 화면·메뉴·404·JavaScript 없는 환경을 확인한다.
 그림은 직접 만든 SVG 구성도이며 카드·보드 원본을 사용하지 않는다.
 
-## 첫 공개 원고
+## 공개 콘텐츠
 
 | 구역 | 원고 |
 | --- | --- |
@@ -46,13 +47,37 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 | 소개 | [프로젝트 소개](content/about/_index.md), [지원 현황](content/about/support.md), [앞으로의 방향](content/about/roadmap.md) |
 | 다운로드 | [현재 제공 방식과 설치 준비](content/downloads/_index.md) |
 | 사용법 | [사용법 입구](content/guides/_index.md), [처음 한 판](content/guides/first-game.md), [방 만들기](content/guides/hosting.md), [친구 방 참여](content/guides/joining.md), [기본 조작·저장](content/guides/controls.md), [AI 고르기](content/guides/choosing-ai.md) |
-| 개발 이야기 | [글 목록 소개](content/posts/_index.md), [규칙을 엔진으로](content/posts/rules-to-engine.md), [AI가 한 수를 고르는 과정](content/posts/how-search-ai-chooses.md), [앱 AI를 섞은 학습 실험](content/posts/learning-with-opponents.md) |
+| 기술 글 | [글 목록 소개](content/posts/_index.md), [규칙을 엔진으로](content/posts/rules-to-engine.md), [AI가 한 수를 고르는 과정](content/posts/how-search-ai-chooses.md), [앱 AI를 섞은 학습 실험](content/posts/learning-with-opponents.md) |
+| 개발일지 | [월별 목록](content/devlog/_index.md), `content/devlog/YYYY-MM-DD-topic.md`의 작업별 기록 16편 |
 | 업데이트 | [소식 입구](content/updates/_index.md), [첫 기록](content/updates/2026-10-20-project-status.md) |
 | 도움말 | [FAQ와 문제 해결](content/help/_index.md) |
 
 2026-10-20에 원격 master `e7e9ad4f`의 코드·문서와 대조했다. 설치 절차는 저장소의 가이드와 공식 uv 문서를 확인해
 작성했으며, 이 원고 작업에서 OS별 새 설치·게임 실행을 다시 검증한 것은 아니다. macOS와 Windows·Linux의 검증 상태는
 기존 호스트·런처 가이드의 범위를 따른다. 공개 직전에는 실제 배포할 코드로 설치 안내를 다시 따라간다.
+
+## 개발일지 추가하기
+
+한 작업에 딸린 구현·수정·문서 커밋은 한 편으로 묶는다. 며칠에 걸친 작업은 기간으로 표시한다.
+커밋 메시지를 나열하기보다 해결하려던 문제, 바뀐 동작, 검증·실험 결과, 남은 점을 쓴다.
+초기 코드(2023년)와 본격적인 Uprising 구현(2026년 8월 이후)을 포함한 첫 16편은 과거 기록을 재구성한 글이다.
+
+저장소 루트에서 초안을 만든다. 날짜와 주제는 실제 작업에 맞춰 바꾼다.
+
+```bash
+hugo new content --source website --kind devlog devlog/2026-10-21-topic.md
+```
+
+- `title`·`description`: 제목과 목록에 보일 요약.
+- `params.work_start`와 `date`: 작업 시작일과 종료일. 목록·월 구분은 종료일 기준이다.
+- `publishDate`·`lastmod`: 실제 글 공개일과 수정일. 과거 작업을 정리해도 공개일을 과거로 꾸미지 않는다.
+- `params.source_ref`·`params.sources`: 작성 근거인 고정 커밋과 파일 경로. 본문의 참고 기록에도 해당 커밋·문서 링크를 넣는다.
+- `params.retrospective = true`: 나중에 정리한 과거 기록이면 추가한다.
+- 초안은 기본 `draft = true`다. 내용·근거를 확인한 뒤 `false`로 바꾸고 위의 빌드·검증을 실행한다.
+
+새 Markdown을 추가하면 홈 최근 글·월별 목록·앞뒤 글·검색·RSS에 자동 반영된다.
+`master`에 push하면 검증 뒤 배포된다. PR 병합은 선택 가능한 검토 절차이며 배포의 필수 조건은 아니다.
+문구와 기록 원칙은 [AGENTS.md](AGENTS.md)를 따른다.
 
 ## 편집 규칙
 
@@ -63,11 +88,11 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
   사이트 구현 때 `/Dune-Imperium/` 하위 경로에서 렌더링과 링크를 확인한다.
 - `draft = false`는 빌드에 포함할 글이라는 뜻이다. 공개 사이트에서 숨길 원고는 `true`로 둔다.
 - 일반 안내는 현재 동작을 따르고, 과거 실험은 측정 날짜·코드·조건을 유지한다. 실험 원자료는 저장소의 고정 커밋으로 연결한다.
-- 실제로 제공하지 않는 다운로드·모델 링크, 사이트 공개 완료 주장, 빈 문서 예고는 넣지 않는다.
+- 실제로 제공하지 않는 다운로드·모델 링크와 빈 문서 예고는 넣지 않는다.
 - 다운로드 안내와 OS 검증 범위는 릴리스 시 갱신한다. 이미지·영상은 공개 범위를 확인한 자료만 추가한다.
 - 독자가 새로 시작할 때는 다운로드 → 처음 한 판, 초대받았을 때는 참가자 안내로 바로 갈 수 있게 유지한다.
 
-## 공개 전 확인
+## 게임 배포판을 준비할 때 확인
 
 원고 표현과 공개 범위를 검토하고, 게임의 실제 배포 코드에서 설치·첫 판·저장·재실행을 확인한다.
 사이트의 브라우저 검증이 게임 설치나 Windows 실기 검증을 대신하지는 않는다.
@@ -89,6 +114,6 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 3. 검토한 사이트 변경을 `master`에 반영하고 push한다. `Website` workflow의 build·deploy 결과를 확인한다.
 4. 배포가 성공한 뒤 실제 사이트에서 시작 경로·검색·RSS를 확인한다.
 
-공개 후 기본 주소는 `https://jungcheolseung.github.io/Dune-Imperium/`이다. 현재 이 작업은 로컬 검증까지이며,
-Pages 설정을 바꾸거나 원격 배포를 실행한 것은 아니다. 커스텀 도메인·저장소 이름을 바꾸면 `hugo.toml`의 `baseURL`과
+기본 주소는 `https://jungcheolseung.github.io/Dune-Imperium/`이다. 첫 배포는 master `b7787979`에서 성공했고
+홈·사용법·검색 자료·RSS 응답을 확인했다. 이후 수정은 위 로컬 검증 뒤 master 반영·push로 배포한다. 커스텀 도메인·저장소 이름을 바꾸면 `hugo.toml`의 `baseURL`과
 검증 스크립트의 기본 경로도 함께 바꾼다.

@@ -2,14 +2,24 @@
 <div class="reading-layout">
   <article class="article">
     <header class="article-header">
-      <p class="eyebrow">{{ if eq .Section "posts" }}개발 이야기{{ else if eq .Section "updates" }}프로젝트 소식{{ else }}DUNE: IMPERIUM AI{{ end }}</p>
+      <p class="eyebrow">{{ if eq .Section "devlog" }}개발일지{{ else if eq .Section "posts" }}기술 글{{ else if eq .Section "updates" }}프로젝트 소식{{ else }}DUNE: IMPERIUM AI{{ end }}</p>
       <h1>{{ .Title }}</h1>
       <p class="article-description">{{ .Description }}</p>
-      <p class="article-date">{{ if in (slice "posts" "updates") .Section }}작성{{ else }}내용 확인{{ end }} <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2006.01.02" }}</time></p>
+      {{ if eq .Section "devlog" }}
+        <p class="article-date">작업 기간 {{ partial "work-period.html" . }} · 글 작성 <time datetime="{{ .PublishDate.Format "2006-01-02" }}">{{ .PublishDate.Format "2006.01.02" }}</time></p>
+        {{ if .Params.retrospective }}<p class="retrospective-note">이전 커밋과 작업 문서를 바탕으로 정리한 기록입니다.</p>{{ end }}
+      {{ else }}<p class="article-date">{{ if in (slice "posts" "updates") .Section }}작성{{ else }}내용 확인{{ end }} <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2006.01.02" }}</time></p>{{ end }}
       {{ with .GetTerms "categories" }}<div class="category-links">{{ range . }}<a class="tag" href="{{ .RelPermalink }}">{{ .LinkTitle }}</a>{{ end }}</div>{{ end }}
     </header>
     {{ if gt (len .Fragments.Headings) 0 }}<details class="mobile-toc toc"><summary>목차 보기</summary>{{ replace .TableOfContents "id=\"TableOfContents\"" "id=\"MobileTableOfContents\"" | safeHTML }}</details>{{ end }}
     <div class="prose">{{ .Content }}</div>
+    {{ if eq .Section "devlog" }}
+      <nav class="journal-pagination" aria-label="개발일지 앞뒤 글">
+        {{ with .PrevInSection }}<a rel="prev" href="{{ .RelPermalink }}"><small>이전 작업</small><span>{{ .Title }}</span></a>{{ end }}
+        {{ with .NextInSection }}<a rel="next" href="{{ .RelPermalink }}"><small>다음 작업</small><span>{{ .Title }}</span></a>{{ end }}
+        <a class="journal-all" href="{{ (site.GetPage "/devlog").RelPermalink }}">개발일지 목록</a>
+      </nav>
+    {{ end }}
     {{ if .Pages }}
       <div class="section-children"><h2>{{ if eq .Section "about" }}더 알아보기{{ else }}함께 볼 안내{{ end }}</h2>
         {{ range .Pages.ByWeight }}<a href="{{ .RelPermalink }}"><span><strong>{{ .Title }}</strong><small>{{ .Description }}</small></span><span aria-hidden="true">↗</span></a>{{ end }}

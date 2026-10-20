@@ -1,0 +1,5 @@
+{{- $end := .Date.Format "2006-01-02" -}}
+{{- with .Params.work_start -}}
+  {{- if ne . $end -}}<time datetime="{{ . }}">{{ time.Format "2006.01.02" . }}</time> – {{ end -}}
+{{- end -}}
+<time datetime="{{ $end }}">{{ .Date.Format "2006.01.02" }}</time>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
+import json
 import os
 import tempfile
 import threading
@@ -47,11 +48,37 @@ def main() -> None:
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
             assert page.goto(base).status == 200
-            expect(page.get_by_role("heading", level=1)).to_contain_text("한 판의 즐거움")
+            expect(page.get_by_role("heading", level=1)).to_have_text("Dune: Imperium AI")
             expect(page.get_by_role("link", name="설치하고 시작하기")).to_have_attribute("href", "/Dune-Imperium/downloads/")
             expect(page.get_by_role("link", name="친구 방에 참여하기")).to_have_attribute("href", "/Dune-Imperium/guides/joining/")
             if arguments.screenshots:
                 page.screenshot(path=arguments.screenshots / "home-desktop.png", full_page=True)
+
+            # The archive and search must contain the same published journal entries.
+            index = json.loads((arguments.directory / "Dune-Imperium/index.json").read_text())
+            journal_urls = {item["url"] for item in index if item["section"] == "devlog" and item["url"] != "/Dune-Imperium/devlog/"}
+            page.goto(base + "devlog/")
+            expect(page.get_by_role("heading", level=1)).to_have_text("개발일지")
+            archive_urls = page.locator(".journal-entry h3 a").evaluate_all("links => links.map(link => link.getAttribute('href'))")
+            assert len(archive_urls) == len(journal_urls) and set(archive_urls) == journal_urls
+            dates = page.locator(".journal-period").evaluate_all("rows => rows.map(row => [...row.querySelectorAll('time')].at(-1).dateTime)")
+            assert dates == sorted(dates, reverse=True)
+            page.get_by_role("navigation", name="개발일지 월별 목록").get_by_role("link", name="2026-08").click()
+            assert page.url.endswith("#month-2026-08")
+            page.locator(".journal-entry h3 a").last.click()
+            expect(page.locator(".article-header")).to_contain_text("2023.03.24")
+            expect(page.locator(".article-header")).to_contain_text("글 작성 2026.10.20")
+            expect(page.locator('a[rel="prev"]')).to_have_count(0)
+            page.get_by_role("link", name="다음 작업").click()
+            expect(page.get_by_role("heading", level=1)).to_have_text("규칙 명세와 한 라운드 엔진")
+            page.get_by_role("link", name="이전 작업").click()
+            expect(page.get_by_role("heading", level=1)).to_have_text("초기 코드와 프로젝트 구성")
+            page.get_by_role("link", name="개발일지 목록", exact=True).click()
+            if arguments.screenshots:
+                page.screenshot(path=arguments.screenshots / "devlog-desktop.png", full_page=True)
+            page.goto(base + "search/?q=학습률%20대조")
+            expect(page.locator("#search-results")).to_contain_text("개체 기반 신경망 실험과 학습률 대조")
+            page.goto(base)
 
             page.get_by_role("link", name="설치하고 시작하기").click()
             expect(page.get_by_role("heading", level=1)).to_have_text("다운로드·설치 준비")
@@ -87,7 +114,11 @@ def main() -> None:
             expect(page.locator(".listing-grid .story-card")).to_have_count(1)
             expect(page.locator(".listing-grid")).to_contain_text("보드게임 규칙")
 
-            routes = ["", "guides/first-game/", "posts/learning-with-opponents/", "downloads/", "search/"]
+            for width in (1024, 1001, 1000, 768):
+                page.set_viewport_size({"width": width, "height": 900})
+                page.goto(base)
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), width
+            routes = ["", "devlog/", "devlog/2026-10-14-entity-experiment/", "guides/first-game/", "posts/learning-with-opponents/", "downloads/", "search/"]
             for width in (390, 320):
                 page.set_viewport_size({"width": width, "height": 844})
                 for route in routes:
@@ -107,6 +138,10 @@ def main() -> None:
                 page.screenshot(path=arguments.screenshots / "home-mobile.png", full_page=True)
                 page.goto(base + "guides/first-game/")
                 page.screenshot(path=arguments.screenshots / "guide-mobile.png", full_page=True)
+                page.goto(base + "devlog/")
+                page.screenshot(path=arguments.screenshots / "devlog-mobile.png", full_page=True)
+                page.goto(base + "devlog/2026-10-14-entity-experiment/")
+                page.screenshot(path=arguments.screenshots / "devlog-article-mobile.png", full_page=True)
             page.goto(base + "404.html")
             expect(page.get_by_role("heading", level=1)).to_contain_text("페이지를 찾지")
             assert not errors, errors
@@ -118,12 +153,18 @@ def main() -> None:
             page.locator(".mobile-nav summary").click()
             page.get_by_role("navigation", name="모바일 주 메뉴").get_by_role("link", name="사용법", exact=True).click()
             expect(page.get_by_role("heading", level=1)).to_have_text("사용법")
+            page.goto(base + "devlog/")
+            expect(page.get_by_role("heading", level=1)).to_have_text("개발일지")
+            page.get_by_role("navigation", name="개발일지 월별 목록").get_by_role("link", name="2023-04").click()
+            page.locator(".journal-entry h3 a").last.click()
+            page.get_by_role("link", name="다음 작업").click()
+            expect(page.get_by_role("heading", level=1)).to_have_text("규칙 명세와 한 라운드 엔진")
             page.goto(base + "search/")
             expect(page.locator("[data-search-fallback]")).to_be_visible()
             expect(page.locator("[data-search-fallback]")).to_contain_text("JavaScript가 필요합니다")
             offline_js.close()
             browser.close()
-            print("Browser: navigation, reading, search/IME, categories, 320/390px layout, 404 and no-JS: PASS")
+            print("Browser: journal archive/order/navigation, reading, search/IME, categories, responsive layout, 404 and no-JS: PASS")
     finally:
         server.shutdown()
         server.server_close()

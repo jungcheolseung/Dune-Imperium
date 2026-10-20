@@ -6,12 +6,12 @@
     <description>{{ .Site.Params.description }}</description>
     <language>ko-KR</language>
     {{ with .OutputFormats.Get "RSS" }}<atom:link href="{{ .Permalink }}" rel="self" type="application/rss+xml"/>{{ end }}
-    {{ range (where site.RegularPages "Section" "in" (slice "posts" "updates")).ByDate.Reverse }}
+    {{ range (where site.RegularPages "Section" "in" (slice "posts" "updates" "devlog")).ByDate.Reverse }}
     <item>
       <title>{{ .Title }}</title>
       <link>{{ .Permalink }}</link>
       <guid>{{ .Permalink }}</guid>
-      <pubDate>{{ .Date.Format "Mon, 02 Jan 2006 15:04:05 -0700" }}</pubDate>
+      <pubDate>{{ .PublishDate.Format "Mon, 02 Jan 2006 15:04:05 -0700" }}</pubDate>
       <description>{{ .Description }}</description>
     </item>
     {{ end }}

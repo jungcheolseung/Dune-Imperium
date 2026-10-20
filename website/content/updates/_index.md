@@ -16,4 +16,4 @@ sources = ["README.md", "docs/worklog/2026-10.md"]
 [첫 기록: 지금 할 수 있는 일과 다음 목표]({{< relref "updates/2026-10-20-project-status.md" >}})
 
 현재 설치 방법은 [다운로드·설치 준비]({{< relref "downloads/_index.md" >}})에서,
-설계와 실험 과정은 [개발 이야기]({{< relref "posts/_index.md" >}})에서 볼 수 있습니다.
+설계와 실험 과정은 [개발일지]({{< relref "devlog/_index.md" >}})에서 볼 수 있습니다.

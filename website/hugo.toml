@@ -10,7 +10,7 @@ summaryLength = 80
 capitalizeListTitles = false
 
 [params]
-  description = 'AI와 연습하고, 친구들과 플레이하며, 더 나은 게임 AI를 연구합니다.'
+  description = 'Dune: Imperium - Uprising 규칙 엔진과 게임 AI의 개발 기록, 설치 및 사용 안내.'
   repository = 'https://github.com/jungcheolseung/Dune-Imperium'
 
 [outputs]
@@ -42,9 +42,13 @@ capitalizeListTitles = false
   pageRef = '/guides'
   weight = 30
 [[menus.main]]
-  name = '개발 이야기'
-  pageRef = '/posts'
+  name = '개발일지'
+  pageRef = '/devlog'
   weight = 40
+[[menus.main]]
+  name = '기술 글'
+  pageRef = '/posts'
+  weight = 45
 [[menus.main]]
   name = '업데이트'
   pageRef = '/updates'

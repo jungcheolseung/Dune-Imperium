@@ -1,6 +1,6 @@
 +++
-title = "개발 이야기"
-description = "규칙 엔진을 만드는 과정과 AI 학습·평가 실험을 기록합니다."
+title = "기술 글"
+description = "규칙 엔진의 구조와 AI 동작, 학습·평가 실험을 설명합니다."
 date = 2026-10-20
 lastmod = 2026-10-20
 draft = false
@@ -11,7 +11,7 @@ sources = ["README.md", "docs/implementation-plan.md", "docs/evaluation/README.m
 +++
 
 보드게임의 규칙을 실행 가능한 코드로 옮기고, 그 위에서 사람이 함께 둘 AI를 만듭니다.
-어떤 문제를 만났고 무엇을 바꿨는지, 실제로 나아졌는지를 기록합니다.
+이곳에는 구조와 동작을 설명하는 글을 모았습니다. 날짜별 진행 과정은 [개발일지]({{< relref "devlog/_index.md" >}})에서 볼 수 있습니다.
 
 ## 규칙 엔진 구현기
 

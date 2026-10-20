@@ -1,6 +1,6 @@
 <footer class="site-footer">
   <div class="wrap footer-top">
-    <div><a class="footer-brand" href="{{ .Site.Home.RelPermalink }}">Dune: Imperium AI</a><p>한 판의 경험을, 더 나은 AI로.</p></div>
+    <div><a class="footer-brand" href="{{ .Site.Home.RelPermalink }}">Dune: Imperium AI</a><p>규칙 엔진 · 게임 AI · 개발 기록</p></div>
     <nav aria-label="보조 메뉴">
       <a href="{{ (site.GetPage "/about/support").RelPermalink }}">지원 현황</a>
       <a href="{{ (site.GetPage "/about/roadmap").RelPermalink }}">로드맵</a>
@@ -8,5 +8,5 @@
       {{ with .Site.Home.OutputFormats.Get "RSS" }}<a href="{{ .RelPermalink }}">RSS</a>{{ end }}
     </nav>
   </div>
-  <div class="wrap footer-bottom"><p>비공식 개인 개발·연구 프로젝트입니다. 원작의 카드·보드 이미지 원본은 배포하지 않습니다.</p><span>PLAY. LEARN. REPEAT.</span></div>
+  <div class="wrap footer-bottom"><p>비공식 개인 개발·연구 프로젝트입니다. 원작의 카드·보드 이미지 원본은 배포하지 않습니다.</p></div>
 </footer>

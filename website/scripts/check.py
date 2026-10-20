@@ -75,7 +75,7 @@ def check(directory: Path, base_url: str) -> list[str]:
                 if unquote(target.fragment) not in pages[location].ids:
                     errors.append(f"{relative}: missing fragment: {link}")
 
-    for required in ("index.html", "404.html", "index.json", "index.xml", "sitemap.xml", "robots.txt", "search/index.html"):
+    for required in ("index.html", "404.html", "index.json", "index.xml", "sitemap.xml", "robots.txt", "search/index.html", "devlog/index.html"):
         if not (root / required).is_file():
             errors.append(f"missing required output: {required}")
 
@@ -94,6 +94,13 @@ def check(directory: Path, base_url: str) -> list[str]:
         path = root / name
         if path.exists():
             ElementTree.fromstring(path.read_text())
+    feed = root / "index.xml"
+    if feed.exists() and index_file.exists():
+        items = ElementTree.fromstring(feed.read_text()).findall("channel/item")
+        expected = {item["url"] for item in index if item["section"] in {"posts", "updates", "devlog"} and item["url"] != f"{prefix}{item['section']}/"}
+        actual = {urlsplit(item.findtext("link", "")).path for item in items}
+        if actual != expected:
+            errors.append("RSS omits published articles or includes section pages")
     forbidden = {"assets", "checkpoints", "saves", "local", ".git", "docs", "README.md", "hugo.toml"}
     for path in root.rglob("*"):
         if path.is_symlink():

@@ -9,14 +9,13 @@ source_ref = "e7e9ad4f"
 sources = ["README.md", "docs/remote-play-guide.md"]
 [params.hero]
   eyebrow = "DUNE: IMPERIUM — UPRISING"
-  title = "한 판의 즐거움."
-  accent = "그 너머의 AI."
-  introduction = "AI와 연습하고, 친구들과 한 테이블에서. 브라우저로 즐기는 Uprising과 더 나은 게임 AI를 만드는 과정을 만나보세요."
+  title = "Dune: Imperium AI"
+  introduction = "Dune: Imperium - Uprising의 규칙 엔진과 게임 AI를 개발하는 개인 프로젝트입니다. PC 브라우저에서 AI 또는 친구들과 플레이할 수 있습니다."
   primary = "설치하고 시작하기"
   secondary = "친구 방에 참여하기"
 [params.play]
-  title = "나에게 맞는 방식으로, 한 판."
-  introduction = "게임을 실행할 사람도, 초대받은 사람도. 필요한 안내에서 바로 시작하세요."
+  title = "플레이 안내"
+  introduction = "설치, 방 만들기, 친구 방 참여 방법을 안내합니다."
 [[params.features]]
   number = "01"
   title = "AI와 연습하기"

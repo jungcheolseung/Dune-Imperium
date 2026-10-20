@@ -1,0 +1,17 @@
+{{ define "main" }}
+<div class="wrap article-wrap journal-archive">
+  {{ partial "breadcrumbs.html" . }}
+  <header class="listing-header"><h1>{{ .Title }}</h1><p>{{ .Description }}</p></header>
+  <div class="prose journal-introduction">{{ .Content }}</div>
+  {{ $months := .RegularPages.ByDate.Reverse.GroupByDate "2006-01" }}
+  <nav class="filter-links journal-months" aria-label="개발일지 월별 목록">
+    {{ range $months }}<a href="#month-{{ .Key }}">{{ .Key }}</a>{{ end }}
+  </nav>
+  {{ range $months }}
+    <section class="journal-month" id="month-{{ .Key }}" aria-labelledby="title-{{ .Key }}">
+      <h2 id="title-{{ .Key }}">{{ time.Format "2006년 1월" (printf "%s-01" .Key) }}</h2>
+      {{ partial "journal-list.html" .Pages }}
+    </section>
+  {{ end }}
+</div>
+{{ end }}

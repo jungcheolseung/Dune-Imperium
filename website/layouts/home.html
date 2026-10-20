@@ -2,37 +2,37 @@
 <section class="hero">
   <div class="wrap hero-layout">
     <div class="hero-copy">
-      <p class="eyebrow"><span class="eyebrow-line" aria-hidden="true"></span>{{ .Params.hero.eyebrow }}</p>
-      <h1>{{ .Params.hero.title }}<br><em>{{ .Params.hero.accent }}</em></h1>
+      <p class="eyebrow">{{ .Params.hero.eyebrow }}</p>
+      <h1>{{ .Params.hero.title }}</h1>
       <p class="hero-intro">{{ .Params.hero.introduction }}</p>
       <div class="actions"><a class="button primary" href="{{ (site.GetPage "/downloads").RelPermalink }}">{{ .Params.hero.primary }} <span aria-hidden="true">↗</span></a><a class="button hero-secondary" href="{{ (site.GetPage "/guides/joining").RelPermalink }}">{{ .Params.hero.secondary }} <span aria-hidden="true">→</span></a></div>
       <p class="hero-note">Python 규칙 엔진 · PC 브라우저 플레이</p>
     </div>
     <figure class="table-figure">
-      <div class="figure-heading"><span>YOUR NEXT TABLE</span><span class="figure-badge">구성 예시</span></div>
+      <div class="figure-heading">좌석 구성 예시</div>
       <img src="{{ "images/table-diagram.svg" | relURL }}" width="520" height="370" alt="사람 한 명과 AI 세 명이 같은 테이블을 이루는 네 좌석 구성도">
-      <figcaption><span>혼자 시작해도,<br><strong>네 좌석은 채워집니다.</strong></span><span class="figure-index" aria-hidden="true">4 SEATS</span></figcaption>
+      <figcaption>사람 1명 + AI 3명 · 총 4석</figcaption>
     </figure>
   </div>
   <div class="wrap hero-facts"><span>4인 Uprising 기본 게임</span><span>AI 대전 & 친구와 멀티플레이</span><span>한국어 · English</span></div>
 </section>
+<section class="section journal-home">
+  <div class="wrap">
+    <div class="section-heading"><div><h2>개발일지</h2><p>엔진 구현, AI 실험, 플레이 개선 기록입니다.</p></div><a class="text-link" href="{{ (site.GetPage "/devlog").RelPermalink }}">개발일지 모두 보기 <span aria-hidden="true">→</span></a></div>
+    {{ partial "journal-list.html" (first 3 (where site.RegularPages "Section" "devlog").ByDate.Reverse) }}
+  </div>
+</section>
 <section class="section play-section">
   <div class="wrap">
-    <div class="section-heading"><div><p class="eyebrow">01 / PLAY YOUR WAY</p><h2>{{ .Params.play.title }}</h2></div><p>{{ .Params.play.introduction }}</p></div>
+    <div class="section-heading"><div><h2>{{ .Params.play.title }}</h2></div><p>{{ .Params.play.introduction }}</p></div>
     <div class="play-grid">{{ range .Params.features }}<article class="play-item"><span class="item-number">{{ .number }}</span><h3>{{ .title }}</h3><p>{{ .text }}</p><a class="text-link" href="{{ (site.GetPage .page).RelPermalink }}">{{ .link }} <span aria-hidden="true">↗</span></a></article>{{ end }}</div>
   </div>
 </section>
-<section class="research-section">
-  <div class="wrap research-layout">
-    <div><p class="eyebrow">02 / BEHIND THE GAME</p><h2>좋은 한 수를 위한<br>끝없는 질문.</h2><p>규칙을 정확히 옮기고, 스스로 두며 배우고,<br class="desktop-break"> 실제 대전으로 확인합니다.</p><a class="text-link" href="{{ (site.GetPage "/about").RelPermalink }}">프로젝트 알아보기 <span aria-hidden="true">↗</span></a></div>
-    <ol class="research-steps"><li><span>01</span><div><h3>규칙을 코드로</h3><p>합법 행동과 숨은 정보의 경계를 같은 엔진으로 관리합니다.</p></div></li><li><span>02</span><div><h3>경험을 판단으로</h3><p>반복한 게임에서 행동의 선호도와 국면의 가치를 배웁니다.</p></div></li><li><span>03</span><div><h3>판단을 검증으로</h3><p>후보를 두어 보고 비교합니다. 실험에는 조건과 한계도 남깁니다.</p></div></li></ol>
-  </div>
-</section>
 <section class="section stories-section">
-  <div class="wrap"><div class="section-heading"><div><p class="eyebrow">03 / FIELD NOTES</p><h2>만들고, 두고, 배운 기록.</h2></div><a class="text-link" href="{{ (site.GetPage "/posts").RelPermalink }}">개발 이야기 모두 보기 <span aria-hidden="true">↗</span></a></div>
+  <div class="wrap"><div class="section-heading"><div><h2>기술 글</h2><p>규칙 엔진 구조와 AI의 동작을 설명합니다.</p></div><a class="text-link" href="{{ (site.GetPage "/posts").RelPermalink }}">기술 글 모두 보기 <span aria-hidden="true">→</span></a></div>
     <div class="story-grid">{{ range first 3 (where site.RegularPages "Section" "posts").ByDate.Reverse }}{{ partial "card.html" . }}{{ end }}</div>
   </div>
 </section>
-<section class="update-section"><div class="wrap update-strip"><div><p class="eyebrow">LATEST UPDATE</p>{{ range first 1 (where site.RegularPages "Section" "updates").ByDate.Reverse }}<h2><a href="{{ .RelPermalink }}">{{ .Title }} <span aria-hidden="true">↗</span></a></h2><time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2006.01.02" }}</time>{{ end }}</div><a class="text-link" href="{{ (site.GetPage "/help").RelPermalink }}">궁금한 점은 도움말에서 <span aria-hidden="true">↗</span></a></div></section>
+<section class="update-section"><div class="wrap update-strip"><div><p class="eyebrow">업데이트</p>{{ range first 1 (where site.RegularPages "Section" "updates").ByDate.Reverse }}<h2><a href="{{ .RelPermalink }}">{{ .Title }} <span aria-hidden="true">↗</span></a></h2><time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2006.01.02" }}</time>{{ end }}</div><a class="text-link" href="{{ (site.GetPage "/help").RelPermalink }}">도움말 <span aria-hidden="true">↗</span></a></div></section>
 <div class="wrap home-note prose">{{ .Content }}</div>
 {{ end }}
