@@ -33,12 +33,10 @@ from dune_imperium.content.uprising.abilities import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import AdvanceTleilaxu, RecruitTroops
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.reveal_abilities import reveal_effects_of
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardRevealEffect,
 )
 
 TLEILAXU_SOURCES: Final = (
@@ -80,7 +78,6 @@ def _entry(
     acquisition_effect: PersonalCardAcquisitionEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
-    reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
     play_data_complete: bool = False,
 ) -> TleilaxuCardEntry:
     return TleilaxuCardEntry(
@@ -105,7 +102,6 @@ def _entry(
         has_acquisition_bonus=acquisition_effect is not None,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
-        reveal_effects=reveal_effects,
         play_data_complete=play_data_complete,
     )
 
@@ -341,7 +337,6 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         agent_effect=PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN,
         reveal_persuasion=1,
         reveal_strength=1,
-        reveal_effects=reveal_effects_of("twisted_mentat"),
         play_data_complete=True,
     ),
     # Unnatural Reflexes: Spice Trade; GRAFT: at one genetic marker draw two
@@ -370,7 +365,6 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         graft=True,
         reveal_persuasion=1,
         reveal_strength=1,
-        reveal_effects=reveal_effects_of("usurp"),
         play_data_complete=True,
     ),
     # Promo card in the Tleilaxu layout (asset repository

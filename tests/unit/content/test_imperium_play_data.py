@@ -1,24 +1,32 @@
 """Tests for DIU-bootstrapped Imperium-card play data."""
 
-import pytest
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS_BY_ID,
     imperium_deck_instance_ids,
 )
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    personal_card_for_instance,
+)
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardBond,
     PersonalCardDiscardEffect,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
+from dune_imperium.display.tokens import reveal_effect_text
+from dune_imperium.rules.reveal_lines import reveal_lines
+
+
+def _reveal_texts(card: PersonalCardDefinition) -> tuple[str, ...]:
+    """The card's Reveal record, line by line, as its card text reads."""
+
+    return tuple(reveal_effect_text(line) for line in reveal_lines(card))
 
 
 def _instance(card_id: str, *, choam_module: bool = False) -> str:
@@ -51,9 +59,7 @@ def test_bene_gesserit_operative_play_data_places_and_counts_spies() -> None:
     assert card.agent_effect is PersonalCardAgentEffect.PLACE_SPY
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(persuasion=2, minimum_spies_placed=2),
-    )
+    assert _reveal_texts(card) == ("If you have placed 2 or more Spies: +2 Persuasion",)
 
 
 def test_reliable_informant_play_data_restricts_its_spy_targets() -> None:
@@ -71,7 +77,7 @@ def test_reliable_informant_play_data_restricts_its_spy_targets() -> None:
         Faction.FREMEN,
     )
     assert card.reveal_persuasion == 1
-    assert card.reveal_effects == (PersonalCardRevealEffect(solari=1),)
+    assert _reveal_texts(card) == ("Gain 1 solari",)
 
 
 def test_truthtrance_play_data_matches_the_diu_transcription() -> None:
@@ -115,12 +121,7 @@ def test_sardaukar_coordination_play_data_deploys_and_counts_emperor_cards() -> 
     # no separate base sword icon.
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            strength=1,
-            per_revealed_faction=PersonalCardBond.EMPEROR,
-        ),
-    )
+    assert _reveal_texts(card) == ("+1 sword per revealed Emperor card",)
 
 
 def test_hidden_missive_play_data_includes_its_conditional_agent_effect() -> None:
@@ -171,12 +172,7 @@ def test_smugglers_haven_play_data_uses_the_printed_reveal_persuasion() -> None:
     assert card.agent_icons == (AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE)
     assert card.agent_effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
     assert card.reveal_persuasion == 1
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            spice=2,
-            requires_spying_on_maker_space=True,
-        ),
-    )
+    assert _reveal_texts(card) == ("If you are spying on a Maker space: Gain 2 spice",)
 
 
 def test_price_is_no_object_play_data_acquires_with_solari_to_hand() -> None:
@@ -189,7 +185,7 @@ def test_price_is_no_object_play_data_acquires_with_solari_to_hand() -> None:
     assert card.agent_effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
     assert card.acquisition_effect is PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI
     assert card.reveal_persuasion == 2
-    assert card.reveal_effects == (PersonalCardRevealEffect(solari=2),)
+    assert _reveal_texts(card) == ("Gain 2 solari",)
 
 
 def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
@@ -199,7 +195,7 @@ def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
     assert card.factions == (Faction.FREMEN,)
     assert card.agent_icons == (AgentIcon.SPICE_TRADE,)
     assert card.agent_effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE
-    assert card.reveal_effects == (PersonalCardRevealEffect(water=1),)
+    assert _reveal_texts(card) == ("Gain 1 water",)
     assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
 
@@ -212,12 +208,7 @@ def test_northern_watermaster_play_data_has_fremen_bond_gain() -> None:
     assert card.agent_icons == (AgentIcon.CITY,)
     assert card.agent_effect is PersonalCardAgentEffect.GAIN_WATER
     assert card.reveal_persuasion == 1
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            spice=2,
-            required_faction_bond=PersonalCardBond.FREMEN,
-        ),
-    )
+    assert _reveal_texts(card) == ("If Fremen Bond: Gain 2 spice",)
 
 
 def test_maker_keeper_play_data_has_independent_influence_rewards() -> None:
@@ -247,12 +238,9 @@ def test_southern_elders_play_data_has_two_reveal_effects() -> None:
         card.agent_effect
         is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND
     )
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(water=1),
-        PersonalCardRevealEffect(
-            persuasion=2,
-            required_faction_bond=PersonalCardBond.FREMEN,
-        ),
+    assert _reveal_texts(card) == (
+        "Gain 1 water",
+        "If Fremen Bond: +2 Persuasion",
     )
 
 
@@ -278,12 +266,7 @@ def test_ecological_testing_station_play_data_has_payment_and_bond_gain() -> Non
     assert card.agent_icons == (AgentIcon.FREMEN, AgentIcon.CITY)
     assert card.agent_effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
     assert card.reveal_persuasion == 1
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            water=1,
-            required_faction_bond=PersonalCardBond.FREMEN,
-        ),
-    )
+    assert _reveal_texts(card) == ("If Fremen Bond: Gain 1 water",)
 
 
 def test_paracompass_play_data_has_council_and_swordmaster_reveal_gains() -> None:
@@ -293,16 +276,9 @@ def test_paracompass_play_data_has_council_and_swordmaster_reveal_gains() -> Non
     assert card.factions == ()
     assert card.agent_icons == (AgentIcon.CITY,)
     assert card.agent_effect is PersonalCardAgentEffect.GAIN_TWO_SOLARI
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            persuasion=2,
-            requires_high_council=True,
-        ),
-        PersonalCardRevealEffect(
-            persuasion=1,
-            requires_high_council=True,
-            requires_swordmaster=True,
-        ),
+    assert _reveal_texts(card) == (
+        "If High Council: +2 Persuasion",
+        "If High Council and Swordmaster: +1 Persuasion",
     )
 
 
@@ -327,7 +303,7 @@ def test_overthrow_play_data_covers_acquisition_agent_and_reveal() -> None:
     )
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 2
-    assert card.reveal_effects == (PersonalCardRevealEffect(recruit_troops=1),)
+    assert _reveal_texts(card) == ("Recruit 1 troop",)
 
 
 def test_strike_fleet_play_data_covers_spy_acquisition_and_recall_reward() -> None:
@@ -410,7 +386,7 @@ def test_rebel_supplier_play_data_uses_the_turn_recall_condition() -> None:
     )
     assert card.reveal_persuasion == 0
     assert card.reveal_strength == 1
-    assert card.reveal_effects == (PersonalCardRevealEffect(spice=1),)
+    assert _reveal_texts(card) == ("Gain 1 spice",)
 
 
 def test_dangerous_rhetoric_play_data_trashes_for_chosen_influence() -> None:
@@ -469,9 +445,7 @@ def test_unswerving_loyalty_play_data_has_reveal_rewards_and_bond_move() -> None
     assert card.agent_effect is None
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(recruit_troops=1),
-    )
+    assert _reveal_texts(card) == ("Recruit 1 troop",)
     # "Fremen Bond : You may deploy or retreat one of your troops."
     # [Unswerving Loyalty card]; the line was missing from the transcription.
     assert card.reveal_choice_effects == (
@@ -493,12 +467,7 @@ def test_stilgar_play_data_counts_revealed_fremen_cards() -> None:
     # "for each Fremen card you have in play (including this one)"
     # [Stilgar, The Devoted card]: Agent-turn cards count too [Main p. 20]
     # [FAQ p. 2 Liet Kynes], not only the revealed ones.
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            persuasion=2,
-            per_in_play_faction=PersonalCardBond.FREMEN,
-        ),
-    )
+    assert _reveal_texts(card) == ("+2 Persuasion per Fremen card in play",)
 
 
 def test_leadership_play_data_scales_with_worms_and_other_sword_cards() -> None:
@@ -513,9 +482,7 @@ def test_leadership_play_data_scales_with_worms_and_other_sword_cards() -> None:
     )
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 1
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(strength_per_other_sword_card=1),
-    )
+    assert _reveal_texts(card) == ("+1 sword per other revealed sword card",)
 
 
 def test_shishakli_play_data_has_trash_draw_and_fremen_bond_influence() -> None:
@@ -529,13 +496,7 @@ def test_shishakli_play_data_has_trash_draw_and_fremen_bond_influence() -> None:
         is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE
     )
     assert card.reveal_strength == 2
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            influence=1,
-            influence_faction=PersonalCardBond.FREMEN,
-            required_faction_bond=PersonalCardBond.FREMEN,
-        ),
-    )
+    assert _reveal_texts(card) == ("If Fremen Bond: Gain 1 Fremen Influence",)
 
 
 def test_tread_in_darkness_play_data_has_bond_trash_draw() -> None:
@@ -732,7 +693,7 @@ def test_treacherous_maneuver_play_data_matches_the_card() -> None:
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (PersonalCardRevealEffect(draw_intrigue=1),)
+    assert _reveal_texts(card) == ("Draw 1 Intrigue card",)
 
 
 def test_chani_clever_tactician_play_data_matches_the_card() -> None:
@@ -753,12 +714,7 @@ def test_chani_clever_tactician_play_data_matches_the_card() -> None:
     )
     assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(
-            persuasion=2,
-            required_faction_bond=PersonalCardBond.FREMEN,
-        ),
-    )
+    assert _reveal_texts(card) == ("If Fremen Bond: +2 Persuasion",)
     assert card.reveal_choice_effects == (
         PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH,
     )
@@ -782,7 +738,7 @@ def test_steersman_play_data_matches_the_card() -> None:
     )
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (PersonalCardRevealEffect(spice=2),)
+    assert _reveal_texts(card) == ("Gain 2 spice",)
 
 
 def test_junction_headquarters_play_data_matches_the_card() -> None:
@@ -803,9 +759,7 @@ def test_junction_headquarters_play_data_matches_the_card() -> None:
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(water=1, recruit_troops=1),
-    )
+    assert _reveal_texts(card) == ("Gain 1 water, Recruit 1 troop",)
 
 
 def test_undercover_asset_play_data_is_complete() -> None:
@@ -896,7 +850,7 @@ def test_subversive_advisor_play_data_matches_the_card() -> None:
     # blue Persuasion diamond "1", not a Solari coin.
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 0
-    assert card.reveal_effects == ()
+    assert _reveal_texts(card) == ()
 
 
 def test_cargo_runner_play_data_scales_draws_with_completed_contracts() -> None:
@@ -929,7 +883,7 @@ def test_delivery_agreement_play_data_uses_the_printed_vp_choice() -> None:
     assert card.agent_icons == (AgentIcon.CITY,)
     assert card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT
     assert card.reveal_persuasion == 0
-    assert card.reveal_effects == (PersonalCardRevealEffect(spice=1),)
+    assert _reveal_texts(card) == ("Gain 1 spice",)
     assert card.reveal_choice_effects == (
         PersonalCardRevealChoiceEffect
         .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
@@ -951,9 +905,7 @@ def test_interstellar_trade_play_data_uses_contract_count_and_market() -> None:
     assert card.agent_effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE
     assert card.acquisition_effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT
     assert card.reveal_persuasion == 0
-    assert card.reveal_effects == (
-        PersonalCardRevealEffect(persuasion_per_completed_contract=1),
-    )
+    assert _reveal_texts(card) == ("+1 Persuasion per completed Contract",)
 
 
 def test_priority_contracts_play_data_has_agent_and_reveal_contract_rewards() -> None:
@@ -965,52 +917,11 @@ def test_priority_contracts_play_data_has_agent_and_reveal_contract_rewards() ->
     assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE)
     assert card.agent_effect is PersonalCardAgentEffect.TAKE_CONTRACT
     assert card.reveal_persuasion == 0
-    assert card.reveal_effects == (PersonalCardRevealEffect(spice=2),)
+    assert _reveal_texts(card) == ("Gain 2 spice",)
     assert card.reveal_choice_effects == (
         PersonalCardRevealChoiceEffect
         .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
     )
-
-
-def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
-    with pytest.raises(ValueError, match="must gain"):
-        PersonalCardRevealEffect()
-    with pytest.raises(ValueError, match="must gain"):
-        PersonalCardRevealEffect(minimum_spies_placed=2)
-    with pytest.raises(ValueError, match="must not be negative"):
-        PersonalCardRevealEffect(water=-1)
-    with pytest.raises(ValueError, match="must not be negative"):
-        PersonalCardRevealEffect(draw_intrigue=-1)
-    with pytest.raises(TypeError, match="must use PersonalCardBond"):
-        PersonalCardRevealEffect(
-            water=1,
-            required_faction_bond="fremen",  # type: ignore[arg-type]
-        )
-    with pytest.raises(ValueError, match="also needs High Council"):
-        PersonalCardRevealEffect(persuasion=1, requires_swordmaster=True)
-    with pytest.raises(ValueError, match="requires Persuasion or strength"):
-        PersonalCardRevealEffect(
-            water=1,
-            per_revealed_faction=PersonalCardBond.FREMEN,
-        )
-    with pytest.raises(ValueError, match="scales Persuasion only"):
-        PersonalCardRevealEffect(
-            strength=1,
-            per_in_play_faction=PersonalCardBond.FREMEN,
-        )
-    with pytest.raises(ValueError, match="revealed or in-play"):
-        PersonalCardRevealEffect(
-            persuasion=1,
-            per_revealed_faction=PersonalCardBond.FREMEN,
-            per_in_play_faction=PersonalCardBond.FREMEN,
-        )
-    with pytest.raises(TypeError, match="in-play Faction must use"):
-        PersonalCardRevealEffect(
-            persuasion=1,
-            per_in_play_faction="fremen",  # type: ignore[arg-type]
-        )
-    with pytest.raises(ValueError, match="must be paired"):
-        PersonalCardRevealEffect(influence=1)
 
 
 def test_every_acquisition_bonus_has_a_typed_effect() -> None:

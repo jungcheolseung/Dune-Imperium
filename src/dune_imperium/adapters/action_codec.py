@@ -88,7 +88,6 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -124,6 +123,7 @@ from dune_imperium.rules.immortality import (
     research_trash_spaces,
 )
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
+from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT, card_holds_reveal_value
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
@@ -1647,17 +1647,17 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
 _OWED_DRAW_IDS: Final = frozenset({"draw_owed_intrigue", "draw_owed_card"})
 # Whether a printed Reveal line gives the gain of each Reveal gain action
 # (stage B3e-1, ``reveal_turn.legal_reveal_gain_actions``).
-_REVEAL_GAIN_OF: Final[Mapping[str, Callable[[PersonalCardRevealEffect], bool]]] = {
-    "recruit_reveal_troops": lambda effect: effect.recruit_troops > 0,
-    "draw_reveal_intrigue": lambda effect: effect.draw_intrigue > 0,
-    "generate_reveal_specimens": lambda effect: effect.specimens > 0,
-    "advance_reveal_tleilaxu": lambda effect: effect.tleilaxu > 0,
-    "advance_reveal_research": lambda effect: effect.research > 0,
-    "gain_reveal_resources": lambda effect: bool(
-        effect.solari or effect.spice or effect.water
+_REVEAL_GAIN_OF: Final[Mapping[str, Callable[[RevealLine], bool]]] = {
+    "recruit_reveal_troops": lambda line: line.recruit_troops > 0,
+    "draw_reveal_intrigue": lambda line: line.draw_intrigue > 0,
+    "generate_reveal_specimens": lambda line: line.specimens > 0,
+    "advance_reveal_tleilaxu": lambda line: line.tleilaxu > 0,
+    "advance_reveal_research": lambda line: line.research > 0,
+    "gain_reveal_resources": lambda line: bool(
+        line.solari or line.spice or line.water
     ),
-    "gain_reveal_faction_influence": lambda effect: (
-        effect.influence_faction is not None and effect.influence > 0
+    "gain_reveal_faction_influence": lambda line: (
+        line.influence is not None and line.influence[1] > 0
     ),
 }
 
@@ -1695,12 +1695,12 @@ def _reveal_gain_printers(
             card.card.card_id
             for card in cards
             if any(
-                gives(effect)
+                gives(line)
                 and not (
-                    effect.spice > 0
+                    line.spice > 0
                     and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
                 )
-                for effect in card.reveal_effects
+                for line in reveal_lines(card)
             )
         )
     ]
@@ -2942,9 +2942,9 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
         ),
     )
     for card in cards:
-        for effect in card.reveal_effects:
-            if effect.solari or effect.spice or effect.water:
-                bundles.add((effect.solari, effect.spice, effect.water))
+        for line in reveal_lines(card):
+            if line.solari or line.spice or line.water:
+                bundles.add((line.solari, line.spice, line.water))
     for skill in SKILLS:
         if skill.reveal_spice:
             bundles.add((0, skill.reveal_spice, 0))

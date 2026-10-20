@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 재학습 (가) 선생 어댑터 병합; ① Reveal 합계 정리는 Mac mini에서)
+기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 재학습 (가) 선생 어댑터 병합; ① Reveal 합계 정리 끝)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,8 +28,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터) |
-| pytest | 8,199개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 23초, 직렬 약 10분(Mac mini, 2026-10-21) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로) |
+| pytest | 8,198개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 23초, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 553파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `codex/windows-validation` 병합 트리(68종 모두 통과, 469초) |
 | action codec | **v150** (다음 번호 v151) |
@@ -44,21 +44,16 @@
 
 재학습은 Mac mini에서 작업하고 돌린다. 그 밖의 작업은 Mac mini의 CPU 부하에 영향을 주지 않도록 다른 PC에서 한다. 단 ① Reveal 합계
 정리는 관문이 Mac mini에만 있는 git 밖 자료를 읽으므로 Mac mini에서 한다(사용자 결정 2026-10-21 둘째: "자료를 옮겨야 다른 pc에서 가능한거면
-그냥 이 mac mini에서"). ②의 다음 학습은 아직 띄우지 않는다(같은 날 사용자). 그래서 ①을 먼저 하고, ①의 무거운 관문과 학습을 겹치지 않는다.
+그냥 이 mac mini에서"). ②의 다음 학습은 아직 띄우지 않는다(같은 날 사용자). ①은 같은 날 끝났다(아래 "엔진").
 
 | 기기 | 맡는 일 |
 | --- | --- |
-| Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ① Reveal 합계 정리, ② 재학습과 그 측정, 플레이 서버. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
+| Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버, git 밖 자료(아래)를 읽는 엔진 관문. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
 | 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
 
-- **①과 ②는 서로 기다리지 않는다.** ①의 받아들일 조건(Reveal 문구 영·한이 글자까지 같음, codec 행 목록 같음, 엔티티 `FEATURE_DIGEST`
-  그대로)이 지켜지면, ① 이전 코드로 학습한 ②의 망을 ① 병합 뒤에도 그대로 쓴다. ①이 codec 행·관측·엔티티 특성 가운데 하나라도
-  바꿔야 하면 거기서 멈추고 사용자에게 알린다(② 망을 못 쓰게 된다). 두 작업이 같이 고칠 수 있는 코드는 `training/entity_features.py`다
-  (①이 `_PERSONAL_RECORD_FIELDS`의 `reveal_effects`를 지운다). ②가 그 파일을 고쳐야 하면 ① 병합 뒤에 고친다. 인수인계·worklog의
-  충돌은 병합할 때 푼다.
-- **①의 관문에 쓰는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v150-14c08062/`(기보 묶음, exact 2,000의 기준),
-  `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본 13개), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
-  재채굴의 망 몫). 다른 PC로 옮길 때를 위해 묶어 둔 `tmp/transfer/gate-data-2026-10-21.tar.gz`(129 MB)는 쓰지 않게 됐다.
+- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v150-14c08062/`(기보 묶음, exact 2,000의 기준),
+  `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
+  재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 옮긴다(`tmp/transfer/gate-data-2026-10-21.tar.gz`에 2026-10-21판을 묶어 두었다).
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
   "원격 저장소 인계 주의").
 
@@ -70,20 +65,16 @@
 
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
-  다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리,
-  ② 재학습 (가). 둘 다 Mac mini에서(위 "기기 분담"); ②의 선생 어댑터와 첫 사슬은 끝났고(아래) 다음 학습은 사용자가 정할 때 띄운다. [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
-- **① Reveal 합계 정리(동작 그대로; 사용자 결정 2026-10-21; Mac mini, 관문 자료는 위 "기기 분담"):** 규칙(`rules/reveal_lines.py`, B3e-2)과 엔티티 특징
-  (`training/entity_features._personal_records`, A8부터)은 이미 Reveal 능력 기록 줄(`content/uprising/reveal_abilities.REVEAL_GAIN_ABILITIES`)을
-  읽는다. 카드 문구(`display/cards._reveal_line`·`_reveal_line_ko` → `display/tokens.reveal_effect_text`·`tokens_ko.reveal_effect_text_ko`)와
-  codec(`adapters/action_codec._reveal_gain_printers`·`_REVEAL_GAIN_OF`·`_reveal_resource_templates`)만 그 기록을 엮은 합계
-  `PersonalCardRevealEffect`(카드 정의의 `reveal_effects`)를 읽는다. 할 일: 둘을 `reveal_lines(card)`(`RevealLine`)로 읽게 하고, 합계 자료형
-  (`content/uprising/types.py`), 카드 정의의 `reveal_effects` 칸과 manifest의 중복 검사(`imperium.py`·`reserve.py`·`starting_cards.py`·
-  `immortality/tleilaxu.py`, 약 55곳), `reveal_abilities.reveal_effect`·`reveal_effects_of`, `entity_features._PERSONAL_RECORD_FIELDS`의
-  `reveal_effects`, `scripts/ab/tipcensus/deck.py`의 읽기를 지운다. 받아들일 조건: 모든 카드의 Reveal 문구(영·한)가 글자까지 같다, codec 행
-  목록이 같다, 엔티티 `FEATURE_DIGEST`(`0098fbb6…`)가 그대로다. 관문은 엔진 하위 단계 전체(CLAUDE.md "Engine stage full gates": pytest·ruff·mypy,
-  소크, 휴리스틱 20·앱 AI 10판이 직전 커밋과 같음, 같음 확인 200판, v150 기보 묶음 `v150-14c08062` exact 2,000, 문제집 재채굴, E2E 전부).
-  같음 확인 기준은 시작 커밋에서 새로 만든다(`PYTHONPATH=src .venv/bin/python scripts/ab/engine_equivalence.py record <tmp 아래 폴더> --plan standard`;
-  B단계의 기준 기록은 worktree와 함께 지웠다). 화면 문구·codec 나열이라 낮은 위험(독립 리뷰 없이 diff 확인).
+  다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —
+  끝(아래), ② 재학습 (가) — 선생 어댑터와 첫 사슬은 끝났고(아래) 다음 학습은 사용자가 정할 때 띄운다. [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
+- **① Reveal 합계 정리 끝(2026-10-21, codec 그대로 v150):** 카드 문구(영·한)와 codec도 Reveal 능력 기록 줄(`rules.reveal_lines`)을 읽고,
+  합계 자료형 `PersonalCardRevealEffect`와 manifest의 `reveal_effects` 칸(51곳)이 없어졌다. 합계가 하던 기록 검사는
+  `content/uprising/reveal_abilities.check_reveal_gain_line`이 import 때 모든 기록에 돈다. 카드 140장 문구·브라우저 카드 표 전체·codec 144개 조합의
+  행 목록·`FEATURE_DIGEST`가 바이트까지 같다. [2026-10-21 ① Reveal 합계 정리]
+- **(결정) 문제집 검사 두 개가 v150에서 멈춤(B단계부터, ① 관문에서 발견):** `dune-imperium-records problems check --suite local/records/human-problems.json`은
+  `decline_optional_trash`의 창에 인쇄한 출처가 없다는 `ValueError`(`records/problems._effect_position` → `effect_steps.printed_from_state`)로 검사 전체가
+  멈추고, `--suite local/records/ai-mistakes.json`은 1곳(`fb716981:861`)의 정답 수 `choose_agent_card`가 합법이 아니라고 한다. 둘 다 시작 커밋
+  `7aa8d9bc`에서 똑같다. 원인은 아직 보지 않았다. [2026-10-21 ① Reveal 합계 정리]
 - **② 재학습 (가) — 선생 어댑터 병합, 첫 사슬의 망은 선생보다 약함(2026-10-21):** 플레이 망 `checkpoints/play/readapt-v147-4400.pt`(MLP,
   v147)를 v150에서 쓰는 어댑터 `training/older_teacher.py`: 결정마다 휴리스틱이 보는 온 행동(`agents.agent_turn_steps.placements_for_steps`:
   카드+칸 `agent_turn`, 효과+대상, 옛 엔진의 고르기)에 파일의 v147 행 번호를 붙여(그대로 → `printed` 떼고 → `source`도 떼고) 파일 자신의 정책

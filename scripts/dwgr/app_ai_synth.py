@@ -112,8 +112,8 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardRevealEffect,
 )
+from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 
 _OUT_DEFAULT = (
     Path(__file__).resolve().parents[2]
@@ -585,23 +585,14 @@ ACQUIRE_EFFECT_NAMES: Mapping[PersonalCardAcquisitionEffect, str] = {
 }
 
 
-def _unconditional(effect: PersonalCardRevealEffect) -> bool:
-    """A Reveal gain that pays whatever the state (the app's plain
-    ``Persuasion``/``Troops``/``Water`` attributes); conditional gains live in
-    the card's abilities (§2.1-§2.3, §2.6)."""
+def _unconditional(line: RevealLine) -> bool:
+    """A Reveal line that pays whatever the state (the app's plain
+    ``Persuasion``/``Troops``/``Water`` attributes): no condition, no count per
+    Faction card, no Combat icon; conditional gains live in the card's
+    abilities (§2.1-§2.3, §2.6)."""
 
     return not (
-        effect.requires_command
-        or effect.required_faction_bond is not None
-        or effect.minimum_garrisoned_units
-        or effect.requires_commander_in_conflict
-        or effect.requires_high_council
-        or effect.requires_swordmaster
-        or effect.minimum_spies_placed
-        or effect.requires_spying_on_maker_space
-        or effect.per_revealed_faction is not None
-        or effect.per_in_play_faction is not None
-        or effect.grants_combat_icon
+        line.conditions or line.faction_count is not None or line.grants_combat_icon
     )
 
 
@@ -630,7 +621,7 @@ def imperium_records() -> list[Record]:
         hand = IMPERIUM_HAND[entry.card.card_id]
         short = "ImperiumArchetypes.AppStyle." + pascal(entry.card.name)
         cost = entry.acquisition_cost
-        plain = [e for e in entry.reveal_effects if _unconditional(e)]
+        plain = [line for line in reveal_lines(entry) if _unconditional(line)]
         attrs: dict[str, object] = {
             "EntityType": "Imperium",
             "ImperiumType": "Promo" if entry.promo else "Main",
@@ -644,9 +635,10 @@ def imperium_records() -> list[Record]:
         _put(
             attrs,
             "Persuasion",
-            entry.reveal_persuasion + sum(e.persuasion for e in plain),
+            entry.reveal_persuasion + sum(e.printed_persuasion for e in plain),
         )
-        _put(attrs, "Strength", entry.reveal_strength + sum(e.strength for e in plain))
+        strength = entry.reveal_strength + sum(e.printed_strength for e in plain)
+        _put(attrs, "Strength", strength)
         _put(attrs, "Troops", sum(e.recruit_troops for e in plain))
         _put(attrs, "Water", sum(e.water for e in plain))
         _put(attrs, "Solari", sum(e.solari for e in plain))

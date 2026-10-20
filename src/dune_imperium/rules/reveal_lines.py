@@ -5,14 +5,18 @@ Stage B3e-2 (docs/stage-b-plan.md, decision E-2, user decision 2026-10-20
 Reveal box from the card's ability record
 (``content.uprising.reveal_abilities.REVEAL_GAIN_ABILITIES``, one
 ``EffectSection`` per printed line, each judged on its own) instead of the
-totals compiled from it (``PersonalCardRevealEffect``, which the card text
-and the action catalog still read). A line's conditions are judged where
+totals compiled from it (``PersonalCardRevealEffect``, removed in the Reveal
+totals cleanup). A line's conditions are judged where
 every effect's are (``conditions.owner_condition_holds``), but a Faction
 Bond, which reads the other cards in play, and "Command (6+)", which reads
 the Reveal's Persuasion [Bloodlines pp. 5, 12]. What a line gives is its
 rewards: Persuasion and swords at once (counted per revealed or in-play
 Faction card, per completed Contract, per other sword card), the other
 gains as the owner's own steps (OQ-045).
+
+The card text (``display.tokens.reveal_effect_text``) and the action catalog
+(``adapters.action_codec``) read the same lines (the Reveal totals cleanup,
+2026-10-21): there is no other copy of what a Reveal box gives.
 """
 
 from collections.abc import Sequence
@@ -35,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantCombatDeployment,
     RecruitTroops,
     Research,
+    RevealCount,
     RevealCountKind,
     RevealPersuasion,
     RevealSwords,
@@ -158,6 +163,46 @@ class RevealLine:
         return any(
             isinstance(reward, GrantCombatDeployment) for reward in self.section.rewards
         )
+
+    @property
+    def printed_persuasion(self) -> int:
+        """The Persuasion the line prints, flat or for each card of a Faction
+        (``faction_count``); a Persuasion per completed Contract is apart
+        (``persuasion_per_completed_contract``)."""
+
+        return sum(
+            reward.amount
+            for reward in self.section.rewards
+            if isinstance(reward, RevealPersuasion)
+            and (reward.per is None or reward.per.faction is not None)
+        )
+
+    @property
+    def printed_strength(self) -> int:
+        """The swords the line prints, flat or for each revealed card of a
+        Faction; swords per other sword card are apart
+        (``strength_per_other_sword_card``)."""
+
+        return sum(
+            reward.amount
+            for reward in self.section.rewards
+            if isinstance(reward, RevealSwords)
+            and (reward.per is None or reward.per.faction is not None)
+        )
+
+    @property
+    def faction_count(self) -> RevealCount | None:
+        """What the line's Persuasion or swords are counted for, when that is
+        each card of a Faction (revealed, or in play); None otherwise."""
+
+        for reward in self.section.rewards:
+            if (
+                isinstance(reward, RevealPersuasion | RevealSwords)
+                and reward.per is not None
+                and reward.per.faction is not None
+            ):
+                return reward.per
+        return None
 
     @property
     def persuasion_per_completed_contract(self) -> int:

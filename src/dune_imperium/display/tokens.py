@@ -11,15 +11,40 @@ Every ``PersonalCard*Effect`` enum has one exported ``Mapping`` here so a
 regression test can assert full coverage (``set(map) == set(EnumClass)``);
 a newly added enum member without matching text then fails that test instead
 of silently rendering a ``KeyError`` at display time. ``PersonalCardBond``
-(the Faction-affiliation enum used inside ``PersonalCardRevealEffect``) has
-no card-facing members of its own, so it stays a private lookup used only by
-:func:`reveal_effect_text`.
+(a Faction affiliation) has no card-facing members of its own, so it stays a
+private lookup used only by :func:`reveal_effect_text`, which renders one
+line of a card's Reveal record (``rules.reveal_lines.RevealLine``).
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AdvanceTleilaxu,
+    CommandersInConflictAtLeast,
+    CommandReached,
+    DrawIntrigueCards,
+    FactionBond,
+    GainInfluence,
+    GainResources,
+    GarrisonedUnitsAtLeast,
+    GenerateSpecimens,
+    GeneticMarkersAtLeast,
+    GrantCombatDeployment,
+    HasHighCouncil,
+    HasSwordmaster,
+    RecruitTroops,
+    Research,
+    RevealCountKind,
+    RevealPersuasion,
+    RevealSwords,
+    SpiesPlacedAtLeast,
+    SpyingOnMakerSpace,
+    TrashThisCard,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -28,10 +53,10 @@ from dune_imperium.content.uprising.types import (
     PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.rules.reveal_lines import RevealLine
 
 _BOND_NAMES: dict[PersonalCardBond, str] = {
     PersonalCardBond.EMPEROR: "Emperor",
@@ -43,6 +68,10 @@ _BOND_NAMES: dict[PersonalCardBond, str] = {
 
 def _bond_name(bond: PersonalCardBond) -> str:
     return _BOND_NAMES[bond]
+
+
+def _faction_name(faction: Faction) -> str:
+    return _bond_name(PersonalCardBond(faction.value))
 
 
 def _plural(count: int, noun: str) -> str:
@@ -606,138 +635,174 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
     )
 )
 
-_HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
+# What a line of a Reveal record may hold (``content.uprising.reveal_abilities``
+# checks every record against the same sets); the renderers here and in
+# ``tokens_ko`` read each of them.
+HANDLED_REVEAL_CONDITIONS: Final[frozenset[type]] = frozenset(
     {
-        "solari",
-        "spice",
-        "water",
-        "persuasion",
-        "recruit_troops",
-        "strength",
-        "strength_per_other_sword_card",
-        "draw_intrigue",
-        "influence",
-        "influence_faction",
-        "required_faction_bond",
-        "requires_high_council",
-        "requires_swordmaster",
-        "minimum_spies_placed",
-        "requires_spying_on_maker_space",
-        "per_revealed_faction",
-        "per_in_play_faction",
-        "persuasion_per_completed_contract",
-        "requires_commander_in_conflict",
-        "minimum_garrisoned_units",
-        "requires_command",
-        "trashes_self",
-        "grants_combat_icon",
-        "specimens",
-        "minimum_genetic_markers",
-        "tleilaxu",
-        "research",
+        FactionBond,
+        HasHighCouncil,
+        HasSwordmaster,
+        SpiesPlacedAtLeast,
+        SpyingOnMakerSpace,
+        CommandersInConflictAtLeast,
+        GeneticMarkersAtLeast,
+        GarrisonedUnitsAtLeast,
+        CommandReached,
+    }
+)
+HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
+    {
+        RevealPersuasion,
+        RevealSwords,
+        GainResources,
+        DrawIntrigueCards,
+        RecruitTroops,
+        GainInfluence,
+        TrashThisCard,
+        GrantCombatDeployment,
+        GenerateSpecimens,
+        AdvanceTleilaxu,
+        Research,
     }
 )
 
 
-def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
-    """Render one automatic Reveal-time gain as ``If <condition>: <gains>``.
+@dataclass(frozen=True, slots=True)
+class RevealLineConditions:
+    """A Reveal line's conditions, as the card text names them."""
 
-    Requirement fields are rendered first as an ``If ...:`` prefix (Faction
-    Bond, High Council/Swordmaster, minimum placed Spies, spying on a Maker
-    space); ``per_revealed_faction`` and ``per_in_play_faction`` instead
-    scale whichever gain (Persuasion or strength) they accompany, so they
-    are folded into that gain's own text rather than into the prefix. The
-    gains that follow are
-    joined with ", "; Persuasion and strength use the "+N" shorthand that
-    matches the printed Reveal diamonds, everything else uses "Gain N ...".
+    bond: Faction | None = None
+    high_council: bool = False
+    swordmaster: bool = False
+    spies: int = 0
+    maker: bool = False
+    commander: bool = False
+    markers: int = 0
+    garrison: int = 0
+    command: bool = False
+
+
+def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
+    """Read ``line``'s conditions (each kind printed at most once)."""
+
+    found: dict[str, object] = {}
+    for condition in line.conditions:
+        match condition:
+            case FactionBond(faction=faction):
+                found["bond"] = faction
+            case HasHighCouncil():
+                found["high_council"] = True
+            case HasSwordmaster():
+                found["swordmaster"] = True
+            case SpiesPlacedAtLeast(count=count):
+                found["spies"] = count
+            case SpyingOnMakerSpace():
+                found["maker"] = True
+            case CommandersInConflictAtLeast():
+                found["commander"] = True
+            case GeneticMarkersAtLeast(count=count):
+                found["markers"] = count
+            case GarrisonedUnitsAtLeast(count=count):
+                found["garrison"] = count
+            case CommandReached():
+                found["command"] = True
+            case _:
+                raise TypeError(f"{condition!r} is not a Reveal line condition")
+    return RevealLineConditions(**found)  # type: ignore[arg-type]
+
+
+def reveal_effect_text(line: RevealLine) -> str:
+    """Render one printed Reveal line as ``If <condition>: <gains>``.
+
+    Its conditions come first as an ``If ...:`` prefix (Faction Bond, High
+    Council/Swordmaster, minimum placed Spies, spying on a Maker space, ...);
+    a count per Faction card (revealed or in play) instead scales whichever
+    gain (Persuasion or strength) it accompanies, so it is folded into that
+    gain's own text rather than into the prefix. The gains that follow are
+    joined with ", " in a fixed order; Persuasion and strength use the "+N"
+    shorthand that matches the printed Reveal diamonds, everything else uses
+    "Gain N ...".
     """
 
+    held = reveal_line_conditions(line)
     conditions: list[str] = []
-    if effect.required_faction_bond is not None:
-        conditions.append(f"{_bond_name(effect.required_faction_bond)} Bond")
-    if effect.requires_swordmaster:
+    if held.bond is not None:
+        conditions.append(f"{_faction_name(held.bond)} Bond")
+    if held.swordmaster:
         conditions.append("High Council and Swordmaster")
-    elif effect.requires_high_council:
+    elif held.high_council:
         conditions.append("High Council")
-    if effect.minimum_spies_placed:
-        noun = "Spy" if effect.minimum_spies_placed == 1 else "Spies"
-        conditions.append(
-            f"you have placed {effect.minimum_spies_placed} or more {noun}"
-        )
-    if effect.requires_spying_on_maker_space:
+    if held.spies:
+        noun = "Spy" if held.spies == 1 else "Spies"
+        conditions.append(f"you have placed {held.spies} or more {noun}")
+    if held.maker:
         conditions.append("you are spying on a Maker space")
-    if effect.requires_commander_in_conflict:
+    if held.commander:
         conditions.append("you have 1 or more Sardaukar Commanders in the Conflict")
-    if effect.minimum_genetic_markers:
-        noun = "marker" if effect.minimum_genetic_markers == 1 else "markers"
-        conditions.append(
-            f"you have reached {effect.minimum_genetic_markers} genetic {noun}"
-        )
-    if effect.minimum_garrisoned_units:
-        conditions.append(
-            f"you have {effect.minimum_garrisoned_units} or more garrisoned units"
-        )
-    if effect.requires_command:
+    if held.markers:
+        noun = "marker" if held.markers == 1 else "markers"
+        conditions.append(f"you have reached {held.markers} genetic {noun}")
+    if held.garrison:
+        conditions.append(f"you have {held.garrison} or more garrisoned units")
+    if held.command:
         conditions.append("Command (6+ Persuasion)")
 
+    count = line.faction_count
     per_faction = (
-        f" per revealed {_bond_name(effect.per_revealed_faction)} card"
-        if effect.per_revealed_faction is not None
-        else f" per {_bond_name(effect.per_in_play_faction)} card in play"
-        if effect.per_in_play_faction is not None
-        else ""
+        ""
+        if count is None or count.faction is None
+        else f" per revealed {_faction_name(count.faction)} card"
+        if count.kind is RevealCountKind.REVEALED_FACTION_CARD
+        else f" per {_faction_name(count.faction)} card in play"
     )
 
     gains: list[str] = []
-    if effect.persuasion:
-        gains.append(f"+{effect.persuasion} Persuasion{per_faction}")
-    if effect.strength:
-        gains.append(
-            f"+{effect.strength} {_plural(effect.strength, 'sword')}{per_faction}"
-        )
-    if effect.strength_per_other_sword_card:
-        n = effect.strength_per_other_sword_card
+    persuasion = line.printed_persuasion
+    if persuasion:
+        gains.append(f"+{persuasion} Persuasion{per_faction}")
+    strength = line.printed_strength
+    if strength:
+        gains.append(f"+{strength} {_plural(strength, 'sword')}{per_faction}")
+    if line.strength_per_other_sword_card:
+        n = line.strength_per_other_sword_card
         gains.append(f"+{n} {_plural(n, 'sword')} per other revealed sword card")
-    if effect.persuasion_per_completed_contract:
+    if line.persuasion_per_completed_contract:
         gains.append(
-            f"+{effect.persuasion_per_completed_contract} Persuasion "
+            f"+{line.persuasion_per_completed_contract} Persuasion "
             "per completed Contract"
         )
-    if effect.solari:
-        gains.append(f"Gain {effect.solari} solari")
-    if effect.spice:
-        gains.append(f"Gain {effect.spice} spice")
-    if effect.water:
-        gains.append(f"Gain {effect.water} water")
-    if effect.draw_intrigue:
+    if line.solari:
+        gains.append(f"Gain {line.solari} solari")
+    if line.spice:
+        gains.append(f"Gain {line.spice} spice")
+    if line.water:
+        gains.append(f"Gain {line.water} water")
+    if line.draw_intrigue:
         gains.append(
-            f"Draw {effect.draw_intrigue} Intrigue "
-            f"{_plural(effect.draw_intrigue, 'card')}"
+            f"Draw {line.draw_intrigue} Intrigue {_plural(line.draw_intrigue, 'card')}"
         )
-    if effect.recruit_troops:
+    if line.recruit_troops:
         gains.append(
-            f"Recruit {effect.recruit_troops} {_plural(effect.recruit_troops, 'troop')}"
+            f"Recruit {line.recruit_troops} {_plural(line.recruit_troops, 'troop')}"
         )
-    if effect.influence:
-        assert effect.influence_faction is not None
-        gains.append(
-            f"Gain {effect.influence} {_bond_name(effect.influence_faction)} Influence"
-        )
-    if effect.trashes_self:
+    influence = line.influence
+    if influence is not None and influence[1]:
+        faction, times = influence
+        gains.append(f"Gain {times} {_faction_name(faction)} Influence")
+    if line.trashes_self:
         gains.append("Trash this card")
-    if effect.grants_combat_icon:
+    if line.grants_combat_icon:
         gains.append("Combat (deploy as though at a Combat space)")
-    if effect.specimens:
-        gains.append(
-            f"Generate {effect.specimens} {_plural(effect.specimens, 'specimen')}"
-        )
-    if effect.tleilaxu:
-        gains.append("Tleilaxu (advance your Tleilaxu token)" * 1)
-    if effect.research:
+    if line.specimens:
+        gains.append(f"Generate {line.specimens} {_plural(line.specimens, 'specimen')}")
+    if line.tleilaxu:
+        gains.append("Tleilaxu (advance your Tleilaxu token)")
+    if line.research:
         gains.append(
             "Research (advance your research token)"
-            if effect.research == 1
-            else f"Research ×{effect.research} (advance your research token twice)"
+            if line.research == 1
+            else f"Research ×{line.research} (advance your research token twice)"
         )
 
     text = ", ".join(gains)

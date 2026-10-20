@@ -1,12 +1,26 @@
 """Coverage and golden-text tests for personal-card enum token maps."""
 
-import dataclasses
 import sys
 from pathlib import Path
 
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     TLEILAXU_CARDS_BY_ID,
+)
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AllConditions,
+    EffectSection,
+    FactionBond,
+    GainInfluence,
+    GainResources,
+    HasHighCouncil,
+    HasSwordmaster,
+    RevealCount,
+    RevealCountKind,
+    RevealPersuasion,
+    RevealSwords,
+    SpiesPlacedAtLeast,
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
@@ -18,17 +32,14 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardBond,
     PersonalCardDiscardEffect,
     PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
 from dune_imperium.display.tokens import (
-    _HANDLED_REVEAL_FIELDS,
     ACQUISITION_EFFECT_TEXT,
     AGENT_EFFECT_TEXT,
     DISCARD_EFFECT_TEXT,
@@ -50,6 +61,7 @@ from dune_imperium.display.tokens_ko import (
     TURN_START_EFFECT_TEXT_KO,
     reveal_effect_text_ko,
 )
+from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/unit/display/test_struct_text.py's identical comment).
@@ -70,6 +82,49 @@ _ALL_REVEAL_EFFECT_ENTRIES: tuple[PersonalCardDefinition, ...] = (
     *RESERVE_STACKS,
     *TLEILAXU_CARDS_BY_ID.values(),
     RECLAIMED_FORCES,
+)
+
+
+# Reveal lines as records write them (``content.uprising.reveal_abilities``).
+_OPERATIVE = RevealLine(  # Bene Gesserit Operative
+    EffectSection((RevealPersuasion(2),), SpiesPlacedAtLeast(2))
+)
+_FLAT = RevealLine(EffectSection((RevealPersuasion(1), RevealSwords(1))))
+_WATERMASTER = RevealLine(  # Northern Watermaster
+    EffectSection((GainResources(spice=2),), FactionBond(Faction.FREMEN))
+)
+_PARACOMPASS = RevealLine(  # Paracompass's second line
+    EffectSection(
+        (RevealPersuasion(1),), AllConditions((HasHighCouncil(), HasSwordmaster()))
+    )
+)
+_PER_REVEALED = RevealLine(  # Sardaukar Coordination's shape
+    EffectSection(
+        (
+            RevealPersuasion(
+                2, RevealCount(RevealCountKind.REVEALED_FACTION_CARD, Faction.FREMEN)
+            ),
+        )
+    )
+)
+_PER_IN_PLAY = RevealLine(  # Stilgar, The Devoted
+    EffectSection(
+        (
+            RevealPersuasion(
+                2, RevealCount(RevealCountKind.FACTION_CARD_IN_PLAY, Faction.FREMEN)
+            ),
+        )
+    )
+)
+_SHISHAKLI = RevealLine(
+    EffectSection(
+        (GainInfluence(factions=(Faction.FREMEN,)),), FactionBond(Faction.FREMEN)
+    )
+)
+_TRADE = RevealLine(  # Interstellar Trade
+    EffectSection(
+        (RevealPersuasion(1, RevealCount(RevealCountKind.COMPLETED_CONTRACT)),)
+    )
 )
 
 
@@ -127,14 +182,8 @@ def test_every_agent_effect_text_is_non_empty_or_documented_sentinel() -> None:
     assert all(text for text in AGENT_EFFECT_TEXT.values())
 
 
-def test_handled_reveal_fields_matches_dataclass_fields() -> None:
-    assert _HANDLED_REVEAL_FIELDS == {
-        field.name for field in dataclasses.fields(PersonalCardRevealEffect)
-    }
-
-
 def test_reveal_effect_text_bene_gesserit_operative_golden() -> None:
-    effect = PersonalCardRevealEffect(persuasion=2, minimum_spies_placed=2)
+    effect = _OPERATIVE
 
     assert (
         reveal_effect_text(effect)
@@ -143,29 +192,21 @@ def test_reveal_effect_text_bene_gesserit_operative_golden() -> None:
 
 
 def test_reveal_effect_text_flat_persuasion_and_strength() -> None:
-    effect = PersonalCardRevealEffect(persuasion=1, strength=1)
+    effect = _FLAT
 
     assert reveal_effect_text(effect) == "+1 Persuasion, +1 sword"
 
 
 def test_reveal_effect_text_faction_bond_condition() -> None:
-    # Northern Watermaster: PersonalCardRevealEffect(spice=2,
-    # required_faction_bond=PersonalCardBond.FREMEN).
-    effect = PersonalCardRevealEffect(
-        spice=2,
-        required_faction_bond=PersonalCardBond.FREMEN,
-    )
+    # Northern Watermaster.
+    effect = _WATERMASTER
 
     assert reveal_effect_text(effect) == "If Fremen Bond: Gain 2 spice"
 
 
 def test_reveal_effect_text_high_council_and_swordmaster() -> None:
     # Paracompass's second Reveal effect.
-    effect = PersonalCardRevealEffect(
-        persuasion=1,
-        requires_high_council=True,
-        requires_swordmaster=True,
-    )
+    effect = _PARACOMPASS
 
     assert (
         reveal_effect_text(effect)
@@ -175,10 +216,7 @@ def test_reveal_effect_text_high_council_and_swordmaster() -> None:
 
 def test_reveal_effect_text_per_revealed_faction_scales_the_gain() -> None:
     # Sardaukar Coordination's shape: a gain per revealed Faction card.
-    effect = PersonalCardRevealEffect(
-        persuasion=2,
-        per_revealed_faction=PersonalCardBond.FREMEN,
-    )
+    effect = _PER_REVEALED
 
     assert (
         reveal_effect_text(effect)
@@ -189,31 +227,21 @@ def test_reveal_effect_text_per_revealed_faction_scales_the_gain() -> None:
 def test_reveal_effect_text_per_in_play_faction_names_in_play() -> None:
     # Stilgar, The Devoted: "2 Persuasion for each Fremen card you have in
     # play (including this one)" [Stilgar, The Devoted card].
-    effect = PersonalCardRevealEffect(
-        persuasion=2,
-        per_in_play_faction=PersonalCardBond.FREMEN,
-    )
+    effect = _PER_IN_PLAY
 
     assert reveal_effect_text(effect) == "+2 Persuasion per Fremen card in play"
 
 
 def test_reveal_effect_text_influence_gain_names_its_faction() -> None:
-    # Shishakli: PersonalCardRevealEffect(influence=1,
-    # influence_faction=PersonalCardBond.FREMEN,
-    # required_faction_bond=PersonalCardBond.FREMEN).
-    effect = PersonalCardRevealEffect(
-        influence=1,
-        influence_faction=PersonalCardBond.FREMEN,
-        required_faction_bond=PersonalCardBond.FREMEN,
-    )
+    # Shishakli.
+    effect = _SHISHAKLI
 
     assert reveal_effect_text(effect) == "If Fremen Bond: Gain 1 Fremen Influence"
 
 
 def test_reveal_effect_text_persuasion_per_completed_contract() -> None:
-    # Interstellar Trade: PersonalCardRevealEffect(
-    # persuasion_per_completed_contract=1).
-    effect = PersonalCardRevealEffect(persuasion_per_completed_contract=1)
+    # Interstellar Trade.
+    effect = _TRADE
 
     assert reveal_effect_text(effect) == "+1 Persuasion per completed Contract"
 
@@ -261,19 +289,6 @@ def test_turn_start_effect_text_ko_covers_every_member() -> None:
 
 def test_every_agent_effect_text_ko_is_non_empty() -> None:
     assert all(text for text in AGENT_EFFECT_TEXT_KO.values())
-
-
-def test_ko_handled_reveal_fields_matches_dataclass_fields() -> None:
-    # tokens_ko.py's own module-private copy of the field set (imported
-    # here through the same name tokens.py exports) must stay in lockstep
-    # with the dataclass, exactly like the English test above — a field
-    # tokens.py's renderer grows and this module's private copy misses
-    # would otherwise silently under-translate instead of failing a test.
-    from dune_imperium.display.tokens_ko import _HANDLED_REVEAL_FIELDS as ko_fields
-
-    assert ko_fields == {
-        field.name for field in dataclasses.fields(PersonalCardRevealEffect)
-    }
 
 
 def _all_ko_texts() -> list[tuple[str, str, str]]:
@@ -359,10 +374,10 @@ def test_every_real_reveal_effect_ko_text_is_valid() -> None:
     terms = terms_keys()
     checked = 0
     for entry in _ALL_REVEAL_EFFECT_ENTRIES:
-        for effect in entry.reveal_effects:
+        for line in reveal_lines(entry):
             checked += 1
-            en = reveal_effect_text(effect)
-            ko = reveal_effect_text_ko(effect)
+            en = reveal_effect_text(line)
+            ko = reveal_effect_text_ko(line)
             assert isinstance(ko, str) and ko.strip()
             assert_placeholders_are_terms(ko, terms)
             assert_no_stray_latin(ko)
@@ -372,7 +387,7 @@ def test_every_real_reveal_effect_ko_text_is_valid() -> None:
 
 
 def test_reveal_effect_text_ko_bene_gesserit_operative_golden() -> None:
-    effect = PersonalCardRevealEffect(persuasion=2, minimum_spies_placed=2)
+    effect = _OPERATIVE
 
     assert (
         reveal_effect_text_ko(effect)
@@ -381,27 +396,20 @@ def test_reveal_effect_text_ko_bene_gesserit_operative_golden() -> None:
 
 
 def test_reveal_effect_text_ko_flat_persuasion_and_strength() -> None:
-    effect = PersonalCardRevealEffect(persuasion=1, strength=1)
+    effect = _FLAT
 
     assert reveal_effect_text_ko(effect) == "+{persuasion:1}, +{sword:1}"
 
 
 def test_reveal_effect_text_ko_faction_bond_condition() -> None:
-    effect = PersonalCardRevealEffect(
-        spice=2,
-        required_faction_bond=PersonalCardBond.FREMEN,
-    )
+    effect = _WATERMASTER
 
     assert reveal_effect_text_ko(effect) == "프레멘의 유대감이면: {spice:2}"
 
 
 def test_reveal_effect_text_ko_high_council_and_swordmaster() -> None:
     # Paracompass's second Reveal effect.
-    effect = PersonalCardRevealEffect(
-        persuasion=1,
-        requires_high_council=True,
-        requires_swordmaster=True,
-    )
+    effect = _PARACOMPASS
 
     assert reveal_effect_text_ko(effect) == (
         "원로회 자리와 소드마스터를 보유했다면: +{persuasion:1}"
@@ -409,10 +417,7 @@ def test_reveal_effect_text_ko_high_council_and_swordmaster() -> None:
 
 
 def test_reveal_effect_text_ko_per_revealed_faction_scales_the_gain() -> None:
-    effect = PersonalCardRevealEffect(
-        persuasion=2,
-        per_revealed_faction=PersonalCardBond.FREMEN,
-    )
+    effect = _PER_REVEALED
 
     assert reveal_effect_text_ko(effect) == (
         "+{persuasion:2} (공개한 프레멘 카드마다)"
@@ -422,10 +427,7 @@ def test_reveal_effect_text_ko_per_revealed_faction_scales_the_gain() -> None:
 def test_reveal_effect_text_ko_per_in_play_faction_names_in_play() -> None:
     # Korean twin of ``test_reveal_effect_text_per_in_play_faction_names_in_play``
     # (Stilgar, The Devoted).
-    effect = PersonalCardRevealEffect(
-        persuasion=2,
-        per_in_play_faction=PersonalCardBond.FREMEN,
-    )
+    effect = _PER_IN_PLAY
 
     assert reveal_effect_text_ko(effect) == (
         "+{persuasion:2} ({in_play}에 있는 프레멘 카드마다)"
@@ -433,11 +435,7 @@ def test_reveal_effect_text_ko_per_in_play_faction_names_in_play() -> None:
 
 
 def test_reveal_effect_text_ko_influence_gain_names_its_faction() -> None:
-    effect = PersonalCardRevealEffect(
-        influence=1,
-        influence_faction=PersonalCardBond.FREMEN,
-        required_faction_bond=PersonalCardBond.FREMEN,
-    )
+    effect = _SHISHAKLI
 
     assert reveal_effect_text_ko(effect) == (
         "프레멘의 유대감이면: {influence_fremen:1}"
@@ -445,6 +443,6 @@ def test_reveal_effect_text_ko_influence_gain_names_its_faction() -> None:
 
 
 def test_reveal_effect_text_ko_persuasion_per_completed_contract() -> None:
-    effect = PersonalCardRevealEffect(persuasion_per_completed_contract=1)
+    effect = _TRADE
 
     assert reveal_effect_text_ko(effect) == "+{persuasion:1} (완수한 {contract}마다)"

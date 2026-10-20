@@ -3,8 +3,9 @@
 docs/stage-b-plan.md decision E-2 (user decision 2026-10-20, "e-2는
 추천대로"): the Reveal turn reads each printed line from the card's record
 (``rules.reveal_lines``) instead of the compiled totals
-(``PersonalCardRevealEffect``), which the card text and the action catalog
-still read; the two must say the same of every card.
+(``PersonalCardRevealEffect``). Since the Reveal totals cleanup (2026-10-21)
+the card text and the action catalog read the same lines, and the totals are
+gone.
 """
 
 from dataclasses import replace
@@ -30,13 +31,14 @@ from dune_imperium.content.uprising.personal_cards import (
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.reveal_abilities import reveal_effect
 from dune_imperium.content.uprising.starting_cards import (
     CONTROL_THE_SPICE,
     EXPERIMENTATION,
     STARTING_DECK,
 )
 from dune_imperium.core.player import PlayerState
+from dune_imperium.display.cards import personal_card_text
+from dune_imperium.display.tokens import reveal_effect_text
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.reveal_lines import (
@@ -59,14 +61,20 @@ _CARDS: tuple[PersonalCardDefinition, ...] = (
 )
 
 
-def test_every_cards_record_lines_say_what_its_compiled_totals_say() -> None:
-    # The rules read the record; the card text and the codec read the
-    # totals compiled from it: one line each, in the same order (the Reveal
-    # frame's ``card#index`` keys).
+def test_the_card_text_shows_each_record_line_in_order() -> None:
+    # The card text reads the lines the rules pay, one part each, in the
+    # Reveal frame's ``card#index`` order (before them come no other parts;
+    # the Reveal choices follow).
+    shown = 0
     for card in _CARDS:
-        lines = reveal_lines(card)
-        compiled = tuple(reveal_effect(line.section) for line in lines)
-        assert compiled == card.reveal_effects, card.card.card_id
+        parts = [reveal_effect_text(line) for line in reveal_lines(card)]
+        if not parts:
+            continue
+        text = personal_card_text(card)
+        (reveal,) = (item for item in text if item.startswith("Reveal: "))
+        assert reveal.removeprefix("Reveal: ").startswith("; ".join(parts)), reveal
+        shown += 1
+    assert shown == 51
 
 
 def _line(card_id: str, index: int = 0) -> RevealLine:

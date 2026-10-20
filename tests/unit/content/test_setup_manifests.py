@@ -38,6 +38,7 @@ from dune_imperium.content.uprising.objectives import (
     OBJECTIVES,
     objectives_for_players,
 )
+from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
     RESERVE_STACKS_BY_ID,
@@ -48,8 +49,15 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     ConflictTier,
     PersonalCardAgentEffect,
-    PersonalCardRevealEffect,
 )
+from dune_imperium.display.tokens import reveal_effect_text
+from dune_imperium.rules.reveal_lines import reveal_lines
+
+
+def _reveal_texts(card: PersonalCardDefinition) -> tuple[str, ...]:
+    """The card's Reveal record, line by line, as its card text reads."""
+
+    return tuple(reveal_effect_text(line) for line in reveal_lines(card))
 
 
 def test_conflict_manifest_has_the_official_tier_counts() -> None:
@@ -339,7 +347,7 @@ def test_reserve_play_data_matches_the_printed_cards() -> None:
     # The Reveal box prints an orange spice hexagon "1" [Main p. 20] (icon
     # guide: spice, not a sword), not a base sword.
     assert spice.reveal_strength == 0
-    assert spice.reveal_effects == (PersonalCardRevealEffect(spice=1),)
+    assert _reveal_texts(spice) == ("Gain 1 spice",)
 
 
 def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:

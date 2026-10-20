@@ -1,60 +1,68 @@
 """Reveal automatic gains as ability records (composed effects, A4c)."""
 
+import pytest
+
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
 from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AllConditions,
+    CommandersInConflictAtLeast,
     CommandReached,
+    EffectSection,
+    GainInfluence,
+    GainResources,
     GarrisonedUnitsAtLeast,
+    GrantCombatDeployment,
+    HasHighCouncil,
     HasSwordmaster,
+    PlaceSpy,
     RevealPersuasion,
     RevealSwords,
     SpyingOnMakerSpace,
+    TrashThisCard,
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.reveal_abilities import (
     REVEAL_GAIN_ABILITIES,
-    reveal_effect,
-    reveal_effects_of,
+    REVEAL_LINE_CONDITIONS,
+    REVEAL_LINE_REWARDS,
+    check_reveal_gain_line,
 )
 from dune_imperium.content.uprising.starting_cards import (
     CONTROL_THE_SPICE,
     EXPERIMENTATION,
     STARTING_DECK,
 )
-from dune_imperium.content.uprising.types import PersonalCardRevealEffect
 from dune_imperium.display.effect_dsl_text import condition_text, reward_text
 from dune_imperium.display.effect_dsl_text_ko import (
     condition_text_ko,
     reward_text_ko,
 )
-from dune_imperium.display.tokens import reveal_effect_text
+from dune_imperium.display.tokens import (
+    HANDLED_REVEAL_CONDITIONS,
+    HANDLED_REVEAL_REWARDS,
+    reveal_effect_text,
+)
 from dune_imperium.display.tokens_ko import reveal_effect_text_ko
+from dune_imperium.rules.reveal_lines import RevealLine
 
 
-def _manifests() -> dict[str, tuple[PersonalCardRevealEffect, ...]]:
-    """Every personal card's Reveal gains, by definition id."""
+def test_every_record_names_a_card_with_its_play_data() -> None:
+    """A card's Reveal gains are its record's lines (the manifests keep no
+    copy since the Reveal totals cleanup); every record names a card whose
+    play data is transcribed, which the partial-play-data check used to
+    guard through the copy."""
 
-    gains = {
-        entry.card.card_id: entry.reveal_effects
+    cards = {
+        entry.card.card_id: entry.play_data_complete
         for entry in (*IMPERIUM_CARDS, *TLEILAXU_CARDS)
     }
-    for starter in (CONTROL_THE_SPICE, EXPERIMENTATION, *STARTING_DECK):
-        gains[starter.card.card_id] = starter.reveal_effects
-    for stack in RESERVE_STACKS:
-        gains[stack.card.card_id] = stack.reveal_effects
-    return gains
-
-
-def test_every_card_takes_its_reveal_gains_from_its_record() -> None:
-    """The manifests hold no Reveal gain of their own: a card's gains are its
-    record's lines, and every record names a card that has them."""
-
-    cards = _manifests()
+    for entry in (CONTROL_THE_SPICE, EXPERIMENTATION, *STARTING_DECK, *RESERVE_STACKS):
+        cards[entry.card.card_id] = True
     assert set(REVEAL_GAIN_ABILITIES) <= set(cards)
-    for card_id, gains in cards.items():
-        assert gains == reveal_effects_of(card_id), card_id
-        assert bool(gains) == (card_id in REVEAL_GAIN_ABILITIES), card_id
+    assert all(cards[card_id] for card_id in REVEAL_GAIN_ABILITIES)
     assert len(REVEAL_GAIN_ABILITIES) == 51
     assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55
 
@@ -65,7 +73,59 @@ def test_reveal_gain_records_are_automatic_lines() -> None:
         assert ability.mark is AbilityMark.AUTOMATIC
         for line in ability.sections:
             assert line.costs == ()
-            reveal_effect(line)
+            check_reveal_gain_line(line)
+
+
+def test_the_card_text_renders_every_kind_a_reveal_line_holds() -> None:
+    assert HANDLED_REVEAL_CONDITIONS == REVEAL_LINE_CONDITIONS
+    assert HANDLED_REVEAL_REWARDS == REVEAL_LINE_REWARDS
+
+
+def _section(*rewards: object, condition: object = None) -> EffectSection:
+    return EffectSection(rewards=rewards, condition=condition)  # type: ignore[arg-type]
+
+
+def test_a_reveal_line_the_card_text_cannot_read_is_refused() -> None:
+    """The checks the compiled copy (``PersonalCardRevealEffect``) ran."""
+
+    check = check_reveal_gain_line
+
+    with pytest.raises(ValueError, match="must gain"):
+        check(_section(TrashThisCard(), condition=HasHighCouncil()))
+    with pytest.raises(ValueError, match="must not be negative"):
+        check(_section(GainResources(solari=1, water=-1)))
+    with pytest.raises(ValueError, match="also needs High Council"):
+        check(_section(RevealPersuasion(1), condition=HasSwordmaster()))
+    with pytest.raises(ValueError, match="cannot grant Persuasion"):
+        check(_section(RevealPersuasion(1), condition=CommandReached()))
+    with pytest.raises(ValueError, match="twice"):
+        check(_section(GainResources(spice=1), GainResources(water=1)))
+    with pytest.raises(ValueError, match="twice"):
+        check(
+            _section(
+                GainResources(spice=1),
+                condition=AllConditions((HasHighCouncil(), HasHighCouncil())),
+            )
+        )
+    with pytest.raises(TypeError, match="not a Reveal gain"):
+        check(_section(PlaceSpy()))
+    with pytest.raises(TypeError, match="not a Reveal gain"):
+        check(_section(GainInfluence()))
+    with pytest.raises(TypeError, match="not a Reveal gain condition"):
+        check(
+            _section(GainResources(spice=1), condition=CommandersInConflictAtLeast(2))
+        )
+    # A Combat icon is a gain on its own (Holy War), a fixed-Faction Influence
+    # is read (Shishakli), and so is a Swordmaster line with High Council
+    # (Paracompass).
+    check(_section(GrantCombatDeployment(), condition=HasHighCouncil()))
+    check(_section(GainInfluence(factions=(Faction.FREMEN,))))
+    check(
+        _section(
+            RevealPersuasion(1),
+            condition=AllConditions((HasHighCouncil(), HasSwordmaster())),
+        )
+    )
 
 
 def test_the_new_reveal_pieces_read_as_the_cards_print_them() -> None:
@@ -78,9 +138,8 @@ def test_the_new_reveal_pieces_read_as_the_cards_print_them() -> None:
     seen: set[type] = set()
     for ability in REVEAL_GAIN_ABILITIES.values():
         for line in ability.sections:
-            compiled = reveal_effect(line)
-            english = reveal_effect_text(compiled)
-            korean = reveal_effect_text_ko(compiled)
+            english = reveal_effect_text(RevealLine(line))
+            korean = reveal_effect_text_ko(RevealLine(line))
             for reward in line.rewards:
                 if isinstance(reward, (RevealPersuasion, RevealSwords)):
                     seen.add(type(reward))

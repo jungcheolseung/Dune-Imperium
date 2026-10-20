@@ -7,12 +7,14 @@ records keyed by the card's definition id, one line per printed effect
 (each judged on its own). ``rules.reveal_turn`` reads these lines
 (``rules.reveal_lines``, stage B3e-2) and pays them: Persuasion and swords at
 once, the other gains as the owner's own steps (OQ-045), a condition met
-later in the turn paying then (``grant_late_reveal_effects``). The card
-manifests take their compiled ``reveal_effects`` from them
-(``reveal_effects_of``) for the card text and the action catalog. The printed text is
-``display/tokens.reveal_effect_text``. A card's printed Reveal Persuasion and
-swords (``reveal_persuasion``, ``reveal_strength``) are card values, not
-abilities; its Reveal choices are A4d's.
+later in the turn paying then (``grant_late_reveal_effects``); the card text
+(``display/tokens.reveal_effect_text``) and the action catalog read the same
+lines. Until the Reveal totals cleanup (2026-10-21) the card manifests also
+kept a compiled copy of every line (``PersonalCardRevealEffect``); its checks
+now run on the records themselves (``check_reveal_gain_line``). A card's
+printed Reveal Persuasion and swords (``reveal_persuasion``,
+``reveal_strength``) are card values, not abilities; its Reveal choices are
+A4d's.
 """
 
 from collections.abc import Mapping
@@ -53,10 +55,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SpyingOnMakerSpace,
     TrashThisCard,
-)
-from dune_imperium.content.uprising.types import (
-    PersonalCardBond,
-    PersonalCardRevealEffect,
 )
 
 _COMMAND = CommandReached()
@@ -261,8 +259,36 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
 )
 
 
-def _bond(faction: Faction) -> PersonalCardBond:
-    return PersonalCardBond(faction.value)
+# What a Reveal line may hold; the card text renders each of them
+# (``display.tokens.HANDLED_REVEAL_CONDITIONS`` and ``_REWARDS``).
+REVEAL_LINE_CONDITIONS: Final[frozenset[type]] = frozenset(
+    {
+        FactionBond,
+        HasHighCouncil,
+        HasSwordmaster,
+        SpiesPlacedAtLeast,
+        SpyingOnMakerSpace,
+        CommandersInConflictAtLeast,
+        GeneticMarkersAtLeast,
+        GarrisonedUnitsAtLeast,
+        CommandReached,
+    }
+)
+REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(
+    {
+        RevealPersuasion,
+        RevealSwords,
+        GainResources,
+        DrawIntrigueCards,
+        RecruitTroops,
+        GainInfluence,
+        TrashThisCard,
+        GrantCombatDeployment,
+        GenerateSpecimens,
+        AdvanceTleilaxu,
+        Research,
+    }
+)
 
 
 def _conditions(condition: Condition | None) -> tuple[Condition, ...]:
@@ -273,105 +299,81 @@ def _conditions(condition: Condition | None) -> tuple[Condition, ...]:
     return (condition,)
 
 
-def reveal_effect(line: EffectSection) -> PersonalCardRevealEffect:
-    """One recorded line's compiled totals (``PersonalCardRevealEffect``),
-    which the card text and the action catalog read; the Reveal turn reads
-    the line itself (``rules.reveal_lines``, stage B3e-2)."""
+def check_reveal_gain_line(line: EffectSection) -> None:
+    """Refuse a Reveal line the card text and the Reveal turn cannot read.
 
-    fields: dict[str, object] = {}
+    Each condition and gain is of a kind a Reveal line holds, and printed at
+    most once on its line (a Persuasion or a sword amount counts once whether
+    flat or per Faction card; a count per Faction card scales one gain); a
+    Commander condition asks for one Commander; a Swordmaster condition comes
+    with High Council; the line gains something (a Combat icon counts); and a
+    Command line grants no Persuasion -- the total that opens Command must
+    not depend on it [Bloodlines p. 5].
+    """
+
+    printed: set[str] = set()
+
+    def once(key: str) -> None:
+        if key in printed:
+            raise ValueError(f"a Reveal gain line prints {key} twice")
+        printed.add(key)
+
     for condition in _conditions(line.condition):
-        match condition:
-            case FactionBond(faction=faction):
-                _set(fields, "required_faction_bond", _bond(faction))
-            case HasHighCouncil():
-                _set(fields, "requires_high_council", True)
-            case HasSwordmaster():
-                _set(fields, "requires_swordmaster", True)
-            case SpiesPlacedAtLeast(count=count):
-                _set(fields, "minimum_spies_placed", count)
-            case SpyingOnMakerSpace():
-                _set(fields, "requires_spying_on_maker_space", True)
-            case CommandersInConflictAtLeast(count=1):
-                _set(fields, "requires_commander_in_conflict", True)
-            case GeneticMarkersAtLeast(count=count):
-                _set(fields, "minimum_genetic_markers", count)
-            case GarrisonedUnitsAtLeast(count=count):
-                _set(fields, "minimum_garrisoned_units", count)
-            case CommandReached():
-                _set(fields, "requires_command", True)
-            case _:
-                raise TypeError(f"{condition!r} is not a Reveal gain condition")
-    research = 0
+        if type(condition) not in REVEAL_LINE_CONDITIONS:
+            raise TypeError(f"{condition!r} is not a Reveal gain condition")
+        if isinstance(condition, CommandersInConflictAtLeast) and condition.count != 1:
+            raise TypeError(f"{condition!r} is not a Reveal gain condition")
+        once(type(condition).__name__)
+    if "HasSwordmaster" in printed and "HasHighCouncil" not in printed:
+        raise ValueError("Swordmaster Reveal requirement also needs High Council")
+    gains = 0
     for reward in line.rewards:
+        if type(reward) not in REVEAL_LINE_REWARDS:
+            raise TypeError(f"{reward!r} is not a Reveal gain")
         match reward:
-            case RevealPersuasion(amount=amount, per=per):
-                if per is None:
-                    _set(fields, "persuasion", amount)
-                elif per.kind is RevealCountKind.COMPLETED_CONTRACT:
-                    _set(fields, "persuasion_per_completed_contract", amount)
+            case RevealPersuasion(amount=amount, per=per) | RevealSwords(
+                amount=amount, per=per
+            ):
+                persuasion = isinstance(reward, RevealPersuasion)
+                kind = "persuasion" if persuasion else "swords"
+                if per is not None and per.faction is None:
+                    once(f"{kind} per {per.kind}")
                 else:
-                    _set(fields, "persuasion", amount)
-                    _per_faction(fields, per)
-            case RevealSwords(amount=amount, per=per):
-                if per is None:
-                    _set(fields, "strength", amount)
-                elif per.kind is RevealCountKind.OTHER_SWORD_CARD:
-                    _set(fields, "strength_per_other_sword_card", amount)
-                else:
-                    _set(fields, "strength", amount)
-                    _per_faction(fields, per)
+                    once(kind)
+                    if per is not None:
+                        once("count per Faction card")
+                gains += amount
             case GainResources(solari=solari, spice=spice, water=water):
-                _set(fields, "solari", solari)
-                _set(fields, "spice", spice)
-                _set(fields, "water", water)
-            case DrawIntrigueCards(count=count):
-                _set(fields, "draw_intrigue", count)
-            case RecruitTroops(count=count):
-                _set(fields, "recruit_troops", count)
-            case GainInfluence(times=times, factions=(faction,)):
-                _set(fields, "influence", times)
-                _set(fields, "influence_faction", _bond(faction))
-            case TrashThisCard():
-                _set(fields, "trashes_self", True)
-            case GrantCombatDeployment():
-                _set(fields, "grants_combat_icon", True)
-            case GenerateSpecimens(count=count):
-                _set(fields, "specimens", count)
-            case AdvanceTleilaxu(count=count):
-                _set(fields, "tleilaxu", count)
+                once("resources")
+                if min(solari, spice, water) < 0:
+                    raise ValueError("personal-card Reveal gains must not be negative")
+                gains += solari + spice + water
+            case GainInfluence(times=times, factions=factions):
+                if factions is None or len(factions) != 1:
+                    raise TypeError(f"{reward!r} is not a Reveal gain")
+                once("influence")
+                gains += times
+            case DrawIntrigueCards(count=count) | RecruitTroops(count=count):
+                once(type(reward).__name__)
+                gains += count
+            case GenerateSpecimens(count=count) | AdvanceTleilaxu(count=count):
+                once(type(reward).__name__)
+                gains += count
             case Research():
-                # One research icon each (Tleilaxu Master prints two).
-                research += 1
-            case _:
-                raise TypeError(f"{reward!r} is not a Reveal gain")
-    if research:
-        _set(fields, "research", research)
-    return PersonalCardRevealEffect(**fields)  # type: ignore[arg-type]
+                # One Research icon each (Tleilaxu Master prints two).
+                gains += 1
+            case TrashThisCard() | GrantCombatDeployment():
+                once(type(reward).__name__)
+    if gains <= 0 and not any(
+        isinstance(reward, GrantCombatDeployment) for reward in line.rewards
+    ):
+        raise ValueError("personal-card Reveal effect must gain something")
+    if "CommandReached" in printed and any(
+        isinstance(reward, RevealPersuasion) for reward in line.rewards
+    ):
+        raise ValueError("a Command effect cannot grant Persuasion")
 
 
-def _set(fields: dict[str, object], key: str, value: object) -> None:
-    """One field of the compiled gain, printed once on its line."""
-
-    if key in fields:
-        raise ValueError(f"a Reveal gain line prints {key} twice")
-    fields[key] = value
-
-
-def _per_faction(fields: dict[str, object], per: RevealCount) -> None:
-    assert per.faction is not None
-    key = (
-        "per_revealed_faction"
-        if per.kind is RevealCountKind.REVEALED_FACTION_CARD
-        else "per_in_play_faction"
-    )
-    _set(fields, key, _bond(per.faction))
-
-
-def reveal_effects_of(card_id: str) -> tuple[PersonalCardRevealEffect, ...]:
-    """The Reveal gains of the card ``card_id`` (a definition id), from its
-    record; a card without one gains nothing on its own."""
-
-    ability = REVEAL_GAIN_ABILITIES.get(card_id)
-    if ability is None:
-        return ()
-    return tuple(reveal_effect(line) for line in ability.sections)
+for _ability in REVEAL_GAIN_ABILITIES.values():
+    for _section in _ability.sections:
+        check_reveal_gain_line(_section)

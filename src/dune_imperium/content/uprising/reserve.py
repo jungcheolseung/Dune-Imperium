@@ -5,14 +5,12 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.reveal_abilities import reveal_effects_of
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
     PersonalCardDiscardEffect,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
 )
 
 
@@ -32,7 +30,6 @@ class ReserveStackDefinition:
     reveal_acquisition_effect: PersonalCardRevealAcquisitionEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
-    reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
 
     def __post_init__(self) -> None:
@@ -55,8 +52,6 @@ class ReserveStackDefinition:
             self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
         ):
             raise ValueError("Spy target Factions require a place-Spy Agent effect")
-        if len(self.reveal_effects) != len(set(self.reveal_effects)):
-            raise ValueError("Reserve Reveal effects must be unique")
         if len(self.reveal_choice_effects) != len(set(self.reveal_choice_effects)):
             raise ValueError("Reserve Reveal choices must be unique")
 
@@ -98,7 +93,6 @@ RESERVE_STACKS: Final = (
         # The Reveal box prints one orange spice hexagon with a "1", not a
         # sword [card face] [Main p. 20] (icon guide): the prior
         # reveal_strength=1 misread the spice hexagon as a sword.
-        reveal_effects=reveal_effects_of("the_spice_must_flow"),
     ),
 )
 

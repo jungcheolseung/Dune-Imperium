@@ -113,6 +113,8 @@ term neither source uses.
 
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import RevealCountKind
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -121,10 +123,11 @@ from dune_imperium.content.uprising.types import (
     PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.tokens import reveal_line_conditions
+from dune_imperium.rules.reveal_lines import RevealLine
 
 _BOND_NAMES_KO: dict[PersonalCardBond, str] = {
     PersonalCardBond.EMPEROR: "황제",
@@ -136,6 +139,10 @@ _BOND_NAMES_KO: dict[PersonalCardBond, str] = {
 
 def _bond_name_ko(bond: PersonalCardBond) -> str:
     return _BOND_NAMES_KO[bond]
+
+
+def _faction_name_ko(faction: Faction) -> str:
+    return _bond_name_ko(PersonalCardBond(faction.value))
 
 
 AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
@@ -656,46 +663,12 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
 }
 
-_HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
-    {
-        "solari",
-        "spice",
-        "water",
-        "persuasion",
-        "recruit_troops",
-        "strength",
-        "strength_per_other_sword_card",
-        "draw_intrigue",
-        "influence",
-        "influence_faction",
-        "required_faction_bond",
-        "requires_high_council",
-        "requires_swordmaster",
-        "minimum_spies_placed",
-        "requires_spying_on_maker_space",
-        "per_revealed_faction",
-        "per_in_play_faction",
-        "persuasion_per_completed_contract",
-        "requires_commander_in_conflict",
-        "minimum_garrisoned_units",
-        "requires_command",
-        "trashes_self",
-        "grants_combat_icon",
-        "specimens",
-        "minimum_genetic_markers",
-        "tleilaxu",
-        "research",
-    }
-)
-
-
-def reveal_effect_text_ko(effect: PersonalCardRevealEffect) -> str:
+def reveal_effect_text_ko(line: RevealLine) -> str:
     """Korean twin of ``reveal_effect_text``.
 
-    Mirrors its field-by-field structure exactly (same
-    ``_HANDLED_REVEAL_FIELDS``) so a field the English renderer grows and
-    this one misses fails the same coverage test. Each requirement field
-    becomes one complete condition clause, already ending in the
+    Mirrors its structure exactly (the same conditions read the same way,
+    ``tokens.reveal_line_conditions``, and the same gains in the same order).
+    Each condition becomes one complete clause, already ending in the
     conditional appropriate to its shape — ``docs/rules/korean-card-style.md`` rule 1's
     ``-다면`` for a condition naming an action (있다/배치하다/도달하다, …)
     versus ``-(이)면`` for a bare nominal state (a Faction Bond, Command);
@@ -703,83 +676,81 @@ def reveal_effect_text_ko(effect: PersonalCardRevealEffect) -> str:
     one case that reads like two, "High Council and Swordmaster," is
     already a single combined requirement, exactly as the English
     ``elif`` treats it), so joining several completed clauses with "그리고
-    " only has to be grammatical, not attested. ``per_revealed_faction``
-    and ``per_in_play_faction`` are folded into whichever gain (Persuasion
-    or strength) they scale, exactly as the English does. Persuasion/
-    strength keep the printed Reveal-diamond "+N" prefix in front of their
+    " only has to be grammatical, not attested. A count per Faction card
+    (revealed or in play) is folded into whichever gain (Persuasion or
+    strength) it scales, exactly as the English does. Persuasion/strength
+    keep the printed Reveal-diamond "+N" prefix in front of their
     ``{term:count}`` icon.
     """
 
+    held = reveal_line_conditions(line)
     conditions: list[str] = []
-    if effect.required_faction_bond is not None:
-        conditions.append(f"{_bond_name_ko(effect.required_faction_bond)}의 유대감이면")
-    if effect.requires_swordmaster:
+    if held.bond is not None:
+        conditions.append(f"{_faction_name_ko(held.bond)}의 유대감이면")
+    if held.swordmaster:
         conditions.append("원로회 자리와 소드마스터를 보유했다면")
-    elif effect.requires_high_council:
+    elif held.high_council:
         conditions.append("원로회 자리를 보유했다면")
-    if effect.minimum_spies_placed:
-        conditions.append(f"{{spy}}를 {effect.minimum_spies_placed} 이상 배치했다면")
-    if effect.requires_spying_on_maker_space:
+    if held.spies:
+        conditions.append(f"{{spy}}를 {held.spies} 이상 배치했다면")
+    if held.maker:
         conditions.append("메이커 장소를 정탐 중이라면")
-    if effect.requires_commander_in_conflict:
+    if held.commander:
         conditions.append("{conflict}에 {commander}이 1 이상 있다면")
-    if effect.minimum_genetic_markers:
-        n_markers = effect.minimum_genetic_markers
-        conditions.append(f"유전자 마커 {n_markers}개에 도달했다면")
-    if effect.minimum_garrisoned_units:
-        n = effect.minimum_garrisoned_units
-        conditions.append(f"{{garrison}}에 부대가 {n} 이상 있다면")
-    if effect.requires_command:
+    if held.markers:
+        conditions.append(f"유전자 마커 {held.markers}개에 도달했다면")
+    if held.garrison:
+        conditions.append(f"{{garrison}}에 부대가 {held.garrison} 이상 있다면")
+    if held.command:
         conditions.append("{command} ({persuasion} 6 이상)이면")
 
+    count = line.faction_count
     per_faction = (
-        f" (공개한 {_bond_name_ko(effect.per_revealed_faction)} 카드마다)"
-        if effect.per_revealed_faction is not None
-        else (
-            f" ({{in_play}}에 있는 {_bond_name_ko(effect.per_in_play_faction)}"
-            " 카드마다)"
-        )
-        if effect.per_in_play_faction is not None
-        else ""
+        ""
+        if count is None or count.faction is None
+        else f" (공개한 {_faction_name_ko(count.faction)} 카드마다)"
+        if count.kind is RevealCountKind.REVEALED_FACTION_CARD
+        else f" ({{in_play}}에 있는 {_faction_name_ko(count.faction)} 카드마다)"
     )
 
     gains: list[str] = []
-    if effect.persuasion:
-        gains.append(f"+{{persuasion:{effect.persuasion}}}{per_faction}")
-    if effect.strength:
-        gains.append(f"+{{sword:{effect.strength}}}{per_faction}")
-    if effect.strength_per_other_sword_card:
-        n = effect.strength_per_other_sword_card
+    if line.printed_persuasion:
+        gains.append(f"+{{persuasion:{line.printed_persuasion}}}{per_faction}")
+    if line.printed_strength:
+        gains.append(f"+{{sword:{line.printed_strength}}}{per_faction}")
+    if line.strength_per_other_sword_card:
+        n = line.strength_per_other_sword_card
         gains.append(f"+{{sword:{n}}} (공개한 다른 {{sword}} 카드마다)")
-    if effect.persuasion_per_completed_contract:
-        n = effect.persuasion_per_completed_contract
+    if line.persuasion_per_completed_contract:
+        n = line.persuasion_per_completed_contract
         gains.append(f"+{{persuasion:{n}}} (완수한 {{contract}}마다)")
-    if effect.solari:
-        gains.append(f"{{solari:{effect.solari}}}")
-    if effect.spice:
-        gains.append(f"{{spice:{effect.spice}}}")
-    if effect.water:
-        gains.append(f"{{water:{effect.water}}}")
-    if effect.draw_intrigue:
-        gains.append(f"{{intrigue:{effect.draw_intrigue}}}")
-    if effect.recruit_troops:
-        gains.append(f"{{troop:{effect.recruit_troops}}}")
-    if effect.influence:
-        assert effect.influence_faction is not None
-        gains.append(f"{{influence_{effect.influence_faction.value}:{effect.influence}}}")
-    if effect.trashes_self:
+    if line.solari:
+        gains.append(f"{{solari:{line.solari}}}")
+    if line.spice:
+        gains.append(f"{{spice:{line.spice}}}")
+    if line.water:
+        gains.append(f"{{water:{line.water}}}")
+    if line.draw_intrigue:
+        gains.append(f"{{intrigue:{line.draw_intrigue}}}")
+    if line.recruit_troops:
+        gains.append(f"{{troop:{line.recruit_troops}}}")
+    influence = line.influence
+    if influence is not None and influence[1]:
+        faction, times = influence
+        gains.append(f"{{influence_{faction.value}:{times}}}")
+    if line.trashes_self:
         gains.append("이 카드 {trash}")
-    if effect.grants_combat_icon:
+    if line.grants_combat_icon:
         gains.append("{combat} (전투 장소에 보낸 것처럼 배치 가능)")
-    if effect.specimens:
-        gains.append(f"표본 {effect.specimens}개 생성")
-    if effect.tleilaxu:
+    if line.specimens:
+        gains.append(f"표본 {line.specimens}개 생성")
+    if line.tleilaxu:
         gains.append("{tleilaxu} (트랙 전진)")
-    if effect.research:
+    if line.research:
         gains.append(
             "{research} (연구 트랙 전진)"
-            if effect.research == 1
-            else f"{{research}} ×{effect.research} (연구 트랙 {effect.research}회 전진)"
+            if line.research == 1
+            else f"{{research}} ×{line.research} (연구 트랙 {line.research}회 전진)"
         )
 
     text = ", ".join(gains)

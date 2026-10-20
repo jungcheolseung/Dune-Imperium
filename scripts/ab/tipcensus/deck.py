@@ -83,6 +83,7 @@ from collections.abc import Iterable
 
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import FactionBond, RevealCountKind
 from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
     imperium_deck_instance_ids,
@@ -100,6 +101,7 @@ from dune_imperium.evaluation.tournament import MatchSpec
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.endgame import FinalStanding
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.reveal_lines import reveal_lines
 
 from .base import Collector, Columns, Step, payload, placement
 
@@ -421,7 +423,7 @@ def _resolve_instance_id(
 #   the current catalog), or its ``icon_condition`` is
 #   ``PersonalCardIconCondition.BENE_GESSERIT_BOND`` (Long Reach; also
 #   Bene Gesserit, resolved in ``rules/agent_icons.py``).
-# - ``reveal``: a ``PersonalCardRevealEffect`` in ``reveal_effects`` sets
+# - ``reveal``: a line of the card's Reveal record (``reveal_lines``) sets
 #   ``required_faction_bond`` (resolved via ``has_faction_bond`` in
 #   ``rules/reveal_turn.py::_eligible_reveal_effects``) or
 #   ``per_revealed_faction`` (a *count* of revealed same-Faction cards
@@ -453,13 +455,13 @@ def _agent_bond_faction(entry: PersonalCardDefinition) -> Faction | None:
 
 
 def _reveal_bond_faction(entry: PersonalCardDefinition) -> Faction | None:
-    for effect in getattr(entry, "reveal_effects", ()) or ():
-        if effect.required_faction_bond is not None:
-            return Faction(effect.required_faction_bond.value)
-        if effect.per_revealed_faction is not None:
-            return Faction(effect.per_revealed_faction.value)
-        if effect.per_in_play_faction is not None:
-            return Faction(effect.per_in_play_faction.value)
+    for line in reveal_lines(entry):
+        for condition in line.conditions:
+            if isinstance(condition, FactionBond):
+                return condition.faction
+        count = line.faction_count
+        if count is not None:
+            return count.faction
     return None
 
 
@@ -511,8 +513,9 @@ PER_REVEALED: frozenset[str] = frozenset(
     card_id
     for card_id, entry in _catalog_entries()
     if any(
-        effect.per_revealed_faction is not None
-        for effect in getattr(entry, "reveal_effects", ()) or ()
+        line.faction_count is not None
+        and line.faction_count.kind is RevealCountKind.REVEALED_FACTION_CARD
+        for line in reveal_lines(entry)
     )
 )
 
