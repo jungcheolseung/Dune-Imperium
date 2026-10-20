@@ -15,6 +15,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import windows as windows_package
 from dune_imperium.agents.app_ai.abilities.base import Answer
@@ -97,7 +98,7 @@ def _run(
     patch: Callable[[Profile], None] | None = None,
 ) -> tuple[DecisionRun, tuple[DomainAction, ...]]:
     seat = _owner(state)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     rng = random.Random(seed)
     profile = _profile(state, seat, rng)
     if patch is not None:
@@ -218,7 +219,7 @@ MARKET = _first("contract_market", 1)
 # reaches a recall with two other Agents from Sardaukar and passes the
 # recall tests below (of seeds 1-1499 also 1004, 1209, 1382, 1430 and 1440).
 RECALL = _first(
-    "contract_reward_recall", 865, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
+    "contract_reward_recall", 865, lambda s, o: len(ENGINE.whole_actions(s, o)) > 1
 )
 # Round 3, seat 2 (Lady Amber Metulli), one Agent left, hand: Signet Ring,
 # Dune :0, Convincing Argument, Dune :1. Seed 7 reached a Covert Operation
@@ -283,7 +284,7 @@ def test_spy_placement_with_an_empty_supply_recalls_the_worst_post_first() -> No
     recall = _answer(state)
     assert recall == _act("recall_spy_for_placement", seat, post_id=POST_ASSEMBLY)
     # The window stays open with a Spy in supply: the placement follows.
-    after = ENGINE.apply(state, recall).state
+    after = apply_whole(ENGINE, state, recall).state
     assert after.decision_stack[-1].kind == "spy_placement"
     assert _answer(after) == _act("place_spy_on_space", seat, post_id=POST_FREMEN)
 
@@ -328,7 +329,7 @@ def test_contract_spy_with_an_empty_supply_never_declines() -> None:
     assert _act("decline_contract_spy", seat) in legal
     recall = _answer(CONTRACT_SPY_RECALL)
     assert recall == _act("recall_spy_for_contract", seat, post_id=POST_EMPEROR)
-    after = ENGINE.apply(CONTRACT_SPY_RECALL, recall).state
+    after = apply_whole(ENGINE, CONTRACT_SPY_RECALL, recall).state
     assert after.decision_stack[-1].kind == "contract_reward_spy"
     assert _answer(after) == _act("place_contract_spy", seat, post_id=POST_LANDSRAAD)
 
@@ -531,7 +532,7 @@ def _recall_in_reverse_board_order() -> tuple[GameState, str, str]:
     state = with_player(RECALL, seat, agent_locations=(second, first, "sardaukar"))
     offered = [
         a.arguments
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "recall_agent_for_contract"
     ]
     assert offered == [(("space_id", second),), (("space_id", first),)]
@@ -712,7 +713,7 @@ def test_lltf_draw_trashes_the_cheapest_when_nothing_is_junk() -> None:
     assert draw == _act(
         "select_long_live_fighters_draw", seat, card_id="imperium:weirding_woman:0"
     )
-    after = ENGINE.apply(state, draw).state
+    after = apply_whole(ENGINE, state, draw).state
     assert _answer(after) == _act(
         "select_long_live_fighters_discard",
         seat,
@@ -733,7 +734,7 @@ def test_lltf_draw_uses_get_card_to_trash() -> None:
     state = _deck_top(LLTF, (signet, dagger, argument))
     draw = _answer(state)
     assert draw == _act("select_long_live_fighters_draw", seat, card_id=signet)
-    after = ENGINE.apply(state, draw).state
+    after = apply_whole(ENGINE, state, draw).state
     assert _answer(after) == _act(
         "select_long_live_fighters_discard", seat, card_id=argument
     )

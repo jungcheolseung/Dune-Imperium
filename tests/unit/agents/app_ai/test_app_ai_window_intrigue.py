@@ -671,7 +671,7 @@ def test_cunning_draws_after_its_trash_as_its_own_step(
     memory = Memory()
     choice = app_play(state, memory, "cunning")
     trash = act("trash_intrigue_card", card_id=hand[0])
-    after = ENGINE.apply(choice, trash).state
+    after = apply_whole(ENGINE, choice, trash).state
     run = make_run(after, memory)
     assert run.legal == (act("resolve_intrigue_rewards"),)
     assert W.intrigue_choice(run) == act("resolve_intrigue_rewards")
@@ -990,8 +990,12 @@ def test_change_allegiances_prices_the_swap_before_the_loss(
     # first decision the agent is asked after the play.
     assert len(ENGINE.legal_actions(effects, SEAT)) == 1
     lose = step(effects, act("use_intrigue_effect", section=0))
-    assert ENGINE.legal_actions(lose, SEAT) == (
+    assert ENGINE.whole_actions(lose, SEAT) == (
         act("choose_intrigue_faction", faction="emperor"),
+    )
+    # The window shows that one choice as its target row (stage B3d-2a).
+    assert ENGINE.legal_actions(lose, SEAT) == (
+        act("choose_faction", faction="emperor"),
     )
     gain = step(lose, act("choose_intrigue_faction", faction="emperor"))
     assert gain.players[SEAT].influence.emperor == 1
@@ -1057,6 +1061,9 @@ def test_change_allegiances_spice_gain_skips_tracks_at_the_top(
     assert line1 is not None
     gain = step(effects, line1)
     assert act("choose_intrigue_faction", faction="emperor") not in (
+        ENGINE.whole_actions(gain, SEAT)
+    )
+    assert act("choose_faction", faction="emperor") not in (
         ENGINE.legal_actions(gain, SEAT)
     )
     g = g_values(emperor=5.0, fremen=1.0)

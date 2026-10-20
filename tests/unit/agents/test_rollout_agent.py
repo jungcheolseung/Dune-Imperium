@@ -51,7 +51,11 @@ def _play_rounds(seed: int, rounds: int) -> GameState:
             continue
         assert isinstance(decision, PlayerDecision)
         actions = engine.legal_actions(state, decision.owner)
-        action = policy.choose_action(engine.observe(state, decision.owner), actions)
+        # With the state, so the policy judges the rules' whole actions and
+        # answers with the row that stands for its choice (stage B3d-2a).
+        action = policy.choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
+        )
         state = engine.apply(state, action).state
     return state
 

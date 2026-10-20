@@ -92,6 +92,7 @@ from dune_imperium.rules.effect_steps import (
     completed_whole,
     path_of,
     picked_rows,
+    steps_for,
     without_pick,
 )
 from dune_imperium.rules.effects import board_icon_is_pending
@@ -273,7 +274,9 @@ def _effect_runs(replay: GameReplay) -> dict[int, tuple[DomainAction, tuple[int,
     """The whole actions this engine's Agent-turn effect rows stand for (stage
     B3, OQ-111): each step that ends one, with the whole action and the steps
     before it that picked its effect and targets. An engine before codec v150
-    recorded the whole action in one step."""
+    recorded the whole action in one step. A whole action that is its own
+    one step (a Commander's Skill, ``choose_skill``, stage B3d-2a) is
+    recorded alike."""
 
     runs: dict[int, tuple[DomainAction, tuple[int, ...]]] = {}
     for index, (state, step) in enumerate(
@@ -282,7 +285,7 @@ def _effect_runs(replay: GameReplay) -> dict[int, tuple[DomainAction, tuple[int,
         if not isinstance(step, DomainAction):
             continue
         whole = completed_whole(state, step, ENGINE.whole_actions(state, step.actor))
-        if whole is not None:
+        if whole is not None and whole != step:
             picks = len(picked_rows(state))
             runs[index] = (whole, tuple(range(index - picks, index)))
     return runs
@@ -1039,7 +1042,7 @@ def _grafted_turn(placed: str, partner: str, space_id: str) -> GameState:
     )
     state = apply_placement(ENGINE, state, placement).state
     choice = DomainAction("choose_graft_partner", 0, arguments=(("card_id", partner),))
-    return ENGINE.apply(state, choice).state
+    return apply_whole(ENGINE, state, choice).state
 
 
 _PAY_PITER = DomainAction("lose_agent_card_troop", 0, arguments=(("zone", "garrison"),))
@@ -1772,8 +1775,8 @@ def _arrakeen_graft(
         and "infiltrate_post_id" not in dict(action.arguments)
     )
     state = apply_placement(ENGINE, state, placement).state
-    state = ENGINE.apply(
-        state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
+    state = apply_whole(
+        ENGINE, state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
     ).state
     while rest := [
         action
@@ -2599,8 +2602,17 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     )
     opened = apply_whole(ENGINE, turn, play).state
     legal = ENGINE.legal_actions(opened, 0)
-    # The sandworm first, the Shield Wall choice still open.
-    rewards = next(a for a in legal if a.action_id == "resolve_intrigue_rewards")
+    # The sandworm first, the Shield Wall choice still open. The card's
+    # automatic rewards are its effect row (stage B3d-2a); the record holds
+    # the whole action that row stands for.
+    rewards = next(
+        a
+        for a in ENGINE.whole_actions(opened, 0)
+        if a.action_id == "resolve_intrigue_rewards"
+    )
+    rewards_path = path_of(opened, rewards)
+    assert rewards_path is not None and len(rewards_path) == 1
+    assert rewards_path[0] in legal
     keep = next(a for a in legal if a.action_id == "keep_shield_wall")
     draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
     draw_row = DomainAction(
@@ -2630,7 +2642,7 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
         (path[0], None, "effect_step"),
         (path[1], None, "effect_step"),
         (path[2], 0, migration.EFFECT_LAST_STEP),
-        (rewards, 1, None),
+        (rewards_path[0], 1, migration.EFFECT_LAST_STEP),
         (keep, 4, None),
         (draw_row, 2, migration.TURN_ROW_HELD),
         (trash_row, None, "effect_step"),
@@ -2640,6 +2652,7 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     # trash as the leader's trash icon, then the card (stage B3c-2b): each
     # last step ends the recorded whole action, the trash with the icon the
     # recording engine used.
+    assert record.steps[3].whole == rewards
     assert record.steps[5].whole == draw
     assert record.steps[7].whole == DomainAction(
         "trash_optional_card",
@@ -2697,7 +2710,8 @@ def _agent_fork(space: str, target: str, **owner: object) -> GameState:
     """Seat 0's Agent turn, its token on ``space`` moved on to ``target``."""
 
     fork = _agent_research(space, **owner)
-    return ENGINE.apply(
+    return apply_whole(
+        ENGINE,
         fork,
         DomainAction("choose_research_space", 0, (("space_id", target),)),
     ).state
@@ -2745,7 +2759,8 @@ def test_a_window_s_icons_follow_in_the_same_order() -> None:
     ):
         fork = _on_another_turn("c2r4")
         advanced = advance_research(fork, 0, source="test").state
-        window = ENGINE.apply(
+        window = apply_whole(
+            ENGINE,
             advanced,
             DomainAction("choose_research_space", 0, (("space_id", target),)),
         ).state
@@ -2765,10 +2780,12 @@ def test_c7r3_s_rewards_follow_as_its_owed_draws_or_its_window_rows() -> None:
     # Outside the turn: the window's two rows in the same order.
     fork = _on_another_turn("c6r2", intrigue_cards=(_HELD,))
     advanced = advance_research(fork, 0, source="test").state
-    arrow = ENGINE.apply(
-        advanced, DomainAction("choose_research_space", 0, (("space_id", "c7r3"),))
+    arrow = apply_whole(
+        ENGINE,
+        advanced,
+        DomainAction("choose_research_space", 0, (("space_id", "c7r3"),)),
     ).state
-    window = ENGINE.apply(arrow, pay).state
+    window = apply_whole(ENGINE, arrow, pay).state
     assert _answers(window, steps=3) == [
         _icon_row("intrigue"),
         _icon_row("cards"),
@@ -2813,11 +2830,14 @@ def test_a_record_before_v149_gets_the_icons_right_after_the_moving_step() -> No
     )
 
     assert record.divergence is None
-    # The bridge's whole actions are taken as their effect rows (stage
-    # B3c-2a): each icon is printed on c3r5.
+    # The recorded move is a whole action of the research window, taken as
+    # its one target row (stage B3d-2a); the bridge's whole actions are taken
+    # as their effect rows (stage B3c-2a): each icon is printed on c3r5.
+    move_path = path_of(fork, move)
+    assert move_path is not None and len(move_path) == 1
     ref = (("printed", "c3r5"), ("source", "research"))
     assert [(m.step, m.bridge) for m in record.steps] == [
-        (move, None),
+        (move_path[0], migration.EFFECT_LAST_STEP),
         (
             DomainAction("generate_specimens", 0, (("icon", "specimen"), *ref)),
             "research_icon_order",
@@ -2905,7 +2925,10 @@ def test_a_harvest_cells_acquisition_recorded_at_the_cleanup_follows_its_play() 
     )
     asked, window = record.steps[position + 1], record.steps[position + 2]
     assert asked.bridge == migration.HARVEST_CELLS_AT_ONCE
-    assert asked.step == answer
+    # The window (opened for one effect, stage B3d-2a) takes the recorded
+    # answer as its one target row.
+    assert asked.whole == answer
+    assert (asked.step,) == steps_for(answer, effect_row=False)
     assert asked.recorded_index == play + 3 > play
     # The other seat's recorded window comes after the pulled-forward answer.
     assert (window.recorded_index, window.bridge) == (play + 1, None)
@@ -3042,12 +3065,14 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # stage B3c-1's played cards again, from 111, 1045 and 114 ... 1014,
     # stage B3c-2b's optional trash icon rows again, from 1106 and 953,
     # 1073, stage B3d-1's reward-window effect rows again, from 1107 and 806,
-    # 954, 1074;
+    # 954, 1074, and stage B3d-2a's one-effect windows' target rows again,
+    # from 1108 and 375, 495, 649, 807, 955, 1075 (the rewards step is now
+    # the card's effect row, ``resolve``);
     # ``play`` is the step that ends the Harvest Cells play, its card.)
     game = _this_engine_game(175)
-    play, rewards = 120, 1108
+    play, rewards = 120, 1109
     assert _whole(game, play).action_id == "play_conflict_end_intrigue"
-    assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
+    assert _whole(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
     top = _states(game)[rewards].decision_stack[-1]
     assert top.kind == FrameKind.INTRIGUE_CHOICE
@@ -3058,7 +3083,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {123, 245, 375, 495, 649, 807, 955, 1075} <= starts
+    assert {123, 245, 376, 496, 650, 808, 956, 1076} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3068,10 +3093,12 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         reason for _, reason in record.dropped
     }
     # The migrated steps are the game's own, the bridged pauses back in
-    # their places; the rewards step is the record's, unbridged.
+    # their places; the rewards step is the record's, taken as the card's
+    # effect row like any other whole action of its window, and kept.
     assert [migrated.step for migrated in record.steps] == _steps(game.steps)
     assert record.steps[rewards].step == _step_of(game, rewards)
-    assert record.steps[rewards].bridge is None
+    assert record.steps[rewards].whole == _whole(game, rewards)
+    assert record.steps[rewards].bridge == migration.EFFECT_LAST_STEP
 
 
 def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
@@ -3082,7 +3109,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 1108
+    rewards = 1109
     starts = {
         index
         for index, step in enumerate(game.steps)
@@ -3093,7 +3120,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # record left out are before it.
     before = sum(1 for start in starts if start < rewards)
     index = _position(game, 148, rewards) - before
-    assert older.steps[index] == _step_of(game, rewards)
+    assert older.steps[index] == _whole(game, rewards)
     monkeypatch.setattr(
         migration, "_intrigue_choice_on_top", lambda state, player: False
     )
@@ -3742,16 +3769,21 @@ def test_a_record_stamped_with_this_codec_gets_no_agent_turn_bridges(
     game: GameReplay,
 ) -> None:
     older, _ = _as_one_agent_turn(game)
+    # The record stops at the first step this engine does not offer as it is:
+    # an ``agent_turn``, or a whole action a window shows by its steps (stage
+    # B3d-2a: the leader draft's ``pick_leader`` comes first).
+    collapsed = {whole for whole, _ in _effect_runs(game).values()}
     first = next(
         index
         for index, step in enumerate(older.steps)
-        if isinstance(step, DomainAction) and step.action_id == "agent_turn"
+        if isinstance(step, DomainAction)
+        and (step.action_id == "agent_turn" or step in collapsed)
     )
 
     current = migrate_record(replace(older, action_codec_version=ACTION_CODEC_VERSION))
 
-    # An ``agent_turn`` is not an action of this engine: no bridge of the
-    # older engines answers or rewrites it, and the record stops there.
+    # Neither is an action of this engine: no bridge of the older engines
+    # answers or rewrites it, and the record stops there.
     assert current.divergence is not None
     assert current.divergence.recorded_index == first
     assert not current.bridge_counts()

@@ -389,7 +389,9 @@ def test_source_rows_start_from_their_source_less_rows(tmp_path: Path) -> None:
         if t.action_id in SOURCED_REVEAL_ACTION_IDS
         and any(name == "source" for name, _ in t.arguments)
     ]
-    assert len(sourced) == 140
+    # Since stage B3d-2a the catalog holds no whole Reveal choice: only the
+    # refusal of a recall first still names its card by ``source``.
+    assert len(sourced) == 3
     keep = [i for i in range(codec.size) if i not in set(sourced)]
     rows = torch.tensor(keep)
     state = dict(document["state_dict"])

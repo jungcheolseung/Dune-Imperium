@@ -3683,10 +3683,19 @@ def test_holy_war_a_seat_with_only_commanders_must_lose_one(zone: str) -> None:
     # Seat 1, the next seat, answers first (OQ-036 (b)); its only action is
     # the Commander's loss -- no decline, nothing else.
     assert state.decision_stack[-1].kind == "opponent_unit_loss"
-    offered = UprisingRulesEngine().legal_actions(state, 1)
+    engine = UprisingRulesEngine()
+    offered = engine.whole_actions(state, 1)
     assert offered == (
         DomainAction(
             action_id="lose_unit",
+            actor=1,
+            arguments=(("commanders", 1), ("zone", zone)),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the loss by its target row alone.
+    assert engine.legal_actions(state, 1) == (
+        DomainAction(
+            action_id="choose_unit",
             actor=1,
             arguments=(("commanders", 1), ("zone", zone)),
         ),
@@ -4503,6 +4512,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # offer effect rows: 397 whole templates leave and 89 rows join.
         - 397
         + 89
+        # v150 (stage B3d-2a, D-1 (가)): a window opened for one effect offers
+        # its own effect by its target rows, so its whole templates leave
+        # (2,621) and the target and effect rows not yet in the catalog join
+        # (187).
+        - 2621
+        + 187
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

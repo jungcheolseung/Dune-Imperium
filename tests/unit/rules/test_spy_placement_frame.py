@@ -6,6 +6,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core import GameState, PlayerState
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.spy_moves import (
     apply_spy_placement,
@@ -14,6 +15,9 @@ from dune_imperium.rules.spy_moves import (
 )
 
 ALL_POSTS = tuple(post.post_id for post in OBSERVATION_POSTS)
+# The entity whose Spy icon opens the frame (stage B3d-2a: a recall first names
+# it); Panopticon's.
+PRINTER = printer_value(Source.TECH, "panopticon")
 
 
 def _state(owner: PlayerState) -> GameState:
@@ -35,7 +39,11 @@ def test_a_spy_in_the_supply_has_to_be_placed() -> None:
     # with OQ-057): "It is mandatory to place a Spy if you have at least one
     # Spy in your supply."
     state = spy_placement_frame(
-        _state(PlayerState(player_id=0)), 0, ALL_POSTS, source="test"
+        _state(PlayerState(player_id=0)),
+        0,
+        ALL_POSTS,
+        source="test",
+        printer=PRINTER,
     )
 
     offered = legal_spy_placement_actions(state, 0)
@@ -48,7 +56,9 @@ def test_with_an_empty_supply_the_recall_is_the_owners_choice() -> None:
     # may first recall one of your Spies for no effect." [Main pp. 11, 20]
     posts = ALL_POSTS[:3]
     owner = PlayerState(player_id=0, spies_supply=0, spy_post_ids=posts)
-    state = spy_placement_frame(_state(owner), 0, ALL_POSTS, source="test")
+    state = spy_placement_frame(
+        _state(owner), 0, ALL_POSTS, source="test", printer=PRINTER
+    )
 
     offered = legal_spy_placement_actions(state, 0)
     assert offered[0].action_id == "decline_spy_placement"
@@ -78,7 +88,7 @@ def test_without_a_free_post_the_placement_is_passed() -> None:
     rival = PlayerState(player_id=1, spies_supply=2, spy_post_ids=(post,))
     state = _state(PlayerState(player_id=0))
     state = replace(state, players=(state.players[0], rival, *state.players[2:]))
-    state = spy_placement_frame(state, 0, (post,), source="test")
+    state = spy_placement_frame(state, 0, (post,), source="test", printer=PRINTER)
 
     assert [action.action_id for action in legal_spy_placement_actions(state, 0)] == [
         "decline_spy_placement"

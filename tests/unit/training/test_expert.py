@@ -117,8 +117,12 @@ def test_labelling_seats_play_like_greedy_seats_and_record_aligned_rows(
     labellers = [LabellingAgent(teacher, seed=seat, config=config) for seat in range(4)]
     plain = [load_network_agent(teacher) for _ in range(4)]
     engine = UprisingRulesEngine()
-    state = engine.reset(ALL, 11)
-    chance = ChanceResolver(seed=11)
+    # Game 12; 11 until observation v33 grew by the B3d-2a review's 139
+    # columns, which drew the untrained teacher's weights anew: its game
+    # met its first Agent-effect decision (an ANCHOR row) only at decision
+    # 195, past this walk.
+    state = engine.reset(ALL, 12)
+    chance = ChanceResolver(seed=12)
     decisions = 0
     while decisions < 150 and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)

@@ -142,8 +142,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 18
         + 24
         + 4
+        # v33 (the B3d-2a review): a personal card picked before the last.
+        + 139
     )
-    assert OBSERVATION_SIZE == 5_593
+    assert OBSERVATION_SIZE == 5_732
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -201,12 +203,11 @@ def test_layout_is_versioned_and_contiguous() -> None:
         "private_effect_pick_tech",
         "private_effect_pick_battle",
         "private_effect_pick_second_faction",
+        "private_effect_pick_personal",
     )
     for before, after in zip(pick_segments, pick_segments[1:], strict=False):
         assert segment_slice(before).stop == segment_slice(after).start
-    assert segment_slice("private_effect_pick_second_faction").stop == (
-        OBSERVATION_SIZE
-    )
+    assert segment_slice("private_effect_pick_personal").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -379,14 +380,21 @@ def test_every_target_picked_before_a_paths_last_has_a_segment() -> None:
     # A target row a path picks before its last stays in the seat's pick:
     # its kind, at its position, must be shown by identity
     # (``PICKED_TARGET_SEGMENTS``).
+    # A window's own effect picks its targets with no effect row (stage
+    # B3d-2a), and Long Live the Fighters' frame keeps its card to draw.
     from dune_imperium.adapters.observation_encoding import PICKED_TARGET_SEGMENTS
-    from dune_imperium.rules.effect_steps import STEP_SPECS
+    from dune_imperium.rules.effect_steps import STEP_SPECS, TARGET_SPECS, Choose
 
+    paths = (
+        *(spec.targets for spec in STEP_SPECS.values()),
+        *TARGET_SPECS.values(),
+    )
     picked_first = {
         (kind.action_id, position)
-        for spec in STEP_SPECS.values()
-        for position, (_name, kind) in enumerate(spec.targets[:-1])
+        for targets in paths
+        for position, (_name, kind) in enumerate(targets[:-1])
     }
+    picked_first.add((Choose.PERSONAL_CARD.action_id, 0))
     for action_id, position in picked_first:
         assert position < len(PICKED_TARGET_SEGMENTS[action_id]), action_id
     for segments in PICKED_TARGET_SEGMENTS.values():
@@ -1036,20 +1044,32 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # 505, a research space's; promo_bloodlines_tech at 317, Spy Drones'), where
 # the random seat draws over the fewer rows and the games part; the other
 # four games offer none and stay pinned.
+# Re-pinned for stage B3d-2a (D-1 (가)): a window opened for one effect
+# offers its own effect by its target rows, and a recall first beside a
+# window's Spy is one effect row. An export of the previous commit
+# (92644b59) gives promo_bloodlines_tech's per-decision trace equal to this
+# one up to decision 774, a Spy placement window with the supply empty (a
+# refusal and three recalls before, a refusal and the recall's effect row
+# now), where the random seat draws over the fewer rows and the game parts;
+# the other five games keep every row count and stay pinned. Then Long Live
+# the Fighters' picked personal card, 139 columns appended (the B3d-2a
+# review): each digest over the first 5,593 columns of every vector is the
+# pin before them (promo_bloodlines_tech's B3d-2a pin
+# 1a462433...4430cc65), and no game here sets them.
 _GOLDEN_DIGESTS = {
-    "base": ("516149642bde50a6c3084f6b7f7985a2960aac5c0ed5ca889ff131fc1aa5d004", 2780),
-    "choam": ("aeb2574a7f2fb055843ef79074c0f8158681432b364196e4c46bcfb66a502a1e", 2668),
+    "base": ("9ac09f6db7d71edf89ee0d4abb58e32f0a23caad428000c1308138e00863173f", 2780),
+    "choam": ("d43306c8745984b856879a1cc9abc57089348efc02b7d9dde0a3bdadcc55f1dc", 2668),
     "promo_bloodlines_tech": (
-        "e8e7626c6087e5061d8d63be11cd12c9e3eb1b7a13d46bdc9ec25e7853fec780",
-        3284,
+        "4457098015b02adbc4401427baa9b6c52cafa4ceaa01347f34566811a71f00d5",
+        3300,
     ),
     "everything": (
-        "fc0b2b644450066d2a093998c47c30957a914b54bac29fe793c5c2709a72010a",
+        "02de194289d54dd6f1e784bcadcfc9bbdb07ae7aa44912aecd4cdf0f4785f482",
         3616,
     ),
-    "draft": ("5cb1cda6e154162ff7e9e036833e5018e32c08c6c3b4c6f22d440a924e997e78", 2788),
+    "draft": ("0df15d5397e3649c558e48a2787907852d0213aa1815abd65126c95bc9ca39c2", 2788),
     "scouts": (
-        "d40737007a55f6e86f44df86f6a5552c68b268b098036f854103113c3af559ee",
+        "88611727bb78942baa39e75b0013035aa87ab6d7ca8f2ddc4a7a234bfe48af30",
         3172,
     ),
 }

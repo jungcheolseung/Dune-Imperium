@@ -534,9 +534,15 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
         for event in kept.events
         if event.visible_to is None
     )
+    # Stage B3d-2a: the seat is shown the two cards by target rows, so the
+    # whole template is in no catalog.
     codec = ActionCodec(IMMORTALITY)
-    for action in actions:
-        assert codec.decode(codec.encode(action), 0) == action
+    rows = tuple(steps_for(action, effect_row=False)[0] for action in actions)
+    assert UprisingRulesEngine().legal_actions(state, 0) == rows
+    for action, row in zip(actions, rows, strict=True):
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
 
     # OQ-052 (user ruling): with one card face down and a discard pile, the
     # discard is shuffled into a new deck beneath that card and the peek
@@ -599,12 +605,20 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     check_observation_privacy(lone.state)
     peek = [event for event in lone.events if event.kind == "intrigue_cards_peeked"]
     assert [dict(event.payload)["count"] for event in peek] == [1]
-    only = UprisingRulesEngine().legal_actions(lone.state, 0)
+    only = UprisingRulesEngine().whole_actions(lone.state, 0)
     assert only == (
         DomainAction(
             action_id="keep_peeked_intrigue",
             actor=0,
             arguments=(("instance_id", INTRIGUE[0]),),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the card by its target row.
+    assert UprisingRulesEngine().legal_actions(lone.state, 0) == (
+        DomainAction(
+            action_id="choose_intrigue_card",
+            actor=0,
+            arguments=(("card_id", INTRIGUE[0]),),
         ),
     )
     kept_lone = apply_intrigue_peek(lone.state, only[0]).state
@@ -885,9 +899,16 @@ def test_shadout_mapes_offers_both_unit_kinds_in_each_zone() -> None:
         DomainAction("retreat_reveal_card_troop", 0, (mapes,)),
         DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1), mapes)),
     )
+    # Stage B3d-2a: the Reveal choice offers each move as the effect row of the
+    # card that prints it, so the whole template is in no catalog.
     codec = ActionCodec(IMMORTALITY_BLOODLINES)
     for action in actions:
-        assert codec.decode(codec.encode(action), 0) == action
+        (row,) = steps_for(action)
+        assert row.action_id in {"deploy", "retreat"}
+        assert dict(row.arguments)["printed"] == "shadout_mapes"
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
 
 
 def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> None:
@@ -1822,6 +1843,13 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
             assert codec.decode(codec.encode(row), 0) == row
         effect = ActionTemplate(rows[0].action_id, rows[0].arguments)
         assert effect not in base_templates
+    # Stage B3d-2a: the Reveal choice offers these as the effect row of the
+    # card that prints them (then the Faction and the recipient of an
+    # Alliance token), so their whole templates are in no catalog and the
+    # effect rows are Immortality's alone. Shadout Mapes' troop move is its
+    # own row now: Unswerving Loyalty's "Fremen Bond: You may deploy or
+    # retreat one of your troops" [Unswerving Loyalty card] is the one every
+    # catalog holds.
     for action in (
         DomainAction("lose_reveal_influence_for_vp", 0, (("faction", "fremen"),)),
         DomainAction(
@@ -1834,19 +1862,28 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         DomainAction(
             "lose_reveal_troops_for_specimens", 0, (("zones", "garrison,conflict"),)
         ),
+    ):
+        rows = steps_for(action)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
+        assert ActionTemplate(rows[0].action_id, rows[0].arguments) not in (
+            base_templates
+        )
+    loyalty = steps_for(
+        DomainAction("deploy_reveal_card_troop", 0, (("source", "unswerving_loyalty"),))
+    )
+    assert ActionTemplate(loyalty[0].action_id, loyalty[0].arguments) in base_templates
+    for action in (
         DomainAction("decline_reveal_troop_sacrifice", 0),
         DomainAction(
             "resume_reveal_choice", 0, (("effect", "may_deploy_or_retreat_one_troop"),)
         ),
     ):
         assert codec.decode(codec.encode(action), 0) == action
-        assert action.action_id not in base or action.action_id in (
-            "resume_reveal_choice",
-            # Shadout Mapes shares its troop move with Unswerving Loyalty's
-            # "Fremen Bond: You may deploy or retreat one of your troops"
-            # [Unswerving Loyalty card], so every catalog holds it.
-            "deploy_reveal_card_troop",
-            "retreat_reveal_card_troop",
+        assert action.action_id not in base or action.action_id == (
+            "resume_reveal_choice"
         )
     assert "may_deploy_or_retreat_one_troop" not in {
         dict(template.arguments).get("effect")
@@ -1854,40 +1891,32 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         if template.action_id == "resume_reveal_choice"
     }
     # Mapes' Commander moves exist only where Commanders do [Bloodlines p. 4].
-    # Each card's move names it (``source``, codec v147); the source-less
-    # rows stay as never-legal ones.
-    assert {
-        (template.action_id, template.arguments)
-        for template in ActionCodec(IMMORTALITY_BLOODLINES).catalog
-        if template.action_id.endswith("_reveal_card_troop")
-    } == {
-        (action_id, arguments)
-        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        for arguments in (
-            (),
-            (("commanders", 1),),
-            *(
-                unit
-                for source in ("shadout_mapes", "unswerving_loyalty")
-                for unit in (
-                    (("source", source),),
-                    (("commanders", 1), ("source", source)),
-                )
-            ),
-        )
+    # Each card's move is its own effect row (``printed``, stage B3d-2a); the
+    # whole ids ``deploy_reveal_card_troop`` and ``retreat_reveal_card_troop``
+    # are in no catalog.
+    def troop_moves(config: RulesetConfig) -> set[tuple[str, tuple[object, ...]]]:
+        catalog = ActionCodec(config).catalog
+        assert not any(t.action_id.endswith("_reveal_card_troop") for t in catalog)
+        return {
+            (template.action_id, template.arguments)
+            for template in catalog
+            if template.action_id in {"deploy", "retreat"}
+            and dict(template.arguments).get("source") == "reveal_card"
+            and dict(template.arguments).get("printed")
+            in {"shadout_mapes", "unswerving_loyalty"}
+        }
+
+    moves = {"shadout_mapes", "unswerving_loyalty"}
+    assert troop_moves(IMMORTALITY_BLOODLINES) == {
+        (action_id, (*units, ("printed", printed), ("source", "reveal_card")))
+        for action_id in ("deploy", "retreat")
+        for printed in moves
+        for units in ((), (("commanders", 1),))
     }
-    assert {
-        (template.action_id, template.arguments)
-        for template in codec.catalog
-        if template.action_id.endswith("_reveal_card_troop")
-    } == {
-        (action_id, arguments)
-        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        for arguments in (
-            (),
-            (("source", "shadout_mapes"),),
-            (("source", "unswerving_loyalty"),),
-        )
+    assert troop_moves(IMMORTALITY) == {
+        (action_id, (("printed", printed), ("source", "reveal_card")))
+        for action_id in ("deploy", "retreat")
+        for printed in moves
     }
 
 

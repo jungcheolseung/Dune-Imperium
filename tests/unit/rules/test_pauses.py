@@ -440,7 +440,8 @@ def test_earn_any_alliance_completes_at_the_pause_before_the_next_recipient() ->
     # that took the Alliance, before the pause.
     chosen = _pay_rewards(
         engine,
-        engine.apply(
+        apply_whole(
+            engine,
             choice,
             DomainAction(
                 action_id="choose_combat_reward_influence",

@@ -1528,6 +1528,10 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # offer effect rows: 228 whole templates leave and 68 rows join.
         - 228
         + 68
+        # v150 (stage B3d-2a): the windows opened for one effect offer it by
+        # its target rows: 1,466 whole templates leave and 54 rows join.
+        - 1466
+        + 54
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an
@@ -1545,23 +1549,40 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     retreat_commander = steps_for(
         DomainAction("retreat_leader_commander", 3), "lady_amber_metulli"
     )
+    # Stage B3d-2a: the Intrigue windows' unit counts and the Conflict card of
+    # a flip are target rows (``choose_count`` with its Commanders,
+    # ``choose_conflict_card``), and the Reveal frame's retreat names its card.
+    deploy_intrigue = steps_for(
+        DomainAction("deploy_intrigue_troops", 0, (("commanders", 1), ("count", 1))),
+        effect_row=False,
+    )
+    retreat_intrigue = steps_for(
+        DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
+        effect_row=False,
+    )
+    flip_battle = steps_for(
+        DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
+        effect_row=False,
+    )
+    # v147: the retreat names its card (``source``).
+    retreat_for_reveal = steps_for(
+        DomainAction(
+            "retreat_two_troops_for_reveal",
+            0,
+            (("commanders", 2), ("source", "chani_clever_tactician")),
+        )
+    )
     actions = (
         *acquire_commander,
         DomainAction("recruit_sardaukar_commander", 3),
         *trash_skill,
         DomainAction("deploy_commanders", 0, (("count", 7),)),
         DomainAction("withdraw_commanders", 1, (("count", 1),)),
-        DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
-        DomainAction("deploy_intrigue_troops", 0, (("commanders", 1), ("count", 1))),
-        DomainAction("retreat_two_troops_for_reveal", 0, (("commanders", 2),)),
-        # v147: the retreat names its card (``source``).
-        DomainAction(
-            "retreat_two_troops_for_reveal",
-            0,
-            (("commanders", 2), ("source", "chani_clever_tactician")),
-        ),
+        *retreat_intrigue,
+        *deploy_intrigue,
+        *retreat_for_reveal,
         *retreat_commander,
-        DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
+        *flip_battle,
     )
     for action in actions:
         assert codec.decode(codec.encode(action), action.actor) == action
@@ -1593,7 +1614,9 @@ def test_every_reachable_unit_retreat_is_encodable() -> None:
     counts = [dict(arguments)["count"] for arguments in reachable]
     assert max(counts) == MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT
     for arguments in reachable:
-        action = DomainAction("retreat_intrigue_troops", 0, arguments)
+        # Stage B3d-2a: the window's retreat is its count row.
+        whole = DomainAction("retreat_intrigue_troops", 0, arguments)
+        (action,) = steps_for(whole, effect_row=False)
         assert codec.decode(codec.encode(action), 0) == action
 
 

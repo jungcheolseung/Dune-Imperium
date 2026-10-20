@@ -23,6 +23,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.leader_abilities import (
@@ -196,6 +197,7 @@ def test_the_shared_placement_frame_recalls_a_spy_that_frees_its_post() -> None:
         0,
         allowed,
         source="test",
+        printer=printer_value(Source.TECH, "panopticon"),
     )
     assert legal_spy_placement_actions(state, 0) == (
         DomainAction("decline_spy_placement", 0),

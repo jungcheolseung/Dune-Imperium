@@ -67,6 +67,7 @@ from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.action_shapes import Source, Verb
+from dune_imperium.rules.effect_steps import CHOOSE_ACTIONS
 from dune_imperium.rules.frames import FrameKind
 
 # v21 (2026-09-27): the Contract identity universe swaps the four Rise of
@@ -151,7 +152,10 @@ from dune_imperium.rules.frames import FrameKind
 # card), one segment per kind of target a path picks before its last, and
 # ``private_effect_pick_second_faction`` for a second one (Captured
 # Mentat's Faction gained, after the one lost: their order decides which
-# Alliance is handed on).
+# Alliance is handed on). Also v33 (the 2026-10-20 review of stage B3d-2a):
+# Long Live the Fighters picks the card to draw and then the card to discard
+# by the same target row, its first pick kept by its frame: appended as
+# ``private_effect_pick_personal``, a personal card picked before the last.
 OBSERVATION_VERSION: Final = 33
 _SEATS: Final = 4
 
@@ -425,6 +429,8 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_effect_pick_battle", len(BATTLE_CARD_IDS)),
             # v33: a second picked target before the last (a Faction).
             ("private_effect_pick_second_faction", len(FACTION_IDS)),
+            # v33 (B3d-2a): a personal card picked before the last.
+            ("private_effect_pick_personal", len(PERSONAL_CARD_IDS)),
         )
     )
     return tuple(lengths)
@@ -674,15 +680,20 @@ def _write_effect_pick(
 ) -> None:
     """The seat's own picked effect (stage B3): its row's verb, source,
     printed personal card and box, how many targets follow it, and each of
-    those targets by identity (``PICKED_TARGET_SEGMENTS``)."""
+    those targets by identity (``PICKED_TARGET_SEGMENTS``). A window's own
+    effect is picked by its targets alone (stage B3d-2a): no effect row."""
 
     if not rows:
         return
-    for position, (action_id, target) in enumerate(rows[1:]):
+    first = 0 if rows[0][0] in CHOOSE_ACTIONS else 1
+    for position, (action_id, target) in enumerate(rows[first:]):
         segments, argument, index_of = _PICKED_TARGETS[action_id]
         value = dict(target)[argument]
         assert isinstance(value, str)
         values[_OFFSET[segments[position]] + index_of(value)] += 1
+    values[_OFFSET["private_effect_pick_targets"]] = len(rows) - first
+    if not first:
+        return
     verb, arguments = rows[0]
     reference = dict(arguments)
     values[_OFFSET["private_effect_pick_verb"] + _VERB_INDEX[verb]] = 1
@@ -693,7 +704,6 @@ def _write_effect_pick(
         if source in _CARD_SOURCES and isinstance(printed, str):
             values[_OFFSET["private_effect_pick_card"] + _PERSONAL_INDEX[printed]] = 1
     values[_OFFSET["private_effect_pick_box"]] = int(reference.get("box") == 1)
-    values[_OFFSET["private_effect_pick_targets"]] = len(rows) - 1
 
 
 def _write_scouts(
@@ -950,6 +960,11 @@ _PICKED_TARGETS: Final[
         ("private_effect_pick_battle",),
         "card_id",
         lambda value: _BATTLE_CARD_INDEX[value],
+    ),
+    "choose_personal_card": (
+        ("private_effect_pick_personal",),
+        "card_id",
+        _personal_identity_index,
     ),
 }
 PICKED_TARGET_SEGMENTS: Final[Mapping[str, tuple[str, ...]]] = {

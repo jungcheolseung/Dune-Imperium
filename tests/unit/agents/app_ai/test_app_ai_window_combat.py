@@ -560,7 +560,7 @@ def test_sandworm_spice_freighters_values_each_copy_after_the_previous_one(
         action = W.HANDLERS[state.decision_stack[-1].kind](run)
         assert action is not None
         taken.append(str(dict(action.arguments).get("faction", action.action_id)))
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
         state = answer_reward_windows(ENGINE, state)
     # Our frames, met one after the other, are the app's order.
     assert frames == [
@@ -621,7 +621,7 @@ def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
         {"faction": plan[0]},
     )
     assert first is not None
-    second_state = ENGINE.apply(state, first).state
+    second_state = apply_whole(ENGINE, state, first).state
     assert second_state.decision_stack[-1].kind == "combat_reward_distinct_influence"
     second = W.combat_reward_distinct_influence(_run(second_state, memory=memory))
     assert _args(second) == (
@@ -636,7 +636,7 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
     first = W.combat_reward_distinct_influence(_run(state))
     assert first is not None
     named = arg(first, "faction")
-    second_state = ENGINE.apply(state, first).state
+    second_state = apply_whole(ENGINE, state, first).state
     second = W.combat_reward_distinct_influence(_run(second_state, memory=Memory()))
     assert named in _PROPAGANDA_BEST
     other = (_PROPAGANDA_BEST - {named}).pop()
@@ -688,7 +688,7 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
         assert action is not None
         plans.update(memory.intents)
         taken.append(arg(action, "faction"))
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
         state = answer_reward_windows(ENGINE, state)
     assert groups == [0, 0, 2, 2]
     key = (W.DISTINCT_INFLUENCE_INTENT, round_number, seat)

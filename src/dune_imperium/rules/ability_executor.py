@@ -84,6 +84,7 @@ from dune_imperium.rules.action_shapes import (
     Target,
     Verb,
     action_shape,
+    printer_value,
     template_id,
 )
 from dune_imperium.rules.card_bonds import trashable_cards
@@ -1444,8 +1445,11 @@ def apply_automatic_rewards(
     player: int,
     sections: tuple[EffectSection, ...],
     source: str,
+    *,
+    played_card_id: str,
 ) -> RuleResult:
-    """Apply the sections' automatic rewards and their turn bookkeeping.
+    """Apply the played Intrigue card's automatic rewards and their turn
+    bookkeeping.
 
     ``update_turn_recruits`` finds whatever turn-family frame is nearest the
     top regardless of whose it is, so the troop credit is guarded by
@@ -1514,8 +1518,13 @@ def apply_automatic_rewards(
         space_id = agent_turn_space_id(next_state, player)
         if space_id is None:
             raise RuntimeError("False Orders needs this turn's Agent placement")
+        printed = intrigue_card_for_instance(played_card_id).card.card_id
         next_state = spy_placement_frame(
-            next_state, player, connected_post_ids(space_id), source=source
+            next_state,
+            player,
+            connected_post_ids(space_id),
+            source=source,
+            printer=printer_value(Source.INTRIGUE, printed),
         )
         moved = turn_space_spy_frames(next_state, player, space_id, source=source)
         next_state = moved.state

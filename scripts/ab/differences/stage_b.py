@@ -922,14 +922,34 @@ def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
     return path_of(without_pick(at.state), _named_trash(at.state, whole))
 
 
+# Long Live the Fighters' card to draw, kept by its frame, is the seat's
+# first picked target in its view (stage B3d-2a): the base's view had none.
+_LONG_LIVE_PICK_TEXT = re.compile(
+    r'"effect_pick":\[\["choose_personal_card",\[\["card_id","[^"]*"\]\]\]\],'
+)
+
+
+def _long_live_pick(pick: object) -> bool:
+    return (
+        isinstance(pick, list)
+        and len(pick) == 1
+        and isinstance(pick[0], list)
+        and pick[0][0] == "choose_personal_card"
+    )
+
+
 def _empty_effect_pick_dropped(candidate: Step) -> None:
     if candidate._views is not None:
         for view in candidate._views:
             private = view.get("private")
-            if isinstance(private, dict) and private.get("effect_pick") == []:
+            if isinstance(private, dict) and (
+                private.get("effect_pick") == []
+                or _long_live_pick(private.get("effect_pick"))
+            ):
                 del private["effect_pick"]
         return
-    candidate.views_text = candidate.views_text.replace(_EMPTY_EFFECT_PICK_TEXT, "")
+    text = candidate.views_text.replace(_EMPTY_EFFECT_PICK_TEXT, "")
+    candidate.views_text = _LONG_LIVE_PICK_TEXT.sub("", text)
 
 
 def _effect_steps_in_base_form(old: Step, candidate: Step) -> None:

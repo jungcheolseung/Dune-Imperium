@@ -94,7 +94,7 @@ def test_leader_draft_game_runs_to_finished_and_replays(choam_module: bool) -> N
     picks = tuple(
         step
         for step in result.replay.steps
-        if hasattr(step, "action_id") and step.action_id == "pick_leader"
+        if hasattr(step, "action_id") and step.action_id == "choose_leader"
     )
     assert len(picks) == 4
     replayed = replay_game(engine, result.replay)

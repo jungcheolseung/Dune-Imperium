@@ -515,7 +515,8 @@ ARGUMENT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
     # Stage B3: the entity that printed a waiting effect -- a card type, the
     # visited space, a leader face, a Tech tile, a Commander's Skill (B3b-2),
     # a research space (B3c-2a), the Conflict card whose reward row pays and
-    # the Intrigue card whose lines are played (B3d-1); a Contract by its
+    # the Intrigue card whose lines are played (B3d-1), the Faction whose
+    # Influence track opened a Spy window (B3d-2a); a Contract by its
     # instance; a market is a label.
     "printed": (
         "personal",
@@ -526,6 +527,7 @@ ARGUMENT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
         "research",
         "conflict",
         "intrigue",
+        "faction",
     ),
 }
 # The vocabulary of a slot key's id, by the key's prefix (``training.slots``).
@@ -557,6 +559,9 @@ LABEL_ARGUMENTS: Final = frozenset(
     # alternative or of a target row are labels too.
     {"choice", "effect", "icon", "option", "reward", "subcommittee_id", "zone", "zones"}
 )
+# Sources whose printed entity has no vocabulary: a Scouts line (stage
+# B3d-2a) names its item, whose id may be a card's too (Covert Operation).
+LABEL_SOURCES: Final = frozenset({"scouts"})
 # Where an argument's vocabulary depends on the action: a battle card's id
 # is often a Conflict card's id too.
 ACTION_ARGUMENT_HINTS: Final[Mapping[tuple[str, str], tuple[str, ...]]] = {
@@ -577,6 +582,7 @@ def _digest() -> str:
     for hints in (ARGUMENT_HINTS, SLOT_HINTS, ACTION_ARGUMENT_HINTS):
         digest.update(repr(sorted(hints.items())).encode())
     digest.update(repr(sorted(LABEL_ARGUMENTS)).encode())
+    digest.update(repr(sorted(LABEL_SOURCES)).encode())
     return digest.hexdigest()
 
 
@@ -604,10 +610,13 @@ _LEADER_OF_FACE: Final = {
 }
 
 
-def resolve_argument(action_id: str, key: str, value: str) -> tuple[str, int] | None:
-    """The entity an action argument names, or ``None`` for a label."""
+def resolve_argument(
+    action_id: str, key: str, value: str, source: object = None
+) -> tuple[str, int] | None:
+    """The entity an action argument names, or ``None`` for a label;
+    ``source`` is the row's own ``source`` argument (an effect row's)."""
 
-    if key in LABEL_ARGUMENTS:
+    if key in LABEL_ARGUMENTS or (key == "printed" and source in LABEL_SOURCES):
         return None
     prefer = ACTION_ARGUMENT_HINTS.get((action_id, key), ARGUMENT_HINTS.get(key, ()))
     return resolve(value, prefer)

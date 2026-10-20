@@ -85,7 +85,7 @@ def _graft(card: str, partner: str, space: str = "dutiful_service") -> GameState
     choice = DomainAction(
         action_id="choose_graft_partner", actor=0, arguments=(("card_id", partner),)
     )
-    return ENGINE.apply(placed, choice).state
+    return apply_whole(ENGINE, placed, choice).state
 
 
 def _payload(state: GameState, seat: int = 0) -> JsonObject:

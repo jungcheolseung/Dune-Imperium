@@ -34,7 +34,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.action_shapes import Source, printer_parts, printer_value
 from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.effects import agent_card_source
@@ -77,10 +77,9 @@ def optional_trash_frame(
 
 def trash_printer(printer: Source, printed: str, box: int = 0) -> str:
     """The value a waiting trash records for the entity that printed its
-    icon (module docstring): ``"<source>|<printed>"``, with ``"|1"`` for a
-    grafted turn's second card."""
+    icon (module docstring, ``action_shapes.printer_value``)."""
 
-    return f"{printer.value}|{printed}" + ("|1" if box == 1 else "")
+    return printer_value(printer, printed, box)
 
 
 def printer_arguments(value: str) -> tuple[tuple[str, ActionValue], ...]:
@@ -88,11 +87,11 @@ def printer_arguments(value: str) -> tuple[tuple[str, ActionValue], ...]:
     and ``printed_box`` arguments (not ``box``, which routes a row to an
     Agent box, ``graft_boxes.BOX_ARGUMENT``)."""
 
-    printer, printed, *box = value.split("|")
+    printer, printed, box = printer_parts(value)
     return (
         ("printed", printed),
-        *((("printed_box", 1),) if box == ["1"] else ()),
-        ("source", printer),
+        *((("printed_box", 1),) if box == 1 else ()),
+        ("source", printer.value),
     )
 
 

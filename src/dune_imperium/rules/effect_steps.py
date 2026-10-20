@@ -28,6 +28,14 @@ there is one target (OQ-111 (2)). The context is no other seat's to see
 (B3-3 (가), OQ-111 (4)); the seat's own view reads it
 (``core.observation.effect_pick_of``). When a path ends, its whole action is
 applied to the state without the pick, so the rules never see the steps.
+
+A window opened for one effect (``TARGET_STEP_FRAMES``, stage B3d-2a, D-1
+(가)) does not ask for its effect again: the effect row that opened it (a
+reward icon, an Agent box's icon, a turn row) picked it already, so the
+window's own effect is shown by its target rows alone (``TARGET_SPECS``,
+``WINDOW_OWN``). Another effect offered beside it -- recalling a Spy first
+when the supply is empty, an Intrigue card's automatic rewards -- and an own
+effect with no target keep their effect row.
 """
 
 import json
@@ -37,6 +45,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.content.uprising.effect_dsl import RecallSpy
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -46,7 +55,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import EFFECT_PICK_KEY, agent_box_cards
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.action_shapes import Source, Verb
+from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, Verb, printer_parts
 from dune_imperium.rules.frames import FrameKind, replace_top_frame, with_context
 
 type Arguments = tuple[tuple[str, ActionValue], ...]
@@ -72,6 +81,12 @@ class Choose(StrEnum):
     OPTION = "option"
     # A Conflict card or an Objective card (the Endgame wild match).
     CONFLICT_CARD = "conflict_card"
+    # Stage B3d-2a: a unit to lose (its zone; a Commander rides along), a
+    # number of units to move, a leader to draft, a Navigation card.
+    UNIT = "unit"
+    COUNT = "count"
+    LEADER = "leader"
+    NAVIGATION_CARD = "navigation_card"
 
     @property
     def action_id(self) -> str:
@@ -96,6 +111,10 @@ CHOOSE_ARGUMENT: Final[Mapping[Choose, str]] = MappingProxyType({
     Choose.SEAT: "player",
     Choose.OPTION: "option",
     Choose.CONFLICT_CARD: "card_id",
+    Choose.UNIT: "zone",
+    Choose.COUNT: "count",
+    Choose.LEADER: "leader_id",
+    Choose.NAVIGATION_CARD: "card_id",
 })
 CHOOSE_ACTIONS: Final = frozenset(kind.action_id for kind in Choose)
 
@@ -122,7 +141,8 @@ class Printed(StrEnum):
     # Conflict of this round, ``state.current_conflict_ids[-1]``.
     CONFLICT_CARD = "conflict_card"
     # A completed Contract: the whole action's ``contract_id`` (a row on its
-    # owner's turn, B3b-1), else the Contract reward window's own (B3d-1).
+    # owner's turn, B3b-1), else the Contract reward window's own (B3d-1) or
+    # its Spy window's (``contract_spy_id``, B3d-2a).
     CONTRACT = "contract"
     # The Intrigue card whose printed lines its window offers (B3d-1).
     INTRIGUE_CARD = "intrigue_card"
@@ -132,6 +152,14 @@ class Printed(StrEnum):
     # whose printer the waiting item records (stage B3c-2b,
     # ``optional_trash.trash_printer``).
     NAMED = "named"
+    # Stage B3d-2a: the card whose acquire box opened the Spy window (its
+    # ``acquisition_card_id``), by type.
+    ACQUIRED_CARD = "acquired_card"
+    # Stage B3d-2a: the entity that opened the window, as the window records
+    # it (its ``printer``, ``action_shapes.printer_value``): the Spy
+    # placement window of an Influence track, a Tech tile, an Intrigue card
+    # or a Scouts line.
+    WINDOW = "window"
 
 
 @dataclass(frozen=True, slots=True)
@@ -652,6 +680,117 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "use_intrigue_effect": _spec(
         _V.USE, _S.INTRIGUE, Printed.INTRIGUE_CARD, option="arg:section"
     ),
+    # --- Beside a window's own effect, or an own effect with no target
+    # (stage B3d-2a) ----------------------------------------------------------
+    # Recalling a Spy first, the supply being empty [Main pp. 11, 20], beside
+    # the Spy the window places.
+    "recall_spy_for_acquisition": _spec(
+        _V.RECALL_SPY, _S.ACQUISITION, Printed.ACQUIRED_CARD, targets=_POST
+    ),
+    "recall_spy_for_contract": _spec(
+        _V.RECALL_SPY, _S.CONTRACT, Printed.CONTRACT, targets=_POST
+    ),
+    "recall_spy_for_combat_reward": _spec(
+        _V.RECALL_SPY, _S.CONFLICT, Printed.CONFLICT_CARD, targets=_POST
+    ),
+    "recall_spy_for_placement": _spec(
+        _V.RECALL_SPY, _S.REF, Printed.WINDOW, targets=_POST
+    ),
+    # In a Spy placement slot; in a Recall Spy slot it is the window's own.
+    "recall_spy_for_intrigue": _spec(
+        _V.RECALL_SPY, _S.INTRIGUE, Printed.INTRIGUE_CARD, targets=_POST
+    ),
+    # A controlled space's defending troop [Main p. 20].
+    "deploy_control_defense": _spec(_V.DEPLOY, _S.BOARD_SPACE, _SPACE),
+    # A Conflict reward's optional payment for its VP.
+    "pay_combat_reward": _spec(_V.PAY, _S.CONFLICT, Printed.CONFLICT_CARD),
+    # An Intrigue card's automatic rewards beside its choice (OQ-015), its
+    # Shield Wall and its look at the deck's top card.
+    "resolve_intrigue_rewards": _spec(
+        _V.RESOLVE, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
+    "detonate_shield_wall": _spec(
+        _V.DESTROY_SHIELD_WALL, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
+    "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+})
+
+_CONTRACT_TARGET = (("instance_id", _C.CONTRACT),)
+_INTRIGUE_TARGET = (("card_id", _C.INTRIGUE_CARD),)
+_UNIT = (("zone", _C.UNIT),)
+_COUNT = (("count", _C.COUNT),)
+# The window-only effects (stage B3d-2a, module docstring): the whole
+# actions a window opened for one effect offers as its own, by the targets
+# that stand for them; they are never effect rows.
+TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxyType({
+    # A Conflict's reward windows.
+    "choose_combat_reward_influence": _FACTION,
+    "choose_distinct_combat_reward_influence": _FACTION,
+    "place_combat_reward_spy": _POST,
+    "recall_spies_for_combat_reward": (
+        ("first_post_id", _C.POST),
+        ("second_post_id", _C.POST),
+    ),
+    "trash_combat_reward_card": _CARD,
+    # A Contract's windows, the Contract market and Intrigue-revealed ones.
+    "take_contract": _CONTRACT_TARGET,
+    "take_trigger_contract": _CONTRACT_TARGET,
+    "place_contract_spy": _POST,
+    "recall_agent_for_contract": _RECALLED,
+    "recall_conflict_agent_for_contract": _CONFLICT,
+    "trash_intrigue_for_contract": _INTRIGUE_TARGET,
+    # An acquired card's Spy, a Spy placement window, an opponent's Spy.
+    "place_acquisition_spy": _POST,
+    "place_spy_on_space": _POST,
+    "move_spy": _POST,
+    # An Intrigue card's choice slot.
+    "place_intrigue_spy": _POST,
+    # Its Faction, then who takes an Alliance token an Influence paid hands on.
+    "choose_intrigue_faction": (*_FACTION, _RECIPIENT),
+    "trash_intrigue_card": _CARD,
+    "choose_intrigue_discard": _CARD,
+    "deploy_intrigue_troops": _COUNT,
+    "retreat_intrigue_troops": _COUNT,
+    "lose_intrigue_troop": _UNIT,
+    "acquire_intrigue_imperium": _IMPERIUM,
+    "acquire_intrigue_reserve": _RESERVE,
+    "manipulate_imperium_row": _IMPERIUM,
+    "acquire_intrigue_tleilaxu": (("instance_id", _C.TLEILAXU_CARD),),
+    "acquire_intrigue_reclaimed_forces": (("choice", _C.OPTION),),
+    "give_intrigue_card": (("card_id", _C.INTRIGUE_CARD), ("player", _C.SEAT)),
+    "trash_intrigue_hand_card": _INTRIGUE_TARGET,
+    "flip_battle_card": (("card_id", _C.CONFLICT_CARD),),
+    # A card's own windows: an opponent's discard, the graft partner, the
+    # kept Intrigue card of two, Long Live the Fighters' draw and discard.
+    "discard_opponent_card": _CARD,
+    "choose_graft_partner": _CARD,
+    "keep_peeked_intrigue": (("instance_id", _C.INTRIGUE_CARD),),
+    "select_long_live_fighters_draw": _CARD,
+    "select_long_live_fighters_discard": _CARD,
+    # Holy War's unit an opponent loses.
+    "lose_unit": _UNIT,
+    # Setup: the leader draft, the Navigation cards, the Secret Project.
+    "pick_leader": (("leader_id", _C.LEADER),),
+    "place_navigation_card": (("card_id", _C.NAVIGATION_CARD),),
+    "choose_secret_project": (("tech_id", _C.TECH),),
+    # A Navigation card's option, a Commander's Skill, the research space.
+    "play_navigation": (("option", _C.OPTION),),
+    "choose_skill": (("skill_id", _C.SKILL),),
+    "choose_research_space": (("space_id", _C.TRACK_SPACE),),
+})
+# Effects of ``STEP_SPECS`` a window also offers as its own, there by their
+# targets alone: a revealed card's Spy after a recall, a Tech tile bought, a
+# research space's bonus, the trash of an optional trash window, a Recall
+# Spy slot's recall.
+WINDOW_OWN: Final = frozenset({
+    "acquire_tech",
+    "choose_research_influence",
+    "place_reveal_spy",
+    "recall_spy_for_intrigue",
+    "trash_intrigue_for_research_bonus",
+    "trash_optional_card",
 })
 
 # The frames whose waiting effects are offered effect first (module doc).
@@ -669,49 +808,49 @@ EFFECT_STEP_FRAMES: Final = frozenset({
     FrameKind.INTRIGUE_EFFECTS,
     FrameKind.LEADER_SIGNET,
 })
-# Frames that offer several effects at once in one of their modes (stage
-# B3d-1): a research window ordering a pair's icons (its context key
-# ``immortality._ICONS_KEY``; a bonus choice is one effect), a Tech window
-# owing a tile's acquire icons (``acquire_effects_only``; an acquisition is
-# one effect).
+# The windows opened for one effect (stage B3d-2a, module docstring): every
+# one of their whole actions is shown by steps, so no whole id of the tables
+# above is offered as it is any more.
+TARGET_STEP_FRAMES: Final = frozenset({
+    FrameKind.OPPONENT_CARD_DISCARD,
+    FrameKind.ACQUISITION_SPY,
+    FrameKind.REVEAL_CHOICE,
+    FrameKind.CONTRACT_MARKET,
+    FrameKind.CONTRACT_REWARD_SPY,
+    FrameKind.CONTRACT_REWARD_RECALL,
+    FrameKind.CONTRACT_INTRIGUE_TRASH,
+    FrameKind.CONTROL_DEFENSE,
+    FrameKind.COMBAT_REWARD_INFLUENCE,
+    FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE,
+    FrameKind.COMBAT_REWARD_OPTIONAL,
+    FrameKind.COMBAT_REWARD_SPY_RECALL,
+    FrameKind.COMBAT_REWARD_TRASH,
+    FrameKind.COMBAT_REWARD_SPY,
+    FrameKind.INTRIGUE_CHOICE,
+    FrameKind.LEADER_DRAFT,
+    FrameKind.SKILL_CHOICE,
+    FrameKind.OPPONENT_SPY_MOVE,
+    FrameKind.OPPONENT_UNIT_LOSS,
+    FrameKind.SPY_PLACEMENT,
+    FrameKind.INTRIGUE_TRIGGER_CONTRACT,
+    FrameKind.OPTIONAL_TRASH,
+    FrameKind.NAVIGATION_SETUP,
+    FrameKind.NAVIGATION_CHOICE,
+    FrameKind.TECH_ACQUISITION,
+    FrameKind.TECH_SECRET_PROJECT,
+    FrameKind.RESEARCH_ADVANCE,
+    FrameKind.RESEARCH_BONUS,
+    FrameKind.GRAFT_PARTNER,
+    FrameKind.INTRIGUE_PEEK,
+    FrameKind.LONG_LIVE_FIGHTERS,
+})
+# Two of those windows offer several effects at once in one of their modes
+# (stage B3d-1), every effect then by its effect row: a research window
+# ordering a pair's icons (its context key ``immortality._ICONS_KEY``; a
+# bonus choice is one effect), a Tech window owing a tile's acquire icons
+# (``acquire_effects_only``; an acquisition is one effect).
 _RESEARCH_ICONS_KEY: Final = "research_icons"
 _TECH_ICONS_KEY: Final = "acquire_effects_only"
-# Whole ids of ``STEP_SPECS`` a frame that does not present steps still
-# offers as they are (a Tech window buying a tile, a revealed card's own
-# choice frame, a research window's bonus choice, the Planetologist's and the
-# optional trash's window -- stage B3d-2 gives those target rows); every
-# other whole id of the table is offered only as steps, so the action
-# catalog drops it.
-OFFERED_AS_WHOLE: Final = frozenset({
-    "acquire_tech",
-    "choose_research_influence",
-    "command_acquire_row_card",
-    "deploy_reveal_card_troop",
-    "draw_planetologist_intrigue",
-    "exchange_reveal_influence",
-    "gain_five_reveal_solari",
-    "gain_reveal_influence",
-    "gain_reveal_persuasion",
-    "gain_two_reveal_strength",
-    "keep_contract_reveal_spice",
-    "lose_reveal_influence_for_vp",
-    "lose_reveal_troops_for_specimens",
-    "pay_research_bonus",
-    "pay_reveal_spice_influence",
-    "pay_reveal_water_for_sandworm",
-    "place_reveal_spy",
-    "recall_spies_for_reveal",
-    "recall_spy_for_reveal",
-    "recall_spy_for_reveal_placement",
-    "retreat_reveal_card_troop",
-    "retreat_two_troops_for_reveal",
-    "take_high_council_from_reveal",
-    "take_reveal_contract",
-    "trash_contract_reveal_for_vp",
-    "trash_intrigue_for_research_bonus",
-    "trash_optional_card",
-    "trash_reveal_card",
-})
 
 
 def _card_type(instance_id: str) -> str:
@@ -769,7 +908,8 @@ def printed_from_state(
     if rule == Printed.CONTRACT:
         named: object = dict(whole.arguments).get("contract_id")
         if named is None:
-            named = dict(state.decision_stack[-1].context).get("contract_id")
+            opened = dict(state.decision_stack[-1].context)
+            named = opened.get("contract_id", opened.get("contract_spy_id"))
         if not isinstance(named, str):
             raise ValueError(f"{whole} has no Contract")
         return spec.source, named
@@ -778,6 +918,17 @@ def printed_from_state(
         if not isinstance(played, str):
             raise ValueError(f"{whole} has no Intrigue card")
         return spec.source, intrigue_card_for_instance(played).card.card_id
+    if rule == Printed.ACQUIRED_CARD:
+        acquired = dict(state.decision_stack[-1].context).get("acquisition_card_id")
+        if not isinstance(acquired, str):
+            raise ValueError(f"{whole} has no acquired card")
+        return spec.source, _card_type(acquired)
+    if rule == Printed.WINDOW:
+        printer = dict(state.decision_stack[-1].context).get(PRINTER_KEY)
+        if not isinstance(printer, str):
+            raise ValueError(f"{whole}'s window records no printer")
+        opener, entity, _box = printer_parts(printer)
+        return opener, entity
     return spec.source, _leader_face(state, whole)
 
 
@@ -827,6 +978,14 @@ def path_of(state: GameState, whole: DomainAction) -> tuple[DomainAction, ...] |
     """The steps that stand for ``whole`` in ``state`` (without a pick), or
     None when ``whole`` is offered as it is."""
 
+    if _offers_one_effect(state):
+        if whole.action_id in TARGET_SPECS:
+            return steps_for(whole, effect_row=False)
+        if whole.action_id in WINDOW_OWN and _own_effect(state, whole):
+            # Its target rows, or with none the effect row as below.
+            targets = steps_for(whole, effect_row=False)
+            if targets:
+                return targets
     spec = STEP_SPECS.get(whole.action_id)
     if spec is None or (
         (spec.printed == Printed.NAMED or not isinstance(spec.printed, Printed))
@@ -848,15 +1007,53 @@ def _printed_argument(spec: StepSpec) -> str:
     return "printed" if spec.printed == Printed.NAMED else spec.printed
 
 
+def _offers_one_effect(state: GameState) -> bool:
+    """Whether the top frame is a window opened for one effect, in the mode
+    that offers it (``TARGET_STEP_FRAMES``)."""
+
+    frame = state.decision_stack[-1]
+    if frame.kind not in TARGET_STEP_FRAMES:
+        return False
+    if frame.kind == FrameKind.RESEARCH_BONUS:
+        return not dict(frame.context).get(_RESEARCH_ICONS_KEY)
+    if frame.kind == FrameKind.TECH_ACQUISITION:
+        return dict(frame.context).get(_TECH_ICONS_KEY) is not True
+    return True
+
+
+def _own_effect(state: GameState, whole: DomainAction) -> bool:
+    """Whether ``whole`` of ``WINDOW_OWN`` is its window's own effect: an
+    Intrigue card's recall is beside a Spy placement slot's Spy, and the
+    effect of a Recall Spy slot."""
+
+    if whole.action_id != "recall_spy_for_intrigue":
+        return True
+    # The Intrigue rules build on this module's callers.
+    from dune_imperium.rules.intrigue import current_intrigue_choice_slot
+
+    return isinstance(current_intrigue_choice_slot(state, whole.actor), RecallSpy)
+
+
 def steps_for(
     whole: DomainAction,
     printed: ActionValue | None = None,
     source: Source | None = None,
+    *,
+    effect_row: bool = True,
 ) -> tuple[DomainAction, ...]:
     """``whole``'s steps; its printed entity (and the source, when a Signet
     Ring box names the leader) given when the state names them
-    (``printed_from_state``). The action codec builds its rows by this."""
+    (``printed_from_state``). Without ``effect_row``, the target rows alone
+    that stand for a window's own effect (module docstring), none when the
+    whole action names no target. The action codec builds its rows by
+    this."""
 
+    targets = TARGET_SPECS.get(whole.action_id)
+    if targets is not None:
+        rows = _target_rows(whole.actor, dict(whole.arguments), targets)
+        if not rows:
+            raise ValueError(f"{whole} names none of its targets")
+        return rows
     spec = STEP_SPECS[whole.action_id]
     arguments = dict(whole.arguments)
     box = arguments.pop("box", 0)
@@ -872,15 +1069,22 @@ def steps_for(
         printed = (
             spec.printed.removeprefix(_FIXED)
             if spec.printed.startswith(_FIXED)
-            else arguments.pop(spec.printed)
+            else arguments.pop(spec.printed, None)
         )
-    if printed is None:
-        raise ValueError(f"{whole} needs its printed entity")
     icon: ActionValue | None = None
     if spec.icon.startswith(_ARG):
         icon = arguments.pop(spec.icon.removeprefix(_ARG), None)
     elif spec.icon:
         icon = spec.icon
+    option: ActionValue | None = None
+    if spec.option.startswith(_ARG):
+        option = arguments.pop(spec.option.removeprefix(_ARG), None)
+    elif spec.option:
+        option = spec.option
+    if not effect_row:
+        return _target_rows(whole.actor, arguments, spec.targets)
+    if printed is None:
+        raise ValueError(f"{whole} needs its printed entity")
     if isinstance(spec.verb, Verb):
         verb = spec.verb
     else:
@@ -894,33 +1098,46 @@ def steps_for(
     ]
     if icon is not None:
         ref.append(("icon", icon))
-    if spec.option.startswith(_ARG):
-        option = arguments.pop(spec.option.removeprefix(_ARG), None)
-        if option is not None:
-            ref.append(("option", option))
-    elif spec.option:
-        ref.append(("option", spec.option))
+    if option is not None:
+        ref.append(("option", option))
     if box:
         ref.append(("box", box))
-    targets: list[tuple[Choose, ActionValue]] = []
-    for name, kind in spec.targets:
+    rows = _target_rows(whole.actor, arguments, spec.targets)
+    if not rows:
+        carried = _carried(arguments)
+        return (_action(verb.value, whole.actor, [*ref, *carried]),)
+    return (_action(verb.value, whole.actor, ref), *rows)
+
+
+def _target_rows(
+    actor: int,
+    arguments: dict[str, ActionValue],
+    targets: tuple[tuple[str, Choose], ...],
+) -> tuple[DomainAction, ...]:
+    """One target row per target the whole action names (``StepSpec``), the
+    last carrying its other arguments (a unit mix); none when it names no
+    target. Takes the targets out of ``arguments``."""
+
+    picked: list[tuple[Choose, ActionValue]] = []
+    for name, kind in targets:
         if name.startswith(_FIXED):
-            targets.append((kind, name.removeprefix(_FIXED)))
+            picked.append((kind, name.removeprefix(_FIXED)))
             continue
         value = arguments.pop(name, None)
         if value is not None and value != "":
-            targets.append((kind, value))
-    arguments = {name: value for name, value in arguments.items() if value != ""}
-    carried = tuple(arguments.items())
+            picked.append((kind, value))
+    carried = _carried(arguments)
     rows: list[DomainAction] = []
-    effect_arguments = ref if targets else [*ref, *carried]
-    rows.append(_action(verb.value, whole.actor, effect_arguments))
-    for index, (kind, value) in enumerate(targets):
+    for index, (kind, value) in enumerate(picked):
         row_arguments = [(CHOOSE_ARGUMENT[kind], value)]
-        if index == len(targets) - 1:
+        if index == len(picked) - 1:
             row_arguments.extend(carried)
-        rows.append(_action(kind.action_id, whole.actor, row_arguments))
+        rows.append(_action(kind.action_id, actor, row_arguments))
     return tuple(rows)
+
+
+def _carried(arguments: Mapping[str, ActionValue]) -> list[tuple[str, ActionValue]]:
+    return [(name, value) for name, value in arguments.items() if value != ""]
 
 
 def _action(
@@ -930,18 +1147,13 @@ def _action(
 
 
 def presents_steps(state: GameState) -> bool:
-    """Whether the top frame offers its waiting effects effect first."""
+    """Whether the top frame offers its waiting effects effect first, or
+    a window's own effect by its targets."""
 
     if not state.decision_stack:
         return False
-    frame = state.decision_stack[-1]
-    if frame.kind in EFFECT_STEP_FRAMES:
-        return True
-    if frame.kind == FrameKind.RESEARCH_BONUS:
-        return bool(dict(frame.context).get(_RESEARCH_ICONS_KEY))
-    if frame.kind == FrameKind.TECH_ACQUISITION:
-        return dict(frame.context).get(_TECH_ICONS_KEY) is True
-    return False
+    kind = state.decision_stack[-1].kind
+    return kind in EFFECT_STEP_FRAMES or kind in TARGET_STEP_FRAMES
 
 
 def picked_rows(state: GameState) -> tuple[DomainAction, ...]:

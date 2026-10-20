@@ -2192,9 +2192,12 @@ def _scouts_act(
         actor=decision.owner,
         arguments=tuple(sorted(arguments.items())),
     )
+    # The rules' whole actions (a window shows them as the target rows that
+    # stand for them, stage B3d-2a) or a row the engine offers as it is.
     legal = _ENGINE.legal_actions(state, decision.owner)
-    assert action in legal, (action, legal)
-    return _ENGINE.apply(state, action, legal_actions=legal).state
+    wholes = _ENGINE.whole_actions(state, decision.owner)
+    assert action in legal or action in wholes, (action, legal)
+    return apply_whole(_ENGINE, state, action, legal_actions=legal).state
 
 
 def test_leverage_faction_can_be_taken_back_and_its_intrigue_cannot() -> None:

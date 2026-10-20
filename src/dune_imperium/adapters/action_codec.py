@@ -39,7 +39,10 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
-from dune_imperium.content.uprising.effect_dsl import OnTroopsLostAtConflictEnd
+from dune_imperium.content.uprising.effect_dsl import (
+    OnTroopsLostAtConflictEnd,
+    RedirectSpiesOnTurnSpace,
+)
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_cards_for_choam,
@@ -83,6 +86,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.acquisition import acquire_box_places_spy
 from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
@@ -94,11 +98,13 @@ from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_KINDS,
     contract_reward_icons,
 )
+from dune_imperium.rules.effect_interpreter import automatic_rewards, choice_slots
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
     INTRIGUE_WINDOWS,
-    OFFERED_AS_WHOLE,
     STEP_SPECS,
+    TARGET_SPECS,
+    WINDOW_OWN,
     Printed,
     steps_for,
 )
@@ -110,6 +116,7 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
+from dune_imperium.rules.scouts_effects import scouts_spy_items
 from dune_imperium.rules.tech import optional_trash_tech_ids
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -1290,13 +1297,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             if template.action_id in BOX_ACTION_IDS
         )
     # Stage B3: the effect and target rows that stand for the whole actions
-    # of a frame offering its waiting effects effect first.
+    # of a frame offering its waiting effects effect first, and of a window
+    # offering its own effect by its targets (B3d-2a).
     wholes = tuple(templates)
     templates = [
         template
         for template in wholes
         if template.action_id not in STEP_SPECS
-        or template.action_id in OFFERED_AS_WHOLE
+        and template.action_id not in TARGET_SPECS
     ]
     templates.extend(_effect_step_templates(config, wholes))
     return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
@@ -1307,15 +1315,21 @@ def _effect_step_templates(
 ) -> tuple[ActionTemplate, ...]:
     """The rows ``rules.effect_steps`` shows the catalog's whole actions by
     (stage B3): each whole template's steps, once per entity that may have
-    printed its effect when the state names it (``effect_steps.Printed``).
-    An Agent box's rows name the card types whose box can offer them
+    printed its effect when the state names it (``effect_steps.Printed``),
+    and a window's own effect by its target rows (B3d-2a). An Agent box's
+    rows name the card types whose box can offer them
     (``_box_effect_cards``) and, for a Signet Ring box, every leader face."""
 
     faces = _leader_faces(config)
     spaces = tuple(space.space_id for space in catalog_spaces(config))
     box_cards = _box_effect_cards(config)
+    intrigue_cards = _intrigue_choice_cards(config)
     rows: dict[ActionTemplate, None] = {}
     for template in wholes:
+        if template.action_id in TARGET_SPECS or template.action_id in WINDOW_OWN:
+            window_own = DomainAction(template.action_id, 0, template.arguments)
+            for row in steps_for(window_own, effect_row=False):
+                rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
         spec = STEP_SPECS.get(template.action_id)
         if spec is None or (
             not isinstance(spec.printed, Printed)
@@ -1339,7 +1353,10 @@ def _effect_step_templates(
                 *((Source.LEADER, face) for face in signets),
             )
         elif spec.printed == Printed.VISITED_SPACE:
-            named = tuple((None, space) for space in spaces)
+            named = tuple(
+                (None, space)
+                for space in _VISITED_SPACES.get(template.action_id, spaces)
+            )
         elif spec.printed == Printed.INTRIGUE_WINDOW:
             named = tuple((None, window) for window in INTRIGUE_WINDOWS)
         elif spec.printed == Printed.RESEARCH_SPACE:
@@ -1355,43 +1372,72 @@ def _effect_step_templates(
             # A Conflict reward icon (stage B3d-1): each Conflict printing
             # it, and any Conflict's first place for Pivotal Gambit's
             # Influence (OQ-025).
+            # A reward window's other effect (B3d-2a): each Conflict printing
+            # an icon that opens the window.
             kind = dict(template.arguments).get("effect")
-            assert isinstance(kind, str)
+            kinds = _WINDOW_REWARD_ICONS.get(template.action_id, (kind,))
             named = tuple(
                 (None, conflict.card.card_id)
                 for conflict in CONFLICTS
                 if (config.bloodlines or not conflict.bloodlines_only)
                 and (config.epic_game or not conflict.epic_only)
                 and (
-                    kind in conflict_reward_icon_kinds(conflict.card.card_id)
+                    any(
+                        printed in conflict_reward_icon_kinds(conflict.card.card_id)
+                        for printed in kinds
+                    )
                     or (kind == "choose_influence" and config.promo_cards)
                 )
             )
         elif spec.printed == Printed.CONTRACT:
             # A window's row names no Contract: the rows of its Contract are
             # the owner's turn rows' (``contract_id``), already named.
+            # A Spy window's recall (B3d-2a) names each Contract printing a
+            # Spy icon.
             contract = dict(template.arguments).get("contract_id")
-            if contract is None:
-                continue
-            named = ((None, contract),)
-        elif spec.printed == Printed.INTRIGUE_CARD:
-            # A printed line of a card played line by line (OQ-058).
-            line = dict(template.arguments).get("section")
-            assert isinstance(line, int)
-            held = map(
-                intrigue_card_for_instance, _held_intrigue_instance_ids(config)
-            )
-            named = tuple(
-                (None, card_id)
-                for card_id in dict.fromkeys(
-                    card.card.card_id
-                    for card in held
+            if template.action_id in _WINDOW_REWARD_ICONS and config.choam_module:
+                named = tuple(
+                    (None, instance)
+                    for instance in contract_instance_ids(bloodlines=config.bloodlines)
                     if any(
-                        option.separate and line < len(option.sections)
-                        for option in card.options
+                        kind in _WINDOW_REWARD_ICONS[template.action_id]
+                        for kind, _ in contract_reward_icons(instance)
                     )
                 )
-            )
+            elif contract is None:
+                continue
+            else:
+                named = ((None, contract),)
+        elif spec.printed == Printed.INTRIGUE_CARD:
+            # A printed line of a card played line by line (OQ-058), or an
+            # effect beside a choice slot's own (B3d-2a).
+            line = dict(template.arguments).get("section")
+            if not isinstance(line, int):
+                named = tuple(
+                    (None, card_id)
+                    for card_id in intrigue_cards.get(template.action_id, ())
+                )
+            else:
+                held = map(
+                    intrigue_card_for_instance, _held_intrigue_instance_ids(config)
+                )
+                named = tuple(
+                    (None, card_id)
+                    for card_id in dict.fromkeys(
+                        card.card.card_id
+                        for card in held
+                        if any(
+                            option.separate and line < len(option.sections)
+                            for option in card.options
+                        )
+                    )
+                )
+        elif spec.printed == Printed.ACQUIRED_CARD:
+            # An acquired card's Spy window (B3d-2a).
+            named = tuple((None, card) for card in _acquisition_spy_cards(config))
+        elif spec.printed == Printed.WINDOW:
+            # The Spy placement window, by what opened it (B3d-2a).
+            named = _spy_placement_printers(config)
         elif spec.printed == Printed.NAMED:
             # An optional trash waiting on the turn, by every entity that
             # may print one (stage B3c-2b); a grafted turn's second card's
@@ -1420,6 +1466,121 @@ def _effect_step_templates(
             for row in steps_for(whole, printed, source):
                 rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
     return tuple(rows)
+
+
+# The reward icons whose window a recall first or a payment stands beside
+# (stage B3d-2a), on a Conflict card or a Contract.
+_WINDOW_REWARD_ICONS: Final[Mapping[str, tuple[str, ...]]] = {
+    "pay_combat_reward": ("optional_solari", "optional_spice"),
+    "recall_spy_for_combat_reward": ("spy", "deep_cover_spy"),
+    "recall_spy_for_contract": ("spy", "deep_cover_spy"),
+}
+# A controlled space's defending troop (B3d-2a): a space a Conflict card's
+# control reward names.
+_VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
+    "deploy_control_defense": tuple(
+        dict.fromkeys(
+            conflict.rewards[0].control_space_id
+            for conflict in CONFLICTS
+            if conflict.rewards is not None
+            and conflict.rewards[0].control_space_id is not None
+        )
+    ),
+}
+# The effects an Intrigue card's choice slot offers beside its own, by the
+# slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
+# Wall, the look at the deck's top card.
+_INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
+    "PlaceSpy": ("recall_spy_for_intrigue",),
+    "DestroyShieldWall": ("detonate_shield_wall",),
+    "PeekTopCard": (
+        "put_back_top_card",
+        "discard_top_card",
+        "draw_top_card_for_solari",
+    ),
+}
+
+
+def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
+    """For each effect beside an Intrigue choice slot's own, and the
+    automatic rewards beside a card's choices (OQ-015), the cards that may
+    print it: the Intrigue cards a seat can hold and, with Bloodlines,
+    Steersman Y'rkoon's Navigation cards."""
+
+    held = _held_intrigue_instance_ids(config)
+    if config.bloodlines:
+        held = (*held, *navigation_card_instance_ids())
+    cards: dict[str, dict[str, None]] = {}
+    for instance_id in held:
+        card = intrigue_card_for_instance(instance_id)
+        for option in card.options:
+            slots = {
+                type(slot).__name__
+                for wall in (True, False)
+                for slot in choice_slots(option.sections, shield_wall_present=wall)
+            }
+            if not slots:
+                continue
+            effects = {
+                effect
+                for slot in slots
+                for effect in _INTRIGUE_SLOT_EFFECTS.get(slot, ())
+            }
+            if automatic_rewards(option.sections):
+                effects.add("resolve_intrigue_rewards")
+            for effect in effects:
+                cards.setdefault(effect, {})[card.card.card_id] = None
+    return {effect: tuple(found) for effect, found in cards.items()}
+
+
+def _acquisition_spy_cards(config: RulesetConfig) -> tuple[str, ...]:
+    """The card types whose acquire box places a Spy (B3d-2a)."""
+
+    return tuple(
+        dict.fromkeys(
+            personal_card_for_instance(instance_id).card.card_id
+            for instance_id in _personal_card_instance_ids(config)
+            if instance_id.startswith(("imperium:", "tleilaxu:"))
+            and acquire_box_places_spy(instance_id)
+        )
+    )
+
+
+def _spy_placement_printers(
+    config: RulesetConfig,
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may open the Spy placement window (``spy_moves``, B3d-2a): the
+    Emperor track's Influence 4 Spy, a Tech tile's Spy icon and Panopticon,
+    False Orders, a Scouts line."""
+
+    printers: list[tuple[Source | None, ActionValue | None]] = [
+        (Source.INFLUENCE_TRACK, Faction.EMPEROR.value)
+    ]
+    if config.tech_module:
+        printers.extend(
+            (Source.TECH, tile.tech_id)
+            for tile in TECH_TILES
+            if any(key.startswith("spy_") for key in tile.acquire_effect_keys)
+        )
+        printers.append((Source.TECH, "panopticon"))
+    if config.bloodlines:
+        held = map(intrigue_card_for_instance, _held_intrigue_instance_ids(config))
+        printers.extend(
+            (Source.INTRIGUE, card_id)
+            for card_id in dict.fromkeys(
+                card.card.card_id
+                for card in held
+                if any(
+                    isinstance(reward, RedirectSpiesOnTurnSpace)
+                    for option in card.options
+                    for section in option.sections
+                    for reward in section.rewards
+                )
+            )
+        )
+    if config.arrakeen_scouts:
+        printers.extend((Source.SCOUTS, item) for item in scouts_spy_items())
+    return tuple(printers)
 
 
 def _optional_trash_printers(

@@ -89,8 +89,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # wild match's target row reads its card as a battle or Conflict card.
 # Stage B3c-2a: a research space prints its icons and bonuses (``printed``).
 # Stage B3d-1: so do the Conflict card of a reward window and the Intrigue
-# card of a lines window.
-_GOLDEN_DIGEST = "9d24281e43b252072e25402647b1f88994dc34848e2369e6802d7c3180978338"
+# card of a lines window. Stage B3d-2a: and the Faction whose Influence
+# track opens a Spy window (the Emperor's); a Scouts line's printed item is
+# a label (``LABEL_SOURCES``).
+_GOLDEN_DIGEST = "ca79dc9811dc7f554305cd19cd761e5e7960a298f280e12671596cad415660e2"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -281,14 +283,17 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
             # (stage B3d-1).
             "conflict",
             "intrigue",
+            # The Emperor's Influence track, opening a Spy window (B3d-2a).
+            "faction",
         },
     }
     seen: dict[str, set[str | None]] = {}
     labels: set[str] = set()
     for template in ActionCodec(_EVERY_OPTION).catalog:
+        source = dict(template.arguments).get("source")
         for key, value in template.arguments:
             if isinstance(value, str):
-                found = resolve_argument(template.action_id, key, value)
+                found = resolve_argument(template.action_id, key, value, source)
                 seen.setdefault(key, set()).add(None if found is None else found[0])
                 if key == "printed" and found is None:
                     labels.add(value)
@@ -297,8 +302,11 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         # rows, so a catalog may hold no ``intrigue_card_id`` any more.
         assert seen.get(key, set()) - {None} <= allowed, key
     # Every printed entity of an effect row is an entity (stage B3), but the
-    # Reveal's markets, which no card or space prints (stage B3b-2), and the
-    # windows a card is played in (stage B3c-1).
+    # Reveal's markets, which no card or space prints (stage B3b-2), the
+    # windows a card is played in (stage B3c-1), and the Scouts lines that
+    # open a Spy window, which have no vocabulary (stage B3d-2a).
+    from dune_imperium.rules.scouts_effects import scouts_spy_items
+
     assert labels == {
         "imperium_row",
         "reserve",
@@ -310,6 +318,7 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "conflict_end",
         "turn_start",
         "wild_icon",
+        *scouts_spy_items(),
     }
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]
@@ -402,6 +411,8 @@ _COUNTED = {
     "private_effect_pick_tech": "tech",
     "private_effect_pick_battle": "battle",
     "private_effect_pick_second_faction": "faction",
+    # Stage B3d-2a: Long Live the Fighters' card to draw.
+    "private_effect_pick_personal": "personal",
 }
 
 
@@ -865,11 +876,12 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     assert info.migration.from_observation_version == 31
     # Four deck-pool zones (v32), the picked Agent card's zone and graft
     # flag (v33, stage B1), the picked effect's card zone, verb, source,
-    # box and target count (v33, stage B3) and the six zones of its picked
-    # targets (v33, the B3c-1 review) are the inputs the file never had.
+    # box and target count (v33, stage B3) and the seven zones of its picked
+    # targets (v33, the B3c-1 review; a personal card, the B3d-2a review)
+    # are the inputs the file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
-    ) + network.entity_width + len(Verb) + len(Source) + 2 + 6 * (
+    ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
     )
     assert info.migration.observation_dropped == 0

@@ -813,8 +813,9 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
 def test_a_divergence_signature_names_the_frame_on_top(
     tiny_corpus: Path, tmp_path: Path
 ) -> None:
-    """A recorded ``take_contract`` answers the Contract market, a frame an
-    Agent box's effects push over their own: refused, it names that frame."""
+    """A recorded ``choose_contract`` (the Contract market's target row,
+    stage B3d-2a) answers the Contract market, a frame an Agent box's effects
+    push over their own: refused, it names that frame."""
 
     copy = _copy(tiny_corpus, tmp_path)
     corpus = Corpus.open(copy)
@@ -822,7 +823,7 @@ def test_a_divergence_signature_names_the_frame_on_top(
     at = next(
         index
         for index, step in enumerate(steps)
-        if step["type"] == "action" and step["action_id"] == "take_contract"
+        if step["type"] == "action" and step["action_id"] == "choose_contract"
     )
     # The market sits on another frame, so the bottom one would not do.
     engine = UprisingRulesEngine()
@@ -841,7 +842,7 @@ def test_a_divergence_signature_names_the_frame_on_top(
         at,
         (
             "contract_market",
-            "take_contract",
+            "choose_contract",
             "action actor does not own the current decision",
         ),
     )

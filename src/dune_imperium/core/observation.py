@@ -669,12 +669,21 @@ def agent_card_pick_of(state: GameState, player: int) -> tuple[str, bool]:
 EFFECT_PICK_KEY = "effect_pick"
 
 
+# Long Live the Fighters' frame and the card to draw it keeps
+# (``rules.agent_effects``).
+_LONG_LIVE_FRAME: Final = "long_live_fighters"
+_LONG_LIVE_DRAW_KEY: Final = "long_live_fighters_draw_card_id"
+
+
 def effect_pick_of(
     state: GameState, player: int
 ) -> tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...]:
     """The rows ``player`` picked toward one waiting effect and has not
     finished (() if none): they wait in the context of the seat's own frame,
-    on top until the effect's last row."""
+    on top until the effect's last row. Long Live the Fighters picks its one
+    effect's two cards in two decisions of its own frame, which keeps the
+    card to draw: that card is the seat's first picked target (stage B3d-2a,
+    the 2026-10-20 review)."""
 
     if not state.decision_stack:
         return ()
@@ -683,6 +692,9 @@ def effect_pick_of(
         return ()
     encoded = dict(frame.context).get(EFFECT_PICK_KEY)
     if not isinstance(encoded, str):
+        drawn = dict(frame.context).get(_LONG_LIVE_DRAW_KEY)
+        if str(frame.kind) == _LONG_LIVE_FRAME and isinstance(drawn, str):
+            return (("choose_personal_card", (("card_id", drawn),)),)
         return ()
     rows: list[tuple[str, tuple[tuple[str, ActionValue], ...]]] = []
     for action_id, arguments in json.loads(encoded):

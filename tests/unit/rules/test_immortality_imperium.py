@@ -1077,7 +1077,8 @@ def _kinds(result: Transition) -> list[str]:
 
 
 def _research(state: GameState, space_id: str) -> Transition:
-    return UprisingRulesEngine().apply(
+    return apply_whole(
+        UprisingRulesEngine(),
         state,
         DomainAction(
             action_id="choose_research_space",

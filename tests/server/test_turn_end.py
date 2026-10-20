@@ -804,9 +804,11 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     # holds seat 0's Conflict reward rows before a pause, so the walk now
     # meets summaries without a decision; seed 22 still reaches the shape.
     # Stage B3c-1 plays a card effect first, which moves the random seats'
-    # games; of 0-99 seeds 7, 8 and 27 reach it.)
+    # games; of 0-99 seeds 7, 8 and 27 reach it. Stage B3d-2a offers the
+    # windows by their target rows, which moved seed 7 off it again; of
+    # 0-99 seeds 8 and 27 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=7, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=8, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
@@ -1401,7 +1403,7 @@ def _resolve_what_is_offered(
             actor=0,
             arguments=(("card_id", graft_partner),),
         )
-        state = _ENGINE.apply(state, partner).state
+        state = apply_whole(_ENGINE, state, partner).state
     switched = False
     while True:
         legal = _ENGINE.whole_actions(state, 0)
@@ -1947,13 +1949,14 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     assert summary["decision"] is None
     # The unit is the reward's three icon rows (stage B2, OQ-112: Control,
     # Solari, the Spy's row; stage B3d-1: each shown as its effect row,
-    # ``take``, ``gain`` and ``place_spy``) and the Spy; none of them reveals
-    # anything.
+    # ``take``, ``gain`` and ``place_spy``) and the Spy, which the window
+    # offers by its target row (stage B3d-2a: ``choose_post``); none of them
+    # reveals anything.
     assert [
         entry.step.action_id
         for entry in session.log[-4:]
         if isinstance(entry, LoggedStep) and isinstance(entry.step, DomainAction)
-    ] == ["take", "gain", "place_spy", "place_combat_reward_spy"]
+    ] == ["take", "gain", "place_spy", "choose_post"]
     assert _seat0_undo(summary) == [{"seat": 0, "steps": 4}]
     assert manager.legal_actions(game_id, 0)["actions"] == []
 

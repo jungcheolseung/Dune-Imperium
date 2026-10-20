@@ -640,7 +640,11 @@ def test_an_automatic_hand_trash_with_an_empty_hand_does_nothing() -> None:
 
     state = _state(_owner(hand=()))
     step = TrashCard(hand_only=True)
-    assert _apply_automatic(state, 0, step, source="scouts") == RuleResult(state=state)
+    # Stage B3d-2a: an automatic step names its Scouts item (a Spy placement's
+    # printer); this step places none.
+    assert _apply_automatic(
+        state, 0, step, source="scouts", item="contingencies"
+    ) == RuleResult(state=state)
 
 
 CORRINTH = "imperium:corrinth_city:0"

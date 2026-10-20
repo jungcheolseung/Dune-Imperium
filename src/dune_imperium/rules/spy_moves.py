@@ -15,12 +15,13 @@ observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-065).
 
 from copy import replace
 
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
@@ -265,6 +266,8 @@ def _open_track_spy(state: GameState, index: int) -> GameState:
         player,
         tuple(post.post_id for post in OBSERVATION_POSTS),
         source=source,
+        # The Emperor strip prints the Spy icon [Main p. 7].
+        printer=printer_value(Source.INFLUENCE_TRACK, Faction.EMPEROR.value),
     )
 
 
@@ -319,12 +322,16 @@ def spy_placement_frame(
     allowed_post_ids: tuple[str, ...],
     *,
     source: str,
+    printer: str,
     deep_cover: bool = False,
 ) -> GameState:
     """Push the owner's placement of a Spy on one of ``allowed_post_ids``.
 
     With ``deep_cover`` the placement ignores opponents' Spies (Spy with
     Deep Cover [Bloodlines pp. 5, 12]); only the owner's own Spies block.
+    ``printer`` is the entity whose Spy icon opened it
+    (``action_shapes.printer_value``): a recall first names it (stage
+    B3d-2a, ``effect_steps.Printed.WINDOW``).
     """
 
     return state.push_decision(
@@ -343,6 +350,7 @@ def spy_placement_frame(
                 ("allowed_post_ids", ",".join(allowed_post_ids)),
                 ("deep_cover", deep_cover),
                 ("player", player),
+                (PRINTER_KEY, printer),
                 ("source", source),
             ),
         )

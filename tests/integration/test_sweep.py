@@ -688,11 +688,13 @@ def test_zero_coverage_expansion_universes_follow_the_ruleset_options() -> None:
 
 def test_zero_coverage_action_ids_follow_the_epic_catalog() -> None:
     # Control the Spice's paid trash adds the optional-trash templates to an
-    # Epic catalog that has none of the options which otherwise hold them.
-    assert "trash_optional_card" not in zero_coverage({}, choam_module=False)[
+    # Epic catalog that has none of the options which otherwise hold them;
+    # since stage B3d-2a the trash itself is a target row every catalog
+    # holds, and the window's refusal is the id only Epic adds.
+    assert "decline_optional_trash" not in zero_coverage({}, choam_module=False)[
         "action_ids"
     ]
-    assert "trash_optional_card" in zero_coverage(
+    assert "decline_optional_trash" in zero_coverage(
         {}, choam_module=False, epic_game=True
     )["action_ids"]
 

@@ -60,7 +60,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -769,7 +769,12 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         )
     if effect.startswith("spy_"):
         working = spy_placement_frame(
-            working, player, ALL_POST_IDS, source=source, deep_cover=True
+            working,
+            player,
+            ALL_POST_IDS,
+            source=source,
+            printer=printer_value(Source.TECH, tech_id),
+            deep_cover=True,
         )
     intrigue = tile.acquire_intrigue if effect == "intrigue" else 0
     cards = tile.acquire_cards if effect == "cards" else 0
@@ -1046,7 +1051,13 @@ def apply_place_tech_spy(state: GameState, action: DomainAction) -> RuleResult:
     source = f"round:{state.round_number}:player:{player}:reveal:panopticon"
     settled = _settle_tech_reveal(state, player, "panopticon")
     return RuleResult(
-        state=spy_placement_frame(settled, player, ALL_POST_IDS, source=source)
+        state=spy_placement_frame(
+            settled,
+            player,
+            ALL_POST_IDS,
+            source=source,
+            printer=printer_value(Source.TECH, "panopticon"),
+        )
     )
 
 

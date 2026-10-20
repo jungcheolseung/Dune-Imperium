@@ -195,7 +195,8 @@ def test_harkonnen_advisor_troop_is_not_deployable_this_turn() -> None:
         ),
     )
     losing = apply_whole(ENGINE, armed, _play(sadistic)).state
-    released = ENGINE.apply(
+    released = apply_whole(
+        ENGINE,
         losing,
         DomainAction(
             action_id="lose_intrigue_troop", actor=0, arguments=(("zone", "garrison"),)
@@ -234,7 +235,8 @@ def test_ambitious_loses_three_troops_for_influence_where_an_opponent_leads() ->
     }
     working = played
     for zone in ("garrison", "garrison", "conflict"):
-        working = ENGINE.apply(
+        working = apply_whole(
+            ENGINE,
             working,
             DomainAction(
                 action_id="lose_intrigue_troop", actor=0, arguments=(("zone", zone),)
@@ -242,7 +244,7 @@ def test_ambitious_loses_three_troops_for_influence_where_an_opponent_leads() ->
         ).state
     factions = legal_intrigue_choice_actions(working, 0)
     assert [dict(a.arguments)["faction"] for a in factions] == ["fremen"]
-    done = ENGINE.apply(working, factions[0]).state
+    done = apply_whole(ENGINE, working, factions[0]).state
     seat = done.players[0]
     assert seat.influence.fremen == 1
     assert (seat.troops_garrison, seat.troops_conflict, seat.troops_supply) == (0, 3, 9)
@@ -311,17 +313,17 @@ def test_controlled_peeks_the_top_card_privately() -> None:
         "discard_top_card",
         "draw_top_card_for_solari",
     }
-    drawn = ENGINE.apply(
-        peeking, DomainAction(action_id="draw_top_card_for_solari", actor=0)
+    drawn = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="draw_top_card_for_solari", actor=0)
     ).state
     assert drawn.players[0].hand == (DAGGER,)
     assert drawn.players[0].resources.solari == 0
-    discarded = ENGINE.apply(
-        peeking, DomainAction(action_id="discard_top_card", actor=0)
+    discarded = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="discard_top_card", actor=0)
     ).state
     assert discarded.players[0].discard_pile == (DAGGER,)
-    kept = ENGINE.apply(
-        peeking, DomainAction(action_id="put_back_top_card", actor=0)
+    kept = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="put_back_top_card", actor=0)
     ).state
     assert kept.players[0].deck == (DAGGER, RECON)
     # The Combat half is one sword.
@@ -337,7 +339,7 @@ FAVOR = "imperium:spacing_guild_s_favor:0"
 def _controlled_choice(
     state: GameState, action_id: str
 ) -> tuple[GameState, list[str]]:
-    result = ENGINE.apply(state, DomainAction(action_id=action_id, actor=0))
+    result = apply_whole(ENGINE, state, DomainAction(action_id=action_id, actor=0))
     return result.state, [event.kind for event in result.events]
 
 
@@ -356,8 +358,8 @@ def test_controlled_deck_discard_fires_spacing_guilds_favor() -> None:
     )
     peeking = apply_whole(ENGINE, _turn_state(owner), _play(card)).state
 
-    result = ENGINE.apply(
-        peeking, DomainAction(action_id="discard_top_card", actor=0)
+    result = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="discard_top_card", actor=0)
     )
     discarded = result.state
     kinds = [event.kind for event in result.events]
@@ -408,8 +410,8 @@ def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> No
     assert revealed.decision_stack[-1].kind == "reveal"
     peeking = apply_whole(ENGINE, revealed, _play(card)).state
 
-    result = ENGINE.apply(
-        peeking, DomainAction(action_id="discard_top_card", actor=0)
+    result = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="discard_top_card", actor=0)
     )
     seat = result.state.players[0]
     assert seat.discard_pile == (FAVOR,)
@@ -428,8 +430,8 @@ def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> No
     assert DomainAction(action_id="finish_reveal", actor=0) not in (
         ENGINE.legal_actions(result.state, 0)
     )
-    drawn = ENGINE.apply(
-        result.state, DomainAction(action_id="draw_owed_card", actor=0)
+    drawn = apply_whole(
+        ENGINE, result.state, DomainAction(action_id="draw_owed_card", actor=0)
     )
     assert drawn.state.players[0].deck == ()
     assert [
@@ -507,7 +509,8 @@ def test_discerning_discards_to_draw_or_draws_with_an_alliance() -> None:
         dict(a.arguments)["option"] for a in legal_intrigue_play_actions(state, 0)
     ] == [0]
     discarding = apply_whole(ENGINE, state, _play(card, 0)).state
-    done = ENGINE.apply(
+    done = apply_whole(
+        ENGINE,
         discarding,
         DomainAction(
             action_id="choose_intrigue_discard",
@@ -561,7 +564,8 @@ def test_insidious_gives_a_card_and_pays_extra_for_a_regular_one() -> None:
     gifts = legal_intrigue_choice_actions(giving, 0)
     assert {dict(a.arguments)["card_id"] for a in gifts} == {regular, twisted_gift}
     assert {dict(a.arguments)["player"] for a in gifts} == {1, 2, 3}
-    gave_regular = ENGINE.apply(
+    gave_regular = apply_whole(
+        ENGINE,
         giving,
         DomainAction(
             action_id="give_intrigue_card",
@@ -571,7 +575,8 @@ def test_insidious_gives_a_card_and_pays_extra_for_a_regular_one() -> None:
     ).state
     assert regular in gave_regular.players[2].intrigue_cards
     assert gave_regular.players[0].resources.spice == 2
-    gave_twisted = ENGINE.apply(
+    gave_twisted = apply_whole(
+        ENGINE,
         giving,
         DomainAction(
             action_id="give_intrigue_card",
@@ -636,7 +641,8 @@ def test_sadistic_shrewd_and_sinister_trade_troops_for_rewards() -> None:
         combat_strength=2,
     )
     losing = apply_whole(ENGINE, _turn_state(owner), _play(sadistic)).state
-    drew = ENGINE.apply(
+    drew = apply_whole(
+        ENGINE,
         losing,
         DomainAction(
             action_id="lose_intrigue_troop", actor=0, arguments=(("zone", "garrison"),)
@@ -653,7 +659,8 @@ def test_sadistic_shrewd_and_sinister_trade_troops_for_rewards() -> None:
     assert [
         tuple(a.arguments) for a in legal_intrigue_choice_actions(shrewd_played, 0)
     ] == [(("zone", "conflict"),)]
-    spiced = ENGINE.apply(
+    spiced = apply_whole(
+        ENGINE,
         shrewd_played,
         DomainAction(
             action_id="lose_intrigue_troop", actor=0, arguments=(("zone", "conflict"),)
@@ -666,7 +673,8 @@ def test_sadistic_shrewd_and_sinister_trade_troops_for_rewards() -> None:
     sinister_played = apply_whole(ENGINE, combat, _play(sinister)).state
     working = sinister_played
     for zone in ("garrison", "garrison"):
-        working = ENGINE.apply(
+        working = apply_whole(
+            ENGINE,
             working,
             DomainAction(
                 action_id="lose_intrigue_troop", actor=0, arguments=(("zone", zone),)
@@ -724,7 +732,8 @@ def test_a_twisted_loss_from_the_conflict_does_not_reopen_the_deployment() -> No
     assert deploy_two in ENGINE.legal_actions(state, 0)
     deployed = ENGINE.apply(state, deploy_two).state
     played = apply_whole(ENGINE, deployed, _play(sadistic)).state
-    lost = ENGINE.apply(
+    lost = apply_whole(
+        ENGINE,
         played,
         DomainAction(
             action_id="lose_intrigue_troop", actor=0, arguments=(("zone", "conflict"),)
@@ -758,7 +767,7 @@ def test_unnatural_trashes_an_intrigue_card_and_recruits_for_a_regular_one() -> 
     trashing = apply_whole(ENGINE, state, _play(card)).state
     options = legal_intrigue_choice_actions(trashing, 0)
     assert [dict(a.arguments)["card_id"] for a in options] == [regular]
-    done = ENGINE.apply(trashing, options[0]).state
+    done = apply_whole(ENGINE, trashing, options[0]).state
     seat = done.players[0]
     # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
     assert regular in done.intrigue_discard
@@ -778,7 +787,7 @@ def test_unnatural_puts_a_trashed_twisted_card_on_the_shared_discard() -> None:
     trashing = apply_whole(ENGINE, _turn_state(owner), _play(card)).state
     options = legal_intrigue_choice_actions(trashing, 0)
     assert [dict(a.arguments)["card_id"] for a in options] == [other]
-    result = ENGINE.apply(trashing, options[0])
+    result = apply_whole(ENGINE, trashing, options[0])
     done = result.state
 
     trashed = [e for e in result.events if e.kind == "intrigue_card_trashed"]
@@ -853,7 +862,9 @@ def test_unnatural_troop_joins_only_its_owners_open_turn() -> None:
         player_id=0, leader_id="piter_de_vries", intrigue_cards=(card, regular)
     )
     trashing = apply_whole(ENGINE, _turn_state(owner), _play(card)).state
-    done = ENGINE.apply(trashing, legal_intrigue_choice_actions(trashing, 0)[0]).state
+    done = apply_whole(
+        ENGINE, trashing, legal_intrigue_choice_actions(trashing, 0)[0]
+    ).state
     turn = done.decision_stack[-1]
     assert turn.kind == "turn"
     assert dict(turn.context)["troops_recruited"] == 1
@@ -979,14 +990,15 @@ def test_ambitious_during_the_reveal_keeps_the_frame_strength_in_step() -> None:
     played = apply_whole(ENGINE, revealed, _play(card)).state
     working = played
     for zone in ("conflict", "conflict", "garrison"):
-        working = ENGINE.apply(
+        working = apply_whole(
+            ENGINE,
             working,
             DomainAction(
                 action_id="lose_intrigue_troop", actor=0, arguments=(("zone", zone),)
             ),
         ).state
     factions = legal_intrigue_choice_actions(working, 0)
-    emptied = ENGINE.apply(working, factions[0]).state
+    emptied = apply_whole(ENGINE, working, factions[0]).state
     seat = emptied.players[0]
     assert (seat.troops_conflict, seat.troops_garrison) == (0, 1)
     assert seat.combat_strength == 0

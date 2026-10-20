@@ -388,7 +388,8 @@ def _research_to(state: GameState, space_id: str) -> GameState:
     """Answer the research-direction frame the Research just opened."""
 
     assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
-    return UprisingRulesEngine().apply(
+    return apply_whole(
+        UprisingRulesEngine(),
         state,
         DomainAction("choose_research_space", 0, (("space_id", space_id),)),
     ).state

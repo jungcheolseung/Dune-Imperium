@@ -1324,9 +1324,18 @@ def test_a_scouts_step_icon_reopens_once_the_seat_gains_an_intrigue_card() -> No
     top = advanced.state.decision_stack[-1]
     assert top.kind == FrameKind.CONTRACT_MARKET
     assert advanced.state.players[2].held_contract_icons == 0
-    assert UprisingRulesEngine().legal_actions(advanced.state, 2) == (
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(advanced.state, 2) == (
         DomainAction(
             action_id="take_contract",
+            actor=2,
+            arguments=(("instance_id", IMMEDIATE),),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the Contract by its target row alone.
+    assert engine.legal_actions(advanced.state, 2) == (
+        DomainAction(
+            action_id="choose_contract",
             actor=2,
             arguments=(("instance_id", IMMEDIATE),),
         ),

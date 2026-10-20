@@ -588,8 +588,8 @@ def test_the_several_effect_windows_offer_their_effect_rows() -> None:
     # card's lines, Servo-Receivers' Signet frame, a research window's pair
     # and a Tech window's acquire icons offer effect rows: every legal row
     # is a whole action's next step, and encodes. A research bonus choice
-    # and a Tech acquisition are one effect each and stay as they are until
-    # stage B3d-2.
+    # and a Tech acquisition are one effect each, offered by their targets
+    # since stage B3d-2a (the next test).
     from dune_imperium import RulesetConfig
     from dune_imperium.adapters import ActionCodec
     from dune_imperium.agents import RandomAgent
@@ -704,3 +704,225 @@ def test_a_research_window_offers_each_icon_by_its_space(
     assert set(rows) <= set(ENGINE.legal_actions(state, 0))
     for row in rows:
         codec.encode(row)
+
+
+def test_the_one_effect_windows_offer_their_targets() -> None:
+    # Stage B3d-2a (D-1 (가)): a window opened for one effect shows its own
+    # effect by its target rows alone -- the effect row that opened it
+    # picked the effect -- while recalling a Spy first, an Intrigue card's
+    # automatic rewards and an own effect with no target keep their effect
+    # row. Every legal row is a whole action's next step and encodes, and a
+    # pick begun by a target row (two Spies recalled, a Tech tile bought)
+    # reaches the seat's observation.
+    from dune_imperium import RulesetConfig
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.agents import RandomAgent
+    from dune_imperium.core import (
+        ChanceDecision,
+        ChanceResolver,
+        GamePhase,
+        PlayerDecision,
+    )
+    from dune_imperium.rules.effect_steps import (
+        CHOOSE_ACTIONS,
+        TARGET_SPECS,
+        TARGET_STEP_FRAMES,
+        presents_steps,
+    )
+
+    config = RulesetConfig(
+        choam_module=True,
+        leader_draft=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+        arrakeen_scouts=True,
+    )
+    codec = ActionCodec(config)
+    seen: set[str] = set()
+    for seed in range(6):
+        state = ENGINE.reset(config, seed)
+        chance = ChanceResolver(seed=seed)
+        agents = [RandomAgent(seed=seed * 10 + seat) for seat in range(4)]
+        for _ in range(8_000):
+            if state.phase is GamePhase.FINISHED:
+                break
+            decision = ENGINE.current_decision(state)
+            if isinstance(decision, ChanceDecision):
+                state = ENGINE.apply(state, chance.resolve(decision)).state
+                continue
+            assert isinstance(decision, PlayerDecision)
+            legal = ENGINE.legal_actions(state, decision.owner)
+            kind = str(state.decision_stack[-1].kind)
+            if kind in TARGET_STEP_FRAMES:
+                assert presents_steps(state)
+                seen.add(kind)
+                wholes = ENGINE.whole_actions(state, decision.owner)
+                assert set(legal) == {first_step(state, w) for w in wholes}, kind
+                for whole in wholes:
+                    if whole.action_id in TARGET_SPECS:
+                        assert first_step(state, whole).action_id in CHOOSE_ACTIONS
+                for row in legal:
+                    codec.encode(row)
+                if picked_rows(state):
+                    encode_player_view(ENGINE.observe(state, decision.owner))
+            action = agents[decision.owner].choose_action(
+                ENGINE.observe(state, decision.owner), legal
+            )
+            state = ENGINE.apply(state, action, legal_actions=legal).state
+    assert {
+        "acquisition_spy",
+        "combat_reward_spy",
+        "contract_market",
+        "control_defense",
+        "graft_partner",
+        "intrigue_choice",
+        "leader_draft",
+        "navigation_setup",
+        "research_advance",
+        "spy_placement",
+    } <= seen
+
+
+def _no_spy_in_supply(state: GameState, posts: tuple[str, ...]) -> GameState:
+    from dune_imperium.rules.frames import replace_player
+
+    owner = replace(state.players[0], spies_supply=0, spy_post_ids=posts)
+    return replace(state, players=replace_player(state.players, owner))
+
+
+def test_a_spy_window_names_what_opened_it_when_a_spy_is_recalled_first() -> None:
+    # Stage B3d-2a: with the supply empty, recalling a Spy first [Main pp.
+    # 11, 20] is another effect beside the window's own Spy, its row naming
+    # what opened the window (the window records it, ``printer``); the
+    # recalled post is its target, then the window's Spy is picked by its
+    # post alone.
+    from dune_imperium import RulesetConfig
+    from dune_imperium.rules.action_shapes import Source, printer_value
+    from dune_imperium.rules.spy_moves import spy_placement_frame
+    from dune_imperium.rules.tech import ALL_POST_IDS
+
+    posts = ALL_POST_IDS[:3]
+    state = spy_placement_frame(
+        _no_spy_in_supply(ENGINE.reset(RulesetConfig(), 0), posts),
+        0,
+        ALL_POST_IDS,
+        source="test",
+        printer=printer_value(Source.TECH, "panopticon"),
+    )
+    recall = DomainAction(
+        "recall_spy", 0, (("printed", "panopticon"), ("source", "tech"))
+    )
+    assert set(ENGINE.legal_actions(state, 0)) == {
+        recall,
+        DomainAction("decline_spy_placement", 0),
+    }
+    picked = ENGINE.apply(state, recall).state
+    assert set(ENGINE.legal_actions(picked, 0)) == {
+        DomainAction("choose_post", 0, (("post_id", post),)) for post in posts
+    }
+    recalled = ENGINE.apply(
+        picked, DomainAction("choose_post", 0, (("post_id", posts[0]),))
+    ).state
+    assert recalled.players[0].spies_supply == 1
+    assert recalled.decision_stack[-1].kind == "spy_placement"
+    offered = ENGINE.legal_actions(recalled, 0)
+    assert DomainAction("choose_post", 0, (("post_id", posts[0]),)) in offered
+    assert {row.action_id for row in offered} <= {"choose_post", "recall_spy"}
+
+
+def test_the_emperor_tracks_spy_window_names_the_track() -> None:
+    # The Emperor strip prints the Influence 4 Spy [Main p. 7]: its window
+    # records the track, the row of a recall first names it.
+    from dune_imperium import RulesetConfig
+    from dune_imperium.rules.spy_moves import _open_track_spy
+    from dune_imperium.rules.tech import ALL_POST_IDS
+
+    base = _no_spy_in_supply(ENGINE.reset(RulesetConfig(), 0), ALL_POST_IDS[:3])
+    state = _open_track_spy(replace(base, pending_track_spies=((0, "test"),)), 0)
+    assert DomainAction(
+        "recall_spy", 0, (("printed", "emperor"), ("source", "influence_track"))
+    ) in ENGINE.legal_actions(state, 0)
+
+
+def test_a_recall_spy_slot_is_its_windows_own_effect() -> None:
+    # Sleeper Unit's Recall Spy slot: the recall is the slot's own effect,
+    # picked by its post alone; recalling first beside a Spy placement slot
+    # keeps its effect row (the random walk above).
+    from tests.unit.rules.test_bloodlines_cards import (
+        CHOAM_BLOODLINES,
+        _card,
+        _intrigue,
+        _owner,
+        _play,
+        _play_intrigue,
+        _state,
+    )
+
+    card = _card("corrupt_bureaucrat")
+    sleeper = _intrigue("sleeper_unit")
+    post = "emperor-sardaukar-dutiful-service"
+    base = replace(
+        _state(
+            _owner(
+                hand=(card,),
+                intrigue_cards=(sleeper,),
+                spies_supply=2,
+                spy_post_ids=(post,),
+            ),
+            CHOAM_BLOODLINES,
+        ),
+        face_up_contract_ids=("contract:deliver_supplies:0", "contract:harvest_3:0"),
+    )
+    played = _play(base, card, "assembly_hall")
+    opened = apply_whole(ENGINE, played, _play_intrigue(sleeper, 1)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert set(ENGINE.legal_actions(opened, 0)) == {
+        DomainAction("choose_post", 0, (("post_id", post),))
+    }
+
+
+def test_long_live_the_fighters_shows_the_card_to_draw_as_its_first_target() -> None:
+    # Its one effect picks the card to draw and then the card to discard by
+    # the same target row, in two decisions of its own frame (stage B3d-2a):
+    # at the second the seat's view holds the first as its picked target, so
+    # the two decisions differ in the seat's observation (the 2026-10-20
+    # review of B3d-2a: they did not).
+    from tests.unit.rules.test_agent_effects import (
+        _action_to,
+        _instance,
+        _long_live_state,
+    )
+
+    from dune_imperium.adapters.observation_encoding import segment_slice
+    from dune_imperium.rules.agent_turn import apply_agent_action
+
+    first = _instance("dagger")
+    cards = (first, _instance("convincing_argument"), _instance("reconnaissance"))
+    state = _long_live_state((*cards, _instance("dune_the_desert_planet")))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = apply_whole(
+        ENGINE, placed, DomainAction("resolve_agent_card_effect", 0)
+    ).state
+    assert ready.decision_stack[-1].kind == "long_live_fighters"
+    assert set(ENGINE.legal_actions(ready, 0)) == {
+        DomainAction("choose_personal_card", 0, (("card_id", card),))
+        for card in cards
+    }
+    drawing = ENGINE.observe(ready, 0)
+    assert drawing.private is not None and drawing.private.effect_pick == ()
+    row = DomainAction("choose_personal_card", 0, (("card_id", first),))
+    discarding = ENGINE.apply(ready, row).state
+    view = ENGINE.observe(discarding, 0)
+    assert view.private is not None
+    assert view.private.effect_pick == (
+        ("choose_personal_card", (("card_id", first),)),
+    )
+    # No other seat sees it.
+    other = ENGINE.observe(discarding, 1)
+    assert other.private is None or other.private.effect_pick == ()
+    picked = segment_slice("private_effect_pick_personal")
+    before = encode_player_view(drawing)[picked]
+    after = encode_player_view(view)[picked]
+    assert sum(before) == 0 and sum(after) == 1

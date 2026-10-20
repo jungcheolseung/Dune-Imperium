@@ -33,7 +33,8 @@ def _draft(seed: int, agent_seed: int) -> tuple[GameState, list[AppAIAgent], lis
         view = ENGINE.observe(state, seat)
         action = agents[seat].choose_action_with_state(state, view, actions)
         assert action in actions
-        if action.action_id == "pick_leader":
+        # The draft shows a pick as its target row (stage B3d-2a).
+        if action.action_id == "choose_leader":
             picks.append(str(dict(action.arguments)["leader_id"]))
         state = ENGINE.apply(state, action, legal_actions=actions).state
     raise AssertionError("the draft never ended")

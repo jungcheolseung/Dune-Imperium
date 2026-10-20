@@ -14,7 +14,8 @@ from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
-from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effect_steps import STEP_SPECS, TARGET_SPECS, steps_for
+from dune_imperium.rules.scouts_effects import scouts_spy_items
 from dune_imperium.simulation import run_random_round
 
 _SCOUTS_ACTION_PREFIXES = (
@@ -187,12 +188,23 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # and the effect rows not yet in the catalog join (68).
         - 228
         + 68
+        # v150 (stage B3d-2a, D-1 (가)): a window opened for one effect
+        # offers its own effect by its target rows, so its whole templates
+        # leave (1,466: the per-card, per-post, per-Contract and per-leader
+        # window rows, and the Reveal choices a frame no longer offers
+        # whole); the target rows not yet in the catalog (a count of
+        # troops, a leader) and the effect rows beside a window's own (a
+        # recall first by what opened the window, an Intrigue card's
+        # rewards, a control defense, a reward's payment) join (54).
+        - 1466
+        + 54
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
     # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
-    # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778.
-    assert first.size == 2778
+    # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778,
+    # stage B3d-2a's net -1,412 to 1,366.
+    assert first.size == 1366
 
 
 def _scouts_catalog_additions(
@@ -204,10 +216,13 @@ def _scouts_catalog_additions(
     (``scouts_collect_mission`` and ``take_desert_riding_hooks``), so their
     whole templates are not in the catalog; the rows that stand for them are
     -- the mission's ``collect`` effect row per visited space and its
-    ``choose_option`` target rows, and the Maker icon's ``take`` row.
+    ``choose_option`` target rows, and the Maker icon's ``take`` row. Stage
+    B3d-2a: a Scouts line that places a Spy opens the Spy placement window,
+    whose recall first names that line's item; its optional trash window
+    offers the trash by its card's target row, which every catalog holds.
     """
 
-    step_only = {"scouts_collect_mission", "take_desert_riding_hooks"}
+    step_only = {*STEP_SPECS, *TARGET_SPECS}
     collect_rows = {
         ActionTemplate(
             "collect",
@@ -227,11 +242,16 @@ def _scouts_catalog_additions(
         "take",
         (("icon", "maker"), ("printed", "hagga_basin"), ("source", "board_space")),
     )
+    spy_rows = {
+        ActionTemplate("recall_spy", (("printed", item), ("source", "scouts")))
+        for item in scouts_spy_items()
+    }
     return {
         *(t for t in scouts_only if t.action_id not in step_only),
         *collect_rows,
         *choice_rows,
         maker_row,
+        *spy_rows,
     }
 
 
@@ -263,9 +283,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             t.action_id in {"scouts_collect_mission", "take_desert_riding_hooks"}
             for t in with_scouts.catalog
         )
-    assert ActionCodec(RulesetConfig()).size == 2778
+    assert ActionCodec(RulesetConfig()).size == 1366
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 2778 + len(
+    assert ActionCodec(base_scouts).size == 1366 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -296,14 +316,25 @@ def test_scouts_specimen_return_needs_immortality_recall_conflict_always_in() ->
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
-    action = DomainAction(
+    whole = DomainAction(
         action_id="take_contract",
+        actor=2,
+        arguments=(("instance_id", "contract:high_council_ii"),),
+    )
+    # Stage B3d-2a: the Contract market (a window opened for one effect)
+    # offers the pick by its target row, ``choose_contract``; the whole
+    # template left the catalog.
+    (action,) = steps_for(whole, effect_row=False)
+    assert action == DomainAction(
+        action_id="choose_contract",
         actor=2,
         arguments=(("instance_id", "contract:high_council_ii"),),
     )
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(whole)
     # v96: the research icon's board-effect resolution (Immortality).
     # v106: trash_intrigue_for_agent_card joins one template per CHOAM-catalog
     # Intrigue instance (+44) and Branching Path's corrected City icon shifts
@@ -419,6 +450,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # 268 whole templates leave and 68 rows join.
         - 268
         + 68
+        # v150 (stage B3d-2a): the one-effect windows' rows (see
+        # test_catalog_is_fixed...): 1,577 whole templates leave (the
+        # Contract picks and Spy windows' among them) and 79 rows join.
+        - 1577
+        + 79
     )
 
     try:
@@ -434,16 +470,26 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # trash join the CHOAM+Bloodlines catalog; v99: Imperial Privilege may
     # recall Duncan Idaho's Into the Fray Agent (OQ-037(d)).
     both = ActionCodec(RulesetConfig(choam_module=True, bloodlines=True))
-    take_contract = DomainAction(
-        action_id="take_contract",
-        actor=1,
-        arguments=(("instance_id", "contract:bloodlines_earn_any_alliance"),),
+    # Stage B3d-2a: the Contract market and the Contract trash window (windows
+    # opened for one effect) offer their picks by target rows.
+    (take_contract,) = steps_for(
+        DomainAction(
+            action_id="take_contract",
+            actor=1,
+            arguments=(("instance_id", "contract:bloodlines_earn_any_alliance"),),
+        ),
+        effect_row=False,
     )
-    trash_intrigue = DomainAction(
-        action_id="trash_intrigue_for_contract",
-        actor=1,
-        arguments=(("card_id", "intrigue:backed_by_choam:0"),),
+    (trash_intrigue,) = steps_for(
+        DomainAction(
+            action_id="trash_intrigue_for_contract",
+            actor=1,
+            arguments=(("card_id", "intrigue:backed_by_choam:0"),),
+        ),
+        effect_row=False,
     )
+    assert take_contract.action_id == "choose_contract"
+    assert trash_intrigue.action_id == "choose_intrigue_card"
     # Stage B3a: the Agent-effect frame offers a recall from the Conflict as
     # the Recall Agent effect row of its source (Imperial Privilege, a card)
     # and then the Conflict as a ``choose_space`` target row.
@@ -463,9 +509,13 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     )
     assert recall_conflict_privilege[-1] == conflict_target
     assert recall_conflict_agent_card[-1] == conflict_target
-    recall_conflict_contract = DomainAction(
-        action_id="recall_conflict_agent_for_contract", actor=1
+    # The Contract reward's recall from the Conflict is the same target row
+    # (stage B3d-2a), so it needs only Bloodlines like the other two recalls'.
+    (recall_conflict_contract,) = steps_for(
+        DomainAction(action_id="recall_conflict_agent_for_contract", actor=1),
+        effect_row=False,
     )
+    assert recall_conflict_contract == conflict_target
     # v125 (L2): only the Bloodlines Immediate can be out of reach (OQ-059).
     hold_icons = DomainAction(action_id="hold_contract_icons", actor=1)
     fizzle_icons = DomainAction(
@@ -476,7 +526,6 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         trash_intrigue,
         *recall_conflict_privilege,
         *recall_conflict_agent_card,
-        recall_conflict_contract,
         hold_icons,
         fizzle_icons,
     )
@@ -600,20 +649,27 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # join.
         - 453
         + 73
+        # v150 (stage B3d-2a): the one-effect windows' rows (see
+        # test_catalog_is_fixed...): 2,890 whole templates leave and 195
+        # rows join.
+        - 2890
+        + 195
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     # The two recalls' effect rows are in every catalog; the Conflict they
-    # may pick (stage B3a: the target row) needs Bloodlines.
+    # may pick (stage B3a: the target row) needs Bloodlines. The Intrigue
+    # card's target row is shared with the other windows that pick one, so the
+    # CHOAM catalog holds it for the CHOAM Intrigue card (stage B3d-2a).
     recall_effect_rows = (recall_conflict_privilege[0], recall_conflict_agent_card[0])
     for action in actions:
-        if action in recall_effect_rows:
+        if action in (*recall_effect_rows, trash_intrigue):
             assert choam_only.decode(choam_only.encode(action), actor=1) == action
             continue
         with pytest.raises(ValueError, match="not present"):
             choam_only.encode(action)
     bloodlines_only = ActionCodec(RulesetConfig(bloodlines=True))
-    for action in (take_contract, trash_intrigue, recall_conflict_contract, hold_icons):
+    for action in (take_contract, trash_intrigue, hold_icons):
         with pytest.raises(ValueError, match="not present"):
             bloodlines_only.encode(action)
     # recall_conflict_agent_for_imperial_privilege and
@@ -638,38 +694,63 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
         "printed": "contract:arrakeen_ii",
         "source": "contract",
     }
-    actions = (
-        DomainAction(
-            action_id="place_contract_spy",
-            actor=1,
-            arguments=(("post_id", "arrakis-spice-refinery-arrakeen"),),
-        ),
-        DomainAction(
-            action_id="recall_spy_for_contract",
-            actor=1,
-            arguments=(("post_id", "arrakis-spice-refinery-arrakeen"),),
-        ),
-        DomainAction(action_id="decline_contract_spy", actor=1),
-        DomainAction(action_id="keep_contract_reveal_spice", actor=1),
-        DomainAction(action_id="trash_contract_reveal_for_vp", actor=1),
+    post = (("post_id", "arrakis-spice-refinery-arrakeen"),)
+    place = DomainAction(action_id="place_contract_spy", actor=1, arguments=post)
+    recall = DomainAction(action_id="recall_spy_for_contract", actor=1, arguments=post)
+    # Stage B3d-2a: the Contract Spy window (opened for one effect) offers
+    # the Spy it places by the post's target row, and recalling one first (a
+    # Spy in none of the supply) by an effect row naming the Contract that
+    # printed the Spy icon, then the post.
+    (place_row,) = steps_for(place, effect_row=False)
+    assert place_row == DomainAction("choose_post", 1, post)
+    recall_effect, recall_row = _round_trip_steps(codec, recall, "contract:arrakeen_ii")
+    assert recall_effect.action_id == "recall_spy"
+    assert dict(recall_effect.arguments) == {
+        "printed": "contract:arrakeen_ii",
+        "source": "contract",
+    }
+    assert recall_row == place_row
+    # The refusal stays as it is; a revealed Contract card's choices are
+    # effect rows naming the card type that printed them (an effect without
+    # a target is one row).
+    decline = DomainAction(action_id="decline_contract_spy", actor=1)
+    keep = DomainAction(
+        action_id="keep_contract_reveal_spice",
+        actor=1,
+        arguments=(("source", "priority_contracts"),),
     )
-
-    for action in actions:
-        assert codec.decode(codec.encode(action), actor=1) == action
+    trash = DomainAction(
+        action_id="trash_contract_reveal_for_vp",
+        actor=1,
+        arguments=(("source", "priority_contracts"),),
+    )
+    assert codec.decode(codec.encode(decline), actor=1) == decline
+    (keep_row,) = _round_trip_steps(codec, keep)
+    (trash_row,) = _round_trip_steps(codec, trash)
+    assert keep_row.action_id == "keep"
+    assert trash_row.action_id == "trash"
+    for whole in (place, recall, keep, trash):
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole)
 
 
 def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
     # A Spy icon without a Spy in supply: "you may first recall one of your
     # Spies for no effect" [Main pp. 11, 20] -- the Conflict reward and
     # Leader Spies' recall and decline templates exist in every catalog, and
-    # so do the acquisition-bonus and Agent-box Spies' declines.
+    # so do the acquisition-bonus and Agent-box Spies' declines. Stage B3d-2a:
+    # the Conflict reward Spy window offers the recall by an effect row naming
+    # the Conflict card that printed the Spy icon, then the post.
+    recall_whole = DomainAction(
+        action_id="recall_spy_for_combat_reward",
+        actor=2,
+        arguments=(("post_id", "arrakis-deep-desert"),),
+    )
+    recall_first = steps_for(recall_whole, "seize_spice_refinery")
+    assert [row.action_id for row in recall_first] == ["recall_spy", "choose_post"]
     actions = (
         DomainAction(action_id="decline_combat_reward_spy", actor=2),
-        DomainAction(
-            action_id="recall_spy_for_combat_reward",
-            actor=2,
-            arguments=(("post_id", "arrakis-deep-desert"),),
-        ),
+        *recall_first,
         DomainAction(action_id="decline_leader_spy_placement", actor=2),
         DomainAction(action_id="decline_acquisition_spy", actor=2),
         DomainAction(action_id="decline_agent_card_spy", actor=2),
@@ -682,6 +763,8 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
         codec = ActionCodec(config)
         for action in actions:
             assert codec.decode(codec.encode(action), actor=2) == action
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(recall_whole)
 
 
 def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
@@ -799,18 +882,25 @@ def test_agent_card_spice_payment_round_trips() -> None:
 
 def test_desert_power_reveal_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig())
-    actions = (
-        DomainAction(action_id="decline_reveal_sandworm", actor=0),
-        DomainAction(action_id="pay_reveal_water_for_sandworm", actor=2),
+    # Stage B3d-2a: the Reveal choice window (opened for one effect) offers
+    # the water payment as the effect row of the card that prints it (an
+    # effect without a target is one row); the refusal stays as it is.
+    pay = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=2)
+    (pay_row,) = _round_trip_steps(codec, pay)
+    assert pay_row == DomainAction(
+        action_id="pay",
+        actor=2,
+        arguments=(("printed", "desert_power"), ("source", "reveal_card")),
     )
-
-    for action in actions:
-        assert codec.decode(codec.encode(action), actor=action.actor) == action
+    decline = DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    assert codec.decode(codec.encode(decline), actor=0) == decline
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(pay)
 
 
 def test_long_live_the_fighters_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig())
-    actions = (
+    wholes = (
         DomainAction(
             action_id="select_long_live_fighters_draw",
             actor=0,
@@ -823,8 +913,15 @@ def test_long_live_the_fighters_choices_round_trip() -> None:
         ),
     )
 
-    for action in actions:
+    # Stage B3d-2a: the window (opened for one effect) offers each pick by
+    # its card's target row; the whole templates left the catalog.
+    for whole in wholes:
+        (action,) = steps_for(whole, effect_row=False)
+        assert action.action_id == "choose_personal_card"
+        assert action.arguments == whole.arguments
         assert codec.decode(codec.encode(action), actor=action.actor) == action
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole)
 
 
 def test_subversive_advisor_agent_turn_round_trips() -> None:
@@ -870,7 +967,26 @@ def test_reveal_influence_exchange_round_trips() -> None:
         ),
     )
 
-    assert codec.decode(codec.encode(action), actor=0) == action
+    # Stage B3d-2a: the Reveal choice window (opened for one effect) offers
+    # the exchange by its target rows alone -- the Faction lost, the one
+    # gained and who takes an Alliance token handed on; the Reveal frame
+    # offers it effect first (the effect row names the card).
+    assert [row.action_id for row in steps_for(action, effect_row=False)] == [
+        "choose_faction",
+        "choose_faction",
+        "choose_seat",
+    ]
+    rows = _round_trip_steps(codec, action, "captured_mentat")
+    assert [row.action_id for row in rows] == [
+        "exchange_influence",
+        "choose_faction",
+        "choose_faction",
+        "choose_seat",
+    ]
+    for row in steps_for(action, effect_row=False):
+        assert codec.decode(codec.encode(row), actor=0) == row
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(action)
 
 
 def test_reveal_spice_influence_payment_round_trips() -> None:
@@ -881,7 +997,12 @@ def test_reveal_spice_influence_payment_round_trips() -> None:
         arguments=(("faction", "spacing_guild"),),
     )
 
-    assert codec.decode(codec.encode(action), actor=0) == action
+    # Stage B3d-2a: the payment is the effect row of Spacing Guild's Favor,
+    # then the Faction as its target row.
+    rows = _round_trip_steps(codec, action, "spacing_guild_s_favor")
+    assert [row.action_id for row in rows] == ["pay", "choose_faction"]
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(action)
 
 
 def test_agent_card_spy_choice_round_trips() -> None:
@@ -916,10 +1037,27 @@ def test_reveal_spy_placement_choice_round_trips() -> None:
     action = DomainAction(
         action_id="place_reveal_spy",
         actor=3,
-        arguments=(("post_id", "emperor-sardaukar-dutiful-service"),),
+        arguments=(
+            ("post_id", "emperor-sardaukar-dutiful-service"),
+            ("source", "wheels_within_wheels"),
+        ),
     )
 
-    assert codec.decode(codec.encode(action), actor=3) == action
+    # Stage B3d-2a: the Reveal choice window (opened for one effect) offers
+    # the Spy by the post's target row; the Reveal frame offers the effect
+    # row of the card that prints it first.
+    (target,) = steps_for(action, effect_row=False)
+    assert target == DomainAction(
+        action_id="choose_post",
+        actor=3,
+        arguments=(("post_id", "emperor-sardaukar-dutiful-service"),),
+    )
+    assert codec.decode(codec.encode(target), actor=3) == target
+    effect, post = _round_trip_steps(codec, action)
+    assert effect.action_id == "place_spy"
+    assert post == target
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(action)
 
 
 def test_starting_card_actions_share_an_index_between_players() -> None:
@@ -1070,16 +1208,25 @@ def test_legal_action_mask_marks_exactly_the_supplied_actions() -> None:
 def test_leader_draft_picks_round_trip_in_both_catalogs() -> None:
     base = ActionCodec(RulesetConfig())
     choam = ActionCodec(RulesetConfig(choam_module=True))
+    # Stage B3d-2a: the draft window (opened for one effect) offers a pick by
+    # its leader's target row, ``choose_leader``; the whole template left the
+    # catalog, and a replay records the row.
     pick = DomainAction(
-        action_id="pick_leader",
+        action_id="choose_leader",
         actor=1,
         arguments=(("leader_id", "staban_tuek"),),
     )
     shaddam = DomainAction(
-        action_id="pick_leader",
+        action_id="choose_leader",
         actor=1,
         arguments=(("leader_id", "shaddam_corrino_iv"),),
     )
+    for row in (pick, shaddam):
+        whole = DomainAction("pick_leader", row.actor, row.arguments)
+        assert steps_for(whole, effect_row=False) == (row,)
+        for codec in (base, choam):
+            with pytest.raises(ValueError, match="not present"):
+                codec.encode(whole)
 
     assert base.decode(base.encode(pick), actor=1) == pick
     assert choam.decode(choam.encode(shaddam), actor=1) == shaddam

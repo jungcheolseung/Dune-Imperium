@@ -1450,11 +1450,16 @@ def test_tech_actions_round_trip_only_in_the_tech_catalog() -> None:
     for action in actions:
         # Stage B3d-1: an acquire icon is shown as the tile's effect row and
         # its target rows (``effect_steps.steps_for``), not as a whole action.
-        rows = (
-            steps_for(action)
-            if action.action_id == "resolve_tech_acquire_effect"
-            else (action,)
-        )
+        # Stage B3d-2a: the Tech window offers a tile bought by its target
+        # rows (the tile, then the Spy's post), the whole action not at all.
+        if action.action_id == "resolve_tech_acquire_effect":
+            rows = steps_for(action)
+        elif action.action_id == "acquire_tech":
+            rows = steps_for(action, effect_row=False)
+            with pytest.raises(ValueError, match="not present"):
+                codec.encode(action)
+        else:
+            rows = (action,)
         for row in rows:
             assert codec.decode(codec.encode(row), row.actor) == row
         # The row naming the tile (or the action itself) is the Tech
@@ -3433,16 +3438,26 @@ def test_kota_actions_round_trip_in_the_tech_catalog() -> None:
         DomainAction("choose_secret_project", 0, (("tech_id", "glowglobes"),)),
         DomainAction("gain_leader_signet_spice", 2),
         DomainAction("trash_leader_tech", 1, (("tech_id", "panopticon"),)),
-        DomainAction("gain_reveal_influence", 3, (("faction", "emperor"),)),
+        # Stage B3d-2a: the Reveal frame's Influence gain is the card's
+        # effect row (it names the card) and its Faction row.
+        DomainAction(
+            "gain_reveal_influence",
+            3,
+            (("faction", "emperor"), ("source", "ixian_ambassador")),
+        ),
     )
     for action in actions:
         # Stage B3d-1: Kota's Signet and a Tech trash are shown as the
         # leader's effect row and its target rows.
-        rows = (
-            steps_for(action, "kota_odax_of_ix", Source.LEADER)
-            if action.action_id in {"gain_leader_signet_spice", "trash_leader_tech"}
-            else (action,)
-        )
+        # Stage B3d-2a: the Secret Project is chosen by its tile's target row.
+        if action.action_id in {"gain_leader_signet_spice", "trash_leader_tech"}:
+            rows = steps_for(action, "kota_odax_of_ix", Source.LEADER)
+        elif action.action_id == "choose_secret_project":
+            rows = steps_for(action, effect_row=False)
+        elif action.action_id == "gain_reveal_influence":
+            rows = steps_for(action)
+        else:
+            rows = (action,)
         for row in rows:
             assert codec.decode(codec.encode(row), row.actor) == row
 

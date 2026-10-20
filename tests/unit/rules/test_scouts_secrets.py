@@ -16,6 +16,7 @@ from typing import Any
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.immortality.board import (
     FIRST_GENETIC_MARKER_COLUMN,
@@ -174,9 +175,9 @@ def test_due_picks_are_revealed_first_and_resolved_in_line_then_seat_order() -> 
     assert _owner(state) == 1
     assert state.players[0].resources.solari == solari
     post = next(
-        a for a in ENGINE.legal_actions(state, 1) if a.action_id == "place_spy_on_space"
+        a for a in ENGINE.whole_actions(state, 1) if a.action_id == "place_spy_on_space"
     )
-    state = ENGINE.apply(state, post).state
+    state = apply_whole(ENGINE, state, post).state
     assert state.players[0].resources.solari == solari + 2
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_DRAW
     # The two-round picks wait, known now to be two-round lines.

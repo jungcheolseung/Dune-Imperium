@@ -23,7 +23,7 @@ from dune_imperium.rules.action_shapes import (
     action_shape,
     template_id,
 )
-from dune_imperium.rules.effect_steps import OFFERED_AS_WHOLE, STEP_SPECS
+from dune_imperium.rules.effect_steps import STEP_SPECS, TARGET_SPECS
 
 _FULL = RulesetConfig(
     choam_module=True,
@@ -50,10 +50,10 @@ def _catalog_arguments() -> dict[str, frozenset[str]]:
     return {action_id: frozenset(keys) for action_id, keys in names.items()}
 
 
-# Whole ids shown only as effect and target rows (stage B3): the rules
-# still resolve them by these ids, so they keep their rows, but no catalog
-# holds them.
-_STEP_ONLY = frozenset(STEP_SPECS) - OFFERED_AS_WHOLE
+# Whole ids shown only as effect and target rows (stage B3), and a window's
+# own effects shown by their target rows (B3d-2a): the rules still resolve
+# them by these ids, so they keep their rows, but no catalog holds them.
+_STEP_ONLY = frozenset(STEP_SPECS) | frozenset(TARGET_SPECS)
 
 
 @cache
@@ -124,7 +124,10 @@ def test_each_row_target_covers_its_arguments() -> None:
             picked = effect_rows[action_id] - {tag.value for tag in Tag}
             assert picked <= TARGET_ARGUMENTS[Target.EFFECT], action_id
             assert "printed" in picked, action_id
-            if shape.source is Source.REF:
+            if shape.source is Source.REF or action_id in TARGET_SPECS:
+                # A window's own effect (Holy War's ``lose_unit``, stage
+                # B3d-2a) shares the effect row's id, but no catalog holds
+                # its whole action: its target rows stand for it.
                 continue
             arguments = _whole_arguments(action_id)
         picked = arguments - {tag.value for tag in Tag}

@@ -37,6 +37,7 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -2257,9 +2258,14 @@ def test_unswerving_loyalty_moves_a_commander_in_a_bloodlines_only_catalog() -> 
         (action.action_id, dict(action.arguments).get("commanders"))
         for action in actions
     } >= {("deploy_reveal_card_troop", 1), ("retreat_reveal_card_troop", 1)}
+    # Stage B3d-2a: the Reveal frame offers the troop move as its effect row,
+    # which names the card; the whole template left the catalog.
     codec = ActionCodec(config)
     for action in actions:
-        assert codec.decode(codec.encode(action), actor=0) == action
+        (row,) = steps_for(action)
+        assert codec.decode(codec.encode(row), actor=0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
 
 
 def test_unswerving_loyalty_offers_no_troop_move_without_a_fremen_bond() -> None:
@@ -3312,14 +3318,14 @@ def test_a_trashed_stilgar_gains_nothing_from_a_later_fremen_arrival() -> None:
     plotted = apply_whole(engine, revealed, cunning).state
     trash = next(
         action
-        for action in engine.legal_actions(plotted, 0)
+        for action in engine.whole_actions(plotted, 0)
         if action.action_id == "trash_intrigue_card"
         and dict(action.arguments)["card_id"] == stilgar
     )
     # The trash leaves Cunning's draw as its own step (OQ-106).
-    trashed = engine.apply(plotted, trash).state
-    result = engine.apply(
-        trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    trashed = apply_whole(engine, plotted, trash).state
+    result = apply_whole(
+        engine, trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
     )
 
     owner = result.state.players[0]
@@ -3366,14 +3372,14 @@ def test_stilgar_adds_two_for_a_fremen_arrival_after_a_fremen_card_was_trashed()
     plotted = apply_whole(engine, revealed, cunning).state
     trash = next(
         action
-        for action in engine.legal_actions(plotted, 0)
+        for action in engine.whole_actions(plotted, 0)
         if action.action_id == "trash_intrigue_card"
         and dict(action.arguments)["card_id"] == loyalty
     )
     # The trash leaves Cunning's draw as its own step (OQ-106).
-    trashed = engine.apply(plotted, trash).state
-    result = engine.apply(
-        trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    trashed = apply_whole(engine, plotted, trash).state
+    result = apply_whole(
+        engine, trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
     )
 
     owner = result.state.players[0]

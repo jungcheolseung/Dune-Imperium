@@ -24,7 +24,12 @@ from dune_imperium.records.problems import (
 )
 from dune_imperium.records.saves import SavedGame, human_decisions, read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
-from dune_imperium.rules.effect_steps import STEP_SPECS, first_step, path_of
+from dune_imperium.rules.effect_steps import (
+    STEP_SPECS,
+    TARGET_SPECS,
+    first_step,
+    path_of,
+)
 from dune_imperium.server.persistence import serialize_step
 from dune_imperium.training.policy import without_undo_actions
 
@@ -59,7 +64,8 @@ def _rows(
         decision
         for decision in human_decisions(game)
         if len(without_undo_actions(decision.legal_actions)) >= 2
-        and decision.chosen.action_id != "pick_leader"
+        # The leader draft's pick is the window's target row (stage B3d-2a).
+        and decision.chosen.action_id != "choose_leader"
     )
     for verdict, decision in zip(verdicts, decisions, strict=False):
         other = next(
@@ -119,7 +125,8 @@ def test_a_suite_keeps_the_agreed_positions_and_their_record(
     # The person's move is the one the judge saw: the recorded step as the
     # migration replays it (a recorded placement is this engine's space pick
     # once its card is picked, codec v150; a recorded whole action is the last
-    # of its effect and target steps, stage B3).
+    # of its effect and target steps, stage B3, and a window opened for one
+    # effect shows its whole action by its target rows, stage B3d-2a).
     judged_moves = {row["step"]: row["human"] for row in judged}
     migrated = {
         step.recorded_index: step.step
@@ -132,7 +139,9 @@ def test_a_suite_keeps_the_agreed_positions_and_their_record(
         assert _text(problem.person) == judged_moves[problem.recorded_index]
         assert problem.person == migrated[problem.recorded_index]
         assert problem.person == recorded or (
-            recorded.action_id == "agent_turn" or recorded.action_id in STEP_SPECS
+            recorded.action_id == "agent_turn"
+            or recorded.action_id in STEP_SPECS
+            or recorded.action_id in TARGET_SPECS
         )
         assert (problem.right == problem.person) == (problem.family == "human_right")
 
@@ -544,7 +553,7 @@ def _ai_choices(
             migrated.recorded_index is None
             or not isinstance(step, DomainAction)
             or step.actor != seat
-            or step.action_id == "pick_leader"
+            or step.action_id == "choose_leader"
         ):
             continue
         offered = without_undo_actions(engine.legal_actions(state, seat))

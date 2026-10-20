@@ -517,10 +517,17 @@ def test_the_icon_intrigue_endgame_half_ignores_it(
     opened = apply_whole(engine, both, play).state
     targets = {
         dict(action.arguments)["card_id"]
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "flip_battle_card"
     }
     assert targets == {same_icon_conflict}
+    # Stage B3d-2a: the seat is shown the same cards by their target rows.
+    shown = {
+        dict(action.arguments)["card_id"]
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "choose_conflict_card"
+    }
+    assert shown == targets
 
 
 def test_grasp_arrakis_may_flip_it() -> None:
@@ -547,17 +554,23 @@ def test_grasp_arrakis_may_flip_it() -> None:
     opened = apply_whole(engine, state, play).state
     first = [
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "flip_battle_card"
     ]
     assert {dict(a.arguments)["card_id"] for a in first} == {
         ES,
         "skirmish_ornithopter",
     }
+    # Stage B3d-2a: the seat is shown the same cards by their target rows.
+    assert {
+        dict(a.arguments)["card_id"]
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "choose_conflict_card"
+    } == {ES, "skirmish_ornithopter"}
     flip_es = next(a for a in first if dict(a.arguments)["card_id"] == ES)
-    flipped_one = engine.apply(opened, flip_es).state
-    (second,) = engine.legal_actions(flipped_one, 0)
-    done = engine.apply(flipped_one, second).state
+    flipped_one = apply_whole(engine, opened, flip_es).state
+    (second,) = engine.whole_actions(flipped_one, 0)
+    done = apply_whole(engine, flipped_one, second).state
 
     assert done.players[0].victory_points == state.players[0].victory_points + 1
     assert set(done.players[0].face_down_battle_card_ids) == {

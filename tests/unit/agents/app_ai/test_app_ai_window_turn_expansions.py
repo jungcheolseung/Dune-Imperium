@@ -115,7 +115,7 @@ def _legal_partners(state: GameState, seat: int, placement: DomainAction) -> lis
     assert placed.decision_stack[-1].kind == "graft_partner"
     return [
         str(arg(action, "card_id"))
-        for action in ENGINE.legal_actions(placed, seat)
+        for action in ENGINE.whole_actions(placed, seat)
         if action.action_id == "choose_graft_partner"
     ]
 

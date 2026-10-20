@@ -850,6 +850,36 @@ Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal fram
 거절·빈 확인(`decline_*`, `lose_moved_spy` 등)과 곁가지는 그대로 둔다(B3d-3·B3d-4). 이 frame들의 온 행동은 모두 단계로 나오므로
 `OFFERED_AS_WHOLE`이 비고, 옛 template이 codec에서 빠진다.
 
+### B3d-2a 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **frame:** `TARGET_STEP_FRAMES`(위 표의 31종)는 `presents_steps`다. 연구 창과 Tech 창은 효과가 여럿인 모드(쌍의 아이콘, 획득
+  아이콘)에서는 B3d-1대로 효과 줄을 내고, 보너스 하나·타일 사기 모드에서는 제 효과를 대상 줄로 낸다(`_offers_one_effect`).
+- **표:** 창에만 나오는 제 효과는 `TARGET_SPECS`(온 행동 id → 대상, 효과 줄 없음), 다른 frame에서 효과 줄로도 나오는 제 효과는
+  `STEP_SPECS`에 두고 `WINDOW_OWN`(`acquire_tech`·`place_reveal_spy`·`trash_optional_card`·연구 보너스 둘·Spy 회수 슬롯의
+  `recall_spy_for_intrigue`)으로 창에서는 대상 줄만. 곁가지와 대상 없는 제 효과는 `STEP_SPECS`의 효과 줄: 먼저 회수 넷
+  (`printed` = 산 카드 `Printed.ACQUIRED_CARD`, 계약 `contract_spy_id`, 이번 Conflict 카드, 창을 연 것 `Printed.WINDOW`), Spy 놓기
+  슬롯의 회수(그 책략 카드), 자동 보상 `resolve`, `destroy_shield_wall`, 맨 위 카드 `keep`·`discard`·`draw`, 통제 방어 `deploy`(그
+  칸, `source=board_space`), Conflict 보상 지불 `pay`. 새 대상 종류 `choose_unit`·`choose_count`·`choose_leader`·
+  `choose_navigation_card`(행동 모양 표에 `choose_unit`은 `variant=unit`, `choose_count`는 `target=count`로 따로). 책략의 진영 고르기가
+  Alliance 받는 좌석을 실어 나르던 것은 B3b의 원칙대로 대상 줄 `choose_seat`로.
+- **창을 연 것:** Spy 배치 창이 `printer`(`action_shapes.printer_value`, 선택 폐기의 `trash_printer`와 같은 꼴)를 기록한다 — 황제
+  트랙(`influence_track|emperor`), Tech 아이콘·Panopticon(`tech|<타일>`), False Orders(`intrigue|false_orders`), Scouts 줄
+  (`scouts|<항목>`). 엔티티 망은 `printed`가 진영(황제 트랙)도 읽고, `source=scouts`의 `printed`는 이름표로 읽는다(`LABEL_SOURCES`:
+  Scouts 항목 id가 카드 id와 겹친다 — Covert Operation).
+- **codec:** `OFFERED_AS_WHOLE`이 없어졌다(어느 frame도 `STEP_SPECS`·`TARGET_SPECS`의 온 행동을 그대로 내지 않음). 창의 온 행동
+  template 1,466개가 떠나고(카드·초소·계약·지도자별 창 행, Reveal 선택 온 행동) 대상 줄·곁가지 효과 줄 54개가 들어왔다: 기본 2,778 →
+  1,366, Immortality 4,568 → 2,297, 옵션 전부 8,491 → 4,604.
+- **관측:** 고른 대상 칸이 효과 줄 없는 고르기(대상 줄부터 쌓이는 두 대상 제 효과)도 읽는다. Long Live the Fighters는 효과
+  하나의 대상 둘(뽑을 카드 → 버릴 카드)을 자기 frame의 두 결정으로 고르는데 두 단계 모두 `choose_personal_card`라, 둘째 결정에서
+  frame이 쥔 뽑을 카드를 좌석의 고른 대상으로 보인다(`core.observation.effect_pick_of`; 독립 리뷰가 찾음 — 이전 커밋은 두 단계의
+  id가 달랐다). 관측 v33 끝에 `private_effect_pick_personal`(개인 카드 139칸)을 덧붙였다(5,593 → 5,732).
+- **기보:** 순서를 당겨 묻는 다리(`_asked_earlier`)가 창의 온 행동을 단계로 옮긴다(`_as_steps`; 고르기는 `effect_step`, 마지막 단계는
+  그 다리 이름).
+- **측정:** pytest 8,171; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로, `effect_last_step` 다리만 늘어남); 휴리스틱
+  20판·앱 AI 10판 이전 커밋과 같음; 소크 900판(codec 왕복 검사 포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면·같은 지문, 모두
+  109곳); E2E 68개 전부. 독립 리뷰 결함 1(Long Live the Fighters 두 단계 구분, 위 관측)·시험 공백 1(고른 대상 칸 지킴 시험이 창의
+  여러 대상 경로도 봄) 고침. B3d-4에서 하려던 `OFFERED_AS_WHOLE` 비우기는 이 단계에서 끝났다.
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로

@@ -12,6 +12,7 @@ specimen.
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core import (
     DomainAction,
     GamePhase,
@@ -73,13 +74,15 @@ def test_a_defender_with_only_specimens_may_return_one_for_the_troop() -> None:
     defender = after_return.players[2]
     assert defender.specimens == 1 and defender.troops_supply == 1
     assert after_return.decision_stack[-1].kind == FrameKind.CONTROL_DEFENSE
-    # One specimen covers the one defending troop; no second return.
-    assert _ids(engine.legal_actions(after_return, 2)) == [
+    # One specimen covers the one defending troop; no second return. (Stage
+    # B3d-2a: the window shows its deployment as the ``deploy`` row; the rules
+    # take it as ``deploy_control_defense``.)
+    assert _ids(engine.whole_actions(after_return, 2)) == [
         "decline_control_defense",
         "deploy_control_defense",
     ]
-    deploy = engine.legal_actions(after_return, 2)[1]
-    deployed = engine.apply(after_return, deploy).state
+    deploy = engine.whole_actions(after_return, 2)[1]
+    deployed = apply_whole(engine, after_return, deploy).state
     assert deployed.players[2].troops_conflict == 1
     assert deployed.players[2].troops_supply == 0
 
@@ -88,7 +91,7 @@ def test_a_defender_with_supply_troops_is_not_offered_a_return() -> None:
     engine = UprisingRulesEngine()
     state = _controlled_round_start(troops_supply=3, specimens=2)
 
-    assert _ids(engine.legal_actions(state, 2)) == [
+    assert _ids(engine.whole_actions(state, 2)) == [
         "decline_control_defense",
         "deploy_control_defense",
     ]

@@ -267,7 +267,8 @@ def test_a_tleilaxu_acquire_box_choice_holds_call_to_arms(
     assert bought.state.decision_stack[-1].kind == "research_advance"
     assert bought.state.players[0].troops_garrison == garrison
 
-    chosen = engine.apply(
+    chosen = apply_whole(
+        engine,
         bought.state,
         DomainAction(
             action_id="choose_research_space",

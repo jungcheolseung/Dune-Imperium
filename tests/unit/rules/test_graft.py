@@ -41,6 +41,7 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -773,8 +774,17 @@ def test_grafted_cards_round_trip_through_the_codec() -> None:
     placed = apply_agent_action(
         state, _placements(state)[(INITIATE, "dutiful_service", True)]
     )
-    for action in legal_graft_partner_actions(placed.state, 0):
-        assert codec.decode(codec.encode(action), 0) == action
+    # Stage B3d-2a: the partner window offers its choice by the card's target
+    # row, so the whole template is in no catalog.
+    partners = legal_graft_partner_actions(placed.state, 0)
+    assert partners
+    shown = engine.legal_actions(placed.state, 0)
+    for action in partners:
+        (row,) = steps_for(action, effect_row=False)
+        assert row in shown
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
     assert "choose_graft_partner" not in base
     assert not any(

@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import EVENTS_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -78,8 +79,10 @@ def _owner(state: GameState) -> int:
 
 
 def _offered(state: GameState) -> list[tuple[str, tuple[tuple[str, Any], ...]]]:
+    # Stage B3d-2a: what the rules offer is the whole actions; a window opened
+    # for one effect shows its target rows instead (``legal_actions``).
     return [
-        (a.action_id, a.arguments) for a in ENGINE.legal_actions(state, _owner(state))
+        (a.action_id, a.arguments) for a in ENGINE.whole_actions(state, _owner(state))
     ]
 
 
@@ -88,9 +91,9 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _on_turn(state: GameState) -> bool:

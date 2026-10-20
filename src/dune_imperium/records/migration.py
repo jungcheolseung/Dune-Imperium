@@ -253,6 +253,30 @@ def _apply_answer(
     return state
 
 
+def _as_steps(
+    engine: UprisingRulesEngine, state: GameState, step: ReplayStep
+) -> tuple[GameState, list[MigratedStep], ReplayStep, ReplayStep | None]:
+    """A recorded step this engine asks out of the recorded order, as this
+    engine takes it: a whole action of a frame that shows its steps (stage
+    B3, ``rules.effect_steps``) by its picks (``effect_step``) then its last
+    step, which the caller applies and records with the whole action; any
+    other step as it is."""
+
+    if (
+        not isinstance(step, DomainAction)
+        or not presents_steps(state)
+        or step in engine.legal_actions(state, step.actor)
+        or step not in engine.whole_actions(state, step.actor)
+    ):
+        return state, [], step, None
+    picks: list[MigratedStep] = []
+    while steps_after(state, step) > 0:
+        row = first_step(state, step)
+        state = engine.apply(state, row).state
+        picks.append(MigratedStep(row, None, "effect_step"))
+    return state, picks, first_step(state, step), step
+
+
 @dataclass(frozen=True, slots=True)
 class Divergence:
     """The first recorded step this engine refused and no bridge reached."""
@@ -525,12 +549,18 @@ def migrate_record(
                     if earlier is not None:
                         asked_index, asked_step, asked_bridge = earlier
                         consumed.add(asked_index)
+                        stepped, picks, last, asked_whole = _as_steps(
+                            engine, state, asked_step
+                        )
+                        migrated.extend(picks)
                         migrated.append(
-                            MigratedStep(asked_step, asked_index, asked_bridge)
+                            MigratedStep(
+                                last, asked_index, asked_bridge, whole=asked_whole
+                            )
                         )
                         followed = _follow(
                             engine,
-                            engine.apply(state, asked_step).state,
+                            engine.apply(stepped, last).state,
                             asked_step,
                             bridges,
                             migrated,

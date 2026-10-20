@@ -215,7 +215,8 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.CONFLICT_CARD: frozenset({"card_id"}),
     Target.SUBCOMMITTEE: frozenset({"subcommittee_id"}),
     Target.MISSION: frozenset({"target"}),
-    Target.COUNT: frozenset({"count"}),
+    # A number of units, the Commanders among them riding along (B3d-2a).
+    Target.COUNT: frozenset({"commanders", "count"}),
     Target.WILD_ICON: frozenset({"matching_card_id", "wild_card_id"}),
     Target.EFFECT: frozenset(
         {
@@ -836,7 +837,34 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_seat": _row(_V.CHOOSE, _S.REF, _T.UNITS),
     "choose_option": _row(_V.CHOOSE, _S.REF, _T.OPTION),
     "choose_conflict_card": _row(_V.CHOOSE, _S.REF, _T.CONFLICT_CARD),
+    # Stage B3d-2a: a unit to lose, a number of units, a leader, a
+    # Navigation card.
+    "choose_unit": _row(_V.CHOOSE, _S.REF, _T.UNITS, variant="unit"),
+    "choose_count": _row(_V.CHOOSE, _S.REF, _T.COUNT),
+    "choose_leader": _row(_V.CHOOSE, _S.REF, _T.LEADER),
+    "choose_navigation_card": _row(_V.CHOOSE, _S.REF, _T.NAVIGATION_CARD),
 })
+
+
+# Stage B3: the entity that printed a waiting effect, as a frame or a
+# waiting item records it -- an optional trash (``optional_trash``), the Spy
+# placement window (``spy_moves``, B3d-2a): ``"<source>|<printed>"``, with
+# ``"|1"`` for a grafted turn's second card. A frame keeps it under
+# ``PRINTER_KEY``; ``effect_steps.Printed.WINDOW`` reads it.
+PRINTER_KEY: Final = "printer"
+
+
+def printer_value(source: Source, printed: str, box: int = 0) -> str:
+    """The recorded value of the entity ``printed`` of ``source``."""
+
+    return f"{source.value}|{printed}" + ("|1" if box == 1 else "")
+
+
+def printer_parts(value: str) -> tuple[Source, str, int]:
+    """A recorded printer's source, entity and box (``printer_value``)."""
+
+    source, printed, *box = value.split("|")
+    return Source(source), printed, 1 if box == ["1"] else 0
 
 
 def action_shape(action_id: str) -> ActionShape:

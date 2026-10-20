@@ -17,6 +17,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -106,9 +107,11 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    # Stage B3d-2a: a window opened for one effect shows its target rows;
+    # the rules still take its whole actions (``apply_whole``).
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _resume(state: GameState) -> GameState:
@@ -687,7 +690,7 @@ def test_spies_for_hire_may_draw_its_intrigue_before_placing_the_spy() -> None:
     assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
     post = next(
         dict(a.arguments)["post_id"]
-        for a in ENGINE.legal_actions(state, 1)
+        for a in ENGINE.whole_actions(state, 1)
         if a.action_id == "place_spy_on_space"
     )
     state = _act(state, "place_spy_on_space", post_id=post)
@@ -718,7 +721,7 @@ def test_spies_for_hire_spy_post_first_leaves_the_intrigue_its_own_step() -> Non
     intrigue = len(state.players[1].intrigue_cards)
     post = next(
         dict(a.arguments)["post_id"]
-        for a in ENGINE.legal_actions(state, 1)
+        for a in ENGINE.whole_actions(state, 1)
         if a.action_id == "place_spy_on_space"
     )
     state = _act(state, "place_spy_on_space", post_id=post)
@@ -752,9 +755,9 @@ def test_choam_negotiations_contract_first_leaves_the_intrigue_its_own_step() ->
     assert _owner(state) == 0
     intrigue = len(state.players[0].intrigue_cards)
     pick = next(
-        a for a in ENGINE.legal_actions(state, 0) if a.action_id == "take_contract"
+        a for a in ENGINE.whole_actions(state, 0) if a.action_id == "take_contract"
     )
-    state = ENGINE.apply(state, pick).state
+    state = apply_whole(ENGINE, state, pick).state
     assert len(state.players[0].active_contract_ids) == 1
     assert len(state.players[0].intrigue_cards) == intrigue
     assert ENGINE.legal_actions(state, 0) == (

@@ -783,7 +783,13 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     # 77 decisions before these games end (the heuristics around it play
     # with the state); the Immortality game's first forced decision is its
     # 40th.
-    decided = _search_seat_game(seat_agent(), config, seed=3, seat=1, count=66)
+    # Stage B3d-2a moved seed 3 off the Scouts game's untrained-only decision
+    # (the windows are offered by their target rows now); seed 0 is the first
+    # that meets one.
+    game_seed = 0 if expansion == "arrakeen_scouts" else 3
+    decided = _search_seat_game(
+        seat_agent(), config, seed=game_seed, seat=1, count=66
+    )
     assert len(decided) == 66
     kinds = {entry.kind for entry in decided}
     assert {"searched", "effect order", "forced"} <= kinds

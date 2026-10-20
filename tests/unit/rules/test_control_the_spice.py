@@ -495,9 +495,13 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
     # The paid trash uses the generic optional-trash frame; catalogs that
     # did not hold it (no Bloodlines, Immortality or Scouts) gain it only
     # with Epic Game Mode, so every other catalog is unchanged.
-    trash = DomainAction(
+    whole_trash = DomainAction(
         action_id="trash_optional_card", actor=0, arguments=(("card_id", CONTROL),)
     )
+    # Stage B3d-2a: the optional-trash window offers its trash by the card's
+    # target row, so the whole template is in no catalog.
+    (trash,) = steps_for(whole_trash, effect_row=False)
+    assert trash.action_id == "choose_personal_card"
     # Stage B3a: the payment is the ``pay`` effect row of the card that
     # prints it (an effect without a target is one row).
     (pay,) = steps_for(DomainAction("pay_agent_card_spice", 0), "control_the_spice")
@@ -515,6 +519,8 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
             pay,
         ):
             assert codec.decode(codec.encode(action), 0) == action
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole_trash)
     base = {template.action_id for template in _codec(RulesetConfig()).catalog}
     assert "decline_optional_trash" not in base
     # The card's own effect row is an Epic catalog's alone, too.

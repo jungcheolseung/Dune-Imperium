@@ -144,7 +144,7 @@ def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> Ga
         for action in legal_graft_partner_actions(placed, 0)
         if dict(action.arguments)["card_id"] == partner_id
     )
-    return ENGINE.apply(placed, partner).state
+    return apply_whole(ENGINE, placed, partner).state
 
 
 def _apply(state: GameState, action_id: str, **arguments: str | int) -> GameState:
@@ -524,6 +524,15 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
 
     start = _state((THIS_TURN,), in_play=(EARLIER,))
     placed = _place(start, THIS_TURN, "accept_contract")
+    # Only Liet-Kynes opens this window, and its Intrigue card's row names
+    # the seat's leader face (stage B3d-2a).
+    placed = replace(
+        placed,
+        players=(
+            replace(placed.players[0], leader_id="liet_kynes"),
+            *placed.players[1:],
+        ),
+    )
     for intrigue in (True, False):
         state = replace(
             placed,
@@ -544,7 +553,7 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
             actor=0,
             arguments=(("card_id", THIS_TURN),),
         )
-        first = ENGINE.apply(state, trash)
+        first = apply_whole(ENGINE, state, trash)
         expired_now = any(
             event.kind == "agent_card_effect_expired" for event in first.events
         )
@@ -552,7 +561,7 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
         if intrigue:
             draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
             assert "agent_card_effect_expired" in {
-                event.kind for event in ENGINE.apply(first.state, draw).events
+                event.kind for event in apply_whole(ENGINE, first.state, draw).events
             }
 
 

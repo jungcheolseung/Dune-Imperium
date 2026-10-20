@@ -550,7 +550,8 @@ def test_the_standing_is_logged_once_however_the_rewards_are_paid() -> None:
     # v150 (stage B2, OQ-112): the winner's Influence icon is a row of its
     # reward window; answering it opens the choice.
     windowed = answer_reward_windows(engine, opened.state)
-    answered = engine.apply(
+    answered = apply_whole(
+        engine,
         windowed,
         DomainAction(
             action_id="choose_combat_reward_influence",
@@ -599,7 +600,8 @@ def test_the_engine_pays_the_next_recipient_only_after_the_winner_answers() -> N
     assert opened.state.players[2] == state.players[2]
     assert opened.state.intrigue_deck == state.intrigue_deck
 
-    answered = engine.apply(
+    answered = apply_whole(
+        engine,
         windowed,
         DomainAction(
             action_id="choose_combat_reward_influence",
@@ -1428,10 +1430,20 @@ def test_the_emperor_tracks_spy_follows_the_conflicts_own_spy_rewards() -> None:
     assert opened.decision_stack[-1].kind == "spy_placement"
     # With the supply empty the owner may recall a Spy first, or pass
     # ("you may first recall one of your Spies" [Main pp. 11, 20]).
-    assert {action.action_id for action in engine.legal_actions(opened, 0)} == {
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
         "decline_spy_placement",
         "recall_spy_for_placement",
     }
+    # Stage B3d-2a: the seat is shown the recall as one effect row, naming what
+    # opened the window, ahead of the post it recalls.
+    assert engine.legal_actions(opened, 0) == (
+        DomainAction(action_id="decline_spy_placement", actor=0),
+        DomainAction(
+            action_id="recall_spy",
+            actor=0,
+            arguments=(("printed", "emperor"), ("source", "influence_track")),
+        ),
+    )
 
 
 _ALL_SPIES_PLACED = (
@@ -1466,11 +1478,21 @@ def test_a_conflict_reward_spy_without_supply_may_recall_first(
     paid = _paid(state)
 
     assert paid.decision_stack[-1].kind == "combat_reward_spy"
-    actions = engine.legal_actions(paid, 0)
+    actions = engine.whole_actions(paid, 0)
     assert [action.action_id for action in actions] == [
         "decline_combat_reward_spy",
         *("recall_spy_for_combat_reward",) * 3,
     ]
+    # Stage B3d-2a: the seat is shown the recall as one effect row, naming the
+    # Conflict that paid the Spy, ahead of the post it recalls.
+    assert engine.legal_actions(paid, 0) == (
+        DomainAction(action_id="decline_combat_reward_spy", actor=0),
+        DomainAction(
+            action_id="recall_spy",
+            actor=0,
+            arguments=(("printed", conflict_id), ("source", "conflict")),
+        ),
+    )
 
     declined = apply_combat_reward_spy(paid, actions[0])
     assert declined.state.decision_stack == ()
