@@ -59,6 +59,10 @@ const SERVER_ERROR_KO_PATTERNS = [
     "나눠 지정한 탐색 좌석은 테이블 자리로 쓸 수 없습니다: $1"
   ],
   [
+    "^an older-network seat is not a table seat: (.+)$",
+    "옛 버전 망 좌석은 테이블 자리로 쓸 수 없습니다: $1"
+  ],
+  [
     "^a player name may have at most (\\d+) characters$",
     "이름은 $1자까지 쓸 수 있습니다"
   ],

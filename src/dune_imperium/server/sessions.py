@@ -61,6 +61,7 @@ from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
 from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
+    OLDER_PREFIX,
     SEARCH_PREFIX,
     SEARCH_VALUE_SEPARATOR,
     is_agent_kind,
@@ -2278,6 +2279,13 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
         if SEARCH_VALUE_SEPARATOR in assignment:
             raise SessionError(
                 f"a split search seat is not a table seat: {assignment!r}"
+            )
+        # So is an older-codec network's seat, the stage B retrain's teacher
+        # (``training.older_teacher``, 2026-10-21): whether it may sit at a
+        # table is still the user's decision.
+        if assignment.startswith(OLDER_PREFIX):
+            raise SessionError(
+                f"an older-network seat is not a table seat: {assignment!r}"
             )
 
 
