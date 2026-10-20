@@ -128,7 +128,11 @@ from dune_imperium.rules.graft_boxes import (
     tagged,
     untagged,
 )
-from dune_imperium.rules.immortality import OWED_ORIGIN_RESEARCH, RESEARCH_ICON_ORDER
+from dune_imperium.rules.immortality import (
+    OWED_ORIGIN_RESEARCH,
+    RESEARCH_ICON_ORDER,
+    legacy_research_icon_whole,
+)
 from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
@@ -136,13 +140,14 @@ from dune_imperium.rules.optional_trash import (
     INTRIGUE_PENDING_KEY,
     legacy_trash_whole,
 )
-from dune_imperium.rules.owed_draws import next_owed_draw
+from dune_imperium.rules.owed_draws import legacy_owed_draw_whole, next_owed_draw
 from dune_imperium.rules.pauses import SCOUTS_REWARD
 from dune_imperium.rules.reveal_turn import (
     GENERATED_PERSUASION_KEY,
     REVEAL_CHOICE_EFFECT_ACTIONS,
     SOURCE_ARGUMENT,
     SOURCED_REVEAL_ACTION_IDS,
+    legacy_reveal_gain_whole,
     reveal_card_identity,
     reveal_choice_effect_is_available,
     reveal_pending_gains,
@@ -403,8 +408,11 @@ def migrate_record(
             picks: list[MigratedStep] = []
             stepped = at
             # A held optional trash takes the trash icon the recording
-            # engine picked (stage B3c-2b).
-            target = _named_trash(at, held_step) or held_step
+            # engine picked (stage B3c-2b), a held research icon its space
+            # (stage B3e-1).
+            target = (
+                _named_trash(at, held_step) or _named_pick(at, held_step) or held_step
+            )
             if (
                 presents_steps(at)
                 and target not in engine.legal_actions(at, target.actor)
@@ -2149,13 +2157,15 @@ def _research_icon_order(
         return None
     legal = engine.whole_actions(state, decision.owner)
     icons = {
-        dict(action.arguments)["effect"]: action
+        dict(action.arguments)["effect"]
         for action in legal
         if action.action_id == "resolve_research_icon"
     }
     for icon in RESEARCH_ICON_ORDER:
         if icon in icons:
-            return icons[icon]
+            # The icon the older engine took (stage B3e-1: one per space).
+            taken = legacy_research_icon_whole(state, decision.owner, icon)
+            return taken if taken in legal else None
     owner = state.players[decision.owner]
     for deck, action_id in (
         (OWED_INTRIGUE, "draw_owed_intrigue"),
@@ -2166,7 +2176,7 @@ def _research_icon_order(
         # an older one is the record's own later step.
         index = next_owed_draw(owner, deck)
         if index is not None and owner.owed_draws[index][1] == OWED_ORIGIN_RESEARCH:
-            draw = DomainAction(action_id=action_id, actor=decision.owner)
+            draw = legacy_owed_draw_whole(state, decision.owner, action_id)
             return draw if draw in legal else None
     return None
 
@@ -2417,6 +2427,45 @@ def _optional_trash_icon(
     if decision.owner != step.actor:
         return None
     named = _named_trash(state, step)
+    if named is None or named not in engine.whole_actions(state, step.actor):
+        return None
+    return named
+
+
+NAMED_PICK: Final = "named_pick"
+
+
+def _named_pick(state: GameState, step: ReplayStep) -> DomainAction | None:
+    """A recorded research icon, triggered draw or Reveal gain that names no
+    entity (before codec v150), as the action naming the one the recording
+    engine took itself (stage B3e-1: ``legacy_research_icon_whole``,
+    ``legacy_owed_draw_whole``, ``legacy_reveal_gain_whole``); None for any
+    other step."""
+
+    if not isinstance(step, DomainAction) or "printed" in dict(step.arguments):
+        return None
+    if step.action_id == "resolve_research_icon":
+        icon = str(dict(step.arguments)["effect"])
+        return legacy_research_icon_whole(state, step.actor, icon)
+    if step.action_id in ("draw_owed_intrigue", "draw_owed_card"):
+        return legacy_owed_draw_whole(state, step.actor, step.action_id)
+    return legacy_reveal_gain_whole(state, step.actor, step)
+
+
+def _named_pick_bridge(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded research icon, triggered draw or Reveal gain, as the
+    action naming the entity whose effect it took (``_named_pick``)."""
+
+    if not isinstance(decision, PlayerDecision) or not isinstance(step, DomainAction):
+        return None
+    if decision.owner != step.actor:
+        return None
+    named = _named_pick(state, step)
     if named is None or named not in engine.whole_actions(state, step.actor):
         return None
     return named
@@ -2906,7 +2955,10 @@ def _owed_draw(
     owed = state.players[decision.owner].owed_draws
     if not owed:
         return None
-    draw = DomainAction(action_id=_OWED_DRAW_ACTIONS[owed[0][0]], actor=decision.owner)
+    # The press the recording engine took (stage B3e-1: one per entity).
+    draw = legacy_owed_draw_whole(
+        state, decision.owner, _OWED_DRAW_ACTIONS[owed[0][0]]
+    )
     return draw if draw in engine.whole_actions(state, decision.owner) else None
 
 
@@ -2953,7 +3005,11 @@ def _unpredictable_foe_draw(
             return None
     else:
         return None
-    draw = DomainAction(action_id="draw_reveal_intrigue", actor=player)
+    # The oldest waiting Intrigue gain, as the recording engine took it
+    # (stage B3e-1: one action per entity).
+    draw = legacy_reveal_gain_whole(
+        state, player, DomainAction(action_id="draw_reveal_intrigue", actor=player)
+    )
     return draw if draw in engine.whole_actions(state, player) else None
 
 
@@ -3381,7 +3437,7 @@ def _transports_card_first(
     owner = state.players[decision.owner]
     if not any(entry[1] == OWED_ORIGIN_CHOAM_TRANSPORTS for entry in owner.owed_draws):
         return None
-    draw = DomainAction(action_id="draw_owed_card", actor=decision.owner)
+    draw = legacy_owed_draw_whole(state, decision.owner, "draw_owed_card")
     return draw if engine.whole_actions(state, decision.owner) == (draw,) else None
 
 
@@ -3608,6 +3664,10 @@ BRIDGES: tuple[Bridge, ...] = (
     Bridge(
         OPTIONAL_TRASH_ICON, _optional_trash_icon, before_codec=150, rewrites=True
     ),
+    # Codec v150 (stage B3e-1, user decision 2026-10-20 "모두 나누자"): a
+    # research icon, a triggered draw and a Reveal gain name the entity that
+    # printed them; a recorded one takes the one the recording engine took.
+    Bridge(NAMED_PICK, _named_pick_bridge, before_codec=150, rewrites=True),
     Bridge("split_box_icon", _split_box_icon, before_codec=149, rewrites=True),
     Bridge("split_box_follow", _split_box_follow, before_codec=149, follows=True),
     Bridge("split_box_spy", _split_box_spy, before_codec=149, rewrites=True),

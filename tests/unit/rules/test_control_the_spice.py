@@ -529,7 +529,8 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
     assert "decline_optional_trash" not in base
     with pytest.raises(ValueError, match="not present"):
         _codec(RulesetConfig()).encode(decline)
-    # The card's own effect row is an Epic catalog's alone, too.
+    # The card's own effect rows are an Epic catalog's alone, too (its
+    # Reveal gain's row since stage B3e-1).
     assert not any(
         dict(template.arguments).get("printed") == "control_the_spice"
         for template in _codec(RulesetConfig()).catalog

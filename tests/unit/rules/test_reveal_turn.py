@@ -682,8 +682,14 @@ def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
         "card_trashed",
         "reveal_strength_gained",
     ]
+    # The draw is the trashed card's own action (stage B3e-1).
     drawn = apply_owed_draw(
-        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+        result.state,
+        DomainAction(
+            action_id="draw_owed_intrigue",
+            actor=0,
+            arguments=(("printed", "sardaukar_soldier"), ("source", "trigger")),
+        ),
     ).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
 
@@ -1237,8 +1243,18 @@ def test_treacherous_maneuver_reveal_tolerates_an_empty_intrigue_deck() -> None:
         _state(PlayerState(player_id=0, hand=(maneuver,))),
         DomainAction(action_id="reveal_turn", actor=0),
     )
+    # The Intrigue draw is the revealed Treacherous Maneuver's own action
+    # (stage B3e-1).
     result = apply_reveal_gain(
-        revealed.state, DomainAction(action_id="draw_reveal_intrigue", actor=0)
+        revealed.state,
+        DomainAction(
+            action_id="draw_reveal_intrigue",
+            actor=0,
+            arguments=(
+                ("printed", "treacherous_maneuver"),
+                ("source", "reveal_card"),
+            ),
+        ),
     )
 
     assert result.state.players[0].intrigue_cards == ()
@@ -4174,12 +4190,19 @@ def test_interstellar_trade_adds_an_earn_any_alliance_contract_at_once() -> None
     # Maula Pistol's 1; Interstellar Trade has no completed Contract yet.
     assert _reveal_frame_context(revealed)["persuasion"] == 1
 
+    # Shishakli printed the Fremen Influence, so the whole action names it
+    # (stage B3e-1).
     influence = next(
         action
-        for action in engine.legal_actions(revealed, 0)
+        for action in engine.whole_actions(revealed, 0)
         if action.action_id == "gain_reveal_faction_influence"
     )
-    result = engine.apply(revealed, influence)
+    assert dict(influence.arguments) == {
+        "faction": "fremen",
+        "printed": "shishakli",
+        "source": "reveal_card",
+    }
+    result = apply_whole(engine, revealed, influence)
 
     owner = result.state.players[0]
     assert owner.alliance_faction_ids == ("fremen",)

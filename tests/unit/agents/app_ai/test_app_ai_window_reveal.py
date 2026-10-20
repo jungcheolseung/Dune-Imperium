@@ -688,11 +688,36 @@ def test_automatic_gains_run_first_in_app_order() -> None:
         assert action is not None
         picks.append((action.action_id, dict(action.arguments)))
         state = apply(state, action)
+    # Each gain names the revealed card that printed it (stage B3e-1).
     assert picks == [
-        ("gain_reveal_resources", {"solari": 0, "spice": 1, "water": 0}),
-        ("recruit_reveal_troops", {}),
-        ("gain_reveal_resources", {"solari": 0, "spice": 0, "water": 1}),
-        ("draw_reveal_intrigue", {}),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 1,
+                "water": 0,
+                "printed": "rebel_supplier",
+                "source": "reveal_card",
+            },
+        ),
+        (
+            "recruit_reveal_troops",
+            {"printed": "junction_headquarters", "source": "reveal_card"},
+        ),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 0,
+                "water": 1,
+                "printed": "junction_headquarters",
+                "source": "reveal_card",
+            },
+        ),
+        (
+            "draw_reveal_intrigue",
+            {"printed": "treacherous_maneuver", "source": "reveal_card"},
+        ),
     ]
     assert reveal.reveal_window(make_run(state)) is not None
 
@@ -713,10 +738,32 @@ def test_smugglers_haven_spice_is_a_state_400_gain() -> None:
         assert action is not None
         picks.append((action.action_id, dict(action.arguments)))
         state = apply(state, action)
+    # Each gain names the revealed card that printed it (stage B3e-1).
     assert picks == [
-        ("recruit_reveal_troops", {}),
-        ("gain_reveal_resources", {"solari": 0, "spice": 0, "water": 1}),
-        ("gain_reveal_resources", {"solari": 0, "spice": 2, "water": 0}),
+        (
+            "recruit_reveal_troops",
+            {"printed": "junction_headquarters", "source": "reveal_card"},
+        ),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 0,
+                "water": 1,
+                "printed": "junction_headquarters",
+                "source": "reveal_card",
+            },
+        ),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 2,
+                "water": 0,
+                "printed": "smuggler_s_haven",
+                "source": "reveal_card",
+            },
+        ),
     ]
 
 

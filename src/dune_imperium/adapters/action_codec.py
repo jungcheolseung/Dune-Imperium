@@ -1,6 +1,6 @@
 """Stable integer encoding for structured Uprising actions."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Final
@@ -44,6 +44,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EachOpponentLosesTroop,
     OnTroopsLostAtConflictEnd,
     OpponentsMoveSpiesFromVisitedSpace,
+    PrintedRevealValue,
     RedirectSpiesOnTurnSpace,
 )
 from dune_imperium.content.uprising.imperium import (
@@ -87,6 +88,7 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
+    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -122,7 +124,7 @@ from dune_imperium.rules.immortality import (
     research_trash_spaces,
 )
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
-from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
+from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT, card_holds_reveal_value
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import optional_trash_tech_ids
@@ -1366,15 +1368,9 @@ def _effect_step_templates(
         elif spec.printed == Printed.INTRIGUE_WINDOW:
             named = tuple((None, window) for window in INTRIGUE_WINDOWS)
         elif spec.printed == Printed.RESEARCH_SPACE:
-            waiting = dict(template.arguments).get("effect")
-            if isinstance(spec.of, Mapping):
-                # A bonus's refusal (B3d-3): each space printing a bonus.
-                named = tuple((None, space) for space in spec.of)
-            else:
-                assert isinstance(waiting, str)
-                named = tuple(
-                    (None, space) for space in research_icon_spaces(waiting)
-                )
+            # A bonus's refusal (B3d-3): each space printing a bonus.
+            assert isinstance(spec.of, Mapping)
+            named = tuple((None, space) for space in spec.of)
         elif spec.printed == Printed.LEADER:
             own = _LEADER_ROW_FACES.get(template.action_id)
             named = tuple(
@@ -1485,8 +1481,6 @@ def _effect_step_templates(
             named = tuple((None, item) for item in items)
         elif spec.printed == Printed.SKILL_WINDOW:
             named = _skill_window_givers(config)
-        elif spec.printed == Printed.OWED_DRAW:
-            named = _owed_draw_printers(config, template.action_id, faces)
         elif spec.printed == Printed.TECH_PENDING:
             named = tuple(
                 (None, tile.tech_id)
@@ -1505,6 +1499,19 @@ def _effect_step_templates(
                 if template.action_id != "scouts_return_specimens"
                 or mission_takes_supply_troops(mission)
             )
+        elif spec.printed == Printed.NAMED and template.action_id in _OWED_DRAW_IDS:
+            named = _owed_draw_printers(config, template.action_id, faces)
+        elif spec.printed == Printed.NAMED and template.action_id == (
+            "resolve_research_icon"
+        ):
+            # A research space's icon, by each space printing it (B3e-1).
+            waiting = dict(template.arguments).get("effect")
+            assert isinstance(waiting, str)
+            named = tuple(
+                (Source.RESEARCH, space) for space in research_icon_spaces(waiting)
+            )
+        elif spec.printed == Printed.NAMED and template.action_id in _REVEAL_GAIN_OF:
+            named = _reveal_gain_printers(config, template.action_id, faces)
         elif spec.printed == Printed.NAMED:
             # An optional trash waiting on the turn, by every entity that
             # may print one (stage B3c-2b); a grafted turn's second card's
@@ -1637,11 +1644,94 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
     return {effect: tuple(found) for effect, found in cards.items()}
 
 
+_OWED_DRAW_IDS: Final = frozenset({"draw_owed_intrigue", "draw_owed_card"})
+# Whether a printed Reveal line gives the gain of each Reveal gain action
+# (stage B3e-1, ``reveal_turn.legal_reveal_gain_actions``).
+_REVEAL_GAIN_OF: Final[Mapping[str, Callable[[PersonalCardRevealEffect], bool]]] = {
+    "recruit_reveal_troops": lambda effect: effect.recruit_troops > 0,
+    "draw_reveal_intrigue": lambda effect: effect.draw_intrigue > 0,
+    "generate_reveal_specimens": lambda effect: effect.specimens > 0,
+    "advance_reveal_tleilaxu": lambda effect: effect.tleilaxu > 0,
+    "advance_reveal_research": lambda effect: effect.research > 0,
+    "gain_reveal_resources": lambda effect: bool(
+        effect.solari or effect.spice or effect.water
+    ),
+    "gain_reveal_faction_influence": lambda effect: (
+        effect.influence_faction is not None and effect.influence > 0
+    ),
+}
+
+
+def _reveal_gain_printers(
+    config: RulesetConfig, action_id: str, faces: tuple[str, ...]
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may print a Reveal gain of ``action_id`` (stage B3e-1,
+    ``effect_steps.reveal_gain_printer``): every card a seat of the ruleset
+    may own with such a Reveal line (not a spice a Reveal choice holds,
+    which the choice pays: Delivery Agreement, Priority Contracts), Hardy's
+    troop and Driven's spice, Panopticon's troop and Delivery Bay's Command
+    Solari, Muad'Dib's Intrigue card."""
+
+    gives = _REVEAL_GAIN_OF[action_id]
+    # (A Tleilaxu card's entry is an Imperium card's; Epic Game Mode's
+    # Control the Spice is a starting card.)
+    cards: tuple[
+        StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry, ...
+    ] = (
+        *_starting_entries(config),
+        *RESERVE_STACKS,
+        *imperium_cards_for_choam(
+            config.choam_module,
+            config.promo_cards,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+            immortality=config.immortality,
+        ),
+        *(tleilaxu_cards_for(config.promo_cards) if config.immortality else ()),
+    )
+    printers: list[tuple[Source | None, ActionValue | None]] = [
+        (Source.REVEAL_CARD, card_id)
+        for card_id in dict.fromkeys(
+            card.card.card_id
+            for card in cards
+            if any(
+                gives(effect)
+                and not (
+                    effect.spice > 0
+                    and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
+                )
+                for effect in card.reveal_effects
+            )
+        )
+    ]
+    if config.bloodlines:
+        skill_gains = {
+            "recruit_reveal_troops": lambda skill: skill.reveal_troops > 0,
+            "gain_reveal_resources": lambda skill: skill.reveal_spice > 0,
+        }
+        if action_id in skill_gains:
+            printers.extend(
+                (Source.COMMANDER, skill.skill_id)
+                for skill in SKILLS
+                if skill_gains[action_id](skill)
+            )
+    if config.tech_module:
+        tile = {
+            "recruit_reveal_troops": "panopticon",
+            "gain_reveal_resources": "delivery_bay",
+        }.get(action_id)
+        if tile is not None:
+            printers.append((Source.TECH, tile))
+    if action_id == "draw_reveal_intrigue" and "muad_dib" in faces:
+        printers.append((Source.LEADER, "muad_dib"))
+    return tuple(printers)
+
+
 def _owed_draw_printers(
     config: RulesetConfig, action_id: str, faces: tuple[str, ...]
 ) -> tuple[tuple[Source | None, ActionValue | None], ...]:
     """What may earn an owed draw of the row's deck (B3d-4,
-    ``effect_steps.owed_draw_printer``): an Intrigue card from the Bene
+    ``effect_steps.owed_origin_printer``): an Intrigue card from the Bene
     Gesserit track's 4, Imperial Birthright, the Tleilaxu track, c7r3, an
     acquire box or a card's "when trashed"; a card from c7r3, CHOAM
     Transports or Hungry for Spice."""

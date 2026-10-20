@@ -487,6 +487,13 @@ def test_research_bonus_with_an_unknown_choice_is_a_gap() -> None:
     assert W.research_bonus(_with_legal(run, mystery)) is None
 
 
+_ICON_SPACE_OF: dict[ResearchBonus, str] = {
+    ResearchBonus.TRASH_AND_SPECIMEN: "c3r3",
+    ResearchBonus.TLEILAXU_AND_SPECIMEN: "c3r5",
+    ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: "c7r3",
+}
+
+
 def _icon_window(
     bonus: ResearchBonus, icons: tuple[str, ...], **changes: object
 ) -> GameState:
@@ -494,7 +501,9 @@ def _icon_window(
     turn (Combat, the Arrakeen Scouts step)."""
 
     state, seat = _research_seat(**changes)
-    return state.push_decision(_bonus_frame(seat, bonus, "test", icons=icons))
+    # The research space that printed the icons (stage B3e-1).
+    source = f"test:research:{_ICON_SPACE_OF[bonus]}"
+    return state.push_decision(_bonus_frame(seat, bonus, source, icons=icons))
 
 
 def _icon_effects(run: DecisionRun) -> list[str]:
@@ -578,6 +587,9 @@ def test_research_bonus_takes_the_first_icon_of_an_icon_window(
     action = W.research_bonus(run)
     assert action is not None and action.action_id == "resolve_research_icon"
     assert _arg(action, "effect") == expected
+    # Each icon names the research space that printed it (stage B3e-1).
+    assert _arg(action, "printed") == _ICON_SPACE_OF[bonus]
+    assert _arg(action, "source") == "research"
 
 
 def test_research_advance_with_a_space_off_the_track_is_a_gap() -> None:

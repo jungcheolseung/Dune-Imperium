@@ -4559,6 +4559,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # (4) and the rows not yet in the catalog join (5).
         - 4
         + 5
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 25 rows join (the Bloodlines and promo cards'
+        # and Commander Skills' among them).
+        - 13
+        + 25
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

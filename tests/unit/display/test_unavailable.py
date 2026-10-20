@@ -1968,13 +1968,20 @@ def test_a_research_icon_window_adds_no_greyed_out_row() -> None:
     assert [row["key"] for row in _research_rows(_found(arrow))] == [
         "choice:research_bonus_trash"
     ]
+    # Each window's icons name the research space that printed them (stage
+    # B3e-1), so its source ends with that space.
     windows = {
-        ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: ("intrigue", "cards"),
-        ResearchBonus.TRASH_AND_SPECIMEN: ("specimen", "trash"),
-        ResearchBonus.TLEILAXU_AND_SPECIMEN: ("specimen", "tleilaxu"),
+        ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: (
+            "c7r3",
+            ("intrigue", "cards"),
+        ),
+        ResearchBonus.TRASH_AND_SPECIMEN: ("c3r3", ("specimen", "trash")),
+        ResearchBonus.TLEILAXU_AND_SPECIMEN: ("c3r5", ("specimen", "tleilaxu")),
     }
-    for bonus, icons in windows.items():
-        window = state.push_decision(_bonus_frame(0, bonus, "test", icons=icons))
+    for bonus, (space, icons) in windows.items():
+        window = state.push_decision(
+            _bonus_frame(0, bonus, f"test:research:{space}", icons=icons)
+        )
         legal = ENGINE.whole_actions(window, 0)
         assert {action.action_id for action in legal} == {"resolve_research_icon"}
         assert unavailable_choices(window, 0, legal) is None, bonus

@@ -58,7 +58,6 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import EFFECT_PICK_KEY, agent_box_cards
 from dune_imperium.core.state import GameState
-from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, Verb, printer_parts
 from dune_imperium.rules.frames import FrameKind, replace_top_frame, with_context
 
@@ -143,9 +142,9 @@ class Printed(StrEnum):
     # The Intrigue window the frame opens: ``plot`` on the seat's turn
     # frames, ``combat``, ``endgame`` (``intrigue.intrigue_window``).
     INTRIGUE_WINDOW = "intrigue_window"
-    # The research space whose icon waits (stage B3c-2a): a research
-    # window's own space, or on the turn frame the newest waiting icon of
-    # the whole action's kind -- the one ``apply_research_icon`` takes.
+    # The research space whose bonus window is on top (stage B3c-2a), for
+    # its refusal; a research icon names its space itself since stage B3e-1
+    # (``NAMED``).
     RESEARCH_SPACE = "research_space"
     # The Conflict card whose reward row the window pays (stage B3d-1): the
     # Conflict of this round, ``state.current_conflict_ids[-1]``.
@@ -160,7 +159,9 @@ class Printed(StrEnum):
     # own ``source`` and ``printed`` arguments (and ``printed_box`` for a
     # grafted turn's second card): an optional trash waiting on the turn,
     # whose printer the waiting item records (stage B3c-2b,
-    # ``optional_trash.trash_printer``).
+    # ``optional_trash.trash_printer``); since stage B3e-1 a research space's
+    # icon, a triggered draw waiting as its own step and a Reveal's gathered
+    # gain, one whole action per entity that printed one (decision 3).
     NAMED = "named"
     # Stage B3d-2a: the card whose acquire box opened the Spy window (its
     # ``acquisition_card_id``), by type.
@@ -183,9 +184,6 @@ class Printed(StrEnum):
     # Stage B3d-3: the Tech tile whose acquire Influence waits in a Tech
     # window's icons (``pending_tech_acquire_effects``).
     TECH_PENDING = "tech_pending"
-    # Stage B3d-4: what earned the owed draw a press takes now (its
-    # ``PlayerState.owed_draws`` origin; ``owed_draws.next_owed_draw``).
-    OWED_DRAW = "owed_draw"
 
 
 @dataclass(frozen=True, slots=True)
@@ -703,10 +701,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         targets=(("card_id", _C.INTRIGUE_CARD),),
     ),
     "pay_research_bonus": _spec(_V.PAY, _S.RESEARCH, "=c8r6"),
-    # One icon of a research space's pair; two spaces waiting the same icon
-    # resolve alike, so one row (decision 3), the newest first as before.
+    # One icon of a research space's pair, by the space that printed it: two
+    # spaces waiting the same icon are two rows (stage B3e-1, decision 3).
     "resolve_research_icon": _spec(
-        _RESEARCH_ICON_VERBS, _S.RESEARCH, Printed.RESEARCH_SPACE, icon="arg:effect"
+        _RESEARCH_ICON_VERBS, _S.REF, Printed.NAMED, icon="arg:effect"
     ),
     # Arrakis Planetologist's Intrigue card for a replaced sandworm.
     "draw_planetologist_intrigue": _spec(
@@ -923,13 +921,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _D, _S.SCOUTS, Printed.SCOUTS_ITEM, of=_V.ACQUIRE
     ),
     # --- The turn frame's last rows named by their source (stage B3d-4, D-3)
-    # A triggered draw waiting as its own step (OQ-106), one row per deck: the
-    # entity that earned the draw this press takes; draws of one deck resolve
-    # alike (decision 3).
-    "draw_owed_intrigue": _spec(
-        _V.DRAW, _S.TRIGGER, Printed.OWED_DRAW, icon="intrigue"
-    ),
-    "draw_owed_card": _spec(_V.DRAW, _S.TRIGGER, Printed.OWED_DRAW, icon="cards"),
+    # A triggered draw waiting as its own step (OQ-106), by the entity that
+    # earned it (``owed_origin_printer``): since stage B3e-1 one row per
+    # entity, not per deck (decision 3).
+    "draw_owed_intrigue": _spec(_V.DRAW, _S.REF, Printed.NAMED, icon="intrigue"),
+    "draw_owed_card": _spec(_V.DRAW, _S.REF, Printed.NAMED, icon="cards"),
     # The Emperor track's Influence 4 Spy [Main p. 7]; its post is the Spy
     # placement window's target.
     "place_track_spy": _spec(_V.PLACE_SPY, _S.INFLUENCE_TRACK, "=emperor"),
@@ -937,6 +933,27 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # prints it, the Sardaukar Commander itself.
     "recruit_sardaukar_commander": _spec(
         _V.RECRUIT, _S.COMMANDER, "=sardaukar_commander"
+    ),
+    # --- The Reveal's gathered gains (stage B3e-1, E-1) -----------------------
+    # A gain waiting on the Reveal (OQ-045) is its own effect row naming what
+    # printed it (``reveal_gain_printer``: a revealed card, a Skill, a Tech
+    # tile, the leader), a copy of the same card once (decision 3). A
+    # resource bundle or a Faction is its printer's own, so the row does not
+    # repeat it (``_PRINTER_IMPLIED``).
+    "recruit_reveal_troops": _spec(_V.RECRUIT, _S.REF, Printed.NAMED, icon="troops"),
+    "draw_reveal_intrigue": _spec(_V.DRAW, _S.REF, Printed.NAMED, icon="intrigue"),
+    "generate_reveal_specimens": _spec(
+        _V.GENERATE_SPECIMENS, _S.REF, Printed.NAMED, icon="specimen"
+    ),
+    "advance_reveal_tleilaxu": _spec(
+        _V.ADVANCE, _S.REF, Printed.NAMED, icon="tleilaxu"
+    ),
+    "advance_reveal_research": _spec(
+        _V.ADVANCE, _S.REF, Printed.NAMED, icon="research"
+    ),
+    "gain_reveal_resources": _spec(_V.GAIN, _S.REF, Printed.NAMED, icon="resources"),
+    "gain_reveal_faction_influence": _spec(
+        _V.GAIN_INFLUENCE, _S.REF, Printed.NAMED, icon="faction_influence"
     ),
 })
 
@@ -1025,6 +1042,13 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "scouts_call": _COUNT,
     "scouts_retreat": _COUNT,
     "scouts_take_card": (("slot", _C.OPTION),),
+})
+# A whole action's arguments its printer already decides (stage B3e-1): a
+# Reveal gain's resource bundle or Faction is the printed entity's own, so
+# its effect row names the entity alone.
+_PRINTER_IMPLIED: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
+    "gain_reveal_resources": ("solari", "spice", "water"),
+    "gain_reveal_faction_influence": ("faction",),
 })
 # Effects of ``STEP_SPECS`` a window also offers as its own, there by their
 # targets alone: a revealed card's Spy after a recall, a Tech tile bought, a
@@ -1206,8 +1230,6 @@ def printed_from_state(
         if giver.startswith(_TECH_PREFIX):
             return Source.TECH, giver.removeprefix(_TECH_PREFIX)
         return spec.source, _card_type(giver)
-    if rule == Printed.OWED_DRAW:
-        return owed_draw_printer(state, whole)
     if rule == Printed.TECH_PENDING:
         pending = dict(state.decision_stack[-1].context).get(_TECH_PENDING_KEY, "")
         assert isinstance(pending, str)
@@ -1237,10 +1259,6 @@ _REWARD_WINDOW_ICONS: Final[Mapping[str, str]] = MappingProxyType({
 
 
 # The deck of each owed draw row (``frames.OWED_INTRIGUE``, ``OWED_CARD``).
-_OWED_DECKS: Final[Mapping[str, str]] = MappingProxyType({
-    "draw_owed_intrigue": "intrigue",
-    "draw_owed_card": "card",
-})
 # What earned an owed draw, by its origin (``frames.hold_draw``): a research
 # space's bonus, an Influence track's 4, a Tech tile; Imperial Birthright
 # and Hungry for Spice are the seat's leader's.
@@ -1257,31 +1275,84 @@ _TRASH_ORIGIN: Final = "card:"
 _TLEILAXU_ORIGIN: Final = "tleilaxu_track"
 
 
-def owed_draw_printer(state: GameState, whole: DomainAction) -> tuple[Source, str]:
-    """The source and entity that earned the owed draw ``whole`` takes now
-    (``Printed.OWED_DRAW``). An origin with no kind of its own -- the
-    Tleilaxu track's space, a card's "when trashed" -- names the trigger
-    (``Source.TRIGGER``)."""
+def owed_origin_printer(
+    state: GameState, player: int, origin: str
+) -> tuple[Source, str]:
+    """The source and entity that earned an owed draw of ``origin`` (its
+    ``PlayerState.owed_draws`` origin; stage B3d-4, one row each since
+    B3e-1). An origin with no kind of its own -- the Tleilaxu track's space,
+    a card's "when trashed" -- names the trigger (``Source.TRIGGER``)."""
 
-    # The owed draws build on this module's callers.
-    from dune_imperium.rules.owed_draws import next_owed_draw
-
-    owner = state.players[whole.actor]
-    index = next_owed_draw(owner, _OWED_DECKS[whole.action_id])
-    if index is None:
-        raise ValueError(f"{whole} has no owed draw waiting")
-    origin = owner.owed_draws[index][1]
     if origin in _OWED_ORIGINS:
         return _OWED_ORIGINS[origin]
     if origin in _LEADER_ORIGINS:
-        return Source.LEADER, _leader_face(state, whole)
+        return Source.LEADER, _seat_leader_face(state, player)
     if origin.startswith(_ACQUIRE_ORIGIN):
         return Source.ACQUISITION, _card_type(origin.removeprefix(_ACQUIRE_ORIGIN))
     if origin.startswith(_TRASH_ORIGIN):
         return Source.TRIGGER, _card_type(origin.removeprefix(_TRASH_ORIGIN))
     if origin == _TLEILAXU_ORIGIN:
         return Source.TRIGGER, origin
-    raise ValueError(f"{whole}'s owed draw has an unknown origin {origin!r}")
+    raise ValueError(f"an owed draw has an unknown origin {origin!r}")
+
+
+# A Reveal gain's source (``reveal_turn.reveal_pending_gains``) that is no
+# revealed card: a Skill (``skill:<id>``), a Tech tile (``tech:<id>``), a
+# leader's Reveal ability (``leader_reveal:<ability>``).
+_SKILL_GAIN: Final = "skill:"
+_TECH_GAIN: Final = "tech:"
+_LEADER_GAIN: Final = "leader_reveal:"
+
+
+def reveal_gain_printer(
+    state: GameState, player: int, source: str
+) -> tuple[Source, str]:
+    """The source and entity that printed a Reveal gain waiting with
+    ``source`` (stage B3e-1): a revealed card by its type, a Skill (its
+    Commander's, ``Source.COMMANDER``), a Tech tile, the seat's leader."""
+
+    if source.startswith(_SKILL_GAIN):
+        return Source.COMMANDER, source.removeprefix(_SKILL_GAIN)
+    if source.startswith(_TECH_GAIN):
+        return Source.TECH, source.removeprefix(_TECH_GAIN)
+    if source.startswith(_LEADER_GAIN):
+        return Source.LEADER, _seat_leader_face(state, player)
+    return Source.REVEAL_CARD, _card_type(source)
+
+
+def research_icon_printer(source: str) -> tuple[Source, str]:
+    """The research space whose icon waits with ``source`` (it ends
+    ``:research:<space>``; stage B3e-1)."""
+
+    if ":research:" not in source:
+        raise ValueError(f"{source!r} names no research space")
+    return Source.RESEARCH, source.rsplit(":", 1)[1]
+
+
+def named_whole(
+    action_id: str,
+    player: int,
+    printer: tuple[Source, str],
+    *arguments: tuple[str, ActionValue],
+) -> DomainAction:
+    """A ``Printed.NAMED`` whole action naming ``printer`` (stage B3e-1)."""
+
+    source, printed = printer
+    return DomainAction(
+        action_id,
+        player,
+        tuple(sorted((*arguments, ("printed", printed), ("source", source.value)))),
+    )
+
+
+def whole_printer(whole: DomainAction) -> tuple[Source, str] | None:
+    """The printer a ``Printed.NAMED`` whole action names, if it names one."""
+
+    arguments = dict(whole.arguments)
+    source, printed = arguments.get("source"), arguments.get("printed")
+    if not isinstance(source, str) or not isinstance(printed, str):
+        return None
+    return Source(source), printed
 
 
 def window_icon(state: GameState) -> str:
@@ -1301,26 +1372,14 @@ def window_icon(state: GameState) -> str:
 
 
 def _research_space(state: GameState, whole: DomainAction) -> str:
-    """The research space whose waiting icon ``whole`` resolves
+    """The research space whose bonus window is on top
     (``Printed.RESEARCH_SPACE``): its source ends ``:research:<space>``."""
 
     frame = state.decision_stack[-1]
-    source: object = None
-    if frame.kind == FrameKind.RESEARCH_BONUS:
-        source = dict(frame.context).get("source")
-    else:
-        icon = dict(whole.arguments).get("effect")
-        source = next(
-            (
-                item[1]
-                for item in reversed(turn_rows.pending(frame))
-                if item[0] == turn_rows.RESEARCH_ICON and item[2] == icon
-            ),
-            None,
-        )
-    if not isinstance(source, str) or ":research:" not in source:
-        raise ValueError(f"{whole} has no waiting research icon")
-    return source.rsplit(":", 1)[1]
+    source = dict(frame.context).get("source")
+    if frame.kind != FrameKind.RESEARCH_BONUS or not isinstance(source, str):
+        raise ValueError(f"{whole} has no research bonus window")
+    return research_icon_printer(source)[1]
 
 
 # The Intrigue window each frame that offers a play opens (``intrigue_window``).
@@ -1335,10 +1394,14 @@ INTRIGUE_WINDOWS: Final = tuple(dict.fromkeys(_INTRIGUE_WINDOWS.values()))
 
 
 def _leader_face(state: GameState, whole: DomainAction) -> str:
-    owner = state.players[whole.actor]
+    return _seat_leader_face(state, whole.actor)
+
+
+def _seat_leader_face(state: GameState, player: int) -> str:
+    owner = state.players[player]
     leader = owner.leader_face_id or owner.leader_id
     if not leader:
-        raise ValueError(f"{whole} has no leader")
+        raise ValueError(f"seat {player} has no leader")
     return leader
 
 
@@ -1431,11 +1494,16 @@ def steps_for(
     arguments = dict(whole.arguments)
     box = arguments.pop("box", 0)
     if spec.printed == Printed.NAMED:
-        # The source and printed entity are the ref's (given here), and so
-        # is a grafted turn's second card (``printed_box``).
-        arguments.pop("source", None)
-        arguments.pop("printed", None)
+        # The source and printed entity are the ref's (given here, else the
+        # whole action's own), and so is a grafted turn's second card
+        # (``printed_box``).
+        named_source = arguments.pop("source", None)
+        named_printed = arguments.pop("printed", None)
+        if printed is None and isinstance(named_source, str):
+            printed, source = named_printed, Source(named_source)
         box = arguments.pop("printed_box", box)
+        for implied in _PRINTER_IMPLIED.get(whole.action_id, ()):
+            arguments.pop(implied, None)
     elif spec.printed == Printed.CONTRACT:
         arguments.pop("contract_id", None)
     elif not isinstance(spec.printed, Printed):

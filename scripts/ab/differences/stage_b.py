@@ -16,7 +16,7 @@ placement compares as its two moves: the state after both is the base's.
 import json
 import re
 from collections import Counter
-from typing import Any
+from typing import Any, Final
 
 from equivalence_rules import At, Rule, Step
 
@@ -42,7 +42,10 @@ from dune_imperium.rules.effect_steps import (
     without_pick,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.immortality import legacy_research_icon_whole
 from dune_imperium.rules.optional_trash import legacy_trash_whole
+from dune_imperium.rules.owed_draws import legacy_owed_draw_whole
+from dune_imperium.rules.reveal_turn import legacy_reveal_gain_whole
 
 _PLACEMENT = "agent_turn"
 _CARD_PICK = "choose_agent_card"
@@ -149,10 +152,18 @@ def _steps_in_base_form(old: Step, candidate: Step) -> None:
     at = _EFFECT_AT[0] if _EFFECT_AT else None
     if at is not None and presents_steps(at.state):
         # The turn frame shows its other effects effect first too (stage
-        # B3c-1): the base's whole actions as the candidate's rows.
-        expected = canonical(
-            present(at.state, tuple(_row_action(row) for row in expected))
+        # B3c-1): the base's whole actions as the candidate's rows, a split
+        # one once per entity that printed it (B3c-2b, B3e-1).
+        state = without_pick(at.state)
+        owner = at.decision.owner
+        wholes = _with_named_picks(
+            state,
+            owner,
+            _with_trash_icons(
+                state, owner, tuple(_row_action(row) for row in expected)
+            ),
         )
+        expected = canonical(present(at.state, wholes))
     if expected != rows:
         return
     candidate.decision[1] = list(base)
@@ -567,16 +578,17 @@ def _transports_moves(old: Step, at: At) -> tuple[Any, ...] | None:
     if not isinstance(at.decision, PlayerDecision):
         return None
     owner = at.decision.owner
-    # The card's whole action; since stage B3d-4 the seat takes it by its
-    # ``draw`` row naming CHOAM Transports.
-    draw = DomainAction(action_id="draw_owed_card", actor=owner)
+    # The card's whole action, naming the entity that earned it (stage
+    # B3e-1); since stage B3d-4 the seat takes it by its ``draw`` row naming
+    # CHOAM Transports.
+    draw = legacy_owed_draw_whole(at.state, owner, "draw_owed_card")
     wholes = at.engine.whole_actions(at.state, owner)
     if old.step[0] == "a" and old.step[1] == "draw_owed_card":
-        if taken[owner] > 0 and draw not in wholes:
+        if taken[owner] > 0 and (draw is None or draw not in wholes):
             taken[owner] -= 1
             return ()
         return None
-    if wholes != (draw,) or not any(
+    if draw is None or wholes != (draw,) or not any(
         entry[1] == "choam_transports" for entry in at.state.players[owner].owed_draws
     ):
         return None
@@ -916,6 +928,76 @@ def _with_trash_icons(
     return tuple(expanded)
 
 
+# Stage B3e-1 (user decision 2026-10-20, "모두 나누자"): a research icon, a
+# triggered draw and a Reveal gain name the entity that printed them, one
+# whole action each, where the base offered one per icon, deck, gain kind,
+# resource bundle or Faction and took the newest icon or the oldest draw or
+# gain itself (``agents.engine_order``).
+_NAMED_PICKS: Final = frozenset({
+    "resolve_research_icon",
+    "draw_owed_intrigue",
+    "draw_owed_card",
+    "recruit_reveal_troops",
+    "draw_reveal_intrigue",
+    "generate_reveal_specimens",
+    "advance_reveal_tleilaxu",
+    "advance_reveal_research",
+    "gain_reveal_resources",
+    "gain_reveal_faction_influence",
+})
+
+
+def _unnamed(whole: DomainAction) -> tuple[str, tuple[tuple[str, Any], ...]] | None:
+    """A split whole action's base key: its id and arguments but the entity
+    it names; None for any other action."""
+
+    if whole.action_id not in _NAMED_PICKS:
+        return None
+    return whole.action_id, tuple(
+        (name, value)
+        for name, value in whole.arguments
+        if name not in ("printed", "source")
+    )
+
+
+def _named_pick(state: Any, whole: DomainAction) -> DomainAction | None:
+    """The base's split whole action naming no entity, as the candidate's
+    action naming the one the base took itself; None for any other."""
+
+    if _unnamed(whole) is None or "printed" in dict(whole.arguments):
+        return None
+    if whole.action_id == "resolve_research_icon":
+        icon = str(dict(whole.arguments)["effect"])
+        return legacy_research_icon_whole(state, whole.actor, icon)
+    if whole.action_id in ("draw_owed_intrigue", "draw_owed_card"):
+        return legacy_owed_draw_whole(state, whole.actor, whole.action_id)
+    return legacy_reveal_gain_whole(state, whole.actor, whole)
+
+
+def _with_named_picks(
+    state: Any, owner: int, wholes: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """The base's whole actions as the candidate offers them: a split one
+    once per entity that printed it (``_NAMED_PICKS``)."""
+
+    if all(_unnamed(whole) is None for whole in wholes):
+        return wholes
+    offered = _RULES.whole_actions(state, owner)
+    expanded: list[DomainAction] = []
+    for whole in wholes:
+        key = _unnamed(whole)
+        named = tuple(
+            action
+            for action in offered
+            if key is not None
+            and "printed" not in dict(whole.arguments)
+            and "printed" in dict(action.arguments)
+            and _unnamed(action) == key
+        )
+        expanded.extend(named or (whole,))
+    return tuple(expanded)
+
+
 def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
     """The base's whole action as the candidate's steps."""
 
@@ -923,8 +1005,9 @@ def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
     whole = _whole(old.step)
     if whole is None or not presents_steps(at.state):
         return None
+    named = _named_pick(at.state, whole) or _named_trash(at.state, whole)
     try:
-        return path_of(without_pick(at.state), _named_trash(at.state, whole))
+        return path_of(without_pick(at.state), named)
     except ValueError:
         # A whole whose place this state cannot name (stage B3d-4: the
         # base's own CHOAM Transports card draw once the candidate took the
@@ -991,7 +1074,12 @@ def _effect_steps_in_base_form(old: Step, candidate: Step) -> None:
         )
         for row in base
     )
-    shown = _with_trash_icons(without_pick(at.state), at.decision.owner, wholes)
+    state = without_pick(at.state)
+    shown = _with_named_picks(
+        state,
+        at.decision.owner,
+        _with_trash_icons(state, at.decision.owner, wholes),
+    )
     if canonical(present(at.state, shown)) != candidate.decision[1]:
         return
     from engine_equivalence import _page

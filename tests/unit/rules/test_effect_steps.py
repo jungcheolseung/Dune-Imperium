@@ -16,6 +16,7 @@ from tests.unit.rules.test_board_effects import _espionage_state
 from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core import DomainAction, GameState
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.effect_steps import (
     first_step,
@@ -403,12 +404,23 @@ def _research_row(verb: str, space_id: str, **extra: str) -> DomainAction:
     return DomainAction(verb, 0, tuple(sorted(arguments.items())))
 
 
-def test_a_research_icon_row_names_its_space_the_newest_first() -> None:
+def _icon_whole(icon: str, space_id: str) -> DomainAction:
+    return DomainAction(
+        "resolve_research_icon",
+        0,
+        (("effect", icon), ("printed", space_id), ("source", "research")),
+    )
+
+
+def test_a_research_icon_row_names_its_space_each_its_own() -> None:
     # Stage B3c-2a (docs/stage-b-plan.md "B3c-2 세부 설계"): a research
-    # pair's icon is printed on its research space. Two spaces waiting the
-    # same icon resolve alike, so one row names the newest, as
-    # ``apply_research_icon`` takes it (decision 3).
+    # pair's icon is printed on its research space. Stage B3e-1 (user
+    # decision 2026-10-20, "그래 모두 나누자"; decision 3): two spaces waiting
+    # the same icon are two actions, each naming its own space, where one row
+    # took the newest; the scripted agents still see the newest alone, as the
+    # older engine took it.
     from dune_imperium.adapters import ActionCodec
+    from dune_imperium.agents.engine_order import older_engine_wholes
     from dune_imperium.rules import turn_rows
 
     icon = turn_rows.RESEARCH_ICON
@@ -417,26 +429,36 @@ def test_a_research_icon_row_names_its_space_the_newest_first() -> None:
         (icon, _space_source("c3r5"), "tleilaxu"),
         (icon, _space_source("c7r5"), "specimen"),
     )
-    specimen = DomainAction("resolve_research_icon", 0, (("effect", "specimen"),))
     newest = _research_row("generate_specimens", "c7r5", icon="specimen")
-    advance = _research_row("advance", "c3r5", icon="tleilaxu")
-    assert path_of(state, specimen) == (newest,)
-    offered = ENGINE.legal_actions(state, 0)
-    assert {newest, advance} <= set(offered)
-    assert specimen not in offered and specimen in ENGINE.whole_actions(state, 0)
-    codec = ActionCodec(state.config)
     older = _research_row("generate_specimens", "c3r3", icon="specimen")
+    advance = _research_row("advance", "c3r5", icon="tleilaxu")
+    assert path_of(state, _icon_whole("specimen", "c7r5")) == (newest,)
+    assert path_of(state, _icon_whole("specimen", "c3r3")) == (older,)
+    wholes = ENGINE.whole_actions(state, 0)
+    icons = [whole for whole in wholes if whole.action_id == "resolve_research_icon"]
+    assert icons == [
+        _icon_whole("specimen", "c7r5"),
+        _icon_whole("specimen", "c3r3"),
+        _icon_whole("tleilaxu", "c3r5"),
+    ]
+    offered = ENGINE.legal_actions(state, 0)
+    assert {newest, older, advance} <= set(offered)
+    codec = ActionCodec(state.config)
     for row in (newest, advance, older):
         codec.encode(row)
+    shown = older_engine_wholes(state, 0, wholes)
+    assert _icon_whole("specimen", "c7r5") in shown
+    assert _icon_whole("specimen", "c3r3") not in shown
 
-    taken = ENGINE.apply(state, newest)
-    assert taken.state == apply_whole(ENGINE, state, specimen).state
+    # The older space's icon first: it is that space's, and the newest waits.
+    taken = ENGINE.apply(state, older)
+    whole = _icon_whole("specimen", "c3r3")
+    assert taken.state == apply_whole(ENGINE, state, whole).state
     assert [event.event_id for event in taken.events] == [
-        "round:1:player:0:research:c7r5:specimens"
+        "round:1:player:0:research:c3r3:specimens"
     ]
-    # The older one is still waiting, named by its own space.
-    assert path_of(taken.state, specimen) == (older,)
-    assert older in ENGINE.legal_actions(taken.state, 0)
+    assert newest in ENGINE.legal_actions(taken.state, 0)
+    assert older not in ENGINE.legal_actions(taken.state, 0)
 
 
 @pytest.mark.parametrize(
@@ -1093,13 +1115,11 @@ def test_a_ghola_copying_holy_war_names_itself_in_the_opponents_windows(
 def test_the_turns_last_source_named_rows_name_their_source() -> None:
     # Stage B3d-4 (D-3): the Emperor track's Spy and the Commander recruit
     # are effect rows naming what prints them, and an owed draw names what
-    # earned the draw its press takes -- the oldest immediate one of its
-    # deck, else its oldest (``owed_draws.next_owed_draw``) -- by its kind,
-    # or the trigger where it has none (the Tleilaxu track's space).
+    # earned it by its kind, or the trigger where it has none (the Tleilaxu
+    # track's space); since stage B3e-1 one action per entity.
     from dune_imperium import RulesetConfig
     from dune_imperium.rules.action_shapes import Source
-    from dune_imperium.rules.effect_steps import owed_draw_printer
-    from dune_imperium.rules.frames import replace_player
+    from dune_imperium.rules.effect_steps import owed_origin_printer
 
     assert steps_for(DomainAction("place_track_spy", 0)) == (
         DomainAction(
@@ -1113,30 +1133,27 @@ def test_the_turns_last_source_named_rows_name_their_source() -> None:
             (("printed", "sardaukar_commander"), ("source", "commander")),
         ),
     )
-    base = ENGINE.reset(RulesetConfig(), 0)
-    owner = replace(
-        base.players[0],
-        owed_draws=(
-            ("card", "hungry_for_spice", "a"),
-            ("card", "choam_transports", "b"),
-            ("intrigue", "tleilaxu_track", "c"),
-            ("intrigue", "acquire:imperium:overthrow:0", "d"),
-        ),
+    state = ENGINE.reset(RulesetConfig(), 0)
+    assert owed_origin_printer(state, 0, "choam_transports") == (
+        Source.TECH,
+        "choam_transports",
     )
-    state = replace(base, players=replace_player(base.players, owner))
-    card = owed_draw_printer(state, DomainAction("draw_owed_card", 0))
-    assert card == (Source.TECH, "choam_transports")  # immediate first
-    intrigue = owed_draw_printer(state, DomainAction("draw_owed_intrigue", 0))
-    assert intrigue == (Source.ACQUISITION, "overthrow")  # immediate first
-    later = replace(owner, owed_draws=owner.owed_draws[2:3])
-    state = replace(base, players=replace_player(base.players, later))
-    assert owed_draw_printer(state, DomainAction("draw_owed_intrigue", 0)) == (
+    assert owed_origin_printer(state, 0, "acquire:imperium:overthrow:0") == (
+        Source.ACQUISITION,
+        "overthrow",
+    )
+    assert owed_origin_printer(state, 0, "tleilaxu_track") == (
         Source.TRIGGER,
         "tleilaxu_track",
     )
-    row = steps_for(
-        DomainAction("draw_owed_intrigue", 0), "tleilaxu_track", Source.TRIGGER
+    leader = state.players[0].leader_face_id or state.players[0].leader_id
+    assert owed_origin_printer(state, 0, "hungry_for_spice") == (Source.LEADER, leader)
+    whole = DomainAction(
+        "draw_owed_intrigue",
+        0,
+        (("printed", "tleilaxu_track"), ("source", "trigger")),
     )
+    row = steps_for(whole)
     assert row == (
         DomainAction(
             "draw",
@@ -1148,3 +1165,156 @@ def test_the_turns_last_source_named_rows_name_their_source() -> None:
             ),
         ),
     )
+
+
+def _owed(printed: str, source: str, deck: str = "intrigue") -> DomainAction:
+    action_id = "draw_owed_intrigue" if deck == "intrigue" else "draw_owed_card"
+    return DomainAction(action_id, 0, (("printed", printed), ("source", source)))
+
+
+def test_a_triggered_draw_is_one_action_per_entity_that_earned_it() -> None:
+    # Stage B3e-1 (user decision 2026-10-20, "그래 모두 나누자"; decision 3 of
+    # docs/stage-b-plan.md): two draws of one deck that different entities
+    # earned are two actions, each taking its own (OQ-106 held them as one
+    # action per deck taking the oldest). The scripted agents and older
+    # records keep the older engine's press, the oldest.
+    from tests.unit.rules.test_owed_draws import _at_desert_tactics, _first_turn
+
+    from dune_imperium.agents.engine_order import older_engine_wholes
+    from dune_imperium.records.migration import _named_pick
+    from dune_imperium.rules.frames import OWED_INTRIGUE, hold_draw
+
+    state = _first_turn()
+    soldier = state.players[0].discard_pile[0]
+    placed = _at_desert_tactics(state)
+    owner = hold_draw(placed.players[0], OWED_INTRIGUE, "tleilaxu_track", "test:a")
+    owner = hold_draw(owner, OWED_INTRIGUE, f"card:{soldier}", "test:b")
+    waiting = replace(placed, players=(owner, *placed.players[1:]))
+
+    track = _owed("tleilaxu_track", "trigger")
+    trash = _owed("sardaukar_soldier", "trigger")
+    wholes = ENGINE.whole_actions(waiting, 0)
+    assert [w for w in wholes if w.action_id == "draw_owed_intrigue"] == [track, trash]
+    rows = ENGINE.legal_actions(waiting, 0)
+    assert first_step(waiting, trash) in rows and first_step(waiting, track) in rows
+    assert older_engine_wholes(waiting, 0, wholes).count(trash) == 0
+    unnamed = DomainAction("draw_owed_intrigue", 0)
+    assert _named_pick(waiting, unnamed) == track
+
+    drawn = apply_whole(ENGINE, waiting, trash).state
+    assert [entry[1] for entry in drawn.players[0].owed_draws] == ["tleilaxu_track"]
+    assert len(drawn.players[0].intrigue_cards) == len(owner.intrigue_cards) + 1
+
+
+def test_an_immediate_draw_is_offered_alone_by_its_own_entity() -> None:
+    # OQ-106 "곧바른 단계": while an immediate draw waits it is the owner's
+    # only action; split per entity (stage B3e-1) only the immediate ones are.
+    from tests.unit.rules.test_owed_draws import _at_desert_tactics, _first_turn
+
+    from dune_imperium.rules.frames import OWED_INTRIGUE, hold_draw
+
+    placed = _at_desert_tactics(_first_turn())
+    owner = hold_draw(placed.players[0], OWED_INTRIGUE, "tleilaxu_track", "test:a")
+    owner = hold_draw(owner, OWED_INTRIGUE, "bene_gesserit_4", "test:b")
+    waiting = replace(placed, players=(owner, *placed.players[1:]))
+    assert ENGINE.whole_actions(waiting, 0) == (
+        _owed("bene_gesserit", "influence_track"),
+    )
+
+
+def _reveal_gains(*entries: str) -> GameState:
+    """Seat 0's Reveal frame with ``entries`` (``kind|payload|source``) as
+    its waiting gains, oldest first."""
+
+    from tests.unit.rules.test_reveal_choices import STARTERS
+
+    from dune_imperium.rules.frames import FrameKind, replace_top_frame, with_context
+    from dune_imperium.rules.reveal_turn import REVEAL_GAINS_KEY
+
+    state = _reveal_frame_state(STARTERS[:5])
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.REVEAL
+    context = {**dict(frame.context), REVEAL_GAINS_KEY: ",".join(entries)}
+    return replace_top_frame(state, with_context(frame, context))
+
+
+def _gain(action_id: str, printed: str, source: str, **extra: int) -> DomainAction:
+    arguments: dict[str, ActionValue] = {"printed": printed, "source": source, **extra}
+    return DomainAction(action_id, 0, tuple(sorted(arguments.items())))
+
+
+def test_a_reveal_gain_is_one_action_per_entity_that_printed_it() -> None:
+    # Stage B3e-1 (E-1, user decision 2026-10-20 "그래 모두 나누자"; decision
+    # 3): a gain waiting on the Reveal (OQ-045) is its own effect row naming
+    # what printed it -- a revealed card, a Skill, a Tech tile -- a copy of
+    # the same card once; a bundle is its printer's own, so the row does not
+    # repeat it. Where one action per kind, bundle and Faction took the
+    # oldest, the scripted agents and older records still take that one.
+    from dune_imperium.agents.engine_order import older_engine_wholes
+    from dune_imperium.records.migration import _named_pick
+
+    state = _reveal_gains(
+        "troops|1|imperium:overthrow:0",
+        "troops|2|imperium:i_believe:0",
+        "resources|0/1/0|reserve:the_spice_must_flow:0",
+        "resources|0/2/0|imperium:northern_watermaster:0",
+        "resources|0/1/0|imperium:rebel_supplier:0",
+        "resources|0/1/0|reserve:the_spice_must_flow:1",
+        "resources|0/1/0|skill:driven",
+        "troops|1|tech:panopticon",
+    )
+    spice = {"solari": 0, "spice": 1, "water": 0}
+    troops = [
+        _gain("recruit_reveal_troops", "overthrow", "reveal_card"),
+        _gain("recruit_reveal_troops", "i_believe", "reveal_card"),
+        _gain("recruit_reveal_troops", "panopticon", "tech"),
+    ]
+    resources = [
+        _gain("gain_reveal_resources", "the_spice_must_flow", "reveal_card", **spice),
+        _gain("gain_reveal_resources", "rebel_supplier", "reveal_card", **spice),
+        _gain("gain_reveal_resources", "driven", "commander", **spice),
+        _gain(
+            "gain_reveal_resources",
+            "northern_watermaster",
+            "reveal_card",
+            solari=0,
+            spice=2,
+            water=0,
+        ),
+    ]
+    wholes = ENGINE.whole_actions(state, 0)
+    gains = [w for w in wholes if w in (*troops, *resources)]
+    assert gains == [*troops, *resources]
+    assert first_step(state, resources[0]) == DomainAction(
+        "gain",
+        0,
+        (
+            ("icon", "resources"),
+            ("printed", "the_spice_must_flow"),
+            ("source", "reveal_card"),
+        ),
+    )
+    assert first_step(state, troops[1]) == DomainAction(
+        "recruit",
+        0,
+        (("icon", "troops"), ("printed", "i_believe"), ("source", "reveal_card")),
+    )
+    rows = set(ENGINE.legal_actions(state, 0))
+    assert {first_step(state, whole) for whole in gains} <= rows
+    shown = older_engine_wholes(state, 0, wholes)
+    assert [w for w in shown if w in gains] == [troops[0], resources[0], resources[3]]
+    assert _named_pick(state, DomainAction("recruit_reveal_troops", 0)) == troops[0]
+    bundle = DomainAction(
+        "gain_reveal_resources", 0, tuple(sorted(spice.items()))
+    )
+    assert _named_pick(state, bundle) == resources[0]
+
+    # I Believe's two troops before Overthrow's one; the two copies of The
+    # Spice Must Flow are one action, taken oldest first.
+    recruited = apply_whole(ENGINE, state, troops[1]).state
+    assert recruited.players[0].troops_supply == state.players[0].troops_supply - 2
+    once = apply_whole(ENGINE, recruited, resources[0]).state
+    assert resources[0] in ENGINE.whole_actions(once, 0)
+    twice = apply_whole(ENGINE, once, resources[0]).state
+    assert resources[0] not in ENGINE.whole_actions(twice, 0)
+    assert twice.players[0].resources.spice == state.players[0].resources.spice + 2

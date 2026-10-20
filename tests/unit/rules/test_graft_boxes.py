@@ -1166,7 +1166,9 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     # 100 ``decline`` / ``confirm_empty`` rows that name the effect they answer;
     # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go by
     # their effect rows (draw_owed_intrigue and place_track_spy leave, four
-    # rows join).
+    # rows join); v150 (stage B3e-1): a Reveal gain goes by the entity that
+    # printed it (the 13 whole templates of the seven gain ids leave, the 16
+    # rows naming their printers join).
     assert ActionCodec(RulesetConfig()).size == (
         2917
         + 14
@@ -1177,6 +1179,7 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
         + (54 - 1466)
         + (100 - 37)
         + (4 - 2)
+        + (16 - 13)
     )
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)

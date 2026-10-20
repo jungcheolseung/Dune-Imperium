@@ -430,8 +430,16 @@ def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> No
     assert DomainAction(action_id="finish_reveal", actor=0) not in (
         ENGINE.legal_actions(result.state, 0)
     )
+    # Hungry for Spice is the leader's, so the draw names the leader (stage
+    # B3e-1).
     drawn = apply_whole(
-        ENGINE, result.state, DomainAction(action_id="draw_owed_card", actor=0)
+        ENGINE,
+        result.state,
+        DomainAction(
+            action_id="draw_owed_card",
+            actor=0,
+            arguments=(("printed", "steersman_y_rkoon"), ("source", "leader")),
+        ),
     )
     assert drawn.state.players[0].deck == ()
     assert [

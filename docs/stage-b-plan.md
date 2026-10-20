@@ -637,7 +637,8 @@ Agent 칸·Conflict 이동(OQ-068)으로 판단한다(줄은 그 Agent 차례 �
   `choose_faction`, `trash_intrigue_for_research_bonus` → `trash(source=research, printed=c7r3)` → `choose_intrigue_card`,
   `pay_research_bonus` → `pay(source=research, printed=c8r6)`. 연구 아이콘 `resolve_research_icon(effect)`은 `generate_specimens`/`advance`
   (`source=research`, `icon`=아이콘, `printed`=처리기가 집을 기다리는 효과의 연구 칸 — 같은 아이콘이 두 칸에서 함께 기다리면 결과가 같으므로
-  결정 3대로 줄 하나, 지금처럼 새 것부터). Planetologist의 Intrigue `draw_planetologist_intrigue`는 그 능력을 가진 지도자가 인쇄했다
+  결정 3대로 줄 하나, 지금처럼 새 것부터. **B3e-1에서 바뀜:** 칸마다 한 줄 — 결정 3의 원문은 같은 카드 사본만 합치고, 다른 칸을 합친 것은
+  내 해석이었다, `docs/lessons.md` 2026-10-20). Planetologist의 Intrigue `draw_planetologist_intrigue`는 그 능력을 가진 지도자가 인쇄했다
   (`draw(source=leader, printed=<지도자 면>, icon=intrigue)`). 이 id들은 창(`research_bonus`·`optional_trash`)도 온 행동으로 내므로 codec에
   옛 template이 남는다(B3d까지). 빚진 뽑기(`draw_owed_*`)와 황제 트랙 Spy(`place_track_spy`)는 대상 없는 "그 자체가 첫 단계"인 행이라
   그대로 둔다(B3d의 남은 출처별 이름에서).
@@ -765,7 +766,8 @@ Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal fram
   아이콘·갈래). 지금 `decline_gather_intelligence`·`decline_reveal_sandworm` 같은 차례 frame의 거절도 같다. 처리기 없는 죽은 id 8종은
   지운다. 턴·창을 끝내는 `finish_*`·`pass_*`는 효과의 거절이 아니므로 그대로. **추천: 이대로**(계획 원안).
 - **D-3 남은 출처별 이름(D):** 효과 줄로 — 빚진 뽑기 `draw(source=<기원 종류>, printed=<기원>, icon=intrigue|cards)`, 덱마다 한 줄,
-  `printed`는 처리기가 집을 그 항목의 기원(같은 덱 뽑기는 결과가 같아 줄 하나 — 결정 3, B3c-2a의 연구 아이콘과 같다); 황제 트랙 Spy
+  `printed`는 처리기가 집을 그 항목의 기원(같은 덱 뽑기는 결과가 같아 줄 하나 — 결정 3, B3c-2a의 연구 아이콘과 같다. **B3e-1에서 바뀜:**
+  기원마다 한 줄 — 결정 3의 원문을 넘은 내 해석이었다); 황제 트랙 Spy
   `place_spy(source=influence_track, printed=emperor)`(초소는 그 뒤 Spy 창의 대상); 소위원회 `join(source=scouts, printed=<High Council
   칸>)`; Commander 모집 `recruit(source=commander, printed=sardaukar_commander)`. **추천: 이대로.**
 - **D-4 뜻이 둘인 id(E):** (가)에서는 저절로 풀린다 — Holy War 창은 대상 줄 `choose_unit(zone[, commanders])`(새 대상 종류), Skill 창은
@@ -963,11 +965,11 @@ D-3대로 차례 frame에 남은 출처별 이름이 효과 줄이 된다(소위
 | `place_track_spy` | `place_spy(source=influence_track, printed=emperor)` (초소는 그 뒤 Spy 창의 대상) |
 | `recruit_sardaukar_commander` | `recruit(source=commander, printed=sardaukar_commander)` |
 
-- **빚진 뽑기의 기원:** 새 `Printed.OWED_DRAW`(`effect_steps.owed_draw_printer`)가 처리기가 집을 항목 — 그 덱의 가장 오래된 즉시
+- **빚진 뽑기의 기원:** 새 `Printed.OWED_DRAW`(`effect_steps.owed_draw_printer`; B3e-1에서 `owed_origin_printer`와 `Printed.NAMED`로 바뀜)가 처리기가 집을 항목 — 그 덱의 가장 오래된 즉시
   것, 없으면 가장 오래된 것(`owed_draws.next_owed_draw`) — 의 기원을 읽는다: c7r3 `research|c7r3`, Bene Gesserit 4
   `influence_track|bene_gesserit`, CHOAM Transports `tech|choam_transports`, Imperial Birthright·Hungry for Spice `leader|<지도자 면>`,
   획득 상자 `acquisition|<산 카드>`, 카드의 "trash되면" `trigger|<그 카드>`, Tleilaxu 트랙 `trigger|tleilaxu_track`. 같은 덱의 뽑기는
-  결과가 같아 덱마다 줄 하나다(결정 3). 기원은 모두 공개된 것이다(트랙·산 카드·trash한 카드·타일·지도자).
+  결과가 같아 덱마다 줄 하나다(결정 3; B3e-1에서 기원마다 한 줄로 바뀜). 기원은 모두 공개된 것이다(트랙·산 카드·trash한 카드·타일·지도자).
 - **임무 창 옆의 표본 반환:** 창의 제 효과(참여) 옆에 함께 나오는 다른 효과라(D-1 (가)의 갈래) 효과 줄
   `return_specimen(source=scouts, printed=<임무>)`(창을 연 임무 — 먼저 회수 갈래가 창을 연 것을 이름 붙이는 꼴) → `choose_count`.
   Scouts 모집 걸음의 반환은 그 창의 제 효과라 그대로 개수 대상 줄뿐이다(`WINDOW_OWN`). 이로써 `OFFERED_AS_WHOLE`이 없어졌다 —
@@ -1009,15 +1011,52 @@ D-3대로 차례 frame에 남은 출처별 이름이 효과 줄이 된다(소위
     그대로. 결과가 다르면 따로: 병력 2(I Believe)와 병력 1은 두 줄(지금은 한 줄로 오래된 것부터), 자원은 묶음마다·진영은 진영마다(지금과
     같음), 연구·Tleilaxu는 한 번에 1칸이라 한 줄.
   - (다) 지금 선택지 그대로(종류마다 한 줄), `printed`는 처리기가 집을 항목. 병력 줄 하나가 그 순간 대기 순서에 따라 1명도 2명도 된다.
-  - **추천: (나)** — 이미 정해 쓰는 규칙("결과가 같으면 줄 하나, 처리기가 집는 것을 이름")을 그대로 적용하고, 결과가 다른 효과를 한 줄로
-    묶지 않는다. 엔진이 달라지는 곳은 I Believe의 병력이 다른 병력 항목과 함께 기다릴 때 어느 것을 먼저 받을지 고를 수 있게 되는 것뿐이고
+  - **추천했던 것: (나)** — "이미 정해 쓰는 규칙(결과가 같으면 줄 하나, 처리기가 집는 것을 이름)"이라고 설명했지만, 그 규칙은 결정 3의
+    원문("같은 카드 사본 둘이 같은 효과를 기다리면 줄 하나")을 넘어 내가 B3c-2a·D-3에 넣은 해석이었다(`docs/lessons.md` 2026-10-20). 결과가
+    다른 효과를 한 줄로 묶지 않는다는 점은 맞다. 엔진이 달라지는 곳은 I Believe의 병력이 다른 병력 항목과 함께 기다릴 때 어느 것을 먼저 받을지 고를 수 있게 되는 것뿐이고
     (OQ-045대로 최종 결과는 같다), 같음 확인은 정해진 차이로 맞춘다. (가)는 결과가 같은 줄만 늘려 판단 수가 늘고, (다)는 줄의 뜻이 대기
     순서에 달린다.
 - **E-2 기록 줄 읽기(계획 원안의 B3e).** 규칙이 `PersonalCardRevealEffect` 합계 대신 기록 줄(`REVEAL_GAIN_ABILITIES`의 `EffectSection`)을
   읽게 한다: 빠진 조건을 효과 해석기에 더하고(Command·Swordmaster·주둔지 유닛·Maker 첩보·Faction Bond), 대기 항목과 Persuasion·검
   합계를 기록 줄에서 만든다. 동작은 그대로다(같음 확인 200판 같음·휴리스틱/앱 AI 같은 판이 관문). **추천: 이대로**, E-1 다음 단계로.
 
-**하위 단계(단계마다 전체 관문).** B3e-1 이득 줄(E-1), B3e-2 기록 줄 읽기(E-2). 그다음 v150 하나로 병합.
+**사용자 결정(2026-10-20):** "(가)가 맞는 것 같은데? … 다 나누는게 맞을 것 같은데" 뒤에 "그래 모두 나누자. e-2는 추천대로" — E-1 (가)
+인쇄한 것마다 한 줄(같은 카드 사본만 하나), 같은 이유로 연구 아이콘(B3c-2a)과 빚진 뽑기(B3d-4)도 칸·기원마다 한 줄로 바꾼다. E-2 추천대로.
+
+**하위 단계(단계마다 전체 관문).** B3e-1 이득 줄(E-1)과 연구 아이콘·빚진 뽑기 나누기, B3e-2 기록 줄 읽기(E-2). 그다음 v150 하나로 병합.
+
+### B3e-1 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+사용자 결정("그래 모두 나누자")대로 세 묶음의 온 행동이 그 효과를 인쇄한 것마다 하나가 된다. 온 행동은 `printed`·`source`를 갖고
+(`Printed.NAMED`, B3c-2b의 선택 폐기와 같은 꼴), 누르면 그것이 인쇄한 항목 가운데 가장 오래된(연구 아이콘은 가장 새) 것을 받는다.
+
+| 온 행동 | 전 | 이제(효과 줄) |
+|---|---|---|
+| 빚진 뽑기 `draw_owed_*` | 덱마다 하나 | 덱과 기원마다 하나: `draw(icon, printed=기원, source)`; 곧바른 draw가 남아 있으면 곧바른 것들만(OQ-106) |
+| 연구 아이콘 `resolve_research_icon(effect)` | 아이콘마다 하나(가장 새 칸) | 아이콘과 칸마다 하나: `generate_specimens`·`advance`·`draw`·`trash(icon, printed=칸, source=research)`; 연구 창의 아이콘도 그 창의 칸을 이름 |
+| Reveal 이득 일곱 | 종류·묶음·진영마다 하나 | 인쇄한 것마다 하나(같은 카드 사본만 하나): `recruit(troops)`·`draw(intrigue)`·`generate_specimens(specimen)`·`advance(tleilaxu/research)`·`gain(resources)`·`gain_influence(faction_influence)`; 카드 `reveal_card`, Skill `commander`, Tech `tech`, Unpredictable Foe `leader`. 묶음·진영은 인쇄한 것이 정하므로 줄에 다시 쓰지 않는다(`_PRINTER_IMPLIED`) |
+
+- **옛 엔진의 선택:** `owed_draws.legacy_owed_draw_whole`·`immortality.legacy_research_icon_whole`·`reveal_turn.legacy_reveal_gain_whole`이
+  옛 엔진이 스스로 집던 것(덱의 가장 오래된 즉시 것 → 가장 오래된 것, 아이콘의 가장 새 칸, 종류·묶음·진영의 가장 오래된 것)을 이름 붙은
+  온 행동으로 돌려준다. 휴리스틱·앱 AI·rollout은 그것만 본다(`agents.engine_order.older_engine_wholes`, B3c-2b와 같은 방식) — 그래서 그
+  판들은 이전 커밋과 같다. 옛 기보는 새 다리 `named_pick`(v150 미만, 다시 쓰기)과 붙잡아 둔 걸음(`turn_row_held`)이 같은 선택으로 옮기고,
+  같음 확인은 `stage_b.py`가 기준 엔진의 인자 없는 온 행동을 같은 선택으로 바꾸고 제시 목록을 인쇄한 것마다 펼쳐 맞춘다.
+- **화면:** 빚진 뽑기 설명은 그 줄이 이름 붙인 기원을, Reveal 이득은 인쇄한 카드·Skill·Tech·지도자 이름을 보인다
+  (`display.actions.reveal_gain_action_text`).
+- **codec:** Reveal 이득의 온 행동 template(자원 묶음 7·진영 4·종류 다섯)이 빠지고 인쇄한 것마다의 효과 줄이 들어온다: 기본
+  1,431 → 1,434(−13 +16), Immortality 2,425 → 2,439, 옵션 전부 4,256 → 4,281(−16 +41). 줄은 그 판의 좌석이 가질 수 있는 카드만(Epic의
+  Control the Spice는 Epic에만, Reveal 선택이 쥔 spice — Delivery Agreement·Priority Contracts — 는 빼고). 연구 아이콘·빚진 뽑기의 줄은 이미 칸·기원마다
+  있었다(줄의 수는 그대로, 바뀐 것은 한 줄이 한 항목만 가리키는 것).
+- **측정:** pytest 8,183(관문 2차); 같음 확인 200판 같음(같음 확인의 Agent 차례 규칙도 기준 엔진의 인자 없는 온 행동을 인쇄한 것마다
+  펼치게 고침); 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크 900판(codec 왕복 검사 포함);
+  문제집 다시 채굴(휴리스틱 82곳 같은 국면 — 11곳은 선택지가 늘어 선택 번호가, 1곳은 그 국면에 나뉜 행동이 있어 지문이 바뀜, 체크포인트 망
+  몫 19 → 29곳, 모두 111곳); E2E 68개 전부(관문 2차).
+- **리뷰:** 독립 리뷰가 엔진·codec·기보·같음 확인에서 결함을 찾지 않았다(3,000판 무작위 + 옵션별 800판씩 + 휴리스틱 600판에서 모든
+  합법 행동 적용·codec 왕복, 옛 엔진과 같은 판 108판). 화면 결함 하나 — 새 `printed`·`source`가 로그·판 리뷰에 날것으로 보였다
+  (E2E `log_words`·`lang`·`reveal_choices`) — 를 고쳤다: 이 행동들의 `source`는 숨기고 `printed`는 이름만(살아 있는 줄은 서버의
+  설명, 기록된 줄은 카탈로그 이름; 이름이 없는 것은 뺌), Reveal 이득의 묶음·진영은 이름 곁에 그대로(`static/core.js`
+  `NAMED_PRINTER_ACTIONS`). 시험 옮기기 중 codec이 Epic이 아닌 판에도 Control the Spice를, Reveal 선택이 쥔 spice(Delivery Agreement·
+  Priority Contracts)도 줄로 두던 것을 찾아 뺐다.
 
 ## 4. 위험
 

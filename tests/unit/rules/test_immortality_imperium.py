@@ -592,7 +592,13 @@ def test_a_reshuffled_intrigue_draw_from_the_turn_end_payment_counts_for_suspens
     state = pressed.state
     assert state.players[0].influence.bene_gesserit == 4
     assert state.players[0].intrigue_cards == ready.players[0].intrigue_cards
-    draw = DomainAction("draw_owed_intrigue", 0)
+    # The Bene Gesserit track earned the card, so it is that track's action
+    # (stage B3e-1).
+    draw = DomainAction(
+        "draw_owed_intrigue",
+        0,
+        (("printed", "bene_gesserit"), ("source", "influence_track")),
+    )
     offered = engine.whole_actions(state, 0)
     assert draw in offered
     assert DomainAction("finish_agent_turn", 0) not in offered
@@ -679,7 +685,13 @@ def test_the_same_seat_s_next_turn_keeps_the_press_s_suspensor_troop() -> None:
     pressed = apply_whole(engine, ready, DomainAction("finish_agent_turn", 0))
     assert pressed.events[-1].kind == "agent_turn_reopened"
     assert pressed.state.players[0].influence.bene_gesserit == 4
-    drew = apply_whole(engine, pressed.state, DomainAction("draw_owed_intrigue", 0))
+    # The Bene Gesserit track earned the card (stage B3e-1).
+    draw = DomainAction(
+        "draw_owed_intrigue",
+        0,
+        (("printed", "bene_gesserit"), ("source", "influence_track")),
+    )
+    drew = apply_whole(engine, pressed.state, draw)
     assert "troops_deployed" in {event.kind for event in drew.events}
     assert drew.state.players[0].troops_conflict == before + 1
     state = apply_whole(engine, drew.state, DomainAction("finish_agent_turn", 0)).state

@@ -226,14 +226,23 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # Soldier's "when trashed", the Emperor track's Spy).
         - 2
         + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it.
+        # The seven Reveal gain ids' whole templates leave (13: troops,
+        # Intrigue, seven resource bundles and four Faction Influences, one
+        # each per kind) and the rows naming their printers join (16: the
+        # base cards' troops, Intrigue, resources and Faction Influence). A
+        # research icon and a triggered draw are rows the catalog already
+        # held.
+        - 13
+        + 16
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
     # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
     # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778,
     # stage B3d-2a's net -1,412 to 1,366, stage B3d-3's net +63 to 1,429,
-    # stage B3d-4's net +2 to 1,431.
-    assert first.size == 1431
+    # stage B3d-4's net +2 to 1,431, stage B3e-1's net +3 to 1,434.
+    assert first.size == 1434
 
 
 def _scouts_step_rows(
@@ -441,9 +450,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
                 row.action_id, row.arguments
             )
             assert with_scouts.encode(with_scouts.decode(index, actor=0)) == index
-    assert ActionCodec(RulesetConfig()).size == 1431
+    assert ActionCodec(RulesetConfig()).size == 1434
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 1431 + len(
+    assert ActionCodec(base_scouts).size == 1434 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -645,6 +654,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # Spy by their effect rows (see test_catalog_is_fixed...).
         - 2
         + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_catalog_is_fixed...): 13 whole templates leave and 16
+        # rows join (the CHOAM cards' Reveal spice is a Reveal choice's).
+        - 13
+        + 16
     )
 
     try:
@@ -870,6 +884,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # (a Bloodlines leader's owed card is its leader's row already).
         - 4
         + 5
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_catalog_is_fixed...): 13 whole templates leave and 25
+        # rows join (the Bloodlines cards' and Commander Skills' among them).
+        - 13
+        + 25
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

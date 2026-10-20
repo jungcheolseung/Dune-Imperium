@@ -1350,7 +1350,13 @@ def test_imperial_birthright_is_the_owners_next_step_in_its_turn() -> None:
         ("intrigue", "imperial_birthright")
     ]
     (draw,) = legal_owed_draw_actions(result.state, 0)
-    assert draw == DomainAction(action_id="draw_owed_intrigue", actor=0)
+    # The leader's ability earned it, so it is the leader's own action (stage
+    # B3e-1).
+    assert draw == DomainAction(
+        action_id="draw_owed_intrigue",
+        actor=0,
+        arguments=(("printed", "princess_irulan"), ("source", "leader")),
+    )
     # The turn offers it by its effect row (stage B3d-4): an Intrigue draw
     # the leader's ability earned.
     row = first_step(result.state, draw)
@@ -1540,7 +1546,12 @@ def test_unpredictable_foe_draws_intrigue_with_a_sandworm() -> None:
     # so the Reveal itself stays undoable (user ruling 2026-10-10, OQ-106).
     assert transition.state.players[0].intrigue_cards == ()
     assert context["leader_intrigue_granted"] is True
-    draw = DomainAction(action_id="draw_reveal_intrigue", actor=0)
+    # His ability printed it, so it names the leader (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_reveal_intrigue",
+        actor=0,
+        arguments=(("printed", "muad_dib"), ("source", "leader")),
+    )
     offered = engine.whole_actions(transition.state, 0)
     assert draw in offered
     assert DomainAction(action_id="finish_reveal", actor=0) not in offered

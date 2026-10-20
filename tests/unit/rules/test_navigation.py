@@ -180,7 +180,13 @@ def test_hungry_for_spice_draws_once_per_turn() -> None:
     assert fed.players[0].hungry_for_spice_granted_turn is True
     again = grant_hungry_for_spice(RuleResult(state=fed)).state
     assert len(again.players[0].owed_draws) == 1
-    draw = DomainAction(action_id="draw_owed_card", actor=0)
+    # Hungry for Spice is the leader's ability, so the draw names the leader
+    # (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_owed_card",
+        actor=0,
+        arguments=(("printed", "steersman_y_rkoon"), ("source", "leader")),
+    )
     assert ENGINE.whole_actions(again, 0).count(draw) == 1
     drawn = apply_whole(ENGINE, again, draw).state
     assert drawn.players[0].hand == (DAGGER,)

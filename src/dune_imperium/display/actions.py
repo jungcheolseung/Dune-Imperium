@@ -23,6 +23,7 @@ the same engine tables and card data the rules execute.
 import re
 from copy import replace
 
+from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
@@ -36,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reveal_choice_abilities import (
     reveal_choice_is_optional,
@@ -70,6 +72,7 @@ from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_ACTION,
     contract_icon_piece,
 )
+from dune_imperium.rules.effect_steps import owed_origin_printer, whole_printer
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
@@ -86,7 +89,7 @@ from dune_imperium.rules.graft_boxes import (
 )
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.owed_draws import next_owed_draw
-from dune_imperium.rules.reveal_turn import pending_choice_entries
+from dune_imperium.rules.reveal_turn import pending_choice_entries, reveal_gain_source
 
 _BOX = PersonalCardAgentEffect
 # The card whose added Agent-box draw ``resolves_boost_draw`` names, by its
@@ -821,8 +824,47 @@ def owed_draw_action_text(
     if deck is None or not 0 <= action.actor < len(state.players):
         return None
     owner = state.players[action.actor]
+    printer = whole_printer(action)
+    if printer is not None:
+        # One action per entity that earned a draw (stage B3e-1): its own.
+        origin = next(
+            (
+                origin
+                for entry_deck, origin, _ in owner.owed_draws
+                if entry_deck == deck
+                and owed_origin_printer(state, action.actor, origin) == printer
+            ),
+            None,
+        )
+        return None if origin is None else owed_draw_origin_text(origin)
     index = next_owed_draw(owner, deck)
     return None if index is None else owed_draw_origin_text(owner.owed_draws[index][1])
+
+
+def reveal_gain_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Name what printed the Reveal gain an action takes (stage B3e-1, one
+    action per entity): a revealed card, a Skill, a Tech tile, the leader."""
+
+    source = reveal_gain_source(state, action)
+    if source is None:
+        return None
+    if source.startswith("skill:"):
+        skill = SKILLS_BY_ID[source.removeprefix("skill:")]
+        return skill.name, KOREAN_CARD_NAMES["skills"].get(skill.skill_id, skill.name)
+    if source.startswith("tech:"):
+        tile = TECH_TILES_BY_ID[source.removeprefix("tech:")]
+        return tile.name, KOREAN_CARD_NAMES["tech"].get(tile.tech_id, tile.name)
+    if source.startswith("leader_reveal:"):
+        leader_id = state.players[action.actor].leader_id
+        if leader_id is None:
+            return None
+        leader = LEADERS_BY_ID[leader_id]
+        return leader.name, KOREAN_CARD_NAMES["leaders"].get(
+            leader.leader_id, leader.name
+        )
+    return _card_names(source)
 
 
 def intrigue_faction_choice_text(
@@ -854,7 +896,9 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     faction = intrigue_faction_choice_text(state, action)
     if faction is not None:
         return faction[0]
-    owed = owed_draw_action_text(state, action)
+    owed = owed_draw_action_text(state, action) or reveal_gain_action_text(
+        state, action
+    )
     if owed is not None:
         return owed[0]
     tech = tech_acquire_action_text(action) or research_icon_action_text(action)
@@ -928,7 +972,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     faction = intrigue_faction_choice_text(state, action)
     if faction is not None:
         return faction[1]
-    owed = owed_draw_action_text(state, action)
+    owed = owed_draw_action_text(state, action) or reveal_gain_action_text(
+        state, action
+    )
     if owed is not None:
         return owed[1]
     tech = tech_acquire_action_text(action) or research_icon_action_text(action)

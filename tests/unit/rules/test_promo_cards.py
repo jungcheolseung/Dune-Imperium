@@ -825,6 +825,11 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # (2) and four rows join.
         - 2
         + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 16 rows join (the promo cards' among them).
+        - 13
+        + 16
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -887,6 +892,11 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # (2) and four rows join.
         - 2
         + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it:
+        # 13 whole templates leave and 16 rows join (the promo cards'
+        # among them).
+        - 13
+        + 16
     )
     # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
     # the card (an effect without a target is one row). The other cards that

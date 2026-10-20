@@ -1630,10 +1630,15 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     assert context["turn_owner"] == 0
     assert context["troops_recruited"] == 2
     assert trashed.players[0].specimens == 0 and not _turn_end_offered(trashed)
+    # c3r3 printed the specimen icon (stage B3e-1: the row names it).
     specimen = DomainAction(
         action_id="resolve_research_icon",
         actor=0,
-        arguments=(("effect", "specimen"),),
+        arguments=(
+            ("effect", "specimen"),
+            ("printed", "c3r3"),
+            ("source", "research"),
+        ),
     )
     assert specimen in engine.whole_actions(trashed, 0)
     trashed = apply_whole(engine, trashed, specimen).state

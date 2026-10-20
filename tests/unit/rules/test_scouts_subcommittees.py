@@ -47,6 +47,9 @@ from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
 STARTERS = starting_deck_instance_ids(0)
 DAGGER = "player:0:starter:dagger:0"
+#: The arguments of Steersman Y'rkoon's Hungry for Spice draw, which names the
+#: leader that earned it (stage B3e-1).
+HUNGRY_FOR_SPICE = {"printed": "steersman_y_rkoon", "source": "leader"}
 DISPLAY = ("readiness", "oversight", "relations", "appropriations", "leverage")
 ENGINE = UprisingRulesEngine()
 
@@ -270,7 +273,7 @@ def test_oversight_spice_as_the_last_effect_counts_for_hungry_for_spice() -> Non
     # holding the turn's end back until he takes it.
     assert seat.hand == ()
     assert ("finish_agent_turn", "") not in _options(state)
-    state = _act(state, "draw_owed_card")
+    state = _act(state, "draw_owed_card", **HUNGRY_FOR_SPICE)
     assert state.players[0].hand == (second_dagger,)
     assert _scouts_frames_done(state)
 
@@ -303,7 +306,7 @@ def test_oversight_spice_first_lets_steersman_trash_the_card_it_draws() -> None:
     assert second_dagger not in seat.hand
     assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
     held = state
-    state = _act(state, "draw_owed_card")
+    state = _act(state, "draw_owed_card", **HUNGRY_FOR_SPICE)
     assert second_dagger in state.players[0].hand
     assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
     state = _act(state, "trash_optional_card", card_id=second_dagger)
@@ -315,7 +318,7 @@ def test_oversight_spice_first_lets_steersman_trash_the_card_it_draws() -> None:
     first = _act(held, "trash_optional_card", card_id=DAGGER)
     assert DAGGER in first.players[0].trashed
     assert first.players[0].hand == ()
-    drawn = _act(first, "draw_owed_card")
+    drawn = _act(first, "draw_owed_card", **HUNGRY_FOR_SPICE)
     assert drawn.players[0].hand == (second_dagger,)
     assert drawn.players[0].owed_draws == ()
 

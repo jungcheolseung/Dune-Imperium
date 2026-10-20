@@ -1543,6 +1543,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # (2) and four rows join.
         - 2
         + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 16 rows join.
+        - 13
+        + 16
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an

@@ -40,8 +40,29 @@ from dune_imperium.rules.owed_draws import (
 from dune_imperium.simulation import InvariantViolation, check_owed_draws
 
 ENGINE = UprisingRulesEngine()
-DRAW = DomainAction(action_id="draw_owed_intrigue", actor=0)
 FINISH = DomainAction(action_id="finish_agent_turn", actor=0)
+
+
+def _draw(
+    action_id: str, printed: str, source: str, actor: int = 0
+) -> DomainAction:
+    """The owed draw the entity ``printed`` (of kind ``source``) earned: one
+    action per deck and entity (user decision 2026-10-20, stage B3e-1)."""
+
+    return DomainAction(
+        action_id=action_id,
+        actor=actor,
+        arguments=(("printed", printed), ("source", source)),
+    )
+
+
+# The Intrigue card a Sardaukar Soldier owes "when this card is trashed".
+SOLDIER_DRAW = _draw("draw_owed_intrigue", "sardaukar_soldier", "trigger")
+# The Bene Gesserit track's 4 and Princess Irulan's Imperial Birthright.
+BENE_GESSERIT_DRAW = _draw("draw_owed_intrigue", "bene_gesserit", "influence_track")
+BIRTHRIGHT_DRAW = _draw("draw_owed_intrigue", "princess_irulan", "leader")
+# The Tleilaxu track's Intrigue space names no entity but itself.
+TLEILAXU_TRACK_DRAW = _draw("draw_owed_intrigue", "tleilaxu_track", "trigger")
 
 
 def _first_turn() -> GameState:
@@ -93,7 +114,7 @@ def test_a_trash_trigger_draw_waits_and_holds_the_turn_end() -> None:
         (OWED_INTRIGUE, f"card:{soldier}")
     ]
     offered = ENGINE.whole_actions(trashed, 0)
-    assert offered.count(DRAW) == 1
+    assert offered.count(SOLDIER_DRAW) == 1
 
     # Resolve everything else first: the turn end still waits for the draw.
     while steps := [
@@ -104,13 +125,13 @@ def test_a_trash_trigger_draw_waits_and_holds_the_turn_end() -> None:
         trashed = apply_whole(ENGINE, trashed, steps[0]).state
     offered = ENGINE.whole_actions(trashed, 0)
     assert FINISH not in offered
-    assert DRAW in offered
+    assert SOLDIER_DRAW in offered
 
-    drawn = apply_whole(ENGINE, trashed, DRAW).state
+    drawn = apply_whole(ENGINE, trashed, SOLDIER_DRAW).state
     assert len(drawn.players[0].intrigue_cards) == len(intrigue_before) + 1
     assert drawn.players[0].owed_draws == ()
     offered = ENGINE.whole_actions(drawn, 0)
-    assert DRAW not in offered
+    assert SOLDIER_DRAW not in offered
     assert FINISH in offered
 
 
@@ -126,10 +147,10 @@ def test_the_waiting_draw_and_the_other_effects_resolve_in_either_order() -> Non
             if a.action_id in ("resolve_board_effect", "resolve_faction_influence")
         ]:
             working = apply_whole(ENGINE, working, steps[0]).state
-        return apply_whole(ENGINE, working, DRAW).state
+        return apply_whole(ENGINE, working, SOLDIER_DRAW).state
 
     def draw_then_others(working: GameState) -> GameState:
-        working = apply_whole(ENGINE, working, DRAW).state
+        working = apply_whole(ENGINE, working, SOLDIER_DRAW).state
         while steps := [
             a
             for a in ENGINE.whole_actions(working, 0)
@@ -254,7 +275,8 @@ def test_a_card_owed_by_hungry_for_spice_waits_so_a_discard_trash_comes_first() 
     # discard-pile card trashed first (Desert Tactics' "trash a card")
     # never comes back; drawn first, the same card may.
     turn, seat, weak, kept = _hungry_turn()
-    draw = DomainAction(action_id="draw_owed_card", actor=seat)
+    # Hungry for Spice is the leader's: the draw names his face (stage B3e-1).
+    draw = _draw("draw_owed_card", "steersman_y_rkoon", "leader", seat)
     assert [entry[:2] for entry in turn.players[seat].owed_draws] == [
         ("card", "hungry_for_spice")
     ]
@@ -299,7 +321,7 @@ def test_a_card_owed_by_hungry_for_spice_waits_so_a_discard_trash_comes_first() 
 # Effects must be taken immediately upon acquiring the Card or Tech.",
 # Direwolf Discord).
 
-DRAW_CARD = DomainAction(action_id="draw_owed_card", actor=0)
+DRAW_CARD = _draw("draw_owed_card", "choam_transports", "tech")
 INFLUENCE = DomainAction(action_id="resolve_faction_influence", actor=0)
 
 
@@ -335,7 +357,7 @@ def _faction_space_turn(
 
 
 @pytest.mark.parametrize(
-    ("space_id", "leader_id", "influence", "origin"),
+    ("space_id", "leader_id", "influence", "origin", "draw"),
     (
         # "When you reach 4 Influence, you earn the bonus shown on that
         # space of the track" [Main p. 7]: the Bene Gesserit strip's card.
@@ -344,6 +366,7 @@ def _faction_space_turn(
             "feyd_rautha_harkonnen",
             Influence(bene_gesserit=3),
             "bene_gesserit_4",
+            BENE_GESSERIT_DRAW,
         ),
         # "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]."
         # [Princess Irulan card]
@@ -352,11 +375,16 @@ def _faction_space_turn(
             "princess_irulan",
             Influence(emperor=1),
             "imperial_birthright",
+            BIRTHRIGHT_DRAW,
         ),
     ),
 )
 def test_an_influence_card_is_the_owners_only_step_after_the_influence(
-    space_id: str, leader_id: str, influence: Influence, origin: str
+    space_id: str,
+    leader_id: str,
+    influence: Influence,
+    origin: str,
+    draw: DomainAction,
 ) -> None:
     placed = _faction_space_turn(space_id, leader_id, influence)
     intrigue_before = placed.players[0].intrigue_cards
@@ -368,13 +396,13 @@ def test_an_influence_card_is_the_owners_only_step_after_the_influence(
         (OWED_INTRIGUE, origin)
     ]
     # The space's own effect, a Plot and the turn end all wait for the draw.
-    assert ENGINE.whole_actions(reached, 0) == (DRAW,)
+    assert ENGINE.whole_actions(reached, 0) == (draw,)
 
-    drawn = apply_whole(ENGINE, reached, DRAW).state
+    drawn = apply_whole(ENGINE, reached, draw).state
     assert len(drawn.players[0].intrigue_cards) == len(intrigue_before) + 1
     assert drawn.players[0].owed_draws == ()
     offered = ENGINE.whole_actions(drawn, 0)
-    assert DRAW not in offered
+    assert draw not in offered
     assert any(action.action_id == "resolve_board_effect" for action in offered)
 
 
@@ -396,11 +424,12 @@ def test_an_immediate_draw_takes_its_own_entry_and_leaves_a_free_one_free() -> (
         ),
     )
     offered = ENGINE.whole_actions(waiting, 0)
-    assert DRAW in offered and INFLUENCE in offered
+    assert TLEILAXU_TRACK_DRAW in offered and INFLUENCE in offered
 
     reached = apply_whole(ENGINE, waiting, INFLUENCE).state
-    assert ENGINE.whole_actions(reached, 0) == (DRAW,)
-    drawn = apply_whole(ENGINE, reached, DRAW)
+    # The immediate draw is the only action, the Bene Gesserit track's own.
+    assert ENGINE.whole_actions(reached, 0) == (BENE_GESSERIT_DRAW,)
+    drawn = apply_whole(ENGINE, reached, BENE_GESSERIT_DRAW)
     assert [entry[:2] for entry in drawn.state.players[0].owed_draws] == [
         (OWED_INTRIGUE, "tleilaxu_track")
     ]
@@ -409,7 +438,7 @@ def test_an_immediate_draw_takes_its_own_entry_and_leaves_a_free_one_free() -> (
         "round:1:player:0:influence:bene_gesserit:track_bonus:0:intrigue:"
     )
     offered = ENGINE.whole_actions(drawn.state, 0)
-    assert DRAW in offered
+    assert TLEILAXU_TRACK_DRAW in offered
     assert any(action.action_id == "resolve_board_effect" for action in offered)
 
 

@@ -774,8 +774,14 @@ def test_treacherous_maneuver_pays_both_cards_for_two_influence() -> None:
         "agent_card_effect_resolved",
     ]
     assert paid.events[-1] == _box_event(maneuver, BoxOutcome.RESOLVED)
+    # The draw is the trashed card's own action (stage B3e-1).
     drawn = apply_owed_draw(
-        paid.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+        paid.state,
+        DomainAction(
+            action_id="draw_owed_intrigue",
+            actor=0,
+            arguments=(("printed", "sardaukar_soldier"), ("source", "trigger")),
+        ),
     ).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
     assert (
@@ -4416,8 +4422,14 @@ def test_long_live_the_fighters_trashes_from_deck_with_shared_trash_triggers() -
         "card_trashed",
         "agent_card_effect_resolved",
     ]
+    # The draw is the trashed card's own action (stage B3e-1).
     drawn = apply_owed_draw(
-        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+        result.state,
+        DomainAction(
+            action_id="draw_owed_intrigue",
+            actor=0,
+            arguments=(("printed", "sardaukar_soldier"), ("source", "trigger")),
+        ),
     ).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
     assert drawn.intrigue_deck == ()
@@ -4758,7 +4770,15 @@ def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> N
         "leader_ability_resolved",
     ]
     engine = UprisingRulesEngine()
-    draw = first_step(result.state, DomainAction(action_id="draw_owed_card", actor=0))
+    # Hungry for Spice is the leader's: the draw names its face (stage B3e-1).
+    draw = first_step(
+        result.state,
+        DomainAction(
+            action_id="draw_owed_card",
+            actor=0,
+            arguments=(("printed", "steersman_y_rkoon"), ("source", "leader")),
+        ),
+    )
     assert draw in engine.legal_actions(result.state, 0)
     drawn = engine.apply(result.state, draw)
     assert drawn.state.players[0].hand == (draw_card, tail)
@@ -6134,8 +6154,17 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
     allied = resolve_faction_influence(placed).state
     assert allied.players[0].alliance_faction_ids == (Faction.BENE_GESSERIT.value,)
     assert allied.players[0].intrigue_cards == ()
+    # The draw is the Bene Gesserit track's own action (stage B3e-1).
     allied = apply_owed_draw(
-        allied, DomainAction(action_id="draw_owed_intrigue", actor=0)
+        allied,
+        DomainAction(
+            action_id="draw_owed_intrigue",
+            actor=0,
+            arguments=(
+                ("printed", "bene_gesserit"),
+                ("source", "influence_track"),
+            ),
+        ),
     ).state
     assert allied.players[0].intrigue_cards == ("intrigue:track_bonus",)
     trash = next(

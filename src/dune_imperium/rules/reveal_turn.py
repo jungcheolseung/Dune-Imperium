@@ -109,6 +109,7 @@ from dune_imperium.rules.combat_deployment import (
     undeployable_troops,
     undeployable_troops_this_turn,
 )
+from dune_imperium.rules.effect_steps import named_whole, reveal_gain_printer
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
@@ -3274,15 +3275,61 @@ def queue_reveal_intrigue_draw(state: GameState, count: int, source: str) -> Gam
     return _append_reveal_gains_state(state, (("intrigue", str(count), source),))
 
 
+# The kind of waiting gain each Reveal gain action takes (OQ-045).
+_GAIN_KINDS: Final[Mapping[str, str]] = MappingProxyType({
+    "recruit_reveal_troops": "troops",
+    "draw_reveal_intrigue": "intrigue",
+    "generate_reveal_specimens": "specimens",
+    "advance_reveal_tleilaxu": "tleilaxu",
+    "advance_reveal_research": "research",
+    "gain_reveal_resources": "resources",
+    "gain_reveal_faction_influence": "influence",
+})
+_RESOURCE_NAMES: Final = ("solari", "spice", "water")
+
+
+def _gain_key(kind: str, payload: str) -> str:
+    """What one older action took a gain by: its kind, a resource bundle's
+    payload, a Faction (before stage B3e-1, one action per key)."""
+
+    if kind == "resources":
+        return payload
+    if kind == "influence":
+        return payload.split("/")[0]
+    return kind
+
+
+def _gain_whole(
+    state: GameState, player: int, action_id: str, entry: RevealGain
+) -> DomainAction:
+    """The action taking the waiting gain ``entry``, naming what printed it
+    (``effect_steps.reveal_gain_printer``) and, for a bundle or a Faction,
+    what it gives."""
+
+    kind, payload, source = entry
+    extra: tuple[tuple[str, ActionValue], ...] = ()
+    if kind == "resources":
+        extra = tuple(zip(_RESOURCE_NAMES, _resource_payload(payload), strict=True))
+    elif kind == "influence":
+        extra = (("faction", payload.split("/")[0]),)
+    return named_whole(
+        action_id, player, reveal_gain_printer(state, player, source), *extra
+    )
+
+
 def legal_reveal_gain_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the pending troop recruit and Intrigue draw of the owner's Reveal.
+    """Offer the gains waiting on the owner's Reveal (OQ-045).
 
-    Each resolves the oldest pending entry of its kind; entries of one kind
-    are interchangeable (the same supply, the same deck), so no argument is
-    needed. Both must be taken before the Reveal ends.
+    One action per waiting gain's kind and entity that printed it (stage
+    B3e-1, decision 3: a revealed card, a Skill, a Tech tile, the leader; a
+    copy of the same card once), each taking that entity's oldest gain of
+    the kind. They come in the older engine's order -- one action per kind,
+    resource bundle and Faction -- each key's entities by their oldest gain,
+    so a key's first is the gain the older engine took
+    (``legacy_reveal_gain_whole``). All must be taken before the Reveal ends.
     """
 
     if not 0 <= player < state.config.players:
@@ -3291,49 +3338,83 @@ def legal_reveal_gain_actions(
     if frame is None:
         return ()
     pending = reveal_pending_gains(dict(frame.context))
-    kinds = {kind for kind, _, _ in pending}
     actions: list[DomainAction] = []
-    if "troops" in kinds:
-        actions.append(DomainAction(action_id="recruit_reveal_troops", actor=player))
-    if "intrigue" in kinds:
-        actions.append(DomainAction(action_id="draw_reveal_intrigue", actor=player))
-    if "specimens" in kinds:
-        actions.append(
-            DomainAction(action_id="generate_reveal_specimens", actor=player)
-        )
-    if "tleilaxu" in kinds:
-        actions.append(DomainAction(action_id="advance_reveal_tleilaxu", actor=player))
-    if "research" in kinds:
-        actions.append(DomainAction(action_id="advance_reveal_research", actor=player))
-    # Resource gains differ in what they give, so each distinct bundle is
-    # its own choice; equal bundles are interchangeable.
-    for payload in dict.fromkeys(
-        payload for kind, payload, _ in pending if kind == "resources"
-    ):
-        solari, spice, water = _resource_payload(payload)
-        actions.append(
-            DomainAction(
-                action_id="gain_reveal_resources",
-                actor=player,
-                arguments=(("solari", solari), ("spice", spice), ("water", water)),
-            )
-        )
-    # Fixed-Faction Influence gains: one choice per Faction still pending.
-    for faction in dict.fromkeys(
-        payload.split("/")[0] for kind, payload, _ in pending if kind == "influence"
-    ):
-        actions.append(
-            DomainAction(
-                action_id="gain_reveal_faction_influence",
-                actor=player,
-                arguments=(("faction", faction),),
-            )
-        )
+    for action_id, kind in _GAIN_KINDS.items():
+        entries = [entry for entry in pending if entry[0] == kind]
+        for key in dict.fromkeys(_gain_key(*entry[:2]) for entry in entries):
+            for entry in entries:
+                if _gain_key(*entry[:2]) != key:
+                    continue
+                whole = _gain_whole(state, player, action_id, entry)
+                if whole not in actions:
+                    actions.append(whole)
     return tuple(actions)
 
 
+def _gain_index(
+    state: GameState, player: int, pending: tuple[RevealGain, ...], action: DomainAction
+) -> int | None:
+    """The oldest waiting gain ``action`` takes, or None."""
+
+    kind = _GAIN_KINDS[action.action_id]
+    return next(
+        (
+            index
+            for index, entry in enumerate(pending)
+            if entry[0] == kind and _gain_whole(state, player, action.action_id, entry)
+            == action
+        ),
+        None,
+    )
+
+
+def reveal_gain_source(state: GameState, action: DomainAction) -> str | None:
+    """The source of the waiting gain ``action`` takes (``_gain_index``), for
+    naming what printed it; None for any other action or when none waits."""
+
+    if action.action_id not in _GAIN_KINDS:
+        return None
+    frame = owned_top_frame(state, FrameKind.REVEAL, action.actor)
+    if frame is None:
+        return None
+    pending = reveal_pending_gains(dict(frame.context))
+    index = _gain_index(state, action.actor, pending, action)
+    return None if index is None else pending[index][2]
+
+
+def legacy_reveal_gain_whole(
+    state: GameState, player: int, step: DomainAction
+) -> DomainAction | None:
+    """The gain the engine before stage B3e-1 took for ``step``, an action
+    naming no entity (one per kind, resource bundle and Faction), as the
+    action naming that gain's entity: the oldest of its key. None for any
+    other step or when none waits. The scripted agents and older records
+    keep this pick (``agents.engine_order``, the records bridge)."""
+
+    kind = _GAIN_KINDS.get(step.action_id)
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if kind is None or frame is None:
+        return None
+    arguments = dict(step.arguments)
+    if kind == "resources":
+        key = "/".join(str(arguments.get(name, 0)) for name in _RESOURCE_NAMES)
+    elif kind == "influence":
+        key = str(arguments.get("faction"))
+    else:
+        key = kind
+    entry = next(
+        (
+            entry
+            for entry in reveal_pending_gains(dict(frame.context))
+            if entry[0] == kind and _gain_key(*entry[:2]) == key
+        ),
+        None,
+    )
+    return None if entry is None else _gain_whole(state, player, step.action_id, entry)
+
+
 def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
-    """Recruit the next pending troops or draw the next pending Intrigue."""
+    """Take the oldest waiting gain of the action's kind its entity printed."""
 
     if action not in legal_reveal_gain_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal gain")
@@ -3341,32 +3422,9 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
     frame = state.decision_stack[-1]
     context = frame_context(frame)
     pending = reveal_pending_gains(context)
-    arguments = dict(action.arguments)
-    if action.action_id == "gain_reveal_resources":
-        wanted_payload = "/".join(
-            str(arguments.get(name, 0)) for name in ("solari", "spice", "water")
-        )
-        index = next(
-            i
-            for i, (kind, payload, _) in enumerate(pending)
-            if kind == "resources" and payload == wanted_payload
-        )
-    elif action.action_id == "gain_reveal_faction_influence":
-        wanted_faction = str(arguments["faction"])
-        index = next(
-            i
-            for i, (kind, payload, _) in enumerate(pending)
-            if kind == "influence" and payload.split("/")[0] == wanted_faction
-        )
-    else:
-        wanted = {
-            "recruit_reveal_troops": "troops",
-            "draw_reveal_intrigue": "intrigue",
-            "generate_reveal_specimens": "specimens",
-            "advance_reveal_tleilaxu": "tleilaxu",
-            "advance_reveal_research": "research",
-        }[action.action_id]
-        index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
+    index = _gain_index(state, player, pending, action)
+    if index is None:
+        raise ValueError("no such Reveal gain waits")
     kind, payload, source = pending[index]
     context[REVEAL_GAINS_KEY] = _encode_gains((*pending[:index], *pending[index + 1 :]))
     event_id = f"round:{state.round_number}:player:{player}:reveal_gain:{source}"

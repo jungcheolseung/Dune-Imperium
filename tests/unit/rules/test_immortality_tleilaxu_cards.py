@@ -257,10 +257,15 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
         (kind, value)
         for kind, _source, value in turn_rows.pending(trashed.decision_stack[-1])
     ] == [(turn_rows.RESEARCH_ICON, "specimen")]
+    # c3r3 printed the specimen icon (stage B3e-1: the row names it).
     specimen = DomainAction(
         action_id="resolve_research_icon",
         actor=0,
-        arguments=(("effect", "specimen"),),
+        arguments=(
+            ("effect", "specimen"),
+            ("printed", "c3r3"),
+            ("source", "research"),
+        ),
     )
     trashed = apply_whole(engine, trashed, specimen).state
     assert trashed.players[0].specimens == 2

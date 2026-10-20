@@ -2268,12 +2268,17 @@ def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
 def _owed_taken(state: GameState, player: int = 0) -> GameState:
     """Take every triggered draw waiting as the seat's own step (OQ-106)."""
 
-    from dune_imperium.rules.owed_draws import apply_owed_draw
+    from dune_imperium.rules.owed_draws import (
+        apply_owed_draw,
+        legacy_owed_draw_whole,
+    )
 
     while state.players[player].owed_draws:
-        state = apply_owed_draw(
-            state, DomainAction(action_id="draw_owed_intrigue", actor=player)
-        ).state
+        # Each entity that earned a draw has its own action (stage B3e-1):
+        # take the oldest, as the one-per-deck action did.
+        draw = legacy_owed_draw_whole(state, player, "draw_owed_intrigue")
+        assert draw is not None
+        state = apply_owed_draw(state, draw).state
     return state
 
 
@@ -3542,7 +3547,16 @@ def test_reveal_spice_may_be_taken_after_forbidden_weapons_trashes() -> None:
     # The spice is a pending gain, not yet in the supply.
     assert state.players[0].resources.spice == 2
     gains = legal_reveal_gain_actions(state, 0)
-    assert [dict(a.arguments) for a in gains] == [{"solari": 0, "spice": 1, "water": 0}]
+    # The revealed Rebel Supplier printed the spice (stage B3e-1).
+    assert [dict(a.arguments) for a in gains] == [
+        {
+            "solari": 0,
+            "spice": 1,
+            "water": 0,
+            "printed": "rebel_supplier",
+            "source": "reveal_card",
+        }
+    ]
     trash = next(
         a
         for a in legal_tech_reveal_actions(state, 0)

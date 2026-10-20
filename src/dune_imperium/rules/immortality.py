@@ -50,6 +50,11 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.effect_steps import (
+    named_whole,
+    research_icon_printer,
+    whole_printer,
+)
 from dune_imperium.rules.frames import (
     OWED_CARD,
     OWED_INTRIGUE,
@@ -777,14 +782,83 @@ def pending_research_icons(state: GameState, player: int) -> tuple[str, ...]:
     return tuple(icon for icon in RESEARCH_ICON_ORDER if icon in waiting)
 
 
-def _icon_rows(player: int, icons: tuple[str, ...]) -> tuple[DomainAction, ...]:
+def _icon_rows(
+    player: int, icons: tuple[str, ...], source: str
+) -> tuple[DomainAction, ...]:
+    """A window's icons, each naming the window's research space."""
+
     return tuple(
-        DomainAction(
-            action_id="resolve_research_icon",
-            actor=player,
-            arguments=(("effect", icon),),
+        named_whole(
+            "resolve_research_icon",
+            player,
+            research_icon_printer(source),
+            ("effect", icon),
         )
         for icon in icons
+    )
+
+
+def _turn_icon_rows(
+    player: int, frame: DecisionFrame
+) -> tuple[DomainAction, ...]:
+    """One row per icon waiting on the turn and research space that printed
+    it (stage B3e-1, decision 3), the icons in ``RESEARCH_ICON_ORDER`` and
+    each icon's spaces newest first: its first is the icon the older engine
+    took (``legacy_research_icon_whole``)."""
+
+    waiting = [
+        item
+        for item in reversed(turn_rows.pending(frame))
+        if item[0] == turn_rows.RESEARCH_ICON
+    ]
+    rows: list[DomainAction] = []
+    for icon in RESEARCH_ICON_ORDER:
+        for _, source, value in waiting:
+            if value != icon:
+                continue
+            row = named_whole(
+                "resolve_research_icon",
+                player,
+                research_icon_printer(str(source)),
+                ("effect", icon),
+            )
+            if row not in rows:
+                rows.append(row)
+    return tuple(rows)
+
+
+def legacy_research_icon_whole(
+    state: GameState, player: int, icon: str
+) -> DomainAction | None:
+    """The research icon ``icon`` the engine before stage B3e-1 resolved: a
+    window's own, else the newest waiting on the owner's turn, as the action
+    naming its space; None when none waits. The scripted agents and older
+    records keep this pick (``agents.engine_order``, the records bridge)."""
+
+    frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
+    if frame is not None:
+        if icon not in window_icons(frame):
+            return None
+        source = context_str(dict(frame.context), "source", owner=_BONUS_LABEL)
+        return _icon_rows(player, (icon,), source)[0]
+    turn = turn_rows.rows_frame(state, player)
+    if turn is None:
+        return None
+    item = next(
+        (
+            item
+            for item in reversed(turn_rows.pending(turn))
+            if item[0] == turn_rows.RESEARCH_ICON and item[2] == icon
+        ),
+        None,
+    )
+    if item is None:
+        return None
+    return named_whole(
+        "resolve_research_icon",
+        player,
+        research_icon_printer(str(item[1])),
+        ("effect", icon),
     )
 
 
@@ -814,7 +888,7 @@ def legal_research_bonus_actions(
         if turn is None or not turn_rows.pending(turn):
             return ()
         return (
-            *_icon_rows(player, pending_research_icons(state, player)),
+            *_turn_icon_rows(player, turn),
             *(
                 row
                 for bonus, _source in pending_research_bonuses(state, player)
@@ -824,7 +898,8 @@ def legal_research_bonus_actions(
     if icons := window_icons(frame):
         # A pair's or c7r3's rewards outside the turn: one row per icon,
         # in either order (rule decision 5).
-        return _icon_rows(player, icons)
+        source = context_str(dict(frame.context), "source", owner=_BONUS_LABEL)
+        return _icon_rows(player, icons, source)
     bonus = ResearchBonus(context_str(dict(frame.context), "bonus", owner=_BONUS_LABEL))
     decline = DomainAction(action_id="decline_research_bonus", actor=player)
     rows = _bonus_rows(owner, player, bonus)
@@ -962,7 +1037,9 @@ def apply_research_icon(state: GameState, action: DomainAction) -> RuleResult:
     """Resolve one icon of a research space's pair or of c7r3's rewards.
 
     A window outside the turn closes once its last icon is taken; a row on
-    the owner's turn takes the newest waiting icon of its kind (``turn_rows``).
+    the owner's turn takes the newest waiting icon of its kind that its
+    research space printed (``turn_rows``; one row per space since stage
+    B3e-1).
     """
 
     if action not in legal_research_bonus_actions(state, action.actor):
@@ -991,10 +1068,13 @@ def apply_research_icon(state: GameState, action: DomainAction) -> RuleResult:
                 )
             )
     else:
+        space = whole_printer(action)
         item = next(
             item
             for item in reversed(turn_rows.pending(frame))
-            if item[0] == turn_rows.RESEARCH_ICON and item[2] == icon
+            if item[0] == turn_rows.RESEARCH_ICON
+            and item[2] == icon
+            and research_icon_printer(str(item[1])) == space
         )
         working = turn_rows.take(state, player, item)
         source = item[1]

@@ -698,8 +698,15 @@ def test_price_is_no_object_resolves_the_acquired_cards_bonus() -> None:
         "card_acquired",
         "agent_card_effect_resolved",
     )
+    # The draw is Overthrow's own action: the acquired card printed it
+    # (stage B3e-1).
     drawn = apply_owed_draw(
-        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+        result.state,
+        DomainAction(
+            action_id="draw_owed_intrigue",
+            actor=0,
+            arguments=(("printed", "overthrow"), ("source", "acquisition")),
+        ),
     )
     assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)
     assert drawn.state.intrigue_deck == ()
@@ -867,7 +874,12 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
     assert result.state.players[0].intrigue_cards == ()
     assert tuple(event.kind for event in result.events) == ("card_acquired",)
     engine = UprisingRulesEngine()
-    draw = DomainAction(action_id="draw_owed_intrigue", actor=0)
+    # Overthrow's own draw: the acquired card printed it (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_owed_intrigue",
+        actor=0,
+        arguments=(("printed", "overthrow"), ("source", "acquisition")),
+    )
     assert engine.whole_actions(result.state, 0) == (draw,)
     drawn = apply_whole(engine, result.state, draw)
     assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)

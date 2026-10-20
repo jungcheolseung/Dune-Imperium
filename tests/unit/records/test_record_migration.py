@@ -2718,12 +2718,25 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
 _HELD = "intrigue:ambush:1"
 
 
-def _icon_row(effect: str) -> DomainAction:
-    return DomainAction("resolve_research_icon", 0, (("effect", effect),))
+def _icon_row(effect: str, space: str) -> DomainAction:
+    """This engine's action for a research icon: it names the research space
+    that printed it (codec v150, stage B3e-1); the recorded steps of an older
+    engine's record name none."""
+
+    return DomainAction(
+        "resolve_research_icon",
+        0,
+        (("effect", effect), ("printed", space), ("source", "research")),
+    )
 
 
 def _draw(deck: str) -> DomainAction:
-    return DomainAction(f"draw_owed_{deck}", 0)
+    """This engine's action for c7r3's owed draw of ``deck``: it names the
+    research space that earned it (codec v150, stage B3e-1)."""
+
+    return DomainAction(
+        f"draw_owed_{deck}", 0, (("printed", "c7r3"), ("source", "research"))
+    )
 
 
 def _icon_order(state: GameState) -> ReplayStep | None:
@@ -2778,14 +2791,14 @@ def test_a_pairs_icons_follow_in_the_order_an_older_engine_resolved_them() -> No
     # c3r5 in the Agent turn: the specimen, then the Tleilaxu advance.
     tleilaxu = _agent_fork("c2r4", "c3r5")
     assert _answers(tleilaxu, steps=3) == [
-        _icon_row("specimen"),
-        _icon_row("tleilaxu"),
+        _icon_row("specimen", "c3r5"),
+        _icon_row("tleilaxu", "c3r5"),
         None,
     ]
     # c3r3: only the specimen; its optional trash stays the owner's own step,
     # answered by the record.
     trash = _agent_fork("c2r4", "c3r3")
-    assert _answers(trash, steps=2) == [_icon_row("specimen"), None]
+    assert _answers(trash, steps=2) == [_icon_row("specimen", "c3r3"), None]
 
 
 def test_a_window_s_icons_follow_in_the_same_order() -> None:
@@ -2805,7 +2818,9 @@ def test_a_window_s_icons_follow_in_the_same_order() -> None:
             DomainAction("choose_research_space", 0, (("space_id", target),)),
         ).state
         assert window.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
-        assert _answers(window, steps=2) == [_icon_row(effect) for effect in expected]
+        assert _answers(window, steps=2) == [
+            _icon_row(effect, target) for effect in expected
+        ]
 
 
 def test_c7r3_s_rewards_follow_as_its_owed_draws_or_its_window_rows() -> None:
@@ -2827,8 +2842,8 @@ def test_c7r3_s_rewards_follow_as_its_owed_draws_or_its_window_rows() -> None:
     ).state
     window = apply_whole(ENGINE, arrow, pay).state
     assert _answers(window, steps=3) == [
-        _icon_row("intrigue"),
-        _icon_row("cards"),
+        _icon_row("intrigue", "c7r3"),
+        _icon_row("cards", "c7r3"),
         None,
     ]
 
@@ -2849,7 +2864,7 @@ def test_the_research_icon_bridge_adds_nothing_where_nothing_waits() -> None:
         owner, owed_draws=(("card", OWED_ORIGIN_RESEARCH, "test:card"),)
     )
     stuck_state = replace(fork, players=(stuck, *fork.players[1:]))
-    assert _draw("card") not in ENGINE.legal_actions(stuck_state, 0)
+    assert _draw("card") not in ENGINE.whole_actions(stuck_state, 0)
     assert _icon_order(stuck_state) is None
     # A pending chance is not a seat's decision.
     chance = ChanceDecision("test:chance", "Shuffle", ("a", "b"))
@@ -4009,7 +4024,9 @@ def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> No
     state = _transports_completed(empty_deck=False)
     decision = ENGINE.current_decision(state)
     assert isinstance(decision, PlayerDecision)
-    draw = DomainAction("draw_owed_card", 0)
+    draw = DomainAction(
+        "draw_owed_card", 0, (("printed", "choam_transports"), ("source", "tech"))
+    )
     assert ENGINE.whole_actions(state, 0) == (draw,)
     # Since stage B3d-4 (D-3) the seat answers it by its ``draw`` row naming
     # CHOAM Transports; an older record holds the whole action.
@@ -4039,7 +4056,10 @@ def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> No
 
 def test_a_reshuffle_is_renamed_only_between_transports_and_a_reward_draw() -> None:
     state = _transports_completed(empty_deck=True)
-    state = apply_whole(ENGINE, state, DomainAction("draw_owed_card", 0)).state
+    transports = DomainAction(
+        "draw_owed_card", 0, (("printed", "choam_transports"), ("source", "tech"))
+    )
+    state = apply_whole(ENGINE, state, transports).state
     decision = ENGINE.current_decision(state)
     assert isinstance(decision, ChanceDecision)
     assert decision.decision_id.endswith(":tech_draw:discard_shuffle")
