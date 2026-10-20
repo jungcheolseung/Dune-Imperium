@@ -66,6 +66,7 @@ from dune_imperium.adapters.observation_encoding import (
     PERSONAL_CARD_IDS,
     POST_IDS,
     RESEARCH_SPACE_IDS,
+    SCOUTS_ITEM_IDS,
     SKILL_IDS,
     SPACE_IDS,
 )
@@ -559,9 +560,10 @@ LABEL_ARGUMENTS: Final = frozenset(
     # alternative or of a target row are labels too.
     {"choice", "effect", "icon", "option", "reward", "subcommittee_id", "zone", "zones"}
 )
-# Sources whose printed entity has no vocabulary: a Scouts line (stage
-# B3d-2a) names its item, whose id may be a card's too (Covert Operation).
-LABEL_SOURCES: Final = frozenset({"scouts"})
+# The Arrakeen Scouts items a Scouts effect row's ``printed`` may name (a
+# Spy window's line, B3d-2a; a mission, B3d-2b): no vocabulary holds them,
+# and an item's id may be a card's too (Covert Operation).
+_SCOUTS_PRINTED: Final = frozenset(SCOUTS_ITEM_IDS)
 # Where an argument's vocabulary depends on the action: a battle card's id
 # is often a Conflict card's id too.
 ACTION_ARGUMENT_HINTS: Final[Mapping[tuple[str, str], tuple[str, ...]]] = {
@@ -582,7 +584,7 @@ def _digest() -> str:
     for hints in (ARGUMENT_HINTS, SLOT_HINTS, ACTION_ARGUMENT_HINTS):
         digest.update(repr(sorted(hints.items())).encode())
     digest.update(repr(sorted(LABEL_ARGUMENTS)).encode())
-    digest.update(repr(sorted(LABEL_SOURCES)).encode())
+    digest.update(repr(sorted(_SCOUTS_PRINTED)).encode())
     return digest.hexdigest()
 
 
@@ -616,7 +618,9 @@ def resolve_argument(
     """The entity an action argument names, or ``None`` for a label;
     ``source`` is the row's own ``source`` argument (an effect row's)."""
 
-    if key in LABEL_ARGUMENTS or (key == "printed" and source in LABEL_SOURCES):
+    if key in LABEL_ARGUMENTS or (
+        key == "printed" and source == "scouts" and value in _SCOUTS_PRINTED
+    ):
         return None
     prefer = ACTION_ARGUMENT_HINTS.get((action_id, key), ARGUMENT_HINTS.get(key, ()))
     return resolve(value, prefer)

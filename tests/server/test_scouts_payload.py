@@ -15,6 +15,8 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -333,3 +335,64 @@ def test_a_revealed_secret_line_names_its_event() -> None:
     own = _obj(manager.legal_actions(game_id, 0)["scouts_lines"])
     assert own["frame"] == "scouts_choice"
     assert own["item_id"] == "covert_operation"
+
+
+@pytest.mark.parametrize("kind", ["scouts_secret", "scouts_bid"])
+def test_a_secret_choice_s_target_row_is_logged_sealed(kind: str) -> None:
+    """Stage B3d-2b: a secret pick or a sealed bid is its window's target row
+    (``choose_option``, ``choose_count``); the log seals it by the whole
+    action it ends (``SEALED_ACTION_IDS``), so no other seat's live log shows
+    the line or the bid before they are revealed (docs/rules/
+    arrakeen-scouts.md 7, 8.1)."""
+
+    from dune_imperium.agents.heuristic_agent import HeuristicAgent
+    from dune_imperium.core import ChanceDecision, ChanceResolver, PlayerDecision
+    from dune_imperium.rules.effect_steps import first_step
+    from dune_imperium.server.session_log import SEALED_ACTION_IDS, log_step
+    from dune_imperium.server.sessions import _log_entry_json
+
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(choam_module=True, arrakeen_scouts=True)
+
+    def first_window(seed: int) -> tuple[GameState, int] | None:
+        state = engine.reset(config, seed)
+        chance = ChanceResolver(seed=seed)
+        agents = [HeuristicAgent(seed=seat) for seat in range(4)]
+        while state.phase is not GamePhase.FINISHED:
+            decision = engine.current_decision(state)
+            if isinstance(decision, ChanceDecision):
+                state = engine.apply(state, chance.resolve(decision)).state
+                continue
+            assert isinstance(decision, PlayerDecision)
+            if state.decision_stack[-1].kind == kind:
+                return state, decision.owner
+            legal = engine.legal_actions(state, decision.owner)
+            view = engine.observe(state, decision.owner)
+            action = agents[decision.owner].choose_action_with_state(
+                state, view, legal
+            )
+            state = engine.apply(state, action, legal_actions=legal).state
+        return None
+
+    found = next(
+        (window for seed in range(20) if (window := first_window(seed)) is not None),
+        None,
+    )
+    if found is None:
+        pytest.fail(f"no heuristic game of seeds 0-19 meets a {kind}")
+    state, owner = found
+    whole = next(
+        action
+        for action in engine.whole_actions(state, owner)
+        if action.action_id in SEALED_ACTION_IDS
+    )
+    row = first_step(state, whole)
+    assert row.action_id in {"choose_option", "choose_count"}
+    result = engine.apply(state, row)
+    entry = log_step(state, result.state, row, result.events)
+    assert entry.sealed and entry.whole == whole
+    own: Any = _log_entry_json(0, entry, owner, finished=False)
+    assert own["arguments"] == dict(whole.arguments)
+    other: Any = _log_entry_json(0, entry, (owner + 1) % 4, finished=False)
+    assert other["action_id"] == whole.action_id
+    assert other["arguments"] and set(other["arguments"].values()) == {"(비공개)"}

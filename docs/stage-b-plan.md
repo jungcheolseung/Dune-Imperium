@@ -880,6 +880,33 @@ Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal fram
   109곳); E2E 68개 전부. 독립 리뷰 결함 1(Long Live the Fighters 두 단계 구분, 위 관측)·시험 공백 1(고른 대상 칸 지킴 시험이 창의
   여러 대상 경로도 봄) 고침. B3d-4에서 하려던 `OFFERED_AS_WHOLE` 비우기는 이 단계에서 끝났다.
 
+### B3d-2b 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **frame:** Arrakeen Scouts 창 10종(`scouts_four_bonus`·`scouts_effect`·`scouts_subcommittee`·`scouts_choice`·`scouts_mission`·
+  `scouts_secret`·`scouts_bid`·`scouts_retreat`·`scouts_call`·`scouts_market`)이 `TARGET_STEP_FRAMES`에 들어 제 효과를 대상 줄로 낸다.
+  Scouts 효과 줄은 걸음마다 한 효과다: 카드 폐기·버리기 `choose_personal_card`, 책략 폐기 `choose_intrigue_card`, Spy 회수 `choose_post`,
+  Agent 회수 `choose_space`, 진영 얻기·잃기 `choose_faction`(Alliance를 넘길 좌석이 여럿이면 → `choose_seat`), 주둔지 유닛
+  `choose_unit(zone=garrison[, commanders])`, 모집 걸음의 표본 반환 `choose_count`. 나머지 창: Influence 4 보너스 `choose_faction`,
+  소위원회 `choose_subcommittee`(새 대상 종류), 사건·판매 갈래·비밀 고르기·시장 카드 `choose_option`, 입찰·호출·후퇴 `choose_count`.
+- **임무:** 참여 길이 있으면 `choose_mission(target)`(새 대상 종류: 호위할 계약, 모집, Commander), 대상 없는 기본 길은 그 임무의 효과 줄
+  `join(source=scouts, printed=<임무>)`(새 `Printed.MISSION`, 대상 없는 제 효과). 임무 창 옆의 표본 반환은 Immortality의 "언제든"
+  자유 행동(`return_specimen`과 같은 곁가지, OQ-050)이라 B3d-4까지 그대로 온 행동으로 나오고, codec이 그 template을 지킨다
+  (`OFFERED_AS_WHOLE` = {`scouts_return_specimens`}).
+- **차례 줄(D-3):** 새 High Council 자리의 소위원회 고르기 `choose_subcommittee`는 효과 줄 `join(source=scouts, printed=high_council)`
+  (docs/rules/arrakeen-scouts.md 4의 "council seat" 규칙; 소위원회를 주는 칸은 `high_council` 하나, Corrinth City의 자리도 High Council
+  자리). id `choose_subcommittee`는 이제 대상 줄만 뜻한다.
+- **엔티티 망:** Scouts 효과 줄의 `printed`는 Scouts 항목 id일 때만 이름표(`SCOUTS_ITEM_IDS`; `join`의 `high_council`은 보드 칸 개체).
+- **기록:** 비밀 고르기·봉인 입찰이 창의 대상 줄(`choose_option`·`choose_count`)이 되어, 서버 기록이 그 줄이 끝낸 온 행동으로도 봉인을
+  판단한다(`session_log.log_step`; 단계 id만 보던 판단이면 다른 좌석의 실시간 기록에 고른 줄·입찰 수가 보였을 것 — 구현 중에
+  찾아 고침, 시험 `test_a_secret_choice_s_target_row_is_logged_sealed`).
+- **망 좌석:** Scouts 없이 학습한 파일에는 Scouts 창이 다른 효과와 함께 쓰는 대상 줄(`choose_count`·`choose_option`·`choose_faction` …)이
+  학습된 줄이라, "학습 안 한 줄만" 남은 결정(heuristic으로 넘김)은 Scouts에만 있는 줄의 결정(소위원회·임무 창 등)뿐이다. v150 재학습이
+  모든 옵션으로 하면 사라지는 차이다.
+- **codec:** Scouts 창의 온 행동 template이 떠나 Scouts 기본 1,922 → 1,516, 옵션 전부 4,604 → 3,970(Scouts 없는 catalog는 그대로).
+- **측정:** pytest 8,175; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크
+  900판(codec 왕복 검사 포함); 문제집 다시 채굴(그대로 109곳); E2E 68개 전부. 독립 리뷰 결함 없음(시험 공백 1: 표본 반환의 두 모습을
+  지키는 시험을 더함; 낡은 주석·중복 상수 정리).
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로

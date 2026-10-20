@@ -388,11 +388,13 @@ def test_sealed_scouts_choices_never_score() -> None:
 
     manager, game_id = _finished(seed=0, arrakeen_scouts=True)
     session = manager._get(game_id)
+    # A secret pick or a sealed bid is a window's target row now (stage
+    # B3d-2b); the whole action its step ends names which one it is.
     sealed = {
-        index: entry.step.action_id
+        index: (entry.whole or entry.step).action_id
         for index, entry in _live(session)
         if not isinstance(entry.step, ChanceOutcome)
-        and entry.step.action_id in SEALED_ACTION_IDS
+        and (entry.whole or entry.step).action_id in SEALED_ACTION_IDS
     }
     assert set(sealed.values()) == SEALED_ACTION_IDS, "seed 0 picks and bids"
     payload = manager.vp_ledger(game_id)

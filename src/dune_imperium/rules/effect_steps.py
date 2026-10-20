@@ -87,6 +87,10 @@ class Choose(StrEnum):
     COUNT = "count"
     LEADER = "leader"
     NAVIGATION_CARD = "navigation_card"
+    # Stage B3d-2b: an Arrakeen Scouts subcommittee to join, a mission's
+    # part to take.
+    SUBCOMMITTEE = "subcommittee"
+    MISSION = "mission"
 
     @property
     def action_id(self) -> str:
@@ -115,6 +119,8 @@ CHOOSE_ARGUMENT: Final[Mapping[Choose, str]] = MappingProxyType({
     Choose.COUNT: "count",
     Choose.LEADER: "leader_id",
     Choose.NAVIGATION_CARD: "card_id",
+    Choose.SUBCOMMITTEE: "subcommittee_id",
+    Choose.MISSION: "target",
 })
 CHOOSE_ACTIONS: Final = frozenset(kind.action_id for kind in Choose)
 
@@ -160,6 +166,9 @@ class Printed(StrEnum):
     # placement window of an Influence track, a Tech tile, an Intrigue card
     # or a Scouts line.
     WINDOW = "window"
+    # Stage B3d-2b: the Arrakeen Scouts mission whose part the window offers
+    # (its ``mission_id``).
+    MISSION = "mission"
 
 
 @dataclass(frozen=True, slots=True)
@@ -715,6 +724,16 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    # --- Arrakeen Scouts (stage B3d-2b) ---------------------------------------
+    # A new High Council seat may join a subcommittee (docs/rules/
+    # arrakeen-scouts.md 4): the Agent turn's or the Reveal's row (D-3), then
+    # the subcommittee window's target.
+    "choose_subcommittee": _spec(_V.JOIN, _S.SCOUTS, "=high_council"),
+    # A mission's part: its way when it has several, else the mission's
+    # plain way by its effect row (an own effect with no target).
+    "scouts_join_mission": _spec(
+        _V.JOIN, _S.SCOUTS, Printed.MISSION, targets=(("target", _C.MISSION),)
+    ),
 })
 
 _CONTRACT_TARGET = (("instance_id", _C.CONTRACT),)
@@ -779,16 +798,48 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "play_navigation": (("option", _C.OPTION),),
     "choose_skill": (("skill_id", _C.SKILL),),
     "choose_research_space": (("space_id", _C.TRACK_SPACE),),
+    # --- Arrakeen Scouts' windows (stage B3d-2b) ------------------------------
+    # A Scouts line's choice step: one effect a step.
+    "scouts_trash_card": _CARD,
+    "scouts_discard": _CARD,
+    "scouts_trash_intrigue": _INTRIGUE_TARGET,
+    "scouts_recall_spy": _POST,
+    "scouts_recall_agent": _RECALLED,
+    "scouts_choose_faction": _FACTION,
+    "scouts_lose_influence": _FACTION,
+    "scouts_lose_influence_to": (*_FACTION, _RECIPIENT),
+    # A troop or a Sardaukar Commander of the garrison (OQ-105).
+    "scouts_lose_garrison_unit": (("=garrison", _C.UNIT),),
+    # How many specimens a recruit step returns first; beside a mission's
+    # part it is a free action as it is (``OFFERED_AS_WHOLE``).
+    "scouts_return_specimens": _COUNT,
+    # Friends Everywhere's Influence 4 bonus, a subcommittee, an event's or a
+    # sale's option, a secret pick, a bid, a call, an auction's retreat, a
+    # market card.
+    "choose_four_bonus": _FACTION,
+    "join_subcommittee": (("subcommittee_id", _C.SUBCOMMITTEE),),
+    "scouts_choose_option": (("option", _C.OPTION),),
+    "scouts_secret_pick": (("pick", _C.OPTION),),
+    "scouts_bid": _COUNT,
+    "scouts_call": _COUNT,
+    "scouts_retreat": _COUNT,
+    "scouts_take_card": (("slot", _C.OPTION),),
 })
+# Window-only ids a frame still offers as they are beside its own effect: a
+# mission window's specimen return before taking part, a free action like
+# ``return_specimen`` (Immortality's "at any time", OQ-050; side branches wait
+# for stage B3d-4). The action catalog keeps their whole templates.
+OFFERED_AS_WHOLE: Final = frozenset({"scouts_return_specimens"})
 # Effects of ``STEP_SPECS`` a window also offers as its own, there by their
 # targets alone: a revealed card's Spy after a recall, a Tech tile bought, a
 # research space's bonus, the trash of an optional trash window, a Recall
-# Spy slot's recall.
+# Spy slot's recall, a Scouts mission's way.
 WINDOW_OWN: Final = frozenset({
     "acquire_tech",
     "choose_research_influence",
     "place_reveal_spy",
     "recall_spy_for_intrigue",
+    "scouts_join_mission",
     "trash_intrigue_for_research_bonus",
     "trash_optional_card",
 })
@@ -808,9 +859,9 @@ EFFECT_STEP_FRAMES: Final = frozenset({
     FrameKind.INTRIGUE_EFFECTS,
     FrameKind.LEADER_SIGNET,
 })
-# The windows opened for one effect (stage B3d-2a, module docstring): every
-# one of their whole actions is shown by steps, so no whole id of the tables
-# above is offered as it is any more.
+# The windows opened for one effect (stage B3d-2a, module docstring): their
+# whole actions are shown by steps, so no whole id of the tables above is
+# offered as it is but the side branch ``OFFERED_AS_WHOLE`` names.
 TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.OPPONENT_CARD_DISCARD,
     FrameKind.ACQUISITION_SPY,
@@ -843,6 +894,17 @@ TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.GRAFT_PARTNER,
     FrameKind.INTRIGUE_PEEK,
     FrameKind.LONG_LIVE_FIGHTERS,
+    # Stage B3d-2b: Arrakeen Scouts.
+    FrameKind.SCOUTS_FOUR_BONUS,
+    FrameKind.SCOUTS_EFFECT,
+    FrameKind.SCOUTS_SUBCOMMITTEE,
+    FrameKind.SCOUTS_CHOICE,
+    FrameKind.SCOUTS_MISSION,
+    FrameKind.SCOUTS_SECRET,
+    FrameKind.SCOUTS_BID,
+    FrameKind.SCOUTS_RETREAT,
+    FrameKind.SCOUTS_CALL,
+    FrameKind.SCOUTS_MARKET,
 })
 # Two of those windows offer several effects at once in one of their modes
 # (stage B3d-1), every effect then by its effect row: a research window
@@ -929,6 +991,11 @@ def printed_from_state(
             raise ValueError(f"{whole}'s window records no printer")
         opener, entity, _box = printer_parts(printer)
         return opener, entity
+    if rule == Printed.MISSION:
+        mission = dict(state.decision_stack[-1].context).get("mission_id")
+        if not isinstance(mission, str):
+            raise ValueError(f"{whole} has no mission")
+        return spec.source, mission
     return spec.source, _leader_face(state, whole)
 
 
@@ -979,7 +1046,7 @@ def path_of(state: GameState, whole: DomainAction) -> tuple[DomainAction, ...] |
     None when ``whole`` is offered as it is."""
 
     if _offers_one_effect(state):
-        if whole.action_id in TARGET_SPECS:
+        if whole.action_id in TARGET_SPECS and _own_effect(state, whole):
             return steps_for(whole, effect_row=False)
         if whole.action_id in WINDOW_OWN and _own_effect(state, whole):
             # Its target rows, or with none the effect row as below.
@@ -1022,10 +1089,13 @@ def _offers_one_effect(state: GameState) -> bool:
 
 
 def _own_effect(state: GameState, whole: DomainAction) -> bool:
-    """Whether ``whole`` of ``WINDOW_OWN`` is its window's own effect: an
-    Intrigue card's recall is beside a Spy placement slot's Spy, and the
-    effect of a Recall Spy slot."""
+    """Whether ``whole`` is its window's own effect: an Intrigue card's
+    recall is beside a Spy placement slot's Spy, and the effect of a Recall
+    Spy slot; a Scouts specimen return is a recruit step's own, and beside a
+    mission's part (``OFFERED_AS_WHOLE``)."""
 
+    if whole.action_id == "scouts_return_specimens":
+        return state.decision_stack[-1].kind != FrameKind.SCOUTS_MISSION
     if whole.action_id != "recall_spy_for_intrigue":
         return True
     # The Intrigue rules build on this module's callers.

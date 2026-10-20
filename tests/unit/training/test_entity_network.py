@@ -91,8 +91,8 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Stage B3d-1: so do the Conflict card of a reward window and the Intrigue
 # card of a lines window. Stage B3d-2a: and the Faction whose Influence
 # track opens a Spy window (the Emperor's); a Scouts line's printed item is
-# a label (``LABEL_SOURCES``).
-_GOLDEN_DIGEST = "ca79dc9811dc7f554305cd19cd761e5e7960a298f280e12671596cad415660e2"
+# a label (``SCOUTS_ITEM_IDS``; a Scouts mission's too, stage B3d-2b).
+_GOLDEN_DIGEST = "a4ecaee5bcbb75bdff7ff9b89aca2f0b515078455c56db6478a0d771553ddfbb"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -304,9 +304,12 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
     # Every printed entity of an effect row is an entity (stage B3), but the
     # Reveal's markets, which no card or space prints (stage B3b-2), the
     # windows a card is played in (stage B3c-1), and the Scouts lines that
-    # open a Spy window, which have no vocabulary (stage B3d-2a).
+    # open a Spy window (stage B3d-2a) and the Scouts missions whose plain
+    # way is an effect row (stage B3d-2b), which have no vocabulary.
+    from dune_imperium.content.arrakeen_scouts import missions_for, scouts_pool
     from dune_imperium.rules.scouts_effects import scouts_spy_items
 
+    missions = missions_for(scouts_pool(immortality=True), choam=True)
     assert labels == {
         "imperium_row",
         "reserve",
@@ -319,6 +322,7 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "turn_start",
         "wild_icon",
         *scouts_spy_items(),
+        *(mission.mission_id for mission in missions),
     }
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]

@@ -100,9 +100,11 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    # Stage B3d-2b: a window opened for one effect shows its target rows;
+    # the rules still take its whole actions (``apply_whole``).
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _pick_all(state: GameState, picks: dict[int, int]) -> GameState:
@@ -137,8 +139,12 @@ def test_each_seat_picks_in_secret_in_turn_order() -> None:
     state = _reveal(_base(), "covert_operation")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SECRET
     # All four lines are always offered: the mask says nothing.
-    assert [a.arguments for a in ENGINE.legal_actions(state, 0)] == [
+    assert [a.arguments for a in ENGINE.whole_actions(state, 0)] == [
         (("pick", pick),) for pick in range(4)
+    ]
+    # The window shows them as ``choose_option`` rows (stage B3d-2b).
+    assert [(a.action_id, a.arguments) for a in ENGINE.legal_actions(state, 0)] == [
+        ("choose_option", (("option", pick),)) for pick in range(4)
     ]
     state = _pick_all(state, PICKS)
     assert sorted(state.scouts_secret_picks) == [
@@ -197,9 +203,14 @@ def test_the_discard_line_may_be_taken_or_left() -> None:
     state = _advance(_next_round(state, 6))
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
     assert _owner(state) == 2
-    assert [a.action_id for a in ENGINE.legal_actions(state, 2)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(state, 2)] == [
         "scouts_pass",
         "scouts_choose_option",
+    ]
+    # The window shows the line as a ``choose_option`` row (stage B3d-2b).
+    assert [a.action_id for a in ENGINE.legal_actions(state, 2)] == [
+        "scouts_pass",
+        "choose_option",
     ]
     # Every offered line is in the Scouts codec (a line index up to 3).
     codec = ActionCodec(SCOUTS)
@@ -304,12 +315,17 @@ def test_a_public_pick_event_may_not_carry_the_pick() -> None:
 
 def test_the_log_hides_a_pick_from_every_other_seat() -> None:
     before = _reveal(_base(), "covert_operation")
+    # Stage B3d-2b: the pick is the window's ``choose_option`` row; the log
+    # seals it by the whole action it ends, ``scouts_secret_pick``.
     action = DomainAction(
-        action_id="scouts_secret_pick", actor=0, arguments=(("pick", 3),)
+        action_id="choose_option", actor=0, arguments=(("option", 3),)
     )
     transition = ENGINE.apply(before, action)
     entry = log_step(before, transition.state, action, transition.events)
     assert entry.sealed
+    assert entry.whole == DomainAction(
+        action_id="scouts_secret_pick", actor=0, arguments=(("pick", 3),)
+    )
     # The pick itself reveals nothing, so its seat may still take it back.
     assert not entry.reveals
     assert _log_entry_json(0, entry, seat=0, finished=False)["arguments"] == {"pick": 3}

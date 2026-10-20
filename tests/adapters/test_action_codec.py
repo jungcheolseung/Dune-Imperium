@@ -1,5 +1,7 @@
 """Tests for the fixed integer Uprising action codec."""
 
+from dataclasses import replace
+
 import pytest
 
 from dune_imperium import RulesetConfig
@@ -9,12 +11,18 @@ from dune_imperium.adapters.action_codec import (
     _scouts_templates,
     catalog_spaces,
 )
+from dune_imperium.content.arrakeen_scouts import missions_for, scouts_pool
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
-from dune_imperium.rules.effect_steps import STEP_SPECS, TARGET_SPECS, steps_for
+from dune_imperium.rules.effect_steps import (
+    OFFERED_AS_WHOLE,
+    STEP_SPECS,
+    TARGET_SPECS,
+    steps_for,
+)
 from dune_imperium.rules.scouts_effects import scouts_spy_items
 from dune_imperium.simulation import run_random_round
 
@@ -207,6 +215,37 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     assert first.size == 1366
 
 
+def _scouts_step_rows(
+    config: RulesetConfig, scouts_only: set[ActionTemplate]
+) -> set[DomainAction]:
+    """The rows that stand for the whole templates of the Scouts windows
+    (stage B3d-2b): a window's own effect by its target rows
+    (``effect_steps.TARGET_SPECS``), the High Council's subcommittee list and
+    a mission's plain way in by their ``join`` effect rows, and a mission's
+    other ways by ``choose_mission``. ``scouts_return_specimens`` stays a
+    whole template (``OFFERED_AS_WHOLE``)."""
+
+    missions = missions_for(
+        scouts_pool(immortality=config.immortality), choam=config.choam_module
+    )
+    rows: set[DomainAction] = set()
+    for template in scouts_only:
+        whole = DomainAction(template.action_id, 0, template.arguments)
+        if template.action_id in OFFERED_AS_WHOLE:
+            continue
+        if template.action_id in TARGET_SPECS or template.action_id == (
+            "choose_subcommittee"
+        ):
+            rows.update(steps_for(whole))
+        elif template.action_id == "scouts_join_mission":
+            if dict(template.arguments)["target"]:
+                rows.update(steps_for(whole, effect_row=False))
+            else:
+                for mission in missions:
+                    rows.update(steps_for(whole, mission.mission_id))
+    return rows
+
+
 def _scouts_catalog_additions(
     config: RulesetConfig, scouts_only: set[ActionTemplate]
 ) -> set[ActionTemplate]:
@@ -220,9 +259,17 @@ def _scouts_catalog_additions(
     B3d-2a: a Scouts line that places a Spy opens the Spy placement window,
     whose recall first names that line's item; its optional trash window
     offers the trash by its card's target row, which every catalog holds.
+    Stage B3d-2b: the ten Scouts windows are windows opened for one effect
+    too, so their whole templates are not in the catalog either; the rows
+    that stand for them are (``_scouts_step_rows``), but only the Scouts
+    catalogs add the ones no catalog without the option holds (a
+    subcommittee, a mission, a bid above the base counts, a secret pick or a
+    market slot as an option, the High Council's and the missions' ``join``
+    rows); a faction, a card, a post or a space is held already.
     """
 
-    step_only = {*STEP_SPECS, *TARGET_SPECS}
+    held = set(ActionCodec(replace(config, arrakeen_scouts=False)).catalog)
+    step_only = {*STEP_SPECS, *TARGET_SPECS} - OFFERED_AS_WHOLE
     collect_rows = {
         ActionTemplate(
             "collect",
@@ -246,13 +293,18 @@ def _scouts_catalog_additions(
         ActionTemplate("recall_spy", (("printed", item), ("source", "scouts")))
         for item in scouts_spy_items()
     }
+    window_rows = {
+        ActionTemplate(row.action_id, row.arguments)
+        for row in _scouts_step_rows(config, scouts_only)
+    }
     return {
         *(t for t in scouts_only if t.action_id not in step_only),
         *collect_rows,
         *choice_rows,
         maker_row,
         *spy_rows,
-    }
+        *window_rows,
+    } - held
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -260,7 +312,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
     # catalogs without the option are byte for byte what they were (base
     # 4,427) and a Scouts catalog adds exactly those templates -- and, since
     # stage B3a, the effect rows that stand for the two Scouts ids the
-    # Agent-effect frame offers only as steps.
+    # Agent-effect frame offers only as steps and, since stage B3d-2b, the
+    # target and effect rows that stand for the Scouts windows' whole ids.
     for options in (
         {},
         {
@@ -283,6 +336,32 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             t.action_id in {"scouts_collect_mission", "take_desert_riding_hooks"}
             for t in with_scouts.catalog
         )
+        # Stage B3d-2b: the Scouts windows' whole templates left the catalog
+        # (bar the specimen return), and their rows round trip in their place.
+        window_ids = {t.action_id for t in scouts_only} & (
+            set(TARGET_SPECS) - OFFERED_AS_WHOLE
+        )
+        assert {"scouts_bid", "scouts_secret_pick", "join_subcommittee"} <= window_ids
+        assert not any(
+            t.action_id in {*window_ids, "scouts_join_mission"}
+            for t in with_scouts.catalog
+        )
+        # A bare ``choose_subcommittee`` is the High Council's list, now the
+        # ``join`` effect row; the id as a row names a subcommittee.
+        assert ActionTemplate("choose_subcommittee") not in with_scouts.catalog
+        assert ActionTemplate(
+            "join", (("printed", "high_council"), ("source", "scouts"))
+        ) in set(with_scouts.catalog)
+        step_rows = _scouts_step_rows(scouts_config, scouts_only)
+        assert step_rows
+        for row in step_rows:
+            # A row names its card by template id; the decoded one by the
+            # seat's own instance, so compare by template.
+            index = with_scouts.encode(row)
+            assert with_scouts.catalog[index] == ActionTemplate(
+                row.action_id, row.arguments
+            )
+            assert with_scouts.encode(with_scouts.decode(index, actor=0)) == index
     assert ActionCodec(RulesetConfig()).size == 1366
     base_scouts = RulesetConfig(arrakeen_scouts=True)
     assert ActionCodec(base_scouts).size == 1366 + len(
@@ -308,8 +387,11 @@ def test_scouts_specimen_return_needs_immortality_recall_conflict_always_in() ->
     )
     assert counts == list(range(MAX_SPECIMEN_TOP_UP + 1))
     for codec in (plain, immortal):
+        # Stage B3d-2b: the window offers the Agent by a ``choose_space`` row;
+        # the whole template left the catalog.
+        assert not any(t.action_id == "scouts_recall_agent" for t in codec.catalog)
         assert any(
-            t.action_id == "scouts_recall_agent"
+            t.action_id == "choose_space"
             and dict(t.arguments)["space_id"] == "conflict"
             for t in codec.catalog
         )

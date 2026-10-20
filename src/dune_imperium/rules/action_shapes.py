@@ -747,7 +747,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "draw_owed_intrigue": _row(_V.DRAW, _S.TRIGGER, variant="intrigue"),
     # --- Arrakeen Scouts -----------------------------------------------------
     "choose_four_bonus": _row(_V.CHOOSE, _S.SCOUTS, _T.FACTION),
-    "choose_subcommittee": _row(_V.CHOOSE, _S.SCOUTS),
+    # Stage B3d-2b: a target row (its turn row is the ``join`` effect row).
+    "choose_subcommittee": _row(_V.CHOOSE, _S.REF, _T.SUBCOMMITTEE),
     "join_subcommittee": _row(_V.JOIN, _S.SCOUTS, _T.SUBCOMMITTEE),
     "decline_subcommittee": _row(_V.DECLINE, _S.SCOUTS, of=_V.JOIN),
     "scouts_discard": _row(_V.DISCARD, _S.SCOUTS, _T.PERSONAL_CARD),
@@ -820,6 +821,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             _V.MATCH,
             # Stage B3c-2a: a research space's specimen icon.
             _V.GENERATE_SPECIMENS,
+            # Stage B3d-2b: a new High Council seat's subcommittee.
+            _V.JOIN,
         )
     },
     # A target row picks one target of the effect its seat picked.
@@ -843,6 +846,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_count": _row(_V.CHOOSE, _S.REF, _T.COUNT),
     "choose_leader": _row(_V.CHOOSE, _S.REF, _T.LEADER),
     "choose_navigation_card": _row(_V.CHOOSE, _S.REF, _T.NAVIGATION_CARD),
+    # Stage B3d-2b: a mission's part.
+    "choose_mission": _row(_V.CHOOSE, _S.REF, _T.MISSION),
 })
 
 

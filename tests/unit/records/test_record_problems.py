@@ -472,11 +472,21 @@ def test_untrained_network_rows_give_no_probabilities(tmp_path: Path) -> None:
     save_checkpoint(
         policy, network, ruleset=without.identifier, iteration=1, codec=codec
     )
+    # A row is untrained when the Scouts catalog holds its template and the
+    # file's catalog does not. Since stage B3d-2b the Scouts windows share
+    # generic target rows (``choose_count``, ``choose_option``) with other
+    # effects, so only a decision whose every row is Scouts-only (a mission
+    # or subcommittee window with its decline) is handed to the heuristic.
+    scouts_codec = ActionCodec(game.parsed.replay.ruleset)
+    held = set(codec.catalog)
     decisions = [
         decision
         for decision in human_decisions(game)
         if len(offered := without_undo_actions(decision.legal_actions)) >= 2
-        and all(action.action_id.startswith("scouts_") for action in offered)
+        and all(
+            scouts_codec.catalog[scouts_codec.encode(action)] not in held
+            for action in offered
+        )
     ]
     decision = decisions[0]
     other = next(

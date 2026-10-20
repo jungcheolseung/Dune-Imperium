@@ -10,7 +10,10 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
-from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
+from dune_imperium.adapters.action_codec import (  # noqa: E402
+    ActionCodec,
+    ActionTemplate,
+)
 from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     OBSERVATION_SIZE,
     encode_player_view,
@@ -410,7 +413,17 @@ def test_migration_names_the_policy_rows_a_file_was_never_trained_on(
     expected = {row for row, template in enumerate(catalog) if template not in held}
     assert moved.migration.new_action_rows == expected
     assert len(expected) == moved.migration.actions_new > 0
-    assert any(catalog[row].action_id == "scouts_bid" for row in expected)
+    # Stage B3d-2b: a bid, a secret pick and a market slot are the generic
+    # ``choose_count`` and ``choose_option`` rows, which the file was trained
+    # on; the rows only the Scouts windows hold are untrained.
+    untrained = {catalog[row] for row in expected}
+    assert {template.action_id for template in untrained} >= {
+        "choose_subcommittee",
+        "confirm_scouts_bid",
+        "scouts_decline_mission",
+    }
+    assert not any(template.action_id == "scouts_bid" for template in catalog)
+    assert ActionTemplate("choose_count", (("count", 1),)) not in untrained
 
 
 class _Seat0Recorder:
@@ -449,9 +462,11 @@ def test_a_checkpoint_seat_hands_untrained_only_decisions_to_a_heuristic(
 ) -> None:
     # Design D6 (2026-09-30): a checkpoint seat may play Arrakeen Scouts. A
     # file trained without Scouts has zero logits for every Scouts template,
-    # so a decision offering only those (a sealed bid, a secret pick, a
-    # mission) goes to a heuristic seeded with the agent seed; a decision
-    # with any trained action stays with the network.
+    # so a decision offering only those (a subcommittee, a mission) goes to
+    # a heuristic seeded with the agent seed; a decision with any trained
+    # action stays with the network. Stage B3d-2b: a sealed bid and a secret
+    # pick are the generic ``choose_count`` and ``choose_option`` rows the
+    # file was trained on, so they stay with the network.
     from dune_imperium.agents.heuristic_agent import HeuristicAgent
     from dune_imperium.rules import UprisingRulesEngine
     from dune_imperium.simulation.runner import run_policy_game
@@ -477,8 +492,11 @@ def test_a_checkpoint_seat_hands_untrained_only_decisions_to_a_heuristic(
     recorder = _Seat0Recorder(agent, agent.network)
     others = [HeuristicAgent(seed=seed) for seed in (1, 2, 3)]
 
+    # Seed 4 (it was 6): the Scouts windows' bids and picks are trained rows
+    # now, so stage B3d-2b moved the old seed off the scenario -- seat 0 never
+    # meets a mission or subcommittee window in it.
     simulation = run_policy_game(
-        UprisingRulesEngine(), scouts, 6, [recorder, *others], max_steps=30_000
+        UprisingRulesEngine(), scouts, 4, [recorder, *others], max_steps=30_000
     )
 
     assert simulation.state.phase.name == "FINISHED"

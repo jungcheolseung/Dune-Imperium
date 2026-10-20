@@ -210,6 +210,9 @@ def log_step(
         sealed=not isinstance(step, ChanceOutcome)
         and (
             step.action_id in SEALED_ACTION_IDS
+            # A window's target row that ends a secret choice (a Scouts
+            # secret pick's option, a sealed bid's count: stage B3d-2b).
+            or (whole is not None and whole.action_id in SEALED_ACTION_IDS)
             # A step toward a waiting effect is its seat's half-pick until
             # the effect's last step (stage B3, OQ-111 (4)).
             or any(event.kind == EFFECT_PICKED_EVENT for event in events)

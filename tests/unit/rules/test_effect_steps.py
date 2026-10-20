@@ -725,6 +725,7 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
     )
     from dune_imperium.rules.effect_steps import (
         CHOOSE_ACTIONS,
+        OFFERED_AS_WHOLE,
         TARGET_SPECS,
         TARGET_STEP_FRAMES,
         presents_steps,
@@ -762,7 +763,12 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
                 assert set(legal) == {first_step(state, w) for w in wholes}, kind
                 for whole in wholes:
                     if whole.action_id in TARGET_SPECS:
-                        assert first_step(state, whole).action_id in CHOOSE_ACTIONS
+                        # A side branch a window still offers as it is (a
+                        # mission's specimen return, stage B3d-2b).
+                        row = first_step(state, whole)
+                        assert row.action_id in CHOOSE_ACTIONS or (
+                            row == whole and whole.action_id in OFFERED_AS_WHOLE
+                        )
                 for row in legal:
                     codec.encode(row)
                 if picked_rows(state):
@@ -782,6 +788,11 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
         "navigation_setup",
         "research_advance",
         "spy_placement",
+        # Stage B3d-2b: Arrakeen Scouts.
+        "scouts_bid",
+        "scouts_choice",
+        "scouts_effect",
+        "scouts_subcommittee",
     } <= seen
 
 
@@ -926,3 +937,63 @@ def test_long_live_the_fighters_shows_the_card_to_draw_as_its_first_target() -> 
     before = encode_player_view(drawing)[picked]
     after = encode_player_view(view)[picked]
     assert sum(before) == 0 and sum(after) == 1
+
+
+def test_a_new_high_council_seat_joins_a_subcommittee_by_its_target() -> None:
+    # Stage B3d-2b (D-3): the turn's subcommittee choice is the effect row
+    # ``join`` that the Arrakeen Scouts rule for a new High Council seat
+    # prints (docs/rules/arrakeen-scouts.md 4), and the window it opens
+    # offers each joinable subcommittee by its target row.
+    whole = DomainAction("choose_subcommittee", 0)
+    assert steps_for(whole) == (
+        DomainAction("join", 0, (("printed", "high_council"), ("source", "scouts"))),
+    )
+    joined = DomainAction("join_subcommittee", 0, (("subcommittee_id", "leverage"),))
+    assert steps_for(joined, effect_row=False) == (
+        DomainAction("choose_subcommittee", 0, (("subcommittee_id", "leverage"),)),
+    )
+
+
+def test_a_scouts_mission_shows_its_ways_and_its_plain_way() -> None:
+    # A mission's part with several ways (a Contract to escort, recruiting)
+    # is picked by its way's target row; the plain way names no target, so it
+    # is the effect row of the mission (an own effect with no target, D-1).
+    way = DomainAction("scouts_join_mission", 0, (("target", "recruit"),))
+    plain = DomainAction("scouts_join_mission", 0, (("target", ""),))
+    assert steps_for(way, effect_row=False) == (
+        DomainAction("choose_mission", 0, (("target", "recruit"),)),
+    )
+    assert steps_for(plain, effect_row=False) == ()
+    assert steps_for(plain, "prison_planet") == (
+        DomainAction("join", 0, (("printed", "prison_planet"), ("source", "scouts"))),
+    )
+
+
+def test_a_scouts_specimen_return_is_a_recruit_steps_own_and_beside_a_mission() -> None:
+    # Stage B3d-2b (the review of B3d-2b): a Scouts recruit step's specimen
+    # top-up is the step's own choice, by its count's target row; beside a
+    # mission's part it is Immortality's free return "at any time"
+    # (OQ-050), a side branch offered as it is (``OFFERED_AS_WHOLE``).
+    from tests.unit.agents.app_ai import test_app_ai_window_scouts as scouts
+
+    from dune_imperium.rules.scouts_missions import offer_mission_join
+
+    troops = scouts._troops(supply=1, garrison=8, specimens=3)
+    recruit = scouts._effect(
+        scouts._me(scouts._base(), **troops), "covert_operation", 2, step=1
+    )
+    assert recruit.decision_stack[-1].kind == "scouts_effect"
+    offered = ENGINE.legal_actions(recruit, 0)
+    assert offered and {row.action_id for row in offered} == {"choose_count"}
+    mission = offer_mission_join(
+        scouts._me(
+            scouts._resources(scouts._base(), solari=4),
+            **scouts._troops(supply=1, garrison=9, specimens=2),
+        ),
+        0,
+        "weirding_warfare",
+        source=scouts.SOURCE,
+    ).state
+    rows = set(ENGINE.legal_actions(mission, 0))
+    assert DomainAction("scouts_return_specimens", 0, (("count", 1),)) in rows
+    assert not any(row.action_id == "choose_count" for row in rows)

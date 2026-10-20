@@ -784,9 +784,13 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     # with the state); the Immortality game's first forced decision is its
     # 40th.
     # Stage B3d-2a moved seed 3 off the Scouts game's untrained-only decision
-    # (the windows are offered by their target rows now); seed 0 is the first
-    # that meets one.
-    game_seed = 0 if expansion == "arrakeen_scouts" else 3
+    # (the windows are offered by their target rows now) and stage B3d-2b
+    # moved seed 0 off it (the Scouts windows are target rows too, and a
+    # base file has trained logits for the rows they share with other
+    # effects; only a Scouts-only window such as a subcommittee or a mission
+    # stays untrained-only); seed 1 is the first that meets one, both before
+    # and after the split at 35.
+    game_seed = 1 if expansion == "arrakeen_scouts" else 3
     decided = _search_seat_game(
         seat_agent(), config, seed=game_seed, seat=1, count=66
     )

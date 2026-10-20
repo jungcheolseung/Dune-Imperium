@@ -2970,10 +2970,10 @@ def _log_entry_json(
             payload["values"] = list(step.values)
         return payload
     redact = not finished and step.actor != seat
-    shown = SEALED_SHOWN_KEYS.get(step.action_id) if redact and entry.sealed else None
     # The last step of a waiting effect shows the whole action it ends
     # (stage B3); a step that only picks toward it is marked ``pick``.
     action = entry.whole or step
+    shown = SEALED_SHOWN_KEYS.get(action.action_id) if redact and entry.sealed else None
     arguments = {
         key: (
             "(비공개)"

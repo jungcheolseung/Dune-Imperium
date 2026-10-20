@@ -1528,12 +1528,14 @@ def test_prison_planet_is_not_declined_for_a_seat_that_could_join_with_a_troop(
         and isinstance(migrated.step, DomainAction)
         and state.decision_stack
         and state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
+        # The rules' whole action: the mission window shows the plain way as
+        # its ``join`` effect row (stage B3d-2b).
         and DomainAction(
             action_id="scouts_join_mission",
             actor=migrated.step.actor,
             arguments=(("target", ""),),
         )
-        in engine.legal_actions(state, migrated.step.actor)
+        in engine.whole_actions(state, migrated.step.actor)
     )
     steps = list(replay.steps)
     del steps[asked]

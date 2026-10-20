@@ -102,6 +102,7 @@ from dune_imperium.rules.effect_interpreter import automatic_rewards, choice_slo
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
     INTRIGUE_WINDOWS,
+    OFFERED_AS_WHOLE,
     STEP_SPECS,
     TARGET_SPECS,
     WINDOW_OWN,
@@ -1303,8 +1304,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates = [
         template
         for template in wholes
-        if template.action_id not in STEP_SPECS
-        and template.action_id not in TARGET_SPECS
+        if (
+            template.action_id not in STEP_SPECS
+            and template.action_id not in TARGET_SPECS
+        )
+        or template.action_id in OFFERED_AS_WHOLE
     ]
     templates.extend(_effect_step_templates(config, wholes))
     return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
@@ -1438,6 +1442,15 @@ def _effect_step_templates(
         elif spec.printed == Printed.WINDOW:
             # The Spy placement window, by what opened it (B3d-2a).
             named = _spy_placement_printers(config)
+        elif spec.printed == Printed.MISSION:
+            # A Scouts mission's plain way in (B3d-2b).
+            named = tuple(
+                (None, mission.mission_id)
+                for mission in missions_for(
+                    scouts_pool(immortality=config.immortality),
+                    choam=config.choam_module,
+                )
+            )
         elif spec.printed == Printed.NAMED:
             # An optional trash waiting on the turn, by every entity that
             # may print one (stage B3c-2b); a grafted turn's second card's
