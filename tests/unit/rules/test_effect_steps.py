@@ -727,7 +727,6 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
     from dune_imperium.rules.action_shapes import Verb
     from dune_imperium.rules.effect_steps import (
         CHOOSE_ACTIONS,
-        OFFERED_AS_WHOLE,
         STEP_SPECS,
         TARGET_SPECS,
         TARGET_STEP_FRAMES,
@@ -775,12 +774,9 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
                         assert row.action_id == spec.verb.value
                         assert "of" in dict(row.arguments)
                     if whole.action_id in TARGET_SPECS:
-                        # A side branch a window still offers as it is (a
-                        # mission's specimen return, stage B3d-2b).
-                        row = first_step(state, whole)
-                        assert row.action_id in CHOOSE_ACTIONS or (
-                            row == whole and whole.action_id in OFFERED_AS_WHOLE
-                        )
+                        # Since stage B3d-4 no window offers a whole as it
+                        # is (a mission's specimen return was the last).
+                        assert first_step(state, whole).action_id in CHOOSE_ACTIONS
                 for row in legal:
                     codec.encode(row)
                 if picked_rows(state):
@@ -991,7 +987,8 @@ def test_a_scouts_specimen_return_is_a_recruit_steps_own_and_beside_a_mission() 
     # Stage B3d-2b (the review of B3d-2b): a Scouts recruit step's specimen
     # top-up is the step's own choice, by its count's target row; beside a
     # mission's part it is Immortality's free return "at any time"
-    # (OQ-050), a side branch offered as it is (``OFFERED_AS_WHOLE``).
+    # (OQ-050), a side branch: since stage B3d-4 (D-1) its effect row names
+    # the mission whose window offers it, then its count.
     from tests.unit.agents.app_ai import test_app_ai_window_scouts as scouts
 
     from dune_imperium.rules.scouts_missions import offer_mission_join
@@ -1013,8 +1010,22 @@ def test_a_scouts_specimen_return_is_a_recruit_steps_own_and_beside_a_mission() 
         source=scouts.SOURCE,
     ).state
     rows = set(ENGINE.legal_actions(mission, 0))
-    assert DomainAction("scouts_return_specimens", 0, (("count", 1),)) in rows
+    side = DomainAction(
+        "return_specimen",
+        0,
+        (("printed", "weirding_warfare"), ("source", "scouts")),
+    )
+    assert side in rows
+    assert not any(row.action_id.startswith("scouts_") for row in rows)
     assert not any(row.action_id == "choose_count" for row in rows)
+    picked = ENGINE.apply(mission, side, legal_actions=tuple(rows)).state
+    counts = ENGINE.legal_actions(picked, 0)
+    assert set(counts) == {DomainAction("choose_count", 0, (("count", 1),))}
+    returned = ENGINE.apply(picked, counts[0], legal_actions=counts).state
+    # The seat is still asked, with the returned troop in its supply.
+    assert returned.decision_stack[-1].kind == "scouts_mission"
+    assert returned.players[0].troops_supply == 2
+    assert returned.players[0].specimens == 1
 
 
 def test_a_refusal_names_the_effect_it_answers_and_its_place() -> None:
@@ -1077,3 +1088,63 @@ def test_a_ghola_copying_holy_war_names_itself_in_the_opponents_windows(
         (("of", answered), ("printed", "ghola"), ("source", "agent_card")),
     )
     ActionCodec(RulesetConfig(bloodlines=True, immortality=True)).encode(row)
+
+
+def test_the_turns_last_source_named_rows_name_their_source() -> None:
+    # Stage B3d-4 (D-3): the Emperor track's Spy and the Commander recruit
+    # are effect rows naming what prints them, and an owed draw names what
+    # earned the draw its press takes -- the oldest immediate one of its
+    # deck, else its oldest (``owed_draws.next_owed_draw``) -- by its kind,
+    # or the trigger where it has none (the Tleilaxu track's space).
+    from dune_imperium import RulesetConfig
+    from dune_imperium.rules.action_shapes import Source
+    from dune_imperium.rules.effect_steps import owed_draw_printer
+    from dune_imperium.rules.frames import replace_player
+
+    assert steps_for(DomainAction("place_track_spy", 0)) == (
+        DomainAction(
+            "place_spy", 0, (("printed", "emperor"), ("source", "influence_track"))
+        ),
+    )
+    assert steps_for(DomainAction("recruit_sardaukar_commander", 0)) == (
+        DomainAction(
+            "recruit",
+            0,
+            (("printed", "sardaukar_commander"), ("source", "commander")),
+        ),
+    )
+    base = ENGINE.reset(RulesetConfig(), 0)
+    owner = replace(
+        base.players[0],
+        owed_draws=(
+            ("card", "hungry_for_spice", "a"),
+            ("card", "choam_transports", "b"),
+            ("intrigue", "tleilaxu_track", "c"),
+            ("intrigue", "acquire:imperium:overthrow:0", "d"),
+        ),
+    )
+    state = replace(base, players=replace_player(base.players, owner))
+    card = owed_draw_printer(state, DomainAction("draw_owed_card", 0))
+    assert card == (Source.TECH, "choam_transports")  # immediate first
+    intrigue = owed_draw_printer(state, DomainAction("draw_owed_intrigue", 0))
+    assert intrigue == (Source.ACQUISITION, "overthrow")  # immediate first
+    later = replace(owner, owed_draws=owner.owed_draws[2:3])
+    state = replace(base, players=replace_player(base.players, later))
+    assert owed_draw_printer(state, DomainAction("draw_owed_intrigue", 0)) == (
+        Source.TRIGGER,
+        "tleilaxu_track",
+    )
+    row = steps_for(
+        DomainAction("draw_owed_intrigue", 0), "tleilaxu_track", Source.TRIGGER
+    )
+    assert row == (
+        DomainAction(
+            "draw",
+            0,
+            (
+                ("icon", "intrigue"),
+                ("printed", "tleilaxu_track"),
+                ("source", "trigger"),
+            ),
+        ),
+    )

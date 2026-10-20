@@ -4757,9 +4757,10 @@ def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> N
         "agent_card_effect_resolved",
         "leader_ability_resolved",
     ]
-    drawn = UprisingRulesEngine().apply(
-        result.state, DomainAction(action_id="draw_owed_card", actor=0)
-    )
+    engine = UprisingRulesEngine()
+    draw = first_step(result.state, DomainAction(action_id="draw_owed_card", actor=0))
+    assert draw in engine.legal_actions(result.state, 0)
+    drawn = engine.apply(result.state, draw)
     assert drawn.state.players[0].hand == (draw_card, tail)
     assert drawn.state.players[0].deck == ()
 

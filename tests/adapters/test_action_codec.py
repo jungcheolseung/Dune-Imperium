@@ -24,12 +24,12 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.rules.effect_steps import (
-    OFFERED_AS_WHOLE,
     STEP_SPECS,
     TARGET_SPECS,
     steps_for,
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
+from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.simulation import run_random_round
 
 _SCOUTS_ACTION_PREFIXES = (
@@ -219,13 +219,21 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # handler answered) and the rows that stand for them join (100).
         - 37
         + 100
+        # v150 (stage B3d-4, D-3): the turn's owed Intrigue draw and Emperor
+        # track Spy are effect rows naming what earned them, so their bare
+        # templates leave (2) and the rows the base game may name join (4:
+        # the Bene Gesserit track's 4, Overthrow's acquire box, Sardaukar
+        # Soldier's "when trashed", the Emperor track's Spy).
+        - 2
+        + 4
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
     # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
     # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778,
-    # stage B3d-2a's net -1,412 to 1,366, stage B3d-3's net +63 to 1,429.
-    assert first.size == 1429
+    # stage B3d-2a's net -1,412 to 1,366, stage B3d-3's net +63 to 1,429,
+    # stage B3d-4's net +2 to 1,431.
+    assert first.size == 1431
 
 
 def _scouts_step_rows(
@@ -235,8 +243,9 @@ def _scouts_step_rows(
     (stage B3d-2b): a window's own effect by its target rows
     (``effect_steps.TARGET_SPECS``), the High Council's subcommittee list and
     a mission's plain way in by their ``join`` effect rows, and a mission's
-    other ways by ``choose_mission``. ``scouts_return_specimens`` stays a
-    whole template (``OFFERED_AS_WHOLE``)."""
+    other ways by ``choose_mission``. Since stage B3d-4 the specimen return
+    beside a mission that takes supply troops is its ``return_specimen``
+    effect row, then a count."""
 
     missions = missions_for(
         scouts_pool(immortality=config.immortality), choam=config.choam_module
@@ -244,9 +253,11 @@ def _scouts_step_rows(
     rows: set[DomainAction] = set()
     for template in scouts_only:
         whole = DomainAction(template.action_id, 0, template.arguments)
-        if template.action_id in OFFERED_AS_WHOLE:
-            continue
-        if template.action_id in TARGET_SPECS or template.action_id == (
+        if template.action_id == "scouts_return_specimens":
+            for mission in missions:
+                if mission_takes_supply_troops(mission):
+                    rows.update(steps_for(whole, mission.mission_id))
+        elif template.action_id in TARGET_SPECS or template.action_id == (
             "choose_subcommittee"
         ):
             rows.update(steps_for(whole))
@@ -285,7 +296,7 @@ def _scouts_catalog_additions(
     """
 
     held = set(ActionCodec(replace(config, arrakeen_scouts=False)).catalog)
-    step_only = {*STEP_SPECS, *TARGET_SPECS} - OFFERED_AS_WHOLE
+    step_only = {*STEP_SPECS, *TARGET_SPECS}
     collect_rows = {
         ActionTemplate(
             "collect",
@@ -385,10 +396,12 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             for t in with_scouts.catalog
         )
         # Stage B3d-2b: the Scouts windows' whole templates left the catalog
-        # (bar the specimen return), and their rows round trip in their place.
-        window_ids = {t.action_id for t in scouts_only} & (
-            set(TARGET_SPECS) - OFFERED_AS_WHOLE
-        )
+        # (the specimen return's too since stage B3d-4), and their rows round
+        # trip in their place.
+        window_ids = {t.action_id for t in scouts_only} & {
+            *TARGET_SPECS,
+            "scouts_return_specimens",
+        }
         assert {"scouts_bid", "scouts_secret_pick", "join_subcommittee"} <= window_ids
         assert not any(
             t.action_id in {*window_ids, "scouts_join_mission"}
@@ -428,30 +441,50 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
                 row.action_id, row.arguments
             )
             assert with_scouts.encode(with_scouts.decode(index, actor=0)) == index
-    assert ActionCodec(RulesetConfig()).size == 1429
+    assert ActionCodec(RulesetConfig()).size == 1431
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 1429 + len(
+    assert ActionCodec(base_scouts).size == 1431 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
 
 def test_scouts_specimen_return_needs_immortality_recall_conflict_always_in() -> None:
     """OQ-074, OQ-075 (D), user ruling 2026-09-29: the specimen top-up
-    template range (0..MAX_SPECIMEN_TOP_UP) needs Immortality on; a
-    ``scouts_recall_agent`` with ``space_id="conflict"`` (Into the Fray) is
-    in every Scouts catalog, with or without Immortality."""
+    needs Immortality on; a ``scouts_recall_agent`` with
+    ``space_id="conflict"`` (Into the Fray) is in every Scouts catalog, with
+    or without Immortality."""
 
     from dune_imperium.content.arrakeen_scouts import MAX_SPECIMEN_TOP_UP
 
     plain = ActionCodec(RulesetConfig(arrakeen_scouts=True))
     immortal = ActionCodec(RulesetConfig(arrakeen_scouts=True, immortality=True))
-    assert not any(t.action_id == "scouts_return_specimens" for t in plain.catalog)
-    counts = sorted(
+
+    def side_branches(codec: ActionCodec) -> set[str]:
+        return {
+            str(dict(t.arguments)["printed"])
+            for t in codec.catalog
+            if t.action_id == "return_specimen"
+            and dict(t.arguments).get("source") == "scouts"
+        }
+
+    # Stage B3d-4: no whole template is left; the top-up is a recruit step's
+    # count, or beside a mission that takes supply troops its effect row.
+    for codec in (plain, immortal):
+        assert not any(t.action_id == "scouts_return_specimens" for t in codec.catalog)
+    assert side_branches(plain) == set()
+    # (The CHOAM escort's recruit needs the CHOAM module too.)
+    assert side_branches(immortal) == {
+        "fedaykin_assistance",
+        "security_detail",
+        "tleilaxu_offering",
+        "weirding_warfare",
+    }
+    counts = {
         dict(t.arguments)["count"]
         for t in immortal.catalog
-        if t.action_id == "scouts_return_specimens"
-    )
-    assert counts == list(range(MAX_SPECIMEN_TOP_UP + 1))
+        if t.action_id == "choose_count"
+    }
+    assert set(range(1, MAX_SPECIMEN_TOP_UP + 1)) <= counts
     for codec in (plain, immortal):
         # Stage B3d-2b: the window offers the Agent by a ``choose_space`` row;
         # the whole template left the catalog.
@@ -608,6 +641,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # 39 whole templates leave and 105 rows join.
         - 39
         + 105
+        # v150 (stage B3d-4): the owed Intrigue draw and the Emperor track
+        # Spy by their effect rows (see test_catalog_is_fixed...).
+        - 2
+        + 4
     )
 
     try:
@@ -827,6 +864,12 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # 48 whole templates leave and 164 rows join.
         - 48
         + 164
+        # v150 (stage B3d-4): the owed draws, the Emperor track Spy and the
+        # Sardaukar Commander recruit by their effect rows (see
+        # test_catalog_is_fixed...): 4 bare templates leave and 5 rows join
+        # (a Bloodlines leader's owed card is its leader's row already).
+        - 4
+        + 5
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -1540,6 +1583,12 @@ def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> Non
 def test_c7r3_s_owed_card_encodes_with_or_without_bloodlines(bloodlines: bool) -> None:
     # c7r3's card is owed in its owner's turn since codec v149 (cleanup-2b,
     # rule decision 5; OQ-106): an Immortality game without Bloodlines, whose
-    # catalog held no ``draw_owed_card`` before, encodes it too.
+    # catalog held no ``draw_owed_card`` before, encodes it too -- since
+    # stage B3d-4 (D-3) by its effect row naming c7r3.
+    from dune_imperium.rules.action_shapes import Source
+
     codec = ActionCodec(RulesetConfig(immortality=True, bloodlines=bloodlines))
-    codec.encode(DomainAction(action_id="draw_owed_card", actor=0))
+    (row,) = steps_for(
+        DomainAction(action_id="draw_owed_card", actor=0), "c7r3", Source.RESEARCH
+    )
+    assert codec.decode(codec.encode(row), actor=0) == row

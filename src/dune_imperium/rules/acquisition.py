@@ -1053,6 +1053,14 @@ def _acquire_rewards(definition: ImperiumCardEntry) -> tuple[Reward, ...]:
     return () if ability is None else ability.sections[0].rewards
 
 
+def acquire_box_draws_intrigue(instance_id: str) -> bool:
+    """Whether the acquire box of the Imperium Row or Tleilaxu card
+    ``instance_id`` draws an Intrigue card (an owed draw, OQ-106)."""
+
+    rewards = _acquire_rewards(_acquired_definition(instance_id))
+    return any(isinstance(reward, DrawIntrigueCards) for reward in rewards)
+
+
 def acquire_box_places_spy(instance_id: str) -> bool:
     """Whether the acquire box of the Imperium Row or Tleilaxu card
     ``instance_id`` places a Spy (``acquisition_spy_frame``)."""

@@ -1163,7 +1163,10 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     # windows that offer several effects at once, stage B3d-2a 1,466 for the
     # 54 rows of the windows opened for one effect, stage B3d-3 37 whole
     # refusal templates (five of them ids no handler ever answered) for the
-    # 100 ``decline`` / ``confirm_empty`` rows that name the effect they answer.
+    # 100 ``decline`` / ``confirm_empty`` rows that name the effect they answer;
+    # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go by
+    # their effect rows (draw_owed_intrigue and place_track_spy leave, four
+    # rows join).
     assert ActionCodec(RulesetConfig()).size == (
         2917
         + 14
@@ -1173,6 +1176,7 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
         + (68 - 228)
         + (54 - 1466)
         + (100 - 37)
+        + (4 - 2)
     )
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)

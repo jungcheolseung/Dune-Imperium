@@ -390,6 +390,17 @@ def join_unavailable_reason(
     return (source, count, held)
 
 
+def mission_takes_supply_troops(mission: Mission) -> bool:
+    """Whether taking part in ``mission`` takes troops from the supply: the
+    CHOAM escort's recruit, or troops parked from the supply
+    (``mission_top_up``)."""
+
+    kind = mission.kind
+    return kind is MissionKind.CHOAM_ESCORT or (
+        kind in _PARKING and _PARKING[kind][0] == "supply"
+    )
+
+
 def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     """How many specimens the seat may return so it can take part (0: none).
 
@@ -398,17 +409,13 @@ def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     may do so first (user ruling 2026-09-29, OQ-074, OQ-088).
     """
 
-    if not state.config.immortality:
+    if not state.config.immortality or not mission_takes_supply_troops(mission):
         return 0
     owner = state.players[player]
     kind = mission.kind
     if kind is MissionKind.CHOAM_ESCORT:
         needed = 1  # the troop it recruits
-    elif (
-        kind in _PARKING
-        and _PARKING[kind][0] == "supply"
-        and _parking_open(state, player, mission)
-    ):
+    elif _parking_open(state, player, mission):
         needed = _PARKING[kind][1]
     else:
         return 0

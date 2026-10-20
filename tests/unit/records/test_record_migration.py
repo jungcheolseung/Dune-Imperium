@@ -1195,10 +1195,13 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # 1-60 seeds 21, 22 and 48 do. The fixture's
     # seed 1 drew one a step late until codec v146, OQ-095 (2).)
     game = _this_engine_game(21)
+    # Since stage B3d-4 (D-3) an owed draw is a ``draw`` row naming what
+    # earned it; the whole action it stands for is still ``draw_owed_*``.
     owed = {
         index
         for index, step in enumerate(game.steps)
-        if isinstance(step, DomainAction) and step.action_id.startswith("draw_owed_")
+        if isinstance(step, DomainAction)
+        and _whole(game, index).action_id.startswith("draw_owed_")
     }
     assert owed
     held = _held_steps(game)
@@ -4007,7 +4010,16 @@ def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> No
     decision = ENGINE.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     draw = DomainAction("draw_owed_card", 0)
-    assert ENGINE.legal_actions(state, 0) == (draw,)
+    assert ENGINE.whole_actions(state, 0) == (draw,)
+    # Since stage B3d-4 (D-3) the seat answers it by its ``draw`` row naming
+    # CHOAM Transports; an older record holds the whole action.
+    assert ENGINE.legal_actions(state, 0) == (
+        DomainAction(
+            "draw",
+            0,
+            (("icon", "cards"), ("printed", "choam_transports"), ("source", "tech")),
+        ),
+    )
     row = DomainAction("resolve_contract_reward_icon", 0, (("effect", "resources"),))
     shuffle = ChanceOutcome(
         "round:1:player:0:contract:x:reward:personal_draw:discard_shuffle",
@@ -4019,7 +4031,7 @@ def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> No
     # The record's own draw is the card itself, applied as recorded.
     assert migration._transports_card_first(ENGINE, state, decision, draw) is None
     # Once drawn, nothing waits behind it.
-    drawn = ENGINE.apply(state, draw).state
+    drawn = apply_whole(ENGINE, state, draw).state
     after = ENGINE.current_decision(drawn)
     assert isinstance(after, PlayerDecision)
     assert migration._transports_card_first(ENGINE, drawn, after, row) is None
@@ -4027,7 +4039,7 @@ def test_a_step_recorded_behind_the_transports_card_takes_the_card_first() -> No
 
 def test_a_reshuffle_is_renamed_only_between_transports_and_a_reward_draw() -> None:
     state = _transports_completed(empty_deck=True)
-    state = ENGINE.apply(state, DomainAction("draw_owed_card", 0)).state
+    state = apply_whole(ENGINE, state, DomainAction("draw_owed_card", 0)).state
     decision = ENGINE.current_decision(state)
     assert isinstance(decision, ChanceDecision)
     assert decision.decision_id.endswith(":tech_draw:discard_shuffle")

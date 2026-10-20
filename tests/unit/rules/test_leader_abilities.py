@@ -52,6 +52,7 @@ from dune_imperium.rules.board_effects import (
     legal_desert_tactics_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import (
@@ -1350,7 +1351,19 @@ def test_imperial_birthright_is_the_owners_next_step_in_its_turn() -> None:
     ]
     (draw,) = legal_owed_draw_actions(result.state, 0)
     assert draw == DomainAction(action_id="draw_owed_intrigue", actor=0)
-    assert UprisingRulesEngine().legal_actions(result.state, 0) == (draw,)
+    # The turn offers it by its effect row (stage B3d-4): an Intrigue draw
+    # the leader's ability earned.
+    row = first_step(result.state, draw)
+    assert row == DomainAction(
+        action_id="draw",
+        actor=0,
+        arguments=(
+            ("icon", "intrigue"),
+            ("printed", "princess_irulan"),
+            ("source", "leader"),
+        ),
+    )
+    assert UprisingRulesEngine().legal_actions(result.state, 0) == (row,)
     drawn = apply_owed_draw(result.state, draw).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
     assert drawn.players[0].owed_draws == ()

@@ -550,9 +550,15 @@ def test_the_owed_spies_are_public_per_seat() -> None:
     ],
 )
 def test_place_track_spy_round_trips_in_every_catalog(options: dict[str, bool]) -> None:
+    # The turn offers the placement by its effect row (stage B3d-4): the
+    # Emperor track's Spy, not the bare ``place_track_spy`` template.
     codec = ActionCodec(RulesetConfig(**options))
     for seat in range(4):
-        action = DomainAction("place_track_spy", seat)
+        action = DomainAction(
+            "place_spy",
+            seat,
+            (("printed", "emperor"), ("source", "influence_track")),
+        )
         assert codec.decode(codec.encode(action), actor=seat) == action
 
 

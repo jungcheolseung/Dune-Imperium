@@ -47,7 +47,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
     static_board_effects,
 )
-from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effect_steps import first_step, steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import (
@@ -157,8 +157,11 @@ def _icon(effect: str) -> DomainAction:
     )
 
 
-def _owed_draw(action_id: str) -> DomainAction:
-    return DomainAction(action_id=action_id, actor=0)
+def _owed_draw(state: GameState, action_id: str) -> DomainAction:
+    """The row that takes seat 0's owed draw ``action_id`` in ``state`` (the
+    turn offers the draws by their effect rows, stage B3d-4)."""
+
+    return first_step(state, DomainAction(action_id=action_id, actor=0))
 
 
 def _offered_icons(state: GameState) -> set[str]:
@@ -523,9 +526,11 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     ]
     assert owner.intrigue_cards == () and owner.hand == owner_before.hand
     engine = UprisingRulesEngine()
+    after_intrigue = engine.apply(
+        paid.state, _owed_draw(paid.state, "draw_owed_intrigue")
+    ).state
     drawn = engine.apply(
-        engine.apply(paid.state, _owed_draw("draw_owed_intrigue")).state,
-        _owed_draw("draw_owed_card"),
+        after_intrigue, _owed_draw(after_intrigue, "draw_owed_card")
     ).state.players[0]
     # No personal card left the hand; one was drawn, and one Intrigue card.
     assert len(drawn.hand) == len(owner_before.hand) + 1
@@ -739,7 +744,7 @@ def test_c7r3_holds_its_card_and_intrigue_draws_in_either_order(
     assert not _turn_end_offered(state)
 
     for position, action_id in enumerate(order):
-        state = engine.apply(state, _owed_draw(action_id)).state
+        state = engine.apply(state, _owed_draw(state, action_id)).state
         # The other draw still waits and holds the end; the taken one is gone.
         assert len(state.players[0].owed_draws) == 1 - position
         assert _turn_end_offered(state) == (position == 1)

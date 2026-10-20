@@ -193,10 +193,15 @@ def test_immediate_draws_are_answered_before_any_window(
     )
     state = replace(placed, players=(owner, *placed.players[1:]))
     actions = engine.legal_actions(state, 0)
-    assert {action.action_id for action in actions} == {
+    # The draws are offered as effect rows (stage B3d-4): the wholes they
+    # stand for are the two owed draws, and the rows name their icons.
+    assert {action.action_id for action in engine.whole_actions(state, 0)} == {
         "draw_owed_intrigue",
         "draw_owed_card",
     }
+    assert {
+        (action.action_id, dict(action.arguments)["icon"]) for action in actions
+    } == {("draw", "intrigue"), ("draw", "cards")}
 
     monkeypatch.setattr(agent_module, "handler_for", lambda kind: None)
     app = AppAIAgent(seed=0)

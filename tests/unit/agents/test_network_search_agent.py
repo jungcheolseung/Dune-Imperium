@@ -791,8 +791,12 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     # stays untrained-only). Stage B3d-3 resized the catalog (the refusals
     # are rows now), so the seeded test network and with it the game of seed
     # 1 changed and no longer meets one; seed 0 is the first that does, at
-    # the seat's 17th decision, between the splits at 9 and 35.
-    game_seed = 0 if expansion == "arrakeen_scouts" else 3
+    # the seat's 17th decision, between the splits at 9 and 35. Stage B3d-4
+    # resized it again (the turn's owed draws are rows): the base game of
+    # seed 3 ended after the seat's 49th decision and the Scouts game of
+    # seed 0 met no untrained-only one; base seed 0 makes 66, and Scouts
+    # seed 2 is the first that meets one, at the 21st, between the splits.
+    game_seed = {"arrakeen_scouts": 2, "immortality": 3}.get(expansion or "", 0)
     decided = _search_seat_game(
         seat_agent(), config, seed=game_seed, seat=1, count=66
     )

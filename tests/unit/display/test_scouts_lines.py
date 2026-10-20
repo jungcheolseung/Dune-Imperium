@@ -206,7 +206,9 @@ def test_fedaykin_assistance_lights_up_after_the_specimen_returns() -> None:
     )
     assert top_up in legal
 
-    topped = ENGINE.apply(state, top_up).state
+    # Since stage B3d-4 the return is a side branch of the mission's window:
+    # its ``return_specimen`` effect row, then the count.
+    topped = apply_whole(ENGINE, state, top_up).state
     info, legal = _lines(topped)
     (line,) = info["lines"]
     assert line["enabled"] and line["reason"] is None

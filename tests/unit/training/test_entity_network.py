@@ -308,7 +308,9 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
     # open a Spy window (stage B3d-2a) and the Scouts missions whose plain
     # way is an effect row (stage B3d-2b), which have no vocabulary; since
     # stage B3d-3 the Contract market a confirmation names, and the Scouts
-    # items whose trash, choice or market a refusal answers.
+    # items whose trash, choice or market a refusal answers; since stage
+    # B3d-4 the Tleilaxu track's space that owes a draw (its trigger) and the
+    # Sardaukar Commander a recruit takes.
     from dune_imperium.content.arrakeen_scouts import (
         AUCTIONS,
         EVENTS,
@@ -337,6 +339,8 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         *(event.event_id for event in EVENTS),
         *(sale.sale_id for sale in SALES),
         *(auction.auction_id for auction in AUCTIONS),
+        "tleilaxu_track",
+        "sardaukar_commander",
     }
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]

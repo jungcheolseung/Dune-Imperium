@@ -567,23 +567,27 @@ def _transports_moves(old: Step, at: At) -> tuple[Any, ...] | None:
     if not isinstance(at.decision, PlayerDecision):
         return None
     owner = at.decision.owner
+    # The card's whole action; since stage B3d-4 the seat takes it by its
+    # ``draw`` row naming CHOAM Transports.
     draw = DomainAction(action_id="draw_owed_card", actor=owner)
+    wholes = at.engine.whole_actions(at.state, owner)
     if old.step[0] == "a" and old.step[1] == "draw_owed_card":
-        if taken[owner] > 0 and draw not in at.legal:
+        if taken[owner] > 0 and draw not in wholes:
             taken[owner] -= 1
             return ()
         return None
-    if at.legal != (draw,) or not any(
+    if wholes != (draw,) or not any(
         entry[1] == "choam_transports" for entry in at.state.players[owner].owed_draws
     ):
         return None
-    after = at.engine.apply(at.state, draw).state
+    card = first_step(at.state, draw)
+    after = at.engine.apply(at.state, card).state
     taken[owner] += 1
     if old.step[0] != "c":
-        return (draw,)
+        return (card,)
     # The recorded reshuffle: the card's own (the deck was empty), or the
     # Contract's card draw's once the window's rows are answered.
-    moves: list[Any] = [draw]
+    moves: list[Any] = [card]
     for _ in range(8):
         decision = at.engine.current_decision(after)
         if isinstance(decision, ChanceDecision):
@@ -604,7 +608,7 @@ def _transports_moves(old: Step, at: At) -> tuple[Any, ...] | None:
             break
         moves.append(row)
         after = at.engine.apply(after, row).state
-    return (draw,)
+    return (card,)
 
 
 def _reshuffle_in_base_form(old: Step, candidate: Step) -> None:
@@ -919,7 +923,13 @@ def _effect_moves(old: Step, at: At) -> tuple[DomainAction, ...] | None:
     whole = _whole(old.step)
     if whole is None or not presents_steps(at.state):
         return None
-    return path_of(without_pick(at.state), _named_trash(at.state, whole))
+    try:
+        return path_of(without_pick(at.state), _named_trash(at.state, whole))
+    except ValueError:
+        # A whole whose place this state cannot name (stage B3d-4: the
+        # base's own CHOAM Transports card draw once the candidate took the
+        # card first, ``_transports_moves``) is left to the other rules.
+        return None
 
 
 # Long Live the Fighters' card to draw, kept by its frame, is the seat's

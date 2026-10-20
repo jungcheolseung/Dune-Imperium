@@ -90,7 +90,10 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.rules.acquisition import acquire_box_places_spy
+from dune_imperium.rules.acquisition import (
+    acquire_box_draws_intrigue,
+    acquire_box_places_spy,
+)
 from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
@@ -106,7 +109,6 @@ from dune_imperium.rules.effect_interpreter import automatic_rewards, choice_slo
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
     INTRIGUE_WINDOWS,
-    OFFERED_AS_WHOLE,
     STEP_SPECS,
     TARGET_SPECS,
     WINDOW_OWN,
@@ -122,6 +124,7 @@ from dune_imperium.rules.immortality import (
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
+from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import optional_trash_tech_ids
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -1303,11 +1306,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates = [
         template
         for template in wholes
-        if (
-            template.action_id not in STEP_SPECS
-            and template.action_id not in TARGET_SPECS
-        )
-        or template.action_id in OFFERED_AS_WHOLE
+        if template.action_id not in STEP_SPECS
+        and template.action_id not in TARGET_SPECS
     ]
     templates.extend(_effect_step_templates(config, wholes))
     return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
@@ -1485,6 +1485,8 @@ def _effect_step_templates(
             named = tuple((None, item) for item in items)
         elif spec.printed == Printed.SKILL_WINDOW:
             named = _skill_window_givers(config)
+        elif spec.printed == Printed.OWED_DRAW:
+            named = _owed_draw_printers(config, template.action_id, faces)
         elif spec.printed == Printed.TECH_PENDING:
             named = tuple(
                 (None, tile.tech_id)
@@ -1492,13 +1494,16 @@ def _effect_step_templates(
                 if "influence" in tile.acquire_effect_keys
             )
         elif spec.printed == Printed.MISSION:
-            # A Scouts mission's plain way in (B3d-2b).
+            # A Scouts mission's plain way in (B3d-2b); the specimen return
+            # beside a mission that takes troops from the supply (B3d-4).
             named = tuple(
                 (None, mission.mission_id)
                 for mission in missions_for(
                     scouts_pool(immortality=config.immortality),
                     choam=config.choam_module,
                 )
+                if template.action_id != "scouts_return_specimens"
+                or mission_takes_supply_troops(mission)
             )
         elif spec.printed == Printed.NAMED:
             # An optional trash waiting on the turn, by every entity that
@@ -1630,6 +1635,56 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
             for instance_id in navigation_card_instance_ids()
         }
     return {effect: tuple(found) for effect, found in cards.items()}
+
+
+def _owed_draw_printers(
+    config: RulesetConfig, action_id: str, faces: tuple[str, ...]
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may earn an owed draw of the row's deck (B3d-4,
+    ``effect_steps.owed_draw_printer``): an Intrigue card from the Bene
+    Gesserit track's 4, Imperial Birthright, the Tleilaxu track, c7r3, an
+    acquire box or a card's "when trashed"; a card from c7r3, CHOAM
+    Transports or Hungry for Spice."""
+
+    printers: list[tuple[Source | None, ActionValue | None]] = []
+    if action_id == "draw_owed_intrigue":
+        printers.append((Source.INFLUENCE_TRACK, "bene_gesserit"))
+        printers.extend(
+            (Source.LEADER, face) for face in faces if face == "princess_irulan"
+        )
+        if config.immortality:
+            printers.append((Source.TRIGGER, "tleilaxu_track"))
+            printers.append((Source.RESEARCH, "c7r3"))
+        cards = _personal_card_instance_ids(config)
+        printers.extend(
+            (Source.ACQUISITION, card)
+            for card in dict.fromkeys(
+                personal_card_for_instance(instance).card.card_id
+                for instance in cards
+                if instance.startswith(("imperium:", "tleilaxu:"))
+                and acquire_box_draws_intrigue(instance)
+            )
+        )
+        printers.extend(
+            (Source.TRIGGER, card.card.card_id)
+            for card in imperium_cards_for_choam(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+                immortality=config.immortality,
+            )
+            if card.trash_effect is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
+        )
+        return tuple(printers)
+    if config.immortality:
+        printers.append((Source.RESEARCH, "c7r3"))
+    if config.tech_module:
+        printers.append((Source.TECH, "choam_transports"))
+    printers.extend(
+        (Source.LEADER, face) for face in faces if face == "steersman_y_rkoon"
+    )
+    return tuple(printers)
 
 
 def _skill_window_givers(

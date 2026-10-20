@@ -183,6 +183,9 @@ class Printed(StrEnum):
     # Stage B3d-3: the Tech tile whose acquire Influence waits in a Tech
     # window's icons (``pending_tech_acquire_effects``).
     TECH_PENDING = "tech_pending"
+    # Stage B3d-4: what earned the owed draw a press takes now (its
+    # ``PlayerState.owed_draws`` origin; ``owed_draws.next_owed_draw``).
+    OWED_DRAW = "owed_draw"
 
 
 @dataclass(frozen=True, slots=True)
@@ -766,6 +769,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "scouts_join_mission": _spec(
         _V.JOIN, _S.SCOUTS, Printed.MISSION, targets=(("target", _C.MISSION),)
     ),
+    # Specimens returned to the supply first: a Scouts recruit step's own
+    # choice, by its count; beside a mission's part Immortality's free return
+    # "at any time" (OQ-050), a side branch whose effect row names the mission
+    # whose window offers it (stage B3d-4, D-1), then its count.
+    "scouts_return_specimens": _spec(
+        _V.RETURN_SPECIMEN, _S.SCOUTS, Printed.MISSION, targets=(("count", _C.COUNT),)
+    ),
     # --- Refusals and empty confirmations (stage B3d-3, D-2) -------------------
     # ``decline`` and ``confirm_empty``, each naming the effect it answers: its
     # verb (``of``) and the place its own row names.
@@ -912,6 +922,22 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "scouts_decline_card": _spec(
         _D, _S.SCOUTS, Printed.SCOUTS_ITEM, of=_V.ACQUIRE
     ),
+    # --- The turn frame's last rows named by their source (stage B3d-4, D-3)
+    # A triggered draw waiting as its own step (OQ-106), one row per deck: the
+    # entity that earned the draw this press takes; draws of one deck resolve
+    # alike (decision 3).
+    "draw_owed_intrigue": _spec(
+        _V.DRAW, _S.TRIGGER, Printed.OWED_DRAW, icon="intrigue"
+    ),
+    "draw_owed_card": _spec(_V.DRAW, _S.TRIGGER, Printed.OWED_DRAW, icon="cards"),
+    # The Emperor track's Influence 4 Spy [Main p. 7]; its post is the Spy
+    # placement window's target.
+    "place_track_spy": _spec(_V.PLACE_SPY, _S.INFLUENCE_TRACK, "=emperor"),
+    # Bloodlines' once-a-turn Commander recruit [Bloodlines p. 4]: no card
+    # prints it, the Sardaukar Commander itself.
+    "recruit_sardaukar_commander": _spec(
+        _V.RECRUIT, _S.COMMANDER, "=sardaukar_commander"
+    ),
 })
 
 _CONTRACT_TARGET = (("instance_id", _C.CONTRACT),)
@@ -988,9 +1014,6 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "scouts_lose_influence_to": (*_FACTION, _RECIPIENT),
     # A troop or a Sardaukar Commander of the garrison (OQ-105).
     "scouts_lose_garrison_unit": (("=garrison", _C.UNIT),),
-    # How many specimens a recruit step returns first; beside a mission's
-    # part it is a free action as it is (``OFFERED_AS_WHOLE``).
-    "scouts_return_specimens": _COUNT,
     # Friends Everywhere's Influence 4 bonus, a subcommittee, an event's or a
     # sale's option, a secret pick, a bid, a call, an auction's retreat, a
     # market card.
@@ -1003,21 +1026,18 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "scouts_retreat": _COUNT,
     "scouts_take_card": (("slot", _C.OPTION),),
 })
-# Window-only ids a frame still offers as they are beside its own effect: a
-# mission window's specimen return before taking part, a free action like
-# ``return_specimen`` (Immortality's "at any time", OQ-050; side branches wait
-# for stage B3d-4). The action catalog keeps their whole templates.
-OFFERED_AS_WHOLE: Final = frozenset({"scouts_return_specimens"})
 # Effects of ``STEP_SPECS`` a window also offers as its own, there by their
 # targets alone: a revealed card's Spy after a recall, a Tech tile bought, a
 # research space's bonus, the trash of an optional trash window, a Recall
-# Spy slot's recall, a Scouts mission's way.
+# Spy slot's recall, a Scouts mission's way, a Scouts recruit step's
+# specimen return.
 WINDOW_OWN: Final = frozenset({
     "acquire_tech",
     "choose_research_influence",
     "place_reveal_spy",
     "recall_spy_for_intrigue",
     "scouts_join_mission",
+    "scouts_return_specimens",
     "trash_intrigue_for_research_bonus",
     "trash_optional_card",
 })
@@ -1039,7 +1059,7 @@ EFFECT_STEP_FRAMES: Final = frozenset({
 })
 # The windows opened for one effect (stage B3d-2a, module docstring): their
 # whole actions are shown by steps, so no whole id of the tables above is
-# offered as it is but the side branch ``OFFERED_AS_WHOLE`` names.
+# offered as it is (since stage B3d-4, a mission's specimen return too).
 TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.OPPONENT_CARD_DISCARD,
     FrameKind.ACQUISITION_SPY,
@@ -1186,6 +1206,8 @@ def printed_from_state(
         if giver.startswith(_TECH_PREFIX):
             return Source.TECH, giver.removeprefix(_TECH_PREFIX)
         return spec.source, _card_type(giver)
+    if rule == Printed.OWED_DRAW:
+        return owed_draw_printer(state, whole)
     if rule == Printed.TECH_PENDING:
         pending = dict(state.decision_stack[-1].context).get(_TECH_PENDING_KEY, "")
         assert isinstance(pending, str)
@@ -1212,6 +1234,54 @@ _REWARD_WINDOW_ICONS: Final[Mapping[str, str]] = MappingProxyType({
     FrameKind.COMBAT_REWARD_SPY_RECALL: "optional_recall_spies",
     FrameKind.COMBAT_REWARD_TRASH: "trash",
 })
+
+
+# The deck of each owed draw row (``frames.OWED_INTRIGUE``, ``OWED_CARD``).
+_OWED_DECKS: Final[Mapping[str, str]] = MappingProxyType({
+    "draw_owed_intrigue": "intrigue",
+    "draw_owed_card": "card",
+})
+# What earned an owed draw, by its origin (``frames.hold_draw``): a research
+# space's bonus, an Influence track's 4, a Tech tile; Imperial Birthright
+# and Hungry for Spice are the seat's leader's.
+_OWED_ORIGINS: Final[Mapping[str, tuple[Source, str]]] = MappingProxyType({
+    "research_c7r3": (Source.RESEARCH, "c7r3"),
+    "bene_gesserit_4": (Source.INFLUENCE_TRACK, "bene_gesserit"),
+    "choam_transports": (Source.TECH, "choam_transports"),
+})
+_LEADER_ORIGINS: Final = frozenset({"imperial_birthright", "hungry_for_spice"})
+# An acquired card's acquire box, and a card's "when trashed" (by its type).
+_ACQUIRE_ORIGIN: Final = "acquire:"
+_TRASH_ORIGIN: Final = "card:"
+# The Tleilaxu track's Intrigue space, which no other kind of source names.
+_TLEILAXU_ORIGIN: Final = "tleilaxu_track"
+
+
+def owed_draw_printer(state: GameState, whole: DomainAction) -> tuple[Source, str]:
+    """The source and entity that earned the owed draw ``whole`` takes now
+    (``Printed.OWED_DRAW``). An origin with no kind of its own -- the
+    Tleilaxu track's space, a card's "when trashed" -- names the trigger
+    (``Source.TRIGGER``)."""
+
+    # The owed draws build on this module's callers.
+    from dune_imperium.rules.owed_draws import next_owed_draw
+
+    owner = state.players[whole.actor]
+    index = next_owed_draw(owner, _OWED_DECKS[whole.action_id])
+    if index is None:
+        raise ValueError(f"{whole} has no owed draw waiting")
+    origin = owner.owed_draws[index][1]
+    if origin in _OWED_ORIGINS:
+        return _OWED_ORIGINS[origin]
+    if origin in _LEADER_ORIGINS:
+        return Source.LEADER, _leader_face(state, whole)
+    if origin.startswith(_ACQUIRE_ORIGIN):
+        return Source.ACQUISITION, _card_type(origin.removeprefix(_ACQUIRE_ORIGIN))
+    if origin.startswith(_TRASH_ORIGIN):
+        return Source.TRIGGER, _card_type(origin.removeprefix(_TRASH_ORIGIN))
+    if origin == _TLEILAXU_ORIGIN:
+        return Source.TRIGGER, origin
+    raise ValueError(f"{whole}'s owed draw has an unknown origin {origin!r}")
 
 
 def window_icon(state: GameState) -> str:
@@ -1323,8 +1393,8 @@ def _offers_one_effect(state: GameState) -> bool:
 def _own_effect(state: GameState, whole: DomainAction) -> bool:
     """Whether ``whole`` is its window's own effect: an Intrigue card's
     recall is beside a Spy placement slot's Spy, and the effect of a Recall
-    Spy slot; a Scouts specimen return is a recruit step's own, and beside a
-    mission's part (``OFFERED_AS_WHOLE``)."""
+    Spy slot; a Scouts specimen return is a recruit step's own, and a side
+    branch beside a mission's part."""
 
     if whole.action_id == "scouts_return_specimens":
         return state.decision_stack[-1].kind != FrameKind.SCOUTS_MISSION

@@ -1538,6 +1538,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # and 100 rows join.
         - 37
         + 100
+        # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go
+        # by their effect rows: draw_owed_intrigue and place_track_spy leave
+        # (2) and four rows join.
+        - 2
+        + 4
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an
@@ -1578,9 +1583,16 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
             (("commanders", 2), ("source", "chani_clever_tactician")),
         )
     )
+    # Stage B3d-4: the turn offers the recruit as its effect row, not the
+    # bare ``recruit_sardaukar_commander`` template.
+    recruit_commander = DomainAction(
+        "recruit",
+        3,
+        (("printed", "sardaukar_commander"), ("source", "commander")),
+    )
     actions = (
         *acquire_commander,
-        DomainAction("recruit_sardaukar_commander", 3),
+        recruit_commander,
         *trash_skill,
         DomainAction("deploy_commanders", 0, (("count", 7),)),
         DomainAction("withdraw_commanders", 1, (("count", 1),)),

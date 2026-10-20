@@ -4553,6 +4553,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # ever answered among them) and 173 rows join.
         - 44
         + 173
+        # v150 (stage B3d-4): the turn's owed draws, Emperor track Spy and
+        # Sardaukar Commander recruit by their effect rows: draw_owed_intrigue,
+        # draw_owed_card, place_track_spy and recruit_sardaukar_commander leave
+        # (4) and the rows not yet in the catalog join (5).
+        - 4
+        + 5
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

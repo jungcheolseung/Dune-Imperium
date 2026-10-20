@@ -947,11 +947,40 @@ id 8개(`decline_command_acquisition`과 옛 카드별 Reveal 거절 7개)는 �
   `decline_agent_card_intrigue_payment`은 행동 모양 표대로 늘 `of=pay`다(Branching Path의 책략 폐기 거절은 실제로는 `trash`지만, 선택
   칸이라 그 거절은 제시되지 않는다).
 - **codec:** 거절·빈 확인 template이 그 자리별 `decline`·`confirm_empty` 줄로 바뀌어 기본 1,366 → 1,429(−37 +100), 옵션 전부
-  3,970 → 4,281. 자리가 정해진 효과마다 줄이 생겨 늘었다(첩보 Spy·Imperial Privilege 빈 확인은 그 효과를 인쇄한 칸 하나로, 지도자
+  3,970 → 4,252. 자리가 정해진 효과마다 줄이 생겨 늘었다(첩보 Spy·Imperial Privilege 빈 확인은 그 효과를 인쇄한 칸 하나로, 지도자
   거절은 그 효과를 인쇄한 지도자로 좁혔다).
 - **측정:** pytest 8,179; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크
   900판(codec 왕복 검사 포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면, 모두 102곳); E2E 68개 전부(`unavailable`의 고정 상태 준비가
   거절을 온 행동으로 적용하도록 고침).
+
+### B3d-4 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+D-3대로 차례 frame에 남은 출처별 이름이 효과 줄이 된다(소위원회는 B3d-2b에서 끝났다).
+
+| 옛 온 행동 | 효과 줄 |
+|---|---|
+| `draw_owed_intrigue` / `draw_owed_card` | `draw(source=<기원 종류>, printed=<기원>, icon=intrigue` / `cards)` |
+| `place_track_spy` | `place_spy(source=influence_track, printed=emperor)` (초소는 그 뒤 Spy 창의 대상) |
+| `recruit_sardaukar_commander` | `recruit(source=commander, printed=sardaukar_commander)` |
+
+- **빚진 뽑기의 기원:** 새 `Printed.OWED_DRAW`(`effect_steps.owed_draw_printer`)가 처리기가 집을 항목 — 그 덱의 가장 오래된 즉시
+  것, 없으면 가장 오래된 것(`owed_draws.next_owed_draw`) — 의 기원을 읽는다: c7r3 `research|c7r3`, Bene Gesserit 4
+  `influence_track|bene_gesserit`, CHOAM Transports `tech|choam_transports`, Imperial Birthright·Hungry for Spice `leader|<지도자 면>`,
+  획득 상자 `acquisition|<산 카드>`, 카드의 "trash되면" `trigger|<그 카드>`, Tleilaxu 트랙 `trigger|tleilaxu_track`. 같은 덱의 뽑기는
+  결과가 같아 덱마다 줄 하나다(결정 3). 기원은 모두 공개된 것이다(트랙·산 카드·trash한 카드·타일·지도자).
+- **임무 창 옆의 표본 반환:** 창의 제 효과(참여) 옆에 함께 나오는 다른 효과라(D-1 (가)의 갈래) 효과 줄
+  `return_specimen(source=scouts, printed=<임무>)`(창을 연 임무 — 먼저 회수 갈래가 창을 연 것을 이름 붙이는 꼴) → `choose_count`.
+  Scouts 모집 걸음의 반환은 그 창의 제 효과라 그대로 개수 대상 줄뿐이다(`WINDOW_OWN`). 이로써 `OFFERED_AS_WHOLE`이 없어졌다 —
+  어느 창도 온 행동을 그대로 내지 않는다. 엔진 동작(한 번에 n개를 돌리고 창은 그대로)은 같다. codec은 supply의 troop을 쓰는
+  임무(`scouts_missions.mission_takes_supply_troops`: CHOAM 호위, supply에서 세우는 임무)만 줄을 둔다.
+- **엔티티 망:** `printed`의 `tleilaxu_track`·`sardaukar_commander`는 개체가 없는 이름표다.
+- **화면:** 사람 화면은 온 행동 단위로 보여 주므로 그대로다(빚진 뽑기 문구 "Bene Gesserit Influence 4" 등).
+- **codec:** 기본 1,429 → 1,431(−2 +4), 옵션 전부 4,252 → 4,256(−8 +12; 표본 반환 template 4개가 임무 다섯의 효과 줄로). c7r3
+  연구 칸의 뽑기 줄과 지도자의 뽑기 줄은 이미 있던 같은 줄을 쓴다(같은 효과는 같은 자리).
+- **측정:** pytest 8,180; 같음 확인 200판 같음(CHOAM Transports 카드를 먼저 받는 정해진 차이 규칙이 그 카드를 옛 id의 행으로 찾던 것을
+  온 행동으로 찾게 고침); 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크 900판(codec 왕복 검사
+  포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면·지문·선택지, 체크포인트 망 몫 20 → 19곳, 모두 101곳); E2E 68개 전부. 독립 리뷰: 엔진·
+  codec·서버·화면 결함 없음; 위의 같음 확인 규칙과 시험 하나(임무 창 표본 반환을 옛 온 행동으로 적용)를 찾음 — 둘 다 고침.
 
 ## 4. 위험
 
