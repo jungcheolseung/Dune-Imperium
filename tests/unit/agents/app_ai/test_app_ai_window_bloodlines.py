@@ -12,6 +12,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo
 from dune_imperium.agents.app_ai.abilities.bloodlines_systems import (
     FedaykinManeuverSignetAbility,
@@ -78,7 +79,7 @@ def _seat(state: GameState) -> int:
 
 
 def _legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, _seat(state))
+    return ENGINE.whole_actions(state, _seat(state))
 
 
 def _run(
@@ -369,7 +370,7 @@ def test_navigation_setup_fills_each_slot_by_its_value() -> None:
         best = max(values.values())
         if best > 0:
             assert values[str(arg(action, "card_id"))] == best
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
     assert state.decision_stack[-1].kind != "navigation_setup"
 
 
@@ -545,7 +546,7 @@ def test_tech_acquire_influence_with_every_faction_at_the_top_is_confirmed() -> 
     action = W.tech_acquisition(run)
     assert action is not None and action.action_id == "resolve_tech_acquire_effect"
     assert arg(action, "effect") == "solari"
-    resolved = ENGINE.apply(beside, action).state
+    resolved = apply_whole(ENGINE, beside, action).state
     assert W.tech_acquisition(_run(resolved)) == confirm
 
     # With a Faction it can still raise there is no confirm to answer.
@@ -647,7 +648,7 @@ def test_kota_reverse_engineering_rewards_follow_in_a_servo_frame() -> None:
     )
     trash = _run(state).first("trash_leader_tech")
     assert trash is not None
-    state = ENGINE.apply(state, trash).state
+    state = apply_whole(ENGINE, state, trash).state
     assert state.decision_stack[-1].kind == "leader_signet"
     run = _run(state)
     assert {a.action_id for a in run.legal} == {"resolve_agent_card_effect"}
@@ -800,7 +801,7 @@ def test_fenring_recalls_the_worst_spy_first_then_places_on_the_best_post() -> N
     assert action is not None and worst is not None
     assert action.action_id == "recall_spy_for_leader_placement"
     assert arg(action, "post_id") == worst.ref
-    state = ENGINE.apply(state, action, legal_actions=run.legal).state
+    state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
     run = _run(state)
     places = [
         str(arg(a, "post_id")) for a in run.legal if a.action_id == "place_leader_spy"
@@ -816,7 +817,7 @@ def test_mohiam_paid_listeners_places_on_the_best_post() -> None:
     resources = replace(state.players[0].resources, spice=2)
     state = with_player(state, 0, resources=resources)
     pay = next(a for a in _legal(state) if a.action_id == "pay_leader_signet_spice")
-    state = ENGINE.apply(state, pay, legal_actions=_legal(state)).state
+    state = apply_whole(ENGINE, state, pay, legal_actions=_legal(state)).state
     run = _run(state)
     places = [
         str(arg(a, "post_id")) for a in run.legal if a.action_id == "place_leader_spy"
@@ -900,7 +901,7 @@ def test_uprising_spy_signet_with_an_empty_supply_recalls_the_worst_spy(
     if leader != "lady_margot_fenring":
         return
     # The rest of the key: the recalled Spy goes to the best City post.
-    state = ENGINE.apply(state, action, legal_actions=run.legal).state
+    state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
     places = [str(p) for p in _ids(_legal(state), "place_leader_spy", "post_id")]
     best, _ = make_profile(state, 0).best_post([post_entity(p, 0) for p in places])
     follow = W.leader_signet(_run(state))
@@ -971,7 +972,7 @@ def test_navigation_card_1_keeps_no_intent_for_a_single_faction() -> None:
     W._store_navigation_intent(run, "intrigue:navigation_card_1:0", 1, play)
     assert key not in run.memory.intents  # only Fremen (Emperor triggered)
     state = _navigation_state(1, influence=lone, resources=rich)
-    state = ENGINE.apply(state, play, legal_actions=_legal(state)).state
+    state = apply_whole(ENGINE, state, play, legal_actions=_legal(state)).state
     assert len(_legal(state)) == 1  # the gain slot: one Faction, no window
     two = replace(lone, spacing_guild=3)
     run = _one_candidate_navigation(1, influence=two, resources=rich)

@@ -8,6 +8,7 @@ from tests.support.pauses import answer_pause, pause_outcome
 from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core import (
     DomainAction,
@@ -366,7 +367,8 @@ def _play_out_rewards(
             assert isinstance(frame.decision, PlayerDecision)
             legacy = legacy_combat_reward_icon(state, frame.decision.owner)
             assert legacy is not None
-            result = engine.apply(state, legacy)
+            # Stage B3d-1: the window offers the icon as its steps.
+            result = apply_whole(engine, state, legacy)
         else:
             break
         state = result.state

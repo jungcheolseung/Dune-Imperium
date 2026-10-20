@@ -780,6 +780,25 @@ Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal fram
 - **B3d-3:** 거절·빈 확인 합치기(D-2), 죽은 id 정리.
 - **B3d-4:** 남은 출처별 이름(D-3), `OFFERED_AS_WHOLE`이 비면서 옛 template이 codec에서 빠짐(Reveal 선택 21종 포함).
 
+### B3d-1 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+- **frame:** `EFFECT_STEP_FRAMES`에 Conflict 보상 창(`combat_reward_icons`)·계약 보상 창(`contract_reward_icons`)·책략 줄 창
+  (`intrigue_effects`)·Servo-Receivers 인장 창(`leader_signet`). 모드가 둘인 창은 효과가 여럿일 때만(`presents_steps`): 연구 창은 쌍의
+  아이콘을 고를 때(`research_icons`; 보너스 하나의 선택은 B3d-2), Tech 창은 획득 아이콘을 치를 때(`acquire_effects_only`; 타일 사기는
+  B3d-2).
+- **표:** `resolve_combat_reward_icon(effect)` → 아이콘의 동사(`gain`·`draw`·`recruit`·`take`·`gain_influence`·`pay`·`recall_spy`·`trash`·
+  `place_spy`) `(source=conflict, printed=<이번 Conflict 카드>, icon=아이콘)` — 새 규칙 `Printed.CONFLICT_CARD`(상태의
+  `current_conflict_ids[-1]`; Pivotal Gambit이 더하는 1등 영향력도 그 카드의 줄로 셈). `resolve_contract_reward_icon`은 `Printed.CONTRACT`
+  (온 행동의 `contract_id`, 없으면 창의 계약). `use_intrigue_effect(section)` → `use(source=intrigue, printed=<카드>, option=줄 번호)`(새
+  규칙 `Printed.INTRIGUE_CARD`; `option`이 인자를 읽을 수 있게 `"arg:"`). 인장 창의 지도자 줄은 그대로 `Printed.LEADER`이고, 그 창의
+  `resolve_agent_card_effect`는 Agent 칸이 아니라 지도자 인장이라 `BOX_CARD` 규칙이 지도자를 읽는다.
+- **codec:** 이 창들의 온 행동 21종이 `OFFERED_AS_WHOLE`에서 빠져 옛 template이 떠났다(인장 창이 지도자 줄 온 행동의 마지막 주인이었다).
+  기본 2,938 → 2,778(−228 +68), 옵션 전부 9,487 → 8,491. 연구 창의 줄은 창이 고르는 모든 아이콘을 덮는다(검은 폐기, c7r3의 두 뽑기 —
+  독립 리뷰가 빠진 것을 찾음: Arrakeen Scouts 판에서 망·탐색 좌석이 그 창에서 멈췄다; 관문 소크의 codec 왕복 검사도 같은 것을 잡음).
+  엔티티 망: `printed`가 Conflict·책략 카드도 읽는다(digest 다시 고정).
+- **측정:** pytest 8,166; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크 900판
+  (codec 왕복 검사 포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면, 모두 103곳); E2E 전부(`log_words`의 Scouts 시드 2 → 4).
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로

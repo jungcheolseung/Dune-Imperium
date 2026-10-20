@@ -179,12 +179,20 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # Objective cards, two more options) join (26).
         - 73
         + 26
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # (a Conflict or Contract reward's icons, an Intrigue card's lines,
+        # Servo-Receivers' Signet, a research pair, a Tech tile's acquire
+        # icons) offer effect rows: their whole templates leave (228; the
+        # Signet frame's were the last holders of the leader rows' wholes)
+        # and the effect rows not yet in the catalog join (68).
+        - 228
+        + 68
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
     # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
-    # stage B3c-1's net -47 to 2,938.
-    assert first.size == 2938
+    # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778.
+    assert first.size == 2778
 
 
 def _scouts_catalog_additions(
@@ -255,9 +263,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             t.action_id in {"scouts_collect_mission", "take_desert_riding_hooks"}
             for t in with_scouts.catalog
         )
-    assert ActionCodec(RulesetConfig()).size == 2938
+    assert ActionCodec(RulesetConfig()).size == 2778
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 2938 + len(
+    assert ActionCodec(base_scouts).size == 2778 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -407,6 +415,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # templates leave and 26 rows join.
         - 78
         + 26
+        # v150 (stage B3d-1): the several-effect windows' rows (see above):
+        # 268 whole templates leave and 68 rows join.
+        - 268
+        + 68
     )
 
     try:
@@ -583,6 +595,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # v150 (stage B3c-2b): Arrakis Planetologist's optional trash names
         # its leader (trash(source=leader, printed=liet_kynes)).
         + 1
+        # v150 (stage B3d-1): the several-effect windows' rows (see
+        # test_catalog_is_fixed...): 453 whole templates leave and 73 rows
+        # join.
+        - 453
+        + 73
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -700,18 +717,36 @@ def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
 
 def test_agent_card_icons_round_trip_beside_the_bare_action() -> None:
     # Multi-icon Agent boxes resolve one keyed template per icon (OQ-027);
-    # single-effect boxes keep the argument-less template (codec v87).
-    codec = ActionCodec(RulesetConfig())
-    assert AUTOMATIC_AGENT_ICONS == tuple(sorted(AUTOMATIC_AGENT_ICONS))
-    bare = DomainAction(action_id="resolve_agent_card_effect", actor=2)
-    assert codec.decode(codec.encode(bare), actor=2) == bare
-    for key in AUTOMATIC_AGENT_ICONS:
-        action = DomainAction(
-            action_id="resolve_agent_card_effect",
-            actor=2,
-            arguments=(("effect", key),),
+    # single-effect boxes keep the argument-less resolution (codec v87).
+    # Stage B3a shows them as effect rows naming the box's card; since stage
+    # B3d-1 no frame offers the whole action, so only those rows are coded:
+    # a plain ``resolve`` row and one verb row per icon (each icon on some
+    # card of the expansions), each round-tripping.
+    codec = ActionCodec(
+        RulesetConfig(
+            choam_module=True,
+            promo_cards=True,
+            bloodlines=True,
+            tech_module=True,
+            immortality=True,
         )
-        assert codec.decode(codec.encode(action), actor=2) == action
+    )
+    assert AUTOMATIC_AGENT_ICONS == tuple(sorted(AUTOMATIC_AGENT_ICONS))
+    rows = [
+        template
+        for template in codec.catalog
+        if ("source", "agent_card") in template.arguments
+    ]
+    assert any(
+        t.action_id == "resolve" and "icon" not in dict(t.arguments) for t in rows
+    )
+    assert not any(t.action_id == "resolve_agent_card_effect" for t in codec.catalog)
+    for key in AUTOMATIC_AGENT_ICONS:
+        keyed = [t for t in rows if dict(t.arguments).get("icon") == key]
+        assert keyed, key
+        for template in keyed:
+            action = DomainAction(template.action_id, 2, template.arguments)
+            assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_reveal_choice_deferral_and_resumption_round_trip() -> None:
@@ -1082,16 +1117,26 @@ def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> Non
     # 12-troop Conflict with one Commander offered a count of 13 that the
     # codec could not encode; a trained policy hit it in greedy play
     # (2026-09-18). The range now matches retreat_intrigue_troops.
+    # Stage B3a shows it as Chani's ``retreat`` effect row carrying the mix;
+    # since stage B3d-1 no frame offers the whole action, so the rows are
+    # what is coded.
+    from dune_imperium.rules.action_shapes import Source
+
     codec = ActionCodec(RulesetConfig(bloodlines=True))
-    fedaykin = [t for t in codec.catalog if t.action_id == "retreat_leader_troops"]
+    fedaykin = [
+        t
+        for t in codec.catalog
+        if t.action_id == "retreat" and ("printed", "chani") in t.arguments
+    ]
     assert len(fedaykin) == 12 + 91
+    assert not any(t.action_id == "retreat_leader_troops" for t in codec.catalog)
     for troops in range(0, 13):
         for commanders in range(0, 8):
             for count in range(1, troops + commanders + 1):
                 for share in range(0, min(count, commanders) + 1):
                     if count - share > troops:
                         continue
-                    action = DomainAction(
+                    whole = DomainAction(
                         "retreat_leader_troops",
                         actor=2,
                         arguments=(
@@ -1099,12 +1144,13 @@ def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> Non
                             ("count", count),
                         ),
                     )
-                    assert codec.decode(codec.encode(action), actor=2) == action
+                    (row,) = steps_for(whole, "chani", Source.LEADER)
+                    assert codec.decode(codec.encode(row), actor=2) == row
     beyond = DomainAction(
         "retreat_leader_troops", actor=0, arguments=(("commanders", 1), ("count", 20))
     )
     with pytest.raises(ValueError, match="not present"):
-        codec.encode(beyond)
+        codec.encode(steps_for(beyond, "chani", Source.LEADER)[0])
 
 
 @pytest.mark.parametrize("bloodlines", [False, True])

@@ -1946,12 +1946,14 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
     # The unit is the reward's three icon rows (stage B2, OQ-112: Control,
-    # Solari, the Spy's row) and the Spy; none of them reveals anything.
+    # Solari, the Spy's row; stage B3d-1: each shown as its effect row,
+    # ``take``, ``gain`` and ``place_spy``) and the Spy; none of them reveals
+    # anything.
     assert [
         entry.step.action_id
         for entry in session.log[-4:]
         if isinstance(entry, LoggedStep) and isinstance(entry.step, DomainAction)
-    ] == ["resolve_combat_reward_icon"] * 3 + ["place_combat_reward_spy"]
+    ] == ["take", "gain", "place_spy", "place_combat_reward_spy"]
     assert _seat0_undo(summary) == [{"seat": 0, "steps": 4}]
     assert manager.legal_actions(game_id, 0)["actions"] == []
 

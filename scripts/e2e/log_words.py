@@ -229,11 +229,13 @@ GAMES = (
     # off Clear the Market, Mercenaries and Mating Season; the same scan over
     # random seeds 1-300 finds the pair 1 and 90 first. Stage B3c-1 (a card
     # is played effect first) moves them again; the same scan finds the pair
-    # 2 and 209 first.
+    # 2 and 209 first. Stage B3d-1 (the reward windows offer effect rows)
+    # moves seed 2 off its round modifier; the same scan finds the pair 4
+    # and 209 first.
     {
         "seats": ["random"] * 4,
-        "game_seed": 2,
-        "policy_seed": 2,
+        "game_seed": 4,
+        "policy_seed": 4,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -270,8 +272,9 @@ GAMES = (
         # it keeps the round modifier, mission troops and an auction won.
         # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
         # above (see there), since stage B2 seed 20 with seed 7, since stage
-        # B3a seed 5 with seed 3, since stage B3b-2 seed 90 with seed 1, and
-        # since stage B3c-1 seed 209 with seed 2.
+        # B3a seed 5 with seed 3, since stage B3b-2 seed 90 with seed 1,
+        # since stage B3c-1 seed 209 with seed 2, and since stage B3d-1 seed
+        # 209 with seed 4.
         "game_seed": 209,
         "policy_seed": 209,
         "arrakeen_scouts": True,

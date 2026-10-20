@@ -546,3 +546,161 @@ def test_the_planetologist_intrigue_row_names_the_leader() -> None:
     assert whole not in ENGINE.legal_actions(state, 0)
     ActionCodec(state.config).encode(row)
     assert ENGINE.apply(state, row).state == apply_whole(ENGINE, state, whole).state
+
+
+def test_a_conflict_reward_window_offers_its_icons_by_the_conflict_card() -> None:
+    # Stage B3d-1 (docs/stage-b-plan.md "B3d 세부 설계"): a recipient's
+    # reward window offers several effects at once, so each icon is an
+    # effect row naming the Conflict card that prints the reward row.
+    from tests.unit.rules.test_combat import _reward_state
+
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.core import PlayerDecision
+    from dune_imperium.rules.combat import resolve_combat_rewards
+    from dune_imperium.rules.effect_steps import presents_steps
+
+    conflict = "skirmish_desert_mouse"
+    state = resolve_combat_rewards(_reward_state(conflict)).state
+    top = state.decision_stack[-1]
+    assert top.kind == "combat_reward_icons" and presents_steps(state)
+    assert isinstance(top.decision, PlayerDecision)
+    owner = top.decision.owner
+    wholes = ENGINE.whole_actions(state, owner)
+    assert wholes and all(w.action_id == "resolve_combat_reward_icon" for w in wholes)
+    codec = ActionCodec(state.config)
+    for whole in wholes:
+        effect = dict(whole.arguments)["effect"]
+        (row,) = path_of(state, whole) or ()
+        assert dict(row.arguments) == {
+            "icon": effect,
+            "printed": conflict,
+            "source": "conflict",
+        }
+        codec.encode(row)
+        assert ENGINE.apply(state, row).state == apply_whole(ENGINE, state, whole).state
+    assert set(ENGINE.legal_actions(state, owner)) == {
+        first_step(state, whole) for whole in wholes
+    }
+
+
+def test_the_several_effect_windows_offer_their_effect_rows() -> None:
+    # Stage B3d-1: the Conflict and Contract reward windows, an Intrigue
+    # card's lines, Servo-Receivers' Signet frame, a research window's pair
+    # and a Tech window's acquire icons offer effect rows: every legal row
+    # is a whole action's next step, and encodes. A research bonus choice
+    # and a Tech acquisition are one effect each and stay as they are until
+    # stage B3d-2.
+    from dune_imperium import RulesetConfig
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.agents import RandomAgent
+    from dune_imperium.core import (
+        ChanceDecision,
+        ChanceResolver,
+        GamePhase,
+        PlayerDecision,
+    )
+    from dune_imperium.rules.effect_steps import presents_steps
+
+    config = RulesetConfig(
+        choam_module=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+        arrakeen_scouts=True,
+    )
+    windows = {
+        "combat_reward_icons",
+        "contract_reward_icons",
+        "intrigue_effects",
+        "leader_signet",
+        "research_bonus",
+        "tech_acquisition",
+    }
+    codec = ActionCodec(config)
+    seen: set[str] = set()
+    for seed in range(6):
+        state = ENGINE.reset(config, seed)
+        chance = ChanceResolver(seed=seed)
+        agents = [RandomAgent(seed=seed * 10 + seat) for seat in range(4)]
+        for _ in range(6_000):
+            if state.phase is GamePhase.FINISHED:
+                break
+            decision = ENGINE.current_decision(state)
+            if isinstance(decision, ChanceDecision):
+                state = ENGINE.apply(state, chance.resolve(decision)).state
+                continue
+            assert isinstance(decision, PlayerDecision)
+            legal = ENGINE.legal_actions(state, decision.owner)
+            kind = str(state.decision_stack[-1].kind)
+            if kind in windows and presents_steps(state):
+                seen.add(kind)
+                wholes = ENGINE.whole_actions(state, decision.owner)
+                assert set(legal) == {first_step(state, w) for w in wholes}, kind
+                for row in legal:
+                    codec.encode(row)
+            action = agents[decision.owner].choose_action(
+                ENGINE.observe(state, decision.owner), legal
+            )
+            state = ENGINE.apply(state, action, legal_actions=legal).state
+    assert "combat_reward_icons" in seen
+
+
+@pytest.mark.parametrize(
+    ("before", "space", "icons"),
+    [
+        pytest.param("c2r2", "c3r3", ("specimen", "trash"), id="c3r3"),
+        pytest.param("c2r4", "c3r5", ("specimen", "tleilaxu"), id="c3r5"),
+        pytest.param("c6r2", "c7r3", ("intrigue", "cards"), id="c7r3"),
+    ],
+)
+def test_a_research_window_offers_each_icon_by_its_space(
+    before: str, space: str, icons: tuple[str, ...]
+) -> None:
+    # Stage B3d-1: a research window outside its owner's turn ordering a
+    # pair's icons (or c7r3's rewards once paid) offers each icon as an
+    # effect row naming its research space -- the black trash and c7r3's
+    # draws too, which no turn row offers (the 2026-10-20 review of B3d-1:
+    # those rows were missing from the codec).
+    from tests.unit.rules.test_immortality import _out_of_turn, _research_choices
+
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.rules.effect_steps import presents_steps
+    from dune_imperium.rules.immortality import (
+        advance_research,
+        apply_research_advance,
+        apply_research_bonus,
+        legal_research_bonus_actions,
+    )
+
+    held = "intrigue:ambush:1"
+    fork = _out_of_turn(before, intrigue_cards=(held,))
+    advanced = advance_research(fork, 0, source="test").state
+    state = apply_research_advance(advanced, _research_choices(advanced)[space]).state
+    if space == "c7r3":
+        pay = next(
+            action
+            for action in legal_research_bonus_actions(state, 0)
+            if action.action_id == "trash_intrigue_for_research_bonus"
+        )
+        state = apply_research_bonus(state, pay).state
+    assert state.decision_stack[-1].kind == "research_bonus" and presents_steps(state)
+    codec = ActionCodec(state.config)
+    verbs = {
+        "specimen": "generate_specimens",
+        "tleilaxu": "advance",
+        "trash": "trash",
+        "intrigue": "draw",
+        "cards": "draw",
+    }
+    rows = [
+        DomainAction(
+            verbs[icon],
+            0,
+            (("icon", icon), ("printed", space), ("source", "research")),
+        )
+        for icon in icons
+    ]
+    assert set(rows) <= set(ENGINE.legal_actions(state, 0))
+    for row in rows:
+        codec.encode(row)

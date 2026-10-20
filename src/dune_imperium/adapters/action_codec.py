@@ -86,7 +86,10 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
-from dune_imperium.rules.combat import COMBAT_REWARD_ICON_KINDS
+from dune_imperium.rules.combat import (
+    COMBAT_REWARD_ICON_KINDS,
+    conflict_reward_icon_kinds,
+)
 from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_KINDS,
     contract_reward_icons,
@@ -1347,6 +1350,47 @@ def _effect_step_templates(
             own = _LEADER_ROW_FACES.get(template.action_id)
             named = tuple(
                 (None, face) for face in faces if own is None or face in own
+            )
+        elif spec.printed == Printed.CONFLICT_CARD:
+            # A Conflict reward icon (stage B3d-1): each Conflict printing
+            # it, and any Conflict's first place for Pivotal Gambit's
+            # Influence (OQ-025).
+            kind = dict(template.arguments).get("effect")
+            assert isinstance(kind, str)
+            named = tuple(
+                (None, conflict.card.card_id)
+                for conflict in CONFLICTS
+                if (config.bloodlines or not conflict.bloodlines_only)
+                and (config.epic_game or not conflict.epic_only)
+                and (
+                    kind in conflict_reward_icon_kinds(conflict.card.card_id)
+                    or (kind == "choose_influence" and config.promo_cards)
+                )
+            )
+        elif spec.printed == Printed.CONTRACT:
+            # A window's row names no Contract: the rows of its Contract are
+            # the owner's turn rows' (``contract_id``), already named.
+            contract = dict(template.arguments).get("contract_id")
+            if contract is None:
+                continue
+            named = ((None, contract),)
+        elif spec.printed == Printed.INTRIGUE_CARD:
+            # A printed line of a card played line by line (OQ-058).
+            line = dict(template.arguments).get("section")
+            assert isinstance(line, int)
+            held = map(
+                intrigue_card_for_instance, _held_intrigue_instance_ids(config)
+            )
+            named = tuple(
+                (None, card_id)
+                for card_id in dict.fromkeys(
+                    card.card.card_id
+                    for card in held
+                    if any(
+                        option.separate and line < len(option.sections)
+                        for option in card.options
+                    )
+                )
             )
         elif spec.printed == Printed.NAMED:
             # An optional trash waiting on the turn, by every entity that

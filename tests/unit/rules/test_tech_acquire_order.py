@@ -29,7 +29,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue
-from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effect_steps import path_of
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.tech import (
     legal_tech_acquire_effect_actions,
@@ -149,8 +149,9 @@ def test_purchase_never_pays_any_acquire_reward(tile: object) -> None:
     codec = ActionCodec(CONFIG)
     for action in ENGINE.whole_actions(bought, 0):
         # Stage B3c-1: the turn frame offers Flip Tech as its effect row and
-        # the tile's row (``effect_steps.steps_for``); the whole left the catalog.
-        for row in steps_for(action) if action.action_id == "flip_tech" else (action,):
+        # the tile's row (``effect_steps.steps_for``); the whole left the
+        # catalog. Stage B3d-1: so do a bought tile's waiting acquire icons.
+        for row in path_of(bought, action) or (action,):
             assert codec.decode(codec.encode(row), 0) == row
 
 

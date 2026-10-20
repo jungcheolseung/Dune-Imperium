@@ -49,6 +49,7 @@ from dune_imperium.core import (
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.agent_turn import (
     apply_agent_action,
     executable_placements,
@@ -59,7 +60,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.combat import begin_combat_intrigue
-from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effect_steps import path_of, steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind, with_context
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
@@ -1048,7 +1049,9 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
     # _store_signet / _signet_context breaks this (merge guard for Signet
     # handler changes on other branches).
     engine = UprisingRulesEngine()
-    codec = ActionCodec(TECH)
+    # Shaddam Corrino IV is a CHOAM leader: his Signet rows name his face
+    # (stage B3d-1), which only the CHOAM catalog has.
+    codec = ActionCodec(TECH_CHOAM)
     owner = _owner(
         leader_id=leader_id,
         influence=Influence(emperor=2, fremen=2),
@@ -1079,7 +1082,10 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         actions = engine.whole_actions(current, _decider(current))
         assert actions, "a leader_signet frame must offer a choice"
         for action in actions:
-            assert codec.decode(codec.encode(action), action.actor) == action
+            # Stage B3d-1: the frame shows a choice as the rows of its path;
+            # a decline stays as it is.
+            for row in path_of(current, action) or (action,):
+                assert codec.decode(codec.encode(row), row.actor) == row
             pending.append(apply_whole(engine, current, action).state)
         assert leaves + len(pending) < 400, "Signet choices must terminate"
     assert leaves >= 1
@@ -1442,9 +1448,19 @@ def test_tech_actions_round_trip_only_in_the_tech_catalog() -> None:
         ),
     )
     for action in actions:
-        assert codec.decode(codec.encode(action), action.actor) == action
+        # Stage B3d-1: an acquire icon is shown as the tile's effect row and
+        # its target rows (``effect_steps.steps_for``), not as a whole action.
+        rows = (
+            steps_for(action)
+            if action.action_id == "resolve_tech_acquire_effect"
+            else (action,)
+        )
+        for row in rows:
+            assert codec.decode(codec.encode(row), row.actor) == row
+        # The row naming the tile (or the action itself) is the Tech
+        # catalog's only; a target row such as a Faction pick is shared.
         with pytest.raises(ValueError):
-            bloodlines.encode(action)
+            bloodlines.encode(rows[0])
 
 @pytest.mark.parametrize("game_seed", [31, 32])
 def test_random_tech_games_finish_under_every_check(game_seed: int) -> None:
@@ -3420,7 +3436,15 @@ def test_kota_actions_round_trip_in_the_tech_catalog() -> None:
         DomainAction("gain_reveal_influence", 3, (("faction", "emperor"),)),
     )
     for action in actions:
-        assert codec.decode(codec.encode(action), action.actor) == action
+        # Stage B3d-1: Kota's Signet and a Tech trash are shown as the
+        # leader's effect row and its target rows.
+        rows = (
+            steps_for(action, "kota_odax_of_ix", Source.LEADER)
+            if action.action_id in {"gain_leader_signet_spice", "trash_leader_tech"}
+            else (action,)
+        )
+        for row in rows:
+            assert codec.decode(codec.encode(row), row.actor) == row
 
 
 def test_random_tech_games_with_kota_finish_under_every_check() -> None:

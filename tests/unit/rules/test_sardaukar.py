@@ -1524,6 +1524,10 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # 26 rows join.
         - 73
         + 26
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # offer effect rows: 228 whole templates leave and 68 rows join.
+        - 228
+        + 68
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an

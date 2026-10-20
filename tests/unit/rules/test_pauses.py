@@ -17,6 +17,7 @@ from tests.support.pauses import answer_pause, pause_outcome
 from tests.unit.rules.test_combat import _reward_state, _settle
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -285,7 +286,8 @@ def _pay_rewards(
             break
         answer = _window_answer(state)
         if answer is not None:
-            answered = engine.apply(state, answer)
+            # Stage B3d-1: the window offers the icon as its steps.
+            answered = apply_whole(engine, state, answer)
         elif (
             through_recipients
             and frame.kind == FrameKind.PAUSE
@@ -339,7 +341,7 @@ def _to_round_start(engine: UprisingRulesEngine, state: GameState) -> RuleResult
         frame = state.decision_stack[-1]
         answer = _window_answer(state)
         if answer is not None:
-            transition = engine.apply(state, answer)
+            transition = apply_whole(engine, state, answer)
         elif frame.kind == FrameKind.PAUSE:
             transition = engine.apply(state, pause_outcome(state))
         else:

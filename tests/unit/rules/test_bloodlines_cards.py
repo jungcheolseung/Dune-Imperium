@@ -4499,6 +4499,10 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # v150 (stage B3c-2b): Arrakis Planetologist's optional trash names
         # its leader (trash(source=leader, printed=liet_kynes)).
         + 1
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # offer effect rows: 397 whole templates leave and 89 rows join.
+        - 397
+        + 89
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

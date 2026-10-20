@@ -18,9 +18,11 @@ card). This module shows a whole action to the outside as a *path* of steps:
 A frame that offers several effects at once (``EFFECT_STEP_FRAMES``: the
 Agent-turn effect frame since stage B3a, the Reveal frame since B3b-2, the
 turn frame and the Combat, Conflict-end and Endgame Intrigue windows since
-B3c-1) offers
-the effect rows; an effect without a target is resolved by its row, and one
-with targets keeps the rows picked so far in the frame's context
+B3c-1, the Conflict and Contract reward windows, an Intrigue card's lines,
+Servo-Receivers' Signet frame, a research window ordering a pair's icons
+and a Tech window owing acquire icons since B3d-1) offers the effect rows;
+an effect without a target is resolved by its row, and one with targets
+keeps the rows picked so far in the frame's context
 (``EFFECT_PICK_KEY``) and offers only the next rows of its paths -- even when
 there is one target (OQ-111 (2)). The context is no other seat's to see
 (B3-3 (가), OQ-111 (4)); the seat's own view reads it
@@ -35,6 +37,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -115,6 +118,14 @@ class Printed(StrEnum):
     # window's own space, or on the turn frame the newest waiting icon of
     # the whole action's kind -- the one ``apply_research_icon`` takes.
     RESEARCH_SPACE = "research_space"
+    # The Conflict card whose reward row the window pays (stage B3d-1): the
+    # Conflict of this round, ``state.current_conflict_ids[-1]``.
+    CONFLICT_CARD = "conflict_card"
+    # A completed Contract: the whole action's ``contract_id`` (a row on its
+    # owner's turn, B3b-1), else the Contract reward window's own (B3d-1).
+    CONTRACT = "contract"
+    # The Intrigue card whose printed lines its window offers (B3d-1).
+    INTRIGUE_CARD = "intrigue_card"
     # The whole action names its effect's source and printed entity in its
     # own ``source`` and ``printed`` arguments (and ``printed_box`` for a
     # grafted turn's second card): an optional trash waiting on the turn,
@@ -135,7 +146,9 @@ class StepSpec:
     id (a single card's Reveal choice, a market). ``icon`` is a constant
     label, ``"arg:<name>"`` for an argument, or ``""`` for none. ``option``
     names one of a printed choice's alternatives that share a verb (Sietch
-    Tabr's water or supplies), as the effect row's ``option``. ``targets``
+    Tabr's water or supplies), as the effect row's ``option``, or
+    ``"arg:<name>"`` for an argument (an Intrigue card's printed line).
+    ``targets``
     are the whole action's target arguments in the order they are picked,
     ``"=<value>"`` for a target the whole action's id itself names (the
     Conflict of a recall); an argument the whole action does not carry, or
@@ -217,6 +230,24 @@ _RESEARCH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "specimen": _V.GENERATE_SPECIMENS,
     "tleilaxu": _V.ADVANCE,
     "trash": _V.TRASH,
+})
+# What a Conflict reward icon does (``combat.COMBAT_REWARD_ICON_KINDS``).
+_COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
+    "resources": _V.GAIN,
+    "intrigue": _V.DRAW,
+    "troops": _V.RECRUIT,
+    "victory_points": _V.GAIN,
+    "faction_influence": _V.GAIN_INFLUENCE,
+    "control": _V.TAKE,
+    "contract": _V.TAKE,
+    "choose_influence": _V.GAIN_INFLUENCE,
+    "distinct_influence": _V.GAIN_INFLUENCE,
+    "optional_solari": _V.PAY,
+    "optional_spice": _V.PAY,
+    "optional_recall_spies": _V.RECALL_SPY,
+    "trash": _V.TRASH,
+    "spy": _V.PLACE_SPY,
+    "deep_cover_spy": _V.PLACE_SPY,
 })
 # What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
 _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -450,10 +481,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "gather_intelligence": _spec(_V.RECALL_SPY, _S.SPY, _SPACE, targets=_POST),
     # --- A Contract, a Tech tile ---------------------------------------------
     "complete_contract": _spec(_V.COMPLETE_CONTRACT, _S.CONTRACT, "instance_id"),
-    # An icon of a Contract completed in the owner's turn, waiting on it
-    # (OQ-112 (4)); its window's rows name no Contract and stay as they are.
+    # An icon of a completed Contract: waiting on its owner's turn (OQ-112
+    # (4), B3b-1; the row names the Contract) or in its reward window (B3d-1;
+    # the window names it).
     "resolve_contract_reward_icon": _spec(
-        _CONTRACT_ICON_VERBS, _S.CONTRACT, "contract_id", icon="arg:effect"
+        _CONTRACT_ICON_VERBS, _S.CONTRACT, Printed.CONTRACT, icon="arg:effect"
     ),
     "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id"),
     "resolve_tech_acquire_effect": _spec(
@@ -611,6 +643,15 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # An optional trash waiting on the turn, by the entity that printed its
     # icon (stage B3c-2b), then the card.
     "trash_optional_card": _spec(_V.TRASH, _S.REF, Printed.NAMED, targets=_CARD),
+    # --- Windows that offer several effects at once (stage B3d-1) ----------
+    # One icon of a recipient's Conflict reward row (OQ-112).
+    "resolve_combat_reward_icon": _spec(
+        _COMBAT_ICON_VERBS, _S.CONFLICT, Printed.CONFLICT_CARD, icon="arg:effect"
+    ),
+    # One printed line of an Intrigue card played line by line (OQ-058).
+    "use_intrigue_effect": _spec(
+        _V.USE, _S.INTRIGUE, Printed.INTRIGUE_CARD, option="arg:section"
+    ),
 })
 
 # The frames whose waiting effects are offered effect first (module doc).
@@ -622,61 +663,52 @@ EFFECT_STEP_FRAMES: Final = frozenset({
     FrameKind.COMBAT_INTRIGUE,
     FrameKind.CONFLICT_END_TRIGGER,
     FrameKind.ENDGAME_INTRIGUE,
+    # Stage B3d-1: the windows that offer several effects at once.
+    FrameKind.COMBAT_REWARD_ICONS,
+    FrameKind.CONTRACT_REWARD_ICONS,
+    FrameKind.INTRIGUE_EFFECTS,
+    FrameKind.LEADER_SIGNET,
 })
-# Whole ids of ``STEP_SPECS`` a frame outside ``EFFECT_STEP_FRAMES`` still
-# offers as they are (the Tech acquisition window, Servo-Receivers' Signet
-# frame, a Contract's reward window, a revealed card's own choice frame, a
-# research window outside the turn, the Planetologist's and the optional
-# trash's window -- stage B3d gives those target rows); every other whole id
-# of the table is offered only as steps, so the action catalog drops it.
+# Frames that offer several effects at once in one of their modes (stage
+# B3d-1): a research window ordering a pair's icons (its context key
+# ``immortality._ICONS_KEY``; a bonus choice is one effect), a Tech window
+# owing a tile's acquire icons (``acquire_effects_only``; an acquisition is
+# one effect).
+_RESEARCH_ICONS_KEY: Final = "research_icons"
+_TECH_ICONS_KEY: Final = "acquire_effects_only"
+# Whole ids of ``STEP_SPECS`` a frame that does not present steps still
+# offers as they are (a Tech window buying a tile, a revealed card's own
+# choice frame, a research window's bonus choice, the Planetologist's and the
+# optional trash's window -- stage B3d-2 gives those target rows); every
+# other whole id of the table is offered only as steps, so the action
+# catalog drops it.
 OFFERED_AS_WHOLE: Final = frozenset({
-    "acquire_leader_imperium",
-    "acquire_leader_reserve",
     "acquire_tech",
-    "advance_feyd_track",
-    "choose_leader_signet_influence",
     "choose_research_influence",
     "command_acquire_row_card",
-    "deploy_leader_agent",
     "deploy_reveal_card_troop",
     "draw_planetologist_intrigue",
     "exchange_reveal_influence",
     "gain_five_reveal_solari",
-    "gain_leader_signet_spice",
-    "gain_leader_signet_troop",
     "gain_reveal_influence",
     "gain_reveal_persuasion",
     "gain_two_reveal_strength",
     "keep_contract_reveal_spice",
     "lose_reveal_influence_for_vp",
     "lose_reveal_troops_for_specimens",
-    "pay_leader_signet_solari",
-    "pay_leader_signet_spice",
-    "pay_leader_signet_water",
     "pay_research_bonus",
     "pay_reveal_spice_influence",
     "pay_reveal_water_for_sandworm",
-    "place_leader_bonus_spice",
-    "place_leader_spy",
     "place_reveal_spy",
     "recall_spies_for_reveal",
-    "recall_spy_for_leader_placement",
     "recall_spy_for_reveal",
     "recall_spy_for_reveal_placement",
-    "resolve_agent_card_effect",
-    "resolve_contract_reward_icon",
-    "resolve_research_icon",
-    "resolve_tech_acquire_effect",
-    "retreat_leader_troops",
     "retreat_reveal_card_troop",
     "retreat_two_troops_for_reveal",
     "take_high_council_from_reveal",
-    "take_leader_bonus_spice",
     "take_reveal_contract",
     "trash_contract_reveal_for_vp",
     "trash_intrigue_for_research_bonus",
-    "trash_leader_card",
-    "trash_leader_tech",
     "trash_optional_card",
     "trash_reveal_card",
 })
@@ -702,6 +734,10 @@ def printed_from_state(
     if not isinstance(rule, Printed):
         return None
     if rule == Printed.BOX_CARD:
+        if state.decision_stack[-1].kind == FrameKind.LEADER_SIGNET:
+            # Servo-Receivers' Signet frame: its icons are the leader's
+            # Signet ability, no Agent box's (B3d-1).
+            return Source.LEADER, _leader_face(state, whole)
         box = dict(whole.arguments).get("box", 0)
         boxes = agent_box_cards(state)
         if not isinstance(box, int) or box >= len(boxes):
@@ -726,6 +762,22 @@ def printed_from_state(
     if rule == Printed.NAMED:
         arguments = dict(whole.arguments)
         return Source(str(arguments["source"])), arguments["printed"]
+    if rule == Printed.CONFLICT_CARD:
+        if not state.current_conflict_ids:
+            raise ValueError(f"{whole} has no Conflict card")
+        return spec.source, state.current_conflict_ids[-1]
+    if rule == Printed.CONTRACT:
+        named: object = dict(whole.arguments).get("contract_id")
+        if named is None:
+            named = dict(state.decision_stack[-1].context).get("contract_id")
+        if not isinstance(named, str):
+            raise ValueError(f"{whole} has no Contract")
+        return spec.source, named
+    if rule == Printed.INTRIGUE_CARD:
+        played: object = dict(state.decision_stack[-1].context).get("card_id")
+        if not isinstance(played, str):
+            raise ValueError(f"{whole} has no Intrigue card")
+        return spec.source, intrigue_card_for_instance(played).card.card_id
     return spec.source, _leader_face(state, whole)
 
 
@@ -781,8 +833,8 @@ def path_of(state: GameState, whole: DomainAction) -> tuple[DomainAction, ...] |
         and not spec.printed.startswith(_FIXED)
         and _printed_argument(spec) not in dict(whole.arguments)
     ):
-        # Not shown as steps (a reward window's row names no Contract, an
-        # optional trash window's no printer).
+        # Not shown as steps (an optional trash window's row names no
+        # printer).
         return None
     named = printed_from_state(state, whole)
     if named is None:
@@ -814,6 +866,8 @@ def steps_for(
         arguments.pop("source", None)
         arguments.pop("printed", None)
         box = arguments.pop("printed_box", box)
+    elif spec.printed == Printed.CONTRACT:
+        arguments.pop("contract_id", None)
     elif not isinstance(spec.printed, Printed):
         printed = (
             spec.printed.removeprefix(_FIXED)
@@ -840,7 +894,11 @@ def steps_for(
     ]
     if icon is not None:
         ref.append(("icon", icon))
-    if spec.option:
+    if spec.option.startswith(_ARG):
+        option = arguments.pop(spec.option.removeprefix(_ARG), None)
+        if option is not None:
+            ref.append(("option", option))
+    elif spec.option:
         ref.append(("option", spec.option))
     if box:
         ref.append(("box", box))
@@ -874,9 +932,16 @@ def _action(
 def presents_steps(state: GameState) -> bool:
     """Whether the top frame offers its waiting effects effect first."""
 
-    return bool(state.decision_stack) and (
-        state.decision_stack[-1].kind in EFFECT_STEP_FRAMES
-    )
+    if not state.decision_stack:
+        return False
+    frame = state.decision_stack[-1]
+    if frame.kind in EFFECT_STEP_FRAMES:
+        return True
+    if frame.kind == FrameKind.RESEARCH_BONUS:
+        return bool(dict(frame.context).get(_RESEARCH_ICONS_KEY))
+    if frame.kind == FrameKind.TECH_ACQUISITION:
+        return dict(frame.context).get(_TECH_ICONS_KEY) is True
+    return False
 
 
 def picked_rows(state: GameState) -> tuple[DomainAction, ...]:

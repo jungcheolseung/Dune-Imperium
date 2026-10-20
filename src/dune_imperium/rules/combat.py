@@ -569,6 +569,19 @@ def _row_icons(row: Ability) -> tuple[tuple[str, Reward | EffectSection], ...]:
     return tuple(icons)
 
 
+def conflict_reward_icon_kinds(conflict_id: str) -> tuple[str, ...]:
+    """Every icon kind a Conflict's reward rows print, in printed order
+    (the action codec's rows, stage B3d-1)."""
+
+    return tuple(
+        dict.fromkeys(
+            kind
+            for row in CONFLICT_REWARD_ABILITIES[conflict_id]
+            for kind, _piece in _row_icons(row)
+        )
+    )
+
+
 def reward_icon_piece(
     conflict_id: str, rank: int, kind: str
 ) -> Reward | EffectSection | None:

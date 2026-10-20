@@ -3041,10 +3041,11 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # B3b-2's Reveal effect rows again, from 104, 980 and 107 ... 949, and
     # stage B3c-1's played cards again, from 111, 1045 and 114 ... 1014,
     # stage B3c-2b's optional trash icon rows again, from 1106 and 953,
-    # 1073;
+    # 1073, stage B3d-1's reward-window effect rows again, from 1107 and 806,
+    # 954, 1074;
     # ``play`` is the step that ends the Harvest Cells play, its card.)
     game = _this_engine_game(175)
-    play, rewards = 120, 1107
+    play, rewards = 120, 1108
     assert _whole(game, play).action_id == "play_conflict_end_intrigue"
     assert _step_of(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -3057,7 +3058,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {123, 245, 375, 495, 649, 806, 954, 1074} <= starts
+    assert {123, 245, 375, 495, 649, 807, 955, 1075} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3081,7 +3082,7 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
     game = _this_engine_game(175)
-    rewards = 1107
+    rewards = 1108
     starts = {
         index
         for index, step in enumerate(game.steps)

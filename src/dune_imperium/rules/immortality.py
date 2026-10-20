@@ -591,19 +591,19 @@ def research_trash_spaces() -> tuple[str, ...]:
 
 
 def research_icon_spaces(icon: str) -> tuple[str, ...]:
-    """The research spaces whose pair waits ``icon`` on its owner's turn
-    as a row (``turn_rows.RESEARCH_ICON``, ``_resolve_research_bonus``): a
-    pair's optional trash is its own row there and c7r3's rewards are owed
-    draws, so they wait as no research icon (stage B3c-2a)."""
+    """The research spaces whose pair or arrow prints ``icon`` as one of the
+    icons a research window orders (``_PAIRED_ICONS``: a pair's specimen,
+    Tleilaxu advance and black trash, c7r3's card and Intrigue card), the
+    turn's research icon rows among them (stage B3c-2a, B3d-1; the action
+    codec's rows)."""
 
     return tuple(
         space.space_id
         for space in RESEARCH_SPACES_BY_ID.values()
-        if space.bonus
-        in (ResearchBonus.TRASH_AND_SPECIMEN, ResearchBonus.TLEILAXU_AND_SPECIMEN)
-        and icon != ICON_TRASH
-        and icon in _PAIRED_ICONS[space.bonus]
+        if space.bonus in _PAIRED_ICONS and icon in _PAIRED_ICONS[space.bonus]
     )
+
+
 _ICONS_KEY: Final = "research_icons"
 OWED_ORIGIN_RESEARCH: Final = "research_c7r3"
 """The owed draws of c7r3's rewards in the owner's turn (OQ-106)."""

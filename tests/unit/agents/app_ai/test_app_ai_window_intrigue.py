@@ -1110,7 +1110,9 @@ def test_change_allegiances_finishes_without_spice(
     memory = Memory()
     effects = app_play(state, memory, "change_allegiances")
     # Only line 0 is usable: the engine does not ask (one legal action).
-    assert ENGINE.legal_actions(effects, SEAT) == (
+    # (Stage B3d-1: the window shows that line as an effect row; the whole
+    # action is the one the app AI sees.)
+    assert ENGINE.whole_actions(effects, SEAT) == (
         act("use_intrigue_effect", section=0),
     )
     lose = step(effects, act("use_intrigue_effect", section=0))

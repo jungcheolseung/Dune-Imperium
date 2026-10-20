@@ -88,7 +88,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # ``printed`` hint reads the skill vocabulary too). Stage B3c-1: the Endgame
 # wild match's target row reads its card as a battle or Conflict card.
 # Stage B3c-2a: a research space prints its icons and bonuses (``printed``).
-_GOLDEN_DIGEST = "34cac6b37140130025b851491266d815571624570bdc31881b3f31505824b859"
+# Stage B3d-1: so do the Conflict card of a reward window and the Intrigue
+# card of a lines window.
+_GOLDEN_DIGEST = "9d24281e43b252072e25402647b1f88994dc34848e2369e6802d7c3180978338"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -275,6 +277,10 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
             "skill",
             # A research space (stage B3c-2a).
             "research",
+            # A reward window's Conflict card, a lines window's Intrigue card
+            # (stage B3d-1).
+            "conflict",
+            "intrigue",
         },
     }
     seen: dict[str, set[str | None]] = {}

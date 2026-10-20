@@ -47,6 +47,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.effect_steps import path_of
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
@@ -197,7 +198,9 @@ def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
     # Every choice path closes the leader_signet frame and leaves only the
     # owner's turn frame, waiting for the Agent placement (merge guard, like
     # the Landsraad and Reveal walk in test_tech.py).
-    codec = ActionCodec(TECH)
+    # Shaddam Corrino IV is a CHOAM leader: his Signet rows name his face
+    # (stage B3d-1), which only the CHOAM catalog has.
+    codec = ActionCodec(replace(TECH, choam_module=True))
     owner = _owner(
         leader_id,
         influence=Influence(emperor=2, fremen=2),
@@ -225,7 +228,10 @@ def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
         actions = ENGINE.whole_actions(current, decision.owner)
         assert actions, "a leader_signet frame must offer a choice"
         for action in actions:
-            assert codec.decode(codec.encode(action), action.actor) == action
+            # Stage B3d-1: the frame shows a choice as the rows of its path;
+            # a decline stays as it is.
+            for row in path_of(current, action) or (action,):
+                assert codec.decode(codec.encode(row), row.actor) == row
             pending.append(apply_whole(ENGINE, current, action).state)
         assert leaves + len(pending) < 400, "Signet choices must terminate"
     assert leaves >= 1
