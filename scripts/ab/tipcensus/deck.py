@@ -426,8 +426,9 @@ def _resolve_instance_id(
 #   ``rules/reveal_turn.py::_eligible_reveal_effects``) or
 #   ``per_revealed_faction`` (a *count* of revealed same-Faction cards
 #   including the card itself, not a same/other gate -- Sardaukar
-#   Coordination, Stilgar the Devoted; ``_reveal_effect_persuasion``/
-#   ``_reveal_effect_strength``). The latter is not literally
+#   Coordination, Stilgar the Devoted; ``rules/reveal_lines.RevealLine``'s
+#   ``persuasion_over``/``strength_over`` since stage B3e-2). The latter is not
+#   literally
 #   ``has_faction_bond``, but it needs company of the same Faction to pay off
 #   more than its own base value, matching doc 6.6's framing, so it is kept
 #   in the table with a code-comment flag.

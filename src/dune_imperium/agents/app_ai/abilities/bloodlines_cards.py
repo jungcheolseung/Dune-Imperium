@@ -141,10 +141,8 @@ from dune_imperium.rules.effect_interpreter import (
     factions_where_opponent_leads,
 )
 from dune_imperium.rules.effects import agent_turn_space_id
-from dune_imperium.rules.reveal_turn import (
-    COMMAND_PERSUASION,
-    GENERATED_PERSUASION_KEY,
-)
+from dune_imperium.rules.reveal_lines import COMMAND_PERSUASION
+from dune_imperium.rules.reveal_turn import GENERATED_PERSUASION_KEY
 from dune_imperium.rules.sardaukar import commander_cost
 
 if TYPE_CHECKING:

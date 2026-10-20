@@ -283,8 +283,8 @@ from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
 )
 from dune_imperium.rules.owed_draws import legal_owed_draw_actions
+from dune_imperium.rules.reveal_lines import COMMAND_PERSUASION
 from dune_imperium.rules.reveal_turn import (
-    COMMAND_PERSUASION,
     GENERATED_PERSUASION_KEY,
     RevealSandwormBlock,
     pending_choice_entries,

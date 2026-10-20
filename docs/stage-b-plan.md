@@ -1058,6 +1058,26 @@ D-3대로 차례 frame에 남은 출처별 이름이 효과 줄이 된다(소위
   `NAMED_PRINTER_ACTIONS`). 시험 옮기기 중 codec이 Epic이 아닌 판에도 Control the Spice를, Reveal 선택이 쥔 spice(Delivery Agreement·
   Priority Contracts)도 줄로 두던 것을 찾아 뺐다.
 
+### B3e-2 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+E-2대로 Reveal 차례가 카드의 Reveal 합계(`PersonalCardRevealEffect`) 대신 카드의 기록 줄(`REVEAL_GAIN_ABILITIES`, 인쇄된 줄마다
+`EffectSection` 하나)을 읽는다(`rules/reveal_lines.py`의 `RevealLine`·`reveal_lines`).
+
+- **조건:** 줄의 조건은 효과 해석기와 같은 곳에서 본다. 좌석만 읽는 조건 판정을 `rules/conditions.py`(`owner_condition_holds`)로
+  모으고(`effect_interpreter.condition_holds`도 그것을 쓴다), Reveal에만 있던 셋(Swordmaster, 주둔지 유닛 수, Maker 첩보)을 더했다.
+  Faction Bond(다른 카드를 센다)와 "Command (6+)"(Reveal의 Persuasion을 읽는다 [Bloodlines pp. 5, 12])는 `line_conditions_hold`가 본다.
+- **주는 것:** Persuasion·검(평평한 값, 공개한/놓인 진영 카드마다, 완수한 계약마다, 다른 검 카드마다)과 대기 이득(병력·책략·표본·
+  Tleilaxu·연구·자원·영향력), 자기 폐기·Combat 아이콘을 줄의 보상에서 읽는다. 늦게 온 카드가 진영 수를 늘리는 몫도 같다(`arrival_gains`).
+- **그대로인 것:** 카드 문구(`display/tokens.reveal_effect_text`)·codec·엔티티 특징은 기록에서 엮은 합계를 그대로 읽는다 — 시험
+  `test_every_cards_record_lines_say_what_its_compiled_totals_say`가 모든 카드에서 둘이 같음을 지킨다. "Command (6+)"의 문턱은
+  `reveal_lines.COMMAND_PERSUASION` 하나다.
+- **Reveal 선택의 "대상 → 보상" 줄**(`_target_condition_holds`)도 Command 밖의 조건은 같은 공용 판정으로 본다(리뷰 메모).
+- **측정:** pytest 8,189; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크
+  900판(걸음 수까지 이전과 같음); 문제집 다시 채굴 111곳 모두 위치·지문·선택지까지 같음(설치할 것 없음); E2E 68개 전부. 독립 리뷰: 동작
+  결함 없음 — 모든 카드 139종에서 기록 줄과 엮은 합계가 같고, 옛 판정식 그대로 옮긴 것과 27만 5천 번 비교·옛/새 엔진 384판(옵션 여덟
+  묶음, 무작위·휴리스틱·앱 AI) 해시 일치·Reveal 탐침 약 10만 번 일치. 낮은 메모(시험의 Experimentation 빠짐, 낡은 주석, 새 파일 서식, 조건을
+  따로 보던 한 곳) 고침.
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로
