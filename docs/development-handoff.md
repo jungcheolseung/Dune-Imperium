@@ -129,10 +129,10 @@
   **다음:** 작업별 개발일지 이어 쓰기, 게임 설치·OS 실기 확인과 릴리스·선택 모델 준비.
   [project-site-plan.md](project-site-plan.md)
 - **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v148-02e203ce(2026-10-16, 2,000판; A1의 Play 커밋으로 만듦,
-  v147-2af1d9f5와 판마다 수순이 같다)이고 A2 관문의 기준이다. 그 앞은 v147-2af1d9f5(A0·A1 관문), v145-afea63de(v146 다리 대조)이며
-  v144·v146 묶음은 없다. v145의 새 다리 `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 있는지는 아직 세지 않았다.
-  [2026-10-12 Ghola, 2026-10-14 자기 차례 안의 선택 효과, [`human-records.md`](human-records.md)]
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v150-14c08062**(2026-10-20, 2,000판, B단계 병합 master에서 만듦; 같은
+  엔진으로 되돌려 exact 2,000)이고 다음 엔진 변경의 기준이다. 그 앞은 v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
+  v148-02e203ce, v147-2af1d9f5, v145-afea63de이며 v144·v146 묶음은 없다.
+  [2026-10-20 효과 조각 엔진 B단계 병합(codec v150), [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
   (`test_a_local_server_stops_on_its_closed_input_with_a_stream_open`). 둘 다 혼자 돌리면 통과한다.
 
