@@ -692,6 +692,9 @@ def test_creation_validates_seats_and_seeds() -> None:
     split = "search:/a/policy.pt::value=/a/value.pt"
     with pytest.raises(SessionError, match="not a table seat"):
         manager.create_game(("human", split, "random", "random"))
+    # So is the stage B retrain's older-network seat (``older:<path>``).
+    with pytest.raises(SessionError, match="not a table seat"):
+        manager.create_game(("human", "older:/a/net.pt", "random", "random"))
     # A checkpoint seat loads its file when the game is created.
     with pytest.raises(SessionError, match="cannot build seat 1"):
         manager.create_game(("human", "checkpoint:/nonexistent.pt", "random", "random"))

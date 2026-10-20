@@ -326,12 +326,18 @@ class StudentConfig:
     heldout_rows: int = 50_000
     seed: int = 0
     threads: int = 4
+    # "constant" keeps the learning rate after the warm-up; "cosine" takes
+    # it down to zero over every step of every epoch (the stage B retrain's
+    # student plateaued at a constant 1e-3, 2026-10-21).
+    schedule: str = "constant"
 
     def __post_init__(self) -> None:
         if self.learning_rate <= 0.0 or self.minibatch_size < 1 or self.epochs < 1:
             raise ValueError("learning rate, minibatch and epochs must be positive")
         if self.value_target not in ("outcome", "teacher"):
             raise ValueError("value_target is 'outcome' or 'teacher'")
+        if self.schedule not in ("constant", "cosine"):
+            raise ValueError("schedule is 'constant' or 'cosine'")
 
 
 @dataclass(frozen=True, slots=True)
@@ -478,6 +484,8 @@ def train_student(
             generator.choice(heldout_rows, config.heldout_rows, replace=False)
         )
     optimizer = torch.optim.Adam(network.parameters(), lr=config.learning_rate)
+    batches_per_epoch = -(-train_rows.shape[0] // config.minibatch_size)
+    total_steps = max(batches_per_epoch * config.epochs, 1)
     history: list[StudentEpoch] = []
     best: tuple[float, dict[str, Tensor]] | None = None
     steps = 0
@@ -495,6 +503,8 @@ def train_student(
                 loss = loss + config.vp_coefficient * vp
             steps += 1
             rate = config.learning_rate * min(1.0, steps / max(config.warmup_steps, 1))
+            if config.schedule == "cosine":
+                rate *= 0.5 * (1.0 + math.cos(math.pi * min(steps / total_steps, 1.0)))
             for group in optimizer.param_groups:
                 group["lr"] = rate
             optimizer.zero_grad()
