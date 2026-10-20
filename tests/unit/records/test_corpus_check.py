@@ -1161,7 +1161,7 @@ def test_a_check_in_this_process_runs_under_nice(
         niceness[0] += increment
         return niceness[0]
 
-    monkeypatch.setattr(os, "nice", nice)
+    monkeypatch.setattr(os, "nice", nice, raising=False)
     corpus = Corpus.open(tiny_corpus)
     assert _one(corpus).outcome == "exact"
     assert niceness == [NICENESS]
@@ -1178,7 +1178,7 @@ def test_a_refused_nice_does_not_stop_a_check(
     def refuse(increment: int) -> int:
         raise PermissionError(1, "Operation not permitted")
 
-    monkeypatch.setattr(os, "nice", refuse)
+    monkeypatch.setattr(os, "nice", refuse, raising=False)
     corpus = Corpus.open(tiny_corpus)
     assert _one(corpus).outcome == "exact"
     # A worker process starts the same way (a spawned one does not see

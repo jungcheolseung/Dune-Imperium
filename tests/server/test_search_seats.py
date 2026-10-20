@@ -339,7 +339,7 @@ def test_only_search_seats_think_in_the_background() -> None:
 
 
 def test_a_bare_search_seat_plays_the_servers_checkpoint(
-    search_kind: str, tmp_path: Path
+    search_kind: str, tmp_path: Path, symlink_support: None,
 ) -> None:
     """``search`` seats ``search:<the real file>`` of the manager's network.
 

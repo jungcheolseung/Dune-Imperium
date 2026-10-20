@@ -224,6 +224,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "home"
     directory.mkdir()
     monkeypatch.setenv("HOME", str(directory))
+    monkeypatch.setenv("USERPROFILE", str(directory))
     monkeypatch.setattr(
         server_cli,
         "DEFAULT_SEARCH_CHECKPOINT",
@@ -249,7 +250,7 @@ def test_no_search_checkpoint_anywhere_leaves_the_search_ai_off(home: Path) -> N
 
 
 def test_the_flag_names_the_search_checkpoint_resolved(
-    home: Path, tmp_path: Path
+    home: Path, tmp_path: Path, symlink_support: None,
 ) -> None:
     # A symlink is followed now: saves name the file it pointed at on start.
     real = _network(tmp_path / "checkpoints" / "l3-8081.pt").resolve()
@@ -283,7 +284,7 @@ def test_the_environment_names_the_search_checkpoint_without_the_flag(
 
 
 def test_the_default_search_checkpoint_is_found_in_the_project_checkout(
-    home: Path,
+    home: Path, symlink_support: None,
 ) -> None:
     default = server_cli.DEFAULT_SEARCH_CHECKPOINT
     real = _network(default.parent / "l3-8081.pt").resolve()

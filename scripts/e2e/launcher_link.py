@@ -20,15 +20,25 @@ from __future__ import annotations
 import json
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
 
-from common import HOST, REPO, Check, chrome, free_port, open_context, set_rule_options
+from common import (
+    HOST,
+    PROJECT_PYTHON,
+    REPO,
+    Check,
+    chrome,
+    free_port,
+    open_context,
+    set_rule_options,
+)
 from remote import wait_for_setup, wait_until
 
 check = Check()
-PYTHON = REPO / ".venv" / "bin" / "python"
+PYTHON = PROJECT_PYTHON
 
 
 def read_line(process: subprocess.Popen[str], timeout: float) -> str:
@@ -72,7 +82,8 @@ def port_is_free(port: int) -> bool:
     closed connections may leave TIME_WAIT entries behind on the port."""
 
     with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if sys.platform != "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((HOST, port))
         except OSError:

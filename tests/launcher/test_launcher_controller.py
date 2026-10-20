@@ -138,7 +138,8 @@ def test_a_server_that_dies_is_noticed_and_explained(tmp_path: Path) -> None:
     controller.start(_local(tmp_path))
     server = controller.server
     assert server is not None and server.pid is not None
-    os.kill(server.pid, signal.SIGKILL)
+    if sys.platform != "win32":
+        os.kill(server.pid, signal.SIGKILL)
     deadline = time.monotonic() + 5
     while server.is_alive():
         assert time.monotonic() < deadline, "the killed server is still alive"

@@ -356,7 +356,8 @@ def test_a_child_holding_the_output_pipe_does_not_hang_the_stop(
         assert stopped.seconds < 3.0
         assert any("출력이 아직 열려" in line for line in server.tail())
     finally:
-        os.kill(leftover, signal.SIGKILL)
+        if sys.platform != "win32":
+            os.kill(leftover, signal.SIGKILL)
 
 
 def test_two_stops_at_once_share_one_result(tmp_path: Path) -> None:

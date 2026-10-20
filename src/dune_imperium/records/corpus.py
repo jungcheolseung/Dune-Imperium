@@ -981,11 +981,14 @@ def _lower_priority() -> None:
     at niceness 20, and Windows has none; the check then runs as it is.
     """
 
+    nice = getattr(os, "nice", None)
+    if nice is None:
+        return
     try:
-        current = os.nice(0)
+        current = nice(0)
         if current < NICENESS:
-            os.nice(NICENESS - current)
-    except AttributeError, OSError:
+            nice(NICENESS - current)
+    except OSError:
         pass
 
 

@@ -153,7 +153,10 @@
   작성 양식·검증·배포는 [`website/README.md`](../website/README.md), 문구 원칙은 `website/AGENTS.md`.
   **다음:** 작업별 개발일지 이어 쓰기, 게임 설치·OS 실기 확인과 릴리스·선택 모델 준비.
   [project-site-plan.md](project-site-plan.md)
-- **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
+- **서버 런처 7단계:** Windows 11 기능 검증 완료(2026-10-12 v145, 실제 Tk 시작·중지, Chrome E2E 174개; 브랜치
+  `codex/windows-validation`, 2026-10-21 master 병합). 다른 물리 PC의 접속, 배율·IME·방화벽·GUI 강제 종료·잠자기 복귀,
+  학습한 탐색 AI 망 사용 확인이 남았다. Windows 전체 엔진 pytest와 `run_all.py` 전체는 Windows에서 돌린 적 없다(POSIX
+  전용 경로가 남은 E2E가 있다). [`windows-host-validation.md`](windows-host-validation.md), [`server-launcher-plan.md`](server-launcher-plan.md)
 - **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v150-14c08062**(2026-10-20, 2,000판, B단계 병합 master에서 만듦; 같은
   엔진으로 되돌려 exact 2,000)이고 다음 엔진 변경의 기준이다. 그 앞은 v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
   v148-02e203ce, v147-2af1d9f5, v145-afea63de이며 v144·v146 묶음은 없다.
