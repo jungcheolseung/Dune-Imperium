@@ -1,0 +1,14 @@
+{{ define "main" }}
+<div class="wrap search-page">
+  {{ partial "breadcrumbs.html" . }}
+  <header class="listing-header"><p class="eyebrow">FIND YOUR WAY</p><h1>{{ .Title }}</h1><p>{{ .Description }}</p></header>
+  <form class="search-form" role="search" action="{{ .RelPermalink }}" data-search-index="{{ (site.Home.OutputFormats.Get "JSON").RelPermalink }}">
+    <label for="search-query">검색어</label>
+    <div class="search-input-row"><input id="search-query" name="q" type="search" placeholder="예: 자동 저장, 탐색 AI" autocomplete="off" maxlength="160" aria-describedby="search-status"><button class="button primary" type="submit">검색</button></div>
+  </form>
+  <p id="search-status" class="search-status" role="status" aria-live="polite">검색어를 입력해 주세요.</p>
+  <ol id="search-results" class="search-results"></ol>
+  <p data-search-fallback>검색은 JavaScript가 필요합니다. 아래 안내에서 직접 찾아볼 수도 있습니다.</p>
+  <nav class="search-shortcuts" aria-label="자주 찾는 안내"><a href="{{ (site.GetPage "/guides/first-game").RelPermalink }}">처음 한 판 ↗</a><a href="{{ (site.GetPage "/help").RelPermalink }}">문제 해결 ↗</a><a href="{{ (site.GetPage "/posts").RelPermalink }}">개발 이야기 ↗</a></nav>
+</div>
+{{ end }}

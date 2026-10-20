@@ -1,7 +1,42 @@
-# Dune: Imperium AI 웹사이트 원고
+# Dune: Imperium AI 웹사이트
 
-프로젝트 소개·설치·사용 안내와 개발 이야기를 담는 공개용 원고다. **현재는 콘텐츠만 준비했으며 사이트는 배포하지 않았다.**
-Hugo 레이아웃·설정·배포 workflow는 [사이트 계획](../docs/project-site-plan.md)에 따라 별도로 만든다.
+프로젝트 소개·설치·사용 안내와 개발 이야기를 담는 Hugo 정적 사이트다. **사이트와 로컬 검증은 준비했으며 아직 공개하지 않았다.**
+원고 18개와 검색 페이지, 반응형 화면·분류·목차·검색·RSS·sitemap·404를 제공한다.
+게임 실행 패키지와 별도로 빌드하며 비공개 이미지·모델·Node.js는 필요하지 않다.
+
+## 로컬에서 보기
+
+[Hugo 0.168.0](https://github.com/gohugoio/hugo/releases/tag/v0.168.0) 일반 버전을 설치한다. Extended/Sass는 사용하지 않는다.
+저장소 루트에서 다음을 실행하고 출력된 `/Dune-Imperium/` 주소를 연다.
+
+```bash
+hugo server --source website --baseURL http://localhost:1313/Dune-Imperium/ --cacheDir "$PWD/tmp/website-cache"
+```
+
+종료할 때 `Ctrl+C`를 누른다. 빌드만 하려면 다음을 쓴다. 산출물·캐시는 git이 무시하는 프로젝트 `tmp/`에 둔다.
+
+```bash
+hugo --source website --destination ../tmp/website-preview/Dune-Imperium --cacheDir "$PWD/tmp/website-cache" --minify --panicOnWarning
+python3 website/scripts/check.py tmp/website-preview/Dune-Imperium
+```
+
+`check.py`는 Python 3.12+ 표준 라이브러리만으로 경로·파일·HTML fragment·검색 데이터·XML·공개 파일 범위를 확인한다.
+
+## 브라우저 검증
+
+Playwright는 검증용 별도 환경에 설치하며 게임이나 사이트의 실행 의존성이 아니다. 아래 명령은 저장소 루트에서 실행한다.
+
+```bash
+python3 -m venv tmp/website-qa
+tmp/website-qa/bin/python -m pip install playwright==1.64.0
+tmp/website-qa/bin/python -m playwright install chromium
+tmp/website-qa/bin/python website/scripts/browser_check.py tmp/website-preview --screenshots tmp/website-shots
+```
+
+Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 설치 안내에 따라 준비한다. 이미 있는 Chromium은
+`--browser /실행/파일/경로`로 지정할 수 있다. 스크립트는 임시 서버를 띄워 끝나면 끄며, 브라우저 임시 파일도 `tmp/`에 둔다.
+홈·문서·검색·한글 조합 입력·글 분류·320/390px 화면·메뉴·404·JavaScript 없는 환경을 확인한다.
+그림은 직접 만든 SVG 구성도이며 카드·보드 원본을 사용하지 않는다.
 
 ## 첫 공개 원고
 
@@ -26,15 +61,14 @@ Hugo 레이아웃·설정·배포 workflow는 [사이트 계획](../docs/project
   편집 근거이며, 일반 사용 안내에 내부 코드 버전·경로를 일괄 노출하지 않는다.
 - 내부 링크는 Hugo `relref`로 연결한다. GitHub의 Markdown 미리보기에서는 shortcode가 그대로 보일 수 있다.
   사이트 구현 때 `/Dune-Imperium/` 하위 경로에서 렌더링과 링크를 확인한다.
-- `draft = false`는 첫 공개 후보라는 뜻이다. 콘텐츠 파일만 커밋해서 사이트가 공개되지는 않는다.
+- `draft = false`는 빌드에 포함할 글이라는 뜻이다. 공개 사이트에서 숨길 원고는 `true`로 둔다.
 - 일반 안내는 현재 동작을 따르고, 과거 실험은 측정 날짜·코드·조건을 유지한다. 실험 원자료는 저장소의 고정 커밋으로 연결한다.
 - 실제로 제공하지 않는 다운로드·모델 링크, 사이트 공개 완료 주장, 빈 문서 예고는 넣지 않는다.
 - 다운로드 안내와 OS 검증 범위는 릴리스 시 갱신한다. 이미지·영상은 공개 범위를 확인한 자료만 추가한다.
 - 독자가 새로 시작할 때는 다운로드 → 처음 한 판, 초대받았을 때는 참가자 안내로 바로 갈 수 있게 유지한다.
 
-## 다음 작업
+## 공개 전 확인
 
-1. 원고 표현과 공개 범위 검토.
-2. Hugo 설정·화면·메뉴·검색·RSS·sitemap 구현 및 실제 렌더링 확인.
-3. 배포할 코드에서 설치·첫 판·저장·재실행 확인 후 GitHub Pages 공개.
-4. 검증한 릴리스·선택 모델이 준비되면 다운로드 정보 연결.
+원고 표현과 공개 범위를 검토하고, 게임의 실제 배포 코드에서 설치·첫 판·저장·재실행을 확인한다.
+사이트의 브라우저 검증이 게임 설치나 Windows 실기 검증을 대신하지는 않는다.
+검증한 프로그램 릴리스·선택 모델은 준비되면 다운로드 안내에 연결한다.

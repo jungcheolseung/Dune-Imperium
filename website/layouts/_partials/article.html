@@ -1,0 +1,29 @@
+{{ partial "breadcrumbs.html" . }}
+<div class="reading-layout">
+  <article class="article">
+    <header class="article-header">
+      <p class="eyebrow">{{ if eq .Section "posts" }}개발 이야기{{ else if eq .Section "updates" }}프로젝트 소식{{ else }}DUNE: IMPERIUM AI{{ end }}</p>
+      <h1>{{ .Title }}</h1>
+      <p class="article-description">{{ .Description }}</p>
+      <p class="article-date">{{ if in (slice "posts" "updates") .Section }}작성{{ else }}내용 확인{{ end }} <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2006.01.02" }}</time></p>
+      {{ with .GetTerms "categories" }}<div class="category-links">{{ range . }}<a class="tag" href="{{ .RelPermalink }}">{{ .LinkTitle }}</a>{{ end }}</div>{{ end }}
+    </header>
+    {{ if gt (len .Fragments.Headings) 0 }}<details class="mobile-toc toc"><summary>목차 보기</summary>{{ replace .TableOfContents "id=\"TableOfContents\"" "id=\"MobileTableOfContents\"" | safeHTML }}</details>{{ end }}
+    <div class="prose">{{ .Content }}</div>
+    {{ if .Pages }}
+      <div class="section-children"><h2>{{ if eq .Section "about" }}더 알아보기{{ else }}함께 볼 안내{{ end }}</h2>
+        {{ range .Pages.ByWeight }}<a href="{{ .RelPermalink }}"><span><strong>{{ .Title }}</strong><small>{{ .Description }}</small></span><span aria-hidden="true">↗</span></a>{{ end }}
+      </div>
+    {{ end }}
+    {{ if eq .Section "posts" }}
+      <aside class="related"><h2>이어서 읽기</h2><div class="story-grid">{{ range first 2 (where (where site.RegularPages "Section" "posts") "Permalink" "ne" .Permalink) }}{{ partial "card.html" . }}{{ end }}</div></aside>
+    {{ end }}
+  </article>
+  <aside class="page-aside" aria-label="문서 탐색">
+    {{ if gt (len .Fragments.Headings) 0 }}<details class="toc" open><summary>이 페이지에서</summary>{{ .TableOfContents }}</details>{{ end }}
+    {{ if eq .Section "guides" }}
+      <nav class="guide-nav" aria-label="사용법 목록"><p>사용법</p>{{ range (site.GetPage "/guides").RegularPages.ByWeight }}<a href="{{ .RelPermalink }}"{{ if eq .RelPermalink $.RelPermalink }} aria-current="page"{{ end }}>{{ .Title }}</a>{{ end }}</nav>
+    {{ end }}
+    <a class="aside-help" href="{{ (site.GetPage "/help").RelPermalink }}">막히는 부분이 있나요?<br><strong>도움말 살펴보기 ↗</strong></a>
+  </aside>
+</div>

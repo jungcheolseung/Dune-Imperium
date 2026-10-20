@@ -1,0 +1,16 @@
+<header class="site-header">
+  <div class="header-inner wrap">
+    <a class="brand" href="{{ .Site.Home.RelPermalink }}" aria-label="Dune: Imperium AI 홈">
+      <img src="{{ "images/mark.svg" | relURL }}" width="36" height="36" alt="">
+      <span>DUNE <span class="brand-sub">IMPERIUM AI</span></span>
+    </a>
+    <nav class="desktop-nav" aria-label="주 메뉴">{{ partial "menu-links.html" . }}</nav>
+    <a class="search-link" href="{{ (site.GetPage "/search").RelPermalink }}">
+      <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span>검색</span>
+    </a>
+    <details class="mobile-nav">
+      <summary>메뉴 <span aria-hidden="true">☰</span></summary>
+      <nav aria-label="모바일 주 메뉴">{{ partial "menu-links.html" . }}<a href="{{ .Site.Params.repository }}">GitHub ↗</a></nav>
+    </details>
+  </div>
+</header>
