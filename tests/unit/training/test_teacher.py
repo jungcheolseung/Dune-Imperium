@@ -294,7 +294,7 @@ def test_the_teacher_value_is_kept_and_can_be_the_value_target(
     assert after.teacher_value_mse < 0.5 * before.teacher_value_mse
 
 
-def test_a_cosine_schedule_trains_and_ends_at_rate_zero(
+def test_a_cosine_schedule_trains_and_an_unknown_one_is_refused(
     collected: list[tuple[CollectionResult, TeacherData]],
 ) -> None:
     data = concatenate([part for _, part in collected])
