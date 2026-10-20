@@ -48,8 +48,33 @@
 
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
-  다리로 옮긴다. **다음: 재학습(결정)** — 아래 "개체 기반 망". 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절.
-  [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
+  다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘, 이 순서(사용자 결정 2026-10-21):** ① Reveal 합계 정리,
+  ② 재학습 (가). [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
+- **① Reveal 합계 정리(동작 그대로; 사용자 결정 2026-10-21):** 규칙(`rules/reveal_lines.py`, B3e-2)과 엔티티 특징
+  (`training/entity_features._personal_records`, A8부터)은 이미 Reveal 능력 기록 줄(`content/uprising/reveal_abilities.REVEAL_GAIN_ABILITIES`)을
+  읽는다. 카드 문구(`display/cards._reveal_line`·`_reveal_line_ko` → `display/tokens.reveal_effect_text`·`tokens_ko.reveal_effect_text_ko`)와
+  codec(`adapters/action_codec._reveal_gain_printers`·`_REVEAL_GAIN_OF`·`_reveal_resource_templates`)만 그 기록을 엮은 합계
+  `PersonalCardRevealEffect`(카드 정의의 `reveal_effects`)를 읽는다. 할 일: 둘을 `reveal_lines(card)`(`RevealLine`)로 읽게 하고, 합계 자료형
+  (`content/uprising/types.py`), 카드 정의의 `reveal_effects` 칸과 manifest의 중복 검사(`imperium.py`·`reserve.py`·`starting_cards.py`·
+  `immortality/tleilaxu.py`, 약 55곳), `reveal_abilities.reveal_effect`·`reveal_effects_of`, `entity_features._PERSONAL_RECORD_FIELDS`의
+  `reveal_effects`, `scripts/ab/tipcensus/deck.py`의 읽기를 지운다. 받아들일 조건: 모든 카드의 Reveal 문구(영·한)가 글자까지 같다, codec 행
+  목록이 같다, 엔티티 `FEATURE_DIGEST`(`0098fbb6…`)가 그대로다. 관문은 엔진 하위 단계 전체(CLAUDE.md "Engine stage full gates": pytest·ruff·mypy,
+  소크, 휴리스틱 20·앱 AI 10판이 직전 커밋과 같음, 같음 확인 200판, v150 기보 묶음 `v150-14c08062` exact 2,000, 문제집 재채굴, E2E 전부).
+  같음 확인 기준은 시작 커밋에서 새로 만든다(`PYTHONPATH=src .venv/bin/python scripts/ab/engine_equivalence.py record <tmp 아래 폴더> --plan standard`;
+  B단계의 기준 기록은 worktree와 함께 지웠다). 화면 문구·codec 나열이라 낮은 위험(독립 리뷰 없이 diff 확인).
+- **② 재학습 (가) — 지금 플레이 망을 "온 행동 단위 선생"으로 증류(사용자 결정 2026-10-21):** 플레이 망
+  `checkpoints/play/readapt-v147-4400.pt`(MLP, v147)는 v150 행동 4,311줄 가운데 84줄만 학습해 v150에서 그대로는 선생이 못 된다. 방법(**먼저
+  될지 확인**): v150 결정마다 엔진의 온 행동(`engine.whole_actions`)을 옛 엔진이 보던 모양으로 거르고(`agents.engine_order.older_engine_wholes`;
+  B3c-2b·B3e-1에서 나뉜 행동은 `printed`·`source`를 떼어 옛 모양으로), 체크포인트 파일에 든 자기 v147 template 목록으로 번호를 매겨 망의 정책을
+  얻은 뒤, 그 확률을 각 온 행동의 첫 줄(`rules.effect_steps.first_step`)로 모아 v150 행 위의 선생 분포로 쓴다. 관측 v33은 체크포인트 로더가 이미
+  옮긴다(v150에서 불러 84줄이 학습된 줄로 잡힘). 확인할 것: 옛 모양 온 행동 가운데 v147 template로 번호가 붙는 비율, 이 선생이 v150에서 앱 AI
+  어려움 상대로 옛 망 단독 실력을 내는지. 그다음 A8 사슬을 본뜬다(`checkpoints/2026-10-19/a8/chain.sh`): 증류 데이터
+  (`scripts/train/distill_entity.py data`, 80 iteration) → 엔티티 학생(`train --arch entity --own-actions`) → PPO 1e-5 800회(옵션 전부, 상대 앱 AI)
+  → 예비 비교 → 탐색 좌석 관문. 옛 망은 v150을 직접 두지 못하므로 관문의 대조군(어댑터를 쓴 옛 망, 또는 앱 AI 어려움 상대 승률)은 만들 때 정해
+  사용자에게 알린다. 지난번 시간(데이터 13분·학생 10분·PPO 2.4시간·예비 비교 18분)으로 보아 이번에는 5~7시간. 오래 도는 실행 전에 후보·레시피를
+  사용자와 다시 확인한다.
+- **플레이 서버 주의:** Mac mini가 지금 master(v150)를 받으면 탐색 AI 좌석이 약하다(앱 AI·휴리스틱 좌석은 그대로). ②의 망을
+  `checkpoints/play/search.pt`에 설치하기 전에는 받지 않는다.
 
 **학습·AI**
 
@@ -60,10 +85,10 @@
 - **readapt-v147b(끝남, 2026-10-15):** R에서 1,500 iteration 더 학습한 R2(5,900)는 R과 1,400판에서 −0.3%p [−5.1, +4.6]로 비김 →
   플레이 망은 R 유지. 학습 중 평가도 추세 없음: 이 학습률에서 레시피가 정체했다. 다음 학습은 엔진 전환 A단계 끝의 재학습(구조 결정)으로.
   `checkpoints/2026-10-15/readapt-v147b/README.md`. 고정 worktree `train-v147`은 정리했다.
-- **(결정) 개체 기반 망 — 계보는 엔티티(사용자 결정 2026-10-18), 재학습은 B단계 뒤(이제 할 차례; 후보·레시피를 사용자에게 묻는다):** A8 입력(능력 기록 특성, 행동 부분, 이름 기준 파일
+- **개체 기반 망 — 계보는 엔티티(사용자 결정 2026-10-18), 재학습은 위 엔진 ②(방법 (가) 결정 2026-10-21):** A8 입력(능력 기록 특성, 행동 부분, 이름 기준 파일
   옮기기)을 넣고 한 번 학습했다: 선생 = 플레이 망, 증류 197만 행 → 학생(일치 95.2%) → PPO 1e-5 800회(학습 중 평가 약 53%) → 예비
   비교 700판: 플레이 MLP와 비김(승률 +1.3%p [−3.9, +6.4]). 탐색 좌석 관문은 사용자 결정으로 건너뛰었다(B단계 뒤 다시 학습) — 플레이 서버 망은 MLP 그대로. 고정 worktree
-  `a8-train`·`checkpoints/2026-10-19/a8/`(`chain.sh`가 사슬). 이전 기록: 엔티티와 같은 학습 방법의 MLP는 실력이 같다(2026-10-14),
+  `a8-train`은 정리했고 기록은 `checkpoints/2026-10-19/a8/`(`chain.sh`가 사슬). 이전 기록: 엔티티와 같은 학습 방법의 MLP는 실력이 같다(2026-10-14),
   `docs/entity-network-plan.md` 10절.
 - **(결정) readapt-v143 판정.** 대조군 C(`C/iteration_11681.pt`)만 돌렸다. 점수 보상 갈래 S(`--score-rewards`)와
   판정 `judge.sh`(G1 S 대 C, G2 C 대 Y, G3 S 대 Y)는 안 돌렸다. C가 Y보다 나은지는 G2만 따로(1,400판, 약 25분)
