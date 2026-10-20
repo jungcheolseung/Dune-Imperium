@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-20 (엔진은 cleanup2·A8 입력 기준선, 프로젝트 웹사이트 구현·로컬 검증)
+기준일: 2026-10-20 (엔진은 cleanup2·A8 입력 기준선, 웹사이트 첫 배포 확인·개발일지 추가)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -124,10 +124,10 @@
 
 **도구·인프라**
 
-- **프로젝트 웹사이트:** `website/`에 원고 18개+검색 페이지, Hugo 0.168.0 자체 화면·반응형 메뉴·목차·분류·검색·RSS·404와
-  GitHub Pages workflow를 구현했다. 로컬에서 HTML 34개·참조 1,296개, Chromium의 PC·320/390px·검색/한글 조합·JS 없는
-  탐색을 확인했다. 실행·검증·배포 절차는 [`website/README.md`](../website/README.md). **다음:** 원고·게임 설치 확인,
-  Pages Source 설정·master 반영 뒤 실제 배포 확인. 아직 원격 실행·공개·릴리스·업로드는 없음.
+- **프로젝트 웹사이트:** `website/`의 Hugo 0.168.0 사이트를 Pages에 공개했다(master `b7787979`, build·deploy와 공개 URL 확인).
+  담백한 문구를 사용하고, 커밋·문서를 묶은 과거 개발일지 16편과 월별 목록·앞뒤 글·검색·RSS를 추가했다.
+  작성 양식·검증·배포는 [`website/README.md`](../website/README.md), 문구 원칙은 `website/AGENTS.md`.
+  **다음:** 작업별 개발일지 이어 쓰기, 게임 설치·OS 실기 확인과 릴리스·선택 모델 준비. 이번 수정은 로컬 검증 후 배포 대기.
   [project-site-plan.md](project-site-plan.md)
 - **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
 - **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v148-02e203ce(2026-10-16, 2,000판; A1의 Play 커밋으로 만듦,
