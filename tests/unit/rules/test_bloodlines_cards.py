@@ -14,6 +14,7 @@ from tests.support.reward_windows import answer_reward_windows, settle_reward_wi
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.uprising.effect_dsl import CommandReached
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
@@ -58,6 +59,7 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.reveal_lines import reveal_lines
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_card_trash,
     apply_reveal_influence_gain,
@@ -4313,8 +4315,8 @@ def test_ruthless_leadership_is_transcribed_and_needs_both_options() -> None:
         1,
     )
     assert [icon.value for icon in entry.agent_icons] == ["city", "spice_trade"]
-    (command,) = entry.reveal_effects
-    assert command.requires_command and command.grants_combat_icon
+    (command,) = reveal_lines(entry)
+    assert CommandReached() in command.conditions and command.grants_combat_icon
     card = _card("ruthless_leadership")
     # Outside the retail decks: dealt only with the promo option and the
     # expansion together, since its Agent box reads the Commanders.

@@ -9,6 +9,13 @@ from tests.support.reward_windows import answer_reward_windows
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    FactionBond,
+    HasHighCouncil,
+    HasSwordmaster,
+    SpiesPlacedAtLeast,
+    SpyingOnMakerSpace,
+)
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
     imperium_deck_instance_ids,
@@ -44,6 +51,7 @@ from dune_imperium.rules.optional_trash import (
     legal_optional_trash_actions,
 )
 from dune_imperium.rules.owed_draws import apply_owed_draw
+from dune_imperium.rules.reveal_lines import reveal_lines
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
     apply_contract_reveal_choice,
@@ -3579,22 +3587,23 @@ def test_cross_scaling_reveal_effects_have_no_eligibility_gates() -> None:
     # adds a gated one, which would need the increment logic to also track
     # revocation.
     entries = (*STARTING_DECK, *RESERVE_STACKS, *IMPERIUM_CARDS)
-    scaling_effects = [
-        effect
+    scaling_lines = [
+        line
         for entry in entries
-        for effect in entry.reveal_effects
-        if effect.per_revealed_faction is not None
-        or effect.per_in_play_faction is not None
-        or effect.strength_per_other_sword_card
+        for line in reveal_lines(entry)
+        if line.faction_count is not None or line.strength_per_other_sword_card
     ]
 
-    assert len(scaling_effects) == 3
-    for effect in scaling_effects:
-        assert effect.requires_high_council is False
-        assert effect.requires_swordmaster is False
-        assert effect.minimum_spies_placed == 0
-        assert effect.required_faction_bond is None
-        assert effect.requires_spying_on_maker_space is False
+    assert len(scaling_lines) == 3
+    gates = (
+        HasHighCouncil,
+        HasSwordmaster,
+        SpiesPlacedAtLeast,
+        FactionBond,
+        SpyingOnMakerSpace,
+    )
+    for line in scaling_lines:
+        assert not any(isinstance(condition, gates) for condition in line.conditions)
 
 
 # ---------------------------------------------------------------- free order

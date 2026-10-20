@@ -252,7 +252,6 @@ _PERSONAL_RECORD_FIELDS: Final = frozenset(
         "discard_effect",
         "reveal_acquisition_effect",
         "trash_effect",
-        "reveal_effects",
         "reveal_choice_effects",
         "turn_start_effect",
     }
