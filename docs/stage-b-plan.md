@@ -1068,7 +1068,8 @@ E-2대로 Reveal 차례가 카드의 Reveal 합계(`PersonalCardRevealEffect`) �
   Faction Bond(다른 카드를 센다)와 "Command (6+)"(Reveal의 Persuasion을 읽는다 [Bloodlines pp. 5, 12])는 `line_conditions_hold`가 본다.
 - **주는 것:** Persuasion·검(평평한 값, 공개한/놓인 진영 카드마다, 완수한 계약마다, 다른 검 카드마다)과 대기 이득(병력·책략·표본·
   Tleilaxu·연구·자원·영향력), 자기 폐기·Combat 아이콘을 줄의 보상에서 읽는다. 늦게 온 카드가 진영 수를 늘리는 몫도 같다(`arrival_gains`).
-- **그대로인 것:** 카드 문구(`display/tokens.reveal_effect_text`)·codec·엔티티 특징은 기록에서 엮은 합계를 그대로 읽는다 — 시험
+- **그대로인 것:** 카드 문구(`display/cards._reveal_line`, `display/tokens.reveal_effect_text`)와 codec(`_reveal_gain_printers`)은 기록에서
+  엮은 합계를 그대로 읽는다(엔티티 특징은 A8 때부터 기록 줄을 읽는다) — 시험
   `test_every_cards_record_lines_say_what_its_compiled_totals_say`가 모든 카드에서 둘이 같음을 지킨다. "Command (6+)"의 문턱은
   `reveal_lines.COMMAND_PERSUASION` 하나다.
 - **Reveal 선택의 "대상 → 보상" 줄**(`_target_condition_holds`)도 Command 밖의 조건은 같은 공용 판정으로 본다(리뷰 메모).
