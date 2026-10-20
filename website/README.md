@@ -72,3 +72,23 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 원고 표현과 공개 범위를 검토하고, 게임의 실제 배포 코드에서 설치·첫 판·저장·재실행을 확인한다.
 사이트의 브라우저 검증이 게임 설치나 Windows 실기 검증을 대신하지는 않는다.
 검증한 프로그램 릴리스·선택 모델은 준비되면 다운로드 안내에 연결한다.
+
+## GitHub Pages 배포
+
+배포 설정은 [website.yml](../.github/workflows/website.yml)이다. Hugo 0.168.0과 공식 Linux 아카이브 SHA-256을 고정했다.
+
+- PR: 정적 빌드·산출물 검사·Chromium 검증만 실행한다. Pages artifact 업로드와 배포는 하지 않는다.
+- `master`의 사이트 관련 변경: 같은 검증을 통과하면 빌드 결과만 Pages에 배포한다.
+- 수동 실행: Actions에서 Website를 고르고 `master`로 실행하면 같은 검증·배포를 한다. 다른 브랜치는 검증만 한다.
+- 사이트와 관계없는 엔진 변경은 이 workflow를 시작하지 않는다. 설치 안내의 근거 문서가 바뀌면 사이트 검증도 실행한다.
+
+최초 공개 순서:
+
+1. 사이트 브랜치의 변경·원고를 검토하고 PR 검증을 확인한다.
+2. 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정한다.
+3. 검토한 사이트 변경을 `master`에 반영하고 push한다. `Website` workflow의 build·deploy 결과를 확인한다.
+4. 배포가 성공한 뒤 실제 사이트에서 시작 경로·검색·RSS를 확인한다.
+
+공개 후 기본 주소는 `https://jungcheolseung.github.io/Dune-Imperium/`이다. 현재 이 작업은 로컬 검증까지이며,
+Pages 설정을 바꾸거나 원격 배포를 실행한 것은 아니다. 커스텀 도메인·저장소 이름을 바꾸면 `hugo.toml`의 `baseURL`과
+검증 스크립트의 기본 경로도 함께 바꾼다.

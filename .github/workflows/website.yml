@@ -1,0 +1,77 @@
+name: Website
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+      - 'docs/remote-play-*.md'
+      - 'docs/local-images.md'
+      - 'README.md'
+  pull_request:
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+      - 'docs/remote-play-*.md'
+      - 'docs/local-images.md'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  HUGO_VERSION: '0.168.0'
+  HUGO_SHA256: 'fada83ad56bb27ed4cb7dd81590303bdac16140f944ac4e66fc248117e2d5594'
+  TZ: Asia/Seoul
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Hugo
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/hugo.tar.gz" "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_linux-amd64.tar.gz"
+          printf '%s  %s\n' "$HUGO_SHA256" "$RUNNER_TEMP/hugo.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/hugo-bin"
+          tar -xzf "$RUNNER_TEMP/hugo.tar.gz" -C "$RUNNER_TEMP/hugo-bin" hugo
+          printf '%s\n' "$RUNNER_TEMP/hugo-bin" >> "$GITHUB_PATH"
+      - name: Build and check public files
+        run: |
+          hugo --source website --destination "$RUNNER_TEMP/website-preview/Dune-Imperium" --cacheDir "$RUNNER_TEMP/hugo-cache" --minify --panicOnWarning
+          python3 website/scripts/check.py "$RUNNER_TEMP/website-preview/Dune-Imperium"
+      - name: Prepare browser checks
+        run: |
+          python3 -m venv "$RUNNER_TEMP/website-qa"
+          "$RUNNER_TEMP/website-qa/bin/python" -m pip install playwright==1.64.0
+          "$RUNNER_TEMP/website-qa/bin/python" -m playwright install --with-deps chromium
+      - name: Check navigation, search and mobile layouts
+        run: |
+          "$RUNNER_TEMP/website-qa/bin/python" website/scripts/browser_check.py "$RUNNER_TEMP/website-preview"
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/website-preview/Dune-Imperium
+
+  deploy:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
