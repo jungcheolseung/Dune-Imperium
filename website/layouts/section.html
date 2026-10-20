@@ -3,7 +3,7 @@
   {{ if in (slice "posts" "updates") .Section }}
     {{ partial "breadcrumbs.html" . }}
     <header class="listing-header"><h1>{{ .Title }}</h1><p>{{ .Description }}</p></header>
-    {{ if eq .Section "posts" }}<nav class="filter-links" aria-label="글 분류"><a aria-current="page" href="{{ .RelPermalink }}">모든 글</a>{{ range site.Taxonomies.categories.Alphabetical }}<a href="{{ .Page.RelPermalink }}">{{ .Page.Title }}</a>{{ end }}</nav>{{ end }}
+    {{ if eq .Section "posts" }}<nav class="filter-links" aria-label="{{ i18n "categories" }}"><a aria-current="page" href="{{ .RelPermalink }}">{{ i18n "allArticles" }}</a>{{ range site.Taxonomies.categories.Alphabetical }}<a href="{{ .Page.RelPermalink }}">{{ partial "term-label.html" .Page.Title }}</a>{{ end }}</nav>{{ end }}
     <div class="story-grid listing-grid">{{ range .RegularPages.ByDate.Reverse }}{{ partial "card.html" . }}{{ end }}</div>
   {{ else }}{{ partial "article.html" . }}{{ end }}
 </div>

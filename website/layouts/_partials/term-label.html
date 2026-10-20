@@ -1,0 +1,2 @@
+{{- $keys := dict "Categories" "categoryTitle" "Tags" "tagTitle" "규칙 엔진" "rulesEngine" "AI 학습 실험" "aiExperiments" "규칙 검증" "ruleTesting" "엔진 설계" "engineDesign" "대조 실험" "controlExperiment" "숨은 정보" "hiddenInfo" "재현성" "reproducibility" "정책·가치" "policyValue" "탐색" "searchTopic" "탐색 평가" "searchEvaluation" "프로젝트 소식" "updates" -}}
+{{- with index $keys . -}}{{ i18n . }}{{- else -}}{{ . }}{{- end -}}

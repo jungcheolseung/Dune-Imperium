@@ -1,6 +1,39 @@
 (() => {
   "use strict";
 
+  const root = document.documentElement;
+  const themeButton = document.querySelector(".theme-toggle");
+  const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+  let themePreference = root.dataset.themePreference || "system";
+  const applyTheme = () => {
+    const dark = themePreference === "dark" || (themePreference === "system" && systemTheme.matches);
+    root.dataset.theme = dark ? "dark" : "light";
+    root.dataset.themePreference = themePreference;
+    document.querySelector('meta[name="theme-color"]').content = dark ? "#111b1a" : "#f8f6ef";
+    if (themeButton) {
+      const label = dark ? themeButton.dataset.lightLabel : themeButton.dataset.darkLabel;
+      themeButton.setAttribute("aria-label", label);
+      themeButton.setAttribute("title", label);
+      themeButton.setAttribute("aria-pressed", String(dark));
+    }
+  };
+  if (themeButton) {
+    themeButton.hidden = false;
+    themeButton.addEventListener("click", () => {
+      themePreference = root.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("dune-site-theme", themePreference); } catch { /* Optional persistence. */ }
+      applyTheme();
+    });
+  }
+  systemTheme.addEventListener("change", () => { if (themePreference === "system") applyTheme(); });
+  addEventListener("storage", (event) => {
+    if (event.key === "dune-site-theme" || event.key === null) {
+      themePreference = event.newValue === "light" || event.newValue === "dark" ? event.newValue : "system";
+      applyTheme();
+    }
+  });
+  applyTheme();
+
   const menu = document.querySelector(".mobile-nav");
   if (menu) {
     document.addEventListener("keydown", (event) => {
@@ -20,11 +53,13 @@
   const input = form.querySelector("input");
   const status = document.getElementById("search-status");
   const results = document.getElementById("search-results");
+  const message = (key, query = "", count = 0) => form.getAttribute(`data-${key}`)
+    .replaceAll("{count}", String(count)).replaceAll("{query}", query);
   let indexPromise;
   let version = 0;
   let composing = false;
   let timer;
-  const normalize = (value) => value.normalize("NFKC").toLocaleLowerCase("ko");
+  const normalize = (value) => value.normalize("NFKC").toLocaleLowerCase(document.documentElement.lang);
 
   async function search() {
     const request = ++version;
@@ -35,10 +70,10 @@
     else url.searchParams.delete("q");
     history.replaceState(null, "", url);
     if (!query) {
-      status.textContent = "검색어를 입력해 주세요.";
+      status.textContent = message("queryempty");
       return;
     }
-    status.textContent = "찾고 있습니다…";
+    status.textContent = message("queryloading");
     try {
       if (!indexPromise) {
         indexPromise = fetch(form.dataset.searchIndex).then((response) => {
@@ -55,7 +90,7 @@
         const text = `${title} ${description} ${normalize(page.text)}`;
         return { page, found: terms.every((term) => text.includes(term)), score: terms.reduce((score, term) => score + (title.includes(term) ? 5 : 0) + (description.includes(term) ? 2 : 0), 0) };
       }).filter((item) => item.found).sort((a, b) => b.score - a.score);
-      status.textContent = matches.length ? `“${query}” 검색 결과 ${matches.length}개` : `“${query}” 검색 결과가 없습니다. 다른 단어로 찾아보세요.`;
+      status.textContent = message(matches.length ? "queryresults" : "querynone", query, matches.length);
       for (const { page } of matches) {
         const item = document.createElement("li");
         const title = document.createElement("h2");
@@ -71,7 +106,7 @@
         results.append(item);
       }
     } catch {
-      if (request === version) status.textContent = "검색 자료를 불러오지 못했습니다. 다시 검색하거나 아래 안내를 이용해 주세요.";
+      if (request === version) status.textContent = message("queryerror");
     }
   }
 

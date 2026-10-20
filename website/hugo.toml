@@ -2,6 +2,7 @@ baseURL = 'https://jungcheolseung.github.io/Dune-Imperium/'
 title = 'Dune: Imperium AI'
 locale = 'ko-KR'
 defaultContentLanguage = 'ko'
+defaultContentLanguageInSubdir = false
 timeZone = 'Asia/Seoul'
 enableRobotsTXT = true
 enableEmoji = false
@@ -29,31 +30,85 @@ capitalizeListTitles = false
     startLevel = 2
     endLevel = 3
 
-[[menus.main]]
+
+[languages.ko]
+  label = '한국어'
+  locale = 'ko-KR'
+  weight = 1
+
+[[languages.ko.menus.main]]
   name = '소개'
   pageRef = '/about'
   weight = 10
-[[menus.main]]
+
+[[languages.ko.menus.main]]
   name = '다운로드'
   pageRef = '/downloads'
   weight = 20
-[[menus.main]]
+
+[[languages.ko.menus.main]]
   name = '사용법'
   pageRef = '/guides'
   weight = 30
-[[menus.main]]
+
+[[languages.ko.menus.main]]
   name = '개발일지'
   pageRef = '/devlog'
   weight = 40
-[[menus.main]]
+
+[[languages.ko.menus.main]]
   name = '기술 글'
   pageRef = '/posts'
   weight = 45
-[[menus.main]]
+
+[[languages.ko.menus.main]]
   name = '업데이트'
   pageRef = '/updates'
   weight = 50
-[[menus.main]]
+
+[[languages.ko.menus.main]]
   name = '도움말'
+  pageRef = '/help'
+  weight = 60
+
+[languages.en]
+  label = 'English'
+  locale = 'en-US'
+  weight = 2
+  [languages.en.params]
+    description = 'Development journal, rules engine and AI experiments, installation and play guides for Dune: Imperium - Uprising.'
+
+[[languages.en.menus.main]]
+  name = 'About'
+  pageRef = '/about'
+  weight = 10
+
+[[languages.en.menus.main]]
+  name = 'Downloads'
+  pageRef = '/downloads'
+  weight = 20
+
+[[languages.en.menus.main]]
+  name = 'Guides'
+  pageRef = '/guides'
+  weight = 30
+
+[[languages.en.menus.main]]
+  name = 'Journal'
+  pageRef = '/devlog'
+  weight = 40
+
+[[languages.en.menus.main]]
+  name = 'Articles'
+  pageRef = '/posts'
+  weight = 45
+
+[[languages.en.menus.main]]
+  name = 'Updates'
+  pageRef = '/updates'
+  weight = 50
+
+[[languages.en.menus.main]]
+  name = 'Help'
   pageRef = '/help'
   weight = 60

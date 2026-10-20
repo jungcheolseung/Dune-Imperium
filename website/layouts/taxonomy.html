@@ -1,3 +1,3 @@
 {{ define "main" }}
-<div class="wrap article-wrap">{{ partial "breadcrumbs.html" . }}<header class="listing-header"><p class="eyebrow">TOPICS</p><h1>{{ if eq .Data.Plural "categories" }}주제별 글{{ else }}태그별 글{{ end }}</h1></header><div class="filter-links">{{ range .Pages }}<a href="{{ .RelPermalink }}">{{ .Title }} <small>{{ len .Pages }}</small></a>{{ end }}</div></div>
+<div class="wrap article-wrap">{{ partial "breadcrumbs.html" . }}<header class="listing-header"><p class="eyebrow">TOPICS</p><h1>{{ if eq .Data.Plural "categories" }}{{ i18n "categoryTitle" }}{{ else }}{{ i18n "tagTitle" }}{{ end }}</h1></header><div class="filter-links">{{ range .Pages }}<a href="{{ .RelPermalink }}">{{ partial "term-label.html" .Title }} <small>{{ len .Pages }}</small></a>{{ end }}</div></div>
 {{ end }}

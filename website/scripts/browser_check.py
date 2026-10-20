@@ -19,6 +19,105 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+def check_languages_and_themes(browser, base: str, screenshots: Path | None) -> None:
+    context = browser.new_context(viewport={"width": 1440, "height": 1000}, color_scheme="dark")
+    context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base) else route.abort())
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    page.goto(base + "en/")
+    expect(page.locator("html")).to_have_attribute("lang", "en")
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+    assert page.locator("body").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(17, 27, 26)"
+    if screenshots:
+        page.screenshot(path=screenshots / "home-en-dark.png", full_page=True)
+        page.locator(".brand img").screenshot(path=screenshots / "sandworm-icon.png")
+    page.emulate_media(color_scheme="light")
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+    page.get_by_role("button", name="Switch to dark mode").click()
+    page.goto(base + "en/devlog/2026-10-12-training-speed/")
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+    expect(page.locator(".prose")).to_contain_text("19–21 seconds to 9–10 seconds")
+    page.get_by_role("link", name="한국어", exact=True).click()
+    assert page.url == base + "devlog/2026-10-12-training-speed/"
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+    page.get_by_role("link", name="English", exact=True).click()
+    page.reload()
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+
+    other = context.new_page()
+    other.goto(base + "en/about/")
+    page.get_by_role("button", name="Switch to light mode").click()
+    expect(other.locator("html")).to_have_attribute("data-theme", "light")
+    other.close()
+    page.reload()
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+    if screenshots:
+        page.goto(base + "en/")
+        page.screenshot(path=screenshots / "home-en-light.png", full_page=True)
+
+    page.goto(base + "en/guides/first-game/")
+    expect(page.get_by_role("heading", level=1)).to_have_text("Your first game")
+    expect(page.locator(".prose")).to_contain_text("--autosave")
+    guide_urls = page.locator(".prose a").evaluate_all("links => links.map(a => a.getAttribute('href'))")
+    assert all(url.startswith("/Dune-Imperium/en/") for url in guide_urls if url.startswith("/Dune-Imperium/"))
+    page.get_by_role("link", name="한국어", exact=True).click()
+    expect(page.get_by_role("heading", level=1)).to_have_text("처음 한 판 시작하기")
+    page.get_by_role("link", name="English", exact=True).click()
+    assert page.url == base + "en/guides/first-game/"
+
+    page.goto(base + "en/search/?q=autosave")
+    expect(page.locator("#search-results")).to_contain_text("Controls, saves, and updates")
+    result_urls = page.locator("#search-results a").evaluate_all("links => links.map(a => a.getAttribute('href'))")
+    assert result_urls and all("/Dune-Imperium/en/" in url for url in result_urls)
+    page.get_by_label("Search query", exact=True).fill("not-a-real-query-789012")
+    expect(page.locator("#search-status")).to_contain_text("No results")
+    page.get_by_label("Search query", exact=True).fill("")
+    expect(page.locator("#search-status")).to_have_text("Enter a search query.")
+
+    page.goto(base + "en/posts/")
+    page.get_by_role("navigation", name="Article categories").get_by_role("link", name="Rules engine", exact=True).click()
+    expect(page.get_by_role("heading", level=1)).to_have_text("Rules engine")
+    expect(page.locator(".listing-grid .story-card")).to_have_count(1)
+    page.goto(base + "en/devlog/")
+    expect(page.locator(".journal-entry")).to_have_count(16)
+    page.locator(".journal-entry h3 a").last.click()
+    page.get_by_role("link", name="Next work").click()
+    expect(page.get_by_role("heading", level=1)).to_have_text("Rules specification and a one-round engine")
+
+    for language in ("", "en/"):
+        for dark in (False, True):
+            if (page.locator("html").get_attribute("data-theme") == "dark") != dark:
+                page.locator(".theme-toggle").click()
+            for width in (390, 320):
+                page.set_viewport_size({"width": width, "height": 844})
+                for route in ("", "devlog/", "guides/first-game/", "downloads/", "posts/learning-with-opponents/", "search/"):
+                    page.goto(base + language + route)
+                    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (language, dark, width, route)
+                    if screenshots and width == 390 and route in ("", "guides/first-game/"):
+                        name = ("en" if language else "ko") + ("-dark" if dark else "-light")
+                        page.screenshot(path=screenshots / f"{name}-{'home' if not route else 'guide'}-mobile.png", full_page=True)
+                page.goto(base + language)
+                page.locator(".mobile-nav summary").click()
+                label = "Mobile navigation" if language else "모바일 주 메뉴"
+                target = "Guides" if language else "사용법"
+                page.get_by_role("navigation", name=label).get_by_role("link", name=target, exact=True).click()
+                expect(page.get_by_role("heading", level=1)).to_have_text(target)
+    assert not errors, errors
+    context.close()
+
+    blocked = browser.new_context(color_scheme="dark")
+    blocked.add_init_script("Object.defineProperty(window, 'localStorage', {get() { throw new DOMException('Blocked', 'SecurityError'); }});")
+    page = blocked.new_page()
+    blocked_errors: list[str] = []
+    page.on("pageerror", lambda error: blocked_errors.append(str(error)))
+    page.goto(base + "en/")
+    page.get_by_role("button", name="Switch to light mode").click()
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+    assert not blocked_errors, blocked_errors
+    blocked.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path, help="Parent of the Dune-Imperium build directory")
@@ -42,7 +141,7 @@ def main() -> None:
             if arguments.browser:
                 options["executable_path"] = str(arguments.browser)
             browser = playwright.chromium.launch(**options)
-            context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="ko-KR")
+            context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="ko-KR", color_scheme="light")
             context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base) else route.abort())
             page = context.new_page()
             errors = []
@@ -146,8 +245,9 @@ def main() -> None:
             expect(page.get_by_role("heading", level=1)).to_contain_text("페이지를 찾지")
             assert not errors, errors
             context.close()
+            check_languages_and_themes(browser, base, arguments.screenshots)
 
-            offline_js = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844})
+            offline_js = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}, color_scheme="dark")
             page = offline_js.new_page()
             page.goto(base)
             page.locator(".mobile-nav summary").click()
@@ -162,9 +262,14 @@ def main() -> None:
             page.goto(base + "search/")
             expect(page.locator("[data-search-fallback]")).to_be_visible()
             expect(page.locator("[data-search-fallback]")).to_contain_text("JavaScript가 필요합니다")
+            assert page.locator("body").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(17, 27, 26)"
+            page.get_by_role("link", name="English", exact=True).click()
+            expect(page.get_by_role("heading", level=1)).to_have_text("Search")
+            expect(page.locator("[data-search-fallback]")).to_contain_text("Search requires JavaScript")
+            expect(page.locator(".theme-toggle")).to_be_hidden()
             offline_js.close()
             browser.close()
-            print("Browser: journal archive/order/navigation, reading, search/IME, categories, responsive layout, 404 and no-JS: PASS")
+            print("Browser: Korean/English, themes and persistence, journal, search/IME, responsive layout, 404 and no-JS: PASS")
     finally:
         server.shutdown()
         server.server_close()

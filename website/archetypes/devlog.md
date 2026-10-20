@@ -1,9 +1,9 @@
 +++
 title = "개발일지 제목"
 description = "이번 작업에서 바뀐 점을 한두 문장으로 적습니다."
-date = {{ .Date }}
-publishDate = {{ .Date }}
-lastmod = {{ .Date }}
+date = {{ time.Format "2006-01-02" .Date }}
+publishDate = {{ time.Format "2006-01-02" .Date }}
+lastmod = {{ time.Format "2006-01-02" .Date }}
 draft = true
 [params]
 work_start = "{{ time.Format "2006-01-02" .Date }}"

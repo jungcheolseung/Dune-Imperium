@@ -1,12 +1,12 @@
 <footer class="site-footer">
   <div class="wrap footer-top">
-    <div><a class="footer-brand" href="{{ .Site.Home.RelPermalink }}">Dune: Imperium AI</a><p>규칙 엔진 · 게임 AI · 개발 기록</p></div>
-    <nav aria-label="보조 메뉴">
-      <a href="{{ (site.GetPage "/about/support").RelPermalink }}">지원 현황</a>
-      <a href="{{ (site.GetPage "/about/roadmap").RelPermalink }}">로드맵</a>
+    <div><a class="footer-brand" href="{{ .Site.Home.RelPermalink }}">Dune: Imperium AI</a><p>{{ i18n "footerText" }}</p></div>
+    <nav aria-label="{{ i18n "footerMenu" }}">
+      <a href="{{ (site.GetPage "/about/support").RelPermalink }}">{{ i18n "support" }}</a>
+      <a href="{{ (site.GetPage "/about/roadmap").RelPermalink }}">{{ i18n "roadmap" }}</a>
       <a href="{{ .Site.Params.repository }}">GitHub ↗</a>
       {{ with .Site.Home.OutputFormats.Get "RSS" }}<a href="{{ .RelPermalink }}">RSS</a>{{ end }}
     </nav>
   </div>
-  <div class="wrap footer-bottom"><p>비공식 개인 개발·연구 프로젝트입니다. 원작의 카드·보드 이미지 원본은 배포하지 않습니다.</p></div>
+  <div class="wrap footer-bottom"><p>{{ i18n "legal" }}</p></div>
 </footer>

@@ -20,6 +20,9 @@ class Page(HTMLParser):
         self.h1s = 0
         self.main = False
         self.lang = ""
+        self.canonical = ""
+        self.alternates: dict[str, str] = {}
+        self.redirect = ""
         self.feed(path.read_text())
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -35,6 +38,12 @@ class Page(HTMLParser):
             self.main = True
         if tag == "html":
             self.lang = values.get("lang") or ""
+        if tag == "link" and values.get("rel") == "canonical":
+            self.canonical = values.get("href") or ""
+        if tag == "link" and values.get("rel") == "alternate" and values.get("hreflang"):
+            self.alternates[values["hreflang"] or ""] = values.get("href") or ""
+        if tag == "meta" and (values.get("http-equiv") or "").lower() == "refresh":
+            self.redirect = values.get("content") or ""
 
 
 def check(directory: Path, base_url: str) -> list[str]:
@@ -46,8 +55,15 @@ def check(directory: Path, base_url: str) -> list[str]:
     checked = 0
     for path, page in pages.items():
         relative = path.relative_to(root)
-        if page.h1s != 1 or not page.main or page.lang != "ko":
-            errors.append(f"{relative}: expected one h1, main and Korean language")
+        if relative.as_posix() == "ko/index.html":
+            if page.canonical != base_url or page.redirect != f"0; url={base_url}":
+                errors.append("default-language alias must redirect to the existing Korean home")
+            continue
+        expected_lang = "en" if relative.parts[0] == "en" else "ko"
+        if page.h1s != 1 or not page.main or page.lang != expected_lang:
+            errors.append(f"{relative}: expected one h1, main and {expected_lang} language")
+        if relative.name != "404.html" and set(page.alternates) != {"ko", "en"}:
+            errors.append(f"{relative}: missing paired language alternates")
         if duplicates := [name for name, count in Counter(page.ids).items() if count > 1]:
             errors.append(f"{relative}: duplicate ids {duplicates}")
         raw = path.read_text()
@@ -75,32 +91,43 @@ def check(directory: Path, base_url: str) -> list[str]:
                 if unquote(target.fragment) not in pages[location].ids:
                     errors.append(f"{relative}: missing fragment: {link}")
 
-    for required in ("index.html", "404.html", "index.json", "index.xml", "sitemap.xml", "robots.txt", "search/index.html", "devlog/index.html"):
+    for required in ("index.html", "404.html", "index.json", "index.xml", "sitemap.xml", "robots.txt", "search/index.html", "devlog/index.html", "en/index.html", "en/404.html", "en/index.json", "en/index.xml", "en/search/index.html", "en/devlog/index.html", "images/sandworm.svg"):
         if not (root / required).is_file():
             errors.append(f"missing required output: {required}")
 
-    index_file = root / "index.json"
-    if index_file.exists():
+    indexes: dict[str, list[dict[str, str]]] = {}
+    for lang, directory in (("ko", root), ("en", root / "en")):
+        index_file = directory / "index.json"
+        if not index_file.exists():
+            continue
         index = json.loads(index_file.read_text())
+        indexes[lang] = index
+        language_prefix = prefix + ("en/" if lang == "en" else "")
         if len(index) < 17:
-            errors.append("search index omits original content")
+            errors.append(f"{lang}: search index omits original content")
         for item in index:
-            if not item["title"] or not item["url"].startswith(prefix):
+            if not item["title"] or not item["url"].startswith(language_prefix):
                 errors.append(f"invalid search item: {item}")
+            if lang == "ko" and item["url"].startswith(prefix + "en/"):
+                errors.append("English page in Korean search index")
             if "sources" in item or "source_ref" in item:
                 errors.append("editorial metadata leaked into search index")
-
-    for name in ("index.xml", "sitemap.xml"):
-        path = root / name
-        if path.exists():
-            ElementTree.fromstring(path.read_text())
-    feed = root / "index.xml"
-    if feed.exists() and index_file.exists():
-        items = ElementTree.fromstring(feed.read_text()).findall("channel/item")
-        expected = {item["url"] for item in index if item["section"] in {"posts", "updates", "devlog"} and item["url"] != f"{prefix}{item['section']}/"}
-        actual = {urlsplit(item.findtext("link", "")).path for item in items}
-        if actual != expected:
-            errors.append("RSS omits published articles or includes section pages")
+        feed = directory / "index.xml"
+        if feed.exists():
+            channel = ElementTree.fromstring(feed.read_text())
+            expected = {item["url"] for item in index if item["section"] in {"posts", "updates", "devlog"} and item["url"] != f"{language_prefix}{item['section']}/"}
+            actual = {urlsplit(item.findtext("link", "")).path for item in channel.findall("channel/item")}
+            if actual != expected:
+                errors.append(f"{lang}: RSS omits articles or includes other-language/section pages")
+            if channel.findtext("channel/language") != {"ko": "ko-KR", "en": "en-US"}[lang]:
+                errors.append(f"{lang}: wrong RSS language")
+    if set(indexes) == {"ko", "en"}:
+        ko_paths = {item["url"][len(prefix):] for item in indexes["ko"]}
+        en_paths = {item["url"][len(prefix + 'en/'):] for item in indexes["en"]}
+        if ko_paths != en_paths:
+            errors.append("Korean and English published content must have matching translations")
+    for path in root.rglob("*.xml"):
+        ElementTree.fromstring(path.read_text())
     forbidden = {"assets", "checkpoints", "saves", "local", ".git", "docs", "README.md", "hugo.toml"}
     for path in root.rglob("*"):
         if path.is_symlink():
