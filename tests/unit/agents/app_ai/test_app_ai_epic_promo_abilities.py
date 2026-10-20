@@ -21,6 +21,7 @@ import pytest
 from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai.abilities import PORTS, abilities_of
 from dune_imperium.agents.app_ai.abilities import board as b
 from dune_imperium.agents.app_ai.abilities import epic_promo as e
@@ -733,7 +734,7 @@ def test_economic_supremacy_charges_in_the_engine_reward_frames(seed: int) -> No
     while walk.decision_stack[-1].kind == "combat_reward_optional":
         frames.append(dict(walk.decision_stack[-1].context))
         decline = DomainAction(action_id="decline_combat_reward", actor=winner)
-        walk = answer_reward_windows(ENGINE, ENGINE.apply(walk, decline).state)
+        walk = answer_reward_windows(ENGINE, apply_whole(ENGINE, walk, decline).state)
     assert len(frames) in (2, 4)
     for context in frames:
         cost = context["cost"]

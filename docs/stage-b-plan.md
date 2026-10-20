@@ -907,6 +907,52 @@ Reveal 선택 frame이 이제 실제로 내지 않는 id 21종이다(Reveal fram
   900판(codec 왕복 검사 포함); 문제집 다시 채굴(그대로 109곳); E2E 68개 전부. 독립 리뷰 결함 없음(시험 공백 1: 표본 반환의 두 모습을
   지키는 시험을 더함; 낡은 주석·중복 상수 정리).
 
+### B3d-3 구현 (브랜치 `stage-b`, codec v150 · 관측 v33 그대로)
+
+D-2대로 거절·빈 확인 49종(`decline_*`·`resolve_*_without_*`·`skip_intrigue_acquisition`·`keep_shield_wall`·`hold_contract_icons`·
+`lose_moved_spy` …)이 두 행 `decline(…)`·`confirm_empty(…)`이 된다. 행은 답하는 효과를 가리킨다: 그 효과의 동사 `of`와, 그 효과 자신의
+줄이 이름 붙이는 자리(`source`·`printed`·`icon`·`option`·`box`). 같은 지도자가 Spy 놓기와 폐기를 둘 다 거절할 수 있어 동사 없이는 자리가
+하나로 정해지지 않는다(`of`는 행동 모양 표의 `of`와 같다). 동사 `resolve_empty`는 설계 이름 `confirm_empty`로 바꿨다. 처리기 없는 죽은
+id 8개(`decline_command_acquisition`과 옛 카드별 Reveal 거절 7개)는 행동 모양 표·codec에서 지웠다(옛 기록을 읽는 기보 다리의 이름표는
+그대로).
+
+| 거절·빈 확인 | 자리(`source` · `printed` · 그 밖) | `of` |
+|---|---|---|
+| Agent 칸의 것(`decline_agent_card_*`, Corrinth City 지불) | `agent_card` · 그 칸의 카드(Signet Ring 칸은 지도자) · `box` | 거절하는 칸 효과 |
+| 지도자의 것(인장 지불·Spy·폐기, 인장 빈 확인) | `leader` · 지도자 | `pay`·`place_spy`·`trash`·`choose` |
+| 방문한 칸: 첩보 Spy·Imperial Privilege 빈 확인, Gather Intelligence | `board_space`/`spy` · 그 칸 · `icon` | `place_spy`·`recall_agent`·`recall_spy` |
+| 통제 방어 | `board_space` · 통제 칸 | `deploy` |
+| Reveal: Desert Power 지불, Spy 회수 | `reveal_card` · 그 카드 | `pay`·`recall_spy` |
+| 책략 선택 슬롯의 것(Spy·폐기·Tleilaxu·획득 빈 확인·영향력 빈 확인·Shield Wall 지키기) | `intrigue` · 그 책략 카드 | 슬롯의 효과 |
+| 운항 카드 | `leader` · 그 운항 카드 | `play` |
+| Conflict 끝 책략 창 | `intrigue` · `conflict_end`(창: 한 카드가 인쇄한 것이 아님) | `play` |
+| Conflict 보상 창(지불·Spy 둘 회수·Spy·폐기·영향력) | `conflict` · 이번 Conflict 카드 · 창의 보상 `icon` | 그 아이콘의 동사 |
+| 획득 Spy·계약 Spy·계약 소환 빈 확인 | `acquisition`/`contract` · 산 카드/그 계약 | `place_spy`·`recall_agent` |
+| Spy 배치 빈 확인 | 창을 연 것(B3d-2a의 `printer`) | `place_spy` |
+| 계약 시장의 빈 확인(보류·Combat에서 사라짐) | `contract` · `contract_market`(시장: Reveal 구매가 시장을 이름 붙이듯; 보류는 `option=hold`) | `take` |
+| 연구 보너스 거절 | `research` · 그 연구 칸 | 그 칸 보너스의 동사 |
+| Tech 사기 거절 / Tech 영향력 빈 확인 | 그 Tech 사기를 준 책략 카드(창이 `printer` 기록) / `tech` · 그 타일 | `acquire`·`gain_influence` |
+| Skill 거절·빈 확인 | Plasteel Blades 타일, 또는 은행 Commander를 주는 카드(Sardaukar Standard) | `choose` |
+| 상대 유닛 잃기 빈 확인·옮길 Spy 잃기 | 그 효과를 낸 카드(Holy War, False Orders; 창이 `printer` 기록) | `lose_unit`·`move_spy` |
+| 선택 폐기 창 거절 | 그 폐기 아이콘을 인쇄한 것(창이 `printer` 기록) | `trash` |
+| Scouts: 소위원회·임무·갈래 빈 확인·시장 카드 | `scouts` · `high_council`/임무/항목 | `join`·`choose`·`acquire` |
+
+- **창을 연 것 기록:** Tech 사기 창(책략 카드), 상대 유닛 잃기·Spy 옮기기 창(Holy War·False Orders), 선택 폐기 창(지금까지 버리던
+  `printer`를 창에도: 카드·Tech·연구 칸·Scouts 줄·Planetologist), 계약 소환 창(`contract_id`), Scouts 시장 창(`item`).
+- **엔티티 망:** `of`는 이름표(`LABEL_ARGUMENTS`).
+- **리뷰:** 독립 리뷰가 결함 하나를 찾았다 — Ghola가 Holy War의 칸을 복사하면 상대 창이 `printer=ghola`를 기록하는데(그 칸의 효과 줄도
+  Ghola를 이름 붙인다) codec이 Ghola를 열거하지 않아 망·탐색 좌석이 그 창의 빈 확인을 encode하지 못했다; codec이 칸 효과를 고를 때처럼
+  Ghola(와 코드가 푸는 칸)를 넣는다(시험 `test_a_ghola_copying_holy_war_names_itself_in_the_opponents_windows`). 또 서버가 사람 혼자일 때
+  거절만 남은 Conflict 끝 창을 대신 거절하던 것이 행 id로 비교해 멈췄던 것을 시험 옮기기 중에 찾아 온 행동으로 고쳤다. 참고:
+  `decline_agent_card_intrigue_payment`은 행동 모양 표대로 늘 `of=pay`다(Branching Path의 책략 폐기 거절은 실제로는 `trash`지만, 선택
+  칸이라 그 거절은 제시되지 않는다).
+- **codec:** 거절·빈 확인 template이 그 자리별 `decline`·`confirm_empty` 줄로 바뀌어 기본 1,366 → 1,429(−37 +100), 옵션 전부
+  3,970 → 4,281. 자리가 정해진 효과마다 줄이 생겨 늘었다(첩보 Spy·Imperial Privilege 빈 확인은 그 효과를 인쇄한 칸 하나로, 지도자
+  거절은 그 효과를 인쇄한 지도자로 좁혔다).
+- **측정:** pytest 8,179; 같음 확인 200판 같음; 기보 2,000판 1,568 · 431 · 1(그대로); 휴리스틱 20판·앱 AI 10판 이전 커밋과 같음; 소크
+  900판(codec 왕복 검사 포함); 문제집 다시 채굴(휴리스틱 82곳 같은 국면, 모두 102곳); E2E 68개 전부(`unavailable`의 고정 상태 준비가
+  거절을 온 행동으로 적용하도록 고침).
+
 ## 4. 위험
 
 - `agent_turn`의 중간 상태는 숨은 정보·되돌리기·한 번 누르는 턴 종료·탐색 AI·관측 인코딩에 모두 닿는다 — 결정 2의 규칙을 OQ로

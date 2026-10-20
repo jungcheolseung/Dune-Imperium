@@ -47,6 +47,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -505,6 +506,11 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
     # Stage B3a: the payment is the ``pay`` effect row of the card that
     # prints it (an effect without a target is one row).
     (pay,) = steps_for(DomainAction("pay_agent_card_spice", 0), "control_the_spice")
+    # Stage B3d-3: the window's refusal is the ``decline`` row naming the trash
+    # it answers and the card that prints the icon, not the whole template.
+    whole_decline = DomainAction(action_id="decline_optional_trash", actor=0)
+    (decline,) = steps_for(whole_decline, "control_the_spice", Source.AGENT_CARD)
+    assert decline.action_id == "decline"
     for config in (
         EPIC,
         RulesetConfig(epic_game=True, choam_module=True, promo_cards=True),
@@ -513,16 +519,16 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
         RulesetConfig(epic_game=True, arrakeen_scouts=True),
     ):
         codec = _codec(config)
-        for action in (
-            trash,
-            DomainAction(action_id="decline_optional_trash", actor=0),
-            pay,
-        ):
+        for action in (trash, decline, pay):
             assert codec.decode(codec.encode(action), 0) == action
         with pytest.raises(ValueError, match="not present"):
             codec.encode(whole_trash)
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole_decline)
     base = {template.action_id for template in _codec(RulesetConfig()).catalog}
     assert "decline_optional_trash" not in base
+    with pytest.raises(ValueError, match="not present"):
+        _codec(RulesetConfig()).encode(decline)
     # The card's own effect row is an Epic catalog's alone, too.
     assert not any(
         dict(template.arguments).get("printed") == "control_the_spice"

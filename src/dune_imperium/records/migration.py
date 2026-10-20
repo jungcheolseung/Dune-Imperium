@@ -2325,7 +2325,9 @@ def _effect_path(
 ) -> tuple[tuple[DomainAction, ...], int] | None:
     """A recorded whole action (before codec v150) in a frame that offers
     its waiting effects effect first, as its steps and how many of them are
-    picked; None for any other step."""
+    picked; None for any other step, and for one whose place this frame
+    cannot name (a refusal an older engine offered in a window this engine
+    no longer opens: its window's printer is not here, stage B3d-3)."""
 
     if not (
         isinstance(step, DomainAction)
@@ -2334,7 +2336,10 @@ def _effect_path(
         and presents_steps(state)
     ):
         return None
-    path = path_of(without_pick(state), step)
+    try:
+        path = path_of(without_pick(state), step)
+    except ValueError:
+        return None
     if path is None:
         return None
     picked = len(picked_rows(state))

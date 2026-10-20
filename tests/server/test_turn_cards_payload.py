@@ -50,11 +50,12 @@ from dune_imperium.core.observation import (
     PrivatePlayerView,
     PublicPlayerView,
 )
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import legal_graft_partner_actions
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import optional_trash_frame, trash_printer
 from dune_imperium.server.sessions import (
     GameSessionManager,
     _serialize_view,
@@ -539,7 +540,10 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
             decision_stack=(
                 *placed.decision_stack,
                 optional_trash_frame(
-                    0, "round:1:player:0:planetologist", intrigue=intrigue
+                    0,
+                    "round:1:player:0:planetologist",
+                    printer=trash_printer(Source.LEADER, "liet_kynes"),
+                    intrigue=intrigue,
                 ),
             ),
         )

@@ -60,7 +60,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -302,14 +302,23 @@ def face_up_tech_ids(state: GameState) -> tuple[str, ...]:
     return tuple(stack[0] for stack in state.tech_stacks if stack)
 
 
-def tech_acquisition_frame(player: int, *, discount: int, source: str) -> DecisionFrame:
-    """Return the frame of a card-granted Acquire Tech with ``discount``."""
+def tech_acquisition_frame(
+    player: int, *, discount: int, source: str, printer: str
+) -> DecisionFrame:
+    """Return the frame of a card-granted Acquire Tech with ``discount``;
+    ``printer`` is the card that grants it (``action_shapes.printer_value``),
+    its refusal's entity (stage B3d-3)."""
 
     return DecisionFrame(
         kind=FrameKind.TECH_ACQUISITION,
         frame_id=f"{source}:tech_acquisition",
         decision=PlayerDecision(owner=player, prompt="Acquire a Tech tile or decline"),
-        context=(("discount", discount), ("player", player), ("source", source)),
+        context=(
+            ("discount", discount),
+            ("player", player),
+            (PRINTER_KEY, printer),
+            ("source", source),
+        ),
     )
 
 
@@ -319,6 +328,7 @@ def push_tech_acquisition(
     *,
     discount: int,
     source: str,
+    printer: str,
 ) -> RuleResult:
     """Open a card-granted Acquire Tech.
 
@@ -332,7 +342,9 @@ def push_tech_acquisition(
         raise ValueError("Acquire Tech requires the Tech Module")
     return RuleResult(
         state=state.push_decision(
-            tech_acquisition_frame(player, discount=discount, source=source)
+            tech_acquisition_frame(
+                player, discount=discount, source=source, printer=printer
+            )
         )
     )
 

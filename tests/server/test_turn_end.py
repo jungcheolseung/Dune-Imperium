@@ -2693,7 +2693,9 @@ def _run_property_sweep_game(
                 continue
             if step.actor not in humans:
                 continue
-            if step.action_id != "decline_conflict_end_intrigue":
+            # The server's decline is recorded as the refusal row of the
+            # window (stage B3d-3), whose whole action is the decline id.
+            if step != _decline_row(step.actor):
                 tally.violations.append(f"step {index} ({step}) was sent by nobody")
                 continue
             tally.server_declines += 1
@@ -2715,7 +2717,9 @@ def _run_property_sweep_game(
         pressed: set[int] = set()
         for entry in live[logged:]:
             actor = entry.actor
-            step_id = getattr(entry.step, "action_id", None)
+            # A leader pick is the row ``choose_leader`` since stage B3d-2a;
+            # the whole action its step ends is ``pick_leader``.
+            step_id = getattr(entry.whole or entry.step, "action_id", None)
             if step_id in ("reveal_turn", "pick_leader") and actor in humans:
                 since_press[actor] += 1
             for event in entry.events:
@@ -3179,6 +3183,21 @@ _WINDOW_PROMPT: Final = (
 )
 
 
+def _decline_row(seat: int) -> DomainAction:
+    """The step the window's "쓰지 않음" is recorded as: the refusal row naming
+    the play it declines (stage B3d-3), whose whole action is ``_DECLINE``."""
+
+    return DomainAction(
+        action_id="decline",
+        actor=seat,
+        arguments=(
+            ("of", "play"),
+            ("printed", "conflict_end"),
+            ("source", "intrigue"),
+        ),
+    )
+
+
 def _server_declines(session: GameSession, sent: set[int]) -> list[int]:
     """The live decline steps of human seats that no request sent."""
 
@@ -3186,7 +3205,7 @@ def _server_declines(session: GameSession, sent: set[int]) -> list[int]:
         index
         for index, step in enumerate(session.steps)
         if isinstance(step, DomainAction)
-        and step.action_id == _DECLINE
+        and step == _decline_row(step.actor)
         and session.seats[step.actor] == "human"
         and index not in sent
     ]
@@ -3260,9 +3279,13 @@ def test_a_lone_human_seats_decline_only_window_is_answered_for_it() -> None:
     )
     [index] = _server_declines(session, sent)
     step = session.steps[index]
-    assert step == DomainAction(action_id=_DECLINE, actor=0)
+    assert step == _decline_row(0)
     before = sessions_module._state_after(session, index)
     assert before.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    # The rules offer that one refusal; the seat is shown it as its row.
+    assert session.engine.whole_actions(before, 0) == (
+        DomainAction(action_id=_DECLINE, actor=0),
+    )
     assert session.engine.legal_actions(before, 0) == (step,)
     transition = session.engine.apply(before, step)
     entry = live_steps(session.log)[index]
@@ -3362,7 +3385,7 @@ def test_undo_never_reaches_back_to_an_auto_declined_window() -> None:
     )
     assert len(session.steps) > index
     assert _window_actions(session, 0) is None
-    assert session.steps[index] == DomainAction(action_id=_DECLINE, actor=0)
+    assert session.steps[index] == _decline_row(0)
 
 
 def test_with_two_humans_a_decline_only_window_waits_for_one_press() -> None:
@@ -3402,7 +3425,7 @@ def test_with_two_humans_a_decline_only_window_waits_for_one_press() -> None:
         _int(row["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert session.steps[index] == DomainAction(action_id=_DECLINE, actor=owner)
+    assert session.steps[index] == _decline_row(owner)
     assert summary["confirmation"] is None
     assert [r for r in _rows(summary["undo"]) if r["seat"] == owner] == []
     assert owner not in session.open_units

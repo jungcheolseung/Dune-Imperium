@@ -1875,8 +1875,12 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         DomainAction("deploy_reveal_card_troop", 0, (("source", "unswerving_loyalty"),))
     )
     assert ActionTemplate(loyalty[0].action_id, loyalty[0].arguments) in base_templates
+    # Stage B3d-3: no handler ever answered ``decline_reveal_troop_sacrifice``,
+    # so it left every catalog (the Reveal frame never offers it either).
+    assert "decline_reveal_troop_sacrifice" not in {
+        template.action_id for template in codec.catalog
+    }
     for action in (
-        DomainAction("decline_reveal_troop_sacrifice", 0),
         DomainAction(
             "resume_reveal_choice", 0, (("effect", "may_deploy_or_retreat_one_troop"),)
         ),

@@ -49,7 +49,7 @@ from dune_imperium.core import (
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.agent_turn import (
     apply_agent_action,
     executable_placements,
@@ -102,6 +102,9 @@ LEADERS = (
     "lady_amber_metulli",
     "lady_jessica",
 )
+# The Intrigue card that grants a card-granted Acquire Tech; its refusal names
+# it (stage B3d-3).
+ACQUIRE_PRINTER = printer_value(Source.INTRIGUE, "battlefield_research")
 LANDSRAAD_POST = "landsraad-assembly-hall-gather-support"
 SIETCH_POST = "arrakis-research-station-sietch-tabr"
 STACKS = (
@@ -997,7 +1000,9 @@ def test_servo_receivers_signet_outside_an_agent_turn() -> None:
     owner = _owner(leader_id="gurney_halleck")
     state = _turn_state(owner, stacks=SERVO_STACKS)
     revealed = _reveal(state).state
-    opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
+    opened = push_tech_acquisition(
+        revealed, 0, discount=1, source="test", printer=ACQUIRE_PRINTER
+    ).state
     bought = _purchase_and_resolve(
         opened, _tech_actions(opened)["servo_receivers"]
     ).state
@@ -1010,7 +1015,7 @@ def test_servo_receivers_signet_outside_an_agent_turn() -> None:
         stacks=SERVO_STACKS,
     )
     liet_opened = push_tech_acquisition(
-        _reveal(liet).state, 0, discount=1, source="t"
+        _reveal(liet).state, 0, discount=1, source="t", printer=ACQUIRE_PRINTER
     ).state
     liet_bought = _purchase_and_resolve(
         liet_opened, _tech_actions(liet_opened)["servo_receivers"]
@@ -1064,7 +1069,9 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         expected = ("agent_effects", 0)
     else:
         revealed = _reveal(_turn_state(owner, stacks=SERVO_STACKS)).state
-        state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
+        state = push_tech_acquisition(
+            revealed, 0, discount=1, source="t", printer=ACQUIRE_PRINTER
+        ).state
         expected = ("reveal", 0)
     pending = [_resolve_acquired(
         apply_whole(engine, state, _tech_actions(state)["servo_receivers"]).state
@@ -1322,6 +1329,7 @@ def test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn() -> None:
         0,
         discount=0,
         source="test",
+        printer=ACQUIRE_PRINTER,
     ).state
     plotted = _acquire(opened, "spy_drones")
     own_recall = next(
@@ -1357,7 +1365,9 @@ def test_ornithopter_fleet_matches_every_face_up_battle_card_at_once() -> None:
 
 def test_a_tech_discount_icon_opens_its_own_frame_with_one_spice_off() -> None:
     state = _turn_state(_owner(resources=Resources(spice=1)))
-    opened = push_tech_acquisition(state, 0, discount=1, source="test")
+    opened = push_tech_acquisition(
+        state, 0, discount=1, source="test", printer=ACQUIRE_PRINTER
+    )
     assert opened.state.decision_stack[-1].kind == "tech_acquisition"
     offered = _tech_actions(opened.state)
     assert "gene_locked_vault" in offered  # 2 - 1 = 1 spice
@@ -1375,12 +1385,28 @@ def test_a_tech_discount_icon_over_empty_stacks_opens_with_only_the_refusal() ->
     # offering only decline_tech (OQ-057 (9) "살 수 없으면 거절만"). It used
     # to emit tech_acquisition_unavailable without asking.
     state = _turn_state(_owner(), stacks=((), (), ()))
-    opened = push_tech_acquisition(state, 0, discount=1, source="test")
+    opened = push_tech_acquisition(
+        state, 0, discount=1, source="test", printer=ACQUIRE_PRINTER
+    )
     assert opened.events == ()
     assert opened.state.decision_stack[-1].kind == "tech_acquisition"
-    legal = UprisingRulesEngine().legal_actions(opened.state, 0)
-    assert legal == (DomainAction(action_id="decline_tech", actor=0),)
-    declined = _purchase_and_resolve(opened.state, legal[0])
+    engine = UprisingRulesEngine()
+    wholes = engine.whole_actions(opened.state, 0)
+    assert wholes == (DomainAction(action_id="decline_tech", actor=0),)
+    # Stage B3d-3: the refusal is shown as ``decline`` naming the effect it
+    # answers and the card that granted the Acquire Tech.
+    assert engine.legal_actions(opened.state, 0) == (
+        DomainAction(
+            "decline",
+            0,
+            (
+                ("of", "acquire"),
+                ("printed", "battlefield_research"),
+                ("source", "intrigue"),
+            ),
+        ),
+    )
+    declined = _purchase_and_resolve(opened.state, wholes[0])
     assert declined.state.decision_stack == state.decision_stack
     assert declined.state.players == state.players
 
@@ -1388,7 +1414,9 @@ def test_a_tech_discount_icon_over_empty_stacks_opens_with_only_the_refusal() ->
     secret = _turn_state(
         _owner(secret_project_tech_id="training_depot"), stacks=((), (), ())
     )
-    offered = push_tech_acquisition(secret, 0, discount=1, source="test").state
+    offered = push_tech_acquisition(
+        secret, 0, discount=1, source="test", printer=ACQUIRE_PRINTER
+    ).state
     assert "training_depot" in _tech_actions(offered)
 
 
@@ -1452,10 +1480,16 @@ def test_tech_actions_round_trip_only_in_the_tech_catalog() -> None:
         # its target rows (``effect_steps.steps_for``), not as a whole action.
         # Stage B3d-2a: the Tech window offers a tile bought by its target
         # rows (the tile, then the Spy's post), the whole action not at all.
+        # Stage B3d-3: the refusal is the ``decline`` row naming the card that
+        # granted the Acquire Tech, not the whole ``decline_tech``.
         if action.action_id == "resolve_tech_acquire_effect":
             rows = steps_for(action)
         elif action.action_id == "acquire_tech":
             rows = steps_for(action, effect_row=False)
+            with pytest.raises(ValueError, match="not present"):
+                codec.encode(action)
+        elif action.action_id == "decline_tech":
+            rows = steps_for(action, "battlefield_research", Source.INTRIGUE)
             with pytest.raises(ValueError, match="not present"):
                 codec.encode(action)
         else:
@@ -1790,7 +1824,17 @@ def test_plasteel_blades_with_no_skill_to_gain_asks_with_only_the_keep() -> None
     assert opened.events == ()
     assert opened.state.decision_stack[-1].kind == "skill_choice"
     keep = DomainAction(action_id="decline_skill", actor=0)
-    assert UprisingRulesEngine().legal_actions(opened.state, 0) == (keep,)
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(opened.state, 0) == (keep,)
+    # Stage B3d-3: the seat is shown the refusal naming the effect it answers
+    # (the Skill choice) and the tile that opened the window.
+    assert engine.legal_actions(opened.state, 0) == (
+        DomainAction(
+            "decline",
+            0,
+            (("of", "choose"), ("printed", "plasteel_blades"), ("source", "tech")),
+        ),
+    )
     found = unavailable_choices(opened.state, 0, (keep,))
     assert found is not None
     rows = found["rows"]
@@ -2886,8 +2930,14 @@ def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
     for whole in (*forbidden_weapons, flip_tech):
         for row in steps_for(whole):
             assert codec.decode(codec.encode(row), whole.actor) == row
+    # Stage B3d-3: the Skill window's refusal is the ``decline`` row naming
+    # the card that opened it, not the whole ``decline_skill``.
+    skill_decline = DomainAction("decline_skill", 0)
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(skill_decline)
+    for row in steps_for(skill_decline, "plasteel_blades", Source.TECH):
+        assert codec.decode(codec.encode(row), row.actor) == row
     actions = (
-        DomainAction("decline_skill", 0),
         # The Agent turn is a card pick and a space pick (stage B1).
         DomainAction(
             "choose_agent_card", 0, (("card_id", "player:0:starter:dagger:0"),)
@@ -3064,7 +3114,9 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
         stacks=unaffordable,
     )
     assert legal_intrigue_play_actions(poor, 0) == ()
-    broke = push_tech_acquisition(poor, 0, discount=1, source="test").state
+    broke = push_tech_acquisition(
+        poor, 0, discount=1, source="test", printer=ACQUIRE_PRINTER
+    ).state
     assert list(_tech_actions(broke)) == ["decline_tech"]
 
     # The visit's own offer needs no refusal either: left unused it lapses

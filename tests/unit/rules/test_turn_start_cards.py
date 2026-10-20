@@ -34,6 +34,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.state import canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.frames import (
     TURN_START_OVER_KEY,
     FrameKind,
@@ -203,7 +204,9 @@ def test_any_other_owner_action_on_the_turn_frame_ends_the_start(
 def _answer_every_opponent(state: GameState) -> GameState:
     """Seats 1-3 each answer a unit-loss window stacked on seat 0's turn."""
 
-    state = opponent_unit_loss_frames(state, 0, source="test").state
+    # Holy War makes every opponent lose a unit (stage B3d-3: the printer).
+    holy_war = printer_value(Source.AGENT_CARD, "holy_war")
+    state = opponent_unit_loss_frames(state, 0, source="test", printer=holy_war).state
     for seat in (1, 2, 3):
         top = state.decision_stack[-1]
         assert isinstance(top.decision, PlayerDecision)

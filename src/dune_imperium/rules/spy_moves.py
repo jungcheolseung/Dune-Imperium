@@ -67,12 +67,14 @@ def turn_space_spy_frames(
     space_id: str,
     *,
     source: str,
+    printer: str,
 ) -> RuleResult:
     """Push one Spy-move decision per opposing Spy watching ``space_id``.
 
     Frames are pushed so the next clockwise opponent decides first. Each
     frame keeps ``space_id``: the Spy may not move to a post connected to
-    it [FAQ p. 2].
+    it [FAQ p. 2], and ``printer``, the card that moves it
+    (``action_shapes.printer_value``; stage B3d-3).
     """
 
     posts = set(connected_post_ids(space_id))
@@ -91,6 +93,7 @@ def turn_space_spy_frames(
                     context=(
                         ("player", seat),
                         ("post_id", post_id),
+                        (PRINTER_KEY, printer),
                         ("source", source),
                         ("space_id", space_id),
                     ),

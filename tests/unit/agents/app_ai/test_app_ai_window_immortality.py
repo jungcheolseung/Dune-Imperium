@@ -64,11 +64,13 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
 from dune_imperium.agents.app_ai.windows.turn import GRAFT_PARTNER_INTENT
 from dune_imperium.content.immortality.board import ResearchBonus
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.immortality import (
     _bonus_frame,
@@ -77,7 +79,7 @@ from dune_imperium.rules.immortality import (
     pending_research_bonuses,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import optional_trash_frame, trash_printer
 from dune_imperium.simulation.runner import run_policy_game
 
 IMMORTALITY = RulesetConfig(choam_module=True, immortality=True)
@@ -636,7 +638,11 @@ def _trash_window(**changes: object) -> GameState:
     owner's turn (Combat, the Arrakeen Scouts step; cleanup-2b)."""
 
     state, seat = _research_seat(**changes)
-    return state.push_decision(optional_trash_frame(seat, _trash_source(state, seat)))
+    # The research space c3r3 printed the trash icon (stage B3d-3).
+    printer = trash_printer(Source.RESEARCH, "c3r3")
+    return state.push_decision(
+        optional_trash_frame(seat, _trash_source(state, seat), printer=printer)
+    )
 
 
 def _waiting_trash(**changes: object) -> GameState:
@@ -781,7 +787,10 @@ def test_planetologist_frame_draws_its_intrigue_first() -> None:
 
     state, seat = _research_seat()
     source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
-    state = state.push_decision(optional_trash_frame(seat, source, intrigue=True))
+    printer = trash_printer(Source.LEADER, "liet_kynes")
+    state = state.push_decision(
+        optional_trash_frame(seat, source, printer=printer, intrigue=True)
+    )
     action = W.optional_trash(_run(state))
     assert action == DomainAction(action_id="draw_planetologist_intrigue", actor=seat)
 
@@ -807,7 +816,8 @@ def _control_the_spice_trash() -> GameState:
     state, seat = _research_seat()
     state = state.push_decision(_agent_effects_frame(seat, _CONTROL_THE_SPICE))
     source = agent_card_source(state.round_number, seat, _CONTROL_THE_SPICE)
-    return state.push_decision(optional_trash_frame(seat, source))
+    printer = trash_printer(Source.AGENT_CARD, "control_the_spice")
+    return state.push_decision(optional_trash_frame(seat, source, printer=printer))
 
 
 def test_optional_trash_follows_control_the_spices_stored_answer() -> None:
@@ -853,7 +863,10 @@ def test_optional_trash_follows_stitched_horrors_stored_answer() -> None:
     seat = _seat(state)
     card = str(dict(state.decision_stack[-1].context)["card_id"])
     source = f"{agent_card_source(state.round_number, seat, card)}:1"
-    state = state.push_decision(optional_trash_frame(seat, source))
+    # The box's card prints the trash icon, as ``agent_box_abilities`` records.
+    box_card = personal_card_for_instance(card).card.card_id
+    printer = trash_printer(Source.AGENT_CARD, box_card)
+    state = state.push_decision(optional_trash_frame(seat, source, printer=printer))
     run = _run(state)
     refs = [str(arg(a, "card_id")) for a in run.by_id("trash_optional_card")]
     chosen = next(r for r in refs if r != _get_card_to_trash(state))

@@ -92,7 +92,8 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # card of a lines window. Stage B3d-2a: and the Faction whose Influence
 # track opens a Spy window (the Emperor's); a Scouts line's printed item is
 # a label (``SCOUTS_ITEM_IDS``; a Scouts mission's too, stage B3d-2b).
-_GOLDEN_DIGEST = "a4ecaee5bcbb75bdff7ff9b89aca2f0b515078455c56db6478a0d771553ddfbb"
+# Stage B3d-3: a refusal's ``of`` is a label.
+_GOLDEN_DIGEST = "0098fbb63ad1b9a664ffed44dbfc16cbb1afc530d38b16fbcc35ea8d494807c6"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -305,9 +306,17 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
     # Reveal's markets, which no card or space prints (stage B3b-2), the
     # windows a card is played in (stage B3c-1), and the Scouts lines that
     # open a Spy window (stage B3d-2a) and the Scouts missions whose plain
-    # way is an effect row (stage B3d-2b), which have no vocabulary.
-    from dune_imperium.content.arrakeen_scouts import missions_for, scouts_pool
-    from dune_imperium.rules.scouts_effects import scouts_spy_items
+    # way is an effect row (stage B3d-2b), which have no vocabulary; since
+    # stage B3d-3 the Contract market a confirmation names, and the Scouts
+    # items whose trash, choice or market a refusal answers.
+    from dune_imperium.content.arrakeen_scouts import (
+        AUCTIONS,
+        EVENTS,
+        SALES,
+        missions_for,
+        scouts_pool,
+    )
+    from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 
     missions = missions_for(scouts_pool(immortality=True), choam=True)
     assert labels == {
@@ -323,6 +332,11 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "wild_icon",
         *scouts_spy_items(),
         *(mission.mission_id for mission in missions),
+        "contract_market",
+        *scouts_trash_items(),
+        *(event.event_id for event in EVENTS),
+        *(sale.sale_id for sale in SALES),
+        *(auction.auction_id for auction in AUCTIONS),
     }
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]

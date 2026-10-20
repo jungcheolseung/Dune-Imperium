@@ -420,9 +420,18 @@ def test_migration_names_the_policy_rows_a_file_was_never_trained_on(
     assert {template.action_id for template in untrained} >= {
         "choose_subcommittee",
         "confirm_scouts_bid",
-        "scouts_decline_mission",
+        "scouts_pass",
     }
-    assert not any(template.action_id == "scouts_bid" for template in catalog)
+    # Stage B3d-3: a mission's refusal is the ``decline`` row of its join (the
+    # whole ``scouts_decline_mission`` left the catalog), a Scouts-only row.
+    decline_mission = ActionTemplate(
+        "decline", (("of", "join"), ("printed", "desert_riding"), ("source", "scouts"))
+    )
+    assert decline_mission in untrained
+    assert not any(
+        template.action_id in {"scouts_bid", "scouts_decline_mission"}
+        for template in catalog
+    )
     assert ActionTemplate("choose_count", (("count", 1),)) not in untrained
 
 

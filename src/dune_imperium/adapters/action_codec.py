@@ -40,7 +40,10 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
+    EachOpponentLosesTroop,
     OnTroopsLostAtConflictEnd,
+    OpponentsMoveSpiesFromVisitedSpace,
     RedirectSpiesOnTurnSpace,
 )
 from dune_imperium.content.uprising.imperium import (
@@ -84,6 +87,7 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
+    PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.acquisition import acquire_box_places_spy
@@ -117,7 +121,7 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
-from dune_imperium.rules.scouts_effects import scouts_spy_items
+from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.tech import optional_trash_tech_ids
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -703,19 +707,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_leader_spy_placement",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
-            "decline_reveal_influence_exchange",
-            "decline_reveal_card_trash",
             "skip_intrigue_acquisition",
             # An Intrigue "choose a Faction" Influence with every Faction it
             # may raise at the top is confirmed (OQ-060).
             "resolve_intrigue_influence_without_faction",
             "finish_intrigue_effects",
             "decline_reveal_sandworm",
-            "decline_reveal_spice_influence",
-            "decline_reveal_troop_retreat",
             # Unswerving Loyalty's Fremen Bond troop move [Unswerving Loyalty
             # card], shared with Shadout Mapes (Immortality).
-            "decline_reveal_troop_move",
             "deploy_reveal_card_troop",
             "retreat_reveal_card_troop",
             "defer_reveal_choice",
@@ -1348,7 +1347,10 @@ def _effect_step_templates(
             arguments = dict(effect.arguments)
             icon = arguments.get("icon", "")
             assert isinstance(icon, str)
-            cards = box_cards.get((effect.action_id, icon), ())
+            # A refusal's: those of the effect it answers (B3d-3).
+            answered = arguments.get("of", effect.action_id)
+            assert isinstance(answered, str)
+            cards = box_cards.get((answered, icon), ())
             # A Signet Ring box resolves its leader's Signet: only the plain
             # and keyed rows are the box's own, the rest are the leader's.
             signets = faces if template.action_id == "resolve_agent_card_effect" else ()
@@ -1365,13 +1367,38 @@ def _effect_step_templates(
             named = tuple((None, window) for window in INTRIGUE_WINDOWS)
         elif spec.printed == Printed.RESEARCH_SPACE:
             waiting = dict(template.arguments).get("effect")
-            assert isinstance(waiting, str)
-            named = tuple((None, space) for space in research_icon_spaces(waiting))
+            if isinstance(spec.of, Mapping):
+                # A bonus's refusal (B3d-3): each space printing a bonus.
+                named = tuple((None, space) for space in spec.of)
+            else:
+                assert isinstance(waiting, str)
+                named = tuple(
+                    (None, space) for space in research_icon_spaces(waiting)
+                )
         elif spec.printed == Printed.LEADER:
             own = _LEADER_ROW_FACES.get(template.action_id)
             named = tuple(
                 (None, face) for face in faces if own is None or face in own
             )
+        elif template.action_id in _REWARD_WINDOW_REFUSALS:
+            # A Conflict reward window's refusal or empty confirmation
+            # (B3d-3), by each icon whose window offers it and each Conflict
+            # printing that icon.
+            for icon in _REWARD_WINDOW_REFUSALS[template.action_id]:
+                for conflict in CONFLICTS:
+                    if not (
+                        (config.bloodlines or not conflict.bloodlines_only)
+                        and (config.epic_game or not conflict.epic_only)
+                        and (
+                            icon in conflict_reward_icon_kinds(conflict.card.card_id)
+                            or (icon == "choose_influence" and config.promo_cards)
+                        )
+                    ):
+                        continue
+                    for row in steps_for(whole, conflict.card.card_id, icon=icon):
+                        template_row = ActionTemplate(row.action_id, row.arguments)
+                        rows.setdefault(template_row, None)
+            continue
         elif spec.printed == Printed.CONFLICT_CARD:
             # A Conflict reward icon (stage B3d-1): each Conflict printing
             # it, and any Conflict's first place for Pivotal Gambit's
@@ -1440,8 +1467,30 @@ def _effect_step_templates(
             # An acquired card's Spy window (B3d-2a).
             named = tuple((None, card) for card in _acquisition_spy_cards(config))
         elif spec.printed == Printed.WINDOW:
-            # The Spy placement window, by what opened it (B3d-2a).
-            named = _spy_placement_printers(config)
+            # A window, by what opened it: the Spy placement window (B3d-2a),
+            # an opponent's or a card's window (B3d-3).
+            named = _window_printers(config, template.action_id, box_cards, faces)
+        elif spec.printed == Printed.SCOUTS_ITEM:
+            # A Scouts market's or choice's refusal (B3d-3).
+            items = (
+                tuple(auction.auction_id for auction in AUCTIONS)
+                if template.action_id == "scouts_decline_card"
+                else (
+                    # The events' and sales' choices (``offer_scouts_choice``,
+                    # a secret reward's ``offer_only_line``).
+                    *(event.event_id for event in EVENTS),
+                    *(sale.sale_id for sale in SALES),
+                )
+            )
+            named = tuple((None, item) for item in items)
+        elif spec.printed == Printed.SKILL_WINDOW:
+            named = _skill_window_givers(config)
+        elif spec.printed == Printed.TECH_PENDING:
+            named = tuple(
+                (None, tile.tech_id)
+                for tile in TECH_TILES
+                if "influence" in tile.acquire_effect_keys
+            )
         elif spec.printed == Printed.MISSION:
             # A Scouts mission's plain way in (B3d-2b).
             named = tuple(
@@ -1487,29 +1536,60 @@ _WINDOW_REWARD_ICONS: Final[Mapping[str, tuple[str, ...]]] = {
     "pay_combat_reward": ("optional_solari", "optional_spice"),
     "recall_spy_for_combat_reward": ("spy", "deep_cover_spy"),
     "recall_spy_for_contract": ("spy", "deep_cover_spy"),
+    # A Contract window's refusal and empty confirmation (B3d-3).
+    "decline_contract_spy": ("spy", "deep_cover_spy"),
+    "resolve_contract_without_recall": ("recall_agent",),
 }
 # A controlled space's defending troop (B3d-2a): a space a Conflict card's
 # control reward names.
+_CONTROL_SPACES: Final = tuple(
+    dict.fromkeys(
+        conflict.rewards[0].control_space_id
+        for conflict in CONFLICTS
+        if conflict.rewards is not None
+        and conflict.rewards[0].control_space_id is not None
+    )
+)
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
-    "deploy_control_defense": tuple(
-        dict.fromkeys(
-            conflict.rewards[0].control_space_id
-            for conflict in CONFLICTS
-            if conflict.rewards is not None
-            and conflict.rewards[0].control_space_id is not None
-        )
-    ),
+    "deploy_control_defense": _CONTROL_SPACES,
+    "decline_control_defense": _CONTROL_SPACES,
+    # The one space printing the effect an empty confirmation answers
+    # (``board_effects``; B3d-3).
+    "resolve_espionage_without_spy": ("espionage",),
+    "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
 }
 # The effects an Intrigue card's choice slot offers beside its own, by the
 # slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
 # Wall, the look at the deck's top card.
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
-    "PlaceSpy": ("recall_spy_for_intrigue",),
-    "DestroyShieldWall": ("detonate_shield_wall",),
+    "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
+    "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
     "PeekTopCard": (
         "put_back_top_card",
         "discard_top_card",
         "draw_top_card_for_solari",
+    ),
+    # The slots' refusals and empty confirmations (B3d-3).
+    "TrashPersonalCard": ("decline_intrigue_trash",),
+    "TrashDiscardPileCard": ("decline_intrigue_trash",),
+    "AcquireTleilaxuCard": ("decline_intrigue_tleilaxu",),
+    "AcquireCardUpTo": ("skip_intrigue_acquisition",),
+    "GainInfluence": ("resolve_intrigue_influence_without_faction",),
+}
+# A Conflict reward window's refusal or empty confirmation by the icons
+# whose window offers it (``effect_steps.window_icon``, B3d-3).
+_REWARD_WINDOW_REFUSALS: Final[Mapping[str, tuple[str, ...]]] = {
+    "decline_combat_reward": (
+        "optional_solari",
+        "optional_spice",
+        "optional_recall_spies",
+    ),
+    "decline_combat_reward_spy": ("spy", "deep_cover_spy"),
+    "decline_combat_reward_trash": ("trash",),
+    "resolve_combat_trash_without_card": ("trash",),
+    "resolve_combat_influence_without_faction": (
+        "choose_influence",
+        "distinct_influence",
     ),
 }
 
@@ -1543,7 +1623,142 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
                 effects.add("resolve_intrigue_rewards")
             for effect in effects:
                 cards.setdefault(effect, {})[card.card.card_id] = None
+    if config.bloodlines:
+        # A Navigation card's refusal (B3d-3).
+        cards["decline_navigation"] = {
+            intrigue_card_for_instance(instance_id).card.card_id: None
+            for instance_id in navigation_card_instance_ids()
+        }
     return {effect: tuple(found) for effect, found in cards.items()}
+
+
+def _skill_window_givers(
+    config: RulesetConfig,
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What opens a Skill window (B3d-3): Plasteel Blades' tile, and each
+    card whose trash acquires the bank's Sardaukar Commander."""
+
+    givers: list[tuple[Source | None, ActionValue | None]] = []
+    if config.tech_module:
+        givers.append((Source.TECH, "plasteel_blades"))
+    if config.bloodlines:
+        givers.extend(
+            (None, card.card.card_id)
+            for card in imperium_cards_for_choam(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=True,
+                tech_module=config.tech_module,
+                immortality=config.immortality,
+            )
+            if card.trash_effect is PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER
+        )
+    return tuple(givers)
+
+
+def _box_reward_cards(config: RulesetConfig, reward: type) -> tuple[str, ...]:
+    """The card types whose Agent box may resolve ``reward`` (B3d-3): those
+    printing it, and, as ``_box_effect_cards`` reads them, Ghola (which
+    copies the other grafted card's box, so its own card names the effect)
+    and any box its own code resolves."""
+
+    found: dict[str, None] = {}
+    for instance_id in _personal_card_instance_ids(config):
+        seated = (
+            f"player:0:{instance_id}"
+            if instance_id.startswith("starter:")
+            else instance_id
+        )
+        card = personal_card_for_instance(seated)
+        agent_effect = getattr(card, "agent_effect", None)
+        if agent_effect is PersonalCardAgentEffect.LEADER_SIGNET:
+            # Its effects are the leader's Signet.
+            continue
+        ability = None if agent_effect is None else agent_box_ability(agent_effect)
+        if (
+            card_is_ghola(card)
+            or (agent_effect is not None and ability is None)
+            or (
+                ability is not None
+                and any(
+                    isinstance(piece, reward)
+                    for section in ability.sections
+                    for piece in (*section.costs, *section.rewards)
+                )
+            )
+        ):
+            found[card.card.card_id] = None
+    return tuple(found)
+
+
+def _intrigue_reward_cards(config: RulesetConfig, reward: type) -> tuple[str, ...]:
+    """The Intrigue cards a seat can hold that print ``reward`` (B3d-3)."""
+
+    held = map(intrigue_card_for_instance, _held_intrigue_instance_ids(config))
+    return tuple(
+        dict.fromkeys(
+            card.card.card_id
+            for card in held
+            if any(
+                isinstance(piece, reward)
+                for option in card.options
+                for section in option.sections
+                for piece in (*section.costs, *section.rewards)
+            )
+        )
+    )
+
+
+def _window_printers(
+    config: RulesetConfig,
+    action_id: str,
+    box_cards: Mapping[tuple[str, str], tuple[str, ...]],
+    faces: tuple[str, ...],
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may open the window whose row ``action_id`` names it by its
+    recorded printer (``effect_steps.Printed.WINDOW``)."""
+
+    if action_id in ("recall_spy_for_placement", "decline_spy_placement"):
+        return _spy_placement_printers(config)
+    if action_id == "decline_tech":
+        # Battlefield Research, Rapid Engineering.
+        return tuple(
+            (Source.INTRIGUE, card)
+            for card in _intrigue_reward_cards(config, AcquireTech)
+        )
+    if action_id == "resolve_unit_loss_without_unit":
+        return tuple(
+            (Source.AGENT_CARD, card)
+            for card in _box_reward_cards(config, EachOpponentLosesTroop)
+        )
+    if action_id == "lose_moved_spy":
+        return (
+            *(
+                (Source.AGENT_CARD, card)
+                for card in _box_reward_cards(
+                    config, OpponentsMoveSpiesFromVisitedSpace
+                )
+            ),
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, RedirectSpiesOnTurnSpace)
+            ),
+        )
+    if action_id == "decline_optional_trash":
+        return (
+            *(
+                (printer, entity)
+                for printer, entity, box in _optional_trash_printers(
+                    config, box_cards, faces
+                )
+                if not box
+            ),
+            *(
+                (Source.SCOUTS, item)
+                for item in (scouts_trash_items() if config.arrakeen_scouts else ())
+            ),
+        )
+    raise ValueError(f"{action_id} names no window printer")
 
 
 def _acquisition_spy_cards(config: RulesetConfig) -> tuple[str, ...]:
@@ -1625,6 +1840,18 @@ def _optional_trash_printers(
     )
 
 
+_LEADER_TRASH_FACES: Final = frozenset(
+    {"feyd_rautha_harkonnen", "count_hasimir_fenring", "princess_irulan"}
+)
+_LEADER_SPY_FACES: Final = frozenset(
+    {
+        "feyd_rautha_harkonnen",
+        "lady_margot_fenring",
+        "staban_tuek",
+        "count_hasimir_fenring",
+        "gaius_helen_mohiam",
+    }
+)
 # The leader faces whose Signet or leader ability offers a leader row; the
 # rules tell the leaders apart by id (``leader_abilities``).
 _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
@@ -1633,17 +1860,26 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "recall_spy_for_leader": frozenset({"feyd_rautha_harkonnen"}),
     "retreat_leader_troop": frozenset({"lady_amber_metulli"}),
     "retreat_leader_commander": frozenset({"lady_amber_metulli"}),
-    "trash_leader_card": frozenset(
-        {"feyd_rautha_harkonnen", "count_hasimir_fenring", "princess_irulan"}
-    ),
-    "place_leader_spy": frozenset(
+    "trash_leader_card": _LEADER_TRASH_FACES,
+    "place_leader_spy": _LEADER_SPY_FACES,
+    # A leader's refusal: the leaders that print the effect it answers
+    # (B3d-3; ``leader_abilities.legal_leader_signet_actions``).
+    "decline_leader_card_trash": _LEADER_TRASH_FACES,
+    "decline_leader_spy_placement": _LEADER_SPY_FACES,
+    "decline_leader_signet_payment": frozenset(
         {
-            "feyd_rautha_harkonnen",
-            "lady_margot_fenring",
+            "lady_jessica",
+            "reverend_mother_jessica",
             "staban_tuek",
+            "princess_irulan",
+            "chani",
             "count_hasimir_fenring",
+            "duncan_idaho",
             "gaius_helen_mohiam",
         }
+    ),
+    "resolve_leader_signet_without_option": frozenset(
+        {"count_hasimir_fenring", "esmar_tuek", "gaius_helen_mohiam"}
     ),
     "recall_spy_for_leader_placement": frozenset(
         {
@@ -1869,7 +2105,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 arguments=(("commanders", 1), ("player", seat)),
             )
         )
-    templates.append(ActionTemplate(action_id="decline_command_acquisition"))
     templates.append(ActionTemplate(action_id="gain_reveal_persuasion"))
     templates.append(ActionTemplate(action_id="take_reveal_contract"))
     templates.extend(
@@ -2257,10 +2492,6 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Scientific Breakthrough, Slig Farmer.
             "trash_agent_card_self_for_vp",
             "pay_agent_card_five_solari_for_tleilaxu",
-            # For Humanity and Tleilaxu Surgeon Reveal choices (Shadout
-            # Mapes' troop move is in every catalog, for Unswerving Loyalty).
-            "decline_reveal_influence_loss",
-            "decline_reveal_troop_sacrifice",
         )
     ]
     templates.extend(

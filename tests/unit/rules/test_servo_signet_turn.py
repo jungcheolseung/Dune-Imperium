@@ -47,6 +47,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.effect_steps import path_of
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -414,7 +415,15 @@ def _reveal_with_servo(owner: PlayerState) -> GameState:
 
     revealed = _act(_turn_state(owner), "reveal_turn")
     assert dict(revealed.decision_stack[-1].context)["combat_deployment"] is True
-    opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
+    opened = push_tech_acquisition(
+        revealed,
+        0,
+        discount=1,
+        source="test",
+        # The Intrigue card that grants the Acquire Tech; its refusal names it
+        # (stage B3d-3).
+        printer=printer_value(Source.INTRIGUE, "battlefield_research"),
+    ).state
     bought = _act(opened, "acquire_tech", tech_id="servo_receivers")
     bought = _act(bought, "resolve_tech_acquire_effect", effect="signet")
     assert bought.decision_stack[-1].kind == FrameKind.REVEAL

@@ -814,6 +814,12 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # its target rows: 1,494 whole templates leave and 54 rows join.
         - 1494
         + 54
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` / ``confirm_empty`` row naming the effect it answers: 37
+        # whole templates leave (five of them ids no handler ever answered)
+        # and 117 rows join.
+        - 37
+        + 117
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -865,6 +871,12 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # its target rows: 1,605 whole templates leave and 79 rows join.
         - 1605
         + 79
+        # v150 (stage B3d-3): the refusals and empty confirmations are
+        # ``decline`` / ``confirm_empty`` rows naming the effect they answer:
+        # 39 whole templates leave (five of them ids no handler ever answered)
+        # and 122 rows join.
+        - 39
+        + 122
     )
     # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
     # the card (an effect without a target is one row). The other cards that

@@ -427,10 +427,14 @@ def test_collect_to_directory_labels_mixed_games_of_the_games_own_catalog(
     config = LabelConfig(
         label_probability=0.05, anchor_probability=0.05, rollouts=1, candidates=2
     )
+    # Stage B3d-3 resized the catalog (the refusals are rows now), so the
+    # seeded teacher network, and with it the game of seed 2, changed: that
+    # game no longer meets a decision of untrained templates only. Seed 3's
+    # does (6 of them).
     summary = collect_to_directory(
         teacher,
         out,
-        start_seed=2,
+        start_seed=3,
         games=1,
         workers=1,
         config=config,

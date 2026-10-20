@@ -442,7 +442,7 @@ def piece_rows(
             if not rows and empty_confirm:
                 # Every Faction it may raise is at the top: the gain is lost
                 # and its owner confirms it (OQ-060, user ruling 2026-09-30).
-                rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.GAIN_INFLUENCE))
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.GAIN_INFLUENCE))
         case DiscardFromHand():
             rows.extend(
                 row(Verb.DISCARD, Target.PERSONAL_CARD, (("card_id", card_id),))
@@ -590,7 +590,7 @@ def piece_rows(
             if not rows and empty_confirm:
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
-                rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.ACQUIRE))
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
         case PlaceSpy():
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
@@ -889,7 +889,7 @@ def apply_piece(
                 event_prefix=f"{step_source}:lost:{faction.value}",
                 alliance_recipient=recipient,
             )
-        case GainInfluence() if shape.verb is Verb.RESOLVE_EMPTY:
+        case GainInfluence() if shape.verb is Verb.CONFIRM_EMPTY:
             # No Faction this gain may raise is below the top: it is lost
             # (OQ-060), while a "Choose two" Faction named before it is still
             # paid ("서로 다른 진영 둘"은 먼저 이름 붙인 진영을 그대로 지급).
@@ -1109,7 +1109,7 @@ def acquire_by_piece(
     """
 
     shape = action_shape(action.action_id)
-    if shape.verb is Verb.RESOLVE_EMPTY:
+    if shape.verb is Verb.CONFIRM_EMPTY:
         return None
     arguments = dict(action.arguments)
     if shape.target is Target.RESERVE_CARD:
@@ -1498,7 +1498,13 @@ def apply_automatic_rewards(
         # Battlefield Research / Rapid Engineering: the Tech Discount icon
         # opens its own Acquire Tech [Bloodlines pp. 7, 12].
         opened = push_tech_acquisition(
-            next_state, player, discount=discount, source=source
+            next_state,
+            player,
+            discount=discount,
+            source=source,
+            printer=printer_value(
+                Source.INTRIGUE, intrigue_card_for_instance(played_card_id).card.card_id
+            ),
         )
         next_state = opened.state
         events.extend(opened.events)
@@ -1526,7 +1532,13 @@ def apply_automatic_rewards(
             source=source,
             printer=printer_value(Source.INTRIGUE, printed),
         )
-        moved = turn_space_spy_frames(next_state, player, space_id, source=source)
+        moved = turn_space_spy_frames(
+            next_state,
+            player,
+            space_id,
+            source=source,
+            printer=printer_value(Source.INTRIGUE, printed),
+        )
         next_state = moved.state
         events.extend(moved.events)
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):

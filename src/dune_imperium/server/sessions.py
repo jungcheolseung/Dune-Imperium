@@ -1857,10 +1857,12 @@ class GameSessionManager:
         stack = session.state.decision_stack
         if not stack or stack[-1].kind != FrameKind.CONFLICT_END_TRIGGER:
             return False
-        actions = session.engine.legal_actions(session.state, seat)
+        # The rules' whole actions: the window shows its refusal as the
+        # ``decline`` row that stands for it (stage B3d-3).
+        actions = session.engine.whole_actions(session.state, seat)
         if [action.action_id for action in actions] != [_CONFLICT_END_DECLINE]:
             return False
-        _apply_step(session, actions[0])
+        _apply_step(session, first_step(session.state, actions[0]))
         session.undo_floor = len(session.steps)
         return True
 

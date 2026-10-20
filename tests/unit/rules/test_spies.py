@@ -75,10 +75,21 @@ def test_gather_intelligence_recall_draws_before_other_agent_effects() -> None:
     }
     # Stage B3a: the seat is offered the recall as the Spy recall of the
     # visited space (the effect row), the post being its target row.
-    assert {action.action_id for action in engine.legal_actions(state, 0)} == {
-        "decline_gather_intelligence",
-        "recall_spy",
-    }
+    # Stage B3d-3: the pass is the refusal row naming the recall it declines.
+    shown = engine.legal_actions(state, 0)
+    assert {action.action_id for action in shown} == {"decline", "recall_spy"}
+    assert (
+        DomainAction(
+            action_id="decline",
+            actor=0,
+            arguments=(
+                ("of", "recall_spy"),
+                ("printed", "assembly_hall"),
+                ("source", "spy"),
+            ),
+        )
+        in shown
+    )
     gather = next(
         action for action in engine_actions if action.action_id == "gather_intelligence"
     )

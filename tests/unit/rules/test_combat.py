@@ -1165,7 +1165,22 @@ def test_influence_choice_with_no_faction_below_the_top_asks_for_a_confirm() -> 
     frame = resolved.decision_stack[-1]
     assert frame.kind == FrameKind.COMBAT_REWARD_INFLUENCE
     assert resolved.combat_rewards_resolved is False
-    assert UprisingRulesEngine().legal_actions(resolved, 0) == (_INFLUENCE_CONFIRM,)
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(resolved, 0) == (_INFLUENCE_CONFIRM,)
+    # Stage B3d-3: the seat is shown that confirmation as the empty-confirmation
+    # row naming the gain it answers and the Conflict that paid it.
+    assert engine.legal_actions(resolved, 0) == (
+        DomainAction(
+            action_id="confirm_empty",
+            actor=0,
+            arguments=(
+                ("icon", "choose_influence"),
+                ("of", "gain_influence"),
+                ("printed", "skirmish_crysknife"),
+                ("source", "conflict"),
+            ),
+        ),
+    )
     assert {
         combat_reward_influence_block(frame, resolved.players[0], faction)
         for faction in Faction
@@ -1436,8 +1451,18 @@ def test_the_emperor_tracks_spy_follows_the_conflicts_own_spy_rewards() -> None:
     }
     # Stage B3d-2a: the seat is shown the recall as one effect row, naming what
     # opened the window, ahead of the post it recalls.
+    # Stage B3d-3: the pass is the empty-confirmation row naming the Spy it
+    # does not place.
     assert engine.legal_actions(opened, 0) == (
-        DomainAction(action_id="decline_spy_placement", actor=0),
+        DomainAction(
+            action_id="confirm_empty",
+            actor=0,
+            arguments=(
+                ("of", "place_spy"),
+                ("printed", "emperor"),
+                ("source", "influence_track"),
+            ),
+        ),
         DomainAction(
             action_id="recall_spy",
             actor=0,
@@ -1485,8 +1510,18 @@ def test_a_conflict_reward_spy_without_supply_may_recall_first(
     ]
     # Stage B3d-2a: the seat is shown the recall as one effect row, naming the
     # Conflict that paid the Spy, ahead of the post it recalls.
+    # Stage B3d-3: the pass is the refusal row naming the Spy it does not place.
     assert engine.legal_actions(paid, 0) == (
-        DomainAction(action_id="decline_combat_reward_spy", actor=0),
+        DomainAction(
+            action_id="decline",
+            actor=0,
+            arguments=(
+                ("icon", "spy"),
+                ("of", "place_spy"),
+                ("printed", conflict_id),
+                ("source", "conflict"),
+            ),
+        ),
         DomainAction(
             action_id="recall_spy",
             actor=0,
@@ -1579,7 +1614,22 @@ def test_a_conflict_reward_spy_with_no_spy_to_recall_offers_only_the_decline() -
 
     decline = DomainAction(action_id="decline_combat_reward_spy", actor=0)
     assert legal_combat_reward_spy_actions(paid, 0) == (decline,)
-    assert UprisingRulesEngine().legal_actions(paid, 0) == (decline,)
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(paid, 0) == (decline,)
+    # Stage B3d-3: the seat is shown the refusal row naming the Spy it does not
+    # place and the Conflict that paid it.
+    assert engine.legal_actions(paid, 0) == (
+        DomainAction(
+            action_id="decline",
+            actor=0,
+            arguments=(
+                ("icon", "spy"),
+                ("of", "place_spy"),
+                ("printed", "seize_spice_refinery"),
+                ("source", "conflict"),
+            ),
+        ),
+    )
     dropped = apply_combat_reward_spy(paid, decline)
     assert dropped.state.decision_stack == ()
     assert _settle(dropped.state).combat_rewards_resolved is True

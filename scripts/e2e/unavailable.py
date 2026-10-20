@@ -679,8 +679,9 @@ played = apply_whole(
 ).state
 states = {
     "commanders": _conflict_end_window(first),
-    "second": engine.apply(
-        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    # A refusal is its window's decline row (stage B3d-3).
+    "second": apply_whole(
+        engine, played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state,
     "lit": _conflict_end_window(first, troops_supply=1, troops_garrison=11),
 }

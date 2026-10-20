@@ -34,7 +34,12 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.action_shapes import Source, printer_parts, printer_value
+from dune_imperium.rules.action_shapes import (
+    PRINTER_KEY,
+    Source,
+    printer_parts,
+    printer_value,
+)
 from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.effects import agent_card_source
@@ -55,12 +60,14 @@ TRASH_DONE_KEY = "trash_done"
 
 
 def optional_trash_frame(
-    player: int, source: str, *, intrigue: bool = False
+    player: int, source: str, *, printer: str, intrigue: bool = False
 ) -> DecisionFrame:
     """Return the decision frame offering one optional trash.
 
     With ``intrigue`` the frame also holds Arrakis Planetologist's Intrigue
-    card for its own step (``draw_planetologist_intrigue``).
+    card for its own step (``draw_planetologist_intrigue``). ``printer`` is
+    the entity that printed the trash icon (``trash_printer``): its refusal
+    names it (stage B3d-3, ``effect_steps.Printed.WINDOW``).
     """
 
     return DecisionFrame(
@@ -70,6 +77,7 @@ def optional_trash_frame(
         context=(
             *(((INTRIGUE_PENDING_KEY, True),) if intrigue else ()),
             ("player", player),
+            (PRINTER_KEY, printer),
             ("source", source),
         ),
     )
@@ -116,7 +124,7 @@ def open_optional_trash(
     )
     if queued is not None:
         return queued
-    return state.push_decision(optional_trash_frame(player, source))
+    return state.push_decision(optional_trash_frame(player, source, printer=printer))
 
 
 def open_planetologist_replacement(
@@ -134,7 +142,9 @@ def open_planetologist_replacement(
         state, player, (turn_rows.OPTIONAL_TRASH, source, printer)
     )
     if queued is None:
-        return state.push_decision(optional_trash_frame(player, source, intrigue=True))
+        return state.push_decision(
+            optional_trash_frame(player, source, printer=printer, intrigue=True)
+        )
     held = turn_rows.queue(
         queued, player, (turn_rows.PLANETOLOGIST_INTRIGUE, source, "")
     )

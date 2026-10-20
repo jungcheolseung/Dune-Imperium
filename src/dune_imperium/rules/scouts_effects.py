@@ -172,6 +172,17 @@ def scouts_spy_items() -> tuple[str, ...]:
     """The Scouts items with a line that places a Spy (the Spy placement
     window's printer, ``spy_moves.spy_placement_frame``)."""
 
+    return _items_rewarding(PlaceSpy)
+
+
+def scouts_trash_items() -> tuple[str, ...]:
+    """The Scouts items with a line that trashes a card (the optional trash
+    window's printer, ``optional_trash.optional_trash_frame``; B3d-3)."""
+
+    return _items_rewarding(TrashPersonalCard)
+
+
+def _items_rewarding(reward: type) -> tuple[str, ...]:
     lines: list[tuple[str, EffectSection]] = [
         *((item, entry.option) for item, entry in SUBCOMMITTEES_BY_ID.items()),
         *(
@@ -197,7 +208,7 @@ def scouts_spy_items() -> tuple[str, ...]:
         dict.fromkeys(
             item
             for item, line in lines
-            if any(isinstance(reward, PlaceSpy) for reward in line.rewards)
+            if any(isinstance(piece, reward) for piece in line.rewards)
         )
     )
 
@@ -827,7 +838,9 @@ def _apply_automatic(
             # The trash icon: optional [Main p. 20].
             return RuleResult(
                 state=state.push_decision(
-                    optional_trash_frame(player, source)
+                    optional_trash_frame(
+                        player, source, printer=printer_value(Source.SCOUTS, item)
+                    )
                 )
             )
         case AcquireReserveCardToHand(card_id=card_id):

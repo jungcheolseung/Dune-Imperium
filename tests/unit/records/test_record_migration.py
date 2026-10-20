@@ -439,15 +439,19 @@ def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
     """The effect bridges' counts for ``_older(replay, codec)`` (stage B3): one
     ``effect_step`` for each pick before a whole action's last step, one
     ``effect_last_step`` for each whole action. A whole action a ``follows``
-    bridge takes back (``_held_steps``) is that bridge's step, not these."""
+    bridge takes back (``_held_steps``) is that bridge's step, not these, and
+    neither is the confirm of a Scouts choice with nothing to take, which an
+    engine before v149 skipped unasked (``_no_option_steps``; since stage
+    B3d-3 it is a ``confirm_empty`` row, so it is a run of its own)."""
 
     held = set(_held_steps(replay)) if codec < 142 else set()
     # A Contract's in-turn icon row is the reward bridges' (stage B3b).
     rewards = _reward_icon_steps(replay) if codec < 150 else frozenset()
+    skipped = _no_option_steps(replay) if codec < 149 else set()
     runs = [
         picks
         for index, (_, picks) in _effect_runs(replay).items()
-        if index not in held and index not in rewards
+        if index not in held and index not in rewards and index not in skipped
     ]
     return {
         "effect_step": sum(len(picks) for picks in runs),
@@ -535,7 +539,11 @@ def _pause_indices(replay: GameReplay) -> set[int]:
 
 
 def _only_choice_in(replay: GameReplay, frame: FrameKind, action_id: str) -> set[int]:
-    """Steps answering ``frame`` with ``action_id`` where nothing else was legal."""
+    """Steps answering ``frame`` with ``action_id`` where nothing else was legal.
+
+    Stage B3d-3: a refusal or empty confirmation is recorded as its
+    ``decline`` or ``confirm_empty`` row, so ``action_id`` is read off the
+    whole action the step ends (``_whole``)."""
 
     found = set()
     for index, (state, step) in enumerate(
@@ -543,7 +551,7 @@ def _only_choice_in(replay: GameReplay, frame: FrameKind, action_id: str) -> set
     ):
         if (
             isinstance(step, DomainAction)
-            and step.action_id == action_id
+            and _whole(replay, index).action_id == action_id
             and state.decision_stack[-1].kind == frame
             and ENGINE.legal_actions(state, step.actor) == (step,)
         ):
@@ -880,12 +888,14 @@ def _with_graft_switches(replay: GameReplay) -> GameReplay:
     active = 0
     rows = _reward_icon_steps(replay)
     picks = _effect_pick_steps(replay)
+    unasked = _no_option_steps(replay)
     runs = _effect_runs(replay)
     for index, step in enumerate(replay.steps):
         # A whole action is one step before codec v150 (``_effect_runs``).
         whole = runs[index][0] if index in runs else step
-        if index in rows or index in picks:
-            # Paid in one step, picked toward a whole action (``_dropped``).
+        if index in rows or index in picks or index in unasked:
+            # Paid in one step, picked toward a whole action, or skipped
+            # unasked (``_dropped``).
             pass
         elif isinstance(whole, DomainAction):
             _, plain, box = route_box_action(without_pick(state), whole)
@@ -947,6 +957,7 @@ def test_a_record_with_graft_switches_migrates_to_the_box_rows(
     assert _reward_icon_counts(record, game) == {
         "graft_switch": switches,
         **({"graft_box": tagged_directly} if tagged_directly else {}),
+        **_no_option_counts(game),
     }
     assert canonical_state_hash(record.state) == game.expected_state_hash
     # Stamped v143 the same steps are this engine's: the switch is no action.
@@ -2532,13 +2543,22 @@ def test_a_combat_tech_influence_picked_at_the_top_is_confirmed_instead() -> Non
         is None
     )
 
-    # Walked as a codec v148 record: the pick comes back as the confirm.
+    # Walked as a codec v148 record: the pick comes back as the confirm,
+    # which this engine shows as its ``confirm_empty`` row (stage B3d-3), the
+    # step that ends the whole action (``MigratedStep.whole``).
     record = migrate_record(
         _v142_record(combat, _TECH_PICK, codec=148), _StartingAt(combat)
     )
     assert record.divergence is None
-    assert [(m.step, m.bridge) for m in record.steps] == [
-        (confirm, "tech_influence_confirm")
+    assert [(m.whole, m.bridge) for m in record.steps] == [
+        (confirm, "effect_last_step")
+    ]
+    assert [m.step for m in record.steps] == [
+        DomainAction(
+            "confirm_empty",
+            0,
+            (("of", "gain_influence"), ("printed", "glowglobes"), ("source", "tech")),
+        )
     ]
 
 
@@ -2615,7 +2635,21 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     rewards_path = path_of(opened, rewards)
     assert rewards_path is not None and len(rewards_path) == 1
     assert rewards_path[0] in legal
-    keep = next(a for a in legal if a.action_id == "keep_shield_wall")
+    # Stage B3d-3: the Shield Wall refusal is shown as the ``decline`` row of
+    # the destroy it refuses; the record holds the whole action.
+    keep = next(
+        a
+        for a in ENGINE.whole_actions(opened, 0)
+        if a.action_id == "keep_shield_wall"
+    )
+    (keep_row,) = steps_for(keep, "unexpected_allies")
+    assert keep_row.action_id == "decline"
+    assert dict(keep_row.arguments) == {
+        "of": "destroy_shield_wall",
+        "printed": "unexpected_allies",
+        "source": "intrigue",
+    }
+    assert keep_row in legal
     draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
     draw_row = DomainAction(
         "draw",
@@ -2645,7 +2679,7 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
         (path[1], None, "effect_step"),
         (path[2], 0, migration.EFFECT_LAST_STEP),
         (rewards_path[0], 1, migration.EFFECT_LAST_STEP),
-        (keep, 4, None),
+        (keep_row, 4, migration.EFFECT_LAST_STEP),
         (draw_row, 2, migration.TURN_ROW_HELD),
         (trash_row, None, "effect_step"),
         (pick_card, 3, migration.TURN_ROW_HELD),
@@ -2655,6 +2689,7 @@ def test_a_window_step_answered_above_another_frame_waits_for_the_turn() -> None
     # last step ends the recorded whole action, the trash with the icon the
     # recording engine used.
     assert record.steps[3].whole == rewards
+    assert record.steps[4].whole == keep
     assert record.steps[5].whole == draw
     assert record.steps[7].whole == DomainAction(
         "trash_optional_card",
@@ -2932,8 +2967,16 @@ def test_a_harvest_cells_acquisition_recorded_at_the_cleanup_follows_its_play() 
     assert asked.whole == answer
     assert (asked.step,) == steps_for(answer, effect_row=False)
     assert asked.recorded_index == play + 3 > play
-    # The other seat's recorded window comes after the pulled-forward answer.
-    assert (window.recorded_index, window.bridge) == (play + 1, None)
+    # The other seat's recorded window comes after the pulled-forward answer;
+    # its recorded decline is taken as this engine's ``decline`` row (stage
+    # B3d-3), the step that ends the recorded whole action.
+    assert (window.recorded_index, window.bridge, window.whole) == (
+        play + 1,
+        migration.EFFECT_LAST_STEP,
+        _step_of(replay, play + 1),
+    )
+    assert isinstance(window.step, DomainAction)
+    assert window.step.action_id == "decline"
     assert record.bridge_counts()[migration.HARVEST_CELLS_AT_ONCE] == 1
     # The record's answer applies once: its own place holds no second step.
     assert [migrated.recorded_index for migrated in record.steps].count(play + 3) == 1
@@ -3022,7 +3065,12 @@ def test_a_decline_is_rewritten_only_where_the_window_stays_open_after_a_play() 
     states = _states(game)
     declines = finishes = 0
     for index, step in enumerate(game.steps):
-        if not isinstance(step, DomainAction) or step.action_id not in (
+        if not isinstance(step, DomainAction):
+            continue
+        # A decline is recorded as its ``decline`` row (stage B3d-3): read the
+        # whole action the step ends.
+        whole = _whole(game, index)
+        if whole.action_id not in (
             "decline_conflict_end_intrigue",
             "finish_conflict_end_intrigue",
         ):
@@ -3036,7 +3084,7 @@ def test_a_decline_is_rewritten_only_where_the_window_stays_open_after_a_play() 
             decision,
             DomainAction("decline_conflict_end_intrigue", step.actor),
         )
-        if step.action_id == "finish_conflict_end_intrigue":
+        if whole.action_id == "finish_conflict_end_intrigue":
             # After a play: the recorded decline reads as the finish.
             assert press == step
             finishes += 1
@@ -3185,7 +3233,9 @@ def test_a_window_this_engine_keeps_open_is_finished_where_the_record_went_on() 
     assert after_play is not None
     opened = ENGINE.current_decision(window)
     assert opened is not None
-    kept = ENGINE.apply(played, DomainAction("decline_intrigue_tleilaxu", 0)).state
+    kept = apply_whole(
+        ENGINE, played, DomainAction("decline_intrigue_tleilaxu", 0)
+    ).state
     decision = ENGINE.current_decision(kept)
     finish = DomainAction("finish_conflict_end_intrigue", 0)
     assert isinstance(decision, PlayerDecision) and decision.owner == 0

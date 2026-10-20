@@ -27,6 +27,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.effect_steps import path_of
@@ -37,6 +38,9 @@ from dune_imperium.rules.tech import (
 )
 
 ENGINE = UprisingRulesEngine()
+# The Intrigue card that grants the tests' card-granted Acquire Tech; its
+# refusal names it (stage B3d-3).
+ACQUIRE_PRINTER = printer_value(Source.INTRIGUE, "battlefield_research")
 CONFIG = RulesetConfig(bloodlines=True, tech_module=True, choam_module=True)
 
 
@@ -81,7 +85,13 @@ def act(state: GameState, action_id: str, **args: object) -> GameState:
 
 
 def buy(state: GameState, tech_id: str) -> GameState:
-    opened = push_tech_acquisition(state, 0, discount=0, source=f"test:{tech_id}").state
+    opened = push_tech_acquisition(
+        state,
+        0,
+        discount=0,
+        source=f"test:{tech_id}",
+        printer=ACQUIRE_PRINTER,
+    ).state
     return act(opened, "acquire_tech", tech_id=tech_id)
 
 
@@ -130,7 +140,9 @@ def test_purchase_never_pays_any_acquire_reward(tile: object) -> None:
     assert isinstance(tile, TechTile)
     state = turn(tile.tech_id, spy_post_ids=("arrakis-deep-desert",), spies_supply=2)
     before = state.players[0]
-    opened = push_tech_acquisition(state, 0, discount=0, source="test").state
+    opened = push_tech_acquisition(
+        state, 0, discount=0, source="test", printer=ACQUIRE_PRINTER
+    ).state
     bought = act(opened, "acquire_tech", tech_id=tile.tech_id)
     after = bought.players[0]
     assert after.resources.solari == before.resources.solari

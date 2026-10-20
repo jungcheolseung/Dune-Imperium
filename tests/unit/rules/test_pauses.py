@@ -347,7 +347,8 @@ def _to_round_start(engine: UprisingRulesEngine, state: GameState) -> RuleResult
         else:
             assert frame.kind == FrameKind.CONFLICT_END_TRIGGER
             assert isinstance(frame.decision, PlayerDecision)
-            transition = engine.apply(
+            transition = apply_whole(
+                engine,
                 state,
                 DomainAction(
                     action_id="decline_conflict_end_intrigue",

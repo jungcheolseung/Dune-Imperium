@@ -788,9 +788,11 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     # moved seed 0 off it (the Scouts windows are target rows too, and a
     # base file has trained logits for the rows they share with other
     # effects; only a Scouts-only window such as a subcommittee or a mission
-    # stays untrained-only); seed 1 is the first that meets one, both before
-    # and after the split at 35.
-    game_seed = 1 if expansion == "arrakeen_scouts" else 3
+    # stays untrained-only). Stage B3d-3 resized the catalog (the refusals
+    # are rows now), so the seeded test network and with it the game of seed
+    # 1 changed and no longer meets one; seed 0 is the first that does, at
+    # the seat's 17th decision, between the splits at 9 and 35.
+    game_seed = 0 if expansion == "arrakeen_scouts" else 3
     decided = _search_seat_game(
         seat_agent(), config, seed=game_seed, seat=1, count=66
     )

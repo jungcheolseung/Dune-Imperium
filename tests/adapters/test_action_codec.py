@@ -11,7 +11,13 @@ from dune_imperium.adapters.action_codec import (
     _scouts_templates,
     catalog_spaces,
 )
-from dune_imperium.content.arrakeen_scouts import missions_for, scouts_pool
+from dune_imperium.content.arrakeen_scouts import (
+    AUCTIONS,
+    EVENTS,
+    SALES,
+    missions_for,
+    scouts_pool,
+)
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
@@ -23,7 +29,7 @@ from dune_imperium.rules.effect_steps import (
     TARGET_SPECS,
     steps_for,
 )
-from dune_imperium.rules.scouts_effects import scouts_spy_items
+from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.simulation import run_random_round
 
 _SCOUTS_ACTION_PREFIXES = (
@@ -206,13 +212,20 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # rewards, a control defense, a reward's payment) join (54).
         - 1466
         + 54
+        # v150 (stage B3d-3): every refusal and empty confirmation is one of
+        # two effect rows (``decline`` or ``confirm_empty``, naming the
+        # effect answered and its place): the refusals' whole templates
+        # leave (37; four of them the dead ``decline_reveal_*`` ids no
+        # handler answered) and the rows that stand for them join (100).
+        - 37
+        + 100
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
     # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
     # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778,
-    # stage B3d-2a's net -1,412 to 1,366.
-    assert first.size == 1366
+    # stage B3d-2a's net -1,412 to 1,366, stage B3d-3's net +63 to 1,429.
+    assert first.size == 1429
 
 
 def _scouts_step_rows(
@@ -265,7 +278,10 @@ def _scouts_catalog_additions(
     catalogs add the ones no catalog without the option holds (a
     subcommittee, a mission, a bid above the base counts, a secret pick or a
     market slot as an option, the High Council's and the missions' ``join``
-    rows); a faction, a card, a post or a space is held already.
+    rows); a faction, a card, a post or a space is held already. Stage
+    B3d-3: the Scouts refusals' whole templates are not in the catalog
+    either; their ``decline`` and ``confirm_empty`` rows are
+    (``_scouts_refusal_rows``).
     """
 
     held = set(ActionCodec(replace(config, arrakeen_scouts=False)).catalog)
@@ -304,7 +320,39 @@ def _scouts_catalog_additions(
         maker_row,
         *spy_rows,
         *window_rows,
+        *_scouts_refusal_rows(config),
     } - held
+
+
+def _scouts_refusal_rows(config: RulesetConfig) -> set[ActionTemplate]:
+    """The rows that stand for the refusals and empty confirmations naming a
+    Scouts item (stage B3d-3): every refusal is a ``decline`` and every
+    empty confirmation a ``confirm_empty``, naming the effect answered
+    (``of``) and the item that printed it. ``decline_subcommittee`` and
+    ``scouts_decline_mission`` refuse a join (the High Council's list, a
+    mission), ``scouts_decline_card`` an auction's acquire,
+    ``resolve_scouts_choice_without_option`` an event's or sale's choice, the
+    optional trash window's refusal a trash, and the Spy placement window's
+    empty confirmation a Scouts line's Spy."""
+
+    missions = missions_for(
+        scouts_pool(immortality=config.immortality), choam=config.choam_module
+    )
+
+    def row(action_id: str, of: str, printed: str) -> ActionTemplate:
+        return ActionTemplate(
+            action_id, (("of", of), ("printed", printed), ("source", "scouts"))
+        )
+
+    return {
+        row("decline", "join", "high_council"),
+        *(row("decline", "join", mission.mission_id) for mission in missions),
+        *(row("decline", "acquire", auction.auction_id) for auction in AUCTIONS),
+        *(row("confirm_empty", "choose", event.event_id) for event in EVENTS),
+        *(row("confirm_empty", "choose", sale.sale_id) for sale in SALES),
+        *(row("decline", "trash", item) for item in scouts_trash_items()),
+        *(row("confirm_empty", "place_spy", item) for item in scouts_spy_items()),
+    }
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -352,6 +400,24 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert ActionTemplate(
             "join", (("printed", "high_council"), ("source", "scouts"))
         ) in set(with_scouts.catalog)
+        # Stage B3d-3: so did the Scouts refusals' and empty confirmations'
+        # (the optional trash window's refusal too, which the Scouts
+        # catalogs once held whole beside the Bloodlines and Immortality
+        # ones); their rows join instead.
+        refusal_ids = {
+            "decline_subcommittee",
+            "scouts_decline_mission",
+            "scouts_decline_card",
+            "resolve_scouts_choice_without_option",
+        }
+        assert refusal_ids <= {t.action_id for t in scouts_only}
+        assert not any(
+            t.action_id in {*refusal_ids, "decline_optional_trash"}
+            for t in with_scouts.catalog
+        )
+        refusal_rows = _scouts_refusal_rows(scouts_config)
+        assert refusal_rows <= set(with_scouts.catalog)
+        assert {t.action_id for t in refusal_rows} == {"decline", "confirm_empty"}
         step_rows = _scouts_step_rows(scouts_config, scouts_only)
         assert step_rows
         for row in step_rows:
@@ -362,9 +428,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
                 row.action_id, row.arguments
             )
             assert with_scouts.encode(with_scouts.decode(index, actor=0)) == index
-    assert ActionCodec(RulesetConfig()).size == 1366
+    assert ActionCodec(RulesetConfig()).size == 1429
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 1366 + len(
+    assert ActionCodec(base_scouts).size == 1429 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -537,6 +603,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # Contract picks and Spy windows' among them) and 79 rows join.
         - 1577
         + 79
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` or ``confirm_empty`` row (see test_catalog_is_fixed...):
+        # 39 whole templates leave and 105 rows join.
+        - 39
+        + 105
     )
 
     try:
@@ -599,17 +670,32 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     )
     assert recall_conflict_contract == conflict_target
     # v125 (L2): only the Bloodlines Immediate can be out of reach (OQ-059).
+    # Stage B3d-3: the Contract market's empty confirmations are the
+    # ``confirm_empty`` row of the market (``hold`` beside it when the icons
+    # wait), and the whole templates left the catalog.
     hold_icons = DomainAction(action_id="hold_contract_icons", actor=1)
     fizzle_icons = DomainAction(
         action_id="resolve_contract_icons_without_contract", actor=1
     )
+    market = (("printed", "contract_market"), ("source", "contract"))
+    (hold_row,) = steps_for(hold_icons)
+    (fizzle_row,) = steps_for(fizzle_icons)
+    assert hold_row == DomainAction(
+        "confirm_empty",
+        1,
+        (("of", "take"), ("option", "hold"), *market),
+    )
+    assert fizzle_row == DomainAction("confirm_empty", 1, (("of", "take"), *market))
+    for whole in (hold_icons, fizzle_icons):
+        with pytest.raises(ValueError, match="not present"):
+            both.encode(whole)
     actions = (
         take_contract,
         trash_intrigue,
         *recall_conflict_privilege,
         *recall_conflict_agent_card,
-        hold_icons,
-        fizzle_icons,
+        hold_row,
+        fizzle_row,
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
@@ -736,6 +822,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # rows join.
         - 2890
         + 195
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` or ``confirm_empty`` row (see test_catalog_is_fixed...):
+        # 48 whole templates leave and 164 rows join.
+        - 48
+        + 164
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -792,9 +883,10 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
         "source": "contract",
     }
     assert recall_row == place_row
-    # The refusal stays as it is; a revealed Contract card's choices are
-    # effect rows naming the card type that printed them (an effect without
-    # a target is one row).
+    # Stage B3d-3: the refusal is the ``decline`` row of the Spy placement,
+    # naming the Contract that printed the Spy icon; a revealed Contract
+    # card's choices are effect rows naming the card type that printed them
+    # (an effect without a target is one row).
     decline = DomainAction(action_id="decline_contract_spy", actor=1)
     keep = DomainAction(
         action_id="keep_contract_reveal_spice",
@@ -806,12 +898,21 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
         actor=1,
         arguments=(("source", "priority_contracts"),),
     )
-    assert codec.decode(codec.encode(decline), actor=1) == decline
+    (decline_row,) = _round_trip_steps(codec, decline, "contract:arrakeen_ii")
+    assert decline_row == DomainAction(
+        action_id="decline",
+        actor=1,
+        arguments=(
+            ("of", "place_spy"),
+            ("printed", "contract:arrakeen_ii"),
+            ("source", "contract"),
+        ),
+    )
     (keep_row,) = _round_trip_steps(codec, keep)
     (trash_row,) = _round_trip_steps(codec, trash)
     assert keep_row.action_id == "keep"
     assert trash_row.action_id == "trash"
-    for whole in (place, recall, keep, trash):
+    for whole in (place, recall, decline, keep, trash):
         with pytest.raises(ValueError, match="not present"):
             codec.encode(whole)
 
@@ -830,13 +931,54 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
     )
     recall_first = steps_for(recall_whole, "seize_spice_refinery")
     assert [row.action_id for row in recall_first] == ["recall_spy", "choose_post"]
-    actions = (
-        DomainAction(action_id="decline_combat_reward_spy", actor=2),
-        *recall_first,
-        DomainAction(action_id="decline_leader_spy_placement", actor=2),
-        DomainAction(action_id="decline_acquisition_spy", actor=2),
-        DomainAction(action_id="decline_agent_card_spy", actor=2),
+    # Stage B3d-3: each decline is the ``decline`` row of the Spy placement it
+    # refuses (``of=place_spy``), naming the Conflict card (and its icon),
+    # leader, acquired card or Agent card that printed the Spy icon.
+    declines: tuple[tuple[DomainAction, str, str, dict[str, str]], ...] = (
+        (
+            DomainAction(action_id="decline_combat_reward_spy", actor=2),
+            "seize_spice_refinery",
+            "conflict",
+            {"icon": "spy"},
+        ),
+        (
+            DomainAction(action_id="decline_leader_spy_placement", actor=2),
+            "feyd_rautha_harkonnen",
+            "leader",
+            {},
+        ),
+        (
+            DomainAction(action_id="decline_acquisition_spy", actor=2),
+            "guild_spy",
+            "acquisition",
+            {},
+        ),
+        (
+            DomainAction(action_id="decline_agent_card_spy", actor=2),
+            "double_agent",
+            "agent_card",
+            {},
+        ),
     )
+    decline_rows = []
+    for whole, printed, source, extra in declines:
+        (row,) = steps_for(whole, printed, icon=extra.get("icon"))
+        assert row == DomainAction(
+            action_id="decline",
+            actor=2,
+            arguments=tuple(
+                sorted(
+                    {
+                        "of": "place_spy",
+                        "printed": printed,
+                        "source": source,
+                        **extra,
+                    }.items()
+                )
+            ),
+        )
+        decline_rows.append(row)
+    actions = (*decline_rows, *recall_first)
     for config in (
         RulesetConfig(),
         RulesetConfig(choam_module=True),
@@ -845,8 +987,9 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
         codec = ActionCodec(config)
         for action in actions:
             assert codec.decode(codec.encode(action), actor=2) == action
-        with pytest.raises(ValueError, match="not present"):
-            codec.encode(recall_whole)
+        for whole in (recall_whole, *(decline[0] for decline in declines)):
+            with pytest.raises(ValueError, match="not present"):
+                codec.encode(whole)
 
 
 def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
@@ -966,7 +1109,8 @@ def test_desert_power_reveal_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig())
     # Stage B3d-2a: the Reveal choice window (opened for one effect) offers
     # the water payment as the effect row of the card that prints it (an
-    # effect without a target is one row); the refusal stays as it is.
+    # effect without a target is one row). Stage B3d-3: the refusal is the
+    # ``decline`` row of the payment it refuses, naming the same card.
     pay = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=2)
     (pay_row,) = _round_trip_steps(codec, pay)
     assert pay_row == DomainAction(
@@ -975,9 +1119,19 @@ def test_desert_power_reveal_choices_round_trip() -> None:
         arguments=(("printed", "desert_power"), ("source", "reveal_card")),
     )
     decline = DomainAction(action_id="decline_reveal_sandworm", actor=0)
-    assert codec.decode(codec.encode(decline), actor=0) == decline
-    with pytest.raises(ValueError, match="not present"):
-        codec.encode(pay)
+    (decline_row,) = _round_trip_steps(codec, decline)
+    assert decline_row == DomainAction(
+        action_id="decline",
+        actor=0,
+        arguments=(
+            ("of", "pay"),
+            ("printed", "desert_power"),
+            ("source", "reveal_card"),
+        ),
+    )
+    for whole in (pay, decline):
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole)
 
 
 def test_long_live_the_fighters_choices_round_trip() -> None:

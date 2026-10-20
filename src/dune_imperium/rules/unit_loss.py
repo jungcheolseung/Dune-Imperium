@@ -23,6 +23,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.action_shapes import PRINTER_KEY
 from dune_imperium.rules.combat_deployment import release_undeployable_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -163,8 +164,11 @@ def opponent_unit_loss_frames(
     actor: int,
     *,
     source: str,
+    printer: str,
 ) -> RuleResult:
-    """Push one unit-loss decision for every opponent of ``actor``.
+    """Push one unit-loss decision for every opponent of ``actor``;
+    ``printer`` is the card that makes them lose it
+    (``action_shapes.printer_value``; stage B3d-3).
 
     Every opponent is asked, clockwise from the next seat (the frames are
     pushed so that seat decides first), even with a single (zone, unit) to
@@ -185,7 +189,11 @@ def opponent_unit_loss_frames(
                     else "No unit to lose"
                 ),
             ),
-            context=(("player", seat), ("source", f"{source}:unit_loss:{seat}")),
+            context=(
+                ("player", seat),
+                (PRINTER_KEY, printer),
+                ("source", f"{source}:unit_loss:{seat}"),
+            ),
         )
         for seat in opponent_seats(state, actor)
     )

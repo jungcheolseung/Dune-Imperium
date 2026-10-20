@@ -1532,6 +1532,12 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # its target rows: 1,466 whole templates leave and 54 rows join.
         - 1466
         + 54
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` / ``confirm_empty`` row naming the effect it answers: 37
+        # whole templates leave (five of them ids no handler ever answered)
+        # and 100 rows join.
+        - 37
+        + 100
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an

@@ -1161,9 +1161,18 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
     # more for the 28 rows of the Reveal frame's effects, stage B3c-1 73 for
     # the 26 rows of played cards, stage B3d-1 228 for the 68 rows of the
     # windows that offer several effects at once, stage B3d-2a 1,466 for the
-    # 54 rows of the windows opened for one effect.
+    # 54 rows of the windows opened for one effect, stage B3d-3 37 whole
+    # refusal templates (five of them ids no handler ever answered) for the
+    # 100 ``decline`` / ``confirm_empty`` rows that name the effect they answer.
     assert ActionCodec(RulesetConfig()).size == (
-        2917 + 14 + (964 - 792) + (28 - 146) + (26 - 73) + (68 - 228) + (54 - 1466)
+        2917
+        + 14
+        + (964 - 792)
+        + (28 - 146)
+        + (26 - 73)
+        + (68 - 228)
+        + (54 - 1466)
+        + (100 - 37)
     )
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)

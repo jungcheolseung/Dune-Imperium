@@ -33,6 +33,15 @@ def _ids(actions: tuple[DomainAction, ...]) -> list[str]:
     return [action.action_id for action in actions]
 
 
+# Stage B3d-3: the window shows its refusal as the refusal row naming the
+# deployment it declines and the board space that asks it.
+_DECLINE_DEFENSE = DomainAction(
+    action_id="decline",
+    actor=2,
+    arguments=(("of", "deploy"), ("printed", "arrakeen"), ("source", "board_space")),
+)
+
+
 def _controlled_round_start(
     *, troops_supply: int, specimens: int, config: RulesetConfig = IMMORTALITY
 ) -> GameState:
@@ -63,10 +72,14 @@ def test_a_defender_with_only_specimens_may_return_one_for_the_troop() -> None:
     engine = UprisingRulesEngine()
     state = _controlled_round_start(troops_supply=0, specimens=2)
     assert state.decision_stack[-1].kind == FrameKind.CONTROL_DEFENSE
-    assert _ids(engine.legal_actions(state, 2)) == [
+    assert _ids(engine.whole_actions(state, 2)) == [
         "decline_control_defense",
         "return_specimen",
     ]
+    assert engine.legal_actions(state, 2) == (
+        _DECLINE_DEFENSE,
+        *legal_specimen_return_actions(state, 2),
+    )
 
     (returned,) = legal_specimen_return_actions(state, 2)
     after_return = engine.apply(state, returned).state
@@ -110,10 +123,14 @@ def test_a_defender_whose_supply_emptied_meanwhile_may_return_a_specimen() -> No
     )
     state = replace(state, players=(*state.players[:2], emptied, state.players[3]))
 
-    assert _ids(engine.legal_actions(state, 2)) == [
+    assert _ids(engine.whole_actions(state, 2)) == [
         "decline_control_defense",
         "return_specimen",
     ]
+    assert engine.legal_actions(state, 2) == (
+        _DECLINE_DEFENSE,
+        *legal_specimen_return_actions(state, 2),
+    )
 
 
 def test_no_defense_opens_without_a_troop_or_a_specimen() -> None:

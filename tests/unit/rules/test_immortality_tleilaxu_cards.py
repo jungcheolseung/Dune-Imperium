@@ -905,8 +905,10 @@ def _subversive_ghola_on_desert_tactics() -> GameState:
     _, context = current_agent_effect_context(grafted)
     # Both boxes are Subversive Advisor's, so both hold the space's 1.
     assert context["pending_faction_influence"] is False
-    return UprisingRulesEngine().apply(
-        grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
+    return apply_whole(
+        UprisingRulesEngine(),
+        grafted,
+        DomainAction(action_id="decline_gather_intelligence", actor=0),
     ).state
 
 

@@ -65,6 +65,7 @@ from dune_imperium.display.unavailable import (
     unavailable_choices,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue, resolve_combat_rewards
@@ -2260,7 +2261,12 @@ def _unit_loss(**fields: Any) -> GameState:
     state = _state(PlayerState(player_id=0), config=RulesetConfig(bloodlines=True))
     loser = PlayerState(player_id=1, **fields)
     state = replace(state, players=(state.players[0], loser, *state.players[2:]))
-    pushed = opponent_unit_loss_frames(state, 0, source="holy_war").state
+    pushed = opponent_unit_loss_frames(
+        state,
+        0,
+        source="holy_war",
+        printer=printer_value(Source.AGENT_CARD, "holy_war"),
+    ).state
     assert pushed.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
     return pushed
 
@@ -2577,10 +2583,14 @@ def test_an_acquire_tech_with_every_stack_empty_greys_the_acquisition() -> None:
     acquisition shows greyed out with the reason."""
     from dune_imperium.rules.tech import push_tech_acquisition
 
+    # The Intrigue card granting the Acquire Tech (stage B3d-3: the printer).
+    printer = printer_value(Source.INTRIGUE, "battlefield_research")
     config = RulesetConfig(bloodlines=True, tech_module=True)
     owner = PlayerState(player_id=0, resources=Resources(spice=9))
     state = _state(owner, config=config, tech_stacks=((), (), ()))
-    opened = push_tech_acquisition(state, 0, discount=1, source="test").state
+    opened = push_tech_acquisition(
+        state, 0, discount=1, source="test", printer=printer
+    ).state
     assert ENGINE.whole_actions(opened, 0) == (
         DomainAction(action_id="decline_tech", actor=0),
     )
@@ -2605,6 +2615,7 @@ def test_an_acquire_tech_with_every_stack_empty_greys_the_acquisition() -> None:
         0,
         discount=1,
         source="test",
+        printer=printer,
     ).state
     assert unavailable_choices(stocked, 0, ENGINE.whole_actions(stocked, 0)) is None
 

@@ -239,9 +239,21 @@ def test_a_due_line_the_seat_cannot_pay_asks_it_to_take_nothing() -> None:
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
     assert _owner(state) == 2
     nothing = DomainAction(action_id=SCOUTS_NO_OPTION, actor=2)
-    assert ENGINE.legal_actions(state, 2) == (nothing,)
+    assert ENGINE.whole_actions(state, 2) == (nothing,)
+    # Stage B3d-3: the seat is shown that confirmation as the empty-confirmation
+    # row naming the choice it answers and the mission that opened it.
+    shown = DomainAction(
+        action_id="confirm_empty",
+        actor=2,
+        arguments=(
+            ("of", "choose"),
+            ("printed", "covert_operation"),
+            ("source", "scouts"),
+        ),
+    )
+    assert ENGINE.legal_actions(state, 2) == (shown,)
     codec = ActionCodec(SCOUTS)
-    assert codec.decode(codec.encode(nothing), 2) == nothing
+    assert codec.decode(codec.encode(shown), 2) == shown
     garrison = state.players[2].troops_garrison
     before = len(state.event_log)
     state = _act(state, SCOUTS_NO_OPTION)

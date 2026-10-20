@@ -44,7 +44,7 @@ class Verb(StrEnum):
     # Resolve a pending effect that needs no further choice.
     RESOLVE = "resolve"
     # Confirm a pending effect that has nothing to act on now.
-    RESOLVE_EMPTY = "resolve_empty"
+    CONFIRM_EMPTY = "confirm_empty"
     # Refuse an optional effect.
     DECLINE = "decline"
     # Gain a card, tile or Commander, paying what it costs.
@@ -224,6 +224,8 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
             "count",
             "destroy_shield_wall",
             "icon",
+            # The effect a refusal or an empty confirmation answers (B3d-3).
+            "of",
             "option",
             "printed",
             "zone",
@@ -247,7 +249,7 @@ class ActionShape:
     tag: Tag | None = None
 
     def __post_init__(self) -> None:
-        if self.of is not None and self.verb not in (Verb.DECLINE, Verb.RESOLVE_EMPTY):
+        if self.of is not None and self.verb not in (Verb.DECLINE, Verb.CONFIRM_EMPTY):
             raise ValueError("only a refusal or an empty confirmation answers a verb")
         if self.verb in self.also:
             raise ValueError("an extra verb repeats the row's verb")
@@ -421,7 +423,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_leader_card_trash": _row(_V.DECLINE, _S.LEADER, of=_V.TRASH, tag=_BOX),
     "decline_leader_signet_payment": _row(_V.DECLINE, _S.LEADER, of=_V.PAY, tag=_BOX),
     "resolve_leader_signet_without_option": _row(
-        _V.RESOLVE_EMPTY, _S.LEADER, of=_V.CHOOSE, tag=_BOX
+        _V.CONFIRM_EMPTY, _S.LEADER, of=_V.CHOOSE, tag=_BOX
     ),
     "decline_leader_spy_placement": _row(
         _V.DECLINE, _S.LEADER, of=_V.PLACE_SPY, tag=_BOX
@@ -478,7 +480,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.GAIN_INFLUENCE, _S.INTRIGUE, _T.FACTION, also=(_V.LOSE_INFLUENCE,)
     ),
     "resolve_intrigue_influence_without_faction": _row(
-        _V.RESOLVE_EMPTY, _S.INTRIGUE, of=_V.GAIN_INFLUENCE
+        _V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.GAIN_INFLUENCE
     ),
     "choose_intrigue_discard": _row(_V.DISCARD, _S.INTRIGUE, _T.PERSONAL_CARD),
     "detonate_shield_wall": _row(_V.DESTROY_SHIELD_WALL, _S.INTRIGUE),
@@ -501,7 +503,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.RECALL_SPY, _S.INTRIGUE, _T.POST, variant="for_placement"
     ),
     "decline_spy_placement": _row(
-        _V.RESOLVE_EMPTY, _S.INTRIGUE, of=_V.PLACE_SPY, variant="turn_space"
+        _V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.PLACE_SPY, variant="turn_space"
     ),
     # A peek at the top card of the deck: leave it, discard it, or draw it.
     "put_back_top_card": _row(_V.KEEP, _S.INTRIGUE, variant="deck_top"),
@@ -509,7 +511,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "draw_top_card_for_solari": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top"),
     "acquire_intrigue_imperium": _row(_V.ACQUIRE, _S.INTRIGUE, _T.IMPERIUM_CARD),
     "acquire_intrigue_reserve": _row(_V.ACQUIRE, _S.INTRIGUE, _T.RESERVE_CARD),
-    "skip_intrigue_acquisition": _row(_V.RESOLVE_EMPTY, _S.INTRIGUE, of=_V.ACQUIRE),
+    "skip_intrigue_acquisition": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.ACQUIRE),
     "acquire_intrigue_tleilaxu": _row(_V.ACQUIRE, _S.INTRIGUE, _T.TLEILAXU_CARD),
     "acquire_intrigue_reclaimed_forces": _row(
         _V.ACQUIRE, _S.INTRIGUE, _T.RECLAIMED_FORCES
@@ -552,12 +554,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.RECALL_AGENT, _S.BOARD_SPACE, variant="conflict"
     ),
     "resolve_imperial_privilege_without_recall": _row(
-        _V.RESOLVE_EMPTY, _S.BOARD_SPACE, of=_V.RECALL_AGENT
+        _V.CONFIRM_EMPTY, _S.BOARD_SPACE, of=_V.RECALL_AGENT
     ),
     "recall_spy_for_espionage": _row(_V.RECALL_SPY, _S.BOARD_SPACE, _T.POST),
     "resolve_espionage_place_spy": _row(_V.PLACE_SPY, _S.BOARD_SPACE, _T.POST),
     "resolve_espionage_without_spy": _row(
-        _V.RESOLVE_EMPTY, _S.BOARD_SPACE, of=_V.PLACE_SPY
+        _V.CONFIRM_EMPTY, _S.BOARD_SPACE, of=_V.PLACE_SPY
     ),
     # --- Spies and the Influence tracks --------------------------------------
     "gather_intelligence": _row(_V.RECALL_SPY, _S.SPY, _T.POST),
@@ -573,7 +575,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.GAIN_INFLUENCE, _S.CONFLICT, _T.FACTION, variant="distinct"
     ),
     "resolve_combat_influence_without_faction": _row(
-        _V.RESOLVE_EMPTY, _S.CONFLICT, of=_V.GAIN_INFLUENCE
+        _V.CONFIRM_EMPTY, _S.CONFLICT, of=_V.GAIN_INFLUENCE
     ),
     "place_combat_reward_spy": _row(_V.PLACE_SPY, _S.CONFLICT, _T.POST),
     "recall_spy_for_combat_reward": _row(_V.RECALL_SPY, _S.CONFLICT, _T.POST),
@@ -584,7 +586,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "trash_combat_reward_card": _row(_V.TRASH, _S.CONFLICT, _T.PERSONAL_CARD),
     "decline_combat_reward_trash": _row(_V.DECLINE, _S.CONFLICT, of=_V.TRASH),
     "resolve_combat_trash_without_card": _row(
-        _V.RESOLVE_EMPTY, _S.CONFLICT, of=_V.TRASH
+        _V.CONFIRM_EMPTY, _S.CONFLICT, of=_V.TRASH
     ),
     "deploy_control_defense": _row(_V.DEPLOY, _S.CONFLICT, variant="control_defense"),
     "decline_control_defense": _row(_V.DECLINE, _S.CONFLICT, of=_V.DEPLOY),
@@ -599,10 +601,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # Nothing in the market can be taken now: the icons wait, or fizzle
     # with an empty market (OQ-059).
     "hold_contract_icons": _row(
-        _V.RESOLVE_EMPTY, _S.CONTRACT, of=_V.TAKE, variant="hold"
+        _V.CONFIRM_EMPTY, _S.CONTRACT, of=_V.TAKE, variant="hold"
     ),
     "resolve_contract_icons_without_contract": _row(
-        _V.RESOLVE_EMPTY, _S.CONTRACT, of=_V.TAKE
+        _V.CONFIRM_EMPTY, _S.CONTRACT, of=_V.TAKE
     ),
     # Stage B3: a Contract's completion is its own effect row
     # (``rules.effect_steps``); the id is the whole action's too.
@@ -615,7 +617,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.RECALL_AGENT, _S.CONTRACT, variant="conflict"
     ),
     "resolve_contract_without_recall": _row(
-        _V.RESOLVE_EMPTY, _S.CONTRACT, of=_V.RECALL_AGENT
+        _V.CONFIRM_EMPTY, _S.CONTRACT, of=_V.RECALL_AGENT
     ),
     "trash_intrigue_for_contract": _row(_V.TRASH, _S.CONTRACT, _T.INTRIGUE_CARD),
     # --- A revealed card and the Reveal turn's gains -------------------------
@@ -641,7 +643,6 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "trash_reveal_card": _row(_V.TRASH, _S.REVEAL_CARD, _T.PERSONAL_CARD, tag=_SOURCE),
     "command_acquire_row_card": _row(_V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD),
-    "decline_command_acquisition": _row(_V.DECLINE, _S.REVEAL_CARD, of=_V.ACQUIRE),
     "place_reveal_spy": _row(_V.PLACE_SPY, _S.REVEAL_CARD, _T.POST, tag=_SOURCE),
     "recall_spy_for_reveal": _row(_V.RECALL_SPY, _S.REVEAL_CARD, _T.POST, tag=_SOURCE),
     "recall_spy_for_reveal_placement": _row(
@@ -687,19 +688,6 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resume_reveal_choice": _row(
         _V.CHOOSE, _S.REVEAL_CARD, _T.OPTION, variant="resume"
     ),
-    "decline_reveal_card_trash": _row(_V.DECLINE, _S.REVEAL_CARD, of=_V.TRASH),
-    "decline_reveal_influence_exchange": _row(
-        _V.DECLINE, _S.REVEAL_CARD, of=_V.EXCHANGE_INFLUENCE
-    ),
-    "decline_reveal_influence_loss": _row(
-        _V.DECLINE, _S.REVEAL_CARD, of=_V.LOSE_INFLUENCE
-    ),
-    "decline_reveal_spice_influence": _row(_V.DECLINE, _S.REVEAL_CARD, of=_V.PAY),
-    "decline_reveal_troop_move": _row(_V.DECLINE, _S.REVEAL_CARD, of=_V.DEPLOY),
-    "decline_reveal_troop_retreat": _row(_V.DECLINE, _S.REVEAL_CARD, of=_V.RETREAT),
-    "decline_reveal_troop_sacrifice": _row(
-        _V.DECLINE, _S.REVEAL_CARD, of=_V.LOSE_UNIT
-    ),
     # --- An acquired card's acquire effect -----------------------------------
     "place_acquisition_spy": _row(_V.PLACE_SPY, _S.ACQUISITION, _T.POST),
     "recall_spy_for_acquisition": _row(_V.RECALL_SPY, _S.ACQUISITION, _T.POST),
@@ -710,14 +698,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_skill": _row(_V.CHOOSE, _S.COMMANDER, _T.SKILL),
     "decline_skill": _row(_V.DECLINE, _S.COMMANDER, of=_V.CHOOSE),
     "resolve_commander_without_skill": _row(
-        _V.RESOLVE_EMPTY, _S.COMMANDER, of=_V.CHOOSE
+        _V.CONFIRM_EMPTY, _S.COMMANDER, of=_V.CHOOSE
     ),
     "trash_skill_for_strength": _row(_V.TRASH, _S.COMMANDER, _T.SKILL),
     # --- Tech tiles ----------------------------------------------------------
     "acquire_tech": _row(_V.ACQUIRE, _S.TECH, _T.TECH),
     "resolve_tech_acquire_effect": _row(_V.RESOLVE, _S.TECH, _T.TECH),
     "resolve_tech_influence_without_faction": _row(
-        _V.RESOLVE_EMPTY, _S.TECH, of=_V.GAIN_INFLUENCE
+        _V.CONFIRM_EMPTY, _S.TECH, of=_V.GAIN_INFLUENCE
     ),
     "decline_tech": _row(_V.DECLINE, _S.TECH, of=_V.ACQUIRE),
     "flip_tech": _row(_V.FLIP, _S.TECH, _T.TECH),
@@ -740,7 +728,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "lose_moved_spy": _row(_V.LOSE_SPY, _S.OPPONENT),
     "lose_unit": _row(_V.LOSE_UNIT, _S.OPPONENT, _T.UNITS),
     "resolve_unit_loss_without_unit": _row(
-        _V.RESOLVE_EMPTY, _S.OPPONENT, of=_V.LOSE_UNIT
+        _V.CONFIRM_EMPTY, _S.OPPONENT, of=_V.LOSE_UNIT
     ),
     # --- Draws a trigger earned ----------------------------------------------
     "draw_owed_card": _row(_V.DRAW, _S.TRIGGER),
@@ -766,7 +754,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "scouts_choose_option": _row(_V.CHOOSE, _S.SCOUTS, _T.OPTION),
     "scouts_pass": _row(_V.PASS, _S.SCOUTS),
     "resolve_scouts_choice_without_option": _row(
-        _V.RESOLVE_EMPTY, _S.SCOUTS, of=_V.CHOOSE
+        _V.CONFIRM_EMPTY, _S.SCOUTS, of=_V.CHOOSE
     ),
     "scouts_join_mission": _row(_V.JOIN, _S.SCOUTS, _T.MISSION),
     "scouts_decline_mission": _row(
@@ -823,6 +811,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             _V.GENERATE_SPECIMENS,
             # Stage B3d-2b: a new High Council seat's subcommittee.
             _V.JOIN,
+            # Stage B3d-3: a refusal and an empty confirmation, naming the
+            # effect they answer (``of``).
+            _V.DECLINE,
+            _V.CONFIRM_EMPTY,
         )
     },
     # A target row picks one target of the effect its seat picked.

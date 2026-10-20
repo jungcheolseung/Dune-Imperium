@@ -36,6 +36,10 @@ window's own effect is shown by its target rows alone (``TARGET_SPECS``,
 ``WINDOW_OWN``). Another effect offered beside it -- recalling a Spy first
 when the supply is empty, an Intrigue card's automatic rewards -- and an own
 effect with no target keep their effect row.
+
+A refusal or an empty confirmation (stage B3d-3, D-2) is the row ``decline``
+or ``confirm_empty`` naming the effect it answers: that effect's verb
+(``of``) and its place, as the effect's own row names it.
 """
 
 import json
@@ -169,6 +173,16 @@ class Printed(StrEnum):
     # Stage B3d-2b: the Arrakeen Scouts mission whose part the window offers
     # (its ``mission_id``).
     MISSION = "mission"
+    # Stage B3d-3: the Scouts item whose line, choice or market the frame
+    # offers (its ``item``).
+    SCOUTS_ITEM = "scouts_item"
+    # Stage B3d-3: what gives a Skill window its Commander: Plasteel Blades'
+    # tile, or the card whose trash acquires the bank's Commander (its
+    # ``card_id``).
+    SKILL_WINDOW = "skill_window"
+    # Stage B3d-3: the Tech tile whose acquire Influence waits in a Tech
+    # window's icons (``pending_tech_acquire_effects``).
+    TECH_PENDING = "tech_pending"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,7 +203,10 @@ class StepSpec:
     are the whole action's target arguments in the order they are picked,
     ``"=<value>"`` for a target the whole action's id itself names (the
     Conflict of a recall); an argument the whole action does not carry, or
-    carries empty, is no step of it.
+    carries empty, is no step of it. ``of`` is the verb of the effect a
+    refusal or an empty confirmation answers (stage B3d-3), or a table from
+    the row's icon (else its printed entity) to it. An ``icon`` of
+    ``"window"`` is read off the window (a Conflict reward's).
     """
 
     verb: Verb | Mapping[str, Verb]
@@ -198,6 +215,7 @@ class StepSpec:
     icon: str = ""
     option: str = ""
     targets: tuple[tuple[str, Choose], ...] = ()
+    of: Verb | Mapping[str, Verb] | None = None
 
 
 _ARG = "arg:"
@@ -212,8 +230,12 @@ def _spec(
     icon: str = "",
     option: str = "",
     targets: tuple[tuple[str, Choose], ...] = (),
+    of: Verb | Mapping[str, Verb] | None = None,
 ) -> StepSpec:
-    return StepSpec(verb, source, printed, icon, option, targets)
+    return StepSpec(verb, source, printed, icon, option, targets, of)
+
+
+_WINDOW_ICON: Final = "window"
 
 
 _V = Verb
@@ -314,6 +336,16 @@ _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "troops": _V.RECRUIT,
     "victory_points": _V.GAIN,
 })
+
+# What a research space's bonus does (``immortality.ResearchBonus``): the
+# effect its refusal answers.
+_RESEARCH_BONUS_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
+    "c6r6": _V.GAIN_INFLUENCE,
+    "c7r3": _V.TRASH,
+    "c8r6": _V.PAY,
+})
+_D = _V.DECLINE
+_E = _V.CONFIRM_EMPTY
 
 STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # --- A personal card's Agent box (a Signet Ring's: the leader's) --------
@@ -734,6 +766,152 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "scouts_join_mission": _spec(
         _V.JOIN, _S.SCOUTS, Printed.MISSION, targets=(("target", _C.MISSION),)
     ),
+    # --- Refusals and empty confirmations (stage B3d-3, D-2) -------------------
+    # ``decline`` and ``confirm_empty``, each naming the effect it answers: its
+    # verb (``of``) and the place its own row names.
+    # An Agent box's (a Signet Ring box's: the leader's).
+    "decline_agent_card_acquisition": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.ACQUIRE),
+    "decline_agent_card_discard": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.DISCARD),
+    "decline_agent_card_intrigue_payment": _spec(
+        _D, _S.AGENT_CARD, _BOX, of=_V.PAY
+    ),
+    "decline_agent_card_payment": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.PAY),
+    "decline_corrinth_city_payment": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.PAY),
+    "decline_agent_card_spy": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.PLACE_SPY),
+    "decline_agent_card_recall": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.RECALL_AGENT),
+    "decline_agent_card_trash": _spec(_D, _S.AGENT_CARD, _BOX, of=_V.TRASH),
+    # The leader's.
+    "decline_leader_signet_payment": _spec(_D, _S.LEADER, _LEADER, of=_V.PAY),
+    "decline_leader_spy_placement": _spec(_D, _S.LEADER, _LEADER, of=_V.PLACE_SPY),
+    "decline_leader_card_trash": _spec(_D, _S.LEADER, _LEADER, of=_V.TRASH),
+    "resolve_leader_signet_without_option": _spec(
+        _E, _S.LEADER, _LEADER, of=_V.CHOOSE
+    ),
+    # A visited space's, a controlled space's, Gather Intelligence's.
+    "resolve_espionage_without_spy": _spec(
+        _E, _S.BOARD_SPACE, _SPACE, icon="spy", of=_V.PLACE_SPY
+    ),
+    "resolve_imperial_privilege_without_recall": _spec(
+        _E, _S.BOARD_SPACE, _SPACE, icon="imperial_privilege", of=_V.RECALL_AGENT
+    ),
+    "decline_control_defense": _spec(_D, _S.BOARD_SPACE, _SPACE, of=_V.DEPLOY),
+    "decline_gather_intelligence": _spec(_D, _S.SPY, _SPACE, of=_V.RECALL_SPY),
+    # A revealed card's.
+    "decline_reveal_sandworm": _spec(
+        _D, _S.REVEAL_CARD, "=desert_power", of=_V.PAY
+    ),
+    "decline_reveal_spy_recall": _spec(
+        _D, _S.REVEAL_CARD, "source", of=_V.RECALL_SPY
+    ),
+    # An Intrigue card's slot, a Navigation card's option, the Conflict-end
+    # window's play (no one card prints it: the window, as its play row).
+    "decline_intrigue_tleilaxu": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.ACQUIRE
+    ),
+    "skip_intrigue_acquisition": _spec(
+        _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.ACQUIRE
+    ),
+    "keep_shield_wall": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.DESTROY_SHIELD_WALL
+    ),
+    "resolve_intrigue_influence_without_faction": _spec(
+        _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.GAIN_INFLUENCE
+    ),
+    "decline_intrigue_spy": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.PLACE_SPY
+    ),
+    "decline_intrigue_trash": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.TRASH
+    ),
+    "decline_navigation": _spec(_D, _S.LEADER, Printed.INTRIGUE_CARD, of=_V.PLAY),
+    "decline_conflict_end_intrigue": _spec(
+        _D, _S.INTRIGUE, "=conflict_end", of=_V.PLAY
+    ),
+    # A Conflict card's reward icon, read off its window.
+    "decline_combat_reward": _spec(
+        _D,
+        _S.CONFLICT,
+        Printed.CONFLICT_CARD,
+        icon=_WINDOW_ICON,
+        of=_COMBAT_ICON_VERBS,
+    ),
+    "decline_combat_reward_spy": _spec(
+        _D,
+        _S.CONFLICT,
+        Printed.CONFLICT_CARD,
+        icon=_WINDOW_ICON,
+        of=_COMBAT_ICON_VERBS,
+    ),
+    "decline_combat_reward_trash": _spec(
+        _D,
+        _S.CONFLICT,
+        Printed.CONFLICT_CARD,
+        icon=_WINDOW_ICON,
+        of=_COMBAT_ICON_VERBS,
+    ),
+    "resolve_combat_trash_without_card": _spec(
+        _E,
+        _S.CONFLICT,
+        Printed.CONFLICT_CARD,
+        icon=_WINDOW_ICON,
+        of=_COMBAT_ICON_VERBS,
+    ),
+    "resolve_combat_influence_without_faction": _spec(
+        _E,
+        _S.CONFLICT,
+        Printed.CONFLICT_CARD,
+        icon=_WINDOW_ICON,
+        of=_COMBAT_ICON_VERBS,
+    ),
+    # An acquired card's, a Contract's, the Spy placement window's.
+    "decline_acquisition_spy": _spec(
+        _D, _S.ACQUISITION, Printed.ACQUIRED_CARD, of=_V.PLACE_SPY
+    ),
+    "decline_contract_spy": _spec(
+        _D, _S.CONTRACT, Printed.CONTRACT, of=_V.PLACE_SPY
+    ),
+    "resolve_contract_without_recall": _spec(
+        _E, _S.CONTRACT, Printed.CONTRACT, of=_V.RECALL_AGENT
+    ),
+    "decline_spy_placement": _spec(_E, _S.REF, Printed.WINDOW, of=_V.PLACE_SPY),
+    # The Contract market's (the market, as a Reveal purchase names its own):
+    # its icons held for later, or lapsed in Combat.
+    "hold_contract_icons": _spec(
+        _E, _S.CONTRACT, "=contract_market", option="hold", of=_V.TAKE
+    ),
+    "resolve_contract_icons_without_contract": _spec(
+        _E, _S.CONTRACT, "=contract_market", of=_V.TAKE
+    ),
+    # A research space's bonus.
+    "decline_research_bonus": _spec(
+        _D, _S.RESEARCH, Printed.RESEARCH_SPACE, of=_RESEARCH_BONUS_VERBS
+    ),
+    # A card's Acquire Tech, a Tech tile's acquire Influence.
+    "decline_tech": _spec(_D, _S.REF, Printed.WINDOW, of=_V.ACQUIRE),
+    "resolve_tech_influence_without_faction": _spec(
+        _E, _S.TECH, Printed.TECH_PENDING, of=_V.GAIN_INFLUENCE
+    ),
+    # A Commander's Skill: Plasteel Blades', or the bank Commander's.
+    "decline_skill": _spec(_D, _S.COMMANDER, Printed.SKILL_WINDOW, of=_V.CHOOSE),
+    "resolve_commander_without_skill": _spec(
+        _E, _S.COMMANDER, Printed.SKILL_WINDOW, of=_V.CHOOSE
+    ),
+    # An opponent's card that makes the seat lose a unit or move a Spy.
+    "resolve_unit_loss_without_unit": _spec(
+        _E, _S.REF, Printed.WINDOW, of=_V.LOSE_UNIT
+    ),
+    "lose_moved_spy": _spec(_E, _S.REF, Printed.WINDOW, of=_V.MOVE_SPY),
+    # An optional trash window's trash icon.
+    "decline_optional_trash": _spec(_D, _S.REF, Printed.WINDOW, of=_V.TRASH),
+    # Arrakeen Scouts: a subcommittee, a mission, a choice, a market card.
+    "decline_subcommittee": _spec(_D, _S.SCOUTS, "=high_council", of=_V.JOIN),
+    "scouts_decline_mission": _spec(_D, _S.SCOUTS, Printed.MISSION, of=_V.JOIN),
+    "resolve_scouts_choice_without_option": _spec(
+        _E, _S.SCOUTS, Printed.SCOUTS_ITEM, of=_V.CHOOSE
+    ),
+    "scouts_decline_card": _spec(
+        _D, _S.SCOUTS, Printed.SCOUTS_ITEM, of=_V.ACQUIRE
+    ),
 })
 
 _CONTRACT_TARGET = (("instance_id", _C.CONTRACT),)
@@ -996,7 +1174,60 @@ def printed_from_state(
         if not isinstance(mission, str):
             raise ValueError(f"{whole} has no mission")
         return spec.source, mission
+    if rule == Printed.SCOUTS_ITEM:
+        item = dict(state.decision_stack[-1].context).get("item")
+        if not isinstance(item, str):
+            raise ValueError(f"{whole} has no Scouts item")
+        return spec.source, item
+    if rule == Printed.SKILL_WINDOW:
+        giver: object = dict(state.decision_stack[-1].context).get("card_id")
+        if not isinstance(giver, str):
+            raise ValueError(f"{whole} has no Skill source")
+        if giver.startswith(_TECH_PREFIX):
+            return Source.TECH, giver.removeprefix(_TECH_PREFIX)
+        return spec.source, _card_type(giver)
+    if rule == Printed.TECH_PENDING:
+        pending = dict(state.decision_stack[-1].context).get(_TECH_PENDING_KEY, "")
+        assert isinstance(pending, str)
+        tiles = [
+            entry.split(":")[0]
+            for entry in pending.split(",")
+            if entry.endswith(":influence")
+        ]
+        if not tiles:
+            raise ValueError(f"{whole} has no Tech tile's Influence waiting")
+        return spec.source, tiles[0]
     return spec.source, _leader_face(state, whole)
+
+
+# Plasteel Blades' tile names its Skill window (``sardaukar``); a Tech window
+# keeps its tiles' owed acquire icons (``frames.TECH_ACQUIRE_PENDING_KEY``).
+_TECH_PREFIX: Final = "tech:"
+_TECH_PENDING_KEY: Final = "pending_tech_acquire_effects"
+# A Conflict reward's window by the icon whose choice it opens
+# (``combat.apply_combat_reward_icon``).
+_REWARD_WINDOW_ICONS: Final[Mapping[str, str]] = MappingProxyType({
+    FrameKind.COMBAT_REWARD_INFLUENCE: "choose_influence",
+    FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: "distinct_influence",
+    FrameKind.COMBAT_REWARD_SPY_RECALL: "optional_recall_spies",
+    FrameKind.COMBAT_REWARD_TRASH: "trash",
+})
+
+
+def window_icon(state: GameState) -> str:
+    """The Conflict reward icon whose window is on top (``"window"`` icons):
+    its payment's resource, its Spy's Deep Cover, else the window's own."""
+
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if frame.kind == FrameKind.COMBAT_REWARD_OPTIONAL:
+        return f"optional_{context['resource']}"
+    if frame.kind == FrameKind.COMBAT_REWARD_SPY:
+        return "deep_cover_spy" if context.get("deep_cover") is True else "spy"
+    icon = _REWARD_WINDOW_ICONS.get(frame.kind)
+    if icon is None:
+        raise ValueError(f"{frame.kind} is no Conflict reward window")
+    return icon
 
 
 def _research_space(state: GameState, whole: DomainAction) -> str:
@@ -1062,10 +1293,11 @@ def path_of(state: GameState, whole: DomainAction) -> tuple[DomainAction, ...] |
         # Not shown as steps (an optional trash window's row names no
         # printer).
         return None
+    icon = window_icon(state) if spec.icon == _WINDOW_ICON else None
     named = printed_from_state(state, whole)
     if named is None:
-        return steps_for(whole)
-    return steps_for(whole, named[1], named[0])
+        return steps_for(whole, icon=icon)
+    return steps_for(whole, named[1], named[0], icon=icon)
 
 
 def _printed_argument(spec: StepSpec) -> str:
@@ -1110,13 +1342,14 @@ def steps_for(
     source: Source | None = None,
     *,
     effect_row: bool = True,
+    icon: str | None = None,
 ) -> tuple[DomainAction, ...]:
     """``whole``'s steps; its printed entity (and the source, when a Signet
     Ring box names the leader) given when the state names them
     (``printed_from_state``). Without ``effect_row``, the target rows alone
     that stand for a window's own effect (module docstring), none when the
-    whole action names no target. The action codec builds its rows by
-    this."""
+    whole action names no target. ``icon`` is a ``"window"`` icon's
+    (``window_icon``). The action codec builds its rows by this."""
 
     targets = TARGET_SPECS.get(whole.action_id)
     if targets is not None:
@@ -1141,11 +1374,15 @@ def steps_for(
             if spec.printed.startswith(_FIXED)
             else arguments.pop(spec.printed, None)
         )
-    icon: ActionValue | None = None
-    if spec.icon.startswith(_ARG):
-        icon = arguments.pop(spec.icon.removeprefix(_ARG), None)
+    shown: ActionValue | None = None
+    if spec.icon == _WINDOW_ICON:
+        if icon is None:
+            raise ValueError(f"{whole} needs its window's icon")
+        shown = icon
+    elif spec.icon.startswith(_ARG):
+        shown = arguments.pop(spec.icon.removeprefix(_ARG), None)
     elif spec.icon:
-        icon = spec.icon
+        shown = spec.icon
     option: ActionValue | None = None
     if spec.option.startswith(_ARG):
         option = arguments.pop(spec.option.removeprefix(_ARG), None)
@@ -1158,7 +1395,7 @@ def steps_for(
     if isinstance(spec.verb, Verb):
         verb = spec.verb
     else:
-        key = "" if icon is None else icon
+        key = "" if shown is None else shown
         if not isinstance(key, str) or key not in spec.verb:
             raise ValueError(f"{whole} has no verb for its icon")
         verb = spec.verb[key]
@@ -1166,8 +1403,10 @@ def steps_for(
         ("printed", printed),
         ("source", (source or spec.source).value),
     ]
-    if icon is not None:
-        ref.append(("icon", icon))
+    if shown is not None:
+        ref.append(("icon", shown))
+    if spec.of is not None:
+        ref.append(("of", _refused(whole, spec.of, shown, printed).value))
     if option is not None:
         ref.append(("option", option))
     if box:
@@ -1177,6 +1416,23 @@ def steps_for(
         carried = _carried(arguments)
         return (_action(verb.value, whole.actor, [*ref, *carried]),)
     return (_action(verb.value, whole.actor, ref), *rows)
+
+
+def _refused(
+    whole: DomainAction,
+    of: Verb | Mapping[str, Verb],
+    icon: ActionValue | None,
+    printed: ActionValue,
+) -> Verb:
+    """The verb of the effect a refusal or an empty confirmation answers:
+    ``of``, or its entry for the row's icon (else its printed entity)."""
+
+    if isinstance(of, Verb):
+        return of
+    key = icon if icon is not None else printed
+    if not isinstance(key, str) or key not in of:
+        raise ValueError(f"{whole} answers no effect of {key!r}")
+    return of[key]
 
 
 def _target_rows(

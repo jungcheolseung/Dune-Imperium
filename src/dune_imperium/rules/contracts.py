@@ -1701,6 +1701,8 @@ def _pay_contract_icon(
                         ),
                     ),
                     context=(
+                        # The Contract its empty confirmation names (B3d-3).
+                        ("contract_id", instance_id),
                         ("excluded_space_id", excluded_space_id),
                         ("source", source),
                         ("turn_agent_in_conflict", in_conflict),

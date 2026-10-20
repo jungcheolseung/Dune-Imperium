@@ -33,6 +33,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import card_trash, turn_rows
 from dune_imperium.rules.acquisition import apply_reserve_acquisition
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_trash,
@@ -2994,7 +2995,21 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     assert asked.state.sardaukar_commanders_bank == 1
     confirm = DomainAction(action_id="resolve_commander_without_skill", actor=0)
     assert legal_skill_choice_actions(asked.state, 0) == (confirm,)
-    assert UprisingRulesEngine().legal_actions(asked.state, 0) == (confirm,)
+    # The rules offer that one confirmation; the seat is shown it as the
+    # empty-confirmation row naming the Commander's Skill choice (B3d-3).
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(asked.state, 0) == (confirm,)
+    assert engine.legal_actions(asked.state, 0) == (
+        DomainAction(
+            action_id="confirm_empty",
+            actor=0,
+            arguments=(
+                ("of", "choose"),
+                ("printed", "sardaukar_standard"),
+                ("source", "commander"),
+            ),
+        ),
+    )
     direct = apply_skill_choice(asked.state, confirm)
     assert direct.state.decision_stack[-1].kind == "agent_effects"
     assert direct.state.sardaukar_commanders_bank == 0
@@ -3752,7 +3767,13 @@ def test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat(
         decision=PlayerDecision(owner=actor, prompt="Choose a turn"),
     )
     state = replace(_state(seats[0]), players=seats, decision_stack=(turn,))
-    pushed = opponent_unit_loss_frames(state, actor, source="test")
+    # Holy War makes each opponent lose the unit (stage B3d-3: the printer).
+    pushed = opponent_unit_loss_frames(
+        state,
+        actor,
+        source="test",
+        printer=printer_value(Source.AGENT_CARD, "holy_war"),
+    )
     assert pushed.events == ()
     assert pushed.state.players == state.players
     added = pushed.state.decision_stack[len(state.decision_stack) :]
@@ -4073,6 +4094,10 @@ def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:
     assert not targets & set(REFINERY_POSTS)
 
 
+# Holy War moves the opposing Spies on its Agent's space (stage B3d-3).
+HOLY_WAR_PRINTER = printer_value(Source.AGENT_CARD, "holy_war")
+
+
 def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
     # All twelve Spies are out and every post not connected to Spice
     # Refinery is taken: the FAQ's destination [FAQ p. 2] does not exist, so
@@ -4103,7 +4128,9 @@ def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
         PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[8:11])),
     )
     state = replace(_state(seats[0]), players=seats)
-    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    pushed = turn_space_spy_frames(
+        state, 0, "spice_refinery", source="test", printer=HOLY_WAR_PRINTER
+    ).state
     actions = legal_spy_move_actions(pushed, 1)
     assert [a.action_id for a in actions] == ["lose_moved_spy"]
     lost = apply_spy_move(pushed, actions[0])
@@ -4152,7 +4179,9 @@ def test_forced_spy_moves_go_seat_by_seat_from_the_next_seat() -> None:
         PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[6:9])),
     )
     state = replace(_state(seats[0]), players=seats)
-    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    pushed = turn_space_spy_frames(
+        state, 0, "spice_refinery", source="test", printer=HOLY_WAR_PRINTER
+    ).state
     added = pushed.decision_stack[len(state.decision_stack) :]
     # Top of the stack first: seat 1's two moves, then seat 2's.
     owners = [
@@ -4518,6 +4547,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # (187).
         - 2621
         + 187
+        # v150 (stage B3d-3): every refusal and empty confirmation is shown as
+        # one of the effect rows ``decline`` and ``confirm_empty`` naming the
+        # effect it answers: 44 whole templates leave (the eight ids no handler
+        # ever answered among them) and 173 rows join.
+        - 44
+        + 173
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

@@ -40,9 +40,10 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import Transition
+from dune_imperium.rules.action_shapes import Source, Verb
 from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.effect_interpreter import option_unplayable_reason
-from dune_imperium.rules.effect_steps import TARGET_SPECS, steps_for
+from dune_imperium.rules.effect_steps import STEP_SPECS, TARGET_SPECS, steps_for
 from dune_imperium.rules.endgame import begin_endgame_intrigue
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -60,6 +61,18 @@ SUBJECT = "tleilaxu:subject_x_137:0"
 DECLINE_CONFLICT_END = DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
 FINISH_CONFLICT_END = DomainAction(action_id="finish_conflict_end_intrigue", actor=0)
 DECLINE_ACQUIRE = DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+# Stage B3d-3: the rows a seat is shown for those refusals -- ``decline``
+# naming the effect it answers (``of``) and the entity that printed it.
+DECLINE_CONFLICT_END_ROW = DomainAction(
+    "decline",
+    0,
+    (("of", "play"), ("printed", "conflict_end"), ("source", "intrigue")),
+)
+DECLINE_ACQUIRE_ROW = DomainAction(
+    "decline",
+    0,
+    (("of", "acquire"), ("printed", "harvest_cells"), ("source", "intrigue")),
+)
 
 
 def _intrigue(card_id: str) -> str:
@@ -338,9 +351,27 @@ def test_disguised_bureaucrat_confirms_an_influence_no_cube_can_take() -> None:
     assert done.state.players[0].resources.spice == 1
     assert card in done.state.intrigue_discard
     assert "intrigue_influence_unavailable" in {e.kind for e in done.events}
-    assert ActionCodec(IMMORTALITY).decode(
-        ActionCodec(IMMORTALITY).encode(confirm), 0
-    ) == confirm
+    # Stage B3d-3: the seat is shown the confirmation as ``confirm_empty``
+    # naming the effect it answers and the card, and the codec holds that
+    # row, not the whole template.
+    codec = ActionCodec(IMMORTALITY)
+    _round_trip(codec, confirm, "disguised_bureaucrat")
+    assert [
+        action
+        for action in UprisingRulesEngine().legal_actions(played, 0)
+        # (The card's automatic rewards are its ``resolve`` row.)
+        if action.action_id != "resolve"
+    ] == [
+        DomainAction(
+            "confirm_empty",
+            0,
+            (
+                ("of", "gain_influence"),
+                ("printed", "disguised_bureaucrat"),
+                ("source", "intrigue"),
+            ),
+        )
+    ]
 
 
 def test_shadowy_bargain_and_study_melange_split_plot_and_endgame() -> None:
@@ -873,14 +904,12 @@ def test_harvest_cells_in_hand_may_be_played_after_the_rewards() -> None:
     assert played.phase is GamePhase.COMBAT
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     assert played.players[0].specimens == 2
-    finished = engine.apply(
-        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
-    ).state
+    finished = apply_whole(engine, played, DECLINE_ACQUIRE).state
     assert card in finished.intrigue_discard
     assert finished.phase is not GamePhase.COMBAT
     assert finished.players[0].troops_conflict == 0
 
-    declined = engine.apply(window, actions[0]).state
+    declined = apply_whole(engine, window, actions[0]).state
     assert declined.phase is not GamePhase.COMBAT
     assert card in declined.players[0].intrigue_cards
     assert declined.players[0].specimens == 0
@@ -958,16 +987,25 @@ def _harvest_cells_offer(specimens: int, **extra: object) -> GameState:
     ).state
 
 
-def _round_trip(codec: ActionCodec, action: DomainAction) -> None:
+def _round_trip(
+    codec: ActionCodec, action: DomainAction, printed: str = "harvest_cells"
+) -> None:
     """A window opened for one effect offers its whole action by the target
     rows that stand for it (stage B3d-2a), so the rows round-trip through the
-    codec and the whole template is in no catalog; any other action
+    codec and the whole template is in no catalog; a refusal or empty
+    confirmation is the ``decline`` / ``confirm_empty`` row naming the effect
+    it answers and ``printed``, the card (stage B3d-3); any other action
     round-trips as it is."""
 
-    if action.action_id not in TARGET_SPECS:
+    spec = STEP_SPECS.get(action.action_id)
+    if action.action_id in TARGET_SPECS:
+        rows = steps_for(action, effect_row=False)
+    elif spec is not None and spec.verb in (Verb.DECLINE, Verb.CONFIRM_EMPTY):
+        rows = steps_for(action, printed, Source.INTRIGUE)
+    else:
         assert codec.decode(codec.encode(action), 0) == action
         return
-    for row in steps_for(action, effect_row=False):
+    for row in rows:
         assert codec.decode(codec.encode(row), 0) == row
     with pytest.raises(ValueError, match="not present"):
         codec.encode(action)
@@ -1100,7 +1138,8 @@ def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
     # public facts (OQ-103) but offers only the decline.
     lost_commanders = window(first)
     assert lost_commanders.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
-    assert engine.legal_actions(lost_commanders, 0) == (DECLINE_CONFLICT_END,)
+    assert engine.whole_actions(lost_commanders, 0) == (DECLINE_CONFLICT_END,)
+    assert engine.legal_actions(lost_commanders, 0) == (DECLINE_CONFLICT_END_ROW,)
     assert offered(lost_commanders) == []
     assert first in lost_commanders.players[0].intrigue_cards
     # A troop in the supply, or three specimens for Reclaimed Forces, opens it.
@@ -1119,8 +1158,9 @@ def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
     played = play(both, first)
     assert played.players[0].specimens == 2
     assert played.players[0].troops_supply == 0
-    assert engine.legal_actions(played, 0) == (DECLINE_ACQUIRE,)
-    played = engine.apply(played, DECLINE_ACQUIRE).state
+    assert engine.whole_actions(played, 0) == (DECLINE_ACQUIRE,)
+    assert engine.legal_actions(played, 0) == (DECLINE_ACQUIRE_ROW,)
+    played = apply_whole(engine, played, DECLINE_ACQUIRE).state
     assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     assert engine.legal_actions(played, 0) == (FINISH_CONFLICT_END,)
     assert offered(played) == []
@@ -1129,7 +1169,7 @@ def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
     three = window(
         first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
     )
-    staged = engine.apply(play(three, first), DECLINE_ACQUIRE).state
+    staged = apply_whole(engine, play(three, first), DECLINE_ACQUIRE).state
     assert offered(staged) == [second]
 
 
@@ -1173,7 +1213,8 @@ def test_the_conflict_end_window_opens_on_public_facts_only() -> None:
     engine = UprisingRulesEngine()
     offered = _offer(engine, _combat_state(_fighter(3, intrigue_cards=(PLAIN,))))
     assert _windows(offered.state) == [0]
-    assert engine.legal_actions(offered.state, 0) == (DECLINE_CONFLICT_END,)
+    assert engine.whole_actions(offered.state, 0) == (DECLINE_CONFLICT_END,)
+    assert engine.legal_actions(offered.state, 0) == (DECLINE_CONFLICT_END_ROW,)
     # The step awards the Conflict card first (OQ-108, user decision
     # 2026-10-18), then opens the window.
     assert [(event.kind, dict(event.payload)) for event in offered.events] == [
@@ -1184,7 +1225,7 @@ def test_the_conflict_end_window_opens_on_public_facts_only() -> None:
         ("conflict_end_trigger_offered", {"player": 0}),
     ]
 
-    declined = engine.apply(offered.state, DECLINE_CONFLICT_END)
+    declined = apply_whole(engine, offered.state, DECLINE_CONFLICT_END)
     assert [event.kind for event in declined.events][0] == (
         "conflict_end_trigger_declined"
     )
@@ -1302,9 +1343,7 @@ def test_the_conflict_end_window_stays_open_while_the_seat_holds_intrigue() -> N
     assert played.players[0].intrigue_faceup == ()
     assert played.players[0].specimens == 2
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    answered = engine.apply(
-        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
-    ).state
+    answered = apply_whole(engine, played, DECLINE_ACQUIRE).state
     assert answered.phase is GamePhase.COMBAT
     assert answered.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     assert engine.legal_actions(answered, 0) == (FINISH_CONFLICT_END,)
@@ -1321,7 +1360,7 @@ def test_the_conflict_end_window_stays_open_while_the_seat_holds_intrigue() -> N
     closed = apply_whole(engine, alone, play).state
     assert _windows(closed) == [0]
     assert closed.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    done = engine.apply(closed, DECLINE_ACQUIRE).state
+    done = apply_whole(engine, closed, DECLINE_ACQUIRE).state
     assert _windows(done) == []
     assert done.phase is not GamePhase.COMBAT
 
@@ -1361,7 +1400,7 @@ def test_a_spent_conflict_end_window_closes_without_a_press_or_an_event() -> Non
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     assert _windows(played) == [1, 0]
 
-    declined = engine.apply(played, DECLINE_ACQUIRE)
+    declined = apply_whole(engine, played, DECLINE_ACQUIRE)
 
     # Seat 0's window is gone without a press and without an event of its
     # own; the next seat's window is the one open.
@@ -1376,8 +1415,15 @@ def test_a_spent_conflict_end_window_closes_without_a_press_or_an_event() -> Non
         "conflict_end_trigger_finished",
     } & {event.kind for event in declined.events}
     assert engine.legal_actions(declined.state, 0) == ()
-    assert engine.legal_actions(declined.state, 1) == (
+    assert engine.whole_actions(declined.state, 1) == (
         DomainAction(action_id="decline_conflict_end_intrigue", actor=1),
+    )
+    assert engine.legal_actions(declined.state, 1) == (
+        DomainAction(
+            "decline",
+            1,
+            (("of", "play"), ("printed", "conflict_end"), ("source", "intrigue")),
+        ),
     )
 
     # With no other window, the cleanup follows the acquisition answer.
@@ -1385,7 +1431,9 @@ def test_a_spent_conflict_end_window_closes_without_a_press_or_an_event() -> Non
         engine,
         _combat_state(_fighter(3, intrigue_cards=(HARVEST_CELLS[0],), specimens=0)),
     ).state
-    closed = engine.apply(apply_whole(engine, alone, play).state, DECLINE_ACQUIRE)
+    closed = apply_whole(
+        engine, apply_whole(engine, alone, play).state, DECLINE_ACQUIRE
+    )
     assert closed.state.phase is not GamePhase.COMBAT
     assert _windows(closed.state) == []
     assert not {
@@ -1437,10 +1485,12 @@ def test_harvest_cells_played_in_its_window_resolves_in_the_same_step() -> None:
     offers = {action.action_id for action in engine.whole_actions(played, 0)}
     assert offers == {"acquire_intrigue_tleilaxu", "decline_intrigue_tleilaxu"}
     # Stage B3d-2a: the seat is shown the Tleilaxu cards by target rows.
+    # (Stage B3d-3: the refusal is the ``decline`` row.)
     assert {action.action_id for action in engine.legal_actions(played, 0)} == {
         "choose_tleilaxu_card",
-        "decline_intrigue_tleilaxu",
+        "decline",
     }
+    assert DECLINE_ACQUIRE_ROW in engine.legal_actions(played, 0)
 
     bought = apply_whole(
         engine,
@@ -1547,7 +1597,7 @@ def test_two_harvest_cells_each_resolve_at_their_own_play_in_window_order() -> N
     assert played_second.players[0].specimens == 2
     assert played_second.players[1].specimens == 1
     assert played_second.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    answered = engine.apply(played_second, DECLINE_ACQUIRE).state
+    answered = apply_whole(engine, played_second, DECLINE_ACQUIRE).state
     assert _windows(answered) == [0]
     done = engine.apply(
         answered, DomainAction(action_id="finish_conflict_end_intrigue", actor=0)
@@ -1635,7 +1685,7 @@ def test_a_card_drawn_in_the_acquisition_can_be_played_in_the_same_window() -> N
 
     # Everything answered and the hand empty: the window closes with no
     # press and no event of its own, and the cleanup follows.
-    done = engine.apply(again.state, DECLINE_ACQUIRE)
+    done = apply_whole(engine, again.state, DECLINE_ACQUIRE)
     assert done.state.players[0].intrigue_cards == ()
     assert _windows(done.state) == []
     assert done.state.phase is not GamePhase.COMBAT

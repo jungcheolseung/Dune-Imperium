@@ -127,7 +127,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
-from dune_imperium.rules.action_shapes import Source, Verb, template_id
+from dune_imperium.rules.action_shapes import Source, Verb, printer_value, template_id
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.card_bonds import (
@@ -434,6 +434,14 @@ def box_icon_block(
 
 
 # --- Resolution --------------------------------------------------------------------
+
+
+def _card_printer(card_id: str) -> str:
+    """The Agent card ``card_id`` as the entity that opened an opponent's
+    window (``action_shapes.printer_value``; stage B3d-3)."""
+
+    card = personal_card_for_instance(card_id).card.card_id
+    return printer_value(Source.AGENT_CARD, card)
 
 
 def _box_trash_printer(context: Mapping[str, ActionValue]) -> str:
@@ -912,12 +920,16 @@ def _opponents_decide(
                 events=(),
             )
         case EachOpponentLosesTroop():
-            return opponent_unit_loss_frames(state, player, source=source)
+            return opponent_unit_loss_frames(
+                state, player, source=source, printer=_card_printer(card_id)
+            )
         case OpponentsMoveSpiesFromVisitedSpace():
             space_id = context.get("space_id")
             if not isinstance(space_id, str):
                 raise RuntimeError("Agent-turn effect frame has invalid space")
-            return turn_space_spy_frames(state, player, space_id, source=source)
+            return turn_space_spy_frames(
+                state, player, space_id, source=source, printer=_card_printer(card_id)
+            )
     return None
 
 

@@ -201,7 +201,9 @@ def test_only_refusals_and_empty_confirmations_answer_a_verb() -> None:
     with pytest.raises(ValueError, match="only a refusal"):
         ActionShape(Verb.PAY, Source.CONFLICT, of=Verb.PAY)
     for shape in ACTION_SHAPES.values():
-        if shape.verb is Verb.RESOLVE_EMPTY:
+        # The effect rows ``decline`` and ``confirm_empty`` (stage B3d-3) name
+        # the effect they answer in their own ``of`` argument instead.
+        if shape.verb is Verb.CONFIRM_EMPTY and shape.source is not Source.REF:
             assert shape.of is not None
 
 

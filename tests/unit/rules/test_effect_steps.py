@@ -224,7 +224,8 @@ def test_a_fixed_printed_card_is_the_one_card_that_offers_its_id() -> None:
         else:
             assert {spec.printed.removeprefix("=")} == cards, action_id
             checked += 1
-    assert checked == 12
+    # Thirteen since stage B3d-3: Desert Power's refusal names its card too.
+    assert checked == 13
 
 
 def _reveal_frame_state(hand: tuple[str, ...], troops_conflict: int = 0) -> GameState:
@@ -723,9 +724,11 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
         GamePhase,
         PlayerDecision,
     )
+    from dune_imperium.rules.action_shapes import Verb
     from dune_imperium.rules.effect_steps import (
         CHOOSE_ACTIONS,
         OFFERED_AS_WHOLE,
+        STEP_SPECS,
         TARGET_SPECS,
         TARGET_STEP_FRAMES,
         presents_steps,
@@ -762,6 +765,15 @@ def test_the_one_effect_windows_offer_their_targets() -> None:
                 wholes = ENGINE.whole_actions(state, decision.owner)
                 assert set(legal) == {first_step(state, w) for w in wholes}, kind
                 for whole in wholes:
+                    spec = STEP_SPECS.get(whole.action_id)
+                    if spec is not None and spec.verb in (
+                        Verb.DECLINE,
+                        Verb.CONFIRM_EMPTY,
+                    ):
+                        # Stage B3d-3: a refusal names the effect it answers.
+                        row = first_step(state, whole)
+                        assert row.action_id == spec.verb.value
+                        assert "of" in dict(row.arguments)
                     if whole.action_id in TARGET_SPECS:
                         # A side branch a window still offers as it is (a
                         # mission's specimen return, stage B3d-2b).
@@ -825,9 +837,15 @@ def test_a_spy_window_names_what_opened_it_when_a_spy_is_recalled_first() -> Non
     recall = DomainAction(
         "recall_spy", 0, (("printed", "panopticon"), ("source", "tech"))
     )
+    # Its empty confirmation names the same window and the effect it answers
+    # (stage B3d-3).
     assert set(ENGINE.legal_actions(state, 0)) == {
         recall,
-        DomainAction("decline_spy_placement", 0),
+        DomainAction(
+            "confirm_empty",
+            0,
+            (("of", "place_spy"), ("printed", "panopticon"), ("source", "tech")),
+        ),
     }
     picked = ENGINE.apply(state, recall).state
     assert set(ENGINE.legal_actions(picked, 0)) == {
@@ -997,3 +1015,65 @@ def test_a_scouts_specimen_return_is_a_recruit_steps_own_and_beside_a_mission() 
     rows = set(ENGINE.legal_actions(mission, 0))
     assert DomainAction("scouts_return_specimens", 0, (("count", 1),)) in rows
     assert not any(row.action_id == "choose_count" for row in rows)
+
+
+def test_a_refusal_names_the_effect_it_answers_and_its_place() -> None:
+    # Stage B3d-3 (D-2): every refusal is ``decline`` and every empty
+    # confirmation ``confirm_empty``, naming the effect answered by its verb
+    # (``of``) and the place its own row names -- a Conflict reward's icon
+    # read off its window, a research space's bonus, a leader, a Contract.
+    assert steps_for(
+        DomainAction("decline_combat_reward", 0),
+        "battle_for_imperial_basin",
+        icon="optional_spice",
+    ) == (
+        DomainAction(
+            "decline",
+            0,
+            (
+                ("icon", "optional_spice"),
+                ("of", "pay"),
+                ("printed", "battle_for_imperial_basin"),
+                ("source", "conflict"),
+            ),
+        ),
+    )
+    assert steps_for(
+        DomainAction("decline_combat_reward", 0),
+        "battle_for_imperial_basin",
+        icon="optional_recall_spies",
+    )[0].arguments[1] == ("of", "recall_spy")
+    assert steps_for(DomainAction("decline_research_bonus", 0), "c7r3") == (
+        DomainAction(
+            "decline", 0, (("of", "trash"), ("printed", "c7r3"), ("source", "research"))
+        ),
+    )
+    assert steps_for(
+        DomainAction("resolve_leader_signet_without_option", 0), "esmar_tuek"
+    ) == (
+        DomainAction(
+            "confirm_empty",
+            0,
+            (("of", "choose"), ("printed", "esmar_tuek"), ("source", "leader")),
+        ),
+    )
+
+
+@pytest.mark.parametrize("answered", ["lose_unit", "move_spy"])
+def test_a_ghola_copying_holy_war_names_itself_in_the_opponents_windows(
+    answered: str,
+) -> None:
+    # Ghola copies the other grafted card's Agent box, so the box's own card
+    # names the effect, in its rows and in the windows it opens for the
+    # opponents (Holy War's unit loss and Spy move): their empty
+    # confirmations name Ghola, and the action catalog holds them (the
+    # independent review of B3d-3 found them missing).
+    from dune_imperium import RulesetConfig
+    from dune_imperium.adapters import ActionCodec
+
+    row = DomainAction(
+        "confirm_empty",
+        0,
+        (("of", answered), ("printed", "ghola"), ("source", "agent_card")),
+    )
+    ActionCodec(RulesetConfig(bloodlines=True, immortality=True)).encode(row)

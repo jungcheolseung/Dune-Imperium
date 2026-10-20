@@ -558,7 +558,18 @@ SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
 LABEL_ARGUMENTS: Final = frozenset(
     # Stage B3: an effect row's printed ``icon`` and the ``option`` of an
     # alternative or of a target row are labels too.
-    {"choice", "effect", "icon", "option", "reward", "subcommittee_id", "zone", "zones"}
+    {
+        "choice",
+        "effect",
+        "icon",
+        # Stage B3d-3: the verb of the effect a refusal answers.
+        "of",
+        "option",
+        "reward",
+        "subcommittee_id",
+        "zone",
+        "zones",
+    }
 )
 # The Arrakeen Scouts items a Scouts effect row's ``printed`` may name (a
 # Spy window's line, B3d-2a; a mission, B3d-2b): no vocabulary holds them,

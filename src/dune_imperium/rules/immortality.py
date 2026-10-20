@@ -984,8 +984,11 @@ def apply_research_icon(state: GameState, action: DomainAction) -> RuleResult:
         )
         if icon == ICON_TRASH:
             # The window's trash opens its own window, with its refusal.
+            printer = trash_printer(Source.RESEARCH, source.rsplit(":", 1)[1])
             return RuleResult(
-                state=working.push_decision(optional_trash_frame(player, source))
+                state=working.push_decision(
+                    optional_trash_frame(player, source, printer=printer)
+                )
             )
     else:
         item = next(

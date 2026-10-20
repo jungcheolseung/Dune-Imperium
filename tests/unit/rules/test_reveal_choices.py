@@ -165,7 +165,8 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
 
 
 def test_removed_reveal_actions_have_no_handler() -> None:
-    # Codec v147 keeps their catalog rows as never-legal ones.
+    # Codec v147 kept their catalog rows as never-legal ones; stage B3d-3
+    # dropped the eight refusals no handler answered from the catalog.
     for action_id in (
         "defer_reveal_choice",
         "resume_reveal_choice",
@@ -372,8 +373,8 @@ def test_desert_power_holds_the_end_until_a_branch_is_chosen() -> None:
     ids = _ids(revealed)
     assert "decline_reveal_sandworm" in ids
     assert "finish_reveal" not in ids
-    chosen = ENGINE.apply(
-        revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    chosen = apply_whole(
+        ENGINE, revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     assert dict(chosen.decision_stack[-1].context)["persuasion"] == 2
     assert "finish_reveal" in _ids(chosen)
@@ -396,8 +397,8 @@ def test_a_command_choice_opens_once_six_persuasion_is_generated() -> None:
     assert "gain_reveal_influence" not in ids
     assert "finish_reveal" not in ids
 
-    chosen = ENGINE.apply(
-        revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    chosen = apply_whole(
+        ENGINE, revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     ids = _ids(chosen)
     assert "gain_reveal_influence" in ids
@@ -564,7 +565,7 @@ def test_source_tells_which_plain_spy_icon_passes_its_recall() -> None:
     by_covert = _first(
         revealed, "decline_reveal_spy_recall", source="covert_operation"
     )
-    passed = ENGINE.apply(revealed, by_covert)
+    passed = apply_whole(ENGINE, revealed, by_covert)
     assert all(covert in event.event_id for event in passed.events)
     assert _pending(passed.state) == (
         (spectacle, "place_spy"),

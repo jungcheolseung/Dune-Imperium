@@ -57,6 +57,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import Influence
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, FrameKind
 from dune_imperium.rules.leader_abilities import use_leader_signet_for_tech
@@ -447,11 +448,19 @@ def test_navigation_card_1_remembers_the_faction_it_gains() -> None:
 # ===========================================================================
 
 
+# The Intrigue card granting the card's Acquire Tech (stage B3d-3).
+_CARD_TECH_PRINTER = printer_value(Source.INTRIGUE, "battlefield_research")
+
+
 def _tech_card_state(round_number: int, spice: int) -> GameState:
     state = with_state(_turn_state(), round_number=round_number)
     resources = replace(state.players[0].resources, spice=spice)
     state = with_player(state, 0, resources=resources)
-    return state.push_decision(tech_acquisition_frame(0, discount=1, source="test"))
+    return state.push_decision(
+        tech_acquisition_frame(
+            0, discount=1, source="test", printer=_CARD_TECH_PRINTER
+        )
+    )
 
 
 @pytest.mark.parametrize("round_number", [1, 5])
@@ -922,7 +931,11 @@ def test_card_tech_discount_with_an_empty_answer_buys_the_first_tile() -> None:
     state = with_state(state, tech_stacks=stacks, round_number=1)
     resources = replace(state.players[0].resources, spice=4)
     state = with_player(state, 0, resources=resources)
-    state = state.push_decision(tech_acquisition_frame(0, discount=1, source="test"))
+    state = state.push_decision(
+        tech_acquisition_frame(
+            0, discount=1, source="test", printer=_CARD_TECH_PRINTER
+        )
+    )
     run = _run(state)
     assert run.first("decline_tech") is None
     offered = [str(t) for t in _ids(run.legal, "acquire_tech", "tech_id")]

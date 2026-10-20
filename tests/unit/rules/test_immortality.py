@@ -1181,7 +1181,6 @@ def test_the_codec_holds_the_immortality_choices_only_with_the_option() -> None:
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
     immortality = {template.action_id for template in ActionCodec(IMMORTALITY).catalog}
     added = {
-        "decline_research_bonus",
         "return_specimen",
         "use_family_atomics",
         "generate_reveal_specimens",
@@ -1191,12 +1190,15 @@ def test_the_codec_holds_the_immortality_choices_only_with_the_option() -> None:
     # Stage B3d-2a: the research windows offer their choices by rows, so these
     # whole templates are in no catalog; the row that stands for each is
     # Immortality's alone (a research space's target row, and the effect row
-    # of the bonus printed on that space).
+    # of the bonus printed on that space). Stage B3d-3: the bonus's refusal is
+    # the ``decline`` row naming the effect it answers and the space, so
+    # ``decline_research_bonus`` is in no catalog either.
     gone = {
         "choose_research_space",
         "choose_research_influence",
         "trash_intrigue_for_research_bonus",
         "pay_research_bonus",
+        "decline_research_bonus",
     }
     assert not (gone & immortality)
     wholes = (
@@ -1208,13 +1210,16 @@ def test_the_codec_holds_the_immortality_choices_only_with_the_option() -> None:
             (("card_id", "intrigue:crysknife:0"),),
         ),
         DomainAction("pay_research_bonus", 0),
+        DomainAction("decline_research_bonus", 0),
     )
     plain = ActionCodec(RulesetConfig())
     with_option = ActionCodec(IMMORTALITY)
     for whole in wholes:
         with pytest.raises(ValueError, match="not present"):
             with_option.encode(whole)
-        (row, *_) = steps_for(whole)
+        # The refusal names the space whose bonus it declines.
+        printed = "c7r3" if whole.action_id == "decline_research_bonus" else None
+        (row, *_) = steps_for(whole, printed)
         assert with_option.decode(with_option.encode(row), 0) == row
         with pytest.raises(ValueError, match="not present"):
             plain.encode(row)

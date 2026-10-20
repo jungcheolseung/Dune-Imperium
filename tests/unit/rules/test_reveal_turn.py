@@ -170,6 +170,19 @@ def test_desert_power_can_keep_persuasion_or_pay_water_for_a_sandworm() -> None:
     )
 
 
+# The Reveal frame shows Desert Power's ``decline_reveal_sandworm`` as the
+# refusal of the payment its sandworm branch asks (stage B3d-3).
+_DESERT_POWER_DECLINE = DomainAction(
+    action_id="decline",
+    actor=0,
+    arguments=(
+        ("of", "pay"),
+        ("printed", "desert_power"),
+        ("source", "reveal_card"),
+    ),
+)
+
+
 def test_desert_power_persuasion_is_unspendable_until_the_persuasion_branch() -> None:
     # OQ-069 (user ruling 2026-09-26): "(A)가 맞지 ... 근데 설득력을 선택하기
     # 전에 총 설득력이 6 미만이라면 당연히 통솔(+6)도 발동되면 안 되겠지. 그러다
@@ -205,8 +218,8 @@ def test_desert_power_persuasion_is_unspendable_until_the_persuasion_branch() ->
     # Persuasion stays unspendable.
     assert legal_reserve_acquisitions(revealed, 0) == ()
 
-    declined = engine.apply(
-        revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    declined = apply_whole(
+        engine, revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     assert pending_reveal_choices(dict(declined.decision_stack[-1].context)) == ()
     assert dict(declined.decision_stack[-1].context)["persuasion"] == 2
@@ -319,9 +332,12 @@ def test_desert_power_choice_offers_only_the_persuasion_without_maker_hooks() ->
     )
     assert dict(top.context)["persuasion"] == 0
     assert reveal_sandworm_block(revealed.state, 0) is RevealSandwormBlock.MAKER_HOOKS
-    assert set(engine.legal_actions(revealed.state, 0)) == {
+    assert set(engine.whole_actions(revealed.state, 0)) == {
         DomainAction(action_id="decline_reveal_sandworm", actor=0),
     }
+    # Stage B3d-3: the seat is shown that refusal as the refusal row naming
+    # the payment of the sandworm branch it declines.
+    assert set(engine.legal_actions(revealed.state, 0)) == {_DESERT_POWER_DECLINE}
     # The "-OR-" choice is mandatory (OQ-069): it holds the Reveal's end.
     assert legal_finish_reveal_actions(revealed.state, 0) == ()
     with pytest.raises(ValueError, match="not a legal Reveal cleanup"):
@@ -329,8 +345,10 @@ def test_desert_power_choice_offers_only_the_persuasion_without_maker_hooks() ->
             revealed.state, DomainAction(action_id="finish_reveal", actor=0)
         )
 
-    declined = engine.apply(
-        revealed.state, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    declined = apply_whole(
+        engine,
+        revealed.state,
+        DomainAction(action_id="decline_reveal_sandworm", actor=0),
     )
     assert tuple(event.kind for event in declined.events) == (
         "reveal_sandworm_declined",
@@ -468,9 +486,10 @@ def test_desert_power_choice_is_offered_with_maker_hooks_and_no_water() -> None:
     assert legal_reveal_sandworm_actions(revealed, 0) == (
         DomainAction(action_id="decline_reveal_sandworm", actor=0),
     )
-    assert engine.legal_actions(revealed, 0) == (
+    assert engine.whole_actions(revealed, 0) == (
         DomainAction(action_id="decline_reveal_sandworm", actor=0),
     )
+    assert engine.legal_actions(revealed, 0) == (_DESERT_POWER_DECLINE,)
     assert waiting_deferred_choices(revealed, 0) == ()
     assert legal_finish_reveal_actions(revealed, 0) == ()
 
@@ -1861,7 +1880,7 @@ def test_public_spectacle_reveal_may_pass_without_a_spy_in_supply() -> None:
         "decline_reveal_spy_recall",
         *("recall_spy_for_reveal_placement",) * 3,
     )
-    declined = engine.apply(revealed, choices[0]).state
+    declined = apply_whole(engine, revealed, choices[0]).state
 
     assert declined.players[0].spy_post_ids == original_posts
     assert declined.players[0].spies_supply == 0
