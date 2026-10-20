@@ -1,0 +1,55 @@
+baseURL = 'https://jungcheolseung.github.io/Dune-Imperium/'
+title = 'Dune: Imperium AI'
+locale = 'ko-KR'
+defaultContentLanguage = 'ko'
+timeZone = 'Asia/Seoul'
+enableRobotsTXT = true
+enableEmoji = false
+disableKinds = []
+summaryLength = 80
+capitalizeListTitles = false
+
+[params]
+  description = 'AI와 연습하고, 친구들과 플레이하며, 더 나은 게임 AI를 연구합니다.'
+  repository = 'https://github.com/jungcheolseung/Dune-Imperium'
+
+[outputs]
+  home = ['HTML', 'RSS', 'JSON']
+
+[taxonomies]
+  category = 'categories'
+  tag = 'tags'
+
+[markup]
+  [markup.goldmark.renderer]
+    unsafe = false
+  [markup.highlight]
+    noClasses = false
+  [markup.tableOfContents]
+    startLevel = 2
+    endLevel = 3
+
+[[menus.main]]
+  name = '소개'
+  pageRef = '/about'
+  weight = 10
+[[menus.main]]
+  name = '다운로드'
+  pageRef = '/downloads'
+  weight = 20
+[[menus.main]]
+  name = '사용법'
+  pageRef = '/guides'
+  weight = 30
+[[menus.main]]
+  name = '개발 이야기'
+  pageRef = '/posts'
+  weight = 40
+[[menus.main]]
+  name = '업데이트'
+  pageRef = '/updates'
+  weight = 50
+[[menus.main]]
+  name = '도움말'
+  pageRef = '/help'
+  weight = 60

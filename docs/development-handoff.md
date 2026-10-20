@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-17 (master, 효과 조각 엔진 전환 A7 끝 — A단계 옮기기 끝)
+기준일: 2026-10-20 (엔진은 cleanup2·A8 입력 기준선, 프로젝트 웹사이트 구현·로컬 검증)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,7 +28,7 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | cleanup2 병합 `86086c6d` (2026-10-19, 효과 조각 엔진 정리-2 + A8 망 입력; 푸시 전) |
+| master | cleanup2 병합 `86086c6d` (2026-10-19, 효과 조각 엔진 정리-2 + A8 망 입력; 원격 반영 확인) |
 | pytest | 8,098개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 540파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-19 cleanup2 병합 트리(68종 모두 통과) |
@@ -124,6 +124,11 @@
 
 **도구·인프라**
 
+- **프로젝트 웹사이트:** `website/`에 원고 18개+검색 페이지, Hugo 0.168.0 자체 화면·반응형 메뉴·목차·분류·검색·RSS·404와
+  GitHub Pages workflow를 구현했다. 로컬에서 HTML 34개·참조 1,296개, Chromium의 PC·320/390px·검색/한글 조합·JS 없는
+  탐색을 확인했다. 실행·검증·배포 절차는 [`website/README.md`](../website/README.md). **다음:** 원고·게임 설치 확인,
+  Pages Source 설정·master 반영 뒤 실제 배포 확인. 아직 원격 실행·공개·릴리스·업로드는 없음.
+  [project-site-plan.md](project-site-plan.md)
 - **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
 - **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v148-02e203ce(2026-10-16, 2,000판; A1의 Play 커밋으로 만듦,
   v147-2af1d9f5와 판마다 수순이 같다)이고 A2 관문의 기준이다. 그 앞은 v147-2af1d9f5(A0·A1 관문), v145-afea63de(v146 다리 대조)이며
