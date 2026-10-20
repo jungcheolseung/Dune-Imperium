@@ -15,6 +15,7 @@ from functools import cache
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request, TargetInfo
 from dune_imperium.agents.app_ai.abilities.generic import TrashCustomAbility
@@ -57,16 +58,19 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
     INTENT,
     INTENT_AT,
     RESEARCH_INTENT,
+    event_stamp,
     intrigue_request,
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
 from dune_imperium.agents.app_ai.windows.turn import GRAFT_PARTNER_INTENT
 from dune_imperium.content.immortality.board import ResearchBonus
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.immortality import (
     _bonus_frame,
@@ -75,7 +79,7 @@ from dune_imperium.rules.immortality import (
     pending_research_bonuses,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import optional_trash_frame, trash_printer
 from dune_imperium.simulation.runner import run_policy_game
 
 IMMORTALITY = RulesetConfig(choam_module=True, immortality=True)
@@ -92,7 +96,9 @@ def _run(
 ) -> DecisionRun:
     seat = _seat(state)
     profile = make_profile(state, seat, rng_seed=rng_seed)
-    actions = ENGINE.legal_actions(state, seat)
+    # The whole actions the rules resolve (stage B3c-1: the Conflict-end
+    # window offers a play effect first).
+    actions = ENGINE.whole_actions(state, seat)
     return DecisionRun(profile.ctx, profile, actions, profile.rng, memory or Memory())
 
 
@@ -356,7 +362,7 @@ def test_research_advance_takes_a_breakthrough_plays_space() -> None:
     other = next(s for s in ("c2r2", "c2r4") if f"research:{s}" != floor_pick)
     memory = Memory()
     memory.intents[(INTENT, instance)] = Answer(1.0, ((f"research:{other}",),))
-    memory.intents[(INTENT_AT, instance)] = len(base.event_log) - 1
+    memory.intents[(INTENT_AT, instance)] = event_stamp(base) - 1
     assert _arg(W.research_advance(_run(state, memory=memory)), "space_id") == other
 
 
@@ -481,6 +487,13 @@ def test_research_bonus_with_an_unknown_choice_is_a_gap() -> None:
     assert W.research_bonus(_with_legal(run, mystery)) is None
 
 
+_ICON_SPACE_OF: dict[ResearchBonus, str] = {
+    ResearchBonus.TRASH_AND_SPECIMEN: "c3r3",
+    ResearchBonus.TLEILAXU_AND_SPECIMEN: "c3r5",
+    ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: "c7r3",
+}
+
+
 def _icon_window(
     bonus: ResearchBonus, icons: tuple[str, ...], **changes: object
 ) -> GameState:
@@ -488,7 +501,9 @@ def _icon_window(
     turn (Combat, the Arrakeen Scouts step)."""
 
     state, seat = _research_seat(**changes)
-    return state.push_decision(_bonus_frame(seat, bonus, "test", icons=icons))
+    # The research space that printed the icons (stage B3e-1).
+    source = f"test:research:{_ICON_SPACE_OF[bonus]}"
+    return state.push_decision(_bonus_frame(seat, bonus, source, icons=icons))
 
 
 def _icon_effects(run: DecisionRun) -> list[str]:
@@ -515,7 +530,7 @@ def test_research_icon_now_takes_the_specimen_before_the_other_icons() -> None:
     assert research_icon_now(backwards) == first
     # The turn's waiting-row hook takes the same row first.
     assert waiting_turn_row(run) == first
-    taken = ENGINE.apply(pair, first).state
+    taken = apply_whole(ENGINE, pair, first).state
     second = research_icon_now(_run(taken))
     assert second is not None and _arg(second, "effect") == "tleilaxu"
 
@@ -572,6 +587,9 @@ def test_research_bonus_takes_the_first_icon_of_an_icon_window(
     action = W.research_bonus(run)
     assert action is not None and action.action_id == "resolve_research_icon"
     assert _arg(action, "effect") == expected
+    # Each icon names the research space that printed it (stage B3e-1).
+    assert _arg(action, "printed") == _ICON_SPACE_OF[bonus]
+    assert _arg(action, "source") == "research"
 
 
 def test_research_advance_with_a_space_off_the_track_is_a_gap() -> None:
@@ -608,9 +626,11 @@ def test_research_advance_takes_a_reveal_research_keys_space() -> None:
 def _get_card_to_trash(state: GameState, rng_seed: int = 0) -> str | None:
     seat = _seat(state)
     profile = make_profile(state, seat, rng_seed=rng_seed)
+    # The whole actions: on the turn a trash is its icon's row, then the
+    # card (stage B3c-2b).
     refs = [
         str(arg(a, "card_id"))
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "trash_optional_card"
     ]
     cards = tuple(card_entity(r, seat) for r in refs)
@@ -630,7 +650,11 @@ def _trash_window(**changes: object) -> GameState:
     owner's turn (Combat, the Arrakeen Scouts step; cleanup-2b)."""
 
     state, seat = _research_seat(**changes)
-    return state.push_decision(optional_trash_frame(seat, _trash_source(state, seat)))
+    # The research space c3r3 printed the trash icon (stage B3d-3).
+    printer = trash_printer(Source.RESEARCH, "c3r3")
+    return state.push_decision(
+        optional_trash_frame(seat, _trash_source(state, seat), printer=printer)
+    )
 
 
 def _waiting_trash(**changes: object) -> GameState:
@@ -638,10 +662,12 @@ def _waiting_trash(**changes: object) -> GameState:
     on top (cleanup-2b): its rows beside the Reveal's others, no decline."""
 
     state, seat = _research_seat(**changes)
+    # The research space's trash, recording its printer (stage B3c-2b).
+    source = _trash_source(state, seat)
     queued = turn_rows.queue(
         state.pop_decision(),
         seat,
-        (turn_rows.OPTIONAL_TRASH, _trash_source(state, seat), ""),
+        (turn_rows.OPTIONAL_TRASH, source, f"research|{source.rsplit(':', 1)[1]}"),
     )
     assert queued is not None
     return queued
@@ -675,7 +701,7 @@ def test_a_research_hex_trashes_its_owners_turn_rows() -> None:
         turn_rows.RESEARCH_ICON,
         turn_rows.OPTIONAL_TRASH,
     ]
-    ids = {a.action_id for a in ENGINE.legal_actions(reveal, seat)}
+    ids = {a.action_id for a in ENGINE.whole_actions(reveal, seat)}
     assert {"trash_optional_card", "resolve_research_icon"} <= ids
     assert "decline_optional_trash" not in ids
 
@@ -754,8 +780,12 @@ def test_a_waiting_planetologist_card_is_drawn_first() -> None:
     state, seat = _research_seat()
     source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
     turn = state.pop_decision()
-    for kind in (turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE):
-        queued = turn_rows.queue(turn, seat, (kind, source, ""))
+    # The trash records the leader that printed it (stage B3c-2b).
+    for kind, value in (
+        (turn_rows.OPTIONAL_TRASH, "leader|liet_kynes"),
+        (turn_rows.PLANETOLOGIST_INTRIGUE, ""),
+    ):
+        queued = turn_rows.queue(turn, seat, (kind, source, value))
         assert queued is not None
         turn = queued
     action = W.optional_trash_now(_run(turn))
@@ -769,7 +799,10 @@ def test_planetologist_frame_draws_its_intrigue_first() -> None:
 
     state, seat = _research_seat()
     source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
-    state = state.push_decision(optional_trash_frame(seat, source, intrigue=True))
+    printer = trash_printer(Source.LEADER, "liet_kynes")
+    state = state.push_decision(
+        optional_trash_frame(seat, source, printer=printer, intrigue=True)
+    )
     action = W.optional_trash(_run(state))
     assert action == DomainAction(action_id="draw_planetologist_intrigue", actor=seat)
 
@@ -795,7 +828,8 @@ def _control_the_spice_trash() -> GameState:
     state, seat = _research_seat()
     state = state.push_decision(_agent_effects_frame(seat, _CONTROL_THE_SPICE))
     source = agent_card_source(state.round_number, seat, _CONTROL_THE_SPICE)
-    return state.push_decision(optional_trash_frame(seat, source))
+    printer = trash_printer(Source.AGENT_CARD, "control_the_spice")
+    return state.push_decision(optional_trash_frame(seat, source, printer=printer))
 
 
 def test_optional_trash_follows_control_the_spices_stored_answer() -> None:
@@ -841,7 +875,10 @@ def test_optional_trash_follows_stitched_horrors_stored_answer() -> None:
     seat = _seat(state)
     card = str(dict(state.decision_stack[-1].context)["card_id"])
     source = f"{agent_card_source(state.round_number, seat, card)}:1"
-    state = state.push_decision(optional_trash_frame(seat, source))
+    # The box's card prints the trash icon, as ``agent_box_abilities`` records.
+    box_card = personal_card_for_instance(card).card.card_id
+    printer = trash_printer(Source.AGENT_CARD, box_card)
+    state = state.push_decision(optional_trash_frame(seat, source, printer=printer))
     run = _run(state)
     refs = [str(arg(a, "card_id")) for a in run.by_id("trash_optional_card")]
     chosen = next(r for r in refs if r != _get_card_to_trash(state))
@@ -957,13 +994,15 @@ def test_conflict_end_plays_harvest_cells_and_records_its_answer() -> None:
     assert expected.value > 0
     assert run.memory.intents[(INTENT, _HARVEST_CELLS)] == expected
     stamp = run.memory.intents[(INTENT_AT, _HARVEST_CELLS)]
-    applied = ENGINE.apply(state, action, legal_actions=run.legal).state
-    assert stamp == len(state.event_log)
-    assert applied.event_log[stamp].kind == "intrigue_played"
+    applied = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
+    # The stamp counts the log's events but the effect picks (stage B3).
+    assert stamp == event_stamp(state)
+    log = [event for event in applied.event_log if event.kind != "effect_picked"]
+    assert log[stamp].kind == "intrigue_played"
     # The card resolved at its play: the acquisition choice is on top of the
     # window and the app's answer is the one recorded for it.
     assert applied.decision_stack[-1].kind == "intrigue_choice"
-    assert applied.event_log[stamp + 1].kind == "specimens_generated"
+    assert log[stamp + 1].kind == "specimens_generated"
 
 
 def test_conflict_end_finishes_the_window_after_a_play() -> None:

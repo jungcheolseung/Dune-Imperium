@@ -18,6 +18,7 @@ both hosts and checks that rule on each transition.
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
@@ -32,6 +33,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.core.events import GameEvent
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import ACTION_HANDLERS, UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import (
@@ -118,13 +120,25 @@ def _turn_state(owner: PlayerState) -> GameState:
 
 
 def _act(state: GameState, action_id: str, **arguments: object) -> GameState:
+    """Apply the owner's legal action; an ``agent_turn`` is a whole placement
+    (card and space), applied as the Agent turn's two steps (stage B1)."""
+
+    def matches(action: DomainAction) -> bool:
+        return all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+
+    if action_id == "agent_turn":
+        placement = next(
+            placement
+            for placement in executable_placements(state, 0)
+            if matches(placement)
+        )
+        return apply_placement(ENGINE, state, placement).state
     action = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == action_id
-        and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        for action in ENGINE.whole_actions(state, 0)
+        if action.action_id == action_id and matches(action)
     )
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _signet_ring_placed(owner: PlayerState) -> GameState:
@@ -159,8 +173,8 @@ def _apply(state: GameState, action: DomainAction) -> Transition | RuleResult:
     else (a refusal an Agent turn's optional box does not offer, OQ-095 (2))
     through the action's rule function."""
 
-    if action in ENGINE.legal_actions(state, 0):
-        return ENGINE.apply(state, action)
+    if action in ENGINE.whole_actions(state, 0):
+        return apply_whole(ENGINE, state, action)
     return ACTION_HANDLERS[action.action_id](state, action)
 
 
@@ -244,7 +258,14 @@ def _events_of(
     state: GameState, action: DomainAction
 ) -> list[tuple[str, dict[str, object]]]:
     result = _apply(state, action)
-    return [(event.kind, dict(event.payload)) for event in result.events]
+    # Stage B3a: an action with a target is applied as its steps, and the
+    # steps before the last add the seat-only ``effect_picked`` events, which
+    # are no part of what the box's events say.
+    return [
+        (event.kind, dict(event.payload))
+        for event in result.events
+        if event.kind != "effect_picked"
+    ]
 
 
 def _action(state: GameState, action_id: str, **arguments: object) -> DomainAction:
@@ -445,7 +466,7 @@ def test_an_automatic_signet_gains_only_what_its_lines_give() -> None:
         placed = _act(
             _turn_state(owner), "agent_turn", card_id=SIGNET, space_id=space_id
         )
-        resolved = ENGINE.apply(placed, _act_row(placed))
+        resolved = apply_whole(ENGINE, placed, _act_row(placed))
         kinds = [event.kind for event in resolved.events]
         assert kinds[-1] == "leader_signet_resolved", space_id
         assert kinds.count("resources_gained") == (1 if gained else 0), space_id
@@ -468,7 +489,7 @@ def test_the_other_automatic_signets_leave_only_the_box_event() -> None:
             card_id=SIGNET,
             space_id="arrakeen",
         )
-        resolved = ENGINE.apply(placed, _act_row(placed))
+        resolved = apply_whole(ENGINE, placed, _act_row(placed))
         assert [(e.kind, dict(e.payload)) for e in resolved.events] == [
             ("leader_signet_resolved", {"card_id": SIGNET, "player": 0})
         ], leader_id
@@ -478,7 +499,7 @@ def test_the_other_automatic_signets_leave_only_the_box_event() -> None:
         "gurney_halleck", troops_supply=0, troops_conflict=0, troops_garrison=12
     )
     placed = _act(_turn_state(empty), "agent_turn", card_id=SIGNET, space_id="arrakeen")
-    resolved = ENGINE.apply(placed, _act_row(placed))
+    resolved = apply_whole(ENGINE, placed, _act_row(placed))
     assert [event.kind for event in resolved.events] == [
         "troops_recruit_short",
         "leader_signet_resolved",
@@ -490,7 +511,7 @@ def _act_row(state: GameState) -> DomainAction:
 
     return next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "resolve_agent_card_effect"
     )
 

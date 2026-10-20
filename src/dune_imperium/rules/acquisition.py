@@ -256,6 +256,17 @@ def apply_acquisition_spy_action(
     return RuleResult(state=next_state, events=(event,))
 
 
+def _contract_rows_only(before: GameState, after: GameState) -> GameState:
+    """``after``, the state ``complete_acquire_contracts`` left over an
+    Agent-turn acquisition's ``before``: a Contract completed in its owner's
+    own turn waits on it as rows (OQ-112 (4)), so no window was pushed and
+    the effect frame stays on top for ``advance_after_effect``."""
+
+    if len(after.decision_stack) != len(before.decision_stack):
+        raise RuntimeError("an Agent-turn Acquire Contract opened a window")
+    return after
+
+
 def _resume_after_acquisition_spy(state: GameState) -> GameState:
     """Advance the Agent turn under a finished acquisition Spy, if any.
 
@@ -562,31 +573,16 @@ def _acquire_reserve_to_hand_with_solari(
         reserve_stacks=reserve_stacks,
         scouts_discount_used=discount_used,
     )
-    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         card_id,
         source=source,
     )
-    contract_recruited = (
-        completed.state.players[action.actor].troops_garrison
-        - garrison_before_contracts
-    )
-    if contract_recruited:
-        # Same stale-context trap as the Imperium-card path: an Acquire
-        # Contract's troop reward would otherwise sit only in
-        # ``complete_acquire_contracts``'s own state, which
-        # ``advance_after_effect`` below discards in favor of ``context``
-        # [Main p. 10] [FAQ p. 4].
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + contract_recruited
+    # An Acquire Contract's icons wait on this Agent turn as rows; its
+    # troops' row credits the turn's recruits itself [Main p. 10] [FAQ p. 4].
     next_state = advance_after_effect(
-        completed.state,
-        context,
-        completed.state.players,
+        _contract_rows_only(prepared, completed.state), context
     )
     event = GameEvent(
         event_id=source,
@@ -682,28 +678,16 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
-    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         definition.card.card_id,
         source=source,
     )
-    prepared = completed.state
+    # An Acquire Contract's icons wait on this Agent turn as rows; its
+    # troops' row credits the turn's recruits itself.
+    prepared = _contract_rows_only(prepared, completed.state)
     acquisition_events = (*acquisition_events, *completed.events)
-    contract_recruited = (
-        prepared.players[action.actor].troops_garrison - garrison_before_contracts
-    )
-    if contract_recruited:
-        # Same trap as the acquire box above: an Acquire Contract's own
-        # troop reward completed here would otherwise sit only in
-        # ``complete_acquire_contracts``'s own state update, which the
-        # ``advance_after_effect`` calls below discard in favor of
-        # ``context``.
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + contract_recruited
     if places_spy:
         next_state = replace(
             prepared,
@@ -1067,6 +1051,22 @@ def _acquire_rewards(definition: ImperiumCardEntry) -> tuple[Reward, ...]:
 
     ability = acquisition_ability(definition.acquisition_effect)
     return () if ability is None else ability.sections[0].rewards
+
+
+def acquire_box_draws_intrigue(instance_id: str) -> bool:
+    """Whether the acquire box of the Imperium Row or Tleilaxu card
+    ``instance_id`` draws an Intrigue card (an owed draw, OQ-106)."""
+
+    rewards = _acquire_rewards(_acquired_definition(instance_id))
+    return any(isinstance(reward, DrawIntrigueCards) for reward in rewards)
+
+
+def acquire_box_places_spy(instance_id: str) -> bool:
+    """Whether the acquire box of the Imperium Row or Tleilaxu card
+    ``instance_id`` places a Spy (``acquisition_spy_frame``)."""
+
+    rewards = _acquire_rewards(_acquired_definition(instance_id))
+    return any(isinstance(reward, PlaceSpy) for reward in rewards)
 
 
 def _acquisition_effects(

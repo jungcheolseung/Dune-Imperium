@@ -57,6 +57,7 @@ from dune_imperium.adapters.observation_encoding import (
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.rules.action_shapes import ACTION_SHAPES
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.entity_features import (
     FEATURE_DIGEST,
     SLOT_HINTS,
@@ -87,6 +88,17 @@ _ZONE_VOCABULARY: Final = {
     "trashed": "personal",
     "private_hand": "personal",
     "private_peeked_card": "personal",
+    "private_agent_card_pick": "personal",
+    # Stage B3: the personal card that printed the seat's picked effect, and
+    # the targets picked so far by kind.
+    "private_effect_pick_card": "personal",
+    "private_effect_pick_intrigue": "intrigue",
+    "private_effect_pick_faction": "faction",
+    "private_effect_pick_post": "post",
+    "private_effect_pick_tech": "tech",
+    "private_effect_pick_battle": "battle",
+    "private_effect_pick_second_faction": "faction",
+    "private_effect_pick_personal": "personal",
     "imperium_removed": "personal",
     "intrigue_resolving": "intrigue",
     "intrigue_discard": "intrigue",
@@ -147,15 +159,19 @@ def action_parts(action_id: str) -> tuple[str, ...]:
 
 
 def _argument_label(
-    action_id: str, key: str, value: object
+    action_id: str, key: str, value: object, source: object = None
 ) -> tuple[str, object] | None:
-    """The label an argument value is embedded by, if it is not an entity."""
+    """The label an argument value is embedded by, if it is not an entity
+    (``source``: the row's own ``source`` argument)."""
 
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
         return (key, value)
-    if isinstance(value, str) and resolve_argument(action_id, key, value) is None:
+    if (
+        isinstance(value, str)
+        and resolve_argument(action_id, key, value, source) is None
+    ):
         return (key, value)
     return None
 
@@ -166,8 +182,9 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
     rows = list(templates)
     labels: dict[tuple[str, object], None] = {}
     for action_id, arguments in rows:
+        source = dict(arguments).get("source")
         for key, value in arguments:
-            label = _argument_label(action_id, key, value)
+            label = _argument_label(action_id, key, value, source)
             if label is not None:
                 labels.setdefault(label, None)
     kinds = tuple(sorted({action_id for action_id, _ in rows}))
@@ -183,6 +200,12 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 # read as numbers before, and still are, so a v31 file moved onto v32
 # computes the same function: its new inputs start at zero.
 FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
+# Slot keys a later observation version added to a field a v31 file already
+# embedded: the decision kinds of stage B2's reward windows (v33).
+_KEYS_SINCE_V31: Final = frozenset(
+    f"decision_kind:{kind.value}"
+    for kind in (FrameKind.COMBAT_REWARD_ICONS, FrameKind.CONTRACT_REWARD_ICONS)
+)
 # Encoder inputs by name, for moving a file's first-layer columns.
 _ENCODER_WEIGHTS: Final = {
     "seat": "seat_encoder.0.weight",
@@ -287,7 +310,12 @@ def legacy_inputs(
             "input names to move by"
         )
     places = [place for place in field_places() if place.name not in FIELDS_KEPT_RAW]
-    keys = tuple(key for place in places for key in place.keys)
+    keys = tuple(
+        key
+        for place in places
+        for key in place.keys
+        if key not in _KEYS_SINCE_V31
+    )
     return encoder_input_names(layout, places, width), keys
 
 
@@ -873,17 +901,18 @@ class EntityNetwork(PolicyValueNetwork):
         for template in catalog:
             action_kind.append(kind_index[template.action_id])
             row_key, row_entity, row_label, row_number = [], [], [], []
+            source = dict(template.arguments).get("source")
             for key, value in template.arguments:
                 row_key.append(key_index[key])
                 entity = self.entity_count
                 number = 0.0
-                label_key = _argument_label(template.action_id, key, value)
+                label_key = _argument_label(template.action_id, key, value, source)
                 if isinstance(value, bool):
                     number = float(value)
                 elif isinstance(value, int):
                     number = math.log1p(abs(value)) * (1 if value >= 0 else -1)
                 elif isinstance(value, str) and label_key is None:
-                    found = resolve_argument(template.action_id, key, value)
+                    found = resolve_argument(template.action_id, key, value, source)
                     assert found is not None
                     entity = self.entity_offsets[found[0]] + found[1]
                 label = 0 if label_key is None else labels[label_key]

@@ -110,6 +110,12 @@ class FrameKind(StrEnum):
     # Appended last, like every kind. It is never on top at a player
     # decision, so no observation shows it.
     PAUSE = "pause"
+    # A Conflict reward recipient's window over its reward's icons, one row
+    # each in any order (stage B2, OQ-112; ``rules/combat.py``).
+    COMBAT_REWARD_ICONS = "combat_reward_icons"
+    # A completed Contract's reward icons, one row each in any order (stage
+    # B2, OQ-112; ``rules/contracts.py``).
+    CONTRACT_REWARD_ICONS = "contract_reward_icons"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

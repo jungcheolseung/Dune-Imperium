@@ -81,6 +81,7 @@ from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.agent_box_abilities import (
     AgentIconBlock,
     AgentIconCondition,
@@ -147,8 +148,10 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
+    legacy_trash_whole,
     legal_optional_trash_actions,
     open_optional_trash,
+    trash_printer,
 )
 from dune_imperium.rules.spy_placement import spy_placement_allowed_post_ids
 
@@ -375,23 +378,36 @@ def test_throne_room_politics_recruits_then_queues_its_trash_on_the_turn() -> No
     assert result.state.players[0].troops_garrison == troops + 1
     frame = result.state.decision_stack[-1]
     assert frame.kind == FrameKind.AGENT_EFFECTS
+    # The trash records the card whose box printed it (stage B3c-2b).
+    printer = "agent_card|throne_room_politics"
     assert turn_rows.pending(frame) == (
-        (turn_rows.OPTIONAL_TRASH, agent_card_source(1, 0, card), ""),
+        (turn_rows.OPTIONAL_TRASH, agent_card_source(1, 0, card), printer),
     )
     legal = legal_optional_trash_actions(result.state, 0)
     # The card itself sits in play: it may trash itself (OQ-022). No refusal.
     assert [(a.action_id, dict(a.arguments)) for a in legal] == [
-        ("trash_optional_card", {"card_id": card})
+        (
+            "trash_optional_card",
+            {
+                "card_id": card,
+                "printed": "throne_room_politics",
+                "source": "agent_card",
+            },
+        )
     ]
     assert result.events[0].kind == "agent_card_effect_resolved"
 
 
-def test_a_self_trash_takes_the_trash_its_own_box_opened() -> None:
-    """With two trashes waiting, the card whose own Agent box opened one of
-    them is trashed by that one, so it keeps what is left of its box (OQ-022:
-    "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"); any
-    other card takes the newest waiting trash, the order the windows, stacked
-    as they were raised, answered (cleanup-2b, OQ-095 (2))."""
+def test_the_seat_picks_which_waiting_trash_icon_trashes_a_card() -> None:
+    """With two trashes waiting, each is an effect of its own, resolved in
+    its owner's order ("You may carry out all these effects in any order"
+    [Main p. 9], OQ-027), and which one trashes a card matters: a card
+    trashed by its own box's icon keeps what is left of its box (OQ-022:
+    "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"), by
+    another effect it loses it (OQ-022, 2026-10-12). So the seat picks the
+    icon by what printed it, then the card (stage B3c-2b); the older engine
+    picked the icon itself (``legacy_trash_whole``: the card's own box's
+    first, else the newest no other card in play opened)."""
 
     card = "imperium:throne_room_politics:0"
     other = "starting:0:dagger:0"
@@ -401,37 +417,55 @@ def test_a_self_trash_takes_the_trash_its_own_box_opened() -> None:
         RulesetConfig(immortality=True, bloodlines=True, choam_module=True),
     )
     own = agent_card_source(1, 0, card)
-    elsewhere = "round:1:player:0:test:second_trash"
-    # The box's trash first, a second one raised after it: the newest waiting
-    # trash is not the box's own.
-    waiting = open_optional_trash(resolve_agent_card_effect(placed).state, 0, elsewhere)
-    frame = waiting.decision_stack[-1]
-    assert turn_rows.pending(frame) == (
-        (turn_rows.OPTIONAL_TRASH, own, ""),
-        (turn_rows.OPTIONAL_TRASH, elsewhere, ""),
+    elsewhere = "round:1:player:0:research:c3r3"
+    # The box's trash first, a research space's raised after it.
+    waiting = open_optional_trash(
+        resolve_agent_card_effect(placed).state,
+        0,
+        elsewhere,
+        printer=trash_printer(Source.RESEARCH, "c3r3"),
     )
-    offered = legal_optional_trash_actions(waiting, 0)
-    assert {dict(a.arguments)["card_id"] for a in offered} == {card, other}
+    frame = waiting.decision_stack[-1]
+    box_icon = (turn_rows.OPTIONAL_TRASH, own, "agent_card|throne_room_politics")
+    research_icon = (turn_rows.OPTIONAL_TRASH, elsewhere, "research|c3r3")
+    assert turn_rows.pending(frame) == (box_icon, research_icon)
 
-    def trash(card_id: str) -> GameState:
-        action = DomainAction("trash_optional_card", 0, (("card_id", card_id),))
+    def row(card_id: str, source: str, printed: str) -> DomainAction:
+        return DomainAction(
+            "trash_optional_card",
+            0,
+            (("card_id", card_id), ("printed", printed), ("source", source)),
+        )
+
+    by_box = ("agent_card", "throne_room_politics")
+    by_research = ("research", "c3r3")
+    # Each card (discard pile, then play) by each icon, the newest first.
+    assert legal_optional_trash_actions(waiting, 0) == (
+        row(other, *by_research),
+        row(other, *by_box),
+        row(card, *by_research),
+        row(card, *by_box),
+    )
+
+    def trash(action: DomainAction) -> GameState:
         return apply_optional_trash(waiting, action).state
 
-    # The box's own card: its trash is taken, the other stays waiting, and
-    # the box is marked as self-trashed.
-    itself = trash(card)
+    # The card by its own box's icon: that trash is taken, the research
+    # space's still waits, and the box is marked self-trashed.
+    itself = trash(row(card, *by_box))
     assert itself.players[0].trashed == (card,)
-    assert turn_rows.pending(itself.decision_stack[-1]) == (
-        (turn_rows.OPTIONAL_TRASH, elsewhere, ""),
-    )
+    assert turn_rows.pending(itself.decision_stack[-1]) == (research_icon,)
     assert dict(itself.decision_stack[-1].context)["agent_card_self_trashed"] is True
-    # Any other card: the newest trash is taken and the box's own still waits.
-    stranger = trash(other)
-    assert stranger.players[0].trashed == (other,)
-    assert turn_rows.pending(stranger.decision_stack[-1]) == (
-        (turn_rows.OPTIONAL_TRASH, own, ""),
-    )
-    assert "agent_card_self_trashed" not in dict(stranger.decision_stack[-1].context)
+    # The card by the research space's icon: another effect's trash, so the
+    # box is not its own (the expiry hook ends it, OQ-022) and its own icon
+    # still waits.
+    by_other = trash(row(card, *by_research))
+    assert by_other.players[0].trashed == (card,)
+    assert turn_rows.pending(by_other.decision_stack[-1]) == (box_icon,)
+    assert "agent_card_self_trashed" not in dict(by_other.decision_stack[-1].context)
+    # The older engine's own picks.
+    assert legacy_trash_whole(waiting, 0, card) == row(card, *by_box)
+    assert legacy_trash_whole(waiting, 0, other) == row(other, *by_research)
 
 
 def test_pointing_the_way_draws_its_intrigue_before_the_write_back() -> None:
@@ -1296,3 +1330,42 @@ def test_slig_farmer_is_a_plain_line_beside_a_paid_arrow() -> None:
     gain = GainSolariPerPartnerAgentIcon()
     assert reward_text(gain) in AGENT_EFFECT_TEXT[effect]
     assert reward_text_ko(gain) in AGENT_EFFECT_TEXT_KO[effect]
+
+
+def test_scripted_agents_finish_a_trash_icon_another_chooser_picked() -> None:
+    """The scripted agents see only the older engine's pick of each card's
+    trash icon (``engine_order.older_engine_wholes``), but once an effect is
+    picked -- by a network seat whose untrained rows fall back to them --
+    they finish it as it is. The 2026-10-20 review of B3c-2b: with a research
+    space's and a Tech tile's trashes waiting, the older engine picked the
+    newer (the tile's) for every card, so after the research space's row the
+    filter left no card and both agents raised."""
+
+    from dune_imperium.agents import HeuristicAgent
+    from dune_imperium.agents.app_ai import AppAIAgent
+    from dune_imperium.rules import UprisingRulesEngine
+
+    card = "imperium:throne_room_politics:0"
+    other = "starting:0:dagger:0"
+    state = _played(
+        card,
+        PlayerState(player_id=0, discard_pile=(other,)),
+        RulesetConfig(immortality=True, bloodlines=True, choam_module=True),
+    )
+    state = resolve_agent_card_effect(state).state
+    for source, printer in (
+        ("round:1:player:0:research:c3r3", trash_printer(Source.RESEARCH, "c3r3")),
+        (
+            "round:1:player:0:tech:planetary_array:acquire",
+            trash_printer(Source.TECH, "planetary_array"),
+        ),
+    ):
+        state = open_optional_trash(state, 0, source, printer=printer)
+    engine = UprisingRulesEngine()
+    research = DomainAction("trash", 0, (("printed", "c3r3"), ("source", "research")))
+    picked = engine.apply(state, research).state
+    legal = engine.legal_actions(picked, 0)
+    assert legal and {a.action_id for a in legal} == {"choose_personal_card"}
+    view = engine.observe(picked, 0)
+    for agent in (HeuristicAgent(seed=1), AppAIAgent(seed=1, level=2)):
+        assert agent.choose_action_with_state(picked, view, legal) in legal

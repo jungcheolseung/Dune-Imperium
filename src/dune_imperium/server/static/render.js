@@ -807,7 +807,7 @@ function appendTurnEndRow(container, label, onClick, action = null, kind = "turn
 
 /* The action ids that start the viewing seat's own next turn, at which
    point an older combat result stops being news. */
-const OWN_TURN_ACTION_IDS = new Set(["agent_turn", "reveal_turn", "play_turn_start_card"]);
+const OWN_TURN_ACTION_IDS = new Set(["place_agent", "reveal_turn", "play_turn_start_card"]);
 
 /* The reward group for the most recently resolved Conflict the given seat
    has seen, or null when none has resolved yet, it already resolved with
@@ -834,7 +834,10 @@ function latestCombatResolution(seat) {
           bundle = { conflictId, laterReveals: 0, rewards: [] };
           sawRewards = true;
         }
-        bundle.rewards.push(event.payload);
+        /* The recipient's reward begins; its icons follow (stage B2). */
+        bundle.rewards.push({ ...event.payload });
+      } else if (sawRewards && isCombatRewardGain(event)) {
+        addCombatRewardGain(bundle, event);
       } else if (event.kind === "conflict_won" && sawRewards) {
         /* Cleanup names the card it hands the sole winner. */
         bundle.conflictId = event.payload.conflict_id;
@@ -890,9 +893,51 @@ function combatResultRanksText(bundle) {
     .join(" · ");
 }
 
-/* What one reward payload (combat.py's _combat_reward_event) grants, as
-   term icons in printed order. A reward already carries the sandworm
-   multiplier, so the counts here are the amounts the seat actually got. */
+/* A Conflict reward is answered icon by icon (stage B2, OQ-112): each icon
+   leaves combat_reward_icon_resolved, and its resources a resources_gained
+   whose source is the recipient's reward itself (with ":contract", a
+   Contract icon's 2 Solari without CHOAM). A Contract taken through the
+   reward pays under a longer source of its own and is no part of it. */
+const COMBAT_REWARD_SOURCE = /^round:\d+:combat_reward:\d+:\d+(?::contract)?$/;
+
+function isCombatRewardGain(event) {
+  if (event.kind === "combat_reward_icon_resolved") return true;
+  return (
+    event.kind === "resources_gained" &&
+    typeof event.payload.source === "string" &&
+    COMBAT_REWARD_SOURCE.test(event.payload.source)
+  );
+}
+
+/* Add one icon's gain to its recipient's reward in the bundle. */
+function addCombatRewardGain(bundle, event) {
+  const payload = event.payload;
+  const reward = [...bundle.rewards].reverse().find((item) => item.player === payload.player);
+  if (!reward) return;
+  const add = (key, amount) => {
+    if (amount) reward[key] = (reward[key] || 0) + amount;
+  };
+  if (event.kind === "resources_gained") {
+    add("solari", payload.solari);
+    add("spice", payload.spice);
+    add("water", payload.water);
+    return;
+  }
+  add("troops", payload.troops);
+  add("intrigue", payload.intrigue);
+  add("victory_points", payload.victory_points);
+  add("contracts", payload.effect === "contract" ? payload.contracts : 0);
+  if (payload.effect === "faction_influence") {
+    reward.faction = payload.faction;
+    add("faction_influence", payload.influence);
+  }
+  if (payload.effect === "choose_influence") add("choose_influence", 1);
+  if (payload.effect === "control") reward.control_space_id = payload.space_id;
+}
+
+/* What one recipient's reward has granted so far (its icons, gathered by
+   addCombatRewardGain), as term icons in printed order. The amounts are
+   the ones the seat actually got, a sandworm's double included. */
 function combatRewardNodes(reward) {
   const nodes = [];
   const add = (term, count) => nodes.push(termNode(term, count));
@@ -1137,6 +1182,34 @@ function waitingHint(seat) {
   return info.online ? "" : t("render.waiting_hint_offline");
 }
 
+/* How many steps the seat's last move took: a placement the staged turn
+   sent is its card pick and its space pick (stage B1), taken back together
+   as it was made; anything else is one step. */
+function lastMoveSteps(available) {
+  const live = ((state.log && state.log.entries) || []).filter(
+    (entry) => entry.type === "action" && !entry.undone
+  );
+  const [pick, space] = live.slice(-2);
+  const placement =
+    available >= 2 &&
+    pick && space &&
+    pick.actor === state.viewSeat && space.actor === state.viewSeat &&
+    pick.action_id === "choose_agent_card" && space.action_id === "place_agent";
+  return placement ? 2 : 1;
+}
+
+/* How many moves the seat's last ``steps`` steps make, as the seat made
+   them: a placement's card pick (stage B1) and a step toward a waiting
+   effect (``pick``, stage B3) go on into the seat's next step. */
+function undoMoves(steps) {
+  const live = ((state.log && state.log.entries) || []).filter(
+    (entry) => entry.type === "action" && !entry.undone
+  );
+  return live
+    .slice(-steps)
+    .filter((entry) => !entry.pick && entry.action_id !== "choose_agent_card").length;
+}
+
 /* Undo controls for the viewing seat (M11 slice 6): a single-step button
    and, when more than one step is available, a take-back-everything button. */
 function appendUndoRow(container) {
@@ -1152,13 +1225,15 @@ function appendUndoRow(container) {
   one.type = "button";
   one.textContent = t("render.undo_one_step");
   one.disabled = state.busy;
-  one.addEventListener("click", () => submitUndo(state.viewSeat, 1));
+  const last = lastMoveSteps(entry.steps);
+  one.addEventListener("click", () => submitUndo(state.viewSeat, last));
   row.appendChild(one);
 
-  if (entry.steps > 1) {
+  const moves = undoMoves(entry.steps);
+  if (moves > 1) {
     const all = document.createElement("button");
     all.type = "button";
-    all.textContent = t("render.undo_all_steps", { steps: entry.steps });
+    all.textContent = t("render.undo_all_steps", { steps: moves });
     all.disabled = state.busy;
     all.addEventListener("click", () => submitUndo(state.viewSeat, entry.steps));
     row.appendChild(all);
@@ -1489,13 +1564,23 @@ function turnCardSuffixes(entries, suffixes) {
 
 /* Whether the server's dry run says this trash row loses an Agent box of
    the open Agent turn (view.box_losing_trash, sent with the seat's own
-   rows only). A row naming no card (Dissecting Kit) matches on its action. */
+   rows only). A row naming no card (Dissecting Kit) matches on its action.
+   An optional trash on the turn also names the trash icon it uses
+   (source, printed, printed_box; stage B3c-2b): a card trashed by its own
+   box's icon keeps its box, by another icon it loses it, so the icon must
+   match too. */
+const TRASH_ICON_KEYS = ["source", "printed", "printed_box"];
+
 function losesBox(action) {
   const cardId = action.arguments.card_id;
   const losing = (state.view && state.view.box_losing_trash) || [];
   return losing.some(
     (row) => row.action_id === action.action_id
       && (typeof cardId !== "string" || row.card_id === cardId)
+      && TRASH_ICON_KEYS.every(
+        (key) => (row[key] === undefined ? null : row[key])
+          === (action.arguments[key] === undefined ? null : action.arguments[key])
+      )
   );
 }
 
@@ -2166,6 +2251,8 @@ function actionItem(action, onApply, zone, boxed = false) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
   wrap.dataset.index = String(action.index);
+  /* A staged Agent turn's placement (turn.js placementActions). */
+  if (typeof action.placement === "number") wrap.dataset.placement = String(action.placement);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   if (typeof action.box === "number") wrap.dataset.box = String(action.box);
   const button = document.createElement("button");

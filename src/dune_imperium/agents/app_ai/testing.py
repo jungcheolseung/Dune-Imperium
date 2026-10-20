@@ -57,7 +57,7 @@ def play_until(
             return state
         actions = ENGINE.legal_actions(state, decision.owner)
         view = ENGINE.observe(state, decision.owner)
-        action = agents[decision.owner].choose_action(view, actions)
+        action = agents[decision.owner].choose_action_with_state(state, view, actions)
         state = ENGINE.apply(state, action, legal_actions=actions).state
     raise AssertionError("predicate never held before the game ended")
 

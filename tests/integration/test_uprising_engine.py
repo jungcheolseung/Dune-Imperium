@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import cast
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -26,6 +27,7 @@ from dune_imperium.core.chance import FIXED_OUTCOME_SUFFIX
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.simulation import run_random_round
 
@@ -36,18 +38,18 @@ def test_agent_effect_resolution_cannot_start_a_second_agent_turn() -> None:
     decision = engine.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     first_player = decision.owner
-    agent_action = next(
-        action
-        for action in engine.legal_actions(state, first_player)
-        if action.action_id == "agent_turn"
-    )
+    agent_action = next(iter(executable_placements(state, first_player)))
 
-    state = engine.apply(state, agent_action).state
+    state = apply_placement(engine, state, agent_action).state
     effect_action_ids = {
-        action.action_id for action in engine.legal_actions(state, first_player)
+        action.action_id for action in engine.whole_actions(state, first_player)
     }
 
+    # An Agent turn is a card pick and a space pick (stage B1); neither step
+    # is offered again inside the Agent-effect frame.
     assert "agent_turn" not in effect_action_ids
+    assert "choose_agent_card" not in effect_action_ids
+    assert "place_agent" not in effect_action_ids
     assert "reveal_turn" not in effect_action_ids
     assert state.players[first_player].agents_available == 1
 
@@ -132,7 +134,7 @@ def test_engine_opens_wild_match_then_finishes_after_player_choice() -> None:
         frame = working.decision_stack[-1]
         assert isinstance(frame.decision, PlayerDecision)
         owner = frame.decision.owner
-        actions = engine.legal_actions(working, owner)
+        actions = engine.whole_actions(working, owner)
         match = next(
             (a for a in actions if a.action_id == "match_endgame_wild_icon"),
             None,
@@ -143,7 +145,7 @@ def test_engine_opens_wild_match_then_finishes_after_player_choice() -> None:
             else next(a for a in actions if a.action_id == "pass_endgame_intrigue")
         )
         matched = matched or step is match
-        result = engine.apply(working, step)
+        result = apply_whole(engine, working, step)
         kinds.extend(event.kind for event in result.events)
         working = result.state
 
@@ -195,10 +197,10 @@ def test_engine_exposes_and_applies_infiltrate_agent_destination() -> None:
 
     infiltrate = next(
         action
-        for action in engine.legal_actions(state, player)
+        for action in executable_placements(state, player)
         if dict(action.arguments).get("infiltrate_post_id") == post_id
     )
-    transition = engine.apply(state, infiltrate)
+    transition = apply_placement(engine, state, infiltrate)
 
     assert "assembly_hall" in transition.state.players[player].agent_locations
     assert transition.state.players[player].spy_post_ids == ()
@@ -214,13 +216,13 @@ def test_reveal_resolution_cannot_start_another_turn() -> None:
     assert isinstance(decision, PlayerDecision)
     reveal = next(
         action
-        for action in engine.legal_actions(state, decision.owner)
+        for action in engine.whole_actions(state, decision.owner)
         if action.action_id == "reveal_turn"
     )
 
-    state = engine.apply(state, reveal).state
+    state = apply_whole(engine, state, reveal).state
     reveal_action_ids = {
-        action.action_id for action in engine.legal_actions(state, decision.owner)
+        action.action_id for action in engine.whole_actions(state, decision.owner)
     }
 
     assert "agent_turn" not in reveal_action_ids
@@ -235,16 +237,16 @@ def test_assembly_hall_is_playable_and_draws_intrigue() -> None:
     assert isinstance(decision, PlayerDecision)
     assembly_hall = next(
         action
-        for action in engine.legal_actions(state, decision.owner)
+        for action in executable_placements(state, decision.owner)
         if dict(action.arguments).get("space_id") == "assembly_hall"
     )
     intrigue_card = state.intrigue_deck[0]
 
-    state = engine.apply(state, assembly_hall).state
-    resolve = engine.legal_actions(state, decision.owner)
+    state = apply_placement(engine, state, assembly_hall).state
+    resolve = engine.whole_actions(state, decision.owner)
     assert tuple(action.action_id for action in resolve) == ("resolve_board_effect",)
     assert dict(resolve[0].arguments) == {"effect": "intrigue"}
-    state = engine.apply(state, resolve[0]).state
+    state = apply_whole(engine, state, resolve[0]).state
 
     assert intrigue_card in state.players[decision.owner].intrigue_cards
 
@@ -275,12 +277,12 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
     )
     espionage = next(
         action
-        for action in engine.legal_actions(state, player)
+        for action in executable_placements(state, player)
         if dict(action.arguments).get("space_id") == "espionage"
     )
 
-    state = engine.apply(state, espionage).state
-    choices = engine.legal_actions(state, player)
+    state = apply_placement(engine, state, espionage).state
+    choices = engine.whole_actions(state, player)
 
     # The Spy icon resolves only through its explicit choices; the printed
     # card draw is the space's other icon and keeps the generic action
@@ -300,16 +302,16 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
         for action in choices
         if action.action_id == "resolve_espionage_place_spy"
     )
-    state = engine.apply(state, placement).state
+    state = apply_whole(engine, state, placement).state
     assert state.players[player].spies_supply == 2
     assert drawn not in state.players[player].hand
 
     draw = next(
         action
-        for action in engine.legal_actions(state, player)
+        for action in engine.whole_actions(state, player)
         if action.action_id == "resolve_board_effect"
     )
-    state = engine.apply(state, draw).state
+    state = apply_whole(engine, state, draw).state
     assert drawn in state.players[player].hand
 
 
@@ -345,17 +347,17 @@ def test_reaching_emperor_influence_four_owes_the_tracks_spy_inside_the_turn() -
     )
     visit = next(
         action
-        for action in engine.legal_actions(state, player)
+        for action in executable_placements(state, player)
         if dict(action.arguments).get("space_id") == "dutiful_service"
     )
-    state = engine.apply(state, visit).state
+    state = apply_placement(engine, state, visit).state
     step = next(
         action
-        for action in engine.legal_actions(state, player)
+        for action in engine.whole_actions(state, player)
         if action.action_id == "resolve_faction_influence"
     )
 
-    result = engine.apply(state, step)
+    result = apply_whole(engine, state, step)
     state = result.state
 
     assert state.players[player].influence.emperor == 4
@@ -370,33 +372,33 @@ def test_reaching_emperor_influence_four_owes_the_tracks_spy_inside_the_turn() -
     # the placement beside the space's own effect, but not the turn end.
     assert [seat for seat, _ in state.pending_track_spies] == [player]
     assert state.decision_stack[-1].kind == "agent_effects"
-    offered = {action.action_id for action in engine.legal_actions(state, player)}
+    offered = {action.action_id for action in engine.whole_actions(state, player)}
     assert {"place_track_spy", "resolve_board_effect"} <= offered
     assert "finish_agent_turn" not in offered
 
     # Another action first: the space's own effect.
     board = next(
         action
-        for action in engine.legal_actions(state, player)
+        for action in engine.whole_actions(state, player)
         if action.action_id == "resolve_board_effect"
     )
-    state = engine.apply(state, board).state
-    assert [action.action_id for action in engine.legal_actions(state, player)] == [
+    state = apply_whole(engine, state, board).state
+    assert [action.action_id for action in engine.whole_actions(state, player)] == [
         "place_track_spy"
     ]
 
-    state = engine.apply(state, DomainAction("place_track_spy", player)).state
+    state = apply_whole(engine, state, DomainAction("place_track_spy", player)).state
 
     assert state.pending_track_spies == ()
     frame = state.decision_stack[-1]
     assert frame.kind == "spy_placement"
     assert isinstance(frame.decision, PlayerDecision)
     assert frame.decision.owner == player
-    offered_posts = engine.legal_actions(state, player)
+    offered_posts = engine.whole_actions(state, player)
     assert {action.action_id for action in offered_posts} == {"place_spy_on_space"}
     assert len(offered_posts) == 13
 
-    state = engine.apply(state, offered_posts[0]).state
+    state = apply_whole(engine, state, offered_posts[0]).state
 
     assert state.players[player].spies_supply == 2
     assert state.players[player].spy_post_ids == (
@@ -404,7 +406,7 @@ def test_reaching_emperor_influence_four_owes_the_tracks_spy_inside_the_turn() -
     )
     # Back in the turn, which may now end.
     assert state.decision_stack[-1].kind == "agent_effects"
-    assert {action.action_id for action in engine.legal_actions(state, player)} == {
+    assert {action.action_id for action in engine.whole_actions(state, player)} == {
         "finish_agent_turn"
     }
 
@@ -442,12 +444,15 @@ def test_report_only_events_reach_the_transition_but_never_the_state() -> None:
     # existed, so saves written earlier still load (2026-10-08).
     engine = UprisingRulesEngine()
     assert engine.report_only_event_kinds == {"combat_standing", "cards_revealed"}
-    first = run_random_round(engine, RulesetConfig(), 0, 1000)
+    # Policy seed 1001, not 1000: the random policy draws over the legal list,
+    # which an Agent turn's two steps (stage B1) changed, and the round of
+    # policy seed 1000 no longer reaches a Combat standing.
+    first = run_random_round(engine, RulesetConfig(), 0, 1001)
     state = engine.reset(RulesetConfig(), 0)
     reported: list[GameEvent] = []
     for step in first.replay.steps:
         before = state
-        transition = engine.apply(state, step)
+        transition = apply_whole(engine, state, step)
         shown = [
             event
             for event in transition.events
@@ -493,7 +498,7 @@ def test_two_rounds_replay_through_third_round_discard_shuffles() -> None:
         if isinstance(decision, ChanceDecision):
             step = resolver.resolve(decision)
         elif isinstance(decision, PlayerDecision):
-            actions = engine.legal_actions(state, decision.owner)
+            actions = engine.whole_actions(state, decision.owner)
             step = next(
                 action
                 for action in actions
@@ -501,7 +506,7 @@ def test_two_rounds_replay_through_third_round_discard_shuffles() -> None:
             )
         else:
             raise AssertionError("multi-round replay reached no decision")
-        state = engine.apply(state, step).state
+        state = apply_whole(engine, state, step).state
         steps.append(step)
     else:
         raise AssertionError("two rounds exceeded the transition limit")
@@ -570,14 +575,22 @@ def test_engine_advertises_every_implemented_agent_card_effect() -> None:
     )
     state = _turn_state((haven,))
 
+    engine = UprisingRulesEngine()
+    picks = [
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "choose_agent_card"
+    ]
+    # Smuggler's Haven's Agent effect is implemented, so the dispatcher must
+    # advertise the card (its card pick) instead of silently hiding it, and
+    # its placements (the space picks that follow).
+    assert [dict(pick.arguments)["card_id"] for pick in picks] == [haven]
+    picked = apply_whole(engine, state, picks[0]).state
     destinations = {
         dict(action.arguments)["space_id"]
-        for action in UprisingRulesEngine().legal_actions(state, 0)
-        if action.action_id == "agent_turn"
+        for action in engine.whole_actions(picked, 0)
+        if action.action_id == "place_agent"
     }
-
-    # Smuggler's Haven's Agent effect is implemented, so the dispatcher must
-    # advertise its placements instead of silently hiding the card.
     assert "deliver_supplies" in destinations
 
 
@@ -594,14 +607,24 @@ def test_engine_withholds_agent_actions_it_cannot_execute() -> None:
     )
     state = _turn_state((signet_ring, diplomacy))
 
-    actions = UprisingRulesEngine().legal_actions(state, 0)
-    agent_actions = [action for action in actions if action.action_id == "agent_turn"]
+    engine = UprisingRulesEngine()
+    actions = engine.whole_actions(state, 0)
+    picks = [action for action in actions if action.action_id == "choose_agent_card"]
 
-    # Leader abilities are not implemented, so Signet Ring stays in hand.
-    assert all(dict(a.arguments)["card_id"] != signet_ring for a in agent_actions)
+    # Leader abilities are not implemented, so Signet Ring stays in hand: its
+    # card is not offered (the Agent turn's card picks, stage B1).
+    assert all(dict(a.arguments)["card_id"] != signet_ring for a in picks)
     # Every board-space effect is implemented, so Diplomacy's Faction-icon
     # destinations are all advertised even though Signet Ring above is not.
-    destinations = {dict(a.arguments)["space_id"] for a in agent_actions}
+    (diplomacy_pick,) = [
+        pick for pick in picks if dict(pick.arguments)["card_id"] == diplomacy
+    ]
+    picked = apply_whole(engine, state, diplomacy_pick).state
+    destinations = {
+        dict(a.arguments)["space_id"]
+        for a in engine.whole_actions(picked, 0)
+        if a.action_id == "place_agent"
+    }
     assert "dutiful_service" in destinations
     assert "secrets" in destinations
     assert any(action.action_id == "reveal_turn" for action in actions)

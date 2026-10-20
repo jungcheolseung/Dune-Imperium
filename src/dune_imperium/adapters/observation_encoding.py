@@ -15,7 +15,7 @@ Encoding rules:
   (0 absent, 1 face up, 2 face down).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import cache
 from typing import Final
@@ -63,8 +63,11 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_CARDS_BY_ID,
 )
 from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
+from dune_imperium.rules.action_shapes import Source, Verb
+from dune_imperium.rules.effect_steps import CHOOSE_ACTIONS
 from dune_imperium.rules.frames import FrameKind
 
 # v21 (2026-09-27): the Contract identity universe swaps the four Rise of
@@ -130,7 +133,30 @@ from dune_imperium.rules.frames import FrameKind
 # card a seat bought vanished from its observation once the discard pile was
 # shuffled into the deck, though every seat saw it bought. Every older column
 # keeps its offset; a v31 checkpoint migrates by segment and starts them at 0.
-OBSERVATION_VERSION: Final = 32
+# v33 (stage B1, OQ-111): the Agent turn is a card pick and then a space pick,
+# so the seat deciding the space must see the card it picked: appended as
+# ``private_agent_card_pick`` (by identity) and ``private_agent_card_pick_graft``
+# (1 when it is grafted). No other seat sees the pick. Every older column
+# keeps its offset; a v32 checkpoint migrates by segment and starts them at 0.
+# Also v33 (stage B3, OQ-111 (4)): a waiting effect is picked before its
+# target, so the seat picking the target must see the effect it picked:
+# appended as ``private_effect_pick_verb`` and ``private_effect_pick_source``
+# (one-hot), ``private_effect_pick_card`` (the printed personal card, by
+# identity), ``private_effect_pick_box`` (1 for a grafted turn's second card)
+# and ``private_effect_pick_targets`` (the targets picked so far). No other
+# seat sees the pick. Also v33 (the 2026-10-20 review of stage B3c-1): a
+# target picked before the path's last is shown by identity, so the seat
+# deciding the next step sees what it picked (an Intrigue card's option step
+# had not shown the card): appended as ``private_effect_pick_intrigue``,
+# ``_faction``, ``_post``, ``_tech`` and ``_battle`` (a Conflict or Objective
+# card), one segment per kind of target a path picks before its last, and
+# ``private_effect_pick_second_faction`` for a second one (Captured
+# Mentat's Faction gained, after the one lost: their order decides which
+# Alliance is handed on). Also v33 (the 2026-10-20 review of stage B3d-2a):
+# Long Live the Fighters picks the card to draw and then the card to discard
+# by the same target row, its first pick kept by its frame: appended as
+# ``private_effect_pick_personal``, a personal card picked before the last.
+OBSERVATION_VERSION: Final = 33
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -202,6 +228,10 @@ _FRAME_KINDS: Final = tuple(kind.value for kind in FrameKind)
 _PERSONAL_INDEX: Final = {
     card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)
 }
+_VERB_INDEX: Final = {verb.value: index for index, verb in enumerate(Verb)}
+_SOURCE_INDEX: Final = {source.value: index for index, source in enumerate(Source)}
+# The sources whose printed entity is a personal card (stage B3).
+_CARD_SOURCES: Final = frozenset({Source.AGENT_CARD.value, Source.REVEAL_CARD.value})
 _INTRIGUE_INDEX: Final = {card_id: index for index, card_id in enumerate(INTRIGUE_IDS)}
 _AGENT_LOCATION_SLOTS: Final = 3
 _SET_ASIDE_SLOTS: Final = 2
@@ -382,6 +412,25 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
                 (f"seat{seat}_deck_pool", len(PERSONAL_CARD_IDS))
                 for seat in range(_SEATS)
             ),
+            # v33: the seat's own picked Agent card and its graft flag.
+            ("private_agent_card_pick", len(PERSONAL_CARD_IDS)),
+            ("private_agent_card_pick_graft", 1),
+            # v33 (stage B3): the seat's own picked effect, by its row.
+            ("private_effect_pick_verb", len(Verb)),
+            ("private_effect_pick_source", len(Source)),
+            ("private_effect_pick_card", len(PERSONAL_CARD_IDS)),
+            ("private_effect_pick_box", 1),
+            ("private_effect_pick_targets", 1),
+            # v33: the targets picked so far, by identity and kind.
+            ("private_effect_pick_intrigue", len(INTRIGUE_IDS)),
+            ("private_effect_pick_faction", len(FACTION_IDS)),
+            ("private_effect_pick_post", len(POST_IDS)),
+            ("private_effect_pick_tech", len(TECH_IDS)),
+            ("private_effect_pick_battle", len(BATTLE_CARD_IDS)),
+            # v33: a second picked target before the last (a Faction).
+            ("private_effect_pick_second_faction", len(FACTION_IDS)),
+            # v33 (B3d-2a): a personal card picked before the last.
+            ("private_effect_pick_personal", len(PERSONAL_CARD_IDS)),
         )
     )
     return tuple(lengths)
@@ -613,7 +662,48 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         offset = _OFFSET[f"seat{seat_offset}_deck_pool"]
         for card_id in view.players[(observer + seat_offset) % _SEATS].deck_pool:
             values[offset + _PERSONAL_INDEX[card_id]] += 1
+    _write_personal_counts(
+        values,
+        _OFFSET["private_agent_card_pick"],
+        (view.private.agent_card_pick,) if view.private.agent_card_pick else (),
+    )
+    values[_OFFSET["private_agent_card_pick_graft"]] = int(
+        view.private.agent_card_pick_graft
+    )
+    _write_effect_pick(values, view.private.effect_pick)
     return tuple(values)
+
+
+def _write_effect_pick(
+    values: list[int],
+    rows: tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...],
+) -> None:
+    """The seat's own picked effect (stage B3): its row's verb, source,
+    printed personal card and box, how many targets follow it, and each of
+    those targets by identity (``PICKED_TARGET_SEGMENTS``). A window's own
+    effect is picked by its targets alone (stage B3d-2a): no effect row."""
+
+    if not rows:
+        return
+    first = 0 if rows[0][0] in CHOOSE_ACTIONS else 1
+    for position, (action_id, target) in enumerate(rows[first:]):
+        segments, argument, index_of = _PICKED_TARGETS[action_id]
+        value = dict(target)[argument]
+        assert isinstance(value, str)
+        values[_OFFSET[segments[position]] + index_of(value)] += 1
+    values[_OFFSET["private_effect_pick_targets"]] = len(rows) - first
+    if not first:
+        return
+    verb, arguments = rows[0]
+    reference = dict(arguments)
+    values[_OFFSET["private_effect_pick_verb"] + _VERB_INDEX[verb]] = 1
+    source = reference.get("source")
+    if isinstance(source, str):
+        values[_OFFSET["private_effect_pick_source"] + _SOURCE_INDEX[source]] = 1
+        printed = reference.get("printed")
+        if source in _CARD_SOURCES and isinstance(printed, str):
+            values[_OFFSET["private_effect_pick_card"] + _PERSONAL_INDEX[printed]] = 1
+    values[_OFFSET["private_effect_pick_box"]] = int(reference.get("box") == 1)
 
 
 def _write_scouts(
@@ -835,6 +925,51 @@ def _contract_identity_index(instance_id: str) -> int:
 @cache
 def _skill_identity_index(instance_id: str) -> int:
     return _SKILL_INDEX[skill_for_instance(instance_id).skill_id]
+
+
+# A picked target's segments by its position among the targets picked so
+# far (the first, the second), the argument that names it and its index, by
+# its target row (``rules.effect_steps.Choose``): every kind and position a
+# path picks before its last (a test checks the step table against it). Only
+# Captured Mentat's exchange picks two before its last, both Factions: the
+# Faction lost, then the one gained, before the Alliance's recipient.
+_PICKED_TARGETS: Final[
+    Mapping[str, tuple[tuple[str, ...], str, Callable[[str], int]]]
+] = {
+    "choose_intrigue_card": (
+        ("private_effect_pick_intrigue",),
+        "card_id",
+        _intrigue_identity_index,
+    ),
+    "choose_faction": (
+        ("private_effect_pick_faction", "private_effect_pick_second_faction"),
+        "faction",
+        lambda value: _FACTION_INDEX[value],
+    ),
+    "choose_post": (
+        ("private_effect_pick_post",),
+        "post_id",
+        lambda value: _POST_INDEX[value],
+    ),
+    "choose_tech": (
+        ("private_effect_pick_tech",),
+        "tech_id",
+        lambda value: _TECH_INDEX[value],
+    ),
+    "choose_conflict_card": (
+        ("private_effect_pick_battle",),
+        "card_id",
+        lambda value: _BATTLE_CARD_INDEX[value],
+    ),
+    "choose_personal_card": (
+        ("private_effect_pick_personal",),
+        "card_id",
+        _personal_identity_index,
+    ),
+}
+PICKED_TARGET_SEGMENTS: Final[Mapping[str, tuple[str, ...]]] = {
+    action_id: segments for action_id, (segments, _, _) in _PICKED_TARGETS.items()
+}
 
 
 def _write_personal_counts(

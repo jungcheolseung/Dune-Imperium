@@ -132,6 +132,8 @@
 | [OQ-108](#oq-108--planetary-array의-카드를-뽑는-때) | Planetary Array의 카드를 뽑는 때 | `DECIDED` |
 | [OQ-109](#oq-109--세포-수확-획득-중에-뽑힌-책략-카드와-conflict-끝-창) | 세포 수확 획득 중에 뽑힌 책략 카드와 Conflict 끝 창 | `DECIDED` |
 | [OQ-110](#oq-110--공개-차례-도중에-나온-운항-카드-3의-설득력) | 공개 차례 도중에 나온 운항 카드 3의 설득력 | `DECIDED` |
+| [OQ-111](#oq-111--두-단계-행동의-중간-상태) | 두 단계 행동의 중간 상태 | `DECIDED` |
+| [OQ-112](#oq-112--보상-한-줄-안의-아이콘-순서) | 보상 한 줄 안의 아이콘 순서 | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -497,6 +499,7 @@
 - 상태: `DECIDED` (사용자 판정 2026-09-07, project convention)
 - `[Main p. 12]`는 "You may resolve Reveal effects in any order you like"라고 하지만, 어느 효과를 하나의 단위로 순서를 고르는지는 정하지 않는다. 2026-09-04의 OQ-027 Reveal box 판정은 자동 이득 전부를 Reveal 시작 시 한꺼번에 적용했다(시점이 결과를 바꾸지 않는다는 전제). Bloodlines에서 그 전제가 깨졌다: Twisted Intrigue의 troop 손실 비용은 Reveal 중 supply를 늘리고(OQ-030은 소급 recruit를 허용하지 않음), Rapid Engineering으로 Reveal 중 Suspensor Suits를 얻으면 그 뒤의 Intrigue draw만 troop을 배치한다. Immortality의 specimen 반환도 같은 종류다. (2026-10-04 부기: OQ-030·OQ-049 재판정으로 recruit·specimen 부족분이 기록돼 같은 player turn 안에서 supply가 늘면 자동으로 채워지므로, supply를 늘리는 예(troop 손실 비용, specimen 반환)는 이제 Reveal 안의 시점 이유가 아니다. Suspensor Suits와 Forbidden Weapons의 이유는 그대로이고, 아래 판정도 그대로다.)
 - 판정(사용자, 2026-09-07): troop recruit·Intrigue draw·자원 획득(Solari·spice·water)은 카드 draw와 같은 **각각 하나의 효과**로 보고 소유자가 Reveal 안에서 시점을 고른다(자원은 같은 날 사용자 추가 지시 — Forbidden Weapons의 "spice 전부 잃기" 앞뒤로 결과가 달라지므로). 구현: Reveal 시작 시 카드·Skill·tile의 troop 아이콘, Intrigue draw 아이콘, 자원 묶음을 Reveal frame의 대기 목록(`reveal_pending_gains`)에 넣고, `recruit_reveal_troops`/`draw_reveal_intrigue`는 가장 오래된 같은 종류 항목 하나를(같은 종류끼리는 supply·덱이 같아 순서가 무의미하므로 인자 없음), `gain_reveal_resources(solari, spice, water)`는 그 묶음의 항목 하나를 해결한다(인쇄된 효과 한 줄의 자원이 한 묶음; 같은 묶음끼리는 교환 가능). 늦게 조건이 성립한 효과(OQ-028), Reveal 중 도착한 카드(FAQ p. 3), Skill의 Reveal 보너스(Driven의 spice·Hardy의 troop recruit — Hardy는 2026-09-26 water에서 정정), Delivery Bay의 Command Solari도 같은 목록에 들어간다. 이득이므로 거절은 없고, 남아 있으면 `finish_reveal`이 제시되지 않는다. 2026-10-10부터 Muad'Dib의 Unpredictable Foe가 주는 Intrigue도 이 목록에 들어간다([OQ-106](#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 9). 고정 진영 Influence(Shishakli의 Fremen Bond Influence)도 같은 날 사용자 지시로 `gain_reveal_faction_influence(faction)` 행동으로 분리했다(진영마다 하나; Alliance·Navigation trigger 등 Influence 도달 효과는 행동 해결 시점에 일어난다). Persuasion과 sword만 시작 시 합산한다 — 합계만 의미가 있기 때문이다. troop recruit의 `troops_recruit_short`(OQ-030)와 Combat 아이콘 배치 창의 recruit 합산은 행동 해결 시점에 일어난다. codec v94(모든 카탈로그 +12: 행동 2 + 자원 묶음 6 + 진영 4).
+- 부기(2026-10-20, stage B3e-1, 사용자 결정 "그래 모두 나누자", project convention): 대기 항목은 이제 그것을 인쇄한 것(공개한 카드, Skill, Tech tile, 지도자)마다 한 행동이다 — 같은 카드 사본만 하나로 치고(같은 카드의 먼저 쌓인 것부터), 다른 카드의 같은 종류 항목은 따로 고른다(I Believe의 병력 2와 다른 카드의 병력 1 등). 같은 종류끼리 순서가 결과를 바꾸지 않는다는 위 판단은 그대로이고, 나눈 이유는 효과를 인쇄한 것으로 가리키는 원칙(docs/stage-b-plan.md 결정 3)이다. 행동은 `recruit_reveal_troops`·`draw_reveal_intrigue`·`generate_reveal_specimens`·`advance_reveal_tleilaxu`·`advance_reveal_research`·`gain_reveal_resources`·`gain_reveal_faction_influence`가 `printed`·`source`를 갖고, 선택지 줄은 `recruit`·`draw`·`generate_specimens`·`advance`·`gain`·`gain_influence`(`source`·`printed`·`icon`)다. 테스트: `tests/unit/rules/test_effect_steps.py::test_a_reveal_gain_is_one_action_per_entity_that_printed_it`.
 - 재개 조건: 공식 FAQ가 Reveal 효과의 단위나 순서를 정할 때.
 
 ## OQ-044 — Forbidden Weapons·Panopticon·Plasteel Blades의 해결 세부
@@ -623,6 +626,21 @@
 - 보강(2026-10-07, Chairdog): 위 디자이너 판정의 "설치형·지연 trigger는 source가 trash돼도 유지"와 같은 방향으로, Chairdog의 되돌림은 graft 시점에 좌석에 기록된다(채택한 디자이너 판정, [designer-rulings-audit.md](designer-rulings-audit.md) "Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도 되돌림"). 그래서 graft 상대의 box(Dissecting Kit, Beguiling Pheromones)가 Chairdog를 먼저 trash해 Chairdog의 box가 만료돼도 상대 카드는 Reveal turn 시작에 돌아온다. 2026-10-07 전에는 Chairdog 자신의 box가 해결될 때만 기록해, 이 경우 되돌림이 이 항목의 만료와 함께 사라졌다. 구현 `rules/graft.apply_graft_partner`; 세부와 테스트는 [immortality.md](immortality.md) 5절.
 
 - 보강(2026-10-12, Throne Room Politics의 자기 trash; codec v145, Ghola 복사 작업의 독립 리뷰에서 발견): "recruit + 선택 trash 아이콘" box의 선택 trash로 카드 자신을 trash하면 그것은 위 디자이너 판정의 "카드가 **자기 효과로** 자신을 trash하는 경우"이고, OQ-027 확장의 "카드가 자기 비용이나 자기 아이콘으로 play 영역을 떠난 경우 남은 아이콘은 계속 지급"이다. 그래서 그 카드에 남은 것 — Urgent Shigawire의 draw는 "added to its Agent box" `[Urgent Shigawire card]`이고 box의 일부다(OQ-106 1) — 은 소멸하지 않는다. 전에는 선택 trash 창(`rules/optional_trash.py`)이 자기 trash 표시(`agent_card_self_trashed`/`graft_card_self_trashed`)를 남기지 않아 이 만료 훅이 다른 효과의 trash처럼 draw를 지웠다. Ghola가 Throne Room Politics를 복사하면 같은 일이 Ghola에도 생겼다. 이제 창을 연 것이 그 카드 자신의 box이면(창의 source가 그 box의 것, `effects.agent_card_source`) 자기 trash로 표시한다. 다른 효과가 연 trash 창(보드 칸, graft 상대의 box)으로 trash하면 그대로 만료된다 — Ghola의 복사한 trash 아이콘으로 Throne Room Politics를 trash하면 Throne Room Politics의 draw는 소멸하고 Ghola의 것은 남는다. 테스트: `tests/unit/rules/test_graft_boxes.py`(`test_throne_room_politics_trashing_itself_keeps_its_added_draw`, `test_a_ghola_copy_s_draw_lapses_only_with_ghola`). 옛 기보: 다리 `boost_draw_at_turn_end`(codec 145 미만, [human-records.md](../human-records.md)).
+
+- 보강(2026-10-20, stage B3c-2b; 판정 변경 없음, 결정 모델만): 소유자 자신의 turn에 선택 trash가 둘 이상 기다리면(카드 box의 것, Tech
+  타일의 것, 연구 칸의 것, Arrakis Planetologist의 것) 어느 아이콘으로 카드를 trash하느냐가 위 보강대로 결과를 바꾼다 — 자기 box의
+  아이콘이면 box의 남은 것이 지급되고, 다른 효과의 아이콘이면 만료된다. 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 원하는 순서로
+  해결하므로("You may carry out all these effects in any order" `[Main p. 9]`, OQ-027) 아이콘을 고르는 것도 소유자다. 전에는 엔진이 대신
+  골랐다("그 카드 자신의 box에서 온 것 먼저, 아니면 다른 카드 box가 아닌 것 중 새 것, 아니면 새 것"). 이제 기다리는 trash가 그 아이콘을
+  인쇄한 개체를 기록하고(`optional_trash.trash_printer`), 행은 `trash(source=<개체 종류>, printed=<개체>)` → `choose_personal_card`로
+  아이콘을 먼저, 카드를 다음에 고른다(stage B 결정 3, docs/stage-b-plan.md "B3c-2 세부 설계"). 같은 개체가 인쇄한 둘은 결과가 같아 줄
+  하나(새 것부터). 휴리스틱·앱 AI·rollout과 옛 기록은 옛 엔진의 고르기를 그대로 따른다(`legacy_trash_whole`, 기보 다리
+  `optional_trash_icon`). 차례 밖의 창은 그대로(아이콘이 하나). 카드가 자기 아이콘으로 버려졌는지도 이제 기록된 개체로 판정한다 —
+  카드 자신의 칸(접합 차례에서의 자리까지)이 인쇄한 폐기면 자기 효과다. 그래서 "둘 고르기" 칸(Stitched Horror)의 폐기 고르기로 카드
+  자신을 버리는 것도 자기 효과가 된다(전에는 그 고르기의 번호 붙은 출처가 칸의 출처와 달라 다른 효과로 셌다 — 2026-10-20 B3c-2b
+  리뷰). 테스트: `tests/unit/rules/test_agent_box_abilities.py::test_the_seat_picks_which_waiting_trash_icon_trashes_a_card`,
+  `tests/unit/rules/test_graft_boxes.py`(`test_throne_room_politics_trashing_itself_keeps_its_added_draw`, `test_a_ghola_copy_s_draw_lapses_only_with_ghola`),
+  `tests/unit/rules/test_immortality_tleilaxu_cards.py::test_stitched_horror_pays_two_distinct_rewards`.
 
 ## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
 
@@ -1732,6 +1750,7 @@
   4. Piter, Genius Advisor — "Lose a troop → draw two cards and Research" `[card face]` — 과 Kota Odax의 Reverse Engineering — "1 spice —OR— 자신의 Tech tile 하나를 trash → Intrigue 1 + draw 1" `[Kota Odax of Ix card]`([bloodlines.md](bloodlines.md)). 비용(troop 또는 OQ-105의 Commander, Tech tile)을 한 단계로 내고, 보상은 각자의 `resolve_agent_card_effect`(Piter: `cards`(2장)·`research`(specimen 없음); Kota: `intrigue`·`cards`)로 순서 자유. Kota의 보상은 Signet Ring 카드의 box와 Servo-Receivers의 `leader_signet` frame 어디서든 같다. 커밋 `2f76372b`.
 - 공통 구현: 모든 새 draw 단계는 서버가 `undoable=False`로, 그 앞의 공개 선택은 `undoable=True`로 제시한다(`tests/server/test_undo.py`의 `test_urgent_shigawire_placement_can_be_taken_back_and_its_draw_cannot`, `test_cunning_trash_can_be_taken_back_and_its_draw_cannot`, `test_planetologist_summon_can_be_taken_back_and_its_intrigue_cannot`, `test_piter_troop_cost_can_be_taken_back_and_its_draw_cannot`, `test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot`). 규칙 테스트: `tests/unit/rules/test_bloodlines_cards.py`(`test_urgent_shigawire_*`), `tests/unit/rules/test_intrigue.py::test_cunning_trash_first_leaves_the_draw_its_own_step`, `tests/unit/rules/test_bloodlines_leaders.py`(`test_planetologist_intrigue_is_its_own_step_in_either_order`, `test_unexpected_allies_shield_wall_choice_draws_nothing_for_liet_kynes`), `tests/unit/rules/test_immortality_tleilaxu_cards.py::test_piters_rewards_are_their_own_steps_after_the_cost`, `tests/unit/rules/test_tech.py::test_reverse_engineering_takes_spice_or_trades_a_tile_for_cards`. app_ai와 heuristic은 새 단계를 무작위 대체 없이 답한다.
 - 나눈 단계(둘째 묶음: 다른 인쇄 효과가 촉발한 draw; branch `fb-splits`, codec v142에 함께). 공통 구현: 좌석 **자신의** Agent·Reveal turn 안에서 촉발된 draw는 그 단계에서 뽑지 않고 좌석의 `PlayerState.owed_draws`에 (덱, 출처, 이벤트 출처)로 남아, 소유자의 단계 `draw_owed_intrigue`(모든 catalog)·`draw_owed_card`(Bloodlines catalog)로 뽑는다 — 덱마다 행동 하나, 누를 때마다 가장 오래된 한 장(`rules/owed_draws.py`, `frames.draw_waits_for_owner`). turn frame·Agent 효과 frame·Reveal frame과 소유자의 선택적 "[trash a card]" frame(`optional_trash`; 그래서 Oversight의 trash 앞뒤 어느 쪽에서도 뽑는다, OQ-100)에서 제시되고(곧바른 draw는 소유자의 어느 frame에서든 유일한 행동이다, 아래 "곧바른 단계"), 남아 있으면 `finish_agent_turn`·`finish_reveal`이 제시되지 않으며, 턴 종료를 누른 뒤 생기면 turn이 다시 열린다(OQ-095 (5)). turn 밖(Combat 보상, 다른 좌석의 turn, Arrakeen Scouts 단계, Endgame)에서는 예전처럼 곧바로 뽑는다 — 그런 선택은 이미 "확정 ▶"까지 붙잡힌다(OQ-103). Emperor track Spy의 2026-10-04 사용자 판정([OQ-057](#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (15) 재판정)과 같은 모양이다. 단계는 출처를 이름으로 보인다("Bene Gesserit Influence 4", "Imperial Birthright", "Tleilaxu track", 카드 이름, "Hungry for Spice"). 안전망: 자기 turn 밖에 남은 draw는 엔진 hook `pay_stale_owed_draws`가 곧바로 뽑고, sweep 불변식 `check_owed_draws`가 그런 일이 없음을 확인한다. 옛 기록에는 records bridge `owed_draw`(codec 142 미만, `follows`)가 촉발한 적힌 단계 바로 뒤에서 draw를 대신 뽑고, turn 종료 누름이 번 draw로 다시 열린 turn은 `refinish_agent_turn`이 다시 닫는다([human-records.md](../human-records.md) 2절).
+  - 부기(2026-10-20, stage B3e-1, 사용자 결정 "그래 모두 나누자"): "덱마다 행동 하나, 누를 때마다 가장 오래된 한 장"은 이제 "덱과 그 draw를 얻게 한 것(기원)마다 행동 하나, 누르면 그 기원의 가장 오래된 한 장"이다(`draw_owed_*`가 `printed`·`source`를 갖는다; 효과를 인쇄한 것으로 가리키는 원칙, docs/stage-b-plan.md 결정 3). 곧바른 draw가 남아 있으면 곧바른 것들만 제시되는 것은 그대로다. 테스트: `tests/unit/rules/test_effect_steps.py::test_a_triggered_draw_is_one_action_per_entity_that_earned_it`, `test_an_immediate_draw_is_offered_alone_by_its_own_entity`.
   5. Bene Gesserit Influence 4 보너스 — "When you reach 4 Influence, you earn the bonus shown on that space of the track" `[Main p. 7]` — 의 Intrigue 카드와 Princess Irulan의 Imperial Birthright — "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." `[Princess Irulan card]`. 어느 Influence 단계가 도달하든(진영 선택, 고정 아이콘 `resolve_faction_influence`·`gain_reveal_faction_influence`, Reveal 교환, Friends Everywhere의 선택) 보너스는 그 단계에서 얻고(이벤트) 카드만 남는다. 커뮤니티 FAQ 정리본의 디자이너 판정 "faction bonuses (such as drawing an Intrigue on the BG track) may interrupt this flow"(Message from designer, Changing Allegiances 항목)는 보너스를 곧바로 받는다고 읽힌다. 처음에는 Emperor Spy처럼 자유 순서로 두어 그 판정을 넘어섰지만(커밋 `6ec211d8`), 같은 날 사용자 결정 "가 로 가자"로 카드는 그 Influence 단계 바로 다음의 곧바른 단계가 되었다(아래 "곧바른 단계" 14).
   6. Tleilaxu track의 Intrigue 칸(칸 2·6 `[Immortality pp. 4, 7]`, [immortality.md](immortality.md)). 연구 방향 선택, Agent box, Reclaimed Forces, Reveal 아이콘, Replacement Eyes의 "When this card is trashed: Tleilaxu" `[card face]`가 token을 그 칸에 올리면, token 전진은 그 단계에서 하고(공개) Intrigue 카드만 남는다. 커밋 `6ec211d8`.
   7. Sardaukar Soldier의 trash 트리거(trash될 때 Intrigue 1장 `[card face]`)와 Overthrow의 획득 box Intrigue `[card face]`(OQ-042). Sardaukar Soldier의 카드는 다른 효과와 순서 자유다. Overthrow 구매는 Row 보충 때문에 여전히 되돌릴 수 없다. 커뮤니티 FAQ의 "Acquire Effects must be taken immediately upon acquiring the Card or Tech."(Direwolf Discord post)를 처음에는 Tech의 [OQ-098](#oq-098--tech-획득-효과를-구매-뒤-turn-안에서-자유-순서로-해결)(사용자 요청)처럼 넘어서 Overthrow의 카드도 순서 자유였지만(커밋 `6ec211d8`), 같은 날 사용자 결정 "가 로 가자"로 구매 바로 다음의 곧바른 단계가 되었다(아래 "곧바른 단계" 15). Tech의 획득 효과는 OQ-098대로 여전히 자유 순서다.
@@ -1801,3 +1820,84 @@
 - 테스트: `tests/unit/rules/test_navigation.py::test_card_three_from_slot_four_pays_the_reveal_it_is_played_in`(그 공개의 설득력·생성 설득력 1, 좌석 보너스 1 유지; 고친 줄을 빼면 실패함을 확인), 기존 `test_card_three_in_slot_four_adds_permanent_reveal_persuasion`(다음 공개 +1).
 - 옛 기보: 기보 묶음 `v148-02e203ce`(AI 판 2,000개) 대조에서 2,000판 모두 exact다 — 이 경우가 나온 판이 없다. `saves/`의 사람 판 8개도 갈라진 판이 없다(exact 2, 다리로 옮긴 판 6). 그래서 다리를 두지 않았다. 이 경우가 나온 옛 기보는 그 공개의 설득력이 1 많아져 그 뒤 수(획득)에서 갈라질 수 있다(규칙 변경, [human-records.md](../human-records.md) 2절).
 - 재개 조건: 공식 FAQ가 공개 차례 도중에 생긴 "during each of your Reveal turns" 효과를 정할 때.
+
+## OQ-111 — 두 단계 행동의 중간 상태
+
+- 상태: `DECIDED` (2026-10-19 사용자 결정, B단계 설계 [stage-b-plan.md](../stage-b-plan.md) 2절 — project convention, 공식 규칙이
+  아니다)
+- 질문: B단계는 행동을 두 단계로 나눈다 — 효과를 고른 뒤 대상을 고르고, Agent 차례는 카드를 고른 뒤 칸을 고른다. 실물에서는 한
+  동작인 것을 둘로 나누면 "반쯤 고른" 상태가 생긴다. 그 상태를 다른 좌석이 보는지, 되돌릴 수 있는지, 그 사이 턴 종료가 되는지,
+  고를 것이 하나뿐일 때도 둘째 단계를 여는지를 공식 문서는 말하지 않는다(실물에 없는 상태다).
+- 판정:
+  1. **Agent 차례의 카드 고르기**는 그 좌석에게만 보인다. 칸을 고르는 순간 카드와 칸이 함께 공개된다 — 실물에서는 한 동작이다:
+     "hand에서 카드 1장을 공개해 사용하고, 그 카드의 Agent icon 중 하나와 맞는 보드 공간에 Leader의 Agent 1개를 보낸다"
+     `[Main p. 9]`(setup-and-game-flow.md "Agent turn 요약"). 카드 고르기는 차례 안에서 되돌릴 수 있다(숨은 정보가 드러나지 않는다).
+     놓을 수 있는 칸이 하나라도 있는 카드만 고를 수 있다 — "비용을 즉시 낼 수 없으면 그 공간을 선택할 수 없다" `[Main p. 9]`이므로
+     고른 뒤 놓을 곳이 없는 막다른 길을 만들지 않는다.
+  2. **효과 고르기 → 대상 고르기:** 대상이 없는 효과는 한 번에 처리한다. 반쯤 고른 효과는 차례 안에서 되돌릴 수 있고, 그동안 턴
+     종료는 나오지 않는다(의무 효과가 남았을 때와 같은 보류, OQ-057). **대상이 하나뿐이어도 둘째 단계를 연다**(2026-09-30 원칙
+     "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"와 같다).
+  3. 함께 기다리는 효과는 인쇄한 것(출처 종류, 인쇄한 개체, 아이콘; 같은 카드의 두 칸만 `box`)으로 가리킨다.
+  4. **반쯤 고른 효과는 그 좌석에게만 보인다**(2026-10-19 사용자 결정 "그래 모두 추천대로 가자", B3-3): 효과를 고른 상태는 그 좌석의
+     보기와 그 좌석에게만 보이는 사건으로만 알리고, 대상을 고르는 순간 효과와 대상이 함께 공개된다 — 실물에서는 효과를 쓰며 대상을
+     정하는 한 동작이다. 1의 카드 고르기와 같은 원칙이다.
+- 구현·테스트: B1(Agent 차례)과 B3(효과 해결)에서 이 판정을 지키는 테스트를 함께 둔다. B1(브랜치 `stage-b`, codec v150): 고른
+  카드는 차례 frame에 두고 그 좌석의 보기(`private.agent_card_pick`)와 그 좌석에게만 보이는 사건(`agent_card_picked`)으로만 알린다;
+  서버 로그는 카드 고르기를 봉인해(`SEALED_ACTION_IDS`) 다른 좌석에게는 `card_id` 한 칸을 "(비공개)"로만 보인다 — 손에 공개된
+  카드를 골랐을 때도, 접합 여부도(`tests/server/test_agent_placement_previews.py`). 고른 카드가 있으면 그 카드의 칸 고르기만 나온다.
+- 재개 조건: 없음(실물에 없는 상태의 프로젝트 규칙).
+
+## OQ-112 — 보상 한 줄 안의 아이콘 순서
+
+- 상태: `DECIDED` (2026-10-19 사용자 결정 "추천대로 진행하자", B단계 B2 — [stage-b-plan.md](../stage-b-plan.md) 3b절; project
+  convention, 공식 규칙이 아니다)
+- 공식 출처: "The player with the highest strength wins the Conflict and gains the first reward on the Conflict card. The player
+  with the second highest strength gains the second reward." `[Main p. 14]`(combat-and-round-end.md); 계약은 "완료 사실을 알리고
+  표시된 reward를 받은 뒤 contract를 face-down으로 뒤집는다" `[Main p. 16]`(choam-module.md).
+- 침묵: 어느 순위가 무엇을 받는지와 수령자 사이의 순서(OQ-002, OQ-102)는 정하지만, 한 보상 줄(Conflict 카드의 한 순위 줄, 계약
+  한 장의 보상)에 인쇄된 여러 아이콘을 어떤 순서로 받는지는 어느 문서도 말하지 않는다. Agent 차례 효과는 "원하는 순서" `[Main p. 9]`,
+  Reveal 효과도 "원하는 순서" `[Main p. 12]`다. 지금까지의 구현은 종류별 고정 순서(책략 → 병력 → 자원·VP → 고정 영향력 → 지배 →
+  선택 창)였고, 이는 구현 기본값이었다.
+- 판정:
+  1. **받는 좌석이 순서를 고른다.** 보상의 아이콘(기록 조각)마다 줄 하나를 내고, 받는 좌석이 원하는 순서로 받는다 — OQ-027의
+     "인쇄된 아이콘은 각각 독립된 효과, 소유자가 순서를 고른다"를 Conflict 보상과 계약 보상에도 적용한다. 고를 것이 있는 아이콘의
+     줄을 고르면 그 아이콘의 선택(영향력 고르기, 선택 지불, Spy, 폐기, 계약)이 이어진다(OQ-111 (2)의 두 단계).
+  2. **고를 것 없는 아이콘도 줄로 내고, 하나뿐이어도 연다**(2026-09-30 원칙 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+     연다", OQ-111 (2)).
+  3. **기록 한 조각에 함께 든 자원(예: 2 Solari + 1 water)은 줄 하나다** — OQ-045가 Reveal에서 정한 "인쇄된 효과 한 줄의 자원이 한
+     묶음"과 같다. 자원끼리는 순서가 결과를 바꾸지 않는다.
+  4. **차례 안에서 완수한 계약의 보상은 차례의 줄이다**(2026-10-19 사용자 결정 "그래 모두 추천대로 가자", B3-4): 소유자 자신의
+     Agent·Reveal 차례에 완수한 계약의 보상 아이콘은 Agent 칸 아이콘처럼 그 차례의 다른 효과와 함께 줄로 나오고, 다 받기 전에는 턴
+     종료가 나오지 않는다 — 차례 안의 효과는 차례의 줄이라는 원칙(OQ-095 (2), 정리-2b)과 같다. 차례 밖(Conflict 보상 도중의 동맹 계약,
+     Scouts 단계 등)은 완수한 자리의 창 그대로다. B2는 차례 안에서도 창으로 두었고, B3b-1이 바꿨다(아래 구현).
+  - 수령자 사이 순서(OQ-102), 같은 순위 안의 순서(OQ-002), sandworm 두 배(조각마다 두 몫 `[Main p. 14]`), 지배·전투 아이콘은 두 배가
+    아님 `[Main p. 14]`은 그대로다.
+- 구현(B2, 브랜치 `stage-b`, codec v150): Conflict 수령자마다 창 `combat_reward_icons`, 완수한 계약마다 창
+  `contract_reward_icons`; 줄은 기록 조각 하나씩, 고를 것 있는 줄은 예전 선택 창을 연다(`rules/combat.py`, `rules/contracts.py`;
+  자세히는 [stage-b-plan.md](../stage-b-plan.md) "B2 구현"). AI 좌석과 옛 기보는 옛 고정 순서로 답한다(`agents/engine_order.py`).
+- 구현(B3b-1, 같은 브랜치, codec v150): 판정 4 — 주인의 차례 frame이 열려 있을 때 완수한 계약은 아이콘마다 차례 줄 `contract_icon`
+  (`resolve_contract_reward_icon(contract_id, effect)`, Agent 효과 frame에선 `source=contract` 효과 줄)을 두고, 줄은 그 차례 frame이
+  맨 위일 때 나오며 모두 턴 종료를 막는다(`turn_rows.holds_the_end`). 완수가 주인의 다른 frame(획득 Spy 칸, Research 방향, 두 장
+  받는 계약 시장, 책략의 선택) 위에서 일어나면 줄은 그 frame이 닫힌 뒤다(옛 엔진은 창을 그 위에 얹었다). Agent 소환 아이콘이
+  못 데려오는 "이번 차례에 보낸 Agent" `[Main p. 20]`(OQ-068)는 줄을 받을 때 그 차례의 Agent 효과 frame으로 판단한다(줄 사이의
+  Into the Fray, 차례 frame에서 완수해 넘어간 줄). AI 좌석·옛 기보는 줄도
+  완수 직후 옛 순서로 받는다(`legacy_contract_icon_row`, 기보 다리 `contract_frame_first`); [stage-b-plan.md](../stage-b-plan.md)
+  "B3b-1 구현".
+- 다른 판정과 만나는 곳(구현 결정, project convention):
+  - 같은 단계에서 생긴 곧바른 draw(OQ-106 13·14: CHOAM Transports의 카드 — "The card draw from CHOAM Transports is triggered as soon
+    as the contract is completed and can't be deferred." (Message from designer) — Bene Gesserit 4의 책략, Imperial Birthright)는 그
+    계약 보상 창의 모든 줄보다 먼저다(사용자 결정 2026-10-19 "A로 가자"). 보상의 아이콘은 위 1대로 각자 독립 효과이고, 곧바른
+    draw는 "그 바로 다음"이라 사이에 다른 행동이 들지 않는다. 옛 엔진은 계약 보상의 자동 부분을 완수 단계 안에서 줬으므로 순서가
+    달라지는 곳이다 — "자동 줄은 완수의 일부"로 보는 절충(옛 순서 유지)은 원칙 문구와 맞지 않아 택하지 않았다. Suspensor Suits가
+    있으면 결과도 달라질 수 있다(Bene Gesserit 4 책략의 troop이 supply에서 먼저 나간다).
+  - 차례 밖에서 기다리는 Emperor track Spy([OQ-057](#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (15))와 Friends
+    Everywhere 선택은 Conflict 보상 선택을 기다리듯 계약 보상 창 아래에서도 기다린다(영향력 4가 동맹도 얻어 Earn Any Alliance를
+    완수하는 경우; 옛 엔진은 그 보상을 그 단계 안에서 줬으므로 옛 순서와 같다). 차례 안에선 창이 없으므로(판정 4) 주인 자신의
+    트랙 Spy는 지금처럼 그 차례의 `place_track_spy`를 기다리고, Friends Everywhere 선택은 곧바로 열린다 — 계약 줄과 차례의 다른
+    줄 사이 순서는 자유다.
+  - 게임이 끝나는 단계에서 완수된 계약(Endgame Navigation 카드의 Influence로 얻은 동맹의 Earn Any Alliance)은 아무도 결정에
+    답하지 않으므로 창을 옛 순서로 곧바로 받는다(옛 엔진과 같다).
+- 테스트: `tests/unit/rules/test_combat.py`, `test_contracts.py`, `test_bloodlines_contracts.py`, `test_economic_supremacy.py`,
+  `test_pauses.py`(창·줄·사건), `tests/unit/records/test_record_migration.py`(옛 기록에서 줄을 빼고 다리가 되살림),
+  `tests/server/test_turn_end.py`·`test_undo.py`(붙잡힌 단위·되돌리기), `scripts/e2e/combat_result.py`(화면).
+- 재개 조건: 공식 FAQ가 보상 한 줄 안의 순서를 정할 때.

@@ -7,19 +7,36 @@ from typing import TYPE_CHECKING, Final
 
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.uprising.abilities import Ability
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
+from dune_imperium.content.uprising.conflict_abilities import (
+    CONFLICT_REWARD_ABILITIES,
+)
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
+    DrawIntrigueCards,
+    EffectSection,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
     GenerateSpecimens,
     IntrigueOption,
     OnConflictWon,
     OnTroopsLostAtConflictEnd,
+    PayResources,
+    PlaceSpy,
+    RecallSpy,
+    RecruitTroops,
+    Reward,
+    TakeContract,
+    TakeControl,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -320,12 +337,10 @@ def pay_combat_rewards(state: GameState) -> RuleResult:
 
     _check_combat_rewards(state)
     conflict_id = state.current_conflict_ids[-1]
-    conflict = CONFLICTS_BY_ID[conflict_id]
-    if conflict.rewards is None:
+    if conflict_id not in CONFLICT_REWARD_ABILITIES:
         raise NotImplementedError(
             f"Conflict rewards are not transcribed: {conflict_id}"
         )
-    rewards = conflict.rewards
 
     events: list[GameEvent] = []
     if state.combat_rewards_paid == 0:
@@ -345,17 +360,15 @@ def pay_combat_rewards(state: GameState) -> RuleResult:
         # choices alike, sandworm copy included, is answered before the next
         # recipient is paid (user ruling 2026-10-07, "순위대로 (앱처럼)"; the
         # official text gives the rewards by rank [Main p. 14] but not the
-        # order between them). A recipient that opens a choice or queues a
-        # step (an owed Intrigue draw, a track Spy) stops here; the engine
-        # calls again once those are answered.
-        queued = _reward_queues(state)
+        # order between them). Each recipient answers its reward icon by
+        # icon in its own window (OQ-112); the engine calls again once the
+        # window and what it opened are answered.
         paid = _pay_next_combat_reward(
-            state, rewards, ranking.rewards[state.combat_rewards_paid]
+            state, conflict_id, ranking.rewards[state.combat_rewards_paid]
         )
         state = paid.state
         events.extend(paid.events)
-        if state.decision_stack or _reward_queues(state) != queued:
-            break
+        break
     return RuleResult(state=state, events=tuple(events))
 
 
@@ -434,278 +447,572 @@ def combat_rewards_done(
     return state.combat_rewards_paid >= len(ranking.rewards)
 
 
-def _reward_queues(state: GameState) -> tuple[object, ...]:
-    """The queued steps a Conflict reward can add to (compared, not read)."""
+# --- One recipient's reward, icon by icon (stage B2, OQ-112) ----------------
+#
+# The recipient answers its reward row in a window of its own: a row per
+# icon the record prints (``CONFLICT_REWARD_ABILITIES``), in any order, an
+# automatic icon (resources, troops, an Intrigue draw, VP, a fixed
+# Influence, control, a Contract without CHOAM) resolved by its row and a
+# choice icon (an Influence of its choice, an optional arrow, a Spy, a trash,
+# the Contract market) opening its own frame, which is answered before the
+# window comes back. A record piece is one icon, its resources one row
+# (OQ-112 (3)). A sandworm doubles each icon [Main p. 14]: an automatic one
+# pays twice its amount on its row, a choice one is offered twice; control is
+# not doubled. The window opens even for a single icon (OQ-112 (2)).
 
-    return (
-        state.pending_intrigue_draws,
-        state.pending_navigation_plays,
-        state.pending_track_spies,
-        state.pending_skill_choices,
-        state.scouts_four_bonus_choices,
+REWARD_ICON_ACTION: Final = "resolve_combat_reward_icon"
+# Every icon a Conflict reward row may print, the action codec's order.
+COMBAT_REWARD_ICON_KINDS: Final = (
+    "resources",
+    "intrigue",
+    "troops",
+    "victory_points",
+    "faction_influence",
+    "control",
+    "contract",
+    "choose_influence",
+    "distinct_influence",
+    "optional_solari",
+    "optional_spice",
+    "optional_recall_spies",
+    "trash",
+    "spy",
+    "deep_cover_spy",
+)
+# Frame context keys of the window: the icons still to resolve, in the order
+# the engine paid them before stage B2 (``LEGACY_ICON_ORDER``: an older
+# record's, and the AI seats', order), the row's kinds in printed order, the
+# rank, the sandworm multiplier, and how many choice frames the window has
+# opened (their ``choice_index``, which their events carry).
+_ICONS_KEY: Final = "icons"
+_PRINTED_KEY: Final = "printed"
+_RANK_KEY: Final = "rank"
+_MULTIPLIER_KEY: Final = "multiplier"
+_CHOICE_INDEX_KEY: Final = "choice_index"
+# The automatic part, in the order the engine paid it in one step before
+# stage B2; a Contract without CHOAM came with the resources.
+LEGACY_AUTOMATIC_ORDER: Final = (
+    "intrigue",
+    "troops",
+    "resources",
+    "victory_points",
+    "faction_influence",
+    "control",
+)
+# The choice icons of one copy of the reward, in the order their frames were
+# answered before stage B2 (a sandworm repeats the copy); the trash and Spy
+# icons came after both copies.
+_LEGACY_COPY_CHOICES: Final = (
+    "choose_influence",
+    "optional_solari",
+    "optional_spice",
+    "optional_recall_spies",
+    "distinct_influence",
+)
+_LEGACY_LATER_CHOICES: Final = ("trash", "spy", "deep_cover_spy")
+
+
+def _arrow_kind(cost: object) -> str:
+    match cost:
+        case PayResources(solari=solari, spice=0, water=0) if solari:
+            return "optional_solari"
+        case PayResources(solari=0, spice=spice, water=0) if spice:
+            return "optional_spice"
+        case RecallSpy():
+            return "optional_recall_spies"
+    raise TypeError(f"{cost!r} is not a Conflict reward arrow's cost")
+
+
+def _icon_kind(piece: Reward) -> str:
+    """The icon a free reward piece of a Conflict row is (``CONFLICT_REWARD``
+    records, ``conflict_abilities``)."""
+
+    match piece:
+        case GainResources():
+            return "resources"
+        case DrawIntrigueCards():
+            return "intrigue"
+        case RecruitTroops():
+            return "troops"
+        case GainVictoryPoints():
+            return "victory_points"
+        case TakeControl():
+            return "control"
+        case TakeContract():
+            return "contract"
+        case TrashPersonalCard():
+            return "trash"
+        case PlaceSpy(shared_post=True):
+            return "deep_cover_spy"
+        case PlaceSpy():
+            return "spy"
+        case GainInfluence(distinct=True):
+            return "distinct_influence"
+        case GainInfluence(factions=(_,)):
+            return "faction_influence"
+        case GainInfluence():
+            return "choose_influence"
+    raise TypeError(f"{piece!r} is not a Conflict reward icon")
+
+
+def _row_icons(row: Ability) -> tuple[tuple[str, Reward | EffectSection], ...]:
+    """Each icon of a reward row with the piece (an arrow: its line) that
+    prints it, in printed order."""
+
+    icons: list[tuple[str, Reward | EffectSection]] = []
+    for line in row.sections:
+        if line.costs:
+            (cost,) = line.costs
+            icons.append((_arrow_kind(cost), line))
+        else:
+            icons.extend((_icon_kind(piece), piece) for piece in line.rewards)
+    return tuple(icons)
+
+
+def conflict_reward_icon_kinds(conflict_id: str) -> tuple[str, ...]:
+    """Every icon kind a Conflict's reward rows print, in printed order
+    (the action codec's rows, stage B3d-1)."""
+
+    return tuple(
+        dict.fromkeys(
+            kind
+            for row in CONFLICT_REWARD_ABILITIES[conflict_id]
+            for kind, _piece in _row_icons(row)
+        )
     )
 
 
-def _pay_next_combat_reward(
-    state: GameState,
-    rewards: tuple[ConflictReward, ConflictReward, ConflictReward],
-    assignment: CombatReward,
-) -> RuleResult:
-    """Pay one ranked recipient's reward and push its choice frames."""
+def reward_icon_piece(
+    conflict_id: str, rank: int, kind: str
+) -> Reward | EffectSection | None:
+    """The first piece of a Conflict's ``rank`` row that prints ``kind``
+    (an arrow's line), or None (Pivotal Gambit's Influence, which no record
+    prints)."""
 
-    paid = state.combat_rewards_paid
-    players = list(state.players)
-    scouts_goods = state.scouts_goods
-    intrigue_deck = state.intrigue_deck
-    pending_draws = state.pending_intrigue_draws
-    # The queues an Influence gain may add to (Navigation plays at 2, the
-    # Emperor track's Spy at 4) travel with the rewards like the owed draws.
-    pending_navigation = state.pending_navigation_plays
-    pending_spies = state.pending_track_spies
-    # Friends Everywhere's Influence 4 choices (Arrakeen Scouts) likewise.
-    pending_four = state.scouts_four_bonus_choices
-    frames_in_order: list[DecisionFrame] = []
-    events: list[GameEvent] = []
-    reward = rewards[assignment.rank - 1]
+    row = CONFLICT_REWARD_ABILITIES[conflict_id][rank - 1]
+    return next((piece for icon, piece in _row_icons(row) if icon == kind), None)
+
+
+def _reward_window(
+    state: GameState, conflict_id: str, assignment: CombatReward
+) -> DecisionFrame:
+    """The recipient's window over its reward row's icons."""
+
+    row = CONFLICT_REWARD_ABILITIES[conflict_id][assignment.rank - 1]
+    counts: dict[str, int] = {}
+    for kind, _piece in _row_icons(row):
+        counts[kind] = counts.get(kind, 0) + 1
+    printed = list(dict.fromkeys(kind for kind, _piece in _row_icons(row)))
     if (
         assignment.rank is RewardRank.FIRST
         and state.conflict_first_place_influence_bonus
     ):
-        # Pivotal Gambit (promo) adds "gain 1 Influence of your choice"
-        # to this Conflict's first-place reward (OQ-025); like the
-        # printed reward it is doubled by a sandworm [Main p. 14].
-        reward = replace(
-            reward,
-            choose_influence=(
-                reward.choose_influence + state.conflict_first_place_influence_bonus
-            ),
+        # Pivotal Gambit (promo) adds "gain 1 Influence of your choice" to
+        # this Conflict's first-place reward (OQ-025); like the printed
+        # reward it is doubled by a sandworm [Main p. 14].
+        counts["choose_influence"] = (
+            counts.get("choose_influence", 0)
+            + state.conflict_first_place_influence_bonus
         )
-    amount = assignment.multiplier
-    owner = players[assignment.player]
-    reward_source = (
-        f"round:{state.round_number}:combat_reward:{assignment.player}:"
-        f"{assignment.rank.value}"
-    )
-    drawn = intrigue_deck[: reward.intrigue * amount]
-    # The cards dealt now leave a draw event, as every Intrigue draw does
-    # (cleanup-2c-3); a short deck queues the rest as before.
-    drawn_events = (
-        (
-            GameEvent(
-                event_id=f"{reward_source}:intrigue_draw:{len(intrigue_deck)}",
-                kind="intrigue_card_drawn",
-                payload=(("count", len(drawn)), ("player", assignment.player)),
-            ),
-        )
-        if drawn
-        else ()
-    )
-    intrigue_deck = intrigue_deck[len(drawn) :]
-    if reward.intrigue * amount > len(drawn):
-        # Deck exhausted: the dispatcher reshuffles the discard [FAQ p. 2].
-        pending_draws = (
-            *pending_draws,
-            (
-                assignment.player,
-                reward.intrigue * amount - len(drawn),
-                (
-                    f"round:{state.round_number}:combat_reward:intrigue:"
-                    f"{assignment.player}:{assignment.rank.value}"
-                ),
-            ),
-        )
-    contract_solari = 0 if state.config.choam_module else reward.contracts * 2
-    recruited_owner, recruited = recruit_troops(owner, reward.troops * amount)
-    next_owner = replace(
-        recruited_owner,
-        resources=Resources(
-            solari=(
-                recruited_owner.resources.solari
-                + reward.solari * amount
-                + contract_solari * amount
-            ),
-            spice=recruited_owner.resources.spice + reward.spice * amount,
-            water=recruited_owner.resources.water + reward.water * amount,
+        if "choose_influence" not in printed:
+            printed.append("choose_influence")
+    multiplier = assignment.multiplier
+    choam = state.config.choam_module
+    icons: list[str] = []
+    for kind in LEGACY_AUTOMATIC_ORDER:
+        icons.extend([kind] * counts.get(kind, 0))
+        if kind == "resources" and not choam:
+            icons.extend(["contract"] * counts.get("contract", 0))
+    if choam:
+        icons.extend(["contract"] * counts.get("contract", 0))
+    for _copy in range(multiplier):
+        for kind in _LEGACY_COPY_CHOICES:
+            icons.extend([kind] * counts.get(kind, 0))
+    for kind in _LEGACY_LATER_CHOICES:
+        icons.extend([kind] * (counts.get(kind, 0) * multiplier))
+    context: dict[str, ActionValue] = {
+        _ICONS_KEY: ",".join(icons),
+        _PRINTED_KEY: ",".join(printed),
+        _RANK_KEY: assignment.rank.value,
+        _MULTIPLIER_KEY: multiplier,
+        _CHOICE_INDEX_KEY: 0,
+    }
+    return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_ICONS,
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_icons:{assignment.player}:"
+            f"{assignment.rank.value}"
         ),
-        intrigue_cards=(*recruited_owner.intrigue_cards, *drawn),
-        victory_points=(
-            recruited_owner.victory_points + reward.victory_points * amount
+        decision=PlayerDecision(
+            owner=assignment.player, prompt="Resolve your Conflict reward"
         ),
+        context=tuple(sorted(context.items())),
     )
-    players[assignment.player] = next_owner
-    if reward.influence_faction is not None:
-        influence_result = gain_faction_influence(
-            replace(
-                state,
-                players=tuple(players),
-                intrigue_deck=intrigue_deck,
-                pending_intrigue_draws=pending_draws,
-                pending_navigation_plays=pending_navigation,
-                pending_track_spies=pending_spies,
-                scouts_four_bonus_choices=pending_four,
-            ),
-            assignment.player,
-            reward.influence_faction,
-            reward.faction_influence * amount,
-            event_prefix=(
-                f"round:{state.round_number}:combat_reward:fixed_influence:"
-                f"{assignment.player}:{assignment.rank.value}"
-            ),
-        )
-        players = list(influence_result.state.players)
-        intrigue_deck = influence_result.state.intrigue_deck
-        pending_draws = influence_result.state.pending_intrigue_draws
-        pending_navigation = influence_result.state.pending_navigation_plays
-        pending_spies = influence_result.state.pending_track_spies
-        pending_four = influence_result.state.scouts_four_bonus_choices
-        events.extend(influence_result.events)
-        next_owner = players[assignment.player]
-    if (
-        reward.control_space_id is not None
-        and reward.control_space_id
-        not in players[assignment.player].control_space_ids
-    ):
-        # Arrakeen Scouts' Prison Planet may hold this seat's last marker.
-        scouts_goods, released = free_prison_marker(
-            scouts_goods,
-            assignment.player,
-            len(players[assignment.player].control_space_ids),
-            source=f"round:{state.round_number}:combat_reward",
-        )
-        events.extend(released)
-    if reward.control_space_id is not None:
-        players = list(
-            _apply_control(
-                tuple(players),
-                assignment.player,
-                reward.control_space_id,
-            )
-        )
-    if reward.contracts and state.config.choam_module:
-        frames_in_order.append(
-            contract_choice_frame(
-                assignment.player,
-                reward.contracts * amount,
-                source=(
-                    f"round:{state.round_number}:combat_reward:"
-                    f"{assignment.player}:{assignment.rank.value}"
-                ),
-            )
-        )
-    for _ in range(amount):
-        for _ in range(reward.choose_influence):
-            frames_in_order.append(
-                _influence_choice_frame(
-                    state,
-                    assignment.player,
-                    len(frames_in_order),
-                )
-            )
-        # Each optional cost is its own arrow, paid or declined on its
-        # own and at most once per reward [Main p. 9] [FAQ p. 3];
-        # Economic Supremacy prints two (6 Solari, then 4 spice) and
-        # they are offered in that printed order. A sandworm offers
-        # each arrow a second time [Main p. 14].
-        if reward.optional_solari_cost:
-            frames_in_order.append(
-                _optional_payment_frame(
-                    state,
-                    assignment.player,
-                    len(frames_in_order),
-                    "solari",
-                    reward.optional_solari_cost,
-                    reward.optional_victory_points,
-                )
-            )
-        if reward.optional_spice_cost:
-            frames_in_order.append(
-                _optional_payment_frame(
-                    state,
-                    assignment.player,
-                    len(frames_in_order),
-                    "spice",
-                    reward.optional_spice_cost,
-                    reward.optional_victory_points,
-                )
-            )
-        if reward.optional_recall_spies:
-            frames_in_order.append(
-                _optional_spy_recall_frame(
-                    state,
-                    assignment.player,
-                    len(frames_in_order),
-                    reward.optional_recall_spies,
-                    reward.optional_victory_points,
-                )
-            )
-        if reward.choose_distinct_influence:
-            group = len(frames_in_order)
-            for _ in range(reward.choose_distinct_influence):
-                frames_in_order.append(
-                    _distinct_influence_frame(
-                        state,
-                        assignment.player,
-                        len(frames_in_order),
-                        group,
-                    )
-                )
-    # With no card to trash the frame still opens and its owner confirms
-    # (user ruling 2026-09-30, cleanup-2f).
-    for _ in range(reward.trash_cards * amount):
-        frames_in_order.append(
-            _trash_card_frame(
-                state,
-                assignment.player,
-                len(frames_in_order),
-            )
-        )
-    # One frame per printed Spy, repeated by a sandworm [Main p. 14],
-    # each judged when it resolves: with the supply empty its owner may
-    # first recall a Spy [Main pp. 11, 20], so the supply at payment
-    # does not cap them. A Spy with Deep Cover ignores opponents' Spies
-    # [Bloodlines pp. 5, 12].
-    for deep_cover in (False,) * (reward.place_spies * amount) + (True,) * (
-        reward.deep_cover_spies * amount
-    ):
-        frames_in_order.append(
-            _spy_placement_frame(
-                state,
-                assignment.player,
-                len(frames_in_order),
-                deep_cover=deep_cover,
-            )
-        )
-    reward_event = _combat_reward_event(state, assignment, reward)
-    # The reward's own event comes last among its events (cleanup-2c-3).
-    events.extend(drawn_events)
-    events.extend(
-        recruit_shortfall_events(
-            reward_event.event_id,
-            assignment.player,
-            reward.troops * amount,
-            recruited,
-        )
-    )
-    events.append(reward_event)
 
-    frames = tuple(reversed(frames_in_order))
+
+def _pay_next_combat_reward(
+    state: GameState, conflict_id: str, assignment: CombatReward
+) -> RuleResult:
+    """Open one ranked recipient's reward window (stage B2, OQ-112)."""
+
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:{assignment.player}:"
+            f"{assignment.rank.value}"
+        ),
+        kind="combat_reward_gained",
+        # The recipient's reward begins: what it gains comes icon by icon
+        # (``combat_reward_icon_resolved`` and each gain's own event).
+        payload=(
+            ("multiplier", assignment.multiplier),
+            ("player", assignment.player),
+            ("rank", assignment.rank.value),
+        ),
+    )
     next_state = replace(
         state,
-        players=tuple(players),
-        intrigue_deck=intrigue_deck,
-        pending_intrigue_draws=pending_draws,
-        pending_navigation_plays=pending_navigation,
-        pending_track_spies=pending_spies,
-        scouts_four_bonus_choices=pending_four,
-        scouts_goods=scouts_goods,
-        combat_rewards_paid=paid + 1,
-        # The pledge was folded into the first-place frames above; the first
-        # recipient paid is the sole winner when there is one, so a tied
-        # first place leaves the pledge unused and it is cleared here too.
+        combat_rewards_paid=state.combat_rewards_paid + 1,
+        # The pledge goes into the first-place window; the first recipient
+        # paid is the sole winner when there is one, so a tied first place
+        # leaves the pledge unused and it is cleared here too.
         conflict_first_place_influence_bonus=0,
-        decision_stack=frames,
+        decision_stack=(
+            *state.decision_stack,
+            _reward_window(state, conflict_id, assignment),
+        ),
     )
-    return RuleResult(state=next_state, events=tuple(events))
+    return RuleResult(state=next_state, events=(event,))
+
+
+def _window_icons(frame: DecisionFrame) -> tuple[str, ...]:
+    text = dict(frame.context)[_ICONS_KEY]
+    return tuple(str(text).split(",")) if text else ()
+
+
+def legal_combat_reward_icon_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """One row per icon kind still to resolve, in printed order."""
+
+    frame = owned_top_frame(state, FrameKind.COMBAT_REWARD_ICONS, player)
+    if frame is None:
+        return ()
+    remaining = set(_window_icons(frame))
+    printed = str(dict(frame.context)[_PRINTED_KEY]).split(",")
+    return tuple(
+        DomainAction(
+            action_id=REWARD_ICON_ACTION, actor=player, arguments=(("effect", kind),)
+        )
+        for kind in printed
+        if kind in remaining
+    )
+
+
+def legacy_combat_reward_icon(state: GameState, player: int) -> DomainAction | None:
+    """The row the engine before stage B2 resolved next in ``player``'s
+    reward window (its fixed order: the automatic part, then the choice
+    frames as they were answered), or None outside one. An older record's
+    bridge and the AI seats answer the window with it."""
+
+    frame = owned_top_frame(state, FrameKind.COMBAT_REWARD_ICONS, player)
+    if frame is None:
+        return None
+    icons = _window_icons(frame)
+    if not icons:
+        return None
+    return DomainAction(
+        action_id=REWARD_ICON_ACTION, actor=player, arguments=(("effect", icons[0]),)
+    )
+
+
+def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve one icon of the recipient's reward (OQ-112)."""
+
+    player = action.actor
+    frame = owned_top_frame(state, FrameKind.COMBAT_REWARD_ICONS, player)
+    if frame is None:
+        raise ValueError("no Conflict reward window is open for this seat")
+    kind = dict(action.arguments).get("effect")
+    icons = list(_window_icons(frame))
+    if not isinstance(kind, str) or kind not in icons:
+        raise ValueError(f"no {kind!r} icon waits in this reward")
+    icons.remove(kind)
+    context = dict(frame.context)
+    rank = RewardRank(context_int(context, _RANK_KEY, owner="reward window"))
+    multiplier = context_int(context, _MULTIPLIER_KEY, owner="reward window")
+    index = context_int(context, _CHOICE_INDEX_KEY, owner="reward window")
+    conflict_id = state.current_conflict_ids[-1]
+    piece = reward_icon_piece(conflict_id, rank.value, kind)
+    source = f"round:{state.round_number}:combat_reward:{player}:{rank.value}"
+
+    # The choice frames this icon opens, in the order they are answered.
+    opened: list[DecisionFrame] = []
+    match kind:
+        case "choose_influence":
+            opened.append(_influence_choice_frame(state, player, index))
+        case "optional_solari" | "optional_spice":
+            assert isinstance(piece, EffectSection)
+            (cost,) = piece.costs
+            (points,) = piece.rewards
+            assert isinstance(cost, PayResources)
+            assert isinstance(points, GainVictoryPoints)
+            resource = "solari" if kind == "optional_solari" else "spice"
+            opened.append(
+                _optional_payment_frame(
+                    state,
+                    player,
+                    index,
+                    resource,
+                    cost.solari if resource == "solari" else cost.spice,
+                    points.amount,
+                )
+            )
+        case "optional_recall_spies":
+            assert isinstance(piece, EffectSection)
+            (cost,) = piece.costs
+            (points,) = piece.rewards
+            assert isinstance(cost, RecallSpy)
+            assert isinstance(points, GainVictoryPoints)
+            opened.append(
+                _optional_spy_recall_frame(
+                    state, player, index, cost.count, points.amount
+                )
+            )
+        case "distinct_influence":
+            assert isinstance(piece, GainInfluence)
+            opened.extend(
+                _distinct_influence_frame(state, player, index + pick, index)
+                for pick in range(piece.times)
+            )
+        case "trash":
+            opened.append(_trash_card_frame(state, player, index))
+        case "spy" | "deep_cover_spy":
+            opened.append(
+                _spy_placement_frame(
+                    state, player, index, deep_cover=kind == "deep_cover_spy"
+                )
+            )
+        case "contract" if state.config.choam_module:
+            assert isinstance(piece, TakeContract)
+            opened.append(
+                contract_choice_frame(player, piece.count * multiplier, source=source)
+            )
+
+    if icons:
+        context[_ICONS_KEY] = ",".join(icons)
+        context[_CHOICE_INDEX_KEY] = index + len(opened)
+        stack = (*state.decision_stack[:-1], with_context(frame, context))
+    else:
+        stack = state.decision_stack[:-1]
+    state = replace(state, decision_stack=stack)
+    events: list[GameEvent] = []
+    details: list[tuple[str, ActionValue]] = []
+    if not opened:
+        resolved = _resolve_automatic_icon(
+            state, player, kind, piece, multiplier, source, rank
+        )
+        state = resolved.state
+        events.extend(resolved.events)
+        details.extend(_icon_details(state, kind, piece, multiplier))
+    elif kind == "contract":
+        # The Contract market takes the Contracts; the row says how many,
+        # for the Combat result line (``render.js``).
+        details.extend(_icon_details(state, kind, piece, multiplier))
+    events.append(
+        GameEvent(
+            event_id=f"{source}:icon:{len(icons)}",
+            kind="combat_reward_icon_resolved",
+            payload=tuple(
+                sorted(
+                    (
+                        ("effect", kind),
+                        ("player", player),
+                        ("rank", rank.value),
+                        *details,
+                    )
+                )
+            ),
+        )
+    )
+    remaining = tuple(reversed(opened))
+    state = replace(
+        state,
+        decision_stack=(*state.decision_stack, *remaining),
+    )
+    if not state.decision_stack:
+        state = replace(
+            state, combat_rewards_resolved=combat_rewards_done(state, ())
+        )
+    return RuleResult(state=state, events=tuple(events))
+
+
+def _icon_details(
+    state: GameState,
+    kind: str,
+    piece: Reward | EffectSection | None,
+    multiplier: int,
+) -> tuple[tuple[str, ActionValue], ...]:
+    """What an automatic icon gave, for its ``combat_reward_icon_resolved``
+    (resources ride on ``resources_gained``)."""
+
+    match kind, piece:
+        case "troops", RecruitTroops(count=count):
+            return (("troops", count * multiplier),)
+        case "intrigue", DrawIntrigueCards(count=count):
+            return (("intrigue", count * multiplier),)
+        case "victory_points", GainVictoryPoints(amount=amount):
+            return (("victory_points", amount * multiplier),)
+        case "faction_influence", GainInfluence(times=times, factions=(faction,)):
+            return (("faction", faction.value), ("influence", times * multiplier))
+        case "control", TakeControl(space_id=space_id):
+            return (("space_id", space_id),)
+        case "contract", TakeContract(count=count):
+            return (("contracts", count * multiplier),)
+    return ()
+
+
+def _with_owner(state: GameState, owner: PlayerState) -> GameState:
+    return replace(state, players=replace_player(state.players, owner))
+
+
+def _resolve_automatic_icon(
+    state: GameState,
+    player: int,
+    kind: str,
+    piece: Reward | EffectSection | None,
+    multiplier: int,
+    source: str,
+    rank: RewardRank,
+) -> RuleResult:
+    """Pay one automatic icon of a Conflict reward (doubled by a sandworm,
+    control excepted)."""
+
+    owner = state.players[player]
+    match kind, piece:
+        case "intrigue", DrawIntrigueCards(count=count):
+            wanted = count * multiplier
+            deck = state.intrigue_deck
+            drawn = deck[:wanted]
+            events: tuple[GameEvent, ...] = (
+                (
+                    GameEvent(
+                        event_id=f"{source}:intrigue_draw:{len(deck)}",
+                        kind="intrigue_card_drawn",
+                        payload=(("count", len(drawn)), ("player", player)),
+                    ),
+                )
+                if drawn
+                else ()
+            )
+            pending = state.pending_intrigue_draws
+            if wanted > len(drawn):
+                # Deck exhausted: the dispatcher reshuffles the discard
+                # [FAQ p. 2].
+                pending = (
+                    *pending,
+                    (
+                        player,
+                        wanted - len(drawn),
+                        (
+                            f"round:{state.round_number}:combat_reward:intrigue:"
+                            f"{player}:{rank.value}"
+                        ),
+                    ),
+                )
+            next_owner = replace(
+                owner, intrigue_cards=(*owner.intrigue_cards, *drawn)
+            )
+            return RuleResult(
+                state=replace(
+                    _with_owner(state, next_owner),
+                    intrigue_deck=deck[len(drawn) :],
+                    pending_intrigue_draws=pending,
+                ),
+                events=events,
+            )
+        case "troops", RecruitTroops(count=count):
+            recruited_owner, recruited = recruit_troops(owner, count * multiplier)
+            return RuleResult(
+                state=_with_owner(state, recruited_owner),
+                events=recruit_shortfall_events(
+                    source, player, count * multiplier, recruited
+                ),
+            )
+        case "resources", GainResources(solari=solari, spice=spice, water=water):
+            next_owner = replace(
+                owner,
+                resources=Resources(
+                    solari=owner.resources.solari + solari * multiplier,
+                    spice=owner.resources.spice + spice * multiplier,
+                    water=owner.resources.water + water * multiplier,
+                ),
+            )
+            return RuleResult(
+                state=_with_owner(state, next_owner),
+                events=(
+                    resources_gained_event(
+                        source,
+                        player,
+                        solari=solari * multiplier,
+                        spice=spice * multiplier,
+                        water=water * multiplier,
+                    ),
+                ),
+            )
+        case "victory_points", GainVictoryPoints(amount=amount):
+            next_owner = replace(
+                owner, victory_points=owner.victory_points + amount * multiplier
+            )
+            return RuleResult(state=_with_owner(state, next_owner))
+        case "contract", TakeContract(count=count):
+            # Without the CHOAM Module a Contract icon is 2 Solari
+            # [Main pp. 16, 20].
+            solari = 2 * count * multiplier
+            next_owner = replace(
+                owner,
+                resources=replace(
+                    owner.resources, solari=owner.resources.solari + solari
+                ),
+            )
+            return RuleResult(
+                state=_with_owner(state, next_owner),
+                events=(
+                    resources_gained_event(f"{source}:contract", player, solari=solari),
+                ),
+            )
+        case "faction_influence", GainInfluence(times=times, factions=(faction,)):
+            return gain_faction_influence(
+                state,
+                player,
+                faction,
+                times * multiplier,
+                event_prefix=(
+                    f"round:{state.round_number}:combat_reward:fixed_influence:"
+                    f"{player}:{rank.value}"
+                ),
+            )
+        case "control", TakeControl(space_id=space_id):
+            events_list: list[GameEvent] = []
+            scouts_goods = state.scouts_goods
+            if space_id not in owner.control_space_ids:
+                # Arrakeen Scouts' Prison Planet may hold this seat's last
+                # marker.
+                scouts_goods, released = free_prison_marker(
+                    scouts_goods,
+                    player,
+                    len(owner.control_space_ids),
+                    source=f"round:{state.round_number}:combat_reward",
+                )
+                events_list.extend(released)
+            return RuleResult(
+                state=replace(
+                    state,
+                    players=_apply_control(state.players, player, space_id),
+                    scouts_goods=scouts_goods,
+                ),
+                events=tuple(events_list),
+            )
+    raise ValueError(f"{kind!r} is not an automatic Conflict reward icon")
 
 
 def combat_reward_payment_block(
@@ -2070,55 +2377,6 @@ def _battle_icon_for(card_id: str) -> BattleIcon | None:
     if card_id in OBJECTIVES_BY_ID:
         return OBJECTIVES_BY_ID[card_id].battle_icon
     return CONFLICTS_BY_ID[card_id].battle_icon
-
-
-def _combat_reward_event(
-    state: GameState,
-    assignment: CombatReward,
-    reward: ConflictReward,
-) -> GameEvent:
-    contract_solari = 0 if state.config.choam_module else reward.contracts * 2
-    payload = (
-        ("choose_influence", reward.choose_influence * assignment.multiplier),
-        ("contracts", reward.contracts * assignment.multiplier),
-        ("control_space_id", reward.control_space_id or ""),
-        (
-            "faction",
-            reward.influence_faction.value
-            if reward.influence_faction is not None
-            else "",
-        ),
-        (
-            "faction_influence",
-            reward.faction_influence * assignment.multiplier,
-        ),
-        ("intrigue", reward.intrigue * assignment.multiplier),
-        ("multiplier", assignment.multiplier),
-        ("player", assignment.player),
-        ("rank", assignment.rank.value),
-        (
-            "solari",
-            (reward.solari + contract_solari) * assignment.multiplier,
-        ),
-        ("spice", reward.spice * assignment.multiplier),
-        ("troops", reward.troops * assignment.multiplier),
-        ("victory_points", reward.victory_points * assignment.multiplier),
-        ("water", reward.water * assignment.multiplier),
-    )
-    return GameEvent(
-        event_id=(
-            f"round:{state.round_number}:combat_reward:{assignment.player}:"
-            f"{assignment.rank.value}"
-        ),
-        kind="combat_reward_gained",
-        # A reward's zero amounts are left out (cleanup-2c-3, the event
-        # grammar); the rank, the seat and the sandworm multiplier stay.
-        payload=tuple(
-            (key, value)
-            for key, value in payload
-            if value or key in ("multiplier", "player", "rank")
-        ),
-    )
 
 
 def _apply_control(

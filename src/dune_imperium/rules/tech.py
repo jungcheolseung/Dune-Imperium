@@ -60,6 +60,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -98,7 +99,7 @@ from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
     use_leader_signet_for_tech,
 )
-from dune_imperium.rules.optional_trash import open_optional_trash
+from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
@@ -301,14 +302,23 @@ def face_up_tech_ids(state: GameState) -> tuple[str, ...]:
     return tuple(stack[0] for stack in state.tech_stacks if stack)
 
 
-def tech_acquisition_frame(player: int, *, discount: int, source: str) -> DecisionFrame:
-    """Return the frame of a card-granted Acquire Tech with ``discount``."""
+def tech_acquisition_frame(
+    player: int, *, discount: int, source: str, printer: str
+) -> DecisionFrame:
+    """Return the frame of a card-granted Acquire Tech with ``discount``;
+    ``printer`` is the card that grants it (``action_shapes.printer_value``),
+    its refusal's entity (stage B3d-3)."""
 
     return DecisionFrame(
         kind=FrameKind.TECH_ACQUISITION,
         frame_id=f"{source}:tech_acquisition",
         decision=PlayerDecision(owner=player, prompt="Acquire a Tech tile or decline"),
-        context=(("discount", discount), ("player", player), ("source", source)),
+        context=(
+            ("discount", discount),
+            ("player", player),
+            (PRINTER_KEY, printer),
+            ("source", source),
+        ),
     )
 
 
@@ -318,6 +328,7 @@ def push_tech_acquisition(
     *,
     discount: int,
     source: str,
+    printer: str,
 ) -> RuleResult:
     """Open a card-granted Acquire Tech.
 
@@ -331,7 +342,9 @@ def push_tech_acquisition(
         raise ValueError("Acquire Tech requires the Tech Module")
     return RuleResult(
         state=state.push_decision(
-            tech_acquisition_frame(player, discount=discount, source=source)
+            tech_acquisition_frame(
+                player, discount=discount, source=source, printer=printer
+            )
         )
     )
 
@@ -763,10 +776,17 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         working = contracts.state
         events.extend(contracts.events)
     if effect == "trash":
-        working = open_optional_trash(working, player, source)
+        working = open_optional_trash(
+            working, player, source, printer=trash_printer(Source.TECH, tech_id)
+        )
     if effect.startswith("spy_"):
         working = spy_placement_frame(
-            working, player, ALL_POST_IDS, source=source, deep_cover=True
+            working,
+            player,
+            ALL_POST_IDS,
+            source=source,
+            printer=printer_value(Source.TECH, tech_id),
+            deep_cover=True,
         )
     intrigue = tile.acquire_intrigue if effect == "intrigue" else 0
     cards = tile.acquire_cards if effect == "cards" else 0
@@ -903,7 +923,12 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                         working, players=replace_player(working.players, seat)
                     )
                 case TrashPersonalCard():
-                    working = open_optional_trash(working, player, source)
+                    working = open_optional_trash(
+                        working,
+                        player,
+                        source,
+                        printer=trash_printer(Source.TECH, tech_id),
+                    )
     return RuleResult(state=working, events=tuple(events))
 
 
@@ -916,6 +941,24 @@ def _flip_ability(tech_id: str) -> Ability:
         if record.timing is AbilityTiming.FLIP
     )
     return flip
+
+
+def optional_trash_tech_ids() -> tuple[str, ...]:
+    """The tiles that print an optional trash: an acquire ``trash`` icon or a
+    Flip line's (stage B3c-2b, ``optional_trash.trash_printer``)."""
+
+    return tuple(
+        tile.tech_id
+        for tile in TECH_TILES
+        if "trash" in tile.acquire_effect_keys
+        or any(
+            isinstance(reward, TrashPersonalCard)
+            for record in TECH_ABILITIES[tile.tech_id]
+            if record.timing is AbilityTiming.FLIP
+            for line in record.sections
+            for reward in line.rewards
+        )
+    )
 
 
 def _grants_combat_icon(flip: Ability) -> bool:
@@ -1020,7 +1063,13 @@ def apply_place_tech_spy(state: GameState, action: DomainAction) -> RuleResult:
     source = f"round:{state.round_number}:player:{player}:reveal:panopticon"
     settled = _settle_tech_reveal(state, player, "panopticon")
     return RuleResult(
-        state=spy_placement_frame(settled, player, ALL_POST_IDS, source=source)
+        state=spy_placement_frame(
+            settled,
+            player,
+            ALL_POST_IDS,
+            source=source,
+            printer=printer_value(Source.TECH, "panopticon"),
+        )
     )
 
 

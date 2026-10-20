@@ -18,7 +18,14 @@ only shortens it.
 
 from __future__ import annotations
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    REVIEW_LANDING,
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+)
 
 check = Check()
 
@@ -57,12 +64,14 @@ def watched_game(page, base: str) -> None:
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.review !== null && state.view !== null")
     target = page.evaluate("Math.floor(state.review.meta.step_count / 2)")
+    # A pick step goes on to its effect's end (stage B3, ``common.REVIEW_LANDING``).
+    landing = page.evaluate(REVIEW_LANDING, target)
     page.evaluate(f"stopPlayback(); reviewSeek({target})")
     # Wait for the cursor itself, not just for the flight to end: the first
     # snapshot was otherwise taken before the seek had rendered, and the strip
     # list still held the Leader draft column.
     page.wait_for_function(
-        f"state.review.cursor === {target} && refreshFlight === null"
+        f"state.review.cursor === {landing} && refreshFlight === null"
     )
 
 

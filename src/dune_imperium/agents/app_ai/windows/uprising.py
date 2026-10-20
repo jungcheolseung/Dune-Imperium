@@ -65,7 +65,11 @@ from dune_imperium.agents.app_ai.windows.common import (
     str_arg,
     with_arg,
 )
-from dune_imperium.agents.app_ai.windows.intrigue import INTENT, INTENT_AT
+from dune_imperium.agents.app_ai.windows.intrigue import (
+    INTENT,
+    INTENT_AT,
+    play_event_index,
+)
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
 from dune_imperium.agents.app_ai.windows.turn import board_space_order
 from dune_imperium.core.actions import DomainAction
@@ -176,21 +180,6 @@ _CONTRACT_MARKET_IDS = frozenset({"take_contract"})
 _CONTRACT_RECALL_IDS = frozenset({"recall_agent_for_contract"})
 
 
-def _play_event_index(run: DecisionRun, instance: str) -> int | None:
-    """Index of this seat's latest public ``intrigue_played`` event of the
-    card (the stamp ``windows/intrigue.py`` records with its answer)."""
-
-    log = run.ctx.state.event_log
-    for index in range(len(log) - 1, -1, -1):
-        event = log[index]
-        if event.kind != "intrigue_played":
-            continue
-        payload = dict(event.payload)
-        if payload.get("card_id") == instance and payload.get("player") == run.ctx.seat:
-            return index
-    return None
-
-
 def _intrigue_contract_intent(run: DecisionRun, offered: Sequence[str]) -> str | None:
     """The contract an app Intrigue answer already chose for this market.
 
@@ -218,7 +207,7 @@ def _intrigue_contract_intent(run: DecisionRun, offered: Sequence[str]) -> str |
     stamp = run.memory.intents.get((INTENT_AT, instance))
     if not isinstance(stored, Answer) or stamp is None:
         return None
-    if stamp != _play_event_index(run, instance):
+    if stamp != play_event_index(run.ctx, instance):
         return None
     named = list(
         dict.fromkeys(

@@ -23,6 +23,7 @@ from dune_imperium.adapters.observation_encoding import (
     encode_player_view,
     segment_slice,
 )
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -41,6 +42,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.observation import observe_state
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import (
     FINISH_DEPLOYMENT_KEY,
     FINISH_RECRUITS_KEY,
@@ -57,6 +59,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import finish_reveal_turn
+from dune_imperium.rules.spy_moves import track_spy_is_queued
 from dune_imperium.server.turn_end import agent_turn_end_ready
 from dune_imperium.simulation import InvariantViolation, check_track_spy_queue
 
@@ -110,19 +113,19 @@ def _owed(state: GameState, *seats: int) -> GameState:
 
 
 def _ids(state: GameState, seat: int = 0) -> list[str]:
-    return [action.action_id for action in ENGINE.legal_actions(state, seat)]
+    return [action.action_id for action in ENGINE.whole_actions(state, seat)]
 
 
 def _first(state: GameState, action_id: str, seat: int = 0) -> DomainAction:
     return next(
         action
-        for action in ENGINE.legal_actions(state, seat)
+        for action in ENGINE.whole_actions(state, seat)
         if action.action_id == action_id
     )
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _at_dutiful_service(emperor: int = 3) -> GameState:
@@ -137,10 +140,10 @@ def _at_dutiful_service(emperor: int = 3) -> GameState:
     state = _turn_state(owner)
     visit = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments).get("space_id") == "dutiful_service"
     )
-    return _apply(state, visit)
+    return apply_placement(ENGINE, state, visit).state
 
 
 def _reveal(owner: PlayerState | None = None) -> GameState:
@@ -251,11 +254,10 @@ def test_the_designers_imperial_privilege_example_is_now_allowed() -> None:
 
     visit = next(
         action
-        for action in ENGINE.legal_actions(reached, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "imperial_privilege"
+        for action in executable_placements(reached, 0)
+        if dict(action.arguments)["space_id"] == "imperial_privilege"
     )
-    sent = _apply(reached, visit)
+    sent = apply_placement(ENGINE, reached, visit).state
     # Gather Intelligence comes first, alone (its early return stays ahead).
     assert set(_ids(sent)) == {"decline_gather_intelligence", "gather_intelligence"}
     recalled = _apply(sent, _first(sent, "gather_intelligence"))
@@ -265,7 +267,7 @@ def test_the_designers_imperial_privilege_example_is_now_allowed() -> None:
 
     opened = _apply(recalled, PLACE)
     posts = {
-        dict(action.arguments)["post_id"] for action in ENGINE.legal_actions(opened, 0)
+        dict(action.arguments)["post_id"] for action in ENGINE.whole_actions(opened, 0)
     }
     assert IMPERIAL_PRIVILEGE_POST in posts
     placed = _place_on(opened, IMPERIAL_PRIVILEGE_POST)
@@ -313,7 +315,7 @@ def test_with_an_empty_supply_the_press_offers_the_recall_first_or_its_decline()
     owing = _owed(_turn_state(owner), 0)
     assert "place_track_spy" in _ids(owing)
     opened = _apply(owing, PLACE)
-    actions = ENGINE.legal_actions(opened, 0)
+    actions = ENGINE.whole_actions(opened, 0)
     assert actions[0] == DomainAction("decline_spy_placement", 0)
     assert {dict(a.arguments)["post_id"] for a in actions[1:]} == set(posts)
     declined = _apply(opened, actions[0])
@@ -326,7 +328,7 @@ def test_with_an_empty_supply_the_press_offers_the_recall_first_or_its_decline()
     boxed = PlayerState(player_id=0, spies_supply=0, spies_boxed=3)
     tech = RulesetConfig(bloodlines=True, tech_module=True)
     nothing = _apply(_owed(_turn_state(boxed, tech), 0), PLACE)
-    assert ENGINE.legal_actions(nothing, 0) == (
+    assert ENGINE.whole_actions(nothing, 0) == (
         DomainAction("decline_spy_placement", 0),
     )
 
@@ -393,7 +395,7 @@ def test_friends_everywhere_emperor_pick_leaves_the_spy_owed_in_the_turn() -> No
     assert opened.decision_stack[-1].kind == FrameKind.SCOUTS_FOUR_BONUS
     emperor = next(
         action
-        for action in ENGINE.legal_actions(opened, 0)
+        for action in ENGINE.whole_actions(opened, 0)
         if dict(action.arguments)["faction"] == "emperor"
     )
     chosen = _apply(opened, emperor)
@@ -427,12 +429,12 @@ def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None
     assert "play_turn_start_card" in _ids(free)
     assert DomainAction(
         "play_intrigue", 0, (("card_id", withdrawn), ("option", 0))
-    ) in ENGINE.legal_actions(free, 0)
+    ) in ENGINE.whole_actions(free, 0)
 
     owing = _change_allegiances_to_four(owner, bloodlines)
     assert owing.decision_stack[-1].kind == FrameKind.TURN
     assert owes_track_spy(owing, 0)
-    legal = ENGINE.legal_actions(owing, 0)
+    legal = ENGINE.whole_actions(owing, 0)
     offered = {action.action_id for action in legal}
     assert "place_track_spy" in offered
     assert "play_turn_start_card" not in offered
@@ -548,9 +550,15 @@ def test_the_owed_spies_are_public_per_seat() -> None:
     ],
 )
 def test_place_track_spy_round_trips_in_every_catalog(options: dict[str, bool]) -> None:
+    # The turn offers the placement by its effect row (stage B3d-4): the
+    # Emperor track's Spy, not the bare ``place_track_spy`` template.
     codec = ActionCodec(RulesetConfig(**options))
     for seat in range(4):
-        action = DomainAction("place_track_spy", seat)
+        action = DomainAction(
+            "place_spy",
+            seat,
+            (("printed", "emperor"), ("source", "influence_track")),
+        )
         assert codec.decode(codec.encode(action), actor=seat) == action
 
 
@@ -576,3 +584,75 @@ def test_the_soak_invariant_accepts_only_the_turn_owners_waiting_entries() -> No
         check_track_spy_queue(
             _owed(replace(state, phase=GamePhase.COMBAT, decision_stack=()), 1)
         )
+    # So does a completed Contract's reward window (stage B2, OQ-112).
+    window = DecisionFrame(
+        kind=FrameKind.CONTRACT_REWARD_ICONS,
+        frame_id="test:contract",
+        decision=PlayerDecision(owner=1, prompt="Gain your Contract reward"),
+    )
+    check_track_spy_queue(
+        _owed(replace(state, phase=GamePhase.COMBAT, decision_stack=(window,)), 1)
+    )
+
+
+def test_a_contract_window_the_influence_opened_comes_before_the_spy() -> None:
+    """Spice Freighters' first place: an Influence of the seat's choice and
+    a 4-spice arrow. Choosing the Emperor reaches 4 (the track's Spy) and
+    earns the Alliance, which completes Earn Any Alliance. Before stage B2
+    the engine paid that Contract inside the choice and the Spy followed the
+    Conflict's reward choices; now the Contract's rows come first, then the
+    rest of the Conflict reward, then the Spy (OQ-112, track_spy_is_queued).
+    """
+
+    from tests.unit.rules.test_pauses import (
+        _alliance_combat,
+        _pass_combat_intrigue,
+        _second,
+    )
+
+    state = _alliance_combat(
+        "spice_freighters",
+        Influence(emperor=3),
+        _second(),
+        troops_supply=2,
+        troops_garrison=6,
+    )
+    state = _pass_combat_intrigue(ENGINE, state).state
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    state = _apply(
+        state,
+        DomainAction(
+            "resolve_combat_reward_icon", 0, (("effect", "choose_influence"),)
+        ),
+    )
+    state = _apply(
+        state,
+        DomainAction(
+            "choose_combat_reward_influence", 0, (("faction", "emperor"),)
+        ),
+    )
+    assert state.players[0].influence.emperor == 4
+    assert owes_track_spy(state, 0)
+    assert [frame.kind for frame in state.decision_stack[-2:]] == [
+        FrameKind.COMBAT_REWARD_ICONS,
+        FrameKind.CONTRACT_REWARD_ICONS,
+    ]
+    assert not track_spy_is_queued(state)
+    check_track_spy_queue(state)
+
+    while state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_ICONS:
+        (row, *_) = ENGINE.whole_actions(state, 0)
+        assert row.action_id == "resolve_contract_reward_icon"
+        state = _apply(state, row)
+    assert state.players[0].troops_garrison == 6 + 2
+    # The Conflict reward's arrow is still to answer; the Spy waits for it.
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert owes_track_spy(state, 0)
+    state = _apply(
+        state,
+        DomainAction("resolve_combat_reward_icon", 0, (("effect", "optional_spice"),)),
+    )
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    state = _apply(state, DomainAction("decline_combat_reward", 0))
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert not owes_track_spy(state, 0)

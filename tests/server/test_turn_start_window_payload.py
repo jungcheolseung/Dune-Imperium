@@ -129,10 +129,10 @@ def test_only_the_owners_turn_start_plays_carry_the_tag() -> None:
         ("play_turn_start_card", _LITANY),
     ]
     assert all(row["turn_start"] is True for row in rows if "turn_start" in row)
-    # Every other row of the turn goes untagged: the Agent turns, the Reveal
-    # and the ordinary Plot.
+    # Every other row of the turn goes untagged: the Agent turns (their card
+    # picks, stage B1), the Reveal and the ordinary Plot.
     others = {str(row["action_id"]) for row in rows if "turn_start" not in row}
-    assert {"agent_turn", "reveal_turn", "play_intrigue"} <= others
+    assert {"choose_agent_card", "reveal_turn", "play_intrigue"} <= others
     assert all(
         _obj(row["arguments"]).get("card_id") != _WITHDRAWN
         for row in rows

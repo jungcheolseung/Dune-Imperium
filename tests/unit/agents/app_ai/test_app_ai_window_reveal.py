@@ -13,6 +13,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities import Answer, Request
@@ -87,7 +88,9 @@ def owner(state: GameState) -> int:
 
 
 def legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, owner(state))
+    # The whole actions the rules resolve (stage B3b-2: the Reveal frame
+    # offers its effects effect first, and the agents see whole actions).
+    return ENGINE.whole_actions(state, owner(state))
 
 
 def make_run(
@@ -120,7 +123,7 @@ def find(state: GameState, action_id: str, **args: object) -> DomainAction:
 
 
 def apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action, legal_actions=legal(state)).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal(state)).state
 
 
 def revealed(hand: list[str], **changes: object) -> GameState:
@@ -325,7 +328,7 @@ def test_an_optional_choice_worth_nothing_lapses_at_the_end_turn(
     )
     finish = find(state, "finish_reveal")
     assert reveal.reveal_window(make_run(state, constants=NO_BUYS)) == finish
-    events = ENGINE.apply(state, finish, legal_actions=legal(state)).events
+    events = apply_whole(ENGINE, state, finish, legal_actions=legal(state)).events
     assert [e.kind for e in events if e.kind == "reveal_choice_lapsed"] == [
         "reveal_choice_lapsed"
     ]
@@ -685,11 +688,36 @@ def test_automatic_gains_run_first_in_app_order() -> None:
         assert action is not None
         picks.append((action.action_id, dict(action.arguments)))
         state = apply(state, action)
+    # Each gain names the revealed card that printed it (stage B3e-1).
     assert picks == [
-        ("gain_reveal_resources", {"solari": 0, "spice": 1, "water": 0}),
-        ("recruit_reveal_troops", {}),
-        ("gain_reveal_resources", {"solari": 0, "spice": 0, "water": 1}),
-        ("draw_reveal_intrigue", {}),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 1,
+                "water": 0,
+                "printed": "rebel_supplier",
+                "source": "reveal_card",
+            },
+        ),
+        (
+            "recruit_reveal_troops",
+            {"printed": "junction_headquarters", "source": "reveal_card"},
+        ),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 0,
+                "water": 1,
+                "printed": "junction_headquarters",
+                "source": "reveal_card",
+            },
+        ),
+        (
+            "draw_reveal_intrigue",
+            {"printed": "treacherous_maneuver", "source": "reveal_card"},
+        ),
     ]
     assert reveal.reveal_window(make_run(state)) is not None
 
@@ -710,10 +738,32 @@ def test_smugglers_haven_spice_is_a_state_400_gain() -> None:
         assert action is not None
         picks.append((action.action_id, dict(action.arguments)))
         state = apply(state, action)
+    # Each gain names the revealed card that printed it (stage B3e-1).
     assert picks == [
-        ("recruit_reveal_troops", {}),
-        ("gain_reveal_resources", {"solari": 0, "spice": 0, "water": 1}),
-        ("gain_reveal_resources", {"solari": 0, "spice": 2, "water": 0}),
+        (
+            "recruit_reveal_troops",
+            {"printed": "junction_headquarters", "source": "reveal_card"},
+        ),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 0,
+                "water": 1,
+                "printed": "junction_headquarters",
+                "source": "reveal_card",
+            },
+        ),
+        (
+            "gain_reveal_resources",
+            {
+                "solari": 0,
+                "spice": 2,
+                "water": 0,
+                "printed": "smuggler_s_haven",
+                "source": "reveal_card",
+            },
+        ),
     ]
 
 
@@ -884,7 +934,7 @@ def test_end_turn_is_one_answer_with_optional_choices_pending(
     assert reveal.reveal_window(make_run(state, memory, constants=NO_BUYS)) == finish
     assert len(prompts) == 1
     assert memory.intents == {} and memory.data == {}
-    events = ENGINE.apply(state, finish, legal_actions=legal(state)).events
+    events = apply_whole(ENGINE, state, finish, legal_actions=legal(state)).events
     lapsed = [
         dict(e.payload)["effect"] for e in events if e.kind == "reveal_choice_lapsed"
     ]

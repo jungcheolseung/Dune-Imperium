@@ -24,10 +24,12 @@ FIXTURES = """
 import json
 from dataclasses import replace
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.core import (
     DecisionFrame, DomainAction, GamePhase, GameState, Influence,
     PlayerDecision, PlayerState,
 )
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.server.sessions import GameSessionManager
 
 manager = GameSessionManager()
@@ -59,12 +61,12 @@ card = "intrigue:tenuous_bond:0"
 state = state_for(PlayerState(
     player_id=0, intrigue_cards=(card,), influence=Influence(fremen=2),
 ))
-cost = engine.apply(state, DomainAction(
+cost = apply_whole(engine, state, DomainAction(
     "play_intrigue", 0, (("card_id", card), ("option", 0)),
 )).state
-loss_action = engine.legal_actions(cost, 0)[0]
-loss = engine.apply(cost, loss_action)
-gain = engine.apply(loss.state, engine.legal_actions(loss.state, 0)[0])
+loss_action = engine.whole_actions(cost, 0)[0]
+loss = apply_whole(engine, cost, loss_action)
+gain = apply_whole(engine, loss.state, engine.whole_actions(loss.state, 0)[0])
 
 def log(action, transition):
     return {
@@ -76,7 +78,7 @@ def log(action, transition):
 
 fixtures = {"cost": snapshot(cost), "reward": snapshot(loss.state)}
 fixtures["logs"] = [
-    log(loss_action, loss), log(engine.legal_actions(loss.state, 0)[0], gain),
+    log(loss_action, loss), log(engine.whole_actions(loss.state, 0)[0], gain),
 ]
 post = "landsraad-assembly-hall-gather-support"
 dagger = "player:0:starter:dagger:0"
@@ -87,9 +89,14 @@ for pile in ("empty", "deck", "discard_pile"):
     )
     if pile != "empty":
         owner = replace(owner, **{pile: ("player:0:starter:diplomacy:0",)})
-    placed = engine.apply(state_for(owner), DomainAction(
-        "agent_turn", 0, (("card_id", dagger), ("space_id", "assembly_hall")),
-    )).state
+    start = state_for(owner)
+    # The Agent turn is a card pick and then a space pick (stage B1);
+    # apply_placement plays both for the placement named by card and space.
+    placement = next(
+        action for action in executable_placements(start, 0, dagger)
+        if dict(action.arguments) == {"card_id": dagger, "space_id": "assembly_hall"}
+    )
+    placed = apply_placement(engine, start, placement).state
     fixtures[pile] = snapshot(placed)
 print(json.dumps(fixtures))
 """

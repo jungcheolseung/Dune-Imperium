@@ -2,7 +2,7 @@
 
 Each test reaches a real Agent turn of a Bloodlines game (the first turn of
 the seat whose leader matters, the seat's hand and board pieces adjusted,
-then a real ``agent_turn``), builds the ``DecisionRun`` the agent would build
+then a real Agent-turn placement), builds the ``DecisionRun`` the agent would build
 and asserts the source the window builds for the app-style ability or the
 exact action it answers (docs/app-ai/bloodlines-cards.md §8,
 bloodlines-systems.md §2.3, §3.4, §4, §6). Profile values or ability answers
@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.app_ai.abilities import bloodlines_cards as bc
 from dune_imperium.agents.app_ai.abilities import bloodlines_systems as bs
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request
@@ -41,6 +42,7 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 
 BL = RulesetConfig(choam_module=True, bloodlines=True, tech_module=True)
@@ -68,13 +70,13 @@ def no_plots(monkeypatch: pytest.MonkeyPatch) -> None:
 def _settle(state: GameState) -> GameState:
     chance = ChanceResolver(seed=1)
     while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
-        state = ENGINE.apply(state, chance.resolve(decision)).state
+        state = apply_whole(ENGINE, state, chance.resolve(decision)).state
     return state
 
 
 def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, seat)
-    return _settle(ENGINE.apply(state, action, legal_actions=legal).state)
+    legal = ENGINE.whole_actions(state, seat)
+    return _settle(apply_whole(ENGINE, state, action, legal_actions=legal).state)
 
 
 def _game(config: RulesetConfig, leader: str | None) -> tuple[GameState, int]:
@@ -102,9 +104,11 @@ def _game(config: RulesetConfig, leader: str | None) -> tuple[GameState, int]:
             leader is None or state.players[owner].leader_id == leader
         ):
             return state, owner
-        legal = ENGINE.legal_actions(state, owner)
-        action = agents[owner].choose_action(ENGINE.observe(state, owner), legal)
-        state = ENGINE.apply(state, action, legal_actions=legal).state
+        legal = ENGINE.whole_actions(state, owner)
+        action = agents[owner].choose_action_with_state(
+            state, ENGINE.observe(state, owner), legal
+        )
+        state = apply_whole(ENGINE, state, action, legal_actions=legal).state
     raise AssertionError("no turn reached")
 
 
@@ -152,18 +156,16 @@ def _place(
         state = with_state(state, **adjust)
     if before:
         state = _with_units(state, seat, **before)
-    legal = ENGINE.legal_actions(state, seat)
     placements = [
         action
-        for action in legal
-        if action.action_id == "agent_turn"
-        and arg(action, "card_id") == ref
+        for action in executable_placements(state, seat)
+        if arg(action, "card_id") == ref
         and (space is None or arg(action, "space_id") == space)
         and arg(action, "infiltrate_post_id") is None
         and arg(action, "graft") is not True
     ]
     assert placements, f"{card} cannot go to {space}"
-    state = _apply(state, seat, placements[0])
+    state = _settle(apply_placement(ENGINE, state, placements[0]).state)
     assert state.decision_stack[-1].kind == "agent_effects"
     return state, seat, ref
 
@@ -221,7 +223,7 @@ def _run(
     profile = make_profile(state, seat)
     for name, value in (patches or {}).items():
         setattr(profile, name, value)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     return DecisionRun(
         profile.ctx, profile, legal, random.Random(0), memory or Memory()
     )
@@ -265,11 +267,11 @@ def _answer(
 
 
 def _ids(state: GameState, seat: int) -> set[str]:
-    return {a.action_id for a in ENGINE.legal_actions(state, seat)}
+    return {a.action_id for a in ENGINE.whole_actions(state, seat)}
 
 
 def _first(state: GameState, seat: int, action_id: str) -> DomainAction:
-    for action in ENGINE.legal_actions(state, seat):
+    for action in ENGINE.whole_actions(state, seat):
         if action.action_id == action_id:
             return action
     raise AssertionError(action_id)
@@ -298,7 +300,7 @@ def test_commander_acquire_takes_the_best_skill(
     state, seat = _commander_space()
     skills = [
         str(arg(a, "skill_id"))
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "acquire_sardaukar_commander"
     ]
     best = skills[1]
@@ -461,7 +463,7 @@ def test_off_combat_space_deploy_is_a_deploy_units_custom_key(
     )
     trash = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "trash_agent_card"
         and "command_center" in str(arg(a, "card_id"))
     ]
@@ -503,7 +505,7 @@ def test_landsraad_acquire_tech_buys_the_answered_tile(
     state, seat = _landsraad(resources=RICH)
     tiles = [
         str(arg(a, "tech_id"))
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "acquire_tech"
     ]
     assert tiles
@@ -559,7 +561,7 @@ def test_advanced_data_analysis_boxes_the_worst_spy(
     state = with_player(state, seat, spy_post_ids=posts, spies_supply=1)
     variants = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "acquire_tech"
         and arg(a, "tech_id") == "advanced_data_analysis"
     ]
@@ -718,7 +720,7 @@ def test_urgent_shigawire_added_draw_is_a_draw_on_the_boosted_card() -> None:
         BL, "truthtrance", resources=RICH, bene_gesserit_boost_pending=True
     )
     draw = _a(seat, "resolve_agent_card_effect", effect="cards")
-    assert draw in ENGINE.legal_actions(state, seat)
+    assert draw in ENGINE.whole_actions(state, seat)
     source = _source(_turn(state, seat), "urgent_shigawire draw")
     assert source.stage is Stage.IMMEDIATE
     assert source.actions == (draw,)
@@ -943,7 +945,7 @@ def test_disruption_tactics_maps_the_victim_code(
     state = _with_units(state, victim, troops_conflict=1, commanders_conflict=1)
     actions = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "retreat_opponent_troop"
     ]
     assert len(actions) == 2
@@ -1131,7 +1133,7 @@ def test_listeners_free_half_recalls_only_a_landsraad_post(
     )
     recalls = {
         arg(action, "post_id")
-        for action in ENGINE.legal_actions(state, seat)
+        for action in ENGINE.whole_actions(state, seat)
         if action.action_id == "recall_spy_for_leader_placement"
     }
     assert recalls == {high_council, assembly, basin}
@@ -1297,7 +1299,7 @@ def test_recall_contract_is_valued_with_the_conflict_agent(
             agent_locations=locations,
             agents_available=me.agents_available + 1,
         )
-    assert _a(seat, "complete_contract", instance_id=contract) in ENGINE.legal_actions(
+    assert _a(seat, "complete_contract", instance_id=contract) in ENGINE.whole_actions(
         state, seat
     )
     seen: list[tuple[str, ...]] = []
@@ -1343,7 +1345,7 @@ def test_mohiam_forced_gather_intelligence_recalls_get_recall_spy(
     )
     gathers = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "gather_intelligence"
     ]
     assert len(gathers) == 2

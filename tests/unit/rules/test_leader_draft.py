@@ -15,8 +15,11 @@ from dune_imperium.rules.tactics import TACTICS_TRACK_START
 
 
 def _pick(actor: int, leader_id: str) -> DomainAction:
+    """The leader draft's pick, as the row the seat is offered (stage B3d-2a:
+    ``choose_leader``, which stands for the whole ``pick_leader``)."""
+
     return DomainAction(
-        action_id="pick_leader",
+        action_id="choose_leader",
         actor=actor,
         arguments=(("leader_id", leader_id),),
     )
@@ -72,8 +75,14 @@ def test_draft_reset_pauses_on_a_public_six_leader_pool() -> None:
             DomainAction(action_id="finish_leader_draft", actor=frame.decision.owner),
         )
     offered = engine.legal_actions(state, frame.decision.owner)
-    assert {a.action_id for a in offered} == {"pick_leader"}
+    assert {a.action_id for a in offered} == {"choose_leader"}
     assert {dict(a.arguments)["leader_id"] for a in offered} == set(
+        state.leader_draft_pool
+    )
+    # The rules offer the same picks as the whole action.
+    whole = engine.whole_actions(state, frame.decision.owner)
+    assert {a.action_id for a in whole} == {"pick_leader"}
+    assert {dict(a.arguments)["leader_id"] for a in whole} == set(
         state.leader_draft_pool
     )
 

@@ -123,7 +123,7 @@ def test_keys_natural_leaves_steered_records_out(
 ) -> None:
     copy = _edited_copy(tiny_corpus, tmp_path, steered=("full.h4.1",))
     corpus = Corpus.open(copy)
-    key = "action_ids:agent_turn"
+    key = "action_ids:place_agent"
     for flags, records in (([], 4), (["--natural"], 3)):
         assert main(["corpus", "keys", str(copy), key, *flags]) == 0
         out = capsys.readouterr().out

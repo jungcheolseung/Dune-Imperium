@@ -32,7 +32,15 @@ from __future__ import annotations
 
 import re
 
-from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    LAPTOP_VIEWPORT,
+    REVIEW_LANDING,
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+)
 from open_mode import settled
 
 check = Check()
@@ -630,9 +638,10 @@ def run(base: str, browser) -> None:
 
 def seek(page, fraction: float) -> None:
     target = page.evaluate(f"Math.floor(state.review.meta.step_count * {fraction})")
+    landing = page.evaluate(REVIEW_LANDING, target)
     page.evaluate(f"stopPlayback(); reviewSeek({target})")
     page.wait_for_function(
-        f"state.review.cursor === {target} && refreshFlight === null"
+        f"state.review.cursor === {landing} && refreshFlight === null"
     )
 
 

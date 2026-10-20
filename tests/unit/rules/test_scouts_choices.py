@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import EVENTS_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -78,8 +79,10 @@ def _owner(state: GameState) -> int:
 
 
 def _offered(state: GameState) -> list[tuple[str, tuple[tuple[str, Any], ...]]]:
+    # Stage B3d-2a: what the rules offer is the whole actions; a window opened
+    # for one effect shows its target rows instead (``legal_actions``).
     return [
-        (a.action_id, a.arguments) for a in ENGINE.legal_actions(state, _owner(state))
+        (a.action_id, a.arguments) for a in ENGINE.whole_actions(state, _owner(state))
     ]
 
 
@@ -88,9 +91,9 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _on_turn(state: GameState) -> bool:
@@ -177,7 +180,8 @@ def test_crackdown_still_asks_a_seat_with_only_one_possible_loss() -> None:
     assert _owner(state) == 0
     assert state.players[0].influence.emperor == 2  # nothing taken yet
     assert _offered(state) == [("scouts_choose_option", (("option", 1),))]
-    legal = ENGINE.legal_actions(state, 0)
+    # The display takes the server's whole actions (stage B3d-2b).
+    legal = ENGINE.whole_actions(state, 0)
     info = scouts_choice_lines(state, 0, legal)
     assert info is not None
     lines = info["lines"]
@@ -601,6 +605,11 @@ def test_bene_gesserit_treachery_asks_troop_or_commander_when_both() -> None:
         ("scouts_lose_garrison_unit", ()),
         ("scouts_lose_garrison_unit", (("commanders", 1),)),
     ]
+    # The window shows the unit as ``choose_unit`` rows (stage B3d-2b).
+    assert [(a.action_id, a.arguments) for a in ENGINE.legal_actions(state, 0)] == [
+        ("choose_unit", (("zone", "garrison"),)),
+        ("choose_unit", (("commanders", 1), ("zone", "garrison"))),
+    ]
     commander = _act(state, "scouts_lose_garrison_unit", commanders=1)
     seat = commander.players[0]
     assert (seat.troops_garrison, seat.commanders_garrison) == (2, 0)
@@ -625,7 +634,7 @@ def test_bene_gesserit_treachery_asks_a_seat_with_no_garrison_unit() -> None:
 
     state = _treachery(troops_garrison=0, troops_supply=12)
     # Seat 0's line is greyed with its reason beside the confirm.
-    info = scouts_choice_lines(state, 0, ENGINE.legal_actions(state, 0))
+    info = scouts_choice_lines(state, 0, ENGINE.whole_actions(state, 0))
     assert info is not None
     lines = info["lines"]
     assert isinstance(lines, list)
@@ -633,7 +642,7 @@ def test_bene_gesserit_treachery_asks_a_seat_with_no_garrison_unit() -> None:
     state = _takes_nothing(state, 0)
     assert _owner(state) == 1
     # Seat 1 has troops: its troop line is enabled.
-    info = scouts_choice_lines(state, 1, ENGINE.legal_actions(state, 1))
+    info = scouts_choice_lines(state, 1, ENGINE.whole_actions(state, 1))
     assert info is not None
     lines = info["lines"]
     assert isinstance(lines, list)

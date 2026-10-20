@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -350,7 +351,9 @@ def test_running_strength_follows_deployment_before_the_reveal() -> None:
 
     engine = UprisingRulesEngine()
     state = _research_station_state()
-    state = engine.apply(state, _agent_action_to(state, "research_station")).state
+    state = apply_placement(
+        engine, state, _agent_action_to(state, "research_station")
+    ).state
     assert state.players[0].combat_strength == 0
 
     deployed = engine.apply(state, _deployment(state, 2)).state

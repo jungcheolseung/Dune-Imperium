@@ -1,11 +1,14 @@
 """E2E of the staged Agent turn (card, then space, then what is left).
 
-The server offers an Agent turn as one flat list of `agent_turn` actions;
-the page shows it in steps and posts the one index the pick comes down to.
-This checks the view against that list at every step: what is lit is
-exactly what the list allows, a pick costs no request, either order works,
-a pick can be swapped or cancelled, a complete pick plays the very action it
-names, the chooser offers exactly the remaining ones, and the flat list is
+The engine offers an Agent turn as a card pick (`choose_agent_card`) and
+then a space pick (`place_agent`) (stage B1, OQ-111); with the card picks
+the server lists every whole placement they lead to (`agent_placements`).
+The page shows those placements in steps and, once the pick comes down to
+one, sends its card pick and then the matching space pick. This checks the
+view against that list at every step: what is lit is exactly what the list
+allows, a pick costs no request, either order works, a pick can be swapped
+or cancelled, a complete pick plays the very placement it names (its two
+steps), the chooser offers exactly the remaining ones, and the flat list is
 one toggle away.
 
 A saved game (fixtures/navigation_chamber_saves.py) checks Navigation
@@ -40,7 +43,11 @@ from open_mode import create_game, settled
 check = Check()
 
 PLACEMENTS = """() => placementActions().map((a) => ({
-  index: a.index, card: a.arguments.card_id, space: a.arguments.space_id }))"""
+  placement: a.placement, pick: a.pickIndex ?? null, arguments: a.arguments,
+  card: a.arguments.card_id, space: a.arguments.space_id }))"""
+# The page's last two posts to /actions, in order (the card pick, then the
+# space pick).
+LAST_POSTS = """() => window.__actionPosts.slice(-2)"""
 LIT_CARDS = """() => [...document.querySelectorAll('.hand-cards .vcard.legal')]
   .map((n) => n.dataset.instance).sort()"""
 LIT_SPACES = """() => [...document.querySelectorAll('.hotspot.legal')]
@@ -91,6 +98,47 @@ def to_agent_turn(page) -> list[dict]:
     return []
 
 
+def watch_posts(page) -> None:
+    """Record the bodies the page posts to /actions from now on."""
+    page.evaluate("""() => {
+      window.__actionPosts = [];
+      if (window.__postsWatched) return;
+      window.__postsWatched = true;
+      const send = window.fetch;
+      window.fetch = (url, options) => {
+        if (String(url).endsWith('/actions') && options && options.body) {
+          window.__actionPosts.push(JSON.parse(options.body));
+        }
+        return send(url, options);
+      };
+    }""")
+
+
+def check_two_steps(page, placement: dict) -> None:
+    """The page sent the placement's card pick, then the matching space pick."""
+    first, second = (page.evaluate(LAST_POSTS) + [None, None])[:2]
+    check.ok(
+        first is not None and first.get("index") == placement["pick"],
+        "first the placement's card pick",
+        (first, placement["pick"]),
+    )
+    log = page.evaluate(
+        "state.log.entries.filter((e) => e.type === 'action' && !e.undone).slice(-2)"
+        ".map((e) => [e.action_id, e.arguments])"
+    )
+    space_args = {
+        k: v for k, v in placement["arguments"].items() if k not in ("card_id", "graft")
+    }
+    check.ok(
+        len(log) == 2
+        and log[0][0] == "choose_agent_card"
+        and log[0][1].get("card_id") == placement["card"]
+        and log[1] == ["place_agent", space_args],
+        "then the space pick that completes it",
+        (log, space_args),
+    )
+
+
 def scenario(base, browser) -> None:
     context, page, rec = open_context(browser, "player")
     create_game(page, base, humans=(0,))
@@ -102,7 +150,7 @@ def scenario(base, browser) -> None:
     # doubles as an #actions item, appearing only as the banner's turn-end
     # row (render.js EXPLICIT_TURN_END_IDS / turnEndAction).
     others = page.evaluate(
-        "state.actions.actions.filter((a) => a.action_id !== 'agent_turn'"
+        "state.actions.actions.filter((a) => !isPlacementStep(a)"
         " && !EXPLICIT_TURN_END_IDS.has(a.action_id)).length"
     )
     check.ok(page.evaluate("stagedTurn()"), "the turn is staged")
@@ -174,20 +222,22 @@ def scenario(base, browser) -> None:
     page.click("#actions .pick-step.done")
     check.ok(page.evaluate("state.pick") is None, "the step chip clears its pick")
 
-    print("[4] a complete pick plays the one action it names")
-    by_pair: dict[tuple[str, str], list[int]] = {}
+    print("[4] a complete pick plays the one placement it names")
+    by_pair: dict[tuple[str, str], list[dict]] = {}
     for p in placements:
-        by_pair.setdefault((p["card"], p["space"]), []).append(p["index"])
-    (card, space), (index,) = next(
-        (pair, idx) for pair, idx in by_pair.items() if len(idx) == 1
+        by_pair.setdefault((p["card"], p["space"]), []).append(p)
+    (card, space), (only,) = next(
+        (pair, of_pair) for pair, of_pair in by_pair.items() if len(of_pair) == 1
     )
-    wanted = page.evaluate(f"state.actions.actions[{index}].arguments")
+    wanted = only["arguments"]
+    watch_posts(page)
     click_hand_card(page, card)
     page.click(f".hotspot[data-space='{space}']")
     check.ok(
-        wait_for(page, f"state.summary.revision === {revision + 1} && !state.busy"),
-        "one step was played",
+        wait_for(page, f"state.summary.revision === {revision + 2} && !state.busy"),
+        "its two steps were played",
     )
+    check_two_steps(page, only)
     check.ok(page.evaluate("state.pick") is None, "the pick is gone")
     check.ok(
         page.evaluate(
@@ -197,9 +247,9 @@ def scenario(base, browser) -> None:
         wanted,
     )
     check.ok(
-        rec.count("POST", "/actions") == posts + 1,
-        "with a single request",
-        rec.count("POST", "/actions"),
+        rec.count("POST", "/actions") == posts + 2,
+        "with a request each",
+        rec.count("POST", "/actions") - posts,
     )
 
     print("[5] a pick with several placements left opens the chooser")
@@ -208,17 +258,18 @@ def scenario(base, browser) -> None:
         placements = to_agent_turn(page)
         if not placements:
             break
-        pairs: dict[tuple[str, str], list[int]] = {}
+        pairs: dict[tuple[str, str], list[dict]] = {}
         for p in placements:
-            pairs.setdefault((p["card"], p["space"]), []).append(p["index"])
-        found = next(((pair, idx) for pair, idx in pairs.items() if len(idx) > 1), None)
+            pairs.setdefault((p["card"], p["space"]), []).append(p)
+        found = next(((pair, of) for pair, of in pairs.items() if len(of) > 1), None)
         if found:
             break
         page.evaluate("applyAction(0)")
     if found is None:
         print("  .. no card and space with several placements in this game; skipped")
     else:
-        (card, space), indexes = found
+        (card, space), several = found
+        keys = sorted(p["placement"] for p in several)
         before = page.evaluate("state.summary.revision")
         click_hand_card(page, card)
         page.click(f".hotspot[data-space='{space}']")
@@ -228,27 +279,27 @@ def scenario(base, browser) -> None:
         )
         offered = page.evaluate(
             "[...document.querySelectorAll('#card-popover .action-item')]"
-            ".map((n) => Number(n.dataset.index))"
+            ".map((n) => Number(n.dataset.placement))"
         )
-        check.ok(
-            sorted(offered) == sorted(indexes),
-            "the chooser offers exactly those",
-            offered,
-        )
+        check.ok(sorted(offered) == keys, "the chooser offers exactly those", offered)
         listed = page.evaluate(
             "[...document.querySelectorAll('#actions .pick-hint ~ .action-item')]"
-            ".map((n) => Number(n.dataset.index)).filter((i) => "
-            "state.actions.actions[i].action_id === 'agent_turn')"
+            ".filter((n) => n.dataset.placement !== undefined)"
+            ".map((n) => Number(n.dataset.placement))"
         )
-        check.ok(sorted(listed) == sorted(indexes), "and so does the panel", listed)
-        chosen = indexes[-1]
-        wanted = page.evaluate(f"state.actions.actions[{chosen}].arguments")
-        page.click(f"#card-popover .action-item[data-index='{chosen}'] > button")
+        check.ok(sorted(listed) == keys, "and so does the panel", listed)
+        chosen = next(p for p in several if p["placement"] == keys[-1])
+        watch_posts(page)
+        page.click(
+            f"#card-popover .action-item[data-placement='{chosen['placement']}']"
+            " > button"
+        )
         check.ok(
-            wait_for(page, f"state.summary.revision === {before + 1} && !state.busy"),
+            wait_for(page, f"state.summary.revision === {before + 2} && !state.busy"),
             "the chosen option was played",
-            wanted,
+            chosen["arguments"],
         )
+        check_two_steps(page, chosen)
 
     print("[6] the flat list is one toggle away, and the choice is remembered")
     placements = to_agent_turn(page)
@@ -375,9 +426,9 @@ def graft_scenario(base, browser) -> None:
     )
     check.ok(played, "the placement and the partner were both played")
     check.ok(
-        rec.count("POST", "/actions") == posts + 2
-        and page.evaluate("state.summary.revision") == revision + 2,
-        "as the engine's own two steps",
+        rec.count("POST", "/actions") == posts + 3
+        and page.evaluate("state.summary.revision") == revision + 3,
+        "as the engine's own three steps (card, space, partner)",
         (
             rec.count("POST", "/actions") - posts,
             page.evaluate("state.summary.revision") - revision,
@@ -419,11 +470,12 @@ REFINERY_CARD = """() => {
 }"""
 CHOOSER_LINES = """() => [...document.querySelectorAll("#card-popover .action-item")]
   .map((node) => {
-    const action = state.actions.actions[Number(node.dataset.index)];
+    const action = placementActions()
+      .find((a) => a.placement === Number(node.dataset.placement));
     const cut = node.querySelector(".pick-option > .pick-discount");
     const printed = node.querySelector(".pick-option > .cost-printed");
     return {
-      index: action.index,
+      placement: action.placement,
       option: action.arguments.cost_option ?? null,
       discount: action.arguments.discount ?? null,
       text: node.innerText,
@@ -551,9 +603,11 @@ def navigation_chamber_scenario(browser) -> None:
                     path=str(Path(shots) / f"staged_turn_navigation_chamber_{lang}.png")
                 )
         before = page.evaluate("state.summary.revision")
-        page.click(f"#card-popover .action-item[data-index='{cut['index']}'] > button")
+        page.click(
+            f"#card-popover .action-item[data-placement='{cut['placement']}'] > button"
+        )
         check.ok(
-            wait_for(page, f"state.summary.revision === {before + 1} && !state.busy"),
+            wait_for(page, f"state.summary.revision === {before + 2} && !state.busy"),
             "the cut option was played",
         )
         after = page.evaluate("state.view.players[state.viewSeat].resources.spice")
@@ -573,12 +627,92 @@ def navigation_chamber_scenario(browser) -> None:
         process.stop()
 
 
+def half_picked_scenario(base, browser) -> None:
+    """A card the server holds as picked (a reload between the two steps, or
+    an undo of the space pick): it is step ①, only its spaces are lit, the
+    banner asks for the space, its ✕ takes the pick back by an undo, and one
+    undo press takes a whole placement back."""
+    print("[9] a card picked on the server: step ① holds it until an undo")
+    context, page, rec = open_context(browser, "half")
+    create_game(page, base, humans=(0,))
+    placements = to_agent_turn(page)
+    check.ok(len(placements) > 1, "the seat is offered placements")
+    card = placements[0]["card"]
+    pick = placements[0]["pick"]
+    of_card = sorted({p["space"] for p in placements if p["card"] == card})
+    revision = page.evaluate("state.summary.revision")
+    page.evaluate(f"applyAction({pick})")
+    assert wait_for(page, f"state.summary.revision === {revision + 1} && !state.busy")
+    page.reload()
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    assert settled(page)
+    check.ok(
+        page.evaluate("state.view.private.agent_card_pick") == card,
+        "the seat's own view holds the picked card",
+    )
+    check.ok(page.evaluate("stagedTurn()"), "the space pick is staged too")
+    check.ok(
+        page.evaluate("state.pick && state.pick.cardId") == card,
+        "step ① is the picked card",
+        page.evaluate("state.pick"),
+    )
+    check.ok(page.evaluate(LIT_SPACES) == of_card, "only its spaces are lit")
+    check.ok(
+        page.evaluate("state.summary.decision.prompt")
+        == "Choose a space for the Agent",
+        "the banner asks for the space",
+        page.evaluate("state.summary.decision.prompt"),
+    )
+    check.ok(
+        "보낼 칸 선택" in page.locator("#decision-info").inner_text(),
+        "in Korean too",
+        page.locator("#decision-info").inner_text(),
+    )
+    page.keyboard.press("Escape")
+    check.ok(
+        page.evaluate("state.pick && state.pick.cardId") == card,
+        "Escape does not drop a card the server holds",
+    )
+    page.click("#actions .pick-step.done")
+    check.ok(
+        wait_for(page, "state.view.private.agent_card_pick === '' && !state.busy"),
+        "its ✕ takes the pick back",
+    )
+    check.ok(
+        page.evaluate("placementActions().length") == len(placements),
+        "and every placement is offered again",
+    )
+    # A whole placement, then one undo press.
+    revision = page.evaluate("state.summary.revision")
+    page.evaluate("applyPlacement(placementActions()[0])")
+    assert wait_for(page, f"state.summary.revision === {revision + 2} && !state.busy")
+    if page.locator(".undo-row button").count():
+        page.locator(".undo-row button").first.click()
+        check.ok(
+            wait_for(
+                page,
+                "!state.busy && refreshFlight === null"
+                " && state.view.private.agent_card_pick === ''"
+                " && placementActions().length > 0",
+            ),
+            "one undo press takes the whole placement back",
+            page.evaluate("state.view.private.agent_card_pick"),
+        )
+    else:
+        print("  .. the placement could not be taken back here; skipped")
+    failed = [r for r in rec.requests if r[3] >= 400]
+    check.ok(not failed, "no failed requests (server-held pick)", failed[:5])
+    check.ok(not rec.js_errors, "no JS exceptions (held pick)", rec.js_errors[:5])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
             scenario(base, browser)
             graft_scenario(base, browser)
             navigation_chamber_scenario(browser)
+            half_picked_scenario(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

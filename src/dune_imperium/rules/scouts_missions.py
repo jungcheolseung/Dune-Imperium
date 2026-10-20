@@ -390,6 +390,17 @@ def join_unavailable_reason(
     return (source, count, held)
 
 
+def mission_takes_supply_troops(mission: Mission) -> bool:
+    """Whether taking part in ``mission`` takes troops from the supply: the
+    CHOAM escort's recruit, or troops parked from the supply
+    (``mission_top_up``)."""
+
+    kind = mission.kind
+    return kind is MissionKind.CHOAM_ESCORT or (
+        kind in _PARKING and _PARKING[kind][0] == "supply"
+    )
+
+
 def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     """How many specimens the seat may return so it can take part (0: none).
 
@@ -398,17 +409,13 @@ def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     may do so first (user ruling 2026-09-29, OQ-074, OQ-088).
     """
 
-    if not state.config.immortality:
+    if not state.config.immortality or not mission_takes_supply_troops(mission):
         return 0
     owner = state.players[player]
     kind = mission.kind
     if kind is MissionKind.CHOAM_ESCORT:
         needed = 1  # the troop it recruits
-    elif (
-        kind in _PARKING
-        and _PARKING[kind][0] == "supply"
-        and _parking_open(state, player, mission)
-    ):
+    elif _parking_open(state, player, mission):
         needed = _PARKING[kind][1]
     else:
         return 0
@@ -759,6 +766,7 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         events.extend(_taken_events(source, mission_id, player, resource, amount))
     # One face-down card per visit (OQ-078): a Contract or an Intrigue card.
     card_row = _takeable_card(state, space_id)
+    immediate_contract: str | None = None
     if card_row is not None:
         cards.remove(card_row)
         mission_id, _, card_id = card_row
@@ -766,6 +774,10 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
             if _is_immediate(card_id):
                 raise RuntimeError("the Immediate never reaches the Research Station")
             owner = receive_contract(state, owner, card_id)
+            if contract_for_instance(card_id).completes_immediately:
+                # An Immediate tile completes the moment it is taken
+                # [Main p. 16]; its reward waits in its window (OQ-112).
+                immediate_contract = card_id
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:contract",
@@ -804,6 +816,18 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         scouts_parked=tuple(parked),
     )
     next_state = advance_after_effect(working, context, working.players)
+    if immediate_contract is not None:
+        # Imported here: ``contracts`` reaches this module through card draws.
+        from dune_imperium.rules.contracts import complete_immediate_contract
+
+        completed = complete_immediate_contract(
+            next_state,
+            player,
+            immediate_contract,
+            source=f"{source}:contract:{immediate_contract}",
+        )
+        next_state = completed.state
+        events.extend(completed.events)
     return RuleResult(state=next_state, events=tuple(events))
 
 

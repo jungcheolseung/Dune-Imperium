@@ -30,6 +30,7 @@ from typing import Any
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import encode_player_view
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -49,11 +50,12 @@ from dune_imperium.core.observation import (
     PrivatePlayerView,
     PublicPlayerView,
 )
-from dune_imperium.rules.agent_turn import legal_agent_actions
+from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import legal_graft_partner_actions
-from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.optional_trash import optional_trash_frame, trash_printer
 from dune_imperium.server.sessions import (
     GameSessionManager,
     _serialize_view,
@@ -127,13 +129,13 @@ def _place(
 ) -> GameState:
     action = next(
         action
-        for action in legal_agent_actions(state, 0)
+        for action in executable_placements(state, 0)
         if dict(action.arguments)["card_id"] == card_id
         and dict(action.arguments)["space_id"] == space_id
         and (dict(action.arguments).get("graft") is True) == graft
         and "infiltrate_post_id" not in dict(action.arguments)
     )
-    return ENGINE.apply(state, action).state
+    return apply_placement(ENGINE, state, action).state
 
 
 def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> GameState:
@@ -143,15 +145,16 @@ def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> Ga
         for action in legal_graft_partner_actions(placed, 0)
         if dict(action.arguments)["card_id"] == partner_id
     )
-    return ENGINE.apply(placed, partner).state
+    return apply_whole(ENGINE, placed, partner).state
 
 
 def _apply(state: GameState, action_id: str, **arguments: str | int) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=0, arguments=tuple(sorted(arguments.items()))
     )
-    assert action in ENGINE.legal_actions(state, 0), action
-    return ENGINE.apply(state, action).state
+    # The rules' whole actions, as the seat's payload lists them (stage B3).
+    assert action in ENGINE.whole_actions(state, 0), action
+    return apply_whole(ENGINE, state, action).state
 
 
 def _lists(state: GameState) -> set[tuple[tuple[str, ...], tuple[str, ...]]]:
@@ -190,7 +193,7 @@ def test_the_card_played_this_turn_is_named_beside_the_earlier_copy() -> None:
     )
     assert any(
         action.action_id == "finish_agent_turn"
-        for action in ENGINE.legal_actions(done, 0)
+        for action in ENGINE.whole_actions(done, 0)
     )
     assert _lists(done) == {((THIS_TURN,), ())}
 
@@ -399,7 +402,8 @@ def _walk(
             continue
         owner = _obj(summary["decision"])["owner"]
         assert isinstance(owner, int)
-        actions = ENGINE.legal_actions(session.state, owner)
+        # The walk's index is the payload's: into the whole actions.
+        actions = ENGINE.whole_actions(session.state, owner)
         hit = found(session.state, owner, actions)
         if hit:
             return manager, game_id, owner, hit
@@ -434,7 +438,7 @@ def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
 
 
 def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
-    """Seed 603 (four human seats, Immortality, Leader draft off, seeded
+    """Seed 4 (four human seats, Immortality, Leader draft off, seeded
     random play): the Research Station's Research offers its trash bonus
     while this turn's Prepare the Way still has its box, beside an earlier
     Prepare the Way in play. Trashing this turn's copy expires its box; only
@@ -459,12 +463,19 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     turn goes on, which moved the walk off seed 763. Searched from 0 under
     this whole test, seed 538 is the first, through an Agent card's Research
     (Bene Tleilax Researcher, c3r3), and 603 the first through the Research
-    Station: seat 2, round 8, Research c3r3, "trash and specimen".)"""
+    Station: seat 2, round 8, Research c3r3, "trash and specimen". Codec v150
+    (stage B1, OQ-111): the Agent turn is a card pick and a space pick, so
+    every random walk is a different one; searched from 0 for the position
+    (walk only), seed 185 is the first, and 227 and 682 of 0-899 reach it
+    too. Stage B2 (OQ-112): a Conflict reward's icons are rows the walk
+    draws over; searched again from 0 (walk only), seed 4 is the first,
+    seat 0 in round 6 through the Research Station, and 510, 532, 560 and
+    602 of 0-899 reach it too.)"""
 
     manager, game_id, owner, (card, earlier) = _walk(
-        FOUR_HUMANS, 603, _twin_trash, random_play=True, immortality=True
+        FOUR_HUMANS, 4, _twin_trash, random_play=True, immortality=True
     )
-    assert (card, earlier) == ("reserve:prepare_the_way:7", "reserve:prepare_the_way:0")
+    assert (card, earlier) == ("reserve:prepare_the_way:4", "reserve:prepare_the_way:6")
     session = manager._get(game_id)
     before = (
         session.state,
@@ -496,11 +507,11 @@ def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
     # The flag says what the engine does with the row.
     trash = next(
         action
-        for action in ENGINE.legal_actions(session.state, owner)
+        for action in ENGINE.whole_actions(session.state, owner)
         if action.action_id == "trash_optional_card"
         and dict(action.arguments)["card_id"] == card
     )
-    events = ENGINE.apply(session.state, trash).events
+    events = apply_whole(ENGINE, session.state, trash).events
     assert ("agent_card_effect_expired", card) in {
         (event.kind, dict(event.payload).get("card_id")) for event in events
     }
@@ -514,18 +525,31 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
 
     start = _state((THIS_TURN,), in_play=(EARLIER,))
     placed = _place(start, THIS_TURN, "accept_contract")
+    # Only Liet-Kynes opens this window, and its Intrigue card's row names
+    # the seat's leader face (stage B3d-2a).
+    placed = replace(
+        placed,
+        players=(
+            replace(placed.players[0], leader_id="liet_kynes"),
+            *placed.players[1:],
+        ),
+    )
     for intrigue in (True, False):
         state = replace(
             placed,
             decision_stack=(
                 *placed.decision_stack,
                 optional_trash_frame(
-                    0, "round:1:player:0:planetologist", intrigue=intrigue
+                    0,
+                    "round:1:player:0:planetologist",
+                    printer=trash_printer(Source.LEADER, "liet_kynes"),
+                    intrigue=intrigue,
                 ),
             ),
         )
+        # A window's trash names no trash icon (stage B3c-2b).
         assert box_losing_trash(ENGINE, state, 0) == (
-            ("trash_optional_card", THIS_TURN),
+            ("trash_optional_card", THIS_TURN, ()),
         )
         assert box_losing_trash(ENGINE, state, 1) == ()
         trash = DomainAction(
@@ -533,7 +557,7 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
             actor=0,
             arguments=(("card_id", THIS_TURN),),
         )
-        first = ENGINE.apply(state, trash)
+        first = apply_whole(ENGINE, state, trash)
         expired_now = any(
             event.kind == "agent_card_effect_expired" for event in first.events
         )
@@ -541,7 +565,7 @@ def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
         if intrigue:
             draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
             assert "agent_card_effect_expired" in {
-                event.kind for event in ENGINE.apply(first.state, draw).events
+                event.kind for event in apply_whole(ENGINE, first.state, draw).events
             }
 
 
@@ -578,11 +602,11 @@ def test_feyds_signet_ring_trashed_by_its_own_box_keeps_its_rewards() -> None:
     session = manager._get(game_id)
     trash = next(
         action
-        for action in ENGINE.legal_actions(session.state, 0)
+        for action in ENGINE.whole_actions(session.state, 0)
         if action.action_id == "trash_leader_card"
         and dict(action.arguments)["card_id"] == signet
     )
-    result = ENGINE.apply(session.state, trash)
+    result = apply_whole(ENGINE, session.state, trash)
     kinds = {event.kind for event in result.events}
     assert not kinds & {"agent_card_effect_expired", "leader_signet_expired"}
     _, pending = turn_cards(result.state)
@@ -612,13 +636,19 @@ def test_a_research_trash_of_a_pending_signet_ring_is_flagged() -> None:
         DomainAction("resolve_board_effect", 0, (("effect", "research"),)),
         DomainAction("choose_research_space", 0, (("space_id", "c3r3"),)),
     ):
-        assert action in ENGINE.legal_actions(state, 0)
-        state = ENGINE.apply(state, action).state
+        assert action in ENGINE.whole_actions(state, 0)
+        state = apply_whole(ENGINE, state, action).state
     _, pending = turn_cards(state)
     assert pending == (signet,)
-    trash = DomainAction("trash_optional_card", 0, (("card_id", signet),))
-    assert box_losing_trash(ENGINE, state, 0) == (("trash_optional_card", signet),)
-    result = ENGINE.apply(state, trash)
+    # The research space's trash icon, waiting on the turn (stage B3c-2b).
+    icon = (("printed", "c3r3"), ("source", "research"))
+    trash = DomainAction(
+        "trash_optional_card", 0, tuple(sorted((("card_id", signet), *icon)))
+    )
+    assert box_losing_trash(ENGINE, state, 0) == (
+        ("trash_optional_card", signet, icon),
+    )
+    result = apply_whole(ENGINE, state, trash)
     assert [
         dict(event.payload)["card_id"]
         for event in result.events
@@ -639,7 +669,7 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
     # Pheromones' box (box 1) may trash Face Dancer, the other grafted card
     # (its box is lost), or itself (its own cost).
     assert box_losing_trash(ENGINE, grafted, 0) == (
-        ("trash_grafted_card_for_influence", FACE_DANCER),
+        ("trash_grafted_card_for_influence", FACE_DANCER, ()),
     )
     assert box_losing_trash(ENGINE, grafted, 2) == ()
 
@@ -647,11 +677,11 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
         _state((DISSECTING_KIT, FACE_DANCER)), DISSECTING_KIT, "arrakeen", FACE_DANCER
     )
     assert "trash_grafted_card_for_specimen" in {
-        action.action_id for action in ENGINE.legal_actions(kit, 0)
+        action.action_id for action in ENGINE.whole_actions(kit, 0)
     }
     # The row names no card: it always trashes the partner.
     assert box_losing_trash(ENGINE, kit, 0) == (
-        ("trash_grafted_card_for_specimen", FACE_DANCER),
+        ("trash_grafted_card_for_specimen", FACE_DANCER, ()),
     )
 
 

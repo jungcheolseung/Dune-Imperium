@@ -28,8 +28,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtFactionSpace,
     AtMakerSpace,
     CommanderDiscountThisTurn,
-    CommandersInConflictAtLeast,
-    CompletedContractsAtLeast,
     Condition,
     ContractCompletedThisTurn,
     Cost,
@@ -44,24 +42,18 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainCombatStrength,
-    GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
     GenerateSpecimens,
-    GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     Grafted,
     GraftedWithFaction,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
-    HasAlliance,
-    HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
-    InfluenceAtLeast,
-    InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
@@ -82,24 +74,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealContractsTakeOne,
     RevealPersuasionThisRound,
     Reward,
-    SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
-    SolariAtLeast,
-    SpiceAtLeast,
-    SpiceMustFlowCardsAtLeast,
-    SpiesPlacedAtLeast,
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
-    TechTilesAtLeast,
     TrashDiscardPileCard,
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
-    TriggeredByFaction,
-    UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
-    WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
@@ -115,6 +98,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
+from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -260,69 +244,17 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
     """Evaluate one DSL condition against the public game state."""
 
     owner = state.players[player]
+    # The seat's own public state (one place, ``conditions``; stage B3e-2).
+    held = owner_condition_holds(owner, condition)
+    if held is not None:
+        return held
     match condition:
-        case WaterAtLeast(amount=amount):
-            return owner.resources.water >= amount
-        case CommandersInConflictAtLeast(count=count):
-            return owner.commanders_conflict >= count
-        case TechTilesAtLeast(count=count):
-            return len(owner.tech_ids) >= count
-        case GeneticMarkersAtLeast(count=count):
-            return bool(owner.research_space) and (
-                genetic_markers_reached(owner.research_space) >= count
-            )
-        case SolariAtLeast(amount=amount):
-            return owner.resources.solari >= amount
-        case SpiceAtLeast(amount=amount):
-            return owner.resources.spice >= amount
         case OpponentPlayedCombatIntrigue():
             return any(
                 seat != player for seat in state.combat_intrigue_players
             )
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
-        case InfluenceAtLeast(faction=faction, amount=amount):
-            return influence_amount(owner.influence, faction) >= amount
-        case HasHighCouncil():
-            return owner.high_council
-        case HasAlliance(faction=None):
-            return bool(owner.alliance_faction_ids)
-        case HasAlliance(faction=faction) if faction is not None:
-            return faction.value in owner.alliance_faction_ids
-        case InNavigationSlot(slot=slot):
-            return owner.navigation_active_slot == slot
-        case TriggeredByFaction(faction=faction):
-            return owner.navigation_trigger_faction == faction.value
-        case SpiesPlacedAtLeast(count=count):
-            return len(owner.spy_post_ids) >= count
-        case CompletedContractsAtLeast(count=count):
-            return len(owner.completed_contract_ids) >= count
-        case SandwormsInConflictAtLeast(count=count):
-            return owner.sandworms_conflict >= count
-        case GainedSpiceThisTurn(amount=amount):
-            gained = (
-                owner.resources.spice
-                - owner.spice_at_turn_start
-                + owner.spice_spent_turn
-            )
-            return gained >= amount
-        case UnitsDeployedThisTurnAtLeast(count=count):
-            # "a moment in time when there are 3 units in the conflict that
-            # were deployed to the conflict this turn, then that requirement
-            # becomes true" (Message from designer): the turn's peak, which
-            # a retreat leaves standing (OQ-016).
-            return (
-                max(owner.units_deployed_turn, owner.units_deployed_peak) >= count
-            )
-        case SpiceMustFlowCardsAtLeast(count=count):
-            prefix = "reserve:the_spice_must_flow:"
-            copies = sum(
-                1
-                for zone in (owner.deck, owner.hand, owner.discard_pile, owner.in_play)
-                for instance_id in zone
-                if instance_id.startswith(prefix)
-            )
-            return copies >= count
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             return any(
                 influence_amount(owner.influence, faction) >= amount
@@ -347,7 +279,8 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
         ):
             # Printed only in Agent boxes so far: judged by
             # ``agent_box_abilities.box_condition_holds`` (one place, so the
-            # two readings cannot drift apart).
+            # two readings cannot drift apart); a Reveal line's Faction Bond
+            # by ``reveal_lines.line_conditions_hold`` (stage B3e-2).
             raise TypeError(f"{condition!r} is judged with its Agent box")
     raise TypeError(f"unsupported condition: {condition!r}")
 

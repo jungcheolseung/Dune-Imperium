@@ -13,6 +13,10 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import (
+    apply_placement,
+    placements_for_steps,
+)
 from dune_imperium.agents.app_ai.abilities.base import (
     Answer,
     Request,
@@ -71,13 +75,23 @@ def _turn() -> tuple[GameState, int]:
     return state, decision.owner
 
 
+def _legal(state: GameState, seat: int) -> tuple[DomainAction, ...]:
+    """The engine's legal list as the app AI's windows see it: an Agent-turn
+    step's rows shown as the placements they stand for (stage B1,
+    ``agents.agent_turn_steps``)."""
+
+    legal = ENGINE.legal_actions(state, seat)
+    steps = placements_for_steps(state, seat, legal)
+    return legal if steps is None else steps[0]
+
+
 def _run(
     state: GameState,
     seat: int,
     legal: tuple[DomainAction, ...] | None = None,
 ) -> DecisionRun:
     profile = make_profile(state, seat)
-    actions = ENGINE.legal_actions(state, seat) if legal is None else legal
+    actions = _legal(state, seat) if legal is None else legal
     return DecisionRun(profile.ctx, profile, actions, random.Random(0), Memory())
 
 
@@ -333,7 +347,7 @@ def test_the_free_spice_refinery_trade_is_realised_at_no_spice(
     # paid the full spice, and the negative spice raised in the window.
     state, seat = _broke_at_a_taken_refinery()
     recon = f"player:{seat}:starter:reconnaissance:0"
-    legal = ENGINE.legal_actions(state, seat)
+    legal = _legal(state, seat)
     variants = tuple(
         a
         for a in legal
@@ -369,7 +383,8 @@ def test_the_free_spice_refinery_trade_is_realised_at_no_spice(
     before = state.players[seat].resources
     assert seen == [replace(before, solari=before.solari + 4)]
     # The engine charges the same: still no spice after the placement.
-    assert ENGINE.apply(state, chosen).state.players[seat].resources.spice == 0
+    placed = apply_placement(ENGINE, state, chosen).state
+    assert placed.players[seat].resources.spice == 0
 
 
 def test_the_cost_first_payment_takes_the_navigation_chamber_cut() -> None:

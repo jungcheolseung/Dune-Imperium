@@ -36,6 +36,8 @@ import random
 import sys
 from pathlib import Path
 
+from placement_walk import walk_step
+
 from dune_imperium.display.actions import reveal_choice_headers
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
@@ -100,7 +102,7 @@ for seed in SEEDS:
             summary = manager.confirm_turn(game_id, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         if session.state.decision_stack[-1].kind == FrameKind.REVEAL:
             # The page's own list (display.actions.reveal_choice_headers).
             choices = reveal_choice_headers(session.state, owner) or []
@@ -130,8 +132,10 @@ for seed in SEEDS:
                     ],
                 }
                 break
-        index = rng.randrange(len(actions)) if actions else 0
-        summary = manager.apply_action(game_id, owner, summary["revision"], index)
+        # An Agent placement is drawn as one choice, as before stage B1
+        # (``placement_walk``), so the seeds keep their games.
+        # ``choice`` draws as ``randrange`` over the list did.
+        summary, _ = walk_step(manager, game_id, owner, summary, rng.choice)
 
 if len(found) < 2:
     raise RuntimeError(f"seeds 0-399 meet only {sorted(found)}")

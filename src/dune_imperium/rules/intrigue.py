@@ -439,7 +439,7 @@ def _resolve_paid_option(
         # The frame is in place before the rewards apply, so a draw that
         # pushes a reshuffle stacks above it (as ``apply_intrigue_rewards``).
         rewarded = apply_automatic_rewards(
-            opened, player, sections, f"{source}:rewards"
+            opened, player, sections, f"{source}:rewards", played_card_id=card_id
         )
         return RuleResult(state=rewarded.state, events=(*events, *rewarded.events))
 
@@ -843,7 +843,11 @@ def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult
     context[PENDING_ABILITY_KEY] = replace(entry, rewards_applied=True).encode()
     advanced = replace_top_frame(state, with_context(frame, context))
     return apply_automatic_rewards(
-        advanced, action.actor, entry_sections(entry), f"{source}:rewards"
+        advanced,
+        action.actor,
+        entry_sections(entry),
+        f"{source}:rewards",
+        played_card_id=context_str(context, "card_id", owner=_CHOICE_FRAME),
     )
 
 
@@ -1029,7 +1033,9 @@ def finish_intrigue_play(
     applied = (
         RuleResult(state=state)
         if skip_rewards
-        else apply_automatic_rewards(state, player, sections, source)
+        else apply_automatic_rewards(
+            state, player, sections, source, played_card_id=card_id
+        )
     )
     resolved = applied.state
     if not discard:

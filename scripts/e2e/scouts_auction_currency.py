@@ -23,6 +23,7 @@ SHOTS = Path(
 FIXTURES = """
 import json
 from dataclasses import replace
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import AUCTIONS, AuctionKind
 from dune_imperium.core import DomainAction, Resources
 from dune_imperium.rules.scouts_auctions import offer_bid, offer_call, reveal_market
@@ -67,7 +68,7 @@ for auction in AUCTIONS:
                   "initial": snapshot(state)}
         if auction.kind is not AuctionKind.OPEN_CARDS:
             count = min(2, cap)
-            chosen = session.engine.apply(state,
+            chosen = apply_whole(session.engine, state,
                 DomainAction("scouts_bid", 0, (("count", count),))).state
             record["selected"] = snapshot(chosen)
         fixtures.append(record)

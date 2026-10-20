@@ -12,6 +12,7 @@ Fenring's Signet through Servo-Receivers, 2026-10-14).
 """
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -22,6 +23,8 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.leader_abilities import (
     CITY_POST_IDS,
@@ -104,13 +107,13 @@ def test_an_agent_box_spy_recall_skips_a_post_shared_with_another_spy() -> None:
     )
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn" and len(action.arguments) == 2
+        for action in executable_placements(state, 0)
+        if len(action.arguments) == 2
     )
-    state = ENGINE.apply(state, placement).state
+    state = apply_placement(ENGINE, state, placement).state
     recalls = {
         dict(action.arguments)["post_id"]
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "recall_spy_for_agent_card"
     }
     assert recalls == {bene_gesserit}
@@ -194,12 +197,13 @@ def test_the_shared_placement_frame_recalls_a_spy_that_frees_its_post() -> None:
         0,
         allowed,
         source="test",
+        printer=printer_value(Source.TECH, "panopticon"),
     )
     assert legal_spy_placement_actions(state, 0) == (
         DomainAction("decline_spy_placement", 0),
         DomainAction("recall_spy_for_placement", 0, (("post_id", SOLO),)),
     )
-    recalled = ENGINE.apply(
+    recalled = apply_whole(ENGINE, 
         state, DomainAction("recall_spy_for_placement", 0, (("post_id", SOLO),))
     ).state
     assert legal_spy_placement_actions(recalled, 0) == (

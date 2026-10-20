@@ -58,6 +58,7 @@ from pathlib import Path
 from typing import Final
 
 from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
+from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
     SEARCH_PREFIX,
@@ -80,6 +81,7 @@ from dune_imperium.display import (
     agent_box_headers,
     agent_box_of_rows,
     agent_box_row_title,
+    agent_placements,
     effect_action_text,
     effect_action_text_ko,
     reveal_choice_headers,
@@ -88,6 +90,11 @@ from dune_imperium.display import (
 from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import (
+    agent_card_pick,
+    agent_space_pick_actions,
+)
+from dune_imperium.rules.effect_steps import first_step, picked_rows
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
@@ -121,8 +128,10 @@ from dune_imperium.server.persistence import (
 )
 from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.session_log import (
+    EFFECT_PICKED_EVENT,
     SEALED_ACTION_IDS,
     SEALED_REVEAL_EVENTS,
+    SEALED_SHOWN_KEYS,
     LogEntry,
     LoggedStep,
     LoggedUndo,
@@ -133,7 +142,7 @@ from dune_imperium.server.session_log import (
     undo_history,
     undo_window,
 )
-from dune_imperium.server.turn_cards import box_losing_trash, turn_cards
+from dune_imperium.server.turn_cards import LosingRow, box_losing_trash, turn_cards
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
     HELD_IN_TURN,
@@ -165,6 +174,10 @@ SEARCH_SEAT: Final = "search"
 # The banner prompt once nothing mandatory is left in an Agent turn
 # (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
 AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
+# The banner prompt while the turn's Agent card is picked and waits for its
+# space (stage B1, OQ-111); the turn frame keeps its own prompt. That a card
+# was picked is public (the log shows the pick, sealed), which card is not.
+AGENT_SPACE_PROMPT: Final = "Choose a space for the Agent"
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): the Steam app's computer opponent
 # ``app_ai`` (Hard), ``app_ai_medium`` or ``app_ai_easy`` (about 1-2 ms a
@@ -882,7 +895,7 @@ class GameSessionManager:
             if held == seat:
                 # Its turn is over and its next one waits behind the press.
                 raise SessionError(f"seat {seat} has not confirmed its turn end yet")
-            actions = session.engine.legal_actions(session.state, seat)
+            actions = session.engine.whole_actions(session.state, seat)
             if not 0 <= index < len(actions):
                 raise SessionError("action index is out of range")
             action = actions[index]
@@ -892,7 +905,11 @@ class GameSessionManager:
                 session.open_units.pop(held, None)
             _human_acts_locked(session)
             before = session.state
-            _apply_step(session, action)
+            # A whole action of a frame that offers its waiting effects
+            # effect first is its steps, taken one after another (stage B3).
+            for _ in range(steps_after(session.state, action)):
+                _apply_step(session, first_step(session.state, action))
+            _apply_step(session, first_step(session.state, action))
             own_steps = len(session.steps)
             ended = self._settle_locked(session, before, action)
             passed = ended or _turn_passed(session, seat, own_steps)
@@ -976,10 +993,16 @@ class GameSessionManager:
                     f"seat {seat} may take back at most {window} step(s) now"
                 )
             keep = len(session.steps) - steps
+            rewound = _state_after(session, keep)
+            # The steps of one whole action go back together: an undo never
+            # stops between a waiting effect and its target (stage B3).
+            while picked_rows(rewound) and keep > len(session.steps) - window:
+                keep -= 1
+                rewound = _state_after(session, keep)
             _human_acts_locked(session)
-            session.state = _state_after(session, keep)
+            session.state = rewound
+            mark_undone(session.log, seat, len(session.steps) - keep)
             del session.steps[keep:]
-            mark_undone(session.log, seat, steps)
             session.undo_count += 1
             # The rewound state is again this seat's own decision.
             session.awaiting_confirmation = None
@@ -1281,7 +1304,7 @@ class GameSessionManager:
             "game_id": session.game_id,
             "seat": seat,
             "step_count": len(steps),
-            "steps": [_review_step_label(step) for step in steps],
+            "steps": _review_step_labels(steps, entries),
             "log": _log_entries_json(entries, seat, True, 0),
             # Where steps were taken back (M11 slice 6): the live step index
             # the undo rewound to, who undid, and what was undone.
@@ -1410,12 +1433,20 @@ class GameSessionManager:
         ``source`` argument's definition id to say whose it is. None, and
         no ``reveal_choice`` on any row, for any other decision; display
         only, a failure is logged and leaves them out.
+
+        ``agent_placements`` lists, while the seat may pick its Agent turn's
+        card (stage B1, OQ-111), every placement those card picks lead to
+        (``_serialize_placements``): the page's staged turn works on whole
+        placements as before the split and sends the card pick and then the
+        matching space pick. Each entry's ``undoable``, shortfall and
+        previews are those of both steps together. None for any other
+        decision; display only, a failure is logged and leaves it None.
         """
 
         actions = (
             ()
             if session.awaiting_confirmation == seat
-            else session.engine.legal_actions(session.state, seat)
+            else session.engine.whole_actions(session.state, seat)
         )
         lines = scouts_choice_lines(session.state, seat, actions) if actions else None
         unavailable: dict[str, object] | None = None
@@ -1423,7 +1454,18 @@ class GameSessionManager:
         headers: list[dict[str, object]] | None = None
         choices: list[dict[str, object]] | None = None
         choice_of: tuple[str | None, ...] = (None,) * len(actions)
+        placements: list[JsonValue] | None = None
         if actions:
+            try:
+                listed = agent_placements(session.state, seat, actions)
+                if listed is not None:
+                    placements = _serialize_placements(session, seat, actions, listed)
+            except Exception:
+                _LOGGER.exception(
+                    "Agent placements failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
             try:
                 unavailable = unavailable_choices(session.state, seat, actions)
             except Exception:
@@ -1477,6 +1519,7 @@ class GameSessionManager:
             "unavailable": None if unavailable is None else _jsonify(unavailable),
             "agent_boxes": None if headers is None else _jsonify(headers),
             "reveal_choices": None if choices is None else _jsonify(choices),
+            "agent_placements": placements,
         }
 
     def _online_seats_locked(self, session: GameSession) -> frozenset[int]:
@@ -1814,10 +1857,12 @@ class GameSessionManager:
         stack = session.state.decision_stack
         if not stack or stack[-1].kind != FrameKind.CONFLICT_END_TRIGGER:
             return False
-        actions = session.engine.legal_actions(session.state, seat)
+        # The rules' whole actions: the window shows its refusal as the
+        # ``decline`` row that stands for it (stage B3d-3).
+        actions = session.engine.whole_actions(session.state, seat)
         if [action.action_id for action in actions] != [_CONFLICT_END_DECLINE]:
             return False
-        _apply_step(session, actions[0])
+        _apply_step(session, first_step(session.state, actions[0]))
         session.undo_floor = len(session.steps)
         return True
 
@@ -2107,7 +2152,13 @@ class GameSessionManager:
                 # Nothing mandatory is left in the seat's Agent turn: it may
                 # still play a Plot, deploy or return a specimen, and ends
                 # the turn with its one press (OQ-095). Public facts only.
-                "prompt": AGENT_TURN_END_PROMPT if ready else pending.prompt,
+                "prompt": (
+                    AGENT_TURN_END_PROMPT
+                    if ready
+                    else AGENT_SPACE_PROMPT
+                    if agent_card_pick(state, pending.owner) is not None
+                    else pending.prompt
+                ),
                 "turn_end_ready": ready,
             }
             # The Persuasion still unspent in a Reveal, for the buyer's
@@ -2921,23 +2972,36 @@ def _log_entry_json(
             payload["values"] = list(step.values)
         return payload
     redact = not finished and step.actor != seat
+    # The last step of a waiting effect shows the whole action it ends
+    # (stage B3); a step that only picks toward it is marked ``pick``.
+    action = entry.whole or step
+    shown = SEALED_SHOWN_KEYS.get(action.action_id) if redact and entry.sealed else None
     arguments = {
         key: (
             "(비공개)"
             if redact and (entry.sealed or value in entry.hidden_arguments)
             else value
         )
-        for key, value in step.arguments
+        for key, value in action.arguments
+        if shown is None or key in shown
     }
-    return {
+    action_id = action.action_id
+    if entry.picks and redact:
+        # Another seat learns nothing of a half-picked effect, not even
+        # what it does (OQ-111 (4)); the step that ends it shows it whole.
+        action_id, arguments = EFFECT_PICKED_EVENT, {}
+    payload = {
         "index": index,
         "type": "action",
         "actor": step.actor,
-        "action_id": step.action_id,
+        "action_id": action_id,
         "arguments": _jsonify(arguments),
         "undone": entry.undone,
         "events": events,
     }
+    if entry.picks:
+        payload["pick"] = True
+    return payload
 
 
 def _step_summary(step: ReplayStep) -> str:
@@ -2953,6 +3017,25 @@ def _is_finished(state: GameState) -> bool:
 def _require_finished(session: GameSession) -> None:
     if not _is_finished(session.state):
         raise SessionError("replay review opens after the game finishes")
+
+
+def _review_step_labels(
+    steps: tuple[ReplayStep, ...], entries: tuple[LogEntry, ...]
+) -> list[JsonValue]:
+    """Each live step's label, as the log shows it (stage B3): the step that
+    ends a waiting effect names the whole action, and a step that only picks
+    toward it is marked ``pick`` (the review does not stop right after one)."""
+
+    live = live_steps(list(entries))
+    if len(live) != len(steps):
+        return [_review_step_label(step) for step in steps]
+    labels: list[JsonValue] = []
+    for entry in live:
+        label = _review_step_label(entry.whole or entry.step)
+        if entry.picks:
+            label["pick"] = True
+        labels.append(label)
+    return labels
 
 
 def _review_step_label(step: ReplayStep) -> JsonObject:
@@ -2977,7 +3060,7 @@ def _serialize_view(
     state: GameState,
     *,
     disclose: bool = False,
-    box_losing: tuple[tuple[str, str], ...] = (),
+    box_losing: tuple[LosingRow, ...] = (),
 ) -> JsonObject:
     """Serialize a view with the public round-by-round Conflict history.
 
@@ -3011,8 +3094,10 @@ def _serialize_view(
     review, and kept beside the other public table facts here rather than
     in ``PlayerView``, so the AI observation's encoding stays as it was.
 
-    ``box_losing_trash`` lists, as ``{action_id, card_id}``, the decision
-    owner's legal trash rows that would lose such a box (``box_losing``,
+    ``box_losing_trash`` lists, as ``{action_id, card_id}`` (and, for an
+    optional trash on the turn, the trash icon it uses: ``source``,
+    ``printed``, ``printed_box``), the decision owner's legal trash rows
+    that would lose such a box (``box_losing``,
     from ``turn_cards.box_losing_trash``'s dry runs): a card trashing itself
     by its own effect keeps its rewards (OQ-022), so a pending box alone
     does not say it. Like the legal rows it describes, it is filled only in
@@ -3039,8 +3124,8 @@ def _serialize_view(
     serialized["turn_card_ids"] = list(played)
     serialized["pending_box_card_ids"] = list(pending)
     serialized["box_losing_trash"] = [
-        {"action_id": action_id, "card_id": card_id}
-        for action_id, card_id in box_losing
+        {"action_id": action_id, "card_id": card_id, **dict(icon)}
+        for action_id, card_id, icon in box_losing
     ]
     if disclose:
         serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))
@@ -3099,7 +3184,31 @@ def _serialize_action(
     read off the action alone, and only the seat's own rows carry it.
     """
 
-    outcome = _dry_run(session, action)
+    serialized: JsonObject = {
+        "index": index,
+        "action_id": action.action_id,
+        "arguments": _jsonify(dict(action.arguments)),
+        "detail": effect_action_text(session.state, action),
+        "detail_ko": effect_action_text_ko(session.state, action),
+        **_dry_run_fields(session, action, _dry_run(session, action)),
+    }
+    if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
+        serialized["turn_start"] = True
+    title = agent_box_row_title(session.state, action)
+    if title is not None:
+        serialized["detail_title"], serialized["detail_title_ko"] = title
+    return serialized
+
+
+def _dry_run_fields(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> JsonObject:
+    """What a row says about its dry run: ``undoable``, ``sent_by_turn_end``,
+    the shortfall ``warning``/``shortfall``, ``strength_after`` and, when
+    they apply, ``reveal_preview`` and ``subcommittee_preview``
+    (``_serialize_action``). ``outcome`` is the dry run of ``action`` from
+    the session's state, None when the engine refused it."""
+
     # An explicit turn end, a turn-passing card and a step of a pressed end's
     # own follow-up seal the turn they end (``_settle_locked``).
     undoable = (
@@ -3118,11 +3227,6 @@ def _serialize_action(
     outcome = preview_outcome(action, outcome)
     shortfalls = shortfall_outcome(session.engine, outcome)
     serialized: JsonObject = {
-        "index": index,
-        "action_id": action.action_id,
-        "arguments": _jsonify(dict(action.arguments)),
-        "detail": effect_action_text(session.state, action),
-        "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
         "sent_by_turn_end": (
             not undoable
@@ -3136,17 +3240,69 @@ def _serialize_action(
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
-    if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
-        serialized["turn_start"] = True
-    title = agent_box_row_title(session.state, action)
-    if title is not None:
-        serialized["detail_title"], serialized["detail_title_ko"] = title
     revealed = reveal_preview(action, outcome)
     if revealed is not None:
         serialized["reveal_preview"] = revealed
     offer = subcommittee_preview(session, action, outcome)
     if offer is not None:
         serialized["subcommittee_preview"] = offer
+    return serialized
+
+
+def _serialize_placements(
+    session: GameSession,
+    seat: int,
+    actions: tuple[DomainAction, ...],
+    placements: tuple[tuple[int, DomainAction], ...],
+) -> list[JsonValue]:
+    """Serialize the placements an Agent-turn card pick leads to
+    (``display.actions.agent_placements``, stage B1).
+
+    Each entry is ``index`` (the card pick's row, which the page sends
+    first), ``placement`` (its position in this list, a key for the page),
+    ``arguments`` (the whole placement's) and what a row says about its dry
+    run (``_dry_run_fields``), here the dry run of both steps: the page
+    sends the card pick and then the space pick as one move, so whether it
+    can be taken back, its shortfalls and previews are the space pick's as
+    reached through the card pick. Each card pick is dry-run once for all
+    its placements.
+    """
+
+    engine = session.engine
+    picked: dict[int, tuple[RuleResult, tuple[DomainAction, ...]] | None] = {}
+    serialized: list[JsonValue] = []
+    for key, (row, placement) in enumerate(placements):
+        if row not in picked:
+            try:
+                result = engine.apply(
+                    session.state, actions[row], legal_actions=actions
+                )
+                after = RuleResult(state=result.state, events=result.events)
+                picked[row] = (after, engine.legal_actions(after.state, seat))
+            except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+                picked[row] = None
+        outcome: RuleResult | None = None
+        step = picked[row]
+        if step is not None:
+            after, legal = step
+            card, graft = agent_card_pick(after.state, seat) or ("", False)
+            try:
+                (space,) = agent_space_pick_actions(seat, (placement,), card, graft)
+                placed = engine.apply(after.state, space, legal_actions=legal)
+            except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+                pass
+            else:
+                outcome = RuleResult(
+                    state=placed.state, events=(*after.events, *placed.events)
+                )
+        serialized.append(
+            {
+                "index": row,
+                "placement": key,
+                "arguments": _jsonify(dict(placement.arguments)),
+                **_dry_run_fields(session, placement, outcome),
+            }
+        )
     return serialized
 
 
@@ -3311,7 +3467,7 @@ def _dry_run(session: GameSession, action: DomainAction) -> RuleResult | None:
     """Apply ``action`` to a copy of the state; None when the engine refuses."""
 
     try:
-        transition = session.engine.apply(session.state, action)
+        transition = apply_whole(session.engine, session.state, action)
     except Exception:  # noqa: BLE001 - a failing dry run is reported as such
         return None
     return RuleResult(state=transition.state, events=transition.events)

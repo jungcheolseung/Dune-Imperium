@@ -12,11 +12,15 @@ of an Agent or Reveal turn, including before the Agent is placed.
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
@@ -24,6 +28,11 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
     ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
@@ -36,6 +45,10 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import contracts as contracts_rules
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.effect_steps import path_of
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
@@ -90,15 +103,18 @@ def _act(state: GameState, action_id: str, **arguments: object) -> GameState:
 
     action = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == action_id
         and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
     )
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _send_agent(state: GameState, space_id: str) -> GameState:
-    return _act(state, "agent_turn", card_id=DIPLOMACY, space_id=space_id)
+    """Send the Diplomacy to ``space_id``: the Agent turn's two steps (B1)."""
+
+    picked = _act(state, "choose_agent_card", card_id=DIPLOMACY)
+    return _act(picked, "place_agent", space_id=space_id)
 
 
 def _acquire_servo(state: GameState) -> GameState:
@@ -113,7 +129,7 @@ def _acquire_servo(state: GameState) -> GameState:
 def _deploy_counts(state: GameState) -> list[object]:
     return [
         dict(action.arguments)["count"]
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == "deploy_troops"
     ]
 
@@ -141,7 +157,7 @@ def test_servo_signet_trash_keeps_eliminate_allies_troops_deployable() -> None:
     assert _deploy_counts(placed) == [1, 2]
     signet = _acquire_servo(placed)
     assert signet.decision_stack[-1].kind == FrameKind.LEADER_SIGNET
-    trashed = ENGINE.apply(
+    trashed = apply_whole(ENGINE, 
         signet,
         DomainAction(
             action_id="trash_leader_card",
@@ -183,7 +199,9 @@ def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
     # Every choice path closes the leader_signet frame and leaves only the
     # owner's turn frame, waiting for the Agent placement (merge guard, like
     # the Landsraad and Reveal walk in test_tech.py).
-    codec = ActionCodec(TECH)
+    # Shaddam Corrino IV is a CHOAM leader: his Signet rows name his face
+    # (stage B3d-1), which only the CHOAM catalog has.
+    codec = ActionCodec(replace(TECH, choam_module=True))
     owner = _owner(
         leader_id,
         influence=Influence(emperor=2, fremen=2),
@@ -208,11 +226,14 @@ def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
             continue
         decision = current.decision_stack[-1].decision
         assert isinstance(decision, PlayerDecision)
-        actions = ENGINE.legal_actions(current, decision.owner)
+        actions = ENGINE.whole_actions(current, decision.owner)
         assert actions, "a leader_signet frame must offer a choice"
         for action in actions:
-            assert codec.decode(codec.encode(action), action.actor) == action
-            pending.append(ENGINE.apply(current, action).state)
+            # Stage B3d-1: the frame shows a choice as the rows of its path;
+            # a decline stays as it is.
+            for row in path_of(current, action) or (action,):
+                assert codec.decode(codec.encode(row), row.actor) == row
+            pending.append(apply_whole(ENGINE, current, action).state)
         assert leaves + len(pending) < 400, "Signet choices must terminate"
     assert leaves >= 1
 
@@ -271,6 +292,29 @@ def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
     )
 
 
+def _install_fake_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract to the content tables, with the ability
+    record its reward window reads (stage B2, OQ-112)."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_troop_contract(card_id, target)
+    )
+    monkeypatch.setattr(
+        contracts_rules,
+        "CONTRACT_ABILITIES",
+        {
+            **CONTRACT_ABILITIES,
+            card_id: Ability(
+                timing=AbilityTiming.CONTRACT,
+                sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+                requirement=AcquiredCard(target),
+            ),
+        },
+    )
+
+
 def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -287,10 +331,8 @@ def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowa
     # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
     # (docs/rules/player-turns.md:137).
     target = "imperium:sardaukar_soldier:0"
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire",
-        _fake_troop_contract("fake_troop_acquire", target.split(":")[1]),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire", target.split(":")[1]
     )
     owner = _owner("princess_irulan", troops_garrison=2, troops_supply=10)
     base = _turn_state(owner)
@@ -309,11 +351,19 @@ def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowa
 
     acquire = next(
         action
-        for action in ENGINE.legal_actions(signet, 0)
+        for action in ENGINE.whole_actions(signet, 0)
         if action.action_id == "acquire_leader_imperium"
         and dict(action.arguments).get("instance_id") == target
     )
-    resolved = ENGINE.apply(signet, acquire).state
+    acquired = apply_whole(ENGINE, signet, acquire).state
+    # v150 (stage B3b, OQ-112 (4)): the completed Contract's reward is a row
+    # of the owner's bare turn frame, answered before the frame is looked at
+    # again.
+    assert acquired.decision_stack[-1].kind == FrameKind.TURN
+    assert turn_rows.holds_the_end(acquired, 0)
+    assert acquired.players[0].troops_garrison == 2
+    resolved = answer_reward_windows(ENGINE, acquired)
+    assert not turn_rows.holds_the_end(resolved, 0)
 
     assert [frame.kind for frame in resolved.decision_stack] == [FrameKind.TURN]
     assert resolved.players[0].troops_garrison == 3
@@ -365,7 +415,15 @@ def _reveal_with_servo(owner: PlayerState) -> GameState:
 
     revealed = _act(_turn_state(owner), "reveal_turn")
     assert dict(revealed.decision_stack[-1].context)["combat_deployment"] is True
-    opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
+    opened = push_tech_acquisition(
+        revealed,
+        0,
+        discount=1,
+        source="test",
+        # The Intrigue card that grants the Acquire Tech; its refusal names it
+        # (stage B3d-3).
+        printer=printer_value(Source.INTRIGUE, "battlefield_research"),
+    ).state
     bought = _act(opened, "acquire_tech", tech_id="servo_receivers")
     bought = _act(bought, "resolve_tech_acquire_effect", effect="signet")
     assert bought.decision_stack[-1].kind == FrameKind.REVEAL

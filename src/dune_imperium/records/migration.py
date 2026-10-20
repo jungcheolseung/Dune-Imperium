@@ -63,6 +63,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.personal_cards import (
@@ -73,7 +74,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import (
     FIXED_OUTCOME_SUFFIX,
     ChanceOutcome,
@@ -90,7 +91,20 @@ from dune_imperium.rules.agent_effect_frame import (
     route_box_action,
 )
 from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
+from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.combat import legacy_combat_reward_icon
+from dune_imperium.rules.contracts import (
+    legacy_contract_icon_row,
+    legacy_contract_reward_icon,
+)
+from dune_imperium.rules.effect_steps import (
+    first_step,
+    path_of,
+    picked_rows,
+    presents_steps,
+    without_pick,
+)
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
@@ -99,6 +113,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import (
     OWED_CARD,
     OWED_INTRIGUE,
+    OWED_ORIGIN_CHOAM_TRANSPORTS,
     FrameKind,
     own_turn_frame_index,
     replace_player,
@@ -113,18 +128,26 @@ from dune_imperium.rules.graft_boxes import (
     tagged,
     untagged,
 )
-from dune_imperium.rules.immortality import OWED_ORIGIN_RESEARCH, RESEARCH_ICON_ORDER
+from dune_imperium.rules.immortality import (
+    OWED_ORIGIN_RESEARCH,
+    RESEARCH_ICON_ORDER,
+    legacy_research_icon_whole,
+)
 from dune_imperium.rules.influence import influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
-from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
-from dune_imperium.rules.owed_draws import next_owed_draw
+from dune_imperium.rules.optional_trash import (
+    INTRIGUE_PENDING_KEY,
+    legacy_trash_whole,
+)
+from dune_imperium.rules.owed_draws import legacy_owed_draw_whole, next_owed_draw
 from dune_imperium.rules.pauses import SCOUTS_REWARD
 from dune_imperium.rules.reveal_turn import (
     GENERATED_PERSUASION_KEY,
     REVEAL_CHOICE_EFFECT_ACTIONS,
     SOURCE_ARGUMENT,
     SOURCED_REVEAL_ACTION_IDS,
+    legacy_reveal_gain_whole,
     reveal_card_identity,
     reveal_choice_effect_is_available,
     reveal_pending_gains,
@@ -135,6 +158,7 @@ from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION, reward_was_chos
 # recorded step fits (each reward recipient's pause, every seat's
 # Conflict-end window, the Round Start pause); this many means the record
 # and the engine have lost each other.
+
 MAX_BRIDGES_PER_STEP = 64
 # What ``follows`` bridges add after one recorded step: a few held draws
 # (Piter's two rewards, a Tleilaxu Intrigue behind them, Hungry for Spice's
@@ -193,6 +217,69 @@ class MigratedStep:
     # choice frame the recording engine had on top when the step was taken
     # (``_RevealSlot``); None otherwise.
     reveal_source: str | None = None
+    # For a recorded whole action taken as effect steps (stage B3), the
+    # whole action (as a bridge named it) its last step ends; None otherwise.
+    whole: ReplayStep | None = None
+    # For a record before codec v147, the Reveal-choice bridge that named
+    # that whole action (``REVEAL_SOURCE_NAMES``, as first named, before an
+    # effect step narrowed the cards offering it; stage B3b-2); the step's
+    # own ``bridge`` stays ``effect_last_step``.
+    named_by: str | None = None
+
+
+def _apply_answer(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    answer: ReplayStep,
+    bridge: str,
+    migrated: list[MigratedStep],
+) -> GameState:
+    """Apply a bridge's answer, recorded as ``bridge``'s steps.
+
+    A bridge speaks the recording engines' whole actions; where this engine
+    offers a waiting effect effect first (stage B3, ``rules.effect_steps``),
+    a whole action is taken as the steps that stand for it, each recorded
+    under the bridge."""
+
+    while (
+        isinstance(answer, DomainAction)
+        and presents_steps(state)
+        and answer not in engine.legal_actions(state, answer.actor)
+        and answer in engine.whole_actions(state, answer.actor)
+    ):
+        left = steps_after(state, answer)
+        row = first_step(state, answer)
+        state = engine.apply(state, row).state
+        migrated.append(MigratedStep(row, None, bridge))
+        if left == 0:
+            return state
+    state = engine.apply(state, answer).state
+    migrated.append(MigratedStep(answer, None, bridge))
+    return state
+
+
+def _as_steps(
+    engine: UprisingRulesEngine, state: GameState, step: ReplayStep
+) -> tuple[GameState, list[MigratedStep], ReplayStep, ReplayStep | None]:
+    """A recorded step this engine asks out of the recorded order, as this
+    engine takes it: a whole action of a frame that shows its steps (stage
+    B3, ``rules.effect_steps``) by its picks (``effect_step``) then its last
+    step, which the caller applies and records with the whole action; any
+    other step as it is."""
+
+    if (
+        not isinstance(step, DomainAction)
+        or not presents_steps(state)
+        or step in engine.legal_actions(state, step.actor)
+        or step not in engine.whole_actions(state, step.actor)
+    ):
+        return state, [], step, None
+    picks: list[MigratedStep] = []
+    while steps_after(state, step) > 0:
+        row = first_step(state, step)
+        state = engine.apply(state, row).state
+        picks.append(MigratedStep(row, None, "effect_step"))
+    return state, picks, first_step(state, step), step
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +352,7 @@ def migrate_record(
     )
     drops_refusals = replay.action_codec_version < OPTIONAL_REFUSALS_CODEC
     drops_turn_row_refusals = replay.action_codec_version < TURN_ROW_REFUSALS_CODEC
+    contract_rows_wait = replay.action_codec_version < CONTRACT_TURN_ROWS_CODEC
     reveal = (
         _RevealSlot() if replay.action_codec_version < REVEAL_CHOICES_CODEC else None
     )
@@ -287,6 +375,9 @@ def migrate_record(
     # Start clears it). Such a step is dropped only while no Intrigue choice
     # of the seat is on top, where a rewards step of another card stands.
     harvest_due: Counter[int] = Counter()
+    # Seats whose CHOAM Transports card ``TRANSPORTS_CARD_FIRST`` took before
+    # the record drew it; that recorded draw is dropped when it comes.
+    transports_taken: Counter[int] = Counter()
 
     def harvest_rewards_due(index: int, recorded: ReplayStep, at: GameState) -> bool:
         """Drop the recorded Harvest Cells rewards step a recording engine
@@ -306,16 +397,42 @@ def migrate_record(
     def apply_waiting(at: GameState) -> GameState | None:
         """Apply the held steps this engine now offers, oldest first, each
         with what the ``follows`` bridges add after it; None when those do
-        not settle."""
+        not settle. Where the turn frame offers the held whole action effect
+        first (stage B3), it is taken as its steps: the picks as
+        ``effect_step``, the last one held, ending the whole action."""
 
         while waiting_steps:
             held_index, held_step = waiting_steps[0]
+            whole: DomainAction | None = None
+            last = held_step
+            picks: list[MigratedStep] = []
+            stepped = at
+            # A held optional trash takes the trash icon the recording
+            # engine picked (stage B3c-2b), a held research icon its space
+            # (stage B3e-1).
+            target = (
+                _named_trash(at, held_step) or _named_pick(at, held_step) or held_step
+            )
+            if (
+                presents_steps(at)
+                and target not in engine.legal_actions(at, target.actor)
+                and target in engine.whole_actions(at, target.actor)
+            ):
+                whole = target
+                while steps_after(stepped, target) > 0:
+                    row = first_step(stepped, target)
+                    stepped = engine.apply(stepped, row).state
+                    picks.append(MigratedStep(row, None, "effect_step"))
+                last = first_step(stepped, target)
             try:
-                after = engine.apply(at, held_step).state
+                after = engine.apply(stepped, last).state
             except IllegalActionError:
                 return at
             waiting_steps.pop(0)
-            migrated.append(MigratedStep(held_step, held_index, TURN_ROW_HELD))
+            migrated.extend(picks)
+            migrated.append(
+                MigratedStep(last, held_index, TURN_ROW_HELD, whole=whole)
+            )
             followed = _follow(engine, after, held_step, bridges, migrated)
             if followed is None:
                 return None
@@ -357,12 +474,22 @@ def migrate_record(
                 dropped.append((index, refused))
                 continue
         step, rewritten_by = recorded, None
+        # The whole action a recorded step's last effect step ends (stage
+        # B3): what the ``follows`` bridges read, as the recording engine did.
+        whole = recorded
+        # The Reveal-choice bridge that named the whole action this step's
+        # last effect step ends (stage B3b-2, ``MigratedStep.named_by``), as
+        # first named, before an effect step narrowed the offered cards.
+        named_by: str | None = None
+        first_naming: str | None = None
         box = 0 if graft is None else graft.box
         reveal_source = None if reveal is None else reveal.top_source(recorded)
         for _ in range(MAX_BRIDGES_PER_STEP):
             if reveal is not None and rewritten_by in (None, *REVEAL_SOURCE_NAMES):
                 named = reveal.named(engine, state, recorded)
                 step, rewritten_by = named if named is not None else (recorded, None)
+                if named is not None and first_naming is None:
+                    first_naming = named[1]
             if graft is not None and rewritten_by in (None, GRAFT_BOX_TAGGED):
                 boxed = graft.boxed(engine, state, recorded)
                 step, rewritten_by = (
@@ -388,7 +515,9 @@ def migrate_record(
                 # box 1's (``agent_card_effect_named``).
                 asked = (
                     tagged(step, 1)
-                    if box == 1 and isinstance(step, DomainAction)
+                    if box == 1
+                    and isinstance(step, DomainAction)
+                    and step.action_id in BOX_ACTION_IDS
                     else step
                 )
                 bridged = _bridge(engine, state, asked, bridges)
@@ -415,25 +544,31 @@ def migrate_record(
                 ):
                     dropped.append((index, INFLUENCE_AT_TOP_DROPPED))
                     break
-                if bridged is None and drops_turn_row_refusals:
+                if bridged is None and (drops_turn_row_refusals or contract_rows_wait):
                     earlier = _asked_earlier(
-                        engine, state, replay.steps, index, consumed
+                        engine,
+                        state,
+                        replay.steps,
+                        index,
+                        consumed,
+                        turn_rows_codec=drops_turn_row_refusals,
+                        contract_rows_codec=contract_rows_wait,
                     )
                     if earlier is not None:
-                        asked_index, asked_step = earlier
+                        asked_index, asked_step, asked_bridge = earlier
                         consumed.add(asked_index)
+                        stepped, picks, last, asked_whole = _as_steps(
+                            engine, state, asked_step
+                        )
+                        migrated.extend(picks)
                         migrated.append(
                             MigratedStep(
-                                asked_step,
-                                asked_index,
-                                _asked_earlier_bridge(
-                                    asked_step, replay.steps[asked_index]
-                                ),
+                                last, asked_index, asked_bridge, whole=asked_whole
                             )
                         )
                         followed = _follow(
                             engine,
-                            engine.apply(state, asked_step).state,
+                            engine.apply(stepped, last).state,
                             asked_step,
                             bridges,
                             migrated,
@@ -481,6 +616,15 @@ def migrate_record(
                     if gone is not None:
                         dropped.append((index, gone))
                         break
+                if (
+                    bridged is None
+                    and isinstance(recorded, DomainAction)
+                    and recorded.action_id == "draw_owed_card"
+                    and transports_taken[recorded.actor] > 0
+                ):
+                    transports_taken[recorded.actor] -= 1
+                    dropped.append((index, TRANSPORTS_CARD_DROPPED))
+                    break
                 if bridged is None:
                     divergence = Divergence(
                         recorded_index=index,
@@ -491,14 +635,28 @@ def migrate_record(
                     return ended(divergence, state)
                 bridge, answer = bridged
                 if bridge.rewrites:
+                    if bridge.name == EFFECT_LAST_STEP:
+                        whole = step
+                        if rewritten_by in REVEAL_SOURCE_NAMES:
+                            named_by = first_naming
                     step, rewritten_by = answer, bridge.name
                     continue
-                state = engine.apply(state, answer).state
-                migrated.append(MigratedStep(answer, None, bridge.name))
+                state = _apply_answer(engine, state, answer, bridge.name, migrated)
+                if bridge.name == TRANSPORTS_CARD_FIRST:
+                    assert isinstance(answer, DomainAction)
+                    transports_taken[answer.actor] += 1
                 continue
             before, mark = state, len(migrated)
             migrated.append(
-                MigratedStep(step, index, rewritten_by, box, reveal_source)
+                MigratedStep(
+                    step,
+                    index,
+                    rewritten_by,
+                    box,
+                    reveal_source,
+                    whole if rewritten_by == EFFECT_LAST_STEP else None,
+                    named_by,
+                )
             )
             if graft is not None:
                 graft.applied(after, step)
@@ -507,7 +665,13 @@ def migrate_record(
                 harvest_due[recorded.actor] += 1
             if reveal is not None:
                 reveal.applied(before, after, recorded)
-            followed = _follow(engine, after, step, bridges, migrated)
+            followed = _follow(
+                engine,
+                after,
+                whole if rewritten_by == EFFECT_LAST_STEP else step,
+                bridges,
+                migrated,
+            )
             if followed is None:
                 del migrated[mark:]
                 divergence = Divergence(
@@ -531,13 +695,13 @@ def migrate_record(
             )
             return ended(divergence, state)
     if waiting_steps:
-        first_index, first_step = waiting_steps[0]
+        first_index, first_held = waiting_steps[0]
         settled = apply_waiting(state)
         if settled is None or waiting_steps:
             return ended(
                 Divergence(
                     recorded_index=first_index,
-                    step=first_step,
+                    step=first_held,
                     reason="a held turn-row step was never offered",
                     pending=engine.current_decision(state),
                 ),
@@ -679,28 +843,94 @@ def _asked_earlier(
     steps: tuple[ReplayStep, ...],
     index: int,
     consumed: set[int],
-) -> tuple[int, ReplayStep] | None:
-    """The owner's later recorded answer to the Harvest Cells acquisition
-    this engine asks now, if it is legal here; or the later recorded
-    reshuffle of the Planetary Array card this engine draws as the Conflict
-    is won (``_tech_draw_earlier``), or of the same cards under another
-    decision (``_reshuffle_earlier``)."""
+    *,
+    turn_rows_codec: bool,
+    contract_rows_codec: bool,
+) -> tuple[int, ReplayStep, str] | None:
+    """A later recorded step this engine asks for now, with its bridge's
+    name: before codec v149, the owner's later recorded answer to the
+    Harvest Cells acquisition this engine asks now, if it is legal here; or
+    the later recorded reshuffle of the Planetary Array card this engine
+    draws as the Conflict is won (``_tech_draw_earlier``), or of the same
+    cards under another decision (``_reshuffle_earlier``). Before codec
+    v150, the owner's next pick in a frame that stands over its turn's
+    Contract rows (``_frame_before_contract_rows``)."""
 
-    owner = _harvest_cells_choice(state)
-    if owner is None:
-        return _tech_draw_earlier(
+    if turn_rows_codec:
+        owner = _harvest_cells_choice(state)
+        if owner is not None:
+            for ahead in range(index, len(steps)):
+                step = steps[ahead]
+                if (
+                    ahead in consumed
+                    or not isinstance(step, DomainAction)
+                    or step.actor != owner
+                    or step.action_id not in _HARVEST_CELLS_CHOICES
+                ):
+                    continue
+                if step in engine.whole_actions(state, owner):
+                    return ahead, step, HARVEST_CELLS_AT_ONCE
+                return None
+            return None
+        found = _tech_draw_earlier(
             engine, state, steps, index, consumed
         ) or _reshuffle_earlier(engine, state, steps, index, consumed)
-    for ahead in range(index, len(steps)):
+        if found is not None:
+            return (*found, _asked_earlier_bridge(found[1], steps[found[0]]))
+    if contract_rows_codec:
+        found = _frame_before_contract_rows(engine, state, steps, index, consumed)
+        if found is not None:
+            return (*found, CONTRACT_FRAME_FIRST)
+    return None
+
+
+# Codec v150 (stage B3b, user decision 2026-10-19 B3-4, OQ-112 (4)): a
+# Contract completed in its owner's own turn leaves its icons as rows of
+# that turn, offered once the turn frame is back on top. A recording engine
+# paid the reward at the completion, so where the completing step stood in
+# another frame of the owner's (a Contract market taking two tiles, say),
+# the record went on with the reward's own steps (a draw's reshuffle) before
+# that frame's next pick; that pick is taken first (``CONTRACT_FRAME_FIRST``),
+# then the rows (``combat_reward_icon_follow``) and the recorded steps.
+CONTRACT_TURN_ROWS_CODEC: Final = 150
+CONTRACT_FRAME_FIRST: Final = "contract_frame_first"
+# How far ahead the frame's next pick is looked for, past the reward's own
+# chance steps.
+_CONTRACT_FRAME_LOOKAHEAD: Final = 8
+
+
+def _frame_before_contract_rows(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    steps: tuple[ReplayStep, ...],
+    index: int,
+    consumed: set[int],
+) -> tuple[int, ReplayStep] | None:
+    """The owner's next recorded action, past chance steps only, where a
+    frame of the owner's stands over Contract rows waiting on its turn and
+    that action is legal here (see ``CONTRACT_TURN_ROWS_CODEC``)."""
+
+    if not state.decision_stack:
+        return None
+    top = state.decision_stack[-1]
+    if not isinstance(top.decision, PlayerDecision):
+        return None
+    owner = top.decision.owner
+    turn = own_turn_frame_index(state, owner)
+    if turn is None or turn == len(state.decision_stack) - 1:
+        return None
+    if not any(
+        kind == turn_rows.CONTRACT_ICON
+        for kind, _source, _value in turn_rows.pending(state.decision_stack[turn])
+    ):
+        return None
+    for ahead in range(index, min(len(steps), index + _CONTRACT_FRAME_LOOKAHEAD)):
         step = steps[ahead]
-        if (
-            ahead in consumed
-            or not isinstance(step, DomainAction)
-            or step.actor != owner
-            or step.action_id not in _HARVEST_CELLS_CHOICES
-        ):
+        if ahead in consumed or isinstance(step, ChanceOutcome):
             continue
-        return (ahead, step) if step in engine.legal_actions(state, owner) else None
+        if not isinstance(step, DomainAction) or step.actor != owner:
+            return None
+        return (ahead, step) if step in engine.whole_actions(state, owner) else None
     return None
 
 
@@ -829,7 +1059,7 @@ def _conflict_end_reopened(
     finish = DomainAction(
         action_id="finish_conflict_end_intrigue", actor=decision.owner
     )
-    return finish if finish in engine.legal_actions(state, decision.owner) else None
+    return finish if finish in engine.whole_actions(state, decision.owner) else None
 
 
 _CONFLICT_END_WINDOW_STEPS: Final = frozenset(
@@ -877,7 +1107,7 @@ def _conflict_end_finish(
     finish = DomainAction(
         action_id="finish_conflict_end_intrigue", actor=decision.owner
     )
-    return finish if finish in engine.legal_actions(state, decision.owner) else None
+    return finish if finish in engine.whole_actions(state, decision.owner) else None
 _TURN_ROW_STEPS: Final = frozenset(
     {
         "choose_research_influence",
@@ -965,14 +1195,14 @@ class _GraftSlot:
         ):
             return None
         candidate = tagged(step, 1)
-        if candidate in engine.legal_actions(state, step.actor):
+        if candidate in engine.whole_actions(state, step.actor):
             return candidate
         return None
 
     def applied(self, state: GameState, step: ReplayStep) -> None:
         if not isinstance(step, DomainAction):
             return
-        if step.action_id in ("agent_turn", "choose_graft_partner"):
+        if step.action_id in ("agent_turn", "place_agent", "choose_graft_partner"):
             self.box = 0
         elif step.action_id == "finish_agent_turn":
             frame = state.decision_stack[-1] if state.decision_stack else None
@@ -1015,7 +1245,7 @@ def graft_box_held(
         return None
     if step not in box_actions(state, step.actor, box):
         return None
-    legal = engine.legal_actions(state, step.actor)
+    legal = engine.whole_actions(state, step.actor)
     if box == 1:
         if tagged(step, 1) in legal:
             return None
@@ -1388,7 +1618,7 @@ def _offered(
         return []
     return [
         action
-        for action in engine.legal_actions(state, step.actor)
+        for action in engine.whole_actions(state, step.actor)
         if action.action_id == step.action_id
         and tuple(
             (key, value) for key, value in action.arguments if key != SOURCE_ARGUMENT
@@ -1432,7 +1662,7 @@ def walk(
     state = engine.reset(record.replay.ruleset, record.replay.seed)
     for migrated in record.steps:
         yield state, migrated
-        state = engine.apply(state, migrated.step).state
+        state = apply_whole(engine, state, migrated.step).state
 
 
 def rewrite_step(
@@ -1469,7 +1699,7 @@ def rewrite_step(
         if step.action_id in (_DEFER, _RESUME) or (
             step.action_id in _OPTIONAL_REVEAL_REFUSALS
             and not sourced
-            and step not in engine.legal_actions(state, step.actor)
+            and step not in engine.whole_actions(state, step.actor)
         ):
             return None
         if sourced:
@@ -1550,8 +1780,7 @@ def _follow(
         if firings == MAX_FOLLOWS_PER_STEP:
             return None
         bridge, answer = found
-        state = engine.apply(state, answer).state
-        migrated.append(MigratedStep(answer, None, bridge.name))
+        state = _apply_answer(engine, state, answer, bridge.name, migrated)
         firings += 1
     return state
 
@@ -1598,7 +1827,7 @@ def _made_for(
         return False
     return step.action_id in answers or any(
         action.action_id == step.action_id
-        for action in engine.legal_actions(state, decision.owner)
+        for action in engine.whole_actions(state, decision.owner)
     )
 
 
@@ -1643,7 +1872,7 @@ def _decline_in(
         ):
             return None
         decline = DomainAction(action_id=decline_id, actor=decision.owner)
-        if decline not in engine.legal_actions(state, decision.owner):
+        if decline not in engine.whole_actions(state, decision.owner):
             return None
         return decline
 
@@ -1677,7 +1906,7 @@ def _scouts_no_option(
     ):
         return None
     confirm = DomainAction(action_id=SCOUTS_NO_OPTION, actor=decision.owner)
-    if engine.legal_actions(state, decision.owner) != (confirm,):
+    if engine.whole_actions(state, decision.owner) != (confirm,):
         return None
     return confirm
 
@@ -1715,7 +1944,7 @@ def _named_card_effect(
     box = row_box(step)
     named = [
         action
-        for action in engine.legal_actions(state, decision.owner)
+        for action in engine.whole_actions(state, decision.owner)
         if action.action_id == _CARD_EFFECT
         and row_box(action) == box
         and tuple(key for key, _ in untagged(action).arguments) == ("effect",)
@@ -1763,7 +1992,7 @@ def _privilege_draw(
         actor=step.actor,
         arguments=(("effect", "cards"),),
     )
-    return draw if draw in engine.legal_actions(state, step.actor) else None
+    return draw if draw in engine.whole_actions(state, step.actor) else None
 
 
 def _troop_from_garrison(
@@ -1789,7 +2018,7 @@ def _troop_from_garrison(
     ):
         return None
     troop = DomainAction(action_id="scouts_lose_garrison_unit", actor=decision.owner)
-    return troop if troop in engine.legal_actions(state, decision.owner) else None
+    return troop if troop in engine.whole_actions(state, decision.owner) else None
 
 
 def _prison_planet_commanders_only(
@@ -1828,7 +2057,7 @@ def _prison_planet_commanders_only(
     # offers the commander, and the join actions exist only in this frame.
     # The troop target is what tells a seat the old engine asked (it has its
     # recorded answer) from one it skipped.
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     owner = decision.owner
 
     def join(target: str) -> DomainAction:
@@ -1886,7 +2115,7 @@ def _shigawire_draw(
     )
     if state.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS or not (
         resolves_boost_draw(state, draw)
-        and draw in engine.legal_actions(state, decision.owner)
+        and draw in engine.whole_actions(state, decision.owner)
     ):
         return None
     if _ghola_draw(state, 0):
@@ -1926,15 +2155,17 @@ def _research_icon_order(
     del step
     if not isinstance(decision, PlayerDecision):
         return None
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     icons = {
-        dict(action.arguments)["effect"]: action
+        dict(action.arguments)["effect"]
         for action in legal
         if action.action_id == "resolve_research_icon"
     }
     for icon in RESEARCH_ICON_ORDER:
         if icon in icons:
-            return icons[icon]
+            # The icon the older engine took (stage B3e-1: one per space).
+            taken = legacy_research_icon_whole(state, decision.owner, icon)
+            return taken if taken in legal else None
     owner = state.players[decision.owner]
     for deck, action_id in (
         (OWED_INTRIGUE, "draw_owed_intrigue"),
@@ -1945,7 +2176,7 @@ def _research_icon_order(
         # an older one is the record's own later step.
         index = next_owed_draw(owner, deck)
         if index is not None and owner.owed_draws[index][1] == OWED_ORIGIN_RESEARCH:
-            draw = DomainAction(action_id=action_id, actor=decision.owner)
+            draw = legacy_owed_draw_whole(state, decision.owner, action_id)
             return draw if draw in legal else None
     return None
 
@@ -2012,7 +2243,7 @@ def _split_icon_moves(
     if found is None:
         return []
     effect, pending = found
-    legal = engine.legal_actions(state, player)
+    legal = engine.whole_actions(state, player)
     moves = []
     for key, action_id, arguments in _SPLIT_BOX_MOVES[effect]:
         if key not in pending:
@@ -2023,10 +2254,221 @@ def _split_icon_moves(
             return []
         moves.append(move)
     if len(moves) == 2:
-        after = engine.apply(state, moves[0]).state
-        if moves[1] not in engine.legal_actions(after, player):
+        after = apply_whole(engine, state, moves[0]).state
+        if moves[1] not in engine.whole_actions(after, player):
             moves.reverse()
     return moves
+
+
+def _placement_parts(
+    step: ReplayStep,
+) -> tuple[str, bool, tuple[tuple[str, ActionValue], ...]] | None:
+    """A recorded ``agent_turn`` placement (before codec v150) as its card,
+    its graft choice and its space arguments; None for any other step."""
+
+    if not (isinstance(step, DomainAction) and step.action_id == "agent_turn"):
+        return None
+    arguments = dict(step.arguments)
+    card = arguments.get("card_id")
+    if not isinstance(card, str):
+        return None
+    space = tuple(
+        item for item in step.arguments if item[0] not in ("card_id", "graft")
+    )
+    return card, arguments.get("graft") is True, space
+
+
+def _agent_card_pick(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Before a recorded placement, the card pick this engine asks first
+    (stage B1, OQ-111)."""
+
+    parts = _placement_parts(step)
+    if (
+        parts is None
+        or not isinstance(step, DomainAction)
+        or not isinstance(decision, PlayerDecision)
+        or decision.owner != step.actor
+        or agent_card_pick(state, step.actor) is not None
+    ):
+        return None
+    card, graft, _ = parts
+    move = DomainAction(
+        action_id="choose_agent_card",
+        actor=step.actor,
+        arguments=(("card_id", card), *((("graft", True),) if graft else ())),
+    )
+    return move if move in engine.legal_actions(state, step.actor) else None
+
+
+def _agent_space_pick(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded placement, once its card is picked, as the space pick."""
+
+    parts = _placement_parts(step)
+    if (
+        parts is None
+        or not isinstance(step, DomainAction)
+        or not isinstance(decision, PlayerDecision)
+    ):
+        return None
+    card, graft, space = parts
+    if agent_card_pick(state, step.actor) != (card, graft):
+        return None
+    move = DomainAction(action_id="place_agent", actor=step.actor, arguments=space)
+    return move if move in engine.legal_actions(state, step.actor) else None
+
+
+EFFECT_LAST_STEP: Final = "effect_last_step"
+
+
+def _effect_path(
+    state: GameState, decision: Decision, step: ReplayStep
+) -> tuple[tuple[DomainAction, ...], int] | None:
+    """A recorded whole action (before codec v150) in a frame that offers
+    its waiting effects effect first, as its steps and how many of them are
+    picked; None for any other step, and for one whose place this frame
+    cannot name (a refusal an older engine offered in a window this engine
+    no longer opens: its window's printer is not here, stage B3d-3)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+        and presents_steps(state)
+    ):
+        return None
+    try:
+        path = path_of(without_pick(state), step)
+    except ValueError:
+        return None
+    if path is None:
+        return None
+    picked = len(picked_rows(state))
+    if path[:picked] != picked_rows(state) or picked >= len(path):
+        return None
+    return path, picked
+
+
+def _effect_step(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Before a recorded whole action, the next of the steps this engine
+    asks first: its effect, then each target but the last (stage B3)."""
+
+    found = _effect_path(state, decision, step)
+    if found is None:
+        return None
+    path, picked = found
+    if picked == len(path) - 1:
+        return None
+    move = path[picked]
+    return move if move in engine.legal_actions(state, move.actor) else None
+
+
+def _effect_last_step(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded whole action, once the steps before its last are picked,
+    as its last step (its effect row when it has no target)."""
+
+    found = _effect_path(state, decision, step)
+    if found is None:
+        return None
+    path, picked = found
+    if picked != len(path) - 1:
+        return None
+    move = path[picked]
+    return move if move in engine.legal_actions(state, move.actor) else None
+
+
+OPTIONAL_TRASH_ICON: Final = "optional_trash_icon"
+
+
+def _named_trash(state: GameState, step: ReplayStep) -> DomainAction | None:
+    """A recorded optional trash that names no trash icon (before codec
+    v150), as the row with the icon the recording engine picked itself
+    (``optional_trash.legacy_trash_whole``), while trashes wait on its
+    actor's turn frame on top; None for any other step."""
+
+    if not isinstance(step, DomainAction) or step.action_id != "trash_optional_card":
+        return None
+    arguments = dict(step.arguments)
+    if "printed" in arguments:
+        return None
+    return legacy_trash_whole(state, step.actor, str(arguments["card_id"]))
+
+
+def _optional_trash_icon(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded optional trash on its owner's turn, as the row naming the
+    trash icon it used (stage B3c-2b, ``_named_trash``)."""
+
+    if not isinstance(decision, PlayerDecision) or not isinstance(step, DomainAction):
+        return None
+    if decision.owner != step.actor:
+        return None
+    named = _named_trash(state, step)
+    if named is None or named not in engine.whole_actions(state, step.actor):
+        return None
+    return named
+
+
+NAMED_PICK: Final = "named_pick"
+
+
+def _named_pick(state: GameState, step: ReplayStep) -> DomainAction | None:
+    """A recorded research icon, triggered draw or Reveal gain that names no
+    entity (before codec v150), as the action naming the one the recording
+    engine took itself (stage B3e-1: ``legacy_research_icon_whole``,
+    ``legacy_owed_draw_whole``, ``legacy_reveal_gain_whole``); None for any
+    other step."""
+
+    if not isinstance(step, DomainAction) or "printed" in dict(step.arguments):
+        return None
+    if step.action_id == "resolve_research_icon":
+        icon = str(dict(step.arguments)["effect"])
+        return legacy_research_icon_whole(state, step.actor, icon)
+    if step.action_id in ("draw_owed_intrigue", "draw_owed_card"):
+        return legacy_owed_draw_whole(state, step.actor, step.action_id)
+    return legacy_reveal_gain_whole(state, step.actor, step)
+
+
+def _named_pick_bridge(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded research icon, triggered draw or Reveal gain, as the
+    action naming the entity whose effect it took (``_named_pick``)."""
+
+    if not isinstance(decision, PlayerDecision) or not isinstance(step, DomainAction):
+        return None
+    if decision.owner != step.actor:
+        return None
+    named = _named_pick(state, step)
+    if named is None or named not in engine.whole_actions(state, step.actor):
+        return None
+    return named
 
 
 def _split_box_icon(
@@ -2062,7 +2504,7 @@ def _split_box_icon(
         arguments=(("effect", "cards"),),
     )
     draw = tagged(draw, 1) if box == 1 else draw
-    if "cards" in AGENT_BOX_ABILITIES[found[0]].icons and draw in engine.legal_actions(
+    if "cards" in AGENT_BOX_ABILITIES[found[0]].icons and draw in engine.whole_actions(
         state, step.actor
     ):
         return draw
@@ -2099,7 +2541,7 @@ def _split_box_follow(
             continue
         move = DomainAction(action_id=action_id, actor=step.actor, arguments=arguments)
         move = tagged(move, 1) if box == 1 else move
-        if move != step and move in engine.legal_actions(state, step.actor):
+        if move != step and move in engine.whole_actions(state, step.actor):
             return move
     return None
 
@@ -2129,7 +2571,7 @@ def _split_box_spy(
             arguments=step.arguments,
         )
         move = tagged(move, 1) if box == 1 else move
-        if move in engine.legal_actions(state, step.actor):
+        if move in engine.whole_actions(state, step.actor):
             return move
     return None
 
@@ -2155,7 +2597,7 @@ def _signet_without_option(
         actor=step.actor,
         arguments=step.arguments,
     )
-    return confirm if confirm in engine.legal_actions(state, step.actor) else None
+    return confirm if confirm in engine.whole_actions(state, step.actor) else None
 
 
 def _combat_trash_declined_without_card(
@@ -2178,7 +2620,7 @@ def _combat_trash_declined_without_card(
     confirm = DomainAction(
         action_id="resolve_combat_trash_without_card", actor=step.actor
     )
-    return confirm if confirm in engine.legal_actions(state, step.actor) else None
+    return confirm if confirm in engine.whole_actions(state, step.actor) else None
 
 
 def _tech_influence_confirm(
@@ -2198,7 +2640,7 @@ def _tech_influence_confirm(
     confirm = DomainAction(
         action_id="resolve_tech_influence_without_faction", actor=decision.owner
     )
-    return confirm if confirm in engine.legal_actions(state, decision.owner) else None
+    return confirm if confirm in engine.whole_actions(state, decision.owner) else None
 
 
 def _planetologist_intrigue(
@@ -2230,7 +2672,7 @@ def _planetologist_intrigue(
     ):
         return None
     draw = DomainAction(action_id="draw_planetologist_intrigue", actor=decision.owner)
-    return draw if draw in engine.legal_actions(state, decision.owner) else None
+    return draw if draw in engine.whole_actions(state, decision.owner) else None
 
 
 def _intrigue_held_rewards(
@@ -2263,7 +2705,7 @@ def _intrigue_held_rewards(
     ):
         return None
     held = DomainAction(action_id="resolve_intrigue_rewards", actor=decision.owner)
-    return held if engine.legal_actions(state, decision.owner) == (held,) else None
+    return held if engine.whole_actions(state, decision.owner) == (held,) else None
 
 
 _PITER = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
@@ -2336,12 +2778,12 @@ def _piter_reward(
             return None
     elif len(waiting) != 1:
         return None
-    legal = engine.legal_actions(state, player)
+    legal = engine.whole_actions(state, player)
     key = waiting[0]
     # Piter's box is the active one: box 1's rewards are its tagged rows.
     box = _top_box(state)
     if len(waiting) == 2 and _reward_icon(player, "research", box) in legal:
-        trial = engine.apply(
+        trial = apply_whole(engine, 
             state, _reward_icon(player, "research", box), legal_actions=legal
         ).state
         top = trial.decision_stack[-1]
@@ -2397,7 +2839,7 @@ def _reverse_engineering_reward(
         if state.intrigue_deck
         else _REVERSE_ENGINEERING_ORDER[::-1]
     )
-    legal = engine.legal_actions(state, player)
+    legal = engine.whole_actions(state, player)
     # In the Signet Ring's box the rewards are that box's rows: box 1's
     # tagged (codec v143). A Servo-Receivers frame is no box.
     box = _top_box(state)
@@ -2439,7 +2881,7 @@ def _scouts_held_draw(
     ):
         return None
     held = DomainAction(action_id=_SCOUTS_HELD_DRAW, actor=decision.owner)
-    return held if engine.legal_actions(state, decision.owner) == (held,) else None
+    return held if engine.whole_actions(state, decision.owner) == (held,) else None
 
 
 _SCOUTS_REWARD_PAUSE = f":{SCOUTS_REWARD}{FIXED_OUTCOME_SUFFIX}"
@@ -2513,8 +2955,11 @@ def _owed_draw(
     owed = state.players[decision.owner].owed_draws
     if not owed:
         return None
-    draw = DomainAction(action_id=_OWED_DRAW_ACTIONS[owed[0][0]], actor=decision.owner)
-    return draw if draw in engine.legal_actions(state, decision.owner) else None
+    # The press the recording engine took (stage B3e-1: one per entity).
+    draw = legacy_owed_draw_whole(
+        state, decision.owner, _OWED_DRAW_ACTIONS[owed[0][0]]
+    )
+    return draw if draw in engine.whole_actions(state, decision.owner) else None
 
 
 _FOE_SOURCE = "leader_reveal:unpredictable_foe"
@@ -2560,8 +3005,12 @@ def _unpredictable_foe_draw(
             return None
     else:
         return None
-    draw = DomainAction(action_id="draw_reveal_intrigue", actor=player)
-    return draw if draw in engine.legal_actions(state, player) else None
+    # The oldest waiting Intrigue gain, as the recording engine took it
+    # (stage B3e-1: one action per entity).
+    draw = legacy_reveal_gain_whole(
+        state, player, DomainAction(action_id="draw_reveal_intrigue", actor=player)
+    )
+    return draw if draw in engine.whole_actions(state, player) else None
 
 
 _DISCARD_SHUFFLE = ":discard_shuffle"
@@ -2751,10 +3200,10 @@ def _refinish_agent_turn(
         or state.players[player].owed_draws
         or _made_for(engine, state, decision, step, frozenset({_FINISH_AGENT_TURN}))
         or not _reopened_since_press(state, player)
-        or press not in engine.legal_actions(state, player)
+        or press not in engine.whole_actions(state, player)
     ):
         return None
-    pressed = engine.apply(state, press)
+    pressed = apply_whole(engine, state, press)
     if any(event.kind == "agent_turn_reopened" for event in pressed.events):
         return None
     return press
@@ -2792,7 +3241,7 @@ def _shigawire_partner_draw(
     draw = _reward_icon(decision.owner, "cards", 1)
     if not (
         resolves_boost_draw(state, draw)
-        and draw in engine.legal_actions(state, decision.owner)
+        and draw in engine.whole_actions(state, decision.owner)
     ):
         return None
     if _ghola_draw(state, 1):
@@ -2838,7 +3287,7 @@ def _boost_draw_at_turn_end(
         return None
     _, context = current_agent_effect_context(state)
     in_play = state.players[decision.owner].in_play
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     for box in (0, 1):
         card_id = boost_draw_card(context, box)
         draw = _reward_icon(decision.owner, "cards", box)
@@ -2900,7 +3349,7 @@ def _box_refused_at_turn_end(
     ):
         return None
     context = dict(state.decision_stack[-1].context)
-    legal = engine.legal_actions(state, decision.owner)
+    legal = engine.whole_actions(state, decision.owner)
     for box in (0, 1) if is_grafted_turn(context) else (0,):
         view = state_with_active_box(state, box)
         effect = active_agent_card(dict(view.decision_stack[-1].context)).agent_effect
@@ -2927,8 +3376,126 @@ def _reopened_since_press(state: GameState, player: int) -> bool:
     return False
 
 
+def _combat_reward_icon(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Resolve a Conflict reward's, or a completed Contract's, icons in the
+    order the recording engine paid them (stages B2 and B3b, OQ-112).
+
+    Before codec v150 a recipient's reward was paid in one step in a fixed
+    order -- its automatic part, then its choice frames in the order they
+    were answered (``rules.combat.legacy_combat_reward_icon``); this engine
+    asks the recipient for each icon in a window of its own, or, for a
+    Contract completed in its owner's own turn, as rows of that turn
+    (OQ-112 (4), ``rules.contracts.legacy_contract_icon_row``), offered
+    once the turn frame is on top again. A choice icon opens its frame,
+    which the record's own step then answers.
+    """
+
+    del step
+    if not isinstance(decision, PlayerDecision):
+        return None
+    answer = (
+        legacy_combat_reward_icon(state, decision.owner)
+        or legacy_contract_reward_icon(state, decision.owner)
+        or legacy_contract_icon_row(state, decision.owner)
+    )
+    # An owed draw of the owner's own turn comes first (OQ-106).
+    if answer is None or answer not in engine.whole_actions(state, decision.owner):
+        return None
+    return answer
+
+
+# Stage B2 (user decision 2026-10-19): CHOAM Transports' card is the
+# owner's only step right after a Contract's completion, before every row of
+# its reward (OQ-106 13, OQ-112). An engine before codec v150 paid the
+# reward's automatic part inside the completion and drew the card after it,
+# so its record may hold the reward's own card draw (and the reshuffle that
+# draw asked for) before the card; such a record's step then waits behind
+# the card, which ``_transports_card_first`` takes, and its recorded card is
+# dropped once it comes (``TRANSPORTS_CARD_DROPPED``).
+TRANSPORTS_CARD_FIRST: Final = "transports_card_first"
+TRANSPORTS_CARD_DROPPED: Final = "transports_card_taken_first"
+
+
+def _transports_card_first(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Take CHOAM Transports' card where it is the owner's only step and the
+    recorded step is not it (see ``TRANSPORTS_CARD_FIRST``)."""
+
+    if not isinstance(decision, PlayerDecision):
+        return None
+    if isinstance(step, DomainAction) and step.action_id == "draw_owed_card":
+        return None
+    owner = state.players[decision.owner]
+    if not any(entry[1] == OWED_ORIGIN_CHOAM_TRANSPORTS for entry in owner.owed_draws):
+        return None
+    draw = legacy_owed_draw_whole(state, decision.owner, "draw_owed_card")
+    return draw if engine.whole_actions(state, decision.owner) == (draw,) else None
+
+
+def _transports_reshuffle_renamed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Give a recorded discard reshuffle the id of the one this engine asks
+    when CHOAM Transports' card and a Contract reward's card draw swapped
+    places (``TRANSPORTS_CARD_FIRST``): the one of the two that finds the
+    deck empty asks for it, under its own name. The same seat's same pile,
+    the recorded order kept."""
+
+    del engine
+    if not (
+        isinstance(step, ChanceOutcome)
+        and isinstance(decision, ChanceDecision)
+        and step.decision_id != decision.decision_id
+        and state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    ):
+        return None
+    player = dict(state.decision_stack[-1].context).get("player")
+    prefix = f"round:{state.round_number}:player:{player}:"
+    names = (step.decision_id, decision.decision_id)
+    if not all(
+        name.startswith(prefix) and name.endswith(_DISCARD_SHUFFLE) for name in names
+    ) or Counter(step.values) != Counter(decision.options):
+        return None
+    transports = [name for name in names if name.endswith(":tech_draw:discard_shuffle")]
+    reward = [
+        name for name in names if name.endswith(":reward:personal_draw:discard_shuffle")
+    ]
+    if len(transports) != 1 or len(reward) != 1:
+        return None
+    return ChanceOutcome(decision.decision_id, step.values)
+
+
 BRIDGES: tuple[Bridge, ...] = (
     Bridge("pause", _pause),
+    # Right after the recorded step that opened the window (the recording
+    # engine paid the reward inside it), and wherever a window still waits
+    # when the next recorded step comes (one another bridge's step opened).
+    Bridge(
+        "combat_reward_icon_follow",
+        _combat_reward_icon,
+        before_codec=150,
+        follows=True,
+    ),
+    Bridge("combat_reward_icon", _combat_reward_icon, before_codec=150),
+    Bridge(TRANSPORTS_CARD_FIRST, _transports_card_first, before_codec=150),
+    Bridge(
+        "transports_reshuffle_renamed",
+        _transports_reshuffle_renamed,
+        before_codec=150,
+        rewrites=True,
+    ),
     # Codec v141 (e7eef001) opens the Conflict-end Intrigue window on public
     # facts, so it now asks seats an older engine skipped because they held
     # no card for it; such a seat could only decline.
@@ -3079,6 +3646,28 @@ BRIDGES: tuple[Bridge, ...] = (
     # In High Places icon by icon: the recorded resolution is the first
     # icon, the other follows at once (In High Places' Spy at the record's
     # frame step).
+    # Codec v150 (stage B1, OQ-111): an Agent turn is a card pick and then a
+    # space pick; a recorded placement takes the pick first, then itself as
+    # the space pick.
+    Bridge("agent_space_pick", _agent_space_pick, before_codec=150, rewrites=True),
+    Bridge("agent_card_pick", _agent_card_pick, before_codec=150),
+    # Codec v150 (stage B3, OQ-111): a waiting effect is picked before its
+    # target; a recorded whole action takes its effect and each target but
+    # the last first, then itself as the last step.
+    Bridge(
+        EFFECT_LAST_STEP, _effect_last_step, before_codec=150, rewrites=True
+    ),
+    Bridge("effect_step", _effect_step, before_codec=150),
+    # Codec v150 (stage B3c-2b): an optional trash on the owner's turn names
+    # the trash icon it uses; a recorded one takes the icon the recording
+    # engine picked itself.
+    Bridge(
+        OPTIONAL_TRASH_ICON, _optional_trash_icon, before_codec=150, rewrites=True
+    ),
+    # Codec v150 (stage B3e-1, user decision 2026-10-20 "모두 나누자"): a
+    # research icon, a triggered draw and a Reveal gain name the entity that
+    # printed them; a recorded one takes the one the recording engine took.
+    Bridge(NAMED_PICK, _named_pick_bridge, before_codec=150, rewrites=True),
     Bridge("split_box_icon", _split_box_icon, before_codec=149, rewrites=True),
     Bridge("split_box_follow", _split_box_follow, before_codec=149, follows=True),
     Bridge("split_box_spy", _split_box_spy, before_codec=149, rewrites=True),

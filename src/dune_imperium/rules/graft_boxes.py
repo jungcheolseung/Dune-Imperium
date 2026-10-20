@@ -107,6 +107,9 @@ TURN_KEYS: Final = frozenset(
         "pending_tech_acquire_effects",
         # Effects waiting on the turn as rows (cleanup-2b, ``turn_rows``).
         "pending_turn_rows",
+        # The rows picked toward one waiting effect (stage B3,
+        # ``effect_steps``), whichever box's effect it is.
+        "effect_pick",
         "space_id",
         # The space's own Influence was replaced by a box's "two instead
         # of one" for good (Subversive Advisor, Treacherous Maneuver).

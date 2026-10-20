@@ -16,6 +16,7 @@ from typing import Any, cast
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import (
     EVENTS_BY_ID,
     MISSIONS_BY_ID,
@@ -83,7 +84,7 @@ def _owner(**overrides: Any) -> PlayerState:
 
 
 def _lines(state: GameState) -> tuple[dict[str, Any], tuple[DomainAction, ...]]:
-    legal = ENGINE.legal_actions(state, 0)
+    legal = ENGINE.whole_actions(state, 0)
     info = scouts_choice_lines(state, 0, legal)
     assert info is not None
     return info, legal
@@ -205,7 +206,9 @@ def test_fedaykin_assistance_lights_up_after_the_specimen_returns() -> None:
     )
     assert top_up in legal
 
-    topped = ENGINE.apply(state, top_up).state
+    # Since stage B3d-4 the return is a side branch of the mission's window:
+    # its ``return_specimen`` effect row, then the count.
+    topped = apply_whole(ENGINE, state, top_up).state
     info, legal = _lines(topped)
     (line,) = info["lines"]
     assert line["enabled"] and line["reason"] is None
@@ -234,7 +237,7 @@ def test_a_secret_pick_and_other_decisions_have_no_lines() -> None:
         context=(("event_id", "covert_operation"),),
     )
     state = _state(_owner(), decision_stack=(frame,))
-    assert scouts_choice_lines(state, 0, ENGINE.legal_actions(state, 0)) is None
+    assert scouts_choice_lines(state, 0, ENGINE.whole_actions(state, 0)) is None
     # Another seat's Scouts choice is never listed for this seat.
     offered = offer_scouts_choice(
         _state(_owner()), 0, "unravel_the_future", source="round:2:scouts"
@@ -315,7 +318,9 @@ def test_enabled_lines_are_exactly_the_legal_line_actions(
                 continue
             assert isinstance(decision, PlayerDecision)
             seat = decision.owner
-            legal = ENGINE.legal_actions(state, seat)
+            # The server hands the display the WHOLE actions (stage B3d-2b:
+            # the Scouts windows' legal rows are their target rows).
+            legal = ENGINE.whole_actions(state, seat)
             found = scouts_choice_lines(state, seat, legal)
             if found is not None:
                 info = cast(dict[str, Any], found)
@@ -329,7 +334,7 @@ def test_enabled_lines_are_exactly_the_legal_line_actions(
                     assert line["code"] != "unavailable", line  # no fallback
                     assert line["reason"] and line["reason_ko"], line
                 _check_rules_helpers(state, seat)
-            state = ENGINE.apply(state, rng.choice(legal)).state
+            state = apply_whole(ENGINE, state, rng.choice(legal)).state
     assert seen == {"scouts_choice", "scouts_subcommittee", "scouts_mission"}
     assert disabled > 0
 

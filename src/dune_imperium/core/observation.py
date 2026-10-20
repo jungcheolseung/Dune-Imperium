@@ -1,5 +1,6 @@
 """Player-scoped, immutable observations with explicit redaction."""
 
+import json
 from copy import replace
 from dataclasses import dataclass
 from functools import cache
@@ -164,6 +165,14 @@ class PrivatePlayerView:
     scouts_secret_picks: tuple[tuple[int, str, int], ...] = ()
     # The seat's own bid in the sealed auction running now (-1: none yet).
     scouts_bid: int = -1
+    # Stage B1 (OQ-111): the card the seat picked for its Agent turn and has
+    # not placed yet (seen by no other seat), and whether it is grafted.
+    agent_card_pick: str = ""
+    agent_card_pick_graft: bool = False
+    # Stage B3 (OQ-111 (4)): the rows the seat picked toward one waiting
+    # effect and has not finished (seen by no other seat), as (action id,
+    # arguments) -- the effect row first (``rules.effect_steps``).
+    effect_pick: tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -556,6 +565,9 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             intrigue_cards=owner.intrigue_cards,
             peeked_card_id=peeked_card_id(state, player),
             peeked_intrigue_ids=peeked_intrigue_ids(state, player),
+            agent_card_pick=agent_card_pick_of(state, player)[0],
+            agent_card_pick_graft=agent_card_pick_of(state, player)[1],
+            effect_pick=effect_pick_of(state, player),
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
             scouts_secret_picks=tuple(
@@ -627,6 +639,69 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         epic_game=state.config.epic_game,
         agent_boxes=agent_box_cards(state),
     )
+
+
+# The turn frame's context keys of a picked Agent card (stage B1,
+# ``rules.agent_turn``).
+AGENT_CARD_PICK_KEY = "agent_card_pick"
+AGENT_CARD_PICK_GRAFT_KEY = "agent_card_pick_graft"
+
+
+def agent_card_pick_of(state: GameState, player: int) -> tuple[str, bool]:
+    """The Agent card ``player`` picked and has not placed yet ("" if none),
+    and whether it is grafted: it waits in the seat's own turn frame, on top
+    until the space is picked."""
+
+    if not state.decision_stack:
+        return "", False
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return "", False
+    context = dict(frame.context)
+    card = context.get(AGENT_CARD_PICK_KEY)
+    if not isinstance(card, str):
+        return "", False
+    return card, context.get(AGENT_CARD_PICK_GRAFT_KEY) is True
+
+
+# The top frame's context key of the rows picked toward one waiting effect
+# (stage B3, ``rules.effect_steps``).
+EFFECT_PICK_KEY = "effect_pick"
+
+
+# Long Live the Fighters' frame and the card to draw it keeps
+# (``rules.agent_effects``).
+_LONG_LIVE_FRAME: Final = "long_live_fighters"
+_LONG_LIVE_DRAW_KEY: Final = "long_live_fighters_draw_card_id"
+
+
+def effect_pick_of(
+    state: GameState, player: int
+) -> tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...]:
+    """The rows ``player`` picked toward one waiting effect and has not
+    finished (() if none): they wait in the context of the seat's own frame,
+    on top until the effect's last row. Long Live the Fighters picks its one
+    effect's two cards in two decisions of its own frame, which keeps the
+    card to draw: that card is the seat's first picked target (stage B3d-2a,
+    the 2026-10-20 review)."""
+
+    if not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    encoded = dict(frame.context).get(EFFECT_PICK_KEY)
+    if not isinstance(encoded, str):
+        drawn = dict(frame.context).get(_LONG_LIVE_DRAW_KEY)
+        if str(frame.kind) == _LONG_LIVE_FRAME and isinstance(drawn, str):
+            return (("choose_personal_card", (("card_id", drawn),)),)
+        return ()
+    rows: list[tuple[str, tuple[tuple[str, ActionValue], ...]]] = []
+    for action_id, arguments in json.loads(encoded):
+        rows.append(
+            (str(action_id), tuple((str(name), value) for name, value in arguments))
+        )
+    return tuple(rows)
 
 
 def peeked_card_id(state: GameState, player: int) -> str:

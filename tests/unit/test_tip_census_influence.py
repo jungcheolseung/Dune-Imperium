@@ -1079,14 +1079,15 @@ def test_early_reveals_excludes_a_forced_reveal(
     collector = influence_module.InfluenceCollector(_specs(False)[0], 4)
     owner = 0
     reveal = DomainAction(action_id="reveal_turn", actor=owner)
+    # An Agent turn is offered as its card pick (stage B1).
     agent = DomainAction(
-        action_id="agent_turn",
+        action_id="choose_agent_card",
         actor=owner,
-        arguments=(("card_id", "x"), ("space_id", "y")),
+        arguments=(("card_id", "x"),),
     )
 
-    # Forced: no "agent_turn" is legal (e.g. an all-starter hand that cannot
-    # afford any space), so Reveal is not a real choice -- not the tip's
+    # Forced: no Agent card pick is legal (e.g. an all-starter hand that
+    # cannot afford any space), so Reveal is not a real choice -- not the tip's
     # "choose to Reveal early" [player-turns.md:6, Main p. 8].
     forced = census_step_class(
         pre=base_reset_state,
@@ -1123,9 +1124,9 @@ def test_reveal_finished_closes_the_window_before_the_next_turn_action(
     owner = 0
     reveal = DomainAction(action_id="reveal_turn", actor=owner)
     agent = DomainAction(
-        action_id="agent_turn",
+        action_id="choose_agent_card",
         actor=owner,
-        arguments=(("card_id", "x"), ("space_id", "y")),
+        arguments=(("card_id", "x"),),
     )
     opened = census_step_class(
         pre=base_reset_state,

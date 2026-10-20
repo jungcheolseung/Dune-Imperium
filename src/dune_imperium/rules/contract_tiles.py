@@ -68,33 +68,12 @@ def receive_contract(
             active_contract_ids=(*owner.active_contract_ids, instance_id),
         )
     if definition.completes_immediately:
-        reward = definition.reward
-        if any(
-            (
-                reward.water,
-                reward.troops,
-                reward.personal_cards,
-                reward.contracts,
-                reward.spies,
-                reward.influence,
-                reward.intrigue_cards,
-                reward.deep_cover_spies,
-            )
-        ):
-            raise NotImplementedError(
-                "Immediate Contracts with non-Solari rewards are not implemented"
-            )
-        return owe_contract_completion_draw(
-            state,
-            replace(
-                owner,
-                resources=replace(
-                    owner.resources,
-                    solari=owner.resources.solari + reward.solari,
-                ),
-                completed_contract_ids=(*owner.completed_contract_ids, instance_id),
-                contracts_completed_turn=owner.contracts_completed_turn + 1,
-            ),
+        # An Immediate tile completes the moment it is taken [Main p. 16]:
+        # it waits active until the taker's step completes it and opens its
+        # reward window (``contracts.complete_immediate_contract``, OQ-112).
+        return replace(
+            owner,
+            active_contract_ids=(*owner.active_contract_ids, instance_id),
         )
     return replace(
         owner,

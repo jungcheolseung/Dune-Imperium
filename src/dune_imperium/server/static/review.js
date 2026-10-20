@@ -77,6 +77,14 @@ async function reviewGoto(cursor) {
   const review = state.review;
   if (!review) return null;
   cursor = Math.max(0, Math.min(review.meta.step_count, cursor));
+  /* Never between a waiting effect and its target (stage B3): a step that
+     only picks toward the effect goes on to the step that ends it, or back
+     before the effect when the cursor moves back. */
+  const labels = review.meta.steps || [];
+  const back = cursor < review.cursor;
+  while (cursor > 0 && cursor < review.meta.step_count && labels[cursor - 1]?.pick) {
+    cursor += back ? -1 : 1;
+  }
   const request = ++reviewRequest;
   try {
     hideGameError();

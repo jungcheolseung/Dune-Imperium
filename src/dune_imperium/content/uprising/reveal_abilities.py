@@ -4,11 +4,12 @@ docs/composed-effects-plan.md 5 (A4c): what a personal card gains on its own
 when it is revealed -- the Reveal box's printed gains, their conditions and
 the counts that multiply them -- is written here as automatic ability
 records keyed by the card's definition id, one line per printed effect
-(each judged on its own). The card manifests take their ``reveal_effects``
-from these records (``reveal_effects_of``), and ``rules.reveal_turn`` pays
-them as before: Persuasion and swords at once, the other gains as the
-owner's own steps (OQ-045), a condition met later in the turn paying then
-(``grant_late_reveal_effects``). The printed text is
+(each judged on its own). ``rules.reveal_turn`` reads these lines
+(``rules.reveal_lines``, stage B3e-2) and pays them: Persuasion and swords at
+once, the other gains as the owner's own steps (OQ-045), a condition met
+later in the turn paying then (``grant_late_reveal_effects``). The card
+manifests take their compiled ``reveal_effects`` from them
+(``reveal_effects_of``) for the card text and the action catalog. The printed text is
 ``display/tokens.reveal_effect_text``. A card's printed Reveal Persuasion and
 swords (``reveal_persuasion``, ``reveal_strength``) are card values, not
 abilities; its Reveal choices are A4d's.
@@ -273,8 +274,9 @@ def _conditions(condition: Condition | None) -> tuple[Condition, ...]:
 
 
 def reveal_effect(line: EffectSection) -> PersonalCardRevealEffect:
-    """The Reveal machinery's form of one recorded line
-    (``rules.reveal_turn`` reads ``PersonalCardRevealEffect``)."""
+    """One recorded line's compiled totals (``PersonalCardRevealEffect``),
+    which the card text and the action catalog read; the Reveal turn reads
+    the line itself (``rules.reveal_lines``, stage B3e-2)."""
 
     fields: dict[str, object] = {}
     for condition in _conditions(line.condition):

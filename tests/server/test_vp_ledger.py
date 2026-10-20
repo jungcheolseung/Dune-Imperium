@@ -187,8 +187,9 @@ def test_rewards_battle_icons_and_endgame_matches_score_in_their_step() -> None:
 
     rewards = [
         (index, payload)
-        for index, payload in _events(session, "combat_reward_gained")
-        # A reward's zero amounts are left out of its payload (cleanup-2c-3).
+        # A reward's Victory Points come on their icon row (stage B2,
+        # OQ-112); the other rows leave the amount out.
+        for index, payload in _events(session, "combat_reward_icon_resolved")
         if _int(payload.get("victory_points", 0)) > 0
     ]
     assert rewards
@@ -208,8 +209,9 @@ def test_rewards_battle_icons_and_endgame_matches_score_in_their_step() -> None:
 
 
 def test_chance_steps_count_for_the_points_they_move() -> None:
-    """A chance outcome can move Victory Points (the pause before a Conflict
-    reward carries the reward); its row names that chance entry."""
+    """A chance outcome can move Victory Points (the pause before the
+    Conflict's end carries its Battle icon matches; since stage B2 a reward's
+    points come on its own icon row); its row names that chance entry."""
 
     manager, game_id = _finished()
     session = manager._get(game_id)
@@ -280,9 +282,12 @@ def _step(
 
 
 def test_an_undone_step_leaves_the_ledger_and_its_log_entry_stays() -> None:
-    manager, game_id, summary = _human_game()
+    # Seed 1 (seed 0 until codec v150, stage B1, OQ-111: the Agent turn is a
+    # card pick and a space pick, which moves the random walk off seed 0; of
+    # 0-59, seeds 1, 3, 4, 5 and most of the rest reach the position).
+    manager, game_id, summary = _human_game(1)
     session = manager._get(game_id)
-    rng = random.Random(0)
+    rng = random.Random(1)
     for _ in range(2000):
         before = _seat_points(session)
         state_before = session.state
@@ -383,11 +388,13 @@ def test_sealed_scouts_choices_never_score() -> None:
 
     manager, game_id = _finished(seed=0, arrakeen_scouts=True)
     session = manager._get(game_id)
+    # A secret pick or a sealed bid is a window's target row now (stage
+    # B3d-2b); the whole action its step ends names which one it is.
     sealed = {
-        index: entry.step.action_id
+        index: (entry.whole or entry.step).action_id
         for index, entry in _live(session)
         if not isinstance(entry.step, ChanceOutcome)
-        and entry.step.action_id in SEALED_ACTION_IDS
+        and (entry.whole or entry.step).action_id in SEALED_ACTION_IDS
     }
     assert set(sealed.values()) == SEALED_ACTION_IDS, "seed 0 picks and bids"
     payload = manager.vp_ledger(game_id)

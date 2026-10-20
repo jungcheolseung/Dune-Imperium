@@ -15,13 +15,17 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.scouts_effects import offer_scouts_choice, offer_secret_reward
 from dune_imperium.rules.scouts_secrets import SECRET_ITEM
 from dune_imperium.server.sessions import GameSessionManager, _serialize_action
@@ -73,13 +77,13 @@ def _council_step(state: GameState) -> dict[str, Any]:
 
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "high_council"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "high_council"
         and "dagger" in str(dict(action.arguments)["card_id"])
     )
-    placed = ENGINE.apply(state, placement).state
-    legal = ENGINE.legal_actions(placed, 0)
+    placed = apply_placement(ENGINE, state, placement).state
+    # The payload indexes the seat's whole actions (stage B3).
+    legal = ENGINE.whole_actions(placed, 0)
     council = DomainAction(
         action_id="resolve_board_effect",
         actor=0,
@@ -212,13 +216,13 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
     step stays undoable like the visit's other effects."""
     placement = next(
         action
-        for action in ENGINE.legal_actions(_state(3), 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "high_council"
+        for action in executable_placements(_state(3), 0)
+        if dict(action.arguments)["space_id"] == "high_council"
         and "dagger" in str(dict(action.arguments)["card_id"])
     )
-    placed = ENGINE.apply(_state(3), placement).state
-    seated = ENGINE.apply(
+    placed = apply_placement(ENGINE, _state(3), placement).state
+    seated = apply_whole(
+        ENGINE,
         placed,
         DomainAction(
             action_id="resolve_board_effect",
@@ -226,7 +230,7 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
             arguments=(("effect", "high_council"),),
         ),
     ).state
-    legal = ENGINE.legal_actions(seated, 0)
+    legal = ENGINE.whole_actions(seated, 0)
     rows = {
         action.action_id: _serialize_action(
             legal.index(action),
@@ -241,8 +245,8 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
     assert "decline_subcommittee" not in rows
     # Opening the list is not the seat taking its seat: no preview on it.
     assert "subcommittee_preview" not in rows["choose_subcommittee"]
-    chosen = ENGINE.apply(
-        seated, DomainAction(action_id="choose_subcommittee", actor=0)
+    chosen = apply_whole(
+        ENGINE, seated, DomainAction(action_id="choose_subcommittee", actor=0)
     ).state
     join = DomainAction(
         action_id="join_subcommittee",
@@ -250,7 +254,7 @@ def test_choosing_a_subcommittee_can_be_taken_back() -> None:
         arguments=(("subcommittee_id", "readiness"),),
     )
     joined = _serialize_action(
-        ENGINE.legal_actions(chosen, 0).index(join),
+        ENGINE.whole_actions(chosen, 0).index(join),
         join,
         _session(chosen),  # type: ignore[arg-type]
     )
@@ -331,3 +335,64 @@ def test_a_revealed_secret_line_names_its_event() -> None:
     own = _obj(manager.legal_actions(game_id, 0)["scouts_lines"])
     assert own["frame"] == "scouts_choice"
     assert own["item_id"] == "covert_operation"
+
+
+@pytest.mark.parametrize("kind", ["scouts_secret", "scouts_bid"])
+def test_a_secret_choice_s_target_row_is_logged_sealed(kind: str) -> None:
+    """Stage B3d-2b: a secret pick or a sealed bid is its window's target row
+    (``choose_option``, ``choose_count``); the log seals it by the whole
+    action it ends (``SEALED_ACTION_IDS``), so no other seat's live log shows
+    the line or the bid before they are revealed (docs/rules/
+    arrakeen-scouts.md 7, 8.1)."""
+
+    from dune_imperium.agents.heuristic_agent import HeuristicAgent
+    from dune_imperium.core import ChanceDecision, ChanceResolver, PlayerDecision
+    from dune_imperium.rules.effect_steps import first_step
+    from dune_imperium.server.session_log import SEALED_ACTION_IDS, log_step
+    from dune_imperium.server.sessions import _log_entry_json
+
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(choam_module=True, arrakeen_scouts=True)
+
+    def first_window(seed: int) -> tuple[GameState, int] | None:
+        state = engine.reset(config, seed)
+        chance = ChanceResolver(seed=seed)
+        agents = [HeuristicAgent(seed=seat) for seat in range(4)]
+        while state.phase is not GamePhase.FINISHED:
+            decision = engine.current_decision(state)
+            if isinstance(decision, ChanceDecision):
+                state = engine.apply(state, chance.resolve(decision)).state
+                continue
+            assert isinstance(decision, PlayerDecision)
+            if state.decision_stack[-1].kind == kind:
+                return state, decision.owner
+            legal = engine.legal_actions(state, decision.owner)
+            view = engine.observe(state, decision.owner)
+            action = agents[decision.owner].choose_action_with_state(
+                state, view, legal
+            )
+            state = engine.apply(state, action, legal_actions=legal).state
+        return None
+
+    found = next(
+        (window for seed in range(20) if (window := first_window(seed)) is not None),
+        None,
+    )
+    if found is None:
+        pytest.fail(f"no heuristic game of seeds 0-19 meets a {kind}")
+    state, owner = found
+    whole = next(
+        action
+        for action in engine.whole_actions(state, owner)
+        if action.action_id in SEALED_ACTION_IDS
+    )
+    row = first_step(state, whole)
+    assert row.action_id in {"choose_option", "choose_count"}
+    result = engine.apply(state, row)
+    entry = log_step(state, result.state, row, result.events)
+    assert entry.sealed and entry.whole == whole
+    own: Any = _log_entry_json(0, entry, owner, finished=False)
+    assert own["arguments"] == dict(whole.arguments)
+    other: Any = _log_entry_json(0, entry, (owner + 1) % 4, finished=False)
+    assert other["action_id"] == whole.action_id
+    assert other["arguments"] and set(other["arguments"].values()) == {"(비공개)"}

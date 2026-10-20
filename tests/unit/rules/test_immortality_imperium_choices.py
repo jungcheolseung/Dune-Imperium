@@ -10,9 +10,11 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
-from dune_imperium.adapters import ActionCodec
+from dune_imperium.adapters import ActionCodec, ActionTemplate
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -54,6 +56,7 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -193,9 +196,11 @@ def _payment(state: GameState, action_id: str) -> DomainAction:
 
 
 def _offered_ids(state: GameState) -> set[str]:
-    """Every action id seat 0 is offered now, through the engine."""
+    """Every whole action id seat 0 is offered now, through the engine
+    (stage B3b-2: the Reveal frame offers its effects effect first, so its
+    legal rows are not these ids)."""
 
-    actions = UprisingRulesEngine().legal_actions(state, 0)
+    actions = UprisingRulesEngine().whole_actions(state, 0)
     return {action.action_id for action in actions}
 
 
@@ -221,7 +226,7 @@ def _turn_end_offered(state: GameState) -> bool:
 
 
 def _trash_waits_on_the_agent_turn(
-    state: GameState, *, specimen_waits: bool = False
+    state: GameState, printer: str, *, specimen_waits: bool = False
 ) -> None:
     """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
     own Agent turn an optional "[trash a card]" icon opens no window; it
@@ -229,13 +234,14 @@ def _trash_waits_on_the_agent_turn(
     holds no turn end back. With ``specimen_waits`` the research space's
     specimen waits beside it as a mandatory row of its own, which does hold
     the end (user decision 2026-10-17, composed-effects plan 5, rule decision
-    5; OQ-027 [Main p. 9])."""
+    5; OQ-027 [Main p. 9]). The trash records ``printer``, the entity that
+    printed its icon (stage B3c-2b)."""
 
     top = state.decision_stack[-1]
     assert top.kind == FrameKind.AGENT_EFFECTS
     assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
         *(((turn_rows.RESEARCH_ICON, "specimen"),) if specimen_waits else ()),
-        (turn_rows.OPTIONAL_TRASH, ""),
+        (turn_rows.OPTIONAL_TRASH, printer),
     ]
     legal = {a.action_id for a in legal_optional_trash_actions(state, 0)}
     assert legal == {"trash_optional_card"}
@@ -528,9 +534,15 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
         for event in kept.events
         if event.visible_to is None
     )
+    # Stage B3d-2a: the seat is shown the two cards by target rows, so the
+    # whole template is in no catalog.
     codec = ActionCodec(IMMORTALITY)
-    for action in actions:
-        assert codec.decode(codec.encode(action), 0) == action
+    rows = tuple(steps_for(action, effect_row=False)[0] for action in actions)
+    assert UprisingRulesEngine().legal_actions(state, 0) == rows
+    for action, row in zip(actions, rows, strict=True):
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
 
     # OQ-052 (user ruling): with one card face down and a discard pile, the
     # discard is shuffled into a new deck beneath that card and the peek
@@ -551,7 +563,9 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     engine = UprisingRulesEngine()
     decision = engine.current_decision(short.state)
     assert isinstance(decision, ChanceDecision)
-    shuffled = engine.apply(short.state, ChanceResolver(seed=5).resolve(decision)).state
+    shuffled = apply_whole(
+        engine, short.state, ChanceResolver(seed=5).resolve(decision)
+    ).state
     assert shuffled.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
     assert shuffled.intrigue_discard == ()
     peeked = peeked_intrigue_ids(shuffled, 0)
@@ -591,12 +605,20 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     check_observation_privacy(lone.state)
     peek = [event for event in lone.events if event.kind == "intrigue_cards_peeked"]
     assert [dict(event.payload)["count"] for event in peek] == [1]
-    only = UprisingRulesEngine().legal_actions(lone.state, 0)
+    only = UprisingRulesEngine().whole_actions(lone.state, 0)
     assert only == (
         DomainAction(
             action_id="keep_peeked_intrigue",
             actor=0,
             arguments=(("instance_id", INTRIGUE[0]),),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the card by its target row.
+    assert UprisingRulesEngine().legal_actions(lone.state, 0) == (
+        DomainAction(
+            action_id="choose_intrigue_card",
+            actor=0,
+            arguments=(("card_id", INTRIGUE[0]),),
         ),
     )
     kept_lone = apply_intrigue_peek(lone.state, only[0]).state
@@ -646,7 +668,9 @@ def test_imperium_ceremony_peek_never_shuffles_twisted_cards_in() -> None:
     assert isinstance(decision, ChanceDecision)
     assert decision.options == INTRIGUE[1:2]
     assert decision.count == 1
-    shuffled = engine.apply(mixed.state, ChanceResolver(seed=5).resolve(decision))
+    shuffled = apply_whole(
+        engine, mixed.state, ChanceResolver(seed=5).resolve(decision)
+    )
     assert peeked_intrigue_ids(shuffled.state, 0) == INTRIGUE[:2]
     assert shuffled.state.intrigue_discard == twisted
     # One card face down and only Twisted cards discarded: nothing to
@@ -688,9 +712,9 @@ def test_imperium_ceremony_through_the_engine() -> None:
     state = resolve_agent_card_effect(
         _place(_state(_owner((ceremony,))), ceremony, "assembly_hall")
     ).state
-    legal = engine.legal_actions(state, 0)
+    legal = engine.whole_actions(state, 0)
     assert {a.action_id for a in legal} == {"keep_peeked_intrigue"}
-    after = engine.apply(state, legal[0])
+    after = apply_whole(engine, state, legal[0])
     assert after.state.players[0].intrigue_cards == (INTRIGUE[0],)
 
 
@@ -825,7 +849,7 @@ def test_shadout_mapes_deploys_a_garrison_commander() -> None:
         "deploy_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
     )
     assert "decline_reveal_troop_move" not in _offered_ids(revealed)
-    result = UprisingRulesEngine().apply(revealed, deploy)
+    result = apply_whole(UprisingRulesEngine(), revealed, deploy)
     owner = result.state.players[0]
     assert (owner.commanders_conflict, owner.commanders_garrison) == (1, 0)
     context = dict(result.state.decision_stack[-1].context)
@@ -850,7 +874,7 @@ def test_shadout_mapes_retreats_the_last_commander_and_its_skills() -> None:
     assert retreat == DomainAction(
         "retreat_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
     )
-    retreated = UprisingRulesEngine().apply(revealed, retreat).state
+    retreated = apply_whole(UprisingRulesEngine(), revealed, retreat).state
     owner = retreated.players[0]
     assert (owner.commanders_conflict, owner.commanders_garrison) == (0, 1)
     # No unit left in the Conflict: no strength and no active Skill; "she will
@@ -875,9 +899,16 @@ def test_shadout_mapes_offers_both_unit_kinds_in_each_zone() -> None:
         DomainAction("retreat_reveal_card_troop", 0, (mapes,)),
         DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1), mapes)),
     )
+    # Stage B3d-2a: the Reveal choice offers each move as the effect row of the
+    # card that prints it, so the whole template is in no catalog.
     codec = ActionCodec(IMMORTALITY_BLOODLINES)
     for action in actions:
-        assert codec.decode(codec.encode(action), 0) == action
+        (row,) = steps_for(action)
+        assert row.action_id in {"deploy", "retreat"}
+        assert dict(row.arguments)["printed"] == "shadout_mapes"
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
 
 
 def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> None:
@@ -1110,7 +1141,7 @@ def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> Non
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    _trash_waits_on_the_agent_turn(resolved)
+    _trash_waits_on_the_agent_turn(resolved, "agent_card|throne_room_politics")
 
     trash = next(
         a
@@ -1187,7 +1218,7 @@ def test_throne_room_politics_last_effect_trash_stays_out_of_a_later_reveal() ->
     )
 
     engine = UprisingRulesEngine()
-    played = engine.apply(
+    played = apply_whole(engine, 
         ended,
         DomainAction(
             action_id="play_intrigue",
@@ -1256,7 +1287,7 @@ def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -
     if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
         placed = resolve_faction_influence(placed).state
     resolved = resolve_agent_card_effect(placed).state
-    _trash_waits_on_the_agent_turn(resolved)
+    _trash_waits_on_the_agent_turn(resolved, "agent_card|throne_room_politics")
 
     trash = next(
         a
@@ -1348,7 +1379,7 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c6r6"
     )
-    advanced = engine.apply(resolved, to_influence_choice).state
+    advanced = apply_whole(engine, resolved, to_influence_choice).state
     # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
     # mandatory, so the end waits for it.
     assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
@@ -1359,12 +1390,19 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
         for a in legal_research_bonus_actions(advanced, 0)
         if dict(a.arguments).get("faction") == "spacing_guild"
     )
-    result = engine.apply(advanced, influence_choice).state
+    result = apply_whole(engine, advanced, influence_choice).state
 
     owner_after = result.players[0]
     assert owner_after.influence.spacing_guild == 4
     assert owner_after.alliance_faction_ids == ("spacing_guild",)
     assert owner_after.completed_contract_ids == (earn_alliance,)
+    # The Contract's reward waits on the Agent turn as rows (stage B3b,
+    # OQ-112 (4)); its troops come with the row, and the end waits for it.
+    assert result.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result, 0)
+    assert not _turn_end_offered(result)
+    result = answer_reward_windows(engine, result)
+    owner_after = result.players[0]
     # The Contract completes, and its troops count for the open turn.
     assert owner_after.troops_garrison == 3 + 2
     _, context = current_agent_effect_context(result)
@@ -1419,7 +1457,7 @@ def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c8r6"
     )
-    advanced = engine.apply(resolved, to_c8r6).state
+    advanced = apply_whole(engine, resolved, to_c8r6).state
     assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert [bonus.value for bonus, _ in pending_research_bonuses(advanced, 0)] == [
         "seven_solari_for_two_tleilaxu"
@@ -1428,7 +1466,7 @@ def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
     assert "decline_research_bonus" not in _offered_ids(advanced)
     assert _turn_end_offered(advanced)
 
-    pressed = engine.apply(
+    pressed = apply_whole(engine, 
         advanced, DomainAction(action_id="finish_agent_turn", actor=0)
     )
     lapsed = [
@@ -1494,7 +1532,7 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c6r6"
     )
-    advanced = engine.apply(resolved, to_influence_choice).state
+    advanced = apply_whole(engine, resolved, to_influence_choice).state
     # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
     # mandatory, so the end waits for it.
     assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
@@ -1505,7 +1543,7 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         for a in legal_research_bonus_actions(advanced, 0)
         if dict(a.arguments).get("faction") == "emperor"
     )
-    opened = engine.apply(advanced, influence_choice).state
+    opened = apply_whole(engine, advanced, influence_choice).state
 
     # The Influence gain happens, and the queued Navigation play opens on
     # the owner's open turn.
@@ -1518,7 +1556,7 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
         for a in legal_navigation_play_actions(opened, 0)
         if dict(a.arguments)["option"] == 0
     )
-    result = engine.apply(opened, play).state
+    result = apply_whole(engine, opened, play).state
 
     # Card 6 option 0 (RecruitTroops(1)) recruits its troop for this turn.
     assert result.players[0].troops_garrison == 3 + 1
@@ -1571,13 +1609,13 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
         for a in legal_research_advance_actions(resolved, 0)
         if dict(a.arguments)["space_id"] == "c3r3"
     )
-    advanced = engine.apply(resolved, to_trash_and_specimen).state
+    advanced = apply_whole(engine, resolved, to_trash_and_specimen).state
     # The two icons are independent effects in the owner's order (user decision
     # 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027 [Main
     # p. 9]): the specimen waits as a mandatory row beside the trash, and holds
     # the turn's end until it is taken.
     assert advanced.players[0].specimens == 0
-    _trash_waits_on_the_agent_turn(advanced, specimen_waits=True)
+    _trash_waits_on_the_agent_turn(advanced, "research|c3r3", specimen_waits=True)
 
     # The trash is taken first; the specimen still waits.
     trash = next(
@@ -1592,13 +1630,18 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     assert context["turn_owner"] == 0
     assert context["troops_recruited"] == 2
     assert trashed.players[0].specimens == 0 and not _turn_end_offered(trashed)
+    # c3r3 printed the specimen icon (stage B3e-1: the row names it).
     specimen = DomainAction(
         action_id="resolve_research_icon",
         actor=0,
-        arguments=(("effect", "specimen"),),
+        arguments=(
+            ("effect", "specimen"),
+            ("printed", "c3r3"),
+            ("source", "research"),
+        ),
     )
-    assert specimen in engine.legal_actions(trashed, 0)
-    trashed = engine.apply(trashed, specimen).state
+    assert specimen in engine.whole_actions(trashed, 0)
+    trashed = apply_whole(engine, trashed, specimen).state
     assert trashed.players[0].specimens == 1
     assert _turn_end_offered(trashed)
 
@@ -1777,15 +1820,42 @@ def test_tleilaxu_surgeon_advances_chanis_tactics_once() -> None:
 
 def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
     codec = ActionCodec(IMMORTALITY)
-    base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
-    for action in (
-        DomainAction("pay_agent_card_two_specimens", 0),
-        DomainAction("trash_grafted_card_for_specimen", 0),
-        DomainAction("take_agent_card_combat_icon", 0),
-        DomainAction("acquire_reserve_by_card", 0, (("card_id", "prepare_the_way"),)),
-        DomainAction(
-            "acquire_imperium_by_card", 0, (("instance_id", _card("for_humanity")),)
+    base_templates = set(ActionCodec(RulesetConfig()).catalog)
+    base = {template.action_id for template in base_templates}
+    # Stage B3a: the Agent-effect frame offers these as the effect row of the
+    # Immortality card that prints them (then a target row, a card or a
+    # reserve stack that other catalogs may hold too); the effect rows are
+    # the templates only the Immortality catalogs hold.
+    for action, printed in (
+        (DomainAction("pay_agent_card_two_specimens", 0), "tleilaxu_surgeon"),
+        (DomainAction("trash_grafted_card_for_specimen", 0), "dissecting_kit"),
+        (DomainAction("take_agent_card_combat_icon", 0), "high_priority_travel"),
+        (
+            DomainAction(
+                "acquire_reserve_by_card", 0, (("card_id", "prepare_the_way"),)
+            ),
+            "tleilaxu_master",
         ),
+        (
+            DomainAction(
+                "acquire_imperium_by_card", 0, (("instance_id", _card("for_humanity")),)
+            ),
+            "tleilaxu_master",
+        ),
+    ):
+        rows = steps_for(action, printed)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        effect = ActionTemplate(rows[0].action_id, rows[0].arguments)
+        assert effect not in base_templates
+    # Stage B3d-2a: the Reveal choice offers these as the effect row of the
+    # card that prints them (then the Faction and the recipient of an
+    # Alliance token), so their whole templates are in no catalog and the
+    # effect rows are Immortality's alone. Shadout Mapes' troop move is its
+    # own row now: Unswerving Loyalty's "Fremen Bond: You may deploy or
+    # retreat one of your troops" [Unswerving Loyalty card] is the one every
+    # catalog holds.
+    for action in (
         DomainAction("lose_reveal_influence_for_vp", 0, (("faction", "fremen"),)),
         DomainAction(
             "lose_reveal_influence_for_vp",
@@ -1797,19 +1867,32 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         DomainAction(
             "lose_reveal_troops_for_specimens", 0, (("zones", "garrison,conflict"),)
         ),
-        DomainAction("decline_reveal_troop_sacrifice", 0),
+    ):
+        rows = steps_for(action)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
+        assert ActionTemplate(rows[0].action_id, rows[0].arguments) not in (
+            base_templates
+        )
+    loyalty = steps_for(
+        DomainAction("deploy_reveal_card_troop", 0, (("source", "unswerving_loyalty"),))
+    )
+    assert ActionTemplate(loyalty[0].action_id, loyalty[0].arguments) in base_templates
+    # Stage B3d-3: no handler ever answered ``decline_reveal_troop_sacrifice``,
+    # so it left every catalog (the Reveal frame never offers it either).
+    assert "decline_reveal_troop_sacrifice" not in {
+        template.action_id for template in codec.catalog
+    }
+    for action in (
         DomainAction(
             "resume_reveal_choice", 0, (("effect", "may_deploy_or_retreat_one_troop"),)
         ),
     ):
         assert codec.decode(codec.encode(action), 0) == action
-        assert action.action_id not in base or action.action_id in (
-            "resume_reveal_choice",
-            # Shadout Mapes shares its troop move with Unswerving Loyalty's
-            # "Fremen Bond: You may deploy or retreat one of your troops"
-            # [Unswerving Loyalty card], so every catalog holds it.
-            "deploy_reveal_card_troop",
-            "retreat_reveal_card_troop",
+        assert action.action_id not in base or action.action_id == (
+            "resume_reveal_choice"
         )
     assert "may_deploy_or_retreat_one_troop" not in {
         dict(template.arguments).get("effect")
@@ -1817,40 +1900,32 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         if template.action_id == "resume_reveal_choice"
     }
     # Mapes' Commander moves exist only where Commanders do [Bloodlines p. 4].
-    # Each card's move names it (``source``, codec v147); the source-less
-    # rows stay as never-legal ones.
-    assert {
-        (template.action_id, template.arguments)
-        for template in ActionCodec(IMMORTALITY_BLOODLINES).catalog
-        if template.action_id.endswith("_reveal_card_troop")
-    } == {
-        (action_id, arguments)
-        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        for arguments in (
-            (),
-            (("commanders", 1),),
-            *(
-                unit
-                for source in ("shadout_mapes", "unswerving_loyalty")
-                for unit in (
-                    (("source", source),),
-                    (("commanders", 1), ("source", source)),
-                )
-            ),
-        )
+    # Each card's move is its own effect row (``printed``, stage B3d-2a); the
+    # whole ids ``deploy_reveal_card_troop`` and ``retreat_reveal_card_troop``
+    # are in no catalog.
+    def troop_moves(config: RulesetConfig) -> set[tuple[str, tuple[object, ...]]]:
+        catalog = ActionCodec(config).catalog
+        assert not any(t.action_id.endswith("_reveal_card_troop") for t in catalog)
+        return {
+            (template.action_id, template.arguments)
+            for template in catalog
+            if template.action_id in {"deploy", "retreat"}
+            and dict(template.arguments).get("source") == "reveal_card"
+            and dict(template.arguments).get("printed")
+            in {"shadout_mapes", "unswerving_loyalty"}
+        }
+
+    moves = {"shadout_mapes", "unswerving_loyalty"}
+    assert troop_moves(IMMORTALITY_BLOODLINES) == {
+        (action_id, (*units, ("printed", printed), ("source", "reveal_card")))
+        for action_id in ("deploy", "retreat")
+        for printed in moves
+        for units in ((), (("commanders", 1),))
     }
-    assert {
-        (template.action_id, template.arguments)
-        for template in codec.catalog
-        if template.action_id.endswith("_reveal_card_troop")
-    } == {
-        (action_id, arguments)
-        for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        for arguments in (
-            (),
-            (("source", "shadout_mapes"),),
-            (("source", "unswerving_loyalty"),),
-        )
+    assert troop_moves(IMMORTALITY) == {
+        (action_id, (("printed", printed), ("source", "reveal_card")))
+        for action_id in ("deploy", "retreat")
+        for printed in moves
     }
 
 
@@ -1875,14 +1950,14 @@ def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
         imperium_row=row,
     )
     play = DomainAction("play_intrigue", 0, (("card_id", awe), ("option", 0)))
-    opened = engine.apply(state, play).state
+    opened = apply_whole(engine, state, play).state
     assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     acquire = next(
         a
-        for a in engine.legal_actions(opened, 0)
+        for a in engine.whole_actions(opened, 0)
         if dict(a.arguments).get("instance_id") == fervor
     )
-    done = engine.apply(opened, acquire).state
+    done = apply_whole(engine, opened, acquire).state
     assert [frame.kind for frame in done.decision_stack] == [
         FrameKind.TURN,
         FrameKind.RESEARCH_ADVANCE,
@@ -1899,11 +1974,11 @@ def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
     placed = _place(state, price, "dutiful_service")
     acquire = next(
         a
-        for a in engine.legal_actions(placed, 0)
+        for a in engine.whole_actions(placed, 0)
         if a.action_id == "acquire_imperium_with_solari"
         and dict(a.arguments)["instance_id"] == fervor
     )
-    done = engine.apply(placed, acquire).state
+    done = apply_whole(engine, placed, acquire).state
     assert done.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
     below = done.decision_stack[-2]
     assert below.kind == FrameKind.AGENT_EFFECTS

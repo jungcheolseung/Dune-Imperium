@@ -15,6 +15,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     encode_player_view,
 )
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_SETUP_SPACE_IDS,
     SKILL_FACE_UP,
@@ -51,6 +52,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_commander_withdrawals,
     reconcile_deployment_after_retreat,
 )
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_deployment,
@@ -301,14 +303,14 @@ def test_without_two_solari_nothing_is_offered_and_the_turn_end_lapses_it() -> N
     engine = UprisingRulesEngine()
     while steps := [
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id
         in ("resolve_faction_influence", "resolve_agent_card_effect")
     ]:
-        state = engine.apply(state, steps[0]).state
+        state = apply_whole(engine, state, steps[0]).state
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
-    assert finish in engine.legal_actions(state, 0)
-    finished = engine.apply(state, finish)
+    assert finish in engine.whole_actions(state, 0)
+    finished = apply_whole(engine, state, finish)
     assert [
         dict(event.payload)
         for event in finished.events
@@ -1148,7 +1150,7 @@ def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> Non
 
     engine = UprisingRulesEngine()
     deploy = DomainAction("deploy_commanders", 0, (("count", 1),))
-    result = engine.apply(opened, deploy)
+    result = apply_whole(engine, opened, deploy)
     deployed = result.state
     context = dict(deployed.decision_stack[-1].context)
     assert deployed.players[0].commanders_conflict == 1
@@ -1163,7 +1165,7 @@ def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> Non
 
     # Once each round: taking the spice (another transition) pays nothing more.
     (gain,) = legal_reveal_gain_actions(deployed, 0)
-    taken = engine.apply(deployed, gain).state
+    taken = apply_whole(engine, deployed, gain).state
     assert taken.players[0].resources.spice == 1
     assert dict(taken.decision_stack[-1].context)["persuasion"] == persuasion + 1
     assert legal_reveal_gain_actions(taken, 0) == ()
@@ -1194,7 +1196,7 @@ def test_a_commander_deployed_during_the_reveal_pays_hardys_troop() -> None:
     ).state
     assert legal_reveal_gain_actions(revealed, 0) == ()
     engine = UprisingRulesEngine()
-    result = engine.apply(
+    result = apply_whole(engine, 
         grant_combat_icon(revealed, 0),
         DomainAction("deploy_commanders", 0, (("count", 1),)),
     )
@@ -1206,7 +1208,7 @@ def test_a_commander_deployed_during_the_reveal_pays_hardys_troop() -> None:
     assert "water" not in dict(bonus.payload)
     supply = deployed.players[0].troops_supply
     (recruit,) = legal_reveal_gain_actions(deployed, 0)
-    recruited = engine.apply(deployed, recruit).state
+    recruited = apply_whole(engine, deployed, recruit).state
     assert recruited.players[0].troops_supply == supply - 1
     assert recruited.players[0].resources.water == 1
 
@@ -1229,7 +1231,7 @@ def test_reveal_bonuses_paid_at_the_start_are_not_paid_again_late() -> None:
     ).state
     persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
     engine = UprisingRulesEngine()
-    deployed = engine.apply(
+    deployed = apply_whole(engine, 
         grant_combat_icon(revealed, 0),
         DomainAction("deploy_commanders", 0, (("count", 1),)),
     ).state
@@ -1397,7 +1399,7 @@ def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> Non
     # strengths after every step; the card stays seat 0's, awarded once, and
     # the cleanup zeroes the markers.
     engine = UprisingRulesEngine()
-    transition = engine.apply(
+    transition = apply_whole(engine, 
         refreshed, DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
     )
     assert [event.kind for event in transition.events].count("conflict_won") == 0
@@ -1494,25 +1496,116 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v142: draw_owed_intrigue (OQ-106)
         + 140  # v147: the ``source``-named Reveal choice rows
         - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the base catalog's 1,763 ``agent_turn`` rows
+        # become 129 card and space picks.
+        - 1763
+        + 129
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon``, a row per
+        # icon a Conflict reward prints (14 without Bloodlines' Deep Cover
+        # Spy).
+        + 14
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_action_codec.test_catalog_is_fixed...): 792 leave and
+        # 964 rows join.
+        - 792
+        + 964
+        # v150 (stage B3b-2, OQ-111): the Reveal frame's effect and target
+        # rows replace the whole templates of the ids it adds to
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are: 146 leave and 28 rows join.
+        - 146
+        + 28
+        # v150 (stage B3c-1, OQ-111): the turn frame and the Combat, Conflict-end
+        # and Endgame Intrigue windows offer a card play as their effect row
+        # (``play``, ``match``) and the card's rows: the whole templates of
+        # ``play_intrigue`` (54) and ``match_endgame_wild_icon`` (19) leave and
+        # 26 rows join.
+        - 73
+        + 26
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # offer effect rows: 228 whole templates leave and 68 rows join.
+        - 228
+        + 68
+        # v150 (stage B3d-2a): the windows opened for one effect offer it by
+        # its target rows: 1,466 whole templates leave and 54 rows join.
+        - 1466
+        + 54
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` / ``confirm_empty`` row naming the effect it answers: 37
+        # whole templates leave (five of them ids no handler ever answered)
+        # and 100 rows join.
+        - 37
+        + 100
+        # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go
+        # by their effect rows: draw_owed_intrigue and place_track_spy leave
+        # (2) and four rows join.
+        - 2
+        + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 16 rows join.
+        - 13
+        + 16
     )
 
-    actions = (
+    # Stage B3a: the Commander's acquisition at the Sardaukar space is an
+    # effect row naming the space and icon, then the Skill as its target row.
+    acquire_commander = steps_for(
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
-        DomainAction("recruit_sardaukar_commander", 3),
-        DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),
-        DomainAction("deploy_commanders", 0, (("count", 7),)),
-        DomainAction("withdraw_commanders", 1, (("count", 1),)),
-        DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
+        "sardaukar",
+    )
+    assert [row.action_id for row in acquire_commander] == ["acquire", "choose_skill"]
+    # Stage B3b-2: the Reveal frame offers a Skill's trash and Lady Amber's
+    # Commander retreat as effect rows (the Skill row names the Commander).
+    trash_skill = steps_for(
+        DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),))
+    )
+    retreat_commander = steps_for(
+        DomainAction("retreat_leader_commander", 3), "lady_amber_metulli"
+    )
+    # Stage B3d-2a: the Intrigue windows' unit counts and the Conflict card of
+    # a flip are target rows (``choose_count`` with its Commanders,
+    # ``choose_conflict_card``), and the Reveal frame's retreat names its card.
+    deploy_intrigue = steps_for(
         DomainAction("deploy_intrigue_troops", 0, (("commanders", 1), ("count", 1))),
-        DomainAction("retreat_two_troops_for_reveal", 0, (("commanders", 2),)),
-        # v147: the retreat names its card (``source``).
+        effect_row=False,
+    )
+    retreat_intrigue = steps_for(
+        DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
+        effect_row=False,
+    )
+    flip_battle = steps_for(
+        DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
+        effect_row=False,
+    )
+    # v147: the retreat names its card (``source``).
+    retreat_for_reveal = steps_for(
         DomainAction(
             "retreat_two_troops_for_reveal",
             0,
             (("commanders", 2), ("source", "chani_clever_tactician")),
-        ),
-        DomainAction("retreat_leader_commander", 3),
-        DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
+        )
+    )
+    # Stage B3d-4: the turn offers the recruit as its effect row, not the
+    # bare ``recruit_sardaukar_commander`` template.
+    recruit_commander = DomainAction(
+        "recruit",
+        3,
+        (("printed", "sardaukar_commander"), ("source", "commander")),
+    )
+    actions = (
+        *acquire_commander,
+        recruit_commander,
+        *trash_skill,
+        DomainAction("deploy_commanders", 0, (("count", 7),)),
+        DomainAction("withdraw_commanders", 1, (("count", 1),)),
+        *retreat_intrigue,
+        *deploy_intrigue,
+        *retreat_for_reveal,
+        *retreat_commander,
+        *flip_battle,
     )
     for action in actions:
         assert codec.decode(codec.encode(action), action.actor) == action
@@ -1544,7 +1637,9 @@ def test_every_reachable_unit_retreat_is_encodable() -> None:
     counts = [dict(arguments)["count"] for arguments in reachable]
     assert max(counts) == MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT
     for arguments in reachable:
-        action = DomainAction("retreat_intrigue_troops", 0, arguments)
+        # Stage B3d-2a: the window's retreat is its count row.
+        whole = DomainAction("retreat_intrigue_troops", 0, arguments)
+        (action,) = steps_for(whole, effect_row=False)
         assert codec.decode(codec.encode(action), 0) == action
 
 
@@ -1783,8 +1878,17 @@ def test_two_wild_icons_pair_with_each_other_in_the_endgame() -> None:
         0,
         (("matching_card_id", "storms_in_the_south"), ("wild_card_id", "propaganda")),
     )
+    # Stage B3c-1: the Endgame window offers the match as its effect row and
+    # the two cards' target rows (``effect_steps.steps_for``).
     codec = ActionCodec(BLOODLINES)
-    assert codec.decode(codec.encode(match), 0) == match
+    rows = steps_for(match)
+    assert [row.action_id for row in rows] == [
+        "match",
+        "choose_conflict_card",
+        "choose_conflict_card",
+    ]
+    for row in rows:
+        assert codec.decode(codec.encode(row), 0) == row
     result = apply_endgame_intrigue_action(opened, match).state.players[0]
     assert result.victory_points == 2
     assert set(result.face_down_battle_card_ids) == {

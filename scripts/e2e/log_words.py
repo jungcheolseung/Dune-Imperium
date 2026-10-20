@@ -141,7 +141,36 @@ GAMES = (
     # first (again with Family Atomics, the Feyd track, research, the three
     # v146 events and v147's unused Reveal choice and Reveal choice rows; the
     # exchanged Influence stays with seed 25).
-    {"seats": ["random"] * 4, "game_seed": 22, "policy_seed": 22, **EVERY_EXPANSION},
+    # Stage B1 (codec v150) asks an Agent turn as a card pick and then a space
+    # pick, so random seats draw the card and the space in turn and seed 22
+    # loses its Secrets steal. A headless scan of the same games over random
+    # seeds 1-120 (2026-10-19) finds seed 39 first with the steal and Family
+    # Atomics, the Feyd track, research, the three v146 events and v147's
+    # unused Reveal choice and Reveal choice rows.
+    # Stage B3a (a waiting effect is picked before its target, so random
+    # seats draw the effect and then its target) moves seed 39 off its
+    # Secrets steal. A headless scan of the same games over random seeds
+    # 1-200 (2026-10-20) finds seed 197 the only one with the steal and
+    # Family Atomics, the Feyd track, research, the three v146 events and
+    # v147's unused Reveal choice.
+    # Stage B3b (a Contract completed in its owner's turn leaves its icons as
+    # rows of that turn, so random seats draw from another list) moves seed
+    # 197 off its Secrets steal. The same scan over random seeds 1-500
+    # (2026-10-20) finds seed 9 first with the steal and all of the above.
+    # Stage B3b-2 (the Reveal frame's effects come effect first) moves seed 9
+    # off its Secrets steal; the same scan over random seeds 1-400 finds seed
+    # 3 first with the steal and all of the above. Stage B3c-1 (a card is
+    # played effect first) moves seed 3 off its steal and its Feyd track; the
+    # same scan over random seeds 1-400 finds seed 283 first with all of it.
+    # Stage B3c-2b (an optional trash on the turn is its icon's row, then the
+    # card) moves seed 283 off its steal and its unused Reveal choice; the
+    # same scan over random seeds 1-400 finds seed 185 first with all of it.
+    {
+        "seats": ["random"] * 4,
+        "game_seed": 185,
+        "policy_seed": 185,
+        **EVERY_EXPANSION,
+    },
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -178,10 +207,35 @@ GAMES = (
     # modifier, Clear the Market, a mission's pieces and troops, an auction
     # won, Mercenaries, the secret picks revealed and Mating Season; seed 22
     # has the round modifier and the mission troops).
+    # Stage B1 (codec v150: random seats draw an Agent turn's card and space
+    # in turn) moves seed 106 off the mission troops and Mercenaries, and
+    # seed 22 below off them too; no seed of 1-160 pairs with seed 22 again.
+    # A headless scan of the Scouts games over random seeds 1-160
+    # (2026-10-19) finds the pair 2 and 13 first that reaches every Scouts
+    # surface (seed 2: Clear the Market, Mercenaries, the secret picks
+    # revealed and an auction won; seed 13 below: a round modifier, Mating
+    # Season, a mission's pieces and troops and an auction won).
+    # Stage B2 (OQ-112: random seats draw over a Conflict reward's icon rows)
+    # moves seed 2 off the secret picks revealed and seed 13 off Mating
+    # Season. The same headless scan over random seeds 1-200 (2026-10-19)
+    # finds the pair 7 and 20 first (seed 7: a round modifier, Clear the
+    # Market, a mission's pieces and troops, an auction won and the secret
+    # picks revealed; seed 20 below: Mating Season and Mercenaries).
+    # Stage B3a (random seats draw a waiting effect and then its target)
+    # moves seed 7 off its round modifier and Clear the Market and seed 20
+    # off Mercenaries. The same headless scan over random seeds 1-200
+    # (2026-10-20) finds the pair 3 and 5 first (no single seed reaches every
+    # Scouts surface). Stage B3b-2 (the Reveal frame's effects) moves the pair
+    # off Clear the Market, Mercenaries and Mating Season; the same scan over
+    # random seeds 1-300 finds the pair 1 and 90 first. Stage B3c-1 (a card
+    # is played effect first) moves them again; the same scan finds the pair
+    # 2 and 209 first. Stage B3d-1 (the reward windows offer effect rows)
+    # moves seed 2 off its round modifier; the same scan finds the pair 4
+    # and 209 first.
     {
         "seats": ["random"] * 4,
-        "game_seed": 106,
-        "policy_seed": 106,
+        "game_seed": 4,
+        "policy_seed": 4,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -216,8 +270,13 @@ GAMES = (
         # mission troops and an auction won.
         # Codec v146 moves seed 22 off Mating Season (the game above has it);
         # it keeps the round modifier, mission troops and an auction won.
-        "game_seed": 22,
-        "policy_seed": 22,
+        # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
+        # above (see there), since stage B2 seed 20 with seed 7, since stage
+        # B3a seed 5 with seed 3, since stage B3b-2 seed 90 with seed 1,
+        # since stage B3c-1 seed 209 with seed 2, and since stage B3d-1 seed
+        # 209 with seed 4.
+        "game_seed": 209,
+        "policy_seed": 209,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -276,6 +335,9 @@ async ({gameId}) => {
     for (const lang of ["ko", "en"]) {
       setLanguage(lang, false);
       for (const entry of meta.log) {
+        // A step that only picks toward a waiting effect: the page's log
+        // shows the effect whole on its last step (stage B3, panels.js).
+        if (entry.pick) continue;
         if (entry.type === "chance") {
           take();
           const label = {type: "chance", decision_id: entry.decision_id,

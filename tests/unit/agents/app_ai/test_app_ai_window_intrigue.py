@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities import intrigue as I
@@ -136,7 +137,9 @@ def make_run(
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == SEAT
     if legal is None:
-        legal = ENGINE.legal_actions(state, SEAT)
+        # The whole actions the rules resolve (stage B3c-1: the turn frame and
+        # the Combat Intrigue window offer a play effect first).
+        legal = ENGINE.whole_actions(state, SEAT)
     ctx = AppContext(state, SEAT, ENGINE.observe(state, SEAT))
     profile = Profile(ctx, TABLES[2], random.Random(0))
     for name, fn in stubs.items():
@@ -177,13 +180,13 @@ def app_play(
     assert source.evaluate is not None
     _, action = source.evaluate()
     assert action is not None
-    return ENGINE.apply(state, action, legal_actions=run.legal).state
+    return apply_whole(ENGINE, state, action, legal_actions=run.legal).state
 
 
 def step(state: GameState, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, SEAT)
+    legal = ENGINE.whole_actions(state, SEAT)
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action, legal_actions=legal).state
 
 
 def kind(state: GameState) -> str:
@@ -256,8 +259,8 @@ def test_sources_one_per_card_values_actions_and_intents(
     assert memory.intents[("intrigue", iid("imperium_politics"))] == Answer(
         12.0, (("spacing_guild",),)
     )
-    assert memory.intents[("intrigue_at", iid("imperium_politics"))] == len(
-        state.event_log
+    assert memory.intents[("intrigue_at", iid("imperium_politics"))] == (
+        W.event_stamp(state)
     )
 
 
@@ -447,8 +450,8 @@ def test_lose_influence_replays_the_answer_then_falls_back(
     )
     assert W.intrigue_choice(run) == act("choose_intrigue_faction", faction="emperor")
     assert fresh.intents[("intrigue", iid("backed_by_choam"))] == Answer(0.0, None)
-    assert fresh.intents[("intrigue_at", iid("backed_by_choam"))] == len(
-        state.event_log
+    assert fresh.intents[("intrigue_at", iid("backed_by_choam"))] == (
+        W.event_stamp(state)
     )
 
 
@@ -668,7 +671,7 @@ def test_cunning_draws_after_its_trash_as_its_own_step(
     memory = Memory()
     choice = app_play(state, memory, "cunning")
     trash = act("trash_intrigue_card", card_id=hand[0])
-    after = ENGINE.apply(choice, trash).state
+    after = apply_whole(ENGINE, choice, trash).state
     run = make_run(after, memory)
     assert run.legal == (act("resolve_intrigue_rewards"),)
     assert W.intrigue_choice(run) == act("resolve_intrigue_rewards")
@@ -987,8 +990,12 @@ def test_change_allegiances_prices_the_swap_before_the_loss(
     # first decision the agent is asked after the play.
     assert len(ENGINE.legal_actions(effects, SEAT)) == 1
     lose = step(effects, act("use_intrigue_effect", section=0))
-    assert ENGINE.legal_actions(lose, SEAT) == (
+    assert ENGINE.whole_actions(lose, SEAT) == (
         act("choose_intrigue_faction", faction="emperor"),
+    )
+    # The window shows that one choice as its target row (stage B3d-2a).
+    assert ENGINE.legal_actions(lose, SEAT) == (
+        act("choose_faction", faction="emperor"),
     )
     gain = step(lose, act("choose_intrigue_faction", faction="emperor"))
     assert gain.players[SEAT].influence.emperor == 1
@@ -1054,6 +1061,9 @@ def test_change_allegiances_spice_gain_skips_tracks_at_the_top(
     assert line1 is not None
     gain = step(effects, line1)
     assert act("choose_intrigue_faction", faction="emperor") not in (
+        ENGINE.whole_actions(gain, SEAT)
+    )
+    assert act("choose_faction", faction="emperor") not in (
         ENGINE.legal_actions(gain, SEAT)
     )
     g = g_values(emperor=5.0, fremen=1.0)
@@ -1107,7 +1117,9 @@ def test_change_allegiances_finishes_without_spice(
     memory = Memory()
     effects = app_play(state, memory, "change_allegiances")
     # Only line 0 is usable: the engine does not ask (one legal action).
-    assert ENGINE.legal_actions(effects, SEAT) == (
+    # (Stage B3d-1: the window shows that line as an effect row; the whole
+    # action is the one the app AI sees.)
+    assert ENGINE.whole_actions(effects, SEAT) == (
         act("use_intrigue_effect", section=0),
     )
     lose = step(effects, act("use_intrigue_effect", section=0))

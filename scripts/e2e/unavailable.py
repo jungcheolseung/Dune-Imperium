@@ -306,9 +306,9 @@ for seed in seeds:
             stored = SaveStore(saves).write(document)
             print(json.dumps({"seed": seed, "save_id": stored["save_id"]}))
             sys.exit(0)
-        legal = session.engine.legal_actions(session.state, 0)
+        legal = session.engine.whole_actions(session.state, 0)
         view = session.engine.observe(session.state, 0)
-        index = legal.index(agent.choose_action(view, legal))
+        index = legal.index(agent.choose_action_with_state(session.state, view, legal))
         manager.apply_action(game_id, 0, int(payload["revision"]), index)
 print(json.dumps(None))
 """
@@ -664,6 +664,7 @@ def maker_case(page, base: str, saves: Path) -> bool:
 CONFLICT_END_PY = """
 import json
 from dune_imperium.core import DomainAction
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.sessions import GameSessionManager
 from tests.unit.display.test_unavailable import (
@@ -672,13 +673,15 @@ from tests.unit.display.test_unavailable import (
 first, second = HARVEST_CELLS
 mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
 engine = UprisingRulesEngine()
-played = engine.apply(
-    _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
+# The window offers its play effect first (stage B3c-1).
+played = apply_whole(
+    engine, _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
 ).state
 states = {
     "commanders": _conflict_end_window(first),
-    "second": engine.apply(
-        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    # A refusal is its window's decline row (stage B3d-3).
+    "second": apply_whole(
+        engine, played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state,
     "lit": _conflict_end_window(first, troops_supply=1, troops_garrison=11),
 }
@@ -1113,9 +1116,11 @@ for seed in seeds:
                 print(json.dumps({**found, "owner": owner, "answerer": seat}))
                 sys.exit(0)
             break
-        legal = session.engine.legal_actions(session.state, seat)
+        legal = session.engine.whole_actions(session.state, seat)
         view = session.engine.observe(session.state, seat)
-        index = legal.index(agents[seat].choose_action(view, legal))
+        index = legal.index(
+            agents[seat].choose_action_with_state(session.state, view, legal)
+        )
         manager.apply_action(game_id, seat, int(payload["revision"]), index)
 print(json.dumps(None))
 """

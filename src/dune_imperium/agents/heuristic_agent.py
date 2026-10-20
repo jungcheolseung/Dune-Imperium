@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import PlacementMemory
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
     ResearchBonus,
@@ -40,6 +42,7 @@ from dune_imperium.content.uprising.reserve import (
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
+from dune_imperium.core.state import GameState
 from dune_imperium.rules.influence import MAX_INFLUENCE
 from dune_imperium.rules.reveal_turn import REVEAL_CHOICE_ACTION_IDS
 
@@ -624,7 +627,7 @@ def reveal_value_forfeited(
 ) -> float:
     """Reveal value the placement's card forfeits, or 0.0 when unpriced."""
 
-    if weights is None or action.action_id != "agent_turn":
+    if weights is None or action.action_id not in ("agent_turn", "choose_agent_card"):
         return 0.0
     instance_id = _argument(action, "card_id")
     if not isinstance(instance_id, str):
@@ -651,16 +654,18 @@ def cheapest_card_for_the_same_space(
     ``chosen`` already fixes the board space -- it was drawn from ``tied`` by
     the seeded tie-break, so the space distribution is untouched. Only the card
     carrying the Agent there is reconsidered, among the tied placements that
-    name the same space. Anything but an ``agent_turn`` is returned unchanged.
+    name the same space. Anything but an ``agent_turn`` placement, or a card
+    pick scored without its space (``choose_agent_card``, view-only), is
+    returned unchanged.
     """
 
-    if weights is None or chosen.action_id != "agent_turn":
+    if weights is None or chosen.action_id not in ("agent_turn", "choose_agent_card"):
         return chosen
     space_id = _argument(chosen, "space_id")
     same_space = tuple(
         action
         for action in tied
-        if action.action_id == "agent_turn"
+        if action.action_id == chosen.action_id
         and _argument(action, "space_id") == space_id
     )
     if len(same_space) < 2:
@@ -1084,10 +1089,17 @@ def score_action(
     if action_id in _IMPERIUM_ACQUISITIONS or action_id in _RESERVE_ACQUISITIONS:
         cost = _acquisition_cost(action)
         return _ACQUISITION_BASE + (float(cost) if cost is not None else 0.0)
-    if action_id == "agent_turn":
+    if action_id in ("agent_turn", "place_agent"):
+        # A whole placement (``agents.agent_turn_steps``), or, view-only,
+        # the space pick of stage B1: the space's bonus.
         space_id = _argument(action, "space_id")
         bonus = space_bonuses.get(space_id, 0.0) if isinstance(space_id, str) else 0.0
         return _ACTION_SCORES["agent_turn"] + bonus
+    if action_id == "choose_agent_card":
+        # View-only, a card pick cannot see where the card goes: an Agent
+        # turn still outranks a Reveal, and the spent-card price picks the
+        # card (``cheapest_card_for_the_same_space``).
+        return _ACTION_SCORES["agent_turn"]
     if action_id == "acquire_tech":
         tech_id = _argument(action, "tech_id")
         bonus = tech_bonuses.get(tech_id, 0.0) if isinstance(tech_id, str) else 0.0
@@ -1372,11 +1384,36 @@ class HeuristicAgent:
     # None for the uniform draw the registry pins on one variant.
     tie_breaks: TieBreaks | None = TIE_BREAKS
     _rng: random.Random = field(init=False, repr=False)
+    _placements: PlacementMemory = field(
+        init=False, repr=False, default_factory=PlacementMemory
+    )
 
     def __post_init__(self) -> None:
         if self.seed < 0:
             raise ValueError("agent seed must not be negative")
         self._rng = random.Random(self.seed)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        """``choose_action``, with an Agent-turn step (stage B1) scored as the
+        placements it stands for, one decision per placement
+        (``agents.agent_turn_steps``): the state only supplies the seat's
+        own placements. A Conflict reward's icons are answered in the
+        engine's older order (``agents.engine_order``)."""
+
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            return scripted
+        return self._placements.choose(
+            state,
+            observation.player,
+            legal_actions,
+            lambda actions: self.choose_action(observation, actions),
+        )
 
     def choose_action(
         self,

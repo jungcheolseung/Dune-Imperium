@@ -11,6 +11,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.board import Faction
@@ -26,7 +27,10 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.effect_steps import path_of
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.tech import (
     legal_tech_acquire_effect_actions,
@@ -34,6 +38,9 @@ from dune_imperium.rules.tech import (
 )
 
 ENGINE = UprisingRulesEngine()
+# The Intrigue card that grants the tests' card-granted Acquire Tech; its
+# refusal names it (stage B3d-3).
+ACQUIRE_PRINTER = printer_value(Source.INTRIGUE, "battlefield_research")
 CONFIG = RulesetConfig(bloodlines=True, tech_module=True, choam_module=True)
 
 
@@ -70,20 +77,34 @@ def turn(*tech_ids: str, **owner_fields: object) -> GameState:
 def act(state: GameState, action_id: str, **args: object) -> GameState:
     action = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
+        for action in ENGINE.whole_actions(state, 0)
         if action.action_id == action_id
         and all(dict(action.arguments).get(k) == v for k, v in args.items())
     )
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def buy(state: GameState, tech_id: str) -> GameState:
-    opened = push_tech_acquisition(state, 0, discount=0, source=f"test:{tech_id}").state
+    opened = push_tech_acquisition(
+        state,
+        0,
+        discount=0,
+        source=f"test:{tech_id}",
+        printer=ACQUIRE_PRINTER,
+    ).state
     return act(opened, "acquire_tech", tech_id=tech_id)
 
 
 def place(state: GameState) -> GameState:
-    return act(state, "agent_turn", space_id="assembly_hall")
+    """The first placement at the Assembly Hall, as the Agent turn's two steps
+    (stage B1)."""
+
+    placement = next(
+        placement
+        for placement in executable_placements(state, 0)
+        if dict(placement.arguments)["space_id"] == "assembly_hall"
+    )
+    return apply_placement(ENGINE, state, placement).state
 
 
 @pytest.mark.parametrize("tech_id", ["glowglobes", "navigation_chamber"])
@@ -99,17 +120,17 @@ def test_influence_is_unchanged_until_the_owner_selects_a_faction(
     assert {dict(a.arguments)["faction"] for a in rewards} == {f.value for f in Faction}
     assert legal_tech_acquire_effect_actions(bought, 1) == ()
     assert not any(
-        a.action_id == "finish_agent_turn" for a in ENGINE.legal_actions(bought, 0)
+        a.action_id == "finish_agent_turn" for a in ENGINE.whole_actions(bought, 0)
     )
     # Another effect may resolve between buying and gaining Influence.
     after_board = act(bought, "resolve_board_effect", effect="intrigue")
     assert after_board.players[0].influence == Influence()
     chosen = next(a for a in rewards if dict(a.arguments)["faction"] == faction.value)
-    resolved = ENGINE.apply(after_board, chosen).state
+    resolved = apply_whole(ENGINE, after_board, chosen).state
     assert resolved.players[0].influence == replace(Influence(), **{faction.value: 1})
     assert legal_tech_acquire_effect_actions(resolved, 0) == ()
     with pytest.raises(ValueError):
-        ENGINE.apply(resolved, chosen)
+        apply_whole(ENGINE, resolved, chosen)
 
 
 @pytest.mark.parametrize("tile", TECH_TILES, ids=lambda tile: tile.tech_id)
@@ -119,7 +140,9 @@ def test_purchase_never_pays_any_acquire_reward(tile: object) -> None:
     assert isinstance(tile, TechTile)
     state = turn(tile.tech_id, spy_post_ids=("arrakis-deep-desert",), spies_supply=2)
     before = state.players[0]
-    opened = push_tech_acquisition(state, 0, discount=0, source="test").state
+    opened = push_tech_acquisition(
+        state, 0, discount=0, source="test", printer=ACQUIRE_PRINTER
+    ).state
     bought = act(opened, "acquire_tech", tech_id=tile.tech_id)
     after = bought.players[0]
     assert after.resources.solari == before.resources.solari
@@ -136,8 +159,12 @@ def test_purchase_never_pays_any_acquire_reward(tile: object) -> None:
     if tile.acquire_requires_spy_trash:
         assert after.spy_post_ids == () and after.spies_boxed == 1
     codec = ActionCodec(CONFIG)
-    for action in ENGINE.legal_actions(bought, 0):
-        assert codec.decode(codec.encode(action), 0) == action
+    for action in ENGINE.whole_actions(bought, 0):
+        # Stage B3c-1: the turn frame offers Flip Tech as its effect row and
+        # the tile's row (``effect_steps.steps_for``); the whole left the
+        # catalog. Stage B3d-1: so do a bought tile's waiting acquire icons.
+        for row in path_of(bought, action) or (action,):
+            assert codec.decode(codec.encode(row), 0) == row
 
 
 @pytest.mark.parametrize("transition", ["agent_turn", "reveal_turn"])
@@ -152,11 +179,11 @@ def test_rewards_bought_before_placement_survive_the_turn_transition(
     else:
         changed = act(bought, "reveal_turn")
         finish = "finish_reveal"
-    assert not any(a.action_id == finish for a in ENGINE.legal_actions(changed, 0))
+    assert not any(a.action_id == finish for a in ENGINE.whole_actions(changed, 0))
     resolved = act(changed, "resolve_tech_acquire_effect", effect="troops")
     assert resolved.players[0].troops_garrison == 5
     deploy = [
-        a for a in ENGINE.legal_actions(resolved, 0) if a.action_id == "deploy_troops"
+        a for a in ENGINE.whole_actions(resolved, 0) if a.action_id == "deploy_troops"
     ]
     assert max(int(dict(a.arguments)["count"]) for a in deploy) == 4
 
@@ -213,7 +240,7 @@ def test_combat_purchase_has_an_explicit_effect_window_before_resuming() -> None
     ).state
     bought = buy(combat, "glowglobes")
     assert bought.decision_stack[-1].kind == "tech_acquisition"
-    assert {a.action_id for a in ENGINE.legal_actions(bought, 0)} == {
+    assert {a.action_id for a in ENGINE.whole_actions(bought, 0)} == {
         "resolve_tech_acquire_effect"
     }
     resolved = act(bought, "resolve_tech_acquire_effect", faction="spacing_guild")

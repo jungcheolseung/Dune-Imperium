@@ -518,10 +518,16 @@ def step_keys(
     if isinstance(action_id, str):
         owner = action_id
         keys.append(f"action_ids:{action_id}")
-        if action_id == "agent_turn":
+        if action_id in ("agent_turn", "place_agent"):
             arguments = dict(getattr(step, "arguments", ()))
             space_id = arguments.get("space_id")
             card_id = arguments.get("card_id")
+            if action_id == "place_agent":
+                # Stage B1: the card was picked a step earlier and waits in
+                # the turn frame.
+                stack = getattr(before, "decision_stack", ())
+                context = dict(getattr(stack[-1], "context", ())) if stack else {}
+                card_id = context.get("agent_card_pick")
             if isinstance(space_id, str):
                 option = arguments.get("cost_option", 0)
                 if isinstance(option, bool) or not isinstance(option, int):

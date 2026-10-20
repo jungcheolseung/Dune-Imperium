@@ -21,10 +21,23 @@ the same engine tables and card data the rules execute.
 """
 
 import re
+from copy import replace
 
+from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
-from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    EffectSection,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    LoseInfluence,
+    RecruitTroops,
+    Reward,
+    TakeContract,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reveal_choice_abilities import (
     reveal_choice_is_optional,
@@ -37,6 +50,8 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.display.cards import agent_box_text, agent_box_text_ko
+from dune_imperium.display.effect_dsl_text import reward_text, section_text
+from dune_imperium.display.effect_dsl_text_ko import reward_text_ko, section_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import scouts_action_text
 from dune_imperium.display.spaces import (
@@ -51,11 +66,18 @@ from dune_imperium.rules.agent_effects import (
     box_in_progress,
     resolves_boost_draw,
 )
+from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
+from dune_imperium.rules.combat import REWARD_ICON_ACTION, reward_icon_piece
+from dune_imperium.rules.contracts import (
+    CONTRACT_REWARD_ICON_ACTION,
+    contract_icon_piece,
+)
+from dune_imperium.rules.effect_steps import owed_origin_printer, whole_printer
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
 from dune_imperium.rules.graft_boxes import (
     active_box,
     box_card_id,
@@ -67,7 +89,7 @@ from dune_imperium.rules.graft_boxes import (
 )
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.owed_draws import next_owed_draw
-from dune_imperium.rules.reveal_turn import pending_choice_entries
+from dune_imperium.rules.reveal_turn import pending_choice_entries, reveal_gain_source
 
 _BOX = PersonalCardAgentEffect
 # The card whose added Agent-box draw ``resolves_boost_draw`` names, by its
@@ -619,6 +641,87 @@ def research_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
     return _RESEARCH_ICON_TEXT[str(dict(action.arguments)["effect"])]
 
 
+def combat_reward_icon_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Describe one icon of a Conflict reward recipient's window
+    (``resolve_combat_reward_icon``, stage B2): the record piece that prints
+    it, with a sandworm's double on an automatic icon's amount."""
+
+    if action.action_id != REWARD_ICON_ACTION:
+        return None
+    frame = owned_top_frame(state, FrameKind.COMBAT_REWARD_ICONS, action.actor)
+    if frame is None or not state.current_conflict_ids:
+        return None
+    context = dict(frame.context)
+    rank = context["rank"]
+    multiplier = context["multiplier"]
+    assert isinstance(rank, int) and isinstance(multiplier, int)
+    kind = str(dict(action.arguments)["effect"])
+    piece = reward_icon_piece(state.current_conflict_ids[-1], rank, kind)
+    match piece:
+        case EffectSection():
+            return section_text(piece), section_text_ko(piece)
+        case None:
+            # Pivotal Gambit's pledged Influence, which no record prints.
+            pledged = GainInfluence()
+            return reward_text(pledged), reward_text_ko(pledged)
+        case TakeContract(count=count) if not state.config.choam_module:
+            # Without the CHOAM Module a Contract icon is 2 Solari
+            # [Main pp. 16, 20].
+            solari = GainResources(solari=2 * count * multiplier)
+            return reward_text(solari), reward_text_ko(solari)
+    scaled = _scaled_reward(piece, multiplier)
+    return reward_text(scaled), reward_text_ko(scaled)
+
+
+def contract_reward_icon_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Describe one icon of a completed Contract's reward
+    (``resolve_contract_reward_icon``): a row of its window (stage B2) or a
+    row waiting on its owner's turn, which names the Contract (stage B3b,
+    OQ-112 (4)); the record piece that prints it."""
+
+    if action.action_id != CONTRACT_REWARD_ICON_ACTION:
+        return None
+    arguments = dict(action.arguments)
+    if "contract_id" in arguments:
+        instance_id = str(arguments["contract_id"])
+    else:
+        frame = owned_top_frame(state, FrameKind.CONTRACT_REWARD_ICONS, action.actor)
+        if frame is None:
+            return None
+        instance_id = str(dict(frame.context)["contract_id"])
+    piece = contract_icon_piece(instance_id, str(arguments["effect"]))
+    return reward_text(piece), reward_text_ko(piece)
+
+
+def _scaled_reward(piece: Reward, multiplier: int) -> Reward:
+    """An automatic icon's piece with a sandworm's double on its amount."""
+
+    if multiplier == 1:
+        return piece
+    match piece:
+        case GainResources(solari=solari, spice=spice, water=water):
+            return GainResources(
+                solari=solari * multiplier,
+                spice=spice * multiplier,
+                water=water * multiplier,
+            )
+        case DrawIntrigueCards(count=count):
+            return DrawIntrigueCards(count=count * multiplier)
+        case RecruitTroops(count=count):
+            return replace(piece, count=count * multiplier)
+        case TakeContract(count=count):
+            return replace(piece, count=count * multiplier)
+        case GainVictoryPoints(amount=amount):
+            return replace(piece, amount=amount * multiplier)
+        case GainInfluence(times=times, factions=(_,)):
+            return replace(piece, times=times * multiplier)
+    return piece
+
+
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
     """Describe one queued Tech reward and its currently chosen branch."""
 
@@ -721,8 +824,47 @@ def owed_draw_action_text(
     if deck is None or not 0 <= action.actor < len(state.players):
         return None
     owner = state.players[action.actor]
+    printer = whole_printer(action)
+    if printer is not None:
+        # One action per entity that earned a draw (stage B3e-1): its own.
+        origin = next(
+            (
+                origin
+                for entry_deck, origin, _ in owner.owed_draws
+                if entry_deck == deck
+                and owed_origin_printer(state, action.actor, origin) == printer
+            ),
+            None,
+        )
+        return None if origin is None else owed_draw_origin_text(origin)
     index = next_owed_draw(owner, deck)
     return None if index is None else owed_draw_origin_text(owner.owed_draws[index][1])
+
+
+def reveal_gain_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Name what printed the Reveal gain an action takes (stage B3e-1, one
+    action per entity): a revealed card, a Skill, a Tech tile, the leader."""
+
+    source = reveal_gain_source(state, action)
+    if source is None:
+        return None
+    if source.startswith("skill:"):
+        skill = SKILLS_BY_ID[source.removeprefix("skill:")]
+        return skill.name, KOREAN_CARD_NAMES["skills"].get(skill.skill_id, skill.name)
+    if source.startswith("tech:"):
+        tile = TECH_TILES_BY_ID[source.removeprefix("tech:")]
+        return tile.name, KOREAN_CARD_NAMES["tech"].get(tile.tech_id, tile.name)
+    if source.startswith("leader_reveal:"):
+        leader_id = state.players[action.actor].leader_id
+        if leader_id is None:
+            return None
+        leader = LEADERS_BY_ID[leader_id]
+        return leader.name, KOREAN_CARD_NAMES["leaders"].get(
+            leader.leader_id, leader.name
+        )
+    return _card_names(source)
 
 
 def intrigue_faction_choice_text(
@@ -754,12 +896,19 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     faction = intrigue_faction_choice_text(state, action)
     if faction is not None:
         return faction[0]
-    owed = owed_draw_action_text(state, action)
+    owed = owed_draw_action_text(state, action) or reveal_gain_action_text(
+        state, action
+    )
     if owed is not None:
         return owed[0]
     tech = tech_acquire_action_text(action) or research_icon_action_text(action)
     if tech is not None:
         return tech[0]
+    icon = combat_reward_icon_action_text(
+        state, action
+    ) or contract_reward_icon_action_text(state, action)
+    if icon is not None:
+        return icon[0]
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[0]
@@ -823,12 +972,19 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     faction = intrigue_faction_choice_text(state, action)
     if faction is not None:
         return faction[1]
-    owed = owed_draw_action_text(state, action)
+    owed = owed_draw_action_text(state, action) or reveal_gain_action_text(
+        state, action
+    )
     if owed is not None:
         return owed[1]
     tech = tech_acquire_action_text(action) or research_icon_action_text(action)
     if tech is not None:
         return tech[1]
+    icon = combat_reward_icon_action_text(
+        state, action
+    ) or contract_reward_icon_action_text(state, action)
+    if icon is not None:
+        return icon[1]
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[1]
@@ -860,3 +1016,33 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     if row_box is None and resolves_boost_draw(state, action):
         return f"{agent_card_icon_text_ko(None, key)} ({_SHIGAWIRE_KO})"
     return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)
+
+
+def agent_placements(
+    state: GameState, seat: int, actions: tuple[DomainAction, ...]
+) -> tuple[tuple[int, DomainAction], ...] | None:
+    """The placements an Agent-turn card pick leads to (stage B1), for the
+    page's staged turn: one ``(row, placement)`` per card-and-space
+    placement, ``row`` the index in ``actions`` of the card pick that starts
+    it, ``placement`` the whole move as ``rules.agent_turn``
+    ``executable_placements`` builds it (card, graft choice, space, cost
+    option, discount, infiltration). The page picks a card and a space in
+    either order, as before the split, and sends the card pick and then the
+    matching space pick. None when the decision holds no card pick. Display
+    only: the legal rows are unchanged.
+    """
+
+    rows: dict[tuple[object, bool], int] = {}
+    for index, action in enumerate(actions):
+        if action.action_id == CARD_PICK_ACTION:
+            arguments = dict(action.arguments)
+            rows[(arguments["card_id"], arguments.get("graft") is True)] = index
+    if not rows:
+        return None
+    entries: list[tuple[int, DomainAction]] = []
+    for placement in executable_placements(state, seat):
+        arguments = dict(placement.arguments)
+        row = rows.get((arguments["card_id"], arguments.get("graft") is True))
+        if row is not None:
+            entries.append((row, placement))
+    return tuple(entries)

@@ -74,7 +74,9 @@ def main() -> None:
         mismatches = 0
         glow_misses = 0
         undone = False
-        for _ in range(160):
+        # Twice the steps it once took: an Agent turn is now a card pick and
+        # a space pick, each a step of its own.
+        for _ in range(320):
             assert settled(page, 30)
             if page.evaluate("state.summary.finished"):
                 break
@@ -86,7 +88,9 @@ def main() -> None:
                 index = page.evaluate("""() => {
                   const rows = state.actions.actions;
                   const pick = (id) => rows.find((a) => a.action_id === id);
-                  return (pick('agent_turn') || rows[0]).index;
+                  // An Agent turn is two steps: a card pick, then a space pick.
+                  return (pick('choose_agent_card') || pick('place_agent')
+                    || rows[0]).index;
                 }""")
                 page.evaluate(f"applyAction({index})")
             assert settled(page, 30)

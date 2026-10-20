@@ -18,6 +18,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -33,6 +34,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.state import canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.frames import (
     TURN_START_OVER_KEY,
     FrameKind,
@@ -103,11 +105,13 @@ def _turn_state(
 
 
 def _offered(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, seat)
+    # The whole actions the rules resolve (stage B3c-1: the turn frame offers
+    # its effects effect first, and these tests speak whole actions).
+    return ENGINE.whole_actions(state, seat)
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _starts_open(state: GameState) -> bool:
@@ -138,7 +142,8 @@ def test_a_plot_ends_the_start_on_the_still_open_turn_frame() -> None:
     assert not _starts_open(plotted)
     # Only the two cards go: the Agent and Reveal turns are still the choice.
     ids = {action.action_id for action in _offered(plotted)}
-    assert {"agent_turn", "reveal_turn"} <= ids
+    # (The Agent turn's first step is its card pick, stage B1.)
+    assert {"choose_agent_card", "reveal_turn"} <= ids
     # The mark is part of the state (hashed, kept by undo and replay).
     unmarked = replace(
         plotted,
@@ -199,7 +204,9 @@ def test_any_other_owner_action_on_the_turn_frame_ends_the_start(
 def _answer_every_opponent(state: GameState) -> GameState:
     """Seats 1-3 each answer a unit-loss window stacked on seat 0's turn."""
 
-    state = opponent_unit_loss_frames(state, 0, source="test").state
+    # Holy War makes every opponent lose a unit (stage B3d-3: the printer).
+    holy_war = printer_value(Source.AGENT_CARD, "holy_war")
+    state = opponent_unit_loss_frames(state, 0, source="test", printer=holy_war).state
     for seat in (1, 2, 3):
         top = state.decision_stack[-1]
         assert isinstance(top.decision, PlayerDecision)

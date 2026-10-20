@@ -80,6 +80,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import acquire_reserve_for_intrigue
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -165,6 +166,51 @@ def scouts_option(item: str, index: int) -> EffectSection:
     if item in AUCTIONS_BY_ID:
         return EffectSection(rewards=AUCTIONS_BY_ID[item].rank_rewards[index])
     raise ValueError(f"unknown Scouts item: {item!r}")
+
+
+def scouts_spy_items() -> tuple[str, ...]:
+    """The Scouts items with a line that places a Spy (the Spy placement
+    window's printer, ``spy_moves.spy_placement_frame``)."""
+
+    return _items_rewarding(PlaceSpy)
+
+
+def scouts_trash_items() -> tuple[str, ...]:
+    """The Scouts items with a line that trashes a card (the optional trash
+    window's printer, ``optional_trash.optional_trash_frame``; B3d-3)."""
+
+    return _items_rewarding(TrashPersonalCard)
+
+
+def _items_rewarding(reward: type) -> tuple[str, ...]:
+    lines: list[tuple[str, EffectSection]] = [
+        *((item, entry.option) for item, entry in SUBCOMMITTEES_BY_ID.items()),
+        *(
+            (item, line)
+            for item, event in EVENTS_BY_ID.items()
+            for line in (
+                *event.options,
+                *(choice.option for choice in event.secret_choices),
+            )
+        ),
+        *(
+            (item, line)
+            for item, sale in SALES_BY_ID.items()
+            for line in sale.options
+        ),
+        *(
+            (item, EffectSection(rewards=rewards))
+            for item, auction in AUCTIONS_BY_ID.items()
+            for rewards in auction.rank_rewards
+        ),
+    ]
+    return tuple(
+        dict.fromkeys(
+            item
+            for item, line in lines
+            if any(isinstance(piece, reward) for piece in line.rewards)
+        )
+    )
 
 
 def option_steps(option: EffectSection) -> tuple[ScoutsStep, ...]:
@@ -531,7 +577,9 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
         # Units already picked one at a time while both kinds were in the
         # garrison count toward the cost (OQ-105).
         current = replace(current, count=current.count - picked)
-    result = _apply_automatic(moved, player, current, source=f"{source}:{step}")
+    result = _apply_automatic(
+        moved, player, current, source=f"{source}:{step}", item=item
+    )
     if step < len(option.costs):
         return result
     stack = result.state.decision_stack
@@ -675,9 +723,10 @@ def apply_scouts_rewards_first(state: GameState, action: DomainAction) -> RuleRe
     stack[index] = replace(line, context=tuple(sorted(context.items())))
     result = RuleResult(state=replace(state, decision_stack=tuple(stack)))
     events: list[GameEvent] = []
+    item = context_str(context, "item", owner=_EFFECT_FRAME)
     for step, reward in enumerate(later, start=first):
         result = _apply_automatic(
-            result.state, action.actor, reward, source=f"{source}:{step}"
+            result.state, action.actor, reward, source=f"{source}:{step}", item=item
         )
         events.extend(result.events)
     return RuleResult(state=result.state, events=tuple(events))
@@ -697,6 +746,7 @@ def _apply_automatic(
     step: ScoutsStep,
     *,
     source: str,
+    item: str,
 ) -> RuleResult:
     owner = state.players[player]
     match step:
@@ -781,13 +831,16 @@ def _apply_automatic(
                     player,
                     _ALL_POSTS,
                     source=source,
+                    printer=printer_value(Source.SCOUTS, item),
                 )
             )
         case TrashPersonalCard():
             # The trash icon: optional [Main p. 20].
             return RuleResult(
                 state=state.push_decision(
-                    optional_trash_frame(player, source)
+                    optional_trash_frame(
+                        player, source, printer=printer_value(Source.SCOUTS, item)
+                    )
                 )
             )
         case AcquireReserveCardToHand(card_id=card_id):

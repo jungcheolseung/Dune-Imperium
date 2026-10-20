@@ -562,6 +562,16 @@ def advance_after_effect(
     if isinstance(owner, bool) or not isinstance(owner, int):
         raise RuntimeError("Agent-turn effect frame has invalid owner")
     frame = _owner_effect_frame(state, owner)
+    # The effects waiting on the turn are the frame's own (``turn_rows``
+    # alone changes them): one queued while the effect resolved -- a
+    # Contract's icons it completed (OQ-112 (4)) -- is not undone by a
+    # context read before it.
+    context = dict(context)
+    waiting = dict(frame.context).get(PENDING_KEY)
+    if waiting is None:
+        context.pop(PENDING_KEY, None)
+    else:
+        context[PENDING_KEY] = waiting
     next_frame = replace(frame, context=tuple(sorted(context.items())))
     return replace(
         state,

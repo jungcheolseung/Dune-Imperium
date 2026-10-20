@@ -2,7 +2,7 @@
 §3.5, §4.7; docs/app-ai-plan.md §11.8).
 
 Each test reaches a real Agent turn of a Scouts game (the first turn, the
-seat's hand and the Scouts goods adjusted, then a real ``agent_turn``),
+seat's hand and the Scouts goods adjusted, then a real Agent-turn placement),
 builds the ``DecisionRun`` the agent would build and asserts the source the
 window builds or the exact action it answers. Ability answers a branch
 depends on are pinned (``monkeypatch``); ``intrigue_play_sources`` (another
@@ -15,6 +15,7 @@ from collections.abc import Mapping
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.app_ai.abilities import scouts as sc
 from dune_imperium.agents.app_ai.abilities.base import Answer
 from dune_imperium.agents.app_ai.agent import AppAIAgent
@@ -33,6 +34,7 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.simulation.runner import run_policy_game
 
 SCOUTS = RulesetConfig(choam_module=False, arrakeen_scouts=True)
@@ -57,13 +59,13 @@ def no_plots(monkeypatch: pytest.MonkeyPatch) -> None:
 def _settle(state: GameState) -> GameState:
     chance = ChanceResolver(seed=1)
     while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
-        state = ENGINE.apply(state, chance.resolve(decision)).state
+        state = apply_whole(ENGINE, state, chance.resolve(decision)).state
     return state
 
 
 def _apply(state: GameState, seat: int, action: DomainAction) -> GameState:
-    legal = ENGINE.legal_actions(state, seat)
-    return _settle(ENGINE.apply(state, action, legal_actions=legal).state)
+    legal = ENGINE.whole_actions(state, seat)
+    return _settle(apply_whole(ENGINE, state, action, legal_actions=legal).state)
 
 
 def _place(
@@ -87,21 +89,20 @@ def _place(
         state = with_player(state, seat, **before)
     placements = [
         action
-        for action in ENGINE.legal_actions(state, seat)
-        if action.action_id == "agent_turn"
-        and arg(action, "space_id") == space
+        for action in executable_placements(state, seat)
+        if arg(action, "space_id") == space
         and arg(action, "infiltrate_post_id") is None
     ]
     assert placements, f"no card goes to {space}"
     plain = [a for a in placements if "signet_ring" not in str(arg(a, "card_id"))]
-    state = _apply(state, seat, (plain or placements)[0])
+    state = _settle(apply_placement(ENGINE, state, (plain or placements)[0]).state)
     assert state.decision_stack[-1].kind == "agent_effects"
     return state, seat
 
 
 def _run(state: GameState, seat: int, memory: Memory | None = None) -> DecisionRun:
     profile = make_profile(state, seat)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     return DecisionRun(
         profile.ctx, profile, legal, random.Random(0), memory or Memory()
     )
@@ -131,7 +132,7 @@ def _a(seat: int, action_id: str, **arguments: str | int) -> DomainAction:
 
 
 def _ids(state: GameState, seat: int) -> set[str]:
-    return {a.action_id for a in ENGINE.legal_actions(state, seat)}
+    return {a.action_id for a in ENGINE.whole_actions(state, seat)}
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +164,7 @@ def test_mission_collect_is_automatic_with_the_space(
     state, seat = _imperial_privilege(spice=1, solari=0)
     actions = [
         a
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "scouts_collect_mission"
     ]
     assert actions == [_a(seat, "scouts_collect_mission", choice="")]
@@ -182,7 +183,7 @@ def test_imperial_reserve_pick_is_the_ability_answer(
     state, seat = _imperial_privilege(spice=1, solari=2)
     choices = {
         str(arg(a, "choice"))
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "scouts_collect_mission"
     }
     assert choices == {"spice", "solari"}

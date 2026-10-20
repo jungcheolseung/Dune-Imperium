@@ -11,6 +11,7 @@ card itself (user ruling 2026-10-10, OQ-106).
 """
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -19,11 +20,14 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.optional_trash import open_planetologist_replacement
 
+# The leader whose Arrakis Planetologist replaces every sandworm.
+PLANETOLOGIST_LEADER: Final = "liet_kynes"
+
 
 def replaces_sandworms(player: PlayerState) -> bool:
     """Return whether this seat turns every sandworm into the replacement."""
 
-    return player.leader_id == "liet_kynes"
+    return player.leader_id == PLANETOLOGIST_LEADER
 
 
 def replace_sandworms(

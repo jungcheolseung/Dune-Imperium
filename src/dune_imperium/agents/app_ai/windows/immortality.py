@@ -169,6 +169,7 @@ from dune_imperium.agents.app_ai.windows.common import (
 from dune_imperium.agents.app_ai.windows.intrigue import (
     INTENT,
     INTENT_AT,
+    event_stamp,
     intrigue_request,
     research_intent,
 )
@@ -625,7 +626,7 @@ def _harvest_cells_evaluator(
         # As ``windows.intrigue`` records a play: the answer and the index
         # the play's ``intrigue_played`` event will take.
         run.memory.intents[(INTENT, instance)] = answer
-        run.memory.intents[(INTENT_AT, instance)] = len(run.ctx.state.event_log)
+        run.memory.intents[(INTENT_AT, instance)] = event_stamp(run.ctx.state)
         return answer.value, action
 
     return evaluate

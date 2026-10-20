@@ -46,7 +46,9 @@ import re
 import sys
 from pathlib import Path
 
-from dune_imperium.core.actions import DomainAction
+from placement_walk import walk_step
+
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
@@ -99,18 +101,21 @@ def frame_lists(state) -> tuple[list[str], list[str]]:
     return played, pending
 
 
-def expires_box(engine, state, owner, card_id) -> bool:
-    """Whether trashing ``card_id`` with the fixture's action expires an
-    Agent box of that card in the engine's own step."""
+def expires_box(engine, state, action) -> bool:
+    """Whether the trash row ``action`` expires an Agent box of its card in
+    the engine's own step."""
 
-    action = DomainAction(
-        action_id=TRASH, actor=owner, arguments=(("card_id", card_id),)
-    )
+    card_id = dict(action.arguments)["card_id"]
     return any(
         event.kind == "agent_card_effect_expired"
         and dict(event.payload).get("card_id") == card_id
-        for event in engine.apply(state, action).events
+        for event in apply_whole(engine, state, action).events
     )
+
+
+# The arguments of an optional trash on the turn that name its trash icon
+# (stage B3c-2b, ``server.turn_cards.ICON_ARGUMENTS``).
+ICON_ARGUMENTS = ("printed", "printed_box", "source")
 
 
 def twin_rows(state, owner, actions) -> tuple[str, str] | None:
@@ -118,11 +123,13 @@ def twin_rows(state, owner, actions) -> tuple[str, str] | None:
 
     played, _ = frame_lists(state)
     in_play = state.players[owner].in_play
-    offered = [
-        dict(action.arguments)["card_id"]
-        for action in actions
-        if action.action_id == TRASH
-    ]
+    offered = list(
+        dict.fromkeys(
+            dict(action.arguments)["card_id"]
+            for action in actions
+            if action.action_id == TRASH
+        )
+    )
     for card in offered:
         if card not in played:
             continue
@@ -153,7 +160,7 @@ for name, seed, want_pending in CASES:
             summary = manager.confirm_turn(gid, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         pair = twin_rows(session.state, owner, actions)
         if pair is not None:
             played, pending = frame_lists(session.state)
@@ -168,16 +175,29 @@ for name, seed, want_pending in CASES:
                     "pending": want_pending,
                     "turn_card_ids": played,
                     "pending_box_card_ids": pending,
+                    # One row per card and trash icon (stage B3c-2b), in
+                    # the server's order.
                     "box_losing_trash": [
-                        {"action_id": TRASH, "card_id": card}
-                        for card in pair
-                        if expires_box(session.engine, session.state, owner, card)
+                        {
+                            "action_id": TRASH,
+                            "card_id": dict(action.arguments)["card_id"],
+                            **{
+                                key: value
+                                for key, value in action.arguments
+                                if key in ICON_ARGUMENTS
+                            },
+                        }
+                        for action in actions
+                        if action.action_id == TRASH
+                        and dict(action.arguments)["card_id"] in pair
+                        and expires_box(session.engine, session.state, action)
                     ],
                 }
                 break
-        summary = manager.apply_action(
-            gid, owner, summary["revision"], rng.randrange(len(actions))
-        )
+        # An Agent placement is drawn as one choice, as before stage B1
+        # (``placement_walk``), so the seeds keep their games.
+        # ``choice`` draws as ``randrange`` over the list did.
+        summary, _ = walk_step(manager, gid, owner, summary, rng.choice)
 
 missing = {name for name, _, _ in CASES} - set(found)
 if missing:

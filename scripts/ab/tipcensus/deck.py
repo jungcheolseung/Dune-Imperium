@@ -101,7 +101,7 @@ from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.endgame import FinalStanding
 from dune_imperium.rules.frames import FrameKind
 
-from .base import Collector, Columns, Step, payload
+from .base import Collector, Columns, Step, payload, placement
 
 FACTION_ICONS = frozenset(
     (
@@ -426,8 +426,9 @@ def _resolve_instance_id(
 #   ``rules/reveal_turn.py::_eligible_reveal_effects``) or
 #   ``per_revealed_faction`` (a *count* of revealed same-Faction cards
 #   including the card itself, not a same/other gate -- Sardaukar
-#   Coordination, Stilgar the Devoted; ``_reveal_effect_persuasion``/
-#   ``_reveal_effect_strength``). The latter is not literally
+#   Coordination, Stilgar the Devoted; ``rules/reveal_lines.RevealLine``'s
+#   ``persuasion_over``/``strength_over`` since stage B3e-2). The latter is not
+#   literally
 #   ``has_faction_bond``, but it needs company of the same Faction to pay off
 #   more than its own base value, matching doc 6.6's framing, so it is kept
 #   in the table with a code-comment flag.
@@ -519,7 +520,8 @@ PER_REVEALED: frozenset[str] = frozenset(
 def _agent_side(s: Step, p: int) -> bool:
     """Return whether seat ``p``'s new ``in_play`` card(s) this step are Agent-side.
 
-    "agent_turn" is the placement action itself. A Graft partner is chosen
+    The placement (since stage B1 the space pick, ``placement``) is the
+    Agent-side step itself. A Graft partner is chosen
     under a separate action ID (``choose_graft_partner``), but it still
     enters play while seat ``p``'s ``FrameKind.AGENT_EFFECTS`` frame is open
     (``rules/agent_turn.py`` pushes it at placement; it stays open after the
@@ -532,7 +534,7 @@ def _agent_side(s: Step, p: int) -> bool:
     choice frame can sit above it.
     """
 
-    if s.action is not None and s.action.action_id == "agent_turn":
+    if placement(s) is not None:
         return True
     return any(
         frame.kind == FrameKind.AGENT_EFFECTS

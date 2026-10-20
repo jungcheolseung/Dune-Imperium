@@ -30,17 +30,34 @@ from typing import Final
 
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import is_sealed_value_id, known_card_seats
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.effect_steps import completed_whole, presents_steps
 
 # Actions whose arguments are the acting seat's secret: Arrakeen Scouts'
 # secret pick and sealed bid (docs/rules/arrakeen-scouts.md 7, 8.1). A
 # single action id carries the value in its arguments, so the id itself
-# tells nothing.
-SEALED_ACTION_IDS: Final = frozenset({"scouts_secret_pick", "scouts_bid"})
+# tells nothing. An Agent turn's card pick is sealed too (stage B1, OQ-111
+# (1): only its seat sees it until the space pick plays the card): its card
+# may be one the table already knows in hand, and its graft choice is no
+# card at all, so redacting the hidden card ids alone would leave them.
+SEALED_ACTION_IDS: Final = frozenset(
+    {"scouts_secret_pick", "scouts_bid", "choose_agent_card"}
+)
+# The argument keys a sealed step shows other seats, redacted, when only
+# some of its choices carry the rest: a card pick with ``graft`` would say
+# it is a graft by its keys alone. Any other sealed step shows all its keys.
+SEALED_SHOWN_KEYS: Final = {"choose_agent_card": ("card_id",)}
+# The seat-only event of a step toward a waiting effect (``rules.effect_steps``).
+EFFECT_PICKED_EVENT: Final = "effect_picked"
+# The whole actions a step ends come from the rules' providers alone, so any
+# engine instance gives them.
+_ENGINE: Final = UprisingRulesEngine()
 # Events of the step that reveals sealed choices when they fall due.
 SEALED_REVEAL_EVENTS: Final = frozenset(
     {"scouts_secret_revealed", "scouts_bid_revealed"}
@@ -57,6 +74,17 @@ class LoggedStep:
     hidden_arguments: frozenset[str]
     undone: bool = False
     sealed: bool = False
+    # Stage B3: the whole action a step's last row of a waiting effect ends
+    # (an effect and its target, as the rules resolve it), which the log
+    # shows for the step; None for any other step.
+    whole: DomainAction | None = None
+
+    @property
+    def picks(self) -> bool:
+        """Whether the step only picks toward a waiting effect (stage B3);
+        the step that ends the effect shows it whole."""
+
+        return any(event.kind == EFFECT_PICKED_EVENT for event in self.events)
 
     @property
     def actor(self) -> int | None:
@@ -165,13 +193,30 @@ def log_step(
     """Build the log entry for one applied step."""
 
     actor = None if isinstance(step, ChanceOutcome) else step.actor
+    whole = (
+        completed_whole(before, step, _ENGINE.whole_actions(before, step.actor))
+        if not isinstance(step, ChanceOutcome) and presents_steps(before)
+        else None
+    )
+    hidden = hidden_argument_values(step, after)
+    if whole is not None:
+        hidden |= hidden_argument_values(whole, after)
     return LoggedStep(
         step=step,
         events=events,
         reveals=reveals_hidden_information(before, after, actor),
-        hidden_arguments=hidden_argument_values(step, after),
+        hidden_arguments=hidden,
+        whole=whole,
         sealed=not isinstance(step, ChanceOutcome)
-        and step.action_id in SEALED_ACTION_IDS,
+        and (
+            step.action_id in SEALED_ACTION_IDS
+            # A window's target row that ends a secret choice (a Scouts
+            # secret pick's option, a sealed bid's count: stage B3d-2b).
+            or (whole is not None and whole.action_id in SEALED_ACTION_IDS)
+            # A step toward a waiting effect is its seat's half-pick until
+            # the effect's last step (stage B3, OQ-111 (4)).
+            or any(event.kind == EFFECT_PICKED_EVENT for event in events)
+        ),
     )
 
 

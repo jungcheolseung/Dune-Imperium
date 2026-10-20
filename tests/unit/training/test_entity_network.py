@@ -43,6 +43,7 @@ from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
 from dune_imperium.core.state import GamePhase  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.rules.action_shapes import Source, Verb  # noqa: E402
 from dune_imperium.simulation.runner import run_policy_game  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
@@ -60,6 +61,7 @@ from dune_imperium.training.checkpoint import (  # noqa: E402
 )
 from dune_imperium.training.distill import legal_log_probs  # noqa: E402
 from dune_imperium.training.entity_features import (  # noqa: E402
+    _LEADER_OF_FACE,
     FEATURE_DIGEST,
     Vocabulary,
     resolve,
@@ -82,7 +84,16 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # deliberately (with FEATURE_VERSION when the reflection changes): an entity
 # checkpoint stores the digest and is refused under another one, so a card
 # data fix also retires every entity file written before it.
-_GOLDEN_DIGEST = "2a09fa17b9ae0a02bc731f49c0e3edcc3ad378239d4f16be63e1f5854226a5e0"
+# Stage B3b-2: a Commander's Skill prints the Reveal's Skill trash (the
+# ``printed`` hint reads the skill vocabulary too). Stage B3c-1: the Endgame
+# wild match's target row reads its card as a battle or Conflict card.
+# Stage B3c-2a: a research space prints its icons and bonuses (``printed``).
+# Stage B3d-1: so do the Conflict card of a reward window and the Intrigue
+# card of a lines window. Stage B3d-2a: and the Faction whose Influence
+# track opens a Spy window (the Emperor's); a Scouts line's printed item is
+# a label (``SCOUTS_ITEM_IDS``; a Scouts mission's too, stage B3d-2b).
+# Stage B3d-3: a refusal's ``of`` is a label.
+_GOLDEN_DIGEST = "0098fbb63ad1b9a664ffed44dbfc16cbb1afc530d38b16fbcc35ea8d494807c6"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -257,17 +268,80 @@ def test_every_catalog_argument_is_an_entity_of_its_kind_or_a_label() -> None:
         "leader_id": {"leader"},
         "intrigue_card_id": {"intrigue"},
         "matching_card_id": {"battle"},
-        "card_id": {"personal", "intrigue", "battle"},
+        "card_id": {"personal", "intrigue", "battle", "conflict"},
         "instance_id": {"personal", "intrigue", "contract"},
+        # Stage B3: an effect row's printed entity.
+        "printed": {
+            "personal",
+            "space",
+            "leader",
+            "tech",
+            "contract",
+            "skill",
+            # A research space (stage B3c-2a).
+            "research",
+            # A reward window's Conflict card, a lines window's Intrigue card
+            # (stage B3d-1).
+            "conflict",
+            "intrigue",
+            # The Emperor's Influence track, opening a Spy window (B3d-2a).
+            "faction",
+        },
     }
     seen: dict[str, set[str | None]] = {}
+    labels: set[str] = set()
     for template in ActionCodec(_EVERY_OPTION).catalog:
+        source = dict(template.arguments).get("source")
         for key, value in template.arguments:
             if isinstance(value, str):
-                found = resolve_argument(template.action_id, key, value)
+                found = resolve_argument(template.action_id, key, value, source)
                 seen.setdefault(key, set()).add(None if found is None else found[0])
+                if key == "printed" and found is None:
+                    labels.add(value)
     for key, allowed in hinted.items():
-        assert seen[key] - {None} <= allowed, key
+        # Stage B3 shows the Agent boxes' Intrigue payments by their target
+        # rows, so a catalog may hold no ``intrigue_card_id`` any more.
+        assert seen.get(key, set()) - {None} <= allowed, key
+    # Every printed entity of an effect row is an entity (stage B3), but the
+    # Reveal's markets, which no card or space prints (stage B3b-2), the
+    # windows a card is played in (stage B3c-1), and the Scouts lines that
+    # open a Spy window (stage B3d-2a) and the Scouts missions whose plain
+    # way is an effect row (stage B3d-2b), which have no vocabulary; since
+    # stage B3d-3 the Contract market a confirmation names, and the Scouts
+    # items whose trash, choice or market a refusal answers; since stage
+    # B3d-4 the Tleilaxu track's space that owes a draw (its trigger) and the
+    # Sardaukar Commander a recruit takes.
+    from dune_imperium.content.arrakeen_scouts import (
+        AUCTIONS,
+        EVENTS,
+        SALES,
+        missions_for,
+        scouts_pool,
+    )
+    from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
+
+    missions = missions_for(scouts_pool(immortality=True), choam=True)
+    assert labels == {
+        "imperium_row",
+        "reserve",
+        "set_aside",
+        "tleilaxu_row",
+        "plot",
+        "combat",
+        "endgame",
+        "conflict_end",
+        "turn_start",
+        "wild_icon",
+        *scouts_spy_items(),
+        *(mission.mission_id for mission in missions),
+        "contract_market",
+        *scouts_trash_items(),
+        *(event.event_id for event in EVENTS),
+        *(sale.sale_id for sale in SALES),
+        *(auction.auction_id for auction in AUCTIONS),
+        "tleilaxu_track",
+        "sardaukar_commander",
+    }
     # Every Imperium card a seat can play or buy is an entity, not a label.
     assert "personal" in seen["card_id"]
     assert seen["subcommittee_id"] == {None}
@@ -282,9 +356,16 @@ def test_actions_built_from_the_same_parts_are_copies_of_one_card() -> None:
     catalog = ActionCodec(_EVERY_OPTION).catalog
 
     def without_copy(index: int) -> object:
+        # A leader's two faces are one leader card; only one is up at a
+        # time, so their effect rows never meet (stage B3).
         template = catalog[index]
         return template.action_id, tuple(
-            (key, re.sub(r":\d+$", "", value) if isinstance(value, str) else value)
+            (
+                key,
+                _LEADER_OF_FACE.get(value, re.sub(r":\d+$", "", value))
+                if isinstance(value, str)
+                else value,
+            )
             for key, value in template.arguments
         )
 
@@ -312,6 +393,8 @@ _COUNTED = {
             "trashed",
             "private_hand",
             "private_peeked_card",
+            "private_agent_card_pick",
+            "private_effect_pick_card",
             "imperium_removed",
         ),
         "personal",
@@ -323,6 +406,7 @@ _COUNTED = {
             "intrigue_faceup",
             "private_intrigue",
             "private_peeked_intrigue",
+            "private_effect_pick_intrigue",
         ),
         "intrigue",
     ),
@@ -343,6 +427,14 @@ _COUNTED = {
     "battle_cards": "battle",
     "spy_posts": "post",
     "alliances": "faction",
+    # Stage B3: the targets picked so far (the B3c-1 review).
+    "private_effect_pick_faction": "faction",
+    "private_effect_pick_post": "post",
+    "private_effect_pick_tech": "tech",
+    "private_effect_pick_battle": "battle",
+    "private_effect_pick_second_faction": "faction",
+    # Stage B3d-2a: Long Live the Fighters' card to draw.
+    "private_effect_pick_personal": "personal",
 }
 
 
@@ -715,6 +807,15 @@ def test_an_entity_file_without_its_feature_table_is_refused_under_another(
         load_checkpoint(path)
 
 
+def _after_v31(segment: str) -> bool:
+    """Whether an observation segment was appended after v31: v32's deck pools
+    and v33's picked Agent card (stage B1) and picked effect (stage B3)."""
+
+    return segment.endswith("_deck_pool") or segment.startswith(
+        ("private_agent_card_pick", "private_effect_pick")
+    )
+
+
 def test_the_v31_input_names_are_pinned() -> None:
     """``legacy_inputs`` names a v31 file's inputs from today's tables; pinned
     so that a later change of the slot table or the zone list cannot change
@@ -723,7 +824,7 @@ def test_the_v31_input_names_are_pinned() -> None:
     input and the 1,140 slot keys identical, in order); the keys' digest is
     the v31 slot table's own golden digest."""
 
-    layout = [row for row in observation_layout() if not row[0].endswith("_deck_pool")]
+    layout = [row for row in observation_layout() if not _after_v31(row[0])]
     names, keys = legacy_inputs(31, layout, 64)
 
     def digest(rows: Sequence[str]) -> str:
@@ -755,19 +856,18 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
 ) -> None:
     """A file written before observation v32 (no stored input names, no deck
-    pool zones, no v32 slot fields) loads with every old input in its new
-    place and the new ones at zero: on observations whose deck pools are
-    empty it scores exactly as before (the v32 slot fields' columns are
-    still read as numbers too, ``FIELDS_KEPT_RAW``)."""
+    pool zones, no v33 picked Agent card, no v32 slot fields) loads with every
+    old input in its new place and the new ones at zero: on observations whose
+    deck pools and picked card are empty it scores exactly as before (the v32
+    slot fields' columns are still read as numbers too,
+    ``FIELDS_KEPT_RAW``)."""
 
     network = _network(_FULL)
     path = _saved(tmp_path, _FULL)
     document = checkpoint_module._read(path)
     # Cut the file down to what v31 code wrote.
     old_layout = [
-        row
-        for row in document["observation_layout"]
-        if not row[0].endswith("_deck_pool")
+        row for row in document["observation_layout"] if not _after_v31(row[0])
     ]
     old_names, old_keys = legacy_inputs(31, old_layout, network.entity_width)
     state = dict(document["state_dict"])
@@ -796,7 +896,16 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     assert isinstance(moved, EntityNetwork)
     assert info.migration is not None
     assert info.migration.from_observation_version == 31
-    assert info.migration.observation_new == network.entity_width * (1 + 3)
+    # Four deck-pool zones (v32), the picked Agent card's zone and graft
+    # flag (v33, stage B1), the picked effect's card zone, verb, source,
+    # box and target count (v33, stage B3) and the seven zones of its picked
+    # targets (v33, the B3c-1 review; a personal card, the B3d-2a review)
+    # are the inputs the file never had.
+    assert info.migration.observation_new == network.entity_width * (1 + 3) + (
+        network.entity_width + 1
+    ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
+        network.entity_width
+    )
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
@@ -817,6 +926,14 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
                 if name not in set(old_names[encoder])
             ]
             layer.weight[:, new] = 0.0
+        # Slot keys of an embedded field the file never had (the v33
+        # decision kinds of stage B2's reward windows) start at zero too.
+        unknown = [
+            SLOT_KEYS.index(f"decision_kind:{kind}")
+            for kind in ("combat_reward_icons", "contract_reward_icons")
+        ]
+        assert not {SLOT_KEYS[index] for index in unknown} & set(old_keys)
+        original.slot_key_own[unknown] = 0.0
         hidden = original.trunk(observations)
         assert torch.equal(moved.trunk(observations), hidden)
         assert torch.equal(

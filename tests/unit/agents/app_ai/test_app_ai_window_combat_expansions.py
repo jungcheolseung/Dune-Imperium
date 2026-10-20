@@ -13,8 +13,10 @@ from dataclasses import replace
 from functools import cache
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo
@@ -58,7 +60,9 @@ def _seat(state: GameState) -> int:
 
 
 def _legal(state: GameState) -> tuple[DomainAction, ...]:
-    return ENGINE.legal_actions(state, _seat(state))
+    # The whole actions the rules resolve (stage B3c-1: the Combat and
+    # Endgame Intrigue windows offer a play effect first).
+    return ENGINE.whole_actions(state, _seat(state))
 
 
 def _run(
@@ -80,7 +84,12 @@ def _find(state: GameState, action_id: str, **args: object) -> DomainAction:
 
 
 def _apply(state: GameState, action: DomainAction) -> GameState:
-    return ENGINE.apply(state, action, legal_actions=_legal(state)).state
+    """Apply ``action``; a Conflict reward window it leaves on top is answered
+    in the older engine's order up to the first choice its icons open (stage
+    B2, OQ-112), so the reward frames are met one after the other as before."""
+
+    applied = apply_whole(ENGINE, state, action, legal_actions=_legal(state)).state
+    return answer_reward_windows(ENGINE, applied)
 
 
 @cache
@@ -98,8 +107,9 @@ def _combat(config: RulesetConfig, seed: int, conflict: str | None = None) -> Ga
 
 
 def _rewards(state: GameState, **winner: object) -> GameState:
-    """Every combatant passes: the engine pays the rewards and stacks the
-    reward frames. ``winner`` adjusts the sole leader first."""
+    """Every combatant passes: the engine opens the reward window, whose rows
+    are answered in the older engine's order up to the first reward frame
+    (stage B2, OQ-112). ``winner`` adjusts the sole leader first."""
 
     seat = rank_combat(state.players, first_player=state.first_player).winner
     assert seat is not None
@@ -108,7 +118,7 @@ def _rewards(state: GameState, **winner: object) -> GameState:
         state = ENGINE.apply(
             state, DomainAction("pass_combat_intrigue", _seat(state))
         ).state
-    return state
+    return answer_reward_windows(ENGINE, state)
 
 
 def _pledged(state: GameState) -> GameState:
@@ -239,7 +249,7 @@ def _specimen_combat(want_play: bool) -> GameState:
     def predicate(state: GameState, owner: int) -> bool:
         if state.decision_stack[-1].kind != "combat_intrigue":
             return False
-        ids = {a.action_id for a in ENGINE.legal_actions(state, owner)}
+        ids = {a.action_id for a in ENGINE.whole_actions(state, owner)}
         return "return_specimen" in ids and ("play_intrigue" in ids) == want_play
 
     return play_until(predicate, config=IMMORTALITY, seed=1)

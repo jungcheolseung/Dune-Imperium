@@ -15,6 +15,7 @@ import json
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 
+from dune_imperium.agents.agent_turn_steps import placements_for_steps
 from dune_imperium.agents.heuristic_agent import (
     score_action,
 )
@@ -75,12 +76,27 @@ def play(spec):
             continue
         actions = engine.legal_actions(state, decision.owner)
         observation = engine.observe(state, decision.owner)
-        action = agents[decision.owner].choose_action(observation, actions)
+        agent = agents[decision.owner]
+        action = (
+            agent.choose_action_with_state(state, observation, actions)
+            if hasattr(agent, "choose_action_with_state")
+            else agent.choose_action(observation, actions)
+        )
+        # What the heuristic weighs (stage B1): an Agent turn's card pick as
+        # the whole placements it leads to; the space pick after it is the
+        # placement it already chose (``PlacementMemory``), not a decision.
+        steps = placements_for_steps(state, decision.owner, actions)
+        if steps is not None and not any(
+            a.action_id == "choose_agent_card" for a in actions
+        ):
+            state = engine.apply(state, action, legal_actions=actions).state
+            continue
+        shown = steps[0] if steps is not None else actions
         sets += 1
-        if len(actions) == 1:
+        if len(shown) == 1:
             forced += 1
         else:
-            scored = [(score_action(a), a) for a in actions]
+            scored = [(score_action(a), a) for a in shown]
             best = max(s for s, _ in scored)
             top = [a for s, a in scored if s == best]
             if len(top) > 1:

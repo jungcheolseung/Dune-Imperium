@@ -157,6 +157,11 @@ def test_every_unmirrored_answer_logs_a_warning(
     assert [record.levelno for record in caplog.records] == [logging.WARNING] * 2
     assert all(kind in record.getMessage() for record in caplog.records)
     # A forced decision (one legal action) is no fallback and logs nothing.
+    # (The turn's card picks are expanded into placements by the stage B1
+    # adapter whatever list is passed, so the forced list is the lone
+    # ``reveal_turn``, which the adapter leaves alone.)
     caplog.clear()
-    assert app.choose_action_with_state(state, view, actions[:1]) == actions[0]
+    forced = tuple(action for action in actions if action.action_id == "reveal_turn")
+    assert len(forced) == 1
+    assert app.choose_action_with_state(state, view, forced) == forced[0]
     assert caplog.records == []

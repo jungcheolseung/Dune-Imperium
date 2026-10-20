@@ -9,9 +9,11 @@ rules [Immortality pp. 10-11] and the FAQ's Beguiling Pheromones ruling
 from dataclasses import replace
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
-from dune_imperium.adapters import ActionCodec
+from dune_imperium.adapters import ActionCodec, ActionTemplate
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -49,6 +51,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
     legal_troop_withdrawals,
 )
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -222,37 +225,49 @@ def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
         actor=0,
         arguments=(("space_id", "c3r3"),),
     )
-    bonus = engine.apply(researched, direction).state
+    bonus = apply_whole(engine, researched, direction).state
     assert bonus.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert [
         (kind, value)
         for kind, _source, value in turn_rows.pending(bonus.decision_stack[-1])
-    ] == [(turn_rows.RESEARCH_ICON, "specimen"), (turn_rows.OPTIONAL_TRASH, "")]
+    ] == [
+        (turn_rows.RESEARCH_ICON, "specimen"),
+        # The trash records the research space that printed it (B3c-2b).
+        (turn_rows.OPTIONAL_TRASH, "research|c3r3"),
+    ]
     # Only the Research icon's own specimen so far; c3r3's waits.
     assert bonus.players[0].specimens == 1
     assert "decline_optional_trash" not in {
-        action.action_id for action in engine.legal_actions(bonus, 0)
+        action.action_id for action in engine.whole_actions(bonus, 0)
     }
     assert bonus.players[0].hand == (DAGGER,)
     assert len(bonus.players[0].deck) == deck_size
+    # c3r3's own trash icon (stage B3c-2b: the row names it).
     trash = DomainAction(
-        action_id="trash_optional_card", actor=0, arguments=(("card_id", DAGGER),)
+        action_id="trash_optional_card",
+        actor=0,
+        arguments=(("card_id", DAGGER), ("printed", "c3r3"), ("source", "research")),
     )
-    assert trash in engine.legal_actions(bonus, 0)
+    assert trash in engine.whole_actions(bonus, 0)
 
-    trashed = engine.apply(bonus, trash).state
+    trashed = apply_whole(engine, bonus, trash).state
     assert trashed.players[0].trashed == (DAGGER,)
     assert trashed.players[0].specimens == 1
     assert [
         (kind, value)
         for kind, _source, value in turn_rows.pending(trashed.decision_stack[-1])
     ] == [(turn_rows.RESEARCH_ICON, "specimen")]
+    # c3r3 printed the specimen icon (stage B3e-1: the row names it).
     specimen = DomainAction(
         action_id="resolve_research_icon",
         actor=0,
-        arguments=(("effect", "specimen"),),
+        arguments=(
+            ("effect", "specimen"),
+            ("printed", "c3r3"),
+            ("source", "research"),
+        ),
     )
-    trashed = engine.apply(trashed, specimen).state
+    trashed = apply_whole(engine, trashed, specimen).state
     assert trashed.players[0].specimens == 2
     assert turn_rows.pending(trashed.decision_stack[-1]) == ()
     assert _icon_keys(trashed) == {"cards"}
@@ -275,7 +290,7 @@ def test_industrial_espionage_draw_first_lets_the_bonus_trash_the_drawn_card() -
     drawn = resolve_agent_card_icon(grafted, _icon(grafted, "cards")).state
     (card,) = drawn.players[0].hand
     researched = resolve_agent_card_icon(drawn, _icon(drawn, "research")).state
-    bonus = engine.apply(
+    bonus = apply_whole(engine, 
         researched,
         DomainAction(
             action_id="choose_research_space",
@@ -283,10 +298,13 @@ def test_industrial_espionage_draw_first_lets_the_bonus_trash_the_drawn_card() -
             arguments=(("space_id", "c3r3"),),
         ),
     ).state
+    # c3r3's own trash icon (stage B3c-2b: the row names it).
     trash = DomainAction(
-        action_id="trash_optional_card", actor=0, arguments=(("card_id", card),)
+        action_id="trash_optional_card",
+        actor=0,
+        arguments=(("card_id", card), ("printed", "c3r3"), ("source", "research")),
     )
-    trashed = engine.apply(bonus, trash).state
+    trashed = apply_whole(engine, bonus, trash).state
 
     assert trashed.players[0].trashed == (card,)
     assert trashed.players[0].hand == ()
@@ -375,7 +393,8 @@ def _research_to(state: GameState, space_id: str) -> GameState:
     """Answer the research-direction frame the Research just opened."""
 
     assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
-    return UprisingRulesEngine().apply(
+    return apply_whole(
+        UprisingRulesEngine(),
         state,
         DomainAction("choose_research_space", 0, (("space_id", space_id),)),
     ).state
@@ -446,7 +465,7 @@ def test_scientific_breakthrough_trash_line_waits_for_the_turn_end() -> None:
     }
     offered = {
         a.action_id
-        for a in engine.legal_actions(researched, 0)
+        for a in engine.whole_actions(researched, 0)
         if not dict(a.arguments).get("effect")
     }
     assert not offered & card_actions
@@ -503,14 +522,11 @@ def test_guild_impersonator_needs_spice_gained_this_turn() -> None:
     assert early.events[0].kind == "agent_card_effect_unavailable"
     assert early.state.players[0].influence.spacing_guild == 0
 
-    spiced = (
-        UprisingRulesEngine()
-        .apply(
-            switched,
-            DomainAction("harvest_maker_spice", 0, (("space_id", "hagga_basin"),)),
-        )
-        .state
-    )
+    spiced = apply_whole(
+        UprisingRulesEngine(),
+        switched,
+        DomainAction("harvest_maker_spice", 0, (("space_id", "hagga_basin"),)),
+    ).state
     late = resolve_agent_card_effect(spiced)
     assert late.events[-1].kind == "agent_card_effect_resolved"
     assert late.state.players[0].influence.spacing_guild == 1
@@ -679,6 +695,24 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
         for action in UprisingRulesEngine().legal_actions(trashed_and_troop, 0)
     }
     assert trashed_and_troop.players[0].troops_garrison == 4
+    # The pick's trash is the card's own box's icon (stage B3c-2b names it):
+    # trashing Stitched Horror with it is the card leaving play by its own
+    # effect, "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상
+    # 지급" (OQ-022), as Throne Room Politics' own trash (the 2026-10-20
+    # review of B3c-2b: the pick's numbered source never counted).
+    own_icon = DomainAction(
+        "trash_optional_card",
+        0,
+        (
+            ("card_id", horror),
+            ("printed", "stitched_horror"),
+            ("source", "agent_card"),
+        ),
+    )
+    itself = apply_whole(UprisingRulesEngine(), trashed_and_troop, own_icon).state
+    assert horror in itself.players[0].trashed
+    _, context = current_agent_effect_context(itself)
+    assert context["agent_card_self_trashed"] is True
 
 
 def test_ghola_s_copy_of_stitched_horror_names_its_own_two_rewards() -> None:
@@ -755,7 +789,7 @@ def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() ->
         ("trash_grafted_card_for_influence", FACE_DANCER),
     ]
     engine = UprisingRulesEngine()
-    legal_ids = {a.action_id for a in engine.legal_actions(switched, 0)}
+    legal_ids = {a.action_id for a in engine.whole_actions(switched, 0)}
     assert "decline_agent_card_payment" not in legal_ids
     assert "finish_agent_turn" not in legal_ids
     # Trashing the partner expires its un-activated draw (OQ-022, FAQ p. 1).
@@ -792,11 +826,11 @@ def test_subversive_advisor_partner_replaces_the_space_influence() -> None:
     assert context["pending_faction_influence"] is False
     engine = UprisingRulesEngine()
     assert "resolve_faction_influence" not in {
-        action.action_id for action in engine.legal_actions(grafted, 0)
+        action.action_id for action in engine.whole_actions(grafted, 0)
     }
 
     # Subversive Advisor's box is box 1, resolved through its own row.
-    resolved = engine.apply(
+    resolved = apply_whole(engine, 
         grafted,
         tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
     ).state
@@ -805,7 +839,7 @@ def test_subversive_advisor_partner_replaces_the_space_influence() -> None:
     assert owner.influence.emperor == 2
     assert SUBVERSIVE in owner.trashed
     assert "resolve_faction_influence" not in {
-        action.action_id for action in engine.legal_actions(resolved, 0)
+        action.action_id for action in engine.whole_actions(resolved, 0)
     }
 
 
@@ -831,7 +865,7 @@ def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> N
     assert context["pending_faction_influence"] is False
     engine = UprisingRulesEngine()
     # The Spy on Dutiful Service's post offers Gather Intelligence first.
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
     ).state
     switched = _switch(declined)
@@ -842,7 +876,7 @@ def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> N
     )
 
     # Pheromones is box 1: its row carries ``box=1``.
-    traded = engine.apply(declined, tagged(trash, 1))
+    traded = apply_whole(engine, declined, tagged(trash, 1))
 
     owner = traded.state.players[0]
     assert SUBVERSIVE in owner.trashed and owner.influence.emperor == 1
@@ -850,7 +884,7 @@ def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> N
     assert context["graft_pending_effect"] is False
     assert context["pending_faction_influence"] is True
 
-    gained = engine.apply(
+    gained = apply_whole(engine, 
         traded.state, DomainAction(action_id="resolve_faction_influence", actor=0)
     )
 
@@ -876,8 +910,10 @@ def _subversive_ghola_on_desert_tactics() -> GameState:
     _, context = current_agent_effect_context(grafted)
     # Both boxes are Subversive Advisor's, so both hold the space's 1.
     assert context["pending_faction_influence"] is False
-    return UprisingRulesEngine().apply(
-        grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
+    return apply_whole(
+        UprisingRulesEngine(),
+        grafted,
+        DomainAction(action_id="decline_gather_intelligence", actor=0),
     ).state
 
 
@@ -890,25 +926,25 @@ def test_a_resolved_subversive_box_keeps_the_space_influence_replaced() -> None:
     # already replaced, so it does not come back: 2, not 3.
     engine = UprisingRulesEngine()
     start = _subversive_ghola_on_desert_tactics()
-    resolved = engine.apply(
+    resolved = apply_whole(engine, 
         start, DomainAction(action_id="resolve_agent_card_effect", actor=0)
     ).state
     assert resolved.players[0].influence.fremen == 2
     trash = next(
         action
-        for action in engine.legal_actions(resolved, 0)
+        for action in engine.whole_actions(resolved, 0)
         if action.action_id == "trash_card_for_desert_tactics"
         and dict(action.arguments).get("card_id") == _tleilaxu("ghola")
     )
 
-    traded = engine.apply(resolved, trash)
+    traded = apply_whole(engine, resolved, trash)
 
     assert "agent_card_effect_expired" in {event.kind for event in traded.events}
     _, context = current_agent_effect_context(traded.state)
     assert context["graft_pending_effect"] is False
     assert context["pending_faction_influence"] is False
     assert "resolve_faction_influence" not in {
-        action.action_id for action in engine.legal_actions(traded.state, 0)
+        action.action_id for action in engine.whole_actions(traded.state, 0)
     }
     assert traded.state.players[0].influence.fremen == 2
 
@@ -918,18 +954,18 @@ def test_two_resolved_subversive_boxes_each_gain_two() -> None:
     # p. 14], so when both boxes resolve each gains its own 2 (4 in all);
     # the space's 1 never adds to them.
     engine = UprisingRulesEngine()
-    first = engine.apply(
+    first = apply_whole(engine, 
         _subversive_ghola_on_desert_tactics(),
         DomainAction(action_id="resolve_agent_card_effect", actor=0),
     ).state
-    second = engine.apply(
+    second = apply_whole(engine, 
         first,
         tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
     ).state
 
     assert second.players[0].influence.fremen == 4
     assert "resolve_faction_influence" not in {
-        action.action_id for action in engine.legal_actions(second, 0)
+        action.action_id for action in engine.whole_actions(second, 0)
     }
 
 
@@ -985,8 +1021,8 @@ def _piter_rewards(
 
     engine = UprisingRulesEngine()
     for action in order:
-        assert action in engine.legal_actions(state, 0)
-        state = engine.apply(state, action).state
+        assert action in engine.whole_actions(state, 0)
+        state = apply_whole(engine, state, action).state
     return state
 
 
@@ -1009,7 +1045,7 @@ def test_piters_rewards_are_their_own_steps_after_the_cost() -> None:
     ).state
     assert paid.players[0].deck == state.players[0].deck
     engine = UprisingRulesEngine()
-    legal = engine.legal_actions(paid, 0)
+    legal = engine.whole_actions(paid, 0)
     assert {_PITER_DRAW, _PITER_RESEARCH} <= set(legal)
     assert DomainAction("finish_agent_turn", 0) not in legal
     for order in ((_PITER_DRAW, _PITER_RESEARCH), (_PITER_RESEARCH, _PITER_DRAW)):
@@ -1018,7 +1054,7 @@ def test_piters_rewards_are_their_own_steps_after_the_cost() -> None:
         assert len(owner.hand) == 2
         assert owner.research_space == "c1r3"
         assert not {_PITER_DRAW, _PITER_RESEARCH} & set(
-            engine.legal_actions(done, 0)
+            engine.whole_actions(done, 0)
         )
 
 
@@ -1181,33 +1217,61 @@ def test_the_codec_holds_piters_commander_loss_with_bloodlines() -> None:
         action = DomainAction(
             "lose_agent_card_troop", 0, (("commanders", 1), ("zone", zone))
         )
-        assert codec.decode(codec.encode(action), 0) == action
-    plain = {
-        template.arguments
+        # Stage B3a: the loss is the ``lose_unit`` effect row naming the card,
+        # the Commander share and the zone riding on it.
+        (row,) = steps_for(action, "piter_genius_advisor")
+        assert row.action_id == "lose_unit"
+        assert codec.decode(codec.encode(row), 0) == row
+    templates = [
+        template
         for template in ActionCodec(IMMORTALITY).catalog
-        if template.action_id == "lose_agent_card_troop"
+        if template.action_id == "lose_unit"
+    ]
+    assert not any("commanders" in dict(t.arguments) for t in templates)
+    piter = {
+        template.arguments
+        for template in templates
+        if dict(template.arguments).get("printed") == "piter_genius_advisor"
     }
-    assert plain == {
-        *((("zone", zone),) for zone in ("garrison", "conflict")),
+    card = (("printed", "piter_genius_advisor"), ("source", "agent_card"))
+    assert piter == {
+        *((*card, ("zone", zone)) for zone in ("garrison", "conflict")),
         # Box 1's twins of a grafted turn (codec v143).
-        *((("box", 1), ("zone", zone)) for zone in ("garrison", "conflict")),
+        *(
+            (("box", 1), *card, ("zone", zone))
+            for zone in ("garrison", "conflict")
+        ),
     }
 
 
 def test_the_codec_holds_the_tleilaxu_choices() -> None:
     codec = ActionCodec(IMMORTALITY)
-    base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
-    for action in (
-        DomainAction("trash_agent_card_self_for_vp", 0),
-        DomainAction("pay_agent_card_five_solari_for_tleilaxu", 0),
-        DomainAction(
-            "trash_grafted_card_for_influence", 0, (("card_id", FACE_DANCER),)
+    base = set(ActionCodec(RulesetConfig()).catalog)
+    # Stage B3a: each choice is the effect row of the Tleilaxu card that
+    # prints it (then its target row, if it has one); the effect rows are the
+    # templates only the Immortality catalogs hold.
+    for action, printed in (
+        (DomainAction("trash_agent_card_self_for_vp", 0), "scientific_breakthrough"),
+        (DomainAction("pay_agent_card_five_solari_for_tleilaxu", 0), "slig_farmer"),
+        (
+            DomainAction(
+                "trash_grafted_card_for_influence", 0, (("card_id", FACE_DANCER),)
+            ),
+            "beguiling_pheromones",
         ),
-        DomainAction("lose_agent_card_troop", 0, (("zone", "garrison"),)),
-        DomainAction("choose_agent_card_reward", 0, (("reward", "trash"),)),
+        (
+            DomainAction("lose_agent_card_troop", 0, (("zone", "garrison"),)),
+            "piter_genius_advisor",
+        ),
+        (
+            DomainAction("choose_agent_card_reward", 0, (("reward", "trash"),)),
+            "stitched_horror",
+        ),
     ):
-        assert codec.decode(codec.encode(action), 0) == action
-        assert action.action_id not in base
+        rows = steps_for(action, printed)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        assert ActionTemplate(rows[0].action_id, rows[0].arguments) not in base
 
 
 def _engine_finish_turn(state: GameState) -> GameState:
@@ -1218,7 +1282,7 @@ def _engine_finish_turn(state: GameState) -> GameState:
         frame = state.decision_stack[-1]
         if frame.kind == FrameKind.TURN:
             return state
-        actions = engine.legal_actions(state, 0)
+        actions = engine.whole_actions(state, 0)
         preferred = [
             a
             for a in actions
@@ -1229,7 +1293,7 @@ def _engine_finish_turn(state: GameState) -> GameState:
                 "finish_agent_turn",
             )
         ] or [a for a in actions if not a.action_id.startswith("deploy")]
-        state = engine.apply(state, preferred[0]).state
+        state = apply_whole(engine, state, preferred[0]).state
     raise AssertionError("the Agent turn did not close")
 
 
@@ -1570,9 +1634,9 @@ def test_usurp_trash_fires_the_borrowed_cards_trash_trigger() -> None:
     for _ in range(20):
         if grafted.decision_stack[-1].kind == FrameKind.TURN:
             break
-        actions = engine.legal_actions(grafted, 0)
+        actions = engine.whole_actions(grafted, 0)
         preferred = [a for a in actions if not a.action_id.startswith("deploy")]
-        result = engine.apply(grafted, preferred[0])
+        result = apply_whole(engine, grafted, preferred[0])
         grafted = result.state
     owner = grafted.players[0]
     assert eyes in owner.trashed and owner.usurped_row_card_id == ""
@@ -1587,17 +1651,17 @@ def _resolve_until_finish(state: GameState) -> GameState:
 
     engine = UprisingRulesEngine()
     for _ in range(20):
-        actions = engine.legal_actions(state, 0)
+        actions = engine.whole_actions(state, 0)
         if any(a.action_id == "finish_agent_turn" for a in actions):
             return state
         preferred = [a for a in actions if not a.action_id.startswith("deploy")]
-        state = engine.apply(state, preferred[0]).state
+        state = apply_whole(engine, state, preferred[0]).state
     raise AssertionError("the turn end was never offered")
 
 
 def _press_finish(state: GameState) -> tuple[GameState, tuple[str, ...]]:
     engine = UprisingRulesEngine()
-    result = engine.apply(state, DomainAction("finish_agent_turn", 0))
+    result = apply_whole(engine, state, DomainAction("finish_agent_turn", 0))
     return result.state, tuple(event.kind for event in result.events)
 
 
@@ -1652,7 +1716,7 @@ def test_usurped_sardaukar_standard_commander_is_this_turns_and_reopens_it() -> 
     assert pressed.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
     assert dict(pressed.decision_stack[-2].context)["finishing"] is True
     engine = UprisingRulesEngine()
-    chosen = engine.apply(pressed, engine.legal_actions(pressed, 0)[0])
+    chosen = apply_whole(engine, pressed, engine.whole_actions(pressed, 0)[0])
     reopened = chosen.state
     assert "agent_turn_reopened" in {event.kind for event in chosen.events}
     frame, context = current_agent_effect_context(reopened)
@@ -1661,7 +1725,7 @@ def test_usurped_sardaukar_standard_commander_is_this_turns_and_reopens_it() -> 
     owner_after = reopened.players[0]
     assert standard in owner_after.trashed and owner_after.usurped_row_card_id == ""
     assert owner_after.commanders_garrison == 1
-    offered = {a.action_id for a in engine.legal_actions(reopened, 0)}
+    offered = {a.action_id for a in engine.whole_actions(reopened, 0)}
     assert {"deploy_commanders", "finish_agent_turn"} <= offered
 
     closed, _ = _press_finish(reopened)
@@ -1719,11 +1783,13 @@ def test_usurped_eliminate_allies_troops_reopen_a_combat_turn() -> None:
     engine = UprisingRulesEngine()
     counts = [
         dict(a.arguments)["count"]
-        for a in engine.legal_actions(pressed, 0)
+        for a in engine.whole_actions(pressed, 0)
         if a.action_id == "deploy_troops"
     ]
     assert counts == [1, 2]
-    deployed = engine.apply(pressed, DomainAction("deploy_troops", 0, (("count", 2),)))
+    deployed = apply_whole(
+        engine, pressed, DomainAction("deploy_troops", 0, (("count", 2),))
+    )
     assert deployed.state.players[0].troops_conflict == 2
     closed, kinds = _press_finish(deployed.state)
     assert "usurped_card_trashed" not in kinds
@@ -1788,15 +1854,24 @@ def test_usurped_replacement_eyes_spice_completes_a_harvest_contract_in_turn() -
     assert owner.tleilaxu_space == 4
     assert owner.resources.spice == ready.players[0].resources.spice + 2
     engine = UprisingRulesEngine()
-    offered = {a.action_id for a in engine.legal_actions(pressed, 0)}
+    offered = {a.action_id for a in engine.whole_actions(pressed, 0)}
     assert "finish_agent_turn" not in offered  # the Contract comes first
     completion = next(
         a
-        for a in engine.legal_actions(pressed, 0)
+        for a in engine.whole_actions(pressed, 0)
         if a.action_id == "complete_contract"
     )
-    completed = engine.apply(pressed, completion).state
+    completed = apply_whole(engine, pressed, completion).state
     assert harvest in completed.players[0].completed_contract_ids
+    # The Contract's reward waits on the Agent turn as rows (stage B3b,
+    # OQ-112 (4)); the end is offered again once they are paid.
+    assert completed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completed, 0)
+    assert "finish_agent_turn" not in {
+        a.action_id for a in engine.whole_actions(completed, 0)
+    }
+    completed = answer_reward_windows(engine, completed)
+    assert not turn_rows.holds_the_end(completed, 0)
     closed, _ = _press_finish(completed)
     assert closed.decision_stack[-1].kind == FrameKind.TURN
 
@@ -1844,7 +1919,7 @@ def test_a_turn_reopened_for_a_contract_keeps_its_deployment_window() -> None:
     ready = _resolve_until_finish(state)
     # 1 Solari: the supply Commander (2 Solari) cannot be recruited yet.
     assert "recruit_sardaukar_commander" not in {
-        a.action_id for a in engine.legal_actions(ready, 0)
+        a.action_id for a in engine.whole_actions(ready, 0)
     }
     pressed, kinds = _press_finish(ready)
     assert "agent_turn_reopened" in kinds
@@ -1852,17 +1927,20 @@ def test_a_turn_reopened_for_a_contract_keeps_its_deployment_window() -> None:
     assert reopened["pending_combat_deployment"] is True
     completion = next(
         a
-        for a in engine.legal_actions(pressed, 0)
+        for a in engine.whole_actions(pressed, 0)
         if a.action_id == "complete_contract"
     )
-    completed = engine.apply(pressed, completion).state
+    completed = apply_whole(engine, pressed, completion).state
+    # The Contract's 3 Solari are a row of its reward window (stage B2,
+    # OQ-112): the Commander can be paid for once it is answered.
+    completed = answer_reward_windows(engine, completed)
     recruit = next(
         a
-        for a in engine.legal_actions(completed, 0)
+        for a in engine.whole_actions(completed, 0)
         if a.action_id == "recruit_sardaukar_commander"
     )
-    recruited = engine.apply(completed, recruit).state
-    offered = {a.action_id for a in engine.legal_actions(recruited, 0)}
+    recruited = apply_whole(engine, completed, recruit).state
+    offered = {a.action_id for a in engine.whole_actions(recruited, 0)}
     assert {"deploy_commanders", "finish_agent_turn"} <= offered
 
 
@@ -2070,24 +2148,24 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
     def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
         action = next(
             action
-            for action in engine.legal_actions(state, 0)
+            for action in engine.whole_actions(state, 0)
             if action.action_id == action_id
             and all(
                 dict(action.arguments).get(key) == value
                 for key, value in arguments.items()
             )
         )
-        return engine.apply(state, action).state
+        return apply_whole(engine, state, action).state
 
     while any(
         action.action_id == "resolve_board_effect"
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
     ):
         state = _apply(state, "resolve_board_effect")
     state = _apply(state, "resolve_agent_card_effect", effect="cards")
     assert not any(
         dict(action.arguments).get("space_id") == "arrakeen"
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "recall_agent_for_agent_card"
     )
     state = _apply(state, "recall_agent_for_agent_card", space_id="dutiful_service")
@@ -2100,13 +2178,13 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
     assert context["pending_agent_icons"] == "recall"
     # Nothing can resolve the icon, and no provider offers it; the turn end
     # is what carries the turn on (before the fix nothing was offered).
-    offered = {action.action_id for action in engine.legal_actions(state, 0)}
+    offered = {action.action_id for action in engine.whole_actions(state, 0)}
     assert "finish_agent_turn" in offered
     assert not offered & {
         "resolve_agent_card_effect",
         "recall_agent_for_agent_card",
     }
-    finished = engine.apply(
+    finished = apply_whole(engine, 
         state, DomainAction(action_id="finish_agent_turn", actor=0)
     )
     assert [event.kind for event in finished.events] == [
@@ -2221,14 +2299,14 @@ def _engine_step(
     engine = UprisingRulesEngine()
     action = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == action_id
         and dict(action.arguments).get("box", 0) == box
         and all(
             dict(action.arguments).get(key) == value for key, value in arguments.items()
         )
     )
-    result = engine.apply(state, action)
+    result = apply_whole(engine, state, action)
     return result.state, tuple(event.kind for event in result.events)
 
 

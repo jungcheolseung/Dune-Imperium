@@ -99,16 +99,19 @@ def collect_game_coverage(
             _bump(census, "chance_kinds", _INTEGER_TOKEN.sub("", step.decision_id))
             continue
         _bump(census, "action_ids", step.action_id)
-        if step.action_id != "agent_turn":
-            continue
         arguments = dict(step.arguments)
+        if step.action_id == "choose_agent_card":
+            # Stage B1: the Agent turn's card pick, then its space pick.
+            card_id = arguments.get("card_id")
+            if isinstance(card_id, str):
+                _bump(census, "cards_played", normalize_instance_id(card_id))
+            continue
+        if step.action_id != "place_agent":
+            continue
         space_id = arguments.get("space_id")
-        card_id = arguments.get("card_id")
         if isinstance(space_id, str):
             cost_option = _int_argument(arguments, "cost_option")
             _bump(census, "agent_placements", f"{space_id}:{cost_option}")
-        if isinstance(card_id, str):
-            _bump(census, "cards_played", normalize_instance_id(card_id))
 
     for event in final_state.event_log:
         _bump(census, "event_kinds", event.kind)

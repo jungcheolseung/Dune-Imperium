@@ -42,6 +42,8 @@ import re
 import sys
 from pathlib import Path
 
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.display.actions import agent_box_headers, agent_box_of_rows
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
@@ -66,7 +68,7 @@ def base_id(card_id: str) -> str:
 def locked_after(engine, state, owner, action) -> int | None:
     """The box ``action`` holds back once taken, if it does."""
 
-    result = engine.apply(state, action).state
+    result = apply_whole(engine, state, action).state
     headers = agent_box_headers(result, owner) or []
     return next((entry["box"] for entry in headers if entry["locked"]), None)
 
@@ -74,7 +76,7 @@ def locked_after(engine, state, owner, action) -> int | None:
 def names_box_card(engine, state, owner, box_cards: set[str]) -> bool:
     """Whether a row of a box names one of ``box_cards`` as its target."""
 
-    actions = engine.legal_actions(state, owner)
+    actions = engine.whole_actions(state, owner)
     boxes = agent_box_of_rows(state, owner, actions)
     return any(
         box is not None
@@ -88,7 +90,7 @@ def graft_case(engine, state, owner) -> dict[str, object] | None:
     headers = agent_box_headers(state, owner)
     if not headers or len(headers) != 2 or any(e["locked"] for e in headers):
         return None
-    actions = engine.legal_actions(state, owner)
+    actions = engine.whole_actions(state, owner)
     boxes = agent_box_of_rows(state, owner, actions)
     if 0 not in boxes or 1 not in boxes:
         return None
@@ -106,7 +108,7 @@ def graft_case(engine, state, owner) -> dict[str, object] | None:
             held is not None
             and lock_index is None
             and not names_box_card(
-                engine, engine.apply(state, action).state, owner, box_cards
+                engine, apply_whole(engine, state, action).state, owner, box_cards
             )
         ):
             lock_index, locked_box = index, held
@@ -142,14 +144,21 @@ def walk(seed: int) -> dict[str, object] | None:
             summary = manager.confirm_turn(gid, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         case = graft_case(session.engine, session.state, owner)
         if case is not None:
             saved = store.write(manager.save_game(gid, name=NAME))
             return {"save_id": saved["save_id"], "seed": seed, **case}
-        summary = manager.apply_action(
-            gid, owner, summary["revision"], rng.randrange(len(actions))
+        # A reward's icon rows (stage B2) are answered in the engine's older
+        # fixed order without a draw (``agents.engine_order``), so the walk
+        # is the one it was.
+        scripted = engine_order_answer(session.state, owner, actions)
+        index = (
+            actions.index(scripted)
+            if scripted is not None
+            else rng.randrange(len(actions))
         )
+        summary = manager.apply_action(gid, owner, summary["revision"], index)
     return None
 
 

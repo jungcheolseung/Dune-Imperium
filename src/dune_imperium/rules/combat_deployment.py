@@ -917,8 +917,9 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
     recruited_more = _recruited_units(context) > recruited_at_press
     if (
         agent_turn_has_other_pending_effects(reopened, state.players)
-        # An effect the press's own steps queued on the turn (none can
-        # today) is the turn's own too, never dropped unseen.
+        # An effect the press's own steps queued on the turn (a Contract an
+        # Influence it gained completed, OQ-112 (4)) is the turn's own too,
+        # never dropped unseen.
         or bool(turn_rows.pending(frame))
         or owes_track_spy(state, owner)
         or owes_held_draw(state, owner)

@@ -67,15 +67,15 @@ def test_pick_filters_by_keys_groups_and_counts(tiny_corpus: Path) -> None:
     assert _ids(corpus.pick(without=["chance_kinds:round:scouts:*"])) == ["base.h4.1"]
     # Every ``has`` pattern must match; min_count applies to them.
     row = corpus.row("full.h4.1")
-    count = row.count("action_ids:agent_turn")
+    count = row.count("action_ids:place_agent")
     assert corpus.pick(
-        ["action_ids:agent_turn"], min_count=count + 1, combo="full"
+        ["action_ids:place_agent"], min_count=count + 1, combo="full"
     ) == [
         other
         for other in corpus.pick(combo="full")
-        if other.count("action_ids:agent_turn") > count
+        if other.count("action_ids:place_agent") > count
     ]
-    assert corpus.pick(["action_ids:agent_turn", "no_such:*"]) == []
+    assert corpus.pick(["action_ids:place_agent", "no_such:*"]) == []
 
 
 def test_a_pick_seed_shuffles_each_group_deterministically(tiny_corpus: Path) -> None:
@@ -104,8 +104,8 @@ def test_pick_leaves_steered_records_out_unless_asked(tiny_corpus: Path) -> None
     )
     assert "full.h4.1" not in _ids(corpus.pick())
     assert "full.h4.1" in _ids(corpus.pick(natural=False))
-    records, _ = corpus.key_counts("action_ids:agent_turn", natural=True)[
-        "action_ids:agent_turn"
+    records, _ = corpus.key_counts("action_ids:place_agent", natural=True)[
+        "action_ids:place_agent"
     ]
     assert records == 3
 
@@ -114,10 +114,10 @@ def test_key_counts_sum_records_and_occurrences(tiny_corpus: Path) -> None:
     corpus = Corpus.open(tiny_corpus)
     counts = corpus.key_counts("action_ids:*")
     assert counts and all(key.startswith("action_ids:") for key in counts)
-    records, occurrences = counts["action_ids:agent_turn"]
+    records, occurrences = counts["action_ids:place_agent"]
     assert records == 4
     assert occurrences == sum(
-        row.count("action_ids:agent_turn") for row in corpus.rows()
+        row.count("action_ids:place_agent") for row in corpus.rows()
     )
     assert list(counts) == sorted(counts)
 

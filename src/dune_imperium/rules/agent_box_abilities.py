@@ -127,7 +127,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
-from dune_imperium.rules.action_shapes import Source, Verb, template_id
+from dune_imperium.rules.action_shapes import Source, Verb, printer_value, template_id
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.card_bonds import (
@@ -162,6 +162,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.graft_boxes import ACTIVE_BOX_KEY
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -178,7 +179,7 @@ from dune_imperium.rules.intrigue_deck import (
     with_trashed_intrigue,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
-from dune_imperium.rules.optional_trash import open_optional_trash
+from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import turn_space_spy_frames
@@ -433,6 +434,28 @@ def box_icon_block(
 
 
 # --- Resolution --------------------------------------------------------------------
+
+
+def _card_printer(card_id: str) -> str:
+    """The Agent card ``card_id`` as the entity that opened an opponent's
+    window (``action_shapes.printer_value``; stage B3d-3)."""
+
+    card = personal_card_for_instance(card_id).card.card_id
+    return printer_value(Source.AGENT_CARD, card)
+
+
+def _box_trash_printer(context: Mapping[str, ActionValue]) -> str:
+    """The printer an optional trash the active box opens records (stage
+    B3c-2b): the box's card by type, box 1 for a grafted turn's second card
+    (as ``effect_steps.Printed.BOX_CARD`` names a box's effects)."""
+
+    card_id = context["card_id"]
+    assert isinstance(card_id, str)
+    return trash_printer(
+        Source.AGENT_CARD,
+        personal_card_for_instance(card_id).card.card_id,
+        1 if context.get(ACTIVE_BOX_KEY) == 1 else 0,
+    )
 
 
 def _subject(context: dict[str, ActionValue]) -> tuple[int, str]:
@@ -824,7 +847,9 @@ def resolve_box(state: GameState) -> RuleResult:
             case TrashPersonalCard():
                 # The black trash icon on a frame of its own, named after the
                 # box so a self-trash keeps its card's effects (OQ-022).
-                next_state = open_optional_trash(next_state, player, source)
+                next_state = open_optional_trash(
+                    next_state, player, source, printer=_box_trash_printer(context)
+                )
         if step is not None:
             next_state = step.state
             follow_ups.extend(step.events)
@@ -895,12 +920,16 @@ def _opponents_decide(
                 events=(),
             )
         case EachOpponentLosesTroop():
-            return opponent_unit_loss_frames(state, player, source=source)
+            return opponent_unit_loss_frames(
+                state, player, source=source, printer=_card_printer(card_id)
+            )
         case OpponentsMoveSpiesFromVisitedSpace():
             space_id = context.get("space_id")
             if not isinstance(space_id, str):
                 raise RuntimeError("Agent-turn effect frame has invalid space")
-            return turn_space_spy_frames(state, player, space_id, source=source)
+            return turn_space_spy_frames(
+                state, player, space_id, source=source, printer=_card_printer(card_id)
+            )
     return None
 
 
@@ -1202,7 +1231,9 @@ def apply_payment(
             case TrashPersonalCard():
                 # The black trash icon stays optional once the cost is paid
                 # [FAQ p. 3], on a frame of its own named after the box.
-                next_state = open_optional_trash(next_state, player, source)
+                next_state = open_optional_trash(
+                    next_state, player, source, printer=_box_trash_printer(context)
+                )
             case AdvanceTleilaxu(count=count):
                 step = advance_tleilaxu(next_state, player, count)
             case DrawPersonalCards(count=count):
@@ -2761,7 +2792,10 @@ def apply_chosen_reward(
                 events.extend(advanced.events)
             case TrashPersonalCard():
                 next_state = open_optional_trash(
-                    next_state, player, f"{source}:{index + 1}"
+                    next_state,
+                    player,
+                    f"{source}:{index + 1}",
+                    printer=_box_trash_printer(context),
                 )
     return RuleResult(state=next_state, events=tuple(events))
 

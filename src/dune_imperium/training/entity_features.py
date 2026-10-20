@@ -66,6 +66,7 @@ from dune_imperium.adapters.observation_encoding import (
     PERSONAL_CARD_IDS,
     POST_IDS,
     RESEARCH_SPACE_IDS,
+    SCOUTS_ITEM_IDS,
     SKILL_IDS,
     SPACE_IDS,
 )
@@ -512,6 +513,23 @@ ARGUMENT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
     "wild_card_id": ("battle", "conflict"),
     "intrigue_card_id": ("intrigue",),
     "target": ("contract",),
+    # Stage B3: the entity that printed a waiting effect -- a card type, the
+    # visited space, a leader face, a Tech tile, a Commander's Skill (B3b-2),
+    # a research space (B3c-2a), the Conflict card whose reward row pays and
+    # the Intrigue card whose lines are played (B3d-1), the Faction whose
+    # Influence track opened a Spy window (B3d-2a); a Contract by its
+    # instance; a market is a label.
+    "printed": (
+        "personal",
+        "space",
+        "leader",
+        "tech",
+        "skill",
+        "research",
+        "conflict",
+        "intrigue",
+        "faction",
+    ),
 }
 # The vocabulary of a slot key's id, by the key's prefix (``training.slots``).
 SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -538,12 +556,33 @@ SLOT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
 # Arguments that name a choice, never an entity, even where a value equals
 # some id (the Subcommittee ``leverage`` is also an Intrigue card's id).
 LABEL_ARGUMENTS: Final = frozenset(
-    {"choice", "effect", "reward", "subcommittee_id", "zone", "zones"}
+    # Stage B3: an effect row's printed ``icon`` and the ``option`` of an
+    # alternative or of a target row are labels too.
+    {
+        "choice",
+        "effect",
+        "icon",
+        # Stage B3d-3: the verb of the effect a refusal answers.
+        "of",
+        "option",
+        "reward",
+        "subcommittee_id",
+        "zone",
+        "zones",
+    }
 )
+# The Arrakeen Scouts items a Scouts effect row's ``printed`` may name (a
+# Spy window's line, B3d-2a; a mission, B3d-2b): no vocabulary holds them,
+# and an item's id may be a card's too (Covert Operation).
+_SCOUTS_PRINTED: Final = frozenset(SCOUTS_ITEM_IDS)
 # Where an argument's vocabulary depends on the action: a battle card's id
 # is often a Conflict card's id too.
 ACTION_ARGUMENT_HINTS: Final[Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("flip_battle_card", "card_id"): ("battle",),
+    # Stage B3's target rows name their target by its kind.
+    ("choose_intrigue_card", "card_id"): ("intrigue",),
+    # The Endgame wild match's two cards (stage B3c-1), as its arguments.
+    ("choose_conflict_card", "card_id"): ("battle", "conflict"),
 }
 
 
@@ -556,6 +595,7 @@ def _digest() -> str:
     for hints in (ARGUMENT_HINTS, SLOT_HINTS, ACTION_ARGUMENT_HINTS):
         digest.update(repr(sorted(hints.items())).encode())
     digest.update(repr(sorted(LABEL_ARGUMENTS)).encode())
+    digest.update(repr(sorted(_SCOUTS_PRINTED)).encode())
     return digest.hexdigest()
 
 
@@ -576,10 +616,22 @@ def feature_tables() -> dict[str, dict[str, list[Any]]]:
     }
 
 
-def resolve_argument(action_id: str, key: str, value: str) -> tuple[str, int] | None:
-    """The entity an action argument names, or ``None`` for a label."""
+_LEADER_OF_FACE: Final = {
+    leader.alternate_face_id: leader_id
+    for leader_id, leader in LEADERS_BY_ID.items()
+    if leader.alternate_face_id is not None
+}
 
-    if key in LABEL_ARGUMENTS:
+
+def resolve_argument(
+    action_id: str, key: str, value: str, source: object = None
+) -> tuple[str, int] | None:
+    """The entity an action argument names, or ``None`` for a label;
+    ``source`` is the row's own ``source`` argument (an effect row's)."""
+
+    if key in LABEL_ARGUMENTS or (
+        key == "printed" and source == "scouts" and value in _SCOUTS_PRINTED
+    ):
         return None
     prefer = ACTION_ARGUMENT_HINTS.get((action_id, key), ARGUMENT_HINTS.get(key, ()))
     return resolve(value, prefer)
@@ -596,6 +648,8 @@ def resolve(value: str, prefer: tuple[str, ...] = ()) -> tuple[str, int] | None:
     index = _indexes()
     if not value:
         return None
+    # A leader's other face (Reverend Mother Jessica) is its leader card.
+    value = _LEADER_OF_FACE.get(value, value)
     for name in prefer:
         if value in index[name]:
             return name, index[name][value]

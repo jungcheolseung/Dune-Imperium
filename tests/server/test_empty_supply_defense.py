@@ -17,6 +17,7 @@ that the whole answer can be taken back step by step until the turn-end press.
 
 from __future__ import annotations
 
+from dune_imperium.agents import StateAgent
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.core import GamePhase
 from dune_imperium.rules.frames import FrameKind
@@ -84,9 +85,15 @@ def _walk_to_empty_supply_defense() -> tuple[GameSessionManager, str, JsonObject
                 defender = state.players[owner]
                 if defender.troops_supply == 0 and defender.specimens > 0:
                     return manager, game_id, summary, owner
-            actions = session.engine.legal_actions(state, owner)
-            chosen = agents[owner].choose_action(
-                session.engine.observe(state, owner), actions
+            # The payload indexes the seat's whole actions (stage B3), which
+            # the walk applies by index below.
+            actions = session.engine.whole_actions(state, owner)
+            # The agent answers from the state: its Agent-turn card pick is
+            # made from the placements it weighs (stage B1).
+            agent = agents[owner]
+            assert isinstance(agent, StateAgent)
+            chosen = agent.choose_action_with_state(
+                state, session.engine.observe(state, owner), actions
             )
             summary = manager.apply_action(
                 game_id, owner, _int(summary["revision"]), actions.index(chosen)

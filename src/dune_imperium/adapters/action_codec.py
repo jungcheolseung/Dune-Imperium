@@ -1,6 +1,6 @@
 """Stable integer encoding for structured Uprising actions."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Final
@@ -29,6 +29,8 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
+from dune_imperium.content.uprising.abilities import AbilityStructure
+from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -37,7 +39,14 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
-from dune_imperium.content.uprising.effect_dsl import OnTroopsLostAtConflictEnd
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
+    EachOpponentLosesTroop,
+    OnTroopsLostAtConflictEnd,
+    OpponentsMoveSpiesFromVisitedSpace,
+    PrintedRevealValue,
+    RedirectSpiesOnTurnSpace,
+)
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_cards_for_choam,
@@ -56,6 +65,7 @@ from dune_imperium.content.uprising.leaders import (
 )
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.personal_cards import (
+    card_is_ghola,
     card_is_graft,
     card_is_usurp,
     personal_card_for_instance,
@@ -76,14 +86,48 @@ from dune_imperium.content.uprising.types import (
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
+    PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
+    PersonalCardRevealEffect,
+    PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.acquisition import (
+    acquire_box_draws_intrigue,
+    acquire_box_places_spy,
+)
+from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
+from dune_imperium.rules.combat import (
+    COMBAT_REWARD_ICON_KINDS,
+    conflict_reward_icon_kinds,
+)
+from dune_imperium.rules.contracts import (
+    CONTRACT_REWARD_ICON_KINDS,
+    contract_reward_icons,
+)
+from dune_imperium.rules.effect_interpreter import automatic_rewards, choice_slots
+from dune_imperium.rules.effect_steps import (
+    AGENT_ICON_VERBS,
+    INTRIGUE_WINDOWS,
+    STEP_SPECS,
+    TARGET_SPECS,
+    WINDOW_OWN,
+    Printed,
+    steps_for,
+)
 from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
-from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
-from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
+from dune_imperium.rules.immortality import (
+    RESEARCH_ICON_ORDER,
+    research_icon_spaces,
+    research_trash_spaces,
+)
+from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
+from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT, card_holds_reveal_value
+from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
+from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
+from dune_imperium.rules.tech import optional_trash_tech_ids
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -532,7 +576,15 @@ from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT
 # window this engine keeps open (``conflict_end_reopened``). (2c) Event
 # kinds, ids and payloads follow the event grammar of the plan's "정리-2c 사건
 # 문법" (no action changes; the state hash changes with the event log).
-ACTION_CODEC_VERSION = 149
+# v150 (stage B, docs/stage-b-plan.md; one raise for the whole stage, on
+# branch ``stage-b``): (B1, user decision 2026-10-19, OQ-111) the Agent turn
+# is a card pick ``choose_agent_card(card_id[, graft])`` and then a space pick
+# ``place_agent(space_id[, cost_option][, discount][, infiltrate_post_id])``
+# in place of the one ``agent_turn`` template per card-and-space combination
+# (26,372 rows of the all-options catalog); the pick waits in the turn frame,
+# seen only by its seat. Older records split each ``agent_turn`` with the
+# bridges ``agent_card_pick`` and ``agent_space_pick`` (records.migration).
+ACTION_CODEC_VERSION = 150
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -660,19 +712,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_leader_spy_placement",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
-            "decline_reveal_influence_exchange",
-            "decline_reveal_card_trash",
             "skip_intrigue_acquisition",
             # An Intrigue "choose a Faction" Influence with every Faction it
             # may raise at the top is confirmed (OQ-060).
             "resolve_intrigue_influence_without_faction",
             "finish_intrigue_effects",
             "decline_reveal_sandworm",
-            "decline_reveal_spice_influence",
-            "decline_reveal_troop_retreat",
             # Unswerving Loyalty's Fremen Bond troop move [Unswerving Loyalty
             # card], shared with Shadout Mapes (Immortality).
-            "decline_reveal_troop_move",
             "deploy_reveal_card_troop",
             "retreat_reveal_card_troop",
             "defer_reveal_choice",
@@ -722,6 +769,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_water_and_destroy_wall",
             "use_other_memories",
         )
+    )
+    # A Conflict reward recipient resolves its reward icon by icon (stage B2,
+    # OQ-112); a Deep Cover Spy is printed only on Bloodlines Conflicts.
+    templates.extend(
+        ActionTemplate(
+            action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
+        )
+        for kind in COMBAT_REWARD_ICON_KINDS
+        if kind != "deep_cover_spy" or config.bloodlines
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -880,6 +936,25 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
             )
     if config.choam_module:
+        # A completed Contract's reward, icon by icon (stage B2, OQ-112).
+        templates.extend(
+            ActionTemplate(
+                action_id="resolve_contract_reward_icon", arguments=(("effect", kind),)
+            )
+            for kind in CONTRACT_REWARD_ICON_KINDS
+        )
+        # A Contract completed in its owner's turn: its icons wait on the
+        # turn as rows naming the Contract (stage B3b, OQ-112 (4)).
+        templates.extend(
+            dict.fromkeys(
+                ActionTemplate(
+                    action_id="resolve_contract_reward_icon",
+                    arguments=(("contract_id", instance_id), ("effect", kind)),
+                )
+                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
+                for kind, _piece in contract_reward_icons(instance_id)
+            )
+        )
         for action_id in ("take_contract", "complete_contract"):
             templates.extend(
                 ActionTemplate(
@@ -1226,7 +1301,869 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for template in tuple(templates)
             if template.action_id in BOX_ACTION_IDS
         )
-    return tuple(sorted(templates, key=_template_sort_key))
+    # Stage B3: the effect and target rows that stand for the whole actions
+    # of a frame offering its waiting effects effect first, and of a window
+    # offering its own effect by its targets (B3d-2a).
+    wholes = tuple(templates)
+    templates = [
+        template
+        for template in wholes
+        if template.action_id not in STEP_SPECS
+        and template.action_id not in TARGET_SPECS
+    ]
+    templates.extend(_effect_step_templates(config, wholes))
+    return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
+
+
+def _effect_step_templates(
+    config: RulesetConfig, wholes: tuple[ActionTemplate, ...]
+) -> tuple[ActionTemplate, ...]:
+    """The rows ``rules.effect_steps`` shows the catalog's whole actions by
+    (stage B3): each whole template's steps, once per entity that may have
+    printed its effect when the state names it (``effect_steps.Printed``),
+    and a window's own effect by its target rows (B3d-2a). An Agent box's
+    rows name the card types whose box can offer them
+    (``_box_effect_cards``) and, for a Signet Ring box, every leader face."""
+
+    faces = _leader_faces(config)
+    spaces = tuple(space.space_id for space in catalog_spaces(config))
+    box_cards = _box_effect_cards(config)
+    intrigue_cards = _intrigue_choice_cards(config)
+    rows: dict[ActionTemplate, None] = {}
+    for template in wholes:
+        if template.action_id in TARGET_SPECS or template.action_id in WINDOW_OWN:
+            window_own = DomainAction(template.action_id, 0, template.arguments)
+            for row in steps_for(window_own, effect_row=False):
+                rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
+        spec = STEP_SPECS.get(template.action_id)
+        if spec is None or (
+            not isinstance(spec.printed, Printed)
+            and not spec.printed.startswith("=")
+            and spec.printed not in dict(template.arguments)
+        ):
+            continue
+        whole = DomainAction(template.action_id, 0, template.arguments)
+        named: tuple[tuple[Source | None, ActionValue | None], ...]
+        if spec.printed == Printed.BOX_CARD:
+            effect = steps_for(whole, "", Source.AGENT_CARD)[0]
+            arguments = dict(effect.arguments)
+            icon = arguments.get("icon", "")
+            assert isinstance(icon, str)
+            # A refusal's: those of the effect it answers (B3d-3).
+            answered = arguments.get("of", effect.action_id)
+            assert isinstance(answered, str)
+            cards = box_cards.get((answered, icon), ())
+            # A Signet Ring box resolves its leader's Signet: only the plain
+            # and keyed rows are the box's own, the rest are the leader's.
+            signets = faces if template.action_id == "resolve_agent_card_effect" else ()
+            named = (
+                *((Source.AGENT_CARD, card) for card in cards),
+                *((Source.LEADER, face) for face in signets),
+            )
+        elif spec.printed == Printed.VISITED_SPACE:
+            named = tuple(
+                (None, space)
+                for space in _VISITED_SPACES.get(template.action_id, spaces)
+            )
+        elif spec.printed == Printed.INTRIGUE_WINDOW:
+            named = tuple((None, window) for window in INTRIGUE_WINDOWS)
+        elif spec.printed == Printed.RESEARCH_SPACE:
+            # A bonus's refusal (B3d-3): each space printing a bonus.
+            assert isinstance(spec.of, Mapping)
+            named = tuple((None, space) for space in spec.of)
+        elif spec.printed == Printed.LEADER:
+            own = _LEADER_ROW_FACES.get(template.action_id)
+            named = tuple(
+                (None, face) for face in faces if own is None or face in own
+            )
+        elif template.action_id in _REWARD_WINDOW_REFUSALS:
+            # A Conflict reward window's refusal or empty confirmation
+            # (B3d-3), by each icon whose window offers it and each Conflict
+            # printing that icon.
+            for icon in _REWARD_WINDOW_REFUSALS[template.action_id]:
+                for conflict in CONFLICTS:
+                    if not (
+                        (config.bloodlines or not conflict.bloodlines_only)
+                        and (config.epic_game or not conflict.epic_only)
+                        and (
+                            icon in conflict_reward_icon_kinds(conflict.card.card_id)
+                            or (icon == "choose_influence" and config.promo_cards)
+                        )
+                    ):
+                        continue
+                    for row in steps_for(whole, conflict.card.card_id, icon=icon):
+                        template_row = ActionTemplate(row.action_id, row.arguments)
+                        rows.setdefault(template_row, None)
+            continue
+        elif spec.printed == Printed.CONFLICT_CARD:
+            # A Conflict reward icon (stage B3d-1): each Conflict printing
+            # it, and any Conflict's first place for Pivotal Gambit's
+            # Influence (OQ-025).
+            # A reward window's other effect (B3d-2a): each Conflict printing
+            # an icon that opens the window.
+            kind = dict(template.arguments).get("effect")
+            kinds = _WINDOW_REWARD_ICONS.get(template.action_id, (kind,))
+            named = tuple(
+                (None, conflict.card.card_id)
+                for conflict in CONFLICTS
+                if (config.bloodlines or not conflict.bloodlines_only)
+                and (config.epic_game or not conflict.epic_only)
+                and (
+                    any(
+                        printed in conflict_reward_icon_kinds(conflict.card.card_id)
+                        for printed in kinds
+                    )
+                    or (kind == "choose_influence" and config.promo_cards)
+                )
+            )
+        elif spec.printed == Printed.CONTRACT:
+            # A window's row names no Contract: the rows of its Contract are
+            # the owner's turn rows' (``contract_id``), already named.
+            # A Spy window's recall (B3d-2a) names each Contract printing a
+            # Spy icon.
+            contract = dict(template.arguments).get("contract_id")
+            if template.action_id in _WINDOW_REWARD_ICONS and config.choam_module:
+                named = tuple(
+                    (None, instance)
+                    for instance in contract_instance_ids(bloodlines=config.bloodlines)
+                    if any(
+                        kind in _WINDOW_REWARD_ICONS[template.action_id]
+                        for kind, _ in contract_reward_icons(instance)
+                    )
+                )
+            elif contract is None:
+                continue
+            else:
+                named = ((None, contract),)
+        elif spec.printed == Printed.INTRIGUE_CARD:
+            # A printed line of a card played line by line (OQ-058), or an
+            # effect beside a choice slot's own (B3d-2a).
+            line = dict(template.arguments).get("section")
+            if not isinstance(line, int):
+                named = tuple(
+                    (None, card_id)
+                    for card_id in intrigue_cards.get(template.action_id, ())
+                )
+            else:
+                held = map(
+                    intrigue_card_for_instance, _held_intrigue_instance_ids(config)
+                )
+                named = tuple(
+                    (None, card_id)
+                    for card_id in dict.fromkeys(
+                        card.card.card_id
+                        for card in held
+                        if any(
+                            option.separate and line < len(option.sections)
+                            for option in card.options
+                        )
+                    )
+                )
+        elif spec.printed == Printed.ACQUIRED_CARD:
+            # An acquired card's Spy window (B3d-2a).
+            named = tuple((None, card) for card in _acquisition_spy_cards(config))
+        elif spec.printed == Printed.WINDOW:
+            # A window, by what opened it: the Spy placement window (B3d-2a),
+            # an opponent's or a card's window (B3d-3).
+            named = _window_printers(config, template.action_id, box_cards, faces)
+        elif spec.printed == Printed.SCOUTS_ITEM:
+            # A Scouts market's or choice's refusal (B3d-3).
+            items = (
+                tuple(auction.auction_id for auction in AUCTIONS)
+                if template.action_id == "scouts_decline_card"
+                else (
+                    # The events' and sales' choices (``offer_scouts_choice``,
+                    # a secret reward's ``offer_only_line``).
+                    *(event.event_id for event in EVENTS),
+                    *(sale.sale_id for sale in SALES),
+                )
+            )
+            named = tuple((None, item) for item in items)
+        elif spec.printed == Printed.SKILL_WINDOW:
+            named = _skill_window_givers(config)
+        elif spec.printed == Printed.TECH_PENDING:
+            named = tuple(
+                (None, tile.tech_id)
+                for tile in TECH_TILES
+                if "influence" in tile.acquire_effect_keys
+            )
+        elif spec.printed == Printed.MISSION:
+            # A Scouts mission's plain way in (B3d-2b); the specimen return
+            # beside a mission that takes troops from the supply (B3d-4).
+            named = tuple(
+                (None, mission.mission_id)
+                for mission in missions_for(
+                    scouts_pool(immortality=config.immortality),
+                    choam=config.choam_module,
+                )
+                if template.action_id != "scouts_return_specimens"
+                or mission_takes_supply_troops(mission)
+            )
+        elif spec.printed == Printed.NAMED and template.action_id in _OWED_DRAW_IDS:
+            named = _owed_draw_printers(config, template.action_id, faces)
+        elif spec.printed == Printed.NAMED and template.action_id == (
+            "resolve_research_icon"
+        ):
+            # A research space's icon, by each space printing it (B3e-1).
+            waiting = dict(template.arguments).get("effect")
+            assert isinstance(waiting, str)
+            named = tuple(
+                (Source.RESEARCH, space) for space in research_icon_spaces(waiting)
+            )
+        elif spec.printed == Printed.NAMED and template.action_id in _REVEAL_GAIN_OF:
+            named = _reveal_gain_printers(config, template.action_id, faces)
+        elif spec.printed == Printed.NAMED:
+            # An optional trash waiting on the turn, by every entity that
+            # may print one (stage B3c-2b); a grafted turn's second card's
+            # effect row carries ``box=1``.
+            for printer, entity, box in _optional_trash_printers(
+                config, box_cards, faces
+            ):
+                boxed = DomainAction(
+                    template.action_id,
+                    0,
+                    tuple(
+                        sorted(
+                            (
+                                *template.arguments,
+                                *((("printed_box", 1),) if box else ()),
+                            )
+                        )
+                    ),
+                )
+                for row in steps_for(boxed, entity, printer):
+                    rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
+            continue
+        else:
+            named = ((None, None),)
+        for source, printed in named:
+            for row in steps_for(whole, printed, source):
+                rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
+    return tuple(rows)
+
+
+# The reward icons whose window a recall first or a payment stands beside
+# (stage B3d-2a), on a Conflict card or a Contract.
+_WINDOW_REWARD_ICONS: Final[Mapping[str, tuple[str, ...]]] = {
+    "pay_combat_reward": ("optional_solari", "optional_spice"),
+    "recall_spy_for_combat_reward": ("spy", "deep_cover_spy"),
+    "recall_spy_for_contract": ("spy", "deep_cover_spy"),
+    # A Contract window's refusal and empty confirmation (B3d-3).
+    "decline_contract_spy": ("spy", "deep_cover_spy"),
+    "resolve_contract_without_recall": ("recall_agent",),
+}
+# A controlled space's defending troop (B3d-2a): a space a Conflict card's
+# control reward names.
+_CONTROL_SPACES: Final = tuple(
+    dict.fromkeys(
+        conflict.rewards[0].control_space_id
+        for conflict in CONFLICTS
+        if conflict.rewards is not None
+        and conflict.rewards[0].control_space_id is not None
+    )
+)
+_VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
+    "deploy_control_defense": _CONTROL_SPACES,
+    "decline_control_defense": _CONTROL_SPACES,
+    # The one space printing the effect an empty confirmation answers
+    # (``board_effects``; B3d-3).
+    "resolve_espionage_without_spy": ("espionage",),
+    "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
+}
+# The effects an Intrigue card's choice slot offers beside its own, by the
+# slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
+# Wall, the look at the deck's top card.
+_INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
+    "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
+    "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
+    "PeekTopCard": (
+        "put_back_top_card",
+        "discard_top_card",
+        "draw_top_card_for_solari",
+    ),
+    # The slots' refusals and empty confirmations (B3d-3).
+    "TrashPersonalCard": ("decline_intrigue_trash",),
+    "TrashDiscardPileCard": ("decline_intrigue_trash",),
+    "AcquireTleilaxuCard": ("decline_intrigue_tleilaxu",),
+    "AcquireCardUpTo": ("skip_intrigue_acquisition",),
+    "GainInfluence": ("resolve_intrigue_influence_without_faction",),
+}
+# A Conflict reward window's refusal or empty confirmation by the icons
+# whose window offers it (``effect_steps.window_icon``, B3d-3).
+_REWARD_WINDOW_REFUSALS: Final[Mapping[str, tuple[str, ...]]] = {
+    "decline_combat_reward": (
+        "optional_solari",
+        "optional_spice",
+        "optional_recall_spies",
+    ),
+    "decline_combat_reward_spy": ("spy", "deep_cover_spy"),
+    "decline_combat_reward_trash": ("trash",),
+    "resolve_combat_trash_without_card": ("trash",),
+    "resolve_combat_influence_without_faction": (
+        "choose_influence",
+        "distinct_influence",
+    ),
+}
+
+
+def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
+    """For each effect beside an Intrigue choice slot's own, and the
+    automatic rewards beside a card's choices (OQ-015), the cards that may
+    print it: the Intrigue cards a seat can hold and, with Bloodlines,
+    Steersman Y'rkoon's Navigation cards."""
+
+    held = _held_intrigue_instance_ids(config)
+    if config.bloodlines:
+        held = (*held, *navigation_card_instance_ids())
+    cards: dict[str, dict[str, None]] = {}
+    for instance_id in held:
+        card = intrigue_card_for_instance(instance_id)
+        for option in card.options:
+            slots = {
+                type(slot).__name__
+                for wall in (True, False)
+                for slot in choice_slots(option.sections, shield_wall_present=wall)
+            }
+            if not slots:
+                continue
+            effects = {
+                effect
+                for slot in slots
+                for effect in _INTRIGUE_SLOT_EFFECTS.get(slot, ())
+            }
+            if automatic_rewards(option.sections):
+                effects.add("resolve_intrigue_rewards")
+            for effect in effects:
+                cards.setdefault(effect, {})[card.card.card_id] = None
+    if config.bloodlines:
+        # A Navigation card's refusal (B3d-3).
+        cards["decline_navigation"] = {
+            intrigue_card_for_instance(instance_id).card.card_id: None
+            for instance_id in navigation_card_instance_ids()
+        }
+    return {effect: tuple(found) for effect, found in cards.items()}
+
+
+_OWED_DRAW_IDS: Final = frozenset({"draw_owed_intrigue", "draw_owed_card"})
+# Whether a printed Reveal line gives the gain of each Reveal gain action
+# (stage B3e-1, ``reveal_turn.legal_reveal_gain_actions``).
+_REVEAL_GAIN_OF: Final[Mapping[str, Callable[[PersonalCardRevealEffect], bool]]] = {
+    "recruit_reveal_troops": lambda effect: effect.recruit_troops > 0,
+    "draw_reveal_intrigue": lambda effect: effect.draw_intrigue > 0,
+    "generate_reveal_specimens": lambda effect: effect.specimens > 0,
+    "advance_reveal_tleilaxu": lambda effect: effect.tleilaxu > 0,
+    "advance_reveal_research": lambda effect: effect.research > 0,
+    "gain_reveal_resources": lambda effect: bool(
+        effect.solari or effect.spice or effect.water
+    ),
+    "gain_reveal_faction_influence": lambda effect: (
+        effect.influence_faction is not None and effect.influence > 0
+    ),
+}
+
+
+def _reveal_gain_printers(
+    config: RulesetConfig, action_id: str, faces: tuple[str, ...]
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may print a Reveal gain of ``action_id`` (stage B3e-1,
+    ``effect_steps.reveal_gain_printer``): every card a seat of the ruleset
+    may own with such a Reveal line (not a spice a Reveal choice holds,
+    which the choice pays: Delivery Agreement, Priority Contracts), Hardy's
+    troop and Driven's spice, Panopticon's troop and Delivery Bay's Command
+    Solari, Muad'Dib's Intrigue card."""
+
+    gives = _REVEAL_GAIN_OF[action_id]
+    # (A Tleilaxu card's entry is an Imperium card's; Epic Game Mode's
+    # Control the Spice is a starting card.)
+    cards: tuple[
+        StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry, ...
+    ] = (
+        *_starting_entries(config),
+        *RESERVE_STACKS,
+        *imperium_cards_for_choam(
+            config.choam_module,
+            config.promo_cards,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+            immortality=config.immortality,
+        ),
+        *(tleilaxu_cards_for(config.promo_cards) if config.immortality else ()),
+    )
+    printers: list[tuple[Source | None, ActionValue | None]] = [
+        (Source.REVEAL_CARD, card_id)
+        for card_id in dict.fromkeys(
+            card.card.card_id
+            for card in cards
+            if any(
+                gives(effect)
+                and not (
+                    effect.spice > 0
+                    and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
+                )
+                for effect in card.reveal_effects
+            )
+        )
+    ]
+    if config.bloodlines:
+        skill_gains = {
+            "recruit_reveal_troops": lambda skill: skill.reveal_troops > 0,
+            "gain_reveal_resources": lambda skill: skill.reveal_spice > 0,
+        }
+        if action_id in skill_gains:
+            printers.extend(
+                (Source.COMMANDER, skill.skill_id)
+                for skill in SKILLS
+                if skill_gains[action_id](skill)
+            )
+    if config.tech_module:
+        tile = {
+            "recruit_reveal_troops": "panopticon",
+            "gain_reveal_resources": "delivery_bay",
+        }.get(action_id)
+        if tile is not None:
+            printers.append((Source.TECH, tile))
+    if action_id == "draw_reveal_intrigue" and "muad_dib" in faces:
+        printers.append((Source.LEADER, "muad_dib"))
+    return tuple(printers)
+
+
+def _owed_draw_printers(
+    config: RulesetConfig, action_id: str, faces: tuple[str, ...]
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may earn an owed draw of the row's deck (B3d-4,
+    ``effect_steps.owed_origin_printer``): an Intrigue card from the Bene
+    Gesserit track's 4, Imperial Birthright, the Tleilaxu track, c7r3, an
+    acquire box or a card's "when trashed"; a card from c7r3, CHOAM
+    Transports or Hungry for Spice."""
+
+    printers: list[tuple[Source | None, ActionValue | None]] = []
+    if action_id == "draw_owed_intrigue":
+        printers.append((Source.INFLUENCE_TRACK, "bene_gesserit"))
+        printers.extend(
+            (Source.LEADER, face) for face in faces if face == "princess_irulan"
+        )
+        if config.immortality:
+            printers.append((Source.TRIGGER, "tleilaxu_track"))
+            printers.append((Source.RESEARCH, "c7r3"))
+        cards = _personal_card_instance_ids(config)
+        printers.extend(
+            (Source.ACQUISITION, card)
+            for card in dict.fromkeys(
+                personal_card_for_instance(instance).card.card_id
+                for instance in cards
+                if instance.startswith(("imperium:", "tleilaxu:"))
+                and acquire_box_draws_intrigue(instance)
+            )
+        )
+        printers.extend(
+            (Source.TRIGGER, card.card.card_id)
+            for card in imperium_cards_for_choam(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+                immortality=config.immortality,
+            )
+            if card.trash_effect is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
+        )
+        return tuple(printers)
+    if config.immortality:
+        printers.append((Source.RESEARCH, "c7r3"))
+    if config.tech_module:
+        printers.append((Source.TECH, "choam_transports"))
+    printers.extend(
+        (Source.LEADER, face) for face in faces if face == "steersman_y_rkoon"
+    )
+    return tuple(printers)
+
+
+def _skill_window_givers(
+    config: RulesetConfig,
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What opens a Skill window (B3d-3): Plasteel Blades' tile, and each
+    card whose trash acquires the bank's Sardaukar Commander."""
+
+    givers: list[tuple[Source | None, ActionValue | None]] = []
+    if config.tech_module:
+        givers.append((Source.TECH, "plasteel_blades"))
+    if config.bloodlines:
+        givers.extend(
+            (None, card.card.card_id)
+            for card in imperium_cards_for_choam(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=True,
+                tech_module=config.tech_module,
+                immortality=config.immortality,
+            )
+            if card.trash_effect is PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER
+        )
+    return tuple(givers)
+
+
+def _box_reward_cards(config: RulesetConfig, reward: type) -> tuple[str, ...]:
+    """The card types whose Agent box may resolve ``reward`` (B3d-3): those
+    printing it, and, as ``_box_effect_cards`` reads them, Ghola (which
+    copies the other grafted card's box, so its own card names the effect)
+    and any box its own code resolves."""
+
+    found: dict[str, None] = {}
+    for instance_id in _personal_card_instance_ids(config):
+        seated = (
+            f"player:0:{instance_id}"
+            if instance_id.startswith("starter:")
+            else instance_id
+        )
+        card = personal_card_for_instance(seated)
+        agent_effect = getattr(card, "agent_effect", None)
+        if agent_effect is PersonalCardAgentEffect.LEADER_SIGNET:
+            # Its effects are the leader's Signet.
+            continue
+        ability = None if agent_effect is None else agent_box_ability(agent_effect)
+        if (
+            card_is_ghola(card)
+            or (agent_effect is not None and ability is None)
+            or (
+                ability is not None
+                and any(
+                    isinstance(piece, reward)
+                    for section in ability.sections
+                    for piece in (*section.costs, *section.rewards)
+                )
+            )
+        ):
+            found[card.card.card_id] = None
+    return tuple(found)
+
+
+def _intrigue_reward_cards(config: RulesetConfig, reward: type) -> tuple[str, ...]:
+    """The Intrigue cards a seat can hold that print ``reward`` (B3d-3)."""
+
+    held = map(intrigue_card_for_instance, _held_intrigue_instance_ids(config))
+    return tuple(
+        dict.fromkeys(
+            card.card.card_id
+            for card in held
+            if any(
+                isinstance(piece, reward)
+                for option in card.options
+                for section in option.sections
+                for piece in (*section.costs, *section.rewards)
+            )
+        )
+    )
+
+
+def _window_printers(
+    config: RulesetConfig,
+    action_id: str,
+    box_cards: Mapping[tuple[str, str], tuple[str, ...]],
+    faces: tuple[str, ...],
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may open the window whose row ``action_id`` names it by its
+    recorded printer (``effect_steps.Printed.WINDOW``)."""
+
+    if action_id in ("recall_spy_for_placement", "decline_spy_placement"):
+        return _spy_placement_printers(config)
+    if action_id == "decline_tech":
+        # Battlefield Research, Rapid Engineering.
+        return tuple(
+            (Source.INTRIGUE, card)
+            for card in _intrigue_reward_cards(config, AcquireTech)
+        )
+    if action_id == "resolve_unit_loss_without_unit":
+        return tuple(
+            (Source.AGENT_CARD, card)
+            for card in _box_reward_cards(config, EachOpponentLosesTroop)
+        )
+    if action_id == "lose_moved_spy":
+        return (
+            *(
+                (Source.AGENT_CARD, card)
+                for card in _box_reward_cards(
+                    config, OpponentsMoveSpiesFromVisitedSpace
+                )
+            ),
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, RedirectSpiesOnTurnSpace)
+            ),
+        )
+    if action_id == "decline_optional_trash":
+        return (
+            *(
+                (printer, entity)
+                for printer, entity, box in _optional_trash_printers(
+                    config, box_cards, faces
+                )
+                if not box
+            ),
+            *(
+                (Source.SCOUTS, item)
+                for item in (scouts_trash_items() if config.arrakeen_scouts else ())
+            ),
+        )
+    raise ValueError(f"{action_id} names no window printer")
+
+
+def _acquisition_spy_cards(config: RulesetConfig) -> tuple[str, ...]:
+    """The card types whose acquire box places a Spy (B3d-2a)."""
+
+    return tuple(
+        dict.fromkeys(
+            personal_card_for_instance(instance_id).card.card_id
+            for instance_id in _personal_card_instance_ids(config)
+            if instance_id.startswith(("imperium:", "tleilaxu:"))
+            and acquire_box_places_spy(instance_id)
+        )
+    )
+
+
+def _spy_placement_printers(
+    config: RulesetConfig,
+) -> tuple[tuple[Source | None, ActionValue | None], ...]:
+    """What may open the Spy placement window (``spy_moves``, B3d-2a): the
+    Emperor track's Influence 4 Spy, a Tech tile's Spy icon and Panopticon,
+    False Orders, a Scouts line."""
+
+    printers: list[tuple[Source | None, ActionValue | None]] = [
+        (Source.INFLUENCE_TRACK, Faction.EMPEROR.value)
+    ]
+    if config.tech_module:
+        printers.extend(
+            (Source.TECH, tile.tech_id)
+            for tile in TECH_TILES
+            if any(key.startswith("spy_") for key in tile.acquire_effect_keys)
+        )
+        printers.append((Source.TECH, "panopticon"))
+    if config.bloodlines:
+        held = map(intrigue_card_for_instance, _held_intrigue_instance_ids(config))
+        printers.extend(
+            (Source.INTRIGUE, card_id)
+            for card_id in dict.fromkeys(
+                card.card.card_id
+                for card in held
+                if any(
+                    isinstance(reward, RedirectSpiesOnTurnSpace)
+                    for option in card.options
+                    for section in option.sections
+                    for reward in section.rewards
+                )
+            )
+        )
+    if config.arrakeen_scouts:
+        printers.extend((Source.SCOUTS, item) for item in scouts_spy_items())
+    return tuple(printers)
+
+
+def _optional_trash_printers(
+    config: RulesetConfig,
+    box_cards: Mapping[tuple[str, str], tuple[str, ...]],
+    faces: tuple[str, ...],
+) -> tuple[tuple[Source, str, int], ...]:
+    """The entities that may print an optional trash waiting on the turn
+    (``optional_trash.trash_printer``): a card whose Agent box may trash (box
+    1 too with grafting), a Tech tile's acquire or Flip trash, a research
+    pair's trash, Arrakis Planetologist's leader."""
+
+    boxes = (0, 1) if config.immortality else (0,)
+    return (
+        *(
+            (Source.AGENT_CARD, card, box)
+            for card in box_cards.get(("trash", ""), ())
+            for box in boxes
+        ),
+        *(
+            (Source.TECH, tech_id, 0)
+            for tech_id in (optional_trash_tech_ids() if config.tech_module else ())
+        ),
+        *(
+            (Source.RESEARCH, space, 0)
+            for space in (research_trash_spaces() if config.immortality else ())
+        ),
+        *((Source.LEADER, face, 0) for face in faces if face == PLANETOLOGIST_LEADER),
+    )
+
+
+_LEADER_TRASH_FACES: Final = frozenset(
+    {"feyd_rautha_harkonnen", "count_hasimir_fenring", "princess_irulan"}
+)
+_LEADER_SPY_FACES: Final = frozenset(
+    {
+        "feyd_rautha_harkonnen",
+        "lady_margot_fenring",
+        "staban_tuek",
+        "count_hasimir_fenring",
+        "gaius_helen_mohiam",
+    }
+)
+# The leader faces whose Signet or leader ability offers a leader row; the
+# rules tell the leaders apart by id (``leader_abilities``).
+_LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
+    "advance_feyd_track": frozenset({"feyd_rautha_harkonnen"}),
+    # The Reveal leader abilities (``leader_abilities._leader_reveal_ability``).
+    "recall_spy_for_leader": frozenset({"feyd_rautha_harkonnen"}),
+    "retreat_leader_troop": frozenset({"lady_amber_metulli"}),
+    "retreat_leader_commander": frozenset({"lady_amber_metulli"}),
+    "trash_leader_card": _LEADER_TRASH_FACES,
+    "place_leader_spy": _LEADER_SPY_FACES,
+    # A leader's refusal: the leaders that print the effect it answers
+    # (B3d-3; ``leader_abilities.legal_leader_signet_actions``).
+    "decline_leader_card_trash": _LEADER_TRASH_FACES,
+    "decline_leader_spy_placement": _LEADER_SPY_FACES,
+    "decline_leader_signet_payment": frozenset(
+        {
+            "lady_jessica",
+            "reverend_mother_jessica",
+            "staban_tuek",
+            "princess_irulan",
+            "chani",
+            "count_hasimir_fenring",
+            "duncan_idaho",
+            "gaius_helen_mohiam",
+        }
+    ),
+    "resolve_leader_signet_without_option": frozenset(
+        {"count_hasimir_fenring", "esmar_tuek", "gaius_helen_mohiam"}
+    ),
+    "recall_spy_for_leader_placement": frozenset(
+        {
+            "feyd_rautha_harkonnen",
+            "lady_margot_fenring",
+            "staban_tuek",
+            "count_hasimir_fenring",
+            "gaius_helen_mohiam",
+        }
+    ),
+    "pay_leader_signet_spice": frozenset(
+        {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
+    ),
+    "pay_leader_signet_solari": frozenset({"staban_tuek"}),
+    "pay_leader_signet_water": frozenset({"chani"}),
+    "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
+    "choose_leader_signet_influence": frozenset({"shaddam_corrino_iv"}),
+    "acquire_leader_imperium": frozenset({"princess_irulan"}),
+    "acquire_leader_reserve": frozenset({"princess_irulan"}),
+    "retreat_leader_troops": frozenset({"chani"}),
+    "place_leader_bonus_spice": frozenset({"esmar_tuek"}),
+    "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
+    "deploy_leader_agent": frozenset({"duncan_idaho"}),
+    "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
+    "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
+    "use_other_memories": frozenset({"lady_jessica"}),
+    "draw_planetologist_intrigue": frozenset({"liet_kynes"}),
+    "pay_leader_board_repeat": frozenset({"reverend_mother_jessica"}),
+}
+# What an Agent box's record pieces let it offer beside its plain
+# resolution, as (effect row, icon) pairs (``effect_steps.STEP_SPECS``).
+_PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
+    "TrashPersonalCard": (("trash", ""),),
+    "TrashCard": (("trash", ""),),
+    "TrashThisCard": (("trash", ""),),
+    "TrashIntrigueCard": (("trash", ""), ("pay", "")),
+    "DiscardFromHand": (("discard", ""), ("pay", "")),
+    "PayResources": (("pay", ""),),
+    "SpendSpecimens": (("pay", ""),),
+    "GainInfluence": (("gain_influence", ""),),
+    "PlaceSpy": (("place_spy", ""), ("recall_spy", "")),
+    "RecallAgent": (("recall_agent", ""),),
+    "ForceEnemyRetreat": (("retreat", ""),),
+    "CompleteContract": (("complete_contract", ""),),
+    "LoseTroops": (("lose_unit", ""),),
+    "AcquireCardForSolari": (("acquire", ""),),
+    "AcquireCardUpTo": (("acquire", ""),),
+    "GrantCombatDeployment": (("gain", "combat"),),
+    "DestroyShieldWall": (("pay", ""),),
+    "SummonSandworm": (("pay", ""),),
+}
+# Keyed icons answered by their own rows instead of an icon row.
+_ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
+    "influence": (("gain_influence", ""),),
+    "recall": (("recall_agent", ""),),
+    "trash": (("trash", ""),),
+    "combat": (("gain", "combat"),),
+    "spy": (("place_spy", ""), ("recall_spy", "")),
+}
+_HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
+    "possible_futures": (("gain_influence", ""),),
+    "beasts_spoils": (("trash", ""),),
+    "scientific_breakthrough": (("trash", ""),),
+    "long_live_the_fighters": (),
+}
+
+
+def _box_effect_cards(
+    config: RulesetConfig,
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """For each (effect row, icon) an Agent box may offer, the card types
+    whose box can: read off the box's record (its plain resolution, keyed
+    icons, pieces and hook). A box its own code resolves, and Ghola (which
+    copies the other grafted card's box), may offer any; any card's box may
+    take Urgent Shigawire's added draw (``effect=cards``)."""
+
+    effects: dict[str, set[tuple[str, str]]] = {}
+    unread: list[str] = []
+    for instance_id in _personal_card_instance_ids(config):
+        seated = (
+            f"player:0:{instance_id}"
+            if instance_id.startswith("starter:")
+            else instance_id
+        )
+        card = personal_card_for_instance(seated)
+        card_type = card.card.card_id
+        if card_type in effects or card_type in unread:
+            continue
+        agent_effect = getattr(card, "agent_effect", None)
+        if agent_effect is PersonalCardAgentEffect.LEADER_SIGNET:
+            continue
+        mine = {("draw", "cards")}
+        effects[card_type] = mine
+        if card_is_ghola(card):
+            unread.append(card_type)
+            continue
+        if agent_effect is None:
+            continue
+        ability = agent_box_ability(agent_effect)
+        if ability is None:
+            unread.append(card_type)
+            continue
+        mine.add(("resolve", ""))
+        if ability.structure is AbilityStructure.CHOOSE_TWO:
+            mine.add(("choose", ""))
+        for key in (*ability.icons, *ability.armed_icons):
+            if key in AGENT_ICON_VERBS:
+                mine.add((AGENT_ICON_VERBS[key].value, key))
+            mine.update(_ICON_EFFECTS.get(key, ()))
+        if ability.hook is not None:
+            mine.update(_HOOK_EFFECTS[ability.hook])
+        for section in ability.sections:
+            for piece in (*section.costs, *section.rewards):
+                mine.update(_PIECE_EFFECTS.get(type(piece).__name__, ()))
+    every = set().union(*effects.values()) | {
+        (shape.verb.value, "")
+        for action_id, shape in ACTION_SHAPES.items()
+        if shape.source is Source.AGENT_CARD
+    }
+    for card_type in unread:
+        effects.setdefault(card_type, set()).update(every)
+    cards: dict[tuple[str, str], list[str]] = {}
+    for card_type, kinds in effects.items():
+        for kind in kinds:
+            cards.setdefault(kind, []).append(card_type)
+    return {kind: tuple(types) for kind, types in cards.items()}
+
+
+def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
+    faces: dict[str, None] = {}
+    for leader in leaders_for_choam(
+        config.choam_module,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    ):
+        faces.setdefault(leader.setup_face_id or leader.leader_id, None)
+        if leader.alternate_face_id is not None:
+            faces.setdefault(leader.alternate_face_id, None)
+    return tuple(faces)
 
 
 def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
@@ -1313,7 +2250,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 arguments=(("commanders", 1), ("player", seat)),
             )
         )
-    templates.append(ActionTemplate(action_id="decline_command_acquisition"))
     templates.append(ActionTemplate(action_id="gain_reveal_persuasion"))
     templates.append(ActionTemplate(action_id="take_reveal_contract"))
     templates.extend(
@@ -1701,10 +2637,6 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Scientific Breakthrough, Slig Farmer.
             "trash_agent_card_self_for_vp",
             "pay_agent_card_five_solari_for_tleilaxu",
-            # For Humanity and Tleilaxu Surgeon Reveal choices (Shadout
-            # Mapes' troop move is in every catalog, for Unswerving Loyalty).
-            "decline_reveal_influence_loss",
-            "decline_reveal_troop_sacrifice",
         )
     ]
     templates.extend(
@@ -2037,6 +2969,41 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
 
 
 def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """The Agent turn's card picks and space picks (stage B1): every card
+    (with its graft choice) that has a placement somewhere, and every space
+    variant some card can reach."""
+
+    picks: dict[tuple[str, bool], None] = {}
+    spaces: dict[tuple[tuple[str, ActionValue], ...], None] = {}
+    for placement in _agent_placement_templates(config):
+        arguments = dict(placement.arguments)
+        card = arguments["card_id"]
+        assert isinstance(card, str)
+        picks.setdefault((card, arguments.get("graft") is True), None)
+        spaces.setdefault(
+            tuple(
+                item
+                for item in placement.arguments
+                if item[0] not in ("card_id", "graft")
+            ),
+            None,
+        )
+    return (
+        *(
+            ActionTemplate(
+                action_id="choose_agent_card",
+                arguments=(("card_id", card), *((("graft", True),) if graft else ())),
+            )
+            for card, graft in picks
+        ),
+        *(
+            ActionTemplate(action_id="place_agent", arguments=arguments)
+            for arguments in spaces
+        ),
+    )
+
+
+def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Emperor's Invitation (Bloodlines) can give any card the Emperor icon
     # for a turn, so the option's catalogs also hold every card's Emperor
     # placements.

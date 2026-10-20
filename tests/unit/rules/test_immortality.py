@@ -11,6 +11,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import (
     RESEARCH_START_ID,
     TLEILAXU_TRACK_END,
@@ -46,6 +47,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
     static_board_effects,
 )
+from dune_imperium.rules.effect_steps import first_step, steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import (
@@ -147,16 +149,31 @@ def _research_choices(state: GameState) -> dict[str, DomainAction]:
     }
 
 
-def _icon(effect: str) -> DomainAction:
-    """Seat 0's row resolving one research icon (rule decision 5)."""
+def _icon(effect: str, space: str) -> DomainAction:
+    """Seat 0's action resolving one research icon of the research space
+    ``space`` that printed it (rule decision 5; one action per icon and space
+    since stage B3e-1)."""
 
     return DomainAction(
-        action_id="resolve_research_icon", actor=0, arguments=(("effect", effect),)
+        action_id="resolve_research_icon",
+        actor=0,
+        arguments=(("effect", effect), ("printed", space), ("source", "research")),
     )
 
 
-def _owed_draw(action_id: str) -> DomainAction:
-    return DomainAction(action_id=action_id, actor=0)
+def _owed_draw(state: GameState, action_id: str) -> DomainAction:
+    """The row that takes seat 0's owed draw ``action_id`` of the research
+    space c7r3 in ``state`` (the turn offers the draws by their effect rows,
+    stage B3d-4, one action per entity that earned one, stage B3e-1)."""
+
+    return first_step(
+        state,
+        DomainAction(
+            action_id=action_id,
+            actor=0,
+            arguments=(("printed", "c7r3"), ("source", "research")),
+        ),
+    )
 
 
 def _offered_icons(state: GameState) -> set[str]:
@@ -164,7 +181,7 @@ def _offered_icons(state: GameState) -> set[str]:
 
     return {
         str(dict(action.arguments)["effect"])
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
         if action.action_id == "resolve_research_icon"
     }
 
@@ -172,7 +189,7 @@ def _offered_icons(state: GameState) -> set[str]:
 def _turn_end_offered(state: GameState) -> bool:
     return any(
         action.action_id == "finish_agent_turn"
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
     )
 
 
@@ -355,7 +372,8 @@ def test_trash_and_specimen_waits_on_the_turn_as_two_rows() -> None:
     assert top.kind == "turn"
     assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
         (turn_rows.RESEARCH_ICON, "specimen"),
-        (turn_rows.OPTIONAL_TRASH, ""),
+        # The trash records the research space that printed it (B3c-2b).
+        (turn_rows.OPTIONAL_TRASH, "research|c3r3"),
     ]
     assert pending_research_icons(chosen.state, 0) == ("specimen",)
     offered = legal_optional_trash_actions(chosen.state, 0)
@@ -368,7 +386,9 @@ def test_trash_and_specimen_waits_on_the_turn_as_two_rows() -> None:
     # The specimen is mandatory, so it holds the end; taking it is its own
     # step and logs what the fixed-order step used to.
     assert turn_rows.holds_the_end(chosen.state, 0)
-    taken = UprisingRulesEngine().apply(chosen.state, _icon("specimen"))
+    taken = apply_whole(
+        UprisingRulesEngine(), chosen.state, _icon("specimen", "c3r3")
+    )
     assert taken.state.players[0].specimens == 1
     assert [(e.kind, dict(e.payload)) for e in taken.events] == [
         ("specimens_generated", {"count": 1, "player": 0})
@@ -393,7 +413,7 @@ def _waits_on_the_turn(state: GameState, bonus: ResearchBonus) -> None:
     assert [waiting for waiting, _source in pending_research_bonuses(state, 0)] == [
         bonus
     ]
-    legal = {a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)}
+    legal = {a.action_id for a in UprisingRulesEngine().whole_actions(state, 0)}
     assert "decline_research_bonus" not in legal
 
 
@@ -520,9 +540,11 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     ]
     assert owner.intrigue_cards == () and owner.hand == owner_before.hand
     engine = UprisingRulesEngine()
+    after_intrigue = engine.apply(
+        paid.state, _owed_draw(paid.state, "draw_owed_intrigue")
+    ).state
     drawn = engine.apply(
-        engine.apply(paid.state, _owed_draw("draw_owed_intrigue")).state,
-        _owed_draw("draw_owed_card"),
+        after_intrigue, _owed_draw(after_intrigue, "draw_owed_card")
     ).state.players[0]
     # No personal card left the hand; one was drawn, and one Intrigue card.
     assert len(drawn.hand) == len(owner_before.hand) + 1
@@ -598,7 +620,7 @@ def test_specimen_and_tleilaxu_are_two_rows_taken_in_either_order(
 
     events: list[GameEvent] = []
     for position, icon in enumerate(order):
-        taken = engine.apply(state, _icon(icon))
+        taken = apply_whole(engine, state, _icon(icon, "c3r5"))
         state = taken.state
         events.extend(taken.events)
         remaining = set(order[position + 1 :])
@@ -638,15 +660,16 @@ def test_specimen_and_trash_let_the_trash_come_first() -> None:
     waiting = turn_rows.pending(state.decision_stack[-1])
     assert [(kind, value) for kind, _source, value in waiting] == [
         (turn_rows.RESEARCH_ICON, "specimen"),
-        (turn_rows.OPTIONAL_TRASH, ""),
+        # The trash records the research space that printed it (B3c-2b).
+        (turn_rows.OPTIONAL_TRASH, "research|c3r3"),
     ]
-    offered = {a.action_id for a in engine.legal_actions(state, 0)}
+    offered = {a.action_id for a in engine.whole_actions(state, 0)}
     assert {"resolve_research_icon", "trash_optional_card"} <= offered
     assert "decline_optional_trash" not in offered
     assert not _turn_end_offered(state)
 
     card = legal_optional_trash_actions(state, 0)[0]
-    trashed = engine.apply(state, card).state
+    trashed = apply_whole(engine, state, card).state
     owner = trashed.players[0]
     assert owner.specimens == 0 and len(owner.trashed) == 1
     # The trash was taken before the specimen; the specimen still holds the end
@@ -656,11 +679,11 @@ def test_specimen_and_trash_let_the_trash_come_first() -> None:
     ]
     assert _offered_icons(trashed) == {"specimen"}
     assert not any(
-        a.action_id == "trash_optional_card" for a in engine.legal_actions(trashed, 0)
+        a.action_id == "trash_optional_card" for a in engine.whole_actions(trashed, 0)
     )
     assert turn_rows.holds_the_end(trashed, 0) and not _turn_end_offered(trashed)
 
-    done = engine.apply(trashed, _icon("specimen")).state
+    done = apply_whole(engine, trashed, _icon("specimen", "c3r3")).state
     assert done.players[0].specimens == 1
     assert _turn_end_offered(done)
 
@@ -674,7 +697,7 @@ def test_an_unused_trash_lapses_at_the_press_after_the_specimen() -> None:
     fork = _agent_research("c2r4")
     state = apply_research_advance(fork, _research_choices(fork)["c3r3"]).state
 
-    taken = engine.apply(state, _icon("specimen")).state
+    taken = apply_whole(engine, state, _icon("specimen", "c3r3")).state
     assert _turn_end_offered(taken)
     assert [kind for kind, _s, _v in turn_rows.pending(taken.decision_stack[-1])] == [
         turn_rows.OPTIONAL_TRASH
@@ -715,24 +738,29 @@ def test_c7r3_holds_its_card_and_intrigue_draws_in_either_order(
     )
     before = state.players[0]
 
-    paid = engine.apply(state, pay)
+    paid = apply_whole(engine, state, pay)
     state = paid.state
     owner = state.players[0]
-    assert [event.kind for event in paid.events] == ["intrigue_card_trashed"]
+    # The pick step's seat-only ``effect_picked`` (stage B3c-2a) left out.
+    assert [
+        event.kind for event in paid.events if event.kind != "effect_picked"
+    ] == ["intrigue_card_trashed"]
     assert turn_rows.pending(state.decision_stack[-1]) == ()
     assert [(deck, origin) for deck, origin, _s in owner.owed_draws] == [
         ("intrigue", "research_c7r3"),
         ("card", "research_c7r3"),
     ]
     assert owner.intrigue_cards == () and owner.hand == before.hand
-    assert {a.action_id for a in engine.legal_actions(state, 0)} >= {
-        "draw_owed_intrigue",
-        "draw_owed_card",
+    # One action per deck and the entity that earned the draw (stage B3e-1).
+    c7r3 = (("printed", "c7r3"), ("source", "research"))
+    assert set(engine.whole_actions(state, 0)) >= {
+        DomainAction("draw_owed_intrigue", 0, c7r3),
+        DomainAction("draw_owed_card", 0, c7r3),
     }
     assert not _turn_end_offered(state)
 
     for position, action_id in enumerate(order):
-        state = engine.apply(state, _owed_draw(action_id)).state
+        state = engine.apply(state, _owed_draw(state, action_id)).state
         # The other draw still waits and holds the end; the taken one is gone.
         assert len(state.players[0].owed_draws) == 1 - position
         assert _turn_end_offered(state) == (position == 1)
@@ -757,21 +785,20 @@ def test_a_pair_outside_the_turn_opens_a_window_ordering_its_icons(
     assert window.kind == FrameKind.RESEARCH_BONUS
     assert window_icons(window) == ("specimen", "tleilaxu")
     assert state.players[0].specimens == 0 and state.players[0].tleilaxu_space == 0
-    assert sorted(
-        (a.action_id, dict(a.arguments)["effect"])
-        for a in UprisingRulesEngine().legal_actions(state, 0)
-    ) == [
-        ("resolve_research_icon", "specimen"),
-        ("resolve_research_icon", "tleilaxu"),
-    ]
+    # One action per icon, naming the research space that printed it (stage
+    # B3e-1).
+    assert set(UprisingRulesEngine().whole_actions(state, 0)) == {
+        _icon("specimen", "c3r5"),
+        _icon("tleilaxu", "c3r5"),
+    }
 
-    first = apply_research_icon(state, _icon(order[0]))
+    first = apply_research_icon(state, _icon(order[0], "c3r5"))
     assert first.state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
     assert window_icons(first.state.decision_stack[-1]) == (order[1],)
     assert [a.action_id for a in legal_research_bonus_actions(first.state, 0)] == [
         "resolve_research_icon"
     ]
-    second = apply_research_icon(first.state, _icon(order[1]))
+    second = apply_research_icon(first.state, _icon(order[1], "c3r5"))
     assert second.state.decision_stack == ()
     owner = second.state.players[0]
     assert (owner.specimens, owner.tleilaxu_space) == (1, 1)
@@ -792,7 +819,7 @@ def test_the_trash_icon_outside_the_turn_opens_its_own_window_over_the_rest() ->
     state = apply_research_advance(advanced, _research_choices(advanced)["c3r3"]).state
     assert window_icons(state.decision_stack[-1]) == ("specimen", "trash")
 
-    trash = apply_research_icon(state, _icon("trash"))
+    trash = apply_research_icon(state, _icon("trash", "c3r3"))
     assert [frame.kind for frame in trash.state.decision_stack] == [
         FrameKind.RESEARCH_BONUS,
         FrameKind.OPTIONAL_TRASH,
@@ -809,7 +836,7 @@ def test_the_trash_icon_outside_the_turn_opens_its_own_window_over_the_rest() ->
     assert [a.action_id for a in legal_research_bonus_actions(declined.state, 0)] == [
         "resolve_research_icon"
     ]
-    done = apply_research_icon(declined.state, _icon("specimen"))
+    done = apply_research_icon(declined.state, _icon("specimen", "c3r3"))
     assert done.state.decision_stack == ()
     assert done.state.players[0].specimens == 1
 
@@ -823,10 +850,10 @@ def test_the_trash_icon_last_outside_the_turn_leaves_only_its_own_window() -> No
     advanced = advance_research(fork, 0, source="test").state
     state = apply_research_advance(advanced, _research_choices(advanced)["c3r3"]).state
 
-    specimen = apply_research_icon(state, _icon("specimen"))
+    specimen = apply_research_icon(state, _icon("specimen", "c3r3"))
     assert specimen.state.players[0].specimens == 1
     assert window_icons(specimen.state.decision_stack[-1]) == ("trash",)
-    trash = apply_research_icon(specimen.state, _icon("trash"))
+    trash = apply_research_icon(specimen.state, _icon("trash", "c3r3"))
     assert [frame.kind for frame in trash.state.decision_stack] == [
         FrameKind.OPTIONAL_TRASH
     ]
@@ -864,20 +891,17 @@ def test_c7r3_paid_in_its_window_opens_a_window_for_its_two_rewards() -> None:
     assert window_icons(window) == ("intrigue", "cards")
     assert paid.state.players[0].owed_draws == ()
     assert paid.state.players[0].hand == before.hand
-    assert [
-        (a.action_id, dict(a.arguments)["effect"])
-        for a in legal_research_bonus_actions(paid.state, 0)
-    ] == [
-        ("resolve_research_icon", "intrigue"),
-        ("resolve_research_icon", "cards"),
+    assert list(legal_research_bonus_actions(paid.state, 0)) == [
+        _icon("intrigue", "c7r3"),
+        _icon("cards", "c7r3"),
     ]
 
     # Cards first, then the Intrigue card.
-    cards = apply_research_icon(paid.state, _icon("cards"))
+    cards = apply_research_icon(paid.state, _icon("cards", "c7r3"))
     assert window_icons(cards.state.decision_stack[-1]) == ("intrigue",)
     assert len(cards.state.players[0].hand) == len(before.hand) + 1
     assert cards.state.players[0].intrigue_cards == ()
-    intrigue = apply_research_icon(cards.state, _icon("intrigue"))
+    intrigue = apply_research_icon(cards.state, _icon("intrigue", "c7r3"))
     assert intrigue.state.decision_stack == ()
     assert len(intrigue.state.players[0].intrigue_cards) == 1
     # The window keeps the opener's name, the draw the track space's.
@@ -887,10 +911,10 @@ def test_c7r3_paid_in_its_window_opens_a_window_for_its_two_rewards() -> None:
     assert drawn.event_id.startswith("round:1:player:0:research:c7r3:intrigue_draw:")
 
     # Intrigue card first, then the card.
-    first = apply_research_icon(paid.state, _icon("intrigue"))
+    first = apply_research_icon(paid.state, _icon("intrigue", "c7r3"))
     assert window_icons(first.state.decision_stack[-1]) == ("cards",)
     assert len(first.state.players[0].intrigue_cards) == 1
-    last = apply_research_icon(first.state, _icon("cards"))
+    last = apply_research_icon(first.state, _icon("cards", "c7r3"))
     assert last.state.decision_stack == ()
     assert len(last.state.players[0].hand) == len(before.hand) + 1
 
@@ -1103,7 +1127,15 @@ def test_experimentation_reveal_specimen_is_the_owners_timing() -> None:
 
     revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
     actions = legal_reveal_gain_actions(revealed.state, 0)
-    assert [action.action_id for action in actions] == ["generate_reveal_specimens"]
+    # Two copies of the card are one action: one per entity that printed the
+    # gain (stage B3e-1, by its type), each press taking one copy's.
+    assert actions == (
+        DomainAction(
+            "generate_reveal_specimens",
+            0,
+            (("printed", "experimentation"), ("source", "reveal_card")),
+        ),
+    )
     first = apply_reveal_gain(revealed.state, actions[0])
     assert first.state.players[0].specimens == 1
     second = apply_reveal_gain(first.state, actions[0])
@@ -1173,18 +1205,53 @@ def test_family_atomics_on_a_short_deck_deals_what_is_left_for_good() -> None:
 def test_the_codec_holds_the_immortality_choices_only_with_the_option() -> None:
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
     immortality = {template.action_id for template in ActionCodec(IMMORTALITY).catalog}
-    added = {
+    added = {"return_specimen", "use_family_atomics"}
+    assert added <= immortality
+    assert not (added & base)
+    # Stage B3d-2a: the research windows offer their choices by rows, so these
+    # whole templates are in no catalog; the row that stands for each is
+    # Immortality's alone (a research space's target row, and the effect row
+    # of the bonus printed on that space). Stage B3d-3: the bonus's refusal is
+    # the ``decline`` row naming the effect it answers and the space, so
+    # ``decline_research_bonus`` is in no catalog either.
+    # Stage B3e-1: so is ``generate_reveal_specimens``; the Reveal frame
+    # offers its specimens by the entity that printed them, one row each.
+    gone = {
         "choose_research_space",
         "choose_research_influence",
         "trash_intrigue_for_research_bonus",
         "pay_research_bonus",
         "decline_research_bonus",
-        "return_specimen",
-        "use_family_atomics",
         "generate_reveal_specimens",
     }
-    assert added <= immortality
-    assert not (added & base)
+    assert not (gone & immortality)
+    wholes = (
+        DomainAction("choose_research_space", 0, (("space_id", "c4r2"),)),
+        DomainAction("choose_research_influence", 0, (("faction", "fremen"),)),
+        DomainAction(
+            "trash_intrigue_for_research_bonus",
+            0,
+            (("card_id", "intrigue:crysknife:0"),),
+        ),
+        DomainAction("pay_research_bonus", 0),
+        DomainAction("decline_research_bonus", 0),
+        DomainAction(
+            "generate_reveal_specimens",
+            0,
+            (("printed", "experimentation"), ("source", "reveal_card")),
+        ),
+    )
+    plain = ActionCodec(RulesetConfig())
+    with_option = ActionCodec(IMMORTALITY)
+    for whole in wholes:
+        with pytest.raises(ValueError, match="not present"):
+            with_option.encode(whole)
+        # The refusal names the space whose bonus it declines.
+        printed = "c7r3" if whole.action_id == "decline_research_bonus" else None
+        (row, *_) = steps_for(whole, printed)
+        assert with_option.decode(with_option.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            plain.encode(row)
 
 
 def test_go_to_11_leaves_the_action_catalog_alone() -> None:

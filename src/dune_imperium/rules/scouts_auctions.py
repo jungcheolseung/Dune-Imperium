@@ -536,7 +536,8 @@ def offer_take(state: GameState, task: str) -> RuleResult:
                 else "Pay your call for a revealed card, or decline"
             ),
         ),
-        context=(("amount", amount), ("place", place)),
+        # The auction its refusal names (B3d-3).
+        context=(("amount", amount), ("item", state.scouts_item), ("place", place)),
     )
     return RuleResult(state=state.push_decision(frame))
 

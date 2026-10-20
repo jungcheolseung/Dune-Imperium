@@ -20,7 +20,9 @@ import random
 from dataclasses import dataclass, field
 from functools import cache
 
+from dune_imperium.agents.agent_turn_steps import PlacementMemory, apply_whole
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.agents.heuristic_agent import (
     HeuristicAgent,
     card_printed_value,
@@ -231,6 +233,11 @@ class RolloutAgent:
     deck_by_value: bool = True
     _rng: random.Random = field(init=False, repr=False)
     _engine: UprisingRulesEngine = field(init=False, repr=False)
+    # The placement chosen at an Agent turn's card pick, for its space pick
+    # (stage B1, ``agents.agent_turn_steps``).
+    _placements: PlacementMemory = field(
+        init=False, repr=False, default_factory=PlacementMemory
+    )
 
     def __post_init__(self) -> None:
         if self.seed < 0:
@@ -257,10 +264,28 @@ class RolloutAgent:
         observation: PlayerView,
         legal_actions: tuple[DomainAction, ...],
     ) -> DomainAction:
-        """Search the candidates by determinized rollouts from ``state``."""
+        """Search the candidates by determinized rollouts from ``state``. An
+        Agent turn's candidates are whole placements, searched at its card
+        pick (stage B1, ``agents.agent_turn_steps``)."""
 
         if not legal_actions:
             raise ValueError("a rollout agent requires at least one legal action")
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            return scripted
+        return self._placements.choose(
+            state,
+            observation.player,
+            legal_actions,
+            lambda actions: self._search(state, observation, actions),
+        )
+
+    def _search(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
         if len(legal_actions) == 1:
             return legal_actions[0]
         seat = observation.player
@@ -277,7 +302,7 @@ class RolloutAgent:
                 else None
             )
             for index, action in enumerate(candidates):
-                branched = self._engine.apply(world, action).state
+                branched = apply_whole(self._engine, world, action).state
                 totals[index] += self._rollout(branched, seat, horizon, shared)
         best = max(totals)
         top = tuple(
@@ -338,8 +363,8 @@ class RolloutAgent:
             action = (
                 actions[0]
                 if len(actions) == 1
-                else policy.choose_action(
-                    engine.observe(state, decision.owner), actions
+                else policy.choose_action_with_state(
+                    state, engine.observe(state, decision.owner), actions
                 )
             )
             state = engine.apply(state, action, legal_actions=actions).state

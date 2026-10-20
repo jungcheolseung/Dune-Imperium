@@ -11,9 +11,12 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from tests.support.pauses import through_pauses
+from tests.support.pauses import pause_outcome, through_pauses
+from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -28,9 +31,14 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.core.events import GameEvent
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -38,12 +46,13 @@ from dune_imperium.rules.contracts import (
     legal_contract_actions,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, top_frame
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
     legal_trigger_contract_actions,
 )
+from dune_imperium.rules.pauses import pause_is_pending
 from dune_imperium.rules.reveal_turn import legal_reveal_deployments
 from dune_imperium.rules.setup import create_initial_state
 
@@ -127,7 +136,7 @@ def _board_effect(
 ) -> DomainAction:
     return next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "resolve_board_effect"
         and key in str(dict(action.arguments)["effect"])
     )
@@ -136,11 +145,40 @@ def _board_effect(
 def _take(state: GameState, engine: UprisingRulesEngine, instance_id: str) -> GameState:
     action = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "take_contract"
         and dict(action.arguments)["instance_id"] == instance_id
     )
-    return engine.apply(state, action).state
+    return apply_whole(engine, state, action).state
+
+
+def _through_windows(
+    engine: UprisingRulesEngine, result: RuleResult | Transition
+) -> RuleResult:
+    """Answer the reward windows (stage B2, OQ-112) the result stopped at, in
+    the older engine's order, and the pauses between them, keeping every
+    event; stop at the first other decision (a choice an icon opened, a
+    Contract market...)."""
+
+    state = result.state
+    events = list(result.events)
+    for _ in range(64):
+        if pause_is_pending(state):
+            step = apply_whole(engine, state, pause_outcome(state))
+        else:
+            frame = top_frame(state)
+            if frame is None or not isinstance(frame.decision, PlayerDecision):
+                break
+            owner = frame.decision.owner
+            row = engine_order_answer(state, owner, engine.whole_actions(state, owner))
+            if row is None:
+                break
+            step = apply_whole(engine, state, row)
+        state = step.state
+        events.extend(step.events)
+    else:
+        raise AssertionError("the reward windows did not close")
+    return RuleResult(state=state, events=tuple(events))
 
 
 def test_bloodlines_setup_shuffles_the_eight_tokens_into_the_same_bank() -> None:
@@ -215,7 +253,7 @@ def test_immediate_trashes_a_chosen_intrigue_card_then_draws_both_rewards() -> N
     assert owner.active_contract_ids == (IMMEDIATE,)
     assert owner.completed_contract_ids == ()
     assert taken.face_up_contract_ids == ("contract:secrets", "contract:arrakeen_i")
-    trashes = engine.legal_actions(taken, 0)
+    trashes = engine.whole_actions(taken, 0)
     assert [action.action_id for action in trashes] == [
         "trash_intrigue_for_contract",
         "trash_intrigue_for_contract",
@@ -224,7 +262,18 @@ def test_immediate_trashes_a_chosen_intrigue_card_then_draws_both_rewards() -> N
         INTRIGUE[:2]
     )
 
-    result = engine.apply(taken, trashes[1])
+    trashed = apply_whole(engine, taken, trashes[1])
+    # The completion announces itself at once and its two draws wait on the
+    # owner's turn, one row each (stage B3b, OQ-112 (4)).
+    kinds = [event.kind for event in trashed.events]
+    assert kinds[0] == "intrigue_card_trashed"
+    assert kinds[-1] == "contract_completed"
+    assert trashed.state.decision_stack[-1].kind == "turn"
+    assert turn_rows.holds_the_end(trashed.state, 0)
+    assert trashed.state.players[0].completed_contract_ids == (IMMEDIATE,)
+    assert trashed.state.players[0].intrigue_cards == (INTRIGUE[0],)
+
+    result = _through_windows(engine, trashed)
     owner = result.state.players[0]
     assert owner.active_contract_ids == ()
     assert owner.intrigue_cards == (INTRIGUE[0], INTRIGUE[5])
@@ -236,10 +285,13 @@ def test_immediate_trashes_a_chosen_intrigue_card_then_draws_both_rewards() -> N
     assert owner.completed_contract_ids == (IMMEDIATE,)
     assert owner.contracts_completed_turn == 1
     assert result.state.decision_stack[-1].kind == "turn"
-    # The completion's own event comes after its draws (cleanup-2c-3).
-    kinds = [event.kind for event in result.events]
-    assert kinds[0] == "intrigue_card_trashed"
-    assert kinds[-1] == "contract_completed"
+    # Both draws come as rows after the completion's event.
+    row_events = [
+        dict(event.payload)["effect"]
+        for event in result.events[len(trashed.events) :]
+        if event.kind == "contract_reward_icon_resolved"
+    ]
+    assert sorted(row_events) == ["cards", "intrigue"]
 
 
 def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> None:
@@ -261,7 +313,7 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
             actor=0,
             arguments=(("card_id", card), ("option", 0)),
         )
-        return engine.apply(base, play).state
+        return apply_whole(engine, base, play).state
 
     without = played(_owner(intrigue_cards=(card,), units_deployed_turn=3))
     assert without.decision_stack[-1].kind == FrameKind.INTRIGUE_TRIGGER_CONTRACT
@@ -356,21 +408,32 @@ def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> Non
     )
     placed = _place(state, "dutiful_service")
 
-    with_contract = engine.apply(
+    with_contract = apply_whole(engine, 
         placed, _board_effect(placed, engine, "contract")
     ).state
     with_contract = _take(with_contract, engine, EARN_ALLIANCE)
     assert with_contract.players[0].active_contract_ids == (EARN_ALLIANCE,)
 
-    result = engine.apply(
+    bumped = apply_whole(engine, 
         with_contract,
         DomainAction(action_id="resolve_faction_influence", actor=0),
     )
-    owner = result.state.players[0]
+    owner = bumped.state.players[0]
     assert owner.influence.emperor == 4
     assert owner.alliance_faction_ids == ("emperor",)
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
+    # The tile's reward waits on the Agent turn as rows (stage B3b, OQ-112
+    # (4)) until they are paid; the completion itself is the bump step's only
+    # Contract event.
+    assert bumped.state.decision_stack[-1].kind == "agent_effects"
+    assert turn_rows.holds_the_end(bumped.state, 0)
+    assert owner.resources.solari == 10
+    assert [
+        event.kind for event in bumped.events if event.kind.startswith("contract")
+    ] == ["contract_completed"]
+    result = replace(bumped, state=answer_reward_windows(engine, bumped.state))
+    owner = result.state.players[0]
     assert owner.resources.solari == 12
     # 3 starting troops + the tile's two; the Emperor track's Influence 4
     # bonus is a Spy [Main p. 7], which waits in the owner's turn for its
@@ -379,13 +442,10 @@ def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> Non
     assert owner.troops_garrison == 5
     assert [seat for seat, _ in result.state.pending_track_spies] == [0]
     assert result.state.decision_stack[-1].kind == "agent_effects"
-    offered = {action.action_id for action in engine.legal_actions(result.state, 0)}
+    offered = {action.action_id for action in engine.whole_actions(result.state, 0)}
     assert "place_track_spy" in offered
     assert "finish_agent_turn" not in offered
-    assert [
-        event.kind for event in result.events if event.kind.startswith("contract")
-    ] == ["contract_completed"]
-    opened = engine.apply(
+    opened = apply_whole(engine, 
         result.state, DomainAction(action_id="place_track_spy", actor=0)
     ).state
     assert opened.decision_stack[-1].kind == "spy_placement"
@@ -409,6 +469,13 @@ def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() 
     )
     owner = completed.state.players[0]
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
+    # The tile's troops come with its row on the Agent turn (stage B3b,
+    # OQ-112 (4)).
+    assert completed.state.decision_stack[-1].kind == "agent_effects"
+    assert turn_rows.holds_the_end(completed.state, 0)
+    assert owner.troops_garrison == 3
+    completed = replace(completed, state=settle_reward_window(completed.state))
+    owner = completed.state.players[0]
     assert owner.troops_garrison == 3 + 2
     assert dict(completed.state.decision_stack[-1].context)["troops_recruited"] == 2
 
@@ -427,6 +494,7 @@ def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() 
         "dutiful_service",
     )
     rival_done = complete_alliance_contracts(RuleResult(state=rival, events=(other,)))
+    rival_done = replace(rival_done, state=settle_reward_window(rival_done.state))
     assert rival_done.state.players[2].completed_contract_ids == (EARN_ALLIANCE,)
     assert rival_done.state.players[2].troops_garrison == 3 + 2
     assert dict(rival_done.state.decision_stack[-1].context)["troops_recruited"] == 0
@@ -467,11 +535,15 @@ def test_earn_any_alliance_last_effect_credits_this_turn_not_the_next() -> None:
     # next turn starts from none.
     engine = UprisingRulesEngine()
     placed = _place(_closing_alliance_state(), "deliver_supplies")
-    with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
+    with_water = apply_whole(
+        engine, placed, _board_effect(placed, engine, "resources")
+    ).state
 
-    result = engine.apply(
+    result = apply_whole(engine, 
         with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
     ).state
+    # The tile's two troops are the reward window's row (stage B2, OQ-112).
+    result = answer_reward_windows(engine, result)
 
     owner = result.players[0]
     assert owner.influence.spacing_guild == 4
@@ -482,7 +554,7 @@ def test_earn_any_alliance_last_effect_credits_this_turn_not_the_next() -> None:
     assert effects.kind == FrameKind.AGENT_EFFECTS
     assert dict(effects.context)["turn_owner"] == 0
     assert dict(effects.context)["troops_recruited"] == 2
-    assert engine.legal_actions(result, 0) == (
+    assert engine.whole_actions(result, 0) == (
         DomainAction(action_id="finish_agent_turn", actor=0),
     )
 
@@ -512,10 +584,13 @@ def test_earn_any_alliance_does_not_join_a_later_reveals_allowance() -> None:
     # turn에서도 쓸 수 있다" [Bloodlines pp. 5, 12].
     engine = UprisingRulesEngine()
     placed = _place(_closing_alliance_state(), "deliver_supplies")
-    with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
-    last = engine.apply(
+    with_water = apply_whole(
+        engine, placed, _board_effect(placed, engine, "resources")
+    ).state
+    last = apply_whole(engine, 
         with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
     ).state
+    last = answer_reward_windows(engine, last)
     assert dict(last.decision_stack[-1].context)["troops_recruited"] == 2
     result = finish_agent_turn(last)
     assert result.decision_stack[-1].kind == FrameKind.TURN
@@ -527,7 +602,7 @@ def test_earn_any_alliance_does_not_join_a_later_reveals_allowance() -> None:
     with_combat_icon = replace(
         result, players=(combat_icon_owner, *result.players[1:])
     )
-    revealed = engine.apply(
+    revealed = apply_whole(engine, 
         with_combat_icon, DomainAction(action_id="reveal_turn", actor=0)
     ).state
 
@@ -579,13 +654,16 @@ def test_earn_any_alliance_waits_for_a_new_alliance_token() -> None:
     assert taken.state.players[2].alliance_faction_ids == ()
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
-    assert owner.resources.solari == 12
-    assert owner.troops_garrison == 3 + 2
     assert [event.kind for event in taken.events] == [
         "influence_gained",
         "alliance_transferred",
         "contract_completed",
     ]
+    # Its reward is paid by the window's rows (stage B2, OQ-112).
+    assert owner.resources.solari == 10
+    owner = settle_reward_window(taken.state).players[0]
+    assert owner.resources.solari == 12
+    assert owner.troops_garrison == 3 + 2
 
 
 def test_deliver_supplies_places_its_spy_with_deep_cover_over_an_opponent() -> None:
@@ -602,29 +680,31 @@ def test_deliver_supplies_places_its_spy_with_deep_cover_over_an_opponent() -> N
     placed = _place(state, "dutiful_service")
     assert not any(
         action.action_id == "complete_contract"
-        for action in engine.legal_actions(placed, 0)
+        for action in engine.whole_actions(placed, 0)
     )
 
     placed = _place(state, "deliver_supplies")
     completion = next(
         action
-        for action in engine.legal_actions(placed, 0)
+        for action in engine.whole_actions(placed, 0)
         if action.action_id == "complete_contract"
     )
-    completed = engine.apply(placed, completion).state
+    completed = answer_reward_windows(engine, apply_whole(
+        engine, placed, completion
+    ).state)
     frame = completed.decision_stack[-1]
     assert frame.kind == "contract_reward_spy"
     assert dict(frame.context)["deep_cover"] is True
     assert completed.players[0].resources.solari == 11
     targets = {
         dict(action.arguments)["post_id"]
-        for action in engine.legal_actions(completed, 0)
+        for action in engine.whole_actions(completed, 0)
         if action.action_id == "place_contract_spy"
     }
     assert targets == {post.post_id for post in OBSERVATION_POSTS}
     assert post in targets
 
-    spied = engine.apply(
+    spied = apply_whole(engine, 
         completed,
         DomainAction(
             action_id="place_contract_spy", actor=0, arguments=(("post_id", post),)
@@ -661,27 +741,29 @@ def test_deliver_supplies_spy_without_supply_may_pass_up_the_recall_first() -> N
     placed = _place(state, "deliver_supplies")
     completion = next(
         action
-        for action in engine.legal_actions(placed, 0)
+        for action in engine.whole_actions(placed, 0)
         if action.action_id == "complete_contract"
     )
-    completed = engine.apply(placed, completion).state
-    actions = engine.legal_actions(completed, 0)
+    completed = answer_reward_windows(engine, apply_whole(
+        engine, placed, completion
+    ).state)
+    actions = engine.whole_actions(completed, 0)
     assert [action.action_id for action in actions] == [
         "decline_contract_spy",
         *("recall_spy_for_contract",) * 3,
     ]
 
-    declined = engine.apply(completed, actions[0]).state
+    declined = apply_whole(engine, completed, actions[0]).state
     assert declined.players[0].spy_post_ids == own_posts
     assert declined.decision_stack[-1].kind == "agent_effects"
 
-    recalled = engine.apply(completed, actions[1]).state
+    recalled = apply_whole(engine, completed, actions[1]).state
     targets = {
         dict(action.arguments)["post_id"]
-        for action in engine.legal_actions(recalled, 0)
+        for action in engine.whole_actions(recalled, 0)
         if action.action_id == "place_contract_spy"
     }
-    assert {action.action_id for action in engine.legal_actions(recalled, 0)} == {
+    assert {action.action_id for action in engine.whole_actions(recalled, 0)} == {
         "place_contract_spy"
     }
     # Deep Cover: the opponent's post is open, the owner's own are not.
@@ -845,18 +927,17 @@ def _accept_contract_icon() -> GameState:
     state = _state(owner, market=(IMMEDIATE,), intrigue_deck=INTRIGUE[:5])
     place = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("space_id") == "accept_contract"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("space_id") == "accept_contract"
         and dict(action.arguments).get("card_id") == mentat
     )
-    placed = engine.apply(state, place).state
+    placed = apply_placement(engine, state, place).state
     icon = DomainAction(
         action_id="resolve_board_effect",
         actor=0,
         arguments=(("effect", "contract"),),
     )
-    return engine.apply(placed, icon).state
+    return apply_whole(engine, placed, icon).state
 
 
 def test_an_unreachable_market_opens_the_hold_window_inside_a_turn() -> None:
@@ -864,9 +945,9 @@ def test_an_unreachable_market_opens_the_hold_window_inside_a_turn() -> None:
     opened = _accept_contract_icon()
 
     assert opened.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-    assert engine.legal_actions(opened, 0) == (HOLD,)
+    assert engine.whole_actions(opened, 0) == (HOLD,)
 
-    held = engine.apply(opened, HOLD)
+    held = apply_whole(engine, opened, HOLD)
 
     assert [event.kind for event in held.events] == ["contract_icons_held"]
     assert held.state.players[0].held_contract_icons == 1
@@ -878,26 +959,26 @@ def test_an_unreachable_market_opens_the_hold_window_inside_a_turn() -> None:
 
 def test_a_held_icon_reopens_when_the_turn_brings_an_intrigue_card() -> None:
     engine = UprisingRulesEngine()
-    held = engine.apply(_accept_contract_icon(), HOLD).state
+    held = apply_whole(engine, _accept_contract_icon(), HOLD).state
     discard = DomainAction(
         action_id="discard_agent_card",
         actor=0,
         arguments=(("card_id", _imperium("truthtrance")),),
     )
-    discarded = engine.apply(held, discard).state
+    discarded = apply_whole(engine, held, discard).state
     draw = DomainAction(
         action_id="resolve_agent_card_effect",
         actor=0,
         arguments=(("effect", "intrigue"),),
     )
 
-    drawn = engine.apply(discarded, draw)
+    drawn = apply_whole(engine, discarded, draw)
 
     # Taking is not optional, so the market reopens by itself (OQ-057(1)).
     assert [event.kind for event in drawn.events][-1] == "contract_icons_reopened"
     assert drawn.state.players[0].held_contract_icons == 0
     assert drawn.state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-    assert engine.legal_actions(drawn.state, 0) == (
+    assert engine.whole_actions(drawn.state, 0) == (
         DomainAction(
             action_id="take_contract",
             actor=0,
@@ -908,10 +989,10 @@ def test_a_held_icon_reopens_when_the_turn_brings_an_intrigue_card() -> None:
 
 def test_a_held_icon_fizzles_at_the_turn_end_press() -> None:
     engine = UprisingRulesEngine()
-    held = engine.apply(_accept_contract_icon(), HOLD).state
+    held = apply_whole(engine, _accept_contract_icon(), HOLD).state
     # Captured Mentat's optional discard needs no refusal: the press lapses
     # it too (OQ-095 (2), user ruling 2026-10-14).
-    drawn = engine.apply(
+    drawn = apply_whole(engine, 
         held,
         DomainAction(
             action_id="resolve_board_effect",
@@ -934,13 +1015,17 @@ def test_a_held_icon_fizzles_at_the_turn_end_press() -> None:
     assert finished.state.players[0].resources == held.players[0].resources
 
 
-def _choam_security_rewards(*, influence_bonus: int) -> GameState:
+def _choam_security_opening(*, influence_bonus: int) -> RuleResult:
     """Seat 0 alone in CHOAM Security's Conflict, which pays its first place
     "troop, Contract, Spacing Guild Influence"; ``influence_bonus`` adds
     Pivotal Gambit's "gain 1 Influence of your choice" (OQ-025) as a later
-    reward frame. The market holds only the Immediate and seat 0 no Intrigue
+    reward icon. The market holds only the Immediate and seat 0 no Intrigue
     card; one more Bene Gesserit Influence reaches its 4 bonus, an Intrigue
-    card [Main p. 7]. Seat 3 is First Player, so seat 0 opens next round."""
+    card [Main p. 7]. Seat 3 is First Player, so seat 0 opens next round.
+
+    The result is the seat's reward window answered in the older engine's
+    order (stage B2, OQ-112) up to the Contract market its Contract icon
+    opens, with the events of that opening."""
 
     from dune_imperium.rules.engine import _advance_automatic
 
@@ -962,10 +1047,19 @@ def _choam_security_rewards(*, influence_bonus: int) -> GameState:
         conflict_first_place_influence_bonus=influence_bonus,
         decision_stack=(),
     )
-    rewards = _advance_automatic(RuleResult(state=state)).state
-    assert rewards.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-    assert UprisingRulesEngine().legal_actions(rewards, 0) == (HOLD,)
-    return rewards
+    engine = UprisingRulesEngine()
+    window = _advance_automatic(RuleResult(state=state))
+    assert window.state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    opened = _through_windows(engine, window)
+    assert opened.state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+    assert engine.whole_actions(opened.state, 0) == (HOLD,)
+    return opened
+
+
+def _choam_security_rewards(*, influence_bonus: int) -> GameState:
+    """The state of ``_choam_security_opening``."""
+
+    return _choam_security_opening(influence_bonus=influence_bonus).state
 
 
 def _choose_influence(faction: str) -> DomainAction:
@@ -978,22 +1072,25 @@ def _choose_influence(faction: str) -> DomainAction:
 
 def test_a_conflict_reward_icon_waits_through_the_seat_s_rewards() -> None:
     engine = UprisingRulesEngine()
-    held = engine.apply(_choam_security_rewards(influence_bonus=1), HOLD)
+    hold = apply_whole(engine, _choam_security_rewards(influence_bonus=1), HOLD)
 
-    assert [event.kind for event in held.events] == ["contract_icons_held"]
+    assert [event.kind for event in hold.events] == ["contract_icons_held"]
+    # The Influence icon is the window's remaining row; its press opens the
+    # Influence choice.
+    held = _through_windows(engine, hold)
     assert held.state.players[0].held_contract_icons == 1
     assert held.state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
 
     # The Influence reward reaches Bene Gesserit 4: an Intrigue card, so the
     # Immediate can be taken and the market reopens.
-    reopened = engine.apply(held.state, _choose_influence("bene_gesserit"))
+    reopened = apply_whole(engine, held.state, _choose_influence("bene_gesserit"))
 
     kinds = [event.kind for event in reopened.events]
     assert "contract_icons_reopened" in kinds
     assert "contract_icons_fizzled" not in kinds
     assert reopened.state.phase is GamePhase.COMBAT
     assert reopened.state.players[0].held_contract_icons == 0
-    assert engine.legal_actions(reopened.state, 0) == (
+    assert engine.whole_actions(reopened.state, 0) == (
         DomainAction(
             action_id="take_contract",
             actor=0,
@@ -1004,10 +1101,14 @@ def test_a_conflict_reward_icon_waits_through_the_seat_s_rewards() -> None:
 
 def test_a_conflict_reward_icon_fizzles_when_the_seat_s_rewards_end() -> None:
     engine = UprisingRulesEngine()
-    held = engine.apply(_choam_security_rewards(influence_bonus=1), HOLD).state
+    held = _through_windows(
+        engine, apply_whole(engine, _choam_security_rewards(influence_bonus=1), HOLD)
+    ).state
 
     # Through the pause before the next round (rules/pauses.py).
-    done = through_pauses(engine, engine.apply(held, _choose_influence("fremen")))
+    done = through_pauses(engine, apply_whole(
+        engine, held, _choose_influence("fremen")
+    ))
 
     kinds = [event.kind for event in done.events]
     # Fizzled with the public event as the seat's last reward resolves,
@@ -1025,16 +1126,19 @@ def test_a_conflict_reward_icon_fizzles_when_the_seat_s_rewards_end() -> None:
 
 def test_a_last_conflict_reward_icon_fizzles_at_once_and_pays_once() -> None:
     engine = UprisingRulesEngine()
-    rewards = _choam_security_rewards(influence_bonus=0)
+    opening = _choam_security_opening(influence_bonus=0)
+    rewards = opening.state
     seat = rewards.players[0]
 
-    done = through_pauses(engine, engine.apply(rewards, HOLD))
+    done = through_pauses(engine, apply_whole(engine, rewards, HOLD))
 
     kinds = [event.kind for event in done.events]
     assert kinds[:2] == ["contract_icons_held", "contract_icons_fizzled"]
     # Closing the last reward frame resolves the rewards, so the engine does
-    # not deal them a second time.
+    # not deal them a second time: the one grant came with the window's
+    # opening.
     assert "combat_reward_gained" not in kinds
+    assert [event.kind for event in opening.events].count("combat_reward_gained") == 1
     after = done.state.players[0]
     assert after.influence.spacing_guild == seat.influence.spacing_guild
     assert after.held_contract_icons == 0
@@ -1084,16 +1188,23 @@ def test_a_winner_s_held_icon_fizzles_before_the_second_place_is_paid() -> None:
         combat_intrigue_complete=True,
         decision_stack=(),
     )
-    rewards = _advance_automatic(RuleResult(state=state)).state
+    window = _advance_automatic(RuleResult(state=state))
+    assert window.state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    rewards = _through_windows(engine, window).state
     assert rewards.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-    assert engine.legal_actions(rewards, 0) == (HOLD,)
+    assert engine.whole_actions(rewards, 0) == (HOLD,)
     assert rewards.players[1] == second
 
     # The winner's last choice stops at the pause before the 2nd place is
     # paid (rules/pauses.py), with the icon already fizzled.
-    held = engine.apply(rewards, HOLD)
+    held = apply_whole(engine, rewards, HOLD)
     assert held.state.decision_stack[-1].kind == FrameKind.PAUSE
-    done = through_pauses(engine, held)
+    # The 2nd place's window opens once the pause is answered, and its rows
+    # pay the reward (stage B2, OQ-112).
+    opened = through_pauses(engine, held)
+    assert opened.state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert opened.state.players[1].resources.solari == second.resources.solari
+    done = _through_windows(engine, opened)
 
     order = [
         (event.kind, dict(event.payload).get("player"))
@@ -1159,9 +1270,9 @@ def test_a_combat_intrigue_icon_with_nothing_to_take_fizzles_at_once() -> None:
         ),
     )
     fizzle = DomainAction(action_id="resolve_contract_icons_without_contract", actor=0)
-    assert engine.legal_actions(state, 0) == (fizzle,)
+    assert engine.whole_actions(state, 0) == (fizzle,)
 
-    done = engine.apply(state, fizzle)
+    done = apply_whole(engine, state, fizzle)
 
     fizzled = [e for e in done.events if e.kind == "contract_icons_fizzled"]
     assert [dict(e.payload) for e in fizzled] == [{"count": 1, "player": 0}]
@@ -1213,9 +1324,18 @@ def test_a_scouts_step_icon_reopens_once_the_seat_gains_an_intrigue_card() -> No
     top = advanced.state.decision_stack[-1]
     assert top.kind == FrameKind.CONTRACT_MARKET
     assert advanced.state.players[2].held_contract_icons == 0
-    assert UprisingRulesEngine().legal_actions(advanced.state, 2) == (
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(advanced.state, 2) == (
         DomainAction(
             action_id="take_contract",
+            actor=2,
+            arguments=(("instance_id", IMMEDIATE),),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the Contract by its target row alone.
+    assert engine.legal_actions(advanced.state, 2) == (
+        DomainAction(
+            action_id="choose_contract",
             actor=2,
             arguments=(("instance_id", IMMEDIATE),),
         ),
@@ -1240,3 +1360,62 @@ def test_a_scouts_step_icon_fizzles_with_its_event_when_the_step_ends() -> None:
     top = opened.state.decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 0
+
+
+def test_earn_any_alliance_taken_as_the_game_finishes_is_paid_at_once() -> None:
+    """Steersman Y'rkoon's Navigation card, queued in the Endgame, takes the
+    Fremen Alliance in the step that finishes the game (no seat holds an
+    Intrigue card). Earn Any Alliance completes after that step; no seat
+    answers a decision once the game is over, so its reward window is paid
+    at once, in the older engine's order (stage B2, OQ-112; independent
+    review 2026-10-19 found the window left on the finished game)."""
+
+    from dune_imperium.rules.engine import _advance_automatic
+
+    owner = _owner(
+        leader_id="steersman_y_rkoon",
+        leader_face_id="steersman_y_rkoon",
+        influence=Influence(fremen=3, spacing_guild=2),
+        active_contract_ids=(EARN_ALLIANCE,),
+        navigation_slots=("intrigue:navigation_card_1:0",),
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, choam_module=True, tech_module=True),
+        seed=1,
+        phase=GamePhase.ENDGAME,
+        round_number=9,
+        first_player=0,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        pending_navigation_plays=((0, "spacing_guild", "round:9:test:navigation"),),
+        reveal_order=(0, 1, 2, 3),
+    )
+    engine = UprisingRulesEngine()
+    state = _advance_automatic(RuleResult(state=state)).state
+    state = apply_whole(engine, 
+        state, DomainAction("play_navigation", 0, (("option", 1),))
+    ).state
+    fremen = DomainAction("choose_intrigue_faction", 0, (("faction", "fremen"),))
+    assert engine.whole_actions(state, 0) == (fremen,)
+
+    finished = apply_whole(engine, state, fremen)
+
+    seat = finished.state.players[0]
+    assert finished.state.phase is GamePhase.FINISHED
+    assert finished.state.decision_stack == ()
+    assert seat.completed_contract_ids == (EARN_ALLIANCE,)
+    assert seat.troops_garrison == owner.troops_garrison + 2
+    kinds = [event.kind for event in finished.events]
+    assert kinds.index("game_finished") < kinds.index("contract_completed")
+    assert sorted(
+        dict(event.payload)["effect"]
+        for event in finished.events
+        if event.kind == "contract_reward_icon_resolved"
+    ) == ["resources", "troops"]
+    (paid,) = (
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "resources_gained"
+        and str(dict(event.payload)["source"]).endswith(":contract_reward")
+    )
+    assert paid["solari"] == 2
+    assert engine.whole_actions(finished.state, 0) == ()

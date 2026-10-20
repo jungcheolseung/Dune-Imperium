@@ -989,6 +989,7 @@ const VP_CAUSE_KINDS = new Set([
   "alliance_lost",
   "conflict_won",
   "combat_reward_gained",
+  "combat_reward_icon_resolved",
   "battle_icons_matched",
   "endgame_wild_matched",
   "card_acquired",
@@ -1728,6 +1729,9 @@ function logGroups(entries) {
     open = null;
   };
   for (const entry of entries) {
+    /* A step that only picks toward a waiting effect: the step that ends
+       the effect shows it whole (stage B3). */
+    if (entry.pick) continue;
     if (entry.type === "undo") {
       groups.push({ kind: "undo", entry });
       open = null;

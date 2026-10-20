@@ -10,8 +10,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows, settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
@@ -29,8 +31,9 @@ from dune_imperium.core import (
     Resources,
     Transition,
 )
-from dune_imperium.rules import card_trash
+from dune_imperium.rules import card_trash, turn_rows
 from dune_imperium.rules.acquisition import apply_reserve_acquisition
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_trash,
@@ -52,6 +55,7 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_spy_actions,
     resolve_combat_rewards,
 )
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.reveal_turn import (
@@ -162,9 +166,10 @@ def _pending(state: GameState) -> tuple[tuple[str, str], ...]:
 
 
 def _offered(state: GameState) -> set[str]:
-    """The ids the engine offers the owner (seat 0) in ``state``."""
+    """The ids of the whole actions the owner (seat 0) can take in ``state``
+    (stage B3b-2: the Reveal frame offers its effects effect first)."""
 
-    return {a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)}
+    return {a.action_id for a in UprisingRulesEngine().whole_actions(state, 0)}
 
 
 def _finish(state: GameState) -> Transition:
@@ -330,11 +335,11 @@ def test_a_card_drawn_mid_reveal_pays_its_command_once(
     cunning = _intrigue("cunning")
     owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
     engine = UprisingRulesEngine()
-    revealed = engine.apply(
+    revealed = apply_whole(engine, 
         _state(owner), DomainAction(action_id="reveal_turn", actor=0)
     ).state
     assert _reveal_context(revealed)["persuasion_generated"] == 6
-    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    drawn = apply_whole(engine, revealed, _play_intrigue(cunning)).state
     (reveal,) = (f for f in drawn.decision_stack if f.kind == FrameKind.REVEAL)
     pending = reveal_pending_gains(dict(reveal.context))
     assert [entry for entry in pending if entry[2] == card] == [(*gain, card)]
@@ -355,10 +360,10 @@ def test_ruthless_leadership_drawn_mid_reveal_still_commands_the_combat_icon() -
     cunning = _intrigue("cunning")
     owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
     engine = UprisingRulesEngine()
-    revealed = engine.apply(
+    revealed = apply_whole(engine, 
         _state(owner, PROMO_BLOODLINES), DomainAction(action_id="reveal_turn", actor=0)
     ).state
-    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    drawn = apply_whole(engine, revealed, _play_intrigue(cunning)).state
     assert _reveal_context(drawn)["combat_deployment"] is True
     assert {a.action_id for a in legal_reveal_deployments(drawn, 0)} == {
         "deploy_troops"
@@ -411,7 +416,7 @@ def test_a_command_choice_survives_persuasion_spent_on_a_purchase() -> None:
     assert legal_finish_reveal_actions(bought, 0) == ()
     place = legal_reveal_spy_actions(bought, 0)[0]
     assert place.action_id == "place_reveal_spy"
-    placed = UprisingRulesEngine().apply(bought, place).state
+    placed = apply_whole(UprisingRulesEngine(), bought, place).state
     assert len(placed.players[0].spy_post_ids) == 1
     assert _pending(placed) == ()
 
@@ -437,7 +442,7 @@ def test_a_late_command_counts_persuasion_spent_before_it() -> None:
     assert _pending(revealed) == (
         (_card("command_center"), "may_retreat_two_troops_for_two_persuasion"),
     )
-    bought = engine.apply(
+    bought = apply_whole(engine, 
         revealed,
         DomainAction(
             action_id="acquire_reserve",
@@ -450,7 +455,7 @@ def test_a_late_command_counts_persuasion_spent_before_it() -> None:
         for a in legal_reveal_troop_retreat_actions(bought, 0)
         if a.action_id == "retreat_two_troops_for_reveal"
     )
-    retreated = engine.apply(bought, retreat).state
+    retreated = apply_whole(engine, bought, retreat).state
     context = _reveal_context(retreated)
     assert context["persuasion"] == 4
     assert context["persuasion_generated"] == 6
@@ -512,7 +517,7 @@ def test_desert_power_sandworm_branch_never_commands_i_believe() -> None:
         if action.action_id == "pay_reveal_water_for_sandworm"
     )
     engine = UprisingRulesEngine()
-    deployed = engine.apply(revealed, sandworm).state
+    deployed = apply_whole(engine, revealed, sandworm).state
     context = _reveal_context(deployed)
     assert context["persuasion_generated"] == 4
     (reveal,) = (f for f in deployed.decision_stack if f.kind == FrameKind.REVEAL)
@@ -528,7 +533,7 @@ def test_desert_power_persuasion_branch_commands_i_believe() -> None:
     # troops become pending through the late grant (grant_late_reveal_effects).
     revealed = _reveal(_desert_power_state())
     engine = UprisingRulesEngine()
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     context = _reveal_context(declined)
@@ -547,7 +552,7 @@ def test_desert_power_branch_chosen_after_a_purchase_still_commands_i_believe() 
     state = replace(_desert_power_state(), reserve_stacks=_RESERVE)
     revealed = _reveal(state)
     engine = UprisingRulesEngine()
-    bought = engine.apply(
+    bought = apply_whole(engine, 
         revealed,
         DomainAction(
             action_id="acquire_reserve",
@@ -558,7 +563,7 @@ def test_desert_power_branch_chosen_after_a_purchase_still_commands_i_believe() 
     assert _reveal_context(bought)["persuasion"] == 2
     assert bought.decision_stack[-1].kind == FrameKind.REVEAL
     assert "decline_reveal_sandworm" in _offered(bought)
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         bought, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     context = _reveal_context(declined)
@@ -591,7 +596,7 @@ def test_desert_power_without_maker_hooks_commands_i_believe_once_chosen() -> No
     assert not any(entry[2] == _card("i_believe") for entry in pending)
 
     engine = UprisingRulesEngine()
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     context = _reveal_context(declined)
@@ -627,7 +632,7 @@ def test_desert_power_persuasion_branch_opens_pointing_the_ways_command() -> Non
     assert "gain_reveal_influence" not in _offered(revealed)
 
     engine = UprisingRulesEngine()
-    declined = engine.apply(
+    declined = apply_whole(engine, 
         revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
     ).state
     # No resuming step: the choice's rows are offered as soon as the
@@ -637,7 +642,7 @@ def test_desert_power_persuasion_branch_opens_pointing_the_ways_command() -> Non
     assert "gain_reveal_influence" in _offered(declined)
     # Pointing the Way's gain is mandatory once it can be taken.
     assert legal_finish_reveal_actions(declined, 0) == ()
-    gained = engine.apply(
+    gained = apply_whole(engine, 
         declined, legal_reveal_influence_gain_actions(declined, 0)[0]
     ).state
     assert gained.players[0].influence.emperor == 1
@@ -663,7 +668,7 @@ def test_desert_power_sandworm_branch_never_opens_pointing_the_ways_command() ->
         for action in legal_reveal_sandworm_actions(revealed, 0)
         if action.action_id == "pay_reveal_water_for_sandworm"
     )
-    paid = engine.apply(revealed, sandworm).state
+    paid = apply_whole(engine, revealed, sandworm).state
     context = _reveal_context(paid)
     assert context["persuasion_generated"] == 4
     assert legal_reveal_influence_gain_actions(paid, 0) == ()
@@ -824,7 +829,7 @@ def test_command_center_retreat_takes_the_two_units_strength(commanders: int) ->
     revealed = _reveal(_state(owner))
     retreat = _retreat_two_troops("command_center", commanders)
     assert retreat in legal_reveal_troop_retreat_actions(revealed, 0)
-    retreated = engine.apply(revealed, retreat).state
+    retreated = apply_whole(engine, revealed, retreat).state
     player = retreated.players[0]
     assert player.troops_conflict + player.commanders_conflict == 1
     assert player.combat_strength == 2
@@ -950,7 +955,7 @@ def test_corrupt_bureaucrat_discarded_from_the_deck_pays_three_solari() -> None:
         _owner(intrigue_cards=(controlled,), deck=(card, STARTERS[0])),
         CHOAM_BLOODLINES,
     )
-    peeking = engine.apply(
+    peeking = apply_whole(engine, 
         state,
         DomainAction(
             action_id="play_intrigue",
@@ -958,7 +963,7 @@ def test_corrupt_bureaucrat_discarded_from_the_deck_pays_three_solari() -> None:
             arguments=(("card_id", controlled), ("option", 0)),
         ),
     ).state
-    discarded = engine.apply(
+    discarded = apply_whole(engine, 
         peeking, DomainAction(action_id="discard_top_card", actor=0)
     )
     assert discarded.state.players[0].discard_pile == (card,)
@@ -985,16 +990,16 @@ def test_corrupt_bureaucrat_discarded_from_the_deck_pays_three_solari() -> None:
             if dict(action.arguments)["space_id"] == "arrakeen"
         ),
     ).state
-    working = engine.apply(
+    working = apply_whole(engine, 
         placed, DomainAction(action_id="resolve_agent_card_effect", actor=0)
     ).state
     events: tuple[GameEvent, ...] = ()
     for picked in (draw_card, card):
-        step = engine.apply(
+        step = apply_whole(engine, 
             working,
             next(
                 action
-                for action in engine.legal_actions(working, 0)
+                for action in engine.whole_actions(working, 0)
                 if dict(action.arguments).get("card_id") == picked
             ),
         )
@@ -1061,19 +1066,19 @@ def test_corrupt_bureaucrat_counts_a_plot_recall_during_its_agent_turn() -> None
     state = _play(base, card, "assembly_hall")
     engine = UprisingRulesEngine()
     assert "resolve_agent_card_effect" not in {
-        action.action_id for action in engine.legal_actions(state, 0)
+        action.action_id for action in engine.whole_actions(state, 0)
     }
 
-    opened = engine.apply(state, _play_intrigue(sleeper, 1)).state
+    opened = apply_whole(engine, state, _play_intrigue(sleeper, 1)).state
     recall = next(
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "recall_spy_for_intrigue"
     )
-    recalled = engine.apply(opened, recall).state
+    recalled = apply_whole(engine, opened, recall).state
     assert recalled.players[0].spies_recalled_turn == 1
     assert "resolve_agent_card_effect" in {
-        action.action_id for action in engine.legal_actions(recalled, 0)
+        action.action_id for action in engine.whole_actions(recalled, 0)
     }
 
     result = resolve_agent_card_effect(recalled)
@@ -1181,7 +1186,8 @@ def test_fremen_war_name_icons_become_mandatory_after_a_later_spice_gain() -> No
         ),
     ).state
     assert legal_agent_card_icon_actions(placed, 0) == ()
-    harvested = UprisingRulesEngine().apply(
+    harvested = apply_whole(
+        UprisingRulesEngine(),
         placed,
         next(
             action
@@ -1300,7 +1306,7 @@ def test_desert_support_pays_water_for_five_swords() -> None:
         _fighter(1, intrigue_cards=(card,), resources=Resources(water=1))
     )
     engine = UprisingRulesEngine()
-    done = engine.apply(state, _play_intrigue(card)).state
+    done = apply_whole(engine, state, _play_intrigue(card)).state
     assert done.players[0].resources.water == 0
     assert done.players[0].combat_strength == 2 + 5
 
@@ -1308,14 +1314,14 @@ def test_desert_support_pays_water_for_five_swords() -> None:
 def test_ripples_in_the_sand_adds_intrigue_with_a_sandworm() -> None:
     card = _intrigue("ripples_in_the_sand")
     engine = UprisingRulesEngine()
-    plain = engine.apply(
+    plain = apply_whole(engine, 
         _combat_state(_fighter(1, intrigue_cards=(card,))), _play_intrigue(card)
     ).state
     assert plain.players[0].combat_strength == 5
     assert plain.players[0].intrigue_cards == ()
 
     worm = _fighter(1, intrigue_cards=(card,), sandworms_conflict=1, combat_strength=5)
-    with_worm = engine.apply(_combat_state(worm), _play_intrigue(card)).state
+    with_worm = apply_whole(engine, _combat_state(worm), _play_intrigue(card)).state
     assert with_worm.players[0].combat_strength == 8
     assert len(with_worm.players[0].intrigue_cards) == 1
 
@@ -1327,7 +1333,8 @@ def test_return_the_favor_counts_factions_at_two_influence() -> None:
         intrigue_cards=(card,),
         influence=Influence(emperor=2, fremen=3, bene_gesserit=1),
     )
-    done = UprisingRulesEngine().apply(_combat_state(owner), _play_intrigue(card)).state
+    engine = UprisingRulesEngine()
+    done = apply_whole(engine, _combat_state(owner), _play_intrigue(card)).state
     assert done.players[0].combat_strength == 2 + 1 + 2
 
 
@@ -1336,22 +1343,22 @@ def test_sacred_pools_discards_for_water_or_scores_at_three_water() -> None:
     filler = STARTERS[5]
     state = _state(_owner(hand=(filler,), intrigue_cards=(card,)))
     engine = UprisingRulesEngine()
-    opened = engine.apply(state, _play_intrigue(card, 0)).state
+    opened = apply_whole(engine, state, _play_intrigue(card, 0)).state
     discard = next(
         a
-        for a in engine.legal_actions(opened, 0)
+        for a in engine.whole_actions(opened, 0)
         if a.action_id == "choose_intrigue_discard"
     )
-    done = engine.apply(opened, discard).state
+    done = apply_whole(engine, opened, discard).state
     assert done.players[0].resources.water == 2
     assert filler in done.players[0].discard_pile
 
     dry = _endgame_window(_owner(intrigue_cards=(card,), resources=Resources(water=2)))
-    assert [a.action_id for a in engine.legal_actions(dry, 0)] == [
+    assert [a.action_id for a in engine.whole_actions(dry, 0)] == [
         "pass_endgame_intrigue"
     ]
     wet = _endgame_window(_owner(intrigue_cards=(card,), resources=Resources(water=3)))
-    scored = engine.apply(wet, _play_intrigue(card, 1)).state
+    scored = apply_whole(engine, wet, _play_intrigue(card, 1)).state
     assert scored.players[0].victory_points == 2
 
 
@@ -1361,14 +1368,14 @@ def test_seize_production_spice_needs_a_commander_in_the_conflict() -> None:
     plain = _state(_owner(intrigue_cards=(card,)))
     assert [
         dict(a.arguments)["option"]
-        for a in engine.legal_actions(plain, 0)
+        for a in engine.whole_actions(plain, 0)
         if a.action_id == "play_intrigue"
     ] == [0]
-    solari = engine.apply(plain, _play_intrigue(card, 0)).state
+    solari = apply_whole(engine, plain, _play_intrigue(card, 0)).state
     assert solari.players[0].resources.solari == 2
 
     commanded = _state(_owner(intrigue_cards=(card,), commanders_conflict=1))
-    spice = engine.apply(commanded, _play_intrigue(card, 1)).state
+    spice = apply_whole(engine, commanded, _play_intrigue(card, 1)).state
     assert spice.players[0].resources.spice == 2
 
 
@@ -1376,11 +1383,11 @@ def test_sleeper_unit_pays_for_a_spy_or_recalls_one_for_troops() -> None:
     card = _intrigue("sleeper_unit")
     engine = UprisingRulesEngine()
     paying = _state(_owner(intrigue_cards=(card,), resources=Resources(solari=1)))
-    opened = engine.apply(paying, _play_intrigue(card, 0)).state
+    opened = apply_whole(engine, paying, _play_intrigue(card, 0)).state
     assert opened.players[0].resources.solari == 0
     # Paid for with a Spy in the supply: the placement is mandatory (the
     # designer's erratum to [Main p. 11], adopted with OQ-057).
-    assert {a.action_id for a in engine.legal_actions(opened, 0)} == {
+    assert {a.action_id for a in engine.whole_actions(opened, 0)} == {
         "place_intrigue_spy",
     }
 
@@ -1391,13 +1398,13 @@ def test_sleeper_unit_pays_for_a_spy_or_recalls_one_for_troops() -> None:
             spy_post_ids=("emperor-sardaukar-dutiful-service",),
         )
     )
-    recalled = engine.apply(posted, _play_intrigue(card, 1)).state
+    recalled = apply_whole(engine, posted, _play_intrigue(card, 1)).state
     recall = next(
         a
-        for a in engine.legal_actions(recalled, 0)
+        for a in engine.whole_actions(recalled, 0)
         if a.action_id == "recall_spy_for_intrigue"
     )
-    done = engine.apply(recalled, recall).state
+    done = apply_whole(engine, recalled, recall).state
     assert done.players[0].spies_supply == 3
     assert done.players[0].troops_garrison == 5
 
@@ -1449,7 +1456,7 @@ def test_tenuous_bond_trashes_a_costly_discard_for_four_swords() -> None:
     # Starting cards have no printed cost: only the Influence swap is playable.
     options = [
         dict(a.arguments)["option"]
-        for a in engine.legal_actions(_combat_state(cheap), 0)
+        for a in engine.whole_actions(_combat_state(cheap), 0)
         if a.action_id == "play_intrigue"
     ]
     assert options == []  # no Influence to lose either
@@ -1462,17 +1469,17 @@ def test_tenuous_bond_trashes_a_costly_discard_for_four_swords() -> None:
     state = _combat_state(costly)
     options = [
         dict(a.arguments)["option"]
-        for a in engine.legal_actions(state, 0)
+        for a in engine.whole_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
     # The gold Influence band is Plot and the red trash band is Combat
     # ("PLOT / COMBAT" footer) [Tenuous Bond card; Main p. 7]: in Combat only
     # the trash for four swords is offered, even with Influence to swap.
     assert options == [1]
-    opened = engine.apply(state, _play_intrigue(card, 1)).state
-    trash_actions = engine.legal_actions(opened, 0)
+    opened = apply_whole(engine, state, _play_intrigue(card, 1)).state
+    trash_actions = engine.whole_actions(opened, 0)
     assert [dict(a.arguments)["card_id"] for a in trash_actions] == [_card("sandwalk")]
-    done = engine.apply(opened, trash_actions[0]).state
+    done = apply_whole(engine, opened, trash_actions[0]).state
     assert done.players[0].trashed == (_card("sandwalk"),)
     assert done.players[0].combat_strength == 2 + 4
 
@@ -1490,7 +1497,7 @@ def test_tenuous_bond_swaps_influence_only_as_a_plot() -> None:
     state = _state(owner)
     options = [
         dict(a.arguments)["option"]
-        for a in engine.legal_actions(state, 0)
+        for a in engine.whole_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
     assert options == [0]
@@ -1501,24 +1508,24 @@ def test_the_strong_survive_retreats_one_troop_to_trash_a_card() -> None:
     engine = UprisingRulesEngine()
     owner = _fighter(2, intrigue_cards=(card,), hand=(STARTERS[0],))
     state = _combat_state(owner)
-    swords = engine.apply(state, _play_intrigue(card, 0)).state
+    swords = apply_whole(engine, state, _play_intrigue(card, 0)).state
     assert swords.players[0].combat_strength == 4 + 3
 
-    opened = engine.apply(state, _play_intrigue(card, 1)).state
+    opened = apply_whole(engine, state, _play_intrigue(card, 1)).state
     retreat = next(
         a
-        for a in engine.legal_actions(opened, 0)
+        for a in engine.whole_actions(opened, 0)
         if a.action_id == "retreat_intrigue_troops"
     )
-    retreated = engine.apply(opened, retreat).state
+    retreated = apply_whole(engine, opened, retreat).state
     assert retreated.players[0].troops_conflict == 1
     assert retreated.players[0].combat_strength == 2
     trash = next(
         a
-        for a in engine.legal_actions(retreated, 0)
+        for a in engine.whole_actions(retreated, 0)
         if a.action_id == "trash_intrigue_card"
     )
-    done = engine.apply(retreated, trash).state
+    done = apply_whole(engine, retreated, trash).state
     assert done.players[0].trashed == (STARTERS[0],)
 
 
@@ -1531,10 +1538,10 @@ def test_withdrawal_agreement_retreats_three_for_influence() -> None:
     )
 
     state = _combat_state(_fighter(3, intrigue_cards=(card,)))
-    opened = engine.apply(state, _play_intrigue(card)).state
+    opened = apply_whole(engine, state, _play_intrigue(card)).state
     retreat = next(
         a
-        for a in engine.legal_actions(opened, 0)
+        for a in engine.whole_actions(opened, 0)
         if a.action_id == "retreat_intrigue_troops"
     )
     assert dict(retreat.arguments)["count"] == 3
@@ -1564,7 +1571,7 @@ def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
     state = _combat_state(owner)
     options = [
         dict(a.arguments)["option"]
-        for a in engine.legal_actions(state, 0)
+        for a in engine.whole_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
     # The red band (three swords) is Combat; the dark-green flip band is
@@ -1576,16 +1583,16 @@ def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
             won_conflict_ids=("skirmish_ornithopter", "storms_in_the_south"),
         )
     )
-    opened = engine.apply(endgame, _play_intrigue(card, 1)).state
-    first = engine.legal_actions(opened, 0)
+    opened = apply_whole(engine, endgame, _play_intrigue(card, 1)).state
+    first = engine.whole_actions(opened, 0)
     assert {dict(a.arguments)["card_id"] for a in first} == {
         "skirmish_ornithopter",
         "storms_in_the_south",
     }
-    flipped_one = engine.apply(opened, first[0]).state
-    second = engine.legal_actions(flipped_one, 0)
+    flipped_one = apply_whole(engine, opened, first[0]).state
+    second = engine.whole_actions(flipped_one, 0)
     assert len(second) == 1
-    done = engine.apply(flipped_one, second[0]).state
+    done = apply_whole(engine, flipped_one, second[0]).state
     assert done.players[0].victory_points == 2
     assert set(done.players[0].face_down_battle_card_ids) == {
         "skirmish_ornithopter",
@@ -1595,7 +1602,7 @@ def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
     single = _endgame_window(
         _owner(intrigue_cards=(card,), won_conflict_ids=("skirmish_ornithopter",))
     )
-    assert [a.action_id for a in engine.legal_actions(single, 0)] == [
+    assert [a.action_id for a in engine.whole_actions(single, 0)] == [
         "pass_endgame_intrigue"
     ]
 
@@ -1619,7 +1626,7 @@ def test_honor_guard_recruits_and_discounts_the_commander_this_turn() -> None:
         sardaukar_commander_space_ids=("dutiful_service",),
         skill_face_up=("skill:canny:0",),
     )
-    played = engine.apply(state, _play_intrigue(card)).state
+    played = apply_whole(engine, state, _play_intrigue(card)).state
     assert played.players[0].troops_garrison == 4
     assert played.players[0].commander_discount_turn == 1
 
@@ -1717,7 +1724,7 @@ def test_insider_information_waives_influence_requirements_this_turn() -> None:
         dict(a.arguments)["space_id"] == "sietch_tabr"
         for a in legal_agent_actions(state, 0)
     )
-    waived = engine.apply(state, _play_intrigue(card, 1)).state
+    waived = apply_whole(engine, state, _play_intrigue(card, 1)).state
     assert waived.players[0].ignores_influence_requirements_turn is True
     assert any(
         dict(a.arguments)["space_id"] == "sietch_tabr"
@@ -1779,26 +1786,26 @@ def test_insider_information_recalls_a_spy_to_trash_and_draw() -> None:
         spies_supply=2,
         spy_post_ids=("emperor-sardaukar-dutiful-service",),
     )
-    opened = engine.apply(_state(owner), _play_intrigue(card, 0)).state
+    opened = apply_whole(engine, _state(owner), _play_intrigue(card, 0)).state
     recall = next(
         a
-        for a in engine.legal_actions(opened, 0)
+        for a in engine.whole_actions(opened, 0)
         if a.action_id == "recall_spy_for_intrigue"
     )
-    recalled = engine.apply(opened, recall).state
+    recalled = apply_whole(engine, opened, recall).state
     trash = next(
         a
-        for a in engine.legal_actions(recalled, 0)
+        for a in engine.whole_actions(recalled, 0)
         if a.action_id == "trash_intrigue_card"
         and dict(a.arguments)["card_id"] == STARTERS[4]
     )
-    trashed = engine.apply(recalled, trash).state
+    trashed = apply_whole(engine, recalled, trash).state
     # The trash draws nothing: the line's draw is its own step (user ruling
     # 2026-10-10, OQ-106) and the only one left.
     assert trashed.players[0].hand == ()
     rewards = DomainAction(action_id="resolve_intrigue_rewards", actor=0)
-    assert engine.legal_actions(trashed, 0) == (rewards,)
-    done = engine.apply(trashed, rewards).state
+    assert engine.whole_actions(trashed, 0) == (rewards,)
+    done = apply_whole(engine, trashed, rewards).state
     owner_after = done.players[0]
     assert owner_after.spies_supply == 3
     assert owner_after.trashed == (STARTERS[4],)
@@ -1813,20 +1820,42 @@ def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
     engine = UprisingRulesEngine()
     dagger = next(c for c in STARTERS if ":dagger:" in c)
     state = _state(_owner(intrigue_cards=(card,), hand=(dagger,), deck=()))
+
+    def spaces(current: GameState) -> list[DomainAction]:
+        # The Agent turn's two steps (stage B1): pick the Dagger, read the
+        # space picks it is offered.
+        pick = next(
+            a
+            for a in engine.whole_actions(current, 0)
+            if a.action_id == "choose_agent_card"
+            and dict(a.arguments)["card_id"] == dagger
+        )
+        picked = apply_whole(engine, current, pick).state
+        return [
+            a for a in engine.whole_actions(picked, 0) if a.action_id == "place_agent"
+        ]
+
     assert not any(
-        dict(a.arguments)["space_id"] == "dutiful_service"
-        for a in legal_agent_actions(state, 0)
+        dict(a.arguments)["space_id"] == "dutiful_service" for a in spaces(state)
     )
-    invited = engine.apply(state, _play_intrigue(card, 1)).state
+    invited = apply_whole(engine, state, _play_intrigue(card, 1)).state
     assert invited.players[0].granted_agent_icon_turn == "emperor"
+    codec = ActionCodec(BLOODLINES)
+    pick = next(
+        a
+        for a in engine.whole_actions(invited, 0)
+        if a.action_id == "choose_agent_card"
+    )
+    assert codec.decode(codec.encode(pick), 0) == pick
+    picked = apply_whole(engine, invited, pick).state
     action = next(
         a
-        for a in legal_agent_actions(invited, 0)
-        if dict(a.arguments)["space_id"] == "dutiful_service"
+        for a in engine.whole_actions(picked, 0)
+        if a.action_id == "place_agent"
+        and dict(a.arguments)["space_id"] == "dutiful_service"
     )
-    codec = ActionCodec(BLOODLINES)
     assert codec.decode(codec.encode(action), 0) == action
-    placed = apply_agent_action(invited, action).state
+    placed = apply_whole(engine, picked, action).state
     assert "dutiful_service" in placed.players[0].agent_locations
 
 
@@ -1881,7 +1910,7 @@ def test_adaptive_tactics_before_placement_opens_a_deployment_at_any_space() -> 
     owner = _owner(
         intrigue_cards=(card,), hand=STARTERS[4:10], resources=Resources(spice=1)
     )
-    played = engine.apply(_state(owner), _play_intrigue(card)).state
+    played = apply_whole(engine, _state(owner), _play_intrigue(card)).state
     assert played.players[0].combat_icon_turn is True
     assert played.players[0].troops_garrison == 4
     # Dutiful Service is not a Combat space, yet the icon opens the window:
@@ -1907,7 +1936,7 @@ def test_adaptive_tactics_before_reveal_joins_the_reveals_allowance() -> None:
     owner = _owner(
         intrigue_cards=(card,), hand=(STARTERS[4],), resources=Resources(spice=1)
     )
-    played = engine.apply(_state(owner), _play_intrigue(card)).state
+    played = apply_whole(engine, _state(owner), _play_intrigue(card)).state
     assert played.decision_stack[-1].kind == "turn"
     assert played.players[0].combat_icon_turn is True
     assert played.players[0].troops_garrison == 4
@@ -1940,7 +1969,7 @@ def test_adaptive_tactics_during_the_reveal_deploys_with_strength() -> None:
     )
     revealed = _reveal(_state(owner))
     assert legal_reveal_deployments(revealed, 0) == ()
-    played = engine.apply(revealed, _play_intrigue(card)).state
+    played = apply_whole(engine, revealed, _play_intrigue(card)).state
     context = _reveal_context(played)
     assert context["combat_deployment"] is True
     assert context["reveal_troops_recruited"] == 1
@@ -2053,7 +2082,7 @@ def test_adaptive_tactics_counts_a_commander_still_to_be_bought() -> None:
     # lets the Commander deploy from a space with no Combat icon.
     visited = _play(on_board, diplomacy, "dutiful_service")
     assert _play_options(visited, card) == [0]
-    played = UprisingRulesEngine().apply(visited, _play_intrigue(card)).state
+    played = apply_whole(UprisingRulesEngine(), visited, _play_intrigue(card)).state
     buy = next(
         a
         for a in legal_sardaukar_commander_actions(played, 0)
@@ -2260,11 +2289,11 @@ def test_arrakis_observer_spy_may_pass_up_the_recall_with_an_empty_supply() -> N
     )
     discarded = apply_agent_card_discard(state, discard).state
     engine = UprisingRulesEngine()
-    offered = {action.action_id for action in engine.legal_actions(discarded, 0)}
+    offered = {action.action_id for action in engine.whole_actions(discarded, 0)}
     assert {"decline_agent_card_spy", "recall_spy_for_agent_card"} <= offered
     assert "finish_agent_turn" not in offered
 
-    passed = engine.apply(
+    passed = apply_whole(engine, 
         discarded, DomainAction(action_id="decline_agent_card_spy", actor=0)
     ).state
     assert passed.players[0].spy_post_ids == posts
@@ -2272,7 +2301,7 @@ def test_arrakis_observer_spy_may_pass_up_the_recall_with_an_empty_supply() -> N
     # The Agent turn goes on (Arrakeen's Combat deployment is still open).
     assert passed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert not {
-        action.action_id for action in engine.legal_actions(passed, 0)
+        action.action_id for action in engine.whole_actions(passed, 0)
     } & {"decline_agent_card_spy", "recall_spy_for_agent_card", "place_agent_card_spy"}
 
 
@@ -2462,11 +2491,11 @@ def test_bombast_drawn_mid_reveal_keeps_its_trash_troops_in_the_reveal(
     cunning = _intrigue("cunning")
     owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
     engine = UprisingRulesEngine()
-    revealed = engine.apply(
+    revealed = apply_whole(engine, 
         _state(owner), DomainAction(action_id="reveal_turn", actor=0)
     ).state
 
-    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    drawn = apply_whole(engine, revealed, _play_intrigue(cunning)).state
 
     assert drawn.players[0].trashed.count(card) == 1
     assert drawn.players[0].troops_garrison == 3 + 2
@@ -2489,13 +2518,13 @@ def test_bombast_command_met_late_keeps_its_trash_troops_in_the_reveal(
         intrigue_cards=(cunning,),
     )
     engine = UprisingRulesEngine()
-    revealed = engine.apply(
+    revealed = apply_whole(engine, 
         _state(owner), DomainAction(action_id="reveal_turn", actor=0)
     ).state
     assert _reveal_context(revealed)["persuasion_generated"] == 5
     assert card in revealed.players[0].in_play
 
-    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    drawn = apply_whole(engine, revealed, _play_intrigue(cunning)).state
 
     assert drawn.players[0].trashed.count(card) == 1
     assert drawn.players[0].troops_garrison == 3 + 2
@@ -2561,7 +2590,7 @@ def test_call_to_arms_follows_a_commanded_spy_post_before_another_reveal_choice(
     garrison = revealed.players[0].troops_garrison
     engine = UprisingRulesEngine()
 
-    acquired = engine.apply(
+    acquired = apply_whole(engine, 
         revealed,
         DomainAction(
             action_id="command_acquire_row_card",
@@ -2573,7 +2602,9 @@ def test_call_to_arms_follows_a_commanded_spy_post_before_another_reveal_choice(
     assert acquired.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
     assert acquired.state.players[0].troops_garrison == garrison
 
-    placed = engine.apply(acquired.state, engine.legal_actions(acquired.state, 0)[0])
+    placed = apply_whole(
+        engine, acquired.state, engine.whole_actions(acquired.state, 0)[0]
+    )
     assert [event.kind for event in placed.events] == [
         "spy_placed",
         "intrigue_triggered",
@@ -2734,19 +2765,19 @@ def test_urgent_shigawire_draw_is_its_own_step_after_the_placement() -> None:
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "secrets"
     )
-    placed = engine.apply(state, placement)
+    placed = apply_placement(engine, state, placement)
     owner = placed.state.players[0]
     assert owner.bene_gesserit_boost_pending is False
     assert owner.hand == ()
     assert owner.deck == STARTERS[:3]
     assert "agent_card_boost_consumed" in {event.kind for event in placed.events}
 
-    legal = engine.legal_actions(placed.state, 0)
+    legal = engine.whole_actions(placed.state, 0)
     assert legal.count(_boost_draw()) == 1
     assert DomainAction(action_id="finish_agent_turn", actor=0) not in legal
 
     # Secrets' own Intrigue icon first, then the added draw.
-    secrets = engine.apply(
+    secrets = apply_whole(engine, 
         placed.state,
         DomainAction(
             action_id="resolve_board_effect",
@@ -2754,21 +2785,21 @@ def test_urgent_shigawire_draw_is_its_own_step_after_the_placement() -> None:
             arguments=(("effect", "intrigue"),),
         ),
     ).state
-    assert _boost_draw() in engine.legal_actions(secrets, 0)
-    drawn = engine.apply(secrets, _boost_draw())
+    assert _boost_draw() in engine.whole_actions(secrets, 0)
+    drawn = apply_whole(engine, secrets, _boost_draw())
     assert drawn.state.players[0].hand == STARTERS[:1]
     assert any(
         event.kind == "agent_card_effect_resolved"
         and dict(event.payload)["card_id"] == truthtrance
         for event in drawn.events
     )
-    after = engine.legal_actions(drawn.state, 0)
+    after = engine.whole_actions(drawn.state, 0)
     assert _boost_draw() not in after
-    influenced = engine.apply(
+    influenced = apply_whole(engine, 
         drawn.state, DomainAction(action_id="resolve_faction_influence", actor=0)
     ).state
     assert DomainAction(action_id="finish_agent_turn", actor=0) in (
-        engine.legal_actions(influenced, 0)
+        engine.whole_actions(influenced, 0)
     )
 
 
@@ -2796,28 +2827,30 @@ def test_urgent_shigawire_draw_may_wait_for_a_trash_from_the_discard_pile() -> N
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "desert_tactics"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_placement(engine, state, placement).state
     trash = DomainAction(
         action_id="trash_card_for_desert_tactics",
         actor=0,
         arguments=(("card_id", junk),),
     )
-    legal = engine.legal_actions(placed, 0)
+    legal = engine.whole_actions(placed, 0)
     assert trash in legal and _boost_draw() in legal
 
-    trashed_first = engine.apply(engine.apply(placed, trash).state, _boost_draw())
+    trashed_first = apply_whole(
+        engine, apply_whole(engine, placed, trash).state, _boost_draw()
+    )
     owner = trashed_first.state.players[0]
     assert owner.trashed == (junk,)
     assert owner.hand == ()
 
-    shuffle = engine.apply(placed, _boost_draw())
+    shuffle = apply_whole(engine, placed, _boost_draw())
     decision = shuffle.next_decision
     assert isinstance(decision, ChanceDecision)
-    drawn_first = engine.apply(
+    drawn_first = apply_whole(engine, 
         shuffle.state, ChanceResolver(seed=1).resolve(decision)
     ).state
     assert drawn_first.players[0].hand == (junk,)
-    assert _boost_draw() not in engine.legal_actions(drawn_first, 0)
+    assert _boost_draw() not in engine.whole_actions(drawn_first, 0)
 
 
 def test_urgent_shigawire_draw_joins_a_box_with_its_own_card_draw() -> None:
@@ -2843,11 +2876,11 @@ def test_urgent_shigawire_draw_joins_a_box_with_its_own_card_draw() -> None:
             for action in legal_agent_actions(state, 0)
             if dict(action.arguments)["space_id"] == "secrets"
         )
-        working = engine.apply(state, placement).state
+        working = apply_placement(engine, state, placement).state
         draws = 0
-        while _boost_draw() in (legal := engine.legal_actions(working, 0)):
+        while _boost_draw() in (legal := engine.whole_actions(working, 0)):
             assert legal.count(_boost_draw()) == 1
-            working = engine.apply(working, _boost_draw()).state
+            working = apply_whole(engine, working, _boost_draw()).state
             draws += 1
         assert draws == expected
         assert len(working.players[0].hand) == expected
@@ -2875,8 +2908,8 @@ def test_urgent_shigawire_draw_lapses_with_a_box_trashed_by_another_effect() -> 
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == "desert_tactics"
     )
-    placed = engine.apply(state, placement).state
-    trashed = engine.apply(
+    placed = apply_placement(engine, state, placement).state
+    trashed = apply_whole(engine, 
         placed,
         DomainAction(
             action_id="trash_card_for_desert_tactics",
@@ -2885,7 +2918,7 @@ def test_urgent_shigawire_draw_lapses_with_a_box_trashed_by_another_effect() -> 
         ),
     )
     assert "agent_card_effect_expired" in {event.kind for event in trashed.events}
-    legal = engine.legal_actions(trashed.state, 0)
+    legal = engine.whole_actions(trashed.state, 0)
     assert _boost_draw() not in legal
     assert trashed.state.players[0].hand == ()
 
@@ -2962,7 +2995,21 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     assert asked.state.sardaukar_commanders_bank == 1
     confirm = DomainAction(action_id="resolve_commander_without_skill", actor=0)
     assert legal_skill_choice_actions(asked.state, 0) == (confirm,)
-    assert UprisingRulesEngine().legal_actions(asked.state, 0) == (confirm,)
+    # The rules offer that one confirmation; the seat is shown it as the
+    # empty-confirmation row naming the Commander's Skill choice (B3d-3).
+    engine = UprisingRulesEngine()
+    assert engine.whole_actions(asked.state, 0) == (confirm,)
+    assert engine.legal_actions(asked.state, 0) == (
+        DomainAction(
+            action_id="confirm_empty",
+            actor=0,
+            arguments=(
+                ("of", "choose"),
+                ("printed", "sardaukar_standard"),
+                ("source", "commander"),
+            ),
+        ),
+    )
     direct = apply_skill_choice(asked.state, confirm)
     assert direct.state.decision_stack[-1].kind == "agent_effects"
     assert direct.state.sardaukar_commanders_bank == 0
@@ -3100,7 +3147,7 @@ def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     state = _state(_owner(hand=(card,)))
     actions = legal_turn_start_card_actions(state, 0)
     assert [dict(a.arguments)["card_id"] for a in actions] == [card]
-    assert actions[0] in UprisingRulesEngine().legal_actions(state, 0)
+    assert actions[0] in UprisingRulesEngine().whole_actions(state, 0)
     # No Agent icons: the card cannot be sent anywhere.
     assert legal_agent_actions(state, 0) == ()
     passed = apply_turn_start_card(state, actions[0]).state
@@ -3118,14 +3165,11 @@ def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     # ruling 2026-10-04).
     plot = "intrigue:contingency_plan:0"
     with_plot = _state(_owner(hand=(card,), intrigue_cards=(plot,)))
-    plotted = (
-        UprisingRulesEngine()
-        .apply(
-            with_plot,
-            DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0))),
-        )
-        .state
-    )
+    plotted = apply_whole(
+        UprisingRulesEngine(),
+        with_plot,
+        DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0))),
+    ).state
     assert plotted.decision_stack[-1].kind == "turn"
     assert legal_turn_start_card_actions(plotted, 0) == ()
 
@@ -3204,6 +3248,14 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     owner = completed.players[0]
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == ("contract:heighliner_ii",)
+    # The tile's two troops are a row of this Agent turn, which holds its end
+    # (stage B3b, OQ-112 (4)).
+    assert completed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completed, 0)
+    assert owner.troops_garrison == garrison
+    completed = settle_reward_window(completed)
+    assert not turn_rows.holds_the_end(completed, 0)
+    owner = completed.players[0]
     assert owner.troops_garrison == garrison + 2
     assert owner.contracts_completed_turn == 1
     context = dict(completed.decision_stack[-1].context)
@@ -3277,6 +3329,8 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
     )
     from dune_imperium.rules.contracts import (
         apply_contract_recall_action,
+        apply_contract_reward_icon,
+        legacy_contract_icon_row,
         legal_contract_recall_actions,
     )
 
@@ -3293,7 +3347,16 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
         )
         action = legal_agent_card_contract_completion_actions(state, 0)[0]
         result = apply_agent_card_contract_completion(state, action)
-        return result.state, tuple(event.kind for event in result.events)
+        # The Recall Agent icon is a row of this Agent turn (stage B3b,
+        # OQ-112 (4)); its press opens the recall window under test.
+        assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+        assert turn_rows.holds_the_end(result.state, 0)
+        state, events = result.state, list(result.events)
+        while (row := legacy_contract_icon_row(state, 0)) is not None:
+            step = apply_contract_reward_icon(state, row)
+            state = step.state
+            events.extend(step.events)
+        return state, tuple(event.kind for event in events)
 
     # With no other Agent the recall window opens with only the confirm
     # (user ruling 2026-09-30), whose press fizzles the reward.
@@ -3350,6 +3413,12 @@ def _last_to_reveal(state: GameState) -> GameState:
 
 def _recall_and_place_contract_spy(state: GameState) -> GameState:
     engine = UprisingRulesEngine()
+    # A completion leaves the reward's icons as rows of the owner's Agent
+    # turn, holding its end; the Spy icon's row opens the Spy frame (stage
+    # B3b, OQ-112 (4)).
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(state, 0)
+    state = answer_reward_windows(engine, state)
     assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
     # The reward resolves on top of the owner's still-open Agent turn
     # (user ruling OQ-095 (3)), not above the next turn's frame.
@@ -3357,11 +3426,11 @@ def _recall_and_place_contract_spy(state: GameState) -> GameState:
     assert dict(state.decision_stack[-2].context)["turn_owner"] == 0
     recall = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "recall_spy_for_contract"
     )
-    recalled = engine.apply(state, recall).state
-    return engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
+    recalled = apply_whole(engine, state, recall).state
+    return apply_whole(engine, recalled, engine.whole_actions(recalled, 0)[0]).state
 
 
 def _assert_recall_counts_for_this_turn_only(placed: GameState) -> None:
@@ -3407,11 +3476,15 @@ def test_a_contract_spy_recall_after_the_last_effect_counts_for_this_turn() -> N
     for _ in range(10):
         if current.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS:
             break
-        offered = engine.legal_actions(current, 0)
+        offered = engine.whole_actions(current, 0)
         pick = next(
             (a for a in offered if a.action_id != "complete_contract"), offered[0]
         )
-        current = engine.apply(current, pick).state
+        current = apply_whole(engine, current, pick).state
+        if pick.action_id == "complete_contract":
+            # The completion's reward waits on this turn as rows (stage B3b,
+            # OQ-112 (4)); stop before taking any.
+            break
     placed = _recall_and_place_contract_spy(current)
 
     seat = placed.players[0]
@@ -3462,8 +3535,8 @@ def _answer_unit_losses(state: GameState) -> GameState:
     while state.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS:
         decision = state.decision_stack[-1].decision
         assert isinstance(decision, PlayerDecision)
-        answer = engine.legal_actions(state, decision.owner)[0]
-        state = engine.apply(state, answer).state
+        answer = engine.whole_actions(state, decision.owner)[0]
+        state = apply_whole(engine, state, answer).state
     return state
 
 
@@ -3577,7 +3650,7 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     assert top.kind == "agent_effects"
     assert dict(top.context)["turn_owner"] == 0
     engine = UprisingRulesEngine()
-    assert engine.legal_actions(moved, 0) == (DomainAction("finish_agent_turn", 0),)
+    assert engine.whole_actions(moved, 0) == (DomainAction("finish_agent_turn", 0),)
     finished = finish_agent_turn(moved)
     assert finished.decision_stack[-1].kind == "turn"
     assert dict(finished.decision_stack[-1].context)["turn_owner"] == 1
@@ -3625,10 +3698,19 @@ def test_holy_war_a_seat_with_only_commanders_must_lose_one(zone: str) -> None:
     # Seat 1, the next seat, answers first (OQ-036 (b)); its only action is
     # the Commander's loss -- no decline, nothing else.
     assert state.decision_stack[-1].kind == "opponent_unit_loss"
-    offered = UprisingRulesEngine().legal_actions(state, 1)
+    engine = UprisingRulesEngine()
+    offered = engine.whole_actions(state, 1)
     assert offered == (
         DomainAction(
             action_id="lose_unit",
+            actor=1,
+            arguments=(("commanders", 1), ("zone", zone)),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the loss by its target row alone.
+    assert engine.legal_actions(state, 1) == (
+        DomainAction(
+            action_id="choose_unit",
             actor=1,
             arguments=(("commanders", 1), ("zone", zone)),
         ),
@@ -3685,7 +3767,13 @@ def test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat(
         decision=PlayerDecision(owner=actor, prompt="Choose a turn"),
     )
     state = replace(_state(seats[0]), players=seats, decision_stack=(turn,))
-    pushed = opponent_unit_loss_frames(state, actor, source="test")
+    # Holy War makes each opponent lose the unit (stage B3d-3: the printer).
+    pushed = opponent_unit_loss_frames(
+        state,
+        actor,
+        source="test",
+        printer=printer_value(Source.AGENT_CARD, "holy_war"),
+    )
     assert pushed.events == ()
     assert pushed.state.players == state.players
     added = pushed.state.decision_stack[len(state.decision_stack) :]
@@ -3706,7 +3794,7 @@ def test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat(
                 assert legal_unit_loss_actions(current, other) == ()
         offered = legal_unit_loss_actions(current, seat)
         assert tuple(a.action_id for a in offered) == expected[seat]
-        current = engine.apply(current, offered[0]).state
+        current = apply_whole(engine, current, offered[0]).state
     assert current.decision_stack == state.decision_stack
 
 
@@ -3739,8 +3827,8 @@ def test_holy_war_asks_every_loss_before_any_spy_move() -> None:
         frame = current.decision_stack[-1]
         assert isinstance(frame.decision, PlayerDecision)
         answered.append((str(frame.kind), frame.decision.owner))
-        current = engine.apply(
-            current, engine.legal_actions(current, frame.decision.owner)[0]
+        current = apply_whole(engine, 
+            current, engine.whole_actions(current, frame.decision.owner)[0]
         ).state
     assert answered == [
         ("opponent_unit_loss", 1),
@@ -3797,7 +3885,8 @@ def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
     assert moved.players[1].spies_recalled_turn == 0
 
     engine = UprisingRulesEngine()
-    sent = engine.apply(
+    sent = apply_placement(
+        engine,
         moved,
         next(
             action
@@ -3806,7 +3895,7 @@ def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
             and dict(action.arguments)["card_id"] == supplier
         ),
     ).state
-    offered = {action.action_id for action in engine.legal_actions(sent, 1)}
+    offered = {action.action_id for action in engine.whole_actions(sent, 1)}
     assert "resolve_agent_card_effect" not in offered
 
 
@@ -3838,15 +3927,15 @@ def test_holy_war_drawn_mid_reveal_still_bonds_for_the_combat_icon(
     cunning = _intrigue("cunning")
     owner = _owner(hand=(revealed_card,), deck=(card,), intrigue_cards=(cunning,))
     engine = UprisingRulesEngine()
-    revealed = engine.apply(
+    revealed = apply_whole(engine, 
         _state(owner), DomainAction(action_id="reveal_turn", actor=0)
     ).state
     assert _reveal_context(revealed)["combat_deployment"] is False
-    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    drawn = apply_whole(engine, revealed, _play_intrigue(cunning)).state
     assert card in drawn.players[0].in_play
     assert _reveal_context(drawn)["combat_deployment"] is bonded
     deployments = {
-        a.action_id for a in engine.legal_actions(drawn, 0)
+        a.action_id for a in engine.whole_actions(drawn, 0)
     } & {a.action_id for a in legal_reveal_deployments(drawn, 0)}
     assert ("deploy_troops" in deployments) is bonded
 
@@ -3875,7 +3964,7 @@ def test_false_orders_moves_watching_spies_then_places_one() -> None:
     state = _play(base, landsraad, "assembly_hall")
     assert _play_intrigue(card) in legal_intrigue_play_actions(state, 0)
     engine = UprisingRulesEngine()
-    played = engine.apply(state, _play_intrigue(card)).state
+    played = apply_whole(engine, state, _play_intrigue(card)).state
     assert [frame.kind for frame in played.decision_stack[-2:]] == [
         "spy_placement",
         "opponent_spy_move",
@@ -3916,7 +4005,7 @@ def test_false_orders_moves_the_spy_off_every_post_of_the_space() -> None:
     base = _state(_owner(hand=(city,), intrigue_cards=(card,)))
     base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
     state = _play(base, city, "spice_refinery")
-    played = UprisingRulesEngine().apply(state, _play_intrigue(card)).state
+    played = apply_whole(UprisingRulesEngine(), state, _play_intrigue(card)).state
     moves = legal_spy_move_actions(played, 1)
     targets = {dict(a.arguments)["post_id"] for a in moves}
     assert targets
@@ -4005,6 +4094,10 @@ def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:
     assert not targets & set(REFINERY_POSTS)
 
 
+# Holy War moves the opposing Spies on its Agent's space (stage B3d-3).
+HOLY_WAR_PRINTER = printer_value(Source.AGENT_CARD, "holy_war")
+
+
 def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
     # All twelve Spies are out and every post not connected to Spice
     # Refinery is taken: the FAQ's destination [FAQ p. 2] does not exist, so
@@ -4035,7 +4128,9 @@ def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
         PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[8:11])),
     )
     state = replace(_state(seats[0]), players=seats)
-    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    pushed = turn_space_spy_frames(
+        state, 0, "spice_refinery", source="test", printer=HOLY_WAR_PRINTER
+    ).state
     actions = legal_spy_move_actions(pushed, 1)
     assert [a.action_id for a in actions] == ["lose_moved_spy"]
     lost = apply_spy_move(pushed, actions[0])
@@ -4084,7 +4179,9 @@ def test_forced_spy_moves_go_seat_by_seat_from_the_next_seat() -> None:
         PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[6:9])),
     )
     state = replace(_state(seats[0]), players=seats)
-    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    pushed = turn_space_spy_frames(
+        state, 0, "spice_refinery", source="test", printer=HOLY_WAR_PRINTER
+    ).state
     added = pushed.decision_stack[len(state.decision_stack) :]
     # Top of the stack first: seat 1's two moves, then seat 2's.
     owners = [
@@ -4136,8 +4233,8 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
     # Three units deployed this turn meet "When you deploy three or more
     # units to the Conflict in a single turn:" (OQ-016): the card is played
     # and resolves at once, its reveal opening once it is discarded.
-    assert play in engine.legal_actions(base, 0)
-    offered = engine.apply(base, play).state
+    assert play in engine.whole_actions(base, 0)
+    offered = apply_whole(engine, base, play).state
     frame = offered.decision_stack[-1]
     assert frame.kind == "intrigue_trigger_contract"
     assert card in offered.intrigue_discard
@@ -4162,7 +4259,7 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
         template.action_id for template in ActionCodec(CHOAM_BLOODLINES).catalog
     }
     # Without the CHOAM bank the card cannot be played at all (OQ-064).
-    assert play not in engine.legal_actions(replace(base, contract_bank=()), 0)
+    assert play not in engine.whole_actions(replace(base, contract_bank=()), 0)
 
 
 def test_engineered_miracle_command_lapses_once_the_card_left_play() -> None:
@@ -4297,7 +4394,8 @@ def test_ruthless_leadership_without_a_commander_resolves_without_effect() -> No
     assert resolve not in frame_actions
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
     assert finish not in frame_actions  # the Maker harvest is still pending
-    harvested = UprisingRulesEngine().apply(
+    harvested = apply_whole(
+        UprisingRulesEngine(),
         state,
         next(a for a in frame_actions if a.action_id == "harvest_maker_spice"),
     ).state
@@ -4409,13 +4507,76 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # v149 (cleanup-2f): five refusals out (decline_sardaukar_commander
         # among them), two confirms in.
         - 3
+        # v150 (stage B1): this catalog's 6,344 ``agent_turn`` rows become
+        # 174 card and space picks.
+        - 6344
+        + 174
+        # v150 (stage B2, OQ-112): a Conflict reward's icon rows, one per
+        # icon kind with the Bloodlines-only Deep Cover Spy (15).
+        + 15
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_action_codec.test_catalog_is_fixed...): 1,069 leave
+        # and 1,432 rows join.
+        - 1069
+        + 1432
+        # v150 (stage B3b-2, OQ-111): the Reveal frame's effect and target
+        # rows replace the whole templates of the ids it adds to
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are: 212 leave and 48 rows join.
+        - 212
+        + 48
+        # v150 (stage B3c-1, OQ-111): the turn frame and the Combat, Conflict-end
+        # and Endgame Intrigue windows offer a card play as their effect row
+        # (``play``, ``match``) and the card's rows: the whole templates of
+        # ``play_intrigue`` (92), ``play_turn_start_card`` (1) and
+        # ``match_endgame_wild_icon`` (60) leave and 29 rows join.
+        - 153
+        + 29
+        # v150 (stage B3c-2b): Arrakis Planetologist's optional trash names
+        # its leader (trash(source=leader, printed=liet_kynes)).
+        + 1
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # offer effect rows: 397 whole templates leave and 89 rows join.
+        - 397
+        + 89
+        # v150 (stage B3d-2a, D-1 (가)): a window opened for one effect offers
+        # its own effect by its target rows, so its whole templates leave
+        # (2,621) and the target and effect rows not yet in the catalog join
+        # (187).
+        - 2621
+        + 187
+        # v150 (stage B3d-3): every refusal and empty confirmation is shown as
+        # one of the effect rows ``decline`` and ``confirm_empty`` naming the
+        # effect it answers: 44 whole templates leave (the eight ids no handler
+        # ever answered among them) and 173 rows join.
+        - 44
+        + 173
+        # v150 (stage B3d-4): the turn's owed draws, Emperor track Spy and
+        # Sardaukar Commander recruit by their effect rows: draw_owed_intrigue,
+        # draw_owed_card, place_track_spy and recruit_sardaukar_commander leave
+        # (4) and the rows not yet in the catalog join (5).
+        - 4
+        + 5
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 25 rows join (the Bloodlines and promo cards'
+        # and Commander Skills' among them).
+        - 13
+        + 25
     )
+    # Stage B3a: the Agent-effect frame offers the trash as an effect row
+    # naming the card, then the card to trash as its target row.
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,
         arguments=(("card_id", _card("ruthless_leadership")),),
     )
-    assert codec.decode(codec.encode(action), actor=2) == action
+    rows = steps_for(action, "ruthless_leadership")
+    assert [row.action_id for row in rows] == ["trash", "choose_personal_card"]
+    for row in rows:
+        assert codec.decode(codec.encode(row), actor=2) == row
     for config in (
         PROMO_BLOODLINES,
         RulesetConfig(
@@ -4487,7 +4648,12 @@ def test_storms_in_the_south_first_place_spy_has_deep_cover() -> None:
         combat_intrigue_complete=True,
         intrigue_deck=intrigue_deck_instance_ids(False)[:4],
     )
-    rewarded = resolve_combat_rewards(state).state
+    opened = resolve_combat_rewards(state).state
+    # The reward waits in the winner's window; its rows pay the spice and
+    # open the Deep Cover Spy frame (stage B2, OQ-112).
+    assert opened.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert opened.players[0].resources.spice == 0
+    rewarded = settle_reward_window(opened)
     assert rewarded.players[0].resources.spice == 2
     frame = rewarded.decision_stack[-1]
     assert frame.kind == FrameKind.COMBAT_REWARD_SPY
@@ -4537,7 +4703,7 @@ def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() ->
         combat_intrigue_complete=True,
         intrigue_deck=intrigue_deck_instance_ids(False)[:4],
     )
-    rewarded = resolve_combat_rewards(state).state
+    rewarded = settle_reward_window(resolve_combat_rewards(state).state)
     frame = rewarded.decision_stack[-1]
     assert frame.kind == FrameKind.COMBAT_REWARD_SPY
     assert dict(frame.context)["deep_cover"] is True

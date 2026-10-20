@@ -36,7 +36,6 @@ from dune_imperium.content.bloodlines.tech import (
     has_tech,
     tech_reveal_line,
 )
-from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -45,7 +44,6 @@ from dune_imperium.content.uprising.abilities import (
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
-    CompletedContractsAtLeast,
     Condition,
     DeployFromGarrison,
     DrawIntrigueCards,
@@ -72,7 +70,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     SummonSandworm,
     TakeContract,
     TakeHighCouncilSeat,
-    TechTilesAtLeast,
     TrashCard,
     TrashPersonalCard,
 )
@@ -87,7 +84,6 @@ from dune_imperium.content.uprising.reveal_choice_abilities import (
 from dune_imperium.content.uprising.types import (
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -109,6 +105,8 @@ from dune_imperium.rules.combat_deployment import (
     undeployable_troops,
     undeployable_troops_this_turn,
 )
+from dune_imperium.rules.conditions import owner_condition_holds
+from dune_imperium.rules.effect_steps import named_whole, reveal_gain_printer
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
@@ -142,6 +140,12 @@ from dune_imperium.rules.intrigue_deck import (
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
+from dune_imperium.rules.reveal_lines import (
+    COMMAND_PERSUASION,
+    RevealLine,
+    line_conditions_hold,
+    reveal_lines,
+)
 from dune_imperium.rules.scouts_offers import (
     queue_reveal_subcommittee_offer,
     reveal_subcommittee_offer,
@@ -150,7 +154,6 @@ from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_prot
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
-    is_spying_on_maker_space,
     place_spy,
     recall_spy,
     spied_factions,
@@ -628,20 +631,18 @@ def _target_condition_holds(
 ) -> bool:
     """A "target -> reward" line's printed condition, judged now (OQ-028):
     Command on the Persuasion generated this Reveal turn [Bloodlines pp. 5,
-    12]."""
+    12], any other where every seat condition is (``conditions``, stage
+    B3e-2)."""
 
     match condition:
         case None:
             return True
         case CommandReached():
             return persuasion is not None and persuasion >= COMMAND_PERSUASION
-        case SpiesPlacedAtLeast(count=count):
-            return len(owner.spy_post_ids) >= count
-        case TechTilesAtLeast(count=count):
-            return len(owner.tech_ids) >= count
-        case CompletedContractsAtLeast(count=count):
-            return len(owner.completed_contract_ids) >= count
-    raise TypeError(f"{condition!r} is not a Reveal choice condition")
+    held = owner_condition_holds(owner, condition)
+    if held is None:
+        raise TypeError(f"{condition!r} is not a Reveal choice condition")
+    return held
 
 
 def _target_reward_targets(
@@ -1796,7 +1797,7 @@ def apply_contract_reveal_choice(
     )
     if action.action_id == "keep_contract_reveal_spice":
         card = personal_card_for_instance(card_id)
-        spice = sum(effect.spice for effect in card.reveal_effects)
+        spice = sum(line.spice for line in reveal_lines(card))
         owner = state.players[action.actor]
         next_owner = replace(
             owner,
@@ -2877,8 +2878,8 @@ def fire_guild_spy_on_spice_must_flow(
     return RuleResult(state=working, events=tuple(events))
 
 
-COMMAND_PERSUASION = 6
-"""Persuasion a Reveal turn must generate for "Command (6+)" [Bloodlines p. 5]."""
+# ``COMMAND_PERSUASION`` (imported above, ``reveal_lines``): the Persuasion a
+# Reveal turn must generate for "Command (6+)" [Bloodlines p. 5].
 
 
 
@@ -2935,63 +2936,27 @@ def _reveal_effect_is_eligible(
     cards_in_play: tuple[str, ...],
     card_id: str,
     card: PersonalCardDefinition,
-    effect: PersonalCardRevealEffect,
+    effect: RevealLine,
     *,
     persuasion: int | None = None,
 ) -> bool:
-    """Return whether one revealed card's automatic Reveal effect applies.
+    """Return whether one revealed card's automatic Reveal line applies.
 
-    Mirrors every gate ``begin_reveal_turn`` checks so the late-reveal path
-    [FAQ p. 3] can re-adjudicate eligibility at arrival under the same
-    rules. ``persuasion`` is the Reveal turn's current total for the
-    Bloodlines "Command (6+)" gate; ``None`` (unknown yet) never satisfies
-    it.
+    Its record's conditions (``reveal_lines.line_conditions_hold``; stage
+    B3e-2), the same at the Reveal's start and at a late arrival [FAQ p. 3].
+    ``persuasion`` is the Reveal turn's current total for the Bloodlines
+    "Command (6+)" gate; ``None`` (unknown yet) never satisfies it.
     """
 
-    return (
-        (not effect.requires_high_council or owner.high_council)
-        and (
-            not effect.requires_commander_in_conflict or owner.commanders_conflict >= 1
-        )
-        # Immortality: "[genetic marker]: ..." lines need the research token
-        # in the marker's column [Immortality pp. 6, 16].
-        and (
-            effect.minimum_genetic_markers == 0
-            or (
-                bool(owner.research_space)
-                and genetic_markers_reached(owner.research_space)
-                >= effect.minimum_genetic_markers
-            )
-        )
-        and (
-            owner.troops_garrison + owner.commanders_garrison
-            >= effect.minimum_garrisoned_units
-        )
-        and (
-            not effect.requires_command
-            or (persuasion is not None and persuasion >= COMMAND_PERSUASION)
-        )
-        and (not effect.requires_swordmaster or owner.swordmaster_acquired)
-        and len(owner.spy_post_ids) >= effect.minimum_spies_placed
-        and (
-            effect.required_faction_bond is None
-            or has_faction_bond(
-                cards_in_play,
-                card_id,
-                Faction(effect.required_faction_bond.value),
-            )
-        )
-        and (
-            not effect.requires_spying_on_maker_space or is_spying_on_maker_space(owner)
-        )
+    return line_conditions_hold(
+        owner, cards_in_play, card_id, effect, persuasion=persuasion
+    ) and not (
         # Priority Contracts / Delivery Agreement: "[spice] -OR- If you have
         # completed four or more contracts: Trash this card -> [1 VP]" [card
         # faces]. The spice is one branch of that choice, paid only by it,
         # so a fourth Contract completed later this Reveal (OQ-028 (b)) can
         # never add the Victory Point on top of spice already paid.
-        and not (
-            effect.spice > 0 and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
-        )
+        effect.spice > 0 and card_holds_reveal_value(card, PrintedRevealValue.SPICE)
     )
 
 
@@ -3002,12 +2967,12 @@ def _eligible_reveal_effects(
     card: PersonalCardDefinition,
     *,
     persuasion: int | None = None,
-) -> tuple[PersonalCardRevealEffect, ...]:
-    """Return ``card``'s Reveal effects that currently apply."""
+) -> tuple[RevealLine, ...]:
+    """Return ``card``'s Reveal lines that currently apply."""
 
     return tuple(
         effect
-        for effect in card.reveal_effects
+        for effect in reveal_lines(card)
         if _reveal_effect_is_eligible(
             owner, cards_in_play, card_id, card, effect, persuasion=persuasion
         )
@@ -3022,7 +2987,7 @@ def _granted_reveal_effects(
 ) -> dict[str, int | None]:
     """Decode which automatic Reveal effects already paid out this Reveal.
 
-    Keys are ``card#index`` over ``card.reveal_effects``; the value is the
+    Keys are ``card#index`` over the card's Reveal lines; the value is the
     completed-Contract count a per-Contract Persuasion effect was last paid
     for, the sword cards Leadership has counted, or None for every other
     effect.
@@ -3097,8 +3062,8 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
             card_id in choice_swords
             or card.reveal_strength
             + sum(
-                _reveal_effect_strength(effect, revealed_cards)
-                for index, effect in enumerate(card.reveal_effects)
+                effect.strength_over(revealed_cards)
+                for index, effect in enumerate(reveal_lines(card))
                 if f"{card_id}#{index}" in granted
             )
             > 0
@@ -3109,7 +3074,7 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
     for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
         if card_id not in owner.in_play:
             continue
-        for index, effect in enumerate(card.reveal_effects):
+        for index, effect in enumerate(reveal_lines(card)):
             counted = granted.get(f"{card_id}#{index}")
             if not effect.strength_per_other_sword_card or counted is None:
                 continue
@@ -3160,7 +3125,7 @@ def _granted_entries(
 
     entries: dict[str, int | None] = {}
     for card_id, card in zip(card_ids, cards, strict=True):
-        for index, effect in enumerate(card.reveal_effects):
+        for index, effect in enumerate(reveal_lines(card)):
             if _reveal_effect_is_eligible(
                 owner, cards_in_play, card_id, card, effect, persuasion=persuasion
             ):
@@ -3219,14 +3184,14 @@ def resource_gain_entry(
     return ("resources", f"{solari}/{spice}/{water}", source)
 
 
-def influence_gain_entry(
-    source: str, effect: PersonalCardRevealEffect
-) -> RevealGain | None:
+def influence_gain_entry(source: str, effect: RevealLine) -> RevealGain | None:
     """Return a pending fixed-Faction Influence gain, or None without one."""
 
-    if effect.influence_faction is None or effect.influence <= 0:
+    gain = effect.influence
+    if gain is None or gain[1] <= 0:
         return None
-    return ("influence", f"{effect.influence_faction.value}/{effect.influence}", source)
+    faction, amount = gain
+    return ("influence", f"{faction.value}/{amount}", source)
 
 
 def _resource_payload(payload: str) -> tuple[int, int, int]:
@@ -3274,15 +3239,61 @@ def queue_reveal_intrigue_draw(state: GameState, count: int, source: str) -> Gam
     return _append_reveal_gains_state(state, (("intrigue", str(count), source),))
 
 
+# The kind of waiting gain each Reveal gain action takes (OQ-045).
+_GAIN_KINDS: Final[Mapping[str, str]] = MappingProxyType({
+    "recruit_reveal_troops": "troops",
+    "draw_reveal_intrigue": "intrigue",
+    "generate_reveal_specimens": "specimens",
+    "advance_reveal_tleilaxu": "tleilaxu",
+    "advance_reveal_research": "research",
+    "gain_reveal_resources": "resources",
+    "gain_reveal_faction_influence": "influence",
+})
+_RESOURCE_NAMES: Final = ("solari", "spice", "water")
+
+
+def _gain_key(kind: str, payload: str) -> str:
+    """What one older action took a gain by: its kind, a resource bundle's
+    payload, a Faction (before stage B3e-1, one action per key)."""
+
+    if kind == "resources":
+        return payload
+    if kind == "influence":
+        return payload.split("/")[0]
+    return kind
+
+
+def _gain_whole(
+    state: GameState, player: int, action_id: str, entry: RevealGain
+) -> DomainAction:
+    """The action taking the waiting gain ``entry``, naming what printed it
+    (``effect_steps.reveal_gain_printer``) and, for a bundle or a Faction,
+    what it gives."""
+
+    kind, payload, source = entry
+    extra: tuple[tuple[str, ActionValue], ...] = ()
+    if kind == "resources":
+        extra = tuple(zip(_RESOURCE_NAMES, _resource_payload(payload), strict=True))
+    elif kind == "influence":
+        extra = (("faction", payload.split("/")[0]),)
+    return named_whole(
+        action_id, player, reveal_gain_printer(state, player, source), *extra
+    )
+
+
 def legal_reveal_gain_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the pending troop recruit and Intrigue draw of the owner's Reveal.
+    """Offer the gains waiting on the owner's Reveal (OQ-045).
 
-    Each resolves the oldest pending entry of its kind; entries of one kind
-    are interchangeable (the same supply, the same deck), so no argument is
-    needed. Both must be taken before the Reveal ends.
+    One action per waiting gain's kind and entity that printed it (stage
+    B3e-1, decision 3: a revealed card, a Skill, a Tech tile, the leader; a
+    copy of the same card once), each taking that entity's oldest gain of
+    the kind. They come in the older engine's order -- one action per kind,
+    resource bundle and Faction -- each key's entities by their oldest gain,
+    so a key's first is the gain the older engine took
+    (``legacy_reveal_gain_whole``). All must be taken before the Reveal ends.
     """
 
     if not 0 <= player < state.config.players:
@@ -3291,49 +3302,83 @@ def legal_reveal_gain_actions(
     if frame is None:
         return ()
     pending = reveal_pending_gains(dict(frame.context))
-    kinds = {kind for kind, _, _ in pending}
     actions: list[DomainAction] = []
-    if "troops" in kinds:
-        actions.append(DomainAction(action_id="recruit_reveal_troops", actor=player))
-    if "intrigue" in kinds:
-        actions.append(DomainAction(action_id="draw_reveal_intrigue", actor=player))
-    if "specimens" in kinds:
-        actions.append(
-            DomainAction(action_id="generate_reveal_specimens", actor=player)
-        )
-    if "tleilaxu" in kinds:
-        actions.append(DomainAction(action_id="advance_reveal_tleilaxu", actor=player))
-    if "research" in kinds:
-        actions.append(DomainAction(action_id="advance_reveal_research", actor=player))
-    # Resource gains differ in what they give, so each distinct bundle is
-    # its own choice; equal bundles are interchangeable.
-    for payload in dict.fromkeys(
-        payload for kind, payload, _ in pending if kind == "resources"
-    ):
-        solari, spice, water = _resource_payload(payload)
-        actions.append(
-            DomainAction(
-                action_id="gain_reveal_resources",
-                actor=player,
-                arguments=(("solari", solari), ("spice", spice), ("water", water)),
-            )
-        )
-    # Fixed-Faction Influence gains: one choice per Faction still pending.
-    for faction in dict.fromkeys(
-        payload.split("/")[0] for kind, payload, _ in pending if kind == "influence"
-    ):
-        actions.append(
-            DomainAction(
-                action_id="gain_reveal_faction_influence",
-                actor=player,
-                arguments=(("faction", faction),),
-            )
-        )
+    for action_id, kind in _GAIN_KINDS.items():
+        entries = [entry for entry in pending if entry[0] == kind]
+        for key in dict.fromkeys(_gain_key(*entry[:2]) for entry in entries):
+            for entry in entries:
+                if _gain_key(*entry[:2]) != key:
+                    continue
+                whole = _gain_whole(state, player, action_id, entry)
+                if whole not in actions:
+                    actions.append(whole)
     return tuple(actions)
 
 
+def _gain_index(
+    state: GameState, player: int, pending: tuple[RevealGain, ...], action: DomainAction
+) -> int | None:
+    """The oldest waiting gain ``action`` takes, or None."""
+
+    kind = _GAIN_KINDS[action.action_id]
+    return next(
+        (
+            index
+            for index, entry in enumerate(pending)
+            if entry[0] == kind and _gain_whole(state, player, action.action_id, entry)
+            == action
+        ),
+        None,
+    )
+
+
+def reveal_gain_source(state: GameState, action: DomainAction) -> str | None:
+    """The source of the waiting gain ``action`` takes (``_gain_index``), for
+    naming what printed it; None for any other action or when none waits."""
+
+    if action.action_id not in _GAIN_KINDS:
+        return None
+    frame = owned_top_frame(state, FrameKind.REVEAL, action.actor)
+    if frame is None:
+        return None
+    pending = reveal_pending_gains(dict(frame.context))
+    index = _gain_index(state, action.actor, pending, action)
+    return None if index is None else pending[index][2]
+
+
+def legacy_reveal_gain_whole(
+    state: GameState, player: int, step: DomainAction
+) -> DomainAction | None:
+    """The gain the engine before stage B3e-1 took for ``step``, an action
+    naming no entity (one per kind, resource bundle and Faction), as the
+    action naming that gain's entity: the oldest of its key. None for any
+    other step or when none waits. The scripted agents and older records
+    keep this pick (``agents.engine_order``, the records bridge)."""
+
+    kind = _GAIN_KINDS.get(step.action_id)
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if kind is None or frame is None:
+        return None
+    arguments = dict(step.arguments)
+    if kind == "resources":
+        key = "/".join(str(arguments.get(name, 0)) for name in _RESOURCE_NAMES)
+    elif kind == "influence":
+        key = str(arguments.get("faction"))
+    else:
+        key = kind
+    entry = next(
+        (
+            entry
+            for entry in reveal_pending_gains(dict(frame.context))
+            if entry[0] == kind and _gain_key(*entry[:2]) == key
+        ),
+        None,
+    )
+    return None if entry is None else _gain_whole(state, player, step.action_id, entry)
+
+
 def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
-    """Recruit the next pending troops or draw the next pending Intrigue."""
+    """Take the oldest waiting gain of the action's kind its entity printed."""
 
     if action not in legal_reveal_gain_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal gain")
@@ -3341,32 +3386,9 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
     frame = state.decision_stack[-1]
     context = frame_context(frame)
     pending = reveal_pending_gains(context)
-    arguments = dict(action.arguments)
-    if action.action_id == "gain_reveal_resources":
-        wanted_payload = "/".join(
-            str(arguments.get(name, 0)) for name in ("solari", "spice", "water")
-        )
-        index = next(
-            i
-            for i, (kind, payload, _) in enumerate(pending)
-            if kind == "resources" and payload == wanted_payload
-        )
-    elif action.action_id == "gain_reveal_faction_influence":
-        wanted_faction = str(arguments["faction"])
-        index = next(
-            i
-            for i, (kind, payload, _) in enumerate(pending)
-            if kind == "influence" and payload.split("/")[0] == wanted_faction
-        )
-    else:
-        wanted = {
-            "recruit_reveal_troops": "troops",
-            "draw_reveal_intrigue": "intrigue",
-            "generate_reveal_specimens": "specimens",
-            "advance_reveal_tleilaxu": "tleilaxu",
-            "advance_reveal_research": "research",
-        }[action.action_id]
-        index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
+    index = _gain_index(state, player, pending, action)
+    if index is None:
+        raise ValueError("no such Reveal gain waits")
     kind, payload, source = pending[index]
     context[REVEAL_GAINS_KEY] = _encode_gains((*pending[:index], *pending[index + 1 :]))
     event_id = f"round:{state.round_number}:player:{player}:reveal_gain:{source}"
@@ -3660,7 +3682,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 # can't receive or activate an effect from a card that is
                 # already trashed" (designer ruling, OQ-022).
                 continue
-            for index, effect in enumerate(card.reveal_effects):
+            for index, effect in enumerate(reveal_lines(card)):
                 key = f"{card_id}#{index}"
                 source = (
                     f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
@@ -3706,10 +3728,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     persuasion=_frame_generated_persuasion(frames),
                 ):
                     continue
-                persuasion = _reveal_effect_persuasion(
-                    effect, revealed_cards, completed, _in_play_cards(next_owner)
+                persuasion = effect.persuasion_over(
+                    revealed_cards, completed, _in_play_cards(next_owner)
                 )
-                sword = _reveal_effect_strength(effect, revealed_cards)
+                sword = effect.strength_over(revealed_cards)
                 if persuasion:
                     frames = add_reveal_persuasion(frames, persuasion)
                 if sword:
@@ -3847,57 +3869,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     return RuleResult(state=working, events=tuple(events))
 
 
-def _reveal_effect_persuasion(
-    effect: PersonalCardRevealEffect,
-    revealed_cards: tuple[PersonalCardDefinition, ...],
-    completed_contracts: int,
-    in_play_cards: tuple[PersonalCardDefinition, ...],
-) -> int:
-    """Return one eligible effect's Persuasion over the revealed or in-play set.
-
-    "Revealed" counts this Reveal's cards (Sardaukar Coordination);
-    "in play" also counts the cards played on this round's Agent turns
-    [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes] (Stilgar, The Devoted).
-    """
-
-    if effect.per_revealed_faction is not None:
-        counted = sum(
-            Faction(effect.per_revealed_faction.value) in card.factions
-            for card in revealed_cards
-        )
-    elif effect.per_in_play_faction is not None:
-        counted = sum(
-            Faction(effect.per_in_play_faction.value) in card.factions
-            for card in in_play_cards
-        )
-    else:
-        counted = 1
-    return (
-        effect.persuasion * counted
-        + effect.persuasion_per_completed_contract * completed_contracts
-    )
-
-
 def _in_play_cards(owner: PlayerState) -> tuple[PersonalCardDefinition, ...]:
     # Only the cards that count as in play (OQ-054, ``counted_in_play``).
     return tuple(
         personal_card_for_instance(card_id) for card_id in counted_in_play(owner)
-    )
-
-
-def _reveal_effect_strength(
-    effect: PersonalCardRevealEffect,
-    revealed_cards: tuple[PersonalCardDefinition, ...],
-) -> int:
-    """Return one eligible effect's own-card strength over the revealed set."""
-
-    return effect.strength * (
-        sum(
-            Faction(effect.per_revealed_faction.value) in card.factions
-            for card in revealed_cards
-        )
-        if effect.per_revealed_faction is not None
-        else 1
     )
 
 
@@ -4622,13 +4597,13 @@ def _late_reveal_one_card(
         next_owner, cards_in_play, card_id, card, persuasion=command_persuasion
     )
     persuasion_gain = card_persuasion + sum(
-        _reveal_effect_persuasion(
-            effect, revealed_cards, completed_contracts, _in_play_cards(next_owner)
+        effect.persuasion_over(
+            revealed_cards, completed_contracts, _in_play_cards(next_owner)
         )
         for effect in eligible
     )
     own_strength = card.reveal_strength + sum(
-        _reveal_effect_strength(effect, revealed_cards) for effect in eligible
+        effect.strength_over(revealed_cards) for effect in eligible
     )
     # Leadership's count, for this card and for one revealed earlier, is
     # topped up by _count_leadership_swords once the card is recorded.
@@ -4643,11 +4618,11 @@ def _late_reveal_one_card(
             # (designer ruling, OQ-022). What it paid before stays paid.
             continue
         other_card = personal_card_for_instance(other_id)
-        for effect in other_card.reveal_effects:
+        for effect in reveal_lines(other_card):
             # The arriving card is both revealed and in play, so either
             # count grows by it.
-            counted_faction = effect.per_revealed_faction or effect.per_in_play_faction
-            if counted_faction is None:
+            arrival_persuasion, arrival_swords = effect.arrival_gains(card)
+            if not (arrival_persuasion or arrival_swords):
                 continue
             if not _reveal_effect_is_eligible(
                 next_owner,
@@ -4658,9 +4633,8 @@ def _late_reveal_one_card(
                 persuasion=frame_persuasion,
             ):
                 continue
-            if Faction(counted_faction.value) in card.factions:
-                persuasion_increment += effect.persuasion
-                sword_delta += effect.strength
+            persuasion_increment += arrival_persuasion
+            sword_delta += arrival_swords
     persuasion_delta = persuasion_gain + persuasion_increment
 
     # Troop recruits, Intrigue draws and resources join the Reveal's pending
@@ -4872,7 +4846,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
 
     def eligible_effects(
         persuasion: int | None,
-    ) -> tuple[tuple[str, PersonalCardRevealEffect], ...]:
+    ) -> tuple[tuple[str, RevealLine], ...]:
         return tuple(
             (card_id, effect)
             for card_id, card in zip(revealed, cards, strict=True)
@@ -4890,11 +4864,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     )
 
     def total_persuasion(
-        effects: tuple[tuple[str, PersonalCardRevealEffect], ...],
+        effects: tuple[tuple[str, RevealLine], ...],
     ) -> int:
         total = sum(_card_reveal_persuasion(card) for card in cards) + sum(
-            _reveal_effect_persuasion(
-                effect, cards, len(owner.completed_contract_ids), in_play_cards
+            effect.persuasion_over(
+                cards, len(owner.completed_contract_ids), in_play_cards
             )
             for _, effect in effects
         )
@@ -4938,7 +4912,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             card_id,
             card.reveal_strength
             + sum(
-                _reveal_effect_strength(effect, cards)
+                effect.strength_over(cards)
                 for effect_card_id, effect in reveal_effects
                 if effect_card_id == card_id
             ),
@@ -5086,7 +5060,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         persuasion=persuasion,
     )
     for card_id, card in zip(revealed, cards, strict=True):
-        for index, effect in enumerate(card.reveal_effects):
+        for index, effect in enumerate(reveal_lines(card)):
             key = f"{card_id}#{index}"
             if effect.strength_per_other_sword_card and key in granted_at_start:
                 granted_at_start[key] = other_sword_cards[card_id]
