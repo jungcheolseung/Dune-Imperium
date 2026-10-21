@@ -64,7 +64,7 @@ from dune_imperium.content.uprising.conflicts import (
 )
 from dune_imperium.content.uprising.contracts import (
     STANDARD_CONTRACTS,
-    ContractConditionKind,
+    ContractDefinition,
     contract_instance_ids,
 )
 from dune_imperium.content.uprising.effect_dsl import IntrigueTiming
@@ -95,6 +95,7 @@ from dune_imperium.content.uprising.starting_cards import (
     starting_deck_instance_ids,
 )
 from dune_imperium.content.uprising.types import AgentIcon, ConflictTier
+from dune_imperium.display.structs import contract_reward_parts
 
 CHOAM = pytest.mark.parametrize("choam", [False, True], ids=["no_choam", "choam"])
 
@@ -771,28 +772,32 @@ def test_two_tiles_share_an_archetype_exactly_when_the_app_has_two_copies() -> N
     }
 
 
-_CONTRACT_TYPES = {
-    ContractConditionKind.BOARD_SPACE: "Space",
-    ContractConditionKind.HARVEST_SPICE: "Harvest",
-    ContractConditionKind.ACQUIRE_CARD: "Acquire",
-    ContractConditionKind.IMMEDIATE: "Immediate",
-}
+def _contract_type(contract: ContractDefinition) -> str:
+    """The app's ``ContractType`` of a standard tile."""
+
+    if contract.board_space is not None:
+        return "Space"
+    if contract.harvest_spice:
+        return "Harvest"
+    if contract.acquire_card is not None:
+        return "Acquire"
+    assert contract.completes_immediately
+    return "Immediate"
 
 
 def test_contract_conditions_and_rewards_agree() -> None:
     for contract in STANDARD_CONTRACTS:
         where = contract.card.card_id
         archetype = ARCHETYPES[CONTRACT_ARCHETYPES[where]]
-        condition = contract.condition
-        reward = contract.reward
+        reward = contract_reward_parts(contract.reward_line)
 
-        assert _str_attr(archetype, "ContractType") == _CONTRACT_TYPES[condition.kind]
-        if condition.kind is ContractConditionKind.BOARD_SPACE:
+        assert _str_attr(archetype, "ContractType") == _contract_type(contract)
+        if contract.board_space is not None:
             # Contracts exist only with CHOAM, so the CHOAM space archetype.
-            space = SPACE_ARCHETYPES[condition.target][1]
+            space = SPACE_ARCHETYPES[contract.board_space][1]
             assert space in _tuple_attr(archetype, "ReferencedArchetypeIDs"), where
-        if condition.kind is ContractConditionKind.HARVEST_SPICE:
-            assert _int_attr(archetype, "SpiceCost") == condition.amount, where
+        if contract.harvest_spice:
+            assert _int_attr(archetype, "SpiceCost") == contract.harvest_spice, where
 
         assert _int_attr(archetype, "Solari") == reward.solari, where
         assert _int_attr(archetype, "Water") == reward.water, where
@@ -809,7 +814,7 @@ def test_contract_conditions_and_rewards_agree() -> None:
             reward.influence_faction is Faction.BENE_GESSERIT
         ), where
         assert ("TSMFContractAbility" in abilities) is (
-            condition.kind is ContractConditionKind.ACQUIRE_CARD
+            contract.acquire_card is not None
         ), where
 
 

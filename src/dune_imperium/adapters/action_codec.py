@@ -1556,10 +1556,9 @@ _WINDOW_REWARD_ICONS: Final[Mapping[str, tuple[str, ...]]] = {
 # control reward names.
 _CONTROL_SPACES: Final = tuple(
     dict.fromkeys(
-        conflict.rewards[0].control_space_id
+        conflict.control_space_id
         for conflict in CONFLICTS
-        if conflict.rewards is not None
-        and conflict.rewards[0].control_space_id is not None
+        if conflict.control_space_id is not None
     )
 )
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {

@@ -6,9 +6,7 @@ from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
-from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
-    ContractConditionKind,
     contract_for_instance,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -82,13 +80,9 @@ def contract_candidates_for_agent_turn(
     space = BOARD_SPACES_BY_ID[space_id]
     candidates: list[str] = []
     for instance_id in state.players[player].active_contract_ids:
-        condition = contract_for_instance(instance_id).condition
-        if (
-            condition.kind is ContractConditionKind.BOARD_SPACE
-            and condition.target == space_id
-        ) or (
-            condition.kind is ContractConditionKind.HARVEST_SPICE
-            and space.maker
+        contract = contract_for_instance(instance_id)
+        if contract.board_space == space_id or (
+            contract.harvest_spice and space.maker
         ):
             candidates.append(instance_id)
     return tuple(candidates)
@@ -189,11 +183,7 @@ def complete_acquire_contracts(
     matching = tuple(
         instance_id
         for instance_id in state.players[player].active_contract_ids
-        if (
-            (condition := contract_for_instance(instance_id).condition).kind
-            is ContractConditionKind.ACQUIRE_CARD
-            and condition.target == acquired_card_id
-        )
+        if contract_for_instance(instance_id).acquire_card == acquired_card_id
     )
     next_state = state
     events: tuple[GameEvent, ...] = ()
@@ -1275,10 +1265,8 @@ def contract_reward_icons(instance_id: str) -> tuple[tuple[str, Reward], ...]:
     """Each icon of a Contract's reward with the piece that prints it, in
     printed order."""
 
-    definition = contract_for_instance(instance_id)
     # A second copy shares its first copy's record.
-    ability = CONTRACT_ABILITIES[definition.copy_of or definition.card.card_id]
-    (line,) = ability.sections
+    line = contract_for_instance(instance_id).reward_line
     return tuple((_contract_icon_kind(piece), piece) for piece in line.rewards)
 
 
@@ -1875,8 +1863,7 @@ def complete_alliance_contracts(result: RuleResult) -> RuleResult:
     events = list(result.events)
     for player in recipients:
         for instance_id in state.players[player].active_contract_ids:
-            condition = contract_for_instance(instance_id).condition
-            if condition.kind is not ContractConditionKind.EARN_ALLIANCE:
+            if not contract_for_instance(instance_id).earns_alliance:
                 continue
             completion_source = (
                 f"round:{state.round_number}:player:{player}:contract:{instance_id}"

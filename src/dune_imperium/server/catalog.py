@@ -414,10 +414,10 @@ def build_catalog(
         "contracts": {
             contract_id: {
                 "name": definition.card.name,
-                "condition": contract_condition_text(definition.condition),
-                "condition_ko": contract_condition_text_ko(definition.condition),
-                "reward": contract_reward_text(definition.reward),
-                "reward_ko": contract_reward_text_ko(definition.reward),
+                "condition": contract_condition_text(definition),
+                "condition_ko": contract_condition_text_ko(definition),
+                "reward": contract_reward_text(definition),
+                "reward_ko": contract_reward_text_ko(definition),
                 "immediate": definition.completes_immediately,
                 # A second copy shows the first copy's face.
                 "image": _image_url(

@@ -7,10 +7,12 @@ board space (judged by the placement's snapshot), a Maker-space visit with
 enough spice gained that turn, an acquisition of a named card, taking the
 tile itself (the Immediate tiles; the Bloodlines one costs an Intrigue card
 trashed from hand), or an Alliance taken; the line is the reward, its choice
-part (a recall, a Spy) answered on its own frame. ``content.uprising.contracts``
-compiles the records back to the ``ContractCondition`` / ``ContractReward``
-the rules read, so the completion paths are unchanged. The printed text is
-``display/structs.contract_condition_text`` / ``contract_reward_text``.
+part (a recall, a Spy) answered on its own frame. Each tile's definition
+holds its record (``ContractDefinition.terms``), which the rules, the codec
+and the card text (``display/structs.contract_condition_text`` /
+``contract_reward_text``) read; the compiled ``ContractCondition`` /
+``ContractReward`` copies are gone since the reward totals cleanup
+(2026-10-21), and ``contracts.check_contract_terms`` checks each record.
 """
 
 from collections.abc import Mapping

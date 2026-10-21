@@ -340,12 +340,12 @@ def _tech_records(tech_id: str) -> dict[str, float]:
     )
 
 
-_CONTRACT_TALLIES: Final = frozenset({"condition", "reward"})
+_CONTRACT_RECORD_FIELDS: Final = frozenset({"terms"})
 
 
 def _conflict_row(conflict_id: str) -> dict[str, float]:
     return _with(
-        featurize(CONFLICTS_BY_ID[conflict_id], skip=frozenset({"rewards"})),
+        featurize(CONFLICTS_BY_ID[conflict_id], skip=frozenset({"reward_rows"})),
         _conflict_records(conflict_id),
     )
 
@@ -385,7 +385,7 @@ def vocabularies() -> dict[str, Vocabulary]:
             CONTRACT_IDS,
             [
                 _with(
-                    featurize(CONTRACTS_BY_ID[card_id], skip=_CONTRACT_TALLIES),
+                    featurize(CONTRACTS_BY_ID[card_id], skip=_CONTRACT_RECORD_FIELDS),
                     _records(("contract", _contract_record(CONTRACTS_BY_ID[card_id]))),
                 )
                 for card_id in CONTRACT_IDS

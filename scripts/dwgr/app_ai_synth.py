@@ -70,10 +70,10 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
-from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictReward
+from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import (
     BLOODLINES_CONTRACTS,
-    ContractConditionKind,
+    ContractDefinition,
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
@@ -112,6 +112,11 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
+)
+from dune_imperium.display.structs import (
+    ConflictRowParts,
+    conflict_row_parts,
+    contract_reward_parts,
 )
 from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 
@@ -912,7 +917,7 @@ def navigation_records() -> list[Record]:
 PLACES = ("First", "Second", "Third")
 
 
-def _reward_attributes(reward: ConflictReward) -> dict[str, object]:
+def _reward_attributes(reward: ConflictRowParts) -> dict[str, object]:
     """The app reward attributes (``ValueForRewardsFrom`` reads them) and the
     custom abilities of the trash and Spy rewards (§6)."""
 
@@ -947,7 +952,9 @@ def conflict_records() -> list[Record]:
             continue
         short = "ConflictArchetypes.AppStyle." + pascal(conflict.card.name)
         reward_shorts = tuple(short + place for place in PLACES)
-        spy = any(r.place_spies or r.deep_cover_spies for r in conflict.rewards)
+        assert conflict.reward_rows is not None
+        rows = tuple(conflict_row_parts(row) for row in conflict.reward_rows)
+        spy = any(r.place_spies or r.deep_cover_spies for r in rows)
         assert conflict.battle_icon is not None
         attrs = {
             "EntityType": "Conflict",
@@ -960,7 +967,7 @@ def conflict_records() -> list[Record]:
             "WormAbilityIDs": GENERIC_CONFLICT,
         }
         records.append(_record(short, "conflict", conflict.card.name, attrs))
-        for reward_short, reward in zip(reward_shorts, conflict.rewards, strict=True):
+        for reward_short, reward in zip(reward_shorts, rows, strict=True):
             reward_attrs: dict[str, object] = {
                 "EntityType": "ConflictReward",
                 "SetList": _set_list(),
@@ -986,12 +993,18 @@ CONTRACT_TARGET_SPACES: Mapping[str, str] = {
 #: Tuek's Sietch (OPEN-3: a static list; the space exists only with Esmar).
 HARVEST_PRECEDENT = "ContractArchetypes.Uprising.ContractBase_1"
 TUEKS_SIETCH = "SpaceArchetypes.AppStyle.TueksSietch"
-CONTRACT_TYPES: Mapping[ContractConditionKind, str] = {
-    ContractConditionKind.BOARD_SPACE: "Space",
-    ContractConditionKind.HARVEST_SPICE: "Harvest",
-    ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH: "Immediate",
-    ContractConditionKind.EARN_ALLIANCE: "Alliance",  # new value (§7)
-}
+def _contract_type(contract: ContractDefinition) -> str:
+    """The app's ``ContractType`` of a token (Alliance is a new value, §7)."""
+
+    if contract.board_space is not None:
+        return "Space"
+    if contract.harvest_spice:
+        return "Harvest"
+    if contract.requires_intrigue_trash:
+        return "Immediate"
+    if contract.earns_alliance:
+        return "Alliance"
+    raise KeyError(contract.card.card_id)
 #: §7 ``WormAbilityIDs`` per token (the reused app classes and the new ones).
 CONTRACT_ABILITIES: Mapping[str, tuple[str, ...]] = {
     "bloodlines_deliver_supplies": (PLACE_SPY_CONTRACT, ACTIVATE_CONTRACT),
@@ -1016,19 +1029,19 @@ def contract_records() -> list[Record]:
     assert {c.card.card_id for c in BLOODLINES_CONTRACTS} == set(CONTRACT_ABILITIES)
     for contract in BLOODLINES_CONTRACTS:
         short = "ContractArchetypes.AppStyle.Bloodlines" + pascal(contract.card.name)
-        condition, reward = contract.condition, contract.reward
+        reward = contract_reward_parts(contract.reward_line)
         attrs: dict[str, object] = {
             "EntityType": "Contract",
             "CardCount": 1,
             "SetList": _set_list(choam=True),
-            "ContractType": CONTRACT_TYPES[condition.kind],
+            "ContractType": _contract_type(contract),
         }
-        if condition.kind is ContractConditionKind.BOARD_SPACE:
-            space = CONTRACT_TARGET_SPACES[condition.target]
+        if contract.board_space is not None:
+            space = CONTRACT_TARGET_SPACES[contract.board_space]
             attrs["ReferencedArchetypeIDs"] = (space,)
-        elif condition.kind is ContractConditionKind.HARVEST_SPICE:
+        elif contract.harvest_spice:
             attrs["ReferencedArchetypeIDs"] = _harvest_spaces()
-            attrs["SpiceCost"] = condition.amount
+            attrs["SpiceCost"] = contract.harvest_spice
         _put(attrs, "Solari", reward.solari)
         _put(attrs, "Water", reward.water)
         _put(attrs, "Troops", reward.troops)

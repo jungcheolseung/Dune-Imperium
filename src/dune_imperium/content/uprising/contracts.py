@@ -8,11 +8,10 @@ transcribed.
 """
 
 from dataclasses import dataclass, replace
-from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.abilities import Ability
 from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.effect_dsl import (
     AcquiredCard,
@@ -20,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllianceTaken,
     AtBoardSpace,
     AtMakerSpace,
+    Condition,
     ContractTaken,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -35,126 +35,109 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 
 
-class ContractConditionKind(StrEnum):
-    """Printed ways a standard Contract can be completed."""
-
-    BOARD_SPACE = "board_space"
-    HARVEST_SPICE = "harvest_spice"
-    ACQUIRE_CARD = "acquire_card"
-    IMMEDIATE = "immediate"
-    # Bloodlines: "Earn any Alliance" completes the next time the holder
-    # takes an Alliance token they do not already hold [Bloodlines p. 2].
-    EARN_ALLIANCE = "earn_alliance"
-    # Bloodlines: the new Immediate tile costs an Intrigue card trashed from
-    # hand and cannot be taken without one [Bloodlines p. 2].
-    IMMEDIATE_INTRIGUE_TRASH = "immediate_intrigue_trash"
-
-
-IMMEDIATE_CONDITION_KINDS: Final = frozenset(
-    {
-        ContractConditionKind.IMMEDIATE,
-        ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH,
-    }
-)
-
-
-@dataclass(frozen=True, slots=True)
-class ContractCondition:
-    """One printed Contract completion condition."""
-
-    kind: ContractConditionKind
-    target: str = ""
-    amount: int = 0
-
-    def __post_init__(self) -> None:
-        if self.kind in (
-            ContractConditionKind.BOARD_SPACE,
-            ContractConditionKind.ACQUIRE_CARD,
-        ):
-            if not self.target or self.amount:
-                raise ValueError("target Contract conditions require only a target")
-        elif self.kind is ContractConditionKind.HARVEST_SPICE:
-            if self.target or self.amount < 1:
-                raise ValueError("Harvest Contracts require a positive Spice amount")
-        elif self.target or self.amount:
-            raise ValueError("this Contract condition has no target or amount")
-
-
-@dataclass(frozen=True, slots=True)
-class ContractReward:
-    """One printed standard Contract reward."""
-
-    solari: int = 0
-    water: int = 0
-    troops: int = 0
-    personal_cards: int = 0
-    contracts: int = 0
-    spies: int = 0
-    recall_agents: int = 0
-    influence_faction: Faction | None = None
-    influence: int = 0
-    intrigue_cards: int = 0
-    deep_cover_spies: int = 0
-
-    def __post_init__(self) -> None:
-        quantities = (
-            self.solari,
-            self.water,
-            self.troops,
-            self.personal_cards,
-            self.contracts,
-            self.spies,
-            self.recall_agents,
-            self.influence,
-            self.intrigue_cards,
-            self.deep_cover_spies,
-        )
-        if min(quantities) < 0:
-            raise ValueError("Contract rewards must not be negative")
-        if not any(quantities):
-            raise ValueError("a Contract reward must grant something")
-        if (self.influence_faction is None) != (self.influence == 0):
-            raise ValueError("Contract Influence requires both a Faction and amount")
-
-
 @dataclass(frozen=True, slots=True)
 class ContractDefinition:
     """One standard Contract tile.
 
     Each physical tile has its own id, so two copies of one printed face are
-    two definitions; ``copy_of`` names the first copy's id, whose picture
-    and Korean name the second copy shares.
+    two definitions; ``copy_of`` names the first copy's id, whose picture,
+    Korean name and record the second copy shares. ``terms`` is the tile's
+    ability record (``contract_abilities``): its ``requirement`` is the
+    completion condition and its one line the reward. The rules, the card
+    text and the codec read it (the compiled ``ContractCondition`` /
+    ``ContractReward`` copies are gone since the reward totals cleanup,
+    2026-10-21).
     """
 
     card: CardDefinition
-    condition: ContractCondition
-    reward: ContractReward
+    terms: Ability
     bloodlines_only: bool = False
     copy_of: str | None = None
+
+    def __post_init__(self) -> None:
+        check_contract_terms(self.terms)
+
+    @property
+    def requirement(self) -> Condition:
+        """The printed completion condition."""
+
+        requirement = self.terms.requirement
+        assert requirement is not None  # ``check_contract_terms``
+        return requirement
+
+    @property
+    def reward_line(self) -> EffectSection:
+        """The printed reward line (its cost, Bloodlines' Immediate trash)."""
+
+        (line,) = self.terms.sections
+        return line
+
+    @property
+    def board_space(self) -> str | None:
+        """The board space an Agent visit completes the tile at, if any."""
+
+        requirement = self.requirement
+        return requirement.space_id if isinstance(requirement, AtBoardSpace) else None
+
+    @property
+    def harvest_spice(self) -> int:
+        """The spice a Maker-space visit must gain that turn ("Harvest"), or 0
+        for a tile completed otherwise."""
+
+        match self.requirement:
+            case AllConditions(
+                conditions=(AtMakerSpace(), GainedSpiceThisTurn(amount=n))
+            ):
+                return n
+        return 0
+
+    @property
+    def acquire_card(self) -> str | None:
+        """The card whose acquisition completes the tile, if any."""
+
+        requirement = self.requirement
+        return requirement.card_id if isinstance(requirement, AcquiredCard) else None
+
+    @property
+    def earns_alliance(self) -> bool:
+        """Whether taking an Alliance token completes the tile (Bloodlines'
+        "Earn any Alliance" [Bloodlines p. 2])."""
+
+        return isinstance(self.requirement, AllianceTaken)
 
     @property
     def completes_immediately(self) -> bool:
         """Return whether taking this Contract completes it immediately."""
 
-        return self.condition.kind in IMMEDIATE_CONDITION_KINDS
+        return isinstance(self.requirement, ContractTaken)
 
     @property
     def requires_intrigue_trash(self) -> bool:
-        """Return whether taking this Contract costs an Intrigue card from hand."""
+        """Return whether taking this Contract costs an Intrigue card from hand
+        (the Bloodlines Immediate tile [Bloodlines p. 2])."""
 
-        return self.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH
-
-
-def _terms(card_id: str) -> tuple[ContractCondition, ContractReward]:
-    """The tile's condition and reward, compiled from its record
-    (``contract_abilities``, composed A5a)."""
-
-    ability = CONTRACT_ABILITIES[card_id]
-    (line,) = ability.sections
-    return _condition(ability.requirement, line), _reward(line)
+        return self.completes_immediately and bool(self.reward_line.costs)
 
 
-def _condition(requirement: object, line: EffectSection) -> ContractCondition:
+def check_contract_terms(terms: Ability) -> None:
+    """Refuse a Contract record the rules and the card text cannot read.
+
+    One reward line with no condition of its own and no cost, but the
+    Intrigue card the Bloodlines Immediate tile trashes when taken. The
+    requirement is an Agent visit to a board space, a Maker-space visit
+    gaining spice that turn, a named card acquired, the tile taken
+    (Immediate), or an Alliance taken. The reward gives Solari, water,
+    troops, cards, Intrigue cards, Contracts, Spies (with or without Deep
+    Cover), Agent recalls or one Faction's Influence -- each printed once
+    but Spies and recalls, which may repeat -- and gives something. (The
+    checks the compiled condition and reward ran until the reward totals
+    cleanup, 2026-10-21.)
+    """
+
+    if len(terms.sections) != 1:
+        raise ValueError("a Contract prints one reward line")
+    (line,) = terms.sections
+    requirement = terms.requirement
     if line.condition is not None:
         raise ValueError("a Contract's reward line has no condition of its own")
     if line.costs and not (
@@ -162,65 +145,57 @@ def _condition(requirement: object, line: EffectSection) -> ContractCondition:
     ):
         raise ValueError(f"no Contract pays {line.costs!r}")
     match requirement:
-        case AtBoardSpace(space_id=space_id):
-            return ContractCondition(ContractConditionKind.BOARD_SPACE, target=space_id)
-        case AllConditions(conditions=(AtMakerSpace(), GainedSpiceThisTurn(amount=n))):
-            return ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=n)
-        case AcquiredCard(card_id=card_id):
-            return ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=card_id)
-        case ContractTaken() if line.costs:
-            return ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH)
-        case ContractTaken():
-            return ContractCondition(ContractConditionKind.IMMEDIATE)
-        case AllianceTaken():
-            return ContractCondition(ContractConditionKind.EARN_ALLIANCE)
-    raise TypeError(f"{requirement!r} is not a Contract condition")
-
-
-def _put(fields: dict[str, int | Faction], key: str, value: int | Faction) -> None:
-    """One reward field, printed once on the tile."""
-
-    if key in fields:
-        raise ValueError(f"a Contract prints {key} twice")
-    fields[key] = value
-
-
-def _reward(line: EffectSection) -> ContractReward:
-    fields: dict[str, int | Faction] = {}
-    counted = {"spies": 0, "deep_cover_spies": 0, "recall_agents": 0}
+        case AtBoardSpace(space_id=space_id) if space_id:
+            pass
+        case AllConditions(
+            conditions=(AtMakerSpace(), GainedSpiceThisTurn(amount=n))
+        ) if n >= 1:
+            pass
+        case AcquiredCard(card_id=card_id) if card_id:
+            pass
+        case ContractTaken() | AllianceTaken():
+            pass
+        case _:
+            raise TypeError(f"{requirement!r} is not a Contract condition")
+    printed: set[str] = set()
+    gained = 0
     for reward in line.rewards:
         match reward:
             case GainResources(solari=solari, spice=0, water=water):
-                _put(fields, "solari", solari)
-                _put(fields, "water", water)
+                key = "resources"
+                if min(solari, water) < 0:
+                    raise ValueError("Contract rewards must not be negative")
+                gained += solari + water
             case RecruitTroops(count=count):
-                _put(fields, "troops", count)
+                key, gained = "troops", gained + count
             case GainInfluence(
                 times=times,
-                factions=(faction,),
+                factions=(_,),
                 distinct=False,
                 where_opponent_leads=False,
                 different_from_trigger=False,
                 minimum_own=0,
             ):
-                _put(fields, "influence", times)
-                _put(fields, "influence_faction", faction)
+                key, gained = "influence", gained + times
             case DrawIntrigueCards(count=count):
-                _put(fields, "intrigue_cards", count)
+                key, gained = "intrigue_cards", gained + count
             case DrawPersonalCards(count=count):
-                _put(fields, "personal_cards", count)
+                key, gained = "personal_cards", gained + count
             case TakeContract(count=count):
-                _put(fields, "contracts", count)
-            case PlaceSpy() if reward == PlaceSpy(shared_post=True):
-                counted["deep_cover_spies"] += 1
-            case PlaceSpy() if reward == PlaceSpy():
-                counted["spies"] += 1
+                key, gained = "contracts", gained + count
+            case PlaceSpy() if reward in (PlaceSpy(), PlaceSpy(shared_post=True)):
+                gained += 1
+                continue
             case RecallAgent() if reward == RecallAgent():
-                counted["recall_agents"] += 1
+                gained += 1
+                continue
             case _:
                 raise TypeError(f"{reward!r} is not a Contract reward")
-    fields.update({key: value for key, value in counted.items() if value})
-    return ContractReward(**fields)  # type: ignore[arg-type]
+        if key in printed:
+            raise ValueError(f"a Contract prints {key} twice")
+        printed.add(key)
+    if gained <= 0:
+        raise ValueError("a Contract reward must grant something")
 
 
 CONTRACT_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (16,)),)
@@ -230,7 +205,6 @@ BLOODLINES_CONTRACT_SOURCES: Final = (
 
 
 def _contract(catalog_id: int, slug: str, name: str) -> ContractDefinition:
-    condition, reward = _terms(slug.replace("-", "_"))
     return ContractDefinition(
         card=CardDefinition(
             card_id=slug.replace("-", "_"),
@@ -240,8 +214,7 @@ def _contract(catalog_id: int, slug: str, name: str) -> ContractDefinition:
                 f"https://dunecardshub.com/cards/{catalog_id}/uprising-{slug}"
             ),
         ),
-        condition=condition,
-        reward=reward,
+        terms=CONTRACT_ABILITIES[slug.replace("-", "_")],
     )
 
 
@@ -257,7 +230,6 @@ def _second_copy(original: ContractDefinition) -> ContractDefinition:
 
 
 def _bloodlines_contract(slug: str, name: str) -> ContractDefinition:
-    condition, reward = _terms(f"bloodlines_{slug.replace('-', '_')}")
     # Dune Cards Hub renders its Bloodlines catalog client-side and its
     # sitemap stops before the expansion, so the card face image is the
     # stable reference (the same URL the private asset manifest records).
@@ -270,8 +242,7 @@ def _bloodlines_contract(slug: str, name: str) -> ContractDefinition:
                 f"https://dunecardshub.com/images/bloodlines-contract-{slug}.webp"
             ),
         ),
-        condition=condition,
-        reward=reward,
+        terms=CONTRACT_ABILITIES[f"bloodlines_{slug.replace('-', '_')}"],
         bloodlines_only=True,
     )
 

@@ -46,7 +46,6 @@ from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.registry import SEARCH_VALUE_SEPARATOR, make_agent
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import (
-    ContractConditionKind,
     contract_for_instance,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -221,7 +220,7 @@ def _spice_this_turn_matters(state: GameState, seat: int) -> bool:
         for frame in state.decision_stack
     )
     if placing and any(
-        contract_for_instance(c).condition.kind is ContractConditionKind.HARVEST_SPICE
+        contract_for_instance(c).harvest_spice
         for c in player.active_contract_ids
     ):
         return True

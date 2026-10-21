@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 재학습 (가) 선생 어댑터 병합; ① Reveal 합계 정리 끝)
+기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 재학습 (가) 선생 어댑터 병합; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,8 +28,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구 |
-| pytest | 8,200개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 23초, 직렬 약 10분(Mac mini, 2026-10-21) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리) |
+| pytest | 8,198개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 23초, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 553파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `codex/windows-validation` 병합 트리(68종 모두 통과, 469초) |
 | action codec | **v150** (다음 번호 v151) |
@@ -71,6 +71,13 @@
   합계 자료형 `PersonalCardRevealEffect`와 manifest의 `reveal_effects` 칸(51곳)이 없어졌다. 합계가 하던 기록 검사는
   `content/uprising/reveal_abilities.check_reveal_gain_line`이 import 때 모든 기록에 돈다. 카드 140장 문구·브라우저 카드 표 전체·codec 144개 조합의
   행 목록·`FEATURE_DIGEST`가 바이트까지 같다. [2026-10-21 ① Reveal 합계 정리]
+- **Conflict·계약 합계 정리 끝(2026-10-21, codec 그대로 v150):** Conflict 정의는 보상 기록 행(`reward_rows`), 계약 정의는 자기 기록(`terms`)을
+  그대로 들고, 규칙·codec·화면 문구·app 스크립트가 그 기록을 읽는다(계약은 `requirement`·`reward_line`·`board_space`·`harvest_spice`·
+  `acquire_card`·`earns_alliance`, Conflict는 `control_space_id`; 문구는 `display/structs.conflict_row_parts`·`contract_reward_parts`). 기록에서 만든
+  사본 `ConflictReward`·`ContractCondition`·`ContractReward`와 `ContractConditionKind`가 없어졌고, 검사는 `check_conflict_reward_row`·
+  `check_contract_terms`가 한다. 브라우저 카드 표 전체·codec 144개 조합·`FEATURE_DIGEST`·app 스크립트 기록이 바이트까지 같다. 이로써 효과 조각
+  엔진 전환 계획([composed-effects-plan.md](composed-effects-plan.md))의 B단계 "함께 할 일"(합계 대신 기록 조각)까지 끝났다; 남은 것은 C단계(새
+  콘텐츠)와 ② 재학습. [2026-10-21 Conflict·계약 합계 정리]
 - **문제집 검사(2026-10-21 복구):** `dune-imperium-records problems check`가 사람 판 문제집 285곳 가운데 279곳(v149와 같음, 원래부터 안 풀리는
   6곳: 대응 없는 사람의 거절 2·옛 엔진의 거절인 망의 수 4), AI 실수 문제집 3곳 모두를 푼다. B단계 이후 멈추던 두 원인은
   [2026-10-21 문제집 검사 복구]에.

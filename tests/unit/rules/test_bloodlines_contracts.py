@@ -789,12 +789,12 @@ def test_bloodlines_tiles_render_their_printed_conditions(
     )
 
     definition = contract_for_instance(instance_id)
-    assert contract_condition_text(definition.condition).startswith(expected)
-    assert contract_reward_text(definition.reward)
+    assert contract_condition_text(definition).startswith(expected)
+    assert contract_reward_text(definition)
     assert contract_reward_text(
-        contract_for_instance(IMMEDIATE).reward
+        contract_for_instance(IMMEDIATE)
     ) == "Draw 1 card, Draw 1 Intrigue card"
-    assert contract_reward_text(contract_for_instance(DELIVER_SUPPLIES).reward) == (
+    assert contract_reward_text(contract_for_instance(DELIVER_SUPPLIES)) == (
         "Gain 1 solari, Place a Spy with Deep Cover"
     )
 

@@ -19,7 +19,6 @@ from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS_BY_ID,
-    ConflictReward,
     conflicts_by_tier,
 )
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -33,6 +32,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.display.structs import ConflictRowParts, conflict_row_parts
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat import (
@@ -166,17 +166,18 @@ def test_economic_supremacy_is_transcribed_from_the_card_face() -> None:
     assert conflict.battle_icon is None
     assert conflict.shield_wall_protected is False
     assert conflict.epic_only is True
-    assert conflict.rewards == (
-        ConflictReward(
+    assert conflict.reward_rows is not None
+    assert tuple(conflict_row_parts(row) for row in conflict.reward_rows) == (
+        ConflictRowParts(
             victory_points=1,
             optional_solari_cost=6,
             optional_spice_cost=4,
             optional_victory_points=1,
         ),
-        ConflictReward(victory_points=1),
-        ConflictReward(spice=2, solari=2),
+        ConflictRowParts(victory_points=1),
+        ConflictRowParts(spice=2, solari=2),
     )
-    assert all(reward.control_space_id is None for reward in conflict.rewards)
+    assert conflict.control_space_id is None
 
 
 def test_economic_supremacy_joins_the_tier_three_pool_only_in_epic_games() -> None:

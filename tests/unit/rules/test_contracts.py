@@ -10,14 +10,10 @@ from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
-from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
-    ContractCondition,
-    ContractConditionKind,
     ContractDefinition,
-    ContractReward,
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AtBoardSpace,
@@ -39,7 +35,6 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.events import GameEvent
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
-from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules.acquisition import (
     apply_reserve_acquisition,
     legal_reserve_acquisitions,
@@ -833,35 +828,23 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # No tile in play prints "+1 Contract": that reward is the Rise of Ix
-    # tiles' jumpstart [Main p. 16], out of scope. ContractReward keeps it,
-    # so a tile of that shape is patched in to keep its path tested.
+    # tiles' jumpstart [Main p. 16], out of scope. A Contract record holds
+    # it, so a tile of that shape is patched in to keep its path tested.
     jumpstart = ContractDefinition(
         card=CardDefinition(
             card_id="test_jumpstart",
             name="Espionage (1 Solari, Contract)",
             sources=CONTRACT_SOURCES,
         ),
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE, target="espionage"
+        terms=Ability(
+            timing=AbilityTiming.CONTRACT,
+            sections=(
+                EffectSection(rewards=(GainResources(solari=1), TakeContract(1))),
+            ),
+            requirement=AtBoardSpace("espionage"),
         ),
-        reward=ContractReward(solari=1, contracts=1),
     )
     monkeypatch.setitem(CONTRACTS_BY_ID, "test_jumpstart", jumpstart)
-    # The reward window reads the tile's ability record (stage B2, OQ-112).
-    monkeypatch.setattr(
-        contracts_rules,
-        "CONTRACT_ABILITIES",
-        {
-            **CONTRACT_ABILITIES,
-            "test_jumpstart": Ability(
-                timing=AbilityTiming.CONTRACT,
-                sections=(
-                    EffectSection(rewards=(GainResources(solari=1), TakeContract(1))),
-                ),
-                requirement=AtBoardSpace("espionage"),
-            ),
-        },
-    )
     state = _agent_contract_state(
         "player:0:starter:diplomacy:0",
         "contract:test_jumpstart",
