@@ -197,22 +197,22 @@ def _make_older_data(arguments: argparse.Namespace, config: TrainConfig) -> int:
             "untrained rows)",
             flush=True,
         )
-    (out / "data.json").write_text(
-        json.dumps(
-            {
-                "teacher": str(arguments.teacher),
-                "teacher_sha256_16": _digest(arguments.teacher),
-                "teacher_codec": older.codec_version,
-                "older": True,
-                **learner,
-                "ruleset": config.ruleset.identifier,
-                "seed": arguments.seed,
-                "iterations": [arguments.start, arguments.start + arguments.iterations],
-                "games_per_iteration": config.games_per_iteration,
-            },
-            indent=1,
-        )
-    )
+    record = {
+        "teacher": str(arguments.teacher),
+        "teacher_sha256_16": _digest(arguments.teacher),
+        "teacher_codec": older.codec_version,
+        "older": True,
+        **learner,
+        "ruleset": config.ruleset.identifier,
+        "seed": arguments.seed,
+        "iterations": [arguments.start, arguments.start + arguments.iterations],
+        "games_per_iteration": config.games_per_iteration,
+    }
+    (out / "data.json").write_text(json.dumps(record, indent=1))
+    # A folder may mix teacher-played and student-played shards (E5): every
+    # run is kept here, data.json holding only the latest.
+    with (out / "data-runs.jsonl").open("a", encoding="utf-8") as runs:
+        runs.write(json.dumps(record) + "\n")
     pool = worker_pool(arguments.workers)
     try:
         for iteration in range(arguments.start, arguments.start + arguments.iterations):
