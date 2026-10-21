@@ -188,6 +188,10 @@ def app_reward_run(run: DecisionRun) -> DecisionRun:
         face_down_battle_card_ids=(*won.face_down_battle_card_ids, *refs),
     )
     players = tuple(won if p.player_id == winner else p for p in state.players)
+    # A read-only view, not a valid GameState: the Conflict card is both
+    # current and won. A copy of it must go through the constructor
+    # (dataclasses.replace), not copy.replace, which runs only the checks of
+    # the fields it replaces (GameState._check_copy).
     app_state = copy.copy(state)
     object.__setattr__(app_state, "players", players)  # skips __post_init__
     ctx = AppContext(app_state, run.ctx.seat, run.ctx.view)

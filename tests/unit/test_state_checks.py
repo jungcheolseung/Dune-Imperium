@@ -6,7 +6,10 @@ through recording proxies over real games, break each check through a copy
 and expect the constructor's own error, and count the checks a copy runs.
 """
 
+import ast
 import dataclasses
+import inspect
+import textwrap
 from copy import replace
 from functools import cache
 from typing import Any
@@ -131,6 +134,47 @@ def test_a_check_reads_only_the_fields_its_table_row_names(check: StateCheck) ->
     # The table names real fields only, and each a check really reads.
     assert check.fields <= GAME_FIELDS and check.seat_fields <= SEAT_FIELDS
     assert check.fields <= seen and check.seat_fields <= seat_fields
+
+
+def _source_reads(function: Any) -> tuple[set[str], set[str]]:
+    """The ``state.<field>`` and ``player.<field>`` names in ``function``'s
+    source, in every branch."""
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+    state_reads: set[str] = set()
+    seat_reads: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id == "state":
+                state_reads.add(node.attr)
+            elif node.value.id == "player":
+                seat_reads.add(node.attr)
+    return state_reads, seat_reads
+
+
+@pytest.mark.parametrize("check", STATE_CHECKS, ids=lambda c: c.check.__name__)
+def test_a_table_row_names_what_its_check_reads_in_every_branch(
+    check: StateCheck,
+) -> None:
+    # The proxies above see only the branches two games reach; the source
+    # names every field any branch reads (a seat is always ``player``).
+    state_reads, seat_reads = _source_reads(check.check)
+    player = _states()[-1].players[0]
+
+    assert state_reads - {"players"} == check.fields - {"players"}
+    assert _seat_reads(seat_reads, player) == check.seat_fields
+    assert bool(seat_reads) <= ("players" in state_reads)
+
+
+def test_the_constructor_does_nothing_but_the_checks() -> None:
+    # A copy skips the constructor (``_check_copy``), so any other work in
+    # ``__post_init__`` would be lost on copies.
+    tree = ast.parse(textwrap.dedent(inspect.getsource(GameState.__post_init__)))
+    function = tree.body[0]
+    assert isinstance(function, ast.FunctionDef)
+    assert [ast.unparse(statement) for statement in function.body] == [
+        "check_game_state(self)"
+    ]
 
 
 def _seat(state: GameState, seat: int, **changes: Any) -> GameState:

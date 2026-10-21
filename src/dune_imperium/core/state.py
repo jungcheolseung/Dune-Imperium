@@ -188,8 +188,10 @@ class GameState:
     event_log: tuple[GameEvent, ...] = ()
 
     def __post_init__(self) -> None:
-        for check in STATE_CHECKS:
-            check.run(self)
+        # Only the checks: copy.replace builds copies without the constructor
+        # and runs the checks they need (_check_copy), so any other work here
+        # would be skipped on copies (tests/unit/test_state_checks.py).
+        check_game_state(self)
 
     def _check_copy(self, previous: GameState, changed: KeysView[str]) -> None:
         """Run the checks a copy of ``previous`` with ``changed`` fields needs.

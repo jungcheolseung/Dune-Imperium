@@ -64,9 +64,10 @@ def test_a_frame_that_is_not_an_agent_effect_still_refuses(
     state = _agent_effect_state()
     current_agent_effect_context(state)
     top = state.decision_stack[-1]
-    other = replace(state, decision_stack=(*state.decision_stack[:-1], replace(
-        top, kind=FrameKind.TURN
-    )))
+    other = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], replace(top, kind=FrameKind.TURN)),
+    )
 
     with pytest.raises(ValueError, match="not an Agent-turn effect"):
         current_agent_effect_context(other)
@@ -82,9 +83,13 @@ def test_the_cache_empties_when_full_and_keeps_answering(
     state = _agent_effect_state()
     top = state.decision_stack[-1]
     states = [
-        replace(state, decision_stack=(*state.decision_stack[:-1], replace(
-            top, frame_id=f"{top.frame_id}-{n}"
-        )))
+        replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(top, frame_id=f"{top.frame_id}-{n}"),
+            ),
+        )
         for n in range(3)
     ]
 
