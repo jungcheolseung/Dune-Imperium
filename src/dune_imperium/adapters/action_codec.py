@@ -1,5 +1,6 @@
 """Stable integer encoding for structured Uprising actions."""
 
+import functools
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from numbers import Integral
@@ -616,10 +617,7 @@ class ActionCodec:
     _indices: dict[ActionTemplate, int] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        catalog = _build_catalog(self.config)
-        indices = {template: index for index, template in enumerate(catalog)}
-        if len(indices) != len(catalog):
-            raise RuntimeError("action catalog contains duplicate templates")
+        catalog, indices = _catalog_of(self.config)
         object.__setattr__(self, "catalog", catalog)
         object.__setattr__(self, "_indices", indices)
 
@@ -670,6 +668,24 @@ class ActionCodec:
         for action in legal_actions:
             mask[self.encode(action)] = 1
         return tuple(mask)
+
+
+@functools.lru_cache(maxsize=32)
+def _catalog_of(
+    config: RulesetConfig,
+) -> tuple[tuple[ActionTemplate, ...], dict[ActionTemplate, int]]:
+    """``config``'s catalog and each template's index, built once per config.
+
+    Both depend only on the config and the content tables, which never change
+    in a process, and the codecs that share them only read them. A test run
+    built the same few catalogs 894 times, about 13% of its CPU (2026-10-21).
+    """
+
+    catalog = _build_catalog(config)
+    indices = {template: index for index, template in enumerate(catalog)}
+    if len(indices) != len(catalog):
+        raise RuntimeError("action catalog contains duplicate templates")
+    return catalog, indices
 
 
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

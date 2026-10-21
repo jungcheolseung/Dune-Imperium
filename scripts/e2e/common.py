@@ -16,14 +16,17 @@ browsers' profiles all write there.
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from playwright.sync_api import sync_playwright
 
@@ -54,6 +57,26 @@ def free_port() -> int:
     with socket.socket() as sock:
         sock.bind((HOST, 0))
         return int(sock.getsockname()[1])
+
+
+def api_post(base: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    """One raw JSON POST to the play server, no browser."""
+    request = urllib.request.Request(
+        base + path,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        result: dict[str, Any] = json.loads(response.read())
+    return result
+
+
+def api_get(base: str, path: str) -> dict[str, Any]:
+    """One raw JSON GET from the play server, no browser."""
+    with urllib.request.urlopen(base + path) as response:
+        result: dict[str, Any] = json.loads(response.read())
+    return result
 
 
 class ServerProcess:

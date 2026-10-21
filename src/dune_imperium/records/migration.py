@@ -227,12 +227,41 @@ class MigratedStep:
     named_by: str | None = None
 
 
+@dataclass(slots=True)
+class _Taken:
+    """The migrated steps so far, each with the state it was taken from.
+
+    ``migrate_record`` hands the states to its record, so ``walk`` yields
+    them instead of replaying the whole record a second time (2026-10-21:
+    the second replay was about two fifths of a corpus check). Every place
+    that records a step names the state it applied the step to, and a
+    dropped tail drops both."""
+
+    steps: list[MigratedStep] = field(default_factory=list)
+    states: list[GameState] = field(default_factory=list)
+
+    def add(self, step: MigratedStep, before: GameState) -> None:
+        self.steps.append(step)
+        self.states.append(before)
+
+    def take(self, other: _Taken) -> None:
+        self.steps.extend(other.steps)
+        self.states.extend(other.states)
+
+    def __len__(self) -> int:
+        return len(self.steps)
+
+    def cut(self, mark: int) -> None:
+        del self.steps[mark:]
+        del self.states[mark:]
+
+
 def _apply_answer(
     engine: UprisingRulesEngine,
     state: GameState,
     answer: ReplayStep,
     bridge: str,
-    migrated: list[MigratedStep],
+    migrated: _Taken,
 ) -> GameState:
     """Apply a bridge's answer, recorded as ``bridge``'s steps.
 
@@ -249,18 +278,20 @@ def _apply_answer(
     ):
         left = steps_after(state, answer)
         row = first_step(state, answer)
+        before = state
         state = engine.apply(state, row).state
-        migrated.append(MigratedStep(row, None, bridge))
+        migrated.add(MigratedStep(row, None, bridge), before)
         if left == 0:
             return state
+    before = state
     state = engine.apply(state, answer).state
-    migrated.append(MigratedStep(answer, None, bridge))
+    migrated.add(MigratedStep(answer, None, bridge), before)
     return state
 
 
 def _as_steps(
     engine: UprisingRulesEngine, state: GameState, step: ReplayStep
-) -> tuple[GameState, list[MigratedStep], ReplayStep, ReplayStep | None]:
+) -> tuple[GameState, _Taken, ReplayStep, ReplayStep | None]:
     """A recorded step this engine asks out of the recorded order, as this
     engine takes it: a whole action of a frame that shows its steps (stage
     B3, ``rules.effect_steps``) by its picks (``effect_step``) then its last
@@ -273,12 +304,13 @@ def _as_steps(
         or step in engine.legal_actions(state, step.actor)
         or step not in engine.whole_actions(state, step.actor)
     ):
-        return state, [], step, None
-    picks: list[MigratedStep] = []
+        return state, _Taken(), step, None
+    picks = _Taken()
     while steps_after(state, step) > 0:
         row = first_step(state, step)
+        before = state
         state = engine.apply(state, row).state
-        picks.append(MigratedStep(row, None, "effect_step"))
+        picks.add(MigratedStep(row, None, "effect_step"), before)
     return state, picks, first_step(state, step), step
 
 
@@ -305,6 +337,14 @@ class MigratedRecord:
     # and the reason's name: ``graft_switch`` (codec v143 offers both
     # grafted boxes at once, so ``switch_graft_card`` is dropped).
     dropped: tuple[tuple[int, str], ...] = ()
+    # The steps tuple and the state each of them was taken from, as
+    # ``migrate_record`` replayed them (``_Taken``): ``walk`` yields these
+    # while ``steps`` is still that very tuple, and replays the record when
+    # a migration module rebuilt the record with other steps. Left out of
+    # comparisons: the same steps from the same reset give the same states.
+    walked: tuple[tuple[MigratedStep, ...], tuple[GameState, ...]] | None = field(
+        default=None, compare=False, repr=False
+    )
 
     @property
     def complete(self) -> bool:
@@ -345,7 +385,7 @@ def migrate_record(
         or replay.action_codec_version < bridge.before_codec
     )
     state = engine.reset(replay.ruleset, replay.seed)
-    migrated: list[MigratedStep] = []
+    migrated = _Taken()
     dropped: list[tuple[int, str]] = []
     graft = (
         _GraftSlot() if replay.action_codec_version < GRAFT_BOXES_CODEC else None
@@ -358,8 +398,14 @@ def migrate_record(
     )
 
     def ended(divergence: Divergence | None, at: GameState) -> MigratedRecord:
+        steps = tuple(migrated.steps)
         return MigratedRecord(
-            replay, tuple(migrated), at, divergence, tuple(dropped)
+            replay,
+            steps,
+            at,
+            divergence,
+            tuple(dropped),
+            walked=(steps, tuple(migrated.states)),
         )
 
     # Recorded steps of an in-turn window this engine keeps as turn rows,
@@ -405,7 +451,7 @@ def migrate_record(
             held_index, held_step = waiting_steps[0]
             whole: DomainAction | None = None
             last = held_step
-            picks: list[MigratedStep] = []
+            picks = _Taken()
             stepped = at
             # A held optional trash takes the trash icon the recording
             # engine picked (stage B3c-2b), a held research icon its space
@@ -421,17 +467,18 @@ def migrate_record(
                 whole = target
                 while steps_after(stepped, target) > 0:
                     row = first_step(stepped, target)
+                    before = stepped
                     stepped = engine.apply(stepped, row).state
-                    picks.append(MigratedStep(row, None, "effect_step"))
+                    picks.add(MigratedStep(row, None, "effect_step"), before)
                 last = first_step(stepped, target)
             try:
                 after = engine.apply(stepped, last).state
             except IllegalActionError:
                 return at
             waiting_steps.pop(0)
-            migrated.extend(picks)
-            migrated.append(
-                MigratedStep(last, held_index, TURN_ROW_HELD, whole=whole)
+            migrated.take(picks)
+            migrated.add(
+                MigratedStep(last, held_index, TURN_ROW_HELD, whole=whole), stepped
             )
             followed = _follow(engine, after, held_step, bridges, migrated)
             if followed is None:
@@ -560,11 +607,12 @@ def migrate_record(
                         stepped, picks, last, asked_whole = _as_steps(
                             engine, state, asked_step
                         )
-                        migrated.extend(picks)
-                        migrated.append(
+                        migrated.take(picks)
+                        migrated.add(
                             MigratedStep(
                                 last, asked_index, asked_bridge, whole=asked_whole
-                            )
+                            ),
+                            stepped,
                         )
                         followed = _follow(
                             engine,
@@ -647,7 +695,7 @@ def migrate_record(
                     transports_taken[answer.actor] += 1
                 continue
             before, mark = state, len(migrated)
-            migrated.append(
+            migrated.add(
                 MigratedStep(
                     step,
                     index,
@@ -656,7 +704,8 @@ def migrate_record(
                     reveal_source,
                     whole if rewritten_by == EFFECT_LAST_STEP else None,
                     named_by,
-                )
+                ),
+                before,
             )
             if graft is not None:
                 graft.applied(after, step)
@@ -673,7 +722,7 @@ def migrate_record(
                 migrated,
             )
             if followed is None:
-                del migrated[mark:]
+                migrated.cut(mark)
                 divergence = Divergence(
                     recorded_index=index,
                     step=recorded,
@@ -1656,7 +1705,23 @@ def _with_source(
 def walk(
     record: MigratedRecord, engine: UprisingRulesEngine | None = None
 ) -> Iterator[tuple[GameState, MigratedStep]]:
-    """Yield the state before every migrated step, with that step."""
+    """Yield the state before every migrated step, with that step.
+
+    The states ``migrate_record`` took the steps from, while the record
+    still holds its own steps (``MigratedRecord.walked``); otherwise the
+    record replayed from its reset (``replayed``)."""
+
+    walked = record.walked
+    if walked is not None and walked[0] is record.steps:
+        yield from zip(walked[1], record.steps, strict=True)
+        return
+    yield from replayed(record, engine)
+
+
+def replayed(
+    record: MigratedRecord, engine: UprisingRulesEngine | None = None
+) -> Iterator[tuple[GameState, MigratedStep]]:
+    """``walk`` by replaying the record's steps from its reset."""
 
     engine = engine or UprisingRulesEngine()
     state = engine.reset(record.replay.ruleset, record.replay.seed)
@@ -1760,7 +1825,7 @@ def _follow(
     state: GameState,
     step: ReplayStep,
     bridges: tuple[Bridge, ...],
-    migrated: list[MigratedStep],
+    migrated: _Taken,
 ) -> GameState | None:
     """Apply what the ``follows`` bridges add right after the applied ``step``.
 

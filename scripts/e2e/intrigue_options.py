@@ -21,16 +21,24 @@ expects each row against `text_ko`/`phrase()`, the line `intrigueOptionBody`
 pass keeps checking `text`/`iconize()` as before.
 
 Reaching a real decision that offers two options of the same card at once
-needs a real game, not a synthetic action list: with the base ruleset (no
-expansions, no leader draft -- `open_mode.create_game`'s defaults), driving
+needs a real game, not a synthetic action list: with the base ruleset and
+the leader draft (`open_mode.create_game`'s defaults: it clears the rule
+boxes, and the setup screen keeps the leader draft checked), driving
 seat 0 with a fixed random policy (`rng = random.Random(seed)`; `rng.choice()`
 over the *current* legal actions each decision, confirming holds at once)
 lands seat 0 on a Combat decision offering "Tactical Option" options 0 and 1
-side by side. The policy is replayed live against the browser rather than
-hard-coded to a step count, and the script tries the seeds in SEEDS in turn
-until one reaches such a decision, so a rules change that moves or removes
-the decision in one game does not break the check (seed 4 stopped reaching
-it when master's 2026-09-26/27 rulings landed).
+side by side. The policy is played live rather than hard-coded to a step
+count, and the script tries the seeds in SEEDS in turn until one reaches
+such a decision, so a rules change that moves or removes the decision in one
+game does not break the check (seed 4 stopped reaching it when master's
+2026-09-26/27 rulings landed).
+
+The search plays over raw HTTP, as turn_end.py's seed searches do: the
+policy picks from `/games/{id}/seats/0/actions`, the list the page holds as
+`state.actions.actions`, and the server answers the heuristic seats inline.
+Only the game that reaches the decision is opened in the browser
+(`/#game=<id>`), where every check runs. Until 2026-10-21 the policy drove
+the page itself, one rendered step at a time (about 180 seconds a run).
 """
 
 from __future__ import annotations
@@ -38,16 +46,23 @@ from __future__ import annotations
 import random
 import re
 import shutil
-import time
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    SERVER_LOG_COPY,
+    Check,
+    api_get,
+    api_post,
+    chrome,
+    open_context,
+    server,
+)
 from lang import switch as switch_language
-from open_mode import create_game, settled
+from open_mode import settled
 
 check = Check()
 
 # Seeds tried in order until one reaches a dual-option decision within the
-# cap (base ruleset, no leader draft); the first that does is used.
+# cap (base ruleset, leader draft); the first that does is used.
 SEEDS = tuple(range(12))
 STEP_CAP = 150
 
@@ -120,29 +135,64 @@ def find_dual_option(actions: list[dict]) -> tuple[str | None, list[dict]]:
     return None, []
 
 
-def drive_to_dual_option(page, seed: int) -> tuple[str | None, list[dict]]:
-    """Replay ui-sweep's own random policy against the live page until a
-    decision offers two options of the same Intrigue card at once, or the
-    step budget runs out."""
+def find_dual_option_game(base: str, seed: int) -> str | None:
+    """Play ui-sweep's own random policy for seat 0 over raw HTTP until a
+    decision offers two options of the same Intrigue card at once; that
+    game's id, or None when the game ends or the step budget runs out.
+
+    The game is the one the setup screen makes with every rule box clear
+    and the leader draft it keeps checked, with three heuristic seats."""
 
     rng = random.Random(seed)
+    game = api_post(
+        base,
+        "/games",
+        {
+            "seats": ["human", "heuristic", "heuristic", "heuristic"],
+            "leader_draft": True,
+            "game_seed": seed,
+        },
+    )
+    game_id = game["game_id"]
     for _ in range(STEP_CAP):
-        assert settled(page, 20)
-        if page.evaluate("state.summary.finished"):
-            return None, []
-        if page.evaluate("state.summary.confirmation === state.viewSeat"):
-            page.evaluate("confirmTurn()")
+        if game["finished"]:
+            return None
+        stamp = {
+            "seat": 0,
+            "revision": game["revision"],
+            "undo_count": game["undo_count"],
+        }
+        if game["confirmation"] == 0:
+            game = api_post(base, f"/games/{game_id}/confirm", stamp)
             continue
-        if not page.evaluate("Boolean(state.actions && state.actions.actions.length)"):
-            time.sleep(0.05)
-            continue
-        actions = page.evaluate("state.actions.actions")
-        card_id, rows = find_dual_option(actions)
+        decision = game["decision"]
+        if decision is None or decision["owner"] != 0:
+            # The server answers the heuristic seats inline, so this should
+            # not happen; stop this seed rather than loop dead.
+            return None
+        actions = api_get(base, f"/games/{game_id}/seats/0/actions")["actions"]
+        if not actions:
+            return None
+        card_id, _ = find_dual_option(actions)
         if card_id:
-            return card_id, rows
+            return game_id
         choice = rng.choice(actions)
-        page.evaluate(f"applyAction({choice['index']})")
-    return None, []
+        game = api_post(
+            base, f"/games/{game_id}/actions", {**stamp, "index": choice["index"]}
+        )
+    return None
+
+
+def open_found_game(page, base: str, game_id: str) -> tuple[str | None, list[dict]]:
+    """Open ``game_id`` in ``page`` and read its dual-option rows off the
+    page's own action list."""
+
+    page.goto(f"{base}/#game={game_id}")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    assert settled(page, 20)
+    page.wait_for_function("Boolean(state.actions && state.actions.actions.length)")
+    return find_dual_option(page.evaluate("state.actions.actions"))
 
 
 def check_no_bare_option_index(page, actions: list[dict], what: str) -> None:
@@ -257,9 +307,9 @@ def main() -> None:
             context, page, rec = open_context(browser, "intrigue-options")
             card_id, rows = None, []
             for seed in SEEDS:
-                create_game(page, base, humans=(0,), seed=seed)
-                card_id, rows = drive_to_dual_option(page, seed)
-                if card_id is not None:
+                game_id = find_dual_option_game(base, seed)
+                if game_id is not None:
+                    card_id, rows = open_found_game(page, base, game_id)
                     print(f"  .. seed {seed} reaches {card_id}")
                     break
             if card_id is None:

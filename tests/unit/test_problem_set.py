@@ -87,17 +87,27 @@ def test_the_committed_suite_covers_every_problem_and_still_restores(
         _assert_discriminates(position)
 
 
+# The restore below is cut into this many parts, every RESTORE_PARTS-th
+# position each, so pytest-xdist spreads it over its workers: in one piece it
+# was the suite's longest test (2026-10-21) and the last worker to finish.
+RESTORE_PARTS = 8
+
+
+@pytest.mark.parametrize("part", range(RESTORE_PARTS))
 def test_every_position_of_the_committed_suite_restores(
-    suite: list[Position],
+    suite: list[Position], part: int
 ) -> None:
-    # The same restore as `dune-imperium-problems check` (about 10 seconds).
-    # A rule change that moves any stored position fails here, instead of
-    # waiting for the next re-mine: on master 60f8e95 four of 106 positions
-    # had stopped restoring unnoticed, because only a sample was restored.
-    failures = unrestorable(suite)
+    # The same restore as `dune-imperium-problems check` (about 10 seconds
+    # for all the parts). A rule change that moves any stored position fails
+    # here, instead of waiting for the next re-mine: on master 60f8e95 four
+    # of 106 positions had stopped restoring unnoticed, because only a sample
+    # was restored.
+    positions = suite[part::RESTORE_PARTS]
+    failures = unrestorable(positions)
     if failures:
         pytest.fail(
-            f"{len(failures)} of {len(suite)} positions of {DEFAULT_SUITE.name} "
+            f"{len(failures)} of {len(positions)} positions (part {part} of "
+            f"{RESTORE_PARTS}, {len(suite)} in all) of {DEFAULT_SUITE.name} "
             "no longer restore; re-mine the suite (docs/evaluation/"
             "problem-set.md, 다시 캐는 명령):\n"
             + "\n".join(f"- {failure}" for failure in failures),

@@ -81,7 +81,7 @@ from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.records import migration
-from dune_imperium.records.migration import migrate_record, walk
+from dune_imperium.records.migration import migrate_record, replayed, walk
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
@@ -1273,6 +1273,46 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
 
 
 @pytest.mark.parametrize(
+    "path", sorted(DATA.glob("*.json")), ids=lambda path: path.stem
+)
+def test_walk_yields_the_states_a_replay_of_the_record_reaches(path: Path) -> None:
+    # ``walk`` yields the states ``migrate_record`` took its steps from
+    # instead of replaying the record (2026-10-21). Every bridge path of the
+    # older engines' records -- answers, follows, held turn rows, steps asked
+    # earlier, effect steps -- records the state it applied each step to, so
+    # these are the states a replay from the reset reaches.
+    # States compare equal field by field (stricter than the state hash, and
+    # far cheaper: hashing every state took seconds a record).
+    document = json.loads(path.read_text(encoding="utf-8"))
+    record = migrate_record(parse_save_document(document, check_versions=False).replay)
+
+    kept = list(walk(record, ENGINE))
+    again = list(replayed(record, ENGINE))
+
+    assert record.walked is not None and record.walked[0] is record.steps
+    assert [m for _, m in kept] == [m for _, m in again] == list(record.steps)
+    assert all(a == b for (a, _), (b, _) in zip(kept, again, strict=True))
+
+
+def test_walk_replays_a_record_rebuilt_with_other_steps(game: GameReplay) -> None:
+    # A migration module may rebuild the record with steps of its own
+    # (tests/unit/records/test_corpus_check.py); the kept states belong to
+    # the steps they were taken for, so ``walk`` replays the new ones.
+    record = migrate_record(game)
+    shorter = replace(record, steps=record.steps[:200])
+
+    walked = list(walk(shorter, ENGINE))
+
+    assert shorter.walked is record.walked
+    assert [m for _, m in walked] == list(shorter.steps)
+    assert all(
+        a == b
+        for (a, _), (b, _) in zip(walked, replayed(shorter, ENGINE), strict=True)
+    )
+    assert walked[0][0] == ENGINE.reset(game.ruleset, game.seed)
+
+
+@pytest.mark.parametrize(
     ("name", "codec", "bridges"),
     [
         (
@@ -1697,10 +1737,10 @@ def test_a_turn_reopened_only_for_its_held_draw_is_ended_again() -> None:
         "tleilaxu_track"
     ]
     older = _bridges_for(141)
-    migrated: list[migration.MigratedStep] = []
+    migrated = migration._Taken()
     followed = migration._follow(ENGINE, pressed.state, _PRESS, older, migrated)
     assert followed is not None
-    assert [step.bridge for step in migrated] == ["owed_draw"]
+    assert [step.bridge for step in migrated.steps] == ["owed_draw"]
     assert ENGINE.legal_actions(followed, 1) == ()
     next_seat = DomainAction(
         action_id="agent_turn",
@@ -1917,7 +1957,7 @@ def test_a_placed_ghola_s_copy_waits_past_the_v142_draw_bridge() -> None:
         bene_gesserit_boost_pending=True,
     )
     assert resolves_boost_draw(placed, _GHOLA_COPY_DRAW)
-    migrated: list[migration.MigratedStep] = []
+    migrated = migration._Taken()
     choice = DomainAction(
         "choose_graft_partner", 0, (("card_id", "imperium:truthtrance:0"),)
     )
@@ -1925,7 +1965,7 @@ def test_a_placed_ghola_s_copy_waits_past_the_v142_draw_bridge() -> None:
     followed = migration._follow(ENGINE, placed, choice, _bridges_for(141), migrated)
 
     assert followed is not None
-    assert [step.bridge for step in migrated] == []
+    assert [step.bridge for step in migrated.steps] == []
 
 
 def test_a_card_s_own_trash_keeps_its_draw_for_the_recorded_end() -> None:
