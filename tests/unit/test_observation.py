@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.core import GameState, PlayerState, observe_state
+from dune_imperium.core import GameState, PlayerState, observation, observe_state
 
 
 def _state() -> GameState:
@@ -343,10 +343,16 @@ def test_game_state_rejects_two_owners_of_one_alliance() -> None:
         replace(state, players=(first, second, *state.players[2:]))
 
 
-def test_public_views_are_reused_for_unchanged_seats() -> None:
+def test_public_views_are_reused_for_unchanged_seats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # A seat's public view is built once per state object: between two
     # decisions most seats do not change, so their views come back from the
     # identity cache unchanged while a replaced seat gets a fresh view.
+    # The cache starts empty here: it clears itself when full, and the tests
+    # a worker ran before could leave it a few entries short of that, so the
+    # two calls below would straddle a clear (2026-10-21, one run in four).
+    monkeypatch.setattr(observation, "_PUBLIC_VIEW_CACHE", {})
     state = _state()
     first = observe_state(state, 0)
     again = observe_state(state, 0)
