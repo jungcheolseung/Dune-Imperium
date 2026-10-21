@@ -2,7 +2,7 @@
 title = "기술 글"
 description = "규칙 엔진의 구조와 AI 동작, 학습·평가 실험을 설명합니다."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 40
 [params]
@@ -26,6 +26,8 @@ AI가 한 수를 고르는 방식부터 학습 상대·모델·탐색을 바꾼 
 
 - [AI는 어떻게 한 수를 고르는가]({{< relref "posts/how-search-ai-chooses.md" >}})
 - [학습 상대를 바꾸면 AI가 더 강해질까?]({{< relref "posts/learning-with-opponents.md" >}})
+- [AI 모델의 구조: 국면을 읽고 수에 점수를 매기기까지]({{< relref "posts/model-architecture.md" >}})
+- [다른 게임 AI와 비교한 모델 구조 점검]({{< relref "posts/architecture-survey.md" >}})
 
 직접 플레이하는 방법은 [사용법]({{< relref "guides/_index.md" >}})에,
 사용자에게 달라진 기능은 [업데이트]({{< relref "updates/_index.md" >}})에 정리합니다.

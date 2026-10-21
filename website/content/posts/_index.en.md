@@ -2,7 +2,7 @@
 title = "Technical articles"
 description = "How the rules engine, AI decisions, training, and evaluation work."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 40
 [params]
@@ -23,5 +23,7 @@ How AI chooses a move, and what changes when opponents, models, or search settin
 
 - [How search AI chooses a move]({{< relref path="posts/how-search-ai-chooses.md" lang="en" >}})
 - [Does mixing opponents improve training?]({{< relref path="posts/learning-with-opponents.md" lang="en" >}})
+- [Inside the AI model: from reading a position to scoring moves]({{< relref path="posts/model-architecture.md" lang="en" >}})
+- [Checking the model structure against other game AIs]({{< relref path="posts/architecture-survey.md" lang="en" >}})
 
 See [guides]({{< relref path="guides/_index.md" lang="en" >}}) to play and [updates]({{< relref path="updates/_index.md" lang="en" >}}) for user-visible changes.

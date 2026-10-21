@@ -2,7 +2,7 @@
 
 프로젝트 소개·설치·사용 안내, 날짜별 개발일지와 기술 글을 담는 Hugo 정적 사이트다.
 공개 주소는 [Dune: Imperium AI](https://jungcheolseung.github.io/Dune-Imperium/)이며, 2026-10-20 첫 배포를 확인했다.
-개발일지 30편을 포함한 콘텐츠 50개를 한국어·영어로 제공한다. 반응형 화면·분류·목차·검색·RSS·sitemap·404와 다크·라이트 모드를 지원한다.
+개발일지 30편과 기술 글 6편을 포함한 콘텐츠 52개를 한국어·영어로 제공한다. 반응형 화면·분류·목차·검색·RSS·sitemap·404와 다크·라이트 모드를 지원한다.
 게임 실행 패키지와 별도로 빌드하며 비공개 이미지·모델·Node.js는 필요하지 않다.
 
 ## 언어와 테마
@@ -62,7 +62,7 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 | 소개 | [프로젝트 소개](content/about/_index.md), [지원 현황](content/about/support.md), [앞으로의 방향](content/about/roadmap.md) |
 | 다운로드 | [현재 제공 방식과 설치 준비](content/downloads/_index.md) |
 | 사용법 | [사용법 입구](content/guides/_index.md), [처음 한 판](content/guides/first-game.md), [방 만들기](content/guides/hosting.md), [친구 방 참여](content/guides/joining.md), [기본 조작·저장](content/guides/controls.md), [AI 고르기](content/guides/choosing-ai.md) |
-| 기술 글 | [글 목록 소개](content/posts/_index.md), [규칙을 엔진으로](content/posts/rules-to-engine.md), [AI가 한 수를 고르는 과정](content/posts/how-search-ai-chooses.md), [앱 AI를 섞은 학습 실험](content/posts/learning-with-opponents.md) |
+| 기술 글 | [글 목록 소개](content/posts/_index.md), [규칙을 엔진으로](content/posts/rules-to-engine.md), [AI가 한 수를 고르는 과정](content/posts/how-search-ai-chooses.md), [앱 AI를 섞은 학습 실험](content/posts/learning-with-opponents.md), [모델 구조](content/posts/model-architecture.md), [다른 게임 AI와 비교한 구조 점검](content/posts/architecture-survey.md) |
 | 개발일지 | [월별 목록](content/devlog/_index.md), `content/devlog/YYYY-MM-DD-topic.md`의 작업별 기록 30편 |
 | 업데이트 | [소식 입구](content/updates/_index.md), [첫 기록](content/updates/2026-10-20-project-status.md) |
 | 도움말 | [FAQ와 문제 해결](content/help/_index.md) |
