@@ -7,7 +7,7 @@ draft = false
 weight = 30
 [params]
 source_ref = "c8f61677"
-sources = ["docs/development-handoff.md", "docs/composed-effects-plan.md", "docs/entity-network-plan.md"]
+sources = ["docs/development-handoff.md", "docs/composed-effects-plan.md", "docs/entity-network-plan.md", "docs/evaluation/architecture-survey-2026-10-21.md"]
 +++
 
 목표는 규칙을 안정적으로 지키면서 사람이 함께 두고 싶은 AI를 만드는 것입니다.
@@ -27,6 +27,11 @@ Uprising 4인 게임과 선택 모듈을 끝까지 진행할 수 있고, AI 대�
 
 **AI가 카드와 행동의 뜻을 더 잘 읽게 합니다.** 카드와 칸의 특성을 읽는 모델 구조를 실험하고, 바뀐 행동 단위에 맞춰
 플레이용 모델을 다시 학습하고 있습니다. 새 구조로 학습했다는 이유만으로 플레이용 모델을 교체하지 않고, 실제 대전과 탐색에서의 성능을 확인합니다.
+
+**탐색 AI가 후보를 고르고 비교하는 방식을 먼저 다듬습니다.** 지금까지의 측정과 다른 게임 AI 조사에서 승률을 크게 바꾼 것은 모델 구조보다
+탐색이었습니다. 그래서 차이가 작은 수를 함부로 뒤집지 않게 하기, 유망한 후보에 시뮬레이션을 몰아주기, 상대가 실제로 둔 수로 가능한 세계를
+고르기를 먼저 시험하고, 그다음 재학습 방식과 모델 구조를 고칩니다. 근거와 순서는
+[다른 게임 AI와 비교한 모델 구조 점검]({{< relref "posts/architecture-survey.md" >}})에 정리했습니다.
 
 **플레이에서 발견한 불편을 줄입니다.** 선택할 수 없는 이유, 행동 확정과 되돌리기, 저장·복구 안내를 다듬습니다.
 친구들과 실제로 둔 판에서 나온 피드백도 반영합니다.
