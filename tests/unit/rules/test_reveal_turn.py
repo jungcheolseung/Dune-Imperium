@@ -3451,7 +3451,7 @@ def test_a_trashed_card_does_not_meet_its_condition_later_in_the_reveal() -> Non
 
     assert result.state.players[0].trashed == (shishakli,)
     assert reveal_pending_gains(_reveal_frame_context(result.state)) == ()
-    assert not [e for e in result.events if e.kind == "reveal_effect_granted_late"]
+    assert not [e for e in result.events if e.kind == "reveal_line_granted_late"]
 
 
 def test_late_reveal_leadership_gains_strength_from_a_late_sword_card() -> None:
@@ -3900,7 +3900,7 @@ def test_operatives_spy_bonus_pays_out_once_a_reveal_placement_reaches_two_spies
     context = dict(placed.state.decision_stack[-1].context)
     assert context["persuasion"] == 4
     late = [
-        event for event in placed.events if event.kind == "reveal_effect_granted_late"
+        event for event in placed.events if event.kind == "reveal_line_granted_late"
     ]
     assert [dict(event.payload)["card_id"] for event in late] == [operative]
     assert dict(late[0].payload)["persuasion"] == 2
@@ -3942,9 +3942,9 @@ def test_paracompass_pays_out_after_a_council_seat_bought_this_reveal() -> None:
     # Seat bonus 2 + Paracompass 2 + its Swordmaster extra 1.
     assert context["persuasion"] == 5
     late = [
-        event for event in seated.events if event.kind == "reveal_effect_granted_late"
+        event for event in seated.events if event.kind == "reveal_line_granted_late"
     ]
-    assert [dict(event.payload)["effect_index"] for event in late] == [0, 1]
+    assert [dict(event.payload)["line_index"] for event in late] == [0, 1]
 
 
 def test_a_late_fremen_arrival_completes_northern_watermasters_bond() -> None:
@@ -3960,7 +3960,7 @@ def test_a_late_fremen_arrival_completes_northern_watermasters_bond() -> None:
     arrived = reveal_late_arrivals(_with_late_hand(revealed, maula), 0, (maula,))
     granted = grant_late_reveal_effects(arrived)
 
-    late = [e for e in granted.events if e.kind == "reveal_effect_granted_late"]
+    late = [e for e in granted.events if e.kind == "reveal_line_granted_late"]
     assert dict(late[-1].payload)["spice"] == 2
     # The spice waits as a Reveal gain the owner takes (OQ-045).
     assert granted.state.players[0].resources.spice == 0
@@ -4004,7 +4004,7 @@ def test_interstellar_trade_adds_each_contract_completed_later_in_the_reveal() -
 
     assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 3
     (late,) = granted.events
-    assert late.kind == "reveal_effect_granted_late"
+    assert late.kind == "reveal_line_granted_late"
     assert dict(late.payload)["card_id"] == interstellar
     assert dict(late.payload)["persuasion"] == 1
     # Paid once per Contract: the same count pays nothing again.
@@ -4079,7 +4079,7 @@ def test_interstellar_trade_pays_for_the_spice_must_flow_contract_it_helped_buy(
     assert [
         dict(event.payload)["persuasion"]
         for event in bought.events
-        if event.kind == "reveal_effect_granted_late"
+        if event.kind == "reveal_line_granted_late"
     ] == [1]
 
     # The Contract's reward waits on the Reveal as rows (stage B3b, OQ-112
@@ -4168,7 +4168,7 @@ def test_interstellar_trade_adds_an_immediate_contract_from_delivery_logistics()
     assert [
         dict(event.payload)["card_id"]
         for event in result.events
-        if event.kind == "reveal_effect_granted_late"
+        if event.kind == "reveal_line_granted_late"
     ] == [interstellar]
 
 
@@ -4281,7 +4281,7 @@ def test_a_late_interstellar_trade_increment_opens_command_in_any_hand_order(
     assert [
         dict(event.payload)["card_id"]
         for event in result.events
-        if event.kind == "reveal_effect_granted_late"
+        if event.kind == "reveal_line_granted_late"
     ] == [interstellar, faith]
     assert reveal_pending_gains(context) == (("resources", "0/2/0", faith),)
     assert logistics in result.state.players[0].in_play
@@ -4393,7 +4393,7 @@ def test_interstellar_trade_adds_a_contract_completed_by_any_reveal_path(
     late = [
         dict(event.payload)
         for event in last.events
-        if event.kind == "reveal_effect_granted_late"
+        if event.kind == "reveal_line_granted_late"
     ]
     assert [(entry["card_id"], entry["persuasion"]) for entry in late] == [
         (interstellar, 1)

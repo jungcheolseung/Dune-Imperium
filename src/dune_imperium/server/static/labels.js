@@ -507,7 +507,7 @@ const EVENT_LABELS = {
   research_bonus_lapsed: "{research} 보너스: 쓰지 않음",
   research_drew_card: "{research}: {draw}",
   reserve_acquisition_unavailable: "{reserve} 획득 불가",
-  reveal_effect_granted_late: "효과 뒤늦게 발동",
+  reveal_line_granted_late: "효과 뒤늦게 발동",
   reveal_persuasion_gained: "{persuasion} 획득",
   /* One gain event wherever a gain comes from (cleanup-2c, rule decision
      3); a line's Victory Points ride on it (decision 4). */
@@ -720,7 +720,6 @@ const PAYLOAD_KEY_LABELS = {
   discount: "할인",
   drawn: "뽑은 수",
   effect: "효과",
-  effect_index: "효과 번호",
   event_id: "이벤트",
   event_round: "이벤트 라운드",
   faction: "팩션",
@@ -752,6 +751,7 @@ const PAYLOAD_KEY_LABELS = {
   leader_face_id: "지도자",
   leader_id: "지도자",
   leader_ids: "지도자",
+  line_index: "효과 번호",
   locations: "위치",
   lost_faction: "잃은 영향력",
   matching_card_id: "일치 카드",

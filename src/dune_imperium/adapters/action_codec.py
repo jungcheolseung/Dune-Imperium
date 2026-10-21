@@ -584,7 +584,12 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # (26,372 rows of the all-options catalog); the pick waits in the turn frame,
 # seen only by its seat. Older records split each ``agent_turn`` with the
 # bridges ``agent_card_pick`` and ``agent_space_pick`` (records.migration).
-ACTION_CODEC_VERSION = 150
+# v151 (user request 2026-10-21, after the Reveal totals cleanup): the state
+# names that still said "effect" for a Reveal record line follow the code --
+# the Reveal frame's ``granted_reveal_lines``, the ``reveal_line_granted_late``
+# event and its ``line_index`` (no action changes; the state hash changes with
+# the frame context and the event log).
+ACTION_CODEC_VERSION = 151
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
