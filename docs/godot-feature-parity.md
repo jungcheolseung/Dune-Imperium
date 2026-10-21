@@ -18,6 +18,12 @@ Python 규칙·AI·codec·저장 형식은 그대로 사용하고, 두 클라이
 | 선택 불가 / 효과 | 이유·조건·비용, agent-box 구분·예고, 자원 변화·카드/단계/전투 연출·서로 다른 합성 효과음 | 서버 이유·예고·비용·shortfall·접목 box를 표현하고 합법 수량만 선택. 공개 변화/카드/단계 cue와 서로 다른 PCM 합성음·음량/끄기/움직임 줄이기. 실제 스피커 청취는 Windows 피드백 | unavailable, effect_text, card_hover, table_effects, phase_banner, scouts_decision_item |
 | 설치 없는 배포 | Windows 런타임·개인 그림 동봉, 앱 종료·서버 정리, 누적 프로그램 업데이트 | 이전 Windows 사용자 실행 확인. 최신 패널 업데이트 2.83 MiB. 보존한 직전 소스의 프로그램 353파일 및 새 ZIP/적용 복사본의 357파일 hash·최소 환경 시작/undo/종료 검증. 이전 전체 ZIP은 이번에 재검사하지 않음. 새 Windows 실기 피드백 남음 | native bootstrap/portable 회귀 및 실제 Windows 피드백 |
 
+## codec v151 (2026-10-21)
+
+Agent 차례는 카드 고르기 → 칸 고르기 두 걸음이다(B1). Godot은 웹처럼 서버의 `agent_placements`로 온전한 배치를 만들어 보이고,
+고른 배치를 두 걸음으로 보낸다. 이 문서의 아래 수치는 v148 기록이고, v151에서 다시 돌린 결과(완주·계약·대조·패널·메뉴 headless)는
+worklog [2026-10-21 Godot 클라이언트를 master v151에 맞춤]에 있다. Xvfb 화면 캡처 검사와 Windows 실기는 v151에서 다시 돌리지 않았다.
+
 ## 웹에는 있고 Godot에는 없는 것 (2026-10-21 확인)
 
 10-18 리베이스는 Godot 소스를 그대로 옮겼으므로, v145 기준 뒤에 웹에 생긴 흐름은 아래 표만큼 빠져 있다.

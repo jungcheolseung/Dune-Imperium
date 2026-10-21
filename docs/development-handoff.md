@@ -181,12 +181,13 @@
 
 **플레이 화면**
 
-- **Godot PC 클라이언트(다른 PC; 브랜치 `godot-client`(2026-10-21에 `docs/godot-client-plan`에서 이름을 바꿈)에만 두고 master에는 넣지 않음, 사용자 결정):** 2026-10-18에 v148
-  위로 리베이스한 커밋 48개라 B단계(v150) 병합보다 앞이다(2026-10-21 `6a26401e` 기준 master보다 314커밋 뒤). 먼저 지금 master(codec v151)에 맞춰야 한다. 클라이언트(`main.gd`·`model.gd`·
-  `playthrough.gd`)가 옛 한 걸음 Agent 행 `agent_turn`을 20곳에서 읽는데, v150의 Agent 차례는 `choose_agent_card` → `place_agent` 두
-  걸음이다. 기다리는 효과도 효과 줄 → 대상 줄로 바뀌었다(B3). master와 같이 고친 파일은 인수인계·worklog 둘뿐이다(2026-10-21 시험
-  병합). 계획과 상태는 그 브랜치의 `docs/godot-client-plan.md`와 인수인계에 있다. 2026-10-21 Claude 재검증(v148 그대로: 완주·계약·대조·메뉴
-  통과, 웹에서 빠진 턴 시작 카드 창·Reveal 선택 묶음, 보안 항목 3개)은 그 브랜치 worklog 맨 위에 있다.
+- **Godot PC 클라이언트(다른 PC; 브랜치 `godot-client`(2026-10-21에 `docs/godot-client-plan`에서 이름을 바꿈)에만 두고 master에는 넣지 않음, 사용자 결정; 2026-10-21 "병합은 미루자"):**
+  2026-10-21에 master `93469756`(codec v151)을 병합하고 Agent 차례 두 걸음·v149~v151 행에 맞췄다. 기본판 4판·전 옵션 2판 완주,
+  계약 open 43/remote 46, 웹 대조 core·info·quantity, 확장 패널, 메뉴 headless가 v151 서버에서 통과한다. 선택창 대조는 Reveal 선택
+  묶음 하나만 다르다. **다음(결정):** 웹에서 빠진 흐름(Reveal 선택 묶음, 턴 시작 카드 창, 서버 오류 한국어, 보류 중 종료 행)과
+  보안 3건(관리자 쿠키 파일 저장, 프로젝트 밖 Godot 사용자 폴더, SSE origin). 최신 Windows ZIP은 v148이라 v151 저장본을 열지 못하고,
+  새 패키지는 사용자가 요청할 때만 만든다. 계획·기능 표는 `docs/godot-client-plan.md`·`docs/godot-feature-parity.md`, 기록은 worklog의
+  [2026-10-21 Godot 클라이언트를 master v151에 맞춤]과 [2026-10-21 Godot 브랜치 이름 변경과 Claude 재검증].
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
 - **한국어 화면에 남은 영어(작음):** ⑤⑧⑨는 2026-10-14에 끝났다(OQ 번호·경로·명령 인자는 플레이 화면에서 뺌, 서버 오류는
