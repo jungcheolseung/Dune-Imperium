@@ -205,7 +205,8 @@ func run(owner_table: Control) -> void:
 	var claim_deadline = Time.get_ticks_msec() + 5000
 	while (guest.model.owned_seats.is_empty() or guest.refreshing) and Time.get_ticks_msec() < claim_deadline:
 		await get_tree().process_frame
-	check(sat and not guest.model.owned_seats.is_empty(), "the joined guest can claim a human seat")
+	if not check(sat and not guest.model.owned_seats.is_empty(), "the joined guest can claim a human seat"):
+		print("GUEST_CLAIM ", JSON.stringify({"sat": sat, "owned": guest.model.owned_seats, "refreshing": guest.refreshing, "busy": guest.busy, "status": guest.status.text}))
 	guest.doorbell.stop()
 	guest.queue_free()
 	await get_tree().process_frame
