@@ -75,12 +75,25 @@ A loaded save does not search its recorded decisions again: the seat
 retraces each one (``replay_decision``, the ``ReplayableAgent`` protocol),
 drawing the worlds a search would have drawn without playing them out, so
 it resumes with the RNG stream and cycle guard of the seat that was saved.
+
+A file of a codec before the Agent turn became two steps (an MLP before
+v150, ``training.older_teacher.reads_older_rows``) reaches only a few rows
+of a current catalog -- 84 of 4,311 for the play network -- so the seat
+plays it through the older-codec adapter instead (handoff "학습·AI", the
+2026-10-21 order, step 0): the search is the same, but a candidate's score
+is the adapter's probability of the step (the softmax over the whole
+actions behind it, by the file's own head rows), every playout is an
+``OlderNetworkAgent`` game seeded from its chance seed (it plays whole
+actions, as the file learnt them, and keeps that engine's fixed answers),
+the leaves are the file's value head, and a decision the older engine
+answered alone (``engine_order_answer``) takes that answer without a search.
 """
 
 import random
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 import torch
@@ -94,6 +107,7 @@ from dune_imperium.agents.app_ai.family_atomics import (
     without_family_atomics,
 )
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.agents.rollout_agent import past_horizon
 from dune_imperium.config import RulesetConfig
@@ -109,6 +123,27 @@ from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.policy import without_undo_actions
+
+if TYPE_CHECKING:
+    from dune_imperium.training.network import PolicyValueNetwork
+    from dune_imperium.training.older_teacher import OlderTeacher
+    from dune_imperium.training.torch_policy import NetworkAgent
+
+
+class _GreedyAnswer(Protocol):
+    """The agent that answers the decisions a search seat does not search."""
+
+    def choose_action(
+        self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
+    ) -> DomainAction: ...
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction: ...
+
 
 # Worlds and candidates are the cost knobs: a decision plays
 # ``rollouts * candidates`` playouts, each to the end of the current round.
@@ -241,20 +276,40 @@ class NetworkSearchAgent:
             raise ValueError("rollouts, candidates, and horizon_rounds are positive")
         if family_atomics not in FAMILY_ATOMICS_DECIDERS:
             raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
+        from dune_imperium.training.older_teacher import (
+            OlderNetworkAgent,
+            OlderTeacher,
+            cached_older_network,
+            reads_older_rows,
+        )
         from dune_imperium.training.torch_policy import load_network_agent
 
-        # The greedy agent owns the cached network and the catalog (the
-        # game's, for ``config``), and answers decisions the search cannot
-        # branch from.
-        self.greedy = load_network_agent(path, config, seed=seed)
-        # The leaves' value head: the same network unless ``value_path`` names
-        # another file (observation encodings migrate on load, so any file of
-        # this observation version reads the same views).
-        self.value_network = (
-            self.greedy.network
-            if value_path is None
-            else load_network_agent(value_path, config, seed=seed).network
-        )
+        self._network_agent: NetworkAgent | None = None
+        self._older: OlderTeacher | None = None
+        self.value_network: PolicyValueNetwork
+        if reads_older_rows(path):
+            # An older codec's file plays through its own rows (module
+            # docstring): the adapter answers what is not searched.
+            if value_path is not None:
+                raise ValueError("an older-codec file searches with its own value head")
+            older = cached_older_network(path)
+            self._older = OlderTeacher(older, seed=seed)
+            self._answerer: _GreedyAnswer = OlderNetworkAgent(older, seed=seed)
+            self.value_network = older.network
+        else:
+            # The greedy agent owns the cached network and the catalog (the
+            # game's, for ``config``), and answers decisions the search
+            # cannot branch from.
+            self._network_agent = load_network_agent(path, config, seed=seed)
+            self._answerer = self._network_agent
+            # The leaves' value head: the same network unless ``value_path``
+            # names another file (observation encodings migrate on load, so
+            # any file of this observation version reads the same views).
+            self.value_network = (
+                self._network_agent.network
+                if value_path is None
+                else load_network_agent(value_path, config, seed=seed).network
+            )
         self.rollouts = rollouts
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds
@@ -265,6 +320,24 @@ class NetworkSearchAgent:
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
         self._taken = _Taken()
+
+    @property
+    def greedy(self) -> NetworkAgent:
+        """The greedy agent of a current-codec file (its network and catalog).
+
+        A seat of an older codec's file has none: its greedy answers come
+        from the older-codec adapter (``older``).
+        """
+
+        if self._network_agent is None:
+            raise ValueError("an older-codec search seat has no catalog network")
+        return self._network_agent
+
+    @property
+    def older(self) -> OlderTeacher | None:
+        """The older-codec adapter the seat plays through, if any."""
+
+        return self._older
 
     # -- the network --------------------------------------------------------
     # Both read the trunk and then only the head rows they need: the policy
@@ -328,7 +401,42 @@ class NetworkSearchAgent:
             [greedy.codec.encode(action) for action in offered]
         )
 
+    def _untrained(
+        self, state: GameState, seat: int, offered: tuple[DomainAction, ...]
+    ) -> bool:
+        """Whether the file has nothing to rank a decision's actions by: all
+        untrained rows, or (an older codec) no whole action with a row."""
+
+        if self._older is not None:
+            return self._older.untrained_only(state, seat, offered)
+        return self._untrained_only(offered)
+
+    def _candidate_scores(
+        self,
+        state: GameState,
+        seat: int,
+        encoded: np.ndarray,
+        legal: tuple[DomainAction, ...],
+    ) -> np.ndarray:
+        """The scores a decision's candidates are ranked by."""
+
+        if self._older is not None:
+            return self._older.row_scores(state, seat, legal, encoded)
+        return self._scores(encoded, legal)
+
+    def _forced(
+        self, state: GameState, seat: int, offered: tuple[DomainAction, ...]
+    ) -> DomainAction | None:
+        """An older codec's file keeps that engine's fixed answers to the
+        decisions it never asked (``engine_order_answer``)."""
+
+        if self._older is None:
+            return None
+        return engine_order_answer(state, seat, offered)
+
     def _leaf_value(self, view: PlayerView) -> float:
+        if self._older is not None:
+            return self._older.value(self._encode(view))
         network = self.value_network
         encoded = torch.from_numpy(self._encode(view)).unsqueeze(0)
         with torch.no_grad():
@@ -349,7 +457,7 @@ class NetworkSearchAgent:
 
         if self.family_atomics == "app":
             legal_actions = without_family_atomics(legal_actions)
-        return self.greedy.choose_action(observation, legal_actions)
+        return self._answerer.choose_action(observation, legal_actions)
 
     def choose_action_with_state(
         self,
@@ -450,22 +558,30 @@ class NetworkSearchAgent:
         legal_actions = ruled
         if self.hold_combat_lead:
             legal_actions = holds_combat_lead(state, observation.player, legal_actions)
+        forced = self._forced(
+            state, observation.player, without_undo_actions(legal_actions)
+        )
+        if forced is not None:
+            return forced
         if not self.search_effect_order and orders_agent_effects(state):
-            return self.greedy.choose_action_with_state(
+            return self._answerer.choose_action_with_state(
                 state, observation, legal_actions
             )
         offered = without_undo_actions(legal_actions)
         if len(offered) == 1:
             return offered[0]
-        if self._untrained_only(offered):
-            return self.greedy.choose_action_with_state(
+        if self._untrained(state, observation.player, offered):
+            return self._answerer.choose_action_with_state(
                 state, observation, legal_actions
             )
         encoded = self._encode(observation)
         key, fresh = self._taken.untried(
             state.round_number, observation.player, encoded, offered
         )
-        order = np.argsort(-self._scores(encoded, fresh), kind="stable")
+        scores = self._candidate_scores(
+            state, observation.player, encoded, tuple(fresh)
+        )
+        order = np.argsort(-scores, kind="stable")
         return _Shortlist(
             key=key,
             candidates=tuple(fresh[int(index)] for index in order[: self.candidates]),
@@ -540,6 +656,13 @@ class NetworkSearchAgent:
         taken = _Taken()
         # Seeded per playout, so every candidate meets the same answers.
         fallback: HeuristicAgent | None = None
+        # An older codec's file plays the playout as its own greedy seat in
+        # every chair: whole actions, that engine's fixed answers, its guard.
+        walker: _GreedyAnswer | None = None
+        if self._older is not None:
+            from dune_imperium.training.older_teacher import OlderNetworkAgent
+
+            walker = OlderNetworkAgent(self._older.older, seed=chance_seed)
         for _ in range(self.max_rollout_steps):
             if state.phase is GamePhase.FINISHED or past_horizon(state, horizon):
                 break
@@ -561,6 +684,11 @@ class NetworkSearchAgent:
                 action = offered
             elif len(offered) == 1:
                 action = offered[0]
+            elif walker is not None:
+                owner = decision.owner
+                action = walker.choose_action_with_state(
+                    state, engine.observe(state, owner), offered
+                )
             elif self._untrained_only(offered):
                 if fallback is None:
                     fallback = HeuristicAgent(seed=chance_seed)
