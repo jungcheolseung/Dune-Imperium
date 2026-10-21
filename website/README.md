@@ -2,7 +2,7 @@
 
 프로젝트 소개·설치·사용 안내, 날짜별 개발일지와 기술 글을 담는 Hugo 정적 사이트다.
 공개 주소는 [Dune: Imperium AI](https://jungcheolseung.github.io/Dune-Imperium/)이며, 2026-10-20 첫 배포를 확인했다.
-개발일지 19편을 포함한 콘텐츠 39개를 한국어·영어로 제공한다. 반응형 화면·분류·목차·검색·RSS·sitemap·404와 다크·라이트 모드를 지원한다.
+개발일지 30편을 포함한 콘텐츠 50개를 한국어·영어로 제공한다. 반응형 화면·분류·목차·검색·RSS·sitemap·404와 다크·라이트 모드를 지원한다.
 게임 실행 패키지와 별도로 빌드하며 비공개 이미지·모델·Node.js는 필요하지 않다.
 
 ## 언어와 테마
@@ -63,7 +63,7 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 | 다운로드 | [현재 제공 방식과 설치 준비](content/downloads/_index.md) |
 | 사용법 | [사용법 입구](content/guides/_index.md), [처음 한 판](content/guides/first-game.md), [방 만들기](content/guides/hosting.md), [친구 방 참여](content/guides/joining.md), [기본 조작·저장](content/guides/controls.md), [AI 고르기](content/guides/choosing-ai.md) |
 | 기술 글 | [글 목록 소개](content/posts/_index.md), [규칙을 엔진으로](content/posts/rules-to-engine.md), [AI가 한 수를 고르는 과정](content/posts/how-search-ai-chooses.md), [앱 AI를 섞은 학습 실험](content/posts/learning-with-opponents.md) |
-| 개발일지 | [월별 목록](content/devlog/_index.md), `content/devlog/YYYY-MM-DD-topic.md`의 작업별 기록 19편 |
+| 개발일지 | [월별 목록](content/devlog/_index.md), `content/devlog/YYYY-MM-DD-topic.md`의 작업별 기록 30편 |
 | 업데이트 | [소식 입구](content/updates/_index.md), [첫 기록](content/updates/2026-10-20-project-status.md) |
 | 도움말 | [FAQ와 문제 해결](content/help/_index.md) |
 
@@ -75,7 +75,8 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 
 한 작업에 딸린 구현·수정·문서 커밋은 한 편으로 묶는다. 며칠에 걸친 작업은 기간으로 표시한다.
 커밋 메시지를 나열하기보다 해결하려던 문제, 바뀐 동작, 검증·실험 결과, 남은 점을 쓴다.
-초기 코드(2023년)와 본격적인 Uprising 구현(2026년 8월 이후)을 포함한 첫 16편은 과거 기록을 재구성한 글이다.
+초기 코드(2023년)부터 2026년 10월 20일 작업까지의 글(`params.retrospective = true`)은 과거 기록을 재구성한 글이다.
+2026-10-20에 16편을 처음 썼고, 2026-10-21에 커밋·작업 문서와 다시 대조해 수치·조건을 보강하고 빠진 큰 작업 11편을 더했다.
 
 저장소 루트에서 초안을 만든다. 날짜와 주제는 실제 작업에 맞춰 바꾼다.
 

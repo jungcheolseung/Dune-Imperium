@@ -37,7 +37,7 @@ def check_languages_and_themes(browser, base: str, screenshots: Path | None) -> 
     page.get_by_role("button", name="Switch to dark mode").click()
     page.goto(base + "en/devlog/2026-10-12-training-speed/")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
-    expect(page.locator(".prose")).to_contain_text("19–21 seconds to 9–10 seconds")
+    expect(page.locator(".prose")).to_contain_text("19.2–20.5 s to 9.1–9.5 s")
     page.get_by_role("link", name="한국어", exact=True).click()
     assert page.url == base + "devlog/2026-10-12-training-speed/"
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
@@ -87,7 +87,7 @@ def check_languages_and_themes(browser, base: str, screenshots: Path | None) -> 
     assert set(archive_urls) == journal_urls
     page.locator(".journal-entry h3 a").last.click()
     page.get_by_role("link", name="Next work").click()
-    expect(page.get_by_role("heading", level=1)).to_have_text("Rules specification and a one-round engine")
+    expect(page.get_by_role("heading", level=1)).to_have_text("Rules specification, a one-round engine, and the first action codec")
 
     for language in ("", "en/"):
         for dark in (False, True):
@@ -173,9 +173,9 @@ def main() -> None:
             expect(page.locator(".article-header")).to_contain_text("글 작성 2026.10.20")
             expect(page.locator('a[rel="prev"]')).to_have_count(0)
             page.get_by_role("link", name="다음 작업").click()
-            expect(page.get_by_role("heading", level=1)).to_have_text("규칙 명세와 한 라운드 엔진")
+            expect(page.get_by_role("heading", level=1)).to_have_text("규칙 명세와 한 라운드 엔진, 첫 행동 codec")
             page.get_by_role("link", name="이전 작업").click()
-            expect(page.get_by_role("heading", level=1)).to_have_text("초기 코드와 프로젝트 구성")
+            expect(page.get_by_role("heading", level=1)).to_have_text("2023년의 초기 시도와 중단")
             page.get_by_role("link", name="개발일지 목록", exact=True).click()
             if arguments.screenshots:
                 page.screenshot(path=arguments.screenshots / "devlog-desktop.png", full_page=True)
@@ -262,7 +262,7 @@ def main() -> None:
             page.get_by_role("navigation", name="개발일지 월별 목록").get_by_role("link", name="2023-04").click()
             page.locator(".journal-entry h3 a").last.click()
             page.get_by_role("link", name="다음 작업").click()
-            expect(page.get_by_role("heading", level=1)).to_have_text("규칙 명세와 한 라운드 엔진")
+            expect(page.get_by_role("heading", level=1)).to_have_text("규칙 명세와 한 라운드 엔진, 첫 행동 codec")
             page.goto(base + "search/")
             expect(page.locator("[data-search-fallback]")).to_be_visible()
             expect(page.locator("[data-search-fallback]")).to_contain_text("JavaScript가 필요합니다")
