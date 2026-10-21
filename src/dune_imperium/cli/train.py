@@ -222,6 +222,32 @@ def _build_parser() -> argparse.ArgumentParser:
             "policy head moves onto this run's catalog by template identity"
         ),
     )
+    parser.add_argument(
+        "--kickstart-teacher",
+        type=Path,
+        default=None,
+        help=(
+            "kickstarting: an older-codec MLP checkpoint (read through "
+            "training.older_teacher) whose distribution over each learner "
+            "step's legal actions the update pulls toward"
+        ),
+    )
+    parser.add_argument(
+        "--kickstart-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "weight of KL(teacher || learner) at this run's first iteration "
+            "(default: 0, off); it falls linearly to 0 over "
+            "--kickstart-iterations"
+        ),
+    )
+    parser.add_argument(
+        "--kickstart-iterations",
+        type=int,
+        default=0,
+        help="iterations over which the kickstart weight falls to 0",
+    )
     return parser
 
 
@@ -235,12 +261,18 @@ def _print(record: IterationRecord) -> None:
         evaluation = f" vs opponent {record.opponent_win_rate:.1%}" + evaluation
     if record.eval_failures:
         evaluation += f" ({record.eval_failures} eval matches FAILED)"
+    kickstart = (
+        f"kickstart {record.update.kickstart_kl:.4f} "
+        f"x{record.update.kickstart_weight:.3f} "
+        if record.update.kickstart_weight
+        else ""
+    )
     print(
         f"iter {record.iteration}: {record.games} games, {record.learner_steps} "
         f"learner steps, win {record.learner_win_rate:.1%}, reward "
         f"{record.learner_mean_reward:+.3f}, rounds {record.mean_rounds:.1f}, "
         f"policy {record.update.policy_loss:+.4f} value {record.update.value_loss:.4f} "
-        f"entropy {record.update.entropy:.3f} "
+        f"entropy {record.update.entropy:.3f} {kickstart}"
         f"ev {record.update.explained_variance:+.2f}, "
         f"{record.decisions_per_second:,.0f} dec/s, update {record.update_seconds:.1f}s"
         f"{evaluation}"
@@ -294,6 +326,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             checkpoint_every=arguments.checkpoint_every,
             resume=arguments.resume,
             retarget=arguments.retarget,
+            kickstart_teacher=arguments.kickstart_teacher,
+            kickstart_weight=arguments.kickstart_weight,
+            kickstart_iterations=arguments.kickstart_iterations,
         )
     except ValueError as error:
         parser.error(str(error))

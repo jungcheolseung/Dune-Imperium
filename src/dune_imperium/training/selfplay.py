@@ -157,6 +157,10 @@ class TrainingBatch:
     approximated: the row count is ragged and exact, so a
     decision offering an unusual number of actions needs no padding and can
     never be truncated.
+
+    ``teacher`` is set only by a kickstarted collection
+    (``training.kickstart``): a teacher's probability of every legal entry,
+    parallel to ``legal_indices`` and so sliced by the same offsets.
     """
 
     observations: np.ndarray  # int32 [steps, OBSERVATION_SIZE]
@@ -167,6 +171,7 @@ class TrainingBatch:
     seats: np.ndarray  # int8 [steps]
     returns: np.ndarray  # float32 [steps]: terminal reward of the acting seat
     episode_ids: np.ndarray  # int32 [steps]: index into the episode sequence
+    teacher: np.ndarray | None = None  # float32 [total legal], or None
 
     def dense_masks(self, rows: np.ndarray) -> np.ndarray:
         """Return the dense 0/1 mask of ``rows``, in the order given."""
@@ -180,7 +185,7 @@ class TrainingBatch:
         masks[np.repeat(np.arange(selected.shape[0]), counts), values] = 1
         return masks
 
-    def local_legal(self, rows: np.ndarray) -> LocalLegal:
+    def local_legal(self, rows: np.ndarray, *, teacher: bool = False) -> LocalLegal:
         """Return ``rows``' legal sets over the actions legal in any of them.
 
         The learner's masked softmax gives an illegal action a logit of
@@ -192,7 +197,10 @@ class TrainingBatch:
         1,024-step minibatch of champion-5081 self-play, 2026-09-27),
         ``mask[i, j]`` says whether ``catalog[j]`` is legal in row ``i``,
         and ``chosen[i]`` is the position of row ``i``'s action in
-        ``catalog``. Every chosen action must be legal in its own row.
+        ``catalog``. Every chosen action must be legal in its own row. With
+        ``teacher``, ``LocalLegal.teacher[i, j]`` is the batch's teacher
+        probability of ``catalog[j]`` in row ``i`` (zero where it is not
+        legal there).
         """
 
         selected = np.asarray(rows, dtype=np.int64)
@@ -205,6 +213,19 @@ class TrainingBatch:
         mask[np.repeat(np.arange(selected.shape[0]), counts), columns.reshape(-1)] = (
             True
         )
+        local_teacher: np.ndarray | None = None
+        if teacher:
+            if self.teacher is None:
+                raise ValueError("the batch carries no teacher probabilities")
+            probabilities, _ = _gather_rows(self.teacher, self.legal_offsets, selected)
+            local_teacher = np.zeros(mask.shape, dtype=np.float32)
+            # Added, not assigned: two legal entries of a row that named the
+            # same catalog index would share one column.
+            np.add.at(
+                local_teacher,
+                (np.repeat(np.arange(selected.shape[0]), counts), columns.reshape(-1)),
+                probabilities,
+            )
         actions = self.actions[selected]
         chosen = np.searchsorted(catalog, actions).astype(np.int64)
         found = chosen < catalog.shape[0]
@@ -212,7 +233,12 @@ class TrainingBatch:
         found[found] = mask[np.flatnonzero(found), chosen[found]]
         if not found.all():
             raise ValueError("a chosen action is not in its own row's legal set")
-        return LocalLegal(catalog=catalog.astype(np.int64), mask=mask, chosen=chosen)
+        return LocalLegal(
+            catalog=catalog.astype(np.int64),
+            mask=mask,
+            chosen=chosen,
+            teacher=local_teacher,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +248,7 @@ class LocalLegal:
     catalog: np.ndarray  # int64 [K]: sorted catalog indices legal in any row
     mask: np.ndarray  # bool [rows, K]: catalog[j] is legal in row i
     chosen: np.ndarray  # int64 [rows]: position of the row's action in catalog
+    teacher: np.ndarray | None = None  # float32 [rows, K]: only when asked for
 
 
 def _gather_rows(
@@ -638,4 +665,5 @@ def apply_step_penalty(batch: TrainingBatch, penalty: float) -> TrainingBatch:
         seats=batch.seats,
         returns=(batch.returns - penalty * remaining).astype(np.float32),
         episode_ids=batch.episode_ids,
+        teacher=batch.teacher,
     )
