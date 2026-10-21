@@ -340,3 +340,47 @@ def test_an_older_seat_keeps_that_engine_s_fixed_answers_without_searching(
     )
     plain = NetworkSearchAgent(str(current), seed=0, rollouts=1, config=_RULES)
     assert plain.search_with_state(state, view, legal).searched
+
+
+def test_a_row_no_whole_action_reaches_is_no_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rows the older engine never offered score -inf and are left out of the
+    shortlist while any row is reached; with no whole action at all every
+    row scores -inf instead of failing."""
+
+    seat = NetworkSearchAgent(
+        _older_file(tmp_path), seed=0, candidates=5, config=_RULES
+    )
+    state, player = _first_turn()
+    view = _ENGINE.observe(state, player)
+    legal = _ENGINE.legal_actions(state, player)
+    offered = without_undo_actions(legal)
+    assert seat.older is not None
+    encoded = np.asarray(encode_player_view(view), dtype=np.int32)
+    monkeypatch.setattr(OlderTeacher, "wholes", lambda *_: ((), []))
+    assert np.all(np.isneginf(seat.older.row_scores(state, player, offered, encoded)))
+    monkeypatch.undo()
+
+    reached = offered[:2]
+    scores = np.array([0.0, -1.0] + [-np.inf] * (len(offered) - 2))
+    monkeypatch.setattr(NetworkSearchAgent, "_candidate_scores", lambda *_: scores)
+    plan = seat._shortlist(state, view, legal)
+    assert isinstance(plan, _Shortlist)
+    assert plan.candidates == reached
+
+
+def test_without_the_state_an_older_seat_answers_as_a_heuristic(
+    tmp_path: Path,
+) -> None:
+    seat = NetworkSearchAgent(_older_file(tmp_path), seed=0, config=_RULES)
+    state, player = _first_turn()
+    view = _ENGINE.observe(state, player)
+    legal = _ENGINE.legal_actions(state, player)
+    assert seat.choose_action(view, legal) in legal
+
+
+def test_an_unreadable_file_is_left_to_the_checkpoint_loader(tmp_path: Path) -> None:
+    junk = tmp_path / "junk.pt"
+    junk.write_bytes(b"not a checkpoint")
+    assert not reads_older_rows(junk)

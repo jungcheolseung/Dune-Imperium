@@ -152,12 +152,18 @@ def cached_older_network(path: str | Path) -> OlderNetwork:
 
 
 @lru_cache(maxsize=16)
-def _file_kind(path: str, modified: float) -> tuple[int, str]:
+def _file_kind(path: str, modified: float) -> tuple[int, str] | None:
+    """The file's codec version and architecture, or None when it cannot be
+    read so (``load_checkpoint`` then reports what is wrong with it)."""
+
     del modified  # part of the key so a rewritten file is read again
-    document = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
-    arch = document.get("arch")
-    kind = "mlp" if arch is None else str(arch.get("kind", "mlp"))
-    return int(document["action_codec_version"]), kind
+    try:
+        document = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+        arch = document.get("arch")
+        kind = "mlp" if arch is None else str(arch.get("kind", "mlp"))
+        return int(document["action_codec_version"]), kind
+    except (RuntimeError, ValueError, KeyError, TypeError, AttributeError, OSError):
+        return None
 
 
 def reads_older_rows(path: str | Path) -> bool:
@@ -166,8 +172,8 @@ def reads_older_rows(path: str | Path) -> bool:
     ``load_older_network`` reads)."""
 
     resolved = str(Path(path).expanduser())
-    codec_version, kind = _file_kind(resolved, os.path.getmtime(resolved))
-    return kind == "mlp" and codec_version < STEP_CODEC_VERSION
+    found = _file_kind(resolved, os.path.getmtime(resolved))
+    return found is not None and found[1] == "mlp" and found[0] < STEP_CODEC_VERSION
 
 
 def load_older_agent(path: str, *, seed: int = 0) -> OlderNetworkAgent:
@@ -266,19 +272,21 @@ class OlderTeacher:
         observation: np.ndarray,
     ) -> np.ndarray:
         """Each legal row's log probability under ``answer``'s distribution
-        (the softmax over the whole actions, summed onto their rows); a row
+        (the softmax over the whole actions, summed onto their rows), in
+        log-sum-exp form so a small probability never rounds to zero; a row
         no whole action reaches scores -inf. A search ranks its candidates
         by it."""
 
+        scores = np.full(len(legal_actions), -np.inf, dtype=np.float64)
         wholes, targets = self.wholes(state, player, legal_actions)
+        if not wholes:
+            return scores
         rows = [older_row(self.older.rows, whole) for whole in wholes]
         logits, _ = self.older.scores(observation, rows)
-        weights = np.exp(logits - logits.max())
-        weights /= weights.sum()
-        probabilities = np.zeros(len(legal_actions), dtype=np.float64)
-        np.add.at(probabilities, np.asarray(targets, dtype=np.int64), weights)
-        with np.errstate(divide="ignore"):
-            scores: np.ndarray = np.log(probabilities)
+        total = np.logaddexp.reduce(logits)
+        for target in set(targets):
+            mine = logits[[index for index, row in enumerate(targets) if row == target]]
+            scores[target] = np.logaddexp.reduce(mine) - total
         return scores
 
     def value(self, observation: np.ndarray) -> float:

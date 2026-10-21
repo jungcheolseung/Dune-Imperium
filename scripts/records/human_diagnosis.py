@@ -141,7 +141,13 @@ def _judge(args: tuple[str, Path, int, bool, int, int, Path]) -> str:
                 )
             search = searches[config.identifier]
             view = engine.observe(state, decision.seat)
-            probabilities = _probabilities(search.greedy, view, offered)
+            if search.older is not None:
+                # A file of a codec before v150 reads whole actions.
+                probabilities = search.older.answer(
+                    state, decision.seat, view, offered
+                ).probabilities
+            else:
+                probabilities = _probabilities(search.greedy, view, offered)
             chosen = offered.index(decision.chosen)
             top = [int(i) for i in np.argsort(-probabilities, kind="stable")[:3]]
             row: dict[str, object] = {

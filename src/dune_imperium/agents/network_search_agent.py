@@ -295,6 +295,8 @@ class NetworkSearchAgent:
             older = cached_older_network(path)
             self._older = OlderTeacher(older, seed=seed)
             self._answerer: _GreedyAnswer = OlderNetworkAgent(older, seed=seed)
+            # Every playout plays a fresh one (``_playout``).
+            self._walker = OlderNetworkAgent
             self.value_network = older.network
         else:
             # The greedy agent owns the cached network and the catalog (the
@@ -452,11 +454,15 @@ class NetworkSearchAgent:
         """Without a state to branch from, play the network greedily.
 
         The app's Family Atomics rule reads the state, so without one the
-        seat keeps the token.
+        seat keeps the token. An older codec's file reads whole actions,
+        which need the state, so its seat answers from the view as a
+        heuristic does (the play server's fallback after a failed search).
         """
 
         if self.family_atomics == "app":
             legal_actions = without_family_atomics(legal_actions)
+        if self._older is not None:
+            return self._older.fallback(None).choose_action(observation, legal_actions)
         return self._answerer.choose_action(observation, legal_actions)
 
     def choose_action_with_state(
@@ -582,9 +588,14 @@ class NetworkSearchAgent:
             state, observation.player, encoded, tuple(fresh)
         )
         order = np.argsort(-scores, kind="stable")
+        # A row no whole action reaches (an older codec's file: -inf) is no
+        # candidate while any row is reached; a current file's logits are
+        # always finite.
+        reached = [int(index) for index in order if np.isfinite(scores[index])]
+        ranked = reached or [int(index) for index in order]
         return _Shortlist(
             key=key,
-            candidates=tuple(fresh[int(index)] for index in order[: self.candidates]),
+            candidates=tuple(fresh[index] for index in ranked[: self.candidates]),
         )
 
     # -- expert iteration ---------------------------------------------------
@@ -660,9 +671,7 @@ class NetworkSearchAgent:
         # every chair: whole actions, that engine's fixed answers, its guard.
         walker: _GreedyAnswer | None = None
         if self._older is not None:
-            from dune_imperium.training.older_teacher import OlderNetworkAgent
-
-            walker = OlderNetworkAgent(self._older.older, seed=chance_seed)
+            walker = self._walker(self._older.older, seed=chance_seed)
         for _ in range(self.max_rollout_steps):
             if state.phase is GamePhase.FINISHED or past_horizon(state, horizon):
                 break
