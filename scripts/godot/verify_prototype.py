@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-from dune_imperium.godot_client.launch import PROJECT, ensure_godot
+from dune_imperium.godot_client.launch import PROJECT, ensure_godot, godot_environment
 from dune_imperium.paths import PROJECT_ROOT, TMP_DIR
 
 
@@ -34,7 +34,7 @@ def main() -> int:
     if not 1 <= len(seeds) <= 8 or not all(seed.isdecimal() for seed in seeds):
         parser.error("--seeds requires one to eight nonnegative integers")
     binary = ensure_godot(args.godot)
-    env = dict(os.environ, PYTHONPATH=str(PROJECT_ROOT / "src"))
+    env = godot_environment(dict(os.environ, PYTHONPATH=str(PROJECT_ROOT / "src")))
     # A fresh checkout has no imported resources (.godot/) yet, and the
     # script checks below crash without them; import as the launcher does.
     (TMP_DIR / "godot").mkdir(parents=True, exist_ok=True)

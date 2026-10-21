@@ -168,6 +168,23 @@ def test_local_assets_take_precedence_over_main_checkout(tmp_path: Path) -> None
     assert launch.find_assets(tmp_path) == assets
 
 
+@pytest.mark.parametrize("platform_name", ["linux", "win32"])
+def test_godot_keeps_its_profile_inside_the_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform_name: str,
+) -> None:
+    monkeypatch.setattr(launch, "TMP_DIR", tmp_path)
+    monkeypatch.setattr(sys, "platform", platform_name)
+    env = launch.godot_environment({"HOME": "/home/player", "APPDATA": "C:/Users/p"})
+    keys = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"]
+    if platform_name == "win32":
+        keys += ["APPDATA", "LOCALAPPDATA"]
+    else:
+        assert env["APPDATA"] == "C:/Users/p"
+    for key in keys:
+        assert Path(env[key]).is_relative_to(tmp_path / "godot" / "profile")
+    assert env["HOME"] == "/home/player"
+
+
 def test_failed_server_start_is_stopped_before_the_launcher_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -189,7 +206,10 @@ def test_failed_server_start_is_stopped_before_the_launcher_returns(
             stopped.append(True)
             return Stopped("already", 0, 1, True)
 
+    environments: list[dict[str, str]] = []
+
     def imported(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        environments.append(kwargs["env"])
         return subprocess.CompletedProcess([], 0)
 
     monkeypatch.setattr(launch, "ServerProcess", FailedServer)
@@ -198,3 +218,5 @@ def test_failed_server_start_is_stopped_before_the_launcher_returns(
     monkeypatch.setattr(launch, "free_port", lambda: 8123)
     assert launch.main(["--godot", str(binary), "--smoke"]) == 1
     assert stopped == [True]
+    # The import writes Godot's editor settings into the project's tmp/.
+    assert Path(environments[0]["XDG_CONFIG_HOME"]).is_relative_to(tmp_path)

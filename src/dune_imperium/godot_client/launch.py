@@ -11,7 +11,7 @@ import sys
 import tempfile
 import urllib.request
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from dune_imperium.godot_client.host_config import (
@@ -108,6 +108,28 @@ def ensure_godot(explicit: str | None = None) -> Path:
         archive.unlink(missing_ok=True)
 
 
+def godot_environment(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Keep Godot's settings, logs and caches inside the project's tmp/.
+
+    Godot keeps its editor settings and a project's user:// data under the
+    user's profile (the XDG folders on Linux, %APPDATA% and %LOCALAPPDATA% on
+    Windows); no file of this project lives outside its folder (user
+    decision 2026-10-06). macOS keeps them in ~/Library regardless.
+    """
+    env = dict(os.environ if base is None else base)
+    profile = TMP_DIR / "godot" / "profile"
+    env.update(
+        XDG_CONFIG_HOME=str(profile / "config"),
+        XDG_DATA_HOME=str(profile / "data"),
+        XDG_CACHE_HOME=str(profile / "cache"),
+    )
+    if sys.platform == "win32":
+        env.update(
+            APPDATA=str(profile / "roaming"), LOCALAPPDATA=str(profile / "local")
+        )
+    return env
+
+
 def free_port() -> int:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -176,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
                  str(PROJECT), "--log-file", str(log_dir / "import-engine.log"),
                  "--import"],
                 stdout=log, stderr=subprocess.STDOUT, timeout=120,
-                creationflags=no_window_flags(),
+                creationflags=no_window_flags(), env=godot_environment(),
             )
         if imported.returncode:
             message = f"Godot 첫 실행 준비가 실패했습니다. {log_dir / 'import.log'}"
@@ -232,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         with (log_dir / "process.log").open("wb") as log:
             client = subprocess.Popen(
                 command, cwd=PROJECT_ROOT, stdout=log, stderr=subprocess.STDOUT,
-                creationflags=no_window_flags(),
+                creationflags=no_window_flags(), env=godot_environment(),
             )
             if control is None:
                 return client.wait()

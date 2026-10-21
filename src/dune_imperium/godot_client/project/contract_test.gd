@@ -74,7 +74,8 @@ func play_first() -> bool:
 		await table._choose_ref(action.arguments.card_id)
 		await table._choose_ref(action.arguments.space_id)
 		if table.model.signature() != before:
-			return true
+			# The space pick followed the card pick: no card is left held.
+			return check(table.model.picked_card().is_empty(), "a unique placement sends its card and its space")
 	else:
 		for select in table.content.find_children("*", "OptionButton", true, false):
 			var offered = select.get_meta("action_indices", [])
@@ -119,6 +120,9 @@ func run() -> void:
 			return
 		var login = await host.call_json(HTTPClient.METHOD_POST, "/auth/admin", {"key": "a".repeat(48)})
 		if not check(login.ok and not host.cookies.header(url, "/games", Time.get_unix_time_from_system()).is_empty(), "administrator cookie stored from HTTP response"):
+			return
+		var saved = FileAccess.get_file_as_string(host.cookie_file)
+		if not check(not saved.contains("dune_admin") and not saved.contains("a".repeat(48)), "the administrator key stays in memory, never in the cookie file"):
 			return
 	var created = await host.call_json(HTTPClient.METHOD_POST, "/games", {"seats": ["app_ai", "human", "app_ai", "human"], "game_seed": 11, "ai_pace": "instant"})
 	if not check(created.ok, "non-first human game"):

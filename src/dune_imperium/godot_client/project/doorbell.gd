@@ -12,6 +12,9 @@ var buffer = PackedByteArray()
 var retry_at = 0
 var live = false
 var last_event: Dictionary = {}
+# The origin this connection was opened to; its request carries that
+# origin's cookies only, even if the table switches servers meanwhile.
+var origin = ""
 
 
 func start(id: String) -> void:
@@ -36,7 +39,8 @@ func _set_live(value: bool) -> void:
 
 
 func _connect() -> void:
-	var url = api.base_url
+	origin = api.base_url
+	var url = origin
 	var secure = url.begins_with("https://")
 	var authority = url.trim_prefix("https://").trim_prefix("http://")
 	var host = authority.get_slice(":", 0)
@@ -75,7 +79,10 @@ func _process(_delta: float) -> void:
 			_retry()
 			return
 		var path = "/games/" + game_id + "/events"
-		var headers = api.headers(path)
+		if origin != api.base_url:
+			_retry()
+			return
+		var headers = api.request_headers(origin, path)
 		headers.append("Accept: text/event-stream")
 		if client.request(HTTPClient.METHOD_GET, path, headers) != OK:
 			_retry()

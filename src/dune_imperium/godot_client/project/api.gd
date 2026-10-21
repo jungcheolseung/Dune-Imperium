@@ -11,18 +11,30 @@ const CookieJar = preload("res://cookie_jar.gd")
 const COOKIE_FILE = "res://../../../../local/godot-cookies.json"
 var cookies = CookieJar.new()
 var cookie_file = COOKIE_FILE
+# Seat cookies outlive a restart, as in a browser. The administrator key never
+# reaches the disk: the launcher hands it over again whenever it starts a server.
+const MEMORY_ONLY_COOKIES = ["dune_admin"]
 
 
 func _ready() -> void:
 	if FileAccess.file_exists(cookie_file):
 		var data = JSON.parse_string(FileAccess.get_file_as_string(cookie_file))
 		if data is Array:
-			cookies.entries = data.filter(func(cookie): return cookie is Dictionary and cookie.has_all(["origin", "path", "name", "value", "expires", "secure"]))
+			cookies.entries = data.filter(func(cookie): return cookie is Dictionary and cookie.has_all(["origin", "path", "name", "value", "expires", "secure"]) and str(cookie.name) not in MEMORY_ONLY_COOKIES)
+			# An older build kept the administrator key here: rewrite at once.
+			if cookies.entries.size() != data.size():
+				_save_cookies()
 
 
 func headers(path: String) -> PackedStringArray:
+	return request_headers(base_url, path)
+
+
+# Headers for a request to `origin`, which a long-lived connection (the SSE
+# doorbell) pins when it connects: never another origin's cookies.
+func request_headers(origin: String, path: String) -> PackedStringArray:
 	var result: PackedStringArray = ["Content-Type: application/json"]
-	var cookie = cookies.header(base_url, path.get_slice("?", 0), Time.get_unix_time_from_system())
+	var cookie = cookies.header(origin, path.get_slice("?", 0), Time.get_unix_time_from_system())
 	if not cookie.is_empty():
 		result.append("Cookie: " + cookie)
 	return result
@@ -35,10 +47,21 @@ func _remember_headers(response: PackedStringArray, origin: String) -> void:
 			cookies.remember(origin, header.substr(11).strip_edges(), Time.get_unix_time_from_system())
 			changed = true
 	if changed:
-		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(cookie_file.get_base_dir()))
-		var file = FileAccess.open(cookie_file, FileAccess.WRITE)
-		if file != null:
-			file.store_string(JSON.stringify(cookies.entries))
+		_save_cookies()
+
+
+func _save_cookies() -> void:
+	var now = Time.get_unix_time_from_system()
+	cookies.entries = cookies.entries.filter(func(cookie): return float(cookie.expires) < 0 or float(cookie.expires) > now)
+	var kept = cookies.entries.filter(func(cookie): return str(cookie.name) not in MEMORY_ONLY_COOKIES)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(cookie_file.get_base_dir()))
+	var file = FileAccess.open(cookie_file, FileAccess.WRITE)
+	if file != null:
+		# Owner-only before anything is written, where the platform has Unix
+		# permissions; elsewhere the project folder's own access applies.
+		FileAccess.set_unix_permissions(cookie_file, FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_WRITE_OWNER)
+		file.store_string(JSON.stringify(kept))
+		file.close()
 
 
 func call_json(method: int, path: String, data: Dictionary = {}) -> Dictionary:
