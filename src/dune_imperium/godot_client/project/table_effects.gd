@@ -129,7 +129,9 @@ func _next() -> void:
 		"scouts": title = table.model.ui("render.scouts_decision_secrets") if event.ref == "secrets" else table.model.name_of(event.ref)
 		"decision": title = table.model.native("내 차례 · ") + table.model.prompt()
 		"played", "acquired":
-			title = table.model.seat_name(int(event.seat)) + " · " + table.model.label("EVENT_LABELS", "card_acquired" if event.kind == "acquired" else "card_played") + "\n" + table.model.name_of(event.ref)
+			# No event is named card_played; the browser's cue says "카드 사용" (effects.js).
+			var heading = table.model.label("EVENT_LABELS", "card_acquired") if event.kind == "acquired" else table.model.ui("effects.played")
+			title = table.model.seat_name(int(event.seat)) + " · " + heading + "\n" + table.model.name_of(event.ref)
 			table._picture(body, table._image_path(table.model.entry(event.ref)), Vector2(88, 125))
 		"resources":
 			var words: PackedStringArray = []
