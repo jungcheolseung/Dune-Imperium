@@ -134,6 +134,16 @@
 | [OQ-110](#oq-110--공개-차례-도중에-나온-운항-카드-3의-설득력) | 공개 차례 도중에 나온 운항 카드 3의 설득력 | `DECIDED` |
 | [OQ-111](#oq-111--두-단계-행동의-중간-상태) | 두 단계 행동의 중간 상태 | `DECIDED` |
 | [OQ-112](#oq-112--보상-한-줄-안의-아이콘-순서) | 보상 한 줄 안의 아이콘 순서 | `DECIDED` |
+| [OQ-113](#oq-113--효과-없는-intrigue-금지-원칙과-원판ix-디자이너-판정-다섯-건) | 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건 | `OPEN` |
+| [OQ-114](#oq-114--choose-two는-서로-다른-둘인가) | "Choose two:"는 서로 다른 둘인가 | `OPEN` |
+| [OQ-115](#oq-115--baron-harkonnen의-masterstroke-공개가-의무인가-넷을-어떻게-세나) | Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나 | `OPEN` |
+| [OQ-116](#oq-116--the-voice를-쓸-control-marker가-없을-때) | The Voice를 쓸 Control marker가 없을 때 | `OPEN` |
+| [OQ-117](#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가) | Bindu Suspension을 Reveal turn 대신 낼 수 있는가 | `OPEN` |
+| [OQ-118](#oq-118--each-opponent-discards-two-cards에서-손에-한-장뿐일-때) | "each opponent discards two cards"에서 손에 한 장뿐일 때 | `OPEN` |
+| [OQ-119](#oq-119--ilesa-ecaz의-둘째-turn을-세는-법) | Ilesa Ecaz의 "둘째 turn"을 세는 법 | `OPEN` |
+| [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `OPEN` |
+| [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) | dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때 | `OPEN` |
+| [OQ-122](#oq-122--round-start-효과의-순서) | Round Start 효과의 순서 | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -1901,3 +1911,136 @@
   `test_pauses.py`(창·줄·사건), `tests/unit/records/test_record_migration.py`(옛 기록에서 줄을 빼고 다리가 되살림),
   `tests/server/test_turn_end.py`·`test_undo.py`(붙잡힌 단위·되돌리기), `scripts/e2e/combat_result.py`(화면).
 - 재개 조건: 공식 FAQ가 보상 한 줄 안의 순서를 정할 때.
+
+**OQ-113부터(2026-10-22): 원판 Dune: Imperium과 Rise of Ix.** P0([base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 12절)에서 규칙 명세
+[imperium-base.md](imperium-base.md)·[rise-of-ix.md](rise-of-ix.md)를 쓰며 모은 질문이다. 사용자 결정(2026-10-21, 계획 10.4절 2)대로 한꺼번에 묻고,
+판정이 나오기 전에는 P1(엔진)에 들어가지 않는다. 각 항목은 공식 원문, 앱의 처리(보조 증거, 2026-10-03 사용자 결정), 기존 원칙, 추천을 함께 적는다.
+
+## OQ-113 — 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건
+
+- 상태: `OPEN` (2026-10-22 P0, 사용자 판정 대기)
+- 공식 출처: "To play an Intrigue card, you must meet its conditions and pay its costs." `[FAQ p. 2]`
+- 프로젝트 원칙(2026-10-06 사용자, worklog "효과 없는 책략 play 금지", codec v138): 책략은 인쇄된 조건을 갖추고 비용을 낼 수 있고, **효과 중 하나라도
+  지금 무언가를 바꿀 수 있을 때만** 낸다. 같은 날 막은 예에 "모두 6인 진영의 Influence 줄", "Agent를 보낸 뒤의 Emperor's Invitation·Twisted
+  Resourceful 아이콘", 덱·버린 더미가 빈 draw가 있다.
+- 부딪치는 디자이너 판정(커뮤니티 정리본 2026-06-07판; OQ-057은 디자이너 판정을 일괄 채택했다):
+  1. Know Their Ways는 Fremen track 맨 위에서도 낸다(효과는 불발) — BGG Forum.
+  2. Water of Life는 뽑을 카드가 없어도 낸다 — BGG Forum.
+  3. Dispatch an Envoy는 Reveal turn에도, Agent를 보낸 뒤에도 낸다(아이콘은 붙지 않는다) — BGG Forum.
+  4. Infiltrate는 Agent를 놓은 뒤에도 낸다 — 정리본 편집자의 추론("No specific source").
+  5. Advanced Weaponry(Ix)의 Plot은 dreadnought가 이미 둘이어도 3 Solari를 내고 낸다 — 편집자의 추론.
+- 앱 처리: 확인하지 않았다(원칙의 적용 문제라 앱이 답을 바꾸지 않는다; 2026-10-06 원칙도 앱과 같은 쪽으로 정한 것이다 — 그날 worklog의 "앱이 맞는 것 같은데??").
+- 추천: **원칙대로 막는다.** 다섯 모두 2026-10-06에 막은 경우와 모양이 같다(1은 6칸 진영의 Influence, 3·4는 Agent를 보낸 뒤의 아이콘 효과, 2는 빈
+  덱의 draw, 5는 얻을 수 없는 dreadnought). 원칙과 맞는 디자이너 판정(Charisma를 Persuasion을 안 써도 냄, Rapid Mobilization을 0개로 냄 — garrison에
+  troop이 있을 때, Urgent Mission을 Agent가 남지 않아도 냄 — 보드에 Agent가 있을 때)은 그대로 채택한다. 2026-10-06 판정이 Impress와 "any number"의 0을
+  남긴 것과 같은 선이다.
+- 판정: (대기)
+
+## OQ-114 — "Choose two:"는 서로 다른 둘인가
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 인쇄: Machinations(원판 Conflict) 1위 "Choose two:" 아래 진영 Influence 아이콘 넷, Battle for Arrakeen(원판 Conflict) 2위 "Choose two:" 아래
+  Intrigue·spice 2·3 Solari 셋, Shuttle Fleet(Ix Tech) 획득 효과 "Choose two:" 아래 진영 Influence 넷 `[card faces]`. 어느 카드도 "different"를 적지 않는다.
+- 공식 문서: 침묵. "Gain two Influence" 아이콘이 한 진영이라는 문장 `[DI p. 16]`은 다른 아이콘(두 chevron)의 정의다.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): Machinations 1위는 진영 track 개체 둘을 고르게 해 서로 다른 진영 둘이다(`ConflictAbilities.BaseSet.MachinationsFirstAbility`). Battle for Arrakeen 2위는 셋 가운데 정확히 둘을 고르게 하고 고른 번호마다 한 번만 지급한다(`BattleForArrakeenSecondAbility`; 같은 번호를 두 번 보낼 수 없는지는 화면 쪽을 읽지 않아 확인 못 함). Shuttle Fleet 획득 효과는 앱 속성에 `AnyTwoDifferentRanks`(서로 다른 진영 둘)로 적혀 있다.
+- 기존 원칙: "Choose Two"는 둘을 먼저 정하고 나서 해결한다(OQ-057 (4), 디자이너 판정; Stitched Horror "보상 넷 중 둘"). Uprising의 Propaganda는 "서로 다른
+  진영 둘"이 인쇄돼 있다.
+- 추천: **나열된 것 가운데 서로 다른 둘**, 둘을 먼저 정하고 해결(OQ-057 (4)). "Choose two"는 목록에서 두 항목을 고르는 말로 읽는다(내 해석).
+- 판정: (대기)
+
+## OQ-115 — Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 인쇄: "At start of game, secretly choose 2 Factions. When you deploy 4+ troops to the Conflict in a turn, reveal your choices and gain one Influence with
+  each." `[Baron Vladimir Harkonnen card]`
+- 공식: token 넷 가운데 둘을 진영 면이 아래로 가게 두고 나머지 둘은 보이지 않게 상자로 `[DI p. 13]`. 진영은 모든 setup 뒤 첫 라운드 전에 고르고, 공개와
+  Influence는 게임에 한 번만 `[FAQ p. 1]`. 효과는 "you may"·화살표가 없으면 의무 `[FAQ p. 3]`.
+- 질문: (1) 한 turn에 troop 넷 이상을 배치한 첫 turn에 반드시 공개하나, 나중 turn으로 미룰 수 있나. (2) "4+ troops ... in a turn"의 셈.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): (1) 공개는 **자동**이다 — 조건이 차면 엔진이 고르기 없이 공개하고 Influence를 준다(`TriggeredAbilities.BaseSet.MasterstrokeAbility2`, 비용 `NoCostAction`, 대상 없음). 화면이 배치를 확정하기 전에 "넷째 troop을 배치하면 공개된다"고 묻는 확인 창이 있을 뿐이다. (2) 셈은 좌석 속성 `TroopsDeployedThisTurn`: `DeployUnits`가 옮긴 troop 수를 더하는 누적값이고(어디서 배치했든; Round Start의 Control 방어 배치 `GenerateConflictPhase.DeployControlTroops`도 더함), 그 좌석의 turn 정리(`PlayerTurnPhase.Cleanup`)에서만 0으로 돌린다 — 코드대로라면 turn 밖에 배치한 troop이 다음 turn의 셈에 이어진다(실행해 보지는 않음). retreat해도 줄지 않는다. (3) 진영 고르기는 setup의 `AdditionalLeaderSetup` 단계(첫 라운드 전), 진영 track 개체 넷 가운데 둘(같은 진영 둘은 불가). 공개는 한 번(`ResolveMasterstroke`가 비밀 진영 속성을 지운다).
+- 추천: (1) **의무** — 문장에 "may"가 없다 `[FAQ p. 3]`; FAQ의 "You may only reveal your choices and gain Influence one time"은 횟수 제한으로 읽는다(내 해석).
+  (2) 그 turn에 배치한 troop이 Conflict에 동시에 넷 이상 있는 순간(Coercive Negotiation·Distraction의 디자이너 판정 셈, OQ-029·OQ-016; 앱의 누적 셈과 다르다 — 앱은 retreat했다 다시 배치한 troop을 두 번 센다). troop만 센다
+  — dreadnought는 아니다 `[Rise of Ix p. 6]`. 자기 turn 밖(Round Start의 Control 방어)은 turn이 아니므로 세지 않는다(OQ-063). 고른 진영이 6칸이면 그
+  Influence는 없다(OQ-060).
+- 판정: (대기)
+
+## OQ-116 — The Voice를 쓸 Control marker가 없을 때
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 인쇄: "Choose any board space. Opponents can't send their next Agents there this round." `[The Voice card]`
+- 공식: "Use one of your available Control markers to mark the board space you choose, then remove it on your next turn." `[DI p. 13]`
+- 질문: 내 Control marker 셋이 모두 Control 칸 깃발에 있을 때(또는 The Voice 두 장을 한 라운드에 써서 표식이 모자랄 때) The Voice의 효과가 있는가.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): Control marker나 supply를 요구하지 않는다(`ActivatedAbilities.BaseSet.TheVoiceAbility::Cost` = `NoCostAction`). 다만 앱의 막힘은 **룰북과 다르다**: 고른 칸은 그 라운드의 Recall까지 Voice 주인을 뺀 모든 상대의 모든 Agent 배치를 막는다(`RoundPhase.Recall`에서 `Blocked`를 지움). 룰북은 "remove it on your next turn ... only stops opponents from sending Agents to that board space for one turn" `[DI p. 13]`이므로 막힘의 길이는 룰북을 따른다.
+- 추천: **효과는 그대로**, 표식은 기억을 돕는 장치로 본다 — 카드 문장은 표식을 조건으로 두지 않는다(내 해석). 엔진은 막힌 칸을 상태로 기억한다. 막힘이
+  풀리는 때는 각 상대의 다음 Agent 배치와 Voice 주인의 다음 turn 가운데 먼저 오는 때다([imperium-base.md](imperium-base.md) 13.1, 룰북과 디자이너 판정
+  둘을 함께 읽은 것).
+- 판정: (대기)
+
+## OQ-117 — Bindu Suspension을 Reveal turn 대신 낼 수 있는가
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 인쇄: "At the start of your turn: [draw]. You may pass your turn. (Instead of taking an Agent or Reveal turn.)" `[Bindu Suspension card]`
+- 공식: "You must play this Intrigue card at the start of your Agent turn, before doing anything else. When you do, draw a card, then immediately end your
+  turn." `[DI p. 13]` 카드는 일반 규칙을 바꿀 수 있다 `[DI p. 6]`.
+- 질문: Agent가 남지 않아 이번 turn이 Reveal turn이어야 하는 좌석이 Bindu로 turn을 넘길 수 있나. (낸 뒤 turn을 계속할 수 없다는 것은 룰북이 정한다:
+  "then immediately end your turn".)
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 자기 turn을 시작할 때(아직 Agent·Reveal을 정하기 전, 비용 `IsTakingTurn(Undetermined)`)만 낼 수 있고, **남은 Agent는 보지 않는다** — Agent가 없는 좌석도 낼 수 있다는 쪽이다(그때 실제로 선택지가 뜨는지는 화면 흐름을 다 따라가지 못해 확인 못 함). 카드 1장을 뽑은 뒤 "turn을 넘기겠는가"를 묻고, 넘기면 정리로 가며, 넘기지 않으면 turn이 이어진다 — 이 마지막 점은 룰북의 "then immediately end your turn"과 다르므로 룰북을 따른다.
+- 추천: **넘길 수 있다** — 카드면이 "Instead of taking an Agent or Reveal turn"이라고 하고, 룰북 clarification의 "Agent turn"은 낼 때("turn을 시작하며 다른
+  무엇보다 먼저")를 말한 것으로 읽는다(내 해석). 엔진에서는 Bindu를 낸 뒤 고를 수 있는 것이 "턴 종료"뿐이다(OQ-095의 한 번 누르기).
+- 판정: (대기)
+
+## OQ-118 — "each opponent discards two cards"에서 손에 한 장뿐일 때
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 인쇄: Reverend Mother Mohiam "If you have another Bene Gesserit card in play, each opponent discards two cards." `[card face]`
+- 공식: 상대가 버릴 카드를 고르고 내 왼쪽부터 시계 방향 `[FAQ p. 3]`; discard는 손의 카드 `[FAQ p. 2]`. Test of Humanity에서는 "they can't discard if their
+  hand is empty" `[DI p. 13]`. 두 장 중 일부만 할 수 있는 경우는 침묵.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 상대마다 `min(2, 손의 장수)`장을 버린다 — 한 장이면 그 한 장, 없으면 아무것도 없다("버릴 카드가 없었다" 로그가 따로 있다). 각 상대가 자기 카드를 한 장씩 고르고, 카드 주인 다음 좌석부터 순서대로(`PlayAbilities.BaseSet.ReverendMotherMohiamAbility`·`...DeferredAbility`).
+- 추천: **할 수 있는 만큼 버린다**(한 장이면 한 장) — 효과는 의무이고 `[FAQ p. 3]`, 강제 효과는 할 수 있는 데까지 한다(내 해석). 비용으로 "두 장 버리기"
+  (Ixian Probe, Ix-Guild Compact)는 다르다: 비용은 다 내야 효과를 얻는다 `[DI p. 9]`.
+- 판정: (대기)
+
+## OQ-119 — Ilesa Ecaz의 "둘째 turn"을 세는 법
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 인쇄: "Round Start: Set aside a card from your hand. At the start of your second turn in a round, reveal that card and return it to your hand. If you use
+  it to send an Agent this turn: ..." `[Ilesa Ecaz card]`. 첫 turn에 Reveal turn을 하면 따로 둔 카드를 공개 카드에 더한다 `[Rise of Ix p. 10]`.
+- 질문: (a) Bindu Suspension(원판 Intrigue)으로 넘긴 turn을 turn으로 세나. (b) Weirding Way(Ix)의 "You may take another turn immediately after this one"으로
+  하는 turn을 세나.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 좌석마다 `TurnOfRound` 셈을 turn이 열릴 때마다(`PlayerTurnPhase.PrePlayerTurn`) 1 올리고 Recall에서 0으로 돌리며, `OneStepAheadTurnAbility`는 그 값이 2인 turn 시작에 돈다. Bindu Suspension으로 넘긴 turn도(넘기기는 셈을 올린 뒤에 정해진다), Weirding Way의 추가 turn도(같은 좌석에 새 turn 단계가 열린다) 센다. 따로 두기는 모두 5장을 뽑고 Holtzman Engine·Shuttle Fleet가 돈 뒤다(`RoundSetupFinishedIlesa`).
+- 추천: **둘 다 센다.** Bindu는 "pass your turn"이고 Weirding Way는 "take another turn"이라 둘 다 turn이다(내 해석).
+- 판정: (대기)
+
+## OQ-120 — 공개한 Unload 카드를 같은 Reveal turn에 trash하면
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 공식: Unload Reveal box는 Reveal turn에 공개할 때(이때는 "ignore the Unload icon, and gain its Reveal effects normally"), 그 카드를 discard할 때, trash할
+  때 얻는다 `[Rise of Ix pp. 7, 12]`. 디자이너 판정: trash되는 카드의 Unload는 trash되는 중에 일어난다(BGG Forum).
+- 상황: Reveal turn에 Unload 카드(예: CHOAM Delegate, 3 Solari)를 공개해 Reveal box를 얻은 뒤, 같은 turn에 Disposal Facility(Ix Tech)나 Archduke Armand
+  Ecaz의 Coordination으로 in play의 그 카드를 trash한다.
+- 질문: trash로 Reveal box를 한 번 더 얻는가.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 다시 준다 — `UnloadAbility`는 "이미 공개했다"를 보지 않고 그 카드의 Reveal 능력을 돌리며, Disposal Facility와 Armand Ecaz의 Coordination은 모두 `TrashCard`를 쓰고 `TrashCard`는 어느 구역의 카드든 `ImperiumTrashed`를 낸다. discard 쪽은 `Discard` 행동이 손(또는 덱)에서 버릴 때만 Unload를 연다; 라운드 끝 정리는 `Move`라 열지 않는다.
+- 추천: **또 얻는다.** "when you trash the card"는 공개와 별개의 사건이고 조건을 달지 않는다 `[Rise of Ix p. 7]`; "ignore the Unload icon"은 공개할 때 Reveal box를 한 번만 얻는다는 말로 읽는다(내 해석). 디자이너 판정("Unload effects are of course still activated as they are being trashed")과 앱도 같은 쪽이다. Clean Up은 discard가 아니므로 Unload를 열지 않는다(`[FAQ p. 2]` discard = 손의 카드).
+- 판정: (대기)
+
+## OQ-121 — dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 공식: dreadnought가 있는 Conflict를 이기면 dreadnought가 없는 Control 칸 하나를 골라야 하고, 지배는 다음 Combat 단계 끝까지다. 룰북 예: 지난 라운드의
+  dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, "as the Combat phase ends" 지난 dreadnought가 garrison으로 갔다 `[Rise of Ix p. 6]`.
+- 질문(엔진 단계): (1) 승자가 지배 칸을 고르는 결정은 승자의 보상 줄 하나인가(인쇄 보상과 순서 자유, OQ-112), 보상 뒤 따로인가. "When you win a Conflict"
+  Intrigue(To the Victor…, Demand Respect, Strategic Push)·Windtraps·Detonation Devices와의 순서. (2) 지난 라운드 dreadnought가 garrison으로 가는 단계:
+  Conflict 끝 Intrigue 창과 정리(troop을 supply로, marker 0) 앞인가 뒤인가.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): (1) 승자의 지배 고르기는 인쇄 보상(`ResolveCombat`)을 다 준 뒤 마지막 Combat 창(`PlayCombatResolutionIntrigueCards`)에서 승자가 고르는 지연 능력이다(`ConflictAbilities.RiseOfIx.DreadnoughtControlAbility`); Windtraps는 그 창이 열릴 때 자동으로, Detonation Devices는 같은 고르기 안의 "지배 대신 VP" 확인이다. (2) **앱은 룰북과 다르다**: 놓은 dreadnought를 **그 라운드의** Recall에서 garrison으로 돌린다(`RoundPhase.Recall`, 화면 안내 "It will return to its owner's garrison at the end of the round") — 그래서 앱에서는 지난 라운드의 dreadnought가 칸에 남아 있는 일이 없다. 룰북은 "until the end of the next Combat phase"이고 그 예가 바로 지난 라운드의 dreadnought가 남은 경우다 `[Rise of Ix p. 6]`.
+- 추천: (1) **승자의 인쇄 보상을 모두 받은 뒤, Conflict 끝 Intrigue 창 앞에 승자 혼자의 단계**로 둔다(Detonation Devices의 VP 고르기도 그 단계 안). 지배는 카드에 인쇄된 보상이 아니라 이긴 결과로 생기는 규칙이라 OQ-112의 보상 줄에 섞지 않는다(내 해석; 앱의 순서와 같다). (2) **룰북대로 다음 Combat 단계 끝**에, 그 단계의 보상·Conflict 끝 창·정리(troop을 supply로) 다음에 garrison으로 — 새 승자는 아직 남은 dreadnought의 칸을 고를 수 없다(룰북 예). 앱과 다르다는 것을 명세에 적는다.
+- 판정: (대기)
+
+## OQ-122 — Round Start 효과의 순서
+
+- 상태: `OPEN` (2026-10-22 P0)
+- 공식: Round Start는 Conflict 공개 → 각자 5장 뽑기 `[DI p. 8]`, Control 방어 배치는 공개에 이어서 `[DI p. 10]`(OQ-072의 공개 → 방어 → 뽑기). 뒤집은 Tech는
+  "At the start of the next round (during Phase 1: Round Start)" 되돌린다 `[Rise of Ix p. 4]`. "Round Start:" 능력: Holtzman Engine(카드 1장), Shuttle Fleet
+  (2 Solari), Ilesa Ecaz(손의 카드 하나를 따로 둔다) `[card faces]`.
+- 질문: 이 효과들이 공개·방어·뽑기와 어떤 순서이고, 좌석 사이 순서는 무엇인가.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): Round Start 시작 → Conflict 공개 → 좌석 순서로 각자 5장 → `RoundSetupFinished`(Holtzman Engine의 1장, Shuttle Fleet의 2 Solari) → `RoundSetupFinishedIlesa`(Ilesa의 따로 두기 — Holtzman로 뽑은 카드도 둘 수 있다) → turn. 뒤집은 Tech는 앞 라운드 Recall에서 되돌린다(룰북은 Round Start). 좌석 사이 순서는 좌석 목록 순서로 보이며 First Player부터인지는 확인 못 함. (Control 방어 배치는 원판 앱 확인 agent가 `GenerateConflictPhase.DeployControlTroops`로 찾았다.)
+- 추천: **공개 → Control 방어 → 각자 5장 → 뒤집은 Tech 되돌리기 → Round Start 능력(Holtzman Engine·Shuttle Fleet) → Ilesa의 따로 두기**, 좌석 사이는 First Player부터 시계 방향(OQ-002·OQ-102와 같은 좌석 순서). 5장 뒤로 두는 것은 "Set aside a card from your hand"가 이번 라운드 손을 뜻하기 때문이고(내 해석), Ilesa를 맨 뒤에 두는 것은 앱과 같다. Tech 되돌리기는 룰북대로 Round Start에 두되 그 앞에 아무 결정이 없으므로 앱(Recall)과 결과가 같다.
+- 판정: (대기)
