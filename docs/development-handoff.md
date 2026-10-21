@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-21 (엔진은 B단계 병합 codec v150; 재학습 (가) 선생 어댑터 병합; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝)
+기준일: 2026-10-21 (엔진은 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 재학습 (가) 선생 어댑터 병합; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,16 +28,16 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`) |
 | pytest | 8,198개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 2분 23초, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 553파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `codex/windows-validation` 병합 트리(68종 모두 통과, 469초) |
-| action codec | **v150** (다음 번호 v151) |
+| 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `reveal-line-names` 브랜치(68종 모두 통과, 427초) |
+| action codec | **v151** (다음 번호 v152). v151은 상태 이름만 바꿨고 행동 줄은 v150과 같다(망·증류 자료·체크포인트 그대로) |
 | 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
 | action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,311 |
 | 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `0098fbb6…`; 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
-| 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). **v150에서는 4,311줄 가운데 84줄만 학습한 줄**(나머지 결정은 휴리스틱으로) — v150을 플레이 서버에 올리기 전에 재학습. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
+| 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). **v150 이후(지금 v151)에는 4,311줄 가운데 84줄만 학습한 줄**(나머지 결정은 휴리스틱으로) — v150을 플레이 서버에 올리기 전에 재학습. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
 | 에셋 저장소 | `c4cf579` (2026-10-12 push) |
 
 ## 기기 분담 (사용자 결정 2026-10-21)
@@ -51,7 +51,7 @@
 | Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버, git 밖 자료(아래)를 읽는 엔진 관문. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
 | 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
 
-- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v150-14c08062/`(기보 묶음, exact 2,000의 기준),
+- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v151-bb05c259/`(기보 묶음, exact 2,000의 기준),
   `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
   재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 옮긴다(`tmp/transfer/gate-data-2026-10-21.tar.gz`에 2026-10-21판을 묶어 두었다).
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
@@ -78,6 +78,9 @@
   `check_contract_terms`가 한다. 브라우저 카드 표 전체·codec 144개 조합·`FEATURE_DIGEST`·app 스크립트 기록이 바이트까지 같다. 이로써 효과 조각
   엔진 전환 계획([composed-effects-plan.md](composed-effects-plan.md))의 B단계 "함께 할 일"(합계 대신 기록 조각)까지 끝났다; 남은 것은 C단계(새
   콘텐츠)와 ② 재학습. [2026-10-21 Conflict·계약 합계 정리]
+- **Reveal 상태 이름 정리 끝(2026-10-21, codec v151):** 합계 정리 뒤 게임 상태에 남은 옛 이름 셋이 코드의 "Reveal 기록 줄"을 따른다 —
+  Reveal frame의 `granted_reveal_lines`, 사건 `reveal_line_granted_late`와 그 `line_index`. 행동 줄은 그대로이고 상태 해시만 바뀌어 codec
+  번호만 올렸다(계획 6절 3번). [2026-10-21 Reveal 상태 이름 정리]
 - **문제집 검사(2026-10-21 복구):** `dune-imperium-records problems check`가 사람 판 문제집 285곳 가운데 279곳(v149와 같음, 원래부터 안 풀리는
   6곳: 대응 없는 사람의 거절 2·옛 엔진의 거절인 망의 수 4), AI 실수 문제집 3곳 모두를 푼다. B단계 이후 멈추던 두 원인은
   [2026-10-21 문제집 검사 복구]에.
@@ -97,9 +100,9 @@
   - **(결정) 다음:** (1) 탐색 좌석이 어댑터로 옛 망을 쓰게 하기(망 단독은 이미 옛 실력; `NetworkSearchAgent`는 v150 행으로 망을 부르니 설계 필요),
     (2) `student12`에서 PPO 다시(`chain2.sh` 준비됨, 약 3.5시간), (3) 증류 키우기(데이터 2배·엔티티 폭·PPO 3e-5). 고정 worktree
     `.claude/worktrees/retrain-v150`(`chain2.sh`가 이 경로를 쓴다)과 탐색 좌석 관문 대조용 `.claude/worktrees/v149-ref`(`52d0a6cc`)를 남겼다.
-- **플레이 서버 주의:** Mac mini의 메인 체크아웃은 이미 v150이다(B단계 병합을 이 기기에서 했다). 그래서 지금 서버를 다시 띄우면
+- **플레이 서버 주의:** Mac mini의 메인 체크아웃은 이미 v150 이후다(B단계 병합을 이 기기에서 했다; 지금 v151). 그래서 지금 서버를 다시 띄우면
   ②의 망을 `checkpoints/play/search.pt`에 설치하기 전까지 탐색 AI 좌석이 약하다(앱 AI·휴리스틱 좌석은 그대로). 그 사이 강한 탐색
-  좌석이 필요하면 B단계 직전 커밋 `52d0a6cc`(v149)의 worktree에서 서버를 띄운다(그 판의 저장본은 v150에서 열리지 않는다).
+  좌석이 필요하면 B단계 직전 커밋 `52d0a6cc`(v149)의 worktree에서 서버를 띄운다(그 판의 저장본은 v150 이후에서 열리지 않는다).
 
 **학습·AI**
 
@@ -187,8 +190,9 @@
   `codex/windows-validation`, 2026-10-21 master 병합). 다른 물리 PC의 접속, 배율·IME·방화벽·GUI 강제 종료·잠자기 복귀,
   학습한 탐색 AI 망 사용 확인이 남았다. Windows 전체 엔진 pytest와 `run_all.py` 전체는 Windows에서 돌린 적 없다(POSIX
   전용 경로가 남은 E2E가 있다). [`windows-host-validation.md`](windows-host-validation.md), [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v150-14c08062**(2026-10-20, 2,000판, B단계 병합 master에서 만듦; 같은
-  엔진으로 되돌려 exact 2,000)이고 다음 엔진 변경의 기준이다. 그 앞은 v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v151-bb05c259**(2026-10-21, 2,000판, Reveal 상태 이름 정리 병합 master에서
+  만듦; 같은 엔진으로 되돌려 exact 2,000)이고 다음 엔진 변경의 기준이다. 그 앞은 v150-14c08062(v151 엔진에서도 exact 2,000 — 상태 비교가
+  결정 단계와 사건 기록을 빼므로), v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
   v148-02e203ce, v147-2af1d9f5, v145-afea63de이며 v144·v146 묶음은 없다.
   [2026-10-20 효과 조각 엔진 B단계 병합(codec v150), [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
