@@ -1281,14 +1281,17 @@ def test_walk_yields_the_states_a_replay_of_the_record_reaches(path: Path) -> No
     # older engines' records -- answers, follows, held turn rows, steps asked
     # earlier, effect steps -- records the state it applied each step to, so
     # these are the states a replay from the reset reaches.
+    # States compare equal field by field (stricter than the state hash, and
+    # far cheaper: hashing every state took seconds a record).
     document = json.loads(path.read_text(encoding="utf-8"))
     record = migrate_record(parse_save_document(document, check_versions=False).replay)
 
-    kept = [(canonical_state_hash(s), m) for s, m in walk(record, ENGINE)]
-    again = [(canonical_state_hash(s), m) for s, m in replayed(record, ENGINE)]
+    kept = list(walk(record, ENGINE))
+    again = list(replayed(record, ENGINE))
 
     assert record.walked is not None and record.walked[0] is record.steps
-    assert kept == again
+    assert [m for _, m in kept] == [m for _, m in again] == list(record.steps)
+    assert all(a == b for (a, _), (b, _) in zip(kept, again, strict=True))
 
 
 def test_walk_replays_a_record_rebuilt_with_other_steps(game: GameReplay) -> None:
@@ -1296,13 +1299,17 @@ def test_walk_replays_a_record_rebuilt_with_other_steps(game: GameReplay) -> Non
     # (tests/unit/records/test_corpus_check.py); the kept states belong to
     # the steps they were taken for, so ``walk`` replays the new ones.
     record = migrate_record(game)
-    shorter = replace(record, steps=record.steps[:-1])
+    shorter = replace(record, steps=record.steps[:200])
 
-    walked = [canonical_state_hash(s) for s, _ in walk(shorter, ENGINE)]
+    walked = list(walk(shorter, ENGINE))
 
     assert shorter.walked is record.walked
-    assert walked == [canonical_state_hash(s) for s, _ in replayed(shorter, ENGINE)]
-    assert len(walked) == len(record.steps) - 1
+    assert [m for _, m in walked] == list(shorter.steps)
+    assert all(
+        a == b
+        for (a, _), (b, _) in zip(walked, replayed(shorter, ENGINE), strict=True)
+    )
+    assert walked[0][0] == ENGINE.reset(game.ruleset, game.seed)
 
 
 @pytest.mark.parametrize(
