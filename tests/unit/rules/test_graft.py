@@ -12,6 +12,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -27,6 +28,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
@@ -39,6 +41,7 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -205,7 +208,7 @@ def test_the_partners_box_is_offered_beside_the_placed_card_s() -> None:
     assert "switch_graft_card" not in {action.action_id for action in offered}
 
     hand_before = len(grafted.players[0].hand)
-    drawn = UprisingRulesEngine().apply(grafted, resolve_partner).state
+    drawn = apply_whole(UprisingRulesEngine(), grafted, resolve_partner).state
     assert len(drawn.players[0].hand) == hand_before + 1
     _, context = current_agent_effect_context(drawn)
     # The engine resolved box 1 with it active: Face Dancer in ``card_id``.
@@ -485,6 +488,15 @@ def test_twisted_mentat_recalls_this_turns_agent_from_the_conflict() -> None:
     )
 
 
+# Sardaukar II's one reward icon: a row of the Agent turn it was completed in,
+# named by the Contract (stage B3b, OQ-112 (4)).
+RECALL_ROW = DomainAction(
+    action_id="resolve_contract_reward_icon",
+    actor=0,
+    arguments=(("contract_id", "contract:sardaukar_ii"), ("effect", "recall_agent")),
+)
+
+
 def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     # User ruling (2026-09-26, verbatim): "Duncan Idaho(Bloodlines) Into the
     # Fray의 Agent를 Imperial Privilege로 recall 가능 이니까 recall agent
@@ -499,7 +511,9 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     from dune_imperium.rules.contracts import (
         apply_contract_completion,
         apply_contract_recall_action,
+        apply_contract_reward_icon,
         legal_contract_completion_actions,
+        legal_contract_icon_row_actions,
         legal_contract_recall_actions,
     )
 
@@ -535,12 +549,19 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
         for action in legal_contract_completion_actions(fighting, 0)
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
-    completed = apply_contract_completion(fighting, completion)
+    completion_step = apply_contract_completion(fighting, completion)
+    # The Recall Agent icon is the reward's one row, waiting on the Agent
+    # turn (stage B3b, OQ-112 (4)); its press opens the recall window.
+    assert completion_step.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completion_step.state, 0)
+    assert legal_contract_icon_row_actions(completion_step.state, 0) == (RECALL_ROW,)
+    completed = apply_contract_reward_icon(completion_step.state, RECALL_ROW)
 
     # The reward no longer fizzles: the earlier turn's Conflict Agent is
     # recallable, even though there is no board Agent at all (OQ-068).
     assert not any(
-        event.kind == "contract_recall_unavailable" for event in completed.events
+        event.kind == "contract_recall_unavailable"
+        for event in (*completion_step.events, *completed.events)
     )
     recalls = legal_contract_recall_actions(completed.state, 0)
     assert [action.action_id for action in recalls] == [
@@ -569,7 +590,9 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
     from dune_imperium.rules.contracts import (
         apply_contract_completion,
         apply_contract_recall_action,
+        apply_contract_reward_icon,
         legal_contract_completion_actions,
+        legal_contract_icon_row_actions,
         legal_contract_recall_actions,
     )
 
@@ -602,7 +625,13 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
         for action in legal_contract_completion_actions(fighting, 0)
         if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
     )
-    completed = apply_contract_completion(fighting, completion)
+    completion_step = apply_contract_completion(fighting, completion)
+    # The Recall Agent icon is the reward's one row, waiting on the Agent
+    # turn (stage B3b, OQ-112 (4)); its press opens the recall window.
+    assert completion_step.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(completion_step.state, 0)
+    assert legal_contract_icon_row_actions(completion_step.state, 0) == (RECALL_ROW,)
+    completed = apply_contract_reward_icon(completion_step.state, RECALL_ROW)
 
     # The recall window opens with only the confirm (user ruling
     # 2026-09-30); its press fizzles the reward.
@@ -615,6 +644,61 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
     )
     assert fizzled.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert fizzled.state.players[0].agent_in_conflict == 1
+
+
+def test_a_contract_recall_row_taken_after_into_the_fray_still_excludes_it() -> None:
+    # Stage B3b (OQ-112 (4)): the Contract's Recall Agent icon is a row of
+    # the turn, so the turn's other effects may come between the completion
+    # and the row. "Return one of your other Agents on the board to your
+    # Leader (not the Agent you sent during this turn)." [Main p. 20]
+    # (OQ-068): the row judges this turn's Agent when it is taken -- here
+    # Into the Fray moved it to the Conflict after the completion, so with
+    # no earlier Agent the recall has nothing to take.
+    from dune_imperium.rules.contracts import (
+        apply_contract_completion,
+        apply_contract_reward_icon,
+        legal_contract_completion_actions,
+        legal_contract_icon_row_actions,
+        legal_contract_recall_actions,
+    )
+
+    config = RulesetConfig(immortality=True, bloodlines=True, choam_module=True)
+    state = _state(
+        _owner(
+            (FACE_DANCER, SIGNET),
+            leader_id="duncan_idaho",
+            influence=Influence(emperor=2),
+            resources=Resources(solari=4, spice=4, water=2),
+            agents_available=2,
+            agent_in_conflict=0,
+            active_contract_ids=("contract:sardaukar_ii",),
+        ),
+        config=config,
+    )
+    grafted = _graft(state, FACE_DANCER, "sardaukar", SIGNET)
+    completion = next(
+        action
+        for action in legal_contract_completion_actions(grafted, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = apply_contract_completion(grafted, completion).state
+    assert turn_rows.holds_the_end(completed, 0)
+
+    switched = other_box_state(completed)
+    deploy = next(
+        action
+        for action in legal_leader_signet_actions(switched, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = apply_leader_agent_deploy(switched, deploy).state
+    assert fighting.players[0].agent_locations == ()
+    assert fighting.players[0].agent_in_conflict == 1
+    assert legal_contract_icon_row_actions(fighting, 0) == (RECALL_ROW,)
+
+    recalled = apply_contract_reward_icon(fighting, RECALL_ROW).state
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert recalled.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    assert legal_contract_recall_actions(recalled, 0) == (confirm,)
 
 
 def test_twisted_mentat_never_offers_an_earlier_turns_conflict_agent() -> None:
@@ -671,13 +755,36 @@ def test_bene_tleilax_researcher_reveals_marker_persuasion() -> None:
 def test_grafted_cards_round_trip_through_the_codec() -> None:
     codec = ActionCodec(IMMORTALITY)
     state = _state(_owner((FACE_DANCER, INITIATE, DAGGER)))
-    for action in legal_agent_actions(state, 0):
-        assert codec.decode(codec.encode(action), 0) == action
+    # The Agent turn's card picks (the graft ones too) and, once a card is
+    # picked, its space picks (stage B1).
+    engine = UprisingRulesEngine()
+    picks = [
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "choose_agent_card"
+    ]
+    assert any(dict(pick.arguments).get("graft") is True for pick in picks)
+    for pick in picks:
+        assert codec.decode(codec.encode(pick), 0) == pick
+        picked = apply_whole(engine, state, pick).state
+        spaces = engine.whole_actions(picked, 0)
+        assert spaces
+        for action in spaces:
+            assert codec.decode(codec.encode(action), 0) == action
     placed = apply_agent_action(
         state, _placements(state)[(INITIATE, "dutiful_service", True)]
     )
-    for action in legal_graft_partner_actions(placed.state, 0):
-        assert codec.decode(codec.encode(action), 0) == action
+    # Stage B3d-2a: the partner window offers its choice by the card's target
+    # row, so the whole template is in no catalog.
+    partners = legal_graft_partner_actions(placed.state, 0)
+    assert partners
+    shown = engine.legal_actions(placed.state, 0)
+    for action in partners:
+        (row,) = steps_for(action, effect_row=False)
+        assert row in shown
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
     assert "choose_graft_partner" not in base
     assert not any(
@@ -711,9 +818,9 @@ def test_the_engine_never_offers_a_lone_graft_card() -> None:
         frame = state.decision_stack[-1]
         if not isinstance(frame.decision, PlayerDecision):
             break
-        actions = engine.legal_actions(state, frame.decision.owner)
+        actions = engine.whole_actions(state, frame.decision.owner)
         assert actions
-        state = engine.apply(state, actions[-1]).state
+        state = apply_whole(engine, state, actions[-1]).state
 
 
 def test_a_graft_placed_on_a_leaders_icon_keeps_its_partners() -> None:

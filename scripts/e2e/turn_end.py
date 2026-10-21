@@ -67,10 +67,13 @@ EXPLICIT_TURN_END_IDS = {
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
-    # The Conflict-end window's "쓰지 않음" (OQ-103, 2026-10-09).
+    # The Conflict-end window's "쓰지 않음" (OQ-103, 2026-10-09), and its
+    # "끝내기" after a play (2026-10-18).
     "decline_conflict_end_intrigue",
+    "finish_conflict_end_intrigue",
     # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
     "confirm_scouts_bid",
+    "resolve_scouts_choice_without_option",
     # Critical Moment's open call, sent with the turn-end press (2026-10-05).
     "scouts_call",
 }
@@ -463,11 +466,11 @@ def combined_scenarios(page, rec, limit: int = 700) -> None:
         "pass_combat_intrigue": False,
     }
     combat_js = f"""(() => {{
-      const A = state.actions.actions;
       const combat = {json.dumps(COMBAT)};
-      const toCombat = A.find((a) => a.action_id === 'agent_turn'
-        && combat.includes(a.arguments.space_id));
-      return toCombat ? toCombat.index : 0;
+      // The card pick first, then (at the next call) the space pick.
+      const toCombat = placementActions().find((a) =>
+        combat.includes(a.arguments.space_id));
+      return toCombat ? (toCombat.pickIndex ?? toCombat.index) : 0;
     }})()"""
     for _ in range(limit):
         assert settled(page, 20)
@@ -844,9 +847,14 @@ def scenario_conflict_end_decline(base, browser, seed: int) -> None:
 # answers a decline-only window for it (sessions.py _auto_decline_locked).
 # Seeds that reach one with the policy below, in the order of how few of the
 # seat's requests they take (scanned 2026-10-09 over seeds 0-119, codec
-# v141): 97 in round 1 after 19 requests, then 48, 49, 114, 98, 96.
+# v141): 97 in round 1 after 19 requests, then 48, 49, 114, 98, 96. Stage B2
+# (OQ-112) has a Conflict reward's recipient resolve it row by row, so a
+# Combat the seat is rewarded in is one it sees resolved; a headless scan of
+# the same policy over seeds 0-119 (2026-10-19) finds only games where the
+# seat wins nothing in a Conflict much later: 118 in round 8 after 127
+# requests, then 85, 8, 57 (none within 60 requests of seeds 0-159).
 LONE_HUMAN = ["human", "heuristic", "heuristic", "heuristic"]
-AUTO_DECLINE_SEEDS = (97, 48, 49, 114, 98, 96)
+AUTO_DECLINE_SEEDS = (118, 85, 8, 57)
 
 
 def _server_declined(entries: list[dict[str, Any]], last_press: int) -> int | None:
@@ -869,7 +877,7 @@ def _server_declined(entries: list[dict[str, Any]], last_press: int) -> int | No
     return None
 
 
-def find_auto_decline_seed(base: str, *, request_cap: int = 60) -> int | None:
+def find_auto_decline_seed(base: str, *, request_cap: int = 160) -> int | None:
     """The first of AUTO_DECLINE_SEEDS where seat 0, the one human seat of
     an Immortality game with the setup screen's Leader draft, always taking
     its first legal action (confirming a hold at once, never offered a
@@ -970,7 +978,7 @@ def scenario_auto_decline(base, browser, seed: int) -> None:
     create_game(page, base, humans=(0,), seed=seed, options=("immortality",))
     last_press = -1
     declined = None
-    for _ in range(200):
+    for _ in range(600):
         assert settled(page, 20)
         if page.evaluate("state.summary.finished"):
             break

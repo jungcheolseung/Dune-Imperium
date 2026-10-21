@@ -84,12 +84,14 @@ POPOVER_JS = """() => {
 
 # One Agent turn at Deliver Supplies that completes the contract of the same
 # id: the log's step heads, event lines, the turn card's head (Agent icon +
-# space) and its card row, built by the functions the live log uses.
+# space) and its card row, built by the functions the live log uses. The
+# placement's log entry is the space pick (`place_agent`, stage B1); the card
+# pick before it names no space.
 TURN_CARD_JS = """() => {
   const group = {
     actor: 0,
     entries: [
-      {type: "action", index: 1, undone: false, action_id: "agent_turn",
+      {type: "action", index: 1, undone: false, action_id: "place_agent",
        arguments: {space_id: "deliver_supplies"},
        events: [{kind: "agent_placed",
                  payload: {player: 0, space_id: "deliver_supplies"}}]},
@@ -117,21 +119,32 @@ TURN_CARD_JS = """() => {
 # The staged Agent turn's other two places that name the picked space: the
 # note when the halves of a pick cannot go together (card after space, and
 # space after card) and the chooser a complete pick with several candidates
-# opens. Both read the page's legal-action list, so a synthetic one stands
-# in for this turn's and the page's own is put back.
+# opens. Both read the page's placements (placementActions: the server's
+# `agent_placements`, each pointing at its `choose_agent_card` row), so a
+# synthetic list stands in for this turn's and the page's own is put back.
 STAGED_JS = """() => {
   const saved = {actions: state.actions, pick: state.pick};
-  const place = (card, space, extra = {}) => ({
-    action_id: "agent_turn", index: 0,
+  const pickRow = (index, card) => ({
+    index, action_id: "choose_agent_card", arguments: {card_id: card},
+  });
+  const place = (placement, row, card, space, extra = {}) => ({
+    index: row, placement,
     arguments: {card_id: card, space_id: space, ...extra},
   });
   const said = () => document.getElementById("game-note").textContent;
   const result = {};
   try {
-    state.actions = {...(saved.actions || {}), actions: [
-      place("imperium:guild_spy:0", "arrakeen"),
-      place("imperium:guild_spy:1", "deliver_supplies"),
-    ]};
+    state.actions = {...(saved.actions || {}),
+      actions: [
+        pickRow(0, "imperium:guild_spy:0"),
+        pickRow(1, "imperium:guild_spy:1"),
+      ],
+      agent_placements: [
+        place(0, 0, "imperium:guild_spy:0", "arrakeen"),
+        place(1, 1, "imperium:guild_spy:1", "deliver_supplies"),
+        place(2, 1, "imperium:guild_spy:1", "deliver_supplies",
+          {infiltrate_post_id: "x"}),
+      ]};
     state.pick = {spaceId: "deliver_supplies"};
     pickStep("imperium:guild_spy:0", null, null);
     result.cardAfterSpace = said();
@@ -139,10 +152,8 @@ STAGED_JS = """() => {
     pickStep("deliver_supplies", null, null);
     result.spaceAfterCard = said();
     state.pick = {cardId: "imperium:guild_spy:1", spaceId: "deliver_supplies"};
-    openPlacementChooser([
-      place("imperium:guild_spy:1", "deliver_supplies"),
-      place("imperium:guild_spy:1", "deliver_supplies", {infiltrate_post_id: "x"}),
-    ]);
+    openPlacementChooser(placementActions().filter(
+      (a) => a.arguments.card_id === "imperium:guild_spy:1"));
     result.chooser = document.querySelector("#card-popover .popover-title").textContent;
   } finally {
     state.actions = saved.actions;
@@ -238,10 +249,18 @@ def one_language(page, lang: str) -> None:
     field = page.evaluate("fieldText('space_id', 'deliver_supplies', {})")
     check.ok(names_space(field), "a space_id field names the space", field)
     label = page.evaluate(
-        "describeActionText({action_id: 'agent_turn',"
+        "describeActionText({action_id: 'place_agent',"
         " arguments: {space_id: 'deliver_supplies'}})"
     )
     check.ok(names_space(label), "the action list names the space", label)
+    # The staged turn lists a whole placement (card and space) under the
+    # page's own name for it.
+    label = page.evaluate(
+        "describeActionText({action_id: 'agent_turn',"
+        " arguments: {card_id: 'imperium:guild_spy:0',"
+        " space_id: 'deliver_supplies'}})"
+    )
+    check.ok(names_space(label), "a staged placement names the space", label)
 
     turn = page.evaluate(TURN_CARD_JS)
     check.ok(turn["spaces"] == [SPACE] and turn["cards"] == [CONTRACT],

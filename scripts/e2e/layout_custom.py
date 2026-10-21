@@ -827,8 +827,11 @@ def main() -> None:
             check.ok(bool(placements), "seat 0 reaches an Agent turn")
             hand_order(page, rec)
             # A move fills the history, so that it can stand beside the actions.
-            page.evaluate("clearPick(); applyAction(0)")
-            assert settled(page)
+            # An Agent turn is two steps: the card pick, then the space pick.
+            page.evaluate("clearPick()")
+            for _ in range(2):
+                page.evaluate("applyAction(0)")
+                assert settled(page)
             for viewport in (
                 {"width": 1440, "height": 900},
                 {"width": 1920, "height": 1080},

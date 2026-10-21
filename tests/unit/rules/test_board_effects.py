@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.board import BOARD_SPACES, Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+)
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -27,7 +34,11 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import resolve_faction_influence
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
 from dune_imperium.rules.board_effects import (
     AUTOMATIC_BOARD_ICONS,
     CHOICE_DRIVEN_SPACE_IDS,
@@ -57,13 +68,8 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
-from dune_imperium.rules.effects import (
-    DrawImperiumCardsEffect,
-    DrawIntrigueCardsEffect,
-    GainResourcesEffect,
-    RecruitTroopsEffect,
-)
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
@@ -160,13 +166,13 @@ def test_first_resource_board_effects_are_typed() -> None:
     state = _state("diplomacy")
 
     assert board_effects_for(state, "dutiful_service", 0) == (
-        GainResourcesEffect(solari=2),
+        GainResources(solari=2),
     )
     assert board_effects_for(state, "deliver_supplies", 0) == (
-        GainResourcesEffect(water=1),
+        GainResources(water=1),
     )
     assert board_effects_for(state, "spice_refinery", 1) == (
-        GainResourcesEffect(solari=4),
+        GainResources(solari=4),
     )
 
 
@@ -209,8 +215,12 @@ def test_dutiful_service_resolves_board_reward_and_keeps_faction_pending() -> No
     assert context["pending_board_effect"] is False
     assert context["pending_board_icons"] == ""
     assert context["pending_faction_influence"] is True
-    assert result.events[0].kind == "board_effect_resolved"
-    assert dict(result.events[0].payload) == {
+    # The gain, then the icon's event (cleanup-2c-3).
+    source = f"round:{placed.round_number}:player:0:board:dutiful_service"
+    assert result.events[0] == resources_gained_event(source, 0, solari=2)
+    assert result.events[1].kind == "board_effect_resolved"
+    assert result.events[1].event_id == f"{source}:resources"
+    assert dict(result.events[1].payload) == {
         "effect": "resources",
         "player": 0,
         "space_id": "dutiful_service",
@@ -306,11 +316,11 @@ def test_unprinted_or_already_resolved_board_icon_is_rejected() -> None:
 def test_draw_and_recruit_board_effects_are_typed() -> None:
     state = _state("diplomacy")
 
-    assert board_effects_for(state, "fremkit", 0) == (DrawImperiumCardsEffect(1),)
-    assert board_effects_for(state, "assembly_hall", 0) == (DrawIntrigueCardsEffect(1),)
+    assert board_effects_for(state, "fremkit", 0) == (DrawPersonalCards(1),)
+    assert board_effects_for(state, "assembly_hall", 0) == (DrawIntrigueCards(1),)
     assert board_effects_for(state, "research_station", 0) == (
-        RecruitTroopsEffect(2),
-        DrawImperiumCardsEffect(2),
+        RecruitTroops(2),
+        DrawPersonalCards(2),
     )
 
 
@@ -516,15 +526,15 @@ def test_espionage_reshuffles_discard_before_drawing() -> None:
     engine = UprisingRulesEngine()
     place = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if action.action_id == "resolve_espionage_place_spy"
     )
 
-    declined = engine.apply(state, place).state
-    pending = engine.apply(declined, _board_action(declined, "cards")).state
+    declined = apply_whole(engine, state, place).state
+    pending = apply_whole(engine, declined, _board_action(declined, "cards")).state
     decision = engine.current_decision(pending)
     assert isinstance(decision, ChanceDecision)
-    finished = engine.apply(
+    finished = apply_whole(engine, 
         pending,
         ChanceOutcome(decision.decision_id, (drawn,)),
     ).state
@@ -738,6 +748,7 @@ def test_sietch_tabr_water_can_destroy_shield_wall() -> None:
     assert result.state.players[0].resources.water == 2
     assert result.state.shield_wall_present is False
     assert tuple(event.kind for event in result.events) == (
+        "resources_gained",
         "shield_wall_destroyed",
         "board_effect_resolved",
     )
@@ -806,16 +817,31 @@ def test_shipping_never_offers_a_faction_at_the_top() -> None:
     ]
     assert offered == ["emperor", "bene_gesserit"]
 
-    # With every cube at 6 the Agent-turn frame has no confirm for this
-    # board icon, and the paid line still buys 5 Solari (OQ-071 does not
-    # withhold the space), so all four stay on offer and the gain is lost.
+
+def test_shipping_with_every_cube_at_the_top_waits_and_lapses_at_the_end() -> None:
+    # User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    # OQ-060): with every cube at 6 Shipping offers no Faction either; the
+    # icon waits like an Agent box's Influence and the turn's end lapses it
+    # (OQ-057 (1)). Until codec v149 all four stayed on offer and the gain
+    # was lost. The paid line still buys 5 Solari (OQ-071).
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     state = _shipping_state(full)
-    actions = legal_shipping_actions(state, 0)
-    assert len(actions) == 4
-    result = apply_shipping_action(state, actions[0])
+    assert legal_shipping_actions(state, 0) == ()
+    state = _resolve_board(state, "resources")
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_board_icons"] == "influence"
+    assert any(
+        action.action_id == "finish_agent_turn"
+        for action in legal_agent_turn_finish_actions(state, 0)
+    )
+
+    result = finish_agent_turn_result(state)
+
     assert result.state.players[0].influence == full
-    assert legal_shipping_actions(result.state, 0) == ()
+    lapsed = [event for event in result.events if event.kind == "board_effect_lapsed"]
+    assert [dict(event.payload) for event in lapsed] == [
+        {"effect": "influence", "player": 0, "space_id": "shipping"}
+    ]
 
 
 def test_shipping_influence_choice_leaves_the_solari_icon_pending() -> None:
@@ -1327,8 +1353,8 @@ def test_imperial_privilege_draw_and_recall_resolve_in_any_order(
     for done, step in enumerate(order):
         settled = {"draw", "recall"} <= set(order[:done])
         assert bool(legal_agent_turn_finish_actions(state, 0)) is settled
-        assert (_DRAW in engine.legal_actions(state, 0)) is ("draw" not in order[:done])
-        state = engine.apply(state, steps[step]).state
+        assert (_DRAW in engine.whole_actions(state, 0)) is ("draw" not in order[:done])
+        state = apply_whole(engine, state, steps[step]).state
         assert state.players[0].hand == (
             (drawn,) if "draw" in order[: done + 1] else ()
         )
@@ -1338,7 +1364,7 @@ def test_imperial_privilege_draw_and_recall_resolve_in_any_order(
     assert owner.deck == (second,)
     assert owner.agent_locations == ("imperial_privilege",)
     assert owner.intrigue_cards == ("intrigue:replacement",)
-    legal = engine.legal_actions(state, 0)
+    legal = engine.whole_actions(state, 0)
     assert _DRAW not in legal
     assert not any("imperial_privilege" in action.action_id for action in legal)
     assert legal_agent_turn_finish_actions(state, 0)
@@ -1561,13 +1587,15 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
         ),
     )
     engine = UprisingRulesEngine()
-    declined = engine.apply(state, _action_to(state, "imperial_privilege")).state
+    declined = apply_placement(
+        engine, state, _action_to(state, "imperial_privilege")
+    ).state
     assert any(
         action.action_id == "recall_agent_for_imperial_privilege"
-        for action in engine.legal_actions(declined, 0)
+        for action in engine.whole_actions(declined, 0)
     )
 
-    transition = engine.apply(
+    transition = apply_whole(engine, 
         declined,
         DomainAction(
             action_id="recall_agent_for_agent_card",
@@ -1583,7 +1611,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     )
     context = dict(recalled.decision_stack[-1].context)
     assert context["pending_board_effect"] is True
-    legal = engine.legal_actions(recalled, 0)
+    legal = engine.whole_actions(recalled, 0)
     assert _CONFIRM in legal
     assert not any(
         action.action_id == "recall_agent_for_imperial_privilege" for action in legal
@@ -1593,7 +1621,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     # Steersman's own card icon is still the owner's to resolve too.
     assert decision.owner == 0
 
-    confirmed = engine.apply(recalled, _CONFIRM)
+    confirmed = apply_whole(engine, recalled, _CONFIRM)
     assert any(
         event.kind == "imperial_privilege_recall_skipped" for event in confirmed.events
     )
@@ -1604,7 +1632,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
         == "imperial_privilege_intrigue,cards"
     )
     assert deck[0] not in confirmed.state.players[0].hand
-    drew = engine.apply(confirmed.state, _DRAW).state
+    drew = apply_whole(engine, confirmed.state, _DRAW).state
     assert dict(drew.decision_stack[-1].context)["pending_board_icons"] == (
         "imperial_privilege_intrigue"
     )
@@ -1650,11 +1678,11 @@ def test_imperial_privilege_reshuffle_includes_the_trashed_intrigue() -> None:
     engine = UprisingRulesEngine()
     action = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    pending = engine.apply(state, action)
+    pending = apply_whole(engine, state, action)
     decision = pending.next_decision
 
     assert isinstance(decision, ChanceDecision)
@@ -1666,7 +1694,7 @@ def test_imperial_privilege_reshuffle_includes_the_trashed_intrigue() -> None:
     assert pending.state.pending_intrigue_draws == ()
 
     outcome = ChanceResolver(seed=5).resolve(decision)
-    resolved = engine.apply(pending.state, outcome)
+    resolved = apply_whole(engine, pending.state, outcome)
 
     # The empty deck did not crash the draw: the reshuffle completed and the
     # owed card was delivered from the freshly shuffled deck.
@@ -1686,17 +1714,19 @@ def test_imperial_privilege_may_draw_back_the_card_it_just_trashed() -> None:
     engine = UprisingRulesEngine()
     action = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    pending = engine.apply(state, action)
+    pending = apply_whole(engine, state, action)
     decision = pending.next_decision
 
     assert any(event.kind == "intrigue_card_trashed" for event in pending.events)
     assert isinstance(decision, ChanceDecision)
     assert decision.options == ("intrigue:held",)
-    resolved = engine.apply(pending.state, ChanceResolver(seed=5).resolve(decision))
+    resolved = apply_whole(
+        engine, pending.state, ChanceResolver(seed=5).resolve(decision)
+    )
 
     assert resolved.state.players[0].intrigue_cards == ("intrigue:held",)
     assert resolved.state.intrigue_deck == ()
@@ -1719,11 +1749,11 @@ def test_imperial_privilege_never_draws_back_a_trashed_twisted_card() -> None:
     engine = UprisingRulesEngine()
     action = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    trashed = engine.apply(state, action)
+    trashed = apply_whole(engine, state, action)
 
     assert not isinstance(trashed.next_decision, ChanceDecision)
     assert trashed.state.players[0].intrigue_cards == ()
@@ -1736,11 +1766,13 @@ def test_imperial_privilege_never_draws_back_a_trashed_twisted_card() -> None:
     ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
     # With another discarded card, that one is shuffled and drawn instead.
     other = replace(state, intrigue_discard=("intrigue:cunning",))
-    pending = engine.apply(other, action)
+    pending = apply_whole(engine, other, action)
     decision = pending.next_decision
     assert isinstance(decision, ChanceDecision)
     assert decision.options == ("intrigue:cunning",)
-    resolved = engine.apply(pending.state, ChanceResolver(seed=5).resolve(decision))
+    resolved = apply_whole(
+        engine, pending.state, ChanceResolver(seed=5).resolve(decision)
+    )
     assert resolved.state.players[0].intrigue_cards == ("intrigue:cunning",)
     assert resolved.state.intrigue_discard == (twisted,)
 
@@ -2014,13 +2046,12 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
     engine = UprisingRulesEngine()
     to_secrets = next(
         action
-        for action in engine.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == "secrets"
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "secrets"
     )
-    placed = engine.apply(state, to_secrets).state
+    placed = apply_placement(engine, state, to_secrets).state
 
-    pending = engine.apply(placed, _board_action(placed, "intrigue"))
+    pending = apply_whole(engine, placed, _board_action(placed, "intrigue"))
     decision = pending.next_decision
 
     assert isinstance(decision, ChanceDecision)
@@ -2028,7 +2059,7 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
     assert pending.state.pending_intrigue_draws == ()
 
     outcome = ChanceResolver(seed=7).resolve(decision)
-    resolved = engine.apply(pending.state, outcome)
+    resolved = apply_whole(engine, pending.state, outcome)
     next_top = resolved.state.decision_stack[-1]
 
     assert next_top.kind == "secrets_steal"
@@ -2046,39 +2077,39 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
 # Tactics' troop, Shipping's Solari, Imperial Privilege's draw since the user
 # ruling of 2026-10-10) list just that icon (OQ-027).
 _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
-    "dutiful_service": {0: (GainResourcesEffect(solari=2),)},
-    "sardaukar": {0: (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))},
-    "deliver_supplies": {0: (GainResourcesEffect(water=1),)},
-    "heighliner": {0: (RecruitTroopsEffect(5),)},
-    "espionage": {0: (DrawImperiumCardsEffect(1),)},
-    "secrets": {0: (DrawIntrigueCardsEffect(1),)},
-    "desert_tactics": {0: (RecruitTroopsEffect(1),)},
-    "fremkit": {0: (DrawImperiumCardsEffect(1),)},
-    "assembly_hall": {0: (DrawIntrigueCardsEffect(1),)},
+    "dutiful_service": {0: (GainResources(solari=2),)},
+    "sardaukar": {0: (DrawIntrigueCards(1), RecruitTroops(4))},
+    "deliver_supplies": {0: (GainResources(water=1),)},
+    "heighliner": {0: (RecruitTroops(5),)},
+    "espionage": {0: (DrawPersonalCards(1),)},
+    "secrets": {0: (DrawIntrigueCards(1),)},
+    "desert_tactics": {0: (RecruitTroops(1),)},
+    "fremkit": {0: (DrawPersonalCards(1),)},
+    "assembly_hall": {0: (DrawIntrigueCards(1),)},
     "gather_support": {
-        0: (RecruitTroopsEffect(2),),
-        1: (RecruitTroopsEffect(2), GainResourcesEffect(water=1)),
+        0: (RecruitTroops(2),),
+        1: (RecruitTroops(2), GainResources(water=1)),
     },
     "high_council": {0: ()},
-    "imperial_privilege": {0: (DrawImperiumCardsEffect(1),)},
+    "imperial_privilege": {0: (DrawPersonalCards(1),)},
     "swordmaster": {0: (), 1: ()},
-    "arrakeen": {0: (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))},
-    "research_station": {0: (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))},
+    "arrakeen": {0: (RecruitTroops(1), DrawPersonalCards(1))},
+    "research_station": {0: (RecruitTroops(2), DrawPersonalCards(2))},
     "sietch_tabr": {0: None},
     "tuek_sietch": {0: None},
     "spice_refinery": {
-        0: (GainResourcesEffect(solari=2),),
-        1: (GainResourcesEffect(solari=4),),
+        0: (GainResources(solari=2),),
+        1: (GainResources(solari=4),),
     },
-    "accept_contract": {0: (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))},
+    "accept_contract": {0: (DrawPersonalCards(1), GainResources(solari=2))},
     "deep_desert": {0: None},
     "hagga_basin": {0: None},
     "imperial_basin": {0: None},
-    "shipping": {0: (GainResourcesEffect(solari=5),)},
+    "shipping": {0: (GainResources(solari=5),)},
 }
 _CHOAM_EFFECT_OVERRIDES: dict[str, dict[int, tuple[object, ...] | None]] = {
     "dutiful_service": {0: ()},
-    "accept_contract": {0: (DrawImperiumCardsEffect(1),)},
+    "accept_contract": {0: (DrawPersonalCards(1),)},
 }
 
 # Every printed icon of every space option, in printed order, as the keys of

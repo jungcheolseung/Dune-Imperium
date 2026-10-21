@@ -203,7 +203,7 @@ def test_rows_carry_frames_offers_and_draws(tiny_corpus: Path) -> None:
     corpus = Corpus.open(tiny_corpus)
     row = corpus.row("full.h4.1")
     assert row.count("frames:leader_draft") >= 1
-    assert row.count("offered:agent_turn") >= row.count("action_ids:agent_turn") > 0
+    assert row.count("offered:place_agent") >= row.count("action_ids:place_agent") > 0
     draws = row.matching("draws:*")
     assert draws and all(row.positions(key) is not None for key in draws)
     assert row.steps == corpus.trace(row).steps

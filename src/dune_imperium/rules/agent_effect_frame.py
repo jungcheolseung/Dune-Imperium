@@ -33,6 +33,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
+    legal_agent_card_icon_choice_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
     legal_agent_card_opponent_retreat_actions,
@@ -61,7 +62,10 @@ from dune_imperium.rules.combat_deployment import (
     legal_commander_withdrawals,
     legal_troop_withdrawals,
 )
-from dune_imperium.rules.contracts import legal_contract_completion_actions
+from dune_imperium.rules.contracts import (
+    legal_contract_completion_actions,
+    legal_contract_icon_row_actions,
+)
 from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
@@ -78,6 +82,7 @@ from dune_imperium.rules.graft_boxes import (
 )
 from dune_imperium.rules.immortality import (
     legal_family_atomics_actions,
+    legal_research_bonus_actions,
     legal_specimen_return_actions,
 )
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
@@ -87,6 +92,7 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_placement_ability_actions,
     legal_leader_signet_actions,
 )
+from dune_imperium.rules.optional_trash import legal_optional_trash_actions
 from dune_imperium.rules.owed_draws import legal_owed_draw_actions
 from dune_imperium.rules.sardaukar import (
     legal_commander_recruit_actions,
@@ -151,6 +157,9 @@ def legal_agent_effect_frame_actions(
         # So does a draw a trigger earned in it, taken as its own step
         # (user ruling 2026-10-10, OQ-106).
         *legal_owed_draw_actions(state, player),
+        # A Contract completed in the turn: its icons wait on it as rows
+        # (OQ-112 (4)).
+        *legal_contract_icon_row_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),
@@ -169,6 +178,10 @@ def legal_agent_effect_frame_actions(
         *legal_tech_acquisition_actions(state, player),
         *legal_tech_flip_actions(state, player),
         *legal_tech_acquire_effect_actions(state, player),
+        # A research bonus or trash icon raised in the turn waits on it as
+        # rows, with no refusal (user decision 2026-10-17, cleanup-2b).
+        *legal_research_bonus_actions(state, player),
+        *legal_optional_trash_actions(state, player),
         *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
         *legal_commander_deployments(state, player),
@@ -291,6 +304,7 @@ def _active_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
             *legal_agent_card_recall_actions(state, player),
             *legal_agent_card_influence_actions(state, player),
             *legal_agent_card_trash_actions(state, player),
+            *legal_agent_card_icon_choice_actions(state, player),
         )
     else:
         # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).

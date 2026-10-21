@@ -26,6 +26,18 @@ def counted_in_play(seat: PlayerState) -> tuple[str, ...]:
     return tuple(card_id for card_id in seat.in_play if card_id != borrowed)
 
 
+def trashable_cards(seat: PlayerState, *, hand_only: bool = False) -> tuple[str, ...]:
+    """The cards a black trash icon may take from ``seat``: "Trash a card
+    from your hand, discard pile, or in play" [Main p. 20] -- in play as
+    ``counted_in_play`` reads it, so a Row card borrowed with Usurp is no
+    target (OQ-054). ``hand_only`` for printed text naming the hand alone
+    ("Trash a card from your hand" [Devious card])."""
+
+    if hand_only:
+        return seat.hand
+    return (*seat.hand, *seat.discard_pile, *counted_in_play(seat))
+
+
 def has_faction_bond(
     card_ids: tuple[str, ...],
     source_card_id: str,

@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import EVENTS_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -20,6 +21,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION
 
 ENGINE = UprisingRulesEngine()
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
@@ -77,8 +79,10 @@ def _owner(state: GameState) -> int:
 
 
 def _offered(state: GameState) -> list[tuple[str, tuple[tuple[str, Any], ...]]]:
+    # Stage B3d-2a: what the rules offer is the whole actions; a window opened
+    # for one effect shows its target rows instead (``legal_actions``).
     return [
-        (a.action_id, a.arguments) for a in ENGINE.legal_actions(state, _owner(state))
+        (a.action_id, a.arguments) for a in ENGINE.whole_actions(state, _owner(state))
     ]
 
 
@@ -87,13 +91,29 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _on_turn(state: GameState) -> bool:
     return state.decision_stack[-1].kind == FrameKind.TURN
+
+
+def _takes_nothing(state: GameState, seat: int) -> GameState:
+    """Cleanup-2a (OQ-071 addendum, the 2026-09-30 ruling "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다"): a seat with no line it can take is
+    asked too; its one row takes nothing and emits the skip."""
+
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
+    assert _owner(state) == seat
+    assert _offered(state) == [(SCOUTS_NO_OPTION, ())]
+    after = _act(state, SCOUTS_NO_OPTION)
+    new = after.event_log[len(state.event_log) :]
+    assert [
+        dict(e.payload)["player"] for e in new if e.kind == "scouts_choice_skipped"
+    ] == [seat]
+    return after
 
 
 def test_royal_delegation_goes_round_the_table_and_may_be_passed() -> None:
@@ -116,14 +136,11 @@ def test_royal_delegation_goes_round_the_table_and_may_be_passed() -> None:
     assert seats == [0, 1, 2, 3]
 
 
-def test_a_seat_that_cannot_pay_is_skipped() -> None:
+def test_a_seat_that_cannot_pay_is_asked_and_takes_nothing() -> None:
     poor = {"resources": Resources(solari=1, spice=0, water=1)}
     state = _reveal(_base(**{"0": poor}), "royal_delegation")
+    state = _takes_nothing(state, 0)
     assert _owner(state) == 1
-    assert any(
-        e.kind == "scouts_choice_skipped" and dict(e.payload)["player"] == 0
-        for e in state.event_log
-    )
 
 
 def test_private_stock_must_take_one_of_its_two_lines() -> None:
@@ -163,7 +180,8 @@ def test_crackdown_still_asks_a_seat_with_only_one_possible_loss() -> None:
     assert _owner(state) == 0
     assert state.players[0].influence.emperor == 2  # nothing taken yet
     assert _offered(state) == [("scouts_choose_option", (("option", 1),))]
-    legal = ENGINE.legal_actions(state, 0)
+    # The display takes the server's whole actions (stage B3d-2b).
+    legal = ENGINE.whole_actions(state, 0)
     info = scouts_choice_lines(state, 0, legal)
     assert info is not None
     lines = info["lines"]
@@ -181,14 +199,10 @@ def test_crackdown_still_asks_a_seat_with_only_one_possible_loss() -> None:
     state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
     assert state.players[1].spy_post_ids == ()
     assert state.players[1].influence.emperor == 1
-    # Seats 2 and 3 can do neither: they are skipped and the turn opens.
+    # Seats 2 and 3 can do neither: each confirms taking nothing, then the
+    # turn opens.
+    state = _takes_nothing(_takes_nothing(state, 2), 3)
     assert _on_turn(state)
-    skipped = [
-        dict(e.payload)["player"]
-        for e in state.event_log
-        if e.kind == "scouts_choice_skipped"
-    ]
-    assert skipped == [2, 3]
 
 
 def test_political_equilibrium_lowers_the_highest_track_and_asks_on_a_tie() -> None:
@@ -289,7 +303,7 @@ def test_moment_of_revelation_puts_prepare_the_way_in_hand() -> None:
 def test_moment_of_revelation_is_skipped_with_an_empty_reserve_stack() -> None:
     """OQ-022's direction, the Moment of Revelation ruling of 2026-09-29: a
     cost that buys nothing (Prepare the Way exhausted) is not offered
-    [Main p. 20]; every seat is skipped and nobody pays."""
+    [Main p. 20]; every seat takes nothing and nobody pays."""
     base = _base()
     empty_stack = tuple(
         (card_id, 0) if card_id == "prepare_the_way" else (card_id, count)
@@ -297,14 +311,10 @@ def test_moment_of_revelation_is_skipped_with_an_empty_reserve_stack() -> None:
     )
     spice_before = [player.resources.spice for player in base.players]
     state = _reveal(replace(base, reserve_stacks=empty_stack), "moment_of_revelation")
+    for seat in range(4):
+        state = _takes_nothing(state, seat)
     assert _on_turn(state)
     assert [player.resources.spice for player in state.players] == spice_before
-    skipped = [
-        dict(e.payload)["player"]
-        for e in state.event_log
-        if e.kind == "scouts_choice_skipped"
-    ]
-    assert skipped == [0, 1, 2, 3]
 
 
 def _late(state: GameState) -> GameState:
@@ -383,15 +393,9 @@ def test_royal_delegation_is_not_offered_at_the_top_of_the_emperor_track() -> No
     of the Emperor track (the gain would be lost, OQ-060) keeps its Solari."""
     state = _base(**{"0": {"influence": Influence(emperor=6)}})
     solari = state.players[0].resources.solari
-    state = _reveal(state, "royal_delegation")
-    assert _owner(state) == 1  # seat 0 was skipped
+    state = _takes_nothing(_reveal(state, "royal_delegation"), 0)
+    assert _owner(state) == 1
     assert state.players[0].resources.solari == solari
-    skipped = [
-        dict(e.payload)["player"]
-        for e in state.event_log
-        if e.kind == "scouts_choice_skipped"
-    ]
-    assert skipped == [0]
 
 
 def _water_discipline(**seat_fields: Any) -> GameState:
@@ -601,6 +605,11 @@ def test_bene_gesserit_treachery_asks_troop_or_commander_when_both() -> None:
         ("scouts_lose_garrison_unit", ()),
         ("scouts_lose_garrison_unit", (("commanders", 1),)),
     ]
+    # The window shows the unit as ``choose_unit`` rows (stage B3d-2b).
+    assert [(a.action_id, a.arguments) for a in ENGINE.legal_actions(state, 0)] == [
+        ("choose_unit", (("zone", "garrison"),)),
+        ("choose_unit", (("commanders", 1), ("zone", "garrison"))),
+    ]
     commander = _act(state, "scouts_lose_garrison_unit", commanders=1)
     seat = commander.players[0]
     assert (seat.troops_garrison, seat.commanders_garrison) == (2, 0)
@@ -620,17 +629,20 @@ def test_bene_gesserit_treachery_with_troops_only_takes_a_troop_unasked() -> Non
     assert _owner(state) == 1  # no unit choice: the next seat is asked
 
 
-def test_bene_gesserit_treachery_skips_a_seat_with_no_garrison_unit() -> None:
+def test_bene_gesserit_treachery_asks_a_seat_with_no_garrison_unit() -> None:
     from dune_imperium.display.scouts import scouts_choice_lines
 
     state = _treachery(troops_garrison=0, troops_supply=12)
+    # Seat 0's line is greyed with its reason beside the confirm.
+    info = scouts_choice_lines(state, 0, ENGINE.whole_actions(state, 0))
+    assert info is not None
+    lines = info["lines"]
+    assert isinstance(lines, list)
+    assert not lines[0]["enabled"] and lines[0]["reason"]
+    state = _takes_nothing(state, 0)
     assert _owner(state) == 1
-    assert any(
-        e.kind == "scouts_choice_skipped" and dict(e.payload)["player"] == 0
-        for e in state.event_log
-    )
     # Seat 1 has troops: its troop line is enabled.
-    info = scouts_choice_lines(state, 1, ENGINE.legal_actions(state, 1))
+    info = scouts_choice_lines(state, 1, ENGINE.whole_actions(state, 1))
     assert info is not None
     lines = info["lines"]
     assert isinstance(lines, list)

@@ -83,6 +83,7 @@ from collections.abc import Iterable
 
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import FactionBond, RevealCountKind
 from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
     imperium_deck_instance_ids,
@@ -100,8 +101,9 @@ from dune_imperium.evaluation.tournament import MatchSpec
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.endgame import FinalStanding
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.reveal_lines import reveal_lines
 
-from .base import Collector, Columns, Step, payload
+from .base import Collector, Columns, Step, payload, placement
 
 FACTION_ICONS = frozenset(
     (
@@ -421,13 +423,14 @@ def _resolve_instance_id(
 #   the current catalog), or its ``icon_condition`` is
 #   ``PersonalCardIconCondition.BENE_GESSERIT_BOND`` (Long Reach; also
 #   Bene Gesserit, resolved in ``rules/agent_icons.py``).
-# - ``reveal``: a ``PersonalCardRevealEffect`` in ``reveal_effects`` sets
+# - ``reveal``: a line of the card's Reveal record (``reveal_lines``) sets
 #   ``required_faction_bond`` (resolved via ``has_faction_bond`` in
 #   ``rules/reveal_turn.py::_eligible_reveal_effects``) or
 #   ``per_revealed_faction`` (a *count* of revealed same-Faction cards
 #   including the card itself, not a same/other gate -- Sardaukar
-#   Coordination, Stilgar the Devoted; ``_reveal_effect_persuasion``/
-#   ``_reveal_effect_strength``). The latter is not literally
+#   Coordination, Stilgar the Devoted; ``rules/reveal_lines.RevealLine``'s
+#   ``persuasion_over``/``strength_over`` since stage B3e-2). The latter is not
+#   literally
 #   ``has_faction_bond``, but it needs company of the same Faction to pay off
 #   more than its own base value, matching doc 6.6's framing, so it is kept
 #   in the table with a code-comment flag.
@@ -452,13 +455,13 @@ def _agent_bond_faction(entry: PersonalCardDefinition) -> Faction | None:
 
 
 def _reveal_bond_faction(entry: PersonalCardDefinition) -> Faction | None:
-    for effect in getattr(entry, "reveal_effects", ()) or ():
-        if effect.required_faction_bond is not None:
-            return Faction(effect.required_faction_bond.value)
-        if effect.per_revealed_faction is not None:
-            return Faction(effect.per_revealed_faction.value)
-        if effect.per_in_play_faction is not None:
-            return Faction(effect.per_in_play_faction.value)
+    for line in reveal_lines(entry):
+        for condition in line.conditions:
+            if isinstance(condition, FactionBond):
+                return condition.faction
+        count = line.faction_count
+        if count is not None:
+            return count.faction
     return None
 
 
@@ -510,8 +513,9 @@ PER_REVEALED: frozenset[str] = frozenset(
     card_id
     for card_id, entry in _catalog_entries()
     if any(
-        effect.per_revealed_faction is not None
-        for effect in getattr(entry, "reveal_effects", ()) or ()
+        line.faction_count is not None
+        and line.faction_count.kind is RevealCountKind.REVEALED_FACTION_CARD
+        for line in reveal_lines(entry)
     )
 )
 
@@ -519,7 +523,8 @@ PER_REVEALED: frozenset[str] = frozenset(
 def _agent_side(s: Step, p: int) -> bool:
     """Return whether seat ``p``'s new ``in_play`` card(s) this step are Agent-side.
 
-    "agent_turn" is the placement action itself. A Graft partner is chosen
+    The placement (since stage B1 the space pick, ``placement``) is the
+    Agent-side step itself. A Graft partner is chosen
     under a separate action ID (``choose_graft_partner``), but it still
     enters play while seat ``p``'s ``FrameKind.AGENT_EFFECTS`` frame is open
     (``rules/agent_turn.py`` pushes it at placement; it stays open after the
@@ -532,7 +537,7 @@ def _agent_side(s: Step, p: int) -> bool:
     choice frame can sit above it.
     """
 
-    if s.action is not None and s.action.action_id == "agent_turn":
+    if placement(s) is not None:
         return True
     return any(
         frame.kind == FrameKind.AGENT_EFFECTS

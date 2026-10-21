@@ -23,6 +23,7 @@ Every seed below was found by a scratch search over seeds, not guessed.
 """
 
 import random
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
@@ -30,6 +31,11 @@ from typing import Final
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import (
+    apply_placement,
+    apply_whole,
+    steps_after,
+)
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -51,6 +57,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.state import canonical_state_hash
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import (
     _conflict_end_trigger_cards,
     _conflict_losses,
@@ -83,6 +90,11 @@ from dune_imperium.server.turn_end import (
     unit_over,
     unit_seat,
 )
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py); reached by path instead.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from server_placement import place_agent  # type: ignore[import-not-found]  # noqa: E402
 
 # The AI seats play the rubric-priced 2026-09-10 table pinned in the registry,
 # not ``heuristic`` (see tests/server/test_undo.py): the scripted seeds below
@@ -357,6 +369,54 @@ def test_an_open_auction_call_is_the_press_itself() -> None:
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
     decision = _obj(summary["decision"])
     assert decision["kind"] == "scouts_call" and decision["owner"] == 1
+
+
+def test_a_scouts_choice_with_nothing_to_take_is_the_press_itself() -> None:
+    """Cleanup-2a (OQ-071 addendum): a seat that can take no line of a Scouts
+    choice is asked anyway, and its one row says it takes nothing -- like a
+    pass, the press itself: no hold, nothing to take back, and the next seat
+    decides at once."""
+
+    from dune_imperium.core.player import Resources
+    from dune_imperium.rules.scouts import _item_tasks, advance_scouts_step
+
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, game_seed=83, arrakeen_scouts=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    turn = session.state
+    # Royal Delegation costs 2 Solari; seat 0 holds 1.
+    players = tuple(
+        replace(player, resources=Resources(solari=1 if seat == 0 else 6, spice=6))
+        for seat, player in enumerate(turn.players)
+    )
+    state = replace(
+        turn,
+        players=players,
+        round_number=4,
+        first_player=0,
+        decision_stack=(),
+        scouts_opening=True,
+        scouts_item="royal_delegation",
+        scouts_revealed=((4, "royal_delegation"),),
+        scouts_tasks=(),
+    )
+    state = replace(state, scouts_tasks=_item_tasks(state, "royal_delegation"))
+    while not state.decision_stack:
+        state = advance_scouts_step(state).state
+    session.state = state
+    summary = manager.summary(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in actions] == ["resolve_scouts_choice_without_option"]
+
+    summary = manager.apply_action(
+        game_id, 0, _int(summary["revision"]), _int(actions[0]["index"])
+    )
+
+    assert summary["confirmation"] is None
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "scouts_choice" and decision["owner"] == 1
 
 
 def test_an_explicit_end_handing_straight_to_a_human_still_seals_the_turn() -> None:
@@ -643,18 +703,17 @@ def test_a_usurp_trash_after_the_press_is_part_of_that_press(
         assert taken["confirmation"] is None
         return taken
 
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    take(
-        next(
-            a
-            for a in actions
-            if a["action_id"] == "agent_turn"
-            and _obj(a["arguments"]).get("card_id") == _USURP
-            and _obj(a["arguments"]).get("space_id") == space_id
-            and _obj(a["arguments"]).get("graft") is True
-            and "infiltrate_post_id" not in _obj(a["arguments"])
-        )
+    # The placement is a card pick and then a space pick (stage B1).
+    placed = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == _USURP
+        and arguments.get("space_id") == space_id
+        and arguments.get("graft") is True
+        and "infiltrate_post_id" not in arguments,
     )
+    assert placed["confirmation"] is None
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     summary = take(
         next(
@@ -741,15 +800,22 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     # which moved seed 7 off it; seed 12 was the only one of 0-39 reaching
     # it under this index-0 walk. Re-searched 2026-10-14 -- v146: optional
     # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
-    # moved seed 12 off it; of 0-79 seeds 22, 56 and 72 reach it.)
+    # moved seed 12 off it; of 0-79 seeds 22, 56 and 72 reach it. Stage B2
+    # holds seat 0's Conflict reward rows before a pause, so the walk now
+    # meets summaries without a decision; seed 22 still reaches the shape.
+    # Stage B3c-1 plays a card effect first, which moves the random seats'
+    # games; of 0-99 seeds 7, 8 and 27 reach it. Stage B3d-2a offers the
+    # windows by their target rows, which moved seed 7 off it again; of
+    # 0-99 seeds 8 and 27 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=22, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=8, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
         game_id,
         summary,
-        lambda s: _obj(s["decision"])["kind"] == "opponent_unit_loss"
+        lambda s: s["decision"] is not None
+        and _obj(s["decision"])["kind"] == "opponent_unit_loss"
         and _obj(s["decision"])["owner"] == 0,
     )
     assert summary["confirmation"] is None
@@ -792,15 +858,13 @@ def _holy_war_game(loser: PlayerState) -> tuple[GameSessionManager, str]:
     summary = manager.create_game(TWO_HUMANS, game_seed=0, bloodlines=True)
     game_id = str(summary["game_id"])
     manager._get(game_id).state = state
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    send = next(
-        a
-        for a in actions
-        if a["action_id"] == "agent_turn"
-        and _obj(a["arguments"]).get("card_id") == _HOLY_WAR
-        and _obj(a["arguments"]).get("space_id") == "assembly_hall"
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == _HOLY_WAR
+        and arguments.get("space_id") == "assembly_hall",
     )
-    summary = manager.apply_action(game_id, 0, 0, _int(send["index"]))
     # Assembly Hall's own Intrigue card first, so only the box is left.
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     board = next(a for a in actions if a["action_id"] == "resolve_board_effect")
@@ -938,14 +1002,9 @@ def test_a_humans_own_covert_operation_does_not_hold_it_mid_turn() -> None:
     session = manager._get(game_id)
     session.state = state
 
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    agent_turn = next(
-        a
-        for a in actions
-        if a["action_id"] == "agent_turn"
-        and _obj(a["arguments"])["space_id"] == "assembly_hall"
+    summary = place_agent(
+        manager, game_id, 0, lambda arguments: arguments["space_id"] == "assembly_hall"
     )
-    summary = manager.apply_action(game_id, 0, 0, _int(agent_turn["index"]))
     assert summary["confirmation"] is None
 
     # Assembly Hall's own Gather Intelligence choice comes first and must be
@@ -1021,7 +1080,11 @@ def _covert_operation_game(
     game_id = str(summary["game_id"])
     manager._get(game_id).state = state
     summary = manager.summary(game_id)
-    for wanted in ("agent_turn", "decline_gather_intelligence", "resolve_board_effect"):
+    summary = place_agent(
+        manager, game_id, 0, lambda arguments: arguments["space_id"] == "assembly_hall"
+    )
+    assert summary["confirmation"] is None
+    for wanted in ("decline_gather_intelligence", "resolve_board_effect"):
         actions = _rows(manager.legal_actions(game_id, 0)["actions"])
         entry = next(
             a
@@ -1069,6 +1132,16 @@ def test_an_owed_emperor_track_spy_holds_the_turn_end_ready_flag() -> None:
     session.state = state
 
     def take(action_id: str, space_id: str | None = None) -> JsonObject:
+        if action_id == "agent_turn":
+            # A card pick and then a space pick (stage B1).
+            placed: JsonObject = place_agent(
+                manager,
+                game_id,
+                0,
+                lambda arguments: space_id is None
+                or arguments.get("space_id") == space_id,
+            )
+            return placed
         actions = _rows(manager.legal_actions(game_id, 0)["actions"])
         chosen = next(
             a
@@ -1137,13 +1210,22 @@ def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
     )
 
     def take(state: GameState, action_id: str, **arguments: object) -> GameState:
+        if action_id == "agent_turn":
+            # A card pick and then a space pick (stage B1).
+            placement = next(
+                action
+                for action in executable_placements(state, 0)
+                if all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+            )
+            return apply_placement(_ENGINE, state, placement).state
+        # The rules' whole actions (stage B3: the seat's rows are their steps).
         action = next(
             action
-            for action in _ENGINE.legal_actions(state, 0)
+            for action in _ENGINE.whole_actions(state, 0)
             if action.action_id == action_id
             and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
         )
-        return _ENGINE.apply(state, action).state
+        return apply_whole(_ENGINE, state, action).state
 
     visited = take(
         take(state, "agent_turn", space_id="assembly_hall"), "resolve_board_effect"
@@ -1152,14 +1234,108 @@ def test_a_pending_tech_acquire_effect_holds_the_turn_end_ready_flag() -> None:
     bought = take(visited, "acquire_tech", tech_id="glowglobes")
     assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert dict(bought.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY]
-    assert {action.action_id for action in _ENGINE.legal_actions(bought, 0)} == {
+    assert {action.action_id for action in _ENGINE.whole_actions(bought, 0)} == {
         "resolve_tech_acquire_effect"
     }
     assert agent_turn_end_ready(bought) is None
 
     resolved = take(bought, "resolve_tech_acquire_effect", faction="emperor")
     assert agent_turn_end_ready(resolved) == 0
-    assert DomainAction("finish_agent_turn", 0) in _ENGINE.legal_actions(resolved, 0)
+    assert DomainAction("finish_agent_turn", 0) in _ENGINE.whole_actions(resolved, 0)
+
+
+def _bought_glowglobes(influence: Influence) -> GameState:
+    """Seat 0 sends an Agent to the Assembly Hall and buys Glowglobes: its
+    Influence icon is owed, nothing else is."""
+
+    starters = starting_deck_instance_ids(0)
+    owner = PlayerState(
+        player_id=0,
+        hand=starters[:5],
+        deck=starters[5:],
+        resources=Resources(spice=6),
+        influence=influence,
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        tech_stacks=(
+            ("glowglobes", "training_depot", "panopticon"),
+            ("gene_locked_vault", "delivery_bay", "servo_receivers"),
+            ("advanced_data_analysis", "plasteel_blades", "spy_drones"),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    def take(state: GameState, action_id: str, **arguments: object) -> GameState:
+        if action_id == "agent_turn":
+            # A card pick and then a space pick (stage B1).
+            placement = next(
+                action
+                for action in executable_placements(state, 0)
+                if all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+            )
+            return apply_placement(_ENGINE, state, placement).state
+        # The rules' whole actions (stage B3: the seat's rows are their steps).
+        action = next(
+            action
+            for action in _ENGINE.whole_actions(state, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return apply_whole(_ENGINE, state, action).state
+
+    visited = take(
+        take(state, "agent_turn", space_id="assembly_hall"), "resolve_board_effect"
+    )
+    return take(visited, "acquire_tech", tech_id="glowglobes")
+
+
+def test_a_blocked_tech_acquire_influence_does_not_hold_the_turn_end_ready_flag() -> (
+    None
+):
+    # User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    # OQ-060): Glowglobes' "Influence with any Faction" offers no Faction at
+    # the top, so with every cube at 6 it waits greyed out and the press
+    # lapses it (OQ-057 (1)): the end is ready. With a Faction it can still
+    # raise it holds the end (OQ-098), as does a blocked one beside another
+    # owed acquire icon.
+    top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    blocked = _bought_glowglobes(top)
+    assert dict(blocked.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY] == (
+        "glowglobes:influence"
+    )
+    assert agent_turn_end_ready(blocked) == 0
+    assert [a.action_id for a in _ENGINE.whole_actions(blocked, 0)] == [
+        "finish_agent_turn"
+    ]
+
+    raisable = _bought_glowglobes(replace(top, fremen=5))
+    assert dict(raisable.decision_stack[-1].context)[TECH_ACQUIRE_PENDING_KEY]
+    assert agent_turn_end_ready(raisable) is None
+
+    frame = blocked.decision_stack[-1]
+    context = dict(frame.context)
+    context[TECH_ACQUIRE_PENDING_KEY] = "glowglobes:influence,plasteel_blades:solari"
+    beside = replace(
+        blocked,
+        decision_stack=(
+            *blocked.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+    assert agent_turn_end_ready(beside) is None
 
 
 _ENGINE = UprisingRulesEngine()
@@ -1214,24 +1390,23 @@ def _resolve_what_is_offered(
     )
     place = next(
         action
-        for action in _ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments).get("card_id") == hand[0]
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("card_id") == hand[0]
         and dict(action.arguments).get("space_id") == space_id
         and (dict(action.arguments).get("graft") is True) == bool(graft_partner)
         and "cost_option" not in dict(action.arguments)
     )
-    state = _ENGINE.apply(state, place).state
+    state = apply_placement(_ENGINE, state, place).state
     if graft_partner is not None:
         partner = DomainAction(
             action_id="choose_graft_partner",
             actor=0,
             arguments=(("card_id", graft_partner),),
         )
-        state = _ENGINE.apply(state, partner).state
+        state = apply_whole(_ENGINE, state, partner).state
     switched = False
     while True:
-        legal = _ENGINE.legal_actions(state, 0)
+        legal = _ENGINE.whole_actions(state, 0)
         step = next((a for a in legal if a.action_id in _RESOLVING), None)
         if step is None and not switched:
             step = next((a for a in legal if a.action_id == "switch_graft_card"), None)
@@ -1240,7 +1415,7 @@ def _resolve_what_is_offered(
             return state
         if step.action_id != "switch_graft_card":
             switched = False
-        state = _ENGINE.apply(state, step).state
+        state = apply_whole(_ENGINE, state, step).state
 
 
 @pytest.mark.parametrize(
@@ -1297,7 +1472,7 @@ def test_a_box_keeping_only_blocked_icons_is_ready_to_end(
     if graft_partner is not None:
         assert context["graft_pending_effect"] is True
         assert set(str(context["graft_pending_icons"]).split(",")) == waiting
-    offered = {action.action_id for action in _ENGINE.legal_actions(state, 0)}
+    offered = {action.action_id for action in _ENGINE.whole_actions(state, 0)}
     assert "finish_agent_turn" in offered
     assert offered.isdisjoint({*_RESOLVING, "switch_graft_card"})
 
@@ -1331,7 +1506,7 @@ def test_a_waiting_single_effect_box_still_holds_the_ready_flag() -> None:
     assert context["pending_agent_effect"] is True
     assert not context.get("pending_agent_icons")
     assert "finish_agent_turn" in {
-        action.action_id for action in _ENGINE.legal_actions(state, 0)
+        action.action_id for action in _ENGINE.whole_actions(state, 0)
     }
 
     assert agent_turn_end_ready(state) is None
@@ -1471,9 +1646,17 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # first of 0-39 (round 8; 16, 20, 23, 28 and 36 reached it too). v146:
     # optional Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14),
     # which changes the random walk's legal lists; re-searched then, seed 2
-    # is the first of 0-59 (27 and 59 reach it too).
+    # is the first of 0-59 (27 and 59 reach it too). Codec v150 (stage B1,
+    # OQ-111): the Agent turn is a card pick and a space pick, which changes
+    # the walk's lists again; re-searched, seed 3 is the first of 0-59 (25,
+    # 26, 30, 37, 46, 49, 50 and 57 reach it too). Stage B2 (OQ-112): a
+    # Conflict reward's icons are rows the walk draws over; re-searched,
+    # seed 2 is the first of 0-59 (5, 7, 18, 23, 26, 35, 43, 44 and 49 reach
+    # it too). Stage B3c-1 (a card is played effect first, on the turn frame
+    # too): re-searched, seed 3 is the first of 0-79 (5, 14, 19, 21 and 24
+    # reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=2)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=3)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
@@ -1613,9 +1796,14 @@ def test_undoing_back_to_the_turn_start_closes_the_unit() -> None:
     session = manager._get(game_id)
     turn_start_revision = _int(summary["revision"])
 
+    # A placement is a card pick and then a space pick (stage B1): the pick
+    # alone takes no turn yet, the space opens the unit.
     summary = manager.apply_action(game_id, 0, turn_start_revision, 0)
-    assert session.open_units.get(0) == 0
+    assert 0 not in session.open_units
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
+    assert session.open_units.get(0) == 1
     window = next(row for row in _rows(summary["undo"]) if row["seat"] == 0)
+    assert window["steps"] == 2
 
     summary = manager.undo(
         game_id, 0, _int(summary["revision"]), _int(window["steps"])
@@ -1626,10 +1814,13 @@ def test_undoing_back_to_the_turn_start_closes_the_unit() -> None:
     decision = _obj(summary["decision"])
     assert decision["kind"] == "turn" and decision["owner"] == 0
 
-    # A different board space (index 1, not index 0) played to its natural
-    # end: the unit opens again, never holds, and the press closes it.
+    # A different card (index 1, not index 0) and its first space played to
+    # their natural end: the unit opens again, never holds, and the press
+    # closes it.
     summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 1)
-    assert session.open_units.get(0) == 0
+    assert 0 not in session.open_units
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
+    assert session.open_units.get(0) == 1
     presses = 0
     for _ in range(60):
         assert summary["confirmation"] is None
@@ -1685,7 +1876,9 @@ def test_undoing_a_leader_pick_closes_its_unit_and_a_new_pick_holds_once() -> No
 # policy for seat 0. v146: optional Agent-turn effects offer no refusal
 # (OQ-095 (2), 2026-10-14), which moved the reward-Spy seed 19 off its
 # shape; re-searched then, seed 20 is the first of 0-59 (23, 26, 35, 43
-# and 46 reach it too).
+# and 46 reach it too). Codec v150 (stage B1, OQ-111): the Agent turn is a
+# card pick and a space pick, which moves seat 0's walk off seed 20; seed 18
+# is the first of 0-59 now (34 and 40 reach it too).
 
 
 def _walk_to_held_end_before_chance(
@@ -1729,16 +1922,16 @@ def _seat0_undo(summary: JsonObject) -> list[dict[str, object]]:
 
 
 def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
-    # Seed 20, base game: seat 0's Conflict reward Spy is its unit's last
+    # Seed 18, base game: seat 0's Conflict reward Spy is its unit's last
     # step, and the next round opens by reshuffling seat 0's discard pile
     # (the "1007" shape). The press comes before that reshuffle, so the Spy
     # can still be taken back and put on another post.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=20)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=18)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     summary, choice, logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 20, "place_combat_reward_spy"
+        manager, game_id, summary, 18, "place_combat_reward_spy"
     )
 
     # The row told the seat it could take the Spy back, and it can: nothing
@@ -1754,7 +1947,17 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     assert session.state.decision_stack[-1].kind == FrameKind.PAUSE
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
-    assert _seat0_undo(summary) == [{"seat": 0, "steps": 1}]
+    # The unit is the reward's three icon rows (stage B2, OQ-112: Control,
+    # Solari, the Spy's row; stage B3d-1: each shown as its effect row,
+    # ``take``, ``gain`` and ``place_spy``) and the Spy, which the window
+    # offers by its target row (stage B3d-2a: ``choose_post``); none of them
+    # reveals anything.
+    assert [
+        entry.step.action_id
+        for entry in session.log[-4:]
+        if isinstance(entry, LoggedStep) and isinstance(entry.step, DomainAction)
+    ] == ["take", "gain", "place_spy", "choose_post"]
+    assert _seat0_undo(summary) == [{"seat": 0, "steps": 4}]
     assert manager.legal_actions(game_id, 0)["actions"] == []
 
     summary = manager.undo(game_id, 0, _int(summary["revision"]), 1)
@@ -1767,7 +1970,7 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
         if row["action_id"] == "place_combat_reward_spy"
         and row["arguments"] != choice["arguments"]
     ]
-    assert posts, "seed 20 offers the reward Spy another post"
+    assert posts, "seed 18 offers the reward Spy another post"
     assert all(row["strength_after"] is None for row in posts)
     summary = manager.apply_action(
         game_id, 0, _int(summary["revision"]), _int(posts[0]["index"])
@@ -1787,15 +1990,18 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
 
 
 def test_a_scouts_line_holds_before_the_next_scouts_card() -> None:
-    # Seed 11, Arrakeen Scouts: seat 0 is the last to answer a mission, and
+    # Seed 44, Arrakeen Scouts: seat 0 is the last to answer a mission, and
     # the next item of the schedule is drawn right after (the "1007" shape
-    # of the second press). The press comes before that draw.
+    # of the second press). The press comes before that draw. (Seed 11 until
+    # codec v150, stage B1: the Agent turn is a card pick and a space pick,
+    # which moves seat 0's walk; of 0-199, seeds 44, 86, 101, 131, 175, 179,
+    # 183, 186 and 193 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=11, arrakeen_scouts=True)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=44, arrakeen_scouts=True)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     summary, choice, logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 11, "scouts_join_mission"
+        manager, game_id, summary, 44, "scouts_join_mission"
     )
 
     assert choice["undoable"] is True
@@ -1824,17 +2030,18 @@ def test_a_hold_before_a_chance_outcome_survives_save_and_restore() -> None:
     # hold, and pressing there plays on exactly as the live game does: the
     # reshuffle and every AI answer after it come out the same.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=20)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=18)
     game_id = str(summary["game_id"])
     summary, _choice, _logged = _walk_to_held_end_before_chance(
-        manager, game_id, summary, 20, "place_combat_reward_spy"
+        manager, game_id, summary, 18, "place_combat_reward_spy"
     )
 
     restored = manager.restore_game(manager.save_game(game_id))
     restored_id = str(restored["game_id"])
     assert restored["confirmation"] == 0
     assert restored["decision"] is None
-    assert _seat0_undo(restored) == [{"seat": 0, "steps": 1}]
+    # The reward's three icon rows and its Spy (stage B2).
+    assert _seat0_undo(restored) == [{"seat": 0, "steps": 4}]
 
     live = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
     twin = manager.confirm_turn(restored_id, 0, _int(restored["revision"]))
@@ -2151,12 +2358,15 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # 43 and 46 reach it too). Since the engine pauses before the Round
     # Start draw (rules/pauses.py, codec v140) the answer is held there for
     # the defender's press, as every unit end with something left to take
-    # back. Live and restored sessions must agree.
+    # back. Live and restored sessions must agree. Codec v150 (stage B1,
+    # OQ-111): the Agent turn is a card pick and a space pick, which moves
+    # the walk off seed 2; seed 0 is the first of 0-59 (18, 20, 34, 35, 44
+    # and 48 reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=2)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(2)
+    rng = random.Random(0)
 
     found = False
     choice: dict[str, object] = {}
@@ -2483,7 +2693,9 @@ def _run_property_sweep_game(
                 continue
             if step.actor not in humans:
                 continue
-            if step.action_id != "decline_conflict_end_intrigue":
+            # The server's decline is recorded as the refusal row of the
+            # window (stage B3d-3), whose whole action is the decline id.
+            if step != _decline_row(step.actor):
                 tally.violations.append(f"step {index} ({step}) was sent by nobody")
                 continue
             tally.server_declines += 1
@@ -2505,7 +2717,9 @@ def _run_property_sweep_game(
         pressed: set[int] = set()
         for entry in live[logged:]:
             actor = entry.actor
-            step_id = getattr(entry.step, "action_id", None)
+            # A leader pick is the row ``choose_leader`` since stage B3d-2a;
+            # the whole action its step ends is ``pick_leader``.
+            step_id = getattr(entry.whole or entry.step, "action_id", None)
             if step_id in ("reveal_turn", "pick_leader") and actor in humans:
                 since_press[actor] += 1
             for event in entry.events:
@@ -2592,7 +2806,12 @@ def _run_property_sweep_game(
         choice = rng.choice(actions)
         before = session.state
         finishing = finishing_seat(before) == owner
-        sent.add(len(session.steps))
+        # One request applies the chosen whole action as all of its steps
+        # (stage B3), each its own entry in ``session.steps``: all of them
+        # are the walker's, not the server's.
+        whole = session.engine.whole_actions(before, owner)[_int(choice["index"])]
+        start = len(session.steps)
+        sent.update(range(start, start + steps_after(before, whole) + 1))
         summary = manager.apply_action(
             game_id,
             owner,
@@ -2731,15 +2950,19 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
     # meets a case (on the previous commit's engine it does at step 374,
     # round 8, seat 0's reward beside seat 2); 96 is the first seed after it
     # whose walk does (step 368, round 8, seat 0's reward beside seat 2).
+    # Seed 10 since codec v150 (stage B1, OQ-111: the Agent turn is a card
+    # pick and a space pick, which moves every random walk): searched from 0
+    # under this whole test, 10 is the first, and 37, 45, 47, 51, 66, 67, 79
+    # and 92 of 0-95 reach it too.
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
-        game_seed=96,
+        game_seed=10,
         immortality=True,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(96)
+    rng = random.Random(10)
     compared = 0
     for _ in range(9000):
         if summary["finished"]:
@@ -2803,7 +3026,8 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
 
 def _last_recipient_rows(session: GameSession, owner: int) -> list[object]:
     rows: list[object] = []
-    for index, action in enumerate(session.engine.legal_actions(session.state, owner)):
+    # The payload's rows are the whole actions (stage B3).
+    for index, action in enumerate(session.engine.whole_actions(session.state, owner)):
         row = sessions_module._serialize_action(index, action, session)
         dry = sessions_module._dry_run(session, action)
         held = dry is not None and unit_over(dry.state, owner)
@@ -2928,7 +3152,7 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
                 assert worlds[2] == worlds[3], ("last", live.round_number, owner, seat)
                 checked += 1
                 break
-        actions = session.engine.legal_actions(live, owner)
+        actions = session.engine.whole_actions(live, owner)
         action = sessions_module._choose(
             agents[owner], live, session.engine.observe(live, owner), actions
         )
@@ -2952,10 +3176,26 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
 # human seats at the table, where the wait itself would tell.
 
 _DECLINE: Final = "decline_conflict_end_intrigue"
+_FINISH: Final = "finish_conflict_end_intrigue"
 _PLAY: Final = "play_conflict_end_intrigue"
 _WINDOW_PROMPT: Final = (
     "Play an Intrigue card that triggers at this Conflict's end, or decline"
 )
+
+
+def _decline_row(seat: int) -> DomainAction:
+    """The step the window's "쓰지 않음" is recorded as: the refusal row naming
+    the play it declines (stage B3d-3), whose whole action is ``_DECLINE``."""
+
+    return DomainAction(
+        action_id="decline",
+        actor=seat,
+        arguments=(
+            ("of", "play"),
+            ("printed", "conflict_end"),
+            ("source", "intrigue"),
+        ),
+    )
 
 
 def _server_declines(session: GameSession, sent: set[int]) -> list[int]:
@@ -2965,14 +3205,15 @@ def _server_declines(session: GameSession, sent: set[int]) -> list[int]:
         index
         for index, step in enumerate(session.steps)
         if isinstance(step, DomainAction)
-        and step.action_id == _DECLINE
+        and step == _decline_row(step.actor)
         and session.seats[step.actor] == "human"
         and index not in sent
     ]
 
 
 def _window_actions(session: GameSession, seat: int) -> list[str] | None:
-    """The seat's legal action ids when its Conflict-end window is on top."""
+    """The seat's whole actions when its Conflict-end window is on top (the
+    window offers a play effect first, stage B3c-1)."""
 
     state = session.state
     if not state.decision_stack:
@@ -2980,7 +3221,7 @@ def _window_actions(session: GameSession, seat: int) -> list[str] | None:
     top = state.decision_stack[-1]
     if top.kind != FrameKind.CONFLICT_END_TRIGGER:
         return None
-    return [action.action_id for action in session.engine.legal_actions(state, seat)]
+    return [action.action_id for action in session.engine.whole_actions(state, seat)]
 
 
 def _walk_first_actions(
@@ -3038,9 +3279,13 @@ def test_a_lone_human_seats_decline_only_window_is_answered_for_it() -> None:
     )
     [index] = _server_declines(session, sent)
     step = session.steps[index]
-    assert step == DomainAction(action_id=_DECLINE, actor=0)
+    assert step == _decline_row(0)
     before = sessions_module._state_after(session, index)
     assert before.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    # The rules offer that one refusal; the seat is shown it as its row.
+    assert session.engine.whole_actions(before, 0) == (
+        DomainAction(action_id=_DECLINE, actor=0),
+    )
     assert session.engine.legal_actions(before, 0) == (step,)
     transition = session.engine.apply(before, step)
     entry = live_steps(session.log)[index]
@@ -3059,7 +3304,10 @@ def test_an_auto_decline_replays_and_stays_sealed_after_a_load() -> None:
     # The same seed 7 game, saved right before the request that runs into
     # the auto-decline and right after it: a load of the first regenerates
     # the decline when that request is repeated, a load of the second
-    # replays it as recorded and keeps it sealed.
+    # replays it as recorded and keeps it sealed. Since stage B2 that
+    # request is seat 0's press: its Conflict reward row is held before the
+    # pause in front of the next recipient, and the press runs on through
+    # the other rewards into the Conflict-end window.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=7, immortality=True)
     game_id = str(summary["game_id"])
@@ -3076,17 +3324,16 @@ def test_an_auto_decline_replays_and_stays_sealed_after_a_load() -> None:
     summary = _walk_first_actions(manager, game_id, summary, sent, stop)
     [index] = _server_declines(session, sent)
     document, earlier = saves[-1]
-    assert earlier["confirmation"] is None
+    assert earlier["confirmation"] == 0
 
     restored = manager.restore_game(document)
     restored_id = str(restored["game_id"])
     replayed = manager._get(restored_id)
-    owner = _int(_obj(restored["decision"])["owner"])
-    restored = manager.apply_action(
+    assert restored["confirmation"] == 0
+    restored = manager.confirm_turn(
         restored_id,
-        owner,
-        _int(restored["revision"]),
         0,
+        _int(restored["revision"]),
         undo_count=_int(restored["undo_count"]),
     )
     assert replayed.steps == session.steps
@@ -3138,7 +3385,7 @@ def test_undo_never_reaches_back_to_an_auto_declined_window() -> None:
     )
     assert len(session.steps) > index
     assert _window_actions(session, 0) is None
-    assert session.steps[index] == DomainAction(action_id=_DECLINE, actor=0)
+    assert session.steps[index] == _decline_row(0)
 
 
 def test_with_two_humans_a_decline_only_window_waits_for_one_press() -> None:
@@ -3178,7 +3425,7 @@ def test_with_two_humans_a_decline_only_window_waits_for_one_press() -> None:
         _int(row["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert session.steps[index] == DomainAction(action_id=_DECLINE, actor=owner)
+    assert session.steps[index] == _decline_row(owner)
     assert summary["confirmation"] is None
     assert [r for r in _rows(summary["undo"]) if r["seat"] == owner] == []
     assert owner not in session.open_units
@@ -3222,17 +3469,26 @@ def test_a_holder_sees_its_play_beside_the_decline() -> None:
     assert "harvest_cells" in str(_obj(rows[1]["arguments"])["card_id"])
 
 
-def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
-    # Seed 11, one human seat: seat 0 plays its Harvest Cells and still
-    # holds another Intrigue card, so the window stays open with only
-    # "쓰지 않음" (a public fact, OQ-103). The play can still be taken back,
-    # so the server does not answer the window: the seat's own decline is
-    # the press that confirms the play, and seals it. (v146: optional
-    # Agent-turn effects offer no refusal (OQ-095 (2), 2026-10-14), which
-    # moved seed 33 off this shape; re-searched then, seed 11 is the first
-    # of 0-79 under this first-action walk.)
+def test_a_play_in_the_window_is_confirmed_by_the_seats_own_finish() -> None:
+    # Seed 28, one human seat: seat 0 plays its Harvest Cells and still
+    # holds another Intrigue card, so the window stays open (a public fact,
+    # OQ-103). The card resolves at its play (user decision 2026-10-18): its
+    # specimens are taken and only the Tleilaxu acquisition is asked, over
+    # the window. Once that is answered the window offers only "끝내기"
+    # (`finish_conflict_end_intrigue`), not "쓰지 않음". The play and the
+    # answer can still be taken back, so the server does not answer the
+    # window: the seat's own finish is the press that confirms them, and
+    # seals them. (v146: optional Agent-turn effects offer no refusal
+    # (OQ-095 (2), 2026-10-14), which moved seed 33 off this shape;
+    # re-searched then, seed 11 was the first of 0-79 under this
+    # first-action walk. Cleanup-2b (user decision 2026-10-17,
+    # composed-effects plan 5, rule decision 5): a research space's icons
+    # are steps of their own, so the first-action walk moved off seed 11
+    # once more; re-searched under this walk and this whole test, seed 28 is
+    # the first of 0-399. Cleanup-2b's Conflict-end order (2026-10-18) kept
+    # seed 28 on this shape.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=11, immortality=True)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=28, immortality=True)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     sent: set[int] = set()
@@ -3255,12 +3511,33 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
         _int(play["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert len(session.steps) == played + 1
-    assert _window_actions(session, 0) == [_DECLINE]
+    # The play is two steps since stage B3c-1: the window's play effect,
+    # then the card.
+    assert len(session.steps) == played + 2
+    # The specimens are taken; the acquisition choice sits over the window.
+    assert session.state.players[0].specimens == 2
+    assert session.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     assert summary["confirmation"] is None
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    rows = _rows(manager.legal_actions(game_id, 0)["actions"])
+    decline_acquisition = next(
+        row for row in rows if row["action_id"] == "decline_intrigue_tleilaxu"
+    )
+    assert decline_acquisition["undoable"] is True
+    summary = manager.apply_action(
+        game_id,
+        0,
+        _int(summary["revision"]),
+        _int(decline_acquisition["index"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert _window_actions(session, 0) == [_FINISH]
+    assert summary["confirmation"] is None
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
     [row] = _rows(manager.legal_actions(game_id, 0)["actions"])
-    assert row["action_id"] == _DECLINE
+    assert row["action_id"] == _FINISH
+    assert row["undoable"] is False
+    assert row["sent_by_turn_end"] is False
     summary = manager.apply_action(
         game_id,
         0,
@@ -3268,7 +3545,7 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
         _int(row["index"]),
         undo_count=_int(summary["undo_count"]),
     )
-    assert session.steps[played + 1] == DomainAction(action_id=_DECLINE, actor=0)
+    assert session.steps[played + 3] == DomainAction(action_id=_FINISH, actor=0)
     assert summary["confirmation"] is None
     assert _rows(summary["undo"]) == []
-    assert session.undo_floor > played + 1
+    assert session.undo_floor > played + 3

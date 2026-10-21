@@ -12,9 +12,6 @@ from copy import replace
 from typing import Final
 
 from dune_imperium.config import RulesetConfig
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, DynamicCost
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -59,9 +56,13 @@ from dune_imperium.rules.agent_effects import (
     resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import (
-    apply_agent_action,
+    agent_card_pick,
+    agent_card_pick_actions,
+    agent_space_pick_actions,
+    apply_agent_card_pick,
+    apply_agent_space_pick,
     apply_turn_start_card,
-    legal_agent_actions,
+    executable_placements,
     legal_turn_start_card_actions,
 )
 from dune_imperium.rules.board_effects import (
@@ -73,7 +74,6 @@ from dune_imperium.rules.board_effects import (
     apply_shipping_action,
     apply_sietch_tabr_action,
     apply_tuek_sietch_action,
-    board_effect_is_implemented,
     resolve_board_effect,
     secrets_steal_is_pending,
 )
@@ -84,6 +84,7 @@ from dune_imperium.rules.card_draw import (
 from dune_imperium.rules.combat import (
     apply_combat_influence_without_faction,
     apply_combat_intrigue_pass,
+    apply_combat_reward_icon,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
     apply_combat_reward_spy,
@@ -92,9 +93,11 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
+    close_spent_conflict_end_window,
     combat_participants_are_stale,
     finish_combat,
     legal_combat_intrigue_actions,
+    legal_combat_reward_icon_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
     legal_combat_reward_spy_actions,
@@ -106,6 +109,7 @@ from dune_imperium.rules.combat import (
     pay_combat_rewards,
     refresh_combat_participants,
     resolve_combat_rewards,
+    spent_conflict_end_window,
 )
 from dune_imperium.rules.combat_deployment import (
     apply_agent_turn_finish,
@@ -123,6 +127,7 @@ from dune_imperium.rules.contracts import (
     apply_contract_hold,
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
+    apply_contract_reward_icon,
     apply_contract_spy_action,
     combat_held_contract_owner,
     complete_alliance_contracts,
@@ -130,11 +135,20 @@ from dune_imperium.rules.contracts import (
     fizzle_combat_held_contract_icons,
     held_contract_icons_can_open,
     legal_contract_actions,
+    legal_contract_icon_row_actions,
     legal_contract_intrigue_trash_actions,
     legal_contract_recall_actions,
+    legal_contract_reward_icon_actions,
     legal_contract_spy_actions,
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
+)
+from dune_imperium.rules.effect_steps import (
+    present,
+    presents_steps,
+    take_step,
+    whole_actions,
+    without_pick,
 )
 from dune_imperium.rules.endgame import (
     apply_endgame_intrigue_action,
@@ -158,6 +172,7 @@ from dune_imperium.rules.immortality import (
     apply_family_atomics,
     apply_research_advance,
     apply_research_bonus,
+    apply_research_icon,
     apply_specimen_return,
     legal_family_atomics_actions,
     legal_research_advance_actions,
@@ -206,7 +221,6 @@ from dune_imperium.rules.leader_abilities import (
     apply_shaddam_signet_choice,
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
-    leader_signet_is_implemented,
     legal_feyd_track_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
@@ -360,6 +374,7 @@ from dune_imperium.rules.tech import (
     apply_tech_acquisition,
     apply_tech_choice,
     apply_tech_flip,
+    apply_tech_influence_without_faction,
     deploy_suspensor_troops,
     draw_owed_tech_cards,
     legal_secret_project_actions,
@@ -375,6 +390,10 @@ from dune_imperium.rules.tleilaxu_row import (
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
+
+# The last state whose rules' actions were asked, its player and the actions
+# (``UprisingRulesEngine._rules_of``). Read and replaced as one reference.
+_LAST_RULES: tuple[GameState, int, tuple[DomainAction, ...]] | None = None
 type ActionHandler = Callable[[GameState, DomainAction], RuleResult]
 
 DEFAULT_LEADER_IDS = (
@@ -437,35 +456,16 @@ def _executable_agent_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Withhold Agent placements whose board effect is not implemented yet."""
+    """The Agent turn's step (stage B1): a card pick, or the picked card's
+    space picks."""
 
-    return tuple(
-        action
-        for action in legal_agent_actions(state, player)
-        if _agent_action_is_executable(state, action)
+    pick = agent_card_pick(state, player)
+    if pick is None:
+        return agent_card_pick_actions(player, executable_placements(state, player))
+    card, graft = pick
+    return agent_space_pick_actions(
+        player, executable_placements(state, player, card), card, graft
     )
-
-
-def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
-    arguments = dict(action.arguments)
-    card_id = arguments["card_id"]
-    space_id = arguments["space_id"]
-    if not isinstance(card_id, str) or not isinstance(space_id, str):
-        return False
-    if personal_card_for_instance(
-        card_id
-    ).agent_effect is PersonalCardAgentEffect.LEADER_SIGNET and not (
-        leader_signet_is_implemented(state.players[action.actor].leader_id)
-    ):
-        return False
-    requested_option = arguments.get("cost_option")
-    if isinstance(requested_option, int) and not isinstance(requested_option, bool):
-        cost_option = requested_option
-    elif BOARD_SPACES_BY_ID[space_id].dynamic_cost is DynamicCost.SWORDMASTER:
-        cost_option = int(any(player.swordmaster_acquired for player in state.players))
-    else:
-        cost_option = 0
-    return board_effect_is_implemented(state, space_id, cost_option)
 
 
 LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
@@ -483,6 +483,12 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_track_spy_actions,
         # A draw a Plot's trigger earned, its own step (OQ-106).
         legal_owed_draw_actions,
+        # A Contract completed in the turn waits on it as rows (OQ-112 (4)).
+        legal_contract_icon_row_actions,
+        # A research bonus or trash icon a Plot raised waits on the turn
+        # (cleanup-2b).
+        legal_research_bonus_actions,
+        legal_optional_trash_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -504,6 +510,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # A draw a trigger earned in the turn, its own step taken in any
         # order before the Reveal ends (user ruling 2026-10-10, OQ-106).
         legal_owed_draw_actions,
+        # A Contract completed in the Reveal waits on it as rows (OQ-112 (4)).
+        legal_contract_icon_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -515,6 +523,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tleilaxu_acquisitions,
         # Arrakeen Scouts: Corrinth City's seat's subcommittee (OQ-076).
         legal_subcommittee_choice_actions,
+        # A research bonus or trash icon raised in the Reveal waits on it
+        # (cleanup-2b).
+        legal_research_bonus_actions,
+        legal_optional_trash_actions,
     ),
     # A Reveal choice opened from the Reveal frame's pending list, on top
     # only while a step must follow at once (a Spy recalled for its
@@ -527,6 +539,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_scouts_rewards_first_actions,
     ),
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
+    FrameKind.CONTRACT_REWARD_ICONS: (legal_contract_reward_icon_actions,),
     FrameKind.CONTRACT_REWARD_RECALL: (legal_contract_recall_actions,),
     FrameKind.CONTRACT_INTRIGUE_TRASH: (legal_contract_intrigue_trash_actions,),
     FrameKind.CONTROL_DEFENSE: (
@@ -543,6 +556,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
+    FrameKind.COMBAT_REWARD_ICONS: (legal_combat_reward_icon_actions,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (legal_combat_reward_influence_actions,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
         legal_distinct_combat_reward_influence_actions,
@@ -632,6 +646,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_rewards_first": apply_scouts_rewards_first,
     "scouts_choose_option": apply_scouts_choice_action,
     "scouts_pass": apply_scouts_choice_action,
+    "resolve_scouts_choice_without_option": apply_scouts_choice_action,
     "scouts_join_mission": apply_mission_join,
     "scouts_decline_mission": apply_mission_join,
     "scouts_collect_mission": apply_mission_collect,
@@ -644,7 +659,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_decline_card": apply_take,
     "scouts_return_specimens": apply_scouts_return_specimens,
     # Turn choice and Plot Intrigue
-    "agent_turn": apply_agent_action,
+    "choose_agent_card": apply_agent_card_pick,
+    "place_agent": apply_agent_space_pick,
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
@@ -715,9 +731,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_desert_riding_hooks": apply_maker_space_action,
     "summon_maker_sandworms": apply_maker_space_action,
     "choose_shipping_influence": apply_shipping_action,
-    "resolve_desert_tactics_without_trash": apply_desert_tactics_action,
     "trash_card_for_desert_tactics": apply_desert_tactics_action,
-    "decline_imperial_privilege_intrigue": apply_imperial_privilege_action,
     "trash_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_conflict_agent_for_imperial_privilege": apply_imperial_privilege_action,
@@ -733,6 +747,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_intrigue_for_research_bonus": apply_research_bonus,
     "pay_research_bonus": apply_research_bonus,
     "decline_research_bonus": apply_research_bonus,
+    "resolve_research_icon": apply_research_icon,
     "return_specimen": apply_specimen_return,
     "use_family_atomics": apply_family_atomics,
     "acquire_tleilaxu": apply_tleilaxu_acquisition,
@@ -743,6 +758,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
     "acquire_tech": apply_tech_acquisition,
     "resolve_tech_acquire_effect": apply_tech_acquire_effect,
+    "resolve_tech_influence_without_faction": apply_tech_influence_without_faction,
     "decline_tech": apply_tech_acquisition,
     "flip_tech": apply_tech_flip,
     "choose_secret_project": apply_secret_project,
@@ -756,7 +772,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "draw_owed_intrigue": apply_owed_draw,
     "draw_owed_card": apply_owed_draw,
     "decline_skill": apply_skill_choice,
-    "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
     "trash_skill_for_strength": apply_skill_trash,
     # Agent-card serial choices
@@ -811,14 +826,13 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_leader_signet_spice": apply_leader_signet_payment,
     "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,
+    "resolve_leader_signet_without_option": apply_leader_signet_payment,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
     "choose_leader_signet_influence": apply_shaddam_signet_choice,
     "use_other_memories": apply_leader_placement_ability,
-    "decline_other_memories": apply_leader_placement_ability,
     "pay_leader_board_repeat": apply_leader_board_repeat,
-    "decline_leader_board_repeat": apply_leader_board_repeat,
     # Reveal turn
     "acquire_reserve": apply_reserve_acquisition,
     "acquire_imperium": apply_imperium_acquisition,
@@ -873,6 +887,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
     "hold_contract_icons": apply_contract_hold,
     "resolve_contract_icons_without_contract": apply_contract_fizzle,
+    "resolve_contract_reward_icon": apply_contract_reward_icon,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
@@ -887,10 +902,13 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_combat_reward": apply_combat_reward_optional_payment,
     "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
     "decline_combat_reward": _apply_decline_combat_reward,
+    "resolve_combat_reward_icon": apply_combat_reward_icon,
     "trash_combat_reward_card": apply_combat_reward_trash,
     "decline_combat_reward_trash": apply_combat_reward_trash,
+    "resolve_combat_trash_without_card": apply_combat_reward_trash,
     "play_conflict_end_intrigue": apply_conflict_end_trigger,
     "decline_conflict_end_intrigue": apply_conflict_end_trigger,
+    "finish_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,
@@ -977,14 +995,56 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         player: int,
     ) -> tuple[DomainAction, ...]:
-        """Return the actions the top frame's providers offer to ``player``.
+        """Return the rows the top frame offers to ``player``.
 
-        While an immediate triggered draw waits for ``player`` (CHOAM
-        Transports, the Bene Gesserit Influence 4 card, Imperial Birthright,
-        an acquire box; user decision 2026-10-10, OQ-106), that draw is all
-        any of its frames offers, so nothing of the owner's comes between
-        the trigger and it.
+        The rows are the whole actions of ``_rules_actions``, each shown by
+        its next step where the frame offers its waiting effects effect
+        first (stage B3, ``rules.effect_steps``). While an immediate
+        triggered draw waits for ``player`` (CHOAM Transports, the Bene
+        Gesserit Influence 4 card, Imperial Birthright, an acquire box; user
+        decision 2026-10-10, OQ-106), that draw is all any of its frames
+        offers, so nothing of the owner's comes between the trigger and it.
         """
+
+        return present(state, self._rules_of(state, player))
+
+    def whole_actions(
+        self,
+        state: GameState,
+        player: int,
+    ) -> tuple[DomainAction, ...]:
+        """The whole actions ``player``'s legal rows stand for (stage B3).
+
+        A frame that offers its waiting effects effect first
+        (``rules.effect_steps``) shows each whole action -- an effect and its
+        target at once, as the rules resolve it -- by its next step; this is
+        the list of the whole actions themselves (during a pick, those its
+        rows lead to), for an agent that weighs an effect with its target
+        and for the page. Elsewhere it is the legal list.
+        """
+
+        return whole_actions(state, self._rules_of(state, player))
+
+    def _rules_of(self, state: GameState, player: int) -> tuple[DomainAction, ...]:
+        """``_rules_actions`` of ``state`` without its pick, kept for the last
+        state asked: one decision asks for them several times (its legal
+        rows, the whole actions an agent weighs, the step it takes), and a
+        state never changes, so the state object is the key (stage B3)."""
+
+        global _LAST_RULES
+        last = _LAST_RULES
+        if last is not None and last[0] is state and last[1] == player:
+            return last[2]
+        actions = self._rules_actions(without_pick(state), player)
+        _LAST_RULES = (state, player, actions)
+        return actions
+
+    def _rules_actions(
+        self,
+        state: GameState,
+        player: int,
+    ) -> tuple[DomainAction, ...]:
+        """The whole actions the top frame's providers offer to ``player``."""
 
         if not state.decision_stack:
             return ()
@@ -994,6 +1054,10 @@ class UprisingRulesEngine(RulesEngine):
         immediate = immediate_owed_draw_actions(state, player)
         if immediate:
             return immediate
+        if frame.kind == FrameKind.TURN and agent_card_pick(state, player) is not None:
+            # A picked Agent card waits for its space and nothing else
+            # (stage B1, OQ-111).
+            return _executable_agent_actions(state, player)
         providers = LEGAL_ACTION_PROVIDERS.get(frame.kind)
         if providers is None:
             raise RuntimeError(f"unknown decision frame kind: {frame.kind}")
@@ -1002,6 +1066,19 @@ class UprisingRulesEngine(RulesEngine):
         )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
+        if presents_steps(state):
+            # A step toward a waiting effect only keeps the pick; the path's
+            # last step applies its whole action to the rules' own state
+            # (stage B3, ``rules.effect_steps``).
+            step = take_step(
+                state,
+                action,
+                self._rules_of(state, action.actor),
+            )
+            if step.whole is None:
+                assert step.event is not None
+                return RuleResult(state=step.state, events=(step.event,))
+            state, action = step.state, step.whole
         handled = _end_turn_start(state, action, _handle(state, action))
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
@@ -1204,6 +1281,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # seat's Conflict rewards fizzle there (user ruling 2026-10-02,
             # L2-Q2: "보상 끝까지 보류 후 불발").
             automatic = fizzle_combat_held_contract_icons(state)
+        elif spent_conflict_end_window(state):
+            # A Conflict-end window a card was played in, back on top with
+            # its seat holding no Intrigue card, closes (OQ-103, OQ-109).
+            automatic = close_spent_conflict_end_window(state)
         elif state.decision_stack:
             break
         elif scouts_step_is_pending(state):
@@ -1225,6 +1306,12 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
                     if state.combat_rewards_paid > 0
                     else offer_conflict_end_triggers(state)
                 )
+            elif any(seat.tech_cards_owed for seat in state.players):
+                # The card Planetary Array owes for the win is drawn before
+                # the cleanup runs on into the next round (OQ-108): with a
+                # Conflict-end window open it is drawn as that step settles;
+                # with none, here (a reshuffle stops the run).
+                automatic = draw_owed_tech_cards(RuleResult(state=state))
             else:
                 automatic = finish_combat(state)
         elif state.phase is GamePhase.MAKERS:

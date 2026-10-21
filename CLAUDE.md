@@ -23,7 +23,7 @@ specifics.
 
 ```bash
 uv sync --extra rl --extra ui --extra train
-uv run pytest -q
+uv run pytest -q -n 8   # pytest-xdist; serial `uv run pytest -q` takes about 10 min
 uv run ruff check src tests
 uv run mypy src tests
 ```

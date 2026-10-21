@@ -9,9 +9,13 @@
    if need be. Outside its turns, a step it could not take back (a Conflict
    reward that runs straight into the next round's draw, a Scouts line that
    draws a card) is marked sent_by_turn_end by the server: a click only holds
-   it here, and the banner's "확정 ▶" row sends it. That row does not say
-   "턴 종료": whether the seat's unit goes on after the step can hang on the
-   very card it reveals, which nobody may know before. A second click on the
+   it here, and the banner's "확정 ▶" row sends it. Inside a turn the server
+   marks only Long Live the Fighters' second pick so, when it cannot be
+   taken back (server/turn_end.py HELD_IN_TURN, user decision 2026-10-19):
+   until the press the undo row can still take the draw pick back. The "확정
+   ▶" row does not say "턴 종료": whether the seat's unit goes on after the
+   step can hang on the very card it reveals, which nobody may know before.
+   A second click on the
    held row in the list, or Escape, lets it go; a click on its table object
    keeps it. It belongs to the decision it was picked in (heldKey) and never
    reaches the server before the press. */
@@ -33,6 +37,11 @@ function heldChoice() {
    a stepper's confirm) goes through here. */
 function chooseAction(action) {
   if (state.busy) return;
+  if (action.action_id === PLACEMENT_ACTION) {
+    /* A whole placement is its card pick and its space pick. */
+    applyPlacement(action);
+    return;
+  }
   if (!action.sent_by_turn_end) {
     applyAction(action.index);
     return;
@@ -131,6 +140,9 @@ function turnStartWindowOf(payload) {
     scouts_lines: null,
     unavailable: null,
     agent_boxes: null,
+    /* The Agent turn waits behind the window too (stage B1): its
+       placements point at card picks the window does not offer. */
+    agent_placements: null,
     turnStartWindow: { full: payload },
   };
 }
@@ -180,15 +192,16 @@ function renderTurnStartWindow(box) {
 
 /* ---------- staged Agent turn ----------
 
-   The server offers an Agent turn as one flat list: every legal
-   (card, space, cost option, graft) is its own `agent_turn` action, because
-   that is what the action codec and the learning agents need. A person
-   plays it in steps: the card, then the space, then what is still open.
-   The steps are only a view of that same list: the page filters it by
-   what has been picked and posts the one action index that remains, so
-   neither the engine nor the codec knows the difference. Either order
-   works (a space first lights the cards that can go there). The flat list
-   stays behind a toggle. */
+   The engine offers an Agent turn as a card pick (`choose_agent_card`) and
+   then a space pick (`place_agent`) (stage B1, OQ-111). A person still plays
+   it in either order: with the card picks the server sends every
+   placement each pick leads to (`agent_placements`: card, graft, space,
+   cost option, discount, infiltration), and the page works on those
+   placements as one list -- a space first lights the cards that can go
+   there -- then sends the card pick and the matching space pick. Once a
+   card is picked (a reload, an undo) the space picks are the list, with
+   the picked card (`view.private.agent_card_pick`). The flat list stays
+   behind a toggle. */
 /* The count families that move units into and out of the Conflict; they
    get a stepper on the board as well (renderTrackMarkers). */
 const FORCE_STEPPER_ACTIONS = new Set([
@@ -197,12 +210,65 @@ const FORCE_STEPPER_ACTIONS = new Set([
   "deploy_commanders",
   "withdraw_commanders",
 ]);
+/* The page's own name for a whole placement (card and space together). */
 const PLACEMENT_ACTION = "agent_turn";
+const CARD_PICK_ACTION = "choose_agent_card";
+const SPACE_PICK_ACTION = "place_agent";
 const FULL_LIST_KEY = "dune.fullActionList";
 
+/* The decision's placements, each a row the staged turn can send:
+   `pickIndex` (a card pick to send first, then the matching space pick) or
+   the space pick's own `index`; `placement` tells them apart, since every
+   placement of one card starts with the same card pick. With the card
+   picks, the server dry-ran each placement's two steps together, so its
+   badges and previews are the whole move's. */
 function placementActions() {
   if (!state.actions) return [];
-  return state.actions.actions.filter((action) => action.action_id === PLACEMENT_ACTION);
+  const rows = state.actions.actions;
+  const listed = state.actions.agent_placements;
+  if (listed && listed.length) {
+    return listed.map((entry) => ({
+      ...rows[entry.index],
+      ...entry,
+      action_id: PLACEMENT_ACTION,
+      pickIndex: entry.index,
+    }));
+  }
+  const own = state.view && state.view.private;
+  const card = own && own.agent_card_pick;
+  if (!card) return [];
+  const grafted = own.agent_card_pick_graft ? { graft: true } : {};
+  return rows
+    .filter((action) => action.action_id === SPACE_PICK_ACTION)
+    .map((action, position) => ({
+      ...action,
+      action_id: PLACEMENT_ACTION,
+      arguments: { ...action.arguments, card_id: card, ...grafted },
+      placement: position,
+    }));
+}
+
+/* The card the seat picked for its Agent turn when the server holds the
+   pick (a reload, or an undo of the space pick): step ① is that card, and
+   only an undo takes it back. */
+function serverPickedCard() {
+  const own = state.view && state.view.private;
+  return (own && own.agent_card_pick) || null;
+}
+
+/* A row of the Agent turn's two steps (the staged turn shows them as
+   placements). */
+function isPlacementStep(action) {
+  return action.action_id === CARD_PICK_ACTION || action.action_id === SPACE_PICK_ACTION;
+}
+
+/* A placement's space part, as a space pick names it. */
+function spaceArguments(args) {
+  return JSON.stringify(
+    Object.entries(args)
+      .filter(([key]) => key !== "card_id" && key !== "graft")
+      .sort(([a], [b]) => a.localeCompare(b))
+  );
 }
 
 function fullActionList() {
@@ -263,6 +329,10 @@ function partnerCandidate(instanceId) {
 /* A pick outlives re-renders (another seat's doorbell must not undo it) but
    not the actions it was made from. */
 function sanitizePick() {
+  const picked = stagedTurn() ? serverPickedCard() : null;
+  if (picked && (!state.pick || state.pick.cardId !== picked)) {
+    state.pick = { cardId: picked };
+  }
   if (!state.pick) return;
   const supported = () => placementActions().some((action) => matchesPick(action));
   if (stagedTurn() && !supported() && state.pick.partnerId) delete state.pick.partnerId;
@@ -359,7 +429,8 @@ function pickCandidates(pick = state.pick) {
   return [...byOption.values()];
 }
 
-/* Post a placement. With two cards picked the other one follows as the
+/* Post a placement: its card pick first when it has one to send, then the
+   matching space pick. With two cards picked the other one follows as the
    graft partner, which the engine asks for in the very next frame. */
 function applyPlacement(action) {
   const pick = state.pick;
@@ -367,8 +438,31 @@ function applyPlacement(action) {
     pick && pick.partnerId
       ? (action.arguments.card_id === pick.cardId ? pick.partnerId : pick.cardId)
       : null;
-  const played = applyAction(action.index);
+  const played =
+    action.pickIndex === undefined
+      ? applyAction(action.index)
+      : applyAction(action.pickIndex).then(() => followWithSpace(action.arguments));
   if (partner) played.then(() => followWithPartner(partner));
+}
+
+function followWithSpace(args) {
+  if (!state.actions) return undefined;
+  /* The card pick did land (not a refused post, nor a table that moved on):
+     the space pick goes only with that card. */
+  const own = state.view && state.view.private;
+  if (
+    !own ||
+    own.agent_card_pick !== args.card_id ||
+    Boolean(own.agent_card_pick_graft) !== Boolean(args.graft)
+  ) {
+    return undefined;
+  }
+  const wanted = spaceArguments(args);
+  const row = state.actions.actions.find(
+    (item) => item.action_id === SPACE_PICK_ACTION && spaceArguments(item.arguments) === wanted
+  );
+  /* Without it the picked card's spaces are on screen to choose from. */
+  return row ? applyAction(row.index) : undefined;
 }
 
 function followWithPartner(partnerId) {
@@ -510,7 +604,11 @@ function pickStepNode(number, label, ref, part) {
   if (ref) {
     step.append(" ✕");
     step.title = t("turn.choose_again");
-    step.addEventListener("click", () => clearPick(part));
+    /* A card the server holds as picked goes back by an undo of its pick. */
+    const held = part === "cardId" && ref === serverPickedCard();
+    step.addEventListener("click", () =>
+      held ? submitUndo(state.viewSeat, 1) : clearPick(part)
+    );
   }
   return step;
 }
@@ -611,7 +709,7 @@ function renderActionPanel(box, turnEnd) {
     box.appendChild(hint);
   }
 
-  const others = actions.filter((action) => action.action_id !== PLACEMENT_ACTION);
+  const others = actions.filter((action) => !isPlacementStep(action));
   if (others.length) {
     const heading = document.createElement("div");
     heading.className = "pick-others muted";
@@ -643,7 +741,10 @@ function actionListToggle(staged, count) {
 function legalActionsFor(ref) {
   if (!state.actions) return [];
   const staged = stagedTurn();
-  return state.actions.actions.filter(
+  const pool = staged
+    ? [...placementActions(), ...state.actions.actions.filter((action) => !isPlacementStep(action))]
+    : state.actions.actions;
+  return pool.filter(
     (action) => actionRefs(action).includes(ref) && (!staged || matchesPick(action))
   );
 }

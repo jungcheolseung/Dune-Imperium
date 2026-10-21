@@ -122,19 +122,30 @@ KNOWN = (
         ("icons", "influence_any"),
     ),
     ({"kind": "game_finished", "payload": {}}, ("log_icons", "vp_winner")),
-    # Its words name Smuggle Spice and Staban Tuek (panels.js
-    # EVENT_IMPLIED_LEADER), not the label the picture's alt text reads.
+    # A gain shows what was gained (cleanup-2c: resources_gained replaced
+    # the per-source gain kinds, Staban Tuek's Smuggle Spice among them).
     (
         {
-            "kind": "leader_ability_spice_gained",
+            "kind": "resources_gained",
             "payload": {
                 "player": 0,
-                "space_id": "hagga_basin",
+                "source": "round:1:player:0:leader:staban_tuek",
                 "spice": 1,
-                "visitor": 3,
             },
         },
         ("icons", "spice"),
+    ),
+    (
+        {
+            "kind": "resources_gained",
+            "payload": {
+                "player": 0,
+                "source": "round:1:player:0:board:dutiful_service",
+                "solari": 2,
+                "water": 1,
+            },
+        },
+        None,
     ),
     # Text only: a kind without a picture, and an event without its Faction.
     ({"kind": "turn_passed", "payload": {"player": 0}}, None),
@@ -361,14 +372,17 @@ def check_neutral(page, language: str) -> None:
         # Leader ability, not "게임 진행", and keeps the ⚙ mark.
         [
             {
-                "kind": "leader_ability_spice_gained",
+                "kind": "resources_gained",
                 "payload": {
                     "player": 0,
-                    "space_id": "hagga_basin",
+                    "source": "round:1:player:0:leader:staban_tuek",
                     "spice": 1,
-                    "visitor": 3,
                 },
-            }
+            },
+            {
+                "kind": "leader_ability_resolved",
+                "payload": {"leader_id": "staban_tuek", "player": 0, "visitor": 3},
+            },
         ],
     ]
     cards = page.evaluate(NEUTRAL_JS, {"groups": groups, "language": language})

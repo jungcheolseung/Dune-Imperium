@@ -31,6 +31,7 @@ from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GameState
 from dune_imperium.training.checkpoint import CheckpointInfo, load_checkpoint
 from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
 from dune_imperium.training.policy import PolicyRequest, without_undo_actions
@@ -262,6 +263,28 @@ class NetworkAgent:
         observation: PlayerView,
         legal_actions: tuple[DomainAction, ...],
     ) -> DomainAction:
+        return self._choose(None, observation, legal_actions)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        """The network's choice; with the state, a decision made only of
+        untrained rows goes to the heuristic as a decision of whole actions
+        (an Agent placement, an effect with its target: stages B1 and B3),
+        as the heuristic plays everywhere else. The network itself reads
+        only the view."""
+
+        return self._choose(state, observation, legal_actions)
+
+    def _choose(
+        self,
+        state: GameState | None,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
         if not legal_actions:
             raise ValueError("a network agent requires at least one legal action")
         # The network was never offered the pure-undo actions in training, so
@@ -269,6 +292,10 @@ class NetworkAgent:
         legal_actions = without_undo_actions(legal_actions)
         legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
         if self.untrained_only(legal_indices):
+            if state is not None:
+                return self.fallback.choose_action_with_state(
+                    state, observation, legal_actions
+                )
             return self.fallback.choose_action(observation, legal_actions)
         mask = np.zeros(self.codec.size, dtype=np.int8)
         mask[list(legal_indices)] = 1

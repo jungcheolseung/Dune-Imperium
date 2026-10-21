@@ -14,11 +14,17 @@ turn-start play, and every hold is confirmed at once. Seed 28 is the first
 of 0-199 whose walk meets such a turn start: seat 0 in round 8, holding
 Litany Against Fear and Withdrawn, with a Plot (Crysknife) that leaves it on
 its turn frame. The walk saves there, plays that Plot, goes on, and records
-every step (50, 48 of them actions) up to seat 0's next turn start
+every step up to seat 0's next turn start
 (Withdrawn legal again), so the page can replay them and must open the
-window once more. (Seed 185 until codec v147 moved the AI-free walks: a
-Reveal choice became a row of the Reveal, so every seat's legal list
-changed; seed 185 then had both plays at that next turn too.)
+window once more. (Stage B1 split the Agent turn into a card pick and a space
+pick, so the same walk records two steps for each of the two placements it
+makes there: 50 steps, 48 of them actions, before. Stage B2 asks a reward
+icon by icon, which the walk answers in the engine's older order without a
+draw, so it is the same walk again with the reward rows recorded too: 58
+steps, 55 of them actions.) (Seed 185 until codec
+v147 moved the AI-free walks: a Reveal choice became a row of the Reveal, so
+every seat's legal list changed; seed 185 then had both plays at that next
+turn too.)
 
 Prints {"turn-start": {save_id, seat, round, revision, plays, plot, steps,
 next_revision, next_plays}} as JSON. ``plays`` and ``next_plays`` are the
@@ -32,6 +38,8 @@ import random
 import sys
 from pathlib import Path
 
+from dune_imperium.agents.agent_turn_steps import apply_whole, placements_for_steps
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
 from dune_imperium.server.persistence import SaveStore
@@ -70,7 +78,7 @@ def plays_of(rows) -> list[dict]:
 def back_to_turn(engine, state, seat, action) -> bool:
     """Whether the Plot leaves the seat on its own turn frame at once."""
 
-    after = engine.apply(state, action).state
+    after = apply_whole(engine, state, action).state
     top = after.decision_stack[-1] if after.decision_stack else None
     return (
         top is not None
@@ -96,7 +104,7 @@ for _step in range(STEPS):
         summary = manager.confirm_turn(game_id, held, summary["revision"])
         continue
     owner = summary["decision"]["owner"]
-    actions = session.engine.legal_actions(session.state, owner)
+    actions = session.engine.whole_actions(session.state, owner)
     starts = {a.action_id for a in actions if turn_start(a)}
     if found is not None and owner == found["seat"] and starts:
         if summary["revision"] != found["revision"]:
@@ -132,11 +140,45 @@ for _step in range(STEPS):
                 game_id, owner, summary["revision"], plots[0]
             )
             continue
-    choices = [index for index, action in enumerate(actions) if not turn_start(action)]
-    index = rng.choice(choices) if choices else 0
+    # A reward's icon rows (stage B2) are answered in the engine's older
+    # fixed order without a draw, so seed 28 is still the walk described
+    # above (``agents.engine_order``).
+    scripted = engine_order_answer(session.state, owner, actions)
+    if scripted is not None:
+        index = actions.index(scripted)
+        if found is not None:
+            steps.append(["action", owner, index])
+        summary = manager.apply_action(game_id, owner, summary["revision"], index)
+        continue
+    shown = placements_for_steps(session.state, owner, actions)
+    if shown is None:
+        choices = [
+            index for index, action in enumerate(actions) if not turn_start(action)
+        ]
+        index = rng.choice(choices) if choices else 0
+        if found is not None:
+            steps.append(["action", owner, index])
+        summary = manager.apply_action(game_id, owner, summary["revision"], index)
+        continue
+    # An Agent turn is a card pick and then a space pick (stage B1), but the
+    # walk draws one choice among whole placements and the other actions, as
+    # it did when a placement was one action, so seed 28 is still the walk
+    # described above; the chosen placement then plays as its two steps.
+    shown_actions, to_step = shown
+    options = [action for action in shown_actions if not turn_start(action)]
+    chosen = rng.choice(options) if options else shown_actions[0]
+    index = actions.index(to_step(chosen))
     if found is not None:
         steps.append(["action", owner, index])
     summary = manager.apply_action(game_id, owner, summary["revision"], index)
+    if chosen.action_id == "agent_turn":
+        space_actions = session.engine.whole_actions(session.state, owner)
+        shown_spaces = placements_for_steps(session.state, owner, space_actions)
+        assert shown_spaces is not None
+        index = space_actions.index(shown_spaces[1](chosen))
+        if found is not None:
+            steps.append(["action", owner, index])
+        summary = manager.apply_action(game_id, owner, summary["revision"], index)
 
 if found is None or "next_revision" not in found:
     raise RuntimeError(f"Seed {SEED} no longer reaches both turn starts ({found})")

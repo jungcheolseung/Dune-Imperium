@@ -4,11 +4,13 @@ from collections import Counter
 
 import pytest
 
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS,
     CONFLICTS_BY_ID,
-    ConflictReward,
+    ConflictDefinition,
+    check_conflict_reward_row,
     conflicts_by_tier,
 )
 from dune_imperium.content.uprising.contracts import (
@@ -16,11 +18,24 @@ from dune_imperium.content.uprising.contracts import (
     CONTRACTS,
     CONTRACTS_BY_ID,
     STANDARD_CONTRACTS,
-    ContractCondition,
-    ContractConditionKind,
-    ContractReward,
+    ContractDefinition,
     contract_for_instance,
     contract_instance_ids,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    AllConditions,
+    AllianceTaken,
+    AtBoardSpace,
+    AtMakerSpace,
+    ContractTaken,
+    DrawPersonalCards,
+    EffectSection,
+    GainedSpiceThisTurn,
+    GainResources,
+    GainVictoryPoints,
+    HasHighCouncil,
+    PayResources,
 )
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
@@ -38,6 +53,7 @@ from dune_imperium.content.uprising.objectives import (
     OBJECTIVES,
     objectives_for_players,
 )
+from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
     RESERVE_STACKS_BY_ID,
@@ -48,8 +64,40 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     ConflictTier,
     PersonalCardAgentEffect,
-    PersonalCardRevealEffect,
 )
+from dune_imperium.display.structs import (
+    ConflictRowParts,
+    ContractRewardParts,
+    conflict_row_parts,
+    contract_reward_parts,
+)
+from dune_imperium.display.tokens import reveal_effect_text
+from dune_imperium.rules.reveal_lines import reveal_lines
+
+
+def _reveal_texts(card: PersonalCardDefinition) -> tuple[str, ...]:
+    """The card's Reveal record, line by line, as its card text reads."""
+
+    return tuple(reveal_effect_text(line) for line in reveal_lines(card))
+
+
+def _rows(conflict: ConflictDefinition) -> tuple[ConflictRowParts, ...]:
+    """A Conflict's three reward rows, read off their records piece by piece."""
+
+    assert conflict.reward_rows is not None
+    return tuple(conflict_row_parts(row) for row in conflict.reward_rows)
+
+
+def _reward(contract: ContractDefinition) -> ContractRewardParts:
+    """A Contract's reward line, read off its record piece by piece."""
+
+    return contract_reward_parts(contract.reward_line)
+
+
+def _harvest(amount: int) -> AllConditions:
+    """ "Send an Agent to a Maker space and gain N or more spice that turn"."""
+
+    return AllConditions((AtMakerSpace(), GainedSpiceThisTurn(amount)))
 
 
 def test_conflict_manifest_has_the_official_tier_counts() -> None:
@@ -83,25 +131,25 @@ def test_tier_one_conflict_rewards_and_battle_icons_are_transcribed() -> None:
     desert_mouse = CONFLICTS_BY_ID["skirmish_desert_mouse"]
 
     assert crysknife.battle_icon is BattleIcon.CRYSKNIFE
-    assert crysknife.rewards == (
-        ConflictReward(choose_influence=1),
-        ConflictReward(spice=1, intrigue=1),
-        ConflictReward(spice=1),
+    assert _rows(crysknife) == (
+        ConflictRowParts(choose_influence=1),
+        ConflictRowParts(spice=1, intrigue=1),
+        ConflictRowParts(spice=1),
     )
     assert ornithopter.battle_icon is BattleIcon.ORNITHOPTER
-    assert ornithopter.rewards == (
-        ConflictReward(solari=1, intrigue=1),
-        ConflictReward(solari=2, intrigue=1),
-        ConflictReward(intrigue=1),
+    assert _rows(ornithopter) == (
+        ConflictRowParts(solari=1, intrigue=1),
+        ConflictRowParts(solari=2, intrigue=1),
+        ConflictRowParts(intrigue=1),
     )
     assert desert_mouse.battle_icon is BattleIcon.DESERT_MOUSE
-    assert desert_mouse.rewards == (
-        ConflictReward(solari=2),
-        ConflictReward(solari=3),
-        ConflictReward(solari=2),
+    assert _rows(desert_mouse) == (
+        ConflictRowParts(solari=2),
+        ConflictRowParts(solari=3),
+        ConflictRowParts(solari=2),
     )
     assert all(
-        conflict.rewards is not None and conflict.battle_icon is not None
+        conflict.reward_rows is not None and conflict.battle_icon is not None
         for conflict in conflicts_by_tier(ConflictTier.ONE)
     )
 
@@ -112,116 +160,116 @@ def test_tier_two_conflict_rewards_and_battle_icons_are_transcribed() -> None:
             BattleIcon.CRYSKNIFE,
             False,
             (
-                ConflictReward(
+                ConflictRowParts(
                     troops=1,
                     contracts=1,
                     faction_influence=1,
                     influence_faction=Faction.SPACING_GUILD,
                 ),
-                ConflictReward(solari=2, water=1, troops=2),
-                ConflictReward(intrigue=1, troops=1),
+                ConflictRowParts(solari=2, water=1, troops=2),
+                ConflictRowParts(intrigue=1, troops=1),
             ),
         ),
         "spice_freighters": (
             BattleIcon.CRYSKNIFE,
             False,
             (
-                ConflictReward(
+                ConflictRowParts(
                     choose_influence=1,
                     optional_spice_cost=3,
                     optional_victory_points=1,
                 ),
-                ConflictReward(spice=1, water=1, troops=1),
-                ConflictReward(spice=1, troops=1),
+                ConflictRowParts(spice=1, water=1, troops=1),
+                ConflictRowParts(spice=1, troops=1),
             ),
         ),
         "siege_of_arrakeen": (
             BattleIcon.ORNITHOPTER,
             True,
             (
-                ConflictReward(
+                ConflictRowParts(
                     solari=2,
                     troops=2,
                     control_space_id="arrakeen",
                 ),
-                ConflictReward(solari=4, troops=1),
-                ConflictReward(solari=3),
+                ConflictRowParts(solari=4, troops=1),
+                ConflictRowParts(solari=3),
             ),
         ),
         "seize_spice_refinery": (
             BattleIcon.CRYSKNIFE,
             True,
             (
-                ConflictReward(
+                ConflictRowParts(
                     spice=2,
                     place_spies=1,
                     control_space_id="spice_refinery",
                 ),
-                ConflictReward(spice=1, intrigue=1, troops=1),
-                ConflictReward(spice=2),
+                ConflictRowParts(spice=1, intrigue=1, troops=1),
+                ConflictRowParts(spice=2),
             ),
         ),
         "test_of_loyalty": (
             BattleIcon.ORNITHOPTER,
             False,
             (
-                ConflictReward(
+                ConflictRowParts(
                     solari=2,
                     place_spies=1,
                     faction_influence=1,
                     influence_faction=Faction.EMPEROR,
                 ),
-                ConflictReward(solari=4, troops=1),
-                ConflictReward(solari=3),
+                ConflictRowParts(solari=4, troops=1),
+                ConflictRowParts(solari=3),
             ),
         ),
         "shadow_contest": (
             BattleIcon.ORNITHOPTER,
             False,
             (
-                ConflictReward(
+                ConflictRowParts(
                     intrigue=1,
                     faction_influence=1,
                     influence_faction=Faction.BENE_GESSERIT,
                 ),
-                ConflictReward(spice=1, intrigue=1, troops=1),
-                ConflictReward(spice=1, troops=1),
+                ConflictRowParts(spice=1, intrigue=1, troops=1),
+                ConflictRowParts(spice=1, troops=1),
             ),
         ),
         "secure_imperial_basin": (
             BattleIcon.DESERT_MOUSE,
             True,
             (
-                ConflictReward(
+                ConflictRowParts(
                     spice=2,
                     troops=1,
                     control_space_id="imperial_basin",
                 ),
-                ConflictReward(water=2, troops=1),
-                ConflictReward(water=1, troops=1),
+                ConflictRowParts(water=2, troops=1),
+                ConflictRowParts(water=1, troops=1),
             ),
         ),
         "protect_the_sietches": (
             BattleIcon.DESERT_MOUSE,
             False,
             (
-                ConflictReward(
+                ConflictRowParts(
                     water=1,
                     troops=1,
                     faction_influence=1,
                     influence_faction=Faction.FREMEN,
                 ),
-                ConflictReward(spice=3, troops=1),
-                ConflictReward(spice=2),
+                ConflictRowParts(spice=3, troops=1),
+                ConflictRowParts(spice=2),
             ),
         ),
         "trade_dispute": (
             BattleIcon.DESERT_MOUSE,
             False,
             (
-                ConflictReward(water=1, contracts=1, trash_cards=1),
-                ConflictReward(spice=1, water=1, trash_cards=1),
-                ConflictReward(water=1, troops=1),
+                ConflictRowParts(water=1, contracts=1, trash_cards=1),
+                ConflictRowParts(spice=1, water=1, trash_cards=1),
+                ConflictRowParts(water=1, troops=1),
             ),
         ),
     }
@@ -230,7 +278,7 @@ def test_tier_two_conflict_rewards_and_battle_icons_are_transcribed() -> None:
         conflict.card.card_id: (
             conflict.battle_icon,
             conflict.shield_wall_protected,
-            conflict.rewards,
+            _rows(conflict),
         )
         for conflict in conflicts_by_tier(ConflictTier.TWO)
     } == expected
@@ -242,51 +290,51 @@ def test_tier_three_conflict_rewards_and_icons_are_transcribed() -> None:
             BattleIcon.WILD,
             False,
             (
-                ConflictReward(choose_distinct_influence=2),
-                ConflictReward(spice=3, intrigue=1),
-                ConflictReward(spice=3),
+                ConflictRowParts(choose_distinct_influence=2),
+                ConflictRowParts(spice=3, intrigue=1),
+                ConflictRowParts(spice=3),
             ),
         ),
         "battle_for_imperial_basin": (
             BattleIcon.ORNITHOPTER,
             True,
             (
-                ConflictReward(
+                ConflictRowParts(
                     victory_points=1,
                     control_space_id="imperial_basin",
                     optional_spice_cost=4,
                     optional_victory_points=1,
                 ),
-                ConflictReward(spice=5),
-                ConflictReward(spice=3),
+                ConflictRowParts(spice=5),
+                ConflictRowParts(spice=3),
             ),
         ),
         "battle_for_arrakeen": (
             BattleIcon.CRYSKNIFE,
             True,
             (
-                ConflictReward(
+                ConflictRowParts(
                     victory_points=1,
                     control_space_id="arrakeen",
                     optional_recall_spies=2,
                     optional_victory_points=1,
                 ),
-                ConflictReward(solari=3, spice=1, intrigue=1),
-                ConflictReward(solari=2, spice=2),
+                ConflictRowParts(solari=3, spice=1, intrigue=1),
+                ConflictRowParts(solari=2, spice=2),
             ),
         ),
         "battle_for_spice_refinery": (
             BattleIcon.DESERT_MOUSE,
             True,
             (
-                ConflictReward(
+                ConflictRowParts(
                     victory_points=1,
                     control_space_id="spice_refinery",
                     optional_solari_cost=6,
                     optional_victory_points=1,
                 ),
-                ConflictReward(spice=3, intrigue=1),
-                ConflictReward(spice=3),
+                ConflictRowParts(spice=3, intrigue=1),
+                ConflictRowParts(spice=3),
             ),
         ),
     }
@@ -295,26 +343,54 @@ def test_tier_three_conflict_rewards_and_icons_are_transcribed() -> None:
         conflict.card.card_id: (
             conflict.battle_icon,
             conflict.shield_wall_protected,
-            conflict.rewards,
+            _rows(conflict),
         )
         for conflict in conflicts_by_tier(ConflictTier.THREE)
     } == expected
 
 
-def test_conflict_reward_rejects_incomplete_compound_effects() -> None:
-    with pytest.raises(ValueError, match="fixed Influence"):
-        ConflictReward(faction_influence=1)
-    with pytest.raises(ValueError, match="cost and reward"):
-        ConflictReward(optional_spice_cost=3)
-    with pytest.raises(ValueError, match="cost and reward"):
-        ConflictReward(optional_victory_points=1)
-    # Two arrows in one row are allowed: Economic Supremacy's first place
-    # prints 6 Solari -> 1 VP and 4 spice -> 1 VP [Economic Supremacy card].
-    both = ConflictReward(
-        optional_spice_cost=4,
-        optional_solari_cost=6,
-        optional_victory_points=1,
-    )
+def _row(*lines: EffectSection) -> Ability:
+    return Ability(timing=AbilityTiming.CONFLICT_REWARD, sections=lines)
+
+
+def test_a_conflict_reward_row_the_payer_cannot_read_is_refused() -> None:
+    """The checks the compiled ``ConflictReward`` ran, now on the record."""
+
+    def arrow(cost: PayResources, points: int) -> EffectSection:
+        return EffectSection(rewards=(GainVictoryPoints(points),), costs=(cost,))
+
+    with pytest.raises(ValueError, match="share one VP value"):
+        check_conflict_reward_row(
+            _row(arrow(PayResources(spice=3), 1), arrow(PayResources(solari=6), 2))
+        )
+    with pytest.raises(TypeError, match="not a Conflict reward arrow"):
+        check_conflict_reward_row(
+            _row(
+                EffectSection(
+                    rewards=(GainResources(spice=1),), costs=(PayResources(solari=2),)
+                )
+            )
+        )
+    with pytest.raises(ValueError, match="twice"):
+        check_conflict_reward_row(
+            _row(
+                EffectSection(rewards=(GainResources(spice=1),)),
+                EffectSection(rewards=(GainResources(water=1),)),
+            )
+        )
+    with pytest.raises(ValueError, match="no condition"):
+        check_conflict_reward_row(
+            _row(
+                EffectSection(
+                    rewards=(GainResources(spice=1),), condition=HasHighCouncil()
+                )
+            )
+        )
+    with pytest.raises(TypeError, match="not a Conflict reward"):
+        check_conflict_reward_row(_row(EffectSection(rewards=(DrawPersonalCards(1),))))
+    # Two arrows in one row are read: Economic Supremacy's first place prints
+    # 6 Solari -> 1 VP and 4 spice -> 1 VP [Economic Supremacy card].
+    both = _rows(CONFLICTS_BY_ID["economic_supremacy"])[0]
     assert (both.optional_spice_cost, both.optional_solari_cost) == (4, 6)
 
 
@@ -339,7 +415,7 @@ def test_reserve_play_data_matches_the_printed_cards() -> None:
     # The Reveal box prints an orange spice hexagon "1" [Main p. 20] (icon
     # guide: spice, not a sword), not a base sword.
     assert spice.reveal_strength == 0
-    assert spice.reveal_effects == (PersonalCardRevealEffect(spice=1),)
+    assert _reveal_texts(spice) == ("Gain 1 spice",)
 
 
 def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:
@@ -623,14 +699,13 @@ def test_standard_contracts_are_the_twenty_uprising_tiles_not_rise_of_ix() -> No
         "spice_refinery_i": 1,
         "spice_refinery_ii": 1,
     }
-    assert not any(contract.reward.contracts for contract in STANDARD_CONTRACTS)
+    assert not any(_reward(contract).contracts for contract in STANDARD_CONTRACTS)
     for contract in STANDARD_CONTRACTS:
         if contract.copy_of is not None:
             first = CONTRACTS_BY_ID[contract.copy_of]
-            assert (contract.card.name, contract.condition, contract.reward) == (
+            assert (contract.card.name, contract.terms) == (
                 first.card.name,
-                first.condition,
-                first.reward,
+                first.terms,
             )
 
 
@@ -686,167 +761,145 @@ def test_bloodlines_contract_manifest_adds_eight_tokens_to_the_same_bank() -> No
 
 def test_bloodlines_contract_manifest_transcribes_printed_faces() -> None:
     printed = {
-        contract.card.card_id: (contract.condition, contract.reward)
+        contract.card.card_id: (contract.requirement, _reward(contract))
         for contract in BLOODLINES_CONTRACTS
     }
 
     assert printed == {
         "bloodlines_deliver_supplies": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE, target="deliver_supplies"
-            ),
-            ContractReward(solari=1, deep_cover_spies=1),
+            AtBoardSpace("deliver_supplies"),
+            ContractRewardParts(solari=1, deep_cover_spies=1),
         ),
         "bloodlines_earn_any_alliance": (
-            ContractCondition(ContractConditionKind.EARN_ALLIANCE),
-            ContractReward(solari=2, troops=2),
+            AllianceTaken(),
+            ContractRewardParts(solari=2, troops=2),
         ),
         "bloodlines_harvest_3": (
-            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-            ContractReward(solari=2, spies=1),
+            _harvest(3),
+            ContractRewardParts(solari=2, spies=1),
         ),
         "bloodlines_harvest_4": (
-            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
-            ContractReward(solari=3, spies=1),
+            _harvest(4),
+            ContractRewardParts(solari=3, spies=1),
         ),
         "bloodlines_high_council": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="high_council"),
-            ContractReward(recall_agents=1),
+            AtBoardSpace("high_council"),
+            ContractRewardParts(recall_agents=1),
         ),
         "bloodlines_immediate": (
-            ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH),
-            ContractReward(intrigue_cards=1, personal_cards=1),
+            ContractTaken(),
+            ContractRewardParts(intrigue_cards=1, personal_cards=1),
         ),
         "bloodlines_secrets": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="secrets"),
-            ContractReward(solari=2, personal_cards=1),
+            AtBoardSpace("secrets"),
+            ContractRewardParts(solari=2, personal_cards=1),
         ),
         "bloodlines_spice_refinery": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE, target="spice_refinery"
-            ),
-            ContractReward(troops=2),
+            AtBoardSpace("spice_refinery"),
+            ContractRewardParts(troops=2),
         ),
     }
+    # The Immediate tile costs an Intrigue card trashed when taken
+    # [Bloodlines p. 2]: its record's line carries the cost.
+    assert CONTRACTS_BY_ID["bloodlines_immediate"].requires_intrigue_trash
+    assert not CONTRACTS_BY_ID["immediate"].requires_intrigue_trash
 
 
 def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards() -> (
     None
 ):
     printed = {
-        contract.card.card_id: (contract.condition, contract.reward)
+        contract.card.card_id: (contract.requirement, _reward(contract))
         for contract in STANDARD_CONTRACTS
     }
 
     assert printed == {
         "acquire": (
-            ContractCondition(
-                ContractConditionKind.ACQUIRE_CARD,
-                target="the_spice_must_flow",
-            ),
-            ContractReward(
+            AcquiredCard("the_spice_must_flow"),
+            ContractRewardParts(
                 solari=3,
                 influence_faction=Faction.SPACING_GUILD,
                 influence=1,
             ),
         ),
         "arrakeen_i": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="arrakeen"),
-            ContractReward(water=1),
+            AtBoardSpace("arrakeen"),
+            ContractRewardParts(water=1),
         ),
         "arrakeen_ii": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="arrakeen"),
-            ContractReward(troops=1, spies=1),
+            AtBoardSpace("arrakeen"),
+            ContractRewardParts(troops=1, spies=1),
         ),
         "deliver_supplies": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE,
-                target="deliver_supplies",
-            ),
-            ContractReward(solari=3),
+            AtBoardSpace("deliver_supplies"),
+            ContractRewardParts(solari=3),
         ),
         "espionage_i": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="espionage"),
-            ContractReward(solari=3),
+            AtBoardSpace("espionage"),
+            ContractRewardParts(solari=3),
         ),
         "espionage_i_copy_2": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="espionage"),
-            ContractReward(solari=3),
+            AtBoardSpace("espionage"),
+            ContractRewardParts(solari=3),
         ),
         "harvest_3": (
-            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-            ContractReward(solari=3),
+            _harvest(3),
+            ContractRewardParts(solari=3),
         ),
         "harvest_3_copy_2": (
-            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-            ContractReward(solari=3),
+            _harvest(3),
+            ContractRewardParts(solari=3),
         ),
         "harvest_4": (
-            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
-            ContractReward(solari=4),
+            _harvest(4),
+            ContractRewardParts(solari=4),
         ),
         "spice_refinery_i": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE, target="spice_refinery"
-            ),
-            ContractReward(personal_cards=2),
+            AtBoardSpace("spice_refinery"),
+            ContractRewardParts(personal_cards=2),
         ),
         "heighliner_i": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
-            ContractReward(water=2),
+            AtBoardSpace("heighliner"),
+            ContractRewardParts(water=2),
         ),
         "heighliner_ii": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
-            ContractReward(troops=2),
+            AtBoardSpace("heighliner"),
+            ContractRewardParts(troops=2),
         ),
         "spice_refinery_ii": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE, target="spice_refinery"
-            ),
-            ContractReward(water=1),
+            AtBoardSpace("spice_refinery"),
+            ContractRewardParts(water=1),
         ),
         "high_council_i": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE,
-                target="high_council",
-            ),
-            ContractReward(
+            AtBoardSpace("high_council"),
+            ContractRewardParts(
                 influence_faction=Faction.BENE_GESSERIT,
                 influence=1,
             ),
         ),
         "high_council_ii": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE,
-                target="high_council",
-            ),
-            ContractReward(solari=3),
+            AtBoardSpace("high_council"),
+            ContractRewardParts(solari=3),
         ),
         "immediate": (
-            ContractCondition(ContractConditionKind.IMMEDIATE),
-            ContractReward(solari=2),
+            ContractTaken(),
+            ContractRewardParts(solari=2),
         ),
         "research_station_i": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE,
-                target="research_station",
-            ),
-            ContractReward(solari=2, spies=1),
+            AtBoardSpace("research_station"),
+            ContractRewardParts(solari=2, spies=1),
         ),
         "research_station_ii": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE,
-                target="research_station",
-            ),
-            ContractReward(solari=3),
+            AtBoardSpace("research_station"),
+            ContractRewardParts(solari=3),
         ),
         "sardaukar_i": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="sardaukar"),
-            ContractReward(personal_cards=2),
+            AtBoardSpace("sardaukar"),
+            ContractRewardParts(personal_cards=2),
         ),
         "sardaukar_ii": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="sardaukar"),
-            ContractReward(recall_agents=1),
+            AtBoardSpace("sardaukar"),
+            ContractRewardParts(recall_agents=1),
         ),
     }
 

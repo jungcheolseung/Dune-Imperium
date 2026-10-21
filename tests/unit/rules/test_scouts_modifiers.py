@@ -10,6 +10,8 @@ Faction's (OQ-081 (a)). Each lasts until the next Round Start.
 from dataclasses import replace
 from typing import Any
 
+from tests.support.reward_windows import settle_reward_window
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -266,7 +268,9 @@ def test_friends_everywhere_threads_through_conflict_rewards() -> None:
         intrigue_deck=("intrigue:0", "intrigue:1", "intrigue:2", "intrigue:3"),
         scouts_round_modifier=FRIENDS_EVERYWHERE,
     )
-    result = resolve_combat_rewards(state).state
+    # v150 (stage B2, OQ-112): the winner answers a window of reward rows;
+    # its fixed Influence row is the one that reaches Fremen 4.
+    result = settle_reward_window(resolve_combat_rewards(state).state)
     assert result.players[0].influence.fremen == 4
     assert result.scouts_four_bonus_choices == (
         (0, "fremen", result.scouts_four_bonus_choices[0][2]),

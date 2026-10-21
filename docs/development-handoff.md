@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-21 (`godot-client`로 이름 변경과 Claude 재검증; 소스는 그대로 v148)
+기준일: 2026-10-21 (엔진은 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 재학습 (가) 선생 어댑터 병합; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -21,23 +21,41 @@
 2. `git status --short`와 `git log --oneline -10`으로 작업 트리를 본다. 기존 변경은 사용자 작업으로 보고 덮어쓰지 않는다.
 3. `git fetch origin` 뒤 `git log --oneline origin/master..master`와 `master..origin/master`를 둘 다 본다. 여러
    기기에서 작업하므로 원격이 앞서 있으면 먼저 맞춘다. 비공개 에셋 저장소(`assets` → `../Dune-Imperium-assets`)도 같다.
-4. `uv sync --extra rl --extra ui --extra train` 뒤 `uv run pytest -q`, `uv run ruff check src tests`,
+4. `uv sync --extra rl --extra ui --extra train` 뒤 `uv run pytest -q -n 8`(pytest-xdist; 직렬은 Mac mini에서 약 10분, 8개로 2분 19초), `uv run ruff check src tests`,
    `uv run mypy src tests`. 결과가 아래 기준선과 다르면 코드가 옳다. 이 문서를 같은 작업에서 고친다.
 
 ## 기준선
 
 | 항목 | 값 |
 | --- | --- |
-| Godot 분기 · 원격 master | `godot-client`을 origin/master `7ba624ad`(composed-a1, 2026-10-16) 뒤로 리베이스. Godot 구현은 이 브랜치에만 유지 |
-| pytest | 직전 전체(2026-10-18 리베이스 직후) 7,766 통과·9 skip·PettingZoo 경고 2개, 7,775개 수집. 메인 메뉴 작업 뒤 관련 런처·원격 권한 회귀 337 통과·macOS 전용 2 skip(새 host control 16개 포함), 전체 재실행 안 함 |
-| Ruff · mypy | Godot 브랜치 `src tests scripts/godot` 통과, mypy 522파일. `scripts/`의 다른 기존 Ruff 오류 68건은 검사 대상 아님 |
-| 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
-| action codec | **v148** (다음 번호 v149) |
-| 관측 | v32, 5,093 int (좌석별 덱+숨은 손패 구성, OQ-010 판정 6) |
-| action catalog | 기본 4,553 · CHOAM 4,848 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 36,379 |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`) |
+| pytest | 8,269개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분 7초, 직렬 약 10분(Mac mini, 2026-10-21) |
+| Ruff · mypy | `src tests` 통과, mypy 553파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `engine-checks` 브랜치(68종 모두 통과, 392초) |
+| action codec | **v151** (다음 번호 v152). v151은 상태 이름만 바꿨고 행동 줄은 v150과 같다(망·증류 자료·체크포인트 그대로) |
+| 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
+| action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,311 |
+| 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `0098fbb6…`; 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
-| 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
+| 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). **v150 이후(지금 v151)에는 4,311줄 가운데 84줄만 학습한 줄**(나머지 결정은 휴리스틱으로) — v150을 플레이 서버에 올리기 전에 재학습. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
 | 에셋 저장소 | `c4cf579` (2026-10-12 push) |
+
+## 기기 분담 (사용자 결정 2026-10-21)
+
+재학습은 Mac mini에서 작업하고 돌린다. 그 밖의 작업은 Mac mini의 CPU 부하에 영향을 주지 않도록 다른 PC에서 한다. 단 ① Reveal 합계
+정리는 관문이 Mac mini에만 있는 git 밖 자료를 읽으므로 Mac mini에서 한다(사용자 결정 2026-10-21 둘째: "자료를 옮겨야 다른 pc에서 가능한거면
+그냥 이 mac mini에서"). ②의 다음 학습은 아직 띄우지 않는다(같은 날 사용자). ①은 같은 날 끝났다(아래 "엔진").
+
+| 기기 | 맡는 일 |
+| --- | --- |
+| Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버, git 밖 자료(아래)를 읽는 엔진 관문. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
+| 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
+
+- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v151-bb05c259/`(기보 묶음, exact 2,000의 기준),
+  `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
+  재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 묶어 옮긴다(2026-10-21에 만든 v150 기준 묶음은 낡아서 지웠다).
+- **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
+  "원격 저장소 인계 주의").
 
 ## 진행 중·다음 작업
 
@@ -45,16 +63,78 @@
 
 **엔진**
 
-- **효과 조각 엔진 전환(진행 중):** 카드 효과를 능력 기록(공통 조각의 조합)과 실행기로 옮긴다. A단계는 행동·관측·사건을
-  그대로 두고 단계마다 `scripts/ab/engine_equivalence.py` 200판 same을 관문으로 한다. 학습은 A단계 끝에 한 번(사용자: 병행
-  학습 안 함). 그 앞의 따로 작업 둘(Agent 차례 선택 효과 codec v146, Reveal 선택 효과 codec v147), A0(능력 기록, 행동 모양
-  표, 대기 능력 실행기 핵심), A1(책략 선택 frame을 실행기로, codec v148)은 끝났다. **다음은 A2**: 개인 카드 Agent 칸의 단순·조건부
-  이득 52개(설계는 시작 때; Agent 칸은 아이콘마다 행동 하나라 실행기에 아이콘별 줄 제시가 필요). 계획서 5절 "A1에서 만든 것"의
-  "A2가 할 일". 같음 확인 기록은 A2 시작 master로 다시 만들고, 속도는 `scripts/ab/time_legal.py`로도 잰다(6절 6번).
-  [composed-effects-plan.md](composed-effects-plan.md) [2026-10-16 효과 조각 엔진 전환 A1]
+- **원판·Rise of Ix — 계획·결정 끝, 다음 P0(2026-10-21):** [base-game-and-ix-plan.md](base-game-and-ix-plan.md). 새 세션이 12절
+  순서로 P0(공식 출처 등록·규칙 명세 두 편·앱 자료 로컬 추출·도구 시범·새 OQ 한꺼번에)를 Mac mini에서 시작한다. P0의 OQ 판정 전에는
+  P1(엔진) 착수 금지. [2026-10-21 원판·Rise of Ix 구현 계획]
+- **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
+  기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
+  다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —
+  끝(아래), ② 재학습 (가) — 선생 어댑터와 첫 사슬은 끝났고(아래) 다음 학습은 사용자가 정할 때 띄운다. [2026-10-20 효과 조각 엔진 B단계 병합(codec v150)]
+- **① Reveal 합계 정리 끝(2026-10-21, codec 그대로 v150):** 카드 문구(영·한)와 codec도 Reveal 능력 기록 줄(`rules.reveal_lines`)을 읽고,
+  합계 자료형 `PersonalCardRevealEffect`와 manifest의 `reveal_effects` 칸(51곳)이 없어졌다. 합계가 하던 기록 검사는
+  `content/uprising/reveal_abilities.check_reveal_gain_line`이 import 때 모든 기록에 돈다. 카드 140장 문구·브라우저 카드 표 전체·codec 144개 조합의
+  행 목록·`FEATURE_DIGEST`가 바이트까지 같다. [2026-10-21 ① Reveal 합계 정리]
+- **Conflict·계약 합계 정리 끝(2026-10-21, codec 그대로 v150):** Conflict 정의는 보상 기록 행(`reward_rows`), 계약 정의는 자기 기록(`terms`)을
+  그대로 들고, 규칙·codec·화면 문구·app 스크립트가 그 기록을 읽는다(계약은 `requirement`·`reward_line`·`board_space`·`harvest_spice`·
+  `acquire_card`·`earns_alliance`, Conflict는 `control_space_id`; 문구는 `display/structs.conflict_row_parts`·`contract_reward_parts`). 기록에서 만든
+  사본 `ConflictReward`·`ContractCondition`·`ContractReward`와 `ContractConditionKind`가 없어졌고, 검사는 `check_conflict_reward_row`·
+  `check_contract_terms`가 한다. 브라우저 카드 표 전체·codec 144개 조합·`FEATURE_DIGEST`·app 스크립트 기록이 바이트까지 같다. 이로써 효과 조각
+  엔진 전환 계획([composed-effects-plan.md](composed-effects-plan.md))의 B단계 "함께 할 일"(합계 대신 기록 조각)까지 끝났다; 남은 것은 C단계(새
+  콘텐츠)와 ② 재학습. [2026-10-21 Conflict·계약 합계 정리]
+- **Reveal 상태 이름 정리 끝(2026-10-21, codec v151):** 합계 정리 뒤 게임 상태에 남은 옛 이름 셋이 코드의 "Reveal 기록 줄"을 따른다 —
+  Reveal frame의 `granted_reveal_lines`, 사건 `reveal_line_granted_late`와 그 `line_index`. 행동 줄은 그대로이고 상태 해시만 바뀌어 codec
+  번호만 올렸다(계획 6절 3번). [2026-10-21 Reveal 상태 이름 정리]
+- **문제집 검사(2026-10-21 복구):** `dune-imperium-records problems check`가 사람 판 문제집 285곳 가운데 279곳(v149와 같음, 원래부터 안 풀리는
+  6곳: 대응 없는 사람의 거절 2·옛 엔진의 거절인 망의 수 4), AI 실수 문제집 3곳 모두를 푼다. B단계 이후 멈추던 두 원인은
+  [2026-10-21 문제집 검사 복구]에.
+- **② 재학습 (가) — 선생 어댑터 병합, 첫 사슬의 망은 선생보다 약함(2026-10-21):** 플레이 망 `checkpoints/play/readapt-v147-4400.pt`(MLP,
+  v147)를 v150에서 쓰는 어댑터 `training/older_teacher.py`: 결정마다 휴리스틱이 보는 온 행동(`agents.agent_turn_steps.placements_for_steps`:
+  카드+칸 `agent_turn`, 효과+대상, 옛 엔진의 고르기)에 파일의 v147 행 번호를 붙여(그대로 → `printed` 떼고 → `source`도 떼고) 파일 자신의 정책
+  머리로 점수를 매기고, softmax를 각 온 행동의 지금 줄로 모은다. 옛 엔진이 묻지 않던 결정(B2 아이콘 순서)은 그 고정 답, 번호가 하나도 안 붙으면
+  휴리스틱. 대회 좌석 `older:<path>`(탐욕, 같은 관측에서 같은 수 반복 금지 — 없으면 Scouts 입찰을 끝없이 다시 함; 플레이 서버 좌석은 아님),
+  증류 데이터 `distill_entity.py data --older`(`training/older_distill.py`), 학생 학습률 `--schedule cosine`.
+  - **될지 확인(통과):** 1 대 앱 AI 어려움 3, 1,000판씩, 옵션 전부+드래프트: 옛 망 v149(`52d0a6cc`) 54.7%, 어댑터 v150 54.8%, 같은 시드
+    **996/1,000판이 최종 VP·순위까지 같다**. 번호가 붙는 결정 94.7%, 옛 엔진 고정 답 4.8%, 휴리스틱 0.5%.
+  - **첫 사슬**(`checkpoints/2026-10-21/retrain-v150/`, `chain.sh`·`README.md`): 데이터 80 iteration 2,599,119행 17분 → 엔티티 학생 4 epoch(일치
+    87.5%, A8 95.2%) → 강화학습(REINFORCE) 1e-5 800회 3.6시간 → 예비 비교 **B-800 대 어댑터 선생 −7.0%p [−12.1, −1.7] 확정** → 설치 안 함. 같은 400판 단독
+    승률: 선생 56.8%, 선생 분포를 줄마다 탐욕("완벽한 학생") 57.5%, 학생 4 epoch 47.5%, 학생 cosine 12 epoch(`student12`) 52.0%, REINFORCE 300·600·800
+    52.2%·49.0%·51.5%. 실력은 증류에서 샌다: 선생이 확신하는 수(최고 확률 > 0.9)는 99.2% 따라 하지만 선생도 갈린 수(< 0.6, 32%)에서 21%를
+    다르게 고른다.
+  - **다음:** 아래 "학습·AI"의 **모델 구조 점검 뒤 다음 순서**로 옮겼다. 옛 선택지 (1) 탐색 좌석이 어댑터로 옛 망을 쓰기는 그 0번이고,
+    (2) `student12`에서 강화학습 다시·(3) 증류 키우기는 5번(학생 국면 증류 + kickstarting)이 대신한다. 고정 worktree
+    `.claude/worktrees/retrain-v150`(`chain2.sh`가 이 경로를 쓴다)과 탐색 좌석 관문 대조용 `.claude/worktrees/v149-ref`(`52d0a6cc`)를 남겼다.
+  - **학습 방법 이름(정정 2026-10-21):** 2026-09-20 이후의 학습 실행은 모두 `--clip` 없이 돈 REINFORCE다(가치 기준선, 모은 판을
+    한 번 훑음; 실행 26개의 `training.jsonl` `clip_fraction`이 모두 0). 문서가 "PPO"라고 적어 온 것을 고쳤다. PPO(clip 0.2·3 epoch)는
+    2026-09-18에 한 번 재고 무너져 기각했다(그때 판단: 큰 배치에서만 다시 볼 가치). [2026-10-21 학습 방법 이름 정정]
+- **플레이 서버 주의:** Mac mini의 메인 체크아웃은 이미 v150 이후다(B단계 병합을 이 기기에서 했다; 지금 v151). 그래서 지금 서버를 다시 띄우면
+  ②의 망을 `checkpoints/play/search.pt`에 설치하기 전까지 탐색 AI 좌석이 약하다(앱 AI·휴리스틱 좌석은 그대로). 그 사이 강한 탐색
+  좌석이 필요하면 B단계 직전 커밋 `52d0a6cc`(v149)의 worktree에서 서버를 띄운다(그 판의 저장본은 v150 이후에서 열리지 않는다).
 
 **학습·AI**
 
+- **모델 구조 점검 뒤 다음 순서(2026-10-21, 사용자 "그렇게 해줘"):** 조사와 판단은
+  [evaluation/architecture-survey-2026-10-21.md](evaluation/architecture-survey-2026-10-21.md), 공개 요약은 웹사이트 기술 글
+  `posts/architecture-survey.md`. 두 망은 분야 관행 안에 있고, 같은 분포 안의 구조 차이는 작았다(우리 MLP 대 엔티티 +0.1%p). 큰 몫은
+  탐색, 그다음이 학습 신호라 이 순서로 한다. 실험은 아직 하나도 안 돌렸고, 몇 시간 넘는 실행은 띄우기 전에 후보·레시피를 묻는다.
+  0. **(결정) 탐색 좌석이 어댑터로 옛 망을 쓰기**(엔진 ②의 옛 선택지 1): 지금 엔진(v151)에서 탐색 좌석이 옛 실력이어야 1~4를 지금 엔진에서
+     잴 수 있다. `NetworkSearchAgent`는 v150 이후 행으로 망을 부르므로 설계가 필요하다. 망 단독은 어댑터로 이미 옛 실력이다.
+  1. **E1 뒤집기 문턱·사전 닻:** 평균 차가 δ = 0.01을 넘을 때만 망 1순위를 뒤집기, 또는 평균 + λ·log π(λ 0.01·0.03). 근거: 탐색이 1순위를
+     뒤집는 결정 44% 가운데 평균 차 0.005 미만이 41%(m10-2026-09-22 15절), SPARTA·Ataraxos. 같은 시드 400판, 1 대 앱 AI 어려움 3과
+     1 대 플레이 망 3. 통과: 승률 차 하한 > 0, 또는 승률 차 > −2%p이면서 순위·점수 차 확정 개선. 아래 "탐색 AI의 이상한 수 후보"의 잡음 선택도 겨냥한다.
+  2. **E3 후보 배분:** Gumbel-Top-k로 후보 8개를 뽑고 rollout 40개를 sequential halving으로 나눈다. 통과는 E1과 같다.
+  3. **E4 상대 행동으로 세계 가중:** 세계 32개를 상대의 이번 라운드 행동 우도로 가중해 8개를 다시 뽑는다. 먼저 오프라인으로 실제 숨은 손의
+     로그 확률이 균일 표본보다 오르는지 보고, 오르면 E1 규칙으로 잰다. (E2 세계 16은 2026-09에 +2.2%p로 기준 미달이라 뒤로 미룬다.)
+  4. **E5 학생 국면 증류:** 학생이 둔 판의 국면에 어댑터 선생의 분포·가치를 붙여 2회 반복, 12 epoch cosine. 통과: 단독 400판에서 선생과의
+     차 −2%p 이내, 선생 확률 0.6 미만 결정의 불일치 21% → 15% 미만. 실패하면 원인이 자료 분포가 아니므로 E6으로.
+  5. **E6 kickstarting:** 가장 나은 학생에서 REINFORCE + β·KL(선생‖학생), β를 400회에 걸쳐 1 → 0, 모두 800회. 통과: 2:2 1,400판에서 선생 대비
+     점추정 ≥ 0, 하한 > −3%p(B-800은 −7.0 [−12.1, −1.7]). 통과한 망만 탐색 좌석 관문(아래 판정 주의)으로 간다. 실패하면 증류 계보는 보류하고 어댑터를 쓴다.
+  6. **E7 가치 분리·특권 critic:** 같은 출발점에서 300회씩 (a) 지금, (b) 분리된 가치 MLP, (c) (b) + 숨은 손·덱을 보는 학습용 기준선. 통과: 하한 > 0,
+     또는 같은 강도를 3분의 2 iteration에. 가치 변경은 탐색 좌석으로 판정한다(가치를 판 결과에 더 맞추자 탐색이 나빠진 전례, entity-network-plan 7절).
+  7. **E8 구조 탐침(증류 일치):** 같은 자료로 (a) 엔티티 구역의 원래 개수 열 복원, (b) 합법 행동 위 attention 한 층, (c) MLP 폭 256·1024.
+     통과는 처음 보는 판의 선생 확률 0.6 미만 결정에서 일치 +1%p 이상(채택은 대국으로). 개체 self-attention 1~2층은 그 뒤.
+  - **판정 주의:** 81.8% 근처에서는 400판 승률 차의 구간이 ±5%p 안팎이라 탐색 실험은 플레이 망 셋 상대로도 재고 순위·점수 차를 함께 본다.
+    망만의 이득이 탐색 좌석으로 안 넘어온 전례(M 대 8081)가 있으니 망·가치 변경은 탐색 좌석으로 판정한다.
+  - **보류:** PPO 재시도(2026-09-18 붕괴, 다인원 self-play에서 같은 판 반복 사용은 해롭다는 문헌), E8 탐침 밖의 MLP 폭 확대, LSTM, CFR 계열(2인 영합 게임에만 보장).
 - **readapt-v147(끝남) → 플레이 망 교체(2026-10-15):** 레시피 MLP를 v147 엔진에서 3,600 iteration 더 학습한 R(4,400)이
   시작 망과 1,400판에서 +5.6%p [+0.6, +10.4](확정), 탐색 좌석(1 대 앱 AI 어려움 3)에서는 81.8% 대 78.0%, +3.7%p
   [−1.8, +9.2](규칙상 비김, 지표 모두 R 쪽). 사용자 결정으로 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`
@@ -62,14 +142,11 @@
 - **readapt-v147b(끝남, 2026-10-15):** R에서 1,500 iteration 더 학습한 R2(5,900)는 R과 1,400판에서 −0.3%p [−5.1, +4.6]로 비김 →
   플레이 망은 R 유지. 학습 중 평가도 추세 없음: 이 학습률에서 레시피가 정체했다. 다음 학습은 엔진 전환 A단계 끝의 재학습(구조 결정)으로.
   `checkpoints/2026-10-15/readapt-v147b/README.md`. 고정 worktree `train-v147`은 정리했다.
-- **개체 기반 망(진행 중):** 망이 카드·칸·행동을 뜻(특성)으로 읽고 행동 점수를 조합으로 계산하게 다시 설계한다. 관측 v31·codec은
-  그대로 두고 망만 바꾸며, 기존 망 파일로 플레이하는 길은 유지한다. 평가 도구(AI 실수 문제집, `scripts/ab/network_probes.py`)와
-  X·Y·A·B 기준값, P1(`entity` 망), P2(Y 증류, 규칙상 불통과), P3(강화학습), P4 탐색 좌석 측정이 끝났다. 엔티티 E2v@800
-  (`checkpoints/2026-10-13/entity-p3/E2v-800.pt`)이 Y를 +5.7%p 넘었지만, **학습률을 맞춘 MLP(Mv-1e5, `checkpoints/2026-10-14/overnight/`)와는
-  같다(2026-10-14): 이득은 구조가 아니라 학습 방법(Y 증류 + Y 가치 목표 + PPO 1e-5)이다.** 탐색 좌석 E2v 대 X는 승률 비김, 순위·점수 차는
-  E2v. 같은 방법의 MLP(Mv-1e5)도 Y를 +4.9%p(규칙상 비김, 순위·점수 차 확정)로 E2v와 같다. 플레이 서버 망은 같은 방법의 MLP로 바꿨다(2026-10-14). 다시 학습은 효과 조각 엔진 전환
-  A단계 끝에 한 번 한다(위 엔진 항목); 구조(엔티티·MLP)는 그때 정한다.
-  [entity-network-plan.md](entity-network-plan.md) 10절 [2026-10-13 개체 기반 망 P2·P3]
+- **개체 기반 망 — 계보는 엔티티(사용자 결정 2026-10-18), 재학습은 위 엔진 ②(방법 (가) 결정 2026-10-21):** A8 입력(능력 기록 특성, 행동 부분, 이름 기준 파일
+  옮기기)을 넣고 한 번 학습했다: 선생 = 플레이 망, 증류 197만 행 → 학생(일치 95.2%) → 강화학습(REINFORCE) 1e-5 800회(학습 중 평가 약 53%) → 예비
+  비교 700판: 플레이 MLP와 비김(승률 +1.3%p [−3.9, +6.4]). 탐색 좌석 관문은 사용자 결정으로 건너뛰었다(B단계 뒤 다시 학습) — 플레이 서버 망은 MLP 그대로. 고정 worktree
+  `a8-train`은 정리했고 기록은 `checkpoints/2026-10-19/a8/`(`chain.sh`가 사슬). 이전 기록: 엔티티와 같은 학습 방법의 MLP는 실력이 같다(2026-10-14),
+  `docs/entity-network-plan.md` 10절.
 - **(결정) readapt-v143 판정.** 대조군 C(`C/iteration_11681.pt`)만 돌렸다. 점수 보상 갈래 S(`--score-rewards`)와
   판정 `judge.sh`(G1 S 대 C, G2 C 대 Y, G3 S 대 Y)는 안 돌렸다. C가 Y보다 나은지는 G2만 따로(1,400판, 약 25분)
   돌려도 안다. 판정 전이라 계보의 머리는 Y다. [2026-10-12 readapt-v143]
@@ -83,7 +160,7 @@
   [evaluation/search-atomics-2026-10-12.md](evaluation/search-atomics-2026-10-12.md) 6·7절
 - **탐색 AI의 이상한 수 후보:** "이번 턴" 책략(Insider Information)을 쓰고 그 효과가 필요 없는 칸으로 감(책략과
   Agent 턴을 따로 평가하는 탓; 묶어서 평가하기). 값이 거의 같은 수 사이를 세계 8개의 우연이 고르는 것(후퇴 장면;
-  상위 두 후보가 잡음 안이면 세계 늘리기). 단독 1등의 전투 책략은 2026-10-13에 고쳤다.
+  상위 두 후보가 잡음 안이면 세계 늘리기; 위 E1이 이것을 먼저 겨냥한다). 단독 1등의 전투 책략은 2026-10-13에 고쳤다.
   [evaluation/search-atomics-2026-10-12.md](evaluation/search-atomics-2026-10-12.md) 1·5절
 - **엔진 수집 최적화(2026-10-12 병합):** 검사를 유지하는 상태 복사와 앱 AI 고정 메타데이터의 재사용. Mac에서
   학습 설정(Y, 32판, 작업 프로세스 4개) 수집이 8.65초에서 8.08초(−6.6%, 번갈아 9번씩)이고 결과는 비트 단위로 같다.
@@ -104,84 +181,12 @@
 
 **플레이 화면**
 
-- **Godot PC 2D 클라이언트:** `godot-client` 브랜치에만 구현, master 반영 금지(사용자 결정).
-  **2026-10-21 재검증과 다음 작업:** 완주(기본 4판·전 옵션 2판)·계약·대조 core/info/quantity·패널·메뉴는
-  통과했고, 깨져 있던 검사 도구 둘을 고쳤다. 웹에는 있는데 없는 흐름(턴 시작 카드 창, Reveal 선택 묶음,
-  서버 오류 한국어)과 보안 항목(관리자 쿠키 파일 저장, 프로젝트 밖 Godot 사용자 폴더, SSE origin)은
-  worklog [2026-10-21 Godot 브랜치 이름 변경과 Claude 재검증]에 있다. **다음은 master(2026-10-21 `6a26401e`, codec v151) 이전**이다.
-  **업데이트 ZIP/전체 패키지는 사용자가 요청할 때만 만든다**(2026-10-15 사용자 결정).
-  시작 화면은 **싱글플레이·멀티플레이·설정·게임종료**다(`f5c09548`). 모드 선택 뒤 서버를 켜며,
-  멀티플레이는 즉시 서버 설정에서 LAN/Tailscale 탐색·켜기/끄기·방 만들기·초대 링크 복사와
-  참가 탭을 제공한다. 앱 재실행 없이 소유한 서버만 제어하고, 키는 개인 파일 응답·인증 POST에만
-  전달한다. Windows OpenGL 75항목·두 언어/좁은 창 13캡처·독립 게스트 참가/좌석 claim과
-  기존 open 43/remote 46 계약 검사를 통과했다.
-  현재 소스는 master의 codec v148·관측 v32를 사용하며, 기존 v145 저장본은 현재 서버에서 바로 열리지 않는다.
-  최신 전체 ZIP은 `tmp/godot/dune-uprising-windows-personal-20261018-menu-v148.zip`(메인 체크아웃,
-  소스 `6f105768`, 233.53 MiB, 개인 그림 포함). 동봉 Windows `pythonw.exe`의 headless 62항목으로
-  메뉴·싱글·호스팅·독립 게스트 참가/좌석 claim·정상 종료/포트 반환을 검증했다. manifest 2,417파일
-  hash·CRC·x64 PE 35개도 통과했다. 다른 PC LAN·완주·IME/소리는 이번에 재실행하지 않았다.
-  아래의 이전 완주·패널 업데이트 수치는 리베이스 전 v145의 기록이다. 세부는 설치 안내의 메인 메뉴 수정본 절.
-  기본판 드래프트·책략·구매·전투·최종 순위·저장/이어하기와 네 판 완주를 검증했다(49종 행동·12종
-  결정창). Python·uv·Git 없는 개인용 Windows ZIP의 이전판은 사용자 시작/플레이 확인을 받았다.
-  다른 PC에서 재빌드한 전체 ZIP(233.39 MiB / 풀면 347.54 MiB, SHA `2ca2e23e…`)은 그 PC의
-  동봉 Windows 런타임으로 한글·공백 경로에서 콘솔 없는 headless 배치/undo/턴 진행·종료를 통과했다.
-  화면 배율 업데이트(152.38 KiB)는 그 전체 ZIP에 적용한다. 이 PC의 동명 이전 ZIP/v3와는
-  별도 기준이며 최신 화면 업데이트의 검증 기준은 아래와 설치 안내에 구분한다. 모니터/DPI에 맞춰 기본
-  FHD 100% / QHD 125% / 4K 200%로 확대하고 창 축소/모니터 변경에도 맞춘다.
-  배율 회귀 27개와 실제 Windows OpenGL의 두 언어·세 해상도 입력/팝업/24장 캡처를 통과했다.
-  웹과 같은 열 배치·큰 카드 hover·항상 보이는 시장/기록·보드 조각으로 개선했다.
-  기존 웹 기능 대응으로 세션/좌석·cookie/SSE·설정/저장/관전/시계에 이어 확장 시장·연구 보드·지도자/
-  Scouts 상태·선택 이유/예고·정보 창·두 언어·개인 드래그/접힘·연출/합성음·호스트 설정을 연결했다.
-  모델 137항목, 현재 실제 open 43 / remote 46항목과 native 두 언어/1440×900·1100×740 입력 검사를 통과했고,
-  전 옵션 현재 입력 검사는 한 판씩 실행해 중간 복원과 함께 seed 22는 10R/1239,
-  seed 33은 8R/880에 완주했다. 이전 입력의 seed 22(10R/1128)·33(9R/1041) 완주도
-  기록돼 있으며 같은 옛 수열이나 AI 강도의 비교로 읽지 않는다. v3 Windows 전체
-  243.73 MiB/기능 업데이트 222.36 KiB·플레이 업데이트 229.14 KiB에 이어 최신 정보/경매
-  업데이트 238.54 KiB를 만들고 v1/v2/v3/플레이 업데이트 overlay의 2,389파일 hash를 검증했다.
-  최소 환경 스모크도 통과했다. Windows IME·소리·다른 GPU/LAN 실기와 전수 조합은
-  후속 피드백/감사 범위다. [기능 대응 표](godot-feature-parity.md)에 검증 범위를 구분한다.
-  같은 저장본의 웹/Godot 직접 대조는 총 35사례의 결과 hash가 일치한다. 현재 기본 입력
-  5사례/140항목(headless)·156항목(실제 화면), 정보 4사례(ko/en)/32항목, 수량·경매 10사례(ko/en)/98항목과 접목/폐기/
-  연구/계약/지도자 선택 16사례(ko/en)/438항목을 통과했다. 선택창은 실제 렌더링과 캡처
-  52장도 포함한다(직전 화면의 기본 34/선택 404항목에 새 실행 결과·비용 표시 검사를 더함).
-  이전 정보/경매 화면 32장을
-  캡처하고 좁은 화면의 정보창 bounds도 검증했다(정보 32항목).
-  카드/칸 어느 순서든 유일한 배치 즉시 실행, 접목 두 장 선택·대칭 행 dedup·전체 목록,
-  확정 대기 테이블 재클릭 유지와 할인 후 지불 비용을 맞췄다. 덱의 알려진 맨 위 복사본·
-  Controlled 그림/이름, 병력 기본 수량·경매 턴 종료 확정과 undo/시점/권한 상실 중 창 정리도
-  맞췄다. 폐기의 영역/물리 복사본/남은 효과 소실 경고, 모든 관련 카드/칸의 상세 조회와
-  선택 옵션 본문, 정보창 뒤·입력 중 단축키 억제를 보완했다. 대표 접목 잠금/undo와
-  연구/계약/지도자 선택 및 C/S 접힘을 직접 대조했다. Codex에서 기본 화면의 손패 확대·시장
-  이름/인쇄 비용·체크 표식·빈 손패 접기와 플레이어/현재 선택 위계를 1차 개선했다.
-  선택 해제 버튼의 이름과 긴 좌석 이름/승점 경계를 고치고, 실제 플레이의 두 언어·FHD/QHD/4K
-  배율·없는 그림·선택/해제/배치/구매/드래그와 기본 입력 5사례/34·수량/경매 10사례/98·
-  선택창 16사례/404항목을 재검증했다.
-  기본 화면 업데이트(253.13 KiB)는 이 PC의 v1/v2/v3/플레이/정보 기준 overlay
-  2,395파일 hash와 별도 최소 환경 스모크를 통과했다. 이어 카드 상세를 그림/설명 병렬 배치로
-  바꾸고 덱/가로 카드·확장 시장·지도자 슬롯을 확대했다. 연구 창에 합법 목적지와 공개 현황을
-  붙이고 Scouts 그림/설명·공개/자기 비공개 현황을 정리했다. 같은 저장본의 정보 4사례/32·
-  선택창 16사례/404를 새 상세 배치로 재확인했고, 새 확장 패널은 6사례/86(실제 화면)·76
-  (headless)항목과 연구 클릭/텍스트 선택의 서버 결과 hash가 일치한다.
-  최신 패널 업데이트는 누적 프로그램 전체 2.83 MiB(`3b602af2`)이며, 보존한 직전 소스의
-  프로그램 353파일 hash와 새 ZIP/적용 복사본의 357파일·최소 환경 시작/undo/종료를 검증했다.
-  목표 manifest 2,399파일은
-  이전 manifest에 프로그램을 overlay한 목록이다. 이전 전체 ZIP들은 현재 작업 환경에 없어
-  이번에 재검사하지 않았으며 다른 PC 전체본의 manifest 일치를 주장하지 않는다.
-  이 패키지 이후 소스에서는 선택 행의 행동 제목·지불/인쇄 비용·효과·예상·주의를 분리하고
-  수량 설명도 같은 배치를 쓴다. 확정 대기는 선택됨/턴 종료 표식으로, 서버가 수락하고 새
-  상태로 확인한 실행은 행동 기록 위의 짧은 결과/공개 자원 순변화로 구별한다. 거절/상태 확인
-  중도 구분하며, undo·좌석/권한·게임·리플레이 변경에서 이전 결과와 문구를 비운다.
-  보드·손패의 선택/가능/접목 상대/서버 불가/현재 조합 불가도 기호와 테두리로 구별한다.
-  가리킨 대상의 안내와 우클릭 상세, 빈 보드·정보창·크기 변경의 hover 정리를 맞추고 가로
-  미리보기를 줄여 대상 칸을 가리지 않게 했다. 기본 툴팁은 확대/단축키를 막지 않는다.
-  플레이어 이름과 차례/선/자기 좌석 표식을 분리하고 자원 숫자를 키웠다. 상단은 선택/AI 생각/
-  확정 대기/종료/다시보기를 구별한다. 기록은 행동자와 본문을 나누고 전체 기록으로 연결하며,
-  줄바꿈 배치 뒤 읽던 위치를 복원하고 승점 내역의 옛 행동 이동을 자동 추적보다 우선한다.
-  다음 시각 후보는 새 게임·저장/이어하기·설정 창의 읽기와 이동 흐름이며, Windows 직접
-  플레이 피드백도 확인해야 한다. [화면 인수인계](godot-visual-handoff.md)에
-  코드 위치·조작 유지 조건·검증 명령을 모았다. 연구/계약/지도자의 나머지 조합과
-  release export/설치 프로그램·전수 카드/지도자 감사는 후속 범위다.
-  [설치 없는 ZIP](godot-windows-package.md), [개발용 실행](godot-prototype-guide.md), [전체 계획](godot-client-plan.md)
+- **Godot PC 클라이언트(다른 PC; 브랜치 `godot-client`(2026-10-21에 `docs/godot-client-plan`에서 이름을 바꿈)에만 두고 master에는 넣지 않음, 사용자 결정):** 2026-10-18에 v148
+  위로 리베이스한 커밋 48개라 B단계(v150) 병합보다 앞이다(2026-10-21 `6a26401e` 기준 master보다 314커밋 뒤). 먼저 지금 master(codec v151)에 맞춰야 한다. 클라이언트(`main.gd`·`model.gd`·
+  `playthrough.gd`)가 옛 한 걸음 Agent 행 `agent_turn`을 20곳에서 읽는데, v150의 Agent 차례는 `choose_agent_card` → `place_agent` 두
+  걸음이다. 기다리는 효과도 효과 줄 → 대상 줄로 바뀌었다(B3). master와 같이 고친 파일은 인수인계·worklog 둘뿐이다(2026-10-21 시험
+  병합). 계획과 상태는 그 브랜치의 `docs/godot-client-plan.md`와 인수인계에 있다. 2026-10-21 Claude 재검증(v148 그대로: 완주·계약·대조·메뉴
+  통과, 웹에서 빠진 턴 시작 카드 창·Reveal 선택 묶음, 보안 항목 3개)은 그 브랜치 worklog 맨 위에 있다.
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
 - **한국어 화면에 남은 영어(작음):** ⑤⑧⑨는 2026-10-14에 끝났다(OQ 번호·경로·명령 인자는 플레이 화면에서 뺌, 서버 오류는
@@ -204,17 +209,24 @@
 
 **도구·인프라**
 
-- **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v148-02e203ce(2026-10-16, 2,000판; A1의 Play 커밋으로 만듦,
-  v147-2af1d9f5와 판마다 수순이 같다)이고 A2 관문의 기준이다. 그 앞은 v147-2af1d9f5(A0·A1 관문), v145-afea63de(v146 다리 대조)이며
-  v144·v146 묶음은 없다. v145의 새 다리 `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 있는지는 아직 세지 않았다.
-  [2026-10-12 Ghola, 2026-10-14 자기 차례 안의 선택 효과, [`human-records.md`](human-records.md)]
+- **프로젝트 웹사이트:** `website/`의 Hugo 0.168.0 사이트를 Pages에 공개했다(master `b7787979`, build·deploy와 공개 URL 확인).
+  담백한 문구를 사용하고, 커밋·문서를 묶은 과거 개발일지 16편과 월별 목록·앞뒤 글·검색·RSS를 추가했다(master `89a96258` 반영).
+  한국어 기본 URL·영어 `/en/`, 본문 36개 번역(개발일지 16편 포함)·언어별 검색/RSS·다크/라이트와 자체 샌드웜 SVG를 추가했다.
+  테마는 시스템 기본값과 수동 선택 저장·탭 동기화를 지원한다. 이번 변경은 로컬 검증·커밋 후 원격 반영 대기.
+  작성 양식·검증·배포는 [`website/README.md`](../website/README.md), 문구 원칙은 `website/AGENTS.md`.
+  **다음:** 작업별 개발일지 이어 쓰기, 게임 설치·OS 실기 확인과 릴리스·선택 모델 준비.
+  [project-site-plan.md](project-site-plan.md)
+- **서버 런처 7단계:** Windows 11 기능 검증 완료(2026-10-12 v145, 실제 Tk 시작·중지, Chrome E2E 174개; 브랜치
+  `codex/windows-validation`, 2026-10-21 master 병합). 다른 물리 PC의 접속, 배율·IME·방화벽·GUI 강제 종료·잠자기 복귀,
+  학습한 탐색 AI 망 사용 확인이 남았다. Windows 전체 엔진 pytest와 `run_all.py` 전체는 Windows에서 돌린 적 없다(POSIX
+  전용 경로가 남은 E2E가 있다). [`windows-host-validation.md`](windows-host-validation.md), [`server-launcher-plan.md`](server-launcher-plan.md)
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v151-bb05c259**(2026-10-21, 2,000판, Reveal 상태 이름 정리 병합 master에서
+  만듦; 같은 엔진으로 되돌려 exact 2,000)이고 다음 엔진 변경의 기준이다. 그 앞은 v150-14c08062(v151 엔진에서도 exact 2,000 — 상태 비교가
+  결정 단계와 사건 기록을 빼므로), v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
+  v148-02e203ce, v147-2af1d9f5, v145-afea63de이며 v144·v146 묶음은 없다.
+  [2026-10-20 효과 조각 엔진 B단계 병합(codec v150), [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
   (`test_a_local_server_stops_on_its_closed_input_with_a_stream_open`). 둘 다 혼자 돌리면 통과한다.
-- 깊은 worktree의 `tmp/pytest/`는 Linux forkserver의 UNIX 소켓 이름 길이 제한을 넘을 수 있다.
-  Godot 작업 트리의 tournament worker 검사는 프로젝트 내부의 짧은 임시 경로로 재실행해 통과했다.
-  전체 실행에서 그 경로를 override하면 `tests/unit/test_paths.py`의 체크아웃 경로 보호 검사가 실패한다.
-  보호 검사를 바꾸지 말고 기본 경로에서 따로 확인한다.
 
 ## 알아 둘 것
 
@@ -245,6 +257,8 @@
 - `checkpoints/`는 git 무시라 기기 사이에는 파일을 복사한다. 탐색 AI 망을 바꿀 때는 새 이름으로 복사한 뒤
   `search.pt` 링크만 바꾼다. 저장 파일은 그 망 파일에 묶여 있어 옛 파일을 지우거나 덮어쓰면 그 저장을 못 연다.
 - 원격의 `kyungtae` 브랜치는 병합하지 않은 다른 사람의 브랜치다. 건드리지 않는다.
+- 원격의 `godot-client`(옛 이름 `docs/godot-client-plan`, 2026-10-21 원격에서 지움)는 다른 PC에서 하는 Godot 작업 브랜치다(위 "플레이 화면", master에 넣지 않음).
+  `codex/windows-validation`은 2026-10-21에 master에 병합했다.
 
 ## 코드 탐색 지도
 
@@ -260,7 +274,7 @@
 | phase·Combat·Endgame | `rules/phases.py`, `combat.py`, `endgame.py` |
 | dispatcher 표와 frame kind | `rules/engine.py`(`LEGAL_ACTION_PROVIDERS`·`ACTION_HANDLERS`·`report_only_event_kinds`), `frames.py`, `agent_effect_frame.py` |
 | effect DSL과 Intrigue | `content/uprising/effect_dsl.py`, `intrigue.py`, `rules/effect_interpreter.py`, `rules/intrigue.py`, `rules/intrigue_deck.py`, `rules/intrigue_triggers.py` |
-| 효과 조각 엔진(전환 중) | 능력 기록 `content/uprising/abilities.py`, 행동 모양 표(동사·출처·대상) `rules/action_shapes.py`, 대기 능력 실행기 `rules/ability_executor.py`; 계획 [composed-effects-plan.md](composed-effects-plan.md) |
+| 효과 조각 엔진(전환 중) | 능력 기록 `content/uprising/abilities.py`, 행동 모양 표(동사·출처·대상) `rules/action_shapes.py`, 대기 능력 실행기 `rules/ability_executor.py`; Agent 칸 기록 `content/uprising/agent_abilities.py`와 그 해결 `rules/agent_box_abilities.py`; 계획 [composed-effects-plan.md](composed-effects-plan.md) |
 | 고정 action catalog | `adapters/action_codec.py` |
 | 관측과 PettingZoo | `core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
 | replay와 random 러너 | `core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |

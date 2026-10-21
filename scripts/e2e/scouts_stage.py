@@ -39,7 +39,7 @@ arrows with focus inside the card (not outside, not with Alt), the browsed
 page kept on a refresh, the panel's button naming the page and how many
 more; a browser arriving after the step opens the first unseen page and
 marks next "new" (mark and title) without an update moving the card; round
-6 has no card before its reveal and Eyes on Arrakis, also choice-less, opens
+6 has no card before its reveal and Market Opening, also choice-less, opens
 it again. Seed 4's round
 2 (Planetary Exploration with no decision, then Send for Aid): the card
 stays on the item being decided, previous marked new, through another
@@ -58,15 +58,15 @@ named by its word and the item, "카드 접기" / "Hide card" while the card is
 up), which keeps its node and focus across renders; clicking it, Enter and
 Space on it, and `a` open and fold the card. Two: during a Scouts step that
 revealed secret picks, the card listed the picks still waiting under "비밀
-선택 공개", so players read them as revealed. Seed 157's Covert Operation
-(round 6: seat 0 picks a next-round line, the other three two-round lines),
+선택 공개", so players read them as revealed. Seed 428's Covert Operation
+(round 6: seat 3 picks a next-round line, the other three two-round lines),
 replayed with the log the table holds: at round 7's reveal a waiting seat's
-card shows exactly seat 0's row with its line under "6라운드 작전 변경", the
+card shows exactly seat 3's row with its line under "6라운드 작전 변경", the
 other three apart as "아직 비공개: …" with none of their lines anywhere, and
 the Scouts panel words them the same way; at round 8's the three rows and
 nothing waiting; with no log reaching the step, the title says the reveal is
 to come ("비밀 선택 공개 준비"). Korean and English at 1366x768 and
-1600x950, and seed 157's review at round 7's reveal.
+1600x950, and seed 428's review at round 7's reveal.
 
 Nothing is submitted: a UI callback records any index the page would send.
 Screenshots per kind (Korean, 1600x950) go to E2E_SHOTS_DIR as
@@ -101,6 +101,7 @@ VIEWPORTS = (
 FIXTURES = """
 import json
 from dataclasses import replace
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.arrakeen_scouts import (
     AUCTIONS_BY_ID, EVENTS_BY_ID, MISSIONS_BY_ID, SALES_BY_ID)
 from dune_imperium.core.decisions import PlayerDecision
@@ -142,9 +143,9 @@ def step(item):
 
 # Smoke and Mirrors' first line places a Spy: the post is the board's.
 choice = step("smoke_and_mirrors")
-place = next(a for a in session.engine.legal_actions(choice, 0)
+place = next(a for a in session.engine.whole_actions(choice, 0)
              if dict(a.arguments).get("option") == 0)
-spy = session.engine.apply(choice, place).state
+spy = apply_whole(session.engine, choice, place).state
 while not spy.decision_stack:
     spy = advance_scouts_step(spy).state
 assert str(spy.decision_stack[-1].kind) == "spy_placement", spy.decision_stack[-1].kind
@@ -162,13 +163,17 @@ secrets = offer_secret_reward(
 # Seed 83: round 4 resolves Royal Delegation with choices; round 5
 # reveals the Critical Moment auction (calls) and only after it closes
 # Unlikely Allies, which resolves with no Scouts decision; round 6 reveals
-# only Eyes on Arrakis, also with none. (Seed 21 until codec v146 -- an Agent
+# only Market Opening, also with none. (Seed 21 until codec v146 -- an Agent
 # turn's optional effects lapse at the turn-end press instead of being
 # declined, so the heuristic's games moved -- with Bene Gesserit Treachery
 # and Market Opening, events of the same kind and rounds. A scan through
 # GameSessionManager over seeds 1-299 finds only seeds 83, 228 and 267 with
 # the auction and Unlikely Allies in one round, and of them 83 has a choice
-# event the round before and a choice-less one the round after.) Seed 4 (still
+# event the round before and a choice-less one the round after. Codec v149
+# (2026-10-19) kept seed 83's rounds 4 and 5 and moved its round 6 from Eyes
+# on Arrakis to Market Opening: both are round-modifier events that resolve
+# with no choice, so only the item id the round 6 asserts and checks name
+# changed.) Seed 4 (still
 # the same shape): round 2 reveals Planetary
 # Exploration, resolved with no decision, and then Send for Aid, which every
 # seat decides on -- an unseen page behind the step's item.
@@ -213,8 +218,8 @@ assert this_round(turns(g83, 5)[0]) == ["critical_moment_mid", "unlikely_allies"
 calls = scouts_choices(g83, 5, "critical_moment_mid")
 assert calls and not scouts_choices(g83, 5, "unlikely_allies")
 assert all(this_round(s) == ["critical_moment_mid"] for s in calls)
-assert this_round(turns(g83, 6)[0]) == ["eyes_on_arrakis"]
-assert not scouts_choices(g83, 6, "eyes_on_arrakis")
+assert this_round(turns(g83, 6)[0]) == ["market_opening"]
+assert not scouts_choices(g83, 6, "market_opening")
 r6_start = next(s for s in g83 if s.round_number == 6 and not this_round(s))
 # Another seat's call after the viewer's own: an update during the auction.
 call_later = next(s for s in calls if owner(s) != owner(calls[0]))
@@ -232,22 +237,28 @@ aid_turn = turns(g4, 2)[0]
 watcher = next(seat for seat in range(4)
                if seat not in {owner(aid[0]), owner(aid_later), owner(aid_turn)})
 
-# Seed 157: round 6 reveals Covert Operation; seat 0 picks a next-round line,
-# the other three two-round lines. Round 7's Scouts step reveals seat 0's
+# Seed 428: round 6 reveals Covert Operation; seat 3 picks a next-round line,
+# the other three two-round lines. Round 7's Scouts step reveals seat 3's
 # pick alone (its Spy placement is being decided) while the other three wait;
 # round 8's reveals those three. The table sees them with the log it would
 # hold (the AI game's own, cut at that step, redacted for the seat).
-# (Seed 2 until codec v146 moved its game off Covert Operation; a scan over
-# seeds 1-299 finds seed 157 first with Covert Operation in round 6, the
-# picks split one to round 7 and three to round 8, and a seat deciding at
-# each reveal -- seed 139, with the same split, has no decision at round 7's.)
+# (Seed 2 until codec v146 moved its game off Covert Operation, then seed 157
+# until codec v149 moved it again: a scan over seeds 1-299 had found 157 first
+# with Covert Operation in round 6, the picks split one to round 7 and three to
+# round 8, and a seat deciding at each reveal -- seed 139, with the same split,
+# had no decision at round 7's. The same scan on 2026-10-19 (codec v149) over
+# seeds 1-427 meets the split in seeds 68, 110, 193, 296, 365 and 418, but
+# none has a seat deciding at both reveals: in all six the pick revealed in
+# round 7 is line 1 (2 Solari, no decision), and 193 has none at round 8's
+# either. Seed 428 is the first with all of it: its round 7 pick is line 0,
+# the Spy placement.)
 ai2 = manager._get(str(manager.create_game(
-    ("heuristic",) * 4, game_seed=157, arrakeen_scouts=True)["game_id"]))
+    ("heuristic",) * 4, game_seed=428, arrakeen_scouts=True)["game_id"]))
 g2 = [ai2.engine.reset(ai2.config, ai2.game_seed)]
 for recorded in ai2.steps:
     g2.append(ai2.engine.apply(g2[-1], recorded).state)
 assert len(ai2.log) == len(ai2.steps)
-table2 = str(manager.create_game(("human",) * 4, game_seed=157,
+table2 = str(manager.create_game(("human",) * 4, game_seed=428,
                                  arrakeen_scouts=True)["game_id"])
 picks2 = sorted({row for s in g2 for row in s.scouts_secret_picks})
 assert {(r, e) for r, e, _, _ in picks2} == {(6, "covert_operation")}, picks2
@@ -1179,10 +1190,10 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         and page.evaluate("toggleScoutsStage()") is False,
         f"{where}: a round with no item yet takes it away",
     )
-    # Eyes on Arrakis resolves with no choice: it comes up by itself.
+    # Market Opening resolves with no choice: it comes up by itself.
     stage = render(page, fixtures, "r6_turn", language)
     check.ok(
-        stage["open"] and stage["item"] == "eyes_on_arrakis" and not stage["pager"]
+        stage["open"] and stage["item"] == "market_opening" and not stage["pager"]
         and stage["lineHtml"] == stage["panelLineHtml"] and stage["lineHtml"],
         f"{where}: round 6's choice-less event opens it, every line there",
         (stage["open"], stage["item"], stage["pager"]),
@@ -1337,10 +1348,10 @@ SECRETS_JS = """(expect) => {
 
 
 def secret_reveals(page, fixtures, language: str, viewport: dict) -> None:
-    """Seed 157's Covert Operation (round 6) as a waiting seat sees its reveal
+    """Seed 428's Covert Operation (round 6) as a waiting seat sees its reveal
     (user report 2026-10-11: the page listed the picks still waiting, under
     "secret picks revealed", so they read as revealed). Round 7's step
-    reveals seat 0's next-round pick only: the page shows exactly that row
+    reveals seat 3's next-round pick only: the page shows exactly that row
     with its line, and the other three seats apart as not revealed, none of
     their lines anywhere. Round 8's reveals those three, nothing left. A
     log that does not reach the step: the page says the reveal is to come."""
@@ -1414,7 +1425,7 @@ def secret_reveals(page, fixtures, language: str, viewport: dict) -> None:
 
 
 def secrets_review(browser, base: str) -> None:
-    """Seed 157's finished all-AI game reviewed at round 7's reveal: the page
+    """Seed 428's finished all-AI game reviewed at round 7's reveal: the page
     reads the review's log up to its cursor."""
 
     context, page, _ = open_context(browser, "scouts-stage-secrets", VIEWPORTS[1])
@@ -1428,7 +1439,7 @@ def secrets_review(browser, base: str) -> None:
                    "promo", "immortality", "bloodlines"):
         page.set_checked(f"#opt-{option}", False)
     page.set_checked("#opt-scouts", True)
-    page.fill("#opt-seed", "157")
+    page.fill("#opt-seed", "428")
     page.click("#create-game")
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.review !== null && state.view !== null")

@@ -468,8 +468,8 @@ def test_clear_the_market_with_choam_shuffles_the_old_contracts_into_the_bank() 
     assert state.decision_stack[-1].kind == FrameKind.TURN
     (cleared,) = [e for e in state.event_log if e.kind == "scouts_contracts_cleared"]
     assert dict(cleared.payload) == {
-        "dealt": f"{old[1]},{bank[0]}",
-        "removed": ",".join(old),
+        "dealt": (old[1], bank[0]),
+        "removed": tuple(old),
     }
 
 

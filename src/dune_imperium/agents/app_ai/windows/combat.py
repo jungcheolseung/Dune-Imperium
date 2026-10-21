@@ -47,9 +47,10 @@ flips after the pairs are scored and two wild icons left over pair with
 each other (``endgame_intrigue``).
 
 The app's reward window sees the sole winner's battle icon already scored
-(``ResolveCombat`` runs it before the place-1 window); ours scores it in
-``finish_combat`` after every reward frame. ``app_reward_run`` rebuilds the
-app's view for the reward windows.
+(``ResolveCombat`` runs it before the place-1 window); ours scores it once
+every reward is resolved, as the Conflict-end windows open
+(``combat._award_conflict``, OQ-108). ``app_reward_run`` rebuilds the app's
+view for the reward windows.
 
 Addresses are build dad97e2021144d45b5b4f022e07bd3b3.
 """
@@ -148,8 +149,9 @@ def app_reward_run(run: DecisionRun) -> DecisionRun:
     for the place-1, non-double entry it appends the Conflict's battle icon to
     the winner's ``BattleIconList`` and runs ``ScoreBattleIconsPairs
     (includeWildcards = false)`` before the winner's resolution window, and
-    every later entry's window comes after it. Our engine does both in
-    ``finish_combat`` after every reward frame (R3 §5.1, §6), so the values
+    every later entry's window comes after it. Our engine does both after
+    every reward frame, as the Conflict-end windows open (R3 §5.1, §6;
+    ``combat._award_conflict``, OQ-108), so the values
     the app reads (``VictoryPoints`` in ``GetVictoryPointValue``'s doubling and
     ``IsClimax``, the battle-icon list) would lag by one card.
 
@@ -186,6 +188,10 @@ def app_reward_run(run: DecisionRun) -> DecisionRun:
         face_down_battle_card_ids=(*won.face_down_battle_card_ids, *refs),
     )
     players = tuple(won if p.player_id == winner else p for p in state.players)
+    # A read-only view, not a valid GameState: the Conflict card is both
+    # current and won. A copy of it must go through the constructor
+    # (dataclasses.replace), not copy.replace, which runs only the checks of
+    # the fields it replaces (GameState._check_copy).
     app_state = copy.copy(state)
     object.__setattr__(app_state, "players", players)  # skips __post_init__
     ctx = AppContext(app_state, run.ctx.seat, run.ctx.view)

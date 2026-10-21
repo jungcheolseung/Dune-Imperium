@@ -43,10 +43,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from tipcensus import COLLECTOR_MODULES  # noqa: E402
 from tipcensus.base import Collector, Step  # noqa: E402
 
+from dune_imperium.core.actions import DomainAction  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision  # noqa: E402
-from dune_imperium.core.state import GamePhase  # noqa: E402
+from dune_imperium.core.events import GameEvent  # noqa: E402
+from dune_imperium.core.state import GamePhase, GameState  # noqa: E402
 from dune_imperium.evaluation import tournament as T  # noqa: E402
+from dune_imperium.rules.effect_steps import (  # noqa: E402
+    completed_whole,
+    presents_steps,
+)
 from dune_imperium.rules.endgame import final_standings  # noqa: E402
 from dune_imperium.simulation.runner import _state_agents  # noqa: E402
 
@@ -89,6 +95,9 @@ def play(spec: T.MatchSpec, modules: Sequence[str] = ()) -> dict[str, Any]:
     chance = ChanceResolver(seed=spec.game_seed)
     illegal = [0] * seats
     decisions = [0] * seats
+    # The state, whole actions and events of a whole action whose steps are
+    # being taken (stage B3).
+    opened: tuple[GameState, tuple[DomainAction, ...], list[GameEvent]] | None = None
     started = time.perf_counter()
     for _ in range(spec.max_steps):
         if state.phase is GamePhase.FINISHED:
@@ -112,7 +121,32 @@ def play(spec: T.MatchSpec, modules: Sequence[str] = ()) -> dict[str, Any]:
                 illegal[owner] += 1
                 action = legal[0]
             result = engine.apply(state, action, legal_actions=legal)
-            step = Step(state, result.state, owner, action, legal, tuple(result.events))
+            if presents_steps(state):
+                # A waiting effect is picked before its target (stage B3):
+                # the collectors see one step per whole action, taken from
+                # the whole actions where its first step was picked.
+                if opened is None:
+                    opened = (state, engine.whole_actions(state, owner), [])
+                wholes = engine.whole_actions(state, owner)
+                whole = completed_whole(state, action, wholes)
+                if whole is None and action not in wholes:
+                    opened[2].extend(result.events)
+                    state = result.state
+                    continue
+                start, offered, earlier = opened
+                opened = None
+                step = Step(
+                    start,
+                    result.state,
+                    owner,
+                    whole or action,
+                    offered,
+                    (*earlier, *result.events),
+                )
+            else:
+                step = Step(
+                    state, result.state, owner, action, legal, tuple(result.events)
+                )
         for collector in collectors:
             collector.step(step)
         state = result.state

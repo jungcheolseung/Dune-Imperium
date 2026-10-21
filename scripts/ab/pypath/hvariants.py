@@ -328,8 +328,8 @@ class RolloutVariant(RolloutAgent):
             action = (
                 actions[0]
                 if len(actions) == 1
-                else policy.choose_action(
-                    engine.observe(state, decision.owner), actions
+                else policy.choose_action_with_state(
+                    state, engine.observe(state, decision.owner), actions
                 )
             )
             state = engine.apply(state, action, legal_actions=actions).state

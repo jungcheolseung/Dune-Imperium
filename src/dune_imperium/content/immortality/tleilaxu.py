@@ -17,18 +17,26 @@ whose play data is not complete stays out of the deck.
 from dataclasses import dataclass
 from typing import Final
 
+from dune_imperium.content.immortality.track_abilities import (
+    RECLAIMED_FORCES_ABILITY,
+)
 from dune_imperium.content.schema import (
     CardDefinition,
     SourceDocument,
     SourceRef,
 )
+from dune_imperium.content.uprising.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import AdvanceTleilaxu, RecruitTroops
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardRevealEffect,
 )
 
 TLEILAXU_SOURCES: Final = (
@@ -70,7 +78,6 @@ def _entry(
     acquisition_effect: PersonalCardAcquisitionEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
-    reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
     play_data_complete: bool = False,
 ) -> TleilaxuCardEntry:
     return TleilaxuCardEntry(
@@ -95,7 +102,6 @@ def _entry(
         has_acquisition_bonus=acquisition_effect is not None,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
-        reveal_effects=reveal_effects,
         play_data_complete=play_data_complete,
     )
 
@@ -331,7 +337,6 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         agent_effect=PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN,
         reveal_persuasion=1,
         reveal_strength=1,
-        reveal_effects=(PersonalCardRevealEffect(specimens=1),),
         play_data_complete=True,
     ),
     # Unnatural Reflexes: Spice Trade; GRAFT: at one genetic marker draw two
@@ -360,7 +365,6 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         graft=True,
         reveal_persuasion=1,
         reveal_strength=1,
-        reveal_effects=(PersonalCardRevealEffect(specimens=1),),
         play_data_complete=True,
     ),
     # Promo card in the Tleilaxu layout (asset repository
@@ -402,6 +406,51 @@ RECLAIMED_FORCES: Final = TleilaxuCardEntry(
     immortality_only=True,
     specimen_cost=3,
 )
+
+
+def _reclaimed_forces_choices() -> tuple[
+    tuple[str, RecruitTroops | AdvanceTleilaxu], ...
+]:
+    """Reclaimed Forces' lines from its record (composed A7c), each under
+    the ``choice`` argument that names it: ``"troops"`` for the recruit,
+    ``"tleilaxu"`` for the advance."""
+
+    record = RECLAIMED_FORCES_ABILITY
+    if (
+        record.timing is not AbilityTiming.ACQUIRE
+        or record.structure is not AbilityStructure.ONE_OF
+        or record.mark is not AbilityMark.MANDATORY
+        or record.requirement is not None
+        or record.trigger is not None
+        or record.hook is not None
+    ):
+        raise ValueError("Reclaimed Forces chooses one of its lines")
+    choices: list[tuple[str, RecruitTroops | AdvanceTleilaxu]] = []
+    for line in record.sections:
+        if line.condition is not None or line.costs:
+            raise ValueError("Reclaimed Forces' lines are free")
+        match line.rewards:
+            case (RecruitTroops() as reward,):
+                choices.append(("troops", reward))
+            case (AdvanceTleilaxu() as reward,):
+                choices.append(("tleilaxu", reward))
+            case _:
+                raise ValueError(f"no Reclaimed Forces choice holds {line!r}")
+    if len({choice for choice, _ in choices}) != len(choices):
+        raise ValueError("Reclaimed Forces prints each choice once")
+    return tuple(choices)
+
+
+RECLAIMED_FORCES_CHOICES: Final = tuple(
+    choice for choice, _ in _reclaimed_forces_choices()
+)
+
+
+def reclaimed_forces_reward(choice: str) -> RecruitTroops | AdvanceTleilaxu:
+    """The reward of the Reclaimed Forces line ``choice`` names, read from
+    its record."""
+
+    return dict(_reclaimed_forces_choices())[choice]
 
 
 def tleilaxu_cards_for(promo_cards: bool = False) -> tuple[TleilaxuCardEntry, ...]:

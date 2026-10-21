@@ -2,9 +2,12 @@
 
 from copy import replace
 
-from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.uprising.contracts import contract_for_instance
-from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
+from dune_imperium.content.uprising.effect_dsl import (
+    OnContractCompleted,
+    RevealContractsTakeOne,
+)
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
@@ -32,7 +35,8 @@ def owe_contract_completion_draw(state: GameState, owner: PlayerState) -> Player
     completion happens in (its turn and round).
     """
 
-    if not has_tech(owner.tech_ids, TechAbility.CONTRACT_COMPLETION_DRAW):
+    draws = tech_draws_on(owner.tech_ids, OnContractCompleted)
+    if not draws:
         return owner
     if draw_waits_for_owner(state, owner.player_id):
         return hold_draw(
@@ -41,7 +45,7 @@ def owe_contract_completion_draw(state: GameState, owner: PlayerState) -> Player
             OWED_ORIGIN_CHOAM_TRANSPORTS,
             f"round:{state.round_number}:player:{owner.player_id}:tech_draw",
         )
-    return replace(owner, tech_cards_owed=owner.tech_cards_owed + 1)
+    return replace(owner, tech_cards_owed=owner.tech_cards_owed + draws)
 
 
 def receive_contract(
@@ -64,33 +68,12 @@ def receive_contract(
             active_contract_ids=(*owner.active_contract_ids, instance_id),
         )
     if definition.completes_immediately:
-        reward = definition.reward
-        if any(
-            (
-                reward.water,
-                reward.troops,
-                reward.personal_cards,
-                reward.contracts,
-                reward.spies,
-                reward.influence,
-                reward.intrigue_cards,
-                reward.deep_cover_spies,
-            )
-        ):
-            raise NotImplementedError(
-                "Immediate Contracts with non-Solari rewards are not implemented"
-            )
-        return owe_contract_completion_draw(
-            state,
-            replace(
-                owner,
-                resources=replace(
-                    owner.resources,
-                    solari=owner.resources.solari + reward.solari,
-                ),
-                completed_contract_ids=(*owner.completed_contract_ids, instance_id),
-                contracts_completed_turn=owner.contracts_completed_turn + 1,
-            ),
+        # An Immediate tile completes the moment it is taken [Main p. 16]:
+        # it waits active until the taker's step completes it and opens its
+        # reward window (``contracts.complete_immediate_contract``, OQ-112).
+        return replace(
+            owner,
+            active_contract_ids=(*owner.active_contract_ids, instance_id),
         )
     return replace(
         owner,

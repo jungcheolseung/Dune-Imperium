@@ -8,6 +8,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
     CONFLICT_IDS,
+    FACTION_IDS,
     INTRIGUE_IDS,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
@@ -16,15 +17,24 @@ from dune_imperium.adapters.observation_encoding import (
     encode_player_view,
     segment_slice,
 )
-from dune_imperium.core import ChanceDecision, ChanceResolver, GamePhase, PlayerDecision
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
+    DomainAction,
+    GamePhase,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+)
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.action_shapes import Source, Verb
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 32
+    assert OBSERVATION_VERSION == 33
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -78,6 +88,16 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # flag each, 4 columns (4,533 -> 4,537; docs/graft-boxes-plan.md 4.7).
     # v32: each relative seat's deck pool, one count per personal-card
     # identity, 4 x 139 columns (4,537 -> 5,093; OQ-010 ruling 6).
+    # v33: the seat's own picked Agent card (one count per personal-card
+    # identity) and its graft flag, 139 + 1 columns (5,093 -> 5,233; stage
+    # B1, OQ-111).
+    # Also v33 (stage B3a, OQ-111 (4)): the seat's own picked effect, its
+    # verb (one-hot over 45), source (one-hot over 21), printed personal
+    # card (139), grafted-box flag (1) and the count of targets picked so
+    # far (1), 45 + 21 + 139 + 1 + 1 columns (5,233 -> 5,440).
+    # Also v33 (the B3c-1 review): the targets picked so far by identity --
+    # Intrigue card 90, Faction 4, post 13, Tech 18, Conflict or Objective
+    # card 24, and a second picked Faction 4 (5,440 -> 5,593).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -109,8 +129,23 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4
         + 4
         + 4 * 139
+        + 139
+        + 1
+        + 45
+        + 21
+        + 139
+        + 1
+        + 1
+        + 90
+        + 4
+        + 13
+        + 18
+        + 24
+        + 4
+        # v33 (the B3d-2a review): a personal card picked before the last.
+        + 139
     )
-    assert OBSERVATION_SIZE == 5_093
+    assert OBSERVATION_SIZE == 5_732
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -144,7 +179,35 @@ def test_layout_is_versioned_and_contiguous() -> None:
             segment_slice(f"seat{seat}_deck_pool").stop
             == segment_slice(f"seat{seat + 1}_deck_pool").start
         )
-    assert segment_slice("seat3_deck_pool").stop == OBSERVATION_SIZE
+    # v33 appends the picked Agent card and its graft flag, then (stage B3a)
+    # the picked effect's verb, source, card, box and target count, last.
+    assert (
+        segment_slice("seat3_deck_pool").stop
+        == segment_slice("private_agent_card_pick").start
+    )
+    assert (
+        segment_slice("private_agent_card_pick").stop
+        == segment_slice("private_agent_card_pick_graft").start
+    )
+    # The targets picked so far follow by kind (the B3c-1 review).
+    pick_segments = (
+        "private_agent_card_pick_graft",
+        "private_effect_pick_verb",
+        "private_effect_pick_source",
+        "private_effect_pick_card",
+        "private_effect_pick_box",
+        "private_effect_pick_targets",
+        "private_effect_pick_intrigue",
+        "private_effect_pick_faction",
+        "private_effect_pick_post",
+        "private_effect_pick_tech",
+        "private_effect_pick_battle",
+        "private_effect_pick_second_faction",
+        "private_effect_pick_personal",
+    )
+    for before, after in zip(pick_segments, pick_segments[1:], strict=False):
+        assert segment_slice(before).stop == segment_slice(after).start
+    assert segment_slice("private_effect_pick_personal").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -187,6 +250,208 @@ def test_waiting_shortfalls_use_the_appended_columns_by_relative_seat() -> None:
     assert encode_player_view(engine.observe(state, 1))[columns] == (
         2, 1, 0, 0, 0, 0, 0, 0,
     )
+
+
+def test_the_picked_agent_card_is_encoded_for_its_own_seat_only() -> None:
+    # v33 (stage B1, OQ-111): the Agent turn is a card pick and then a space
+    # pick, and the seat deciding the space sees the card it picked; no other
+    # seat's vector holds it.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=5)
+    assert state.first_player is not None
+    owner = state.first_player
+    pick = next(
+        action
+        for action in engine.legal_actions(state, owner)
+        if action.action_id == "choose_agent_card"
+    )
+    picked = engine.apply(state, pick).state
+
+    card_columns = segment_slice("private_agent_card_pick")
+    graft_column = segment_slice("private_agent_card_pick_graft")
+    before = encode_player_view(engine.observe(state, owner))
+    assert not any(before[card_columns]) and not any(before[graft_column])
+    for observer in range(4):
+        encoded = encode_player_view(engine.observe(picked, observer))
+        if observer == owner:
+            assert sum(encoded[card_columns]) == 1
+            assert tuple(encoded[graft_column]) == (0,)
+        else:
+            assert not any(encoded[card_columns])
+            assert not any(encoded[graft_column])
+
+
+def test_the_picked_effect_is_encoded_for_its_own_seat_only() -> None:
+    # v33 (stage B3a, OQ-111 (4)): a waiting effect is picked before its
+    # target, and the seat deciding the target sees the effect it picked
+    # (verb, source, printed card, box, targets so far); no other seat's
+    # vector holds it.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=5)
+    assert state.first_player is not None
+    owner = state.first_player
+    place = DomainAction(
+        "place_agent", owner, arguments=(("space_id", "desert_tactics"),)
+    )
+    placed = next(
+        engine.apply(picked, place).state
+        for picked in (
+            engine.apply(state, pick).state
+            for pick in engine.legal_actions(state, owner)
+            if pick.action_id == "choose_agent_card"
+        )
+        if place in engine.legal_actions(picked, owner)
+    )
+    # Desert Tactics' optional trash: an effect row, then the card to trash.
+    trash = next(
+        action
+        for action in engine.legal_actions(placed, owner)
+        if action.action_id == "trash"
+    )
+    picked = engine.apply(placed, trash).state
+    assert {row.action_id for row in engine.legal_actions(picked, owner)} == {
+        "choose_personal_card"
+    }
+
+    verb = segment_slice("private_effect_pick_verb")
+    source = segment_slice("private_effect_pick_source")
+    card = segment_slice("private_effect_pick_card")
+    box = segment_slice("private_effect_pick_box")
+    targets = segment_slice("private_effect_pick_targets")
+    assert verb.stop - verb.start == len(Verb)
+    assert source.stop - source.start == len(Source)
+    for observer in range(4):
+        before = encode_player_view(engine.observe(placed, observer))
+        assert not any(before[verb.start : targets.stop])
+        encoded = encode_player_view(engine.observe(picked, observer))
+        if observer != owner:
+            assert not any(encoded[verb.start : targets.stop])
+            continue
+        assert encoded[verb][tuple(Verb).index(Verb.TRASH)] == 1
+        assert sum(encoded[verb]) == 1
+        assert encoded[source][tuple(Source).index(Source.BOARD_SPACE)] == 1
+        assert sum(encoded[source]) == 1
+        # A board space printed the effect: no personal card, no grafted box,
+        # and no target picked yet.
+        assert not any(encoded[card])
+        assert tuple(encoded[box]) == (0,)
+        assert tuple(encoded[targets]) == (0,)
+
+
+def test_the_option_step_shows_the_seat_the_card_it_picked() -> None:
+    # The 2026-10-20 review of stage B3c-1: after ``play`` and
+    # ``choose_intrigue_card`` the option rows are ``choose_option(option)``
+    # alone, so the seat's view must say which card it picked -- Detonation
+    # and Market Opportunity both offer two options here.
+    from tests.unit.rules.test_intrigue import _intrigue, _turn_state
+
+    engine = UprisingRulesEngine()
+    cards = (_intrigue("detonation"), _intrigue("market_opportunity"))
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=cards,
+        resources=Resources(solari=20, spice=20, water=20),
+    )
+    state = _turn_state(owner)
+    play = DomainAction("play", 0, (("printed", "plot"), ("source", "intrigue")))
+    picked = engine.apply(state, play).state
+    chose = [
+        engine.apply(
+            picked, DomainAction("choose_intrigue_card", 0, (("card_id", card),))
+        ).state
+        for card in cards
+    ]
+    rows = [engine.legal_actions(each, 0) for each in chose]
+    assert rows[0] == rows[1] and len(rows[0]) == 2
+    views = [encode_player_view(engine.observe(each, 0)) for each in chose]
+    intrigue = segment_slice("private_effect_pick_intrigue")
+    for view, card in zip(views, ("detonation", "market_opportunity"), strict=True):
+        column = INTRIGUE_IDS.index(card)
+        assert view[intrigue][column] == 1 and sum(view[intrigue]) == 1
+    assert views[0] != views[1]
+    # No other seat sees the pick.
+    for observer in range(1, 4):
+        assert encode_player_view(engine.observe(chose[0], observer)) == (
+            encode_player_view(engine.observe(chose[1], observer))
+        )
+
+
+def test_every_target_picked_before_a_paths_last_has_a_segment() -> None:
+    # A target row a path picks before its last stays in the seat's pick:
+    # its kind, at its position, must be shown by identity
+    # (``PICKED_TARGET_SEGMENTS``).
+    # A window's own effect picks its targets with no effect row (stage
+    # B3d-2a), and Long Live the Fighters' frame keeps its card to draw.
+    from dune_imperium.adapters.observation_encoding import PICKED_TARGET_SEGMENTS
+    from dune_imperium.rules.effect_steps import STEP_SPECS, TARGET_SPECS, Choose
+
+    paths = (
+        *(spec.targets for spec in STEP_SPECS.values()),
+        *TARGET_SPECS.values(),
+    )
+    picked_first = {
+        (kind.action_id, position)
+        for targets in paths
+        for position, (_name, kind) in enumerate(targets[:-1])
+    }
+    picked_first.add((Choose.PERSONAL_CARD.action_id, 0))
+    for action_id, position in picked_first:
+        assert position < len(PICKED_TARGET_SEGMENTS[action_id]), action_id
+    for segments in PICKED_TARGET_SEGMENTS.values():
+        for segment in segments:
+            segment_slice(segment)
+
+
+def test_the_recipient_step_shows_which_faction_was_lost_and_which_gained() -> None:
+    # The review of the fix above: Captured Mentat's exchange picks the
+    # Faction lost, then the one gained, then the Alliance's recipient; the
+    # two Factions' order decides which Alliance is handed on, so the seat
+    # must see it at the recipient step.
+    from tests.unit.rules.test_reveal_turn import _imperium_instance, _state
+
+    from dune_imperium.core import Influence
+
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        hand=(_imperium_instance("captured_mentat"),),
+        influence=Influence(emperor=4, spacing_guild=4),
+        alliance_faction_ids=("emperor", "spacing_guild"),
+    )
+    state = _state(owner)
+    rivals = tuple(
+        PlayerState(player_id=seat, influence=Influence(emperor=4, spacing_guild=4))
+        for seat in (1, 2)
+    )
+    state = replace(state, players=(state.players[0], *rivals, state.players[3]))
+    state = engine.apply(state, DomainAction("reveal_turn", 0)).state
+    exchange = next(
+        row
+        for row in engine.legal_actions(state, 0)
+        if row.action_id == "exchange_influence"
+    )
+    picked = engine.apply(state, exchange).state
+
+    def recipient_step(lost: str, gained: str) -> GameState:
+        at = picked
+        for faction in (lost, gained):
+            at = engine.apply(
+                at, DomainAction("choose_faction", 0, (("faction", faction),))
+            ).state
+        return at
+
+    one = recipient_step("emperor", "spacing_guild")
+    other = recipient_step("spacing_guild", "emperor")
+    assert engine.legal_actions(one, 0) == engine.legal_actions(other, 0)
+    first = segment_slice("private_effect_pick_faction")
+    second = segment_slice("private_effect_pick_second_faction")
+    for at, lost, gained in (
+        (one, "emperor", "spacing_guild"),
+        (other, "spacing_guild", "emperor"),
+    ):
+        view = encode_player_view(engine.observe(at, 0))
+        assert view[first] == tuple(int(f == lost) for f in FACTION_IDS)
+        assert view[second] == tuple(int(f == gained) for f in FACTION_IDS)
 
 
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
@@ -665,21 +930,147 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # 2,972 -> 2,728) and scouts at 459 (round 7, seat 3, Captured Mentat;
 # 2,872 -> 3,028). ``adapters/observation_encoding.py`` and
 # ``core/observation.py`` are unchanged.
+# Re-pinned for codec v149 (cleanup-2b, observation still v32): a research
+# space's bonus choice raised inside its owner's own turn waits on the turn's
+# frame as rows instead of opening a window with a refusal (composed-effects
+# plan, rule decision 2; OQ-095 (2)). A scratch export of the previous
+# commit's source (93c8446b, ``git archive``) reproduces the ``everything``
+# pin exactly, and its decision trace equals this one through decision 830;
+# at 831 (round 10, seat 1, c6r6 after Breakthrough) the Influence rows
+# stand in the Agent-turn effect frame beside the box's other effects and
+# the random seat resolves a card draw first (3,580 vectors either way).
+# The other five games meet no in-turn research bonus and keep their pins.
+# Re-pinned again for cleanup-2b's optional trash (observation still v32):
+# a "[trash a card]" icon raised in its owner's own turn waits on the turn as
+# rows instead of opening a window with a refusal. An export of the previous
+# commit (72d2ad95) reproduces the two pins it moves, and each trace equals
+# this one until the first in-turn trash window: ``everything`` at decision
+# 219 (round 4, seat 0, the random seat declined there and now resolves a
+# board icon first; 3,580 -> 3,568 vectors), ``promo_bloodlines_tech`` at 545
+# (round 8, seat 1, the same trash taken from the turn's list; 3,160 either
+# way). The other four games meet no in-turn trash.
+# Re-pinned once more for cleanup-2b's research space icons (rule decision 5,
+# OQ-027): a research space's two icons, and c7r3's two rewards, are each
+# their own step in the owner's order. An export of the previous commit
+# (a1b692f0) reproduces the ``everything`` pin, and its trace equals this one
+# through decision 331; at 332 (round 5, seat 1, c3r3 reached in the Agent
+# turn) the specimen waits as a row beside the trash and the random seat
+# deploys first (3,568 -> 3,484 vectors). The other five games meet no
+# research space.
+# Re-pinned for the Conflict-end order (user decision 2026-10-18, codec v149):
+# the Conflict's troops go back to the supply before the Conflict-end
+# windows. An export of the previous commit (7ae17717) reproduces the old
+# ``everything`` pin, and its decision trace equals this one at every
+# decision (3,484 vectors either way); only the views at its three
+# Conflict-end windows (decisions 577, 648 and 649, all declines) differ, the
+# troops already in the supply there. The other five games open no window.
+# Re-pinned once more for OQ-108 and OQ-109 (user decision 2026-10-18): the
+# winner takes the Conflict card before the troops go back. An export of the
+# previous commit (02886db5) reproduces the pin just above, and the decision
+# trace is again equal at every decision (3,484 vectors); the views at the
+# same three windows now show the Conflict card already won.
+# Re-pinned for observation v33 and codec v150 (stage B1, OQ-111): the Agent
+# turn is a card pick and then a space pick, and the seat deciding the space
+# sees its picked card in the appended ``private_agent_card_pick`` and
+# ``..._graft`` columns. A random seat now draws its card from the picks and
+# then its space from the picked card's placements, so every game's
+# trajectory moves at its first Agent turn (decision 0 or 1) and no earlier
+# pin can be reproduced from these games. What was checked instead: the
+# columns are nonzero only in the picking seat's own vector at its space
+# pick (base 65 vectors, choam 55, promo_bloodlines_tech 55, everything 62,
+# draft 64, scouts 59; none in another seat's), and the encoder files differ
+# from the v32 ones only by the appended segments.
+# Re-pinned for stage B2 (OQ-112, codec v150, observation v33): a Conflict
+# reward recipient resolves its reward icon by icon in a window, and a
+# completed Contract's reward waits in one too. An export of the previous
+# commit (bc0d0a7f) gives each game's per-decision trace (the four views'
+# digest, the frame on top, the action taken) equal to this one up to the
+# first window, round 1's first recipient (base at decision 93, choam 68,
+# promo_bloodlines_tech 55, everything 79, draft 48, scouts 68), which the
+# older engine paid inside the step before; there the random seat draws over
+# the window's rows and the games part.
+# Re-pinned for stage B3a (OQ-111, observation v33, codec v150): the
+# Agent-effect frame offers a waiting effect as an effect row and then its
+# target rows, and the seat picking the target sees the effect it picked in
+# the appended ``private_effect_pick_*`` columns. A random seat now draws over
+# the rows (fewer than the whole actions they stand for, and a targeted
+# effect takes two decisions), so every game's trajectory moves at its first
+# Agent-effect frame offering several effects. An export of the previous
+# commit (1bea95ad, ``git archive``) reproduces the six old pins exactly
+# (2,768, 2,776, 2,984, 3,796, 2,516 and 2,564 vectors). What was checked
+# instead, per decision: the digest of the four views without the appended
+# columns, the frame on top, the deciding seat and the number of offered
+# actions equal the old export's at each of the first 18 decisions (base), 7
+# (choam), 35 (promo_bloodlines_tech), 29 (everything), 11 (draft) and 7
+# (scouts), where the list is shorter (base: 10 whole actions, 6 rows); and
+# the appended columns are nonzero only in the picking seat's own vector
+# while its pick is pending (base 2 vectors, choam 10, promo_bloodlines_tech
+# 35, everything 28, draft 6, scouts 10; none in another seat's).
+# Re-pinned for stage B3b-1 (OQ-112 (4), codec v150): a Contract completed in
+# its owner's own turn leaves its icons as rows of that turn instead of a
+# reward window. An export of the previous commit (7a29d82f) gives each
+# game's per-decision trace (the four views' digest, the frame on top, the
+# deciding seat, the number of offered actions) equal to this one up to the
+# decision right after the first such completion (choam at decision 384,
+# everything 392, scouts 300), where the older engine stood in the window and
+# this one in the turn's frame with the rows beside its other effects; base,
+# promo_bloodlines_tech and draft complete no Contract and stay pinned.
+# Re-pinned for stage B3b-2 (OQ-111, codec v150): the Reveal frame offers its
+# purchases, its revealed cards' choices and its leader, Skill and Tech rows
+# effect first (one ``acquire`` row per market, then the card). An export of
+# the previous commit (8d77f452) gives each game's per-decision trace equal
+# to this one up to the first Reveal decision offering several purchases
+# (base at decision 62, choam 59, promo_bloodlines_tech 11, everything 69,
+# draft 26, scouts 59), where the random seat draws over the fewer effect
+# rows and the games part.
+# Re-pinned for stage B3c-1 (OQ-111, codec v150): a card is played effect
+# first -- the window's ``play`` row, then the card, then its option. An
+# export of the previous commit (000d5212) gives each game's per-decision trace
+# equal to this one up to the first Intrigue play (base at decision 28, choam
+# 39, everything 59, draft 35, scouts 39: the decision after the random seat's
+# play, now the card step) or the first Agent-effect frame offering a Plot
+# among several effects (promo_bloodlines_tech at 264, fewer rows).
+# Re-pinned for the B3c-1 review (v33): the seat's own pick shows the targets
+# picked so far, 149 columns appended. The same games: each digest over the
+# first 5,440 columns of every vector is the previous pin, and the new
+# columns are set only while a seat holds a picked target (12 to 18 views a
+# game). Then the second picked Faction's 4 columns: each digest over the
+# first 5,589 columns is the pin before them, and no game here picks two
+# Factions before an exchange's recipient.
+# Re-pinned for stage B3c-2b (OQ-022 2026-10-20 note): an optional trash on
+# the owner's turn is its trash icon's row, then the card. An export of the
+# previous commit (1e621400) gives each game's per-decision trace equal to
+# this one up to the first in-turn optional trash (everything at decision
+# 505, a research space's; promo_bloodlines_tech at 317, Spy Drones'), where
+# the random seat draws over the fewer rows and the games part; the other
+# four games offer none and stay pinned.
+# Re-pinned for stage B3d-2a (D-1 (가)): a window opened for one effect
+# offers its own effect by its target rows, and a recall first beside a
+# window's Spy is one effect row. An export of the previous commit
+# (92644b59) gives promo_bloodlines_tech's per-decision trace equal to this
+# one up to decision 774, a Spy placement window with the supply empty (a
+# refusal and three recalls before, a refusal and the recall's effect row
+# now), where the random seat draws over the fewer rows and the game parts;
+# the other five games keep every row count and stay pinned. Then Long Live
+# the Fighters' picked personal card, 139 columns appended (the B3d-2a
+# review): each digest over the first 5,593 columns of every vector is the
+# pin before them (promo_bloodlines_tech's B3d-2a pin
+# 1a462433...4430cc65), and no game here sets them.
 _GOLDEN_DIGESTS = {
-    "base": ("a549699ad1f851b80b316956b5de6ce5444aacf50bb07992998d1a1d9a1f7be3", 2868),
-    "choam": ("eb7d95f3069b85fa2e9ce46cd105db37c37516c0a982d35d87696b245fdfd1ef", 2964),
+    "base": ("9ac09f6db7d71edf89ee0d4abb58e32f0a23caad428000c1308138e00863173f", 2780),
+    "choam": ("d43306c8745984b856879a1cc9abc57089348efc02b7d9dde0a3bdadcc55f1dc", 2668),
     "promo_bloodlines_tech": (
-        "375622d5489d956b10c8e73ff7df1f0f3b5bf7eaffb9c2ebf8072d89e9096a89",
-        3160,
+        "4457098015b02adbc4401427baa9b6c52cafa4ceaa01347f34566811a71f00d5",
+        3300,
     ),
     "everything": (
-        "5823f7ba81a8863c205489d33ecbc0eaf254254093c78dec6240d7b0f8b0c2bb",
-        3580,
+        "02de194289d54dd6f1e784bcadcfc9bbdb07ae7aa44912aecd4cdf0f4785f482",
+        3616,
     ),
-    "draft": ("dc902e18ef6b42cfa0b7ad2f8d87b9c07fcbcfffbca176581e83918a130c0e93", 2728),
+    "draft": ("0df15d5397e3649c558e48a2787907852d0213aa1815abd65126c95bc9ca39c2", 2788),
     "scouts": (
-        "8af0f0e6c1b3297e146d044a4cfd592a6720745d3e8735c22a13c5089d1f087a",
-        3028,
+        "88611727bb78942baa39e75b0013035aa87ab6d7ca8f2ddc4a7a234bfe48af30",
+        3172,
     ),
 }
 _GOLDEN_CONFIGS = {

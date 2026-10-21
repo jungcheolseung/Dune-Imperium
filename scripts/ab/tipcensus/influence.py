@@ -16,9 +16,18 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.state import GameState
 from dune_imperium.evaluation.tournament import MatchSpec
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.endgame import FinalStanding
 
-from .base import Collector, Columns, Step, arguments, payload
+from .base import (
+    Collector,
+    Columns,
+    Step,
+    agent_turn_offered,
+    arguments,
+    payload,
+    placement,
+)
 
 FACTION_ICONS = frozenset(
     (
@@ -90,7 +99,7 @@ FACTION_ICONS = frozenset(
 #   acquisition.py:1150           acquire_manipulated -> acquisition
 #   acquisition.py:1443           inherited (acquire_imperium_for_intrigue's
 #                                  caller: intrigue.py, leader_abilities.py or
-#                                  acquisition.py's agent_acquisition -> agent_card)
+#                                  acquisition.py's Agent box -> agent_card)
 #   immortality.py:506            inherited (Research bonus frame's opener)
 #   reveal_turn.py:376,1335,
 #     1417,1489,1885              reveal_card          (a Reveal card's Command)
@@ -106,9 +115,10 @@ FACTION_ICONS = frozenset(
 #     1681,2440,3165,3708,
 #     3755,3814,3926              agent_card            (a personal card's
 #                                  Agent-box effect)
-#   agent_effects.py:2266         agent_card_payment -> agent_card (an
-#                                  Agent-box paid resource choice, e.g.
-#                                  Immortality's ``choose_research_influence``)
+#   agent_effects.py (payments)   agent_card (an Agent-box paid resource
+#                                  choice, e.g. Immortality's
+#                                  ``choose_research_influence``; named after
+#                                  the box since cleanup-2c-2)
 #   agent_effects.py:3153         agent_card, but see the Subversive Advisor
 #                                  special case below (its Agent box replaces
 #                                  the visit's own Influence)
@@ -135,8 +145,6 @@ FACTION_ICONS = frozenset(
 _SOURCE_ALIASES = {
     "endgame_tech": "tech",
     "leader_signet": "leader",
-    "agent_acquisition": "agent_card",
-    "agent_card_payment": "agent_card",
     "acquire": "acquisition",
     "acquire_with_solari": "acquisition",
     "acquire_manipulated": "acquisition",
@@ -237,14 +245,14 @@ class InfluenceCollector(Collector):
                 # is legal; otherwise Reveal is forced (no Agent placement was
                 # affordable/legal), which is not the tip's "choose to Reveal
                 # early" [player-turns.md:6, Main p. 8].
-                if s.pre.players[s.owner].agents_available > 0 and any(
-                    a.action_id == "agent_turn" for a in s.legal
+                if s.pre.players[s.owner].agents_available > 0 and (
+                    agent_turn_offered(s)
                 ):
                     self._reveal_open[s.owner] = True
                     self._early_reveals[s.owner] += 1
                 else:
                     self._reveal_open[s.owner] = False
-            elif s.action.action_id == "agent_turn":
+            elif s.action.action_id in ("choose_agent_card", "place_agent"):
                 self._reveal_open[s.owner] = False
 
         for event in s.events:
@@ -548,19 +556,18 @@ class SpyCollector(Collector):
                 self._gather_offered[s.owner] += 1
                 if s.action is not None and s.action.action_id == "gather_intelligence":
                     self._gather_taken[s.owner] += 1
-            infiltrate_offered = any(
-                a.action_id == "agent_turn"
-                and arguments(a).get("infiltrate_post_id") is not None
-                for a in s.legal
-            )
-            if infiltrate_offered:
+            # Since stage B1 a placement is a card pick and then a space pick:
+            # an infiltration is offered at the turn's card pick when any of
+            # its placements infiltrates (as when the placements were the
+            # turn's rows), and taken by the space pick that makes it.
+            if any(a.action_id == "choose_agent_card" for a in s.legal) and any(
+                arguments(placed).get("infiltrate_post_id") is not None
+                for placed in executable_placements(s.pre, s.owner)
+            ):
                 self._infiltrate_offered[s.owner] += 1
-                if (
-                    s.action is not None
-                    and s.action.action_id == "agent_turn"
-                    and arguments(s.action).get("infiltrate_post_id") is not None
-                ):
-                    self._infiltrate_taken[s.owner] += 1
+            placed = placement(s)
+            if placed is not None and placed.get("infiltrate_post_id") is not None:
+                self._infiltrate_taken[s.owner] += 1
 
         for event in s.events:
             data = payload(event)

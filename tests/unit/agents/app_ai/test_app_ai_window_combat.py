@@ -13,8 +13,10 @@ from dataclasses import replace
 from functools import cache
 
 import pytest
+from tests.support.reward_windows import answer_reward_windows
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request
@@ -73,7 +75,9 @@ def _reach(kind: str, *, choam: bool, seed: int, want: str = "any") -> GameState
     def predicate(state: GameState, owner: int) -> bool:
         if state.decision_stack[-1].kind != kind:
             return False
-        ids = {a.action_id for a in ENGINE.legal_actions(state, owner)}
+        # The whole actions the rules resolve (stage B3c-1: the Combat and
+        # Endgame Intrigue windows offer a play effect first).
+        ids = {a.action_id for a in ENGINE.whole_actions(state, owner)}
         return _WANTS[want](ids)
 
     return play_until(predicate, choam=choam, seed=seed)
@@ -84,8 +88,10 @@ def _sandworm_rewards(conflict: str, seed: int) -> GameState:
     """The first reward frame of ``conflict`` won with a sandworm (base game).
 
     From the Conflict's first ``combat_intrigue`` prompt the sole leader gets
-    a sandworm and every combatant passes, so the engine pays the doubled
-    reward and stacks its frames.
+    a sandworm and every combatant passes, so the engine opens the doubled
+    reward's window, whose rows are answered in the older engine's order up
+    to the first reward frame (stage B2, OQ-112: a window's icons open their
+    frames one after the other, no longer all at once).
     """
 
     state = play_until(
@@ -103,7 +109,7 @@ def _sandworm_rewards(conflict: str, seed: int) -> GameState:
         state = ENGINE.apply(
             state, DomainAction("pass_combat_intrigue", _seat(state))
         ).state
-    return state
+    return answer_reward_windows(ENGINE, state)
 
 
 def _seat(state: GameState) -> int:
@@ -121,7 +127,7 @@ def _run(
 ) -> DecisionRun:
     seat = _seat(state)
     profile = make_profile(state, seat, rng_seed=rng_seed)
-    actions = tuple(ENGINE.legal_actions(state, seat) if legal is None else legal)
+    actions = tuple(ENGINE.whole_actions(state, seat) if legal is None else legal)
     return DecisionRun(profile.ctx, profile, actions, profile.rng, memory or Memory())
 
 
@@ -530,11 +536,11 @@ def test_sandworm_spice_freighters_values_each_copy_after_the_previous_one(
     seat = _seat(state)
     me = state.players[seat]
     state = with_player(state, seat, resources=replace(me.resources, spice=spice))
+    # The first copy's Influence frame is on top of the window, whose
+    # remaining rows open the others as they are answered.
     assert [f.kind for f in reversed(state.decision_stack)] == [
         "combat_reward_influence",
-        "combat_reward_optional",
-        "combat_reward_influence",
-        "combat_reward_optional",
+        "combat_reward_icons",
     ]
     evaluated: list[tuple[int, int]] = []
     evaluate = GainAnyInfluenceConflictAbility.evaluate
@@ -547,12 +553,22 @@ def test_sandworm_spice_freighters_values_each_copy_after_the_previous_one(
 
     monkeypatch.setattr(GainAnyInfluenceConflictAbility, "evaluate", spy)
     taken: list[str] = []
+    frames: list[str] = []
     for _ in range(4):
         run = _run(state)
+        frames.append(state.decision_stack[-1].kind)
         action = W.HANDLERS[state.decision_stack[-1].kind](run)
         assert action is not None
         taken.append(str(dict(action.arguments).get("faction", action.action_id)))
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
+        state = answer_reward_windows(ENGINE, state)
+    # Our frames, met one after the other, are the app's order.
+    assert frames == [
+        "combat_reward_influence",
+        "combat_reward_optional",
+        "combat_reward_influence",
+        "combat_reward_optional",
+    ]
     assert taken == answers
     # The app's view (battle-icon pair already scored: +1 VP) of each pick.
     assert evaluated == seen
@@ -605,7 +621,7 @@ def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
         {"faction": plan[0]},
     )
     assert first is not None
-    second_state = ENGINE.apply(state, first).state
+    second_state = apply_whole(ENGINE, state, first).state
     assert second_state.decision_stack[-1].kind == "combat_reward_distinct_influence"
     second = W.combat_reward_distinct_influence(_run(second_state, memory=memory))
     assert _args(second) == (
@@ -620,7 +636,7 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
     first = W.combat_reward_distinct_influence(_run(state))
     assert first is not None
     named = arg(first, "faction")
-    second_state = ENGINE.apply(state, first).state
+    second_state = apply_whole(ENGINE, state, first).state
     second = W.combat_reward_distinct_influence(_run(second_state, memory=Memory()))
     assert named in _PROPAGANDA_BEST
     other = (_PROPAGANDA_BEST - {named}).pop()
@@ -646,12 +662,14 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
     state = _sandworm_rewards("propaganda", 1)
     seat, round_number = _seat(state), state.round_number
     assert round_number == 9
-    assert [dict(f.context)["group"] for f in reversed(state.decision_stack)] == [
+    # The window's first row opens copy 1's two frames (group 0); its second
+    # row opens copy 2's (group 2) once those are answered.
+    assert [dict(f.context)["group"] for f in reversed(state.decision_stack[1:])] == [
         0,
         0,
-        2,
-        2,
     ]
+    assert state.decision_stack[0].kind == "combat_reward_icons"
+    groups: list[object] = []
     memory = Memory()
     factions = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
     plans: dict[tuple[object, ...], object] = {}
@@ -661,6 +679,7 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
         state.decision_stack[-1].kind == "combat_reward_distinct_influence"
     ):
         run = _run(state, memory=memory)
+        groups.append(dict(state.decision_stack[-1].context)["group"])
         app = W.app_reward_run(run)
         values.append(
             {f: app.profile.gain_influence_value(f, 1, -1, False).sum for f in factions}
@@ -669,7 +688,9 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
         assert action is not None
         plans.update(memory.intents)
         taken.append(arg(action, "faction"))
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
+        state = answer_reward_windows(ENGINE, state)
+    assert groups == [0, 0, 2, 2]
     key = (W.DISTINCT_INFLUENCE_INTENT, round_number, seat)
     assert set(plans) == {(*key, 0), (*key, 2)}
     assert not memory.intents
@@ -792,7 +813,7 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
         action = W.endgame_intrigue(run) if len(run.legal) > 1 else run.legal[0]
         assert action is not None
         taken.append(_args(action))
-        state = ENGINE.apply(state, action, legal_actions=run.legal).state
+        state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
     assert taken == [
         ("play_intrigue", {"card_id": "intrigue:shadow_alliance:0", "option": 0}),
         (

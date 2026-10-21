@@ -53,10 +53,8 @@ from dune_imperium.content.arrakeen_scouts.types import (
     LoseGarrisonTroops,
     LoseHighestInfluence,
     Mission,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
-    ScoutsOption,
     TroopSource,
 )
 from dune_imperium.content.bloodlines.sardaukar import (
@@ -72,10 +70,10 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
-from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictReward
+from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import (
     BLOODLINES_CONTRACTS,
-    ContractConditionKind,
+    ContractDefinition,
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
@@ -85,19 +83,24 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    EffectSection,
     GainCombatStrength,
     GainInfluence,
     GainResources,
     GenerateSpecimens,
+    InfluenceAtLeast,
     IntrigueTiming,
     LoseInfluence,
+    OpponentSandwormInConflict,
     PayResources,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
     Research,
+    SpendSpecimens,
     TakeContract,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -109,8 +112,13 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardRevealEffect,
 )
+from dune_imperium.display.structs import (
+    ConflictRowParts,
+    conflict_row_parts,
+    contract_reward_parts,
+)
+from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 
 _OUT_DEFAULT = (
     Path(__file__).resolve().parents[2]
@@ -582,23 +590,14 @@ ACQUIRE_EFFECT_NAMES: Mapping[PersonalCardAcquisitionEffect, str] = {
 }
 
 
-def _unconditional(effect: PersonalCardRevealEffect) -> bool:
-    """A Reveal gain that pays whatever the state (the app's plain
-    ``Persuasion``/``Troops``/``Water`` attributes); conditional gains live in
-    the card's abilities (§2.1-§2.3, §2.6)."""
+def _unconditional(line: RevealLine) -> bool:
+    """A Reveal line that pays whatever the state (the app's plain
+    ``Persuasion``/``Troops``/``Water`` attributes): no condition, no count per
+    Faction card, no Combat icon; conditional gains live in the card's
+    abilities (§2.1-§2.3, §2.6)."""
 
     return not (
-        effect.requires_command
-        or effect.required_faction_bond is not None
-        or effect.minimum_garrisoned_units
-        or effect.requires_commander_in_conflict
-        or effect.requires_high_council
-        or effect.requires_swordmaster
-        or effect.minimum_spies_placed
-        or effect.requires_spying_on_maker_space
-        or effect.per_revealed_faction is not None
-        or effect.per_in_play_faction is not None
-        or effect.grants_combat_icon
+        line.conditions or line.faction_count is not None or line.grants_combat_icon
     )
 
 
@@ -627,7 +626,7 @@ def imperium_records() -> list[Record]:
         hand = IMPERIUM_HAND[entry.card.card_id]
         short = "ImperiumArchetypes.AppStyle." + pascal(entry.card.name)
         cost = entry.acquisition_cost
-        plain = [e for e in entry.reveal_effects if _unconditional(e)]
+        plain = [line for line in reveal_lines(entry) if _unconditional(line)]
         attrs: dict[str, object] = {
             "EntityType": "Imperium",
             "ImperiumType": "Promo" if entry.promo else "Main",
@@ -641,9 +640,10 @@ def imperium_records() -> list[Record]:
         _put(
             attrs,
             "Persuasion",
-            entry.reveal_persuasion + sum(e.persuasion for e in plain),
+            entry.reveal_persuasion + sum(e.printed_persuasion for e in plain),
         )
-        _put(attrs, "Strength", entry.reveal_strength + sum(e.strength for e in plain))
+        strength = entry.reveal_strength + sum(e.printed_strength for e in plain)
+        _put(attrs, "Strength", strength)
         _put(attrs, "Troops", sum(e.recruit_troops for e in plain))
         _put(attrs, "Water", sum(e.water for e in plain))
         _put(attrs, "Solari", sum(e.solari for e in plain))
@@ -917,7 +917,7 @@ def navigation_records() -> list[Record]:
 PLACES = ("First", "Second", "Third")
 
 
-def _reward_attributes(reward: ConflictReward) -> dict[str, object]:
+def _reward_attributes(reward: ConflictRowParts) -> dict[str, object]:
     """The app reward attributes (``ValueForRewardsFrom`` reads them) and the
     custom abilities of the trash and Spy rewards (§6)."""
 
@@ -952,7 +952,9 @@ def conflict_records() -> list[Record]:
             continue
         short = "ConflictArchetypes.AppStyle." + pascal(conflict.card.name)
         reward_shorts = tuple(short + place for place in PLACES)
-        spy = any(r.place_spies or r.deep_cover_spies for r in conflict.rewards)
+        assert conflict.reward_rows is not None
+        rows = tuple(conflict_row_parts(row) for row in conflict.reward_rows)
+        spy = any(r.place_spies or r.deep_cover_spies for r in rows)
         assert conflict.battle_icon is not None
         attrs = {
             "EntityType": "Conflict",
@@ -965,7 +967,7 @@ def conflict_records() -> list[Record]:
             "WormAbilityIDs": GENERIC_CONFLICT,
         }
         records.append(_record(short, "conflict", conflict.card.name, attrs))
-        for reward_short, reward in zip(reward_shorts, conflict.rewards, strict=True):
+        for reward_short, reward in zip(reward_shorts, rows, strict=True):
             reward_attrs: dict[str, object] = {
                 "EntityType": "ConflictReward",
                 "SetList": _set_list(),
@@ -991,12 +993,18 @@ CONTRACT_TARGET_SPACES: Mapping[str, str] = {
 #: Tuek's Sietch (OPEN-3: a static list; the space exists only with Esmar).
 HARVEST_PRECEDENT = "ContractArchetypes.Uprising.ContractBase_1"
 TUEKS_SIETCH = "SpaceArchetypes.AppStyle.TueksSietch"
-CONTRACT_TYPES: Mapping[ContractConditionKind, str] = {
-    ContractConditionKind.BOARD_SPACE: "Space",
-    ContractConditionKind.HARVEST_SPICE: "Harvest",
-    ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH: "Immediate",
-    ContractConditionKind.EARN_ALLIANCE: "Alliance",  # new value (§7)
-}
+def _contract_type(contract: ContractDefinition) -> str:
+    """The app's ``ContractType`` of a token (Alliance is a new value, §7)."""
+
+    if contract.board_space is not None:
+        return "Space"
+    if contract.harvest_spice:
+        return "Harvest"
+    if contract.requires_intrigue_trash:
+        return "Immediate"
+    if contract.earns_alliance:
+        return "Alliance"
+    raise KeyError(contract.card.card_id)
 #: §7 ``WormAbilityIDs`` per token (the reused app classes and the new ones).
 CONTRACT_ABILITIES: Mapping[str, tuple[str, ...]] = {
     "bloodlines_deliver_supplies": (PLACE_SPY_CONTRACT, ACTIVATE_CONTRACT),
@@ -1021,19 +1029,19 @@ def contract_records() -> list[Record]:
     assert {c.card.card_id for c in BLOODLINES_CONTRACTS} == set(CONTRACT_ABILITIES)
     for contract in BLOODLINES_CONTRACTS:
         short = "ContractArchetypes.AppStyle.Bloodlines" + pascal(contract.card.name)
-        condition, reward = contract.condition, contract.reward
+        reward = contract_reward_parts(contract.reward_line)
         attrs: dict[str, object] = {
             "EntityType": "Contract",
             "CardCount": 1,
             "SetList": _set_list(choam=True),
-            "ContractType": CONTRACT_TYPES[condition.kind],
+            "ContractType": _contract_type(contract),
         }
-        if condition.kind is ContractConditionKind.BOARD_SPACE:
-            space = CONTRACT_TARGET_SPACES[condition.target]
+        if contract.board_space is not None:
+            space = CONTRACT_TARGET_SPACES[contract.board_space]
             attrs["ReferencedArchetypeIDs"] = (space,)
-        elif condition.kind is ContractConditionKind.HARVEST_SPICE:
+        elif contract.harvest_spice:
             attrs["ReferencedArchetypeIDs"] = _harvest_spaces()
-            attrs["SpiceCost"] = condition.amount
+            attrs["SpiceCost"] = contract.harvest_spice
         _put(attrs, "Solari", reward.solari)
         _put(attrs, "Water", reward.water)
         _put(attrs, "Troops", reward.troops)
@@ -1154,19 +1162,32 @@ def sardaukar_records() -> list[Record]:
         }
         # The printed amount; Fierce's "+1 with an opposing sandworm" is its
         # ability's (§2.2).
+        lines = skill.ability.sections
         strength = (
-            skill.strength
-            + skill.strength_if_landsraad_agent
-            + skill.strength_if_emperor_influence
+            sum(
+                reward.amount
+                for line in lines
+                if not isinstance(line.condition, OpponentSandwormInConflict)
+                for reward in line.rewards
+                if isinstance(reward, GainCombatStrength)
+            )
             + skill.trash_for_strength
+        )
+        emperor = next(
+            (
+                line.condition.amount
+                for line in lines
+                if isinstance(line.condition, InfluenceAtLeast)
+            ),
+            0,
         )
         _put(attrs, "Strength", strength)
         _put(attrs, "Persuasion", skill.reveal_persuasion)
         _put(attrs, "Spice", skill.reveal_spice)
         _put(attrs, "Troops", skill.reveal_troops)
-        if skill.emperor_influence_required:
+        if emperor:
             attrs["InfluenceRequirements"] = (
-                {"Amount": skill.emperor_influence_required, "Faction": "Emperor"},
+                {"Amount": emperor, "Faction": "Emperor"},
             )
         attrs["WormAbilityIDs"] = (SKILL_ABILITIES[skill.skill_id],)
         short = "SkillArchetypes.AppStyle." + pascal(skill.name)
@@ -1331,8 +1352,10 @@ MISSION_PARKED: Mapping[str, str] = {
 }
 #: §5.3: the automatic Political Equilibrium is one line (ties only), and
 #: Rebuild Infrastructure's agreed line also returns the Shield Wall.
-EVENT_EXTRA_LINES: Mapping[str, tuple[ScoutsOption, ...]] = {
-    "political_equilibrium": (ScoutsOption(costs=(LoseHighestInfluence(),)),),
+EVENT_EXTRA_LINES: Mapping[str, tuple[EffectSection, ...]] = {
+    "political_equilibrium": (
+        EffectSection(rewards=(), costs=(LoseHighestInfluence(),)),
+    ),
 }
 EVENT_EXTRA_ABILITIES: Mapping[str, tuple[str, ...]] = {
     "rebuild_infrastructure": (_sc("ShieldWallReturnAbility"),),
@@ -1375,7 +1398,7 @@ class _Line:
             self.add("SolariCost", cost.solari)
             self.add("SpiceCost", cost.spice)
             self.add("WaterCost", cost.water)
-        elif isinstance(cost, PaySpecimens):
+        elif isinstance(cost, SpendSpecimens):
             self.add("SpecimenCost", cost.count)
         elif isinstance(cost, RecallSpy):
             self.abilities += [_sc("RecallSpyCostAbility")] * cost.count
@@ -1383,8 +1406,8 @@ class _Line:
             self.abilities += [_sc("DiscardCostAbility")] * cost.count
         elif isinstance(cost, TrashIntrigueCard):
             self.abilities.append(_sc("TrashIntrigueCostAbility"))
-        elif isinstance(cost, TrashPersonalCard):
-            assert cost.hand_only and cost.mandatory, cost
+        elif isinstance(cost, TrashCard):
+            assert cost.hand_only, cost
             self.abilities.append(_sc("TrashFromHandCostAbility"))
         elif isinstance(cost, LoseGarrisonTroops):
             self.abilities += [_sc("LoseGarrisonTroopsCostAbility")] * cost.count
@@ -1444,7 +1467,7 @@ class _Line:
         else:
             raise TypeError(f"no Scouts encoding for reward {reward!r}")
 
-    def option(self, option: ScoutsOption) -> _Line:
+    def option(self, option: EffectSection) -> _Line:
         for cost in option.costs:
             self.cost(cost)
         for reward in option.rewards:
@@ -1477,7 +1500,7 @@ def _mission_lines(mission: Mission) -> list[_Line]:
     if mission.troop_source is TroopSource.GARRISON:
         line.cost(LoseGarrisonTroops(n))
     elif mission.troop_source is TroopSource.SPECIMENS:
-        line.cost(PaySpecimens(n))
+        line.cost(SpendSpecimens(n))
     if mission.seat_goods is not None:
         line.reward(mission.seat_goods)
     if n:
@@ -1521,7 +1544,7 @@ def scouts_records() -> list[Record]:
         if auction.kind is not AuctionKind.SEALED:
             continue  # Mercenaries and Critical Moment have no line (§5.4)
         for k, rewards in enumerate(auction.rank_rewards):
-            line = _Line().option(ScoutsOption(rewards=rewards))
+            line = _Line().option(EffectSection(rewards=rewards))
             records.append(
                 _line_record("Auction", auction.auction_id, k, auction.name, line)
             )

@@ -1,7 +1,6 @@
 """Tests for the Bloodlines Skill and Tech tile display text."""
 
 import sys
-from dataclasses import fields
 from pathlib import Path
 
 from dune_imperium.content.bloodlines.sardaukar import SKILLS, SKILLS_BY_ID
@@ -10,6 +9,7 @@ from dune_imperium.content.bloodlines.tech import (
     TECH_TILES_BY_ID,
     TechAbility,
 )
+from dune_imperium.content.bloodlines.tech_abilities import TECH_ACQUIRE_ABILITIES
 from dune_imperium.display.bloodlines import (
     TECH_ABILITY_TEXT,
     TECH_ABILITY_TEXT_KO,
@@ -53,12 +53,9 @@ def test_every_skill_renders_a_non_empty_effect() -> None:
 
 
 def test_acquire_text_is_empty_exactly_when_the_tile_has_no_acquire_effect() -> None:
-    acquire_fields = [
-        f.name for f in fields(TECH_TILES[0]) if f.name.startswith("acquire_")
-    ]
-    assert acquire_fields
+    assert TECH_ACQUIRE_ABILITIES
     for tile in TECH_TILES:
-        has_effect = any(getattr(tile, name) for name in acquire_fields)
+        has_effect = tile.tech_id in TECH_ACQUIRE_ABILITIES
         assert bool(tech_acquire_text(tile)) is has_effect, tile.tech_id
 
 

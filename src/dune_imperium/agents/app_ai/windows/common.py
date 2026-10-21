@@ -22,6 +22,7 @@ flat legal actions, so an adapter:
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Final
 
 from dune_imperium.agents.app_ai.catalog import post_entity, spy_entity
 from dune_imperium.agents.app_ai.choice import (
@@ -88,6 +89,64 @@ class Source:
     evaluate: Callable[[], tuple[float, DomainAction | None]] | None = None
     order: int = 0
     extra: dict[str, object] = field(default_factory=dict)
+
+
+#: The rows an effect waiting on the owner's turn is taken with
+#: (cleanup-2b): a research bonus, an optional trash and Arrakis
+#: Planetologist's Intrigue card. The turn windows know them, and
+#: ``waiting_turn_row`` answers them first.
+RESEARCH_BONUS_ROW_IDS: Final = frozenset(
+    {
+        "choose_research_influence",
+        "trash_intrigue_for_research_bonus",
+        "pay_research_bonus",
+    }
+)
+TRASH_ROW_IDS: Final = frozenset({"trash_optional_card", "draw_planetologist_intrigue"})
+RESEARCH_ICON_ROW: Final = "resolve_research_icon"
+TURN_ROW_IDS: Final = RESEARCH_BONUS_ROW_IDS | TRASH_ROW_IDS | {RESEARCH_ICON_ROW}
+
+
+def research_icon_now(run: DecisionRun) -> DomainAction | None:
+    """A research space's paired icon (or c7r3's reward in its window),
+    taken at once in the order an older engine fixed
+    (``immortality.RESEARCH_ICON_ORDER``): the app resolves a research
+    space's icons inside the step that moved the token (rule decision 5
+    gave our engine the order; the app has none)."""
+
+    from dune_imperium.rules.immortality import RESEARCH_ICON_ORDER
+
+    icons = {
+        str(dict(a.arguments)["effect"]): a for a in run.by_id(RESEARCH_ICON_ROW)
+    }
+    return next((icons[i] for i in RESEARCH_ICON_ORDER if i in icons), None)
+
+
+class TurnRowGap(Exception):
+    """A waiting effect the app AI cannot value (a census gap)."""
+
+
+def waiting_turn_row(run: DecisionRun) -> DomainAction | None:
+    """The effect waiting on the turn the app takes now, or None: a research
+    bonus first (``windows.immortality.research_bonus_now``), then a trash
+    or the Planetologist's card (``optional_trash_now``), imported here
+    because that module imports the turn windows. Raises ``TurnRowGap``."""
+
+    from dune_imperium.agents.app_ai.windows.immortality import (
+        optional_trash_now,
+        research_bonus_now,
+    )
+
+    legal = {a.action_id for a in run.legal}
+    if RESEARCH_ICON_ROW in legal:
+        return research_icon_now(run)
+    if legal & RESEARCH_BONUS_ROW_IDS:
+        research = research_bonus_now(run)
+        if research is not None:
+            return research
+    if legal & TRASH_ROW_IDS:
+        return optional_trash_now(run)
+    return None
 
 
 def decide(

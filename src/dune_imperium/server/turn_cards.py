@@ -37,6 +37,8 @@ decision owner's trash choices would lose a box.
 import logging
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
@@ -70,13 +72,6 @@ TRASH_CARD_ACTIONS: Final = frozenset(
         "trash_optional_card",
         "trash_reveal_card",
     }
-)
-# Beguiling Pheromones and Dissecting Kit clear the other grafted card's
-# box themselves, with no ``agent_card_effect_expired`` event
-# (``rules.agent_effects.apply_agent_card_payment``); trashing the active
-# card itself is that card's own cost and keeps its rewards (OQ-022).
-_GRAFT_TRASHES: Final = frozenset(
-    {"trash_grafted_card_for_influence", "trash_grafted_card_for_specimen"}
 )
 
 
@@ -140,9 +135,17 @@ def _turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
     )
 
 
+# A trash row's arguments that name the trash icon it uses (an optional
+# trash waiting on the turn, stage B3c-2b): two rows of one card differ by
+# them, and only one of them may lose the card's box.
+ICON_ARGUMENTS: Final = ("printed", "printed_box", "source")
+
+type LosingRow = tuple[str, str, tuple[tuple[str, ActionValue], ...]]
+
+
 def box_losing_trash(
     engine: UprisingRulesEngine, state: GameState, seat: int
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[LosingRow, ...]:
     """``_box_losing_trash``, or no rows if it fails (display only, as
     ``turn_cards``)."""
 
@@ -155,8 +158,10 @@ def box_losing_trash(
 
 def _box_losing_trash(
     engine: UprisingRulesEngine, state: GameState, seat: int
-) -> tuple[tuple[str, str], ...]:
-    """Return the ``(action_id, card_id)`` trash rows that would lose a box.
+) -> tuple[LosingRow, ...]:
+    """Return the ``(action_id, card_id, icon arguments)`` trash rows that
+    would lose a box (``ICON_ARGUMENTS``: the trash icon an optional trash
+    row uses, none for the others).
 
     Only for ``seat`` while it owns the pending decision, and only its legal
     trash rows (``TRASH_CARD_ACTIONS``) naming a card of the open Agent turn
@@ -165,14 +170,15 @@ def _box_losing_trash(
     was, and loses the box when
 
     - the engine expires the card's box in that step
-      (``agent_card_effect_expired``, ``expire_trashed_card_effects``: an
-      optional trash, a Research bonus, Desert Tactics, an Intrigue card);
+      (``agent_card_effect_expired``: ``expire_trashed_card_effects`` after
+      an optional trash, a Research bonus, Desert Tactics, an Intrigue card;
+      Beguiling Pheromones or Dissecting Kit trashing the other grafted
+      card; trashing the active card itself is that card's own cost and
+      keeps its rewards, OQ-022);
     - or the card has left play while the effect frame still holds its box
       pending, not trashed by its own effect: the engine expires it as soon
       as the frame above closes (Arrakis Planetologist's trash while its
-      Intrigue card still waits in the same frame);
-    - or Beguiling Pheromones or Dissecting Kit trashes the other grafted
-      card, whose box they clear themselves.
+      Intrigue card still waits in the same frame).
 
     Dissecting Kit's row names no card; its row is reported with the
     partner it trashes.
@@ -184,15 +190,15 @@ def _box_losing_trash(
     _, pending = turn_cards(state)
     if not pending:
         return ()
-    losing: list[tuple[str, str]] = []
-    for action in engine.legal_actions(state, seat):
+    losing: list[LosingRow] = []
+    # The whole actions (stage B3: a trash with the card it trashes).
+    for action in engine.whole_actions(state, seat):
         if action.action_id not in TRASH_CARD_ACTIONS:
             continue
         # The row's own box is active in ``view``: a grafted turn's box 1
         # row (``box=1``) trashes "the other grafted card" of box 1.
         view, _, _ = route_box_action(state, action)
         context = _effect_context(view)
-        active = context.get("card_id")
         partner = context.get("graft_card_id")
         card_id = dict(action.arguments).get(
             "card_id",
@@ -200,17 +206,18 @@ def _box_losing_trash(
         )
         if not isinstance(card_id, str) or card_id not in pending:
             continue
-        if action.action_id in _GRAFT_TRASHES:
-            if card_id != active:
-                losing.append((action.action_id, card_id))
-            continue
         try:
-            result = engine.apply(state, action)
+            result = apply_whole(engine, state, action)
         except Exception:
             _LOGGER.exception("the dry run of %s failed", action.action_id)
             continue
         if _box_expired(result.events, card_id) or _box_doomed(result.state, card_id):
-            losing.append((action.action_id, card_id))
+            icon = tuple(
+                (key, value)
+                for key, value in action.arguments
+                if key in ICON_ARGUMENTS
+            )
+            losing.append((action.action_id, card_id, icon))
     return tuple(losing)
 
 
@@ -225,9 +232,13 @@ def _effect_context(state: GameState) -> dict[str, object]:
     return {}
 
 
+# The Signet Ring box logs its own kinds (cleanup-2c-4).
+_BOX_EXPIRED_KINDS = frozenset({"agent_card_effect_expired", "leader_signet_expired"})
+
+
 def _box_expired(events: tuple[GameEvent, ...], card_id: str) -> bool:
     return any(
-        event.kind == "agent_card_effect_expired"
+        event.kind in _BOX_EXPIRED_KINDS
         and dict(event.payload).get("card_id") == card_id
         for event in events
     )

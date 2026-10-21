@@ -45,13 +45,11 @@ from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.data.synthetic import SYNTHETIC
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
-from dune_imperium.content.uprising.contracts import (
-    BLOODLINES_CONTRACTS,
-    ContractConditionKind,
-)
+from dune_imperium.content.uprising.contracts import BLOODLINES_CONTRACTS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.display.images import load_card_manifest
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+from dune_imperium.display.structs import contract_reward_parts
 
 REPO = Path(__file__).resolve().parents[2]
 ASSETS = REPO / "assets"
@@ -1859,11 +1857,11 @@ CONTRACT_SET_MARK = {"centre": (558.0, 328.0), "radius": 4.5, "gap": 12.0}
 
 def bloodlines_contract_row(contract):
     """The reward row's icons left to right as the tokens print them."""
-    r = contract.reward
+    r = contract_reward_parts(contract.reward_line)
     if r.contracts or r.influence:
         raise ValueError(f"{contract.card.card_id}: no Bloodlines token prints this")
     row = []
-    if contract.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH:
+    if contract.requires_intrigue_trash:
         row += ["TrashIntrigue", "Arrow"]
     if r.solari:
         row.append(f"Solari_{r.solari}")
@@ -1879,9 +1877,7 @@ def bloodlines_contract_row(contract):
 
 def bloodlines_contract_spec(inp, content_id):
     contract = BLOODLINES_CONTRACT_BY_ID[content_id]
-    requirement = (
-        contract.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH
-    )
+    requirement = contract.requires_intrigue_trash
     title = {
         # the card prints the name only; Harvest's threshold is in its hexagon
         "en": re.sub(r"\s+\d\+$", "", contract.card.name),

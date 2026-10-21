@@ -1,6 +1,7 @@
 """Legal action enumeration and placement for an Uprising Agent turn."""
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import (
@@ -13,7 +14,13 @@ from dune_imperium.content.uprising.board import (
     InfluenceRequirement,
     ResourceCost,
 )
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    GainResources,
+    OnAgentSentTo,
+)
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     card_is_graft,
@@ -29,8 +36,14 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import (
+    AGENT_CARD_PICK_GRAFT_KEY,
+    AGENT_CARD_PICK_KEY,
+)
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.agent_box_abilities import box_ability, opens_at_placement
 from dune_imperium.rules.agent_effects import (
     agent_card_icons_at_placement,
     holds_space_influence,
@@ -40,8 +53,10 @@ from dune_imperium.rules.agent_icons import (
     effective_agent_icons,
     is_bond_partner,
 )
-from dune_imperium.rules.board_effects import board_icons_for
-from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
+from dune_imperium.rules.board_effects import (
+    board_effect_is_implemented,
+    board_icons_for,
+)
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
@@ -54,14 +69,208 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     recruited_commander_count,
     replace_player,
+    replace_top_frame,
     turn_start_is_open,
+    with_context,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
-from dune_imperium.rules.leader_abilities import apply_smuggle_spice
+from dune_imperium.rules.leader_abilities import (
+    apply_smuggle_spice,
+    leader_signet_is_implemented,
+)
 from dune_imperium.rules.scouts_modifiers import (
     ignores_influence_requirements_this_round,
     space_is_combat,
 )
+
+# Stage B1 (docs/stage-b-plan.md 3a, OQ-111): an Agent turn is a card pick
+# (``choose_agent_card``), then a space pick (``place_agent``) -- in the
+# real game one motion, "reveal a card from your hand and send an Agent to a
+# board space matching one of its Agent icons" [Main p. 9]. The pick waits
+# in the turn frame's context, which no other seat's view shows; only a card
+# (with its graft choice) that has a placement can be picked, and while the
+# pick waits only its placements are offered, so no pick leads nowhere. The
+# placements themselves are the card-and-space combinations below
+# (``legal_agent_actions``), which the space pick names without the card.
+CARD_PICK_ACTION: Final = "choose_agent_card"
+SPACE_PICK_ACTION: Final = "place_agent"
+# The placement arguments that belong to the card pick.
+_CARD_PICK_ARGUMENTS: Final = frozenset({"card_id", "graft"})
+
+
+def agent_card_pick(state: GameState, player: int) -> tuple[str, bool] | None:
+    """The card (and whether it is grafted) ``player`` picked for the Agent
+    turn and has not placed yet, or None."""
+
+    frame = owned_top_frame(state, FrameKind.TURN, player)
+    if frame is None:
+        return None
+    context = dict(frame.context)
+    card = context.get(AGENT_CARD_PICK_KEY)
+    if not isinstance(card, str):
+        return None
+    return card, context.get(AGENT_CARD_PICK_GRAFT_KEY) is True
+
+
+def agent_card_pick_actions(
+    player: int, placements: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """One card pick per (card, graft) that has a placement, in hand order."""
+
+    picks: dict[tuple[str, bool], None] = {}
+    for placement in placements:
+        arguments = dict(placement.arguments)
+        card = arguments["card_id"]
+        assert isinstance(card, str)
+        picks.setdefault((card, arguments.get("graft") is True), None)
+    return tuple(
+        DomainAction(
+            action_id=CARD_PICK_ACTION,
+            actor=player,
+            arguments=(("card_id", card), *((("graft", True),) if graft else ())),
+        )
+        for card, graft in picks
+    )
+
+
+def agent_space_pick_actions(
+    player: int, placements: tuple[DomainAction, ...], card: str, graft: bool
+) -> tuple[DomainAction, ...]:
+    """The picked card's placements, named without the card."""
+
+    actions: list[DomainAction] = []
+    for placement in placements:
+        arguments = dict(placement.arguments)
+        if arguments["card_id"] != card or (arguments.get("graft") is True) != graft:
+            continue
+        actions.append(
+            DomainAction(
+                action_id=SPACE_PICK_ACTION,
+                actor=player,
+                arguments=tuple(
+                    item
+                    for item in placement.arguments
+                    if item[0] not in _CARD_PICK_ARGUMENTS
+                ),
+            )
+        )
+    return tuple(actions)
+
+
+def apply_agent_card_pick(state: GameState, action: DomainAction) -> RuleResult:
+    """Keep the picked card in the turn frame; only its seat sees it."""
+
+    player = action.actor
+    frame = owned_top_frame(state, FrameKind.TURN, player)
+    if frame is None or agent_card_pick(state, player) is not None:
+        raise ValueError("no Agent card can be picked now")
+    arguments = dict(action.arguments)
+    card = arguments.get("card_id")
+    if not isinstance(card, str):
+        raise ValueError("an Agent card pick names its card")
+    graft = arguments.get("graft") is True
+    context = dict(frame.context)
+    context[AGENT_CARD_PICK_KEY] = card
+    if graft:
+        context[AGENT_CARD_PICK_GRAFT_KEY] = True
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:player:{player}:agent_card_pick",
+        kind="agent_card_picked",
+        payload=(
+            ("card_id", card),
+            *((("graft", True),) if graft else ()),
+            ("player", player),
+        ),
+        visible_to=(player,),
+    )
+    return RuleResult(
+        state=replace_top_frame(state, with_context(frame, context)), events=(event,)
+    )
+
+
+def apply_agent_space_pick(state: GameState, action: DomainAction) -> RuleResult:
+    """Place the Agent for the picked card: the pick and the space make the
+    card-and-space placement ``apply_agent_action`` commits."""
+
+    player = action.actor
+    pick = agent_card_pick(state, player)
+    frame = owned_top_frame(state, FrameKind.TURN, player)
+    if pick is None or frame is None:
+        raise ValueError("no Agent card is waiting for its space")
+    card, graft = pick
+    context = dict(frame.context)
+    context.pop(AGENT_CARD_PICK_KEY)
+    context.pop(AGENT_CARD_PICK_GRAFT_KEY, None)
+    unpicked = replace_top_frame(state, with_context(frame, context))
+    placement = DomainAction(
+        action_id="agent_turn",
+        actor=player,
+        arguments=tuple(
+            sorted(
+                (
+                    *action.arguments,
+                    ("card_id", card),
+                    *((("graft", True),) if graft else ()),
+                )
+            )
+        ),
+    )
+    return apply_agent_action(unpicked, placement)
+
+
+# The last ``executable_placements`` answer, for the very same state object:
+# the engine lists a decision's card picks from it and an agent that weighs
+# whole placements (``agents.agent_turn_steps``) asks again for that state.
+# The entry holds its state, so the identity test cannot match another one.
+_last_placements: (
+    tuple[GameState, int, str | None, tuple[DomainAction, ...]] | None
+) = None
+
+
+def executable_placements(
+    state: GameState, player: int, card: str | None = None
+) -> tuple[DomainAction, ...]:
+    """The seat's legal Agent placements (``card`` alone, when given), less
+    those whose board effect or Signet Ring is not implemented yet: what the
+    Agent turn's card and space picks are made of (stage B1)."""
+
+    global _last_placements
+    last = _last_placements
+    if last is not None and last[0] is state and last[1:3] == (player, card):
+        return last[3]
+    placements = (
+        legal_agent_actions(state, player)
+        if card is None
+        else legal_agent_actions_for_card(state, player, card)
+    )
+    found = tuple(
+        action for action in placements if _agent_action_is_executable(state, action)
+    )
+    _last_placements = (state, player, card, found)
+    return found
+
+
+def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
+    arguments = dict(action.arguments)
+    card_id = arguments["card_id"]
+    space_id = arguments["space_id"]
+    if not isinstance(card_id, str) or not isinstance(space_id, str):
+        return False
+    if personal_card_for_instance(
+        card_id
+    ).agent_effect is PersonalCardAgentEffect.LEADER_SIGNET and not (
+        leader_signet_is_implemented(state.players[action.actor].leader_id)
+    ):
+        return False
+    requested_option = arguments.get("cost_option")
+    if isinstance(requested_option, int) and not isinstance(requested_option, bool):
+        cost_option = requested_option
+    elif BOARD_SPACES_BY_ID[space_id].dynamic_cost is DynamicCost.SWORDMASTER:
+        cost_option = int(any(player.swordmaster_acquired for player in state.players))
+    else:
+        cost_option = 0
+    return board_effect_is_implemented(state, space_id, cost_option)
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -548,6 +757,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         if turn_context.get(TECH_ACQUIRE_PENDING_KEY)
                         else ()
                     ),
+                    # A research bonus a Plot raised before the Agent went
+                    # out (cleanup-2b).
+                    *turn_rows.carried(turn_context),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (
                         # Subversive Advisor's waiting box holds the space's
@@ -744,40 +956,73 @@ def _apply_tuek_sietch_visit(
     visitor: int,
     round_number: int,
 ) -> tuple[GameState, tuple[GameEvent, ...]]:
+    # Tuek's Sietch: "Whenever you send an Agent to Tuek's Sietch: Gain 1
+    # solari. Whenever an opponent sends an Agent there: Draw 1 Intrigue
+    # card" [Esmar Tuek card], from his records (composed A6e).
     esmar = next(
-        (seat for seat in state.players if seat.leader_id == "esmar_tuek"), None
+        (
+            seat
+            for seat in state.players
+            if any(
+                trigger.space_id == "tuek_sietch"
+                for trigger, _ in leader_triggers(
+                    seat.leader_face_id or seat.leader_id, OnAgentSentTo
+                )
+            )
+        ),
+        None,
     )
     if esmar is None:
         return state, ()
-    source = f"round:{round_number}:player:{visitor}:tuek_sietch_visit"
-    if esmar.player_id == visitor:
+    own = esmar.player_id == visitor
+    ((_, (reward,)),) = (
+        (trigger, rewards)
+        for trigger, rewards in leader_triggers(
+            esmar.leader_face_id or esmar.leader_id, OnAgentSentTo
+        )
+        if trigger.space_id == "tuek_sietch" and trigger.opponent is not own
+    )
+    # The ability is Esmar's: its events are named after the Leader and its
+    # own event comes last (cleanup-2c-4).
+    source = (
+        f"round:{round_number}:player:{esmar.player_id}:leader:{esmar.leader_id}"
+    )
+    if own:
+        if not isinstance(reward, GainResources):
+            raise RuntimeError("Tuek's Sietch pays its owner's visit in Solari")
         paid = replace(
-            esmar, resources=replace(esmar.resources, solari=esmar.resources.solari + 1)
+            esmar,
+            resources=replace(
+                esmar.resources, solari=esmar.resources.solari + reward.solari
+            ),
         )
         return replace(state, players=replace_player(state.players, paid)), (
+            resources_gained_event(source, esmar.player_id, solari=reward.solari),
             GameEvent(
-                event_id=source,
+                event_id=f"{source}:resolved",
                 kind="leader_ability_resolved",
                 payload=(
-                    ("leader_id", "esmar_tuek"),
+                    ("leader_id", str(esmar.leader_id)),
                     ("player", esmar.player_id),
-                    ("solari", 1),
                 ),
             ),
         )
-    drawn = draw_or_queue_intrigue_cards(state, esmar.player_id, 1, source=source)
+    if not isinstance(reward, DrawIntrigueCards):
+        raise RuntimeError("Tuek's Sietch draws for an opponent's visit")
+    drawn = draw_or_queue_intrigue_cards(
+        state, esmar.player_id, reward.count, source=source
+    )
     return drawn.state, (
+        *drawn.events,
         GameEvent(
-            event_id=source,
+            event_id=f"{source}:resolved",
             kind="leader_ability_resolved",
             payload=(
-                ("intrigue", 1),
-                ("leader_id", "esmar_tuek"),
+                ("leader_id", str(esmar.leader_id)),
                 ("player", esmar.player_id),
                 ("visitor", visitor),
             ),
         ),
-        *drawn.events,
     )
 
 
@@ -887,19 +1132,6 @@ def agent_effect_is_available(
 
     if effect is None:
         return False
-    if effect in (
-        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
-        # Reachable off a Faction space through a granted Spy or Agent icon
-        # (Clandestine, Resourceful, Urgent Shigawire): nothing to gain.
-        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
-    ):
-        return space.faction is not None
-    if effect in (
-        PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
-    ):
-        return space.maker
     if (
         effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND
         and card_instance_id == owner.usurped_row_card_id
@@ -908,19 +1140,11 @@ def agent_effect_is_available(
         # 14] (OQ-054, user ruling 2026-10-04), so "Return this card to your
         # hand" can never happen: the box is not left waiting for it.
         return False
-    if effect in (
-        PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
-    ):
-        # A Row card borrowed with Usurp is not "in play" (OQ-054,
-        # ``counted_in_play``), so it never provides another card's Bond.
-        return has_faction_bond(
-            (*counted_in_play(owner), card_instance_id),
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        )
+    ability = box_ability(effect)
+    if ability is not None:
+        # A box written as an ability record judges its placement condition
+        # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
+        return opens_at_placement(ability, owner, space, card_instance_id)
     return True
 
 
@@ -1169,17 +1393,12 @@ def _apply_control_visit_bonus(
         next_controller if player.player_id == next_controller.player_id else player
         for player in state.players
     )
-    event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:control_bonus:{space_id}:"
-            f"{controller.player_id}"
-        ),
-        kind="control_bonus_gained",
-        payload=(
-            ("amount", 1),
-            ("player", controller.player_id),
-            ("resource", resource),
-            ("space_id", space_id),
-        ),
+    # The controller's resource gain, named after the Control marker on the
+    # space (rule decision 3, cleanup-2c-3).
+    event = resources_gained_event(
+        f"round:{state.round_number}:player:{controller.player_id}:control:"
+        f"{space_id}",
+        controller.player_id,
+        **{resource: 1},
     )
     return replace(state, players=players), event

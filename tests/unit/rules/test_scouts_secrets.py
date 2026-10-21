@@ -16,6 +16,7 @@ from typing import Any
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.immortality.board import (
     FIRST_GENETIC_MARKER_COLUMN,
@@ -37,6 +38,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 from dune_imperium.server.session_log import log_step, reveals_hidden_information
 from dune_imperium.server.sessions import _log_entry_json
@@ -98,9 +100,11 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    # Stage B3d-2b: a window opened for one effect shows its target rows;
+    # the rules still take its whole actions (``apply_whole``).
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
 
 
 def _pick_all(state: GameState, picks: dict[int, int]) -> GameState:
@@ -135,8 +139,12 @@ def test_each_seat_picks_in_secret_in_turn_order() -> None:
     state = _reveal(_base(), "covert_operation")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SECRET
     # All four lines are always offered: the mask says nothing.
-    assert [a.arguments for a in ENGINE.legal_actions(state, 0)] == [
+    assert [a.arguments for a in ENGINE.whole_actions(state, 0)] == [
         (("pick", pick),) for pick in range(4)
+    ]
+    # The window shows them as ``choose_option`` rows (stage B3d-2b).
+    assert [(a.action_id, a.arguments) for a in ENGINE.legal_actions(state, 0)] == [
+        ("choose_option", (("option", pick),)) for pick in range(4)
     ]
     state = _pick_all(state, PICKS)
     assert sorted(state.scouts_secret_picks) == [
@@ -173,9 +181,9 @@ def test_due_picks_are_revealed_first_and_resolved_in_line_then_seat_order() -> 
     assert _owner(state) == 1
     assert state.players[0].resources.solari == solari
     post = next(
-        a for a in ENGINE.legal_actions(state, 1) if a.action_id == "place_spy_on_space"
+        a for a in ENGINE.whole_actions(state, 1) if a.action_id == "place_spy_on_space"
     )
-    state = ENGINE.apply(state, post).state
+    state = apply_whole(ENGINE, state, post).state
     assert state.players[0].resources.solari == solari + 2
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_DRAW
     # The two-round picks wait, known now to be two-round lines.
@@ -195,9 +203,14 @@ def test_the_discard_line_may_be_taken_or_left() -> None:
     state = _advance(_next_round(state, 6))
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
     assert _owner(state) == 2
-    assert [a.action_id for a in ENGINE.legal_actions(state, 2)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(state, 2)] == [
         "scouts_pass",
         "scouts_choose_option",
+    ]
+    # The window shows the line as a ``choose_option`` row (stage B3d-2b).
+    assert [a.action_id for a in ENGINE.legal_actions(state, 2)] == [
+        "scouts_pass",
+        "choose_option",
     ]
     # Every offered line is in the Scouts codec (a line index up to 3).
     codec = ActionCodec(SCOUTS)
@@ -208,6 +221,47 @@ def test_the_discard_line_may_be_taken_or_left() -> None:
     state = _act(state, "scouts_discard", card_id=state.players[2].hand[0])
     assert state.players[2].troops_garrison == garrison + 3
     assert state.scouts_secret_picks == ()
+
+
+def test_a_due_line_the_seat_cannot_pay_asks_it_to_take_nothing() -> None:
+    """Cleanup-2a (OQ-071 addendum, the 2026-09-30 ruling "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다"): seat 2's discard line falls due with
+    an empty hand, so it can only confirm that it takes nothing."""
+
+    picked = _pick_all(_reveal(_base(), "covert_operation"), PICKS)
+    state = _advance(_next_round(picked, 5))
+    while state.decision_stack[-1].kind != FrameKind.SCOUTS_DRAW:
+        seat = _owner(state)
+        state = ENGINE.apply(state, ENGINE.legal_actions(state, seat)[0]).state
+    players = list(state.players)
+    players[2] = replace(players[2], hand=())
+    state = _advance(_next_round(replace(state, players=tuple(players)), 6))
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
+    assert _owner(state) == 2
+    nothing = DomainAction(action_id=SCOUTS_NO_OPTION, actor=2)
+    assert ENGINE.whole_actions(state, 2) == (nothing,)
+    # Stage B3d-3: the seat is shown that confirmation as the empty-confirmation
+    # row naming the choice it answers and the mission that opened it.
+    shown = DomainAction(
+        action_id="confirm_empty",
+        actor=2,
+        arguments=(
+            ("of", "choose"),
+            ("printed", "covert_operation"),
+            ("source", "scouts"),
+        ),
+    )
+    assert ENGINE.legal_actions(state, 2) == (shown,)
+    codec = ActionCodec(SCOUTS)
+    assert codec.decode(codec.encode(shown), 2) == shown
+    garrison = state.players[2].troops_garrison
+    before = len(state.event_log)
+    state = _act(state, SCOUTS_NO_OPTION)
+    skipped = [e for e in state.event_log[before:] if e.kind == "scouts_choice_skipped"]
+    assert [dict(e.payload) for e in skipped] == [
+        {"item_id": "covert_operation", "player": 2}
+    ]
+    assert state.players[2].troops_garrison == garrison
 
 
 def test_offworld_operation_pays_more_past_the_helix() -> None:
@@ -224,10 +278,11 @@ def test_offworld_operation_pays_more_past_the_helix() -> None:
     spice = [p.resources.spice for p in state.players]
     result = _advance_automatic(RuleResult(state=_next_round(state, 5)))
     state = result.state
+    # A resource gain like any other (cleanup-2c-5).
     gained = {
         dict(e.payload)["player"]: dict(e.payload)["spice"]
         for e in result.events
-        if e.kind == "scouts_helix_spice"
+        if e.kind == "resources_gained" and "spice" in dict(e.payload)
     }
     assert gained == {0: 2, 1: 1}
     assert state.players[0].resources.spice == spice[0] + 2
@@ -272,12 +327,17 @@ def test_a_public_pick_event_may_not_carry_the_pick() -> None:
 
 def test_the_log_hides_a_pick_from_every_other_seat() -> None:
     before = _reveal(_base(), "covert_operation")
+    # Stage B3d-2b: the pick is the window's ``choose_option`` row; the log
+    # seals it by the whole action it ends, ``scouts_secret_pick``.
     action = DomainAction(
-        action_id="scouts_secret_pick", actor=0, arguments=(("pick", 3),)
+        action_id="choose_option", actor=0, arguments=(("option", 3),)
     )
     transition = ENGINE.apply(before, action)
     entry = log_step(before, transition.state, action, transition.events)
     assert entry.sealed
+    assert entry.whole == DomainAction(
+        action_id="scouts_secret_pick", actor=0, arguments=(("pick", 3),)
+    )
     # The pick itself reveals nothing, so its seat may still take it back.
     assert not entry.reveals
     assert _log_entry_json(0, entry, seat=0, finished=False)["arguments"] == {"pick": 3}

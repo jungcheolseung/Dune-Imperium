@@ -14,9 +14,10 @@ decision 2026-10-09).
 from dataclasses import replace
 
 from tests.support.pauses import answer_pause, pause_outcome
-from tests.unit.rules.test_combat import _reward_state
+from tests.unit.rules.test_combat import _reward_state, _settle
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -32,9 +33,14 @@ from dune_imperium.core import (
 from dune_imperium.core.chance import FIXED_OUTCOME_SUFFIX, is_fixed_outcome
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.core.events import GameEvent
-from dune_imperium.rules.combat import begin_combat_intrigue, resolve_combat_rewards
+from dune_imperium.rules.combat import (
+    begin_combat_intrigue,
+    legacy_combat_reward_icon,
+    resolve_combat_rewards,
+)
+from dune_imperium.rules.contracts import legacy_contract_reward_icon
 from dune_imperium.rules.engine import UprisingRulesEngine, _advance_automatic
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, top_frame
 from dune_imperium.rules.pauses import CONTINUE, ROUND_START, push_pause
 from dune_imperium.rules.setup import create_initial_state
 from dune_imperium.simulation import run_random_round
@@ -148,7 +154,9 @@ def test_the_rewards_end_at_a_pause_before_the_conflict_end_windows() -> None:
     # The last recipient's choice stops here, so it can still be taken back
     # before the Conflict-end windows open, like the earlier recipients'
     # choices -- in every round, the last one too (2026-10-08 review).
-    paid = resolve_combat_rewards(_reward_state("skirmish_desert_mouse")).state
+    # v150 (stage B2, OQ-112): each recipient answers a window of reward
+    # icons, so _settle answers them (and the pause between recipients).
+    paid = _settle(resolve_combat_rewards(_reward_state("skirmish_desert_mouse")).state)
     assert paid.combat_rewards_resolved and not paid.decision_stack
 
     paused = _advance_automatic(RuleResult(state=paid)).state
@@ -240,13 +248,84 @@ def _pass_combat_intrigue(engine: UprisingRulesEngine, state: GameState) -> Tran
     return transition
 
 
+def _window_answer(state: GameState) -> DomainAction | None:
+    """The row the older engine paid next in the reward window on top."""
+
+    frame = top_frame(state)
+    if frame is None or frame.kind not in (
+        FrameKind.COMBAT_REWARD_ICONS,
+        FrameKind.CONTRACT_REWARD_ICONS,
+    ):
+        return None
+    assert isinstance(frame.decision, PlayerDecision)
+    owner = frame.decision.owner
+    answer = legacy_combat_reward_icon(state, owner) or legacy_contract_reward_icon(
+        state, owner
+    )
+    assert answer is not None
+    return answer
+
+
+def _pay_rewards(
+    engine: UprisingRulesEngine,
+    transition: Transition | RuleResult,
+    *,
+    through_recipients: bool = True,
+) -> RuleResult:
+    """Answer the reward windows (and the pauses between recipients, unless
+    ``through_recipients`` is False) through the engine, in the older
+    engine's order, up to the first other decision -- a choice an icon opened,
+    the pause before the Conflict-end windows -- keeping all the events
+    (stage B2, OQ-112)."""
+
+    state = transition.state
+    events: list[GameEvent] = list(transition.events)
+    for _ in range(64):
+        frame = top_frame(state)
+        if frame is None:
+            break
+        answer = _window_answer(state)
+        if answer is not None:
+            # Stage B3d-1: the window offers the icon as its steps.
+            answered = apply_whole(engine, state, answer)
+        elif (
+            through_recipients
+            and frame.kind == FrameKind.PAUSE
+            and dict(frame.context)["point"] == "rewards"
+        ):
+            answered = engine.apply(state, pause_outcome(state))
+        else:
+            break
+        state = answered.state
+        events.extend(answered.events)
+    return RuleResult(state=state, events=tuple(events))
+
+
 def _completions(events: tuple[GameEvent, ...]) -> list[dict[str, object]]:
-    return [
-        dict(event.payload)
-        for event in events
+    """Earn Any Alliance's completions: ``troops`` is what its troop icon
+    recruited (stage B2: ``contract_completed`` names the Contract and the
+    seat, and each reward icon logs ``contract_reward_icon_resolved``)."""
+
+    completed = [
+        index
+        for index, event in enumerate(events)
         if event.kind == "contract_completed"
         and dict(event.payload)["contract_id"] == EARN_ANY_ALLIANCE
     ]
+    rows: list[dict[str, object]] = []
+    for index in completed:
+        row: dict[str, object] = dict(events[index].payload)
+        row["troops"] = 0
+        for event in events[index + 1 :]:
+            payload = dict(event.payload)
+            if (
+                event.kind == "contract_reward_icon_resolved"
+                and payload["contract_id"] == EARN_ANY_ALLIANCE
+                and payload["effect"] == "troops"
+            ):
+                row["troops"] = payload["troops"]
+        rows.append(row)
+    return rows
 
 
 def _troops(state: GameState) -> tuple[int, int, int]:
@@ -260,12 +339,16 @@ def _to_round_start(engine: UprisingRulesEngine, state: GameState) -> RuleResult
     events: list[GameEvent] = []
     while state.phase is GamePhase.COMBAT:
         frame = state.decision_stack[-1]
-        if frame.kind == FrameKind.PAUSE:
+        answer = _window_answer(state)
+        if answer is not None:
+            transition = apply_whole(engine, state, answer)
+        elif frame.kind == FrameKind.PAUSE:
             transition = engine.apply(state, pause_outcome(state))
         else:
             assert frame.kind == FrameKind.CONFLICT_END_TRIGGER
             assert isinstance(frame.decision, PlayerDecision)
-            transition = engine.apply(
+            transition = apply_whole(
+                engine,
                 state,
                 DomainAction(
                     action_id="decline_conflict_end_intrigue",
@@ -291,21 +374,22 @@ def _to_round_start(engine: UprisingRulesEngine, state: GameState) -> RuleResult
 
 def test_earn_any_alliance_completes_at_the_conflict_end_pause() -> None:
     # Protect the Sietches' first place: a troop, water and Fremen 3 -> 4.
-    # Seat 1's second place is paid in the same step, which stops at the
+    # Seat 1's second place is paid after it (v150, stage B2: each
+    # recipient answers its own reward window), and the rewards stop at the
     # pause before the Conflict-end windows.
     engine = UprisingRulesEngine()
     state = _alliance_combat(
         "protect_the_sietches", Influence(fremen=3), _second()
     )
 
-    paid = _pass_combat_intrigue(engine, state)
+    paid = _pay_rewards(engine, _pass_combat_intrigue(engine, state))
 
     top = paid.state.decision_stack[-1]
     assert top.kind == FrameKind.PAUSE
     assert top.frame_id == f"round:2:conflict_end{FIXED_OUTCOME_SUFFIX}"
     # The pause frame carries nothing but its point.
     assert top.context == (("point", "conflict_end"),)
-    assert [completed["troops"] for completed in _completions(paid.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [0]
     shortfalls = [
         dict(event.payload)
         for event in paid.events
@@ -334,10 +418,10 @@ def test_earn_any_alliance_takes_only_what_the_supply_holds() -> None:
         troops_garrison=6,
     )
 
-    paid = _pass_combat_intrigue(engine, state)
+    paid = _pay_rewards(engine, _pass_combat_intrigue(engine, state))
 
     assert paid.state.decision_stack[-1].kind == FrameKind.PAUSE
-    assert [completed["troops"] for completed in _completions(paid.events)] == [1]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [1]
     assert _troops(paid.state) == (0, 8, 4)
     after = _to_round_start(engine, paid.state)
     assert _troops(after.state) == (4, 8, 0)
@@ -350,23 +434,30 @@ def test_earn_any_alliance_completes_at_the_pause_before_the_next_recipient() ->
     # step that takes Fremen stops at the pause before seat 1 is paid.
     engine = UprisingRulesEngine()
     state = _alliance_combat("skirmish_crysknife", Influence(fremen=3), _second())
-    choice = _pass_combat_intrigue(engine, state).state
+    choice = _pay_rewards(engine, _pass_combat_intrigue(engine, state)).state
     assert choice.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
 
-    chosen = engine.apply(
-        choice,
-        DomainAction(
-            action_id="choose_combat_reward_influence",
-            actor=0,
-            arguments=(("faction", "fremen"),),
+    # The Contract's own reward window (stage B2) is answered in the step
+    # that took the Alliance, before the pause.
+    chosen = _pay_rewards(
+        engine,
+        apply_whole(
+            engine,
+            choice,
+            DomainAction(
+                action_id="choose_combat_reward_influence",
+                actor=0,
+                arguments=(("faction", "fremen"),),
+            ),
         ),
+        through_recipients=False,
     )
 
     top = chosen.state.decision_stack[-1]
     assert top.kind == FrameKind.PAUSE
     assert top.frame_id == f"round:2:reward:1:rewards{FIXED_OUTCOME_SUFFIX}"
     assert top.context == (("point", "rewards"),)
-    assert [completed["troops"] for completed in _completions(chosen.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(chosen.events)] == [0]
     assert _troops(chosen.state) == (0, 8, 4)
     after = _to_round_start(engine, chosen.state)
     assert _completions(after.events) == []
@@ -384,10 +475,10 @@ def test_earn_any_alliance_completes_before_the_seat_s_reward_choice() -> None:
         "choam_security", Influence(spacing_guild=3), _second()
     )
 
-    paid = _pass_combat_intrigue(engine, state)
+    paid = _pay_rewards(engine, _pass_combat_intrigue(engine, state))
 
     assert paid.state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-    assert [completed["troops"] for completed in _completions(paid.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [0]
     assert _troops(paid.state) == (0, 8, 4)
 
 
@@ -395,8 +486,9 @@ def test_earn_any_alliance_completes_before_a_conflict_end_window_opens() -> Non
     # With Immortality, four units in the Conflict and an Intrigue card, the
     # seat gets a Conflict-end window once the pause is answered (OQ-103).
     # The Contract completed in the step that took the Alliance; neither the
-    # window nor the cleanup after it completes it again. The held card is
-    # one the Intrigue deck (INTRIGUE[:6]) does not also hold.
+    # window nor the cleanup after it completes it again, although the four
+    # troops are already back in the supply when the window opens. The held
+    # card is one the Intrigue deck (INTRIGUE[:6]) does not also hold.
     engine = UprisingRulesEngine()
     state = _alliance_combat(
         "protect_the_sietches",
@@ -405,14 +497,14 @@ def test_earn_any_alliance_completes_before_a_conflict_end_window_opens() -> Non
         intrigue_cards=(INTRIGUE[6],),
     )
 
-    paid = _pass_combat_intrigue(engine, state)
+    paid = _pay_rewards(engine, _pass_combat_intrigue(engine, state))
     assert paid.state.decision_stack[-1].kind == FrameKind.PAUSE
-    assert [completed["troops"] for completed in _completions(paid.events)] == [0]
+    assert [c.get("troops", 0) for c in _completions(paid.events)] == [0]
 
     window = engine.apply(paid.state, pause_outcome(paid.state))
     assert window.state.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     assert _completions(window.events) == []
-    assert _troops(window.state) == (0, 8, 4)
+    assert _troops(window.state) == (4, 8, 0)
     after = _to_round_start(engine, window.state)
     assert _completions(after.events) == []
     assert _troops(after.state) == (4, 8, 0)

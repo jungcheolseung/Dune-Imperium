@@ -155,6 +155,91 @@ def _matcher(pattern: str) -> Callable[[str], object]:
     return re.compile(fnmatch.translate(pattern)).match
 
 
+class _StepFingerprint(Fingerprint):
+    """The portable ``Fingerprint``, quicker over the states of one game.
+
+    Two states in a row share most of their field values as the very same
+    objects (the engine rebuilds only what a step changed, and a seat's
+    ``PlayerState`` whole when any of its fields did). This keeps the last
+    state's values and digests, and digests again only a top-level field
+    whose value object changed and the fields of a seat whose player object
+    changed -- through ``digest``, so the bytes are the portable code's.
+    It lives here and not in ``records.portable``, whose tree hash every
+    corpus names (``portable_tree``). The fingerprint was about a third of
+    a corpus check once each record replayed only once (2026-10-21)."""
+
+    def __init__(
+        self,
+        names: Sequence[str] | None = None,
+        schema: Mapping[str, Sequence[str]] | None = None,
+        unordered: Iterable[str] = portable_trace.UNORDERED,
+    ) -> None:
+        super().__init__(names, schema, unordered)
+        self._last: list[bytes] | None = None
+        self._top: tuple[tuple[int, str], ...] = ()
+        self._top_values: list[object] = []
+        self._seats: dict[int, tuple[tuple[int, str, bool], ...]] = {}
+        self._holders: dict[int, object] = {}
+        self._seat_count = 0
+
+    def __call__(self, state: Any) -> Digests:
+        players = getattr(state, "players", ())
+        last = self._last
+        if last is None or len(players) != self._seat_count:
+            return self._first(state, players)
+        digests = list(last)
+        for slot, (position, attr) in enumerate(self._top):
+            value = getattr(state, attr, _MISSING)
+            if value is not self._top_values[slot]:
+                self._top_values[slot] = value
+                digests[position] = (
+                    portable_trace.ABSENT
+                    if value is _MISSING
+                    else self.digest(attr, value)
+                )
+        for seat, fields in self._seats.items():
+            holder = players[seat] if seat < len(players) else _MISSING
+            if holder is self._holders[seat]:
+                continue
+            self._holders[seat] = holder
+            for position, attr, unordered in fields:
+                value = (
+                    _MISSING if holder is _MISSING else getattr(holder, attr, _MISSING)
+                )
+                digests[position] = (
+                    portable_trace.ABSENT
+                    if value is _MISSING
+                    else self.digest(attr, value, unordered=unordered)
+                )
+        self._last = digests
+        return tuple(digests)
+
+    def _first(self, state: Any, players: Sequence[Any]) -> Digests:
+        digests = super().__call__(state)
+        assert self.names is not None
+        top: list[tuple[int, str]] = []
+        seats: dict[int, list[tuple[int, str, bool]]] = {}
+        for position, name in enumerate(self.names):
+            match = _SEAT.match(name)
+            if match is None:
+                top.append((position, name))
+            else:
+                attr = match.group("attr")
+                seats.setdefault(int(match.group("seat")), []).append(
+                    (position, attr, attr in self.unordered)
+                )
+        self._top = tuple(top)
+        self._top_values = [getattr(state, attr, _MISSING) for _, attr in top]
+        self._seats = {seat: tuple(fields) for seat, fields in seats.items()}
+        self._holders = {
+            seat: players[seat] if seat < len(players) else _MISSING
+            for seat in self._seats
+        }
+        self._seat_count = len(players)
+        self._last = list(digests)
+        return digests
+
+
 class Corpus:
     """One record corpus folder."""
 
@@ -355,7 +440,7 @@ class Corpus:
         states digest comparably to the trace.
         """
 
-        return Fingerprint(
+        return _StepFingerprint(
             names=self.manifest["fingerprint_fields"],
             schema=self.manifest["class_schema"],
             unordered=self.manifest["unordered_zones"],
@@ -458,7 +543,7 @@ REVIEW_FIRST: Final = (
     "diverged-at-hit",
 )
 DEFAULT_WINDOW: Final = 16
-MAX_WORKERS: Final = 4
+MAX_WORKERS: Final = 8
 # The niceness ``check`` runs at, in its own process and in its workers.
 NICENESS: Final = 10
 # Records per worker task.
@@ -981,11 +1066,14 @@ def _lower_priority() -> None:
     at niceness 20, and Windows has none; the check then runs as it is.
     """
 
+    nice = getattr(os, "nice", None)
+    if nice is None:
+        return
     try:
-        current = os.nice(0)
+        current = nice(0)
         if current < NICENESS:
-            os.nice(NICENESS - current)
-    except AttributeError, OSError:
+            nice(NICENESS - current)
+    except OSError:
         pass
 
 

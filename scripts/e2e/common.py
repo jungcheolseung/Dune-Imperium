@@ -16,18 +16,24 @@ browsers' profiles all write there.
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from playwright.sync_api import sync_playwright
 
 REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
+PROJECT_PYTHON = REPO / ".venv" / (
+    "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+)
 E2E_TMP = Path(__file__).resolve().parents[2] / "tmp" / "e2e"
 E2E_TMP.mkdir(parents=True, exist_ok=True)
 os.environ["TMPDIR"] = str(E2E_TMP)
@@ -53,6 +59,26 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def api_post(base: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    """One raw JSON POST to the play server, no browser."""
+    request = urllib.request.Request(
+        base + path,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        result: dict[str, Any] = json.loads(response.read())
+    return result
+
+
+def api_get(base: str, path: str) -> dict[str, Any]:
+    """One raw JSON GET from the play server, no browser."""
+    with urllib.request.urlopen(base + path) as response:
+        result: dict[str, Any] = json.loads(response.read())
+    return result
+
+
 class ServerProcess:
     """One play-server process on a known port and saves directory.
 
@@ -74,7 +100,9 @@ class ServerProcess:
     def start(self) -> ServerProcess:
         self._log = open(self.log_path, "w")
         command = [
-            str(REPO / ".venv/bin/dune-imperium-server"),
+            str(PROJECT_PYTHON),
+            "-m",
+            "dune_imperium.cli.server",
             "--host",
             HOST,
             "--port",
@@ -356,3 +384,17 @@ def open_context(browser, name: str, viewport: dict | None = None):
     recorder.attach(page)
     page.set_default_timeout(15000)
     return context, page, recorder
+
+
+# Where a seek lands: never between a waiting effect and its target (stage
+# B3; review.js ``reviewGoto``), so a pick step goes on to its effect's end.
+REVIEW_LANDING = """(target) => {
+    const review = state.review;
+    const labels = review.meta.steps || [];
+    const back = target < review.cursor;
+    let cursor = target;
+    while (cursor > 0 && cursor < review.meta.step_count && labels[cursor - 1]?.pick) {
+        cursor += back ? -1 : 1;
+    }
+    return cursor;
+}"""

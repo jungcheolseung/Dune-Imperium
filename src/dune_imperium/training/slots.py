@@ -94,8 +94,9 @@ SLOT_VERSION: Final = 1
 # scalar 5), the Leader draft pool's six slots and the open Agent turn's two
 # box cards (``agent_boxes``). Their fields are appended after every older
 # field, so every older key keeps its index (checkpoints re-link by key,
-# SLOT_VERSION kept).
-SLOT_OBSERVATION_VERSION: Final = 32
+# SLOT_VERSION kept). v33 (stage B1) appends the seat's own picked Agent card,
+# read as a count zone, not a slot: no key changes.
+SLOT_OBSERVATION_VERSION: Final = 33
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).
@@ -122,7 +123,9 @@ _REFERENCE_PHASE: Final = GamePhase.PLAYER_TURNS
 # (rules/pauses.py) is a chance decision, never on top when a seat is
 # observed, so it has no row: the table, and every slot checkpoint written
 # before the pause existed, stays as it was (observation v30's kind index
-# appends it last, so no listed kind moves).
+# appends it last, so no listed kind moves). The kinds appended after it
+# (stage B2's reward windows, v33) keep their encoded index, which counts
+# the pause (``_identity``'s universe is every kind).
 _DECIDED_FRAME_KINDS: Final = tuple(
     kind for kind in _FRAME_KINDS if kind != FrameKind.PAUSE.value
 )
@@ -233,6 +236,7 @@ def _build_fields() -> tuple[SlotField, ...]:
             "decision_kind",
             "global_scalars",
             _scalar("global_scalars", _GLOBAL_DECISION_KIND),
+            _FRAME_KINDS,
             _DECIDED_FRAME_KINDS,
         ),
         _identity(

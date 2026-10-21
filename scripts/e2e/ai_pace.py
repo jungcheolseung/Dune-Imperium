@@ -95,7 +95,10 @@ def own_turn(page, timeout: float = 90.0) -> bool:
 
 
 def play_own_turn(page) -> None:
-    """Send an Agent (or reveal) and end the turn: the steps of one turn."""
+    """Send an Agent (or reveal) and end the turn: the steps of one turn.
+
+    An Agent is two steps, a card pick (`choose_agent_card`) and then a space
+    pick (`place_agent`), so the walk takes the first row of each in turn."""
     taken = []
     for _ in range(40):
         assert settled(page, 20)
@@ -110,7 +113,8 @@ def play_own_turn(page) -> None:
           const rows = state.actions.actions;
           const pick = (id) => rows.find((a) => a.action_id === id);
           const row = pick('finish_agent_turn') || pick('finish_reveal')
-            || pick('agent_turn') || pick('reveal_turn') || rows[0];
+            || pick('choose_agent_card') || pick('place_agent')
+            || pick('reveal_turn') || rows[0];
           return row.index;
         }""")
         taken.append(page.evaluate(f"state.actions.actions[{index}].action_id"))

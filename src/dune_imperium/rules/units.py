@@ -55,7 +55,7 @@ def retreat_units(
     tactics_events: tuple[GameEvent, ...] = ()
     if advance_tactics:
         next_owner, tactics_events = advance_tactics_token(
-            next_owner, retreated, source=step_source
+            next_owner, retreated, round_number=state.round_number
         )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),

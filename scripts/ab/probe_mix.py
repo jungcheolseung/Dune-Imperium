@@ -57,7 +57,7 @@ def play(spec):
                 if searcher is not None
                 else agents[decision.owner].choose_action(observation, actions)
             )
-            if action.action_id == "agent_turn":
+            if action.action_id == "place_agent":
                 placements[decision.owner][dict(action.arguments)["space_id"]] += 1
             result = engine.apply(state, action)
         for event in getattr(result, "events", ()):

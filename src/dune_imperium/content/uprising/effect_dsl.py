@@ -8,6 +8,7 @@ does not fit these primitives keeps using explicit custom hooks.
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
@@ -45,7 +46,11 @@ class HasHighCouncil:
 
 @dataclass(frozen=True, slots=True)
 class HasAlliance:
-    """The player holds any Faction Alliance (Twisted Intrigue, Navigation)."""
+    """The player holds a Faction Alliance: any one (Twisted Intrigue,
+    Navigation), or ``faction``'s ("[Fremen] Alliance:" [Stillsuit
+    Manufacturer card])."""
+
+    faction: Faction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +251,202 @@ class OpponentPlayedCombatIntrigue:
 
 
 @dataclass(frozen=True, slots=True)
+class AtMakerSpace:
+    """The Agent was sent to a Maker space ("If you are at a Maker space:"
+    [Desert Power card]): fixed by the placement, so an Agent box judges it
+    when the card is played (OQ-028 (a))."""
+
+
+@dataclass(frozen=True, slots=True)
+class AtFactionSpace:
+    """The Agent was sent to a Faction space: fixed by the placement, so an
+    Agent box judges it when the card is played (OQ-028 (a)). A box reached
+    off one through a granted Spy or Agent icon (Clandestine, Resourceful,
+    Urgent Shigawire) has no visited Faction to gain with (OQ-046)."""
+
+
+@dataclass(frozen=True, slots=True)
+class FactionBond:
+    """Another card of ``faction`` is in play: that Faction's Bond ("Fremen
+    Bond | 프레멘의 유대감" [Main p. 20])."""
+
+    faction: Faction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("a Bond names a Faction")
+
+
+@dataclass(frozen=True, slots=True)
+class SpyRecalledThisTurn:
+    """The player recalled one of their Spies this turn, by any means ("If
+    you recalled a Spy this turn:" [Strike Fleet card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class UnitsInConflictAtLeast:
+    """The player has ``count`` or more units in the Conflict, an Agent there
+    included ("If you have 3 or more units in the Conflict:" [Chani, Clever
+    Tactician card])."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("unit threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class ContractCompletedThisTurn:
+    """The player completed a Contract this turn ("If you completed a
+    Contract this turn:" [Mercantile Affairs card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class DiscardedCardHasFaction:
+    """The card discarded for the arrow's cost has ``faction``'s affiliation
+    ("2 if the discarded card has Spacing Guild affiliation" [Space-time
+    Folding card]): judged on that card once the cost is paid."""
+
+    faction: Faction
+
+
+@dataclass(frozen=True, slots=True)
+class TrashedCardHasFaction:
+    """The card trashed for the arrow's cost has ``faction``'s affiliation
+    ("If you trash an Emperor card:" [Elite Forces card]): judged on that
+    card once the cost is paid."""
+
+    faction: Faction
+
+
+@dataclass(frozen=True, slots=True)
+class GraftedWithFaction:
+    """The card was played grafted with a card of one of ``factions`` ("If
+    grafted with an Emperor or Spacing Guild card:" [Interstellar Conspiracy
+    card]): the other grafted card's printed affiliation, either Faction."""
+
+    factions: tuple[Faction, ...]
+
+    def __post_init__(self) -> None:
+        if not self.factions or len(set(self.factions)) != len(self.factions):
+            raise ValueError("graft partner Factions must be unique and non-empty")
+
+
+@dataclass(frozen=True, slots=True)
+class Grafted:
+    """The card was played grafted with another ("If grafted:" [Corrupt
+    Smuggler card]) [Immortality p. 10]."""
+
+
+@dataclass(frozen=True, slots=True)
+class HasSwordmaster:
+    """The player has its Swordmaster ("High Council and Swordmaster:"
+    [Paracompass card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class SpyingOnMakerSpace:
+    """One of the player's Spies watches a Maker space ("If you are spying on
+    a Maker space:" [Smuggler's Haven card])."""
+
+
+@dataclass(frozen=True, slots=True)
+class GarrisonedUnitsAtLeast:
+    """The player has ``count`` or more units -- troops and Sardaukar
+    Commanders -- in its garrison [Imperial Throneship card]."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("garrison condition count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CommandReached:
+    """Command (6+): the player's Reveal turn generates six or more
+    Persuasion [Bloodlines pp. 5, 12], the others' first so the order does
+    not matter (``rules.reveal_turn``)."""
+
+
+@dataclass(frozen=True, slots=True)
+class AtBoardSpace:
+    """The player sent an Agent to ``space_id`` (a Contract: "Send an Agent
+    to Arrakeen"), judged on the placement's snapshot."""
+
+    space_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class AcquiredCard:
+    """The player acquired a copy of ``card_id`` (a Contract: "Acquire The
+    Spice Must Flow")."""
+
+    card_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ContractTaken:
+    """The Contract was just taken: an Immediate tile completes at once
+    [Main p. 16]."""
+
+
+@dataclass(frozen=True, slots=True)
+class AllianceTaken:
+    """The player took an Alliance token it did not already hold (the
+    Bloodlines "Earn Any Alliance" Contract, OQ-056)."""
+
+
+@dataclass(frozen=True, slots=True)
+class AgentOnSpaceWithIcon:
+    """The player has an Agent on a board space with ``icon`` ("If you have
+    an Agent on a [Landsraad] board space" [Canny Skill tile])."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("an Agent-space icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentSandwormInConflict:
+    """Any opponent has a sandworm in the Conflict [Fierce Skill tile]."""
+
+
+@dataclass(frozen=True, slots=True)
+class StrengthInConflictAtLeast:
+    """The player has ``amount`` or more strength in the Conflict ("If you
+    have 6 or more strength in the Conflict" [Gurney Halleck card])."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("a strength threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class VisitedSpaceHasIcon:
+    """The player sent an Agent this turn to a board space with ``icon``
+    ("If you sent an Agent this turn to a Landsraad space" [Liet Kynes
+    card])."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("a visited-space icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class DuringAgentTurn:
+    """Agent Turn: only after the owner's Agent placement this turn
+    [Rapid Dropships Tech tile] [Bloodlines p. 7]."""
+
+
+@dataclass(frozen=True, slots=True)
 class AllConditions:
     """Every listed condition holds (Study Melange: spice and two markers)."""
 
@@ -276,7 +477,30 @@ type Condition = (
     | SolariAtLeast
     | SpiceAtLeast
     | OpponentPlayedCombatIntrigue
+    | AtMakerSpace
+    | AtFactionSpace
+    | FactionBond
+    | SpyRecalledThisTurn
+    | UnitsInConflictAtLeast
+    | ContractCompletedThisTurn
+    | DiscardedCardHasFaction
+    | TrashedCardHasFaction
+    | GraftedWithFaction
+    | Grafted
     | AllConditions
+    | HasSwordmaster
+    | SpyingOnMakerSpace
+    | GarrisonedUnitsAtLeast
+    | CommandReached
+    | AtBoardSpace
+    | AcquiredCard
+    | ContractTaken
+    | AllianceTaken
+    | DuringAgentTurn
+    | VisitedSpaceHasIcon
+    | StrengthInConflictAtLeast
+    | AgentOnSpaceWithIcon
+    | OpponentSandwormInConflict
 )
 
 
@@ -305,6 +529,62 @@ class PayResources:
         )
 
 
+class GraftedTrash(StrEnum):
+    """Which grafted card a trash takes: "the other grafted card" [Dissecting
+    Kit card], "one of the grafted cards" [Beguiling Pheromones card]."""
+
+    OTHER = "other"
+    EITHER = "either"
+
+
+@dataclass(frozen=True, slots=True)
+class TrashCard:
+    """Trash one of the player's cards as an arrow's cost: one in hand, in
+    the discard pile or in play ("You may trash a card -> Draw 1 card"
+    [Shishakli card]; a Row card borrowed with Usurp is not in play, OQ-054).
+    ``hand_only``: "a card from your hand"; ``this_card``: "You may trash this
+    card ->" [Pivotal Gambit card] -- or the tile printing it, Desperate's
+    "Trash this ->" [Desperate Skill tile]; ``other_in_play``: "another
+    <Faction> card in play" [Calculus of Power card]."""
+
+    hand_only: bool = False
+    this_card: bool = False
+    other_in_play: Faction | None = None
+    # "an Emperor card from your hand" [Treacherous Maneuver card].
+    faction: Faction | None = None
+    # A card of the graft pair (``GraftedTrash``).
+    grafted: GraftedTrash | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            int(self.hand_only)
+            + int(self.this_card)
+            + int(self.other_in_play is not None)
+            > 1
+        ):
+            raise ValueError("a trash cost names one place to take the card from")
+        if self.faction is not None and not self.hand_only:
+            raise ValueError("a trash cost names a Faction only for a card in hand")
+        if self.grafted is not None and (
+            self.hand_only or self.this_card or self.other_in_play is not None
+        ):
+            raise ValueError("a grafted card's trash names no other place")
+
+
+@dataclass(frozen=True, slots=True)
+class SpendSpecimens:
+    """Spend ``count`` of the player's specimens: they return to the supply
+    as troops [Immortality p. 8] ("You may spend 1 specimen" [Organ
+    Merchants card]; an Arrakeen Scouts line's specimen cost, Ingratiate,
+    since cleanup-1)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("specimen spend must be positive")
+
+
 @dataclass(frozen=True, slots=True)
 class LoseInfluence:
     """Lose ``count`` Influence, choosing a Faction for each step.
@@ -314,6 +594,9 @@ class LoseInfluence:
     """
 
     count: int = 1
+    # "lose 2 Influence with one Faction" [For Humanity card]: every step
+    # from the same Faction.
+    one_faction: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -342,6 +625,9 @@ class LoseTroops:
 
     count: int = 1
     from_conflict: bool = False
+    # Troops only, from either zone: no Sardaukar Commander [Tleilaxu
+    # Surgeon card] (OQ-053).
+    troops_only: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -445,6 +731,45 @@ class FlipFaceUpConflictCard:
             raise ValueError("flip count must be positive")
 
 
+# Arrakeen Scouts' own costs (composed A7b; ``content.arrakeen_scouts.types``
+# re-exports them).
+
+
+@dataclass(frozen=True, slots=True)
+class LoseFactionInfluence:
+    """Lose ``count`` Influence with one named Faction (Crackdown's Emperor
+    loss, Betrayal's Bene Gesserit cost). The DSL's ``LoseInfluence`` lets
+    the player pick the Faction, so it does not fit."""
+
+    faction: Faction
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("Influence loss needs a Faction")
+        if self.count < 1:
+            raise ValueError("Influence loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class LoseHighestInfluence:
+    """Lose one Influence on the player's highest track, choosing among tied
+    tracks (Political Equilibrium); nothing with no Influence at all."""
+
+
+@dataclass(frozen=True, slots=True)
+class LoseGarrisonTroops:
+    """Lose ``count`` troops from the garrison to the supply (Bene Gesserit
+    Treachery, Prison Planet). The DSL's ``LoseTroops`` also allows the
+    Conflict, which these items do not."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("garrison loss count must be positive")
+
+
 type Cost = (
     PayResources
     | LoseInfluence
@@ -457,6 +782,11 @@ type Cost = (
     | FlipBattleCard
     | TrashDiscardPileCard
     | FlipFaceUpConflictCard
+    | SpendSpecimens
+    | TrashCard
+    | LoseFactionInfluence
+    | LoseHighestInfluence
+    | LoseGarrisonTroops
 )
 
 
@@ -552,10 +882,21 @@ class GainInfluence:
     # played the card, where the player already has ``minimum_own``.
     different_from_trigger: bool = False
     minimum_own: int = 0
+    # "Gain N Influence with the visited Faction" [Overthrow card]
+    # [Subversive Advisor card]: the Faction of the space the Agent was sent
+    # to, no choice; ``replaces_space``: the N replace the space's own 1 --
+    # "기본 1 대신 총 2", never 2 + 1 [Main pp. 9, 11, 20]
+    # (docs/rules/player-turns.md).
+    visited_space: bool = False
+    replaces_space: bool = False
 
     def __post_init__(self) -> None:
         if self.times < 1:
             raise ValueError("Influence gain times must be positive")
+        if self.visited_space and self.factions is not None:
+            raise ValueError("the visited Faction is the only one a visited gain names")
+        if self.replaces_space and not self.visited_space:
+            raise ValueError("only a visited Faction's gain replaces the space's")
         if self.factions is not None:
             if not self.factions or len(self.factions) != len(set(self.factions)):
                 raise ValueError("Influence gain Factions must be unique and non-empty")
@@ -570,6 +911,8 @@ class GainInfluence:
     def requires_choice(self) -> bool:
         """Return whether the player must pick a Faction."""
 
+        if self.visited_space:
+            return False
         return self.factions is None or len(self.factions) > 1
 
 
@@ -641,11 +984,14 @@ class PlaceSpy:
     normal empty-post targets, for card text that says the Spy *may* go on
     the same post as another player's Spy [Distraction card] -- the Spy with
     Deep Cover set [Bloodlines p. 5]; the owner's own posts never qualify.
+    ``visited_space`` limits it to the posts connected to the board space the
+    owner sent an Agent to this turn [Double Agent card], and may share one.
     """
 
     factions: tuple[Faction, ...] | None = None
     shared_post: bool = False
     agent_icons: tuple[AgentIcon, ...] | None = None
+    visited_space: bool = False
 
     def __post_init__(self) -> None:
         if self.factions is not None:
@@ -668,6 +1014,12 @@ class PlaceSpy:
             self.factions is not None or self.agent_icons is not None
         ):
             raise ValueError("a shared-post placement cannot limit its posts")
+        if not isinstance(self.visited_space, bool):
+            raise TypeError("visited_space must be a boolean")
+        if self.visited_space and (
+            self.factions is not None or self.agent_icons is not None
+        ):
+            raise ValueError("a visited-space placement names no other limit")
 
 
 @dataclass(frozen=True, slots=True)
@@ -699,6 +1051,14 @@ class AcquireCardUpTo:
     def __post_init__(self) -> None:
         if self.max_cost < 1:
             raise ValueError("acquisition cost cap must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireCardForSolari:
+    """Acquire an Imperium Row or Reserve card to hand, paying its cost in
+    solari [Price is No Object card] -- the owner's own Manipulate set-aside
+    card too, at its printed cost [FAQ p. 3]. Only an Agent box offers it
+    (``rules.acquisition.agent_box_acquisition``); the A1 executor does not."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -889,6 +1249,329 @@ class RevealPersuasionThisRound:
             raise ValueError("Persuasion bonus must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class ReturnThisCardToHand:
+    """Return this card from play to its owner's hand, face up so far so it
+    stays known (OQ-010) [Weirding Woman card]. Only a card counted in play
+    can return: a Row card borrowed with Usurp is not in play (OQ-054)."""
+
+
+@dataclass(frozen=True, slots=True)
+class BoostNextBeneGesseritCard:
+    """The next Bene Gesserit card the owner plays this round has all Agent
+    icons and adds "Draw 1 card" to its Agent box [Urgent Shigawire card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class DrawPerSandwormInConflict:
+    """Draw 1 card for each of the owner's sandworms in the Conflict
+    [Leadership card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class TrashThisCard:
+    """Trash this card, as a printed effect of its own ("Trash this card."
+    [Dangerous Rhetoric card], [Seek Allies card]): mandatory [Main p. 20];
+    the card's other effects still pay once it is gone (OQ-022)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecallAgent:
+    """Recall one of the player's Agents from a board space: any but the one
+    sent this turn ("Recall 1 Agent" [Steersman card]), or with
+    ``sent_this_turn`` exactly that one ("You may recall the Agent you sent
+    this turn" [Twisted Mentat card], ``optional``)."""
+
+    sent_this_turn: bool = False
+    optional: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EachOpponentDiscardsCard:
+    """Each opponent discards a card [Covert Operation card]: every opponent
+    holding a card picks one, clockwise from the next seat."""
+
+
+@dataclass(frozen=True, slots=True)
+class EachOpponentLosesTroop:
+    """Each opponent loses one troop [Holy War card]: every opponent is
+    asked, clockwise from the next seat, even with nothing to lose (OQ-036
+    (a))."""
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentsMoveSpiesFromVisitedSpace:
+    """Each opponent spying on the board space where the player sent an
+    Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
+
+
+class PrintedRevealValue(StrEnum):
+    """A revealed card's own printed value a choice holds back."""
+
+    PERSUASION = "persuasion"
+    SPICE = "spice"
+
+
+@dataclass(frozen=True, slots=True)
+class KeepPrintedReveal:
+    """"Keep the Persuasion" [Desert Power card] / "Keep the spice" [Priority
+    Contracts card]: the card's own printed Reveal value, held from every
+    total until this line is chosen (OQ-069; OQ-028 (b) addition)."""
+
+    value: PrintedRevealValue
+
+
+@dataclass(frozen=True, slots=True)
+class GainSolariPerPartnerAgentIcon:
+    """Gain 1 Solari per Agent icon on the other grafted card [Slig Farmer
+    card]: borrowed and conditional icons count too -- Blank Slate's grafted
+    Faction icons, Servo-Receivers' Signet icons, a met Long Reach condition
+    -- since the card carries them (OQ-055, user ruling 2026-09-08)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnOtherGraftedCardAtRevealStart:
+    """At the start of the owner's Reveal turn, the other grafted card goes
+    from play back to the hand [Chairdog card]. The return is noted on the
+    seat when the pair is grafted (adopted designer ruling,
+    ``graft.apply_graft_partner``) and carried out by ``begin_reveal_turn``;
+    nothing returns once that card has left play."""
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireBankCommander:
+    """Acquire and recruit the Sardaukar Commander in the bank [Sardaukar
+    Standard card]: with a face-up Skill choice, or without a Skill when none
+    is choosable (OQ-031); nothing with an empty bank (OQ-035)."""
+
+
+class RevealCountKind(StrEnum):
+    """What a Reveal gain is counted per (``RevealCount``)."""
+
+    # Each card of ``faction`` revealed this turn (Sardaukar Coordination).
+    REVEALED_FACTION_CARD = "revealed_faction_card"
+    # Each card of ``faction`` the player has in play, Agent turns included
+    # [Main p. 20 "In Play"] (Stilgar, The Devoted).
+    FACTION_CARD_IN_PLAY = "faction_card_in_play"
+    # Each Contract the player has completed, later ones included (OQ-028
+    # (c), Interstellar Trade).
+    COMPLETED_CONTRACT = "completed_contract"
+    # Each other revealed card with swords (Leadership).
+    OTHER_SWORD_CARD = "other_sword_card"
+
+
+@dataclass(frozen=True, slots=True)
+class RevealCount:
+    """The count a Reveal gain is multiplied by; ``faction`` for the two
+    Faction-card counts."""
+
+    kind: RevealCountKind
+    faction: Faction | None = None
+
+    def __post_init__(self) -> None:
+        by_faction = self.kind in (
+            RevealCountKind.REVEALED_FACTION_CARD,
+            RevealCountKind.FACTION_CARD_IN_PLAY,
+        )
+        if by_faction != (self.faction is not None):
+            raise ValueError("only a Faction-card count names a Faction")
+
+
+@dataclass(frozen=True, slots=True)
+class RevealPersuasion:
+    """+``amount`` Persuasion on the Reveal, spent this turn and counted for
+    Command [Main p. 9]; ``per`` multiplies it."""
+
+    amount: int
+    per: RevealCount | None = None
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Reveal Persuasion must be positive")
+        if self.per is not None and self.per.kind is RevealCountKind.OTHER_SWORD_CARD:
+            raise ValueError("Persuasion is not counted per sword card")
+
+
+@dataclass(frozen=True, slots=True)
+class RevealSwords:
+    """+``amount`` swords on the Reveal, counted as strength only with a unit
+    in the Conflict [Main p. 9]; ``per`` multiplies them."""
+
+    amount: int
+    per: RevealCount | None = None
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Reveal swords must be positive")
+        if self.per is not None and self.per.kind in (
+            RevealCountKind.FACTION_CARD_IN_PLAY,
+            RevealCountKind.COMPLETED_CONTRACT,
+        ):
+            raise ValueError("swords are counted per revealed card only")
+
+
+@dataclass(frozen=True, slots=True)
+class TakeHighCouncilSeat:
+    """Take the High Council seat [Corrinth City card]: its +2 Persuasion on
+    each Reveal from now [Main p. 10]."""
+
+
+@dataclass(frozen=True, slots=True)
+class TakeControl:
+    """Take control of ``space_id`` [Main p. 10] [Main p. 20]: the player's
+    control marker goes there, an opponent's moves off."""
+
+    space_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class TakeSwordmaster:
+    """Once per game, take the player's third Agent [Main p. 20], usable from
+    this round [Board Guide p. 2] (the Swordmaster space)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecruitUndeployableTroops:
+    """Recruit ``count`` troops that can't be deployed to the Conflict this
+    turn [Piter De Vries card] (OQ-038)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("troop recruit count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class TakeSetupSpice:
+    """The first player to reach the space takes the spice placed there
+    during setup [Immortality pp. 4, 7] (the Tleilaxu track's fourth
+    space)."""
+
+
+@dataclass(frozen=True, slots=True)
+class DrawTwistedIntrigueCards:
+    """Draw ``count`` cards from the player's own Twisted Intrigue deck
+    [Piter De Vries card] (OQ-072, OQ-097)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("draw count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class TroopToMemory:
+    """Move 1 troop from the supply to the Bene Gesserit board area as a
+    memory [Lady Jessica card]; nothing moves with the supply empty."""
+
+
+@dataclass(frozen=True, slots=True)
+class GainInfluenceWhereAtMost:
+    """Gain 1 Influence with each Faction where the player has ``maximum``
+    or less Influence [Panopticon Tech tile]."""
+
+    maximum: int = 1
+
+    def __post_init__(self) -> None:
+        if self.maximum < 0:
+            raise ValueError("an Influence ceiling must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class UseSignetAbility:
+    """The Signet Ring icon off the Signet Ring card: "you use the Signet
+    Ring ability (with the corresponding icon) on your Leader" [Main p. 20]
+    (Servo-Receivers' acquire icon [Bloodlines p. 7])."""
+
+
+@dataclass(frozen=True, slots=True)
+class PledgeFirstPlaceInfluence:
+    """Add 1 Influence of the player's choice to this Conflict's first-place
+    reward [Pivotal Gambit card]: chosen with that reward (OQ-025)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ForceEnemyRetreat:
+    """Force an enemy troop to retreat [Disruption Tactics card]: one unit of
+    an opponent's in the Conflict goes back to its garrison. A Sardaukar
+    Commander is a troop [Bloodlines p. 4]; the acting player picks the
+    opponent and, where both kinds are there, the kind (OQ-034)."""
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteContract:
+    """Complete one of your contracts [CHOAM Demands card]: an active
+    Contract of the owner's, whatever its printed condition."""
+
+
+@dataclass(frozen=True, slots=True)
+class LookAtIntrigueKeepOne:
+    """Look at the Intrigue deck's top ``count`` cards, keep 1 and put the
+    rest back on top [Imperium Ceremony card]."""
+
+    count: int = 2
+
+    def __post_init__(self) -> None:
+        if self.count < 2:
+            raise ValueError("a peek to keep one looks at two or more cards")
+
+
+# Arrakeen Scouts' own rewards (composed A7b).
+
+
+@dataclass(frozen=True, slots=True)
+class RecallOtherAgent:
+    """Return one of the player's Agents from a board space to their supply,
+    other than the Agent that just took the High Council seat
+    (Contingencies; which Agent counts is an open question)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecruitToConflict:
+    """Recruit ``count`` troops from the supply straight into the Conflict
+    (Shadow Warfare: troops recruited during the sale are deployed at once)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("recruit count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireReserveCardToHand:
+    """Acquire one named Reserve card into the hand instead of the discard
+    pile (Moment of Revelation: Prepare the Way)."""
+
+    card_id: str
+
+    def __post_init__(self) -> None:
+        if not self.card_id:
+            raise ValueError("Reserve acquisition needs a card")
+
+
+@dataclass(frozen=True, slots=True)
+class GainLowestInfluence:
+    """Gain one Influence with the Faction where the player has the least,
+    choosing among tied Factions (Covert Operation's delayed choice)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GainSpiceWithHelixBonus:
+    """Gain ``spice`` spice, or ``helix_spice`` instead when the player's
+    research has reached the Helix (Offworld Operation's first-round choice;
+    what "reached the Helix" means is an open question)."""
+
+    spice: int = 1
+    helix_spice: int = 2
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.spice < self.helix_spice:
+            raise ValueError("the Helix amount must beat the plain amount")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -924,6 +1607,39 @@ type Reward = (
     | GenerateSpecimens
     | AcquireTleilaxuCard
     | RevealPersuasionThisRound
+    | ReturnThisCardToHand
+    | BoostNextBeneGesseritCard
+    | DrawPerSandwormInConflict
+    | LookAtIntrigueKeepOne
+    | ForceEnemyRetreat
+    | CompleteContract
+    | PledgeFirstPlaceInfluence
+    | AcquireCardForSolari
+    | TrashThisCard
+    | RecallAgent
+    | EachOpponentDiscardsCard
+    | EachOpponentLosesTroop
+    | OpponentsMoveSpiesFromVisitedSpace
+    | ReturnOtherGraftedCardAtRevealStart
+    | GainSolariPerPartnerAgentIcon
+    | KeepPrintedReveal
+    | AcquireBankCommander
+    | RevealPersuasion
+    | RevealSwords
+    | TakeHighCouncilSeat
+    | TakeControl
+    | TakeSwordmaster
+    | UseSignetAbility
+    | GainInfluenceWhereAtMost
+    | RecruitUndeployableTroops
+    | TroopToMemory
+    | DrawTwistedIntrigueCards
+    | TakeSetupSpice
+    | RecallOtherAgent
+    | RecruitToConflict
+    | AcquireReserveCardToHand
+    | GainLowestInfluence
+    | GainSpiceWithHelixBonus
 )
 
 
@@ -959,7 +1675,86 @@ class OnTroopsLostAtConflictEnd:
             raise ValueError("loss trigger minimum must be positive")
 
 
-type Trigger = OnRevealAcquisitionThisRound | OnTroopsLostAtConflictEnd
+@dataclass(frozen=True, slots=True)
+class OnReachInfluence:
+    """When the player reaches ``amount`` Influence with ``faction``
+    [Lady Margot Fenring card] [Princess Irulan card]; like the Victory Point,
+    passing it in one multi-step gain counts and re-reaching after a loss
+    counts again [Main pp. 7, 17]."""
+
+    faction: Faction
+    amount: int = 2
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("an Influence trigger names a Faction")
+        if self.amount < 1:
+            raise ValueError("an Influence trigger amount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class OnOpponentAgentAtSpiedMakerSpace:
+    """Whenever another player sends an Agent to a Maker board space the
+    player is spying on [Staban Tuek card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnCardTrashed:
+    """Whenever the player trashes a card -- a personal card, not an
+    Intrigue card [Count Hasimir Fenring card] [Bloodlines p. 12]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnAgentSentTo:
+    """Whenever the player -- or with ``opponent`` another player -- sends
+    an Agent to ``space_id`` [Esmar Tuek card]."""
+
+    space_id: str
+    opponent: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class OnRoundStart:
+    """At Round Start, with the round's hand (OQ-072) [Piter De Vries
+    card]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnSpiceGainedInTurnAtLeast:
+    """Whenever the player gains ``amount`` or more spice in a single turn
+    of theirs, once per turn (OQ-063) [Steersman Y'rkoon card]."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("a spice threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class OnContractCompleted:
+    """When the player completes a Contract [CHOAM Transports Tech
+    tile]."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnConflictWon:
+    """When the player wins a Conflict -- alone [FAQ p. 4] [Planetary Array
+    Tech tile]."""
+
+
+type Trigger = (
+    OnRevealAcquisitionThisRound
+    | OnTroopsLostAtConflictEnd
+    | OnReachInfluence
+    | OnOpponentAgentAtSpiedMakerSpace
+    | OnCardTrashed
+    | OnAgentSentTo
+    | OnRoundStart
+    | OnSpiceGainedInTurnAtLeast
+    | OnContractCompleted
+    | OnConflictWon
+)
 
 
 # --- Composition ------------------------------------------------------------
@@ -978,8 +1773,9 @@ class EffectSection:
     costs: tuple[Cost, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.rewards:
-            raise ValueError("an effect section must produce at least one reward")
+        # An Arrakeen Scouts line may only take something away (Crackdown).
+        if not self.rewards and not self.costs:
+            raise ValueError("an effect section must produce or exact something")
         if len(self.costs) != len(set(self.costs)):
             raise ValueError("an effect section cannot repeat the same cost")
 
@@ -1025,3 +1821,17 @@ class IntrigueOption:
                     raise ValueError(
                         "triggered Intrigue sections must be free and unconditional"
                     )
+
+
+# The Arrakeen Scouts module's own pieces (composed A7b): only a Scouts record
+# prints them (``abilities.Ability``).
+SCOUTS_ONLY_PIECES: Final = (
+    LoseFactionInfluence,
+    LoseHighestInfluence,
+    LoseGarrisonTroops,
+    RecallOtherAgent,
+    RecruitToConflict,
+    AcquireReserveCardToHand,
+    GainLowestInfluence,
+    GainSpiceWithHelixBonus,
+)

@@ -117,8 +117,12 @@ def test_labelling_seats_play_like_greedy_seats_and_record_aligned_rows(
     labellers = [LabellingAgent(teacher, seed=seat, config=config) for seat in range(4)]
     plain = [load_network_agent(teacher) for _ in range(4)]
     engine = UprisingRulesEngine()
-    state = engine.reset(ALL, 11)
-    chance = ChanceResolver(seed=11)
+    # Game 12; 11 until observation v33 grew by the B3d-2a review's 139
+    # columns, which drew the untrained teacher's weights anew: its game
+    # met its first Agent-effect decision (an ANCHOR row) only at decision
+    # 195, past this walk.
+    state = engine.reset(ALL, 12)
+    chance = ChanceResolver(seed=12)
     decisions = 0
     while decisions < 150 and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
@@ -288,7 +292,9 @@ def test_labelling_seats_at_a_mixed_full_table_choose_like_checkpoint_seats(
     A labelling seat is built as a tournament ``checkpoint:`` seat of the same
     seed is, so over the first ~200 decisions every one of its choices equals
     the plain seat's, while it records rows (each with the frame of its
-    decision) and the ``app_ai`` seats record nothing.
+    decision) and the ``app_ai`` seats record nothing. (The first 240 since
+    stage B2: the Conflict reward windows' rows are decisions too, and seat
+    1 decided only 19 times in the first 200.)
     """
 
     teacher = _checkpoint(tmp_path, FULL)
@@ -316,7 +322,7 @@ def test_labelling_seats_at_a_mixed_full_table_choose_like_checkpoint_seats(
     chance = ChanceResolver(seed=17)
     decisions = compared = 0
     seen_rows = dict.fromkeys(labelling, 0)
-    while decisions < 200 and state.phase is not GamePhase.FINISHED:
+    while decisions < 240 and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
             state = engine.apply(state, chance.resolve(decision)).state
@@ -421,10 +427,14 @@ def test_collect_to_directory_labels_mixed_games_of_the_games_own_catalog(
     config = LabelConfig(
         label_probability=0.05, anchor_probability=0.05, rollouts=1, candidates=2
     )
+    # Stage B3d-3 resized the catalog (the refusals are rows now), so the
+    # seeded teacher network, and with it the game of seed 2, changed: that
+    # game no longer meets a decision of untrained templates only. Seed 3's
+    # does (6 of them).
     summary = collect_to_directory(
         teacher,
         out,
-        start_seed=2,
+        start_seed=3,
         games=1,
         workers=1,
         config=config,

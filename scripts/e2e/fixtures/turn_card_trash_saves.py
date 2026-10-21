@@ -12,7 +12,7 @@ Four human seats, Immortality on, Leader draft off; every seat plays
 ``random.Random(seed).randrange`` over its engine legal actions and every
 hold is confirmed at once (the walk of held_choice_saves.py, all seats):
 
-- ``turn-card-pending`` (seed 243, round 6, seat 3): the Research Station
+- ``turn-card-pending`` (seed 596, round 10, seat 0): the Research Station
   board space's Research offers the trash while this turn's Prepare the Way
   still has its Agent box to resolve;
 - ``turn-card-done`` (seed 6, round 3, seat 3): this turn's Experimentation
@@ -20,8 +20,15 @@ hold is confirmed at once (the walk of held_choice_saves.py, all seats):
 
 Codec v147 changed every seat's legal list in a Reveal (a Reveal choice is a
 row of the Reveal), so seed 111 (codec v146) lost the pending shape; seeds
-1-340 walked in order meet it first at seed 243, and seed 6 still meets the
-done one first.
+1-340 walked in order met it first at seed 243. Codec v149 moved seed 243's
+game again; seeds 1-900 walked in order (2026-10-19) meet the pending shape
+at seeds 144, 538, 596, 603, 782 and 805, and seed 6 still meets the done one
+first. Seed 144 (the same Research Station trash, this turn's Prepare the
+Way) also offers its grafted Planned Coupling, whose box that trash expires
+as well, so the server flags two rows where this script lists only the
+pair; seed 538 has Prepare the Way as the grafted partner of a Bene Tleilax
+Researcher, not the played card; seed 596 is the first with the shape above
+and only the pair flagged (603 is the next, Research Station, round 8).
 
 The expected lists are read off the Agent turn's effect frame here, not
 through the server's ``turn_cards``, and the rows that lose a box
@@ -39,7 +46,9 @@ import re
 import sys
 from pathlib import Path
 
-from dune_imperium.core.actions import DomainAction
+from placement_walk import walk_step
+
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
@@ -47,7 +56,7 @@ from dune_imperium.server.sessions import GameSessionManager
 SEATS = ("human", "human", "human", "human")
 TRASH = "trash_optional_card"
 STEPS = 6_000
-CASES = (("turn-card-pending", 243, True), ("turn-card-done", 6, False))
+CASES = (("turn-card-pending", 596, True), ("turn-card-done", 6, False))
 
 STARTER_ID = re.compile(r"^player:\d+:starter:(.+):\d+$")
 SHARED_ID = re.compile(r"^(?:imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$")
@@ -92,18 +101,21 @@ def frame_lists(state) -> tuple[list[str], list[str]]:
     return played, pending
 
 
-def expires_box(engine, state, owner, card_id) -> bool:
-    """Whether trashing ``card_id`` with the fixture's action expires an
-    Agent box of that card in the engine's own step."""
+def expires_box(engine, state, action) -> bool:
+    """Whether the trash row ``action`` expires an Agent box of its card in
+    the engine's own step."""
 
-    action = DomainAction(
-        action_id=TRASH, actor=owner, arguments=(("card_id", card_id),)
-    )
+    card_id = dict(action.arguments)["card_id"]
     return any(
         event.kind == "agent_card_effect_expired"
         and dict(event.payload).get("card_id") == card_id
-        for event in engine.apply(state, action).events
+        for event in apply_whole(engine, state, action).events
     )
+
+
+# The arguments of an optional trash on the turn that name its trash icon
+# (stage B3c-2b, ``server.turn_cards.ICON_ARGUMENTS``).
+ICON_ARGUMENTS = ("printed", "printed_box", "source")
 
 
 def twin_rows(state, owner, actions) -> tuple[str, str] | None:
@@ -111,11 +123,13 @@ def twin_rows(state, owner, actions) -> tuple[str, str] | None:
 
     played, _ = frame_lists(state)
     in_play = state.players[owner].in_play
-    offered = [
-        dict(action.arguments)["card_id"]
-        for action in actions
-        if action.action_id == TRASH
-    ]
+    offered = list(
+        dict.fromkeys(
+            dict(action.arguments)["card_id"]
+            for action in actions
+            if action.action_id == TRASH
+        )
+    )
     for card in offered:
         if card not in played:
             continue
@@ -146,7 +160,7 @@ for name, seed, want_pending in CASES:
             summary = manager.confirm_turn(gid, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         pair = twin_rows(session.state, owner, actions)
         if pair is not None:
             played, pending = frame_lists(session.state)
@@ -161,16 +175,29 @@ for name, seed, want_pending in CASES:
                     "pending": want_pending,
                     "turn_card_ids": played,
                     "pending_box_card_ids": pending,
+                    # One row per card and trash icon (stage B3c-2b), in
+                    # the server's order.
                     "box_losing_trash": [
-                        {"action_id": TRASH, "card_id": card}
-                        for card in pair
-                        if expires_box(session.engine, session.state, owner, card)
+                        {
+                            "action_id": TRASH,
+                            "card_id": dict(action.arguments)["card_id"],
+                            **{
+                                key: value
+                                for key, value in action.arguments
+                                if key in ICON_ARGUMENTS
+                            },
+                        }
+                        for action in actions
+                        if action.action_id == TRASH
+                        and dict(action.arguments)["card_id"] in pair
+                        and expires_box(session.engine, session.state, action)
                     ],
                 }
                 break
-        summary = manager.apply_action(
-            gid, owner, summary["revision"], rng.randrange(len(actions))
-        )
+        # An Agent placement is drawn as one choice, as before stage B1
+        # (``placement_walk``), so the seeds keep their games.
+        # ``choice`` draws as ``randrange`` over the list did.
+        summary, _ = walk_step(manager, gid, owner, summary, rng.choice)
 
 missing = {name for name, _, _ in CASES} - set(found)
 if missing:

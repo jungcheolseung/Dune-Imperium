@@ -28,6 +28,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.agent_effects import (
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
@@ -46,6 +47,7 @@ from dune_imperium.rules.graft_boxes import other_box_state
 from dune_imperium.rules.optional_trash import (
     legal_optional_trash_actions,
     optional_trash_frame,
+    trash_printer,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 
@@ -245,7 +247,9 @@ def test_desert_tactics_does_not_offer_the_borrowed_card() -> None:
 def test_an_optional_trash_frame_does_not_offer_the_borrowed_card() -> None:
     owner = _owner((USURP, DAGGER))
     grafted = _usurp(_state(owner, REPLACEMENT_EYES), "arrakeen", REPLACEMENT_EYES)
-    pushed = grafted.push_decision(optional_trash_frame(0, "test"))
+    # The research space c3r3 prints the trash icon (stage B3d-3: the printer).
+    printer = trash_printer(Source.RESEARCH, "c3r3")
+    pushed = grafted.push_decision(optional_trash_frame(0, "test", printer=printer))
     targets = _trash_targets(legal_optional_trash_actions(pushed, 0))
     assert REPLACEMENT_EYES not in targets
     assert {USURP, DAGGER} <= targets

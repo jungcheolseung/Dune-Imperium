@@ -62,8 +62,8 @@ function cardPlayCues(entries) {
         if (event.kind === "reveal_started") {
           reveal.persuasion = payload.persuasion;
           reveal.strength = payload.strength;
-        } else if (typeof payload.card_ids === "string") {
-          reveal.cards = payload.card_ids.split(",").filter((id) => entryOf(id, "cards"));
+        } else if (Array.isArray(payload.card_ids)) {
+          reveal.cards = payload.card_ids.filter((id) => entryOf(id, "cards"));
         }
         continue;
       }
@@ -349,7 +349,7 @@ const TURN_END_ACTION_IDS = new Set(["finish_agent_turn", "finish_reveal"]);
 
 /* The steps that take a turn: an Agent sent, a Reveal, a turn-passing
    card (render.js OWN_TURN_ACTION_IDS). */
-const TURN_TAKING_ACTION_IDS = new Set(["agent_turn", "reveal_turn", "play_turn_start_card"]);
+const TURN_TAKING_ACTION_IDS = new Set(["place_agent", "reveal_turn", "play_turn_start_card"]);
 
 /* Events after which a seat's earlier steps belong to no turn still to
    come: a phase of its own opens, or the turn-passing card passed it. */

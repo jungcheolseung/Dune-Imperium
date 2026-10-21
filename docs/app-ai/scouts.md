@@ -84,14 +84,14 @@ Each Scouts cost/reward primitive is encoded on a *line archetype* (§2.2) eithe
 | `LoseHighestInfluence()` | `LoseHighestInfluenceAbility` **NEW** | max over highest tracks of `G(f,−1)` | `scouts_lose_influence(_to)` → least loss | GetBestInfluenceExchange loss side (influence §1.4) |
 | `TakeContract(n)` | `Uprising.GainContractCustomAbility` × n | `n·K` | `contract_market` → GetBestContract(forced) | generic §15 |
 | `TrashPersonalCard()` (optional reward) | `TrashCustomAbility` | `Trash` | `optional_trash` → GetCardToTrash(targets, 1.0) | generic §12.1 |
-| `TrashPersonalCard(hand_only, mandatory)` (cost) | `TrashFromHandCostAbility` **NEW** | junk in hand ? `trash_card_value()` : `Disc` | `scouts_trash_card` → GetCardToTrash(hand, −DBL_MAX) | GetCardToTrash (economy §11.2) |
+| `TrashCard(hand_only=True)` (cost; `TrashPersonalCard(hand_only, mandatory)` before cleanup-1) | `TrashFromHandCostAbility` **NEW** | junk in hand ? `trash_card_value()` : `Disc` | `scouts_trash_card` → GetCardToTrash(hand, −DBL_MAX) | GetCardToTrash (economy §11.2) |
 | `DiscardFromHand(n)` (cost) | `DiscardCostAbility` **NEW** | `n·Disc` | `scouts_discard` → GetDiscardOrder first | Corrinth City Agent, Delivery Agreement (imperium-a §2.8, §2.11) |
 | `TrashIntrigueCard()` (cost) | `TrashIntrigueCostAbility` **NEW** | `TI` | `scouts_trash_intrigue` → Branching Path pick | Branching Path (imperium-a §2.3) |
 | `LoseGarrisonTroops(n)` (cost) | `LoseGarrisonTroopsCostAbility` **NEW** | `Tr(−n)` | — | GetResourceValue negative amount |
 | `RecallOtherAgent()` | `Uprising.RecallAgentAbility` | `RA` | `scouts_recall_agent` → GetRecallAgent ?? first | Imperial Privilege (board §1.4.9) |
 | `AcquireReserveCardToHand(c)` | `AcquireReserveToHandAbility` **NEW** | `A(c)+CDV` | — | AcquireAbility (generic §4.1) + one card in hand |
 | `GenerateSpecimens(n)` | `Specimen` n | `Spec(n)` | — | ResearchTrack SpaceValue (immortality §2.10) |
-| `PaySpecimens(n)` (cost) | `SpecimenCost` n | `Spec(−n)` | — | GetSpecimenValue negative (immortality §2.4) |
+| `SpendSpecimens(n)` (cost; `PaySpecimens(n)` before cleanup-1) | `SpecimenCost` n | `Spec(−n)` | — | GetSpecimenValue negative (immortality §2.4) |
 | `Research()` | `Immortality.GainResearchCustomAbility` | `RV` | `research_advance` (Immortality port: SpaceValue + 1.0) | immortality §3.1 |
 | `AdvanceTleilaxu(1)` | `Immortality.GainTleilaxuInfluenceCustomAbility` | `TV(1)` | — | immortality §3.2 |
 | `AdvanceTleilaxu(2)` | `GainTwoTleilaxuAbility` **NEW** | `TV(2)` | — | PaySolariForTleilaxuInfluence (`TleilaxuValue(2)`, immortality §3.4) |

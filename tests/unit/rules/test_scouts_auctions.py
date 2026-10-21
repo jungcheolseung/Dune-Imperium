@@ -17,6 +17,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -106,9 +107,18 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=seat, arguments=tuple(sorted(arguments.items()))
     )
-    legal = ENGINE.legal_actions(state, seat)
+    # Stage B3d-2a: a window opened for one effect shows its target rows;
+    # the rules still take its whole actions (``apply_whole``).
+    legal = (*ENGINE.legal_actions(state, seat), *ENGINE.whole_actions(state, seat))
     assert action in legal, (action, legal)
-    return ENGINE.apply(state, action, legal_actions=legal).state
+    return apply_whole(ENGINE, state, action).state
+
+
+def _wholes(state: GameState, seat: int, action_id: str) -> list[DomainAction]:
+    """The whole actions of ``action_id`` the rules offer ``seat``; the window
+    shows them as target rows (stage B3d-2b)."""
+
+    return [a for a in ENGINE.whole_actions(state, seat) if a.action_id == action_id]
 
 
 def _resume(state: GameState) -> GameState:
@@ -144,12 +154,15 @@ def test_ranking_follows_the_app() -> None:
 def test_bids_are_sealed_until_the_last_seat_confirms() -> None:
     state = _draw(_base(), "highest_bidder_mid")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_BID
-    counts = [
+    counts = [dict(a.arguments)["count"] for a in _wholes(state, 0, "scouts_bid")]
+    assert counts == list(range(7))  # 0..6 Solari
+    # The window shows the same amounts as ``choose_count`` rows.
+    shown = [
         dict(a.arguments)["count"]
         for a in ENGINE.legal_actions(state, 0)
-        if a.action_id == "scouts_bid"
+        if a.action_id == "choose_count"
     ]
-    assert counts == list(range(7))  # 0..6 Solari
+    assert shown == counts
     state = _act(state, "scouts_bid", count=4)
     state = _act(state, "scouts_bid", count=3)  # changed its mind
     state = _act(state, "confirm_scouts_bid")
@@ -205,8 +218,7 @@ def _offered_retreats(state: GameState) -> list[tuple[int, int]]:
         seat = _owner(state)
         counts = [
             int(dict(a.arguments)["count"])
-            for a in ENGINE.legal_actions(state, seat)
-            if a.action_id == "scouts_retreat"
+            for a in _wholes(state, seat, "scouts_retreat")
         ]
         offered.append((seat, max(counts)))
         state = _act(state, "scouts_retreat", count=0)
@@ -258,9 +270,7 @@ def _with_troops(
 
 def _bid_counts(state: GameState, seat: int) -> list[int]:
     return [
-        int(dict(a.arguments)["count"])
-        for a in ENGINE.legal_actions(state, seat)
-        if a.action_id == "scouts_bid"
+        int(dict(a.arguments)["count"]) for a in _wholes(state, seat, "scouts_bid")
     ]
 
 
@@ -349,10 +359,15 @@ def test_critical_moment_calls_are_open_and_distinct() -> None:
 
 def test_the_log_hides_a_bid_from_the_other_seats() -> None:
     before = _draw(_base(), "highest_bidder_mid")
-    action = DomainAction(action_id="scouts_bid", actor=0, arguments=(("count", 4),))
+    # Stage B3d-2b: the bid is the window's ``choose_count`` row; the log
+    # seals it by the whole action it ends, ``scouts_bid``.
+    action = DomainAction(action_id="choose_count", actor=0, arguments=(("count", 4),))
     transition = ENGINE.apply(before, action)
     entry = log_step(before, transition.state, action, transition.events)
     assert entry.sealed and not entry.reveals
+    assert entry.whole == DomainAction(
+        action_id="scouts_bid", actor=0, arguments=(("count", 4),)
+    )
     assert _log_entry_json(0, entry, seat=2, finished=False)["arguments"] == {
         "count": "(비공개)"
     }
@@ -498,7 +513,11 @@ def test_the_heuristic_bids_once_then_confirms() -> None:
     while state.decision_stack[-1].kind == FrameKind.SCOUTS_BID:
         seat = _owner(state)
         legal = ENGINE.legal_actions(state, seat)
-        action = agent.choose_action(observe_state(state, seat), legal)
+        # Stage B3d-2b: the bid is a ``choose_count`` row, so the agent is
+        # given the state to score the whole ``scouts_bid`` it stands for.
+        action = agent.choose_action_with_state(
+            state, observe_state(state, seat), legal
+        )
         state = ENGINE.apply(state, action, legal_actions=legal).state
         steps += 1
     assert steps == 8  # a bid and a confirmation per seat
@@ -687,7 +706,7 @@ def test_spies_for_hire_may_draw_its_intrigue_before_placing_the_spy() -> None:
     assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
     post = next(
         dict(a.arguments)["post_id"]
-        for a in ENGINE.legal_actions(state, 1)
+        for a in ENGINE.whole_actions(state, 1)
         if a.action_id == "place_spy_on_space"
     )
     state = _act(state, "place_spy_on_space", post_id=post)
@@ -718,7 +737,7 @@ def test_spies_for_hire_spy_post_first_leaves_the_intrigue_its_own_step() -> Non
     intrigue = len(state.players[1].intrigue_cards)
     post = next(
         dict(a.arguments)["post_id"]
-        for a in ENGINE.legal_actions(state, 1)
+        for a in ENGINE.whole_actions(state, 1)
         if a.action_id == "place_spy_on_space"
     )
     state = _act(state, "place_spy_on_space", post_id=post)
@@ -752,9 +771,9 @@ def test_choam_negotiations_contract_first_leaves_the_intrigue_its_own_step() ->
     assert _owner(state) == 0
     intrigue = len(state.players[0].intrigue_cards)
     pick = next(
-        a for a in ENGINE.legal_actions(state, 0) if a.action_id == "take_contract"
+        a for a in ENGINE.whole_actions(state, 0) if a.action_id == "take_contract"
     )
-    state = ENGINE.apply(state, pick).state
+    state = apply_whole(ENGINE, state, pick).state
     assert len(state.players[0].active_contract_ids) == 1
     assert len(state.players[0].intrigue_cards) == intrigue
     assert ENGINE.legal_actions(state, 0) == (

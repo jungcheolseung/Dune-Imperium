@@ -14,7 +14,6 @@ from dune_imperium.content.bloodlines.sardaukar import (
     skill_tile_instance_ids,
 )
 from dune_imperium.content.bloodlines.tech import (
-    FLIP_ABILITIES,
     HIGH_COUNCIL_TECH_DISCOUNT,
     TECH_DISCOUNT_ICON,
     TECH_IDS,
@@ -32,7 +31,6 @@ __all__ = [
     "COMMANDER_SETUP_SPACE_IDS",
     "COMMANDER_STRENGTH",
     "COMMANDER_TOTAL",
-    "FLIP_ABILITIES",
     "HIGH_COUNCIL_TECH_DISCOUNT",
     "SKILLS",
     "SKILLS_BY_ID",

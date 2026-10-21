@@ -12,6 +12,11 @@ trash 아이콘은 hand, discard pile, in play 가운데 카드 1장을 대상�
 recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
 (docs/rules/player-turns.md:137).
 
+The paid trash is the black "[trash a card]" icon, optional [FAQ p. 3]. Inside
+its owner's own Agent turn it waits on the turn as rows with no refusal and
+lapses at the turn-end press (user decision 2026-10-17, cleanup-2b; OQ-095
+(2): an optional effect "holds no turn end back and offers no refusal").
+
 Every legal action these tests walk through comes from the engine's own
 dispatcher and must encode in the Epic catalog (``_legal``).
 """
@@ -23,6 +28,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import (
@@ -40,6 +46,10 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.reveal_turn import (
@@ -64,6 +74,9 @@ DAGGER = "player:0:starter:dagger:0"
 DIPLOMACY = "player:0:starter:diplomacy:0"
 RECONNAISSANCE = "player:0:starter:reconnaissance:0"
 CONVINCING = "player:0:starter:convincing_argument:0"
+# The source the paid arrow's trash waits under: the card's Agent box (round 1,
+# seat 0; cleanup-2c-2).
+_CONTROL_SOURCE = agent_card_source(1, 0, CONTROL)
 # docs/rules/board-spaces.md:75-79: the five Spice Trade spaces of the base
 # board; Deep Desert, Hagga Basin and Imperial Basin are Combat spaces.
 SPICE_TRADE_SPACES = frozenset(
@@ -120,13 +133,14 @@ def _state(
 
 
 def _legal(state: GameState, player: int = 0) -> tuple[DomainAction, ...]:
-    """The dispatcher's legal set, each action round-tripped through the codec."""
+    """The dispatcher's whole actions, each legal row round-tripped through
+    the codec."""
 
     codec = _codec(state.config)
-    actions = ENGINE.legal_actions(state, player)
-    for action in actions:
-        assert codec.decode(codec.encode(action), player) == action
-    return actions
+    for row in ENGINE.legal_actions(state, player):
+        assert codec.decode(codec.encode(row), player) == row
+    # The whole actions the rows stand for (stage B3), as the rules name them.
+    return ENGINE.whole_actions(state, player)
 
 
 def _find(state: GameState, action_id: str, **arguments: object) -> DomainAction:
@@ -139,11 +153,14 @@ def _find(state: GameState, action_id: str, **arguments: object) -> DomainAction
 
 
 def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
-    return ENGINE.apply(state, _find(state, action_id, **arguments)).state
+    return apply_whole(ENGINE, state, _find(state, action_id, **arguments)).state
 
 
 def _place(state: GameState, space_id: str) -> GameState:
-    return _apply(state, "agent_turn", card_id=CONTROL, space_id=space_id)
+    """The Agent turn's two steps (stage B1): pick the card, then the space."""
+
+    picked = _apply(state, "choose_agent_card", card_id=CONTROL)
+    return _apply(picked, "place_agent", space_id=space_id)
 
 
 def _ids(state: GameState) -> set[str]:
@@ -156,6 +173,25 @@ def _payment_ids(state: GameState) -> set[str]:
 
 def _context(state: GameState) -> dict[str, object]:
     return dict(state.decision_stack[-1].context)
+
+
+def _waiting(state: GameState) -> list[tuple[str, str]]:
+    """The (kind, source) of what waits on the owner's open turn frame."""
+
+    return [
+        (kind, source)
+        for kind, source, _value in turn_rows.pending(state.decision_stack[-1])
+    ]
+
+
+def _trash_offer(state: GameState) -> set[str]:
+    """The cards the waiting trash is offered for."""
+
+    return {
+        str(dict(action.arguments)["card_id"])
+        for action in _legal(state)
+        if action.action_id == "trash_optional_card"
+    }
 
 
 def test_control_the_spice_is_the_printed_starting_card() -> None:
@@ -175,10 +211,11 @@ def test_control_the_spice_goes_only_to_spice_trade_spaces() -> None:
         influence=Influence(spacing_guild=2),
     )
 
+    picked = _apply(_state(owner), "choose_agent_card", card_id=CONTROL)
     spaces = {
         dict(action.arguments)["space_id"]
-        for action in _legal(_state(owner))
-        if action.action_id == "agent_turn"
+        for action in _legal(picked)
+        if action.action_id == "place_agent"
     }
 
     assert spaces == SPICE_TRADE_SPACES
@@ -207,11 +244,13 @@ def test_paying_one_spice_trashes_a_card_and_recruits_a_troop(target: str) -> No
     assert seat.resources.spice == 1
     assert seat.troops_garrison == owner.troops_garrison + 1
     assert seat.troops_supply == owner.troops_supply - 1
-    # The black trash icon is still optional once the spice is paid, and
-    # reaches hand, discard pile and play, this card included [Main p. 20].
-    assert paid.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    offered = {dict(action.arguments).get("card_id") for action in _legal(paid)}
-    assert offered == {None, DAGGER, DIPLOMACY, RECONNAISSANCE, CONTROL}
+    # The black trash icon is still optional once the spice is paid: it waits
+    # on the Agent turn with no refusal, and reaches hand, discard pile and
+    # play, this card included [Main p. 20].
+    assert paid.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting(paid) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
+    assert "decline_optional_trash" not in _ids(paid)
+    assert _trash_offer(paid) == {DAGGER, DIPLOMACY, RECONNAISSANCE, CONTROL}
 
     trashed = _apply(paid, "trash_optional_card", card_id=target)
 
@@ -223,22 +262,48 @@ def test_paying_one_spice_trashes_a_card_and_recruits_a_troop(target: str) -> No
     assert top.kind == FrameKind.AGENT_EFFECTS
     assert _context(trashed)["pending_agent_effect"] is False
     assert _context(trashed)["troops_recruited"] == 1
+    # The trash is taken: nothing waits and it offers no further card.
+    assert _waiting(trashed) == []
+    assert not _trash_offer(trashed)
     # The arrow is chosen once: the box does not offer the payment again.
     assert not _payment_ids(trashed)
 
 
-def test_paying_then_declining_the_trash_still_recruits() -> None:
+def test_paying_then_leaving_the_trash_unused_still_recruits() -> None:
+    # "검은색 카드 폐기 아이콘을 사용하지 않는 경우에는 그 효과를 생략할 수
+    # 있다" [FAQ p. 3]: the paid trash is optional, so it offers no refusal and
+    # holds no turn end back; the press lapses it, the spice and the troop
+    # already paid out (OQ-095 (2)).
     owner = _owner((CONTROL, DAGGER), resources=Resources(spice=1))
-    paid = _apply(_place(_state(owner), "accept_contract"), "pay_agent_card_spice")
+    placed = _place(_state(owner), "accept_contract")
+    while "resolve_board_effect" in _ids(placed):
+        placed = _apply(placed, "resolve_board_effect")
+    paid = _apply(placed, "pay_agent_card_spice")
 
-    declined = _apply(paid, "decline_optional_trash")
+    assert paid.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting(paid) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
+    assert "decline_optional_trash" not in _ids(paid)
+    assert "finish_agent_turn" in _ids(paid)
+    assert not turn_rows.holds_the_end(paid, 0)
 
-    seat = declined.players[0]
+    finished = finish_agent_turn_result(paid)
+
+    seat = finished.state.players[0]
     assert seat.trashed == ()
     assert seat.resources.spice == 0
     assert seat.troops_garrison == owner.troops_garrison + 1
-    assert declined.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert _context(declined)["pending_agent_effect"] is False
+    assert [
+        (event.kind, event.event_id, dict(event.payload))
+        for event in finished.events
+        if event.kind == "optional_trash_lapsed"
+    ] == [
+        (
+            "optional_trash_lapsed",
+            f"{_CONTROL_SOURCE}:trash_lapsed",
+            {"player": 0},
+        )
+    ]
+    assert finished.state.decision_stack[-1].kind == FrameKind.TURN
 
 
 def test_an_unpaid_box_lapses_at_the_turn_end_and_gains_nothing() -> None:
@@ -279,7 +344,7 @@ def test_without_spice_no_payment_is_offered_until_a_spice_arrives() -> None:
     # (OQ-028): Imperial Basin's own spice, resolved first, pays it.
     gained = placed
     while gained.players[0].resources.spice < 1:
-        gained = ENGINE.apply(
+        gained = apply_whole(ENGINE, 
             gained,
             next(
                 action
@@ -307,12 +372,13 @@ def test_the_recruited_troop_deploys_from_a_combat_space() -> None:
     assert _deploy_counts(placed) == [1, 2]
 
     paid = _apply(placed, "pay_agent_card_spice")
-    resumed = _apply(paid, "decline_optional_trash")
 
-    # The new troop plus up to two more from the garrison [Main p. 10].
-    assert _context(resumed)["troops_recruited"] == 1
-    assert _deploy_counts(resumed) == [1, 2, 3]
-    deployed = _apply(resumed, "deploy_troops", count=3)
+    # The new troop plus up to two more from the garrison [Main p. 10], the
+    # unused trash waiting beside the deployment (no refusal to press first).
+    assert _waiting(paid) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
+    assert _context(paid)["troops_recruited"] == 1
+    assert _deploy_counts(paid) == [1, 2, 3]
+    deployed = _apply(paid, "deploy_troops", count=3)
     assert deployed.players[0].troops_conflict == 3
     assert deployed.players[0].troops_garrison == 3
 
@@ -328,20 +394,22 @@ def test_an_empty_supply_pays_the_spice_without_a_troop() -> None:
         troops_supply=0,
     )
     placed = _place(_state(owner), "accept_contract")
-    transition = ENGINE.apply(placed, _find(placed, "pay_agent_card_spice"))
+    transition = apply_whole(ENGINE, placed, _find(placed, "pay_agent_card_spice"))
 
     seat = transition.state.players[0]
     assert seat.resources.spice == 0
     assert seat.troops_garrison == owner.troops_garrison
-    assert transition.state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert transition.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting(transition.state) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
     assert any(event.kind == "troops_recruit_short" for event in transition.events)
 
 
-def test_the_trash_opens_on_the_open_turn_when_the_payment_is_the_last_effect() -> None:
+def test_the_trash_waits_on_the_open_turn_when_the_payment_is_the_last_effect() -> None:
     # Accept Contract's own icons first, so the paid box is the turn's last
     # effect. The turn stays open on its owner's effect frame until the owner
-    # presses the end (OQ-095 (1)), so the trash opens on top of it and the
-    # next seat's turn waits for the press.
+    # presses the end (OQ-095 (1)), so the trash waits on that frame as rows
+    # and the next seat's turn waits for the press. The optional trash holds
+    # nothing back: the end is offered beside it (OQ-095 (2)).
     owner = _owner((CONTROL, DAGGER), resources=Resources(spice=1))
     placed = _place(_state(owner), "accept_contract")
     while "resolve_board_effect" in _ids(placed):
@@ -349,12 +417,14 @@ def test_the_trash_opens_on_the_open_turn_when_the_payment_is_the_last_effect() 
 
     paid = _apply(placed, "pay_agent_card_spice")
 
-    assert paid.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert paid.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
-    assert "finish_agent_turn" not in _ids(paid)
+    assert paid.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert len(paid.decision_stack) == len(placed.decision_stack)
+    assert _waiting(paid) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
+    assert "finish_agent_turn" in _ids(paid)
     trashed = _apply(paid, "trash_optional_card", card_id=DAGGER)
     assert trashed.players[0].trashed == (DAGGER,)
     assert trashed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting(trashed) == []
     assert _context(trashed)["turn_owner"] == 0
     assert "finish_agent_turn" in _ids(trashed)
 
@@ -366,8 +436,8 @@ def test_the_trash_opens_on_the_open_turn_when_the_payment_is_the_last_effect() 
 def test_an_eliminate_allies_trash_after_the_last_effect_counts_for_the_turn() -> None:
     # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
     # Allies card]. The paid box is the turn's last effect (every other seat
-    # revealed), but the trash it offers opens on top of the owner's
-    # still-open effect frame, so its troops count for this turn (OQ-095 (3);
+    # revealed), but the trash it offers waits on the owner's still-open
+    # effect frame, so its troops count for this turn (OQ-095 (3);
     # before OQ-095 the turn had closed and they were kept off the fresh
     # turn frame that reopened for this same player, OQ-044 (d)). "그 turn에
     # 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다"
@@ -390,7 +460,8 @@ def test_an_eliminate_allies_trash_after_the_last_effect_counts_for_the_turn() -
     while "resolve_board_effect" in _ids(placed):
         placed = _apply(placed, "resolve_board_effect")
     paid = _apply(placed, "pay_agent_card_spice")
-    assert paid.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert paid.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _waiting(paid) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
 
     trashed = _apply(paid, "trash_optional_card", card_id=eliminate_allies)
 
@@ -425,9 +496,21 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
     # The paid trash uses the generic optional-trash frame; catalogs that
     # did not hold it (no Bloodlines, Immortality or Scouts) gain it only
     # with Epic Game Mode, so every other catalog is unchanged.
-    trash = DomainAction(
+    whole_trash = DomainAction(
         action_id="trash_optional_card", actor=0, arguments=(("card_id", CONTROL),)
     )
+    # Stage B3d-2a: the optional-trash window offers its trash by the card's
+    # target row, so the whole template is in no catalog.
+    (trash,) = steps_for(whole_trash, effect_row=False)
+    assert trash.action_id == "choose_personal_card"
+    # Stage B3a: the payment is the ``pay`` effect row of the card that
+    # prints it (an effect without a target is one row).
+    (pay,) = steps_for(DomainAction("pay_agent_card_spice", 0), "control_the_spice")
+    # Stage B3d-3: the window's refusal is the ``decline`` row naming the trash
+    # it answers and the card that prints the icon, not the whole template.
+    whole_decline = DomainAction(action_id="decline_optional_trash", actor=0)
+    (decline,) = steps_for(whole_decline, "control_the_spice", Source.AGENT_CARD)
+    assert decline.action_id == "decline"
     for config in (
         EPIC,
         RulesetConfig(epic_game=True, choam_module=True, promo_cards=True),
@@ -436,11 +519,19 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
         RulesetConfig(epic_game=True, arrakeen_scouts=True),
     ):
         codec = _codec(config)
-        for action in (
-            trash,
-            DomainAction(action_id="decline_optional_trash", actor=0),
-            DomainAction(action_id="pay_agent_card_spice", actor=0),
-        ):
+        for action in (trash, decline, pay):
             assert codec.decode(codec.encode(action), 0) == action
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole_trash)
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(whole_decline)
     base = {template.action_id for template in _codec(RulesetConfig()).catalog}
     assert "decline_optional_trash" not in base
+    with pytest.raises(ValueError, match="not present"):
+        _codec(RulesetConfig()).encode(decline)
+    # The card's own effect rows are an Epic catalog's alone, too (its
+    # Reveal gain's row since stage B3e-1).
+    assert not any(
+        dict(template.arguments).get("printed") == "control_the_spice"
+        for template in _codec(RulesetConfig()).catalog
+    )

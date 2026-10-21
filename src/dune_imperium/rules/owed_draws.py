@@ -26,6 +26,10 @@ flow"), and an acquire box's card ("Acquire Effects must be taken
 immediately"). Each is still its own step after its trigger, so the trigger
 stays undoable, but while one waits it is the owner's only action, on
 whatever frame of the owner's is open (``immediate_owed_draw_actions``).
+
+Since stage B3e-1 (user decision 2026-10-20, "그래 모두 나누자") each entity
+that earned a waiting draw is its own action, by what printed it (decision
+3 of docs/stage-b-plan.md), where one action per deck took the oldest.
 """
 
 from copy import replace
@@ -36,6 +40,11 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.effect_steps import (
+    named_whole,
+    owed_origin_printer,
+    whole_printer,
+)
 from dune_imperium.rules.frames import (
     OWED_CARD,
     OWED_INTRIGUE,
@@ -71,8 +80,9 @@ def legal_owed_draw_actions(
 ) -> tuple[DomainAction, ...]:
     """Offer the owner's waiting triggered draws on its turn's own frames.
 
-    One action per deck: the waiting draws of one deck are interchangeable
-    (the same deck, one card each), so each press takes the oldest. Offered
+    One action per deck and entity that earned a waiting draw (stage B3e-1,
+    decision 3: by what printed it), each press taking that entity's oldest
+    draw of the deck (``_draw_actions``). Offered
     on the turn's own frame and on the owner's optional "[trash a card]"
     frame above it, never on another frame, and only inside the seat's own
     turn (``draw_waits_for_owner``); a draw waiting anywhere else is paid by
@@ -95,7 +105,7 @@ def legal_owed_draw_actions(
     owed = state.players[player].owed_draws
     if not owed or not draw_waits_for_owner(state, player):
         return ()
-    return _deck_actions(player, {deck for deck, _, _ in owed})
+    return _draw_actions(state, player, immediate_only=False)
 
 
 def immediate_owed_draw_actions(
@@ -122,26 +132,82 @@ def immediate_owed_draw_actions(
     ):
         return ()
     owed = state.players[player].owed_draws
-    decks = {deck for deck, origin, _ in owed if draw_is_immediate(origin)}
-    if not decks or not draw_waits_for_owner(state, player):
+    if not any(draw_is_immediate(origin) for _, origin, _ in owed):
         return ()
-    return _deck_actions(player, decks)
+    if not draw_waits_for_owner(state, player):
+        return ()
+    return _draw_actions(state, player, immediate_only=True)
 
 
-def _deck_actions(player: int, decks: set[str]) -> tuple[DomainAction, ...]:
-    return tuple(
-        DomainAction(action_id=action_id, actor=player)
-        for action_id, deck in _ACTION_DECKS.items()
-        if deck in decks
-    )
+def _draw_actions(
+    state: GameState, player: int, *, immediate_only: bool
+) -> tuple[DomainAction, ...]:
+    """One action per deck and entity that earned a waiting draw of it
+    (``effect_steps.owed_origin_printer``), the decks in their older order and
+    each deck's entities by their oldest draw -- only the immediate draws
+    while one waits. Each deck's first is the press the older engine took
+    (``legacy_owed_draw_whole``)."""
+
+    owner = state.players[player]
+    actions: list[DomainAction] = []
+    for action_id, deck in _ACTION_DECKS.items():
+        for _, origin in _offered_entries(owner, deck, immediate_only=immediate_only):
+            whole = named_whole(
+                action_id, player, owed_origin_printer(state, player, origin)
+            )
+            if whole not in actions:
+                actions.append(whole)
+    return tuple(actions)
+
+
+def _offered_entries(
+    owner: PlayerState, deck: str, *, immediate_only: bool
+) -> list[tuple[int, str]]:
+    """The positions and origins of ``owner``'s waiting draws of ``deck`` a
+    press may take, oldest first."""
+
+    return [
+        (position, origin)
+        for position, (entry_deck, origin, _) in enumerate(owner.owed_draws)
+        if entry_deck == deck and (not immediate_only or draw_is_immediate(origin))
+    ]
 
 
 def apply_owed_draw(state: GameState, action: DomainAction) -> RuleResult:
-    """Draw the owner's next waiting card of the action's deck."""
+    """Draw the oldest waiting card of the action's deck that its entity
+    earned (only the immediate ones while one waits)."""
 
     if action not in legal_owed_draw_actions(state, action.actor):
         raise ValueError("action is not a legal owed draw")
-    return _draw_owed(state, action.actor, _ACTION_DECKS[action.action_id])
+    owner = state.players[action.actor]
+    immediate_only = any(draw_is_immediate(origin) for _, origin, _ in owner.owed_draws)
+    deck = _ACTION_DECKS[action.action_id]
+    printer = whole_printer(action)
+    index = next(
+        position
+        for position, origin in _offered_entries(
+            owner, deck, immediate_only=immediate_only
+        )
+        if owed_origin_printer(state, action.actor, origin) == printer
+    )
+    return _draw_owed_at(state, action.actor, index)
+
+
+def legacy_owed_draw_whole(
+    state: GameState, player: int, action_id: str
+) -> DomainAction | None:
+    """The press the engine before stage B3e-1 took for ``action_id``, one
+    action per deck (``next_owed_draw``), as the action naming that draw's
+    entity; None when the deck has none waiting. The scripted agents and
+    older records keep this pick (``agents.engine_order``, the records
+    bridge)."""
+
+    owner = state.players[player]
+    index = next_owed_draw(owner, _ACTION_DECKS[action_id])
+    if index is None:
+        return None
+    origin = owner.owed_draws[index][1]
+    return named_whole(action_id, player, owed_origin_printer(state, player, origin))
 
 
 def next_owed_draw(owner: PlayerState, deck: str) -> int | None:
@@ -166,11 +232,15 @@ def next_owed_draw(owner: PlayerState, deck: str) -> int | None:
 
 
 def _draw_owed(state: GameState, player: int, deck: str) -> RuleResult:
-    owner = state.players[player]
-    index = next_owed_draw(owner, deck)
+    index = next_owed_draw(state.players[player], deck)
     if index is None:
         raise ValueError("no draw of that deck waits")
-    source = owner.owed_draws[index][2]
+    return _draw_owed_at(state, player, index)
+
+
+def _draw_owed_at(state: GameState, player: int, index: int) -> RuleResult:
+    owner = state.players[player]
+    deck, _, source = owner.owed_draws[index]
     remaining = replace(
         owner,
         owed_draws=(*owner.owed_draws[:index], *owner.owed_draws[index + 1 :]),

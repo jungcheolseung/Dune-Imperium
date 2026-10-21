@@ -1,0 +1,39 @@
+{{ partial "breadcrumbs.html" . }}
+<div class="reading-layout">
+  <article class="article">
+    <header class="article-header">
+      <p class="eyebrow">{{ if eq .Section "devlog" }}{{ i18n "devlog" }}{{ else if eq .Section "posts" }}{{ i18n "posts" }}{{ else if eq .Section "updates" }}{{ i18n "updates" }}{{ else }}DUNE: IMPERIUM AI{{ end }}</p>
+      <h1>{{ .Title }}</h1>
+      <p class="article-description">{{ .Description }}</p>
+      {{ if eq .Section "devlog" }}
+        <p class="article-date">{{ i18n "workPeriod" }} {{ partial "work-period.html" . }} · {{ i18n "written" }} <time datetime="{{ .PublishDate.Format "2006-01-02" }}">{{ .PublishDate.Format (i18n "dateFormat") }}</time></p>
+        {{ if .Params.retrospective }}<p class="retrospective-note">{{ i18n "retrospective" }}</p>{{ end }}
+      {{ else }}<p class="article-date">{{ if in (slice "posts" "updates") .Section }}{{ i18n "published" }}{{ else }}{{ i18n "checked" }}{{ end }} <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format (i18n "dateFormat") }}</time></p>{{ end }}
+      {{ with .GetTerms "categories" }}<div class="category-links">{{ range . }}<a class="tag" href="{{ .RelPermalink }}">{{ partial "term-label.html" .LinkTitle }}</a>{{ end }}</div>{{ end }}
+    </header>
+    {{ if gt (len .Fragments.Headings) 0 }}<details class="mobile-toc toc"><summary>{{ i18n "contents" }}</summary>{{ replace .TableOfContents "id=\"TableOfContents\"" "id=\"MobileTableOfContents\"" | safeHTML }}</details>{{ end }}
+    <div class="prose">{{ .Content }}</div>
+    {{ if eq .Section "devlog" }}
+      <nav class="journal-pagination" aria-label="{{ i18n "journalNav" }}">
+        {{ with .PrevInSection }}<a rel="prev" href="{{ .RelPermalink }}"><small>{{ i18n "previousWork" }}</small><span>{{ .Title }}</span></a>{{ end }}
+        {{ with .NextInSection }}<a rel="next" href="{{ .RelPermalink }}"><small>{{ i18n "nextWork" }}</small><span>{{ .Title }}</span></a>{{ end }}
+        <a class="journal-all" href="{{ (site.GetPage "/devlog").RelPermalink }}">{{ i18n "journalAll" }}</a>
+      </nav>
+    {{ end }}
+    {{ if .Pages }}
+      <div class="section-children"><h2>{{ if eq .Section "about" }}{{ i18n "learnMore" }}{{ else }}{{ i18n "moreGuides" }}{{ end }}</h2>
+        {{ range .Pages.ByWeight }}<a href="{{ .RelPermalink }}"><span><strong>{{ .Title }}</strong><small>{{ .Description }}</small></span><span aria-hidden="true">↗</span></a>{{ end }}
+      </div>
+    {{ end }}
+    {{ if eq .Section "posts" }}
+      <aside class="related"><h2>{{ i18n "related" }}</h2><div class="story-grid">{{ range first 2 (where (where site.RegularPages "Section" "posts") "Permalink" "ne" .Permalink) }}{{ partial "card.html" . }}{{ end }}</div></aside>
+    {{ end }}
+  </article>
+  <aside class="page-aside" aria-label="{{ i18n "docNav" }}">
+    {{ if gt (len .Fragments.Headings) 0 }}<details class="toc" open><summary>{{ i18n "onPage" }}</summary>{{ .TableOfContents }}</details>{{ end }}
+    {{ if eq .Section "guides" }}
+      <nav class="guide-nav" aria-label="{{ i18n "guideList" }}"><p>{{ i18n "guides" }}</p>{{ range (site.GetPage "/guides").RegularPages.ByWeight }}<a href="{{ .RelPermalink }}"{{ if eq .RelPermalink $.RelPermalink }} aria-current="page"{{ end }}>{{ .Title }}</a>{{ end }}</nav>
+    {{ end }}
+    <a class="aside-help" href="{{ (site.GetPage "/help").RelPermalink }}">{{ i18n "needHelp" }}<br><strong>{{ i18n "helpLink" }} ↗</strong></a>
+  </aside>
+</div>

@@ -14,12 +14,10 @@ from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardBond,
     PersonalCardDiscardEffect,
     PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
@@ -68,7 +66,6 @@ class ImperiumCardEntry(DeckCardEntry):
     trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
-    reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
     play_data_complete: bool = False
     # Delivery Logistics: its Agent icons are those of the owner's
@@ -102,8 +99,6 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Spy target Factions require a place-Spy Agent effect")
         if min(self.reveal_persuasion, self.reveal_strength) < 0:
             raise ValueError("Imperium-card Reveal values must not be negative")
-        if len(self.reveal_effects) != len(set(self.reveal_effects)):
-            raise ValueError("Imperium-card Reveal effects must be unique")
         if len(self.reveal_choice_effects) != len(set(self.reveal_choice_effects)):
             raise ValueError("Imperium-card Reveal choices must be unique")
         if self.acquisition_effect is not None and not self.has_acquisition_bonus:
@@ -121,7 +116,6 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.trash_effect is not None
             or self.reveal_persuasion
             or self.reveal_strength
-            or self.reveal_effects
             or self.reveal_choice_effects
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
@@ -152,7 +146,6 @@ def _entry(
     trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
-    reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = (),
     play_data_complete: bool = False,
     agent_icons_from_contracts: bool = False,
@@ -202,7 +195,6 @@ def _entry(
         trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
-        reveal_effects=reveal_effects,
         reveal_choice_effects=reveal_choice_effects,
         play_data_complete=play_data_complete,
         agent_icons_from_contracts=agent_icons_from_contracts,
@@ -225,12 +217,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.BENE_GESSERIT,),
         agent_effect=PersonalCardAgentEffect.PLACE_SPY,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                persuasion=2,
-                minimum_spies_placed=2,
-            ),
-        ),
         play_data_complete=True,
     ),
     # Re-read from the card face 2026-09-19: the second Agent icon is City
@@ -313,12 +299,6 @@ IMPERIUM_CARDS: Final = (
             AgentIcon.SPICE_TRADE,
         ),
         agent_effect=(PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT),
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                persuasion=2,
-                required_faction_bond=PersonalCardBond.FREMEN,
-            ),
-        ),
         reveal_choice_effects=(
             PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH,
         ),
@@ -370,7 +350,6 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.SPACING_GUILD,),
         agent_icons=(AgentIcon.CITY,),
         agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        reveal_effects=(PersonalCardRevealEffect(spice=1),),
         reveal_choice_effects=(
             PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
         ),
@@ -431,12 +410,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
         agent_effect=PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                water=1,
-                required_faction_bond=PersonalCardBond.FREMEN,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -447,7 +420,6 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         agent_icons=(AgentIcon.SPICE_TRADE,),
         agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
-        reveal_effects=(PersonalCardRevealEffect(water=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -540,7 +512,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
         acquisition_effect=PersonalCardAcquisitionEffect.TAKE_CONTRACT,
-        reveal_effects=(PersonalCardRevealEffect(persuasion_per_completed_contract=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -554,7 +525,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
         ),
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(water=1, recruit_troops=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -567,7 +537,6 @@ IMPERIUM_CARDS: Final = (
         agent_effect=PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         reveal_persuasion=2,
         reveal_strength=1,
-        reveal_effects=(PersonalCardRevealEffect(strength_per_other_sword_card=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -621,12 +590,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.CITY,),
         agent_effect=PersonalCardAgentEffect.GAIN_WATER,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                spice=2,
-                required_faction_bond=PersonalCardBond.FREMEN,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -649,7 +612,6 @@ IMPERIUM_CARDS: Final = (
         acquisition_effect=PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD,
         reveal_persuasion=2,
         reveal_strength=2,
-        reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -659,17 +621,6 @@ IMPERIUM_CARDS: Final = (
         4,
         agent_icons=(AgentIcon.CITY,),
         agent_effect=PersonalCardAgentEffect.GAIN_TWO_SOLARI,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                persuasion=2,
-                requires_high_council=True,
-            ),
-            PersonalCardRevealEffect(
-                persuasion=1,
-                requires_high_council=True,
-                requires_swordmaster=True,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -683,7 +634,6 @@ IMPERIUM_CARDS: Final = (
         agent_effect=PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
         acquisition_effect=PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI,
         reveal_persuasion=2,
-        reveal_effects=(PersonalCardRevealEffect(solari=2),),
         play_data_complete=True,
     ),
     _entry(
@@ -695,7 +645,6 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.SPACING_GUILD,),
         agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.TAKE_CONTRACT,
-        reveal_effects=(PersonalCardRevealEffect(spice=2),),
         reveal_choice_effects=(
             PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
         ),
@@ -726,7 +675,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.CITY,),
         agent_effect=(PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN),
         reveal_strength=1,
-        reveal_effects=(PersonalCardRevealEffect(spice=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -745,7 +693,6 @@ IMPERIUM_CARDS: Final = (
             Faction.FREMEN,
         ),
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(solari=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -761,12 +708,6 @@ IMPERIUM_CARDS: Final = (
         # Emperor card you revealed (including this one)" [card face]. There
         # is no separate base sword icon, so reveal_strength must stay 0.
         reveal_persuasion=2,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                strength=1,
-                per_revealed_faction=PersonalCardBond.EMPEROR,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -790,13 +731,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         reveal_strength=2,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                influence=1,
-                influence_faction=PersonalCardBond.FREMEN,
-                required_faction_bond=PersonalCardBond.FREMEN,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -820,12 +754,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                spice=2,
-                requires_spying_on_maker_space=True,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -836,13 +764,6 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
         agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.FREMEN),
         agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
-        reveal_effects=(
-            PersonalCardRevealEffect(water=1),
-            PersonalCardRevealEffect(
-                persuasion=2,
-                required_faction_bond=PersonalCardBond.FREMEN,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -905,7 +826,6 @@ IMPERIUM_CARDS: Final = (
         agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT,
         acquisition_effect=(PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE),
         reveal_persuasion=2,
-        reveal_effects=(PersonalCardRevealEffect(spice=2),),
         play_data_complete=True,
     ),
     _entry(
@@ -919,12 +839,6 @@ IMPERIUM_CARDS: Final = (
         # "2 Persuasion for each Fremen card you have in play (including
         # this one)" [Stilgar, The Devoted card]: Agent-turn cards count
         # [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes].
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                persuasion=2,
-                per_in_play_faction=PersonalCardBond.FREMEN,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -974,7 +888,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
         ),
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(draw_intrigue=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -1036,7 +949,6 @@ IMPERIUM_CARDS: Final = (
         copies=2,
         factions=(Faction.FREMEN,),
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
         # "Fremen Bond: You may deploy or retreat one of your troops."
         # [Unswerving Loyalty card]
         reveal_choice_effects=(
@@ -1144,9 +1056,6 @@ IMPERIUM_CARDS: Final = (
         # "Command (6+): Combat icon" — deploy in this Reveal as though at a
         # Combat space [Bloodlines p. 5] once the Reveal generates six or
         # more Persuasion [Bloodlines pp. 5, 12].
-        reveal_effects=(
-            PersonalCardRevealEffect(grants_combat_icon=True, requires_command=True),
-        ),
         play_data_complete=True,
     ),
     # Bloodlines Imperium cards (2026-09-07): 25 retail + 5 CHOAM-only + 2
@@ -1178,11 +1087,6 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.EMPEROR,),
         agent_icons=(AgentIcon.LANDSRAAD,),
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                solari=3, requires_command=True, trashes_self=True
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1311,11 +1215,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
         ),
         reveal_persuasion=2,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                strength=2, required_faction_bond=PersonalCardBond.FREMEN
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1332,13 +1231,6 @@ IMPERIUM_CARDS: Final = (
             AgentIcon.LANDSRAAD,
         ),
         agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY,
-        reveal_effects=(
-            PersonalCardRevealEffect(persuasion=1, recruit_troops=1),
-            PersonalCardRevealEffect(
-                grants_combat_icon=True,
-                required_faction_bond=PersonalCardBond.FREMEN,
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1351,9 +1243,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
         agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(recruit_troops=2, requires_command=True),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1375,11 +1264,6 @@ IMPERIUM_CARDS: Final = (
         ),
         agent_effect=PersonalCardAgentEffect.DRAW_INTRIGUE_CARD,
         reveal_persuasion=2,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                persuasion=1, solari=3, minimum_garrisoned_units=4
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1480,7 +1364,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND
         ),
         reveal_persuasion=2,
-        reveal_effects=(PersonalCardRevealEffect(water=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -1494,9 +1377,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.LANDSRAAD),
         agent_effect=PersonalCardAgentEffect.GAIN_TWO_SOLARI,
         reveal_strength=2,
-        reveal_effects=(
-            PersonalCardRevealEffect(persuasion=2, requires_commander_in_conflict=True),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1511,11 +1391,6 @@ IMPERIUM_CARDS: Final = (
         agent_effect=PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN,
         reveal_persuasion=1,
         reveal_strength=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                persuasion=1, required_faction_bond=PersonalCardBond.FREMEN
-            ),
-        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1528,7 +1403,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.EMPEROR, AgentIcon.CITY),
         trash_effect=PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER,
         reveal_persuasion=2,
-        reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
         play_data_complete=True,
     ),
     _entry(
@@ -1557,7 +1431,6 @@ IMPERIUM_CARDS: Final = (
         ),
         reveal_persuasion=1,
         reveal_strength=2,
-        reveal_effects=(PersonalCardRevealEffect(spice=2, requires_command=True),),
         play_data_complete=True,
     ),
     _entry(
@@ -1590,7 +1463,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.GENERATE_SPECIMEN,
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(spice=1, minimum_genetic_markers=1),),
         play_data_complete=True,
     ),
     # Bene Tleilax Researcher: Landsraad; GRAFT: Research; Reveal: 1
@@ -1605,10 +1477,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.LANDSRAAD,),
         agent_effect=PersonalCardAgentEffect.RESEARCH,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(persuasion=1, minimum_genetic_markers=1),
-            PersonalCardRevealEffect(persuasion=1, minimum_genetic_markers=2),
-        ),
         play_data_complete=True,
     ),
     # Blank Slate: Landsraad, City, Spice Trade; "If grafted: this has" the
@@ -1666,9 +1534,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
         agent_effect=PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(tleilaxu=1, minimum_genetic_markers=1),
-        ),
         play_data_complete=True,
     ),
     # For Humanity (Bene Gesserit): BG, Landsraad, Spice Trade; Agent:
@@ -1710,7 +1575,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO
         ),
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(solari=1),),
         play_data_complete=True,
     ),
     # Imperium Ceremony (Emperor, Spacing Guild): Emperor, Guild, Landsraad;
@@ -1780,11 +1644,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND
         ),
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                strength=2, required_faction_bond=PersonalCardBond.FREMEN
-            ),
-        ),
         play_data_complete=True,
     ),
     # Long Reach (Bene Gesserit): with another Bene Gesserit card in play
@@ -1801,7 +1660,6 @@ IMPERIUM_CARDS: Final = (
         icon_condition=PersonalCardIconCondition.BENE_GESSERIT_BOND,
         agent_effect=PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE,
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(draw_intrigue=1),),
         play_data_complete=True,
     ),
     # Occupation (Guild): acquire box 3 troops; the four Faction icons plus
@@ -1825,9 +1683,6 @@ IMPERIUM_CARDS: Final = (
             AgentIcon.SPICE_TRADE,
         ),
         agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON,
-        reveal_effects=(
-            PersonalCardRevealEffect(water=1, spice=1, recruit_troops=1),
-        ),
         play_data_complete=True,
     ),
     # Organ Merchants: City, Spice Trade; Agent: "specimen -> 4 Solari";
@@ -1841,7 +1696,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(solari=1),),
         play_data_complete=True,
     ),
     # Planned Coupling (Bene Gesserit): BG icon; GRAFT: draw a card;
@@ -1941,7 +1795,6 @@ IMPERIUM_CARDS: Final = (
         acquisition_effect=PersonalCardAcquisitionEffect.RESEARCH,
         agent_icons=(AgentIcon.SPICE_TRADE,),
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(specimens=1),),
         play_data_complete=True,
     ),
     # Stillsuit Manufacturer (Fremen): Fremen, City; Agent: water —AND—
@@ -1959,11 +1812,6 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
         ),
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                spice=2, required_faction_bond=PersonalCardBond.FREMEN
-            ),
-        ),
         play_data_complete=True,
     ),
     # Throne Room Politics (Emperor, Bene Gesserit): Emperor; Agent: a troop
@@ -1978,11 +1826,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.EMPEROR,),
         agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH,
         reveal_persuasion=1,
-        reveal_effects=(
-            PersonalCardRevealEffect(
-                influence=1, influence_faction=PersonalCardBond.BENE_GESSERIT
-            ),
-        ),
         play_data_complete=True,
     ),
     # Tleilaxu Master (no Faction): Landsraad, Spice Trade; Agent: "[one
@@ -1999,7 +1842,6 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
         reveal_persuasion=1,
-        reveal_effects=(PersonalCardRevealEffect(research=2),),
         play_data_complete=True,
     ),
     # Tleilaxu Surgeon (no Faction): Emperor, City; Agent: "2 specimens ->

@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import (
@@ -31,6 +32,7 @@ from dune_imperium.core.observation import observe_state
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import advance_after_effect
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue import legal_intrigue_choice_actions
 from dune_imperium.rules.navigation import (
@@ -41,7 +43,10 @@ from dune_imperium.rules.navigation import (
     legal_navigation_setup_actions,
     navigation_play_is_queued,
 )
-from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.reveal_turn import (
+    GENERATED_PERSUASION_KEY,
+    begin_reveal_turn,
+)
 from dune_imperium.rules.setup import create_initial_state
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -146,7 +151,7 @@ def test_strange_form_and_the_navigation_setup_choice() -> None:
     )
     started = engine.reset(BLOODLINES, seed=5)
     assert started.phase is GamePhase.SETUP
-    assert {a.action_id for a in engine.legal_actions(started, 0)} == {
+    assert {a.action_id for a in engine.whole_actions(started, 0)} == {
         "place_navigation_card"
     }
 
@@ -175,12 +180,18 @@ def test_hungry_for_spice_draws_once_per_turn() -> None:
     assert fed.players[0].hungry_for_spice_granted_turn is True
     again = grant_hungry_for_spice(RuleResult(state=fed)).state
     assert len(again.players[0].owed_draws) == 1
-    draw = DomainAction(action_id="draw_owed_card", actor=0)
-    assert ENGINE.legal_actions(again, 0).count(draw) == 1
-    drawn = ENGINE.apply(again, draw).state
+    # Hungry for Spice is the leader's ability, so the draw names the leader
+    # (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_owed_card",
+        actor=0,
+        arguments=(("printed", "steersman_y_rkoon"), ("source", "leader")),
+    )
+    assert ENGINE.whole_actions(again, 0).count(draw) == 1
+    drawn = apply_whole(ENGINE, again, draw).state
     assert drawn.players[0].hand == (DAGGER,)
     assert drawn.players[0].owed_draws == ()
-    assert draw not in ENGINE.legal_actions(drawn, 0)
+    assert draw not in ENGINE.whole_actions(drawn, 0)
 
 
 def _with_spice(state: GameState, spice: int) -> GameState:
@@ -272,13 +283,14 @@ def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
     def act(current: GameState, action_id: str, **arguments: object) -> GameState:
         action = next(
             action
-            for action in ENGINE.legal_actions(current, 0)
+            for action in ENGINE.whole_actions(current, 0)
             if action.action_id == action_id
             and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
         )
-        return ENGINE.apply(current, action).state
+        return apply_whole(ENGINE, current, action).state
 
-    state = act(state, "agent_turn", card_id=ambassador, space_id="assembly_hall")
+    state = act(state, "choose_agent_card", card_id=ambassador)
+    state = act(state, "place_agent", space_id="assembly_hall")
     state = act(state, "resolve_board_effect")
     # The visit's optional Acquire Tech needs no refusal and lapses at the
     # turn end (OQ-095 (2), user ruling 2026-10-14).
@@ -290,13 +302,13 @@ def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
     # (user ruling 2026-10-10, OQ-106), holding the turn's end back.
     frame = resolved.decision_stack[-1]
     assert frame.kind == "agent_effects"
-    assert [a.action_id for a in ENGINE.legal_actions(resolved, 0)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(resolved, 0)] == [
         "draw_owed_card"
     ]
     assert resolved.players[0].hand == ()
     assert resolved.players[0].hungry_for_spice_granted_turn is True
     resolved = act(resolved, "draw_owed_card")
-    assert [a.action_id for a in ENGINE.legal_actions(resolved, 0)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(resolved, 0)] == [
         "finish_agent_turn"
     ]
     assert resolved.players[0].hand == (DAGGER,)
@@ -403,7 +415,7 @@ def test_card_one_gains_influence_with_a_different_faction_at_two() -> None:
     paid = _play_option(opened, 1)
     factions = legal_intrigue_choice_actions(paid, 0)
     assert [dict(a.arguments)["faction"] for a in factions] == ["fremen"]
-    done = ENGINE.apply(paid, factions[0]).state
+    done = apply_whole(ENGINE, paid, factions[0]).state
     assert done.players[0].influence.fremen == 3
     assert done.players[0].resources.solari == 0
 
@@ -431,6 +443,42 @@ def test_card_three_in_slot_four_adds_permanent_reveal_persuasion() -> None:
     )
     plain = _play_option(early, 0)
     assert plain.players[0].reveal_persuasion_bonus == 0
+
+
+def test_card_three_from_slot_four_pays_the_reveal_it_is_played_in() -> None:
+    """ "For the rest of the game, during each of your Reveal turns, [1
+    Persuasion]" [Navigation Card 3 card]: played in the owner's own Reveal
+    turn (Influence 2 reached during it), that Reveal is one of them, so its
+    Persuasion goes up at once, as generated Persuasion (Command (6+)
+    [Bloodlines p. 5]), and the seat keeps the bonus for later Reveals
+    (OQ-110, project reading; the Reveal used to pay nothing until the
+    next one)."""
+
+    slots = (_card(6), _card(7), _card(9), _card(3))
+    owner = _steersman(slots, navigation_played=(), influence=Influence(fremen=1))
+    played = replace(
+        owner,
+        navigation_slots=(_card(3),),
+        navigation_played=slots[:3],
+        hand=(DAGGER,),
+    )
+    revealed = begin_reveal_turn(
+        _turn_state(played), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 0
+    opened = _reach_two(revealed, Faction.FREMEN)
+    assert opened.players[0].navigation_active_slot == 4
+    done = _play_option(opened, 0)
+    assert done.players[0].reveal_persuasion_bonus == 1
+    assert done.players[0].resources.solari == 2
+    reveal = next(
+        frame
+        for frame in reversed(done.decision_stack)
+        if frame.kind == FrameKind.REVEAL
+    )
+    context = dict(reveal.context)
+    assert context["persuasion"] == 1
+    assert context[GENERATED_PERSUASION_KEY] == 1
 
 
 def test_card_four_in_slot_one_buys_the_spice_must_flow_for_water() -> None:
@@ -502,7 +550,7 @@ def test_a_card_with_nothing_playable_opens_with_only_the_spend() -> None:
     opened = _reach_two(_turn_state(owner, config=tech), Faction.EMPEROR)
     assert opened.decision_stack[-1].kind == "navigation_choice"
     decline = DomainAction(action_id="decline_navigation", actor=0)
-    assert ENGINE.legal_actions(opened, 0) == (decline,)
+    assert ENGINE.whole_actions(opened, 0) == (decline,)
     found = unavailable_choices(opened, 0, (decline,))
     assert found is not None
     listed = found["rows"]
@@ -578,10 +626,10 @@ def test_card_five_pays_spice_for_trashing_a_costed_card() -> None:
         for a in options
         if dict(a.arguments).get("card_id") == "imperium:guild_envoy:0"
     )
-    paid = ENGINE.apply(trashing, guild).state
+    paid = apply_whole(ENGINE, trashing, guild).state
     assert paid.players[0].resources.spice == 2
     dagger = next(a for a in options if dict(a.arguments).get("card_id") == DAGGER)
-    unpaid = ENGINE.apply(trashing, dagger).state
+    unpaid = apply_whole(ENGINE, trashing, dagger).state
     assert unpaid.players[0].resources.spice == 0
 
 
@@ -808,7 +856,7 @@ def test_navigation_trigger_from_the_turns_last_effect_credits_this_turn() -> No
     trash = next(
         a for a in options if dict(a.arguments).get("card_id") == eliminate_allies
     )
-    result = ENGINE.apply(played, trash).state
+    result = apply_whole(ENGINE, played, trash).state
 
     # The trash itself, and Eliminate Allies' troops, in the open turn.
     assert result.players[0].troops_garrison == 3 + 2
@@ -816,7 +864,7 @@ def test_navigation_trigger_from_the_turns_last_effect_credits_this_turn() -> No
     assert top.kind == "agent_effects"
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context)["troops_recruited"] == 2
-    assert [a.action_id for a in ENGINE.legal_actions(result, 0)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(result, 0)] == [
         "finish_agent_turn"
     ]
 
@@ -860,7 +908,7 @@ def test_navigation_trigger_with_seats_left_credits_the_owners_open_turn() -> No
     assert top.kind == "agent_effects"
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context)["troops_recruited"] == 1
-    assert [a.action_id for a in ENGINE.legal_actions(played, 0)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(played, 0)] == [
         "finish_agent_turn"
     ]
 
@@ -925,13 +973,14 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     def act(current: GameState, action_id: str, **arguments: object) -> GameState:
         action = next(
             a
-            for a in ENGINE.legal_actions(current, 0)
+            for a in ENGINE.whole_actions(current, 0)
             if a.action_id == action_id
             and all(dict(a.arguments).get(k) == v for k, v in arguments.items())
         )
-        return ENGINE.apply(current, action).state
+        return apply_whole(ENGINE, current, action).state
 
-    visited = act(state, "agent_turn", card_id=dagger, space_id="assembly_hall")
+    visited = act(state, "choose_agent_card", card_id=dagger)
+    visited = act(visited, "place_agent", space_id="assembly_hall")
     visited = act(visited, "resolve_board_effect", effect="intrigue")
     bought = act(visited, "acquire_tech", tech_id="glowglobes")
     bought = act(bought, "resolve_tech_acquire_effect", faction="emperor")
@@ -953,7 +1002,7 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     assert top.kind == "agent_effects"
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context)["troops_recruited"] == 1
-    assert [a.action_id for a in ENGINE.legal_actions(played, 0)] == [
+    assert [a.action_id for a in ENGINE.whole_actions(played, 0)] == [
         "finish_agent_turn"
     ]
 
@@ -964,7 +1013,8 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     assert dict(top.context).get("troops_recruited") in (None, 0)
 
     # The next Agent turn's Combat deploy: only the two garrison troops.
-    placed = act(closed, "agent_turn", card_id=desert_planet, space_id="hagga_basin")
+    picked = act(closed, "choose_agent_card", card_id=desert_planet)
+    placed = act(picked, "place_agent", space_id="hagga_basin")
     counts = [
         dict(action.arguments)["count"]
         for action in legal_combat_deployments(placed, 0)

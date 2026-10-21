@@ -88,13 +88,14 @@ AI끼리의 실력 비교는 [docs/evaluation/](docs/evaluation/)에 있다.
 | [implementation-audits/](docs/implementation-audits/) | 카드·Leader·계약 등 구현 감사 |
 | [card-data-sources.md](docs/card-data-sources.md) | 카드 데이터 전사 출처 |
 | [evaluation/](docs/evaluation/) | 기준선·대회·학습 측정 기록 |
+| [website/README.md](website/README.md) | 프로젝트 웹사이트의 실행·검증·Pages 배포와 개발일지 작성 방법 |
 | `docs/*-design.md`, `docs/*-plan.md` | 기능별 설계와 계획(원격, Arrakeen Scouts, 앱 AI, 런처, UI 등) |
 
 ## 개발 환경
 
 ```bash
 uv sync --extra rl --extra ui --extra train
-uv run pytest
+uv run pytest -n 8          # 작업 프로세스 8개(pytest-xdist); 코어가 적으면 줄인다
 uv run ruff check src tests
 uv run mypy src tests
 ```

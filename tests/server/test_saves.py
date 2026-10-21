@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
+from dune_imperium.agents.agent_turn_steps import steps_after
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.server.persistence import (
     SAVE_FORMAT,
     SAVE_FORMAT_VERSION,
@@ -338,17 +341,42 @@ def test_a_game_of_ai_seats_only_is_reviewed_with_its_whole_log() -> None:
     # No seat could take anything back: one live log entry per step, in order.
     assert [entry["index"] for entry in log] == list(range(len(steps)))
     assert not any(entry["type"] == "undo" or entry["undone"] for entry in log)
-    for step, entry in zip(steps, log, strict=True):
+    # Stage B3: the review's timeline names each step as the log does: the
+    # last step of a waiting effect as the whole action it ends, a step that
+    # only picks toward it marked ``pick``. Replay the steps to check that.
+    session = manager._sessions[game_id]
+    engine = session.engine
+    state = engine.reset(session.config, session.game_seed)
+    picks = 0
+    for step, entry, recorded in zip(steps, log, session.steps, strict=True):
         assert entry["type"] == step["type"]
         if step["type"] == "chance":
             assert entry["decision_id"] == step["decision_id"]
             assert entry["values"] == step["values"]
         else:
-            assert (entry["actor"], entry["action_id"]) == (
-                step["actor"],
-                step["action_id"],
-            )
-            assert entry["arguments"] == step["arguments"]
+            assert isinstance(recorded, DomainAction)
+            shown = (entry["actor"], entry["action_id"], entry["arguments"])
+            label = (step["actor"], step["action_id"], step["arguments"])
+            assert label == shown
+            assert step.get("pick") == entry.get("pick")
+            row = (recorded.actor, recorded.action_id, dict(recorded.arguments))
+            picks += bool(step.get("pick"))
+            if step.get("pick") or label == row:
+                assert label == row
+            else:
+                # A whole action that this step ends: the rules offer it
+                # here, and this step is its last (and only remaining) one.
+                (whole,) = (
+                    candidate
+                    for candidate in engine.whole_actions(state, recorded.actor)
+                    if candidate.action_id == entry["action_id"]
+                    and dict(candidate.arguments) == entry["arguments"]
+                )
+                assert whole.actor == step["actor"]
+                assert steps_after(state, whole) == 0
+                assert first_step(state, whole) == recorded
+        state = engine.apply(state, recorded).state
+    assert picks > 0  # the heuristic game picks effects with targets
     # Nothing is redacted once the game is over (OQ-010 ruling 4): a draw
     # names its cards to every reader, whichever seat is reviewed.
     kinds = {_text(event["kind"]) for entry in log for event in _rows(entry["events"])}

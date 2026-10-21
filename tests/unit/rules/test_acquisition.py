@@ -5,16 +5,21 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
-    ContractCondition,
-    ContractConditionKind,
     ContractDefinition,
-    ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
@@ -30,6 +35,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
@@ -43,12 +49,16 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import (
+    agent_card_source,
+    current_agent_effect_context,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.owed_draws import apply_owed_draw
@@ -364,8 +374,12 @@ def test_price_is_no_object_acquisition_gains_two_solari() -> None:
     assert result.state.players[0].resources.solari == 2
     assert tuple(event.kind for event in result.events) == (
         "card_acquired",
-        "acquisition_resource_gained",
+        "resources_gained",
     )
+    gained = result.events[1]
+    assert gained.event_id == f"{dict(gained.payload)['source']}:resources"
+    assert dict(gained.payload)["solari"] == 2
+    assert ":acquire:" in str(dict(gained.payload)["source"])
 
 
 def _price_agent_state(
@@ -429,11 +443,11 @@ def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
     engine = UprisingRulesEngine()
     action = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == sardaukar
     )
 
-    result = engine.apply(state, action)
+    result = apply_whole(engine, state, action)
 
     assert result.state.players[0].hand == (sardaukar,)
     # Taken face up from the Row straight to hand, so the identity stays
@@ -505,7 +519,8 @@ def test_price_is_no_object_buys_its_owners_set_aside_card_at_the_printed_cost()
     # card is never offered [FAQ p. 3].
     assert offered == [survival]
 
-    result = UprisingRulesEngine().apply(
+    result = apply_whole(
+        UprisingRulesEngine(),
         state,
         DomainAction(
             action_id="acquire_imperium_with_solari",
@@ -547,32 +562,32 @@ def test_price_is_no_object_spy_acquisition_does_not_stall_the_agent_turn() -> N
     for action_id in ("resolve_board_effect", "resolve_faction_influence"):
         action = next(
             candidate
-            for candidate in engine.legal_actions(state, 0)
+            for candidate in engine.whole_actions(state, 0)
             if candidate.action_id == action_id
         )
-        state = engine.apply(state, action).state
+        state = apply_whole(engine, state, action).state
     acquire = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if dict(candidate.arguments).get("instance_id") == strike_fleet
     )
-    state = engine.apply(state, acquire).state
+    state = apply_whole(engine, state, acquire).state
     placement = next(
         candidate
-        for candidate in engine.legal_actions(state, 0)
+        for candidate in engine.whole_actions(state, 0)
         if candidate.action_id == "place_acquisition_spy"
     )
-    placed = engine.apply(state, placement).state
+    placed = apply_whole(engine, state, placement).state
 
     assert placed.players[0].hand == (strike_fleet,)
     assert len(placed.players[0].spy_post_ids) == 1
     assert placed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert DomainAction("finish_agent_turn", 0) in engine.legal_actions(placed, 0)
+    assert DomainAction("finish_agent_turn", 0) in engine.whole_actions(placed, 0)
     ended = finish_agent_turn(placed)
     assert ended.decision_stack[-1].kind == "turn"
     assert isinstance(ended.decision_stack[-1].decision, PlayerDecision)
     assert ended.decision_stack[-1].decision.owner == 1
-    assert engine.legal_actions(ended, 1)
+    assert engine.whole_actions(ended, 1)
 
 
 def test_price_is_no_object_can_take_interstellar_trade_and_open_contract_market(
@@ -605,11 +620,11 @@ def test_price_is_no_object_can_take_interstellar_trade_and_open_contract_market
     engine = UprisingRulesEngine()
     action = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == interstellar
     )
 
-    acquired = engine.apply(state, action)
+    acquired = apply_whole(engine, state, action)
 
     assert acquired.state.players[0].hand == (interstellar,)
     assert acquired.state.players[0].in_play == (price,)
@@ -674,9 +689,19 @@ def test_price_is_no_object_resolves_the_acquired_cards_bonus() -> None:
     assert [entry[:2] for entry in result.state.players[0].owed_draws] == [
         ("intrigue", f"acquire:{overthrow}")
     ]
-    assert tuple(event.kind for event in result.events) == ("card_acquired",)
+    assert tuple(event.kind for event in result.events) == (
+        "card_acquired",
+        "agent_card_effect_resolved",
+    )
+    # The draw is Overthrow's own action: the acquired card printed it
+    # (stage B3e-1).
     drawn = apply_owed_draw(
-        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+        result.state,
+        DomainAction(
+            action_id="draw_owed_intrigue",
+            actor=0,
+            arguments=(("printed", "overthrow"), ("source", "acquisition")),
+        ),
     )
     assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)
     assert drawn.state.intrigue_deck == ()
@@ -730,11 +755,11 @@ def test_subversive_advisor_normal_acquisition_opens_spy_placement() -> None:
     engine = UprisingRulesEngine()
     acquire = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == subversive
     )
 
-    acquired = engine.apply(state, acquire)
+    acquired = apply_whole(engine, state, acquire)
     placement = legal_acquisition_spy_actions(acquired.state, 0)[0]
     result = apply_acquisition_spy_action(acquired.state, placement)
 
@@ -764,11 +789,11 @@ def test_price_can_acquire_subversive_advisor_to_hand_and_place_spy() -> None:
     engine = UprisingRulesEngine()
     acquire = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == subversive
     )
 
-    acquired = engine.apply(state, acquire)
+    acquired = apply_whole(engine, state, acquire)
     placement = legal_acquisition_spy_actions(acquired.state, 0)[0]
     result = apply_acquisition_spy_action(acquired.state, placement)
 
@@ -788,7 +813,12 @@ def test_price_is_no_object_may_decline_its_acquisition() -> None:
 
     assert result.state.players[0].resources.solari == 3
     assert result.state.players[0].hand == ()
-    assert result.events[0].kind == "agent_card_acquisition_declined"
+    price = _imperium_instance("price_is_no_object")
+    assert result.events == (
+        agent_box_event(
+            agent_card_source(1, 0, price), price, 0, BoxOutcome.DECLINED
+        ),
+    )
 
 
 def test_price_is_no_object_skips_acquisition_without_solari() -> None:
@@ -826,7 +856,7 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
         for action in legal_imperium_acquisitions(state, 0)
         if dict(action.arguments)["instance_id"] == overthrow
     )
-    assert action in UprisingRulesEngine().legal_actions(state, 0)
+    assert action in UprisingRulesEngine().whole_actions(state, 0)
 
     result = apply_imperium_acquisition(state, action)
 
@@ -839,13 +869,18 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
     assert result.state.players[0].intrigue_cards == ()
     assert tuple(event.kind for event in result.events) == ("card_acquired",)
     engine = UprisingRulesEngine()
-    draw = DomainAction(action_id="draw_owed_intrigue", actor=0)
-    assert engine.legal_actions(result.state, 0) == (draw,)
-    drawn = engine.apply(result.state, draw)
+    # Overthrow's own draw: the acquired card printed it (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_owed_intrigue",
+        actor=0,
+        arguments=(("printed", "overthrow"), ("source", "acquisition")),
+    )
+    assert engine.whole_actions(result.state, 0) == (draw,)
+    drawn = apply_whole(engine, result.state, draw)
     assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)
     assert drawn.state.intrigue_deck == ()
     assert "intrigue_card_drawn" in {event.kind for event in drawn.events}
-    assert engine.legal_actions(drawn.state, 0).count(draw) == 0
+    assert engine.whole_actions(drawn.state, 0).count(draw) == 0
 
 
 def test_steersman_acquisition_gains_spacing_guild_influence() -> None:
@@ -908,6 +943,7 @@ def test_price_is_no_object_preserves_steersman_acquisition_influence() -> None:
     assert [event.kind for event in result.events] == [
         "card_acquired",
         "influence_gained",
+        "agent_card_effect_resolved",
     ]
 
 
@@ -928,11 +964,11 @@ def test_strike_fleet_acquisition_opens_and_resolves_spy_placement() -> None:
     engine = UprisingRulesEngine()
     acquire = next(
         action
-        for action in engine.legal_actions(state, 0)
+        for action in engine.whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == strike_fleet
     )
 
-    acquired = engine.apply(state, acquire)
+    acquired = apply_whole(engine, state, acquire)
     choices = legal_acquisition_spy_actions(acquired.state, 0)
     placed = apply_acquisition_spy_action(acquired.state, choices[0])
     post_id = dict(choices[0].arguments)["post_id"]
@@ -959,11 +995,11 @@ def test_guild_spy_acquisition_opens_spy_placement() -> None:
     )
     acquire = next(
         action
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == guild_spy
     )
 
-    acquired = UprisingRulesEngine().apply(state, acquire)
+    acquired = apply_whole(UprisingRulesEngine(), state, acquire)
 
     assert acquired.state.players[0].discard_pile == (guild_spy,)
     assert {
@@ -1101,7 +1137,7 @@ def _strike_fleet_bought_with_an_empty_supply() -> tuple[GameState, tuple[str, .
     )
     acquire = next(
         action
-        for action in UprisingRulesEngine().legal_actions(state, 0)
+        for action in UprisingRulesEngine().whole_actions(state, 0)
         if dict(action.arguments).get("instance_id") == strike_fleet
     )
 
@@ -1314,8 +1350,21 @@ def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
             name="Fake Troop Acquire",
             sources=CONTRACT_SOURCES,
         ),
-        condition=ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=target),
-        reward=ContractReward(troops=1),
+        terms=Ability(
+            timing=AbilityTiming.CONTRACT,
+            sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+            requirement=AcquiredCard(target),
+        ),
+    )
+
+
+def _install_fake_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract, whose definition holds its record."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_troop_contract(card_id, target)
     )
 
 
@@ -1334,10 +1383,8 @@ def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_tu
     # ``complete_acquire_contracts`` already updated, so exactly one credit
     # survives.
     sardaukar = _imperium_instance("sardaukar_soldier")
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire",
-        _fake_troop_contract("fake_troop_acquire", "sardaukar_soldier"),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire", "sardaukar_soldier"
     )
     others = tuple(
         instance_id
@@ -1364,11 +1411,19 @@ def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_tu
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
+    # The Contract's troop is a row of this Agent turn (stage B3b, OQ-112
+    # (4)): the completion is announced, the row recruits and credits the
+    # turn, and holds its end until then.
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
+    assert result.state.players[0].troops_garrison == garrison
     assert result.state.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire",
     )
-    _, context = current_agent_effect_context(result.state)
+    settled = settle_reward_window(result.state)
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert not turn_rows.holds_the_end(settled, 0)
+    _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1
 
 
@@ -1377,15 +1432,12 @@ def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_
 ) -> None:
     # Same Contract reward as above, but through the acquisition-bonus
     # branch that pushes a Spy-placement frame instead of calling
-    # ``advance_after_effect``: there the credit that survives is
-    # ``complete_acquire_contracts``'s own, already written into the
-    # Agent-turn effect frame before this handler's local ``context`` copy
-    # is (harmlessly) discarded.
+    # ``advance_after_effect``. The Contract's troop is a row of this Agent
+    # turn (stage B3b, OQ-112 (4)), offered once the Spy is placed and the
+    # turn's frame is on top again; the row credits the turn.
     strike_fleet = _imperium_instance("strike_fleet")
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire_spy",
-        _fake_troop_contract("fake_troop_acquire_spy", "strike_fleet"),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire_spy", "strike_fleet"
     )
     others = tuple(
         instance_id
@@ -1415,12 +1467,19 @@ def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
+    assert result.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    assert result.state.players[0].troops_garrison == garrison
     assert result.state.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_spy",
     )
-    assert result.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
-    context = dict(result.state.decision_stack[-2].context)
+    spied = apply_acquisition_spy_action(
+        result.state, legal_acquisition_spy_actions(result.state, 0)[0]
+    ).state
+    assert spied.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(spied, 0)
+    settled = settle_reward_window(spied)
+    assert settled.players[0].troops_garrison == garrison + 1
+    _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1
 
 
@@ -1430,10 +1489,8 @@ def test_acquire_contract_troop_reward_joins_the_solari_reserve_acquisitions_tur
     # Same Contract reward through the Reserve-with-Solari handler
     # (``_acquire_reserve_to_hand_with_solari``), which always calls
     # ``advance_after_effect`` and so always keeps its own local credit.
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire_reserve",
-        _fake_troop_contract("fake_troop_acquire_reserve", "prepare_the_way"),
+    _install_fake_troop_contract(
+        monkeypatch, "fake_troop_acquire_reserve", "prepare_the_way"
     )
     state = replace(
         _price_agent_state(solari=2, choam_module=True),
@@ -1453,9 +1510,15 @@ def test_acquire_contract_troop_reward_joins_the_solari_reserve_acquisitions_tur
     )
     result = apply_agent_card_acquisition(state, action)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
-    assert result.state.players[0].completed_contract_ids == (
+    # The Contract's troop is a row of this Agent turn (stage B3b, OQ-112
+    # (4)).
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
+    assert result.state.players[0].troops_garrison == garrison
+    settled = settle_reward_window(result.state)
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_reserve",
     )
-    _, context = current_agent_effect_context(result.state)
+    _, context = current_agent_effect_context(settled)
     assert context["troops_recruited"] == 1

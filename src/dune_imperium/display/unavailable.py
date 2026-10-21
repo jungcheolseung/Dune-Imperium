@@ -139,8 +139,10 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_is_optional,
+)
 from dune_imperium.content.uprising.types import (
-    OPTIONAL_REVEAL_CHOICES,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -169,6 +171,11 @@ from dune_imperium.rules.acquisition import (
     reserve_cost,
     revealer_persuasion,
 )
+from dune_imperium.rules.agent_box_abilities import (
+    AgentIconBlock,
+    AgentIconCondition,
+    AgentPaymentBlock,
+)
 from dune_imperium.rules.agent_effect_frame import (
     active_box_can_act,
     agent_box_is_waiting,
@@ -176,9 +183,6 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
-    AgentIconBlock,
-    AgentIconCondition,
-    AgentPaymentBlock,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_payment_block,
@@ -198,11 +202,11 @@ from dune_imperium.rules.board_effects import (
     desert_tactics_block,
     imperial_privilege_recall_targets,
     imperial_privilege_trade_block,
-    legal_shipping_actions,
     maker_sandworm_block,
     pending_maker_space,
     pending_sietch_tabr,
     shipping_influence_factions,
+    shipping_influence_pending,
     sietch_tabr_wall_block,
 )
 from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
@@ -212,6 +216,7 @@ from dune_imperium.rules.combat import (
     combat_reward_influence_block,
     combat_reward_payment_block,
     combat_reward_spy_recall_block,
+    conflict_end_loss,
     conflict_end_trigger_block,
 )
 from dune_imperium.rules.contracts import (
@@ -231,7 +236,6 @@ from dune_imperium.rules.effect_interpreter import (
     option_unplayable_reason,
     resource_cost,
     rewards_with_no_effect,
-    spy_placement_allowed_post_ids,
     spy_placement_targets,
 )
 from dune_imperium.rules.effects import (
@@ -259,8 +263,10 @@ from dune_imperium.rules.graft_boxes import (
 from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
+    pending_research_bonuses,
     research_bonus_block,
     research_influence_factions,
+    window_icons,
 )
 from dune_imperium.rules.influence import influence_amount, influence_can_rise
 from dune_imperium.rules.intrigue import (
@@ -277,8 +283,8 @@ from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
 )
 from dune_imperium.rules.owed_draws import legal_owed_draw_actions
+from dune_imperium.rules.reveal_lines import COMMAND_PERSUASION
 from dune_imperium.rules.reveal_turn import (
-    COMMAND_PERSUASION,
     GENERATED_PERSUASION_KEY,
     RevealSandwormBlock,
     pending_choice_entries,
@@ -300,14 +306,20 @@ from dune_imperium.rules.spies import (
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     solo_occupied_post_ids,
+    spy_placement_allowed_post_ids,
 )
-from dune_imperium.rules.tech import landsraad_tech_block, tech_candidates
+from dune_imperium.rules.tech import (
+    landsraad_tech_block,
+    pending_tech_acquire_effects,
+    tech_candidates,
+)
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     reclaimed_forces_block,
     tleilaxu_acquisition_block,
     tleilaxu_shop_is_open,
 )
+from dune_imperium.rules.turn_rows import tech_influence_blocked
 from dune_imperium.rules.unit_loss import (
     UNIT_LOSS_CANDIDATES,
     UnitLossBlock,
@@ -536,23 +548,15 @@ def _conflict_end_reason(option: IntrigueOption) -> Reason:
     )
 
 
-# Harvest Cells in its own window when one more copy could change nothing
-# (``ConflictEndTriggerBlock``): its specimens come from troops back in the
-# supply after the cleanup, and lost Sardaukar Commanders go back to their
-# own supply and make none (``combat._harvest_cells_has_effect``).
+# Harvest Cells in its own window when it could change nothing
+# (``ConflictEndTriggerBlock``): its specimens come from troops in the supply,
+# where the Conflict's troops already went back as the window opened, and
+# lost Sardaukar Commanders go back to their own supply and make none
+# (``combat._harvest_cells_has_effect``).
 _NO_TROOP_FOR_A_SPECIMEN: Final[Reason] = (
-    "No troop in your supply or the Conflict to make a specimen",
-    "{specimen}으로 만들 {troop}이 {supply}에도 {conflict}에도 없음",
+    "No troop in your supply to make a specimen",
+    "{specimen}으로 만들 {troop}이 {supply}에 없음",
     "reward",
-)
-_TROOPS_TAKEN_FOR_SPECIMENS: Final[Reason] = (
-    "The copy already played takes every troop left to make a specimen",
-    "먼저 쓴 카드가 {specimen}으로 만들 {troop}을 모두 가져감",
-    "reward",
-)
-_COMMANDERS_MAKE_NONE: Final = (
-    " (Sardaukar Commanders make none)",
-    " ({commander}은 {specimen}이 되지 않음)",
 )
 _NO_TLEILAXU_CARD_TO_ACQUIRE: Final[Reason] = (
     "No Tleilaxu card your specimens could acquire",
@@ -572,23 +576,15 @@ def _conflict_end_trigger_reason(
 
     if not isinstance(block, ConflictEndTriggerBlock):
         return intrigue_option_reason(state, seat, option, block)
-    owner = state.players[seat]
     if block is ConflictEndTriggerBlock.LOSS:
         english, korean, _ = _conflict_end_reason(option)
-        lost = _units(owner)[1]
+        lost = conflict_end_loss(state, seat)
         return (
             f"{english} (you lose {lost} unit{plural_s(lost)})",
             f"{korean} (잃는 유닛 {lost})",
             "condition",
         )
-    english, korean, code = (
-        _NO_TROOP_FOR_A_SPECIMEN
-        if block is ConflictEndTriggerBlock.NO_TROOP
-        else _TROOPS_TAKEN_FOR_SPECIMENS
-    )
-    if owner.commanders_conflict:
-        english += _COMMANDERS_MAKE_NONE[0]
-        korean += _COMMANDERS_MAKE_NONE[1]
+    english, korean, code = _NO_TROOP_FOR_A_SPECIMEN
     # Both of its effects are dead, each explained, as ``_no_effect_reason``
     # joins them.
     return (
@@ -1587,7 +1583,7 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
             _REVEAL_LAPSES_GONE
             if card_id not in state.players[seat].in_play
             else _REVEAL_LAPSES_UNUSED
-            if choice in OPTIONAL_REVEAL_CHOICES
+            if reveal_choice_is_optional(choice)
             else _REVEAL_LAPSES_UNMET
         )
         found.row(
@@ -1919,8 +1915,11 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
     decline is offered.
     """
 
-    bonus = dict(state.decision_stack[-1].context).get("bonus")
-    if not isinstance(bonus, str):
+    frame = state.decision_stack[-1]
+    bonus = dict(frame.context).get("bonus")
+    if not isinstance(bonus, str) or window_icons(frame):
+        # A window ordering a pair's icons or c7r3's rewards (cleanup-2b)
+        # offers every one of them.
         return
     owner = state.players[seat]
     if ResearchBonus(bonus) is ResearchBonus.INFLUENCE_ANY:
@@ -1958,6 +1957,83 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
             pass
 
 
+def _with_tail(
+    reason: Reason, tail: tuple[str, str], code: str | None = None
+) -> Reason:
+    return (reason[0] + tail[0], reason[1] + tail[1], code or reason[2])
+
+
+def _pending_research(state: GameState, seat: int, found: _Found) -> None:
+    """A research bonus waiting on the seat's own turn that offers nothing
+    now (cleanup-2b, ``turn_rows``): greyed out with the block and that it
+    lapses. c6r6 with every cube at the top waits like an Agent box's
+    Influence; one with a Faction left greys the others out, as Shipping's
+    does (OQ-060). An arrow another effect of the turn could still pay for
+    (an Intrigue card drawn, Solari gained) sits with the waiting ones; at
+    the Tleilaxu track's end it never can.
+    """
+
+    waiting = pending_research_bonuses(state, seat)
+    if not waiting:
+        return
+    reveal = state.decision_stack[-1].kind == FrameKind.REVEAL
+    unmet = _REVEAL_LAPSES_UNMET if reveal else _FREE_ORDER
+    unused = _REVEAL_LAPSES_UNUSED if reveal else _LAPSES_UNUSED
+    owner = state.players[seat]
+    for bonus, _source in waiting:
+        if bonus is ResearchBonus.INFLUENCE_ANY:
+            factions = research_influence_factions(owner)
+            if factions:
+                _influence_at_the_top(
+                    found,
+                    seat,
+                    "research_influence",
+                    "choose_research_influence",
+                    factions,
+                )
+            else:
+                found.row(
+                    "waiting",
+                    "research_influence",
+                    DomainAction(action_id="choose_research_influence", actor=seat),
+                    _with_tail(_ALL_AT_THE_TOP, _REVEAL_LAPSES_UNMET, "waiting")
+                    if reveal
+                    else _ALL_AT_THE_TOP_WAITING,
+                )
+            continue
+        match research_bonus_block(owner, bonus):
+            case ResearchBonusBlock.NO_INTRIGUE:
+                found.row(
+                    "waiting",
+                    "research_bonus_trash",
+                    DomainAction(
+                        action_id="trash_intrigue_for_research_bonus", actor=seat
+                    ),
+                    _with_tail(_NO_INTRIGUE_TO_TRASH, unmet),
+                )
+            case ResearchBonusBlock.SOLARI:
+                found.row(
+                    "waiting",
+                    "research_bonus_pay",
+                    DomainAction(action_id="pay_research_bonus", actor=seat),
+                    _with_tail(
+                        resource_reason(
+                            "solari", SEVEN_SOLARI_COST, owner.resources.solari
+                        ),
+                        unmet,
+                    ),
+                )
+            case ResearchBonusBlock.TLEILAXU_TRACK_END:
+                found.row(
+                    "choice",
+                    "research_bonus_pay",
+                    DomainAction(action_id="pay_research_bonus", actor=seat),
+                    _with_tail(_TLEILAXU_TRACK_END, unused),
+                )
+            case None:
+                pass
+
+
 def _influence_at_the_top(
     found: _Found,
     seat: int,
@@ -1986,18 +2062,29 @@ def _shipping_influence(state: GameState, seat: int, found: _Found) -> None:
     """Shipping's "Influence with a chosen Faction": every Faction at the
     top, greyed out beside the ones offered (OQ-060).
 
-    Only while the icon is pending (``legal_shipping_actions`` offers
-    something); ``shipping_influence_factions`` is the provider's own list.
+    Only while the icon is pending; ``shipping_influence_factions`` is the
+    provider's own list. With every cube at the top it offers none and
+    waits for the turn's end, which lapses it (cleanup-2b, rule decision 1):
+    one row says so, like an Agent box's Influence there.
     """
 
-    if not legal_shipping_actions(state, seat):
+    if not shipping_influence_pending(state, seat):
+        return
+    factions = shipping_influence_factions(state.players[seat])
+    if not factions:
+        found.row(
+            "waiting",
+            "shipping_influence",
+            DomainAction(action_id="choose_shipping_influence", actor=seat),
+            _ALL_AT_THE_TOP_WAITING,
+        )
         return
     _influence_at_the_top(
         found,
         seat,
         "shipping_influence",
         "choose_shipping_influence",
-        shipping_influence_factions(state.players[seat]),
+        factions,
     )
 
 
@@ -2187,6 +2274,68 @@ def _tech(state: GameState, seat: int, found: _Found) -> None:
     )
 
 
+_TECH_ACQUIRE_HOSTS: Final = frozenset(
+    {FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL}
+)
+
+
+def _tech_acquire_influence(state: GameState, seat: int, found: _Found) -> None:
+    """An owed Tech acquire "Influence with any Faction" (Glowglobes,
+    Navigation Chamber; OQ-098): every Faction at the top, greyed out, as
+    for Shipping (OQ-060; cleanup-2b, rule decision 1). With every cube at
+    the top it offers none: in the seat's turn one row says it waits for the
+    turn's end, which lapses it; in Combat's acquire frame the Factions show
+    beside ``resolve_tech_influence_without_faction``.
+    """
+
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return
+    combat = (
+        frame.kind == FrameKind.TECH_ACQUISITION
+        and dict(frame.context).get("acquire_effects_only") is True
+    )
+    if frame.kind not in _TECH_ACQUIRE_HOSTS and not combat:
+        return
+    owner = state.players[seat]
+    for key in pending_tech_acquire_effects(frame):
+        tech_id, effect = key.split(":")
+        if effect != "influence":
+            continue
+        if tech_influence_blocked(key, owner) and not combat:
+            reveal = frame.kind == FrameKind.REVEAL
+            found.row(
+                "waiting",
+                f"tech_acquire_influence:{tech_id}",
+                DomainAction(
+                    action_id="resolve_tech_acquire_effect",
+                    actor=seat,
+                    arguments=(("effect", effect), ("tech_id", tech_id)),
+                ),
+                _with_tail(_ALL_AT_THE_TOP, _REVEAL_LAPSES_UNMET, "waiting")
+                if reveal
+                else _ALL_AT_THE_TOP_WAITING,
+            )
+            continue
+        for faction in Faction:
+            if influence_can_rise(owner, faction):
+                continue
+            found.row(
+                "choice",
+                f"tech_acquire_influence:{tech_id}:{faction.value}",
+                DomainAction(
+                    action_id="resolve_tech_acquire_effect",
+                    actor=seat,
+                    arguments=(
+                        ("effect", effect),
+                        ("faction", faction.value),
+                        ("tech_id", tech_id),
+                    ),
+                ),
+                _AT_THE_TOP,
+            )
+
+
 def _skill_choice(state: GameState, seat: int, found: _Found) -> None:
     """A Skill choice's face-up Skills the seat already holds.
 
@@ -2335,7 +2484,7 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
     owner = state.players[seat]
     effect = active_agent_card(context).agent_effect
     for key in pending_agent_icons(context):
-        if key not in (*AUTOMATIC_AGENT_ICONS, AGENT_ICON_TRASH):
+        if key not in (*AUTOMATIC_AGENT_ICONS, *_CHOICE_ICON_ROWS):
             continue
         block = agent_icon_block(owner, context, effect, key)
         if block is None:
@@ -2343,9 +2492,10 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         found.row(
             "waiting" if block.condition in _ICON_CAN_STILL_BE_MET else "choice",
             f"agent_icon:{key}",
-            # Tread in Darkness's trash icon is offered as its trash choices.
-            DomainAction(action_id="trash_agent_card", actor=seat)
-            if key == AGENT_ICON_TRASH
+            # A choice icon is offered as its own rows (Tread in Darkness's
+            # trash, In High Places' Spy, Occupation's Combat icon).
+            DomainAction(action_id=_CHOICE_ICON_ROWS[key], actor=seat)
+            if key in _CHOICE_ICON_ROWS
             else DomainAction(
                 action_id="resolve_agent_card_effect",
                 actor=seat,
@@ -2364,6 +2514,13 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+# The choice icons of an icon-by-icon box judged by ``agent_icon_block``,
+# and the row each is offered as (cleanup-2d-5 added the Spy and Combat).
+_CHOICE_ICON_ROWS: Final[Mapping[str, str]] = {
+    AGENT_ICON_TRASH: "trash_agent_card",
+    "spy": "place_agent_card_spy",
+    "combat": "take_agent_card_combat_icon",
+}
 _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
@@ -3030,6 +3187,8 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _deferred,
         _leader_reveal,
         _subcommittee_choice,
+        _pending_research,
+        _tech_acquire_influence,
         _intrigue,
     ),
     FrameKind.AGENT_EFFECTS: (
@@ -3044,6 +3203,8 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _sietch_tabr,
         _optional_board_effects,
         _subcommittee_choice,
+        _pending_research,
+        _tech_acquire_influence,
         _intrigue,
     ),
     # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
@@ -3059,8 +3220,13 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),
     FrameKind.INTRIGUE_EFFECTS: (_intrigue_effects,),
-    FrameKind.TECH_ACQUISITION: (_tech,),
-    FrameKind.TURN: (_turn_start_card, _intrigue),
+    FrameKind.TECH_ACQUISITION: (_tech, _tech_acquire_influence),
+    FrameKind.TURN: (
+        _turn_start_card,
+        _pending_research,
+        _tech_acquire_influence,
+        _intrigue,
+    ),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.CONFLICT_END_TRIGGER: (_conflict_end_trigger,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),

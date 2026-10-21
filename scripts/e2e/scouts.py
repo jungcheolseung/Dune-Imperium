@@ -97,12 +97,18 @@ check = Check()
 # four buttons and the seat's own waiting pick) together, so it replaces 87,
 # which now shows the pick but no market: 21 keeps the grey lines, the skipped
 # choice and the sealed bid, 58 the three-card market and the open call.
-SEEDS = (21, 58, 9)
+# Codec v149 (cleanup-2a: a Scouts seat with nothing to take is asked) moves
+# every game; a walk of seeds 1-36 finds seed 27 with the open call and both
+# markets and seed 1 with the secret pick, the seat's own pick and bid and
+# the pieces; both ask the seat to take nothing at least once.
+SEEDS = (27, 1)
 # COUNCIL_JS's walk takes a council seat with a subcommittee still to join
 # (round 4; the list then offers two joins and the decline). Seed 21 until
 # OQ-095's explicit Agent-turn end moved its seat to round 7, when every
-# subcommittee was taken (2026-10-01).
-COUNCIL_SEED = 1
+# subcommittee was taken (2026-10-01). Seed 1 until codec v149 (cleanup-2a)
+# moved its walk past every open subcommittee; seed 5 is the first of 1-5
+# that still reaches one.
+COUNCIL_SEED = 5
 HANGUL = re.compile(r"[가-힣]")
 
 CHOOSE_JS = """(() => {
@@ -153,13 +159,16 @@ LINES_JS = """(() => {
 
 
 # CHOOSE_JS steered to the High Council: send an Agent there whenever the
-# seat can, then take the seat.
+# seat can, then take the seat. An Agent turn is two steps: the placement's
+# card pick first, then (at the next call, with the card picked) the space
+# pick that completes it.
 COUNCIL_JS = CHOOSE_JS.replace(
     "  const own = state.view.private || {};",
-    """  const council = actions.findIndex((a) =>
-    (a.action_id === 'agent_turn' && a.arguments.space_id === 'high_council')
-    || (a.action_id === 'resolve_board_effect'
-        && a.arguments.effect === 'high_council'));
+    """  const placed = placementActions().find(
+    (a) => a.arguments.space_id === 'high_council');
+  const council = placed ? (placed.pickIndex ?? placed.index)
+    : actions.findIndex((a) => a.action_id === 'resolve_board_effect'
+        && a.arguments.effect === 'high_council');
   if (council >= 0) return council;
   const own = state.view.private || {};""",
 )
@@ -175,21 +184,26 @@ CHOOSE_ROW_JS = """(() => {
 })()"""
 
 
-# Keep every note the page shows (it hides itself after a few seconds).
-NOTE_SPY_JS = """(() => {
-  window.noteLog = [];
-  const shown = note;
-  note = (text) => {
-    window.noteLog.push(String(text));
-    shown(text);
-  };
-})()"""
-
-# The Scouts items the seat was skipped for, by name, from the log.
+# The Scouts items the seat took nothing from, by name, from the log.
 SKIPPED_JS = """(() => state.log.entries.flatMap((entry) => (entry.events || [])
   .filter((e) => e.kind === 'scouts_choice_skipped'
     && e.payload.player === state.viewSeat)
   .map((e) => scoutsItem(e.payload.item_id).name)))()"""
+
+
+# Cleanup-2a: a Scouts choice with no line the seat can take still asks it.
+NOTHING_JS = """(() => {
+  const actions = state.actions.actions;
+  const lines = (state.actions.scouts_lines || {}).lines || [];
+  const grey = [...document.querySelectorAll('#actions .scouts-line-item.unavailable')];
+  const row = document.querySelector('#decision-banner .turn-end-row button');
+  return {
+    lines: lines.length,
+    grey: grey.length,
+    reasons: grey.every((r) => r.querySelector('.unavailable-badge').innerText.trim()),
+    label: row ? row.innerText : null,
+  };
+})()"""
 
 
 def create(page, base: str, seed: int) -> None:
@@ -208,7 +222,6 @@ def create(page, base: str, seed: int) -> None:
     page.click("#create-game")
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.view !== null && refreshFlight === null")
-    page.evaluate(NOTE_SPY_JS)
 
 
 def panel_text(page) -> str:
@@ -456,8 +469,40 @@ def inspect_decision_item(page, seen: dict[str, bool]) -> None:
         check.ok(False, label, row)
 
 
+def inspect_nothing(page, seen: dict[str, bool]) -> bool:
+    """Cleanup-2a (OQ-071 addendum): a Scouts choice with no line the seat
+    can take asks anyway -- every line greyed with its reason, and the
+    banner's turn-end row takes nothing; one press settles the seat's
+    part."""
+
+    if seen.get("nothing") or page.evaluate(
+        "state.actions.actions.map((a) => a.action_id).join()"
+    ) != "resolve_scouts_choice_without_option":
+        return False
+    rows = page.evaluate(NOTHING_JS)
+    before = len(page.evaluate(SKIPPED_JS))
+    page.locator("#decision-banner .turn-end-row button").click()
+    assert settled(page, 30)
+    after = len(page.evaluate(SKIPPED_JS))
+    seen["nothing"] = check.ok(
+        rows["lines"] > 0
+        and rows["grey"] == rows["lines"]
+        and rows["reasons"]
+        and rows["label"] is not None
+        and "할 수 있는 선택 없음" in rows["label"]
+        and after == before + 1
+        and page.evaluate("state.summary.confirmation !== state.viewSeat"),
+        "a Scouts choice with nothing to take asks, greys every line with its"
+        " reason, and one press takes nothing",
+        (rows, before, after),
+    )
+    return True
+
+
 def inspect(page, seen: dict[str, bool]) -> bool:
     ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
+    if inspect_nothing(page, seen):
+        return True
     inspect_decision_item(page, seen)
     text = panel_text(page)
     inspect_lines(page, seen)
@@ -1255,7 +1300,7 @@ def main() -> None:
         "pieces",
         "english",
         "lines",
-        "skip_notice",
+        "nothing",
         "market_2",
         "market_3",
     )
@@ -1271,17 +1316,6 @@ def main() -> None:
             )
             finished = play(page, seen)
             check.ok(finished, f"seed {seed} plays to the end")
-            skipped = page.evaluate(SKIPPED_JS)
-            if skipped and not seen.get("skip_notice"):
-                notes = page.evaluate("window.noteLog")
-                seen["skip_notice"] = check.ok(
-                    all(
-                        any(note.startswith(f"{name}: ") for note in notes)
-                        for name in skipped
-                    ),
-                    "a skipped choice says so in the note, naming the item",
-                    (skipped, notes),
-                )
             check.ok(
                 page.evaluate("!document.getElementById('scouts-panel').hidden"),
                 "the finished game still shows the panel",

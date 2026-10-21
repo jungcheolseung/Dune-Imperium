@@ -247,10 +247,11 @@ def scenario_dismiss(browser, base: str, fixture: dict) -> None:
     undo_count = page.evaluate("state.summary.undo_count")
     page.screenshot(path=str(SHOTS / "turn_start_window_ko.png"))
 
-    # The rest of the table offers nothing while the window is up.
+    # The rest of the table offers nothing while the window is up. The Agent
+    # turn's placements (card and space, from the full payload's
+    # `agent_placements`) are what the table would otherwise let a click pick.
     full = page.evaluate(
-        "state.actions.turnStartWindow.full.actions"
-        ".filter((a) => a.action_id === 'agent_turn')"
+        "state.actions.turnStartWindow.full.agent_placements"
         ".map((a) => [a.arguments.card_id, a.arguments.space_id])"
     )
     card, space = full[0]

@@ -5,17 +5,22 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
-    ContractCondition,
-    ContractConditionKind,
     ContractDefinition,
-    ContractReward,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
 )
 from dune_imperium.core import (
     DecisionFrame,
@@ -28,6 +33,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     legal_agent_card_icon_actions,
@@ -41,6 +47,7 @@ from dune_imperium.rules.board_effects import (
     legal_desert_tactics_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import (
@@ -135,8 +142,13 @@ def test_warmaster_signet_recruits_one_deployable_troop() -> None:
     assert resolved.troops_supply == owner.troops_supply - 1
     assert context["troops_recruited"] == 1
     assert context["pending_agent_effect"] is False
-    assert result.events[0].kind == "leader_signet_resolved"
-    assert dict(result.events[0].payload)["troops"] == 1
+    # The box's own event, last, names the card and the seat (cleanup-2c-4).
+    assert [event.kind for event in result.events] == ["leader_signet_resolved"]
+    assert result.events[-1].event_id == "round:1:player:0:leader_signet:resolved"
+    assert dict(result.events[-1].payload) == {
+        "card_id": _signet_instance(),
+        "player": 0,
+    }
 
 
 def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
@@ -153,7 +165,11 @@ def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].troops_garrison == 12
-    assert dict(result.events[0].payload)["troops"] == 0
+    # The shortfall has its own event; the box's event is last.
+    assert [event.kind for event in result.events] == [
+        "troops_recruit_short",
+        "leader_signet_resolved",
+    ]
 
 
 def _fill_coffers_icon(key: str) -> DomainAction:
@@ -194,16 +210,16 @@ def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
     working = result.state
     engine = UprisingRulesEngine()
     finish = DomainAction("finish_agent_turn", 0)
-    while finish not in (legal := engine.legal_actions(working, 0)):
-        working = engine.apply(
+    while finish not in (legal := engine.whole_actions(working, 0)):
+        working = apply_whole(engine, 
             working, next(a for a in legal if not a.action_id.startswith("deploy"))
         ).state
-    closed = engine.apply(working, finish)
+    closed = apply_whole(engine, working, finish)
     assert closed.state.players[0].resources.spice == 0
     assert [
         dict(event.payload)["effect"]
         for event in closed.events
-        if event.kind == "agent_card_effect_unavailable"
+        if event.kind == "leader_signet_unavailable"
     ] == ["spice"]
 
 
@@ -249,7 +265,7 @@ def test_fill_coffers_spice_waits_for_an_alliance_formed_later_in_the_turn() -> 
     assert agent_card_effect_is_unavailable(solari)
 
     engine = UprisingRulesEngine()
-    allied = engine.apply(
+    allied = apply_whole(engine, 
         solari,
         DomainAction(
             "choose_shipping_influence", 0, (("faction", Faction.FREMEN.value),)
@@ -257,7 +273,7 @@ def test_fill_coffers_spice_waits_for_an_alliance_formed_later_in_the_turn() -> 
     ).state
     assert allied.players[0].alliance_faction_ids == ("fremen",)
     assert _offered_icons(allied) == {"spice"}
-    assert DomainAction("finish_agent_turn", 0) not in engine.legal_actions(allied, 0)
+    assert DomainAction("finish_agent_turn", 0) not in engine.whole_actions(allied, 0)
     spice_before = allied.players[0].resources.spice
 
     result = resolve_agent_card_icon(allied, _fill_coffers_icon("spice"))
@@ -289,11 +305,11 @@ def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:
 
     assert any(
         dict(action.arguments).get("card_id") == _signet_instance()
-        for action in engine.legal_actions(implemented, 0)
+        for action in engine.whole_actions(implemented, 0)
     )
     assert not any(
         dict(action.arguments).get("card_id") == _signet_instance()
-        for action in engine.legal_actions(unimplemented, 0)
+        for action in engine.whole_actions(unimplemented, 0)
     )
 
 
@@ -460,7 +476,9 @@ def test_always_smiling_is_wired_through_the_engine_reveal() -> None:
     )
     state = _turn_state(owner)
 
-    transition = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    transition = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     context = dict(transition.state.decision_stack[-1].context)
 
     assert context["persuasion"] == 1
@@ -612,7 +630,9 @@ def test_personal_training_at_the_final_space_gives_no_reward() -> None:
     assert legal_feyd_track_actions(placed, 0) == ()
     result = resolve_agent_card_effect(placed)
 
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert [(e.kind, e.event_id) for e in result.events] == [
+        ("leader_signet_unavailable", "round:1:player:0:leader_signet:unavailable")
+    ]
     assert (
         dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
     )
@@ -728,7 +748,12 @@ def test_personal_training_spy_stage_can_pass_up_the_recall_first(
     assert "spy_recalled_this_turn" not in context or (
         context["spy_recalled_this_turn"] is False
     )
-    assert [event.kind for event in result.events] == ["spy_placement_unavailable"]
+    # The refusal ends the box: its event is the last, declined.
+    assert [event.kind for event in result.events] == [
+        "spy_placement_unavailable",
+        "leader_signet_declined",
+    ]
+    assert result.events[-1].event_id == "round:1:player:0:leader_signet:declined"
 
 
 def test_personal_training_spy_stage_with_a_spy_in_supply_must_place() -> None:
@@ -998,15 +1023,15 @@ def test_other_memories_left_unused_lapses_and_keeps_the_lady_jessica_face() -> 
     use = DomainAction(action_id="use_other_memories", actor=0)
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
 
-    while finish not in (legal := engine.legal_actions(placed, 0)):
+    while finish not in (legal := engine.whole_actions(placed, 0)):
         assert use in legal
         assert "decline_other_memories" not in {action.action_id for action in legal}
-        placed = engine.apply(
+        placed = apply_whole(engine, 
             placed, next(action for action in legal if action != use)
         ).state
     assert set(legal) == {use, finish}
 
-    result = engine.apply(placed, finish)
+    result = apply_whole(engine, placed, finish)
 
     (lapsed,) = [
         event for event in result.events if event.kind == "leader_ability_lapsed"
@@ -1087,15 +1112,15 @@ def test_reverend_mother_repeat_without_water_lapses_at_the_turn_end() -> None:
     engine = UprisingRulesEngine()
     while steps := [
         action
-        for action in engine.legal_actions(first, 0)
+        for action in engine.whole_actions(first, 0)
         if action.action_id
         in ("resolve_faction_influence", "resolve_agent_card_effect")
     ]:
-        first = engine.apply(first, steps[0]).state
+        first = apply_whole(engine, first, steps[0]).state
     assert dict(first.decision_stack[-1].context)["pending_leader_board_repeat"]
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
-    assert finish in engine.legal_actions(first, 0)
-    result = engine.apply(first, finish)
+    assert finish in engine.whole_actions(first, 0)
+    result = apply_whole(engine, first, finish)
     # The two abilities' lapses differ by their event ids only.
     assert [
         (event.event_id.rsplit(":", 2)[-2], dict(event.payload))
@@ -1151,11 +1176,18 @@ def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
     paid_result = apply_leader_board_repeat(recruited, pay)
     assert lapsed(paid_result) == [
         (
-            "round:1:player:0:leader_board_repeat:trash:lapsed",
+            "round:1:player:0:leader:reverend_mother_jessica:trash:lapsed",
             {"effect": "trash", "player": 0, "space_id": "desert_tactics"},
         )
     ]
-    assert paid_result.events[-1].kind == "leader_board_repeat_paid"
+    assert [event.kind for event in paid_result.events[-2:]] == [
+        "resources_paid",
+        "leader_ability_resolved",
+    ]
+    # The flipped face's ability, as the page names it (2026-10-18 review).
+    assert dict(paid_result.events[-1].payload)["leader_id"] == (
+        "reverend_mother_jessica"
+    )
     paid = paid_result.state
     paid_context = dict(paid.decision_stack[-1].context)
     assert paid_context["pending_board_icons"] == "troops,trash"
@@ -1313,8 +1345,26 @@ def test_imperial_birthright_is_the_owners_next_step_in_its_turn() -> None:
         ("intrigue", "imperial_birthright")
     ]
     (draw,) = legal_owed_draw_actions(result.state, 0)
-    assert draw == DomainAction(action_id="draw_owed_intrigue", actor=0)
-    assert UprisingRulesEngine().legal_actions(result.state, 0) == (draw,)
+    # The leader's ability earned it, so it is the leader's own action (stage
+    # B3e-1).
+    assert draw == DomainAction(
+        action_id="draw_owed_intrigue",
+        actor=0,
+        arguments=(("printed", "princess_irulan"), ("source", "leader")),
+    )
+    # The turn offers it by its effect row (stage B3d-4): an Intrigue draw
+    # the leader's ability earned.
+    row = first_step(result.state, draw)
+    assert row == DomainAction(
+        action_id="draw",
+        actor=0,
+        arguments=(
+            ("icon", "intrigue"),
+            ("printed", "princess_irulan"),
+            ("source", "leader"),
+        ),
+    )
+    assert UprisingRulesEngine().legal_actions(result.state, 0) == (row,)
     drawn = apply_owed_draw(result.state, draw).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
     assert drawn.players[0].owed_draws == ()
@@ -1400,7 +1450,9 @@ def test_arrakis_informant_fizzles_when_every_city_post_is_taken() -> None:
     assert legal_leader_signet_actions(placed, 0) == ()
     result = resolve_agent_card_effect(placed)
 
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert [(e.kind, e.event_id) for e in result.events] == [
+        ("leader_signet_unavailable", "round:1:player:0:leader_signet:unavailable")
+    ]
 
 
 def test_arrakis_informant_can_pass_up_the_recall_first_without_supply() -> None:
@@ -1435,7 +1487,10 @@ def test_arrakis_informant_can_pass_up_the_recall_first_without_supply() -> None
         dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
     )
-    assert [event.kind for event in declined.events] == ["spy_placement_unavailable"]
+    assert [event.kind for event in declined.events] == [
+        "spy_placement_unavailable",
+        "leader_signet_declined",
+    ]
 
     # Once a Spy is recalled it has to be placed on a City post.
     recalled = apply_leader_spy_action(placed, actions[3]).state
@@ -1475,7 +1530,9 @@ def test_unpredictable_foe_draws_intrigue_with_a_sandworm() -> None:
     )
     state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
 
-    transition = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    transition = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
     context = dict(transition.state.decision_stack[-1].context)
 
     # Unpredictable Foe: one or more sandworms in the Conflict during the
@@ -1484,17 +1541,22 @@ def test_unpredictable_foe_draws_intrigue_with_a_sandworm() -> None:
     # so the Reveal itself stays undoable (user ruling 2026-10-10, OQ-106).
     assert transition.state.players[0].intrigue_cards == ()
     assert context["leader_intrigue_granted"] is True
-    draw = DomainAction(action_id="draw_reveal_intrigue", actor=0)
-    offered = engine.legal_actions(transition.state, 0)
+    # His ability printed it, so it names the leader (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_reveal_intrigue",
+        actor=0,
+        arguments=(("printed", "muad_dib"), ("source", "leader")),
+    )
+    offered = engine.whole_actions(transition.state, 0)
     assert draw in offered
     assert DomainAction(action_id="finish_reveal", actor=0) not in offered
-    drawn = engine.apply(transition.state, draw).state
+    drawn = apply_whole(engine, transition.state, draw).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
-    assert draw not in engine.legal_actions(drawn, 0)
+    assert draw not in engine.whole_actions(drawn, 0)
     # Granted once per Reveal: no second card comes.
     assert dict(drawn.decision_stack[-1].context)["leader_intrigue_granted"] is True
     assert DomainAction(action_id="finish_reveal", actor=0) in (
-        engine.legal_actions(drawn, 0)
+        engine.whole_actions(drawn, 0)
     )
 
 
@@ -1507,7 +1569,9 @@ def test_unpredictable_foe_stays_quiet_without_sandworms() -> None:
     )
     state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
 
-    transition = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    transition = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
 
     assert transition.state.players[0].intrigue_cards == ()
     assert "leader_intrigue_granted" not in dict(
@@ -1569,15 +1633,20 @@ def test_smuggle_spice_pays_staban_for_spied_maker_visits() -> None:
     # Smuggle Spice: another player's Agent on a spied Maker space pays one
     # Spice [Staban Tuek card].
     assert result.state.players[1].resources.spice == 1
-    # The log reads this payload as it is: the seat paid, the visited space,
-    # the amount and the visitor. It names no Leader, so panels.js
-    # EVENT_IMPLIED_LEADER names Staban Tuek and Smuggle Spice from the
-    # catalog; the payload stays put (it is in saved games' state hashes).
-    smuggled = [e for e in result.events if e.kind == "leader_ability_spice_gained"]
-    assert [dict(event.payload) for event in smuggled] == [
-        {"player": 1, "space_id": "hagga_basin", "spice": 1, "visitor": 0}
+    # The payout is a plain resource gain whose source names the Leader
+    # (cleanup-2c-4: the log reads a ``leader`` source as the Leader's name).
+    smuggled = [
+        e
+        for e in result.events
+        if e.kind == "resources_gained"
+        and dict(e.payload)["source"] == "round:1:player:1:leader:staban_tuek"
     ]
+    assert [dict(event.payload) for event in smuggled] == [
+        {"player": 1, "source": "round:1:player:1:leader:staban_tuek", "spice": 1}
+    ]
+    assert smuggled[0].event_id == "round:1:player:1:leader:staban_tuek:resources"
     assert smuggled[0].visible_to is None
+    assert not any(e.kind == "leader_ability_spice_gained" for e in result.events)
 
 
 def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:
@@ -1782,8 +1851,21 @@ def _fake_signet_troop_contract(card_id: str, target: str) -> ContractDefinition
             name="Fake Troop Acquire",
             sources=CONTRACT_SOURCES,
         ),
-        condition=ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=target),
-        reward=ContractReward(troops=1),
+        terms=Ability(
+            timing=AbilityTiming.CONTRACT,
+            sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+            requirement=AcquiredCard(target),
+        ),
+    )
+
+
+def _install_fake_signet_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract, whose definition holds its record."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_signet_troop_contract(card_id, target)
     )
 
 
@@ -1804,10 +1886,8 @@ def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
     # 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137). The
     # press then reopens his own next turn with nothing carried over.
     target = "imperium:sardaukar_soldier:0"
-    monkeypatch.setitem(
-        CONTRACTS_BY_ID,
-        "fake_troop_acquire_signet",
-        _fake_signet_troop_contract("fake_troop_acquire_signet", "sardaukar_soldier"),
+    _install_fake_signet_troop_contract(
+        monkeypatch, "fake_troop_acquire_signet", "sardaukar_soldier"
     )
     owner = PlayerState(
         player_id=0,
@@ -1844,21 +1924,29 @@ def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
         if action.action_id == "acquire_leader_imperium"
     )
     result = apply_leader_signet_acquire(placed, acquire)
+    # v150 (stage B3b, OQ-112 (4)): the completed Contract's reward is a row
+    # of this Agent turn, which holds its end; it is answered here before the
+    # turn is looked at again.
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
+    assert result.state.players[0].troops_garrison == garrison
+    settled = settle_reward_window(result.state)
+    assert not turn_rows.holds_the_end(settled, 0)
 
-    assert result.state.players[0].troops_garrison == garrison + 1
-    assert result.state.players[0].completed_contract_ids == (
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.players[0].completed_contract_ids == (
         "contract:fake_troop_acquire_signet",
     )
-    top = result.state.decision_stack[-1]
+    top = settled.decision_stack[-1]
     assert top.kind == FrameKind.AGENT_EFFECTS
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context)["troops_recruited"] == 1
     engine = UprisingRulesEngine()
-    assert [action.action_id for action in engine.legal_actions(result.state, 0)] == [
+    assert [action.action_id for action in engine.whole_actions(settled, 0)] == [
         "finish_agent_turn"
     ]
 
-    closed = finish_agent_turn(result.state)
+    closed = finish_agent_turn(settled)
     top = closed.decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0

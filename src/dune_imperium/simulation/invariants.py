@@ -2,8 +2,11 @@
 
 ``PlayerState`` and ``GameState`` already enforce their local invariants on
 every construction (non-negative quantities, per-player component totals,
-single-zone rules within one container). The checks here add what only a
-sweep can see across containers and time:
+single-zone rules within one container); a ``GameState`` copy runs only the
+invariants whose fields it replaced (``GameState._check_copy``), so a sweep
+re-runs every one of them after each transition (``check_game_state``),
+which a wrong field table could otherwise let pass. The checks here add what
+only a sweep can see across containers and time:
 
 - global card conservation: every tracked instance sits in exactly one zone
   and the game-wide set never changes after setup (Reserve copies instead
@@ -40,8 +43,8 @@ from dune_imperium.core.observation import (
     revealed_contract_ids,
 )
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import turn_owner_of, turn_start_is_open
+from dune_imperium.core.state import GameState, check_game_state
+from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
 from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 
@@ -219,8 +222,10 @@ def _require_unique(instance_ids: Iterable[str], zone_name: str) -> tuple[str, .
 
 
 def check_state_invariants(state: GameState, census: CardCensus) -> None:
-    """Check global conservation of every tracked card population."""
+    """Check every ``GameState`` invariant, then global conservation of every
+    tracked card population."""
 
+    check_game_state(state)
     personal = _require_unique(_all_personal_instances(state), "personal cards")
     fixed_personal = frozenset(
         instance_id
@@ -297,8 +302,9 @@ def check_track_spy_queue(state: GameState) -> None:
 
     Only the turn owner's entries wait for its ``place_track_spy`` (user
     ruling 2026-10-04); every other entry opens at once, unless a chance
-    frame or a Conflict's own reward choices are on top
-    (``spy_moves.track_spy_is_queued``). Checked at a player decision.
+    frame, a Conflict's own reward choices or a completed Contract's reward
+    window are on top (``spy_moves.track_spy_is_queued``). Checked at a
+    player decision.
     """
 
     if not state.pending_track_spies:
@@ -307,6 +313,7 @@ def check_track_spy_queue(state: GameState) -> None:
     if top is not None and (
         isinstance(top.decision, ChanceDecision)
         or str(top.kind).startswith("combat_reward")
+        or top.kind == FrameKind.CONTRACT_REWARD_ICONS
     ):
         return
     owner = turn_owner_of(state)
@@ -396,10 +403,24 @@ def _hidden_instances(state: GameState) -> frozenset[str]:
     return frozenset(known_card_seats(state))
 
 
+# Payload fields naming cards that left a face-up zone in the step: their
+# identities were public up to then, so naming them reveals nothing even
+# though they now sit in a hidden one (Clear the Market shuffles the old
+# face-up Contracts into the bank, OQ-083).
+_LEFT_FACE_UP_FIELDS: Final = frozenset({("scouts_contracts_cleared", "removed")})
+
+
 def _payload_strings(event: GameEvent) -> Iterator[tuple[str, str]]:
     for key, value in event.payload:
+        if (event.kind, key) in _LEFT_FACE_UP_FIELDS:
+            continue
         if isinstance(value, str):
             yield key, value
+        elif isinstance(value, tuple):
+            # An id list (cleanup-2c-7): each id is checked like a string.
+            for item in value:
+                if isinstance(item, str):
+                    yield key, item
 
 
 # The only payload fields a secret choice's public event may carry.

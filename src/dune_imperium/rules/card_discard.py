@@ -10,8 +10,12 @@ discard pile during Clean Up is not a discard and never triggers it.
 
 from copy import replace
 
+from dune_imperium.content.uprising.effect_dsl import GainResources
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardDiscardEffect
+from dune_imperium.content.uprising.trigger_abilities import (
+    discard_ability,
+    single_resource,
+)
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
@@ -82,17 +86,24 @@ def resolve_personal_card_discard_trigger(
     owner = state.players[player]
     if card_id not in owner.discard_pile:
         raise ValueError("discard trigger card must be in the discard pile")
-    card = personal_card_for_instance(card_id)
-    if card.discard_effect is PersonalCardDiscardEffect.GAIN_TWO_SPICE:
-        resources = replace(owner.resources, spice=owner.resources.spice + 2)
-        gained: tuple[str, int] = ("spice", 2)
-    elif card.discard_effect is PersonalCardDiscardEffect.GAIN_THREE_SOLARI:
-        # Corrupt Bureaucrat: "When this card is discarded: 3 Solari".
-        resources = replace(owner.resources, solari=owner.resources.solari + 3)
-        gained = ("solari", 3)
-    else:
+    # Spacing Guild's Favor's 2 spice, Corrupt Bureaucrat's 3 Solari: the
+    # card's discard record (composed A4a).
+    ability = discard_ability(personal_card_for_instance(card_id).discard_effect)
+    if ability is None:
         return RuleResult(state=state, events=())
-    next_owner = replace(owner, resources=resources)
+    (reward,) = ability.sections[0].rewards
+    if not isinstance(reward, GainResources):
+        raise TypeError(f"{reward!r} is not a discard box's gain")
+    gained = single_resource(reward)
+    next_owner = replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            solari=owner.resources.solari + reward.solari,
+            spice=owner.resources.spice + reward.spice,
+            water=owner.resources.water + reward.water,
+        ),
+    )
     players = tuple(
         next_owner if candidate.player_id == player else candidate
         for candidate in state.players

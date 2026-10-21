@@ -4,14 +4,44 @@ The module rules live in ``docs/rules/bloodlines.md`` section 5; every tile
 face is transcribed from the asset repository (``cards/en/bloodlines/tech/``)
 and cited as ``[<name> Tech tile]``. A tile has a spice cost, an optional
 acquire effect that pays once when the tile is acquired, and an ability
-[Bloodlines p. 7]. The Rival marker only matters in solo play.
+[Bloodlines p. 7]. The Rival marker only matters in solo play. The acquire
+effects are ability records (``tech_abilities.py``, composed A6a) compiled
+into the ``acquire_*`` fields below.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.content.bloodlines.tech_abilities import (
+    TECH_ABILITIES,
+    TECH_ACQUIRE_ABILITIES,
+    TRASH_SPY_TO_ACQUIRE,
+)
 from dune_imperium.content.schema import SourceDocument, SourceRef
+from dune_imperium.content.uprising.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    CommandReached,
+    DestroyShieldWall,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    EffectSection,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    PlaceSpy,
+    RecruitTroops,
+    RevealPersuasion,
+    RevealSwords,
+    Reward,
+    TakeContract,
+    TrashPersonalCard,
+    UseSignetAbility,
+)
 
 # "Divide them into three stacks of 6 tiles" [Bloodlines p. 6].
 TECH_STACKS: Final = 3
@@ -69,18 +99,11 @@ class TechAbility(StrEnum):
     COMMAND_TWO_STRENGTH = "command_two_strength"
 
 
-FLIP_ABILITIES: Final = frozenset(
-    {
-        TechAbility.FLIP_DRAW_INTRIGUE,
-        TechAbility.FLIP_COMBAT_ICON,
-        TechAbility.FLIP_SOLARI_AND_TRASH,
-    }
-)
-
-
 @dataclass(frozen=True, slots=True)
 class TechTile:
-    """One Tech tile: cost, acquire effect and ability, as printed."""
+    """One Tech tile: cost and ability, as printed. Its acquire effect is
+    its record (``TECH_ACQUIRE_ABILITIES``, composed A6a), read through the
+    ``acquire_*`` properties below (cleanup 2e)."""
 
     tech_id: str
     name: str
@@ -91,29 +114,6 @@ class TechTile:
     choam_only: bool = False
     # A Rival may acquire the tile in a solo game (marker only).
     rival: bool = False
-    # Acquire effects, paid once when the tile is acquired [Bloodlines p. 7].
-    acquire_solari: int = 0
-    acquire_troops: int = 0
-    acquire_intrigue: int = 0
-    acquire_cards: int = 0
-    acquire_victory_points: int = 0
-    acquire_contracts: int = 0
-    # "Gain one Influence of your choice".
-    acquire_influence_choice: bool = False
-    # Gene-Locked Vault: an Intrigue card OR a drawn card.
-    acquire_intrigue_or_card: bool = False
-    # The Shield Wall detonation icon: the owner may destroy the wall.
-    acquire_may_destroy_shield_wall: bool = False
-    # The Signet Ring icon: "you use the Signet Ring ability (with the
-    # corresponding icon) on your Leader" [Main p. 20] (Servo-Receivers).
-    acquire_leader_signet: bool = False
-    # The trash icon: the owner may trash a card.
-    acquire_may_trash_card: bool = False
-    # Spy Drones: two Spies with Deep Cover.
-    acquire_deep_cover_spies: int = 0
-    # Advanced Data Analysis: "To acquire this, you must trash one of your
-    # Spies from the board (return it to the box)".
-    acquire_requires_spy_trash: bool = False
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (7,)),
         SourceRef(SourceDocument.CARD_FACE, (1,)),
@@ -124,19 +124,120 @@ class TechTile:
             raise ValueError("Tech tiles require stable IDs and names")
         if self.cost < 0:
             raise ValueError("Tech tile cost must not be negative")
+
+    def _acquire_icons(self) -> tuple[Reward, ...]:
+        """The acquire record's icons, one reward per line, paid once when
+        the tile is acquired [Bloodlines p. 7]; none for a choice or the
+        Spy-trash prerequisite (checked on load, ``_acquire``)."""
+
+        record = TECH_ACQUIRE_ABILITIES.get(self.tech_id)
         if (
-            min(
-                self.acquire_solari,
-                self.acquire_troops,
-                self.acquire_intrigue,
-                self.acquire_cards,
-                self.acquire_victory_points,
-                self.acquire_contracts,
-                self.acquire_deep_cover_spies,
-            )
-            < 0
+            record is None
+            or record.hook is not None
+            or record.structure is AbilityStructure.ONE_OF
         ):
-            raise ValueError("Tech tile acquire effects must not be negative")
+            return ()
+        return tuple(line.rewards[0] for line in record.sections)
+
+    @property
+    def acquire_solari(self) -> int:
+        return sum(
+            icon.solari
+            for icon in self._acquire_icons()
+            if isinstance(icon, GainResources)
+        )
+
+    @property
+    def acquire_troops(self) -> int:
+        return sum(
+            icon.count
+            for icon in self._acquire_icons()
+            if isinstance(icon, RecruitTroops)
+        )
+
+    @property
+    def acquire_intrigue(self) -> int:
+        return sum(
+            icon.count
+            for icon in self._acquire_icons()
+            if isinstance(icon, DrawIntrigueCards)
+        )
+
+    @property
+    def acquire_cards(self) -> int:
+        return sum(
+            icon.count
+            for icon in self._acquire_icons()
+            if isinstance(icon, DrawPersonalCards)
+        )
+
+    @property
+    def acquire_victory_points(self) -> int:
+        return sum(
+            icon.amount
+            for icon in self._acquire_icons()
+            if isinstance(icon, GainVictoryPoints)
+        )
+
+    @property
+    def acquire_contracts(self) -> int:
+        return sum(
+            icon.count
+            for icon in self._acquire_icons()
+            if isinstance(icon, TakeContract)
+        )
+
+    @property
+    def acquire_influence_choice(self) -> bool:
+        """"Gain one Influence of your choice"."""
+
+        return any(isinstance(icon, GainInfluence) for icon in self._acquire_icons())
+
+    @property
+    def acquire_intrigue_or_card(self) -> bool:
+        """Gene-Locked Vault: an Intrigue card OR a drawn card."""
+
+        record = TECH_ACQUIRE_ABILITIES.get(self.tech_id)
+        return record is not None and record.structure is AbilityStructure.ONE_OF
+
+    @property
+    def acquire_may_destroy_shield_wall(self) -> bool:
+        """The Shield Wall detonation icon: the owner may destroy the wall."""
+
+        return any(
+            isinstance(icon, DestroyShieldWall) for icon in self._acquire_icons()
+        )
+
+    @property
+    def acquire_leader_signet(self) -> bool:
+        """The Signet Ring icon: "you use the Signet Ring ability (with the
+        corresponding icon) on your Leader" [Main p. 20] (Servo-Receivers)."""
+
+        return any(
+            isinstance(icon, UseSignetAbility) for icon in self._acquire_icons()
+        )
+
+    @property
+    def acquire_may_trash_card(self) -> bool:
+        """The trash icon: the owner may trash a card."""
+
+        return any(
+            isinstance(icon, TrashPersonalCard) for icon in self._acquire_icons()
+        )
+
+    @property
+    def acquire_deep_cover_spies(self) -> int:
+        """Spy Drones: two Spies with Deep Cover."""
+
+        return sum(isinstance(icon, PlaceSpy) for icon in self._acquire_icons())
+
+    @property
+    def acquire_requires_spy_trash(self) -> bool:
+        """Advanced Data Analysis: "To acquire this, you must trash one of
+        your Spies from the board (return it to the box)"."""
+
+        record = TECH_ACQUIRE_ABILITIES.get(self.tech_id)
+        return record is not None and record.hook == TRASH_SPY_TO_ACQUIRE
 
     @property
     def acquire_effect_keys(self) -> tuple[str, ...]:
@@ -161,138 +262,201 @@ class TechTile:
 
     @property
     def flips(self) -> bool:
-        """Return whether the ability is used by flipping the tile."""
+        """Return whether the ability is used by flipping the tile: the
+        tile's record has a Flip line [Bloodlines p. 7] (composed A6b)."""
 
-        return self.ability in FLIP_ABILITIES
+        return any(
+            record.timing is AbilityTiming.FLIP
+            for record in TECH_ABILITIES[self.tech_id]
+        )
+
+
+_INTRIGUE_OR_CARD: Final = (
+    EffectSection(rewards=(DrawIntrigueCards(1),)),
+    EffectSection(rewards=(DrawPersonalCards(1),)),
+)
+
+
+def _acquire(tech_id: str) -> None:
+    """Check the tile's acquire record against what the ``acquire_*``
+    properties read; raises ``ValueError`` for a record they cannot read."""
+
+    ability = TECH_ACQUIRE_ABILITIES.get(tech_id)
+    if ability is None:
+        return
+    if (
+        ability.timing is not AbilityTiming.ACQUIRE
+        or ability.mark is not AbilityMark.MANDATORY
+        or ability.requirement is not None
+        or ability.trigger is not None
+    ):
+        raise ValueError(f"{tech_id}: not an acquire effect a tile prints")
+    if ability.hook is not None:
+        if ability.hook != TRASH_SPY_TO_ACQUIRE or ability.sections:
+            raise ValueError(f"{tech_id}: unknown acquire hook {ability.hook!r}")
+        return
+    if ability.structure is AbilityStructure.ONE_OF:
+        if ability.sections != _INTRIGUE_OR_CARD:
+            raise ValueError(f"{tech_id}: no acquire icon holds this choice")
+        return
+    printed: set[type] = set()
+    for line in ability.sections:
+        if line.condition is not None or line.costs or len(line.rewards) != 1:
+            raise ValueError(f"{tech_id}: an acquire icon is one free reward")
+        icon = line.rewards[0]
+        match icon:
+            case GainResources(spice=0, water=0):
+                pass
+            case (
+                RecruitTroops()
+                | DrawIntrigueCards()
+                | DrawPersonalCards()
+                | GainVictoryPoints()
+                | TakeContract()
+                | DestroyShieldWall()
+                | UseSignetAbility()
+            ):
+                pass
+            case GainInfluence() if icon == GainInfluence():
+                pass
+            case TrashPersonalCard() if icon == TrashPersonalCard():
+                pass
+            case PlaceSpy() if icon == PlaceSpy(shared_post=True):
+                # Spy Drones prints two Spies with Deep Cover.
+                continue
+            case _:
+                raise ValueError(f"{tech_id}: no acquire icon holds {icon!r}")
+        if type(icon) in printed:
+            raise ValueError(f"{tech_id}: acquire {type(icon).__name__} printed twice")
+        printed.add(type(icon))
+
+
+def _tile(
+    tech_id: str,
+    name: str,
+    cost: int,
+    ability: TechAbility,
+    *,
+    choam_only: bool = False,
+    rival: bool = False,
+) -> TechTile:
+    """One tile, its acquire record checked."""
+
+    _acquire(tech_id)
+    return TechTile(tech_id, name, cost, ability, choam_only=choam_only, rival=rival)
 
 
 TECH_TILES: Final[tuple[TechTile, ...]] = (
-    TechTile(
+    _tile(
         "advanced_data_analysis",
         "Advanced Data Analysis",
         3,
         TechAbility.FLIP_DRAW_INTRIGUE,
-        acquire_requires_spy_trash=True,
     ),
-    TechTile(
+    _tile(
         "choam_transports",
         "CHOAM Transports",
         6,
         TechAbility.CONTRACT_COMPLETION_DRAW,
         choam_only=True,
-        acquire_contracts=1,
     ),
-    TechTile(
+    _tile(
         "delivery_bay",
         "Delivery Bay",
         3,
         TechAbility.COMMAND_TWO_SOLARI,
         rival=True,
-        acquire_cards=1,
     ),
-    TechTile(
+    _tile(
         "forbidden_weapons",
         "Forbidden Weapons",
         2,
         TechAbility.FORBIDDEN_WEAPONS,
-        acquire_may_destroy_shield_wall=True,
-        acquire_troops=1,
     ),
-    TechTile(
+    _tile(
         "gene_locked_vault",
         "Gene-Locked Vault",
         2,
         TechAbility.INTRIGUE_STEAL_PROTECTION,
         rival=True,
-        acquire_intrigue_or_card=True,
     ),
-    TechTile(
+    _tile(
         "glowglobes",
         "Glowglobes",
         2,
         TechAbility.PEEK_TOP_CARD,
         rival=True,
-        acquire_influence_choice=True,
     ),
-    TechTile(
+    _tile(
         "navigation_chamber",
         "Navigation Chamber",
         5,
         TechAbility.SPACE_DISCOUNT,
-        acquire_influence_choice=True,
     ),
-    TechTile(
+    _tile(
         "ornithopter_fleet",
         "Ornithopter Fleet",
         4,
         TechAbility.ORNITHOPTER_ICONS,
         rival=True,
-        acquire_troops=2,
     ),
-    TechTile("panopticon", "Panopticon", 5, TechAbility.PANOPTICON, rival=True),
-    TechTile(
+    _tile("panopticon", "Panopticon", 5, TechAbility.PANOPTICON, rival=True),
+    _tile(
         "planetary_array",
         "Planetary Array",
         2,
         TechAbility.CONFLICT_WIN_DRAW,
-        acquire_may_trash_card=True,
     ),
-    TechTile(
+    _tile(
         "plasteel_blades",
         "Plasteel Blades",
         3,
         TechAbility.PLASTEEL_BLADES,
-        acquire_solari=4,
     ),
-    TechTile(
+    _tile(
         "rapid_dropships",
         "Rapid Dropships",
         4,
         TechAbility.FLIP_COMBAT_ICON,
         rival=True,
-        acquire_troops=2,
     ),
-    TechTile(
+    _tile(
         "sardaukar_high_command",
         "Sardaukar High Command",
         7,
         TechAbility.COMMANDER_DISCOUNT,
         rival=True,
-        acquire_victory_points=1,
     ),
-    TechTile(
+    _tile(
         "self_destroying_messages",
         "Self-Destroying Messages",
         4,
         TechAbility.REVEAL_PERSUASION,
         rival=True,
-        acquire_intrigue=2,
     ),
     # The acquire box prints the brown-gold Signet Ring icon, not Forbidden
     # Weapons' red-and-tan Shield Wall detonation [Servo-Receivers Tech tile].
-    TechTile(
+    _tile(
         "servo_receivers",
         "Servo-Receivers",
         2,
         TechAbility.SIGNET_FACTION_ICONS,
         rival=True,
-        acquire_leader_signet=True,
     ),
-    TechTile(
+    _tile(
         "spy_drones",
         "Spy Drones",
         5,
         TechAbility.FLIP_SOLARI_AND_TRASH,
         rival=True,
-        acquire_deep_cover_spies=2,
     ),
-    TechTile(
+    _tile(
         "suspensor_suits",
         "Suspensor Suits",
         3,
         TechAbility.INTRIGUE_DRAW_TROOP,
     ),
-    TechTile(
+    _tile(
         "training_depot",
         "Training Depot",
         1,
@@ -302,6 +466,60 @@ TECH_TILES: Final[tuple[TechTile, ...]] = (
 )
 TECH_TILES_BY_ID: Final = {tile.tech_id: tile for tile in TECH_TILES}
 TECH_IDS: Final = tuple(tile.tech_id for tile in TECH_TILES)
+if set(TECH_ABILITIES) != set(TECH_IDS):
+    raise ValueError("every Tech tile prints one ability record set")
+
+
+def tech_reveal_line(tech_id: str) -> EffectSection | None:
+    """The tile's automatic "Reveal Turn:" line -- the line of its REVEAL
+    record without a hook (composed A6b) -- or None; ``command`` lines open
+    on "Command (6+):" [Bloodlines p. 5]."""
+
+    records = tuple(
+        record
+        for record in TECH_ABILITIES[tech_id]
+        if record.timing is AbilityTiming.REVEAL and record.hook is None
+    )
+    if not records:
+        return None
+    (record,) = records
+    (line,) = record.sections
+    return line
+
+
+def _check_reveal_lines() -> None:
+    """Every automatic Reveal Turn line is one the Reveal can pay; raises
+    ``ValueError`` on load otherwise."""
+
+    for tile in TECH_TILES:
+        for record in TECH_ABILITIES[tile.tech_id]:
+            if record.timing is not AbilityTiming.REVEAL or record.hook is not None:
+                continue
+            if (
+                record.mark is not AbilityMark.AUTOMATIC
+                or record.requirement is not None
+                or len(record.sections) != 1
+            ):
+                raise ValueError(f"{tile.tech_id}: not an automatic Reveal line")
+        line = tech_reveal_line(tile.tech_id)
+        if line is None:
+            continue
+        command = line.condition == CommandReached()
+        if (line.condition is not None and not command) or line.costs:
+            raise ValueError(f"{tile.tech_id}: the Reveal checks no such condition")
+        match line.rewards:
+            # Command opens on the other Persuasion and adds none itself.
+            case (RevealPersuasion(per=None),) if not command:
+                pass
+            case (GainResources(spice=0, water=0),) if command:
+                pass
+            case (RevealSwords(per=None),) if command:
+                pass
+            case _:
+                raise ValueError(f"{tile.tech_id}: the Reveal pays no such line")
+
+
+_check_reveal_lines()
 
 
 def tech_tiles_for(choam_module: bool) -> tuple[TechTile, ...]:

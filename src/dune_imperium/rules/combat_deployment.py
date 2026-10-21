@@ -33,6 +33,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.effects import (
     agent_turn_has_other_pending_effects,
     close_agent_turn,
@@ -40,7 +41,6 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
-    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owes_held_draw,
     owes_track_spy,
@@ -413,7 +413,16 @@ def legal_agent_turn_finish_actions(
         return ()
     if agent_turn_is_finishing(context):
         return ()
-    if owes_track_spy(state, player) or context.get(TECH_ACQUIRE_PENDING_KEY):
+    if owes_track_spy(state, player) or turn_rows.tech_acquire_effects_hold_the_end(
+        context, state.players[player]
+    ):
+        # An owed Tech acquire icon holds the end (OQ-098), but not an
+        # Influence with every Faction at the top: the press lapses it
+        # (cleanup-2b, ``turn_rows.lapse``).
+        return ()
+    if turn_rows.holds_the_end(state, player):
+        # c6r6's Influence waiting on the turn, with a Faction it can raise
+        # (cleanup-2b): taking it is mandatory.
         return ()
     if owes_held_draw(state, player):
         # A triggered draw waits as its own step and is taken before the
@@ -658,6 +667,22 @@ def apply_commander_withdrawal(
     return RuleResult(state=next_state, events=(event,))
 
 
+def open_combat_deployment(context: dict[str, ActionValue]) -> None:
+    """Open an Agent turn's basic deployment as though at a Combat space,
+    the garrison share capped at two whatever the number of icons
+    [Bloodlines p. 5], in the owner's Agent-turn effect frame ``context``;
+    nothing while Emperor of the Known Universe blocks the turn's
+    deployment [Main p. 17]."""
+
+    if context.get("units_deploy_blocked") is True:
+        return
+    context["pending_combat_deployment"] = True
+    limit = context.get("existing_troop_deployment_limit", 0)
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
+    context["existing_troop_deployment_limit"] = max(limit, 2)
+
+
 def grant_combat_icon(state: GameState, player: int) -> GameState:
     """Let ``player`` deploy this turn as if at a Combat space [Bloodlines p. 5].
 
@@ -679,13 +704,7 @@ def grant_combat_icon(state: GameState, player: int) -> GameState:
             context = dict(frame.context)
             if context.get("units_deploy_blocked") is True:
                 return state
-            context["pending_combat_deployment"] = True
-            limit = context.get("existing_troop_deployment_limit", 0)
-            if isinstance(limit, bool) or not isinstance(limit, int):
-                raise RuntimeError(
-                    "Agent-turn effect frame has invalid deployment limit"
-                )
-            context["existing_troop_deployment_limit"] = max(limit, 2)
+            open_combat_deployment(context)
             return replace(
                 state,
                 decision_stack=(
@@ -759,8 +778,14 @@ def apply_agent_turn_finish(
     # visited space's optional icons and the Leader's optional repeat.
     lapsed = lapse_optional_boxes(state)
     lapsed_board = lapse_optional_board_effects(lapsed.state, player)
-    working = lapsed_board.state
-    events: list[GameEvent] = [*lapsed.events, *lapsed_board.events]
+    # So do the research bonuses waiting on the turn (cleanup-2b).
+    lapsed_rows = turn_rows.lapse(lapsed_board.state, player)
+    working = lapsed_rows.state
+    events: list[GameEvent] = [
+        *lapsed.events,
+        *lapsed_board.events,
+        *lapsed_rows.events,
+    ]
     for _ in range(4):
         # Mandatory boxes that could not be met by the turn's end fizzle now
         # (OQ-057), the grafted partner's with its box made active.
@@ -892,6 +917,10 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
     recruited_more = _recruited_units(context) > recruited_at_press
     if (
         agent_turn_has_other_pending_effects(reopened, state.players)
+        # An effect the press's own steps queued on the turn (a Contract an
+        # Influence it gained completed, OQ-112 (4)) is the turn's own too,
+        # never dropped unseen.
+        or bool(turn_rows.pending(frame))
         or owes_track_spy(state, owner)
         or owes_held_draw(state, owner)
         or (

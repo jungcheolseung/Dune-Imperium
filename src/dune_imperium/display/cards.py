@@ -77,6 +77,7 @@ from dune_imperium.display.tokens_ko import (
     TURN_START_EFFECT_TEXT_KO,
     reveal_effect_text_ko,
 )
+from dune_imperium.rules.reveal_lines import reveal_lines
 
 _FACTION_NAMES: dict[Faction, str] = {
     Faction.EMPEROR: "Emperor",
@@ -384,7 +385,7 @@ def _agent_line_ko(entry: PersonalCardDefinition) -> str | None:
 
 
 def _reveal_line(entry: PersonalCardDefinition) -> str | None:
-    parts = [reveal_effect_text(effect) for effect in entry.reveal_effects]
+    parts = [reveal_effect_text(line) for line in reveal_lines(entry)]
     parts.extend(
         REVEAL_CHOICE_EFFECT_TEXT[choice] for choice in entry.reveal_choice_effects
     )
@@ -397,7 +398,7 @@ def _reveal_line_ko(entry: PersonalCardDefinition) -> str | None:
     """Korean twin of ``_reveal_line``; see the module docstring for why the
     "공개 칸:" prefix is a plain word, never an icon term."""
 
-    parts = [reveal_effect_text_ko(effect) for effect in entry.reveal_effects]
+    parts = [reveal_effect_text_ko(line) for line in reveal_lines(entry)]
     parts.extend(
         REVEAL_CHOICE_EFFECT_TEXT_KO[choice] for choice in entry.reveal_choice_effects
     )

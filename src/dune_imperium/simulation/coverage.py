@@ -34,6 +34,7 @@ from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.events import EventValue
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
 
@@ -76,7 +77,7 @@ def _int_argument(arguments: dict[str, ActionValue], key: str) -> int:
 
 
 def _leader_id_for_event(
-    final_state: GameState, payload: dict[str, ActionValue]
+    final_state: GameState, payload: dict[str, EventValue]
 ) -> str | None:
     player = payload.get("player")
     if isinstance(player, bool) or not isinstance(player, int):
@@ -98,37 +99,40 @@ def collect_game_coverage(
             _bump(census, "chance_kinds", _INTEGER_TOKEN.sub("", step.decision_id))
             continue
         _bump(census, "action_ids", step.action_id)
-        if step.action_id != "agent_turn":
-            continue
         arguments = dict(step.arguments)
+        if step.action_id == "choose_agent_card":
+            # Stage B1: the Agent turn's card pick, then its space pick.
+            card_id = arguments.get("card_id")
+            if isinstance(card_id, str):
+                _bump(census, "cards_played", normalize_instance_id(card_id))
+            continue
+        if step.action_id != "place_agent":
+            continue
         space_id = arguments.get("space_id")
-        card_id = arguments.get("card_id")
         if isinstance(space_id, str):
             cost_option = _int_argument(arguments, "cost_option")
             _bump(census, "agent_placements", f"{space_id}:{cost_option}")
-        if isinstance(card_id, str):
-            _bump(census, "cards_played", normalize_instance_id(card_id))
 
     for event in final_state.event_log:
         _bump(census, "event_kinds", event.kind)
         payload = dict(event.payload)
 
         if event.kind == "card_acquired":
-            card_id = payload.get("card_id")
-            if isinstance(card_id, str):
-                _bump(census, "cards_acquired", normalize_instance_id(card_id))
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                _bump(census, "cards_acquired", normalize_instance_id(named))
         elif event.kind in ("personal_card_late_revealed", "card_grafted"):
             # The Reveal-turn immediate reveal of an arriving card and a
             # Graft partner (Immortality: a card without Agent icons, such
             # as Clandestine Meeting, only ever plays this way) are the
             # other places a specific personal card "plays" itself.
-            card_id = payload.get("card_id")
-            if isinstance(card_id, str):
-                _bump(census, "cards_played", normalize_instance_id(card_id))
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                _bump(census, "cards_played", normalize_instance_id(named))
         elif event.kind == "intrigue_played":
-            card_id = payload.get("card_id")
-            if isinstance(card_id, str):
-                identity = normalize_instance_id(card_id)
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                identity = normalize_instance_id(named)
                 option = payload.get("option")
                 key = (
                     f"{identity}:{option}"
@@ -154,9 +158,9 @@ def collect_game_coverage(
             # The payload already names the Row card's identity, not its
             # copy, but normalizing keeps this dimension's keys shaped like
             # every other card dimension's.
-            card_id = payload.get("card_id")
-            if isinstance(card_id, str):
-                _bump(census, "tleilaxu_acquired", normalize_instance_id(card_id))
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                _bump(census, "tleilaxu_acquired", normalize_instance_id(named))
         elif event.kind == "skill_gained":
             # Recruiting a Sardaukar Commander, and Plasteel Blades' trash,
             # both take a face-up Skill through this one event

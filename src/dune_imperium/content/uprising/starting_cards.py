@@ -11,7 +11,6 @@ from dune_imperium.content.uprising.types import (
     PersonalCardDiscardEffect,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
-    PersonalCardRevealEffect,
 )
 
 # Backward-compatible content name; Agent effects are now shared by every
@@ -33,7 +32,6 @@ class StartingCardEntry:
     reveal_acquisition_effect: PersonalCardRevealAcquisitionEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
-    reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
 
     def __post_init__(self) -> None:
@@ -49,8 +47,6 @@ class StartingCardEntry:
             self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
         ):
             raise ValueError("Spy target Factions require a place-Spy Agent effect")
-        if len(self.reveal_effects) != len(set(self.reveal_effects)):
-            raise ValueError("starting-card Reveal effects must be unique")
         if len(self.reveal_choice_effects) != len(set(self.reveal_choice_effects)):
             raise ValueError("starting-card Reveal choices must be unique")
         if min(self.reveal_persuasion, self.reveal_strength) < 0:
@@ -143,7 +139,6 @@ EXPERIMENTATION: Final = StartingCardEntry(
     agent_icons=(AgentIcon.SPICE_TRADE,),
     agent_effect=PersonalCardAgentEffect.RESEARCH,
     reveal_persuasion=1,
-    reveal_effects=(PersonalCardRevealEffect(specimens=1),),
 )
 REPLACED_BY_EXPERIMENTATION: Final = "dune_the_desert_planet"
 
@@ -169,7 +164,6 @@ CONTROL_THE_SPICE: Final = StartingCardEntry(
     agent_icons=(AgentIcon.SPICE_TRADE,),
     agent_effect=PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
     reveal_persuasion=1,
-    reveal_effects=(PersonalCardRevealEffect(spice=1),),
 )
 REPLACED_BY_CONTROL_THE_SPICE: Final = "dune_the_desert_planet"
 

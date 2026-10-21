@@ -17,6 +17,7 @@ import pytest
 
 import dune_imperium.agents.app_ai.agent as agent_module
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import placements_for_steps
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.abilities import board as b
 from dune_imperium.agents.app_ai.abilities import generic as g
@@ -85,6 +86,16 @@ def _owner(state: GameState) -> int:
     return decision.owner
 
 
+def _legal(state: GameState, seat: int) -> tuple[DomainAction, ...]:
+    """The engine's legal list as the app AI's windows see it: an Agent-turn
+    step's rows shown as the placements they stand for (stage B1,
+    ``agents.agent_turn_steps``)."""
+
+    legal = ENGINE.legal_actions(state, seat)
+    steps = placements_for_steps(state, seat, legal)
+    return legal if steps is None else steps[0]
+
+
 def _run(
     state: GameState,
     legal: Sequence[DomainAction] | None = None,
@@ -95,7 +106,7 @@ def _run(
     view = ENGINE.observe(state, seat)
     ctx = AppContext(state, seat, view)
     rng = random.Random(rng_seed)
-    actions = tuple(ENGINE.legal_actions(state, seat) if legal is None else legal)
+    actions = tuple(_legal(state, seat) if legal is None else legal)
     return DecisionRun(ctx, Profile(ctx, TABLES[2], rng), actions, rng, Memory())
 
 
@@ -424,7 +435,7 @@ def test_plots_compete_with_placements(
 ) -> None:
     state, seat = _turn_state()
     plot = _plot_action(seat)
-    legal = (*ENGINE.legal_actions(state, seat), plot)
+    legal = (*_legal(state, seat), plot)
     calls: list[tuple[object, ...]] = []
 
     def sources(
@@ -475,7 +486,7 @@ def test_track_spy_is_never_chosen(monkeypatch: pytest.MonkeyPatch) -> None:
     assert turn.turn_window(_run(state, (track_spy, reveal))) == reveal
     dagger = _starter(seat, "dagger")
     _stub_agent_values(monkeypatch, _only(dagger, "assembly_hall"))
-    legal = (track_spy, *ENGINE.legal_actions(state, seat))
+    legal = (track_spy, *_legal(state, seat))
     chosen = turn.turn_window(_run(state, legal))
     assert chosen is not None and chosen.action_id == "agent_turn"
 

@@ -10,6 +10,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_card_for_instance,
@@ -32,6 +33,7 @@ from dune_imperium.rules import tleilaxu_row
 from dune_imperium.rules.acquisition import AcquireBlock, AcquisitionBonus
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.setup import create_initial_state
@@ -260,12 +262,13 @@ def test_a_tleilaxu_acquire_box_choice_holds_call_to_arms(
     garrison = state.players[0].troops_garrison
     engine = UprisingRulesEngine()
 
-    bought = engine.apply(state, _actions(state)[CONTAMINATOR])
+    bought = apply_whole(engine, state, _actions(state)[CONTAMINATOR])
     assert "intrigue_triggered" not in [event.kind for event in bought.events]
     assert bought.state.decision_stack[-1].kind == "research_advance"
     assert bought.state.players[0].troops_garrison == garrison
 
-    chosen = engine.apply(
+    chosen = apply_whole(
+        engine,
         bought.state,
         DomainAction(
             action_id="choose_research_space",
@@ -455,8 +458,11 @@ def test_subject_x_137_needs_the_first_genetic_marker() -> None:
 def test_the_codec_holds_row_and_reclaimed_forces_choices() -> None:
     codec = ActionCodec(IMMORTALITY)
     state = _reveal_state(_owner(research_space="c4r4"))
+    # Stage B3b-2: the Reveal frame offers a purchase as its effect row and
+    # target rows (``effect_steps.steps_for``); the whole templates left.
     for action in legal_tleilaxu_acquisitions(state, 0):
-        assert codec.decode(codec.encode(action), action.actor) == action
+        for row in steps_for(action):
+            assert codec.decode(codec.encode(row), action.actor) == row
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
     assert not {"acquire_tleilaxu", "acquire_reclaimed_forces"} & base
 

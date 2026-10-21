@@ -101,6 +101,7 @@ from dune_imperium.content.uprising.intrigue import (
 from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.content.uprising.types import AgentIcon, ConflictTier
 from dune_imperium.core.state import GameState
+from dune_imperium.display.structs import contract_reward_parts
 from dune_imperium.rules.scouts_missions import _TO_CONFLICT
 
 REPO = Path(__file__).resolve().parents[4]
@@ -588,9 +589,10 @@ def test_contract_reference_spaces_are_the_catalogs() -> None:
         assert space_archetype(target, Board(True)) == short
     for contract in BLOODLINES_CONTRACTS:
         a = attrs(CONTRACT_ARCHETYPES[contract.card.card_id])
-        assert a.get("Solari", 0) == contract.reward.solari
-        assert a.get("Troops", 0) == contract.reward.troops
-        assert a.get("DeferValue", 0) == contract.reward.personal_cards  # §1.10
+        reward = contract_reward_parts(contract.reward_line)
+        assert a.get("Solari", 0) == reward.solari
+        assert a.get("Troops", 0) == reward.troops
+        assert a.get("DeferValue", 0) == reward.personal_cards  # §1.10
 
 
 # ---------------------------------------------------------------------------

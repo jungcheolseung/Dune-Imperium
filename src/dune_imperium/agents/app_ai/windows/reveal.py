@@ -27,7 +27,7 @@ choice ("may", an arrow cost, a black trash icon [FAQ p. 3]) offers no
 refusal and lapses at ``finish_reveal``; a mandatory one holds
 ``finish_reveal`` while it offers something. The app's Explicit choices are
 exactly our mandatory ones and its Optional choices our optional ones
-(``content.uprising.types.OPTIONAL_REVEAL_CHOICES``). This adapter answers:
+(``content.uprising.reveal_choice_abilities``). This adapter answers:
 
 1. **``reveal``: automatic gains first** (``Stage.REVEAL_AUTO``):
    ``recruit_reveal_troops``, ``draw_reveal_intrigue``,
@@ -266,13 +266,16 @@ from dune_imperium.agents.app_ai.context import (
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
 from dune_imperium.agents.app_ai.windows.common import (
+    TURN_ROW_IDS,
     Source,
     Stage,
+    TurnRowGap,
     decide,
     int_arg,
     spy_answer,
     str_arg,
     triggered_draw,
+    waiting_turn_row,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import (
@@ -2065,7 +2068,14 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     drawn = triggered_draw(run)
     if drawn is not None:
         return drawn
-    if any(a.action_id not in _REVEAL_ACTIONS for a in run.legal):
+    try:
+        waiting = waiting_turn_row(run)
+    except TurnRowGap:
+        return None
+    if waiting is not None:
+        return waiting
+    known = _REVEAL_ACTIONS | TURN_ROW_IDS
+    if any(a.action_id not in known for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
     batch = _return_batch(run)
     if batch is not None:

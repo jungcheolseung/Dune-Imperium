@@ -84,9 +84,10 @@ from dune_imperium.rules.action_shapes import (
     Target,
     Verb,
     action_shape,
+    printer_value,
     template_id,
 )
-from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
     resolve_personal_card_discard_trigger,
@@ -107,8 +108,6 @@ from dune_imperium.rules.effect_interpreter import (
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
     influence_gain_candidates,
-    spy_placement_allowed_post_ids,
-    spy_placement_targets,
     trashable_discard_pile_ids,
 )
 from dune_imperium.rules.effects import (
@@ -145,7 +144,8 @@ from dune_imperium.rules.spy_moves import (
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
-    solo_occupied_post_ids,
+    spy_options,
+    spy_placement_allowed_post_ids,
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -386,6 +386,7 @@ def piece_rows(
     chosen: tuple[str, ...] = (),
     played_card_id: str | None = None,
     tag_value: ActionValue | None = None,
+    empty_confirm: bool = True,
 ) -> tuple[DomainAction, ...]:
     """The rows that answer ``piece`` for ``player``, named for ``source``.
 
@@ -393,9 +394,12 @@ def piece_rows(
     ``chosen`` holds the Factions an earlier step of a "distinct" gain took;
     ``played_card_id`` is the Intrigue card being played, still held while it
     resolves and never its own cost; ``tag_value`` tags a tagged template
-    (``action_shapes.Tag``). The targets and their order are the ones the
-    engine offered before the executor (``intrigue.legal_intrigue_choice_
-    actions`` up to codec v147, which offers these rows since stage A1).
+    (``action_shapes.Tag``). ``empty_confirm`` gives a gain or an
+    acquisition with nothing to take its confirmation row (a stacked
+    frame's, OQ-060, OQ-057); an Agent box offers none and waits instead.
+    The targets and their order are the ones the engine offered before the
+    executor (``intrigue.legal_intrigue_choice_actions`` up to codec v147,
+    which offers these rows since stage A1).
     """
 
     owner = state.players[player]
@@ -435,10 +439,10 @@ def piece_rows(
                 for faction in influence_gain_candidates(state, player, gain)
                 if not (distinct and faction in taken)
             )
-            if not rows:
+            if not rows and empty_confirm:
                 # Every Faction it may raise is at the top: the gain is lost
                 # and its owner confirms it (OQ-060, user ruling 2026-09-30).
-                rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.GAIN_INFLUENCE))
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.GAIN_INFLUENCE))
         case DiscardFromHand():
             rows.extend(
                 row(Verb.DISCARD, Target.PERSONAL_CARD, (("card_id", card_id),))
@@ -463,14 +467,9 @@ def piece_rows(
             # borrowed with Usurp is not "in play" (OQ-054).
             if refusals and not mandatory:
                 rows.append(row(Verb.DECLINE, of=Verb.TRASH))
-            candidates = (
-                owner.hand
-                if hand_only
-                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
-            )
             rows.extend(
                 row(Verb.TRASH, Target.PERSONAL_CARD, (("card_id", card_id),))
-                for card_id in candidates
+                for card_id in trashable_cards(owner, hand_only=hand_only)
             )
         case LoseTroops(from_conflict=from_conflict):
             # The zone and, for a Sardaukar Commander, the kind (OQ-038).
@@ -588,38 +587,32 @@ def piece_rows(
                     state, max_cost, player=player
                 )
             )
-            if not rows:
+            if not rows and empty_confirm:
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
-                rows.append(row(Verb.RESOLVE_EMPTY, of=Verb.ACQUIRE))
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
         case PlaceSpy():
-            targets = spy_placement_targets(state, player, piece)
-            if owner.spies_supply > 0:
-                rows.extend(
-                    row(Verb.PLACE_SPY, Target.POST, (("post_id", post_id),))
-                    for post_id in targets
-                )
-            else:
-                # With an empty supply one Spy may be recalled first
-                # [Main pp. 11, 20], only where the placement stays
-                # reachable: any Spy while a target post is free, else the
-                # sole occupant of an allowed post.
-                recallable = (
-                    owner.spy_post_ids
-                    if targets
-                    else solo_occupied_post_ids(
-                        state, player, spy_placement_allowed_post_ids(piece)
-                    )
-                )
-                rows.extend(
-                    row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
-                    for post_id in recallable
-                )
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
-            # passed up only when it cannot be made, whatever the turn.
-            if owner.spies_supply == 0 or not targets:
+            # passed up (first) only when it cannot be made, whatever the
+            # turn, and a recall-first comes only where it opens a post
+            # (``spy_options``).
+            options = spy_options(
+                state,
+                player,
+                spy_placement_allowed_post_ids(piece),
+                shared_post=piece.shared_post,
+            )
+            if options.pass_up:
                 rows.append(row(Verb.DECLINE, of=Verb.PLACE_SPY))
+            rows.extend(
+                row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
+                for post_id in options.recall
+            )
+            rows.extend(
+                row(Verb.PLACE_SPY, Target.POST, (("post_id", post_id),))
+                for post_id in options.place
+            )
     return tuple(rows)
 
 
@@ -708,7 +701,9 @@ def rewards_wait(entry: PendingAbility) -> bool:
 # confirmation of an acquisition piece is announced by the frame that
 # orders the acquisition, which names the card too.)
 _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
-    "decline_intrigue_trash": ("trash_declined", "intrigue_trash_declined"),
+    # One kind for a refused optional trash, wherever it is offered
+    # (cleanup-2c-6).
+    "decline_intrigue_trash": ("trash_declined", "optional_trash_declined"),
     "decline_intrigue_tleilaxu": (
         "tleilaxu_declined",
         "intrigue_tleilaxu_acquisition_declined",
@@ -894,7 +889,7 @@ def apply_piece(
                 event_prefix=f"{step_source}:lost:{faction.value}",
                 alliance_recipient=recipient,
             )
-        case GainInfluence() if shape.verb is Verb.RESOLVE_EMPTY:
+        case GainInfluence() if shape.verb is Verb.CONFIRM_EMPTY:
             # No Faction this gain may raise is below the top: it is lost
             # (OQ-060), while a "Choose two" Faction named before it is still
             # paid ("서로 다른 진영 둘"은 먼저 이름 붙인 진영을 그대로 지급).
@@ -1028,7 +1023,9 @@ def apply_piece(
             else:
                 taken = replace(taken, tally=0)
                 tactician, tactics_events = advance_tactics_token(
-                    result.state.players[player], from_conflict, source=step_source
+                    result.state.players[player],
+                    from_conflict,
+                    round_number=result.state.round_number,
                 )
                 result = RuleResult(
                     state=replace(
@@ -1112,7 +1109,7 @@ def acquire_by_piece(
     """
 
     shape = action_shape(action.action_id)
-    if shape.verb is Verb.RESOLVE_EMPTY:
+    if shape.verb is Verb.CONFIRM_EMPTY:
         return None
     arguments = dict(action.arguments)
     if shape.target is Target.RESERVE_CARD:
@@ -1448,8 +1445,11 @@ def apply_automatic_rewards(
     player: int,
     sections: tuple[EffectSection, ...],
     source: str,
+    *,
+    played_card_id: str,
 ) -> RuleResult:
-    """Apply the sections' automatic rewards and their turn bookkeeping.
+    """Apply the played Intrigue card's automatic rewards and their turn
+    bookkeeping.
 
     ``update_turn_recruits`` finds whatever turn-family frame is nearest the
     top regardless of whose it is, so the troop credit is guarded by
@@ -1498,7 +1498,13 @@ def apply_automatic_rewards(
         # Battlefield Research / Rapid Engineering: the Tech Discount icon
         # opens its own Acquire Tech [Bloodlines pp. 7, 12].
         opened = push_tech_acquisition(
-            next_state, player, discount=discount, source=source
+            next_state,
+            player,
+            discount=discount,
+            source=source,
+            printer=printer_value(
+                Source.INTRIGUE, intrigue_card_for_instance(played_card_id).card.card_id
+            ),
         )
         next_state = opened.state
         events.extend(opened.events)
@@ -1518,10 +1524,21 @@ def apply_automatic_rewards(
         space_id = agent_turn_space_id(next_state, player)
         if space_id is None:
             raise RuntimeError("False Orders needs this turn's Agent placement")
+        printed = intrigue_card_for_instance(played_card_id).card.card_id
         next_state = spy_placement_frame(
-            next_state, player, connected_post_ids(space_id), source=source
+            next_state,
+            player,
+            connected_post_ids(space_id),
+            source=source,
+            printer=printer_value(Source.INTRIGUE, printed),
         )
-        moved = turn_space_spy_frames(next_state, player, space_id, source=source)
+        moved = turn_space_spy_frames(
+            next_state,
+            player,
+            space_id,
+            source=source,
+            printer=printer_value(Source.INTRIGUE, printed),
+        )
         next_state = moved.state
         events.extend(moved.events)
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
@@ -1565,7 +1582,7 @@ def apply_automatic_rewards(
 def _gain_reveal_persuasion_now(
     before: GameState, after: GameState, player: int
 ) -> GameState:
-    """Pay "Persuasion during your Reveal turn this round" into an open Reveal.
+    """Pay "Persuasion during your Reveal turn(s)" into an open Reveal.
 
     Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
     round" [Tleilaxu Puppet card]. A Plot may be played at any time during
@@ -1574,15 +1591,28 @@ def _gain_reveal_persuasion_now(
     turn gains the Persuasion in that Reveal; ``begin_reveal_turn`` only
     adds the round bonus when a later Reveal starts. It is generated
     Persuasion, so it counts toward Command (6+) [Bloodlines p. 5].
+
+    Navigation Card 3 from slot 4: "For the rest of the game, during each
+    of your Reveal turns, [1 Persuasion]" [Navigation Card 3 card]. Played
+    in the owner's own Reveal turn (Influence 2 reached by a Reveal effect
+    or a Plot there), that Reveal is one of them and pays the Persuasion
+    too (OQ-110, project reading); the lasting bonus stays on the seat for
+    every later Reveal, where ``begin_reveal_turn`` adds it.
     """
 
-    gained = (
-        after.players[player].reveal_persuasion_round_bonus
-        - before.players[player].reveal_persuasion_round_bonus
+    owner = after.players[player]
+    round_gained = max(
+        0,
+        owner.reveal_persuasion_round_bonus
+        - before.players[player].reveal_persuasion_round_bonus,
     )
+    lasting_gained = max(
+        0,
+        owner.reveal_persuasion_bonus - before.players[player].reveal_persuasion_bonus,
+    )
+    gained = round_gained + lasting_gained
     if gained <= 0 or not reveal_is_open_for(after, player):
         return after
-    owner = after.players[player]
     return replace(
         after,
         players=replace_player(
@@ -1590,7 +1620,7 @@ def _gain_reveal_persuasion_now(
             replace(
                 owner,
                 reveal_persuasion_round_bonus=(
-                    owner.reveal_persuasion_round_bonus - gained
+                    owner.reveal_persuasion_round_bonus - round_gained
                 ),
             ),
         ),

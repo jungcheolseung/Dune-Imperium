@@ -6,15 +6,33 @@ from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.uprising.abilities import Ability, AbilityMark
+from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardForSolari,
+    AcquireCardUpTo,
+    AdvanceTleilaxu,
+    DrawIntrigueCards,
+    GainInfluence,
+    GainResources,
+    GeneticMarkersAtLeast,
+    PlaceSpy,
+    RecruitTroops,
+    Research,
+    Reward,
+    TakeContract,
+)
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.trigger_abilities import (
+    acquisition_ability,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
-    PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -23,6 +41,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -34,26 +53,28 @@ from dune_imperium.rules.effects import (
     OptionalEffectBlock,
     active_agent_card,
     advance_after_effect,
+    agent_card_source,
     current_agent_effect_context,
     recruit_shortfall_events,
     recruit_troops,
     short_of,
 )
 from dune_imperium.rules.frames import (
-    OWED_INTRIGUE,
     OWED_ORIGIN_ACQUIRE,
     FrameKind,
     context_int,
-    draw_waits_for_owner,
-    hold_draw,
+    context_str,
     replace_player,
     reveal_is_open_for,
     turn_owner_of,
     update_turn_recruits,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
-from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
+from dune_imperium.rules.intrigue_deck import (
+    triggered_intrigue_draw,
+)
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -67,9 +88,9 @@ from dune_imperium.rules.scouts_modifiers import (
     reserve_discount,
 )
 from dune_imperium.rules.spy_placement import (
-    empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 
@@ -136,32 +157,30 @@ def legal_acquisition_spy_actions(
         or "acquisition_card_id" not in context
     ):
         return ()
-    owner = state.players[player]
-    targets = empty_observation_post_ids(state)
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    options = spy_options(state, player, None, shared_post=False)
+    return (
+        *(
+            (DomainAction(action_id="decline_acquisition_spy", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_acquisition",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_acquisition_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    decline = DomainAction(action_id="decline_acquisition_spy", actor=player)
-    if targets and owner.spy_post_ids:
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_acquisition",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    # Nothing can be placed (no free post, or no Spy at all).
-    return (decline,)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_acquisition_spy_action(
@@ -237,6 +256,17 @@ def apply_acquisition_spy_action(
     return RuleResult(state=next_state, events=(event,))
 
 
+def _contract_rows_only(before: GameState, after: GameState) -> GameState:
+    """``after``, the state ``complete_acquire_contracts`` left over an
+    Agent-turn acquisition's ``before``: a Contract completed in its owner's
+    own turn waits on it as rows (OQ-112 (4)), so no window was pushed and
+    the effect frame stays on top for ``advance_after_effect``."""
+
+    if len(after.decision_stack) != len(before.decision_stack):
+        raise RuntimeError("an Agent-turn Acquire Contract opened a window")
+    return after
+
+
 def _resume_after_acquisition_spy(state: GameState) -> GameState:
     """Advance the Agent turn under a finished acquisition Spy, if any.
 
@@ -252,11 +282,54 @@ def _resume_after_acquisition_spy(state: GameState) -> GameState:
     return state
 
 
+def agent_box_acquisition(
+    ability: Ability | None,
+) -> tuple[AcquireCardUpTo | AcquireCardForSolari, GeneticMarkersAtLeast | None] | None:
+    """The optional acquisition a recorded Agent box offers, and the genetic
+    marker condition its line prints (composed effects, A3f).
+
+    Tleilaxu Master's "If 1 genetic marker: You may acquire a card costing 6
+    or less" and Price is No Object's Solari acquisition to hand: the
+    refusal, then one row per card in reach; with the condition unmet the
+    box offers nothing (it is optional and lapses at the turn's end).
+    """
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+        or ability.sections[0].costs
+        or len(ability.sections[0].rewards) != 1
+    ):
+        return None
+    (line,) = ability.sections
+    (piece,) = line.rewards
+    condition = line.condition
+    if condition is not None and not isinstance(condition, GeneticMarkersAtLeast):
+        return None
+    match piece:
+        case AcquireCardForSolari():
+            return piece, condition
+        case AcquireCardUpTo(to_hand_if=None | GeneticMarkersAtLeast()):
+            return piece, condition
+    return None
+
+
+def _recorded_acquisition(
+    context: dict[str, ActionValue],
+) -> tuple[AcquireCardUpTo | AcquireCardForSolari, GeneticMarkersAtLeast | None] | None:
+    return agent_box_acquisition(
+        agent_box_ability(active_agent_card(context).agent_effect)
+    )
+
+
 def legal_agent_card_acquisitions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Price is No Object's optional Solari acquisitions."""
+    """Return a recorded Agent box's optional acquisitions (see above)."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -270,37 +343,35 @@ def legal_agent_card_acquisitions(
         or context.get("pending_agent_effect") is not True
     ):
         return ()
-    source = active_agent_card(context)
-    if (
-        source.agent_effect
-        is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER
+    recorded = _recorded_acquisition(context)
+    if recorded is None:
+        return ()
+    piece, condition = recorded
+    if condition is not None and (
+        _marker_block(state.players[player], condition) is not None
     ):
-        # Tleilaxu Master: "[one genetic marker]: you may acquire a card
-        # costing 6 or less" [card face], judged now (OQ-028).
-        if _tleilaxu_master_marker_block(state.players[player]) is not None:
-            return ()
-    elif (
-        source.agent_effect
-        is not PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
-    ):
+        # Judged now (OQ-028).
         return ()
     return (
         DomainAction(action_id="decline_agent_card_acquisition", actor=player),
-        *_agent_card_acquisition_targets(state, player, source.agent_effect),
+        *_agent_card_acquisition_targets(state, player, piece),
     )
 
 
-def _tleilaxu_master_marker_block(owner: PlayerState) -> OptionalEffectBlock | None:
+def _marker_block(
+    owner: PlayerState, condition: GeneticMarkersAtLeast
+) -> OptionalEffectBlock | None:
     markers = genetic_markers_reached(owner.research_space)
-    return short_of(OptionalBlockKind.GENETIC_MARKERS, 1, markers)
+    return short_of(OptionalBlockKind.GENETIC_MARKERS, condition.count, markers)
 
 
 def _agent_card_acquisition_targets(
-    state: GameState, player: int, effect: PersonalCardAgentEffect | None
+    state: GameState, player: int, piece: AcquireCardUpTo | AcquireCardForSolari
 ) -> tuple[DomainAction, ...]:
-    """The acquisitions Tleilaxu Master's or Price is No Object's box offers."""
+    """The acquisitions the box's piece offers: by its cost cap, or paid in
+    Solari to hand."""
 
-    if effect is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
+    if isinstance(piece, AcquireCardUpTo):
         return (
             *(
                 DomainAction(
@@ -308,7 +379,7 @@ def _agent_card_acquisition_targets(
                     actor=player,
                     arguments=(("card_id", card_id),),
                 )
-                for card_id in acquirable_reserve_card_ids(state, TLEILAXU_MASTER_COST)
+                for card_id in acquirable_reserve_card_ids(state, piece.max_cost)
             ),
             *(
                 DomainAction(
@@ -317,7 +388,7 @@ def _agent_card_acquisition_targets(
                     arguments=(("instance_id", instance_id),),
                 )
                 for instance_id in acquirable_imperium_instance_ids(
-                    state, TLEILAXU_MASTER_COST, player=player
+                    state, piece.max_cost, player=player
                 )
             ),
         )
@@ -349,37 +420,34 @@ def _agent_card_acquisition_targets(
 def agent_card_acquisition_block(
     state: GameState, player: int
 ) -> OptionalEffectBlock | None:
-    """Why Tleilaxu Master's or Price is No Object's box acquires nothing now.
+    """Why a recorded Agent box's acquisition acquires nothing now.
 
-    ``legal_agent_card_acquisitions`` offers Tleilaxu Master's acquisition
-    only with one genetic marker reached (``_tleilaxu_master_marker_block``)
-    and either box's cards exactly as ``_agent_card_acquisition_targets``
-    names them; with none, nothing is in reach (``needed``: Tleilaxu
-    Master's cost cap, 0 for Price is No Object's Solari, ``held`` of them).
-    None for any other box. The page greys an optional box that offers
-    nothing out with it (``display.unavailable``, OQ-095 (2)).
+    ``legal_agent_card_acquisitions`` offers it only while its genetic
+    marker condition holds (``_marker_block``) and the cards exactly as
+    ``_agent_card_acquisition_targets`` names them; with none, nothing is in
+    reach (``needed``: the cost cap, 0 for a Solari acquisition, ``held``
+    of them). None for any other box. The page greys an optional box that
+    offers nothing out with it (``display.unavailable``, OQ-095 (2)).
     """
 
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
         return None
-    effect = active_agent_card(context).agent_effect
+    recorded = _recorded_acquisition(context)
+    if recorded is None:
+        return None
+    piece, condition = recorded
     owner = state.players[player]
-    if effect is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER:
-        marker = _tleilaxu_master_marker_block(owner)
+    if condition is not None:
+        marker = _marker_block(owner, condition)
         if marker is not None:
             return marker
-        needed = TLEILAXU_MASTER_COST
-    elif effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND:
-        needed = 0
-    else:
-        return None
-    if _agent_card_acquisition_targets(state, player, effect):
+    if _agent_card_acquisition_targets(state, player, piece):
         return None
     return OptionalEffectBlock(
         OptionalBlockKind.NOTHING_TO_ACQUIRE,
-        needed=needed,
+        needed=piece.max_cost if isinstance(piece, AcquireCardUpTo) else 0,
         held=owner.resources.solari,
     )
 
@@ -388,46 +456,59 @@ def apply_agent_card_acquisition(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or acquire one card to hand by paying its cost in Solari."""
+    """Decline or acquire one card for a recorded Agent box."""
 
     if action not in legal_agent_card_acquisitions(state, action.actor):
         raise ValueError("action is not a legal Agent-card acquisition")
     _, context = current_agent_effect_context(state)
+    recorded = _recorded_acquisition(context)
+    assert recorded is not None
     context["pending_agent_effect"] = False
-    source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
+    card_instance_id = context_str(context, "card_id", owner="Agent-turn effect frame")
+    box = agent_card_source(state.round_number, action.actor, card_instance_id)
     if action.action_id == "decline_agent_card_acquisition":
         next_state = advance_after_effect(state, context)
         return RuleResult(
             state=next_state,
             events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="agent_card_acquisition_declined",
-                    payload=(("player", action.actor),),
+                agent_box_event(
+                    box, card_instance_id, action.actor, BoxOutcome.DECLINED
                 ),
             ),
         )
 
     if action.action_id == "acquire_reserve_with_solari":
-        return _acquire_reserve_to_hand_with_solari(state, action, context)
-    if action.action_id in ("acquire_reserve_by_card", "acquire_imperium_by_card"):
-        return _acquire_by_agent_card(state, action, context)
-    return _acquire_imperium_to_hand_with_solari(state, action, context)
-
-
-TLEILAXU_MASTER_COST = 6
+        acquired = _acquire_reserve_to_hand_with_solari(state, action, context)
+    elif action.action_id in ("acquire_reserve_by_card", "acquire_imperium_by_card"):
+        piece, _ = recorded
+        assert isinstance(piece, AcquireCardUpTo)
+        acquired = _acquire_by_agent_card(state, action, context, piece, box)
+    else:
+        acquired = _acquire_imperium_to_hand_with_solari(state, action, context)
+    return RuleResult(
+        state=acquired.state,
+        events=(
+            *acquired.events,
+            agent_box_event(box, card_instance_id, action.actor, BoxOutcome.RESOLVED),
+        ),
+    )
 
 
 def _acquire_by_agent_card(
     state: GameState,
     action: DomainAction,
     context: dict[str, ActionValue],
+    piece: AcquireCardUpTo,
+    source: str,
 ) -> RuleResult:
-    """Tleilaxu Master: a free acquisition; two markers send it to the hand."""
+    """A free acquisition by the cost cap, named after the box (``source``);
+    ``to_hand_if`` (Tleilaxu Master's two genetic markers) sends it to the
+    hand."""
 
     owner = state.players[action.actor]
-    to_hand = genetic_markers_reached(owner.research_space) >= 2
-    source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
+    to_hand = isinstance(piece.to_hand_if, GeneticMarkersAtLeast) and (
+        genetic_markers_reached(owner.research_space) >= piece.to_hand_if.count
+    )
     # The box has resolved; the acquisition's own follow-ups (a Research
     # direction, a Spy post, the Contract market) stack above the turn.
     next_state = advance_after_effect(state, context)
@@ -448,19 +529,12 @@ def _acquire_by_agent_card(
             to_hand=to_hand,
             source=source,
         )
-    result_state = acquired.result.state
-    events = acquired.result.events
-    if acquired.places_spy:
-        result_state = result_state.push_decision(
-            acquisition_spy_frame(result_state, action.actor, acquired.instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            result_state, action.actor, 1, source=f"{source}:acquisition_bonus"
-        )
-        result_state = contracts.state
-        events = (*events, *contracts.events)
-    return RuleResult(state=result_state, events=events)
+    opened = open_acquisition_frames(
+        acquired.result.state, action.actor, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state, events=(*acquired.result.events, *opened.events)
+    )
 
 
 def _acquire_reserve_to_hand_with_solari(
@@ -499,31 +573,16 @@ def _acquire_reserve_to_hand_with_solari(
         reserve_stacks=reserve_stacks,
         scouts_discount_used=discount_used,
     )
-    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         card_id,
         source=source,
     )
-    contract_recruited = (
-        completed.state.players[action.actor].troops_garrison
-        - garrison_before_contracts
-    )
-    if contract_recruited:
-        # Same stale-context trap as the Imperium-card path: an Acquire
-        # Contract's troop reward would otherwise sit only in
-        # ``complete_acquire_contracts``'s own state, which
-        # ``advance_after_effect`` below discards in favor of ``context``
-        # [Main p. 10] [FAQ p. 4].
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + contract_recruited
+    # An Acquire Contract's icons wait on this Agent turn as rows; its
+    # troops' row credits the turn's recruits itself [Main p. 10] [FAQ p. 4].
     next_state = advance_after_effect(
-        completed.state,
-        context,
-        completed.state.players,
+        _contract_rows_only(prepared, completed.state), context
     )
     event = GameEvent(
         event_id=source,
@@ -619,28 +678,16 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
-    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         definition.card.card_id,
         source=source,
     )
-    prepared = completed.state
+    # An Acquire Contract's icons wait on this Agent turn as rows; its
+    # troops' row credits the turn's recruits itself.
+    prepared = _contract_rows_only(prepared, completed.state)
     acquisition_events = (*acquisition_events, *completed.events)
-    contract_recruited = (
-        prepared.players[action.actor].troops_garrison - garrison_before_contracts
-    )
-    if contract_recruited:
-        # Same trap as the acquire box above: an Acquire Contract's own
-        # troop reward completed here would otherwise sit only in
-        # ``complete_acquire_contracts``'s own state update, which the
-        # ``advance_after_effect`` calls below discard in favor of
-        # ``context``.
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + contract_recruited
     if places_spy:
         next_state = replace(
             prepared,
@@ -929,36 +976,14 @@ def apply_imperium_acquisition(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=decision_stack,
     )
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            next_state,
-            action.actor,
-            faction,
-            1,
-            event_prefix=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"acquire:{instance_id}:influence:{faction.value}"
-            ),
-        )
-        next_state = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
+    effects = _acquisition_effects(
         next_state,
         action.actor,
         definition,
         source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
     )
-    next_state = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
-    completed = complete_acquire_contracts(
-        next_state,
-        action.actor,
-        definition.card.card_id,
-        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
-    )
-    next_state = completed.state
-    acquisition_events = (*acquisition_events, *completed.events)
+    next_state = effects.state
+    acquisition_events = (*acquisition_events, *effects.events)
     if takes_contract:
         contracts = begin_contract_gain(
             next_state,
@@ -1021,6 +1046,57 @@ def _acquired_definition(instance_id: str) -> ImperiumCardEntry:
     return imperium_card_for_instance(instance_id)
 
 
+def _acquire_rewards(definition: ImperiumCardEntry) -> tuple[Reward, ...]:
+    """The rewards of the card's acquire box, from its record (composed A4a)."""
+
+    ability = acquisition_ability(definition.acquisition_effect)
+    return () if ability is None else ability.sections[0].rewards
+
+
+def acquire_box_draws_intrigue(instance_id: str) -> bool:
+    """Whether the acquire box of the Imperium Row or Tleilaxu card
+    ``instance_id`` draws an Intrigue card (an owed draw, OQ-106)."""
+
+    rewards = _acquire_rewards(_acquired_definition(instance_id))
+    return any(isinstance(reward, DrawIntrigueCards) for reward in rewards)
+
+
+def acquire_box_places_spy(instance_id: str) -> bool:
+    """Whether the acquire box of the Imperium Row or Tleilaxu card
+    ``instance_id`` places a Spy (``acquisition_spy_frame``)."""
+
+    rewards = _acquire_rewards(_acquired_definition(instance_id))
+    return any(isinstance(reward, PlaceSpy) for reward in rewards)
+
+
+def _acquisition_effects(
+    state: GameState, player: int, definition: ImperiumCardEntry, *, source: str
+) -> RuleResult:
+    """The acquired card's effects after its bonus, in this order: the
+    acquire box's Influence (``<source>:influence:<faction>``), its track
+    steps (``apply_acquisition_track_effects``) and the Contracts the
+    acquisition completes (``complete_acquire_contracts``)."""
+
+    events: tuple[GameEvent, ...] = ()
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is not None:
+        gained = gain_faction_influence(
+            state,
+            player,
+            faction,
+            1,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        state, events = gained.state, gained.events
+    tracked = apply_acquisition_track_effects(state, player, definition, source=source)
+    completed = complete_acquire_contracts(
+        tracked.state, player, definition.card.card_id, source=source
+    )
+    return RuleResult(
+        state=completed.state, events=(*events, *tracked.events, *completed.events)
+    )
+
+
 def apply_acquisition_track_effects(
     state: GameState,
     player: int,
@@ -1035,15 +1111,14 @@ def apply_acquisition_track_effects(
     its zone, and the research may open a direction choice.
     """
 
-    effect = definition.acquisition_effect
-    if effect is PersonalCardAcquisitionEffect.RESEARCH:
-        return advance_research(
-            state, player, source=f"{source}:acquisition_bonus"
-        )
-    if effect is PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU:
-        return advance_tleilaxu(
-            state, player, 1, source=f"{source}:acquisition_bonus"
-        )
+    for reward in _acquire_rewards(definition):
+        match reward:
+            case Research():
+                return advance_research(
+                    state, player, source=f"{source}:acquisition_bonus"
+                )
+            case AdvanceTleilaxu(count=count):
+                return advance_tleilaxu(state, player, count)
     return RuleResult(state=state)
 
 
@@ -1052,10 +1127,13 @@ def _acquisition_influence_faction(
 ) -> Faction | None:
     """Return the Faction an acquisition bonus raises by one, if any."""
 
-    if effect is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE:
-        return Faction.SPACING_GUILD
-    if effect is PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE:
-        return Faction.EMPEROR
+    ability = acquisition_ability(effect)
+    for reward in () if ability is None else ability.sections[0].rewards:
+        if isinstance(reward, GainInfluence):
+            # Steersman's and Imperial Throneship's fixed Faction.
+            if reward.factions is None or reward.requires_choice:
+                raise ValueError(f"{reward!r} is not a fixed Faction's Influence")
+            return reward.factions[0]
     return None
 
 
@@ -1068,129 +1146,82 @@ def _resolve_imperium_acquisition_bonus(
     """Apply one supported acquisition bonus before its follow-up choice."""
 
     definition = _acquired_definition(instance_id)
-    effect = definition.acquisition_effect
+    rewards = _acquire_rewards(definition)
     intrigue_deck = state.intrigue_deck
     events: tuple[GameEvent, ...] = ()
     pending_draw: tuple[int, int, str] | None = None
     recruited = 0
-    if effect is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD:
-        source = (
-            f"round:{state.round_number}:player:{player}:"
-            f"acquire:{instance_id}:intrigue_draw"
-        )
-        if draw_waits_for_owner(state, player):
-            # Overthrow's acquire box: inside the seat's own turn the card
-            # is its own step, the one right after the purchase: "Acquire
-            # Effects must be taken immediately upon acquiring the Card or
-            # Tech." (Direwolf Discord; user decision 2026-10-10, OQ-106,
-            # ``draw_is_immediate``; OQ-042). The Row refill still makes the
-            # purchase itself irreversible.
-            owner = hold_draw(
-                owner, OWED_INTRIGUE, f"{OWED_ORIGIN_ACQUIRE}{instance_id}", source
-            )
-        elif intrigue_deck:
-            owner = credit_suspensor_suits(
-                state,
-                replace(
+    box = f"round:{state.round_number}:player:{player}:acquire:{instance_id}"
+    for reward in rewards:
+        match reward:
+            case DrawIntrigueCards(count=count):
+                if count != 1:
+                    raise ValueError(f"{reward!r}: an acquire box draws one card")
+                # Overthrow's acquire box: inside the seat's own turn the
+                # card is its own step, the one right after the purchase:
+                # "Acquire Effects must be taken immediately upon acquiring
+                # the Card or Tech." (Direwolf Discord; user decision
+                # 2026-10-10, OQ-106, ``draw_is_immediate``; OQ-042). The Row
+                # refill still makes the purchase itself irreversible.
+                owner, intrigue_deck, drawn, pending_draw = triggered_intrigue_draw(
+                    state,
                     owner,
-                    intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
-                ),
-                1,
-            )
-            intrigue_deck = intrigue_deck[1:]
-            events = (
-                GameEvent(
-                    event_id=source,
-                    kind="intrigue_card_drawn",
-                    payload=(("count", 1), ("player", player)),
-                ),
-            )
-        else:
-            # The deck is empty: the dispatcher reshuffles the discard and
-            # completes the draw before the next player decision [FAQ p. 2].
-            pending_draw = (player, 1, source)
-    elif effect is PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI:
-        owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + 2,
-            ),
-        )
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:solari"
-                ),
-                kind="acquisition_resource_gained",
-                payload=(
-                    ("amount", 2),
-                    ("player", player),
-                    ("resource", "solari"),
-                ),
-            ),
-        )
-    elif effect is PersonalCardAcquisitionEffect.GAIN_ONE_WATER:
-        # Possible Futures' acquire box (Bloodlines): one water.
-        owner = replace(
-            owner,
-            resources=replace(owner.resources, water=owner.resources.water + 1),
-        )
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:water"
-                ),
-                kind="acquisition_resource_gained",
-                payload=(("amount", 1), ("player", player), ("resource", "water")),
-            ),
-        )
-    elif effect in (
-        PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP,
-        PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS,
-    ):
-        # Arrakis Revolt's (promo) and Occupation's (Immortality) acquire
-        # boxes: the troops go to the garrison like any recruit [Main p. 20].
-        wanted = (
-            3 if effect is PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS else 1
-        )
-        owner, recruited = recruit_troops(owner, wanted)
-        troop_source = (
-            f"round:{state.round_number}:player:{player}:"
-            f"acquire:{instance_id}:troop"
-        )
-        events = (
-            GameEvent(
-                event_id=troop_source,
-                kind="acquisition_troop_recruited",
-                payload=(("amount", recruited), ("player", player)),
-            ),
-            *recruit_shortfall_events(troop_source, player, wanted, recruited),
-        )
-    elif effect is PersonalCardAcquisitionEffect.GAIN_ONE_SPICE:
-        # Lisan al Gaib's acquire box (Immortality): one spice.
-        owner = replace(
-            owner,
-            resources=replace(owner.resources, spice=owner.resources.spice + 1),
-        )
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:spice"
-                ),
-                kind="acquisition_resource_gained",
-                payload=(("amount", 1), ("player", player), ("resource", "spice")),
-            ),
-        )
+                    player,
+                    origin=f"{OWED_ORIGIN_ACQUIRE}{instance_id}",
+                    source=f"{box}:intrigue_draw",
+                )
+                events = (*events, *drawn)
+            case GainResources():
+                # Price is No Object's and Corrino Genes' 2 Solari, Possible
+                # Futures' water, Lisan al Gaib's spice.
+                owner = replace(
+                    owner,
+                    resources=replace(
+                        owner.resources,
+                        solari=owner.resources.solari + reward.solari,
+                        spice=owner.resources.spice + reward.spice,
+                        water=owner.resources.water + reward.water,
+                    ),
+                )
+                events = (
+                    *events,
+                    resources_gained_event(
+                        box,
+                        player,
+                        solari=reward.solari,
+                        spice=reward.spice,
+                        water=reward.water,
+                    ),
+                )
+            case RecruitTroops(count=wanted):
+                # Arrakis Revolt's (promo) and Occupation's (Immortality)
+                # acquire boxes: the troops go to the garrison like any
+                # recruit [Main p. 20].
+                owner, recruited = recruit_troops(owner, wanted)
+                troop_source = f"{box}:troop"
+                events = (
+                    *events,
+                    GameEvent(
+                        event_id=troop_source,
+                        kind="acquisition_troop_recruited",
+                        payload=(("amount", recruited), ("player", player)),
+                    ),
+                    *recruit_shortfall_events(troop_source, player, wanted, recruited),
+                )
+            case PlaceSpy() | TakeContract() | GainInfluence() | Research():
+                # Left to the purchase path: its Spy choice or Contract
+                # market, the Influence, the track after the card's zone.
+                pass
+            case AdvanceTleilaxu():
+                pass
+            case _:
+                raise TypeError(f"{reward!r} is not an acquire box's reward")
     return AcquisitionBonus(
         owner=owner,
         intrigue_deck=intrigue_deck,
         events=events,
-        places_spy=effect is PersonalCardAcquisitionEffect.PLACE_SPY,
-        takes_contract=effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
+        places_spy=any(isinstance(reward, PlaceSpy) for reward in rewards),
+        takes_contract=any(isinstance(reward, TakeContract) for reward in rewards),
         pending_draw=pending_draw,
         recruited=recruited,
     )
@@ -1397,30 +1428,9 @@ def apply_manipulated_acquisition(
         f"round:{state.round_number}:player:{action.actor}:"
         f"acquire_manipulated:{instance_id}"
     )
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            next_state,
-            action.actor,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        next_state = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
-        next_state, action.actor, definition, source=source
-    )
-    next_state = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
-    completed = complete_acquire_contracts(
-        next_state,
-        action.actor,
-        definition.card.card_id,
-        source=source,
-    )
-    next_state = completed.state
-    acquisition_events = (*acquisition_events, *completed.events)
+    effects = _acquisition_effects(next_state, action.actor, definition, source=source)
+    next_state = effects.state
+    acquisition_events = (*acquisition_events, *effects.events)
     if bonus.takes_contract:
         contracts = begin_contract_gain(
             next_state,
@@ -1536,6 +1546,27 @@ class IntrigueAcquisition:
     instance_id: str
     places_spy: bool = False
     takes_contract: bool = False
+
+
+def open_acquisition_frames(
+    state: GameState, player: int, acquired: IntrigueAcquisition, *, source: str
+) -> RuleResult:
+    """Open what an acquisition left its caller: the acquired card's Spy post
+    (``acquisition_spy_frame``) or else the Contract market (named
+    ``<source>:acquisition_bonus``); the events are the market's only."""
+
+    if acquired.places_spy:
+        return RuleResult(
+            state=state.push_decision(
+                acquisition_spy_frame(state, player, acquired.instance_id)
+            ),
+            events=(),
+        )
+    if acquired.takes_contract:
+        return begin_contract_gain(
+            state, player, 1, source=f"{source}:acquisition_bonus"
+        )
+    return RuleResult(state=state, events=())
 
 
 def acquire_reserve_for_intrigue(
@@ -1680,19 +1711,13 @@ def apply_reveal_command_acquisition(
     acquired = acquire_imperium_for_intrigue(
         trashed.state, action.actor, instance_id, to_hand=False, source=source
     )
-    next_state = acquired.result.state
-    events: tuple[GameEvent, ...] = (*trashed.events, *acquired.result.events)
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, action.actor, instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state, action.actor, 1, source=f"{source}:acquisition_bonus"
-        )
-        next_state = contracts.state
-        events = (*events, *contracts.events)
-    return RuleResult(state=next_state, events=events)
+    opened = open_acquisition_frames(
+        acquired.result.state, action.actor, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state,
+        events=(*trashed.events, *acquired.result.events, *opened.events),
+    )
 
 
 def acquire_imperium_for_intrigue(
@@ -1767,25 +1792,7 @@ def acquire_imperium_for_intrigue(
         # trusting a possibly stale local context.
         prepared = update_turn_recruits(prepared, troops_recruited=bonus.recruited)
     acquisition_events = bonus.events
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            prepared,
-            player,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        prepared = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
-        prepared, player, definition, source=source
-    )
-    prepared = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
-    completed = complete_acquire_contracts(
-        prepared, player, definition.card.card_id, source=source
-    )
+    completed = _acquisition_effects(prepared, player, definition, source=source)
     # The caller opens the Spy post or the Contract market only after this
     # returns (after the Intrigue card itself, [Main p. 20]); Call to Arms
     # waits for those frames too, like for a Research direction opened here

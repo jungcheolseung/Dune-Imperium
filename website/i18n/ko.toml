@@ -1,0 +1,253 @@
+[skip]
+other = "본문으로 건너뛰기"
+
+[home]
+other = "홈"
+
+[homeLabel]
+other = "Dune: Imperium AI 홈"
+
+[mainMenu]
+other = "주 메뉴"
+
+[mobileMenu]
+other = "모바일 주 메뉴"
+
+[menu]
+other = "메뉴"
+
+[search]
+other = "검색"
+
+[footerMenu]
+other = "보조 메뉴"
+
+[footerText]
+other = "규칙 엔진 · 게임 AI · 개발 기록"
+
+[legal]
+other = "비공식 개인 개발·연구 프로젝트입니다. 원작의 카드·보드 이미지 원본은 배포하지 않습니다."
+
+[support]
+other = "지원 현황"
+
+[roadmap]
+other = "로드맵"
+
+[location]
+other = "현재 위치"
+
+[devlog]
+other = "개발일지"
+
+[posts]
+other = "기술 글"
+
+[updates]
+other = "프로젝트 소식"
+
+[guide]
+other = "안내"
+
+[read]
+other = "읽어보기"
+
+[workPeriod]
+other = "작업 기간"
+
+[written]
+other = "글 작성"
+
+[published]
+other = "작성"
+
+[checked]
+other = "내용 확인"
+
+[retrospective]
+other = "이전 커밋과 작업 문서를 바탕으로 정리한 기록입니다."
+
+[contents]
+other = "목차 보기"
+
+[onPage]
+other = "이 페이지에서"
+
+[docNav]
+other = "문서 탐색"
+
+[journalNav]
+other = "개발일지 앞뒤 글"
+
+[previousWork]
+other = "이전 작업"
+
+[nextWork]
+other = "다음 작업"
+
+[journalAll]
+other = "개발일지 목록"
+
+[learnMore]
+other = "더 알아보기"
+
+[moreGuides]
+other = "함께 볼 안내"
+
+[related]
+other = "이어서 읽기"
+
+[guides]
+other = "사용법"
+
+[guideList]
+other = "사용법 목록"
+
+[needHelp]
+other = "막히는 부분이 있나요?"
+
+[helpLink]
+other = "도움말 살펴보기"
+
+[help]
+other = "도움말"
+
+[categories]
+other = "글 분류"
+
+[allArticles]
+other = "모든 글"
+
+[byTopic]
+other = "기술 글 · 주제별 모아보기"
+
+[categoryTitle]
+other = "주제별 글"
+
+[tagTitle]
+other = "태그별 글"
+
+[journalMonths]
+other = "개발일지 월별 목록"
+
+[monthFormat]
+other = "2006년 1월"
+
+[dateFormat]
+other = "2006.01.02"
+
+[heroNote]
+other = "Python 규칙 엔진 · PC 브라우저 플레이"
+
+[seatExample]
+other = "좌석 구성 예시"
+
+[seatAlt]
+other = "사람 한 명과 AI 세 명이 같은 테이블을 이루는 네 좌석 구성도"
+
+[seatCaption]
+other = "사람 1명 + AI 3명 · 총 4석"
+
+[baseGame]
+other = "4인 Uprising 기본 게임"
+
+[multiplayer]
+other = "AI 대전 & 친구와 멀티플레이"
+
+[journalIntro]
+other = "엔진 구현, AI 실험, 플레이 개선 기록입니다."
+
+[allJournal]
+other = "개발일지 모두 보기"
+
+[postsIntro]
+other = "규칙 엔진 구조와 AI의 동작을 설명합니다."
+
+[allPosts]
+other = "기술 글 모두 보기"
+
+[latestUpdate]
+other = "업데이트"
+
+[query]
+other = "검색어"
+
+[queryPlaceholder]
+other = "예: 자동 저장, 탐색 AI"
+
+[queryEmpty]
+other = "검색어를 입력해 주세요."
+
+[queryLoading]
+other = "찾고 있습니다…"
+
+[queryResults]
+other = "“{query}” 검색 결과 {count}개"
+
+[queryNone]
+other = "“{query}” 검색 결과가 없습니다. 다른 단어로 찾아보세요."
+
+[queryError]
+other = "검색 자료를 불러오지 못했습니다. 다시 검색하거나 아래 안내를 이용해 주세요."
+
+[queryFallback]
+other = "검색은 JavaScript가 필요합니다. 아래 안내에서 직접 찾아볼 수도 있습니다."
+
+[shortcuts]
+other = "자주 찾는 안내"
+
+[firstGame]
+other = "처음 한 판"
+
+[troubleshooting]
+other = "문제 해결"
+
+[notFound]
+other = "페이지를 찾지 못했습니다."
+
+[notFoundText]
+other = "주소가 바뀌었거나 아직 없는 페이지입니다. 홈이나 검색에서 필요한 내용을 찾아보세요."
+
+[goHome]
+other = "홈으로"
+
+[goSearch]
+other = "검색하기"
+
+[darkMode]
+other = "다크 모드로 전환"
+
+[lightMode]
+other = "라이트 모드로 전환"
+
+[rulesEngine]
+other = "규칙 엔진"
+
+[aiExperiments]
+other = "AI 학습 실험"
+
+[ruleTesting]
+other = "규칙 검증"
+
+[engineDesign]
+other = "엔진 설계"
+
+[controlExperiment]
+other = "대조 실험"
+
+[hiddenInfo]
+other = "숨은 정보"
+
+[reproducibility]
+other = "재현성"
+
+[policyValue]
+other = "정책·가치"
+
+[searchTopic]
+other = "탐색"
+
+[searchEvaluation]
+other = "탐색 평가"
+[supportedLanguages]
+other = "한국어 · English"

@@ -29,6 +29,7 @@ from dune_imperium.rules.agent_turn import (
     legal_agent_actions,
     legal_agent_actions_for_card,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 
 
 def _instance(player: int, card_id: str) -> str:
@@ -606,16 +607,13 @@ def test_critical_location_visit_pays_the_opposing_controller() -> None:
     result = apply_agent_action(state, _action_to(state, "arrakeen"))
 
     assert result.state.players[1].resources.solari == 1
-    assert tuple(event.kind for event in result.events) == (
-        "agent_placed",
-        "control_bonus_gained",
+    # The controller's gain names the Control marker's space (cleanup-2c-3).
+    assert result.events[1:] == (
+        resources_gained_event(
+            f"round:{state.round_number}:player:1:control:arrakeen", 1, solari=1
+        ),
     )
-    assert result.events[1].payload == (
-        ("amount", 1),
-        ("player", 1),
-        ("resource", "solari"),
-        ("space_id", "arrakeen"),
-    )
+    assert result.events[0].kind == "agent_placed"
 
 
 def test_controller_gains_bonus_when_visiting_their_own_imperial_basin() -> None:

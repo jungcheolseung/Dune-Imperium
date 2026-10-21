@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.adapters.action_codec import ActionCodec
-from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent
+from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent, StateAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.core.actions import DomainAction
@@ -165,7 +165,14 @@ def run_checked_game(
                 _check_action_soundness(engine, state, actions, codec, len(steps))
             player_decisions += 1
             observation = engine.observe(state, decision.owner)
-            action = agents[decision.owner].choose_action(observation, actions)
+            agent = agents[decision.owner]
+            # A seat that weighs whole Agent placements (heuristic, app AI)
+            # reads them off the state at the turn's two steps (stage B1).
+            action = (
+                agent.choose_action_with_state(state, observation, actions)
+                if isinstance(agent, StateAgent)
+                else agent.choose_action(observation, actions)
+            )
             steps.append(action)
             transition = engine.apply(state, action, legal_actions=actions)
         state = transition.state

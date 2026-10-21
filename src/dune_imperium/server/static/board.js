@@ -1988,7 +1988,9 @@ function closeBeneTleilaxZoom() {
 
 function renderTleilaxuRow(market, view) {
   /* The Tleilaxu Row: two deck cards bought with specimens plus the fixed
-     Reclaimed Forces card [Immortality pp. 6, 9]. */
+     Reclaimed Forces card [Immortality pp. 6, 9]. The specimen cost is
+     printed on the card, so the strip adds no badge for it, as the Imperium
+     Row adds none for Persuasion (user request 2026-10-19). */
   const rowIds = [...(view.tleilaxu_row || []), "reclaimed_forces"];
   const tleilaxuTitle = t("board.strip_tleilaxu_row", { count: view.tleilaxu_deck_size || 0 });
   const tleilaxuRow = cardStrip(
@@ -1996,14 +1998,7 @@ function renderTleilaxuRow(market, view) {
     tleilaxuTitle,
     rowIds,
     "",
-    (id) => {
-      const entry = entryOf(id);
-      const specimens = entry && entry.specimens !== undefined ? entry.specimens : null;
-      return {
-        className: id === "reclaimed_forces" ? "reclaimed" : "",
-        badge: specimens === null ? null : phraseText(`{specimen} ×${specimens}`),
-      };
-    },
+    (id) => ({ className: id === "reclaimed_forces" ? "reclaimed" : "" }),
     "Tleilaxu Row",
   );
   prependDeckPile(tleilaxuRow, "imperium", view.tleilaxu_deck_size || 0, tleilaxuTitle);

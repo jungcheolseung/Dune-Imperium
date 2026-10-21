@@ -3,10 +3,11 @@
 import dataclasses
 import hashlib
 import json
+from collections.abc import Callable, KeysView
 from copy import replace
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.dataclass_copy import positional_dataclass_replace
@@ -187,252 +188,34 @@ class GameState:
     event_log: tuple[GameEvent, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.round_number < 0:
-            raise ValueError("round_number must not be negative")
-        if self.first_player is not None and not (
-            0 <= self.first_player < self.config.players
-        ):
-            raise ValueError("first_player must identify a configured player")
-        if len(self.reveal_order) != len(set(self.reveal_order)):
-            raise ValueError("a player can appear in the Reveal order only once")
-        if len(self.combat_intrigue_players) != len(set(self.combat_intrigue_players)):
-            raise ValueError("a player is listed once among Combat Intrigue players")
-        if any(not 0 <= player < self.config.players for player in self.reveal_order):
-            raise ValueError("Reveal order must contain configured players")
-        if self.players and len(self.players) != self.config.players:
-            raise ValueError("state must contain every configured player")
-        if self.players and tuple(player.player_id for player in self.players) != tuple(
-            range(self.config.players)
-        ):
-            raise ValueError("players must be stored in seat order")
-        if len(self.imperium_row) > 5:
-            raise ValueError("Imperium Row cannot contain more than five cards")
-        if len(self.face_up_contract_ids) > 2:
-            raise ValueError("the Contract market cannot contain more than two tiles")
+        # Only the checks: copy.replace builds copies without the constructor
+        # and runs the checks they need (_check_copy), so any other work here
+        # would be skipped on copies (tests/unit/test_state_checks.py).
+        check_game_state(self)
 
-        # Every module's zones are re-checked on each state copy, and a copy
-        # happens several times per engine step, so the module flag gates the
-        # scan: with the module off the only legal contents are none at all,
-        # which an emptiness test settles without building tuples and sets.
-        if self.config.choam_module:
-            contracts = (
-                *self.contract_bank,
-                *self.face_up_contract_ids,
-                *self.sardaukar_contract_ids,
-                # CHOAM Research's face-down pair (Arrakeen Scouts).
-                *(
-                    card_id
-                    for _, location, card_id in self.scouts_goods_cards
-                    if card_id.startswith("contract:")
-                ),
-                *(
-                    contract_id
-                    for player in self.players
-                    for contract_id in (
-                        *player.active_contract_ids,
-                        *player.completed_contract_ids,
-                    )
-                ),
-            )
-            if len(contracts) != len(set(contracts)):
-                raise ValueError("a Contract cannot occupy two zones")
-        elif (
-            self.contract_bank
-            or self.face_up_contract_ids
-            or self.sardaukar_contract_ids
-            or any(
-                player.active_contract_ids or player.completed_contract_ids
-                for player in self.players
-            )
-        ):
-            raise ValueError("Contracts require the CHOAM Module")
+    def _check_copy(self, previous: GameState, changed: KeysView[str]) -> None:
+        """Run the checks a copy of ``previous`` with ``changed`` fields needs.
 
-        shared_cards = (
-            *self.conflict_deck,
-            *self.unused_conflict_ids,
-            *self.current_conflict_ids,
-            *(
-                conflict_id
-                for player in self.players
-                for conflict_id in player.won_conflict_ids
-            ),
-        )
-        if len(shared_cards) != len(set(shared_cards)):
-            raise ValueError("a Conflict card cannot occupy two shared zones")
-        held_alliances = tuple(
-            faction_id
-            for player in self.players
-            for faction_id in player.alliance_faction_ids
-        )
-        if len(held_alliances) != len(set(held_alliances)):
-            raise ValueError("a Faction Alliance can have only one owner")
+        ``copy.replace`` builds the copy without the constructor
+        (``positional_dataclass_replace``) and calls this instead of
+        ``__post_init__``: a check runs when a field it reads was replaced, or
+        when ``players`` was and a seat field it reads is another object in
+        some seat. Every other check reads only what ``previous`` already
+        passed with. Two in three state copies only push a decision frame or
+        log an event, which no check reads (2026-10-21).
+        """
 
-        reserve_ids = tuple(card_id for card_id, _ in self.reserve_stacks)
-        if len(reserve_ids) != len(set(reserve_ids)):
-            raise ValueError("Reserve stack IDs must be unique")
-        if any(not card_id or count < 0 for card_id, count in self.reserve_stacks):
-            raise ValueError("Reserve stacks require IDs and non-negative counts")
-
-        if self.sardaukar_commanders_bank < 0:
-            raise ValueError("the Commander bank must not be negative")
-        if self.config.bloodlines:
-            if len(self.sardaukar_commander_space_ids) != len(
-                set(self.sardaukar_commander_space_ids)
-            ):
-                raise ValueError("a board space holds at most one Sardaukar Commander")
-            skills = (
-                *self.skill_stack,
-                *self.skill_face_up,
-                *self.skill_trash,
-                *(skill_id for player in self.players for skill_id in player.skill_ids),
-            )
-            if len(skills) != len(set(skills)):
-                raise ValueError("a Skill tile cannot occupy two zones")
-        elif (
-            self.skill_stack
-            or self.skill_face_up
-            or self.skill_trash
-            or self.sardaukar_commander_space_ids
-            or self.sardaukar_commanders_bank
-            or any(
-                player.skill_ids or player.commanders_total for player in self.players
-            )
-        ):
-            raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
-        if self.config.tech_module:
-            tech = (
-                *(tech_id for stack in self.tech_stacks for tech_id in stack),
-                *self.tech_trash,
-                *(
-                    tech_id
-                    for player in self.players
-                    for tech_id in (
-                        *player.tech_ids,
-                        *(
-                            (player.secret_project_tech_id,)
-                            if player.secret_project_tech_id
-                            else ()
-                        ),
-                    )
-                ),
-            )
-            if len(tech) != len(set(tech)):
-                raise ValueError("a Tech tile cannot occupy two zones")
-        elif (
-            any(self.tech_stacks)
-            or self.tech_trash
-            or any(
-                player.tech_ids or player.secret_project_tech_id or player.spies_boxed
-                for player in self.players
-            )
-        ):
-            raise ValueError("Tech tiles require the Tech Module")
-
-        if self.tleilaxu_track_spice < 0:
-            raise ValueError("the Tleilaxu track spice must not be negative")
-        if self.config.immortality:
-            tleilaxu_cards = (*self.tleilaxu_deck, *self.tleilaxu_row)
-            if len(tleilaxu_cards) != len(set(tleilaxu_cards)):
-                raise ValueError("a Tleilaxu card cannot occupy two zones")
-        elif (
-            self.tleilaxu_deck
-            or self.tleilaxu_row
-            or self.tleilaxu_track_spice
-            or any(
-                player.research_space
-                or player.tleilaxu_space
-                or player.specimens
-                or player.family_atomics
-                for player in self.players
-            )
-        ):
-            raise ValueError("the Bene Tleilax board requires Immortality")
-
-        if self.config.arrakeen_scouts:
-            if len(self.scouts_subcommittees) != len(set(self.scouts_subcommittees)):
-                raise ValueError("a subcommittee is revealed once")
-            revealed = tuple(item_id for _, item_id in self.scouts_revealed)
-            if len(revealed) != len(set(revealed)):
-                raise ValueError("a Scouts item is revealed once")
-            if self.scouts_tasks and not self.scouts_item:
-                raise ValueError("Scouts tasks belong to an item being resolved")
-            joined = tuple(item for item, _ in self.scouts_subcommittee_members)
-            seats = tuple(seat for _, seat in self.scouts_subcommittee_members)
-            if len(joined) != len(set(joined)) or len(seats) != len(set(seats)):
-                raise ValueError("a subcommittee has one member; a seat joins once")
-            if not set(joined) <= set(self.scouts_subcommittees):
-                raise ValueError("members join a revealed subcommittee")
-            parked: dict[int, int] = {}
-            for _, seat, _, troops in self.scouts_parked:
-                if troops < 1:
-                    raise ValueError("a parked row holds at least one troop")
-                parked[seat] = parked.get(seat, 0) + troops
-            for player in self.players:
-                if parked.get(player.player_id, 0) != player.troops_parked:
-                    raise ValueError("parked troops must match their rows")
-                markers = sum(
-                    1
-                    for row in self.scouts_goods
-                    if row[2] == "marker" and row[4] == player.player_id
-                )
-                if len(player.control_space_ids) + markers > 3:
-                    raise ValueError("a player has only three control markers")
-            if any(row[3] < 1 for row in self.scouts_goods):
-                raise ValueError("a goods row holds something")
-            picked = tuple((row[0], row[2]) for row in self.scouts_secret_picks)
-            if len(picked) != len(set(picked)):
-                raise ValueError("a seat picks once per secret event")
-            if any(
-                not 0 <= seat < self.config.players or not 0 <= pick < 4
-                for _, _, seat, pick in self.scouts_secret_picks
-            ):
-                raise ValueError("a secret pick names a seat and one of four lines")
-            bidders = tuple(seat for seat, _, _ in self.scouts_bids)
-            if len(bidders) != len(set(bidders)) or any(
-                amount < 0 for _, amount, _ in self.scouts_bids
-            ):
-                raise ValueError("a seat holds one bid of 0 or more")
-            callers = tuple(seat for seat, _ in self.scouts_calls)
-            called = tuple(amount for _, amount in self.scouts_calls if amount)
-            if len(callers) != len(set(callers)) or len(called) != len(set(called)):
-                raise ValueError("a seat calls once, and no amount twice")
-        elif (
-            self.scouts_subcommittees
-            or self.scouts_revealed
-            or self.scouts_mission_rounds
-            or self.scouts_mid_auction_round
-            or self.scouts_late_auction_round
-            or self.scouts_opening
-            or self.scouts_item
-            or self.scouts_tasks
-            or self.scouts_round_modifier
-            or self.scouts_discount_used
-            or self.scouts_four_bonus_choices
-            or self.scouts_subcommittee_members
-            or self.scouts_subcommittee_offers
-            or self.scouts_goods
-            or self.scouts_goods_cards
-            or self.scouts_parked
-            or self.scouts_secret_picks
-            or self.scouts_secrets_round
-            or self.scouts_bids
-            or self.scouts_market_cards
-            or self.scouts_calls
-            or any(player.troops_parked for player in self.players)
-        ):
-            raise ValueError("Scouts state requires the Arrakeen Scouts module")
-
-        maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
-        if maker_ids not in (
-            ("deep_desert", "hagga_basin", "imperial_basin"),
-            # Tuek's Sietch joins the Makers while Esmar Tuek plays.
-            ("deep_desert", "hagga_basin", "imperial_basin", "tuek_sietch"),
-        ):
-            raise ValueError(
-                "Maker bonus spice must use the three spaces in rules order"
-            )
-        if any(amount < 0 for _, amount in self.maker_bonus_spice):
-            raise ValueError("Maker bonus spice must not be negative")
+        seats: frozenset[str] | None = None
+        for check in STATE_CHECKS:
+            if not check.fields.isdisjoint(changed):
+                check.run(self)
+                continue
+            if not check.seat_fields or "players" not in changed:
+                continue
+            if seats is None:
+                seats = _changed_seat_fields(previous.players, self.players)
+            if not check.seat_fields.isdisjoint(seats):
+                check.run(self)
 
     def push_decision(self, frame: DecisionFrame) -> GameState:
         """Return a state with ``frame`` at the top of the stack."""
@@ -445,6 +228,425 @@ class GameState:
         if not self.decision_stack:
             raise IndexError("cannot pop an empty decision stack")
         return replace(self, decision_stack=self.decision_stack[:-1])
+
+
+@dataclass(frozen=True, slots=True)
+class StateCheck:
+    """One ``GameState`` invariant and the fields it reads.
+
+    ``fields`` are the ``GameState`` fields ``check`` reads; ``seat_fields``
+    the ``PlayerState`` fields it reads in any seat (through ``players``).
+    A copy that replaces none of them keeps the verdict its source had, so
+    ``GameState._check_copy`` skips the check. ``tests/unit/test_state_checks.py``
+    reads every check with recording proxies over real games and fails on a
+    field the table does not name.
+    """
+
+    check: Callable[[GameState], None]
+    fields: frozenset[str]
+    seat_fields: frozenset[str] = frozenset()
+
+    def run(self, state: GameState) -> None:
+        self.check(state)
+
+
+def _check_counters(state: GameState) -> None:
+    if state.round_number < 0:
+        raise ValueError("round_number must not be negative")
+    if state.first_player is not None and not (
+        0 <= state.first_player < state.config.players
+    ):
+        raise ValueError("first_player must identify a configured player")
+    if len(state.reveal_order) != len(set(state.reveal_order)):
+        raise ValueError("a player can appear in the Reveal order only once")
+    if len(state.combat_intrigue_players) != len(set(state.combat_intrigue_players)):
+        raise ValueError("a player is listed once among Combat Intrigue players")
+    if any(not 0 <= player < state.config.players for player in state.reveal_order):
+        raise ValueError("Reveal order must contain configured players")
+
+
+def _check_seats(state: GameState) -> None:
+    if state.players and len(state.players) != state.config.players:
+        raise ValueError("state must contain every configured player")
+    if state.players and tuple(player.player_id for player in state.players) != tuple(
+        range(state.config.players)
+    ):
+        raise ValueError("players must be stored in seat order")
+
+
+def _check_markets(state: GameState) -> None:
+    if len(state.imperium_row) > 5:
+        raise ValueError("Imperium Row cannot contain more than five cards")
+    if len(state.face_up_contract_ids) > 2:
+        raise ValueError("the Contract market cannot contain more than two tiles")
+
+
+# Every module's zones are re-checked on each state copy that touches them,
+# so the module flag gates the scan: with the module off the only legal
+# contents are none at all, which an emptiness test settles without building
+# tuples and sets.
+def _check_contracts(state: GameState) -> None:
+    if state.config.choam_module:
+        contracts = (
+            *state.contract_bank,
+            *state.face_up_contract_ids,
+            *state.sardaukar_contract_ids,
+            # CHOAM Research's face-down pair (Arrakeen Scouts).
+            *(
+                card_id
+                for _, location, card_id in state.scouts_goods_cards
+                if card_id.startswith("contract:")
+            ),
+            *(
+                contract_id
+                for player in state.players
+                for contract_id in (
+                    *player.active_contract_ids,
+                    *player.completed_contract_ids,
+                )
+            ),
+        )
+        if len(contracts) != len(set(contracts)):
+            raise ValueError("a Contract cannot occupy two zones")
+    elif (
+        state.contract_bank
+        or state.face_up_contract_ids
+        or state.sardaukar_contract_ids
+        or any(
+            player.active_contract_ids or player.completed_contract_ids
+            for player in state.players
+        )
+    ):
+        raise ValueError("Contracts require the CHOAM Module")
+
+
+def _check_shared_cards(state: GameState) -> None:
+    shared_cards = (
+        *state.conflict_deck,
+        *state.unused_conflict_ids,
+        *state.current_conflict_ids,
+        *(
+            conflict_id
+            for player in state.players
+            for conflict_id in player.won_conflict_ids
+        ),
+    )
+    if len(shared_cards) != len(set(shared_cards)):
+        raise ValueError("a Conflict card cannot occupy two shared zones")
+    held_alliances = tuple(
+        faction_id
+        for player in state.players
+        for faction_id in player.alliance_faction_ids
+    )
+    if len(held_alliances) != len(set(held_alliances)):
+        raise ValueError("a Faction Alliance can have only one owner")
+
+
+def _check_reserve(state: GameState) -> None:
+    reserve_ids = tuple(card_id for card_id, _ in state.reserve_stacks)
+    if len(reserve_ids) != len(set(reserve_ids)):
+        raise ValueError("Reserve stack IDs must be unique")
+    if any(not card_id or count < 0 for card_id, count in state.reserve_stacks):
+        raise ValueError("Reserve stacks require IDs and non-negative counts")
+
+
+def _check_bloodlines(state: GameState) -> None:
+    if state.sardaukar_commanders_bank < 0:
+        raise ValueError("the Commander bank must not be negative")
+    if state.config.bloodlines:
+        if len(state.sardaukar_commander_space_ids) != len(
+            set(state.sardaukar_commander_space_ids)
+        ):
+            raise ValueError("a board space holds at most one Sardaukar Commander")
+        skills = (
+            *state.skill_stack,
+            *state.skill_face_up,
+            *state.skill_trash,
+            *(skill_id for player in state.players for skill_id in player.skill_ids),
+        )
+        if len(skills) != len(set(skills)):
+            raise ValueError("a Skill tile cannot occupy two zones")
+    elif (
+        state.skill_stack
+        or state.skill_face_up
+        or state.skill_trash
+        or state.sardaukar_commander_space_ids
+        or state.sardaukar_commanders_bank
+        or any(player.skill_ids or player.commanders_total for player in state.players)
+    ):
+        raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
+
+
+def _check_tech(state: GameState) -> None:
+    if state.config.tech_module:
+        tech = (
+            *(tech_id for stack in state.tech_stacks for tech_id in stack),
+            *state.tech_trash,
+            *(
+                tech_id
+                for player in state.players
+                for tech_id in (
+                    *player.tech_ids,
+                    *(
+                        (player.secret_project_tech_id,)
+                        if player.secret_project_tech_id
+                        else ()
+                    ),
+                )
+            ),
+        )
+        if len(tech) != len(set(tech)):
+            raise ValueError("a Tech tile cannot occupy two zones")
+    elif (
+        any(state.tech_stacks)
+        or state.tech_trash
+        or any(
+            player.tech_ids or player.secret_project_tech_id or player.spies_boxed
+            for player in state.players
+        )
+    ):
+        raise ValueError("Tech tiles require the Tech Module")
+
+
+def _check_immortality(state: GameState) -> None:
+    if state.tleilaxu_track_spice < 0:
+        raise ValueError("the Tleilaxu track spice must not be negative")
+    if state.config.immortality:
+        tleilaxu_cards = (*state.tleilaxu_deck, *state.tleilaxu_row)
+        if len(tleilaxu_cards) != len(set(tleilaxu_cards)):
+            raise ValueError("a Tleilaxu card cannot occupy two zones")
+    elif (
+        state.tleilaxu_deck
+        or state.tleilaxu_row
+        or state.tleilaxu_track_spice
+        or any(
+            player.research_space
+            or player.tleilaxu_space
+            or player.specimens
+            or player.family_atomics
+            for player in state.players
+        )
+    ):
+        raise ValueError("the Bene Tleilax board requires Immortality")
+
+
+def _check_scouts(state: GameState) -> None:
+    if state.config.arrakeen_scouts:
+        if len(state.scouts_subcommittees) != len(set(state.scouts_subcommittees)):
+            raise ValueError("a subcommittee is revealed once")
+        revealed = tuple(item_id for _, item_id in state.scouts_revealed)
+        if len(revealed) != len(set(revealed)):
+            raise ValueError("a Scouts item is revealed once")
+        if state.scouts_tasks and not state.scouts_item:
+            raise ValueError("Scouts tasks belong to an item being resolved")
+        joined = tuple(item for item, _ in state.scouts_subcommittee_members)
+        seats = tuple(seat for _, seat in state.scouts_subcommittee_members)
+        if len(joined) != len(set(joined)) or len(seats) != len(set(seats)):
+            raise ValueError("a subcommittee has one member; a seat joins once")
+        if not set(joined) <= set(state.scouts_subcommittees):
+            raise ValueError("members join a revealed subcommittee")
+        parked: dict[int, int] = {}
+        for _, seat, _, troops in state.scouts_parked:
+            if troops < 1:
+                raise ValueError("a parked row holds at least one troop")
+            parked[seat] = parked.get(seat, 0) + troops
+        for player in state.players:
+            if parked.get(player.player_id, 0) != player.troops_parked:
+                raise ValueError("parked troops must match their rows")
+            markers = sum(
+                1
+                for row in state.scouts_goods
+                if row[2] == "marker" and row[4] == player.player_id
+            )
+            if len(player.control_space_ids) + markers > 3:
+                raise ValueError("a player has only three control markers")
+        if any(row[3] < 1 for row in state.scouts_goods):
+            raise ValueError("a goods row holds something")
+        picked = tuple((row[0], row[2]) for row in state.scouts_secret_picks)
+        if len(picked) != len(set(picked)):
+            raise ValueError("a seat picks once per secret event")
+        if any(
+            not 0 <= seat < state.config.players or not 0 <= pick < 4
+            for _, _, seat, pick in state.scouts_secret_picks
+        ):
+            raise ValueError("a secret pick names a seat and one of four lines")
+        bidders = tuple(seat for seat, _, _ in state.scouts_bids)
+        if len(bidders) != len(set(bidders)) or any(
+            amount < 0 for _, amount, _ in state.scouts_bids
+        ):
+            raise ValueError("a seat holds one bid of 0 or more")
+        callers = tuple(seat for seat, _ in state.scouts_calls)
+        called = tuple(amount for _, amount in state.scouts_calls if amount)
+        if len(callers) != len(set(callers)) or len(called) != len(set(called)):
+            raise ValueError("a seat calls once, and no amount twice")
+    elif (
+        state.scouts_subcommittees
+        or state.scouts_revealed
+        or state.scouts_mission_rounds
+        or state.scouts_mid_auction_round
+        or state.scouts_late_auction_round
+        or state.scouts_opening
+        or state.scouts_item
+        or state.scouts_tasks
+        or state.scouts_round_modifier
+        or state.scouts_discount_used
+        or state.scouts_four_bonus_choices
+        or state.scouts_subcommittee_members
+        or state.scouts_subcommittee_offers
+        or state.scouts_goods
+        or state.scouts_goods_cards
+        or state.scouts_parked
+        or state.scouts_secret_picks
+        or state.scouts_secrets_round
+        or state.scouts_bids
+        or state.scouts_market_cards
+        or state.scouts_calls
+        or any(player.troops_parked for player in state.players)
+    ):
+        raise ValueError("Scouts state requires the Arrakeen Scouts module")
+
+
+def _check_makers(state: GameState) -> None:
+    maker_ids = tuple(space_id for space_id, _ in state.maker_bonus_spice)
+    if maker_ids not in (
+        ("deep_desert", "hagga_basin", "imperial_basin"),
+        # Tuek's Sietch joins the Makers while Esmar Tuek plays.
+        ("deep_desert", "hagga_basin", "imperial_basin", "tuek_sietch"),
+    ):
+        raise ValueError("Maker bonus spice must use the three spaces in rules order")
+    if any(amount < 0 for _, amount in state.maker_bonus_spice):
+        raise ValueError("Maker bonus spice must not be negative")
+
+
+_SCOUTS_FIELDS: Final = frozenset(
+    {
+        "scouts_subcommittees",
+        "scouts_revealed",
+        "scouts_mission_rounds",
+        "scouts_mid_auction_round",
+        "scouts_late_auction_round",
+        "scouts_opening",
+        "scouts_item",
+        "scouts_tasks",
+        "scouts_round_modifier",
+        "scouts_discount_used",
+        "scouts_four_bonus_choices",
+        "scouts_subcommittee_members",
+        "scouts_subcommittee_offers",
+        "scouts_goods",
+        "scouts_goods_cards",
+        "scouts_parked",
+        "scouts_secret_picks",
+        "scouts_secrets_round",
+        "scouts_bids",
+        "scouts_market_cards",
+        "scouts_calls",
+    }
+)
+
+# Every GameState invariant, in the order the constructor runs them, with
+# what each reads (``StateCheck``).
+STATE_CHECKS: Final[tuple[StateCheck, ...]] = (
+    StateCheck(
+        _check_counters,
+        frozenset(
+            {
+                "config",
+                "round_number",
+                "first_player",
+                "reveal_order",
+                "combat_intrigue_players",
+            }
+        ),
+    ),
+    StateCheck(
+        _check_seats, frozenset({"config", "players"}), frozenset({"player_id"})
+    ),
+    StateCheck(_check_markets, frozenset({"imperium_row", "face_up_contract_ids"})),
+    StateCheck(
+        _check_contracts,
+        frozenset(
+            {
+                "config",
+                "contract_bank",
+                "face_up_contract_ids",
+                "sardaukar_contract_ids",
+                "scouts_goods_cards",
+            }
+        ),
+        frozenset({"active_contract_ids", "completed_contract_ids"}),
+    ),
+    StateCheck(
+        _check_shared_cards,
+        frozenset({"conflict_deck", "unused_conflict_ids", "current_conflict_ids"}),
+        frozenset({"won_conflict_ids", "alliance_faction_ids"}),
+    ),
+    StateCheck(_check_reserve, frozenset({"reserve_stacks"})),
+    StateCheck(
+        _check_bloodlines,
+        frozenset(
+            {
+                "config",
+                "sardaukar_commanders_bank",
+                "sardaukar_commander_space_ids",
+                "skill_stack",
+                "skill_face_up",
+                "skill_trash",
+            }
+        ),
+        # ``commanders_total`` adds the three Commander counts.
+        frozenset(
+            {
+                "skill_ids",
+                "commanders_supply",
+                "commanders_garrison",
+                "commanders_conflict",
+            }
+        ),
+    ),
+    StateCheck(
+        _check_tech,
+        frozenset({"config", "tech_stacks", "tech_trash"}),
+        frozenset({"tech_ids", "secret_project_tech_id", "spies_boxed"}),
+    ),
+    StateCheck(
+        _check_immortality,
+        frozenset({"config", "tleilaxu_track_spice", "tleilaxu_deck", "tleilaxu_row"}),
+        frozenset({"research_space", "tleilaxu_space", "specimens", "family_atomics"}),
+    ),
+    StateCheck(
+        _check_scouts,
+        frozenset({"config", *_SCOUTS_FIELDS}),
+        frozenset({"player_id", "troops_parked", "control_space_ids"}),
+    ),
+    StateCheck(_check_makers, frozenset({"maker_bonus_spice"})),
+)
+_SEAT_FIELDS: Final = frozenset().union(*(check.seat_fields for check in STATE_CHECKS))
+
+
+def check_game_state(state: GameState) -> None:
+    """Run every ``GameState`` invariant on ``state``, as its constructor does
+    (sweeps re-run them after each transition, ``simulation.invariants``)."""
+
+    for check in STATE_CHECKS:
+        check.run(state)
+
+
+def _changed_seat_fields(
+    before: tuple[PlayerState, ...], after: tuple[PlayerState, ...]
+) -> frozenset[str]:
+    """The checked seat fields some seat holds another object for."""
+
+    if len(before) != len(after):
+        return _SEAT_FIELDS
+    changed: set[str] = set()
+    for old, new in zip(before, after, strict=True):
+        if old is new:
+            continue
+        for name in _SEAT_FIELDS - changed:
+            if getattr(old, name) is not getattr(new, name):
+                changed.add(name)
+    return frozenset(changed)
 
 
 def canonical_state_hash(state: GameState) -> str:

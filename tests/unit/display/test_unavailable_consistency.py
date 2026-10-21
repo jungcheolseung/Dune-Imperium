@@ -50,6 +50,7 @@ import random
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import replace
+from functools import partial
 from typing import Any, cast
 
 import pytest
@@ -64,7 +65,9 @@ from tests.unit.display.test_unavailable import (
 )
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import PlacementMemory, apply_whole
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
 from dune_imperium.content.immortality.board import (
     ResearchBonus,
@@ -155,7 +158,6 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_trash_actions,
-    spice_gained_this_turn,
 )
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
@@ -223,6 +225,7 @@ from dune_imperium.rules.effects import (
     pending_agent_icons,
     pending_board_icons,
     recallable_conflict_agents,
+    spice_gained_this_turn,
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
@@ -252,6 +255,7 @@ from dune_imperium.rules.leader_abilities import (
     signet_optional_block,
     units_deployment_blocked,
 )
+from dune_imperium.rules.owed_draws import immediate_owed_draw_actions
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -308,22 +312,38 @@ IDS = [
 
 
 def _decisions(
-    config: RulesetConfig, seed: int
+    config: RulesetConfig, seed: int, *, windows_in_any_order: bool = False
 ) -> Iterator[tuple[GameState, int, tuple[DomainAction, ...]]]:
-    """Every player decision of a seeded random game, with its legal list."""
+    """Every player decision of a seeded random game, with its legal list.
+
+    A Conflict or Contract reward window (stage B2, OQ-112) is yielded like any
+    decision, so every check below meets its rows; the walk answers it in the
+    older engine's fixed order and draws nothing for it, so a seed plays the
+    game it played before the windows existed. ``windows_in_any_order`` draws
+    its answer like any other (its own games, for the checks that want the
+    windows' rows answered in every order)."""
 
     state = ENGINE.reset(config, seed)
     resolver = ChanceResolver(seed=seed)
     rng = random.Random(seed)
+    memory = PlacementMemory()
     while state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = ENGINE.apply(state, resolver.resolve(decision)).state
+            state = apply_whole(ENGINE, state, resolver.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
-        legal = ENGINE.legal_actions(state, decision.owner)
+        legal = ENGINE.whole_actions(state, decision.owner)
         yield state, decision.owner, legal
-        state = ENGINE.apply(state, rng.choice(legal)).state
+        action = (
+            None
+            if windows_in_any_order
+            else engine_order_answer(state, decision.owner, legal)
+        )
+        if action is None:
+            # One draw per placement, as when it was one action (stage B1).
+            action = memory.choose(state, decision.owner, legal, rng.choice)
+        state = apply_whole(ENGINE, state, action).state
 
 
 def _is_legal(row: dict[str, Any], legal: tuple[DomainAction, ...]) -> bool:
@@ -335,16 +355,23 @@ def _is_legal(row: dict[str, Any], legal: tuple[DomainAction, ...]) -> bool:
     )
 
 
-@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
-def test_greyed_out_rows_are_never_legal_and_never_leak(
+def _check_greyed_out_rows(
     config: RulesetConfig,
-) -> None:
+    seeds: range,
+    *,
+    windows_in_any_order: bool = False,
+) -> tuple[set[str], set[str], int]:
+    """The greyed-out rows' invariants at every decision of the seeded games:
+    (the surfaces met, the row keys met, the decisions with rows)."""
+
     surfaces: set[str] = set()
     keys: set[str] = set()
     checked = 0
-    for seed in range(2):
+    for seed in seeds:
         rng = random.Random(1000 + seed)
-        for state, seat, legal in _decisions(config, seed):
+        for state, seat, legal in _decisions(
+            config, seed, windows_in_any_order=windows_in_any_order
+        ):
             found = cast(dict[str, Any] | None, unavailable_choices(state, seat, legal))
             if found is not None:
                 json.dumps(found)
@@ -368,9 +395,34 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
                 checked += 1
             # Nothing hidden from the seat changes what it is shown.
             hidden = determinize(state, seat, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, seat)
+            hidden_legal = ENGINE.whole_actions(hidden, seat)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, seat, hidden_legal) == found
+    return surfaces, keys, checked
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_greyed_out_rows_hold_with_the_reward_windows_answered_in_any_order(
+    config: RulesetConfig,
+) -> None:
+    """Stage B2 (OQ-112): a Conflict or Contract reward's rows resolve in any
+    order. The seeded games of the test below answer a window in the older
+    engine's order; here one game per ruleset draws its answer like any other
+    decision, so the rows, and the choices behind them, are met in the other
+    orders too (the same invariants at every decision, the windows' own
+    included)."""
+
+    _, _, checked = _check_greyed_out_rows(
+        config, range(1), windows_in_any_order=True
+    )
+    assert checked > 0
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_greyed_out_rows_are_never_legal_and_never_leak(
+    config: RulesetConfig,
+) -> None:
+    surfaces, keys, checked = _check_greyed_out_rows(config, range(2))
     assert checked > 0
     assert "acquire" in surfaces and "intrigue" in surfaces
     if config == RulesetConfig():
@@ -397,23 +449,29 @@ def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
     first, second = HARVEST_CELLS
     lone = _conflict_end_window(first)
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
-    played = ENGINE.apply(
+    # The first copy resolves at its play; its acquisition choice answered,
+    # the window is back with the second copy greyed out.
+    resolved = apply_whole(ENGINE, 
         _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
     ).state
+    played = apply_whole(ENGINE, 
+        resolved, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
+    assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
     rng = random.Random(7)
     for state in (lone, played):
-        legal = ENGINE.legal_actions(state, 0)
+        legal = ENGINE.whole_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
         assert found is not None and found["rows"]
         for _ in range(20):
             hidden = determinize(state, 0, rng)
-            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            hidden_legal = ENGINE.whole_actions(hidden, 0)
             assert hidden_legal == legal
             assert unavailable_choices(hidden, 0, hidden_legal) == found
         for seat in range(1, 4):
             other = determinize(state, seat, rng)
             assert other.decision_stack[-1] == state.decision_stack[-1]
-            assert ENGINE.legal_actions(other, seat) == ()
+            assert ENGINE.whole_actions(other, seat) == ()
             assert unavailable_choices(other, seat, ()) is None
 
 
@@ -989,6 +1047,16 @@ def _old_contract_recall(state: GameState, player: int) -> tuple[DomainAction, .
             else ()
         ),
     )
+
+
+def _research_bonus_window(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``legal_research_bonus_actions`` in the window alone: since
+    cleanup-2b it also offers the bonuses waiting on the owner's turn, which
+    the old copy never saw."""
+
+    if owned_top_frame(state, FrameKind.RESEARCH_BONUS, player) is None:
+        return ()
+    return legal_research_bonus_actions(state, player)
 
 
 def _old_research_bonus(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -1576,10 +1644,14 @@ def _old_icon_condition_holds(
             is PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
             and is_grafted(context)
         )
-    # Tread in Darkness's draw became its own icon, judging the Bond.
+    # Tread in Darkness's draw became its own icon, judging the Bond; so did
+    # In High Places' (cleanup-2d-5, user decision 2026-10-18).
     if (
         effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+        in (
+            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+            PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
+        )
         and key == "cards"
     ):
         card_id = context.get("card_id")
@@ -1752,7 +1824,7 @@ _PAIRS: list[
     (legal_tleilaxu_acquisitions, _old_tleilaxu),
     (legal_intrigue_play_actions, _old_intrigue_plays),
     (_pending_groups, _old_pending_groups),
-    (legal_research_bonus_actions, _old_research_bonus),
+    (_research_bonus_window, _old_research_bonus),
     (legal_agent_card_recall_actions, _old_agent_card_recall),
     (legal_agent_card_icon_actions, _old_agent_card_icons),
     (legal_combat_reward_optional_payment_actions, _old_combat_reward_payment),
@@ -1844,6 +1916,33 @@ _PRIVILEGE_RECALLS = frozenset(
 )
 
 
+def _privilege_choice(
+    state: GameState,
+    owner: int,
+    rng: random.Random,
+    delayed: list[int],
+    shown: tuple[DomainAction, ...],
+) -> DomainAction:
+    """One draw of ``_privilege_decisions`` over ``shown`` (the legal list,
+    an Agent turn's step shown as its placements: stage B1)."""
+
+    choices = [
+        action
+        for action in shown
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("space_id") == "imperial_privilege"
+    ]
+    waiting = imperial_privilege_recall_targets(state, owner)
+    if not choices and waiting is not None:
+        later = [a for a in shown if a.action_id not in _PRIVILEGE_RECALLS]
+        if later and delayed[0] < 4:
+            choices = later
+            delayed[0] += 1
+    else:
+        delayed[0] = 0
+    return rng.choice(choices or shown)
+
+
 def _privilege_decisions(
     config: RulesetConfig, seed: int
 ) -> Iterator[tuple[GameState, int, tuple[DomainAction, ...]]]:
@@ -1856,29 +1955,24 @@ def _privilege_decisions(
     state = ENGINE.reset(config, seed)
     resolver = ChanceResolver(seed=seed)
     rng = random.Random(seed)
-    delayed = 0
+    memory = PlacementMemory()
+    delayed = [0]
     while state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            state = ENGINE.apply(state, resolver.resolve(decision)).state
+            state = apply_whole(ENGINE, state, resolver.resolve(decision)).state
             continue
         assert isinstance(decision, PlayerDecision)
-        legal = ENGINE.legal_actions(state, decision.owner)
+        legal = ENGINE.whole_actions(state, decision.owner)
         yield state, decision.owner, legal
-        choices = [
-            action
-            for action in legal
-            if action.action_id == "agent_turn"
-            and dict(action.arguments).get("space_id") == "imperial_privilege"
-        ]
-        waiting = imperial_privilege_recall_targets(state, decision.owner)
-        if not choices and waiting is not None:
-            later = [a for a in legal if a.action_id not in _PRIVILEGE_RECALLS]
-            if later and delayed < 4:
-                choices, delayed = later, delayed + 1
-        else:
-            delayed = 0
-        state = ENGINE.apply(state, rng.choice(choices or legal)).state
+        # One draw per placement, as when it was one action (stage B1).
+        action = memory.choose(
+            state,
+            decision.owner,
+            legal,
+            partial(_privilege_choice, state, decision.owner, rng, delayed),
+        )
+        state = apply_whole(ENGINE, state, action).state
 
 
 @pytest.mark.parametrize("config", CONFIGS, ids=IDS)
@@ -1950,7 +2044,10 @@ def _silent_optional_effects(
     with itself active, as the frame offers it), Imperial Privilege's
     Intrigue trade, Desert Tactics' trash, the visit's Sardaukar Commander
     and Acquire Tech, Reverend Mother's repeat and a new High Council
-    seat's subcommittee.
+    seat's subcommittee. A step the seat must take before anything else
+    -- Gather Intelligence, or a held draw that comes at once
+    (``frames.draw_is_immediate``, OQ-106: the Bene Gesserit Influence 4
+    Intrigue card) -- offers nothing else on purpose and is left out.
     """
 
     top = state.decision_stack[-1]
@@ -1959,6 +2056,7 @@ def _silent_optional_effects(
         or not isinstance(top.decision, PlayerDecision)
         or top.decision.owner != seat
         or legal_gather_intelligence_actions(state, seat)
+        or immediate_owed_draw_actions(state, seat)
     ):
         return set()
     _, context = current_agent_effect_context(state)
@@ -2367,7 +2465,7 @@ def _old_repeat_gate(state: GameState, player: int) -> bool:
     context = _own_effect_context(state, player)
     assert context is not None
     return (
-        mandatory_board_icons_pending(context)
+        mandatory_board_icons_pending(context, state.players[player])
         or state.players[player].resources.water < 1
     )
 
@@ -2501,7 +2599,7 @@ def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
                 ):
                     frame = state.decision_stack[-1]
                     owner = state.players[0]
-                    legal = ENGINE.legal_actions(state, 0)
+                    legal = ENGINE.whole_actions(state, 0)
                     if frame.kind == FrameKind.COMBAT_REWARD_SPY_RECALL:
                         assert legal == _old_combat_reward_spy_recall(state, 0)
                         spy_block = combat_reward_spy_recall_block(frame, owner)
@@ -2525,7 +2623,7 @@ def test_the_conflict_reward_payment_blocks_are_the_old_comparisons() -> None:
                         assert block.kind.value == resource
                         assert (block.needed, block.held) == (cost, have)
                         blocked += 1
-                    state = ENGINE.apply(state, decline).state
+                    state = apply_whole(ENGINE, state, decline).state
     assert blocked > 0 and open_windows > 0 and recalls > 0
 
 
@@ -2629,7 +2727,7 @@ def test_the_sietch_tabr_block_is_the_old_condition() -> None:
     compared = 0
     for wall in (True, False):
         pending = _sietch_tabr_visit(shield_wall_present=wall)
-        taken = ENGINE.apply(
+        taken = apply_whole(ENGINE, 
             pending, DomainAction(action_id="take_sietch_tabr_water", actor=0)
         ).state
         for state in (pending, taken):

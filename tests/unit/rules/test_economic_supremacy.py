@@ -13,11 +13,12 @@ from dataclasses import replace
 
 import pytest
 from tests.support.pauses import answer_pause
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS_BY_ID,
-    ConflictReward,
     conflicts_by_tier,
 )
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -31,6 +32,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.display.structs import ConflictRowParts, conflict_row_parts
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat import (
@@ -38,6 +40,7 @@ from dune_imperium.rules.combat import (
     face_up_battle_icons,
     finish_combat,
     legal_combat_reward_optional_payment_actions,
+    offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
 from dune_imperium.rules.effect_interpreter import (
@@ -50,7 +53,7 @@ from dune_imperium.rules.endgame import (
     legal_endgame_intrigue_actions,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, top_frame
 from dune_imperium.rules.ornithopter import match_all_battle_icons
 from dune_imperium.rules.pauses import pause_is_pending
 
@@ -106,7 +109,18 @@ def _answer(state: GameState, *, pay: bool) -> GameState:
     action_id = "pay_combat_reward" if pay else "decline_combat_reward"
     action = DomainAction(action_id=action_id, actor=0)
     assert action in legal_combat_reward_optional_payment_actions(state, 0)
-    return apply_combat_reward_optional_payment(state, action).state
+    # v150 (stage B2, OQ-112): the next arrow is a row of the recipient's
+    # reward window, opened once this one is answered.
+    return settle_reward_window(
+        apply_combat_reward_optional_payment(state, action).state
+    )
+
+
+def _paid(state: GameState) -> GameState:
+    """Open the next recipient's reward window and answer it in the older
+    engine's order, up to the first choice an icon opens (stage B2)."""
+
+    return settle_reward_window(resolve_combat_rewards(state).state)
 
 
 def _settle(state: GameState) -> GameState:
@@ -121,10 +135,13 @@ def _settle(state: GameState) -> GameState:
     """
 
     while not state.combat_rewards_resolved:
+        frame = top_frame(state)
         if pause_is_pending(state):
             state = answer_pause(state).state
         elif not state.decision_stack:
             state = resolve_combat_rewards(state).state
+        elif frame is not None and frame.kind == FrameKind.COMBAT_REWARD_ICONS:
+            state = settle_reward_window(state)
         else:
             break
     return state
@@ -149,17 +166,18 @@ def test_economic_supremacy_is_transcribed_from_the_card_face() -> None:
     assert conflict.battle_icon is None
     assert conflict.shield_wall_protected is False
     assert conflict.epic_only is True
-    assert conflict.rewards == (
-        ConflictReward(
+    assert conflict.reward_rows is not None
+    assert tuple(conflict_row_parts(row) for row in conflict.reward_rows) == (
+        ConflictRowParts(
             victory_points=1,
             optional_solari_cost=6,
             optional_spice_cost=4,
             optional_victory_points=1,
         ),
-        ConflictReward(victory_points=1),
-        ConflictReward(spice=2, solari=2),
+        ConflictRowParts(victory_points=1),
+        ConflictRowParts(spice=2, solari=2),
     )
-    assert all(reward.control_space_id is None for reward in conflict.rewards)
+    assert conflict.control_space_id is None
 
 
 def test_economic_supremacy_joins_the_tier_three_pool_only_in_epic_games() -> None:
@@ -176,7 +194,7 @@ def test_economic_supremacy_joins_the_tier_three_pool_only_in_epic_games() -> No
 
 def test_every_place_gains_its_printed_row() -> None:
     before = _combat_state()
-    state = resolve_combat_rewards(before).state
+    state = _paid(before)
     # The winner's two arrows (unaffordable here) are answered before the
     # 2nd place is paid (user ruling 2026-10-07, "순위대로 (앱처럼)").
     assert state.players[1] == before.players[1]
@@ -195,16 +213,21 @@ def test_every_place_gains_its_printed_row() -> None:
 
 
 def test_first_place_is_offered_the_solari_arrow_then_the_spice_arrow() -> None:
-    rewarded = resolve_combat_rewards(_combat_state(solari=6, spice=4)).state
+    rewarded = _paid(_combat_state(solari=6, spice=4))
 
     # Two separate choices, in the printed order (6 Solari above 4 spice).
+    # v150 (stage B2, OQ-112): the Solari arrow is open above the reward
+    # window, whose last row is the spice arrow.
     assert [frame.kind for frame in rewarded.decision_stack] == [
-        FrameKind.COMBAT_REWARD_OPTIONAL,
+        FrameKind.COMBAT_REWARD_ICONS,
         FrameKind.COMBAT_REWARD_OPTIONAL,
     ]
     assert _top_resource(rewarded) == "solari"
     assert rewarded.combat_rewards_resolved is False
     after_first = _answer(rewarded, pay=False)
+    assert [frame.kind for frame in after_first.decision_stack] == [
+        FrameKind.COMBAT_REWARD_OPTIONAL
+    ]
     assert _top_resource(after_first) == "spice"
     assert after_first.combat_rewards_resolved is False
 
@@ -226,7 +249,7 @@ def test_first_place_may_take_both_either_or_neither_arrow(
     gained: int,
 ) -> None:
     before = _combat_state(solari=6, spice=4)
-    state = resolve_combat_rewards(before).state
+    state = _paid(before)
 
     state = _answer(state, pay=pay_solari)
     state = _answer(state, pay=pay_spice)
@@ -240,15 +263,24 @@ def test_first_place_may_take_both_either_or_neither_arrow(
 
 
 def test_the_paid_arrows_are_logged_one_event_each() -> None:
-    state = resolve_combat_rewards(_combat_state(solari=6, spice=4)).state
+    state = _paid(_combat_state(solari=6, spice=4))
     action = DomainAction(action_id="pay_combat_reward", actor=0)
 
     solari = apply_combat_reward_optional_payment(state, action)
-    spice = apply_combat_reward_optional_payment(solari.state, action)
+    spice = apply_combat_reward_optional_payment(
+        settle_reward_window(solari.state), action
+    )
 
-    assert [dict(event.payload) for event in (*solari.events, *spice.events)] == [
-        {"cost": 6, "player": 0, "resource": "solari", "victory_points": 1},
-        {"cost": 4, "player": 0, "resource": "spice", "victory_points": 1},
+    # Each arrow: its payment, then the VP it bought (cleanup-2c-6).
+    first = "round:1:combat_reward:optional:0:0"
+    second = "round:1:combat_reward:optional:1:0"
+    assert [
+        (event.kind, dict(event.payload)) for event in (*solari.events, *spice.events)
+    ] == [
+        ("resources_paid", {"player": 0, "source": first, "solari": 6}),
+        ("resources_gained", {"player": 0, "source": first, "victory_points": 1}),
+        ("resources_paid", {"player": 0, "source": second, "spice": 4}),
+        ("resources_gained", {"player": 0, "source": second, "victory_points": 1}),
     ]
     assert solari.events[0].event_id != spice.events[0].event_id
 
@@ -270,7 +302,7 @@ def test_an_unaffordable_arrow_can_only_be_declined(
     # Like Battle for Imperial Basin's single arrow: "pay" is offered only
     # when the resource covers the cost.
     before = _combat_state(solari=solari, spice=spice)
-    state = resolve_combat_rewards(before).state
+    state = _paid(before)
 
     assert _offered(state) == solari_offer
     state = _answer(state, pay=False)
@@ -285,7 +317,7 @@ def test_a_sandworm_offers_each_arrow_a_second_time() -> None:
     # "보상에 '비용을 내고 효과를 얻기' 선택지가 있으면, 두 번째 효과를 얻기
     # 위해 비용도 두 번째로 낼 수 있다" [Main p. 14].
     before = _combat_state(solari=12, spice=8, sandworm=True)
-    state = resolve_combat_rewards(before).state
+    state = _paid(before)
 
     assert state.players[0].victory_points == before.players[0].victory_points + 2
     order = []
@@ -303,7 +335,7 @@ def test_a_sandworm_offers_each_arrow_a_second_time() -> None:
 
 def test_a_sandworm_s_second_arrow_is_judged_on_what_is_left() -> None:
     before = _combat_state(solari=6, spice=8, sandworm=True)
-    state = resolve_combat_rewards(before).state
+    state = _paid(before)
 
     state = _answer(state, pay=True)  # Solari, 6 of 6
     state = _answer(state, pay=True)  # spice, 4 of 8
@@ -328,7 +360,7 @@ def test_a_single_arrow_card_still_offers_one_choice() -> None:
         base = _combat_state(
             solari=6, spice=4, config=RulesetConfig(), conflict_id=conflict_id
         )
-        state = resolve_combat_rewards(base).state
+        state = _paid(base)
         assert len(state.decision_stack) == 1
         assert _top_resource(state) == resource
 
@@ -355,16 +387,18 @@ def test_winning_it_pairs_with_no_face_up_card(
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(before)
+    # The winner takes the card as the Conflict-end step opens, before the
+    # troops go back (OQ-108, user decision 2026-10-18); the cleanup after the
+    # windows awards nothing.
+    offered = offer_conflict_end_triggers(before)
+    result = finish_combat(offered.state)
     winner = result.state.players[0]
 
     assert winner.won_conflict_ids == (*won_conflict_ids, ES)
     assert winner.face_down_battle_card_ids == ()
     assert winner.victory_points == before.players[0].victory_points
-    assert [event.kind for event in result.events] == [
-        "conflict_won",
-        "combat_cleaned_up",
-    ]
+    assert [event.kind for event in offered.events] == ["conflict_won"]
+    assert [event.kind for event in result.events] == ["combat_cleaned_up"]
 
 
 def test_a_later_win_matches_its_own_icon_and_leaves_it_face_up() -> None:
@@ -377,7 +411,9 @@ def test_a_later_win_matches_its_own_icon_and_leaves_it_face_up() -> None:
         combat_rewards_resolved=True,
     )
 
-    winner = finish_combat(before).state.players[0]
+    # The card is awarded, and its icon matched, as the Conflict-end step
+    # opens (OQ-108, user decision 2026-10-18).
+    winner = offer_conflict_end_triggers(before).state.players[0]
 
     assert winner.face_down_battle_card_ids == (
         "objective_crysknife_1",
@@ -479,13 +515,20 @@ def test_the_icon_intrigue_endgame_half_ignores_it(
         actor=0,
         arguments=(("card_id", card), ("option", 1)),
     )
-    opened = engine.apply(both, play).state
+    opened = apply_whole(engine, both, play).state
     targets = {
         dict(action.arguments)["card_id"]
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "flip_battle_card"
     }
     assert targets == {same_icon_conflict}
+    # Stage B3d-2a: the seat is shown the same cards by their target rows.
+    shown = {
+        dict(action.arguments)["card_id"]
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "choose_conflict_card"
+    }
+    assert shown == targets
 
 
 def test_grasp_arrakis_may_flip_it() -> None:
@@ -509,20 +552,26 @@ def test_grasp_arrakis_may_flip_it() -> None:
         arguments=(("card_id", card), ("option", 1)),
     )
 
-    opened = engine.apply(state, play).state
+    opened = apply_whole(engine, state, play).state
     first = [
         action
-        for action in engine.legal_actions(opened, 0)
+        for action in engine.whole_actions(opened, 0)
         if action.action_id == "flip_battle_card"
     ]
     assert {dict(a.arguments)["card_id"] for a in first} == {
         ES,
         "skirmish_ornithopter",
     }
+    # Stage B3d-2a: the seat is shown the same cards by their target rows.
+    assert {
+        dict(a.arguments)["card_id"]
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "choose_conflict_card"
+    } == {ES, "skirmish_ornithopter"}
     flip_es = next(a for a in first if dict(a.arguments)["card_id"] == ES)
-    flipped_one = engine.apply(opened, flip_es).state
-    (second,) = engine.legal_actions(flipped_one, 0)
-    done = engine.apply(flipped_one, second).state
+    flipped_one = apply_whole(engine, opened, flip_es).state
+    (second,) = engine.whole_actions(flipped_one, 0)
+    done = apply_whole(engine, flipped_one, second).state
 
     assert done.players[0].victory_points == state.players[0].victory_points + 1
     assert set(done.players[0].face_down_battle_card_ids) == {
@@ -569,9 +618,10 @@ def test_ornithopter_fleet_winning_it_pairs_nothing() -> None:
         combat_rewards_resolved=True,
     )
 
-    result = finish_combat(before)
+    result = offer_conflict_end_triggers(before)
     winner = result.state.players[0]
 
+    assert winner.won_conflict_ids == (ES,)
     assert winner.face_down_battle_card_ids == ()
     assert winner.victory_points == before.players[0].victory_points
     assert "battle_icons_matched" not in [event.kind for event in result.events]
@@ -589,7 +639,7 @@ def test_ornithopter_fleet_pairs_the_next_win_past_it() -> None:
         combat_rewards_resolved=True,
     )
 
-    winner = finish_combat(before).state.players[0]
+    winner = offer_conflict_end_triggers(before).state.players[0]
 
     assert winner.face_down_battle_card_ids == (
         "objective_crysknife_1",

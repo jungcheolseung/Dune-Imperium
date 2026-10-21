@@ -1,8 +1,14 @@
 """Automatic transitions between top-level Uprising round phases."""
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawTwistedIntrigueCards,
+    OnRoundStart,
+)
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
@@ -13,6 +19,19 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
+
+
+def _twisted_round_draw() -> int:
+    """Twisted Genius' "Round start: draw a Twisted Intrigue card", from the
+    record (composed A6e); the deck is the setup's (OQ-072, OQ-097)."""
+
+    ((_, (draw,)),) = leader_triggers("piter_de_vries", OnRoundStart)
+    if not isinstance(draw, DrawTwistedIntrigueCards):
+        raise ValueError("Twisted Genius draws a Twisted Intrigue card")
+    return draw.count
+
+
+TWISTED_ROUND_DRAW: Final = _twisted_round_draw()
 
 
 def begin_round(state: GameState) -> RuleResult:
@@ -143,8 +162,11 @@ def draw_round_hands(state: GameState) -> RuleResult:
     players = tuple(
         replace(
             player,
-            intrigue_cards=(*player.intrigue_cards, player.twisted_deck[0]),
-            twisted_deck=player.twisted_deck[1:],
+            intrigue_cards=(
+                *player.intrigue_cards,
+                *player.twisted_deck[:TWISTED_ROUND_DRAW],
+            ),
+            twisted_deck=player.twisted_deck[TWISTED_ROUND_DRAW:],
         )
         if player.twisted_deck
         else player
@@ -179,7 +201,11 @@ def draw_round_hands(state: GameState) -> RuleResult:
             GameEvent(
                 event_id=f"round:{round_number}:player:{seat}:twisted_draw",
                 kind="intrigue_card_drawn",
-                payload=(("count", 1), ("player", seat), ("twisted", 1)),
+                payload=(
+                    ("count", TWISTED_ROUND_DRAW),
+                    ("player", seat),
+                    ("twisted", 1),
+                ),
             )
             for seat in twisted_draws
         ),
@@ -360,9 +386,7 @@ def _control_defense_frame(
     """
 
     conflict = CONFLICTS_BY_ID[conflict_id]
-    control_space_id = (
-        None if conflict.rewards is None else conflict.rewards[0].control_space_id
-    )
+    control_space_id = conflict.control_space_id
     if control_space_id is None:
         return None
     controllers = tuple(

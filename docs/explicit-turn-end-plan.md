@@ -178,7 +178,7 @@ Atomics·표본 반환을 할 수 있는지는 **사용자 질문 Q1**(아래).
 - seed 게임의 RNG 흐름이 첫 옛 자동 닫힘부터 달라져 이전 A/B·대회 수치와 비교할 수 없다(handoff에 적는다).
 - v111 네트워크는 `finish_agent_turn`을 배치 창에서만 봤다. heuristic이 몰 때 Immortality 턴 끝의 첫 선택이 표본 반환이었다(게임당
   9.5번). **전문가 반복 학습은 이 결정을 탐색하지 않는다**: `training/expert.py:158-165`가 `AGENT_EFFECTS` 결정을 anchor 행으로만 쓰고
-  `NetworkSearchAgent`는 탐욕으로 답한다(network_search_agent.py:255, `orders_agent_effects` :380-391). (정정 2026-10-02: 아래 문장은 틀렸다. 전문가 반복 학습은 Agent 효과 결정을 anchor 행으로만 쓰므로 이 결정을 다시 배우는 길은 PPO 재적응이고, 병합 뒤 L3로 돌렸다 — [worklog/2026-10.md](worklog/2026-10.md)의 2026-10-01~02 L1 기록.) `search_effect_order`를 켜지 않으면
+  `NetworkSearchAgent`는 탐욕으로 답한다(network_search_agent.py:255, `orders_agent_effects` :380-391). (정정 2026-10-02: 아래 문장은 틀렸다. 전문가 반복 학습은 Agent 효과 결정을 anchor 행으로만 쓰므로 이 결정을 다시 배우는 길은 강화학습 재적응이고, 병합 뒤 L3로 돌렸다 — [worklog/2026-10.md](worklog/2026-10.md)의 2026-10-01~02 L1 기록.) `search_effect_order`를 켜지 않으면
   재적응으로 고쳐지지 않는다. 몇 시간 걸리는 재적응은 착수 전에 사용자에게 묻는다(long-run 관례).
 - 속도: 탐욕 대회 약 4-5% 느려짐, `NetworkSearchAgent` 탐색 결정당 2-6%.
 

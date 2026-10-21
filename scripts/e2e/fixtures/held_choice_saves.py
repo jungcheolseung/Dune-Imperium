@@ -3,8 +3,11 @@
 Seat 0 is human and the others play the registry-pinned table heuristic.
 Seat 0 plays ``random.Random(seed).choice`` over its legal actions and every
 hold is confirmed at once: the walk of tests/server/test_round_start_defense.py
-and tests/server/test_turn_end.py (``_walk_to_held_end_before_chance``), base
-game, no edited state.
+and tests/server/test_turn_end.py (``_walk_to_held_end_before_chance``) as it
+was before stage B1, base game, no edited state. Since B1 an Agent placement
+is a card pick and a space pick; the walk still draws it as one choice
+(``placement_walk``), so its seeds keep their games (those tests draw over
+the two steps and picked other seeds).
 
 - ``held-defense`` (seed 2, round 9): seat 0's Control defense in Round
   Start, both answers undoable: the engine pauses before the round's draw
@@ -31,6 +34,8 @@ import json
 import random
 import sys
 from pathlib import Path
+
+from placement_walk import walk_step
 
 from dune_imperium.core import ChanceDecision
 from dune_imperium.server.persistence import SaveStore
@@ -85,8 +90,7 @@ for _step in range(STEPS):
             manager.save_game(gid, name="held-defense")
         )["save_id"]
         break
-    choice = rng.choice(actions)
-    summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])
+    summary, choice = walk_step(manager, gid, 0, summary, rng.choice)
 
 # Seed 32: an Intrigue card's acquisition held by the browser.
 manager, gid, summary, rng = start(32)
@@ -107,8 +111,7 @@ for _step in range(STEPS):
             manager.save_game(gid, name="held-acquire")
         )["save_id"]
         break
-    choice = rng.choice(actions)
-    summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])
+    summary, choice = walk_step(manager, gid, 0, summary, rng.choice)
 
 # Seed 20: the reward Spy held before the next round's reshuffle. The game
 # is saved before each candidate placement and kept once the policy's own
@@ -128,11 +131,10 @@ for _step in range(STEPS):
         and all(a["undoable"] and not a["sent_by_turn_end"] for a in posts)
     ):
         document = manager.save_game(gid, name="held-reward-spy")
-    choice = rng.choice(actions)
-    summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])
+    summary, choice = walk_step(manager, gid, 0, summary, rng.choice)
     if (
         document is not None
-        and choice["action_id"] == SPY_POST
+        and choice.action_id == SPY_POST
         and summary["confirmation"] == 0
         and summary["decision"] is None
         and isinstance(session.engine.current_decision(session.state), ChanceDecision)

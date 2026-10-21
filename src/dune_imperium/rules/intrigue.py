@@ -53,13 +53,12 @@ from dune_imperium.rules.ability_executor import (
     intrigue_ref,
     rewards_wait,
 )
-from dune_imperium.rules.acquisition import acquisition_spy_frame
+from dune_imperium.rules.acquisition import open_acquisition_frames
 from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.combat import (
     COMBAT_INTRIGUE_PLAYED_KEY,
     refresh_combat_participants,
 )
-from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     OptionUnplayable,
@@ -83,6 +82,7 @@ from dune_imperium.rules.frames import (
     turn_start_is_open,
     with_context,
 )
+from dune_imperium.rules.gain_events import resources_paid_event
 from dune_imperium.rules.intrigue_triggers import (
     open_contract_reveal,
     waits_for_reveal_turn,
@@ -301,17 +301,10 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     ]
-    if cost is not None:
+    if cost is not None and (cost.solari or cost.spice or cost.water):
         events.append(
-            GameEvent(
-                event_id=f"{source}:cost",
-                kind="intrigue_cost_paid",
-                payload=(
-                    ("player", player),
-                    ("solari", cost.solari),
-                    ("spice", cost.spice),
-                    ("water", cost.water),
-                ),
+            resources_paid_event(
+                source, player, solari=cost.solari, spice=cost.spice, water=cost.water
             )
         )
 
@@ -346,24 +339,22 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-def resolve_faceup_trigger_option(
+def resolve_conflict_end_trigger(
     state: GameState,
     player: int,
     card_id: str,
     *,
     source: str,
 ) -> RuleResult:
-    """Fire a face-up trigger card's option now (Harvest Cells at cleanup,
-    staged face up by the Conflict-end window).
+    """Resolve a Conflict-end trigger card from the hand as it is played
+    (Harvest Cells, in its window once the troops are back in the supply).
 
-    The card returns from the face-up zone to the owner's hand of played
-    cards so the ordinary finish path discards it; its sections then open
-    their choices or resolve at once.
+    User decision 2026-10-18 ("세포 수확은 내는 즉시 표본 2를 주고 획득
+    여부만 묻게 해줘"): its automatic rewards apply at once and only its
+    choice is asked -- "You may also acquire a Tleilaxu card (paying its
+    normal cost)." [Harvest Cells card]; the card then finishes as usual.
     """
 
-    owner = state.players[player]
-    if card_id not in owner.intrigue_faceup:
-        raise ValueError("the trigger card is not face up")
     entry = intrigue_card_for_instance(card_id)
     option_index = next(
         index for index, option in enumerate(entry.options) if option.trigger
@@ -372,23 +363,9 @@ def resolve_faceup_trigger_option(
     sections = applicable_sections(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
-    moved = replace(
-        owner,
-        intrigue_faceup=tuple(
-            held for held in owner.intrigue_faceup if held != card_id
-        ),
-        intrigue_cards=(*owner.intrigue_cards, card_id),
-    )
-    prepared = replace(state, players=replace_player(state.players, moved))
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:fired",
-            kind="intrigue_trigger_fired",
-            payload=(("card_id", card_id), ("player", player)),
-        )
-    ]
     return _resolve_paid_option(
-        prepared, player, card_id, option_index, option, sections, source, events
+        state, player, card_id, option_index, option, sections, source, [],
+        rewards_first=True,
     )
 
 
@@ -403,8 +380,12 @@ def _resolve_paid_option(
     events: list[GameEvent],
     *,
     separate: bool = False,
+    rewards_first: bool = False,
 ) -> RuleResult:
     """Open the option's choice frame, or finish it when nothing is chosen.
+
+    With ``rewards_first`` the automatic rewards apply now, as the frame
+    opens, and only its choices are left (``resolve_conflict_end_trigger``).
 
     The frame stores the option's pending ability (``ability_executor``):
     the lines that apply, judged now, and whether the Shield Wall stands,
@@ -426,6 +407,7 @@ def _resolve_paid_option(
                 if section in sections
             ),
             shield_wall=state.shield_wall_present,
+            rewards_applied=rewards_first,
         )
         frame = DecisionFrame(
             kind=FrameKind.INTRIGUE_CHOICE,
@@ -451,7 +433,15 @@ def _resolve_paid_option(
                 ("source", source),
             ),
         )
-        return RuleResult(state=played_state.push_decision(frame), events=tuple(events))
+        opened = played_state.push_decision(frame)
+        if not rewards_first:
+            return RuleResult(state=opened, events=tuple(events))
+        # The frame is in place before the rewards apply, so a draw that
+        # pushes a reshuffle stacks above it (as ``apply_intrigue_rewards``).
+        rewarded = apply_automatic_rewards(
+            opened, player, sections, f"{source}:rewards", played_card_id=card_id
+        )
+        return RuleResult(state=rewarded.state, events=(*events, *rewarded.events))
 
     finished = finish_intrigue_play(
         played_state, player, card_id, sections, source, discard=not separate
@@ -725,17 +715,14 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
             payload=(("card_id", card_id), ("player", player), ("section", index)),
         )
     ]
-    if cost is not None:
+    if cost is not None and (cost.solari or cost.spice or cost.water):
         events.append(
-            GameEvent(
-                event_id=f"{line_source}:cost",
-                kind="intrigue_cost_paid",
-                payload=(
-                    ("player", player),
-                    ("solari", cost.solari),
-                    ("spice", cost.spice),
-                    ("water", cost.water),
-                ),
+            resources_paid_event(
+                line_source,
+                player,
+                solari=cost.solari,
+                spice=cost.spice,
+                water=cost.water,
             )
         )
     return _resolve_paid_option(
@@ -856,7 +843,11 @@ def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult
     context[PENDING_ABILITY_KEY] = replace(entry, rewards_applied=True).encode()
     advanced = replace_top_frame(state, with_context(frame, context))
     return apply_automatic_rewards(
-        advanced, action.actor, entry_sections(entry), f"{source}:rewards"
+        advanced,
+        action.actor,
+        entry_sections(entry),
+        f"{source}:rewards",
+        played_card_id=context_str(context, "card_id", owner=_CHOICE_FRAME),
     )
 
 
@@ -1014,18 +1005,10 @@ def _apply_intrigue_acquisition(
         )
         next_state = finished.state
         events = (*events, *finished.events)
-    next_state = _restack(next_state, pushed)
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, player, acquired.instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state, player, 1, source=f"{step_source}:acquisition_bonus"
-        )
-        next_state = contracts.state
-        events = (*events, *contracts.events)
-    return RuleResult(state=next_state, events=events)
+    opened = open_acquisition_frames(
+        _restack(next_state, pushed), player, acquired, source=step_source
+    )
+    return RuleResult(state=opened.state, events=(*events, *opened.events))
 
 
 def finish_intrigue_play(
@@ -1050,7 +1033,9 @@ def finish_intrigue_play(
     applied = (
         RuleResult(state=state)
         if skip_rewards
-        else apply_automatic_rewards(state, player, sections, source)
+        else apply_automatic_rewards(
+            state, player, sections, source, played_card_id=card_id
+        )
     )
     resolved = applied.state
     if not discard:

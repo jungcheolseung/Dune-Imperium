@@ -38,7 +38,7 @@ EXPECTED = """(from) => state.log.entries.slice(from).flatMap((entry) => {
         out.push(reveal);
       }
       if (event.kind === 'reveal_started') reveal.totals = [p.persuasion, p.strength];
-      else reveal.cards = p.card_ids.split(',');
+      else reveal.cards = p.card_ids;
     } else if (['agent_placed', 'turn_start_card_played', 'card_grafted',
         'intrigue_played', 'navigation_card_played'].includes(event.kind)) {
       out.push({index: entry.index, card: p.card_id, seat: p.player, cards: null,
@@ -63,10 +63,18 @@ CHOOSE = """() => {
   const rows = state.actions.actions;
   const intrigue = rows.find((a) => a.action_id === 'play_intrigue');
   if (intrigue) return intrigue.index;
-  const secrets = rows.find((a) => a.action_id === 'agent_turn'
-    && a.arguments.space_id === 'secrets');
-  return (secrets || rows[0]).index;
+  // An Agent turn is two steps: the placement's card pick first, then (at
+  // the next call) the space pick that completes it.
+  const secrets = placementActions().find((a) => a.arguments.space_id === 'secrets');
+  return secrets ? (secrets.pickIndex ?? secrets.index) : rows[0].index;
 }"""
+
+
+def agent_turn(page) -> None:
+    """Play CHOOSE's Agent turn whole: the card pick, then the space pick."""
+    for _ in range(2):
+        page.evaluate("applyAction", page.evaluate(CHOOSE))
+        assert settled(page)
 
 
 def freeze(page) -> None:
@@ -273,12 +281,12 @@ def boundaries(page, base: str) -> None:
     page.wait_for_function(
         "phaseBanner.current === null && !phaseBanner.queue.length", timeout=10000
     )
-    page.evaluate("applyAction", page.evaluate(CHOOSE))
-    assert settled(page)
+    agent_turn(page)
     freeze(page)
     check.ok(page.is_visible("#play-effects"), "a human Agent card floats immediately")
     if page.evaluate("state.summary.undo.some((u) => u.seat === state.viewSeat)"):
-        page.evaluate("submitUndo(state.viewSeat, 1)")
+        # An Agent turn is two steps (card pick, space pick); take both back.
+        page.evaluate("submitUndo(state.viewSeat, 2)")
         assert settled(page)
         check.ok(
             page.is_hidden("#play-effects") and page.evaluate(PENDING) == [],
@@ -286,8 +294,7 @@ def boundaries(page, base: str) -> None:
         )
     else:
         raise AssertionError("the scenario must reach an undoable Agent play")
-    page.evaluate("applyAction", page.evaluate(CHOOSE))
-    assert settled(page)
+    agent_turn(page)
     check.ok(page.is_visible("#play-effects"), "replaying after undo emits a fresh cue")
     page.wait_for_function("el('play-effects').hidden", timeout=5000)
     check.ok(

@@ -35,9 +35,10 @@ const state = {
   pick: null,
   /* The count chosen on each count stepper, by action id (countRow). */
   counts: {},
-  /* A choice held for the turn-end press, {key, index} (turn.js
-     chooseAction): outside its turns a step that cannot be taken back is
-     sent only with the seat's "턴 종료". Page-only, like `pick`. */
+  /* A choice held for the "확정 ▶" press, {key, index} (turn.js
+     chooseAction): outside its turns a step that cannot be taken back, and
+     inside one the steps server/turn_end.py HELD_IN_TURN names, is sent only
+     with that press. Page-only, like `pick`. */
   held: null,
 };
 
@@ -285,6 +286,10 @@ function researchSpaceName(spaceId, withBonus) {
    ("board:arrakeen", "contract:contract:espionage_i", "imperium:x:0"). */
 const PROVENANCE_KINDS = {
   board: "spaces",
+  /* A Control marker's bonus ("round:3:player:1:control:arrakeen"). */
+  control: "spaces",
+  /* A Leader's ability ("round:3:player:1:leader:esmar_tuek"). */
+  leader: "leaders",
   contract: "contracts",
   agent_card: "cards",
   imperium: "cards",
@@ -319,7 +324,35 @@ function sourceRef(value) {
     if (entry) return { section: kind, entry };
   }
   const entry = parts.length === 1 ? lookup(parts[0]) : null;
-  return entry ? entrySection(parts[0]) : null;
+  if (entry) return entrySection(parts[0]);
+  return trackSourceRef(parts);
+}
+
+/* The sources that name no catalog id (rules/immortality.py,
+   leader_abilities.py, combat.py): a seat's research or Tleilaxu track
+   space ("round:3:player:1:research:c3r3", "…:tleilaxu:4"), the Signet
+   Ring's box ("round:3:player:1:leader_signet") and a Conflict reward's
+   optional cost ("round:3:combat_reward:optional:0:1"). Read only when no
+   card or space is named, so a window named after what opened it keeps
+   that name. */
+function trackSourceRef(parts) {
+  const last = parts[parts.length - 1];
+  const before = parts[parts.length - 2];
+  if (parts[2] === "combat_reward") {
+    return { section: "combat_reward", entry: { name: t("core.source_combat_reward") } };
+  }
+  if (last === "leader_signet") {
+    const entry = lookup("signet_ring", "cards");
+    return entry ? { section: "cards", entry } : null;
+  }
+  if (before === "research") {
+    const name = researchSpaceName(last, false);
+    return name ? { section: "research", entry: { name } } : null;
+  }
+  if (before === "tleilaxu" && /^(?:\d+|end)$/.test(last)) {
+    return { section: "tleilaxu_track", entry: { name: t("board.tleilaxu_track") } };
+  }
+  return null;
 }
 
 /* What one engine value reads as on screen, given the field that holds it
@@ -333,8 +366,9 @@ function fieldText(key, value, siblings = {}) {
   /* The server writes the Korean marker for an argument this seat may not
      see (sessions.py); it reads in the page's language. */
   if (text === UI_TEXT["common.hidden"].ko) return t("common.hidden");
-  /* The engine joins an id list into one string ("staban_tuek,gurney_halleck",
-     Family Atomics' "removed", "garrison,garrison"). */
+  /* An id list (an event's list, joined by the log as "a,b": a Leader
+     draft's leader_ids, the Row's "removed"), or a frame context's
+     comma-joined ids ("garrison,garrison"). */
   if (text.includes(",")) {
     const parts = text
       .split(",")
@@ -1332,6 +1366,26 @@ function rowLeadsWithCard(action, boxed = false) {
    action id with, rules/reveal_turn.py SOURCED_REVEAL_ACTION_IDS), or
    null. The id itself never reaches the screen: a live row is led by its
    card (`detail_title`), a logged step by the card's name. */
+/* The actions naming the entity that printed their effect: an optional
+   trash on the turn by its trash icon (stage B3c-2b), and since stage B3e-1
+   a research space's icon, a triggered draw and a Reveal gain, one action
+   per entity. `printed` says it; its kind (`source`) and box are the
+   engine's. */
+const NAMED_PRINTER_ACTIONS = new Set([
+  "trash_optional_card",
+  "resolve_research_icon",
+  "draw_owed_intrigue",
+  "draw_owed_card",
+  "recruit_reveal_troops",
+  "draw_reveal_intrigue",
+  "generate_reveal_specimens",
+  "advance_reveal_tleilaxu",
+  "advance_reveal_research",
+  "gain_reveal_resources",
+  "gain_reveal_faction_influence",
+]);
+const PRINTER_KEYS = new Set(["source", "printed", "printed_box"]);
+
 const REVEAL_SOURCE_ACTIONS = new Set([
   "trash_reveal_card",
   "recall_spy_for_reveal",
@@ -1434,7 +1488,18 @@ function describeAction(action, options = {}) {
     }
     fragment.appendChild(phrase(label));
   }
-  if (action.detail && !factionChoice && !("effect" in action.arguments)) {
+  /* A Reveal gain's bundle or Faction is its own argument beside the entity
+     that printed it (stage B3e-1): both are shown, the entity by its name. */
+  const namesPrinter = NAMED_PRINTER_ACTIONS.has(action.action_id);
+  const ownArguments = Object.keys(action.arguments).filter(
+    (key) => !(namesPrinter && PRINTER_KEYS.has(key)),
+  );
+  if (
+    action.detail &&
+    !factionChoice &&
+    !("effect" in action.arguments) &&
+    !(namesPrinter && ownArguments.length)
+  ) {
     /* An Arrakeen Scouts choice (a line, a secret pick, a subcommittee, a
        mission's way in, a revealed card): the server's detail says what it
        does (display/scouts.py), which a bare index or id would not. Only
@@ -1452,6 +1517,37 @@ function describeAction(action, options = {}) {
     /* A Reveal choice's card: it already leads (detail_title, or the
        logged step's source above). */
     if (key === "source" && REVEAL_SOURCE_ACTIONS.has(action.action_id)) continue;
+    /* An optional trash on the turn names the trash icon it uses by what
+       printed it (stage B3c-2b): `printed` says it (a card, a Tech tile, a
+       research space, the leader); its kind and box are the engine's. */
+    if (namesPrinter && (key === "source" || key === "printed_box")) continue;
+    if (
+      namesPrinter &&
+      key === "printed" &&
+      action.action_id !== "trash_optional_card"
+    ) {
+      /* What printed a research icon, a triggered draw or a Reveal gain,
+         by its name alone as a live row reads it: the server's detail on a
+         live row; a logged one reads it off the catalog, and an entity it
+         cannot name (a track) is left to the label. */
+      if (action.detail) {
+        parts.push(effectNode(action.detail, action.detail_ko));
+        continue;
+      }
+      const text = fieldText(key, value, action.arguments);
+      if (text === null) continue;
+      const cards = options.cardNames
+        ? fieldNodes(key, value, action.arguments, text)
+        : null;
+      if (cards) {
+        const words = document.createDocumentFragment();
+        appendRun(words, cards);
+        parts.push(words);
+      } else {
+        parts.push(document.createTextNode(text));
+      }
+      continue;
+    }
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     if (key === "effect" && typeof value === "string") {
       /* action.detail is the server's English effect fragment; it is printed

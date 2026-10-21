@@ -1,6 +1,6 @@
 # 효과 조각 엔진 전환 계획 (composed effects)
 
-상태: **진행 중** — A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), 다음 A2. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
+상태: **끝**(2026-10-21) — A단계·정리 단계·A8(codec v149), B단계([stage-b-plan.md](stage-b-plan.md), codec v150), B단계의 "함께 할 일"인 합계 정리(Reveal·Conflict·계약, codec 그대로 v150)와 그 뒤의 상태 이름 정리(codec v151)까지 끝났다. 남은 C단계(아래 5절)는 새 콘텐츠를 같은 기록으로 더하는 일이다. 아래는 단계별 기록이다. A0 끝남(2026-10-15, 5절 "A0에서 만든 것"), A1 끝남(2026-10-16, codec v148, 5절 "A1에서 만든 것"), A2 44개 끝남(2026-10-16, codec 그대로, 5절 "A2에서 만든 것"), A3a·A3b 끝남(2026-10-16, 5절 "A3a·A3b에서 만든 것"), A3c 끝남(2026-10-16, 5절 "A3c에서 만든 것"), A3d 9칸 끝남(2026-10-16, 5절 "A3d에서 만든 것"), A3e 폐기 칸 5개 끝남(2026-10-16, 5절 "A3e에서 만든 것"), A3f 중 선택 획득 2칸·Arrakis Observer·Piter·Control the Spice·S6·S7 끝남 — **A3 끝남**(2026-10-16, 5절 "A3f-1에서 만든 것"~"A3f-5에서 만든 것"), A3g 표에 없던 Agent 칸 15개 끝남 — 개인 카드 Agent 칸 모두 기록(2026-10-16, 5절 "A3g에서 만든 것"), A4 끝남(2026-10-16, 5절 "A4a·A4c에서 만든 것"·"A4d~A4h에서 만든 것": 획득·폐기·버림 효과, Reveal 자동 이득, Reveal 선택 26개 — 개인 카드의 효과가 모두 기록), A5 끝남(2026-10-16, 5절 "A5에서 만든 것": 계약·Conflict 보상·보드 칸), A6 끝남(2026-10-17, 5절 "A6에서 만든 것": Tech·지도자), A7 끝남(2026-10-17, 5절 "A7에서 만든 것": 기술 타일·Immortality·Arrakeen Scouts) — **A단계 옮기기 끝**. 5절 "정리 단계"의 정리-1 끝남(2026-10-17, 5절 "정리-1에서 만든 것": 같은 일을 하는 조각 합치기, Scouts 장치 hook 등록부), 같음 확인 도구 보강 끝남(2026-10-17, 6절 7번: 정해진 차이, 기록 형식 2), 정리-2 끝남(2026-10-19, 5절 "정리-2 계획"~"정리-2c 사건 문법"; 2e까지), A8 망 입력 끝남(엔티티 특성은 능력 기록에서, 행동은 `ACTION_SHAPES` 부분) — 2026-10-19 codec v149로 master에 병합. A8 재학습은 탐색 좌석 관문 없이 멈췄다(사용자 결정: B단계 뒤 다시 학습). B단계는 사용자 결정(2026-10-19, 측정 실험 없이)으로 이어서 했다. 계획은 2026-10-14(같은 날 효과 목록 조사 뒤 B단계를 "A단계 뒤
 측정으로 정할 선택"으로 고침, 4.3·5절). 사용자 결정:
 
 - "제대로 하는 방법으로 가야한다고 생각해. 사실 애초에 구현부터 행동이 하나로 묶이지 않고 분리된 행동의 집합으로
@@ -128,12 +128,14 @@ hook으로 두되 그 수를 세어 줄여 간다.
 | --- | --- |
 | A0 | 능력 기록, 대기 능력 실행기, (모양, 출처) → template 표, 같음 확인 도구(6절) — 끝남(2026-10-15, 아래 "A0에서 만든 것") |
 | A1 | 책략 90 identity를 실행기로(이미 데이터라 실행기 검증용) — 끝남(2026-10-16, codec v148, 아래 "A1에서 만든 것") |
-| A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 |
-| A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개 |
-| A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과 |
-| A5 | 보드 칸, Conflict 보상, 계약 |
-| A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech |
-| A7 | Immortality(접합, 연구, Tleilaxu, 표본), Arrakeen Scouts |
+| A2 | 개인 카드 Agent 칸 단순·조건부 이득 52개 — 44개 끝남(2026-10-16, 아래 "A2에서 만든 것"), 7개는 hook으로·1개는 A3로 |
+| A3 | 개인 카드 Agent 칸 비용→보상 22개, 고르기 14개, Tread in Darkness, A2가 남긴 특이 흐름 7개. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a3/agent-choice-survey.md`)에서 처리기마다 사건 출처·순서가 달라 모양별로 나눈다: A3a hook 등록부와 A2의 특이 흐름(끝남), A3b 대상 없는 선택 지불 S1(끝남), A3c 필수 대상 고르기 S5(진영·첩자 칸·상대 병력·계약, 끝남), A3d 대상을 고르는 선택 화살표 S2a·S2b(보상을 곧바로 주는 것, 비용 뒤에 아이콘으로 거는 것 — 기록에 "걸리는 보상 아이콘" 칸이 따로 필요; 버리기 7칸·책략 폐기 2칸 끝남, 개인 카드 폐기 3칸과 Piter는 A3e로), A3e 검은 폐기 아이콘·한 칸 안 연속 고르기 S3·S4(폐기 칸 5개 끝남; Arrakis Observer·Piter·Control the Spice는 A3f로), A3f 평범한 줄이 한쪽인 고르기 S6·고르기 아이콘이 섞인 칸 S7(Tread in Darkness)·선택 획득 S8 — 모두 끝남(2026-10-16) |
+| A3g | A2·A3 목록에 없던 개인 카드 Agent 칸 15개(Treacherous Maneuver, The Beast's Spoils, Long Reach, Holy War, Arrakis Revolt, Immortality 접합·연구 칸 6개, 그 밖 4개 — 아래 "A3f-5에서 만든 것" 끝). 사용자 결정(2026-10-16): A7로 미루지 않고 A3에 이어 지금 — 끝남(2026-10-16, 아래 "A3g에서 만든 것") |
+| A4 | Reveal 선택 26개와 Reveal 자동 이득, 획득·폐기·버림·차례 시작 효과. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a4/reveal-survey.md`)의 하위 단계 A4a~A4h — 끝남(2026-10-16, 아래 "A4a·A4c에서 만든 것", "A4d~A4h에서 만든 것") |
+| A5 | 보드 칸, Conflict 보상, 계약. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a5/a5-survey.md`)의 하위 단계 A5a(계약 28장)·A5b(Conflict 19장, 보상 57줄)·A5c(보드 칸 인쇄 아이콘)·A5d(보드 선택 아이콘과 특수 흐름 — 조사의 A5d+A5e) — 끝남(2026-10-16, 아래 "A5에서 만든 것") |
+| A6 | 지도자(인장은 능력, 상시 효과는 유발), Tech. 조사(2026-10-16, git 무시 `tmp/claude/4767ed6a/a6/a6-survey.md`)의 하위 단계 A6a(Tech 획득 효과)·A6b(Tech 능력 18개)·A6c(인장 18개)·A6e(지도자 왼쪽 칸 21개, Tech 유발 둘) — 조사의 A6d·A6f는 A6c·A6e에 들어감, A6g(규칙 변경·설정·지휘관 제안)는 판단으로 정리 — 끝남(2026-10-17, 아래 "A6에서 만든 것") |
+| A7 | Immortality(접합, 연구, Tleilaxu, 표본), Arrakeen Scouts, 그리고 사용자 결정(2026-10-17)으로 Sardaukar 기술 타일 7개. 조사(2026-10-17, git 무시 `tmp/claude/4767ed6a/a7/a7-survey.md`)의 하위 단계 A7a(기술 타일)·A7b(Scouts 77개)·A7c(연구·Tleilaxu 트랙 보너스, Reclaimed Forces)·A7d(Immortality 규칙 변경 넷) — A7e(장치)는 판단으로 정리 — 끝남(2026-10-17, 아래 "A7에서 만든 것") |
+| 정리 | 옮기기(A0~A7)가 끝난 뒤 옛 코드에서 물려받은 처리기별 차이를 하나의 규칙으로 통일: 사건 이름, "칸 해결" 사건, 시험 해결의 답, hook. 아래 "정리 단계". codec은 A8과 함께 한 번만 올린다 |
 | A8 | 망 특성(4.4)과 한 번의 재학습, 관문 뒤 플레이 서버 교체 |
 
 - 단계마다 worktree에서 하고, 6절의 관문을 넘은 것만 master에 병합한다. 행동 이름이 그대로라 AI·화면·테스트·E2E는
@@ -222,12 +224,839 @@ hook으로 두되 그 수를 세어 줄여 간다.
   것: Agent 칸은 인쇄된 아이콘마다 행동 하나(`resolve_agent_card_effect(effect=…)`, OQ-027)인데 실행기의 자동 보상은 한 줄로 한꺼번에
   내므로, 아이콘별 줄을 내는 제시가 필요하다.
 
+### A2에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+개인 카드 Agent 칸 52개 중 44개를 능력 기록으로 옮겼다. 결정 stack의 꼴(frame 키)은 그대로라 codec을 올리지 않았다. 제시하는 행동·
+사건·관측도 그대로다(관문 결과는 6절 표 아래).
+
+- **조사:** 52개가 지금 어떻게 도는지 칸마다 정리했다(git 무시 `tmp/claude/4767ed6a/a2/agent-gain-survey.md`, 무작위 4,400판 탐침으로
+  확인). 코드 경로가 8묶음이고, 사건 순서·출처 문자열은 묶음마다 다르다. 하지만 규칙적인 묶음은 "보상 종류별로 정해진 자리"로
+  설명된다.
+- **기록** `content/uprising/agent_abilities.py`: 44개. 한 번에 해결하는 칸 35개, 아이콘별 칸 9개(`Ability.icons`, OQ-027). 배치 때
+  정해지는 조건(메이커 칸, 이미 플레이된 카드 사이의 유대감)은 `requirement`로 카드를 낼 때 판정하고(거짓이면 칸이 대기하지 않음,
+  OQ-028 (a)), 나머지 조건은 줄의 `condition`으로 해결할 때 판정한다(거짓이면 기다렸다가 턴 끝에 사라짐, OQ-057 (1)). 유대감 칸은 둘
+  다 한다(같은 차례의 폐기로 깨질 수 있음).
+- **DSL 추가:** 조건 6개(`AtMakerSpace`, `FactionBond`, `SpyRecalledThisTurn`, `UnitsInConflictAtLeast`, `ContractCompletedThisTurn`,
+  `Grafted`)와 진영을 지정하는 `HasAlliance(faction)`, 보상 4개(`ReturnThisCardToHand`, `BoostNextBeneGesseritCard`,
+  `DrawPerSandwormInConflict`, `LookAtIntrigueKeepOne`). 두 언어 표시 문구는 모두 `tokens_ko.py`의 카드 문장과 용어집에서 가져왔다.
+  "이 카드가 플레이 중"(Usurp로 빌린 카드는 아님, OQ-054)은 인쇄 조건이 아니므로 조건으로 두지 않고 "핸드로 되돌림" 보상의 성립
+  판정으로 두었다.
+- **실행** `rules/agent_box_abilities.py`: 한 번에 해결(`resolve_box`)과 아이콘별 해결(`resolve_box_icon`) 두 규칙. 한 번에: 소유자 이득·
+  책략 뽑기(`<칸>:intrigue_draw`)를 frame 쓰기 전에, 칸의 사건, 그다음 frame을 쌓을 수 있는 후속(계약·연구·Tleilaxu·표본·책략 엿보기·
+  선택 폐기 frame, 출처 `<칸>`)과 카드 정의 id로 이름 붙인 카드 뽑기, 병력 부족 사건은 맨 뒤. 아이콘별: 이득·부족(`<칸>:<아이콘>`)·
+  책략 뽑기를 쓰기 전에, 표본(`<칸>:specimen`)→연구→카드 뽑기를 쓴 뒤, 아이콘 사건은 맨 뒤. 배치 판정(`opens_at_placement`)과
+  아이콘이 막힌 이유(`box_icon_block`; 화면이 읽는 `AgentIconBlock`은 이 모듈로 옮겼다)도 기록에서 나온다. `agent_effects.py`는 해당
+  분기를 지워 754줄 줄었다.
+- **남긴 것:** 사건이 없거나 출처 문자열이 제각각인 7개(Seek Allies, Occupation, In High Places, Overthrow, Lisan al Gaib, Guild 영향력
+  칸 #52, Clandestine Meeting)는 아직 자기 분기로 돈다. 전용 hook 등록부를 만들어 옮길 차례다(A3에서 특이 흐름과 함께). Tread in
+  Darkness는 칸 안에 고르기(선택 폐기)가 있어 A3로 넘긴다. hook 0개.
+- **테스트** `tests/unit/rules/test_agent_box_abilities.py`: 기록 표(44개, 아이콘 키와 순서, 배치 조건 종류), 막힌 이유 값, 아이콘·한 번
+  해결의 사건 순서와 출처, Throne Room Politics의 폐기 frame 출처, 200판에 안 나온 Pointing the Way. 화면 일관성 테스트
+  (`test_unavailable_consistency`)는 모든 효과×모든 키를 옛 답과 맞대는데, 칸이 인쇄하지 않은 키는 새 함수 대신 옛 공통 규칙이 답하게
+  해서 기대값을 바꾸지 않았다.
+
+### A3a·A3b에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **hook 등록부(A3a):** 사건이나 출처가 어떤 공통 규칙에도 안 맞는 Agent 칸은 기록에 `hook=<이름>`만 두고 해결은
+  `agent_effects._BOX_HOOKS`의 함수가 한다(옛 분기를 옮긴 것). 지금 6개: Seek Allies(폐기 사건만), Overthrow(방문 진영 영향력, 칸 사건 없음),
+  Lisan al Gaib(영향력 사건만), Clandestine Meeting(책략 뽑기 출처 `<칸>:intrigue`), Occupation(전투 아이콘이 frame을 다시 씀, 뽑기
+  `<칸>:draw`), In High Places(스파이 frame 밑에 뽑기). 기록의 줄은 DSL이 가진 조각을 적어 망의 카드 특성에 쓴다(Overthrow·Seek
+  Allies는 아직 비어 있음). 등록부와 기록이 서로 맞는지 테스트가 지킨다. Overthrow의 "방문한 진영 칸" 배치 조건은 인쇄 조건이 아닌
+  엔진 규칙이라 기록 검사 앞에서 판정한다. Guild Impersonator는 hook 없이 기록이 됐다: 한 번 해결 규칙에 고정 진영 영향력
+  (`<칸>:influence:<진영>`, frame 쓰기 전)을 더했다.
+- **대상 없는 선택 지불(A3b):** Ecological Testing Station, Smuggler's Haven, Organ Merchants, Tleilaxu Surgeon을 선택(OPTIONAL) 기록
+  "비용 → 보상"으로. 실행기의 지불 모양이 원시 줄(거절, 그다음 비용 이름의 지불 줄 — 낼 수 있고 무언가를 살 때만, OQ-071), 화면이
+  읽는 비용·보상 막힘, 답의 사건(`round:R:player:P:agent_card_payment:paid`, 카드 id 없음, 자원과 쓴 양)과 후속(뽑기 출처
+  `…:agent_card_payment`, Tleilaxu `…:agent_card_payment:tleilaxu`)을 낸다. DSL 비용 `SpendSpecimens`를 더했다(표시 문구는
+  `tokens_ko.py`의 "표본 1개 지불"). 일반 해결은 이 넷에 옛 시험 해결 답을 그대로 낸다(Surgeon은 "해결 불가", 나머지는 예외 =
+  "가능") — 선택 칸이라 화면·턴 종료가 그 답을 먼저 거르지만, 달라지지 않게 두었다.
+- **남은 것:** A3c~A3f(위 표). 조사가 짚은 함정: 처리기별 사건 출처(폐기 `round:R:player:P:agent_card:trash:…`, 버리기
+  `…:agent_card_discard`, 지불 `…:agent_card_payment`), 해결 사건이 없는 답이 많음, 화살표 보상을 아이콘으로 거는 칸은
+  `Ability.icons`가 아닌 별도 칸이 필요(아니면 배치 때 걸리고 "진행 중" 판정이 바뀜), A1 실행기의 Spy·영향력·획득 줄은 Agent 칸
+  제공자와 세 곳에서 다름.
+
+### A3c에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **필수 대상 고르기:** 줄 하나가 대상 하나를 고르는 필수 칸 6개를 기록으로 — 선택 진영 영향력(Interstellar Trade·For Humanity,
+  Public Spectacle은 "이번 차례 스파이 소환" 조건), Spy 칸(Bene Gesserit Operative·Reliable Informant, Double Agent), Disruption
+  Tactics, CHOAM Demands. 실행기의 대상 모양(`agent_box_abilities.target_piece`·`target_rows`)이 줄을 내고, 고를 것이 없으면 확인 줄 없이
+  기다렸다가 턴 끝에 무산된다(OQ-057 (1), OQ-060). 한 번 해결(`resolve_box`)은 줄이 있는 동안 예외를 낸다 — 예외 종류도 옛 것 그대로
+  (시험 해결이 셋 다 "가능"으로 읽는다).
+- **줄의 출처:** 영향력은 A1 실행기의 고르기 줄(`piece_rows`)을 처음 다시 쓴다 — 새 인자 `empty_confirm=False`로 쌓인 책략 frame의
+  빈 확인 줄만 뺐다. Spy는 Agent 칸 규칙(공급에 Spy가 없을 때 먼저 소환과 그 넘기기)이 A1 실행기와 달라 `agent_spy_rows`로 옮겼고,
+  Arrakis Observer의 Deep Cover Spy(`PlaceSpy(shared_post=True)`)도 이것을 쓴다. Reliable Informant의 관측소 제한은 카드에 인쇄된
+  진영 표시(`agent_spy_factions`)에서 온다(기록은 제한 없는 `PlaceSpy`). 답은 Spy·후퇴·계약이 옛 처리기 그대로, 영향력만 실행기에서.
+- **DSL:** `PlaceSpy.visited_space`(이번 차례 Agent를 보낸 칸에 연결된 관측소, 공유 가능 — Double Agent), 보상 `ForceEnemyRetreat`·
+  `CompleteContract`. 표시 문구는 `tokens.py`·`tokens_ko.py`의 카드 문장과 같다(테스트가 지킨다). 일반 Spy 판정은 `visited_space`를
+  알 수 없어 예외를 낸다.
+- **남은 것:** A3d(대상을 고르는 선택 화살표), A3e, A3f.
+
+### A3d에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **버리기 화살표 7칸:** Delivery Agreement, I Believe, Engineered Miracle, Space-time Folding, Guild Envoy(필수), Captured Mentat,
+  Guild Spy. 기록은 "[You may] discard a card → …": 비용은 첫 줄에, 뒤 줄의 조건 `DiscardedCardHasFaction`(버린 카드의 진영 — Space-time
+  Folding의 두 번째 카드, Guild Envoy의 두 장, Guild Spy의 책략)은 비용을 낸 카드로 판정한다(일반 해석기는 예외를 낸다). 실행기의 버리기
+  모양(`discard_box`·`discard_rows`·`apply_discard`)은 선택 화살표의 거절, 그다음 손패마다 한 줄; 답은 버리기 처리기의 출처
+  (`round:R:player:P:agent_card_discard`, 카드 id 없음) 그대로 — 자원은 frame 쓰기와 함께, 계약 `…:contract_reward`, 뽑기
+  `…:<버린 카드>:draw`. 필수인 Guild Envoy는 손패가 비면 기다렸다가 무산된다.
+- **비용 뒤에 거는 보상 아이콘:** 기록에 `Ability.armed_icons`를 더했다 — 줄마다 키 하나, 배치 때가 아니라 비용의 답이 건다
+  (`effects.arm_agent_icons`). 버린 카드가 조건을 못 맞춘 줄은 걸지 않는다. 걸린 아이콘은 옛 아이콘 경로가 키별로 해결한다(OQ-027).
+  `icons`(배치 때 거는 인쇄 아이콘)와 따로 두어 "진행 중"·화면 막힘 판정이 바뀌지 않는다(조사가 짚은 함정).
+- **책략 폐기 화살표 2칸:** Branching Path(보상을 아이콘으로 검), Junction Headquarters(2 스파이스도 내고 1 VP). 동맹 조건은 비용을
+  낼 때 판정(OQ-028). 실행기의 책략 모양(`intrigue_box`·`intrigue_rows`·`intrigue_cost_block`·`apply_intrigue_payment`)이 거절과
+  책략마다 한 줄(`trash_intrigue_for_agent_card` 또는 `pay_agent_card_intrigue_and_spice`), 사건은 `<칸>:intrigue_payment` 아래.
+- 선택 화살표는 여전히 줄로만 해결된다: 일반 해결은 옛 시험 해결 답(예외 = "가능")을 그대로 낸다(`optional_arrow`).
+- **남은 것:** 개인 카드 폐기 화살표(Shishakli/Replacement Eyes, Pivotal Gambit, Elite Forces)와 Piter(병력 잃기)는 DSL에 개인 카드
+  폐기·병력 잃기 "비용"을 정해야 해서 A3e(검은 폐기 아이콘·한 칸 안 연속 고르기)와 함께.
+
+### A3e에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **폐기 칸 5개:** 검은 폐기 아이콘이 칸 전부인 Calculus of Power·Desert Survival·Eliminate Allies(#1)와 Ruthless Leadership(아이콘 둘,
+  "분쟁에 사다우카 지휘관이 있다면" 조건은 폐기할 때마다 판정, OQ-028), 폐기 화살표 Shishakli/Replacement Eyes(→ 카드 1장),
+  Pivotal Gambit(이 카드 폐기 → 병력·1등 보상 영향력 약속을 아이콘으로 검), Elite Forces(손패 폐기 → 황제 카드면 책략·병력을 아이콘으로
+  걸고 Combat은 곧바로).
+- **DSL:** 비용 `TrashCard`(손패·버린 더미·플레이 중 카드; `hand_only`, `this_card`), 조건 `TrashedCardHasFaction`(폐기한 카드의 진영,
+  Agent 칸만 판정), 보상 `PledgeFirstPlaceInfluence`(OQ-025). 표시 문구는 `tokens.py`·`tokens_ko.py`의 카드 문장에서. 검은 폐기 아이콘은
+  보상 `TrashPersonalCard()` 줄로 적는다(선택 칸).
+- **실행기의 폐기 모양**(`trash_box`·`trash_rows`·`trash_block`·`apply_trash`): 거절, 그다음 폐기할 수 있는 카드마다 한 줄(Usurp로 빌린
+  카드는 플레이 중이 아님, OQ-054); 조건이 안 맞으면 줄이 없다. 답은 폐기 처리기의 출처(`round:R:player:P:agent_card`, 카드 id 없음)
+  그대로, 폐기 효과의 병력을 frame 쓰기에 남기고(`keep_trash_recruits`), 아이콘이 남으면 `trashes_remaining`을 frame에 직접 쓴다.
+  `Ability.armed_icons`는 앞쪽 줄만 열쇠로 가질 수 있다(뒤 줄은 비용과 함께 — Elite Forces의 Combat).
+- **일반 해결:** 조건 없는 폐기 칸은 선택 화살표처럼 줄로만 해결된다(옛 시험 해결 답 = 예외). Ruthless Leadership만 한 번 해결로
+  가서 조건이 맞으면 예외, 안 맞으면 "해결 불가" 사건(옛 그대로).
+- **남은 것(A3f):** Arrakis Observer(버리기 → Deep Cover Spy 연속 단계, 길드 카드면 사건 있는 스파이스), Piter(병력 잃기 → 아이콘),
+  Control the Spice, 평범한 줄이 한쪽인 고르기 S6(Southern Faith, Possible Futures, High Priority Travel, Interstellar Conspiracy),
+  고르기 아이콘이 섞인 칸 S7(Dangerous Rhetoric, Steersman, Twisted Mentat, Tread in Darkness), 선택 획득 S8(Price is No Object,
+  Tleilaxu Master).
+
+### A3f-1에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **선택 획득 2칸(S8):** Price is No Object(새 DSL 보상 `AcquireCardForSolari` — Solari로 내고 핸드로, 자기 Manipulate 카드 포함)와
+  Tleilaxu Master(`AcquireCardUpTo(6, 핸드로 = 유전 표지 2)`, 줄 조건 유전 표지 1). 획득 모양(`acquisition.agent_box_acquisition`)은
+  `rules/acquisition.py`에 둔다 — 실행기 쪽에 두면 `agent_box_abilities → ability_executor → acquisition`의 순환 import가 생겨서,
+  기록은 content 모듈에서 읽는다. 줄·막힘(`NOTHING_TO_ACQUIRE`의 needed/held, `GENETIC_MARKERS`)·출처·후속 frame은 그대로.
+- **일반 해결:** Price is No Object는 선택 화살표처럼 줄로만(옛 답 = 예외), Tleilaxu Master는 한 번 해결에서 옛 답 그대로 "해결 불가".
+- **남은 것(A3f의 나머지):** Arrakis Observer, Piter, Control the Spice, S6 4칸, S7 4칸 — 위 "A3e에서 만든 것"의 목록.
+
+### A3f-2에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **Arrakis Observer(S4):** 버리기 화살표 기록 "카드 1장 버리기 가능 → 잠복 스파이 배치; 길드 카드를 버렸다면 스파이스 2". 버리기 모양이
+  버린 카드에 달린 이득을 사건으로 알리고(`…:agent_card_discard:<버린 카드>:spice`, 옛 id·내용 그대로), Spy 줄이 있으면 칸을 그 Spy
+  단계에 남긴다(`agent_card_spy_pending`; Spy 배치는 필수, OQ-057 (14)). Spy 단계의 줄은 기록의 `PlaceSpy(shared_post=True)`로
+  `agent_spy_rows`가, 한 번 해결은 `resolve_box`가 옛 분기처럼 답한다(줄이 있으면 예외, 없으면 Spy 표시를 지우고 "해결 불가").
+  선택 화살표는 비용 뒤 필수 단계에서만 한 번 해결로 간다.
+- **남은 것(A3f의 나머지):** Piter, Control the Spice, S6 4칸, S7 4칸.
+
+### A3f-3에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **Piter, Genius Advisor:** 병력 잃기 화살표 기록 "병력 1 잃기 가능 → 카드 2장, 연구" — 비용 `LoseTroops()`, 두 보상은 비용 뒤 아이콘으로
+  건다(OQ-106). 실행기의 병력 잃기 모양(`lose_box`·`lose_rows`·`lose_cost_block`·`apply_lose`)이 옛 줄(수비대·분쟁마다 병력, 지휘관 —
+  OQ-105)·막힘(`NO_UNIT`)·순서(아이콘 걸고, frame 먼저 쓰고, 잃고, 분쟁 배치 정리)를 그대로 낸다. 걸린 아이콘 표는 이제 열쇠마다 받는
+  보상들을 둔다(Piter의 `cards`는 2장, `research`). 한 번 해결은 옛 답 그대로 "해결 불가".
+- **Control the Spice:** 지불 사건이 칸의 카드를 이름에 넣고 병력 수를 싣고 폐기가 따로 frame이라 어떤 공통 규칙에도 안 맞아, 기록은 줄
+  ("스파이스 1 지불 가능 → 카드 1장 폐기 가능, 병력 1")과 hook `control_the_spice`만 두고 흐름은 코드로(A3a의 hook 규칙). 제공자·처리기·
+  막힘은 효과 이름 대신 기록의 hook으로 고른다.
+- **남은 것(A3f의 나머지):** S6 4칸, S7 4칸.
+
+### A3f-4에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **평범한 줄 + 고르는 줄(S6):** Southern Faith("하나 선택: 카드 1장 / 베네 게세리트의 유대감이면: 베네 게세리트 영향력 1"), High Priority
+  Travel("우주 항행 길드 영향력 2 이상이면: 하나 선택: 카드 1장 / Combat"), Interstellar Conspiracy("스파이스 1, 황제 또는 우주 항행 길드
+  카드와 접합했다면: 선택 영향력 1")를 두 줄 기록으로 — 앞 둘은 `ONE_OF`, 뒤는 `SEQUENCE`. 평범한 줄은 A2의 한 번 해결 규칙
+  (`resolve_box`: 칸 사건, 카드 정의 이름의 뽑기, 모자란 병력 맨 뒤)과 정확히 같아 그대로 쓴다. 실행기의 "둘 중" 모양(`either_box`·
+  `either_rows`·`apply_either_influence`)이 고르는 줄의 조건이 맞고 대상이 있을 때만 그 줄을 내고 — "하나 선택"이면 평범한 줄 옆에,
+  `SEQUENCE`면 혼자(그 답이 평범한 줄의 이득도 뒤에 준다) —, 아니면 frame이 평범한 줄만 낸다. DSL 조건 `GraftedWithFaction`
+  ("황제 또는 우주 항행 길드 카드와 접합") — A0에서 미룬 "또는"을 진영 묶음 하나로.
+- **Possible Futures:** 유대감이 있으면 고르기가 "둘 다"로 바뀌고 모자란 병력 사건 이름도 달라(`<칸>:troops:recruit_short`) hook
+  `possible_futures`로(평범한 해결 = 옛 병력 2 분기).
+- **남은 것(A3f의 나머지):** S7 4칸.
+
+### A3f-5에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **고르는 아이콘이 섞인 칸(S7):** Dangerous Rhetoric(아이콘 `influence`, `trash_self`), Steersman(`cards`, `recall`), Twisted Mentat
+  (`recall` 하나 — 아이콘 하나짜리 칸을 허용), Tread in Darkness(`trash`, `cards`, 줄마다와 배치 조건에 베네 게세리트의 유대감)를 아이콘
+  기록으로. 이제 배치 때 거는 아이콘·아이콘 조건(막힘)·Tread의 배치 조건이 기록에서 나오고, 옛 `_PLACEMENT_ICONS` 표와 Tread 분기가
+  없어졌다. 자동 아이콘(`cards`, `trash_self`)은 `resolve_box_icon`이 푼다 — DSL 보상 `TrashThisCard`("이 카드 폐기", 자기 폐기 표시,
+  `<칸>` 출처, 폐기 효과의 병력 보존, 이미 플레이를 떠났으면 해결 불가)를 읽게 했다. 고르는 아이콘(영향력·Agent 소환·Tread의 폐기)은
+  옛 제공자·처리기가 그대로 답한다. DSL 보상 `RecallAgent`(이번 차례 Agent 말고 / 이번 차례 Agent). Seek Allies의 hook 기록도 줄에
+  `TrashThisCard`를 적었다(해결은 그대로 hook).
+- **A3 끝:** 계획 표의 A3 대상 44칸(비용→보상 22, 고르기 14, Tread in Darkness, A2가 남긴 특이 흐름 7)이 모두 기록이 됐다(기록 88개,
+  hook 8개). Agent 칸이 있는 효과 중 기록이 없는 것은 15개로, 표의 어느 단계에도 안 적혀 있다: Treacherous Maneuver, The Beast's Spoils,
+  Long Reach, Holy War, Arrakis Revolt, Immortality의 접합·연구 칸 6개(Dissecting Kit, Beguiling Pheromones, Stitched Horror, Scientific
+  Breakthrough, Slig Farmer, Chairdog), 그리고 효과 문장으로 "방문한 진영 영향력 2, 이 카드 폐기", "덱 맨 위 3장을 보고 뽑기·버리기·폐기
+  1장씩", "카드 2장 버리고 5 Solari 지불 → 1 VP", "각 상대가 카드 1장 버림". A7(Immortality) 또는 새 단계로 정할 일이다 — 사용자 결정(2026-10-16)으로 A3g에서 옮겼다(아래).
+
+### A3g에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a3g/agent-rest-survey.md`: 칸마다 행·사건·시험 해결 답·막힘과 2,000판 탐침, 묶음 G1~G7)를 따라 공통
+모양과 정확히 같은 칸만 모양으로, 나머지는 hook으로 옮겼다.
+
+- **한 번 해결 + 상대의 결정(3칸):** Covert Operation("각 상대가 카드 1장 버림"), Holy War("각 상대가 병력 1을 잃음. 이번 차례 Agent를
+  보낸 칸을 정탐하는 상대는 그 Spy를 옮겨야 함"), Chairdog("Reveal 차례 시작 때 다른 접합 카드를 플레이에서 핸드로")를 `resolve_box`의
+  한 번 해결 기록으로. DSL 보상 `EachOpponentDiscardsCard`·`EachOpponentLosesTroop`·`OpponentsMoveSpiesFromVisitedSpace`·
+  `ReturnOtherGraftedCardAtRevealStart`(문구는 카드 문장에서). 한 번 해결 모양에 "상대의 결정" 규칙을 더했다: 칸의 다른 후속 뒤에,
+  인쇄 순서의 마지막부터 쌓아(스택은 나중 것이 먼저 답한다) 인쇄 순서대로 답하게 — Holy War는 잃기 전부 다음 Spy 옮기기(OQ-036).
+  Chairdog의 되돌림은 접합 때 좌석에 적히고(채택된 디자이너 판정) Reveal 시작에 일어나므로, 칸은 그 카드가 아직 플레이에 있는지만
+  본다(없으면 기다렸다가 턴 끝에 무산, OQ-057 (1)) — `ReturnThisCardToHand`의 "플레이에 있어야"와 같은 자리.
+- **hook 12개:** 나머지 칸은 행·사건·frame이 어느 공통 규칙과도 맞지 않아 흐름을 코드로 둔다(옛 해결 분기를 그대로 `_hook_*`로).
+  기록은 DSL로 칸 전체를 말할 수 있을 때만 줄을 적고, 아니면 줄 없이 주석에 인쇄 문장을 둔다(A3a의 Overthrow 선례; 일부만 적으면
+  나중에 기록을 일반적으로 읽는 코드가 그것을 칸 전체로 읽는다 — 리뷰 지적).
+  - Subversive Advisor(방문 진영 영향력 2가 칸의 1을 대신, 칸 사건 없음), Long Live the Fighters(덱 위 3장을 보는 자기 고르기 frame —
+    숨은 정보), Treacherous Maneuver(폐기 둘 + "1 대신 2", 출처에 카드 없음), Corrinth City(버리기 두 장을 하나씩, 자기 행·사건 이름),
+    Arrakis Revolt(지불 행 두 갈래 + Planetologist), The Beast's Spoils(앞면 전투 아이콘별 보상, 사건 모양 둘), Long Reach(둘 다 고른 뒤
+    지급, 지급하는 무산), Dissecting Kit·Beguiling Pheromones(접합 카드 폐기 — 상대 칸을 사건 없이 지우고 frame을 먼저 되쓴 뒤 폐기), Scientific
+    Breakthrough(Research 뒤 남는 폐기 줄), Slig Farmer(평범한 줄 옆 지불 행이 둘 다 준다), Stitched Horror(넷 중 둘을 먼저 고름).
+  - 선택인 넷(Treacherous Maneuver, Corrinth City, Arrakis Revolt, Dissecting Kit)은 기록에 선택 표시 — 옛 `OPTIONAL_AGENT_BOXES` 표를
+    지웠다.
+  - hook의 제공자·처리기 코드(효과 이름으로 고르는)는 그대로 두었다. 정리 단계에서 사건이 통일되면 공통 모양으로 바꿀 후보다(아래).
+- **결과:** 개인 카드의 Agent 칸은 모두 기록이 됐다(103개; 기록이 없는 효과는 지도자 Signet Ring뿐), hook 20개.
+  `resolve_agent_card_effect`에 남은 옛 분기는 선택 화살표 기록의 시험 해결 답(Tleilaxu Surgeon "해결 불가", 나머지 "구현 안 됨")뿐이다.
+
+### A4a·A4c에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a4/reveal-survey.md`: 시점별 흐름 O.1~O.9, 멤버별 C·D·E, 묶음 G, 위험 R, 2,000판 탐침과 그
+결과 파일 — 브랜치에서 같은 탐침을 돌려 바이트 단위로 비교한다)를 따라, 처리 코드를 거의 건드리지 않는 두 묶음을 먼저 했다.
+
+- **A4a — 획득·폐기·버림 효과 18개:** `content/uprising/trigger_abilities.py`에 자동 기록(시점 ACQUIRE/TRASH/DISCARD, 선택 없음,
+  한 줄 한 조각). 획득 효과는 구매 경로가 7개라(Reveal 줄, 따로 둔 카드, Agent 칸, 책략·지도자·Scouts 등) 세 조각 — 주인의 이득과
+  Overthrow의 뽑기(`resolve_acquisition_bonus`), 고정 진영 영향력, 카드가 자리에 간 뒤의 트랙 — 이 각각 기록을 읽고, 순서는 경로마다
+  옛 그대로다. Spy·계약은 경로가 그 선택을 연다(기록의 `PlaceSpy`·`TakeContract`가 그 표시). 폐기 효과는 `trash_personal_card`,
+  버림 효과는 `resolve_personal_card_discard_trigger`가 기록을 읽는다. Overthrow와 Sardaukar Soldier가 따로 갖던 같은 "책략 카드
+  1장" 처리를 `intrigue_deck.triggered_intrigue_draw` 하나로(자기 차례 안이면 주인의 단계로 미룸 — 출처가 바로 다음인지 정한다,
+  OQ-106·OQ-042; 밖이면 바로 뽑거나 덱이 비면 대기열). DSL 보상 `AcquireBankCommander`(Sardaukar Standard).
+- **A4c — Reveal 자동 이득(카드 51장, 인쇄 줄 55개):** `content/uprising/reveal_abilities.py`에 카드 id별 자동 기록(줄마다 따로).
+  카드 목록(`imperium.py` 등 넷)은 `reveal_effects`를 이 기록에서 받는다(`reveal_effects_of` — 기록 줄을 처리 코드가 읽는
+  `PersonalCardRevealEffect`로 옮긴다). 그래서 `rules/reveal_turn.py`(시작·늦은 지급·늦게 온 카드·Leadership·주인의 단계)는 그대로다.
+  140장 모두 옮기기 전과 같은 값임을 확인했다. DSL 조건 `HasSwordmaster`·`SpyingOnMakerSpace`·`GarrisonedUnitsAtLeast`·
+  `CommandReached`, 보상 `RevealPersuasion`·`RevealSwords`와 그 셈(`RevealCount`: 공개한 진영 카드마다, 플레이 중인 진영 카드마다,
+  완수한 계약마다, 다른 검 카드마다) — 문구는 `tokens.reveal_effect_text(_ko)`에서.
+- **남은 것:** A4d~A4h(아래). 처리 코드가 기록을 직접 읽게 하는 것(옮기는 함수 없이)은 정리 단계 후보다.
+
+### A4d~A4h에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+- **A4d 1단계 — Reveal 선택 26개의 기록:** `content/uprising/reveal_choice_abilities.py`(효과 값별). 기록의 표시가 선택/의무를
+  정한다(옛 `OPTIONAL_REVEAL_CHOICES`·`MANDATORY_REVEAL_CHOICES` 표를 지우고 읽는 곳 — 의무 선택이 차례 끝을 막는지, 화면의
+  "선택" 표시와 "쓰지 않으면 사라짐" 문구 — 이 `reveal_choice_is_optional`을 읽는다). 흐름을 코드로 두는 10개는 기록에 hook 이름을
+  단다(`reveal_turn.REVEAL_CHOICE_HOOKS`): In High Places의 Spy 둘, Captured Mentat의 영향력 맞바꿈, Spacing Guild's Favor의
+  스파이스→영향력, Chani·Command Center의 병력 둘 후퇴, Engineered Miracle의 구매, For Humanity의 한 진영 영향력 둘, Shadout
+  Mapes·Unswerving Loyalty의 병력 하나 배치/후퇴, Tleilaxu Surgeon의 병력 둘, Desert Power(인쇄 설득 보류, OQ-069), Priority
+  Contracts(인쇄 스파이스는 이 선택으로만). 한 행에 비용과 대상을 함께 이름 붙이거나 칸 밖 상태를 건드려 공통 모양이 없다 —
+  이것이 조사의 A4g(더 할 일 없음). DSL `TrashCard.other_in_play`(Calculus of Power), `TakeHighCouncilSeat`(Corrinth City).
+- **A4d 2단계 — "대상 → 보상" 8개:** Spy Network, Arrakis Observer(Spy 소환), Calculus of Power, Disruption Tactics, CHOAM
+  Demands(카드 폐기), Shrouded Counsel(보상이 폐기), Pointing the Way, Ixian Ambassador(진영 고르기). 행(대상마다 하나, 카드 이름
+  `source`), 열림 판정(인쇄 조건 + 낼 대상 — 자기 폐기는 카드가 플레이에 있어야, Disruption Tactics는 조건이 없어 늘 열림), 해결이
+  기록을 읽는다(`reveal_turn.target_reward_*`, `resolve_target_reward`). 사건과 frame 순서는 카드마다 옛 그대로다(고른 진영
+  영향력은 얻은 뒤 frame을 닫고, CHOAM Demands는 닫은 뒤 넷을 얻는다 — 정리 단계 목록).
+- **결함과 교훈:** 처음 판은 Spy 제공 함수가 "대상 → 보상" 기록 전부에 행을 내서, 대기 선택 하나의 행 목록(`pending_choice_entries`
+  — 화면의 선택 머리글·행 주인, 앱 AI가 읽음)에 같은 행이 두 번 들어갔다. 합친 합법 행동은 같아 200판 같음 확인은 통과했고, 칸별
+  행까지 적는 조사 탐침이 잡았다. 제공 함수 탐침 테스트가 이제 두 제공 함수가 낸 같은 행을 막는다. `engine_equivalence.py`가 대기
+  선택의 행을 비교하지 않는 빈틈은 6절에 적고, 그때까지 조사 탐침 비교를 관문에 넣는다.
+- **A4e — Spy 아이콘 4개:** Public Spectacle·Wheels within Wheels, Covert Operation(둘째 아이콘 = 기록의 둘째 Spy 줄, 목록 끝에 다시
+  넣음), Intelligence Training(Command 조건), Undercover Asset(—OR—의 검 줄이 "+2 swords" 행)이 기록을 읽는다. 공급이 비었을 때의
+  먼저 소환·넘기기 규칙(OQ-057 (14))은 그대로.
+- **A4f — 둘 중 하나:** Corrinth City(5 Solari / 5 Solari 내고 원로회 자리 — Scouts 소위원회 제안까지), Delivery Logistics(설득 1 /
+  계약)가 줄마다 한 행(`reveal_turn.either_rows`, 줄의 보상 → 행 이름 표)으로. 계약 줄이 있는 선택은 CHOAM 모듈에서만 열린다(옛 판정,
+  CHOAM 전용 카드). Desert Power·Priority Contracts는 hook(A4d 1단계).
+- **A4h:** Guild Spy(The Spice Must Flow 구매에 반응하는 Reveal 효과)와 Litany Against Fear(차례 시작의 대체 차례)를 hook 기록으로
+  (`trigger_abilities.py`). 아이콘 조건 둘(Long Reach, Show of Strength)은 능력이 아니라 카드를 낼 때 인쇄 아이콘을 거는 조건이라
+  카드 속성으로 둔다(정리 단계에서 DSL 조건으로 바꿀 수 있다).
+- **결과:** 개인 카드의 효과가 모두 기록이 됐다 — Agent 칸 103, Reveal 선택 26, Reveal 자동 이득 카드 51, 획득 12·폐기 4·버림 2,
+  Reveal 획득 1, 차례 시작 1. hook은 Agent 칸 20, Reveal 선택 10, 기타 2.
+
+### A5에서 만든 것 (2026-10-16, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a5/a5-survey.md`: 보드 칸 23개, Conflict 19장 57줄, 계약 28장의 흐름·사건·위험, 2,000판 탐침과
+비교용 결과 파일·수마다 추적판)를 따랐다.
+
+- **같음 확인 도구 보강(먼저):** `engine_equivalence.py`가 수마다 플레이 서버가 결정과 함께 보내는 것 — 회색 행과 이유
+  (`display.unavailable`), Agent 칸·Reveal 선택 묶음과 행의 주인(`display.actions`), Scouts 줄 — 과 Reveal 대기 선택마다의 행
+  (`pending_choice_entries`, 앱 AI가 읽음)도 비교한다(`page`). A4d의 첫 판 결함(대기 선택 안의 행 중복)을 일부러 넣으면 잡고, 그대로인
+  엔진에서는 헛차이를 내지 않는다. 기준 기록은 `bdef8c76`로 다시 만들었다(옛 기록과 수 하나까지 같음). 6절 "빈틈"은 이것으로 닫혔다.
+- **A5a — 계약 28장:** `content/uprising/contract_abilities.py`(타일 id별, 둘째 복사본은 첫째 것을 공유). `requirement`가 완수 조건 —
+  칸 방문(`AtBoardSpace`, 배치 때의 기록으로 판정), Maker 칸 방문 + 그 차례 스파이스(`AtMakerSpace`+`GainedSpiceThisTurn`), 카드
+  획득(`AcquiredCard`), 가져옴(`ContractTaken`; Bloodlines Immediate는 비용 `TrashIntrigueCard`), 동맹 얻음(`AllianceTaken`) — 이고
+  줄이 보상이다. `contracts.py`가 기록을 `ContractCondition`·`ContractReward`로 옮기므로 완수 경로 여섯과 보상 처리는 그대로다.
+- **A5b — Conflict 보상 57줄:** `content/uprising/conflict_abilities.py`(카드 id별 세 줄). 첫 줄이 주는 것, 선택 화살표("3 spice →
+  1 VP")는 한 줄씩. `conflicts.py`가 `ConflictReward`로 옮기므로 지급 순서(종류별, OQ-002·OQ-102)와 frame은 그대로다. DSL 보상
+  `TakeControl`.
+- **A5c — 보드 칸 인쇄 아이콘:** `content/uprising/board_abilities.py`(칸 × 비용 선택지 × 변형: CHOAM 없음, Immortality 덧판, 원로회 착석).
+  `static_board_effects`와 원로회 재방문이 기록의 이득을 읽는다(원로회 자리·Swordmaster·계약은 자기 아이콘 키). 829가지 조합 모두
+  옮기기 전과 같다. DSL 보상 `TakeSwordmaster`, 시점 `BOARD_SPACE`·`CONTRACT`·`CONFLICT_REWARD`.
+- **A5d — 보드 선택 아이콘과 특수 흐름:** Espionage의 Spy, Desert Tactics의 폐기, Shipping의 영향력, Imperial Privilege의 책략
+  맞바꿈과 소환, Sietch Tabr, Maker 칸 셋, Tuek's Sietch, Secrets의 훔치기를 (칸, 아이콘 키)별 hook 기록으로
+  (`board_effects.BOARD_SPACE_HOOKS`, 표시는 `OPTIONAL_BOARD_ICONS`와 같음). 앞의 다섯은 행이 공통 모양과 같지만 사건 이름이 처리
+  코드마다 달라, 공통 모양으로 합치는 일은 사건을 통일하는 정리 단계로 넘긴다(조사의 A5d 제안과 다름 — 카드별 예외를 단 공통
+  모양은 만들지 않는다는 판단).
+- **옮기지 않은 것(판단):** 칸에 인쇄되지 않은 방문 규칙(진영 영향력, 장악 보너스, Gather Intelligence, 계약 기록, Esmar의 방문,
+  Maker 보너스 스파이스, 장악 방어)과 계약 시장 기계(가져오기·채우기·보류·재개·소멸·Shaddam)는 게임 규칙이라 엔진 코드로 둔다.
+  보드 칸에서 Bloodlines 지휘관을 받는 제안은 A6(Bloodlines·Tech)에서.
+- **결과:** 보드·Conflict·계약의 인쇄 효과가 모두 기록이다. hook은 Agent 칸 20 + Reveal 선택 10 + 기타 2 + 보드 9 = 41.
+
+### A6에서 만든 것 (2026-10-17, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a6/a6-survey.md`: 지도자 18명 19면의 능력 38개와 설정 10개, Tech 타일 18장, 지휘관 제안; 2,000판
+탐침과 비교용 결과 파일, 수마다 추적판, 시나리오 7개)를 따랐다. 같음 확인 기준 기록은 시작 master `0c58e583`로 다시 만들었다.
+
+- **A6a — Tech 획득 효과:** `content/bloodlines/tech_abilities.py` `TECH_ACQUIRE_ABILITIES`(타일 id별, 아이콘마다 한 줄; Gene-Locked
+  Vault는 —OR— 두 줄). `content/bloodlines/tech.py`가 기록을 `TechTile`의 `acquire_*` 칸으로 옮기므로(엄격한 옮김: 두 번 인쇄·담을 칸
+  없는 조각이면 멈춤) 획득 처리와 망 특성 digest는 그대로다. Advanced Data Analysis의 "획득하려면 Spy 하나를 폐기" 전제는 hook 기록.
+  DSL 보상 `UseSignetAbility`.
+- **A6b — Tech 능력:** `TECH_ABILITIES`(타일 id별). 뒤집기 셋은 `rules/tech.py`가 기록에서 행·해결을 읽고(Rapid Dropships의
+  "Agent Turn"은 기록의 요건 `DuringAgentTurn`), 자동 Reveal 줄 셋(Command 둘, Self-Destroying Messages)은 `tech.TECH_REVEAL_GAINS`로
+  옮겨 Reveal이 읽으며, Endgame 줄 둘(CHOAM Transports·Panopticon, OQ-040)은 Endgame 처리가 읽는다. 흐름이 남는 넷(Forbidden
+  Weapons, Panopticon의 Reveal, Plasteel Blades, Suspensor Suits)은 hook. 갖고 있는 동안 규칙을 바꾸는 여섯(Gene-Locked Vault,
+  Glowglobes, Navigation Chamber, Ornithopter Fleet, Sardaukar High Command, Servo-Receivers)은 새 시점 `STANDING` 기록(줄 없이 엔진
+  분기 이름). 새 시점 `FLIP`·`STANDING`, 보상 `GainInfluenceWhereAtMost`.
+- **A6c — 인장 18개:** `content/uprising/leader_abilities.py` `SIGNET_ABILITIES`(지도자 면별; Y'rkoon은 인장 없음). 고를 것이 없는
+  넷(Warmaster, Lead the Way, Harkonnen Advisor, Judge of the Change)과 Servo-Receivers로 쓰는 Fill Coffers는 한 모양
+  (`_resolve_automatic_signet`)이 두 곳(인장 반지 칸, Servo 칸) 모두에서 기록으로 해결한다 — 사건 하나에 줄마다의 값(조건이 안 맞으면
+  0). Fill Coffers의 인장 반지 칸 아이콘(OQ-027·OQ-028), Spice Agony·Water of Life의 지불, Arrakis Informant의 관측소는 기록에서 읽고,
+  선택 표시도 기록에서(단계마다 바뀌는 넷 — Unseen Network, Corrino Liaison, Listeners, Personal Training — 은 단계 키가 정함).
+  나머지 열은 hook(`SIGNET_HOOKS`). 조건 `VisitedSpaceHasIcon`, 보상 `RecruitUndeployableTroops`·`TroopToMemory`.
+- **A6e — 지도자 왼쪽 칸 21개:** `LEADER_ABILITIES`(면별). 보상이 정해진 유발 여덟(Loyalty, Imperial Birthright, Staban의 Smuggle
+  Spice, Esmar의 방문 둘, Assassin, Twisted Genius의 라운드 시작 뽑기, Hungry for Spice)은 새 유발 조각(`OnReachInfluence`,
+  `OnOpponentAgentAtSpiedMakerSpace`, `OnCardTrashed`, `OnAgentSentTo`, `OnRoundStart`, `OnSpiceGainedInTurnAtLeast`)과 보상 줄로
+  적고, **유발 자리는 그대로 두고 그 자리에서 기록의 보상을 읽는다**(한 곳에서 돌리면 공용 처리 안의 사건 순서가 바뀐다: Assassin은
+  `card_trashed` 바로 뒤, 도달 보너스는 한 번의 얻기 안에서 단계마다). 자동 Reveal 줄 둘(Always Smiling: `StrengthInConflictAtLeast`,
+  Unpredictable Foe)도 데이터. 흐름 여섯(Devious Strength, Desert Scouts, Other Memories, Reverend Mother, Tactician, Plot Course)은
+  hook(`LEADER_HOOKS`), 규칙 변경 다섯(Shaddam의 따로 둔 계약, Ginaz Swordmaster, Clandestine, Arrakis Planetologist, Secret
+  Project)은 `STANDING`. 같은 방식으로 CHOAM Transports·Planetary Array의 뽑기도 유발 기록(`OnContractCompleted`, `OnConflictWon`)이
+  됐다. 보류·미룬 뽑기 기계는 한 장씩이라 기록의 뽑기 수가 1인지 불러올 때 확인한다. 보상 `DrawTwistedIntrigueCards`.
+- **옮기지 않은 것(판단):** 설정 차이 10개(시작 물, 시작 카드 제외, 전술 토큰 칸, 앞면, Feyd 토큰, Twisted 덱 등)는
+  `LeaderDefinition` 칸 그대로(칸을 더하면 망 특성 digest가 바뀐다). Feyd의 훈련 트랙 칸 보상(`FeydTrackReward`)도 트랙 자료로 둔다.
+  보드 칸에서 지휘관을 받는 제안은 칸에 인쇄된 효과가 아니라 모듈이 칸에 놓은 지휘관의 규칙이라, A5가 방문 규칙을 엔진 코드로 둔
+  판단과 같이 엔진 코드로 둔다(A5의 "A6에서"를 이것으로 닫음). Sardaukar 기술 타일 7개(`SkillDefinition`)는 표의 어느 단계에도 없다
+  — 어디서 할지 사용자 결정 필요(2026-10-17 결정: A7a로 옮김, 아래 "A7에서 만든 것").
+- **결과:** Tech와 지도자의 인쇄 능력이 모두 기록이다(규칙 변경은 이름만 적은 `STANDING` 기록 11개). hook은 A5까지 41 + Tech 5 +
+  인장 10 + 지도자 6 = 62.
+
+### A7에서 만든 것 (2026-10-17, codec 그대로 v148)
+
+조사(git 무시 `tmp/claude/4767ed6a/a7/a7-survey.md`: 기술 타일 7개, 연구 칸 22개·Tleilaxu 트랙 8칸·Reclaimed Forces·Tleilaxu 카드 18장,
+접합·표본·Family Atomics, Scouts 항목 77개; 2,000판 탐침·추적판·시나리오)를 따랐다. 기준 기록은 시작 master `9234a14a`로 다시
+만들었다(옛 기록과 수 하나까지 같음).
+
+- **A7a — Sardaukar 기술 타일 7개(사용자 결정 2026-10-17):** `content/bloodlines/skill_abilities.py`(기술 id별). Reveal 줄 넷
+  (Charismatic, Driven, Hardy, Desperate의 "이 타일 폐기 → 칼 3")과 전투력 줄(Canny, Fierce 둘, Loyal; 새 시점 `IN_CONFLICT` —
+  지휘관이 교전에 있는 동안)을 `content/bloodlines/sardaukar.py`가 `SkillDefinition` 칸(종류 포함)으로 옮긴다. 조건
+  `AgentOnSpaceWithIcon`·`OpponentSandwormInConflict`, Desperate의 비용은 기존 `TrashCard(this_card=True)`.
+- **A7c — Immortality 트랙 보너스와 Reclaimed Forces:** `content/immortality/track_abilities.py`. 연구 칸 21개의 보너스(칸 id별)와
+  Tleilaxu 트랙 4칸의 보상을 `ResearchSpace.bonus`·`TLEILAXU_TRACK`으로, Reclaimed Forces의 두 선택을 선택지와 수(병력 2,
+  Tleilaxu 1)로 옮긴다 — `rules/tleilaxu_row.py`가 옮긴 값을 읽고, 해결 순서(표본이 폐기보다, 책략이 카드보다 먼저)는 처리 코드
+  그대로. 새 시점 `TRACK_SPACE`, 보상 `TakeSetupSpice`(넷째 칸의 첫 도달 스파이스).
+- **A7d — Immortality의 인쇄된 규칙 변경 넷:** Ghola의 같은 Agent 칸, Usurp의 Row 접합, Tleilaxu Infiltrator의 "적 Agent가 막지 않음",
+  Family Atomics를 `content/immortality/rule_abilities.py`의 `STANDING` 기록으로(엔진 분기 이름).
+- **A7b — Arrakeen Scouts 77개:** `content/arrakeen_scouts/abilities.py`(항목 id별, 새 시점 `SCOUTS`). 위원회 14, 고르기·공유·비밀
+  이벤트, 판매 4, 봉인 경매 8의 줄 75개를 내용 표에서 글자 그대로 옮겼고(AST로 옮긴 뒤 77개 항목의 repr이 같음), 내용 표가 기록을
+  `ScoutsOption`·`rank_rewards`로 다시 옮긴다 — Scouts 단계와 줄 실행기(`SCOUTS_EFFECT`)는 그대로. 미션 16, 자동 이벤트 4, 라운드
+  효과 4, Mercenaries, Critical Moment 둘은 모듈의 장치라 줄 없는 hook 기록(이름만)이고, Rebuild Infrastructure는 자원자가 내는 줄과
+  hook을 함께 적었다. CHOAM Escort의 두 선택, 참가 비용 셋(Prison Planet, Fedaykin Assistance, Weirding Warfare), Political
+  Equilibrium의 좌석별 줄은 그 장치의 자료로 미션 표·규칙 코드에 남는다(판단: 장치와 떼어 적으면 반쪽 기록이 된다). Scouts 전용 조각 9개는 효과 DSL로 옮기고(`content.arrakeen_scouts.types`가 그대로 다시 내보냄) `Cost`·`Reward`에
+  넣었으며(손패 폐기는 비용 쪽에도), `EffectSection`은 무언가를 잃기만 하는 줄(Crackdown)을 받는다 — 이 셋(전용 조각, 비용 쪽 손패 폐기, 잃기만 하는 줄)은 `SCOUTS` 기록에만
+  허용한다(`Ability`가 확인). 문구는 `display/scouts.py`의 것을
+  옮겼다.
+- **옮기지 않은 것(판단, 조사의 A7e):** 표본(만들기·쓰기·되돌리기 창), 접합 기계, Tleilaxu Row 상점·채우기·덱 위, 유전 표지 규칙,
+  연구 이동·창, Tleilaxu 루프·끝·보류 뽑기, Scouts의 일정·뽑기·경매 기계는 게임 규칙이라 엔진 코드로 둔다(A5의 방문 규칙, A6의
+  지휘관 제안과 같은 판단). Tleilaxu 카드 18장의 효과와 Research Station 덧판은 A2~A5에서 이미 기록이다.
+- **결과: A단계 옮기기가 끝났다.** 모든 카드·타일·보드·트랙·모듈 항목의 인쇄 효과가 기록이다(규칙 변경은 이름만 적은 `STANDING`
+  기록 15개, 모듈 장치는 줄 없는 hook 기록). hook은 A6까지 62 + Scouts 28 = 90.
+
+### 정리 단계 — 물려받은 차이 통일 (A단계 옮기기 뒤, A8과 함께; 사용자 결정 2026-10-16)
+
+A단계는 "옛 엔진과 같음"(6절)을 관문으로 삼아, 옛 코드가 칸마다 따로 짜면서 생긴 차이까지 그대로 옮긴다. 이 차이는 규칙이 아니라
+코드의 우연이고, 특수 처리(hook, 처리기별 출처)를 남긴다. 사용자 질문("엥간하면 공통으로 통일하는게 좋지 않을까")에 대한 결정: 통일한다.
+다만 옮기기와 섞으면 의도한 차이와 실수를 가려낼 수 없으므로, 모든 효과를 옮긴 뒤 한 번에 한다.
+
+- **통일할 것(A3까지 찾은 것):**
+  - 사건 이름(출처): 폐기 `round:R:player:P:agent_card`(카드 없음), 버리기 `…:agent_card_discard`, 지불 `…:agent_card_payment`, 책략 폐기
+    `…:agent_card:<카드>:intrigue_payment`, Control the Spice의 `…:agent_card_payment:<카드>:paid`(병력 수를 실음), 카드 정의 이름의 뽑기
+    (`…:agent_card:<정의>`) 대 칸 이름의 뽑기(`<칸>:cards`) 등.
+  - "칸 해결" 사건(`agent_card_effect_resolved`): 어떤 답은 내고 어떤 답은 내지 않는다.
+  - Spy 넘기기 줄의 자리: 책략은 소환 줄들 뒤, Agent 칸은 앞(아래 "예외"의 확인 결과 (1)).
+  - 시험 해결(`resolve_agent_card_effect`의 답): 선택 칸에 따라 예외(가능으로 읽힘), "해결 불가" 사건, 다른 예외가 섞여 있다.
+  - hook 20개(Seek Allies, Overthrow, Lisan al Gaib, Clandestine Meeting, Occupation, In High Places, Control the Spice, Possible Futures,
+    그리고 A3g의 12개): 사건이 공통 규칙에 맞게 되면 공통 모양으로. 조사 G1~G7의 묶음이 출발점이다 — Subversive Advisor·Treacherous
+    Maneuver(방문 진영 영향력이 칸의 1을 대신), Dissecting Kit·Beguiling Pheromones(접합 카드 폐기 모양 하나), Long Reach·Stitched
+    Horror("서로 다른 k개" 고르기, 4.1), Corrinth City·Arrakis Revolt·Slig Farmer(지불 모양의 변형). 효과 이름으로 고르는 hook의
+    제공자·처리기 코드도 함께 없앤다.
+  - Reveal 처리 코드는 기록을 옮긴 `PersonalCardRevealEffect`를 읽는다(A4c). 기록을 직접 읽게 하면 그 옮김이 없어진다. 공유 조각
+    `TakeContract`의 문구는 "Take 1 Contract"인데 카드는 "face-up"을 인쇄한다(A4a 테스트에 예외로 적음).
+  - Reveal 선택의 frame 닫는 순서: 고른 진영 영향력은 얻은 뒤, CHOAM Demands·폐기·Spy 소환은 닫은 뒤 보상(A4d). 계약 줄이 있는
+    선택은 CHOAM에서만 열린다는 판정(Delivery Logistics, A4f)은 인쇄 조건이 아니라 모듈 판정이다.
+  - Reveal 선택 hook 10개와 기타 hook 2개(A4d, A4h).
+  - 보드·Conflict·계약의 사건(A5 조사 G.4): 보드 사건 id에 아이콘 키가 붙기도 안 붙기도, Imperial Privilege 맞바꿈은 보드 사건
+    없음, 계약 완수 사건 모양 셋·출처 다섯, Conflict 보상의 책략 카드는 뽑기 사건 없이 줌, 영향력 사건이 보상 사건 앞(Conflict)과 뒤
+    (계약), 폐기 보상 frame은 낼 카드가 없으면 확인 없이 건너뜀, Shipping은 모든 큐브가 6이어도 네 진영을 냄(Agent 칸 영향력은
+    기다림), 지운 거절 행동의 codec 템플릿 둘. 보드 hook 9개(A5d) 중 행이 공통 모양과 같은 다섯(Espionage의 Spy, Desert Tactics의
+    폐기, Shipping의 영향력, Imperial Privilege의 맞바꿈과 소환)은 사건 통일 뒤 공통 모양으로. 계약·Conflict·보드 표는 기록을 옮긴
+    `ContractCondition`·`ContractReward`·`ConflictReward`·`static_board_effects`를 읽는다(A4c의 Reveal과 같음).
+  - 지도자·Tech(A6 조사 G.4): 인장 사건의 `card_id`가 자동 인장에만 있음, 해결 사건이 뽑기·영향력 사건보다 앞(Lead the Way,
+    Fedaykin, Kota, Shaddam)인데 지불 사건보다는 뒤(Spice Agony, Staban), Fill Coffers는 칸에 따라 사건 모양 둘, Staban의 유발 사건
+    id는 주인을·Esmar는 방문자를 이름, Assassin·Tactician 사건 id에 유발한 효과의 출처가 붙음, 주지 않는 거절 행동 셋
+    (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, codec·옛 기보 다리에 남음), 의무 단계에 "막히지
+    않게" 남긴 거절, 닿지 않는 `acquire_leader_reserve`(비용 1인 Reserve 더미 없음)와 Esmar의 거절만 있는 인장. Tech 획득·Reveal은
+    기록을 옮긴 `TechTile`·`TECH_REVEAL_GAINS`를 읽는다(A4c와 같음).
+  - 기술 타일·Immortality·Scouts(A7 조사 G.4-6): 연구 이동 사건 id가 부른 곳마다 다름(`…:research:<칸>` / `…:research:#:research:<칸>`
+    / `…:acquisition_bonus:research:<칸>`), Scouts 줄과 책략 보상의 자원 얻기는 사건이 없는데 연구 보너스·획득 보너스는 있음,
+    Tleilaxu VP·스파이스가 `tleilaxu_advanced`의 payload(따로 `victory_points_gained` 없음), Family Atomics와 Clear the Market은 같은
+    효과에 다른 사건, `skill_reveal_bonus`가 0인 양도 실음, 연구 창은 차례 안에서도 거절을 따로 냄(OQ-095 (2)와 다름),
+    `scouts_choice_skipped`는 결정 없는 사건, 연구 보너스 셋의 해결 순서가 인쇄 순서와 다름, `scm._PARKING`이
+    `Mission.parked_troops/troop_source`를 되풀이(정리-1에서 표에서 읽음), Scouts의 `PaySpecimens`가 DSL `SpendSpecimens`와, 비용 쪽
+    `TrashPersonalCard(hand_only=True, mandatory=True)`가 `TrashCard(hand_only=True)`와 같은 일(정리-1에서 합침), 고르기 이벤트의 거절 가능
+    여부가 `ScoutsEvent.passable`과 기록의 표시 두 곳(정리-1에서 기록 한 곳으로), Scouts 장치
+    hook 이름(`scouts_<항목>`)은 엔진의 등록부가 아니라 항목 id(정리-1에서 엔진 분기 이름과 등록부로).
+  - A3g~A7에서 찾는 같은 종류의 차이도 이 목록에 더한다.
+- **방법:**
+  1. 차이 목록을 만들고 종류마다 규칙 하나를 정한다(예: 사건 이름 `<칸>:<무엇>`, 칸이 끝나면 언제나 "칸 해결" 사건 하나).
+  2. 한 번에 바꾼다.
+  3. 같음 확인을 "정해진 차이 목록"과 함께 돌린다: 도구가 옛 사건 이름·모양을 새 것으로 옮겨 놓고 비교해, 목록에 없는 차이는
+     여전히 잡는다.
+  4. codec을 올리고 기보 다리(records)를 더한다(옛 저장·기보 묶음이 새 엔진으로 옮겨지게). 화면(로그·연출이 읽는 사건)과 E2E도 함께
+     맞춘다. A8(망 재학습, 플레이 서버 교체)과 같은 때에 해서 저장 호환을 한 번만 끊는다.
+- **진행 순서(2026-10-17 사용자 결정 "가로 하자" — 보이는 정리는 A8과 함께):**
+  1. 정리-1: 동작이 그대로인 것 먼저 — 같은 일을 하는 조각 합치기(`PaySpecimens`→`SpendSpecimens`, 비용 쪽
+     `TrashPersonalCard(hand_only=True, mandatory=True)`→`TrashCard(hand_only=True)`; 사건 이름은 그대로), Scouts 장치 hook의 등록부,
+     그 밖의 내부 정돈. 지금의 같음 확인(200판 same, 조사 탐침)이 그대로 관문이다. — **끝남(2026-10-17, 아래 "정리-1에서 만든 것")**
+  2. 도구 보강: 같음 확인에 "정해진 차이 목록"(위 3번)과 바뀌는 행의 목록을 넣는다. — **끝남(2026-10-17, 6절 7번)**
+  3. 정리-2: 사건·행 통일, 아래 "정한 규칙 판단" 여섯, hook 줄이기 — A8의 망 특성(능력 기록에서; 옮겨 받는 옛 표 없애기 포함)과
+     한 번의 재학습, 플레이 서버 망 교체와 **같은 codec 올림(v149)** 하나로 묶는다. 옛 저장·기보 묶음은 기보 다리로 옮긴다.
+- **정한 규칙 판단(2026-10-17 사용자 결정, 정리 단계에서 구현; 근거 대조는 그날 대화):**
+  1. **진영 선택의 6 경계:** Shipping의 "선택한 진영 하나의 Influence 1" `[Board Guide p. 2]`과 Tech 타일 Glowglobes·Navigation
+     Chamber의 Influence 선택도 다른 진영 선택처럼 이미 6인 진영을 내놓지 않는다. 고를 진영이 없으면 Agent 칸의 Influence처럼
+     이유와 함께 회색 줄로 기다리다 "턴 종료"에 사라진다(OQ-057 (1)). OQ-060의 "알려진 경계"를 없앤다.
+  2. **차례 위 창의 거절:** 소유자 자신의 차례 안에서 열리는 연구 보너스(c6r6, c7r3, c8r6)와 선택 폐기 창(연구 칸의 폐기, Tech
+     뒤집기의 폐기, Planetologist 등)은 OQ-095 (2)대로 차례의 줄로 거절 없이 내놓고, 쓰지 않으면 "턴 종료"에 사라진다. 낼 수 없는
+     비용은 회색 줄, c6r6은 Agent 칸 Influence처럼 기다린다. 차례 밖에서 열리는 창(Scouts 줄 등)과 책략 슬롯은 그대로다 — OQ-095
+     (2)의 예외 (d)를 그만큼 줄인다.
+  3. **자원 얻기 사건:** 어디서나 같은 종류의 사건 하나(출처, 좌석, Solari·spice·water). `acquisition_resource_gained`·
+     `research_resources_gained`·`reveal_resources_gained`를 합치고, 지금 사건이 없는 책략 보상과 Scouts 줄의 자원 얻기에도 낸다.
+  4. **VP 사건:** VP를 출처 사건의 payload 키로 싣는 다수 관례(Conflict 보상, Agent 칸, Reveal, 전투, Tleilaxu 트랙)로 통일한다 —
+     Tech의 `victory_points_gained` 세 곳을 맞춘다.
+  5. **연구 칸 아이콘 순서:** 연구 칸의 두 아이콘(표본+폐기, Tleilaxu+표본)과 c7r3 화살표의 두 보상(카드, 책략)은 OQ-027의
+     원칙("한 공간에 인쇄된 아이콘은 각각 독립된 효과이며, 소유자는 각 아이콘을 별개 행동으로 원하는 순서에 해결한다", `[Main p. 9]`)
+     대로 소유자가 순서를 고른다 — 결과가 같아 보여도(사용자: "그래도 순서를 고르게 하자. 원칙대로"). 화살표는 OQ-027 (b)처럼 비용을
+     한 단계로 낸 뒤 보상을 따로 대기시킨다.
+  6. **Scouts에서 할 수 있는 줄이 없는 좌석:** 고르기 이벤트에서도 결정 창을 연다(이유와 함께 회색 줄 + 확인) — 2026-09-30 판정
+     "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"의 적용 표에서 빠졌던 경우다(OQ-071의 "아무것도 하지 않는다"는 결과는
+     그대로, `scouts_choice_skipped`는 확인 행동이 낸다).
+- **예외 — 규칙 차이는 기다리지 않는다:** 겉으로 드러나는 규칙 구현 차이는 이름 문제가 아니라 같은 규칙의 두 구현일 수 있어, 규칙
+  문서와 대조해 따로 먼저 정한다.
+  - 확인함(2026-10-16): Agent 칸 Spy(`agent_box_abilities.agent_spy_rows`)와 책략 Spy(`ability_executor.piece_rows`의 `PlaceSpy`)의
+    차이 셋은 규칙 위반이 아니다. 둘 다 "공급에 Spy가 있고 놓을 칸이 있으면 배치 의무"(OQ-057 (14), [uprising-systems.md](rules/uprising-systems.md)
+    "Spy 배치는 supply에 Spy가 하나라도 있으면 의무다"), "공급이 비면 먼저 소환은 선택" `[Main pp. 11, 20]`, "놓을 칸이 없으면 Spy 없이
+    해결"을 지킨다. (1) 넘기기 줄의 자리: 책략은 소환 줄들 뒤, Agent 칸은 앞 — 보여 주는 순서뿐이라 위 통일 목록에 넣는다. (2) 아무것도
+    할 수 없을 때: 책략은 넘기기 줄 하나(쌓인 frame이라 지금 답해야 한다), Agent 칸은 줄 없이 기다렸다가 턴 끝에 무산(OQ-057 (1) — 자유
+    순서라 그 사이 칸이 생길 수 있다) — 두 맥락의 사용자 판정이 다른 것으로 둘 다 유지. (3) 먼저 소환한 Spy를 Espionage가 써 버리면
+    Agent 칸은 넘기기 없이 다시 소환해 놓아야 한다 — OQ-057 (14)에 적힌 판정(책략 frame에는 이런 끼어듦이 없다).
+
+### 정리-1에서 만든 것 (2026-10-17, codec 그대로 v148)
+
+동작이 그대로인 내부 정돈만 했다(위 "진행 순서" 1). 기준 기록은 시작 master `8c0fb5f4`로 다시 만들었다.
+
+- **같은 일을 하는 조각 합치기:** Scouts의 `PaySpecimens`(Ingratiate의 비용)를 없애고 DSL의 `SpendSpecimens`를, 비용 쪽
+  `TrashPersonalCard(hand_only=True, mandatory=True)`(Funeral Rites, Termination Request)를 `TrashCard(hand_only=True)`를 쓴다.
+  `TrashPersonalCard`는 다시 보상(선택 폐기 아이콘, Oversight·Water Discipline)으로만 쓰이고, 비용 쪽 손패 폐기를 `SCOUTS` 기록에만
+  허용하던 `Ability`의 예외도 없어졌다. Scouts 실행기·앱 AI 창·앱 AI 합성 모듈 생성기가 새 조각을 읽고, Scouts 화면은 옛 문구
+  ("Pay 1 specimen" / "{specimen:1} 지불", "Trash a card from your hand" / "{hand}의 카드 1장 {trash}")와 막힘 이유를 그대로 낸다.
+  사건 이름은 그대로(사건 통일은 정리-2).
+- **Scouts 장치 hook의 등록부:** 장치 기록 28개의 hook을 항목 id(`scouts_<항목>`)에서 그 장치를 돌리는 엔진 분기의 이름
+  (`mission_<종류>`, `automatic_<효과>`, `modifier_<효과>`, `event_shared`, `auction_<종류>`)으로 바꾸고, `rules/scouts.py`의
+  `SCOUTS_HOOKS`가 불러올 때 확인한다(다른 hook 등록부와 같음). 미션의 참가 병력(`scouts_missions._PARKING`)은 손으로 다시 적은 표
+  대신 미션 표(`Mission.troop_source`·`parked_troops`)에서 읽는다(전후 같음).
+- **거절 가능 여부 한 곳:** 고르기 이벤트의 `ScoutsEvent.passable`은 기록의 표시(`OPTIONAL`)에서 읽는다(`scouts_passable`; 이벤트
+  표 repr 전후 같음).
+- **리뷰 반영:** 자동으로 도는 손패 폐기(정상 플레이로는 닿지 않음 — 손패가 비면 그 줄을 내놓지 않는다)가 손패가 비었을 때 예외
+  대신 아무 일도 하지 않고(다른 "고를 것이 남지 않은" 선택과 같음), Scouts 기록을 옮기는 함수가 "이 카드"·"다른 진영 카드" 폐기
+  비용(실행기가 읽지 않는 모양)을 거부한다. hook 테스트는 모든 장치를 항목과 맞춰 본다.
+- **남은 것:** 같음 확인 도구 보강(위 "진행 순서" 2), 그다음 정리-2(사건·행 통일, "정한 규칙 판단" 여섯, hook 줄이기)를 A8과 같은
+  codec 올림(v149)으로.
+
+### 정리-2 계획 (2026-10-17, 사용자 "좋아 정리-2 시작")
+
+조사 네 갈래(git 무시 `tmp/claude/4767ed6a/c2/`: `events-inventory.md` 사건 255종·만드는 곳 399곳·id 모양 1,168, `decisions-inventory.md`
+규칙 판단 여섯의 코드·행동·창·사건과 200판 빈도, `hooks-inventory.md` hook 62+28개 분류, `a8-inventory.md` 옮겨 받는 옛 표 10개와 망)를
+바탕으로 정했다.
+
+- **브랜치:** 긴 통합 브랜치 `cleanup2`(worktree `.claude/worktrees/cleanup2`, master `d892cd6c`에서) 하나에 하위 단계를 차례로 쌓고, 하위
+  단계마다 아래 관문을 넘긴다. master에는 A8과 함께 **codec v149 한 번**으로 합친다(저장 호환을 한 번만 끊는 결정). 그 사이 master가
+  움직이면 하위 단계 경계에서 master를 `cleanup2`로 받는다(오래 사는 통합 브랜치라 "master를 브랜치로 받지 않는다"는 짧은 브랜치용 관례의
+  예외).
+- **관문(하위 단계마다):** (1) 같음 확인 — 기준 기록은 시작 master `d892cd6c`(형식 2, 200판, `tmp/claude/4767ed6a/c2/equiv-base`),
+  정해진 차이 모듈 `scripts/ab/differences/cleanup2.py`(git이 지킴; 하위 단계마다 규칙을 더하고, 규칙의 `why`가 이 계획의 항목을
+  가리킨다)로 200판 모두 same, 쓰이지 않은 규칙 없음. (2) 기보 v148 묶음 2,000판을 v149 다리(`before_codec=149`)와 함께 대조 —
+  persistent·diverged·failed 0. (3) pytest·ruff·mypy, 화면·서버를 건드리면 E2E 전부, 소크 720판. (4) `time_legal.py` 10% 안. (5) 독립 리뷰
+  (사건·합법 행동은 위험 높음, CLAUDE.md). codec은 처음으로 합법 행동이 바뀌는 하위 단계(정리-2a)에서 v149로 올리고 브랜치 안에서는 그대로 둔다.
+- **하위 단계:**
+  1. **정리-2a — Scouts의 할 수 있는 줄 없는 좌석에 결정 창(판단 6):** 혼자 서는 가장 작은 변경으로 codec 올림·다리·화면·E2E·정해진 차이의
+     길을 먼저 깐다. 200판에서 481번(132판). 확인 행동 하나, `scouts_choice_skipped`는 그 행동이 낸다.
+  2. **정리-2b — 기다렸다가 턴 종료에 사라지는 줄(판단 2·1·5):** 셋이 같은 모양(소유자의 차례 frame이 대기 항목을 들고, 쓰지 않으면 누름이
+     사라지게 함; 선례 `pending_tech_acquire_effects`, 선택 보드 아이콘의 lapse)을 쓰므로 함께 한다. 판단 2(차례 안 연구 보너스 85·선택 폐기 창
+     약 750이 차례의 줄로, 거절 21·75개 없어짐) → 판단 1(Shipping·Glowglobes·Navigation Chamber의 6 경계; Combat의 Tech 효과만 frame은 차례가
+     없어 OQ-060 Conflict 보상처럼 확인 줄) → 판단 5(연구 칸 두 아이콘 370번·c7r3 화살표 44번의 순서를 소유자가; c7r3 보상은 빚진 뽑기 줄로,
+     Scouts 단계의 연구 33번도 원칙대로 순서 창). 턴 종료가 보는 네 곳(`legal_agent_turn_finish_actions`·`apply_agent_turn_finish`,
+     `legal_finish_reveal_actions`·`finish_reveal_turn`, 서버 `agent_turn_end_ready`, `settle_finishing_agent_turn`)을 함께 고친다.
+  3. **정리-2c — 사건 통일(판단 3·4 포함):** 먼저 사건 문법(id `<출처>:<무엇>`, 출처 이름 하나, payload 키 낱말 — `amount`/`count`/`troops`,
+     자원 키, `card_id`/`source`, 좌석 키)을 이 계획에 적고, 묶음별로 바꾼다: 자원 얻기 사건 하나(판단 3; Intrigue·Navigation 약 1,320번,
+     Scouts 약 195번에 새로 냄)와 VP는 출처 사건의 payload 키(판단 4 — 조사 결과 `victory_points_gained`를 내는 곳은 Tech 둘과 공용 해석기
+     하나다; 셋 다 같은 관례로), Agent 칸(폐기·버리기·지불·뽑기의 출처, "칸 해결" 사건은 칸마다 한 번, 시험 해결의 답), 보드·Conflict·계약,
+     지도자·Tech, 연구·Immortality·Scouts, 조사가 더 찾은 같은 종류의 차이(4.2: `*_paid` 네 관례, 하지 않음을 뜻하는 낱말들, 쉼표 문자열
+     payload, `shortfall_refilled` id의 사건 기록 길이). 화면은 사건 종류와 payload만 읽으므로(id는 안 읽음) 종류·payload가 바뀌는 곳마다
+     `EVENT_LABELS`·`LOG_EVENT_ICONS`·`VP_CAUSE_KINDS`·`EVENT_IMPLIED_LEADER`와 서버 표를 함께 고친다.
+  4. **정리-2d — hook 줄이기:** 조사의 A(11개, 있는 공통 모양으로)와 Agent 칸 묶음(방문 진영 영향력, 접합 카드 폐기, 서로 다른 k개, 지불
+     변형)·Reveal 묶음(원자 화살표, 유닛 이동, 모래벌레 문, 붙잡은 인쇄 값)으로 비 Scouts hook 62개를 31개로. 첩자 배치 구현 여섯을 하나로,
+     손으로 복사한 쌍둥이(Combat 아이콘, 후퇴, 획득 후속, 모래벌레 문 셋), Spy 넘기기 줄의 자리 하나로. Scouts 장치 이름은 갈래별로. 바꾸기
+     전에 규칙을 문서와 대조해 정할 것(조사 F5): Imperial Privilege 소환(확인 대 기다림), Arrakis Revolt, 아이콘 여럿을 한 번에 해결하는
+     칸 넷(In High Places, Occupation, Clandestine Meeting, Overthrow — OQ-027과 대조), Shadout Mapes의 두 가지.
+     **대조 결과(2026-10-18):** Imperial Privilege 소환은 두 맥락 모두 유지(Spy의 "예외" (2)와 같은 판단 — 보드는 확인 창, Agent 칸은
+     기다림); Arrakis Revolt는 OQ-026·OQ-027이 명시한 예외라 지불 변형 유지; Overthrow는 아이콘이 하나(조사의 오기); Shadout Mapes의
+     Combat 아이콘 없는 배치는 카드 문장이 배치를 허락하므로 맞고("You may deploy or retreat 1 troop"), Harkonnen Advisor의 배치 금지
+     troop을 빼지 않는 것은 OQ-038 (b) 위반이라 고친다(2d-3). **사용자 결정(2026-10-18, "원칙대로 아이콘마다 나누자"):** 아이콘 두
+     개를 한 번에 해결하는 칸 셋(Clandestine Meeting, Occupation, In High Places)은 OQ-027 확장대로 아이콘마다 나눈다(2d-5, 행이 바뀜).
+     **구현(2026-10-18, 브랜치 `cleanup2`):** 비 Scouts hook 62 → 30(Agent 칸 4: beasts_spoils·long_live_the_fighters·possible_futures·
+     scientific_breakthrough, Reveal 1, 지도자 4, 인장 10, 보드 4, Tech 5, guild_spy·litany 2). 2d-1(A 11개)·2d-2(Agent 묶음 VF·GT·KD·PV)·
+     2d-3(Reveal 묶음 AA·UM·HV, Shadout Mapes의 OQ-038 (b))·2d-4: Spy 배치를 `spy_placement.spy_options` 하나로(넘기기 줄이 언제나 먼저,
+     OQ-057 (14) 2026-10-14 보강의 "먼저 회수는 칸을 열 때만"을 모든 Spy 자리에), 보드 선택 아이콘 다섯을 기록 줄로(`_recorded_choice`),
+     쌍둥이 공용화(`trashable_cards`, `recall_agent_targets`·`recall_board_agent`, `open_combat_deployment`, `retreat_units`, 새
+     `rules/sandworms.py`의 `sandworm_block`, `_acquisition_effects`·`open_acquisition_frames`). 2d-5: 세 칸을 아이콘마다(OQ-027 "카드 Agent
+     box 확장 3", 새 codec 템플릿 없음; 앱 AI 창은 앱의 두 능력에 맞춤). 같음 확인은 2c 끝 기록 200판, 선언된 차이 `split_boxes`·
+     `retreat_event`·`spy_pass_first`(`scripts/ab/differences/cleanup2d.py`)만. 옛 기보 다리 `split_box_icon`·`split_box_follow`·`split_box_spy`.
+     **관문(2d·2f·2c-7 함께, fc9643f7):** 같음 확인 2c 끝 기준 200판 same, d892cd6c 기준 누적 200판 same; 기보 v148·v147 각 exact 78·
+     equal 369·transient 1,513·persistent 39·diverged 1(2c 관문과 같은 한 판)·failed 0(다리 split_box_icon 472·follow 339·spy 148번);
+     pytest 8,089·ruff·mypy; 소크 840판(목록 항목까지 보는 사건 가시성 검사) 실패 0; 속도 호출당 +4.2·−1.9·+2.4%; E2E 60 통과·실패 7(2c와
+     같은 시드 전제). 독립 리뷰의 막는 문제 하나(아이콘으로 나눈 칸의 남은 Spy·Combat 아이콘 곁에 턴 종료가 나옴 — 턴 종료 판정이 다섯째
+     제공자를 안 봄)를 c92b0613로 고쳤다([lessons](lessons.md) 2026-10-18). 그 밖에 기보 다리 하나(Urgent Shigawire 뽑기가 먼저 든 In High
+     Places, 916b2be2)와 둘째 폐기 창의 거절 다리, 다리 단위 테스트, 사건 가시성 검사의 목록 항목.
+  5. **정리-2e — 옮겨 받는 옛 표 없애기:** 망에 무관한 것 먼저(Flip, Reclaimed Forces 상수, Tleilaxu 트랙, Tech Reveal 줄, Scouts, 보드
+     아이콘), 나머지(Conflict·계약, Reveal 이득, Tech 획득, 기술 타일)는 2c·2d에서 그 사건이 바뀔 때 함께. `ResearchBonus`는 저장·화면·휴리스틱이
+     읽는 키라 파생 키로 남긴다. `TakeContract` 문구("face-up").
+     **구현(2026-10-19, 브랜치 `cleanup2`):** (1) 망에 무관한 여섯(9a8bbe61) — 보드 아이콘은 기록의 DSL 조각 그대로(`*Effect` 다섯 클래스
+     없앰), `TechTile.flips`는 Flip 기록을, Reveal은 타일의 자동 Reveal 줄(`tech_reveal_line`, 불러올 때 검사)을, Reclaimed Forces는 기록
+     줄(`reclaimed_forces_reward`)을, Tleilaxu 트랙 규칙은 칸 기록을 읽고(`TleilaxuBonus`는 화면 이름표 키로만), Scouts 줄은 기록의
+     `EffectSection` 그대로(`ScoutsOption` 없앰). (2) Skill·Tech 획득(f07a1895) — `SkillDefinition`·`TechTile`이 효과 필드를 저장하지
+     않고 기록을 읽는 속성으로(Skill 전투력은 기록의 `IN_CONFLICT` 줄과 조건을 직접 평가, 문구는 기록 줄마다 같은 낱말로). 엔티티
+     특성은 없어진 필드 대신 기록을 읽는다(시점 접두어 반사 + hook 칸, 4.4의 방식; `FEATURE_VERSION` 2, 지문은 A8까지 임시).
+     (3) `TakeContract` 문구(71e2fed6) — DSL이 "Take 1 face-up Contract"/"앞면 {contract} 1개 가져옴"으로(개인 카드 문구와 같게).
+     `ResearchBonus`는 파생 키로 그대로. 확인: 매 단계 2c 끝 기록 200판 same(선언된 차이 그대로), 화면 문구·브라우저 카탈로그·
+     codec 행이 40판에서 바이트 단위로 같음(`tmp/claude/4767ed6a/c2/2e/parity.py`; (3)은 바뀐 Contract 문구만).
+     **사용자 결정(2026-10-19, "일단 가 방향으로"):** 남은 셋 — Conflict 보상(`ConflictReward`), 계약(`ContractCondition`·
+     `ContractReward`), Reveal 자동 이득(`PersonalCardRevealEffect`) — 은 그대로 둔다. 이 셋은 옮겨 적은 사본이 아니라 기록을 종류별로
+     더한 합계이고, 지급(동률 배수, CHOAM 없을 때 계약 → Solari 2)·사건 payload(2c-3 4번: 합한 키를 싣는다)·화면 문구가 함께 쓴다.
+     데이터 원본은 기록 하나이고, 합계는 불러올 때 기록에서 계산하며 담을 수 없는 기록이면 불러오기가 실패한다. 지급 코드가 조각을
+     하나씩 읽게 다시 짜는 일은 아래 B단계로 미룬다. **정리-2e 끝.**
+  5b. **정리-2f — 거절·확인 줄 정리(사용자 결정 2026-10-18, "모두 추천 값대로"):** (가) 엔진이 더는 내놓지 않는 거절 템플릿
+     (`decline_other_memories`, `decline_leader_board_repeat`, `decline_sardaukar_commander`, `resolve_desert_tactics_without_trash`,
+     `decline_imperial_privilege_intrigue`)을 codec·처리 표·이름표에서 뺀다(옛 기보는 다리가 이름으로 거른다). (나) 의무 단계에
+     "막히지 않게" 남긴 거절(Fenring Corrino Liaison·Mohiam Listeners의 먼저 회수 뒤, Esmar Smuggle Spice의 두 갈래 불가)은
+     "할 수 있는 것 없음 · 확인" 줄로(2026-09-30 원칙, 2a의 확인 줄과 같은 모양). (다) 낼 카드가 없는 Conflict 폐기 보상은 확인
+     창을 연다(같은 원칙). **구현(2026-10-18):** (가) 다섯 템플릿을 뺐다(catalog 기본 −4, Bloodlines −5). (나) 새 템플릿
+     `resolve_leader_signet_without_option`(사건 `leader_signet_unavailable`), (다) 새 템플릿 `resolve_combat_trash_without_card`(사건
+     `combat_reward_trash_unavailable`); 둘 다 모든 catalog. 옛 기보 다리 `signet_without_option`·`combat_trash_without_card`, 선언된 차이
+     `signet_confirm`·`trash_confirm`(200판에는 두 경우가 나오지 않음).
+  5c. **정리-2c-7 — payload 목록(사용자 결정 2026-10-18, "목록으로 바꾸자. 깔끔하게."):** 쉼표 문자열로 이은 id 목록(2c-6 4번)을
+     진짜 목록으로 — 사건 payload 값 형에 목록을 더하고(행동 인자 형은 그대로), 직렬화·`PlayerView`·화면이 나누던 곳을 함께 바꾼다.
+     **구현(2026-10-18):** 아래 "2c-6" 4번의 부기.
+  6. **A8:** 조사 결과 지금 플레이 망(MLP `readapt-v147-4400.pt`)은 카드 특성을 읽지 않는다 — 기록에서 만드는 망 특성(4.4)은 엔티티 망
+     계보에만 쓰인다. 그래서 A8은 계보 결정에 달렸다(사용자 결정 필요): (가) 엔티티 계보로 옮김 — 특성 전환, 재학습 약 10–11시간, 관문 약
+     6시간; (나) MLP 계보 유지 — v149에서 새로 생기거나 없어진 행만 다시 적응시키고 관문, 특성 전환은 뒤로.
+     **사용자 결정(2026-10-18): (가) 엔티티 계보로 옮겨 재학습.** 특성 전환(FEATURE_VERSION 2, 기록에서 특성)은 정리-2의 마지막
+     기록 변경 뒤에 하고(지문이 기록에 따라 바뀜), 학생 증류 → 강화학습(REINFORCE, 학습률 1e-5) → 탐색 좌석 관문(대조는 v149 트리에서 다시) 순서.
+  7. **마무리:** v149 기보 묶음, 다리, 규칙 요약 문서(조사 7.6의 목록), E2E 전부, master에 한 번 병합, 사용자 검토 뒤 푸시.
+
+### 정리-2a에서 만든 것 (2026-10-17, 브랜치 `cleanup2`, codec v149)
+
+- **Scouts의 할 수 있는 줄 없는 좌석에 결정 창(판단 6, OQ-071 보강):** 이벤트·판매의 고르기와, 같은 원칙(2026-09-30 "결정 창 없이 자동으로
+  넘어가는 곳도 모두 결정 창을 연다")으로 공개된 비밀 선택의 비용 줄을 받을 수 없을 때도 `scouts_choice` 창이 열린다. 줄은 이유와 함께
+  회색이고, 유일한 행동 `resolve_scouts_choice_without_option`(새 템플릿, Scouts 카탈로그)이 전과 같은 `scouts_choice_skipped`를 낸다.
+  거절 가능한 이벤트라도 이 창에는 패스가 없다(받을 것이 없으니). 한 번 누르면 그 좌석의 몫이 끝나고(`EXPLICIT_TURN_ENDS`와 사본 셋),
+  배너의 턴 종료 줄이 "할 수 있는 선택 없음 · 턴 종료"로 보인다. 건너뜀 알림은 없앴다. 앱 AI는 그 줄을 고른다. 옛 기록은 다리
+  `scouts_no_option_window`(`before_codec=149`, 기록된 선택이 그 창의 것이면 답하지 않음 — `_made_for`).
+- **정해진 차이 모듈** `scripts/ab/differences/cleanup2.py`를 시작했다(규칙 `scouts_no_option_window`: 답하기). `time_legal.py`는 넷째 인자로
+  같은 모듈을 받아 재생한다 — 규칙을 맞추느라 다음 결정의 합법 행동을 미리 계산해 캐시가 데워지므로(약 15%), 기준 엔진에도 같은 모듈을 준다.
+- **판이 달라짐:** 결정이 늘어 휴리스틱(강제 수에도 난수를 뽑음)·무작위 에이전트의 판이 바뀐다. 기보 이전 테스트의 fixture는 시드 95로,
+  빚진 뽑기 테스트는 시드 6으로(조건을 "다른 나뉜 단계도 같이 빼고 셈"으로 넓힘 — 1-200에 빚진 뽑기만 나뉜 판이 없어짐), Scouts E2E는
+  판 시드 27·1, 원로회 시드 5로 옮겼다. 선택 효과 화면 일관성 테스트는 곧바로 하는 빚진 뽑기(OQ-106)의 한 순간을 뺀다(Gather Intelligence와
+  같은 관례; 리뷰 확인으로 숨는 화면 빈틈 없음). **E2E `log_words`·`scouts_stage`의 시드는 정리-2 마무리에서 한 번에 다시 고른다**(하위
+  단계마다 판이 또 바뀌므로; 두 스크립트의 실패는 "정한 판에 그 장면이 나와야 한다"는 전제뿐이다).
+- **관문(리뷰 반영 뒤 `cdddc302`):** 같음 확인 200판 모두 same(191,836단계; 규칙이 창 481개에 답함 — 조사의 건너뜀 481번과 같음).
+  기보 v148·v147 각 2,000판: exact 442, equal 1,554, transient 4, persistent·diverged·failed 0(다리 5,557번/1,558판; transient 4는 도구가
+  "collateral"로 판정 — 다리가 창에 답하는 지점까지 `scouts_tasks`만 다르고 그 뒤 같음). pytest 7,895개·ruff·mypy, E2E 65 통과(실패 둘은
+  위 시드 전제 `log_words`·`scouts_stage`, 마무리로 미룸; 고친 `scouts.py`는 148개 검사 통과), 소크 720판 실패 0, 속도 호출당 42.8→42.4µs
+  (같은 규칙 모듈로 중앙값 셋). 독립 리뷰: 막는 문제 없음 — 360판 조사(창 1,367개 모두 확인 하나만, 첫 사건이 건너뜀), 숨은 정보·원격 흐름
+  (한 번 누름, 무르기 없음)·망 불러오기(새 행 하나 0으로) 확인. 중간 하나(다리가 `_made_for`를 안 봄, 지금은 터지지 않음)와 낮은 셋 반영.
+- **판단 6 밖, 같은 종류로 남은 조용한 건너뜀(리뷰가 찾음, 사용자 결정 필요):** 낼 것이 없는 임무 참가(`scouts_missions.py`, OQ-088 — 창도
+  사건도 없음), 모든 진영이 0일 때의 Political Equilibrium(`scouts.py`, 사건 없음). 2026-09-30 판정이 덮는지 정하면 같은 길로 한다.
+
+### 정리-2b에서 만든 것 (2026-10-17~18, 브랜치 `cleanup2`, codec v149 그대로)
+
+- **판단 2 — 차례 안의 연구 보너스·선택 폐기를 차례의 줄로(2b-1·2b-2, OQ-095 (2)):** 소유자 자신의 Agent·Reveal turn 안에서 생긴
+  c6r6·c7r3·c8r6 보너스와 선택 "[trash a card]" 아이콘은 창 대신 turn frame 문맥의 대기 목록(`rules/turn_rows.py`, 키
+  `pending_turn_rows`, TURN → Agent 효과·Reveal frame으로 옮겨 감)에 들어가 거절 없는 줄로 나오고, 쓰지 않으면 누름이 이벤트
+  (`research_bonus_lapsed`·`optional_trash_lapsed`)와 함께 소멸시킨다. c6r6은 올릴 진영이 있는 동안, Arrakis Planetologist의 Intrigue
+  카드(trash 곁의 의무 줄 `draw_planetologist_intrigue`)는 뽑을 때까지 턴 종료를 막는다. 줄 하나는 가장 나중의 trash를 쓰되, 고른 카드의
+  자기 box가 연 trash가 있으면 그것을, 없으면 다른 카드의 자기 box trash는 남겨 둔다(OQ-022). 차례 밖(Combat, Scouts 단계, turn 안의
+  Scouts 줄)은 창 그대로. 턴 종료가 보는 네 곳(엔진 둘, `settle_finishing_agent_turn`, 서버 `agent_turn_end_ready`)은 같은 판정
+  (`turn_rows.holds_the_end`)을 쓰고, 차례가 넘어가거나 닫힐 때 대기 항목이 남아 있으면 엔진이 멈춘다.
+- **판단 1 — 6 경계 없앰(2b-3, OQ-060):** Shipping과 Glowglobes·Navigation Chamber의 획득 Influence는 6인 진영을 내지 않고, 모두 6이면
+  턴 종료를 막지 않다가 누름에 소멸한다(`board_effect_lapsed`·`tech_acquire_effect_lapsed`). turn이 없는 Combat 획득 frame에서는 확인 줄
+  `resolve_tech_influence_without_faction`(새 템플릿, Tech catalog).
+- **판단 5 — 연구 칸 아이콘 순서(2b-4, OQ-027):** 두 아이콘 칸(표본+폐기, 표본+Tleilaxu)은 turn 안에서 의무 줄
+  `resolve_research_icon(effect=…)`(새 템플릿 다섯, Immortality catalog), c7r3는 비용을 낸 뒤 보상 둘이 빚진 뽑기(origin `research_c7r3`).
+  차례 밖은 `research_bonus` 창이 아이콘마다 줄을 내는 순서 창. Immortality만 켠 판의 catalog에도 `draw_owed_card`를 넣었다(리뷰가
+  찾은 막는 결함: 망·탐색 좌석과 PettingZoo 마스크가 그 행을 인코딩하지 못했다).
+- **기보 다리(v149 미만):** 차례 안 거절은 버림(`turn_row_refusal`), 맨 위 진영을 고른 단계는 버림(`influence_at_top`; Combat에서는 확인
+  `tech_influence_confirm`), 연구 아이콘·c7r3 뽑기는 그 단계 바로 뒤에 옛 순서로(`research_icon_order`, 다음 뽑기가 c7r3의 것일 때만),
+  다른 frame 위에서 답한 창의 단계는 붙잡았다가 엔진이 줄을 낼 때 적용(`turn_row_held`, Unexpected Allies 소환 + Liet Kynes). 알려진
+  갈라짐: 다른 진영이 오를 수 있는데 Tech 획득 Influence로 6인 진영을 고른 기록은 그 아이콘이 턴 종료를 막아 누름에서 멈춘다(테스트로 고정).
+- **정해진 차이(`scripts/ab/differences/cleanup2.py`):** 판단 2 규칙 열하나(창의 거절 사라짐·창의 줄을 차례 줄과 비교 — 후보가 정말
+  turn frame에 있을 때만 —, 거절이 사라진 항목만 기다림·소멸 이벤트 빼기, Planetologist 창이 겹친 판의 소멸 이벤트 자리 옮김 — 맞는 짝이
+  없으면 오류), 판단 1 둘, 판단 5 둘(옛 순서로 답하기, 답한 아이콘의 이벤트를 옛 자리로). `time_legal.py`에 기준 엔진용 `base` 모드(답만
+  하고 옛 단계 바꾸기는 하지 않음)를 더했다.
+- **판이 달라짐:** golden `everything`·`promo_bloodlines_tech`, tips-v1(121 → 124, 두 번 다시 캠; 옮겨진 국면은 모두 처음 다른 결정이 옛
+  차례 안 창이나 새 연구 아이콘 줄), tip census 셋, 기보 fixture 시드(95 → 187)·빚진 뽑기 시드(6 → 4), 서버 테스트 시드 둘, learner fixture
+  시드(9 → 10, float 허용치). 정리-2b-1 커밋은 일부 테스트만 돌려 문제집 36국면이 깨진 채 커밋됐다(2b-2에서 함께 다시 캠).
+- **관문(리뷰 반영 뒤):** 같음 확인 200판 모두 same(191,836단계; 연구 아이콘 답 603, trash 줄 712, 거절 사라짐 95). 기보 v148·v147 각
+  2,000판: exact 207, equal 1,784, transient 9, persistent·diverged·failed 0(다리 `research_icon_order` 5,242번/1,302판,
+  `turn_row_refusal` 973번, `turn_row_held` 5번/3판). pytest·ruff·mypy 통과. 소크 360판 실패 0. 속도 호출당 44.0 → 47.5µs(+8%, 같은
+  규칙 모듈로 중앙값 셋; 대기 목록 읽기를 빠르게 하기 전 +12%). E2E 61 통과, 실패 6(`trash_zone`·`endgame`·`lang`·`reveal_choices`·
+  `log_words`·`scouts_stage`)은 모두 "정한 시드의 판에 그 장면이 나와야 한다"는 전제 실패라 마무리에서 시드를 다시 고른다.
+- **독립 리뷰:** 막는 문제 1(위 `draw_owed_card` catalog)·중간 2(Tech 부분 6 기록의 갈라짐 — 문서·테스트로 고정, 정해진 차이 규칙이
+  넓음 — 좁힘)·낮은 넷 가운데 셋(자기 box trash 보존, 턴 넘김·닫힘의 멈춤, 다리의 다음 뽑기 확인) 반영. 앱 AI가 같은 출처를 두 번 쓰는
+  경우의 질(낮음)은 남김. 약 900판 불변식 탐침에서 멈춤·누수·숨은 정보 문제 없음.
+
+### 정리-2에 함께 넣은 Conflict 끝 순서·세포 수확 (2026-10-18, 브랜치 `cleanup2`, codec v149 그대로)
+
+- **요청:** 사용자 보고 "세포수확 책략 카드 사용할 때 단계가 너무 이상하게 흘러", 앱 분석과 비교한 제안 뒤 결정 "추천한 대로 모든 보상 →
+  병력 회수 → 좌석별 Conflict 끝 창 → 나머지 정리 순서로 바꾸고, 세포 수확은 내는 즉시 표본 2를 주고 획득 여부만 묻게 해줘. 낸 뒤의
+  '쓰지 않음'은 '끝내기'로 보이게 하고, 정리-2 codec v149에 함께 넣어줘."
+- **엔진:** `combat.offer_conflict_end_triggers`가 Conflict의 troop·Commander를 supply로 돌리고(Chani의 Tactics token 전진도 여기,
+  [Main p. 14] [FAQ p. 1]) 좌석마다 손실을 창 frame(`lost`)에 실어 turn 순서로 창을 연다. 세포 수확은 내는 즉시 해결
+  (`intrigue.resolve_conflict_end_trigger`, 보상 먼저 → 표본 2, 그다음 획득 선택; `resolve_intrigue_rewards` 단계·face-up 대기·
+  `intrigue_trigger_fired` 없음). 낸 뒤 창이 열려 있으면 `finish_conflict_end_intrigue`(새 템플릿, 이벤트 `conflict_end_trigger_finished`,
+  화면 "끝내기 · 턴 종료 ▶"). `finish_combat`은 Conflict 카드 수여(`_award_conflict`)·sandworm·marker 0만(같은 날 OQ-108로 수여는
+  창 앞으로 — 아래 절). 창이 열린 동안
+  `strength.refresh_pre_reveal_strength`는 전투력을 다시 셈하지 않는다 — 같음 확인이 찾은 결함: sandworm이 남은 좌석은 Commander가
+  돌아가며 Skill 몫이 빠져 승자가 바뀌었다.
+- **Conflict 카드는 창 뒤 그대로(같은 날 OQ-108 판정으로 바뀜 — 아래 절):** 규칙 순서대로 창 앞에 주면 Planetary Array의 카드가 이긴 순간에 뽑혀(지금은 다음 손패 뒤), v148 기보
+  2,000판 중 약 70판이 다리 없이 갈라졌다. 사용자가 요청한 범위 밖이라 옮기지 않고 [OQ-108](rules/open-questions.md#oq-108--planetary-array의-카드를-뽑는-때)로 남겼다.
+- **주변:** 앱 AI(`HarvestCellsAbility.meets_cost`가 `combat.conflict_end_loss`, 창은 거절 또는 끝내기), 흐린 이유 문구("{specimen}으로
+  만들 {troop}이 {supply}에 없음"), 서버·화면·E2E의 명시적 턴 종료 목록, 서버 자동 거절 설명.
+- **기보 다리(v149 미만):** `harvest_cells_at_once`(엔진이 내는 순간 묻는 획득을 그 좌석의 나중 기록 답으로), `harvest_cells_rewards`
+  (옛 정리의 보상 단계 버림 — 어떤 다리보다 먼저, 그 좌석의 책략 선택이 위에 없을 때만; 낸 장 수만큼 세고 다음 Round Start에서 지움),
+  `conflict_end_finish`(낸 뒤의 거절을 끝내기로 다시 씀).
+- **정해진 차이(`scripts/ab/differences/cleanup2.py`):** 끝내기 이름, 세포 수확의 옛 뒤 단계 없앰(획득 답·보상 단계, 두 사본은 어느 쪽이든
+  짝), 앞당긴 획득 답, 창 구간(기준 엔진의 창 제시부터 정리 또는 앞당긴 마지막 단계까지 상태 비교 빼고 화면은 기준 것), Tactician·세포
+  수확 이벤트를 기준이 남긴 단계로 옮김, 두 장의 버림 더미 순서, Planetary Array+세포 수확 판의 손패 뒤 뽑기, 줄어든 이벤트 로그 길이를
+  세는 `shortfall_refilled` id. 도구에 `Step.state_unchecked`·`Step.fields_unchecked`(그 단계만 일부 필드 빼기)·`At.rows`/`At.index`
+  (나중 기록 답 읽기)를 더했다.
+- **다리를 만들 수 없는 기보:** v148·v147 각 2,000판 중 어긋남 7(Planetary Array+세포 수확 6 — 옛 엔진은 정리에서 세포 수확 선택이 위에
+  있어 카드를 정리 때 뽑았고 이제는 다른 승리처럼 다음 손패 뒤; 세포 수확 두 장+Row 보충 1 — 옛 엔진은 뒤에 낸 카드부터 해결했다), 끝까지
+  차이 38(37판은 두 장의 Intrigue 버림 더미 순서만, 1판은 옛 기록이 획득을 표본보다 먼저 답한 경우 — 사용자가 정한 "표본 먼저" 순서).
+- **관문:** 같음 확인 200판 모두 same(191,836단계; 창 구간 2,110, 앞당긴 획득 답 92, 옛 뒤 단계 없앰 215, 이벤트 옮김 436, 끝내기 56,
+  버림 순서 202, Planetary Array 39, shortfall id 25). 기보 v148·v147 각 2,000판: exact 183, equal 365, transient 1,407, persistent 38,
+  diverged 7, failed 0(다리 `harvest_cells_at_once` 940번/759판, `harvest_cells_rewards` 238번, `conflict_end_finish` 731번). pytest 7,982
+  (관문; 리뷰 뒤 OQ-109 고정 테스트 하나 더)·ruff·mypy. 소크 720판 실패 0. 속도 호출당 43.0 → 46.3µs(+8%, 2b와 같은 수준 — 이번 변경의
+  추가 비용 없음). E2E 61 통과, 실패 6은 2b와 같은 시드 전제(마무리에서). 판이 달라짐: golden `everything`(결정 순서는 같고 Conflict 끝 창
+  세 번의 관측만), tips-v1(124 → 125, 옮겨진 35국면 모두 처음 다른 결정이 Conflict 끝), tip census 하나, 빈 supply 방어 시드(14 → 179, 서버
+  테스트·E2E fixture), 앱 AI 접합 시드, 기보 테스트 시드 둘.
+- **독립 리뷰:** 막는 문제 없음. 중간 둘: 세포 수확 획득 중 뽑힌 책략 카드가 창의 열림(낸 순간에 정함)에 따라 낼 수 있거나 없음 — 공식
+  문서가 말하지 않아 [OQ-109](rules/open-questions.md#oq-109--세포-수확-획득-중에-뽑힌-책략-카드와-conflict-끝-창)로 남기고 지금 동작을
+  테스트로 고정; 같음 확인의 창 구간 규칙이 넓음 — 세포 수확을 내기 전에는 반환 필드만 빼도록, 낸 뒤에도 손패는 비교하도록 좁힘. 낮은
+  셋(옛 흐름 주석, 앞당긴 답의 follows 다리, 게임이 창 구간에서 끝날 때의 carry 보고) 반영.
+
+### OQ-108·OQ-109 판정 반영 (2026-10-18, 사용자 "그래 둘다 B가 맞겠다", codec v149 그대로)
+
+- **OQ-108 (B):** 승자가 보상 직후·병력 회수 전에 Conflict 카드를 가져가고 battle icon을 확인한다([Main p. 14]의 순서) —
+  `offer_conflict_end_triggers`가 `_award_conflict`를 먼저 부르고, `finish_combat`은 sandworm·marker 0만. Planetary Array의 카드는 그때
+  빚져 창에 답하기 전에 뽑힌다(덱이 비면 그 자리에서 섞음). 전에는 대개 다음 라운드 패 5장 뒤였다.
+- **OQ-109 (b):** 낸 뒤 창은 늘 "낸 창"으로 남고, 다시 맨 위에 왔을 때 그 좌석이 책략 카드를 쥐고 있지 않으면 엔진의 자동 단계가 닫는다
+  (`combat.spent_conflict_end_window`, 이벤트 없음). 낸 카드의 획득이 Tleilaxu track Intrigue 칸에서 뽑은 카드도 그 창에서 낼 수 있다.
+- **기보 다리(v149 미만):** `tech_draw_at_the_win`(같은 결정의 Planetary Array 섞기를 앞당김), `reshuffle_moved`(Planetary Array를 가진
+  좌석이 한 라운드 일찍 섞는 같은 카드 묶음의 섞인 순서를 나중 기록에서 — 둘 중 하나가 `:tech_draw:discard_shuffle`일 때만; 이 엔진은 덱
+  맨 위 카드를 이긴 순간 가져가므로 이긴 순간이나 다음 Round Start에 섞고, 옛 엔진은 다음 패 뒤 같은 카드를 섞었다), `conflict_end_reopened`
+  (이 엔진이 열어 둔 창을 옛 기록이 다른 단계로 넘어간 자리에서 끝내기로 답함). 기록된 그 단계 자신을 다른 결정으로 가져온 경우 그 자리에서
+  끝낸다(되풀이 시도 결함, 대조가 잡음).
+- **정해진 차이:** Conflict 카드 수여 이벤트(`conflict_won`·`battle_icons_matched`)와 Planetary Array 섞기 이벤트를 창 앞에서 기준 단계로
+  옮김, 창 구간에서 빼는 필드에 Conflict 카드·Victory Point·현재 Conflict 더함, Planetary Array 카드는 후보가 먼저 뽑음(기준이 같은 카드를
+  뽑을 때까지 그 좌석의 손패·덱·덱 구성·버린 더미·Glowglobes가 보여 주는 맨 위 카드는 기준 것, 상태에서 빠짐), 같은 카드 묶음의 섞기를
+  앞당김(기준의 Round Start 섞기를 앞당기면 후보의 Round Start가 한 단계 앞서므로 그 사이 상태 비교를 뺌), 다시 열린 창에 끝내기 답.
+  OQ-108 이전의 "Planetary Array+세포 수확 판의 손패 뒤 뽑기" 규칙은 없앴다.
+- **독립 리뷰:** 막는 문제 1 — 창이 하나도 열리지 않는 판(Immortality가 없거나 아무도 창을 받지 않음)에서는 엔진이 정리·라운드 시작까지 한
+  번에 흘러가 Planetary Array 카드가 여전히 다음 패 뒤에 뽑혔다 → Combat 단계에서 빚진 카드를 정리 전에 뽑는 자동 단계를 더함(회귀 테스트
+  둘). 중간 1 — 옛 기록에서 다른 좌석의 거절을 `conflict_end_finish`가 열린 창 좌석의 끝내기로 가져감 → 같은 좌석일 때만(분배 단계 테스트).
+  낮은 셋 반영: 같은 결정 섞기의 값 확인, 같음 확인의 상태 건너뛰기를 기준의 Round Start 멈춤부터로 좁힘, 옛 순서를 말하는 주석.
+- **관문:** 같음 확인 200판 모두 same(191,836단계; 같은 결정 섞기·다시 열린 창 규칙은 이 200판에 그런 장면이 없어 쓰이지 않음). 기보
+  v148·v147 각 2,000판: exact 176, equal 274, transient 1,510, persistent 39, diverged 1, failed 0(다리 `reshuffle_moved` 139번/120판,
+  `tech_draw_at_the_win` 11번/10판; OQ-108 이전의 diverged 7 가운데 Planetary Array+세포 수확 6판이 이제 이어진다 — 남은 1판은 세포 수확
+  두 장+Row 보충; persistent 39 = 두 장의 버림 더미 순서만 38 + 표본보다 획득을 먼저 답한 옛 기록 1). pytest 7,991·ruff·mypy, 소크 720판
+  실패 0, 속도 호출당 42.8 → 46.4µs(+8%, 그대로). E2E 60 통과, 실패 7 = 2b의 시드 전제 6 + `log_passes`("아무것도 보이지 않는 Conflict 끝
+  멈춤" 장면 — 이제 승자가 있으면 그 멈춤에 Conflict 승리가 보임; 마무리에서 함께 다시 고름). 판이 달라짐: golden `everything`(결정 순서는
+  같고 창 관측만), tips-v1(125 → 124 → 123, 옮겨진 국면 모두 상태가 처음 갈라지는 곳이 Conflict 끝·정리 단계).
+
+### 정리-2c 사건 문법 (2026-10-18, 사용자 "2c 진행해자")
+
+정리-2c가 사건을 바꿀 때 따르는 규칙. 한 번에 모든 사건을 다시 쓰지 않고, 묶음(2c-1~2c-6)마다 그 묶음이 건드리는 사건에 적용한다.
+화면은 사건의 종류와 payload만 받는다(id는 서버 밖으로 나가지 않는다), 그래서 종류·payload가 바뀌는 곳마다 화면 표(`EVENT_LABELS`,
+`LOG_EVENT_ICONS`, `VP_CAUSE_KINDS`, `NEUTRAL_EVENT_KINDS` 등)와 서버 표를 함께 고친다.
+
+- **종류:** `<무엇>_<과거분사>`(`resources_gained`, `card_trashed`). 결과에 따라 종류를 고르지 않는다(되도록).
+- **id:** `<출처>:<무엇>`. 출처는 그 효과의 출처 문자열 하나다(Agent 칸 `round:R:player:P:agent_card:<instance>`, 보드
+  `round:R:player:P:board:<space>`, 책략 `round:R:player:P:intrigue:<instance>`, Reveal 이득 `round:R:player:P:reveal_gain:<source>` …).
+  공용 도우미는 출처 뒤에 자기 낱말 하나만 붙이고, 출처에 이미 있는 낱말을 되풀이하지 않는다. id는 유일하지 않아도 된다(같은 일의 되풀이).
+- **payload 키:** 행위 좌석 `player`(다른 좌석은 `from_player`/`to_player`/`recipient`/`victim`/`visitor`), 개수 `count`, 자원
+  `solari`/`spice`/`water`, VP `victory_points`, 카드 `card_id`, 출처 `source`(출처 문자열 — 화면이 카드·칸 이름으로 읽는다), 칸 `space_id`.
+  얻은 양은 0이면 싣지 않는다. 목록은 목록(id 목록은 문자열, 좌석·라운드는 정수; 빈 목록은 빈 목록 — 정리-2c-7, `core.events.EventValue`).
+- **판단 3 — 자원 얻기:** `resources_gained` 하나(`rules/gain_events.py`). id `<출처>:resources`, payload `player`·`source`·얻은 자원 키.
+  획득 보너스(`acquisition_resource_gained`), 연구 보너스(`research_resources_gained`), Reveal 이득(`reveal_resources_gained`)과 Reveal
+  선택의 Solari·spice(`reveal_solari_gained`, `contract_reveal_spice_gained`)를 합쳤고, 사건이 없던 책략·Scouts 줄의 자원 얻기에도 낸다
+  (공용 해석기 `apply_rewards`, 줄마다 하나 — 그 줄의 첫 얻기 자리에).
+- **판단 4 — VP:** 출처 사건의 `victory_points` 키. 책략·Scouts 줄의 VP는 그 줄의 `resources_gained`, CHOAM Transports의 Endgame VP도
+  `resources_gained`(출처 `…:endgame_tech:choam_transports`), Tech 획득 아이콘(Sardaukar High Command)은 `tech_acquire_effect_resolved`
+  의 키(같은 사건에 Solari 아이콘의 양도 `solari`로). `victory_points_gained`는 없어졌다. 다른 사건 이름은 그대로(Conflict 보상, 계약,
+  Reveal For Humanity 등은 이미 키로 싣는다).
+- **2c-2 — Agent 칸:** (`<칸>` = `round:R:player:P:agent_card:<instance>`, `effects.agent_card_source`)
+  1. **칸 사건은 칸마다 하나.** Agent 칸 하나(아이콘마다 따로 해결하는 칸이면 아이콘 하나, 줄을 따로 판정하는 Scientific Breakthrough면
+     줄 하나)가 끝나는 행동은 그 칸의 사건을 꼭 하나, 그 행동이 그 칸으로 낸 사건들 맨 뒤에 낸다(`rules/box_events.py`). 종류
+     `agent_card_effect_<결과>`, id `<칸>:<결과>`(아이콘·줄이면 `<칸>:<아이콘>:<결과>`), payload `card_id`·`player`(아이콘·줄이면
+     `effect`도). 결과는 `resolved`(효과를 썼다), `declined`(거절 행동으로 쓰지 않았다), `unavailable`(인쇄된 조건·대상이 없어 효과를
+     할 수 없이 끝났다 — fizzle; 그래도 규칙이 주는 것, 곧 Long Reach가 이미 고른 진영(OQ-060)은 그 앞의 사건이 말한다), `lapsed`(선택
+     칸을 턴 끝까지 쓰지 않았다), `expired`(칸을 쓰기 전에 카드가 플레이를 떠났다 — 접합 짝 카드의 칸도). 결과는 칸을 끝낸 행동이
+     정한다: 앞부분을 쓴 뒤 남은 것을 거절하면 `declined`. 남은 아이콘이 있는 칸이 끝나면(lapse·fizzle·만료) 아이콘마다 하나.
+     지금까지 칸 사건 없이 닫히던
+     답(지불·Spy·회수·진영 고르기·폐기·버리기·계약·hook 일곱)도 낸다. 칸마다 달랐던 거절 사건(`agent_card_payment_declined`,
+     `agent_card_trash_declined`, `agent_card_acquisition_declined`, `corrinth_city_payment_declined`, `…:recall_declined`)은
+     `agent_card_effect_declined` 하나로. 턴 끝 fizzle의 id는 `…:unavailable`(지금은 `…:resolved`), Leader Signet 칸의 해결 불가는 자기
+     종류 `leader_signet_unavailable`(id `<Signet 출처>:unavailable`; 지금은 Agent 카드 종류를 빌려 씀). 칸 사건 payload에는 다른 키를
+     싣지 않는다(The Beast's Spoils의 `crysknife`·`spice`·`troops`는 빠지고 spice는 3번으로).
+  2. **출처는 `<칸>`.** 칸이 내는 사건의 id는 `<칸>`에서 시작한다 — 아이콘이 하는 일(얻기·뽑기·병력 모자람)도 `<칸>`이고 아이콘은
+     자기 칸 사건에만 이름을 남긴다(2c-3에서 보드 칸과 같게 맞춤; Urgent Shigawire가 더한 뽑기는 칸의 `cards` 아이콘과 다른 단위라
+     `<칸>:boost:<결과>`, payload의 `effect`는 `cards`): 폐기 `<칸>:trash:<card>`, 버리기
+     `<칸>:discard:<card>`, 지불 `<칸>:paid`, 지불로 낸 책략 `<칸>:intrigue_trashed:<card>`, 개인 카드 뽑기의 섞기
+     `<칸>:discard_shuffled`, 책략 뽑기 `<칸>:intrigue_draw:<n>`, 획득 `<칸>:…`. 칸 없는 이름(`…:agent_card`, `…:agent_card_payment`,
+     `…:agent_card_discard`, `…:agent_acquisition`), 카드 정의 이름(`…:agent_card:<정의>`), 출처에 이미 있는 낱말의 되풀이
+     (`<칸>:intrigue_draw:intrigue_draw`, `<칸>:long_live_fighters:…`)를 없앤다. 다른 좌석의 결정(`<칸>:opponent:<좌석>`)과 연구·표본·
+     Tleilaxu 사건(2c-5)은 그대로.
+  3. **칸의 자원·VP는 `resources_gained`(판단 3·4).** 칸이 주는 Solari·spice·water·VP는 출처 `<칸>`의
+     `resources_gained` 하나로 — 기록 칸의 얻기, 아이콘의 얻기, 지불 화살표의 보상(Organ Merchants, Smuggler's Haven, Junction
+     Headquarters), Arrakis Observer의 버리기 spice(지금 `agent_card_effect_resolved`), The Beast's Spoils의 spice, Slig Farmer의 Solari
+     (지금 지불 사건의 `gained`). VP가 이미 자기 출처 사건의 키인 곳(`agent_card_trashed_for_vp`, `corrinth_city_payment_resolved`)은
+     그대로 둔다(지불 사건 모양은 2c-6).
+  4. **시험 해결의 답은 하나의 물음.** `agent_card_effect_is_unavailable`은 "지금 해결하면 효과 없이 끝나는가"다. 줄(고르기·지불)을
+     낼 수 있으면 아니다. 선택 칸은 줄로만 해결하므로, 줄이 없으면 그렇다 — 선택 화살표 모두 같게(지금은 Tleilaxu Surgeon·Piter·
+     Tleilaxu Master만 "그렇다", 나머지는 예외로 "아니다"; 엔진의 행·턴 끝은 선택 칸을 먼저 거르므로 바뀌지 않는다). 의무 칸은 해결해
+     보고, 첫 사건이 아니라 그 칸의 `unavailable` 사건을 찾는다. 한 행동으로 해결할 수 없는 칸(줄로만 해결하는 칸, 선택 화살표, 고르는
+     중인 칸)은 모두 같은 예외 `BoxNeedsRows`를 던지고, 시험 해결은 그 예외만 읽는다(지금은 `NotImplementedError`·`RuntimeError`·
+     `ValueError` 셋을 삼킨다).
+- **2c-3 — 보드·Conflict·계약:**
+  1. **출처의 사건은 맨 뒤(2c-2와 같은 원칙).** 한 출처(보드 칸의 아이콘, Conflict 보상, 계약 완수)가 한 행동에서 낸 사건들 가운데
+     그 출처 자신의 사건(`board_effect_resolved`, `combat_reward_gained`, `contract_completed`)은 맨 뒤 — Conflict 보상은 이미 영향력
+     뒤였고, 계약은 영향력·병력 모자람 앞에서 뒤로, 보드는 병력 모자람 앞으로.
+  2. **보드 칸 아이콘마다 사건 하나, id `<칸>:<아이콘>`.** 보드 출처는 `round:R:player:P:board:<space>`. 아이콘 키 없이 칸 이름만 쓰던
+     Maker 칸 셋(`hagga_basin`·`imperial_basin`·`deep_desert`), Sietch Tabr, Tuek's Sietch, Imperial Privilege의 회수는 아이콘 키를
+     붙이고, 책략 맞바꿈도 보드 사건(`imperial_privilege_intrigue`)을 낸다. 보드 칸이 하는 일(뽑기·연구·계약·병력 모자람·Imperial
+     Privilege의 회수, Sietch Tabr의 Desert Riding 토큰·방패벽)은 보드 출처로 이름 짓는다(아이콘 키 없이 — 아이콘은 자기 사건에만).
+  3. **자원은 `resources_gained`(판단 3).** 보드 칸의 자원(일반 자원 아이콘, Maker 칸·Tuek's Sietch의 spice와 보너스 spice, Sietch
+     Tabr의 water)은 보드 출처의 `resources_gained`로 내고 보드 사건 payload에서는 뺀다(보너스 spice는 그 양이 0이 아닐 때 `bonus_spice`로
+     남긴다 — 칸에 쌓였던 것을 말하는 값). Control 보너스(`control_bonus_gained`)도 출처 `round:R:player:P:control:<space>`의
+     `resources_gained`로(화면은 `control` 출처를 칸 이름으로 읽는다). Conflict 보상과 계약 완수는 여러 보상을 한데 싣는 사건이라
+     자원·VP를 그대로 키로 싣는다(판단 4의 관례).
+  4. **payload는 0을 싣지 않는다.** `combat_reward_gained`(14키를 0까지 싣던 것 → 0이 아닌 보상, 그리고 `multiplier`·`player`·`rank`),
+     `contract_completed`(모양 셋 → 하나: `contract_id`·`player`와 0이 아닌 보상 키; 받자마자 완수하는 계약의 id도
+     `<출처>:contract:<계약>:completed`로 다른 길과 같게), 보드 사건의 `sandworms`·`bonus_spice`.
+  5. **Conflict 보상의 책략 카드도 `intrigue_card_drawn`**(id `<보상 출처>:intrigue_draw:<덱 장수>`, 지금은 사건 없음). 덱이 모자라면
+     지금처럼 대기.
+  6. 하지 않는 것: 폐기 보상 frame이 낼 카드가 없으면 확인 없이 건너뛰는 것(2026-09-30 원칙의 적용 대상이지만 Combat 중에는 플레이한
+     카드가 있어 사실상 닿지 않고, 확인 창에는 새 행동 템플릿이 필요하다 — 사용자 결정으로 남긴다), 지운 거절 행동의 codec 템플릿
+     둘(망 행 번호가 바뀌므로 A8과 함께), 보드 hook 줄이기(2d).
+- **2c-4 — 지도자·Tech:**
+  1. **Signet Ring 칸도 칸 사건 하나.** Signet Ring 카드의 칸(또는 그 칸을 복사한 Ghola, Servo-Receivers의 Signet)은 2c-2의 칸 규칙을
+     따르되 지도자 능력이므로 자기 종류 `leader_signet_<결과>`(`resolved`·`declined`·`unavailable`·`lapsed`·`expired`)를 쓴다
+     (`box_events.signet_box_event`; id `round:R:player:P:leader_signet[:<아이콘>]:<결과>`, payload `card_id`(Servo는 `tech_id`)·
+     `player`·아이콘이면 `effect`). 턴 끝 lapse·fizzle·만료와 Fill Coffers의 아이콘 해결이 Agent 카드 종류(`agent_card_effect_*`)를
+     빌려 쓰던 것도 이 종류로. `leader_signet_resolved`가 18가지 payload를 싣던 것(자동 인장만 `card_id`, 카드 수·병력·memories·보너스
+     spice·진영 등)은 칸 사건 payload 하나로 — 자원은 `resources_gained`(출처 `…:leader_signet`), 뽑기·영향력·병력 모자람은 자기
+     사건, 나머지는 상태가 말한다. 거절 사건(`leader_signet_payment_declined`, `leader_card_trash_declined`)은 `leader_signet_declined`
+     하나로. 칸 사건은 맨 뒤(지금 Lead the Way·Fedaykin·Kota·Shaddam은 뽑기·영향력 앞).
+  2. **지도자 능력의 출처는 그 지도자.** Signet이 아닌 지도자 능력(Esmar의 Tuek's Sietch, Staban의 Smuggle Spice, Assassin, Chani의
+     Tactics 트랙, Steersman의 Hungry for Spice)은 출처 `round:R:player:<지도자 좌석>:leader:<leader_id>`로 이름 짓는다 — 지금
+     Esmar는 방문자 좌석, Assassin·Tactician은 유발한 폐기·후퇴의 출처, Hungry for Spice는 `hungry_for_spice`를 붙인다(Unpredictable
+     Foe의 `leader_reveal:intrigue`는 기보 다리가 읽으므로 그대로). 화면은 `leader` 출처를 지도자 이름으로 읽는다. 자원은
+     `resources_gained`(판단 3): Staban의 `leader_ability_spice_gained`는 없어지고(다른 좌석 차례의 "지도자 능력" 카드 제목은
+     `leader_ability_resolved`가 이어 받는다), Esmar·Assassin의 Solari와 Tactics 트랙의 spice·water는 사건 payload에서 빠진다. 능력
+     자신의 사건(`leader_ability_resolved` id `<출처>:resolved`, `tactics_token_advanced` id `<출처>:tactics`)은 맨 뒤. Reverend
+     Mother Jessica의 칸 반복(2c-6에서 사건을 얻음)은 뒤집힌 면의 이름 `…:leader:reverend_mother_jessica`로, 사건의 `leader_id`도
+     그 면(화면이 그 능력 이름을 읽는다; 2c 리뷰).
+  3. **Tech:** Reveal 보너스(`tech_reveal_bonus`)는 Reveal 출처 `<reveal>:tech:<타일>` 하나로(늦게 받은 것의 `…:tech:<타일>:late`
+     없앰), 0인 양은 싣지 않는다(Solari는 Reveal의 얻기가 낸다). Tech 폐기는 `<출처>:tech_trashed`로(`…:trashed`와 섞여 있던 것).
+  4. 하지 않는 것: 주지 않는 거절 행동 셋의 codec 템플릿(A8과 함께), 의무 단계에 "막히지 않게" 남긴 거절(행동이 바뀜 — 사용자 결정),
+     닿지 않는 `acquire_leader_reserve`와 Esmar의 거절만 있는 인장(죽은 코드 정리는 2d), Tech 지불 사건 모양(2c-6). `leader_signet_resolved`
+     에서 빠진 지불(Chani의 water, Staban의 spice 1·Solari 2, Shaddam의 Solari 3)은 2c-6의 지불 사건으로 다시 남긴다.
+- **2c-5 — 연구·Immortality·Scouts:**
+  1. **트랙은 좌석의 것.** 연구 토큰과 Tleilaxu 토큰의 이동 사건은 그 좌석 트랙의 칸 이름으로 —
+     `round:R:player:P:research:<칸>`(지금 `<부른 출처>:research:<칸>`, 부른 곳마다 41모양이고 연쇄 보너스는
+     `…:research:c3r1:research:c4r2`), `round:R:player:P:tleilaxu:<칸>`·`…:tleilaxu:end`(지금 `<출처>:tleilaxu:<n>`). 칸이 주는 것의
+     출처는 그 칸이다(연구 보너스의 얻기와 표본, Tleilaxu 칸의 책략 뽑기, Scouts Tleilaxu Offering). 칸 보너스가 여는 창(방향·보너스
+     고르기·폐기)과 차례의 줄은 토큰을 움직인 쪽의 이름을 지킨다 — Arrakeen Scouts 줄이 자기 연구의 창을 그 이름으로 알아본다
+     (`scouts_effects._rewards_ahead`; 같음 확인이 이 결합을 잡았다). 짝 아이콘(c3r3·c3r5 등)의 표본·뽑기와 c7r3의 두 보상도 칸
+     이름으로 받는다(창·줄이 가진 `<부른 출처>:research:<칸>`에서 칸을 읽는다; 2c 리뷰). `advance_tleilaxu`는 출처를 받지 않는다.
+     Tleilaxu 칸의 spice는 `resources_gained`(판단 3), VP는 `tleilaxu_advanced`의 키(판단 4, 트랙 사건 관례).
+  2. **부르는 쪽이 붙이던 낱말을 뺀다:** `…:research`(연구는 이제 트랙이 이름 짓고, 연구 뽑기는 `<출처>`로 — `<출처>:research_draw`는
+     `research_drew_card`의 id로만), `…:specimen`·`…:specimens`(표본 도우미가 `:specimens`를 붙인다), 책략 줄의 `…:intrigue`·`…:draw`.
+     한 줄의 연구 둘은 서로 다른 방향 창을 열 수 있어 `…:research:<n>`을 남긴다.
+  3. **같은 효과는 같은 사건:** Family Atomics와 Clear the Market의 Imperium 줄 다시 채우기는 `imperium_row_cleared`(`removed`·`dealt`,
+     좌석이 한 것이면 `player`; `rules/market_events.py`) — Family Atomics는 그 뒤에 자기 사건 `family_atomics_used`(좌석만),
+     `scouts_row_cleared`는 없어진다.
+  4. **Scouts의 자원 얻기:** Offworld Operation의 spice(`scouts_helix_spice`)와 임무 물품의 자원은 `resources_gained`(출처
+     `<출처>:<임무>`); `scouts_mission_goods_taken`은 그 뒤에 임무와 좌석만(자원이 아닌 Maker Hooks 토큰은 그 키로).
+  5. **Skill Reveal 보너스**는 Tech와 같게: Reveal 출처 `<reveal>:skill:<타일>` 하나(`…:late` 없앰), 0인 양은 싣지 않는다.
+  6. 개인 덱 섞기의 chance id는 그것을 부른 뽑기의 이름을 따르므로, 같음 확인과 기보 다리(`draw_reshuffle_renamed`)는 "같은 라운드에
+     같은 더미를 섞는 개인 덱 섞기"를 이름만 바뀐 것으로 본다(Scouts 보상의 뽑기처럼 좌석이 이름에 없어도 더미가 좌석을 말한다).
+     기보 다리는 Intrigue 덱 섞기(`…:intrigue_shuffle`)도 같은 이름 바꿈(책략 줄·Signet 지불의 낱말, Esmar의 방문자 좌석 → Esmar,
+     Tleilaxu·연구 칸)이면 받는다(corpus 2,000판에는 없음; 2c 리뷰).
+  7. 이미 된 것: 연구 칸 아이콘의 순서(2b, 판단 5), `scouts_choice_skipped`(2a), Scouts 장치 이름(정리-1). 연구 창의 거절은 차례 밖
+     창에만 남는다(2b).
+- **2c-6 — 나머지 같은 종류의 차이:**
+  1. **지불은 `resources_paid` 하나**(판단 3의 거울, `rules/gain_events.py`): id `<출처>:paid`, payload `player`·`source`와 낸 것만 —
+     `solari`·`spice`·`water`·`specimens`. 지금의 지불 사건 아홉(네 관례: 따로 키 `intrigue_cost_paid`·`scouts_cost_paid`,
+     `resource`+`spent` `agent_card_payment_resolved`, `cost`+`resource` `combat_reward_paid`, 양만 `leader_signet_spice_paid`·
+     `leader_signet_solari_paid`·`reveal_spice_paid`, 자원 하나 `leader_board_repeat_paid`·`research_bonus_paid`, 그리고
+     `scouts_specimens_paid`·`corrinth_city_payment_resolved`)을 합친다. 지불로 얻는 것(Corrinth City·Conflict 보상의 선택 비용의
+     VP)은 `resources_gained`. 2c-4에서 빠진 Signet 지불(Chani의 water, Staban의 spice·Solari, Shaddam의 Solari)도 이것으로 남긴다.
+     카드를 내는 비용(Dissecting Kit의 접합 카드 폐기)은 폐기 사건이 말한다.
+  2. **거절 낱말:** `declined`(소유자가 내놓은 선택을 거절), `passed`(창을 넘김), `skipped`(할 것이 없어 확인), `unavailable`(인쇄된
+     조건·대상이 없음), `lapsed`(턴 끝까지 안 씀), `expired`(출처가 먼저 사라짐). 같은 일을 다른 종류로 내던 폐기 거절
+     (`tech_trash_declined`, `combat_reward_trash_declined`, `intrigue_trash_declined`)은 `optional_trash_declined` 하나로(id
+     `<출처>:trash_declined`; Plasteel Blades는 `tech_id`를 지킨다). 거절 사건의 payload는 좌석과 거절한 것을 가리키는 키만 —
+     Conflict 보상의 선택 비용 거절은 `player`·`resource`, Spy 회수 거절은 `player`(0인 양 없앰). 남은 거절 종류는 이미 이 낱말을
+     따른다. 지울 거절(필수 단계의 `decline_*`)과 그 codec 자리는 A8과 함께 사용자가 정한다.
+  3. **`shortfall_refilled`** id에서 사건 기록 길이를 뺀다(`round:R:player:P:shortfall_refilled`, id는 유일하지 않아도 된다), 0인 양은
+     싣지 않는다.
+  4. 쉼표 문자열 목록(`cards_revealed.card_ids` 등 여섯)은 **그대로 둔다** — **바뀜(2026-10-18 사용자 결정 "목록으로 바꾸자"):
+     정리-2c-7에서 목록으로.** 처음 판단: payload 값의 형(`core.actions.ActionValue =
+     bool | int | str`)이 목록을 받지 않아 핵심 형과 사건 직렬화·`PlayerView`를 함께 바꿔야 하고, 화면이 문자열을 나누는 곳
+     (`core.js` 둘, `effects.js`, `panels.js`)도 고쳐야 한다. 사건 문법은 "목록은 쉼표 문자열"로 적는다.
+     **구현(2026-10-18, 정리-2c-7):** `core.events.EventValue`(= 행동 값 | 문자열 튜플 | 정수 튜플)가 payload 값 형이고 행동 인자 형은
+     그대로다. 사건 12종의 15개 필드(`cards_revealed.card_ids`, `contracts_revealed.contract_ids`, `imperium_row_cleared.dealt`·`removed`,
+     `leader_draft_pool_revealed`·`leader_draft_unused.leader_ids`, Scouts 일곱 — `scouts_subcommittees_revealed.subcommittee_ids`,
+     `scouts_mission_layout.rounds`(정수), `scouts_maker_spice_added.space_ids`, `scouts_contracts_cleared.dealt`·`removed`,
+     `scouts_market_revealed`·`scouts_market_cleared.card_ids`, `scouts_mission_goods_placed.locations`,
+     `scouts_shield_wall_rebuilt.players`(정수))가 목록이다. 화면(`effects.js`, `panels.js`의 좌석 목록)과 E2E 둘이 목록을 읽고, 로그는
+     이미 목록을 이어 읽었다. frame 문맥의 쉼표 문자열(대기 아이콘 등)은 행동 값이라 그대로다. 같음 확인은 선언된 차이
+     `payload_lists`(옛 기록의 문자열을 목록으로).
+
 ### B단계 — 행동 이름·단위 교체 (선택, A단계 뒤에 정한다)
 
 - 내용: 행동을 `동사(대상, slot=k)`로 바꾸고 묶인 행동을 조각 행동으로 나눈다. `slot`은 대기 능력 목록의 자리다(지금
   접합 차례의 `box=1`을 일반화). 엔진 밖 약 5,300곳을 함께 옮긴다.
 - 정하는 기준: A8 뒤 확장 하나를 빼고 학습한 망이 그 확장에 얼마나 빨리 적응하는지(entity-network-plan.md의 남은
   실험)를 행동 특성 표만으로 잰다. 충분하면 B단계는 하지 않는다. 모자라면 그때 8절의 두 질문과 함께 정한다.
+- **사용자 결정(2026-10-19, "구조 상 B단계도 해야한다고 봐. 굳이 실험 하지말고"):** 측정 실험 없이 B단계를 한다. A8 재학습은
+  예비 비교까지만 돌리고 탐색 좌석 관문은 건너뛴다(B단계 뒤 다시 학습). 착수 전에 8절의 질문(행동 모양, `agent_turn` 나누기)과
+  자리(slot) 규칙을 사용자와 정한다.
+- 함께 할 일(정리-2e에서 미룸, 사용자 결정 2026-10-19): Conflict 보상·계약·Reveal 자동 이득을 종류별 합계
+  (`ConflictReward`·`ContractCondition`·`ContractReward`·`PersonalCardRevealEffect`) 대신 기록 조각을 하나씩 읽어 지급하게 바꾼다.
+  묶인 보상을 조각 행동으로 나누는 이 단계의 일과 같은 곳을 고친다. 합한 키를 싣는 사건(`combat_reward_gained`·
+  `contract_completed`·Reveal 이득)과 화면 문구도 이때 함께 정한다. B단계를 하지 않으면, C단계에서 합계가 담을 수 없는 보상이
+  처음 나올 때 한다.
 
 ### C단계 — 새 내용
 
@@ -251,6 +1080,27 @@ Rise of Ix, 기본판 Imperium, Conspiracy 카드를 능력 기록으로 더한�
 6. 속도: `scripts/ab/profile_legal.py`로 합법 행동 계산 시간을 단계 전후에 잰다. 10% 넘게 느려지면 병합 전에 고친다
    (탐색 좌석이 매 결정 이것을 수천 번 부른다). `profile_legal.py`는 기본 룰셋 10판이라 옮긴 효과가 거의 안 나오므로, 1번의 기록을 다시
    두며 `legal_actions`만 재는 `scripts/ab/time_legal.py`(전체와 옮긴 frame만 따로, 시작 master와 번갈아)도 돌린다(A1부터).
+7. **정해진 차이(정리 단계; 2026-10-17 도구 보강):** 보이는 것을 일부러 바꾸는 단계는 바뀌는 것마다 규칙 하나를 적은 모듈을
+   `check --differences <모듈>`로 준다(모듈은 `RULES`를 정의, 규칙은 `scripts/ab/equivalence_rules.py`의 `Rule`). 도구가 옛 기록을
+   규칙대로 새 모양으로 옮겨 놓고 비교하므로, 목록에 없는 차이는 여전히 잡는다(위 5절 "정리 단계"의 방법 3). 규칙의 고리:
+   - `old`: 옛 기록의 한 단계를 새 모양으로 고쳐 쓴다(사건 이름·payload, 행의 순서, 거절 줄 빼기, 기록된 수의 이름 — 고친 수로
+     재생한다). 새 엔진에 없는 단계는 `vanish`로 표시한다 — 그 단계는 사건(옮긴 뒤 없어야 함)과 뒤 상태만 비교한다.
+   - `new`: 옛 기록에서 만들 수 없는 새 엔진 쪽 것(새 엔진에만 있는 행·사건)을 정돈한다.
+   - `moves`: 기록된 수 대신 새 엔진이 둘 수(여럿, 또는 없음).
+   - `answer`: 옛 엔진에 없던 결정(새 확인 창, 옛 엔진이 정해 두던 순서)에 둘 수. 그 수의 사건과 뒤 상태는 앞 단계와 함께 비교한다.
+   - `state_fields`: 새 엔진이 일부러 더하거나 빼거나 바꾸는 상태 필드를 `GameState.<필드>`나 `PlayerState.<필드>`(모든 좌석)로
+     적는다(비교에서 뺀다). 중첩 dataclass의 필드(`Resources.<필드>`)는 더한 것만 이렇게 적고, 빼거나 바꾼 것은 그것을 담은 필드도
+     함께 적는다(옛 digest가 그 필드 전체를 담기 때문). 선언하지 않은 필드 차이는 다름이다.
+
+   규칙이 단계를 실제로 바꾼 횟수를 세고(규칙이 돌려주는 값은 믿지 않는다 — 바꾸고도 아니라고 하면 차이가 세지 않은 채 숨는다),
+   한 번도 적용되지 않은 규칙은 출력에 따로 적는다. 답한 결정은 그 자체를 비교하지 않으므로 그 창들(행동 id 묶음)을 출력에
+   적는다. 기록의 끝(끝남, 합법 행동 없음)도 비교하고, 옛 엔진의 오류로 끝난 기록은 따로 적는다. 새 엔진이 수를 더 두거나 덜 두면 보기의
+   `revision`을 그만큼 옮겨 비교한다. 기록은 형식 2다: 단계마다 내용(합법 행이나 우연 결정, 화면 정보, 사건, 네 좌석 보기)을
+   그대로 칸별로 압축해 둔다. 그래서 규칙을 바꿔도 다시 기록할 필요가 없고, 다른 단계에서는 무엇이 달랐는지(한쪽에만 있는
+   행·사건, 화면 조각, 보기 키, 상태 필드 이름)를 보여 준다. 형식 1 기록(해시만, `*.pkl`)은 거절하니 다시 기록한다. 에이전트
+   재기록 비교는 `compare <기록1> <기록2>`다(전에는 git 무시 임시 스크립트였다). 테스트(`tests/unit/test_engine_equivalence.py`)는
+   엔진에 변경 하나씩을 덧대어(사건 이름, 새 확인 창, 없어진 단계, 새 행, 상태 필드) 규칙 없이는 잡히고 규칙이 있으면 같으며,
+   선언하지 않은 둘째 변경은 여전히 잡히는지 본다.
 
 A0 관문(2026-10-15, 시작 master `8dcf302d`): 1번 200판 모두 same(191,836단계, 행동 241종 재생). 2번 v147 묶음
 (`local/records-corpus/v147-2af1d9f5`, 2,000판) 모두 exact(시작 master보다 앞선 `2af1d9f5`로 만든 묶음이고, 그 사이 엔진 변경은 선택 불가 표시 첫 묶음뿐). 3번 codec 그대로(v147, 결정 stack 그대로). 4번 기존 기대값
@@ -265,6 +1115,127 @@ frame 키를 직접 읽던 테스트 둘의 읽는 법, 옮긴 도우미의 impo
 6번 `time_legal.py` 100판 번갈아 세 번씩: 전체 호출당 48.3–48.9 µs(시작) 대 48.5 µs, 책략 frame 12.9–13.0 µs 대 12.4–12.6 µs;
 `profile_legal.py` 잡음 안. 독립 리뷰: 막는 문제 없음, 지적 7개 고침(worklog 2026-10-16).
 
+A2 관문(2026-10-16, 시작 master `7ba624ad`): 1번 200판 모두 same(191,836단계; 옛 분기를 지우기 전과 뒤 두 번). 200판에서 기록 칸 43개가
+해결됐고 안 나온 Pointing the Way는 단위 테스트로 지킨다. 같은 200판을 브랜치에서 에이전트가 다시 두어도 수 하나까지 같다. 2번 v148 묶음
+(`v148-02e203ce`) 2,000판 모두 exact. 3번 codec 그대로 v148(결정 stack 꼴 그대로). 4번 기존 기대값 바꾼 것 없음. 5번 pytest 7,747개·ruff·mypy
+통과, E2E 67종 통과, 소크 720판 실패 0. 6번 `time_legal.py` Agent frame 호출당 1~2% 느림(관문 10% 안). 독립 리뷰: 막는 문제·중간 없음. 옛·새 엔진 차등 탐침 330판(Agent 효과 상태 172,999곳에서 합법 행동·사건·상태·네 좌석 보기와 모든 효과×키의
+막힘 이유·대기 판정까지)과 강제 탐침 2,665곳이 모두 같았다. 낮은 지적 3개(아이콘 조건이 막힘 이유를 늘 낼 것, 두 곳에 복사된 조건 판정,
+화면 비교 범위)와 사소한 지적들을 반영했다(worklog 2026-10-16 A2).
+
+도구 보강 관문(2026-10-17, master `adc75ccb`; 엔진은 그대로): 새 도구(형식 2)로 master와 정리-1 시작점 `8c0fb5f4`에서 각각 200판을
+기록해(82초·85초, 각 128MB — 형식 1은 310MB) master에서 확인하면 둘 다 200판 모두 same(191,836단계, 행동 241종)이고, 행동 id별
+재생 횟수(180,135번)가 옛 도구로 돈 정리-1 관문과 하나하나 같다. `compare`로 두 기록의 수순이 200판 모두 같고, `time_legal.py`가 두
+엔진에서 새 형식을 읽는다(호출당 49.8–51.3µs). 확인은 79~85초. 테스트 25개(엔진에 변경을 덧댄 여러 경우, 바뀐 형식, 마스크,
+쓰이지 않은 규칙, 수순 비교, 참값이 숫자로 바뀐 경우)와 pytest 7,892개·ruff·mypy. 독립 리뷰: 막는 문제 없음 — 규칙 없이 옛 도구보다
+놓치는 경우는 찾지 못했다(엔진에 변경 일곱 가지를 덧대어 모두 잡힘). 중간 지적 셋 반영: (1) 테스트가 핵심 비교를 증명하지 못함 —
+도구를 20가지로 망가뜨려 14가지가 테스트를 통과했다; 테스트를 25개로 늘려 도구 변이 24가지를 모두 잡는다. (2) 상태 필드
+선언이 문서대로 되지 않음 — 이제 `GameState.x`·`PlayerState.x` 하나로 모든 좌석과 끝의 스키마 확인이 된다. (3) 적용 횟수를 규칙의
+답에 맡김 — 이제 단계가 바뀐 것으로 센다. 낮은 지적(옛 단계의 수 이름 고치기, 기록의 끝, `git archive`한 엔진의 커밋 표시, 답한
+창 목록, 답할 규칙이 없을 때 합법 행동 다시 계산 안 함 등) 반영. 고친 도구로 두 기록을 다시 확인해도 200판 같음.
+
+정리-1 관문(2026-10-17, 시작 master `8c0fb5f4`로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(조각 합치기·hook 등록부
+뒤, 리뷰 반영 뒤). 에이전트 재기록 같음. A7·A6 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음, 조사 시나리오 같음.
+이벤트 표 repr, 미션 참가 표 같음. 2번 v148·v147 묶음 각 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로. 5번 pytest
+7,865개(리뷰 반영 뒤 7,867개)·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 합법 행동 49.8→50.4µs(중앙값 셋), Agent frame
+65.6→66.7µs — 잡음 안(바꾼 곳은 Scouts뿐). 독립 리뷰: 막는 문제·중간 없음 — Scouts 화면 문구·이유를 상태 38개×좌석 넷×변형
+11개에서 28만여 번 비교해 같고, Ingratiate·Funeral Rites·Termination Request와 병력을 맡기는 미션 쪽으로 몬 300판(앱 AI·휴리스틱·무작위
+좌석, 24만여 단계, Scouts 결정 17,032곳의 행동 문구와 새 에이전트의 고름까지)이 같았다. 앱 AI 합성 모듈은 두 엔진에서 바이트 단위로
+같다. 낮은 지적 하나(닿지 않는 자동 손패 폐기가 예외)와 사소한 지적 셋(폐기 비용 모양 검사, hook 테스트 범위, 앱 AI 문서) 반영.
+
+A7 관문(2026-10-17, 시작 master `9234a14a`로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A7a·A7c·A7b 뒤, 리뷰
+반영 뒤). 에이전트 재기록 같음. A7 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(하위 단계마다; A7a는 A6 탐침도
+같음), 조사 시나리오 같음. 기술 타일·연구 칸·Tleilaxu 트랙·Reclaimed Forces·Scouts 77개의 repr, 망 특성 digest 같음. 2번 v148·v147
+묶음 각 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로. 5번 pytest 7,865개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
+6번 호출당 합법 행동 50.0→49.7µs(중앙값 셋), Agent frame 65.9→65.6µs — 잡음 안. 독립 리뷰: 막는 문제·중간 없음 — 카탈로그, 코덱 11개 설정, 관측 표, 기술 타일·Scouts·Immortality 문구 두 언어, 망 특성 digest가 같고, 앱 AI 좌석으로 직접 둔 300판(26만여 단계)이 같았다. 낮은 지적 다섯(전용 조각·잃기만 하는 줄이 모든 기록에 열림, 옮기는 함수가 hook·구조를 안 봄, 미션 줄 범위, 거절 가능 여부 두 곳, 사소한 문구) 반영 — 이제 Scouts 전용 것은 `SCOUTS` 기록에만 허용하고 옮기는 함수가 모르는 모양을 거부.
+
+A6 관문(2026-10-17, 시작 master `0c58e583`로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A6a·A6b 뒤, A6c 뒤, A6e 뒤,
+리뷰 반영 뒤). 에이전트 재기록 같음. A6 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(하위 단계마다), 조사 시나리오
+7개 같음. Tech 타일 18장의 repr·획득 키, 망 특성 digest 같음. 2번 v148·v147 묶음 각 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값
+그대로. 5번 pytest 7,837개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 합법 행동 50.5→50.0µs(중앙값 셋), Agent frame 67.0→65.8µs — 잡음 안. 독립 리뷰: 막는 문제·중간 없음 — 카탈로그, 코덱 6개 설정, 지도자·Tech 문구 두 언어, 망 특성 digest가 같고, 300판 차등 탐침(앱 AI 좌석 포함, Servo 인장 284회·Jessica 뒤집기 133회 등 23만여 단계)과 Servo 시나리오 2,184개가 같았다. 낮은 지적 다섯(불러올 때의 검사가 처리 코드보다 느슨함 — 이제 처리 코드가 못 다루는 조건·보상·면·뒤집기 모양을 거부)과 한국어 기억 문구 반영. 전체 pytest가 새 테스트 파일 이름 겹침과, 로그의 EVENT_IMPLIED_LEADER 표가 기대하는 Smuggle Spice의 Staban 이름 빠짐을 잡아 고쳤다.
+
+A5 관문(2026-10-16, 시작 master `bdef8c76`, 보강한 도구로 기준 기록을 다시 만듦): 1번 200판 모두 same — `page`까지(A5a·A5b 뒤,
+A5c 뒤, A5d 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음(두 번). A5 조사 탐침 2,000판 결과 파일이 시작 master와 바이트 단위로 같음(세 번),
+조사 시나리오 5개 같음. 옮긴 표: 계약·Conflict 정의 75개의 repr, 보드 829가지 조합이 옮기기 전과 같음. 2번 v148·v147 묶음 각 2,000판
+exact. 3번 codec 그대로. 4번 기존 기대값 그대로. 5번 pytest 7,793개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 합법 행동 49.5→50.7µs(중앙값 셋, 약 +2%), Agent frame 66.0→67.0µs — 잡음 안.
+독립 리뷰: 막는 문제·중간 없음 — 망 특성 digest·관측 id 표·카탈로그·코덱 10개 설정·문구 599개가 같고, 150판 차등 탐침(행 문구까지)
+12만여 단계가 같았으며, 도구의 `page` 비교가 실제 차이를 잡고 헛차이를 내지 않음을 확인. 낮은 지적(옮기는 함수가 표현 못 하는
+기록을 조용히 넘김 — 이제 멈춤; 문서 인용 두 곳; 키 겹침)과 사소한 것들 반영.
+
+A4d~A4h 관문(2026-10-16, 시작 master `3979c06a`, 같음 확인 기록은 `26b41eca` 것 그대로): 1번 200판 모두 same(여러 번: 1단계 뒤,
+2단계 뒤, 결함 고친 뒤, A4e·A4f·A4h 뒤). 에이전트 재기록 같음. 조사 탐침 2,000판의 결과 파일이 시작 master와 바이트 단위로 같음(2단계
+첫 판은 달라 결함을 찾음 — 위 "결함과 교훈"; 고친 뒤와 최종), 탐침 40판의 수마다 추적(합법 행동, 대기 선택의 행, 고른 행동, 사건 id)도
+같음, 조사 시나리오 7개 같음. 2번 v148 묶음 2,000판 exact, 옛 기보를 옮기는 길로 v147 묶음 2,000판도 exact. 3번 codec 그대로. 4번 기존
+기대값 그대로(옛 선택/의무 표 테스트를 기록 표시 테스트로 바꿈, 제공 함수 탐침 테스트에 같은 행 금지를 더함). 5번 pytest 7,785개·
+ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 49.6~49.7 µs(시작) 대 49.8~50.1 µs — 잡음 안. 독립 리뷰: 막는 문제·중간 없음 — 옛·새 엔진 차등 탐침 300판 32만여 단계(대기 선택마다의 행, 화면의 선택 머리글·행 주인·회색 행까지)와 열림 판정 약 5,700만 번 호출, 옛 기보 v141·v143·v145 각 2,000판 옮김이 모두 같았다. 낮은 지적 1개(모양 판정이 처리하지 못하는 조각까지 받아들임 — 받는 조각을 좁힘)와 사소한 것들(같은 이름 함수, Agent 칸 폐기 모양의 새 필드)을 반영했다.
+
+**빈틈(2026-10-16, A5 시작 때 닫음 — 도구가 `page`를 비교):** `engine_equivalence.py`는 합법 행동(합친 목록)을 비교하고 Reveal 대기 선택마다의 행은 비교하지 않는다. 그 목록은
+화면과 앱 AI가 읽으므로, 다음 단계부터 도구에 넣을 일이다(시작 master로 기록을 다시 만들어야 한다). 그때까지는 조사 탐침의 칸별 행
+비교를 관문에 넣는다.
+
+A4a·A4c 관문(2026-10-16, 시작 master `26b41eca`, 같음 확인 기록을 이 master로 다시 만듦 — 옛 기록과 수 하나까지 같음): 1번 200판
+모두 same(네 번: A4a 뒤, A4c 뒤, 리뷰 반영 뒤 등). 에이전트 재기록 같음. 조사 탐침 2,000판(카드를 손·줄에 넣어 모든 멤버를 봄)의 결과
+파일이 시작 master와 바이트 단위로 같음(A4a 뒤, A4c 뒤), 조사 시나리오 7개도 같음. 2번 v148 묶음 2,000판 exact. 3번 codec 그대로.
+4번 기존 기대값 그대로. 5번 pytest 7,781개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 호출당 49.3~49.9 µs(시작) 대 49.3~50.6 µs —
+잡음 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 292판 약 39만 단계 — 구매 경로 전부, 덱이 빈 Overthrow, 차례 밖, 은행이 빈
+Sardaukar Standard, Fenring·Suspensor Suits, Scouts 시장 280갈래 — 와 카드 문구·카탈로그·코덱 4설정 출력, 모든 모듈 단독 import
+모두 같음), 낮은 지적 1개(나중 기록의 조각이 조용히 무시될 수 있음 — 모양이 모르는 조각에서 멈추게)와 사소한 것들 반영.
+
+A3g 관문(2026-10-16, 시작 master `45cf88e6`): 1번 200판 모두 same(세 번: 모양 3칸 뒤, hook 12칸 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음
+2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만 88→103). 5번 pytest 7,774개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
+6번 Agent frame 호출당 65.3·63.7·64.7 µs(시작) 대 67.9·65.0·65.8 µs — 관문 안. 더해서 조사 탐침(15칸을 손에 넣고 Ghola·접합 짝까지)을 옛·새
+엔진에서 1,000판씩 돌려 기록한 값 2,219종이 모두 같았다. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 120판 — 상태 52,847곳, 적용한 행동
+236,812번, 턴이 내지 않는 원래 행 10,455번 — 과 시나리오 75개 13,609곳, 조사 시나리오 22개 모두 같음; 일부러 넣은 변이 둘은 첫 30판에서 잡힘),
+낮은 지적 1개(hook 기록에 칸의 일부만 적힌 줄 — 칸 전체를 말할 수 있을 때만 적게)와 사소한 것 3개 반영.
+
+A3f-5 관문(2026-10-16, 시작 master `c28b8346`): 1번 200판 모두 same(두 번: 구현 뒤, 리뷰 반영과 A3f-4 받은 뒤). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec
+그대로. 4번 기존 기대값 그대로(기록 수·아이콘 표 테스트만). 5번 pytest 7,770개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 A3f-3~5를 모두 쌓은
+코드로 Agent frame 호출당 65.5~66.4 µs(시작) 대 66.5~67.8 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 200판 + 줄에 놓은 카드·
+Usurp 100판, 상자 탐침 12,000여 곳, 사람 저장본 9개의 기보 옮김까지 모두 같음), 낮은 지적 2개(Twisted Mentat의 소환이 선택임을 기록에 —
+`RecallAgent.optional`, 아이콘 순서 주석)와 사소한 것 반영.
+
+A3f-4 관문(2026-10-16, 시작 master `b5ba7bfa`): 1번 200판 모두 same(두 번: 구현 뒤, 리뷰 반영과 A3f-3 받은 뒤). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec
+그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,767개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 Agent frame 호출당 65.5~66.4 µs
+(시작) 대 67.0~68.9 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 210판 — 고르기 영향력 636번, Combat 193번 — 과 만든 상황 206개
+두 수 깊이 모두 같음), 낮은 지적 2개(고르는 줄에 조건이 있어야 "둘 중" 모양; 평범한 줄 행은 그 줄이 맞을 때만)와 사소한 것 반영.
+
+A3f-3 관문(2026-10-16, 시작 master `925a814a`): 1번 200판 모두 same(두 번: 구현 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec 그대로.
+4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,765개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 Agent frame 호출당 63.5·65.1 µs(시작) 대
+65.6·65.8 µs — 관문 안. 독립 리뷰: 막는 문제·중간·낮은 지적 없음(차등 탐침 300판 268,141단계 — Piter 손실 695번, Control the Spice 지불
+1,067번, Smuggler's Haven의 같은 지불 줄 포함 — 과 깊이 9까지의 탐색 159,386곳 모두 같음), 사소한 것 1개(죽은 별칭) 반영.
+
+A3f-2 관문(2026-10-16, 시작 master `12732498`): 1번 200판 모두 same(두 번: 구현 뒤, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec 그대로.
+4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,763개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 Agent frame 호출당 64.9·65.5 µs(시작) 대
+65.3·66.4 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 150판 — Observer 버리기 1,962번, 길드 스파이스 119번, Spy 배치 2,108번 중
+먼저 소환 뒤 766번 — 과 시나리오 2,626줄 모두 같음), 낮은 지적 1개(Spy 단계 한 번 해결의 테스트)와 사소한 것들 반영.
+
+A3f-1 관문(2026-10-16, 시작 master `fa9a2b1d`): 1번 200판 모두 same(두 번: 구현 뒤, A3e 브랜치 받은 뒤). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec
+그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,762개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 A3c~A3f-1을 모두 쌓은
+코드로 Agent frame 호출당 67.2·68.3·67.0 µs(시작) 대 67.3·67.3·65.6 µs — 차이 없음. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 230판
+262,400단계 — 획득 4,196번, Tleilaxu Master 표지 0·1·2 상태 모두, Ghola 사본 포함 — 모두 같음; v141·v143·v147 기보 각 400판 대조도 옛
+엔진과 같음; 모든 모듈 단독 import 확인), 낮은 지적 1개와 사소한 것들 반영(주석).
+
+A3e 관문(2026-10-16, 시작 master `ffb1205e`): 1번 200판 모두 same(네 번: 폐기 칸 4개 뒤, Elite Forces 뒤, 리뷰 반영 뒤, A3d 브랜치 받은 뒤). 에이전트 재기록 같음.
+2번 v148 묶음 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,761개·ruff·mypy, E2E 67종, 소크 720판
+실패 0. 6번 Agent frame 호출당 93.9·94.6·95.5 µs(시작, 부하 중) 대 95.6·96.9·94.5 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등 탐침 360판,
+대상 상태 46,616곳 — Ruthless 두 폐기 사이 427, Elite Forces 황제 106·아닌 것 269, Usurp 사본 포함 — 모두 같음), 낮은 지적 2개(아이콘 하나짜리
+검은 폐기는 세는 값을 건드리지 않게; 버리기·책략 모양은 모든 줄이 걸릴 때만)와 사소한 것 3개 반영.
+
+A3d 관문(2026-10-16, 시작 master `70153b51`): 1번 200판 모두 same(다섯 번: 버리기 5칸 뒤, 7칸 뒤, 책략 2칸 뒤, A3c 받은 뒤 리뷰 반영 뒤 등). 에이전트 재기록 같음.
+2번 v148 묶음 2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,759개·ruff·mypy, E2E 67종, 소크 720판
+실패 0. 6번 Agent frame 호출당 64.6 µs(시작) 대 65.1 µs(조용할 때), 부하 때 96.5 대 99.3 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등
+탐침 400판 두 번 — Junction 지불 844번·Branching Path 1,151번 포함 — 과 상황 탐침 221,744줄 모두 같음), 잠재적 낮은 지적 2개(걸린 아이콘
+열쇠를 그 길이 받는 칸에만 — 테스트로; 책략 화살표의 동맹은 진영을 이름)와 사소한 것들 반영.
+
+A3c 관문(2026-10-16, 시작 master `e3a0b618`): 1번 200판 모두 same(네 번: 영향력 2칸 뒤, 6칸 뒤, 최종, 리뷰 반영 뒤). 에이전트 재기록 같음. 2번 v148 묶음
+2,000판 exact. 3번 codec 그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,756개·ruff·mypy, E2E 67종, 소크 720판 실패 0.
+6번 Agent frame 호출당 64.6 µs(시작) 대 67.3 µs(조용할 때 한 번), 부하 때 96.5 대 97.6 µs — 관문 안. 독립 리뷰: 막는 문제·중간 없음(차등
+탐침 300판, 상황 탐침 367,779줄, Arrakis Observer 75,562줄 모두 같음), 낮은 지적 2개(화면의 "영향력을 올릴 진영 없음" 판정이 기록을 읽게,
+Deep Cover가 카드 진영 표시를 읽지 않는 이유 주석)와 사소한 것 1개 반영.
+
+A3a·A3b 관문(2026-10-16, 시작 master `926b679d`): 1번 200판 모두 same(세 번). 에이전트 재기록 같음. 2번 v148 묶음 2,000판 exact. 3번 codec
+그대로. 4번 기존 기대값 그대로(기록 수 테스트만). 5번 pytest 7,751개·ruff·mypy, E2E 67종, 소크 720판 실패 0. 6번 Agent frame 잡음 안. 독립 리뷰:
+막는 문제 없음(차등 탐침 369판, 강제 탐침 188,220곳), 낮은 지적 1개 반영.
+
 ## 7. 플레이 유지
 
 - 지금: 레시피 MLP가 플레이 서버 망이다. 확인 측정(400판, X와 비교)이 끝나면 결과를 worklog에 적는다.
@@ -277,9 +1248,9 @@ frame 키를 직접 읽던 테스트 둘의 읽는 법, 옮긴 도우미의 impo
 ## 8. 정할 것
 
 1. **정해짐(2026-10-14, codec v146):** 자기 차례 안의 선택 효과("may", 화살표 비용, 검은 trash 아이콘 `[FAQ p. 3]`)는 거절 없이 제시되고 턴 종료를 막지 않으며, 쓰지 않으면 턴 종료 누름에 사라진다(OQ-095 (2) 보강, 사용자 "선택행동의 경우 거절 버튼이 왜 따로 있는거야 그럼?"). 실행기의 Agent 차례 정책도 이것을 따른다. Reveal 선택 창은 바로 다음 작업에서 같은 원칙으로 고치고, 차례 위에 따로 뜨는 창(선택 trash, 연구 보너스, Intrigue 슬롯 등)은 엔진 전환 때 다시 본다. 정해진 순간에만 쓸 수 있는 선택(Gather Intelligence 등)은 그 순간 단독 창으로 묻는다(사용자 "이와 비슷한 행동이 있다면 무조건 먼저 단독으로 선택하게 하는게 필요해").
-2. (B단계를 한다면) 행동 모양: `동사(대상, slot)` 한 단계(권고) 대 "능력 고르기 → 대상 고르기" 두 단계.
+2. (B단계를 한다면) 행동 모양: `동사(대상, slot)` 한 단계(권고) 대 "능력 고르기 → 대상 고르기" 두 단계. **정해짐(2026-10-19): 두 단계** — 대상이 하나뿐이어도 둘째 단계를 연다; 기다리는 효과는 인쇄한 것으로 가리킨다(자리 번호 아님). [stage-b-plan.md](stage-b-plan.md) 2절, OQ-111.
 3. (B단계를 한다면) `agent_turn`(카드 × 칸 × 접합 × 잠입 초소 × 할인, 26,372줄)을 카드 → 칸으로 나눌지. 권고: 따로
-   잰 뒤 정한다.
+   잰 뒤 정한다. **정해짐(2026-10-19): 나눈다** — 카드 고르기는 그 좌석에게만 보이고 차례 안에서 되돌릴 수 있다(OQ-111).
 
 ## 9. 규모와 위험
 

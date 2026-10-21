@@ -4,8 +4,8 @@ Three decision points are added when the option is on:
 
 - The Commander waiting on a visited board space is one more freely ordered
   effect of the visit: pay 2 Solari to acquire and recruit it and choose one
-  face-up Skill (``acquire_sardaukar_commander``), or decline
-  (``decline_sardaukar_commander``) [Bloodlines p. 4]. Without a choosable
+  face-up Skill (``acquire_sardaukar_commander``) [Bloodlines p. 4]; left
+  unused it lapses when the turn ends (OQ-095 (2)). Without a choosable
   Skill the Commander is acquired without one (OQ-031).
 - A Commander a card effect acquires (Sardaukar Standard's bank Commander,
   OQ-035) and Plasteel Blades' extra Skill open a Skill choice
@@ -563,9 +563,10 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
         return RuleResult(
             state=popped,
             events=(
+                # One kind for a refused optional trash (cleanup-2c-6).
                 GameEvent(
-                    event_id=f"{source}:kept",
-                    kind="tech_trash_declined",
+                    event_id=f"{source}:trash_declined",
+                    kind="optional_trash_declined",
                     payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
                 ),
             ),
@@ -597,7 +598,7 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
             state=replace(working, players=replace_player(working.players, trashed)),
             events=(
                 GameEvent(
-                    event_id=f"{source}:trashed",
+                    event_id=f"{source}:tech_trashed",
                     kind="tech_trashed",
                     payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
                 ),

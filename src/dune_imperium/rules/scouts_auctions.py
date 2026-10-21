@@ -50,9 +50,8 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
     acquire_imperium_for_intrigue,
-    acquisition_spy_frame,
+    open_acquisition_frames,
 )
-from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -445,7 +444,7 @@ def reveal_market(state: GameState) -> RuleResult:
             GameEvent(
                 event_id=f"round:{state.round_number}:scouts:{auction_id}:market",
                 kind="scouts_market_revealed",
-                payload=(("card_ids", ",".join(cards)), ("item_id", auction_id)),
+                payload=(("card_ids", tuple(cards)), ("item_id", auction_id)),
             ),
         ),
     )
@@ -537,7 +536,8 @@ def offer_take(state: GameState, task: str) -> RuleResult:
                 else "Pay your call for a revealed card, or decline"
             ),
         ),
-        context=(("amount", amount), ("place", place)),
+        # The auction its refusal names (B3d-3).
+        context=(("amount", amount), ("item", state.scouts_item), ("place", place)),
     )
     return RuleResult(state=state.push_decision(frame))
 
@@ -604,18 +604,11 @@ def apply_take(state: GameState, action: DomainAction) -> RuleResult:
         source=source,
         from_market=True,
     )
-    next_state = acquired.result.state
-    events = acquired.result.events
-    if acquired.places_spy:
-        next_state = next_state.push_decision(
-            acquisition_spy_frame(next_state, player, instance_id)
-        )
-    elif acquired.takes_contract:
-        contracts = begin_contract_gain(
-            next_state, player, 1, source=f"{source}:acquisition_bonus"
-        )
-        next_state = contracts.state
-        events = (*events, *contracts.events)
+    opened = open_acquisition_frames(
+        acquired.result.state, player, acquired, source=source
+    )
+    next_state = opened.state
+    events = (*acquired.result.events, *opened.events)
     return RuleResult(
         state=next_state,
         events=(
@@ -648,7 +641,7 @@ def clear_market(state: GameState) -> RuleResult:
             GameEvent(
                 event_id=f"round:{state.round_number}:scouts:{state.scouts_item}:cleared",
                 kind="scouts_market_cleared",
-                payload=(("card_ids", ",".join(cleared)),),
+                payload=(("card_ids", tuple(cleared)),),
             ),
         )
         if cleared

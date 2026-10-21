@@ -1,0 +1,253 @@
+[skip]
+other = "Skip to content"
+
+[home]
+other = "Home"
+
+[homeLabel]
+other = "Dune: Imperium AI home"
+
+[mainMenu]
+other = "Main navigation"
+
+[mobileMenu]
+other = "Mobile navigation"
+
+[menu]
+other = "Menu"
+
+[search]
+other = "Search"
+
+[footerMenu]
+other = "Footer navigation"
+
+[footerText]
+other = "Rules engine · Game AI · Development journal"
+
+[legal]
+other = "An unofficial personal development and research project. Original card and board artwork is not distributed."
+
+[support]
+other = "Supported features"
+
+[roadmap]
+other = "Roadmap"
+
+[location]
+other = "Breadcrumb"
+
+[devlog]
+other = "Development journal"
+
+[posts]
+other = "Technical articles"
+
+[updates]
+other = "Project updates"
+
+[guide]
+other = "Guide"
+
+[read]
+other = "Read article"
+
+[workPeriod]
+other = "Work period"
+
+[written]
+other = "Written"
+
+[published]
+other = "Published"
+
+[checked]
+other = "Reviewed"
+
+[retrospective]
+other = "Reconstructed from earlier commits and work documents."
+
+[contents]
+other = "Contents"
+
+[onPage]
+other = "On this page"
+
+[docNav]
+other = "Document navigation"
+
+[journalNav]
+other = "Journal navigation"
+
+[previousWork]
+other = "Previous work"
+
+[nextWork]
+other = "Next work"
+
+[journalAll]
+other = "All journal entries"
+
+[learnMore]
+other = "Learn more"
+
+[moreGuides]
+other = "Related guides"
+
+[related]
+other = "Related articles"
+
+[guides]
+other = "Guides"
+
+[guideList]
+other = "Guide navigation"
+
+[needHelp]
+other = "Need help?"
+
+[helpLink]
+other = "Read the help page"
+
+[help]
+other = "Help"
+
+[categories]
+other = "Article categories"
+
+[allArticles]
+other = "All articles"
+
+[byTopic]
+other = "Technical articles · Topics"
+
+[categoryTitle]
+other = "Articles by topic"
+
+[tagTitle]
+other = "Articles by tag"
+
+[journalMonths]
+other = "Journal by month"
+
+[monthFormat]
+other = "January 2006"
+
+[dateFormat]
+other = "2006-01-02"
+
+[heroNote]
+other = "Python rules engine · Play in a desktop browser"
+
+[seatExample]
+other = "Example seating"
+
+[seatAlt]
+other = "Four seats with one human and three AI players"
+
+[seatCaption]
+other = "1 human + 3 AI players · 4 seats"
+
+[baseGame]
+other = "Four-player Uprising"
+
+[multiplayer]
+other = "AI opponents & multiplayer with friends"
+
+[journalIntro]
+other = "Engine implementation, AI experiments, and play improvements."
+
+[allJournal]
+other = "All journal entries"
+
+[postsIntro]
+other = "How the rules engine and game AI work."
+
+[allPosts]
+other = "All technical articles"
+
+[latestUpdate]
+other = "Latest update"
+
+[query]
+other = "Search query"
+
+[queryPlaceholder]
+other = "e.g. autosave, search AI"
+
+[queryEmpty]
+other = "Enter a search query."
+
+[queryLoading]
+other = "Searching…"
+
+[queryResults]
+other = "{count} results for “{query}”"
+
+[queryNone]
+other = "No results for “{query}”. Try another term."
+
+[queryError]
+other = "Could not load the search index. Try again or use the links below."
+
+[queryFallback]
+other = "Search requires JavaScript. You can also browse the guides below."
+
+[shortcuts]
+other = "Quick links"
+
+[firstGame]
+other = "Your first game"
+
+[troubleshooting]
+other = "Troubleshooting"
+
+[notFound]
+other = "Page not found."
+
+[notFoundText]
+other = "This address has changed or does not exist. Try the home page or search."
+
+[goHome]
+other = "Go home"
+
+[goSearch]
+other = "Search the site"
+
+[darkMode]
+other = "Switch to dark mode"
+
+[lightMode]
+other = "Switch to light mode"
+
+[rulesEngine]
+other = "Rules engine"
+
+[aiExperiments]
+other = "AI experiments"
+
+[ruleTesting]
+other = "Rule verification"
+
+[engineDesign]
+other = "Engine design"
+
+[controlExperiment]
+other = "Controlled experiment"
+
+[hiddenInfo]
+other = "Hidden information"
+
+[reproducibility]
+other = "Reproducibility"
+
+[policyValue]
+other = "Policy and value"
+
+[searchTopic]
+other = "Search"
+
+[searchEvaluation]
+other = "Search evaluation"
+[supportedLanguages]
+other = "Korean · English"

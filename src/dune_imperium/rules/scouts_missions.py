@@ -15,7 +15,12 @@ whoever collects first); parked rows ``(mission, seat, location, troops)``.
 from copy import replace
 from typing import Final
 
-from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID, Mission, MissionKind
+from dune_imperium.content.arrakeen_scouts import (
+    MISSIONS,
+    MISSIONS_BY_ID,
+    Mission,
+    MissionKind,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -43,6 +48,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import shufflable_intrigue_discard
 from dune_imperium.rules.specimens import return_specimens
 
@@ -60,14 +66,13 @@ PRISON_PLANET_COMMANDER: Final = "commander"
 HELIX: Final = "helix"
 RECLAIMED_FORCES: Final = "reclaimed_forces"
 
-# Participation: (troop source, troops parked) per mission kind.
+# Participation: (troop source, troops parked) per mission kind, read from
+# the mission table (``Mission.troop_source`` / ``parked_troops``; cleanup-1 --
+# the numbers were written twice before).
 _PARKING: Final = {
-    MissionKind.SECURITY_DETAIL: ("supply", 1),
-    MissionKind.FEDAYKIN_ASSISTANCE: ("supply", 2),
-    MissionKind.WEIRDING_WARFARE: ("supply", 2),
-    MissionKind.SEND_FOR_AID: ("garrison", 1),
-    MissionKind.COORDINATE_WITH_THE_EMPEROR: ("specimens", 1),
-    MissionKind.TLEILAXU_OFFERING: ("supply", 2),
+    mission.kind: (mission.troop_source.value, mission.parked_troops)
+    for mission in MISSIONS
+    if mission.parked_troops and mission.troop_source is not None
 }
 # Where a mission's collected troops go when their seat visits (OQ-077).
 _TO_CONFLICT: Final = frozenset(
@@ -258,7 +263,7 @@ def place_mission_goods(
                     ("cards", len(cards)),
                     (
                         "locations",
-                        ",".join(
+                        tuple(
                             sorted({row[1] for row in goods} | {c[1] for c in cards})
                         ),
                     ),
@@ -385,6 +390,17 @@ def join_unavailable_reason(
     return (source, count, held)
 
 
+def mission_takes_supply_troops(mission: Mission) -> bool:
+    """Whether taking part in ``mission`` takes troops from the supply: the
+    CHOAM escort's recruit, or troops parked from the supply
+    (``mission_top_up``)."""
+
+    kind = mission.kind
+    return kind is MissionKind.CHOAM_ESCORT or (
+        kind in _PARKING and _PARKING[kind][0] == "supply"
+    )
+
+
 def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     """How many specimens the seat may return so it can take part (0: none).
 
@@ -393,17 +409,13 @@ def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     may do so first (user ruling 2026-09-29, OQ-074, OQ-088).
     """
 
-    if not state.config.immortality:
+    if not state.config.immortality or not mission_takes_supply_troops(mission):
         return 0
     owner = state.players[player]
     kind = mission.kind
     if kind is MissionKind.CHOAM_ESCORT:
         needed = 1  # the troop it recruits
-    elif (
-        kind in _PARKING
-        and _PARKING[kind][0] == "supply"
-        and _parking_open(state, player, mission)
-    ):
+    elif _parking_open(state, player, mission):
         needed = _PARKING[kind][1]
     else:
         return 0
@@ -751,20 +763,10 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
                 **{resource: getattr(owner.resources, resource) + amount},
             ),
         )
-        events.append(
-            GameEvent(
-                event_id=f"{source}:{mission_id}:{resource}",
-                kind="scouts_mission_goods_taken",
-                payload=(
-                    ("amount", amount),
-                    ("mission_id", mission_id),
-                    ("player", player),
-                    ("resource", resource),
-                ),
-            )
-        )
+        events.extend(_taken_events(source, mission_id, player, resource, amount))
     # One face-down card per visit (OQ-078): a Contract or an Intrigue card.
     card_row = _takeable_card(state, space_id)
+    immediate_contract: str | None = None
     if card_row is not None:
         cards.remove(card_row)
         mission_id, _, card_id = card_row
@@ -772,6 +774,10 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
             if _is_immediate(card_id):
                 raise RuntimeError("the Immediate never reaches the Research Station")
             owner = receive_contract(state, owner, card_id)
+            if contract_for_instance(card_id).completes_immediately:
+                # An Immediate tile completes the moment it is taken
+                # [Main p. 16]; its reward waits in its window (OQ-112).
+                immediate_contract = card_id
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:contract",
@@ -810,6 +816,18 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         scouts_parked=tuple(parked),
     )
     next_state = advance_after_effect(working, context, working.players)
+    if immediate_contract is not None:
+        # Imported here: ``contracts`` reaches this module through card draws.
+        from dune_imperium.rules.contracts import complete_immediate_contract
+
+        completed = complete_immediate_contract(
+            next_state,
+            player,
+            immediate_contract,
+            source=f"{source}:contract:{immediate_contract}",
+        )
+        next_state = completed.state
+        events.extend(completed.events)
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -826,17 +844,33 @@ def _give(owner: PlayerState, resource: str, amount: int) -> PlayerState:
     )
 
 
-def _taken_event(
+def _taken_events(
     source: str, mission_id: str, player: int, resource: str, amount: int
-) -> GameEvent:
-    return GameEvent(
-        event_id=f"{source}:{mission_id}:{resource}",
-        kind="scouts_mission_goods_taken",
-        payload=(
-            ("amount", amount),
-            ("mission_id", mission_id),
-            ("player", player),
-            ("resource", resource),
+) -> tuple[GameEvent, ...]:
+    """A mission's goods taken: the resources gained (rule decision 3,
+    cleanup-2c-5), then the mission's own event (which names Desert
+    Riding's Maker Hooks token, no resource)."""
+
+    goods = f"{source}:{mission_id}"
+    if resource not in ("solari", "spice", "water"):
+        # Desert Riding's Maker Hooks token, the one goods no resource.
+        return (
+            GameEvent(
+                event_id=f"{goods}:goods_taken",
+                kind="scouts_mission_goods_taken",
+                payload=(
+                    ("goods", resource),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                ),
+            ),
+        )
+    return (
+        resources_gained_event(goods, player, **{resource: amount}),
+        GameEvent(
+            event_id=f"{goods}:goods_taken",
+            kind="scouts_mission_goods_taken",
+            payload=(("mission_id", mission_id), ("player", player)),
         ),
     )
 
@@ -855,10 +889,10 @@ def claim_goods_at(
     if not rows:
         return RuleResult(state=state)
     owner = state.players[player]
-    events = []
+    events: list[GameEvent] = []
     for mission_id, _, resource, amount, _ in rows:
         owner = _give(owner, resource, amount)
-        events.append(_taken_event(source, mission_id, player, resource, amount))
+        events.extend(_taken_events(source, mission_id, player, resource, amount))
     return RuleResult(
         state=replace(
             state,
@@ -952,7 +986,7 @@ def claim_due_mission_goods(state: GameState) -> RuleResult:
 
     players = list(state.players)
     kept = []
-    events = []
+    events: list[GameEvent] = []
     source = f"round:{state.round_number}:scouts_goods"
     for row in state.scouts_goods:
         mission_id, location, resource, amount, seat = row
@@ -962,8 +996,8 @@ def claim_due_mission_goods(state: GameState) -> RuleResult:
                 kept.append(row)
                 continue
             players[occupant] = _give(players[occupant], resource, amount)
-            events.append(
-                _taken_event(
+            events.extend(
+                _taken_events(
                     f"{source}:{location}", mission_id, occupant, resource, amount
                 )
             )
@@ -972,8 +1006,8 @@ def claim_due_mission_goods(state: GameState) -> RuleResult:
             contract = location.removeprefix("contract:")
             if contract in players[seat].completed_contract_ids:
                 players[seat] = _give(players[seat], resource, amount)
-                events.append(
-                    _taken_event(
+                events.extend(
+                    _taken_events(
                         f"{source}:{contract}", mission_id, seat, resource, amount
                     )
                 )
@@ -1012,7 +1046,7 @@ def take_desert_riding_token(
             players=replace_player(state.players, owner),
             scouts_goods=tuple(r for r in state.scouts_goods if r != row),
         ),
-        events=(_taken_event(source, row[0], player, "maker_hooks", 1),),
+        events=_taken_events(source, row[0], player, "maker_hooks", 1),
     )
 
 

@@ -14,6 +14,10 @@ from collections.abc import Sequence
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import (
+    apply_placement,
+    placements_for_steps,
+)
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request, TargetInfo
 from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluate
 from dune_imperium.agents.app_ai.catalog import card_entity, space_entity
@@ -80,9 +84,19 @@ def _take(state: GameState, seat: int, card: str) -> tuple[GameState, str]:
     raise KeyError(card)
 
 
+def _legal(state: GameState, seat: int) -> tuple[DomainAction, ...]:
+    """The engine's legal list as the app AI's windows see it: an Agent-turn
+    step's rows shown as the placements they stand for (stage B1,
+    ``agents.agent_turn_steps``)."""
+
+    legal = ENGINE.legal_actions(state, seat)
+    steps = placements_for_steps(state, seat, legal)
+    return legal if steps is None else steps[0]
+
+
 def _run(state: GameState, seat: int, memory: Memory | None = None) -> DecisionRun:
     profile = make_profile(state, seat)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = _legal(state, seat)
     return DecisionRun(
         profile.ctx, profile, legal, random.Random(0), memory or Memory()
     )
@@ -97,13 +111,11 @@ def _placements(run: DecisionRun, ref: str, *, graft: bool) -> list[DomainAction
 
 
 def _legal_partners(state: GameState, seat: int, placement: DomainAction) -> list[str]:
-    placed = ENGINE.apply(
-        state, placement, legal_actions=ENGINE.legal_actions(state, seat)
-    ).state
+    placed = apply_placement(ENGINE, state, placement).state
     assert placed.decision_stack[-1].kind == "graft_partner"
     return [
         str(arg(action, "card_id"))
-        for action in ENGINE.legal_actions(placed, seat)
+        for action in ENGINE.whole_actions(placed, seat)
         if action.action_id == "choose_graft_partner"
     ]
 

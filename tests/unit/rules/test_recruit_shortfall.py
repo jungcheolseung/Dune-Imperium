@@ -8,6 +8,8 @@ short, the engine still moves ``min(supply, count)`` troops [Main p. 10]
 
 from dataclasses import replace
 
+from tests.unit.rules.test_combat import _answer_window
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -104,7 +106,7 @@ def _resolve_troops_icon(state: GameState) -> RuleResult:
     return resolve_board_effect(state, troops_action)
 
 
-# ---------- board icon (Research Station: RecruitTroopsEffect(2)) ----------
+# ---------- board icon (Research Station: RecruitTroops(2)) ----------
 
 
 def _research_station_state() -> GameState:
@@ -214,9 +216,18 @@ def test_reveal_start_troop_recruit_with_empty_supply_reports_a_shortfall() -> N
     from dune_imperium.rules.reveal_turn import apply_reveal_gain
 
     revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
-    # The troop icon is taken as the owner's own Reveal action (OQ-045).
+    # The troop icon is taken as the owner's own Reveal action (OQ-045), the
+    # one the revealed Junction Headquarters printed (stage B3e-1).
     result = apply_reveal_gain(
-        revealed.state, DomainAction(action_id="recruit_reveal_troops", actor=0)
+        revealed.state,
+        DomainAction(
+            action_id="recruit_reveal_troops",
+            actor=0,
+            arguments=(
+                ("printed", "junction_headquarters"),
+                ("source", "reveal_card"),
+            ),
+        ),
     )
 
     updated = result.state.players[0]
@@ -262,11 +273,14 @@ def test_combat_reward_troops_with_empty_supply_reports_a_shortfall() -> None:
     state = _reward_state("protect_the_sietches")
     state = _with_troops_supply(state, 0, 0)
 
-    result = resolve_combat_rewards(state)
+    # v150 (stage B2, OQ-112): the winner answers a window of reward rows;
+    # its troop row recruits (and reports the shortfall, as before).
+    opened = resolve_combat_rewards(state)
+    answered = _answer_window(opened.state)
 
-    assert result.state.players[0].troops_supply == 0
-    assert result.state.players[0].troops_garrison == 3
-    shortfalls = _shortfall_events(result.events)
+    assert answered.state.players[0].troops_supply == 0
+    assert answered.state.players[0].troops_garrison == 3
+    shortfalls = _shortfall_events((*opened.events, *answered.events))
     assert len(shortfalls) == 1
     assert dict(shortfalls[0].payload) == {
         "player": 0,

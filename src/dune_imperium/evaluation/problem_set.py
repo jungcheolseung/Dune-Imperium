@@ -42,10 +42,10 @@ from typing import Any
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.adapters.observation_encoding import OBSERVATION_VERSION
 from dune_imperium.agents import Agent, StateAgent
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.registry import SEARCH_VALUE_SEPARATOR, make_agent
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import (
-    ContractConditionKind,
     contract_for_instance,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -64,6 +64,12 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.evaluation.tournament import MatchSpec
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.effect_interpreter import flippable_battle_card_ids
+from dune_imperium.rules.effect_steps import (
+    completed_whole,
+    first_step,
+    picked_rows,
+    presents_steps,
+)
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
@@ -183,7 +189,7 @@ def _spice_opens_actions(
     )
     players = tuple(richer if p.player_id == seat else p for p in state.players)
     bumped = replace(state, players=players)
-    return set(_legal_engine().legal_actions(bumped, seat)) != set(legal)
+    return set(_legal_engine().whole_actions(bumped, seat)) != set(legal)
 
 
 def _spice_this_turn_matters(state: GameState, seat: int) -> bool:
@@ -214,7 +220,7 @@ def _spice_this_turn_matters(state: GameState, seat: int) -> bool:
         for frame in state.decision_stack
     )
     if placing and any(
-        contract_for_instance(c).condition.kind is ContractConditionKind.HARVEST_SPICE
+        contract_for_instance(c).harvest_spice
         for c in player.active_contract_ids
     ):
         return True
@@ -536,9 +542,12 @@ def _mine_spec(spec: MatchSpec, problem_ids: Sequence[str]) -> list[Position]:
             raise RuntimeError(f"no decision before FINISHED, seed {spec.game_seed}")
         owner = decision.owner
         legal = engine.legal_actions(state, owner)
-        for problem in problems:
+        # Problems read the whole actions (stage B3: an effect with its
+        # target), at a decision that is no step of one already picked.
+        wholes = () if picked_rows(state) else engine.whole_actions(state, owner)
+        for problem in problems if wholes else ():
             key = (problem.problem_id, owner)
-            if key in seen or not problem.detect(state, owner, legal):
+            if key in seen or not problem.detect(state, owner, wholes):
                 continue
             seen.add(key)
             positions.append(
@@ -551,7 +560,7 @@ def _mine_spec(spec: MatchSpec, problem_ids: Sequence[str]) -> list[Position]:
                     spec=_spec_to_json(spec),
                     choices=tuple(choices),
                     owner=owner,
-                    fingerprint=fingerprint(state, owner, legal),
+                    fingerprint=fingerprint(state, owner, wholes),
                 )
             )
         agent = agents[owner]
@@ -601,6 +610,7 @@ def _replay(position: Position) -> _Replay:
         if index >= len(legal):
             raise moved
         state = engine.apply(state, legal[index], legal_actions=legal).state
+    legal = engine.whole_actions(state, owner)
     if owner != position.owner or fingerprint(state, owner, legal) != (
         position.fingerprint
     ):
@@ -752,6 +762,35 @@ def _choose(
     return agent.choose_action(view, legal)
 
 
+def _wholes_of_row(
+    state: GameState, row: DomainAction, wholes: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """The whole actions a legal row starts (itself when it is one)."""
+
+    if row in wholes:
+        return (row,)
+    return tuple(whole for whole in wholes if first_step(state, whole) == row)
+
+
+def _choose_whole(
+    agent: Agent, engine: UprisingRulesEngine, state: GameState, owner: int
+) -> DomainAction:
+    """The agent's answer as a whole action: a step toward a waiting effect
+    is taken and the agent asked again until the effect's last step (stage
+    B3); the state the answer is applied to stays ``state``."""
+
+    while True:
+        legal = engine.legal_actions(state, owner)
+        row = _choose(agent, engine, state, owner, legal)
+        wholes = engine.whole_actions(state, owner)
+        if not presents_steps(state) or row in wholes:
+            return row
+        whole = completed_whole(state, row, wholes)
+        if whole is not None:
+            return whole
+        state = engine.apply(state, row, legal_actions=legal).state
+
+
 def answer(
     position: Position, kind: str, seed: int = 0, max_deferrals: int = 40
 ) -> Answer:
@@ -775,42 +814,57 @@ def answer(
     owner = position.owner
     right_actions = sum(problem.right(state, owner, action) for action in legal)
     agent = make_agent(kind, agent_seed(position, seed), state.config)
-    probabilities = policy_probabilities(agent, engine.observe(state, owner), legal)
+    rows = engine.legal_actions(state, owner)
+    probabilities = policy_probabilities(agent, engine.observe(state, owner), rows)
+    untrained_only = getattr(agent, "untrained_only", None)
+    if probabilities is not None and untrained_only is not None:
+        codec = getattr(agent, "codec")  # noqa: B009 - a network agent's
+        if untrained_only([codec.encode(action) for action in probabilities]):
+            # The network was never trained on any offered row (a file from
+            # before stage B3 at an effect step); its choice comes from its
+            # heuristic fallback, so its flat logits say nothing
+            # (``records.problems.answer`` does the same).
+            probabilities = None
     p_right = None
     if probabilities is not None:
+        # A row stands for the whole actions it starts (stage B3): it is
+        # scored when one of them is, and right when all of them are.
+        led = {row: _wholes_of_row(state, row, legal) for row in probabilities}
         scored = [
-            action
-            for action in probabilities
-            if problem.scored is None or problem.scored(action)
+            row
+            for row in probabilities
+            if problem.scored is None
+            or any(problem.scored(action) for action in led[row])
         ]
-        mass = sum(probabilities[action] for action in scored)
+        mass = sum(probabilities[row] for row in scored)
         if mass > 0:
             p_right = (
                 sum(
-                    probabilities[action]
-                    for action in scored
-                    if problem.right(state, owner, action)
+                    probabilities[row]
+                    for row in scored
+                    if led[row]
+                    and all(problem.right(state, owner, action) for action in led[row])
                 )
                 / mass
             )
     deferred = 0
     chosen: DomainAction | None = None
     while True:
-        action = _choose(agent, engine, state, owner, legal)
+        action = _choose_whole(agent, engine, state, owner)
         if problem.scored is None or problem.scored(action):
             chosen = action
             break
         deferred += 1
         if deferred > max_deferrals:
             break
-        state = engine.apply(state, action, legal_actions=legal).state
+        state = apply_whole(engine, state, action).state
         decision = engine.current_decision(state)
         while isinstance(decision, ChanceDecision):
             state = engine.apply(state, chance.resolve(decision)).state
             decision = engine.current_decision(state)
         if decision is None or decision.owner != owner:
             break
-        legal = engine.legal_actions(state, owner)
+        legal = engine.whole_actions(state, owner)
     return Answer(
         position_id=position.position_id,
         problem_id=position.problem_id,

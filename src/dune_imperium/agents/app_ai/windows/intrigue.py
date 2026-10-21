@@ -135,9 +135,9 @@ Immortality (``spec/immortality.md`` §7):
 - Harvest Cells: play ``[card]`` / ``[[]]`` (only the
   ``conflict_end_trigger`` window's play) when ``HarvestCellsAbility`` can
   run; the request is the dealt Tleilaxu Row cards the seat can pay with the
-  two harvested specimens. At the Conflict's end the specimens come first
-  (``resolve_intrigue_rewards``; judgement: card-text order, and the app's
-  ``GetSpecimensAvailable`` counts the harvested specimens), then the
+  two harvested specimens. The card resolves as it is played: its
+  specimens are taken at the play (user decision 2026-10-18; the app's
+  ``GetSpecimensAvailable`` counts the harvested specimens too), then the
   answer's card is acquired, on top of the deck when the destination is
   offered (``AcquireAbility``'s ``ChooseAcquireTleilaxuLocation`` option 0;
   judgement: Harvest Cells uses the same picker), ``[[]]`` ->
@@ -279,6 +279,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import entry_pieces, split_intrigue_ref
 from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
@@ -773,7 +774,7 @@ def _evaluator(
     def evaluate() -> tuple[float, DomainAction | None]:
         request = intrigue_request(run.ctx, instance, combat, offered)
         answer = ability.evaluate(run.profile, request)
-        _record(run, instance, answer, len(run.ctx.state.event_log))
+        _record(run, instance, answer, event_stamp(run.ctx.state))
         option = _answer_option(instance, request, answer, combat)
         return answer.value, _play_action(plays, option)
 
@@ -785,14 +786,28 @@ def _evaluator(
 # ---------------------------------------------------------------------------
 
 
-def _play_event_index(ctx: AppContext, instance: str) -> int | None:
-    """Index of this seat's latest ``intrigue_played`` event of the card.
+# The seat-only event of an effect step that only picks (stage B3): a play's
+# card and option are picked before the play, so these are not counted.
+_PICK_EVENT: Final = "effect_picked"
+
+
+def event_stamp(state: GameState) -> int:
+    """What an answer is stamped with: the number of events in ``state``'s
+    log but the effect picks -- the index the play's ``intrigue_played``
+    event then takes among those (``play_event_index``)."""
+
+    return sum(1 for event in state.event_log if event.kind != _PICK_EVENT)
+
+
+def play_event_index(ctx: AppContext, instance: str) -> int | None:
+    """Index of this seat's latest ``intrigue_played`` event of the card
+    among the log's events but the effect picks (``event_stamp``).
 
     Reads only events visible to the seat (the play of one's own card is
     public).
     """
 
-    log = ctx.state.event_log
+    log = [event for event in ctx.state.event_log if event.kind != _PICK_EVENT]
     for index in range(len(log) - 1, -1, -1):
         event = log[index]
         if event.kind != "intrigue_played":
@@ -816,7 +831,7 @@ def recorded_answer(run: DecisionRun, instance: str) -> Answer | None:
     (``contract_market`` for Leverage / Reach Agreement) can use this test.
     """
 
-    played_at = _play_event_index(run.ctx, instance)
+    played_at = play_event_index(run.ctx, instance)
     stored = run.memory.intents.get((INTENT, instance))
     stamp = run.memory.intents.get((INTENT_AT, instance))
     if isinstance(stored, Answer) and played_at is not None and stamp == played_at:
@@ -836,7 +851,7 @@ def _intent(run: DecisionRun, instance: str, option: IntrigueOption) -> Answer:
     stored = recorded_answer(run, instance)
     if stored is not None:
         return stored
-    played_at = _play_event_index(run.ctx, instance)
+    played_at = play_event_index(run.ctx, instance)
     combat = option.timing is IntrigueTiming.COMBAT
     ability = ability_for_prompt(intrigue_entity(instance, run.ctx.seat), combat)
     if ability is None:
@@ -1351,8 +1366,8 @@ def _flip_face_up(run: DecisionRun, cid: str) -> DomainAction | None:
 def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction | None:
     """Harvest Cells' "you may also acquire a Tleilaxu card" (module table).
 
-    The harvested specimens are taken first (``resolve_intrigue_rewards``).
-    Then the play's recorded answer (``recorded_answer``: the
+    The harvested specimens are already taken, at the play (codec v149).
+    The play's recorded answer (``recorded_answer``: the
     ``conflict_end_trigger`` prompt that played the card) is replayed: its
     card, or "no acquire" (an empty list) -> ``decline_intrigue_tleilaxu``.
     Without one, or when its card is not offered,
@@ -1363,9 +1378,6 @@ def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction
 
     if cid != "harvest_cells":
         return None
-    resolve = run.first("resolve_intrigue_rewards")
-    if resolve is not None:
-        return resolve
     decline = run.first("decline_intrigue_tleilaxu")
     acquires = run.by_id("acquire_intrigue_tleilaxu")
     refs = list(

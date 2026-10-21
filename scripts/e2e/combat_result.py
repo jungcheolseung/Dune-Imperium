@@ -3,11 +3,14 @@
 Before this, nothing on screen said who won a Conflict or what the viewing
 seat got: the last Combat Intrigue pass jumped straight to the next
 decision (the next round's turn choice, or -- for the winner -- a reward
-choice whose prompt never says it is a reward). The reward is a public log
-event (combat_reward_gained, conflict_won); render.js's combatResultLine
+choice whose prompt never says it is a reward). The reward is public in the log
+(combat_reward_gained begins each recipient's reward, and since stage B2 each
+icon it resolves leaves combat_reward_icon_resolved and, for resources, a
+resources_gained; conflict_won); render.js's combatResultLine
 now reads it and shows one muted line above the banner's prompt from the
 moment a Conflict resolves until the viewing seat's own next turn-taking
-step (`agent_turn` / `reveal_turn` / `play_turn_start_card`).
+step (`place_agent` / `reveal_turn` / `play_turn_start_card`; an Agent turn's
+card pick, `choose_agent_card`, does not end it, only the space pick does).
 
 This drives a human seat 0 (three heuristic seats) to the first Combat
 resolution in a base game and in an all-expansion game, and checks the
@@ -71,7 +74,18 @@ SETUP_REVEAL_SEED = 21
 
 # Mirrors render.js's OWN_TURN_ACTION_IDS: the action ids that start the
 # viewing seat's own next turn, at which point the line must be gone.
-OWN_TURN_ACTION_IDS = {"agent_turn", "reveal_turn", "play_turn_start_card"}
+OWN_TURN_ACTION_IDS = {"place_agent", "reveal_turn", "play_turn_start_card"}
+# The Agent turn's first step: picking the card. The line outlives it (only
+# the space pick, `place_agent`, starts the turn).
+CARD_PICK_ACTION_ID = "choose_agent_card"
+# Which way each scenario's seat takes its own next turn when it can (the
+# card pick, then the space pick, or a Reveal); the other path is the
+# fallback when that one is not on offer.
+PREFERRED_TURN_START = {
+    "base": CARD_PICK_ACTION_ID,
+    "expansions": "reveal_turn",
+    "setup-reveal": CARD_PICK_ACTION_ID,
+}
 
 HANGUL = re.compile("[가-힣]")
 # "AI" is the heuristic seat kind's Korean label suffix (SEAT_KINDS,
@@ -116,6 +130,51 @@ def create_game(
     return page.evaluate("state.gameId")
 
 
+# The source of a Conflict reward icon's resources (a Contract icon's 2
+# Solari without CHOAM too), rules/combat.py.
+REWARD_SOURCE = re.compile(r"round:\d+:combat_reward:\d+:\d+(?::contract)?")
+
+
+def _reward_gain(kind: str, payload: dict) -> bool:
+    if kind == "combat_reward_icon_resolved":
+        return True
+    return kind == "resources_gained" and bool(
+        REWARD_SOURCE.fullmatch(str(payload.get("source", "")))
+    )
+
+
+def _add_reward_gain(bundle: dict, kind: str, payload: dict) -> None:
+    """One icon's gain on its recipient's reward (independently of
+    render.js's addCombatRewardGain)."""
+    reward = next(
+        (r for r in reversed(bundle["rewards"]) if r["player"] == payload["player"]),
+        None,
+    )
+    if reward is None:
+        return
+
+    def add(key: str, amount: object) -> None:
+        if isinstance(amount, int) and amount:
+            reward[key] = reward.get(key, 0) + amount
+
+    if kind == "resources_gained":
+        for key in ("solari", "spice", "water"):
+            add(key, payload.get(key))
+        return
+    effect = payload.get("effect")
+    for key in ("troops", "intrigue", "victory_points"):
+        add(key, payload.get(key))
+    if effect == "contract":
+        add("contracts", payload.get("contracts"))
+    elif effect == "faction_influence":
+        reward["faction"] = payload["faction"]
+        add("faction_influence", payload.get("influence"))
+    elif effect == "choose_influence":
+        add("choose_influence", 1)
+    elif effect == "control":
+        reward["control_space_id"] = payload["space_id"]
+
+
 def find_resolution(entries: list[dict], seat: int) -> dict | None:
     """Independent re-derivation of render.js's latestCombatResolution,
     read straight off the raw log entries -- this checks the engine's
@@ -136,7 +195,11 @@ def find_resolution(entries: list[dict], seat: int) -> dict | None:
                 if not saw_rewards:
                     bundle = {"conflict_id": conflict_id, "rewards": []}
                     saw_rewards = True
-                bundle["rewards"].append(payload)
+                # The recipient's reward begins; its icons follow, one row
+                # each (stage B2, OQ-112).
+                bundle["rewards"].append(dict(payload))
+            elif saw_rewards and bundle is not None and _reward_gain(kind, payload):
+                _add_reward_gain(bundle, kind, payload)
             elif kind == "combat_cleaned_up" and not saw_rewards:
                 bundle = None
         if (
@@ -157,9 +220,11 @@ def _choose_action_js() -> str:
       const deploy = A.filter((a) => a.action_id === 'deploy_troops');
       if (deploy.length) return deploy[0].index;
       const combat = {combat};
-      const toCombat = A.find((a) => a.action_id === 'agent_turn'
-        && combat.includes(a.arguments.space_id));
-      if (toCombat) return toCombat.index;
+      // An Agent turn is two steps: the placement's card pick, then (at the
+      // next call, with the card picked) the space pick that completes it.
+      const toCombat = placementActions().find((a) =>
+        combat.includes(a.arguments.space_id));
+      if (toCombat) return toCombat.pickIndex ?? toCombat.index;
       return A[0].index;
     }})()"""
 
@@ -339,9 +404,11 @@ def check_persistence(page, label: str, conflict_name: str | None) -> None:
             time.sleep(0.05)
             continue
         ids = {action["action_id"] for action in actions}
-        starting = ids & OWN_TURN_ACTION_IDS
+        # The card pick opens an Agent turn; the line must outlive it.
+        starting = sorted(ids & (OWN_TURN_ACTION_IDS | {CARD_PICK_ACTION_ID}))
         if starting:
-            action_id = next(iter(starting))
+            preferred = PREFERRED_TURN_START.get(label)
+            action_id = preferred if preferred in starting else starting[0]
             index = next(a["index"] for a in actions if a["action_id"] == action_id)
             check.ok(
                 True, f"{label}: still shown right up to the seat's own next {action_id}"
@@ -357,6 +424,26 @@ def check_persistence(page, label: str, conflict_name: str | None) -> None:
                 f"(rounds {sorted(rounds)})",
                 unnamed[:3],
             )
+            if action_id == CARD_PICK_ACTION_ID:
+                page.evaluate(f"applyAction({index})")
+                assert settled(page, 20)
+                picked = combat_result_dom(page)
+                check.ok(
+                    picked is not None,
+                    f"{label}: still shown after the card pick, before the space pick",
+                    picked,
+                )
+                spaces = page.evaluate("state.actions ? state.actions.actions : []")
+                place = next(
+                    (a for a in spaces if a["action_id"] == "place_agent"), None
+                )
+                if not check.ok(
+                    place is not None,
+                    f"{label}: the card pick leaves the space pick to take",
+                    [a["action_id"] for a in spaces],
+                ):
+                    return
+                action_id, index = "place_agent", place["index"]
             page.evaluate(f"applyAction({index})")
             assert settled(page, 20)
             after = combat_result_dom(page)

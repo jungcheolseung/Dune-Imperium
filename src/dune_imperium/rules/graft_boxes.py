@@ -105,6 +105,11 @@ TURN_KEYS: Final = frozenset(
         "pending_leader_ability",
         "pending_leader_board_repeat",
         "pending_tech_acquire_effects",
+        # Effects waiting on the turn as rows (cleanup-2b, ``turn_rows``).
+        "pending_turn_rows",
+        # The rows picked toward one waiting effect (stage B3,
+        # ``effect_steps``), whichever box's effect it is.
+        "effect_pick",
         "space_id",
         # The space's own Influence was replaced by a box's "two instead
         # of one" for good (Subversive Advisor, Treacherous Maneuver).
@@ -252,6 +257,7 @@ BOX_ACTION_IDS: Final = frozenset(
         "pay_leader_signet_spice",
         "pay_leader_signet_solari",
         "decline_leader_signet_payment",
+        "resolve_leader_signet_without_option",
         "gain_leader_signet_troop",
         "choose_leader_signet_influence",
         "acquire_leader_imperium",

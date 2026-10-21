@@ -2,14 +2,37 @@
 
 The Commander rules live in ``docs/rules/bloodlines.md`` section 3; the seven
 Skill effects are transcribed from the printed tile faces (asset repository
-``cards/en/bloodlines/skill/``), cited as ``[<name> Skill tile]``.
+``cards/en/bloodlines/skill/``), cited as ``[<name> Skill tile]``, as ability
+records (``skill_abilities.py``, composed A7a) compiled into the fields
+below.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.content.bloodlines.skill_abilities import SKILL_ABILITIES
 from dune_imperium.content.schema import SourceDocument, SourceRef
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    GainCombatStrength,
+    GainResources,
+    InfluenceAtLeast,
+    OpponentSandwormInConflict,
+    RecruitTroops,
+    RevealPersuasion,
+    RevealSwords,
+    Reward,
+    TrashCard,
+)
+from dune_imperium.content.uprising.types import AgentIcon
 
 # Four-player setup: five printed spaces plus Assembly Hall, and one
 # Commander in the bank for Sardaukar Standard [Bloodlines p. 3].
@@ -43,25 +66,14 @@ class SkillKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SkillDefinition:
-    """One Sardaukar Commander Skill and its printed effect."""
+    """One Sardaukar Commander Skill. Its printed effect is its record
+    (``skill_abilities``, composed A7a), read through ``ability`` and the
+    Reveal properties below (cleanup 2e): the strength lines and their
+    conditions are the record's ``IN_CONFLICT`` lines."""
 
     skill_id: str
     name: str
     kind: SkillKind
-    # Reveal turn bonuses, granted once when the Reveal begins with a
-    # Commander in the Conflict.
-    reveal_persuasion: int = 0
-    reveal_spice: int = 0
-    # Troops recruited in the Reveal turn (Hardy's troop icon).
-    reveal_troops: int = 0
-    # "Reveal Turn: Trash this -> 3 swords" (Desperate): an optional arrow.
-    trash_for_strength: int = 0
-    # Combat strength while a Commander is in the Conflict.
-    strength: int = 0
-    strength_if_landsraad_agent: int = 0
-    strength_if_opponent_sandworm: int = 0
-    strength_if_emperor_influence: int = 0
-    emperor_influence_required: int = 0
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (4,)),
         SourceRef(SourceDocument.CARD_FACE, (1,)),
@@ -70,44 +82,126 @@ class SkillDefinition:
     def __post_init__(self) -> None:
         if not self.skill_id or not self.name:
             raise ValueError("Skills require stable IDs and names")
-        if (self.emperor_influence_required > 0) != (
-            self.strength_if_emperor_influence > 0
-        ):
-            raise ValueError("an Emperor Influence bonus needs its threshold")
+
+    @property
+    def ability(self) -> Ability:
+        """The tile's printed effect."""
+
+        return SKILL_ABILITIES[self.skill_id]
+
+    def _reveal_reward(self, mark: AbilityMark) -> Reward | None:
+        ability = self.ability
+        if ability.timing is not AbilityTiming.REVEAL or ability.mark is not mark:
+            return None
+        ((reward,),) = (line.rewards for line in ability.sections)
+        return reward
+
+    @property
+    def reveal_persuasion(self) -> int:
+        """"Reveal Turn: N Persuasion", granted once when the Reveal begins
+        with a Commander in the Conflict."""
+
+        reward = self._reveal_reward(AbilityMark.AUTOMATIC)
+        return reward.amount if isinstance(reward, RevealPersuasion) else 0
+
+    @property
+    def reveal_spice(self) -> int:
+        """"Reveal Turn: N spice"."""
+
+        reward = self._reveal_reward(AbilityMark.AUTOMATIC)
+        return reward.spice if isinstance(reward, GainResources) else 0
+
+    @property
+    def reveal_troops(self) -> int:
+        """Troops recruited in the Reveal turn (Hardy's troop icon)."""
+
+        reward = self._reveal_reward(AbilityMark.AUTOMATIC)
+        return reward.count if isinstance(reward, RecruitTroops) else 0
+
+    @property
+    def trash_for_strength(self) -> int:
+        """"Reveal Turn: Trash this -> 3 swords" (Desperate): an optional
+        arrow."""
+
+        reward = self._reveal_reward(AbilityMark.OPTIONAL)
+        return reward.amount if isinstance(reward, RevealSwords) else 0
 
 
+def _skill(skill_id: str, name: str) -> SkillDefinition:
+    """One Skill and its kind, its record checked against what the rules
+    read (composed A7a); raises ``ValueError`` for a record they cannot
+    pay."""
+
+    ability = SKILL_ABILITIES[skill_id]
+    if (
+        ability.requirement is not None
+        or ability.trigger is not None
+        or ability.hook is not None
+        or ability.structure is not AbilityStructure.SEQUENCE
+    ):
+        raise ValueError(f"{skill_id}: a Skill pays every printed line")
+    fields: set[str] = set()
+
+    def put(field: str, amount: int) -> None:
+        if field in fields:
+            raise ValueError(f"{skill_id}: {field} printed twice")
+        fields.add(field)
+
+    if ability.timing is AbilityTiming.REVEAL:
+        kind = SkillKind.REVEAL
+        (line,) = ability.sections
+        match ability.mark, line.condition, line.costs, line.rewards:
+            case AbilityMark.AUTOMATIC, None, (), (
+                RevealPersuasion(amount=n, per=None),
+            ):
+                put("reveal_persuasion", n)
+            case AbilityMark.AUTOMATIC, None, (), (
+                GainResources(solari=0, spice=n, water=0),
+            ):
+                put("reveal_spice", n)
+            case AbilityMark.AUTOMATIC, None, (), (RecruitTroops(count=n),):
+                put("reveal_troops", n)
+            case AbilityMark.OPTIONAL, None, (TrashCard(this_card=True),), (
+                RevealSwords(amount=n, per=None),
+            ):
+                put("trash_for_strength", n)
+            case _:
+                raise ValueError(f"{skill_id}: no Skill field holds {line!r}")
+    elif ability.timing is AbilityTiming.IN_CONFLICT:
+        kind = SkillKind.STRENGTH
+        if ability.mark is not AbilityMark.AUTOMATIC:
+            raise ValueError(f"{skill_id}: Skill strength needs no choice")
+        for line in ability.sections:
+            match line.condition, line.costs, line.rewards:
+                case None, (), (GainCombatStrength(amount=n),):
+                    put("strength", n)
+                case AgentOnSpaceWithIcon(icon=AgentIcon.LANDSRAAD), (), (
+                    GainCombatStrength(amount=n),
+                ):
+                    put("strength_if_landsraad_agent", n)
+                case OpponentSandwormInConflict(), (), (GainCombatStrength(amount=n),):
+                    put("strength_if_opponent_sandworm", n)
+                case InfluenceAtLeast(faction=Faction.EMPEROR, amount=threshold), (), (
+                    GainCombatStrength(amount=n),
+                ):
+                    put("strength_if_emperor_influence", n)
+                    put("emperor_influence_required", threshold)
+                case _:
+                    raise ValueError(f"{skill_id}: no Skill field holds {line!r}")
+    else:
+        raise ValueError(f"{skill_id}: a Skill pays on the Reveal or in the Conflict")
+    return SkillDefinition(skill_id, name, kind)
+
+
+# The seven Skills (their effects are the records in ``skill_abilities.py``).
 SKILLS: Final[tuple[SkillDefinition, ...]] = (
-    # "If you have an Agent on a [Landsraad] board space: 2 swords".
-    SkillDefinition(
-        "canny", "Canny", SkillKind.STRENGTH, strength_if_landsraad_agent=2
-    ),
-    # "Reveal Turn: 1 Persuasion".
-    SkillDefinition(
-        "charismatic", "Charismatic", SkillKind.REVEAL, reveal_persuasion=1
-    ),
-    # "Reveal Turn: Trash this -> 3 swords".
-    SkillDefinition("desperate", "Desperate", SkillKind.REVEAL, trash_for_strength=3),
-    # "Reveal Turn: 1 spice".
-    SkillDefinition("driven", "Driven", SkillKind.REVEAL, reveal_spice=1),
-    # "1 sword. If any opponent has a sandworm in the Conflict: +1 sword".
-    SkillDefinition(
-        "fierce",
-        "Fierce",
-        SkillKind.STRENGTH,
-        strength=1,
-        strength_if_opponent_sandworm=1,
-    ),
-    # "Reveal Turn: [troop]": the grey cube is the troop icon, "Recruit one
-    # troop" [Main p. 20] [Hardy Skill tile] (not a water drop).
-    SkillDefinition("hardy", "Hardy", SkillKind.REVEAL, reveal_troops=1),
-    # "[Emperor] 3 Influence: 2 swords".
-    SkillDefinition(
-        "loyal",
-        "Loyal",
-        SkillKind.STRENGTH,
-        strength_if_emperor_influence=2,
-        emperor_influence_required=3,
-    ),
+    _skill("canny", "Canny"),
+    _skill("charismatic", "Charismatic"),
+    _skill("desperate", "Desperate"),
+    _skill("driven", "Driven"),
+    _skill("fierce", "Fierce"),
+    _skill("hardy", "Hardy"),
+    _skill("loyal", "Loyal"),
 )
 SKILLS_BY_ID: Final = {skill.skill_id: skill for skill in SKILLS}
 

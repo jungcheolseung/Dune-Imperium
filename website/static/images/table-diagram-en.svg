@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="370" viewBox="0 0 520 370">
+  <defs><radialGradient id="glow"><stop stop-color="#c4a06a" stop-opacity=".13"/><stop offset="1" stop-color="#c4a06a" stop-opacity="0"/></radialGradient></defs>
+  <circle cx="260" cy="185" r="170" fill="url(#glow)"/>
+  <g fill="none" stroke="#a7bdb3" stroke-opacity=".18"><ellipse cx="260" cy="185" rx="154" ry="118"/><ellipse cx="260" cy="185" rx="119" ry="88"/><path d="M28 310c97-62 160-19 234 1s134 27 230-38M25 333c110-62 167-24 233-7s139 18 243-27"/><path d="M260 49v39m0 193v40M81 185h48m262 0h48" stroke-dasharray="3 5"/></g>
+  <g fill="none" stroke="#cfb07a" stroke-opacity=".6"><path d="m260 112 81 40v68l-81 39-81-39v-68Z"/><path d="m260 124 69 34v56l-69 33-69-33v-56Z" stroke-opacity=".2"/></g>
+  <g fill="#e6d2ac" text-anchor="middle" font-family="sans-serif"><text x="260" y="178" font-size="14" letter-spacing="3">UPRISING</text><text x="260" y="203" font-size="12" fill="#b1c0b5">4-player table</text></g>
+  <g stroke="#d4b780" fill="#234843"><rect x="220" y="28" width="80" height="49" rx="7"/><rect x="220" y="294" width="80" height="49" rx="7" stroke="#6e8e80"/><rect x="58" y="160" width="80" height="49" rx="7" stroke="#6e8e80"/><rect x="382" y="160" width="80" height="49" rx="7" stroke="#6e8e80"/></g>
+  <g text-anchor="middle" font-family="sans-serif" font-size="13" fill="#e7dfcc"><text x="260" y="59">You</text><text x="260" y="324">App AI</text><text x="98" y="190">App AI</text><text x="422" y="190">App AI</text></g>
+  <g fill="#d4b780"><circle cx="260" cy="90" r="3"/><circle cx="149" cy="185" r="3"/><circle cx="371" cy="185" r="3"/><circle cx="260" cy="280" r="3"/></g>
+</svg>

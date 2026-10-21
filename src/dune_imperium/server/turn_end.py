@@ -8,12 +8,14 @@ server holds the remaining unit ends (a Leader pick, Conflict rewards, a
 Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료",
 as long as the seat still has a step of the unit to take back; a step that
 reveals something itself cannot be taken back and is instead held by the
-browser and sent with "확정 ▶" (``sent_by_turn_end``, see below).
+browser and sent with "확정 ▶" (``sent_by_turn_end``, see below). Inside a
+turn the browser holds only the few irreversible steps ``HELD_IN_TURN``
+names (Long Live the Fighters' second pick, user decision 2026-10-19).
 The last Leader pick has its own explicit ``finish_leader_draft`` so setup
 cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine
 already keeps, so the server needs no rule logic of its own; this module is
-that reading and nothing else.
+that reading, and that one short list of action ids, and nothing else.
 
 A seat's *unit* is its own run of decisions: an Agent or Reveal turn in
 Player Turns, or its share of a phase outside them (a Leader pick, a Combat
@@ -42,13 +44,13 @@ from typing import Final
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.combat_deployment import (
     FINISHING_KEY,
     legal_agent_turn_finish_actions,
 )
 from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
 from dune_imperium.rules.frames import (
-    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owes_held_draw,
     owes_track_spy,
@@ -67,9 +69,17 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         # with nothing to play (OQ-103, user decision 2026-10-09): "쓰지
         # 않음" ends the seat's part with one press, like a pass.
         "decline_conflict_end_intrigue",
+        # Its end once a card was played in the window (user decision
+        # 2026-10-18: "끝내기"): the window stays open after a play while
+        # the seat holds Intrigue (OQ-103), and this one press closes it.
+        "finish_conflict_end_intrigue",
         # Arrakeen Scouts: confirming a sealed bid is the seat's turn end;
         # until then it may change the bid (D5, docs/arrakeen-scouts-design.md).
         "confirm_scouts_bid",
+        # A Scouts choice with no line the seat can take asks it anyway
+        # (cleanup-2a, OQ-071); its one confirm says the seat takes nothing,
+        # like a pass, so one press ends the seat's part.
+        "resolve_scouts_choice_without_option",
         # Critical Moment's open call (0 a pass) is one action per amount, so
         # the browser sends it with the turn-end press after the stepper set
         # the amount ("경매 ... 턴 종료를 눌러야 확정되게 해줘", user,
@@ -100,6 +110,17 @@ INTERRUPT_KINDS: Final = frozenset(
 # 버튼을 눌렀다면 그건 턴 종료를 누른거랑 같으니까" (user, 2026-10-01,
 # OQ-095 (6)) -- so no press follows it.
 TURN_PASS_EVENTS: Final = frozenset({"turn_passed", "turn_start_card_played"})
+
+# In-turn steps the browser also holds for "확정 ▶" whenever they cannot be
+# taken back (``sent_by_turn_end``). Long Live the Fighters' second pick
+# commits the draw, the discard and the trash at once ("Look at the top 3
+# cards, Draw 1, Discard 1, Trash 1" [Long Live the Fighters card]); with
+# Glowglobes ("look at the top card of your deck at any time" [Glowglobes
+# Tech tile]) the deck's new top card then shows to its owner, a reveal that
+# closes the undo window (OQ-010) over the first pick too. Held, the seat may
+# still pick another discard or take its draw pick back (user decision
+# 2026-10-19, after a misclicked draw that could not be undone).
+HELD_IN_TURN: Final = frozenset({"select_long_live_fighters_discard"})
 
 # Events that mean a seat has taken its turn: an Agent went out, or the
 # turn was passed. A Reveal turn ends only through ``finish_reveal``, which
@@ -303,7 +324,12 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     if owes_track_spy(state, owner) or owes_held_draw(state, owner):
         return None
     # A Tech tile's acquire effects still waiting hold the end back too
-    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``).
-    if context.get(TECH_ACQUIRE_PENDING_KEY):
+    # (OQ-098; ``combat_deployment.legal_agent_turn_finish_actions``), but
+    # not an Influence with every Faction at the top (cleanup-2b).
+    if turn_rows.tech_acquire_effects_hold_the_end(context, state.players[owner]):
+        return None
+    # So does c6r6's Influence waiting with a Faction it can raise
+    # (cleanup-2b; public facts: the frame's context, the seat's Influence).
+    if turn_rows.holds_the_end(state, owner):
         return None
     return owner

@@ -583,7 +583,10 @@ def test_seek_allies_and_dangerous_rhetoric_self_trash_are_excluded(
     state = _turn_state((seek_allies,))
     placed = apply_agent_action(state, _place_action(state, "dutiful_service"))
     resolved = resolve_agent_card_effect(placed.state)
-    assert [e.kind for e in resolved.events] == ["card_trashed"]
+    assert [e.kind for e in resolved.events] == [
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
     collector.step(
         base_module.Step(
             pre=placed.state,

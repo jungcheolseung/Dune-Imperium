@@ -13,8 +13,8 @@ nothing now is a greyed-out row with its reason.
 The Reveals are real: ``fixtures/reveal_choice_saves.py`` walks seeded
 four-human games with random steps and saves the first Reveal that shows an
 optional choice and a mandatory one offered, a card to buy and a choice
-waiting, twice: "optional" (the waiting choice is optional; seed 6: Public
-Spectacle's Spy icon, Calculus of Power's trash, Unswerving Loyalty without
+waiting, twice: "optional" (the waiting choice is optional; seed 306: Public
+Spectacle's Spy icon, Arrakis Observer's recall, Unswerving Loyalty without
 its Fremen Bond) and "command" (a Command (6+) choice waits; seed 167:
 Desert Power's branch with its sandworm greyed out for want of Maker Hooks,
 Unswerving Loyalty's troop, Intelligence Training waiting for Command,

@@ -26,15 +26,18 @@ Engine facts this module relies on (see ``rules/combat.py``):
   multiplier (and the winner and margin, for rank 1). Before that ruling
   every recipient's event came before any reward choice opened, all in the
   ``combat_intrigue_finished`` step.
-- ``finish_combat`` zeroes ``combat_strength``/``troops_conflict`` and pops
-  ``current_conflict_ids`` only in its own *post*-state, so the units/strength
+- The Conflict-end step (``offer_conflict_end_triggers``) pops
+  ``current_conflict_ids`` (the award, OQ-108) and returns ``troops_conflict``
+  to the supply, and ``finish_combat`` zeroes ``combat_strength``, each only
+  in its own *post*-state, so the units/strength
   snapshot must come from the *pre*-state of the step whose events contain
   ``combat_intrigue_finished`` (never from a ``conflict_won`` step's
   post-state, which is already cleaned up).
 - ``current_conflict_ids`` is a stack: one Conflict is revealed per round
-  (``rules/phases.py::begin_round``) and pushed on top; ``finish_combat`` pops
-  it only when there was a winner, so a Conflict nobody won (an empty
-  ``rank_combat`` top group, or a >1-way tie for 1st) can be left underneath
+  (``rules/phases.py::begin_round``) and pushed on top; the award
+  (``combat._award_conflict``) pops it only when there was a winner, so a
+  Conflict nobody won (an empty ``rank_combat`` top group, or a >1-way tie
+  for 1st) can be left underneath
   a later round's Conflict. ``current_conflict_ids[-1]`` is always the
   Conflict currently resolving.
 - A Conflict nobody entered still finishes Combat Intrigue: with no
@@ -73,15 +76,16 @@ Engine facts this module relies on (see ``rules/combat.py``):
 
 from __future__ import annotations
 
+from typing import Any
+
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.types import ConflictTier
-from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
 from dune_imperium.evaluation.tournament import MatchSpec
 from dune_imperium.rules.endgame import FinalStanding
 
-from .base import Collector, Columns, Step, arguments, payload
+from .base import Collector, Columns, Step, payload, placement
 
 
 def _mean(values: list[int]) -> float | None:
@@ -168,12 +172,9 @@ class CombatCollector(Collector):
                     self._record_missing_conflict(s)
                 self._recorded = False
                 self._paying = None
-        if (
-            s.owner is not None
-            and s.action is not None
-            and s.action.action_id == "agent_turn"
-        ):
-            self._record_agent_turn(s, s.owner, s.action)
+        placed = placement(s)
+        if s.owner is not None and placed is not None:
+            self._record_agent_turn(s, s.owner, placed)
 
     def _record_conflict(self, s: Step) -> None:
         """Snapshot one Conflict's resolution from the *pre*-state (see module
@@ -281,10 +282,10 @@ class CombatCollector(Collector):
         # next Conflict's _record_conflict.
         self._pre_intrigue = None
 
-    def _record_agent_turn(self, s: Step, owner: int, action: DomainAction) -> None:
+    def _record_agent_turn(self, s: Step, owner: int, placed: dict[str, Any]) -> None:
         """Garrison size and Combat-space choice at the moment an Agent lands."""
 
-        space_id = arguments(action).get("space_id")
+        space_id = placed.get("space_id")
         if not isinstance(space_id, str):
             return
         space = BOARD_SPACES_BY_ID.get(space_id)

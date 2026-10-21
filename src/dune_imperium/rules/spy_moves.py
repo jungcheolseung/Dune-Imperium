@@ -15,12 +15,13 @@ observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-065).
 
 from copy import replace
 
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
@@ -33,6 +34,7 @@ from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spy_options,
 )
 
 # The turn's own frames, where the owner's waiting Emperor track Spy is
@@ -65,12 +67,14 @@ def turn_space_spy_frames(
     space_id: str,
     *,
     source: str,
+    printer: str,
 ) -> RuleResult:
     """Push one Spy-move decision per opposing Spy watching ``space_id``.
 
     Frames are pushed so the next clockwise opponent decides first. Each
     frame keeps ``space_id``: the Spy may not move to a post connected to
-    it [FAQ p. 2].
+    it [FAQ p. 2], and ``printer``, the card that moves it
+    (``action_shapes.printer_value``; stage B3d-3).
     """
 
     posts = set(connected_post_ids(space_id))
@@ -89,6 +93,7 @@ def turn_space_spy_frames(
                     context=(
                         ("player", seat),
                         ("post_id", post_id),
+                        (PRINTER_KEY, printer),
                         ("source", source),
                         ("space_id", space_id),
                     ),
@@ -211,6 +216,13 @@ def track_spy_is_queued(state: GameState) -> bool:
     first recall a Spy when the supply is empty [Main pp. 11, 20]. The turn
     owner's own entries never open here: they wait for ``place_track_spy``
     (user ruling 2026-10-04, overriding OQ-057 (15)).
+
+    A completed Contract's reward window holds it too: the Influence that
+    reached 4 may also earn an alliance and so complete Earn Any Alliance,
+    whose reward the engine paid inside that step before stage B2. The Spy
+    came after it then, and comes after its icon rows now (OQ-112); a
+    choice row's own frame (a Contract Spy, a recall) does not hold it,
+    as that frame did not before.
     """
 
     if _open_track_spy_index(state) is None:
@@ -219,6 +231,8 @@ def track_spy_is_queued(state: GameState) -> bool:
     if frame is None:
         return True
     if isinstance(frame.decision, ChanceDecision):
+        return False
+    if frame.kind == FrameKind.CONTRACT_REWARD_ICONS:
         return False
     return not str(frame.kind).startswith("combat_reward")
 
@@ -255,6 +269,8 @@ def _open_track_spy(state: GameState, index: int) -> GameState:
         player,
         tuple(post.post_id for post in OBSERVATION_POSTS),
         source=source,
+        # The Emperor strip prints the Spy icon [Main p. 7].
+        printer=printer_value(Source.INFLUENCE_TRACK, Faction.EMPEROR.value),
     )
 
 
@@ -309,12 +325,16 @@ def spy_placement_frame(
     allowed_post_ids: tuple[str, ...],
     *,
     source: str,
+    printer: str,
     deep_cover: bool = False,
 ) -> GameState:
     """Push the owner's placement of a Spy on one of ``allowed_post_ids``.
 
     With ``deep_cover`` the placement ignores opponents' Spies (Spy with
     Deep Cover [Bloodlines pp. 5, 12]); only the owner's own Spies block.
+    ``printer`` is the entity whose Spy icon opened it
+    (``action_shapes.printer_value``): a recall first names it (stage
+    B3d-2a, ``effect_steps.Printed.WINDOW``).
     """
 
     return state.push_decision(
@@ -333,6 +353,7 @@ def spy_placement_frame(
                 ("allowed_post_ids", ",".join(allowed_post_ids)),
                 ("deep_cover", deep_cover),
                 ("player", player),
+                (PRINTER_KEY, printer),
                 ("source", source),
             ),
         )
@@ -352,43 +373,32 @@ def legal_spy_placement_actions(
     allowed = frozenset(
         context_str(context, "allowed_post_ids", owner="Spy placement frame").split(",")
     )
-    owner = state.players[player]
-    if context.get("deep_cover") is True:
-        targets = tuple(
-            post.post_id
-            for post in OBSERVATION_POSTS
-            if post.post_id in allowed and post.post_id not in owner.spy_post_ids
-        )
-    else:
-        targets = empty_observation_post_ids(state, allowed)
-    if targets and owner.spies_supply > 0:
-        return tuple(
+    options = spy_options(
+        state, player, allowed, shared_post=context.get("deep_cover") is True
+    )
+    return (
+        *(
+            (DomainAction(action_id="decline_spy_placement", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_placement",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
             DomainAction(
                 action_id="place_spy_on_space",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in targets
-        )
-    decline = DomainAction(action_id="decline_spy_placement", actor=player)
-    if targets and owner.spy_post_ids:
-        # No Spy in supply: "you may first recall one of your Spies for no
-        # effect" [Main pp. 11, 20]. Placing is only mandatory with a Spy in
-        # the supply (the erratum to [Main p. 11], OQ-057), so the recall
-        # can be passed up; once it is made the Spy has to be placed.
-        return (
-            decline,
-            *(
-                DomainAction(
-                    action_id="recall_spy_for_placement",
-                    actor=player,
-                    arguments=(("post_id", post_id),),
-                )
-                for post_id in owner.spy_post_ids
-            ),
-        )
-    # Nothing can be placed (every allowed post is occupied, or no Spy).
-    return (decline,)
+            for post_id in options.place
+        ),
+    )
 
 
 def apply_spy_placement(state: GameState, action: DomainAction) -> RuleResult:

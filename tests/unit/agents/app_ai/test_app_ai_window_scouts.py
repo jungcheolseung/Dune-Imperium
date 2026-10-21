@@ -17,6 +17,7 @@ from functools import cache
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.abilities import scouts as sc
 from dune_imperium.agents.app_ai.abilities.base import Answer, Request, TargetInfo
@@ -142,7 +143,7 @@ def _run(
     state: GameState, *, rng_seed: int = 0, memory: Memory | None = None
 ) -> DecisionRun:
     profile = make_profile(state, ME, rng_seed=rng_seed)
-    actions = app_offered(ENGINE.legal_actions(state, ME))
+    actions = app_offered(ENGINE.whole_actions(state, ME))
     return DecisionRun(profile.ctx, profile, actions, profile.rng, memory or Memory())
 
 
@@ -565,7 +566,7 @@ def test_mission_top_up_then_joins_the_troop_way() -> None:
     assert _arg(action, "count") == 1
     key = (W.MISSION_JOIN_INTENT, state.round_number, "weirding_warfare", ME)
     assert run.memory.intents[key] == ""
-    topped = ENGINE.apply(state, action).state
+    topped = apply_whole(ENGINE, state, action).state
     assert topped.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
     again = _run(topped, memory=run.memory)
     join = W.scouts_mission(again)
@@ -644,7 +645,7 @@ def test_sealed_bid_bids_then_confirms() -> None:
     first = _decide(state, rng_seed=1)
     assert first is not None and first.action_id == "scouts_bid"
     assert _arg(first, "count") == best
-    placed = ENGINE.apply(state, first).state
+    placed = apply_whole(ENGINE, state, first).state
     second = _decide(placed, rng_seed=7)
     assert second is not None and second.action_id == "confirm_scouts_bid"
 
@@ -906,7 +907,7 @@ def test_mercenaries_bid_then_confirms() -> None:
     assert first is not None
     if first.action_id == "confirm_scouts_bid":
         return  # b* = 0: one step
-    placed = ENGINE.apply(state, first).state
+    placed = apply_whole(ENGINE, state, first).state
     second = _decide(placed, rng_seed=9)
     assert second is not None and second.action_id == "confirm_scouts_bid"
 

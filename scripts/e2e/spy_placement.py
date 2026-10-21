@@ -39,9 +39,12 @@ def live(page, base: str) -> None:
         "state.actions.actions.some((a) => "
         "a.action_id === 'resolve_espionage_place_spy')",
         """(() => {
-          const rows = state.actions.actions;
-          return (rows.find((a) => a.action_id === 'agent_turn'
-            && a.arguments.space_id === 'espionage') || rows[0]).index;
+          // An Agent turn is two steps: the placement's card pick, then (at
+          // the next call) the space pick that completes it.
+          const placed = placementActions().find(
+            (a) => a.arguments.space_id === 'espionage');
+          return placed ? (placed.pickIndex ?? placed.index)
+            : state.actions.actions[0].index;
         })()""",
         limit=400,
     )
@@ -126,8 +129,8 @@ def fixtures(page) -> None:
             {index: 901, action_id: kind, arguments: {post_id: posts[0]}},
             {index: 902, action_id: 'recall_spy_for_placement',
               arguments: {post_id: posts[1]}},
-            {index: 903, action_id: 'agent_turn',
-              arguments: {infiltrate_post_id: posts[2]}},
+            {index: 903, action_id: 'place_agent',
+              arguments: {space_id: 'espionage', infiltrate_post_id: posts[2]}},
           ]};
           state.pick = null;
           render();

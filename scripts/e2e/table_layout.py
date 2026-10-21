@@ -15,6 +15,21 @@ from common import Check, chrome, open_context, server
 check = Check()
 
 
+# The first block of the history the reader can still see, its offset from
+# the list's top and its line height (defined on the page by evaluating this
+# once).
+READING_ANCHOR_JS = """window.readingAnchor = () => {
+    const list = window.__historyList;
+    const top = list.getBoundingClientRect().top;
+    const node = [...list.querySelectorAll(
+        '.turn-head, .turn-line-head, .logevent, .turn-cards, .undo-marker')]
+        .find((n) => n.getBoundingClientRect().bottom > top + 1);
+    const line = parseFloat(getComputedStyle(node).lineHeight)
+        || parseFloat(getComputedStyle(node).fontSize) * 1.2;
+    return {node, offset: node.getBoundingClientRect().top - top, line};
+}"""
+
+
 def settle_layout(page) -> None:
     """Let the browser lay out a resize and the layout observer's response."""
     page.evaluate("""async () => {
@@ -207,13 +222,25 @@ def run(base: str, browser) -> None:
     settle_layout(page)
 
     # Make one actual move to populate the history. It does not need to finish
-    # a turn; every placement already creates a public log card.
+    # a turn; every placement already creates a public log card. A placement
+    # is two steps (the card pick, then the space pick that names the Agent's
+    # card-play cue), so wait for both. The card with the most space picks
+    # goes, so that taking its space pick back below leaves the longest list
+    # of choices this turn can show.
+    revision = page.evaluate("state.summary.revision")
     page.evaluate(
-        "applyAction(state.actions.actions.find("
-        "a => a.action_id === 'agent_turn').index)"
+        """() => {
+        const all = placementActions();
+        const count = (p) =>
+          all.filter((q) => q.arguments.card_id === p.arguments.card_id).length;
+        applyPlacement(all.reduce((best, p) => (count(p) > count(best) ? p : best)));
+    }"""
     )
     page.wait_for_selector(".log-size-toggle")
-    page.wait_for_function("!state.busy && refreshFlight === null")
+    page.wait_for_function(
+        f"state.summary.revision === {revision + 2}"
+        " && !state.busy && refreshFlight === null"
+    )
     page.evaluate("clearTimeout(playEffects.timer)")
     page.set_viewport_size({"width": 1920, "height": 900})
     settle_layout(page)
@@ -268,11 +295,14 @@ def run(base: str, browser) -> None:
         "history control follows Korean",
     )
 
-    # Return to the placement choice, and expose the real long action list.
+    # Take the space pick back and expose the real long action list: the
+    # picked card's space picks (about seven rows; the flat list used to hold
+    # every card's placements, nearly three times as many). A 1366x768 window
+    # now holds them all, so the check uses one short enough to overflow.
     page.click(".undo-row button")
     page.wait_for_function("!state.busy && refreshFlight === null")
     page.click(".action-list-toggle")
-    page.set_viewport_size({"width": 1366, "height": 768})
+    page.set_viewport_size({"width": 1366, "height": 560})
     scroll = page.evaluate("""() => {
         const actions = document.getElementById('actions');
         const header = document.getElementById('decision-info');
@@ -459,16 +489,34 @@ def run(base: str, browser) -> None:
         "wide history scrolls independently of the turn choices",
         scrolling,
     )
+    # The reading position is the line the reader is at: the first block of
+    # the history still (partly) in view, and how far its top sits from the
+    # list's top. A narrower history wraps the lines above it onto more rows
+    # (the undone placement's lines, at 312px instead of 467px), and the
+    # browser's own scroll anchoring then moves scrollTop to keep the reader
+    # where they were, so the number scrollTop is not the position. The
+    # anchoring holds a line of text, so a block whose own words re-wrap may
+    # shift by less than one of its lines: the reader is still on it.
+    page.evaluate(READING_ANCHOR_JS)
+    page.evaluate("window.__readingAt = readingAnchor()")
     for height in (1200, 900):
         page.set_viewport_size({"width": 1920, "height": height})
         settle_layout(page)
-        position = page.evaluate("""() => ({
-            same: window.__historyList ===
-                document.querySelector('#action-log .log-list'),
-            scroll: window.__historyList.scrollTop,
-        })""")
+        position = page.evaluate("""() => {
+            const now = readingAnchor();
+            return {
+                same: window.__historyList ===
+                    document.querySelector('#action-log .log-list'),
+                line: now.node === window.__readingAt.node,
+                moved: now.offset - window.__readingAt.offset,
+                height: now.line,
+                scroll: window.__historyList.scrollTop,
+            };
+        }""")
         check.ok(
-            position["same"] and position["scroll"] == 80,
+            position["same"]
+            and position["line"]
+            and abs(position["moved"]) < position["height"],
             f"history keeps its reading position after resizing to 1920×{height}",
             position,
         )

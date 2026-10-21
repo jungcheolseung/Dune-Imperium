@@ -4,6 +4,15 @@ from copy import replace
 
 from dune_imperium.content.arrakeen_scouts import RoundModifier
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    GainResources,
+    OnReachInfluence,
+)
+from dune_imperium.content.uprising.leader_abilities import (
+    LEADER_ABILITIES,
+    leader_triggers,
+)
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState
@@ -467,10 +476,22 @@ def _apply_reach_two_leader_bonus(
     """
 
     owner = players[player]
-    if owner.leader_id == "lady_margot_fenring" and faction is Faction.BENE_GESSERIT:
+    bonus = next(
+        (
+            rewards
+            for trigger, rewards in leader_triggers(
+                owner.leader_face_id or owner.leader_id, OnReachInfluence
+            )
+            if trigger.faction is faction
+        ),
+        (),
+    )
+    gain = bonus[0] if len(bonus) == 1 else None
+    if isinstance(gain, GainResources):
+        spice = gain.spice
         owner = replace(
             owner,
-            resources=replace(owner.resources, spice=owner.resources.spice + 2),
+            resources=replace(owner.resources, spice=owner.resources.spice + spice),
         )
         event = GameEvent(
             event_id=event_id,
@@ -478,11 +499,11 @@ def _apply_reach_two_leader_bonus(
             payload=(
                 ("faction", faction.value),
                 ("player", player),
-                ("spice", 2),
+                ("spice", spice),
             ),
         )
         return replace_player(players, owner), intrigue_deck, pending_draws, (event,)
-    if owner.leader_id == "princess_irulan" and faction is Faction.EMPEROR:
+    if bonus == (DrawIntrigueCards(1),):
         # Card identity stays hidden [Main p. 7]; only the count is public.
         if hold:
             players = replace_player(
@@ -679,3 +700,27 @@ def _transfer_or_return_alliance(
             ),
         ),
     )
+
+
+def _check_reach_bonuses() -> None:
+    """The reach-Influence Leader rewards this module pays (composed A6e):
+    on reaching two, like the Victory Point [Main pp. 7, 17]; spice, or one
+    Intrigue card held as the seat's own step (OQ-106)."""
+
+    for face_id, abilities in LEADER_ABILITIES.items():
+        for ability in abilities:
+            if not isinstance(ability.trigger, OnReachInfluence):
+                continue
+            rewards = ability.sections[0].rewards
+            if ability.trigger.amount != 2 or not (
+                rewards == (DrawIntrigueCards(1),)
+                or (
+                    len(rewards) == 1
+                    and isinstance(rewards[0], GainResources)
+                    and rewards[0] == GainResources(spice=rewards[0].spice)
+                )
+            ):
+                raise ValueError(f"{face_id}: no such reach-Influence reward")
+
+
+_check_reach_bonuses()

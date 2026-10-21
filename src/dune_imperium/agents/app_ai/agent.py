@@ -41,12 +41,14 @@ import random
 from collections import Counter
 from typing import Final
 
+from dune_imperium.agents.agent_turn_steps import PlacementMemory
 from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import AppContext
 from dune_imperium.agents.app_ai.data.constants import TABLES
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows import DecisionRun, Memory, handler_for
 from dune_imperium.agents.app_ai.windows.common import TRIGGERED_DRAWS
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
@@ -87,6 +89,9 @@ class AppAIAgent:
         self.level = level
         self._rng = random.Random(seed)
         self.memory = Memory()
+        # The placement chosen at an Agent turn's card pick, for its space
+        # pick (stage B1, ``agents.agent_turn_steps``).
+        self._placements = PlacementMemory()
         # Decisions answered at random, by decision kind: no window mirrors
         # them (``<kind>``, ``view-only:<kind>``) or the window failed
         # (``error:<kind>``).
@@ -113,8 +118,28 @@ class AppAIAgent:
         observation: PlayerView,
         legal_actions: tuple[DomainAction, ...],
     ) -> DomainAction:
-        """The app AI's answer to the decision on top of ``state``."""
+        """The app AI's answer to the decision on top of ``state``. An
+        Agent-turn step (stage B1) is judged as the placements it stands
+        for, one decision per placement (``agents.agent_turn_steps``)."""
 
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            # The app pays a Conflict reward without asking (stage B2 rows,
+            # ``agents.engine_order``).
+            return scripted
+        return self._placements.choose(
+            state,
+            observation.player,
+            legal_actions,
+            lambda actions: self._choose_with_state(state, observation, actions),
+        )
+
+    def _choose_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
         if not legal_actions:
             raise ValueError("app_ai requires at least one legal action")
         legal_actions = app_offered(legal_actions)

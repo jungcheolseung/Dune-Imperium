@@ -16,7 +16,6 @@ from dune_imperium.content.arrakeen_scouts import (
     SALES_BY_ID,
     SUBCOMMITTEES_BY_ID,
     MissionKind,
-    ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
     AcquireReserveCardToHand,
@@ -25,17 +24,19 @@ from dune_imperium.content.arrakeen_scouts.types import (
     LoseFactionInfluence,
     LoseGarrisonTroops,
     LoseHighestInfluence,
-    PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
 )
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
+    EffectSection,
     GainInfluence,
     PayResources,
     RecallSpy,
     RecruitTroops,
+    SpendSpecimens,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
@@ -173,7 +174,8 @@ def _step_text(step: object, *, cost: bool) -> str:
             return "Lose 1 Influence with your highest Faction"
         case LoseGarrisonTroops(count=count):
             return f"Lose {count} troop{'s' if count > 1 else ''} from your garrison"
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count) if cost:
+            # The wording the Scouts page has shown for Ingratiate's cost.
             return f"Pay {count} specimen{'s' if count > 1 else ''}"
         case RecallOtherAgent():
             return "Recall another of your Agents"
@@ -185,8 +187,9 @@ def _step_text(step: object, *, cost: bool) -> str:
             return "+1 Influence with your lowest Faction"
         case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
             return f"Gain {spice} spice ({helix} once you reach the Helix)"
-        case TrashPersonalCard() if cost:
-            return reward_text(step)
+        case TrashCard(hand_only=True) if cost:
+            # The wording the Scouts page has shown for a hand-trash cost.
+            return reward_text(TrashPersonalCard(hand_only=True, mandatory=True))
     return cost_text(step) if cost else reward_text(step)  # type: ignore[arg-type]
 
 
@@ -198,7 +201,7 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
             return "영향력이 가장 높은 진영에서 영향력 1 잃기"
         case LoseGarrisonTroops(count=count):
             return f"주둔지의 {{troop:{count}}} 잃기"
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count) if cost:
             return f"{{specimen:{count}}} 지불"
         case RecallOtherAgent():
             return "다른 {agent} 1 회수"
@@ -211,12 +214,12 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
             return "영향력이 가장 낮은 진영 영향력 +1"
         case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
             return f"{{spice:{spice}}} (나선에 닿았으면 {{spice:{helix}}})"
-        case TrashPersonalCard() if cost:
-            return reward_text_ko(step)
+        case TrashCard(hand_only=True) if cost:
+            return reward_text_ko(TrashPersonalCard(hand_only=True, mandatory=True))
     return cost_text_ko(step) if cost else reward_text_ko(step)  # type: ignore[arg-type]
 
 
-def scouts_option_text(option: ScoutsOption) -> str:
+def scouts_option_text(option: EffectSection) -> str:
     """One line: its costs, an arrow, its rewards (no arrow for one side)."""
 
     costs = ", ".join(_step_text(cost, cost=True) for cost in option.costs)
@@ -224,7 +227,7 @@ def scouts_option_text(option: ScoutsOption) -> str:
     return " → ".join(side for side in (costs, rewards) if side)
 
 
-def scouts_option_text_ko(option: ScoutsOption) -> str:
+def scouts_option_text_ko(option: EffectSection) -> str:
     costs = ", ".join(_step_text_ko(cost, cost=True) for cost in option.costs)
     rewards = ", ".join(_step_text_ko(reward, cost=False) for reward in option.rewards)
     return " → ".join(side for side in (costs, rewards) if side)
@@ -396,7 +399,7 @@ def scouts_item_lines(item_id: str) -> tuple[list[str], list[str]]:
     note = _NOTES.get(item_id)
     if note is not None:
         return [note[0]], [note[1]]
-    options: list[ScoutsOption] = []
+    options: list[EffectSection] = []
     prefixes: list[tuple[str, str]] = []
     if item_id in SUBCOMMITTEES_BY_ID:
         options = [SUBCOMMITTEES_BY_ID[item_id].option]
@@ -418,7 +421,7 @@ def scouts_item_lines(item_id: str) -> tuple[list[str], list[str]]:
         auction = AUCTIONS_BY_ID[item_id]
         if not auction.rank_rewards:
             return [auction_rule_text(item_id)], [auction_rule_text_ko(item_id)]
-        options = [ScoutsOption(rewards=rewards) for rewards in auction.rank_rewards]
+        options = [EffectSection(rewards=rewards) for rewards in auction.rank_rewards]
         prefixes = [("1st: ", "1위: "), ("2nd: ", "2위: ")][: len(options)]
     english = [scouts_option_text(option) for option in options]
     korean = [scouts_option_text_ko(option) for option in options]
@@ -585,15 +588,15 @@ def _cost_reason(state: GameState, seat: int, cost: object) -> Reason:
             )
         case TrashIntrigueCard():
             return "No Intrigue card to trash", "폐기할 {intrigue_card} 없음", "cost"
-        case TrashPersonalCard(hand_only=True):
+        case TrashCard(hand_only=True):
             return "No card in hand to trash", "{hand}에 {trash}할 카드 없음", "cost"
-        case TrashPersonalCard():
+        case TrashCard():
             return "No card to trash", "{trash}할 카드 없음", "cost"
         case LoseGarrisonTroops(count=count):
             # A garrison Sardaukar Commander pays too (OQ-105).
             en, ko, _ = _troops_reason("garrison", count, garrison_units(owner))
             return en, ko, "cost"
-        case PaySpecimens(count=count):
+        case SpendSpecimens(count=count):
             en, ko, _ = _troops_reason("specimens", count, owner.specimens)
             return en, ko, "cost"
         case LoseFactionInfluence(faction=faction, count=count):
@@ -642,7 +645,7 @@ def _reward_reason(reward: object) -> Reason:
 
 
 def _step_reason(
-    state: GameState, seat: int, option: ScoutsOption, step: ScoutsStep
+    state: GameState, seat: int, option: EffectSection, step: ScoutsStep
 ) -> Reason:
     if step in option.costs:
         return _cost_reason(state, seat, step)

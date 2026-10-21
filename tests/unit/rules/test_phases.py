@@ -6,6 +6,7 @@ import pytest
 from tests.support.pauses import answer_pause, pause_outcome
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
@@ -438,8 +439,9 @@ def test_a_defending_twisted_genius_draws_its_twisted_intrigue_with_the_hand() -
     (
         # Planetary Array / CHOAM Transports (``tech.draw_owed_tech_cards``).
         (1, False, "tech_draw"),
-        # Hungry for Spice (``leader_abilities.grant_hungry_for_spice``).
-        (0, True, "hungry_for_spice"),
+        # Hungry for Spice (``leader_abilities.grant_hungry_for_spice``),
+        # named after the Leader (cleanup-2c-4).
+        (0, True, "leader:steersman_y_rkoon"),
     ),
 )
 def test_an_owed_card_draw_waits_for_the_round_start_draw(
@@ -485,8 +487,8 @@ def test_an_owed_card_draw_waits_for_the_round_start_draw(
 
     # The defense answer draws the hands; the owed card follows, from seat
     # 1's discard pile once it is reshuffled.
-    declined = engine.apply(
-        revealed, DomainAction(action_id="decline_control_defense", actor=2)
+    declined = apply_whole(
+        engine, revealed, DomainAction(action_id="decline_control_defense", actor=2)
     )
     answered = engine.apply(declined.state, pause_outcome(declined.state))
     kinds = [event.kind for event in (*declined.events, *answered.events)]

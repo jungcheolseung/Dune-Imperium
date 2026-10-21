@@ -12,6 +12,7 @@ frame's rows, its hold of ``finish_reveal`` and the entry an action takes
 
 from collections import Counter
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -22,8 +23,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     SetAsideImperiumRowCard,
     TrashPersonalCard,
 )
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_is_optional,
+)
 from dune_imperium.content.uprising.types import (
-    MANDATORY_REVEAL_CHOICES,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import DomainAction
@@ -269,7 +272,10 @@ def test_a_lose_troops_cost_moves_the_tactics_token_once() -> None:
         state, entry = applied.result.state, applied.entry
         tallies.append(entry.tally)
         advanced.extend(
-            (int(dict(event.payload)["count"]), int(dict(event.payload)["space"]))
+            (
+                cast(int, dict(event.payload)["count"]),
+                cast(int, dict(event.payload)["space"]),
+            )
             for event in applied.result.events
             if event.kind == "tactics_token_advanced"
         )
@@ -293,7 +299,7 @@ def test_a_refusal_announces_its_source_s_event() -> None:
     )
     assert declined.result.state is state
     assert [(event.event_id, event.kind) for event in declined.result.events] == [
-        (f"s:slot:{entry.step}:trash_declined", "intrigue_trash_declined")
+        (f"s:slot:{entry.step}:trash_declined", "optional_trash_declined")
     ]
     assert declined.entry == replace(entry, step=entry.step + 1)
 
@@ -330,7 +336,7 @@ def test_the_pending_list_policy() -> None:
 
 
 def _mandatory(entry: tuple[str, str]) -> bool:
-    return PersonalCardRevealChoiceEffect(entry[1]) in MANDATORY_REVEAL_CHOICES
+    return not reveal_choice_is_optional(PersonalCardRevealChoiceEffect(entry[1]))
 
 
 def test_the_executor_matches_the_engine_on_seeded_games() -> None:

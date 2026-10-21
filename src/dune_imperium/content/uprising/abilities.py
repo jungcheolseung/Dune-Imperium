@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.uprising.effect_dsl import (
+    SCOUTS_ONLY_PIECES,
     Condition,
     EffectSection,
     IntrigueOption,
@@ -49,11 +50,34 @@ class AbilityTiming(StrEnum):
     TRASH = "trash"
     DISCARD = "discard"
     TURN_START = "turn_start"
+    # Sending an Agent to a board space: its printed icons (composed A5c).
+    BOARD_SPACE = "board_space"
+    # Completing a Contract tile (composed A5a).
+    CONTRACT = "contract"
+    # A Conflict card's reward row (composed A5b).
+    CONFLICT_REWARD = "conflict_reward"
     PLOT = "plot"
     COMBAT = "combat"
     ENDGAME = "endgame"
     # An event fires it (a Leader's standing ability, a face-up trigger).
     TRIGGERED = "triggered"
+    # Flipping a Tech tile: "used during one of your turns, and can be used
+    # only once per round" [Bloodlines p. 7] (composed A6b).
+    FLIP = "flip"
+    # An Arrakeen Scouts item's printed lines: a subcommittee joined, an
+    # event's or a sale's choice, a secret reward, an auction place (composed
+    # A7b); a mechanism of the module is a hook record without lines.
+    SCOUTS = "scouts"
+    # Reaching a space of the research or Tleilaxu track: its printed bonus
+    # [Immortality pp. 6-7] (composed A7c).
+    TRACK_SPACE = "track_space"
+    # Strength a tile adds while its unit is in the Conflict: a Sardaukar
+    # Commander's Skill [Bloodlines p. 4] (composed A7a).
+    IN_CONFLICT = "in_conflict"
+    # A printed rule change in force while the card is held -- a cost, a
+    # limit, an icon list, what its owner may see -- with no moment of its
+    # own: the record names the engine's branch (``hook``), composed A6b.
+    STANDING = "standing"
 
 
 class AbilityMark(StrEnum):
@@ -78,6 +102,9 @@ class AbilityStructure(StrEnum):
     ONE_OF = "one_of"
     # Lines printed without "—OR—", each used on its own (OQ-058).
     SEPARATE = "separate"
+    # "Choose two" of the lines, both named before either is paid (designer
+    # ruling, OQ-057) [Stitched Horror card].
+    CHOOSE_TWO = "choose_two"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +121,16 @@ class Ability:
     # A Plot used "at the start of your turn" (Withdrawn, OQ-095 (6)).
     at_turn_start: bool = False
     hook: str | None = None
+    # An Agent box whose printed icons resolve one action each, in the
+    # owner's order (OQ-027): one row key per line, ``sections[i]`` resolved
+    # by ``resolve_agent_card_effect(effect=icons[i])``.
+    icons: tuple[str, ...] = ()
+    # An arrow whose rewards resolve one action each once its cost is paid
+    # (OQ-027): one row key per line from the first, armed by the cost's
+    # answer (``effects.arm_agent_icons``) instead of queued at placement; a
+    # line whose condition fails then is not armed, and a line after the
+    # keyed ones is paid with the cost (Elite Forces' Combat).
+    armed_icons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, AbilityTiming):
@@ -102,7 +139,23 @@ class Ability:
             raise ValueError("an ability needs a printed line or a hook")
         if self.hook == "":
             raise ValueError("a hook must be named")
-        if self.structure is not AbilityStructure.SEQUENCE and len(self.sections) < 2:
+        if self.timing is not AbilityTiming.SCOUTS and any(
+            not section.rewards
+            or any(
+                isinstance(piece, SCOUTS_ONLY_PIECES)
+                for piece in (*section.costs, *section.rewards)
+            )
+            for section in self.sections
+        ):
+            # An Arrakeen Scouts line may only take something away or use
+            # the module's own pieces (composed A7b); no card prints them.
+            raise ValueError("only an Arrakeen Scouts line prints this")
+        if (
+            self.structure is not AbilityStructure.SEQUENCE
+            and len(self.sections) < 2
+            and not self.icons
+        ):
+            # A box printing a single icon still resolves it on its own.
             raise ValueError(f"a {self.structure} ability needs two or more lines")
         if self.mark is AbilityMark.AUTOMATIC and any(
             section.costs for section in self.sections
@@ -114,6 +167,26 @@ class Ability:
             raise ValueError("triggered lines must be free and unconditional")
         if self.at_turn_start and self.timing is not AbilityTiming.PLOT:
             raise ValueError("only a Plot is played at the start of a turn")
+        if self.icons:
+            if self.timing is not AbilityTiming.AGENT_BOX:
+                raise ValueError("only an Agent box resolves icon by icon")
+            if self.structure is not AbilityStructure.SEPARATE:
+                raise ValueError("an icon-by-icon box uses each line on its own")
+            if len(self.icons) != len(self.sections):
+                raise ValueError("an icon-by-icon box keys every line")
+            if len(set(self.icons)) != len(self.icons) or not all(self.icons):
+                raise ValueError("icon keys must be named and distinct")
+        if self.armed_icons:
+            if self.timing is not AbilityTiming.AGENT_BOX or self.icons:
+                raise ValueError("only an Agent box arrow arms its rewards as icons")
+            if len(self.armed_icons) > len(self.sections):
+                raise ValueError("an arrow arming its rewards keys its own lines")
+            if len(set(self.armed_icons)) != len(self.armed_icons) or not all(
+                self.armed_icons
+            ):
+                raise ValueError("icon keys must be named and distinct")
+            if not self.sections[0].costs:
+                raise ValueError("an arrow arms its rewards after its cost")
 
 
 _FROM_INTRIGUE = {
@@ -156,6 +229,7 @@ def intrigue_option(ability: Ability) -> IntrigueOption:
         or ability.structure is AbilityStructure.ONE_OF
         or ability.requirement is not None
         or ability.hook is not None
+        or ability.icons
     ):
         raise ValueError(f"no Intrigue option holds {ability!r}")
     return IntrigueOption(

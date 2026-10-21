@@ -17,9 +17,9 @@ seeds of today first, then 0-399). Two Reveals are saved, the first of each
 kind the walks meet:
 
 - "optional": the waiting choice is optional, so its greyed row says it
-  lapses unused when the Reveal ends (seed 6 today: Public Spectacle's Spy
-  icon and Calculus of Power's trash offered, Unswerving Loyalty without
-  its Fremen Bond waiting);
+  lapses unused when the Reveal ends (seed 306 today: Public Spectacle's
+  Spy icon and Arrakis Observer's recall offered, Unswerving Loyalty
+  without its Fremen Bond waiting);
 - "command": the waiting choice is a Command (6+) one, so its reason is
   the Persuasion the Reveal has generated (seed 167 today: Desert Power's
   branch and Unswerving Loyalty's troop offered, Intelligence Training
@@ -36,6 +36,8 @@ import random
 import sys
 from pathlib import Path
 
+from placement_walk import walk_step
+
 from dune_imperium.display.actions import reveal_choice_headers
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
@@ -51,8 +53,13 @@ OPTIONS = {
 }
 # The seeds that meet the two Reveals today come first; the rest of the
 # range follows, so an engine change that moves those games only moves the
-# case to a later seed (a scan of 0-399 takes about a minute).
-KNOWN = (6, 167)
+# case to a later seed (a scan of 0-399 takes about a minute and a half).
+# Seed 6 until codec v149 moved its game (Public Spectacle, Calculus of Power
+# and Unswerving Loyalty); a scan of 0-399 then finds the "optional" Reveal at
+# seeds 199, 306, 316 and 386 -- reveal_choices.py reads Public Spectacle's
+# logged Spy step off the "optional" Reveal, and only seed 306 has that card
+# among them.
+KNOWN = (306, 167)
 SEEDS = (*KNOWN, *(seed for seed in range(400) if seed not in KNOWN))
 STEPS = 6_000
 
@@ -95,7 +102,7 @@ for seed in SEEDS:
             summary = manager.confirm_turn(game_id, held, summary["revision"])
             continue
         owner = summary["decision"]["owner"]
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         if session.state.decision_stack[-1].kind == FrameKind.REVEAL:
             # The page's own list (display.actions.reveal_choice_headers).
             choices = reveal_choice_headers(session.state, owner) or []
@@ -125,8 +132,10 @@ for seed in SEEDS:
                     ],
                 }
                 break
-        index = rng.randrange(len(actions)) if actions else 0
-        summary = manager.apply_action(game_id, owner, summary["revision"], index)
+        # An Agent placement is drawn as one choice, as before stage B1
+        # (``placement_walk``), so the seeds keep their games.
+        # ``choice`` draws as ``randrange`` over the list did.
+        summary, _ = walk_step(manager, game_id, owner, summary, rng.choice)
 
 if len(found) < 2:
     raise RuntimeError(f"seeds 0-399 meet only {sorted(found)}")

@@ -163,7 +163,7 @@ def test_an_assets_folder_sets_every_picture_the_server_looks_for(
 
 
 def test_relative_folders_are_inside_the_checkout_and_networks_are_real_files(
-    tmp_path: Path,
+    tmp_path: Path, symlink_support: None,
 ) -> None:
     network = tmp_path / "net-v1.pt"
     network.write_bytes(b"")
@@ -304,7 +304,9 @@ def test_a_chosen_network_that_is_missing_switches_the_search_ai_off(
     assert any("탐색 AI 꺼짐" in line and "missing.pt" in line for line in lines)
 
 
-def test_a_link_to_a_missing_network_says_where_it_points(tmp_path: Path) -> None:
+def test_a_link_to_a_missing_network_says_where_it_points(
+    tmp_path: Path, symlink_support: None,
+) -> None:
     link = tmp_path / "search.pt"
     link.symlink_to("gone-v9.pt")
     lines = _check(LauncherSettings(port=_free_port(), search_checkpoint=str(link)))

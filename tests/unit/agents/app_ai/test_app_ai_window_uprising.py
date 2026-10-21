@@ -15,6 +15,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import windows as windows_package
 from dune_imperium.agents.app_ai.abilities.base import Answer
@@ -97,7 +98,7 @@ def _run(
     patch: Callable[[Profile], None] | None = None,
 ) -> tuple[DecisionRun, tuple[DomainAction, ...]]:
     seat = _owner(state)
-    legal = ENGINE.legal_actions(state, seat)
+    legal = ENGINE.whole_actions(state, seat)
     rng = random.Random(seed)
     profile = _profile(state, seat, rng)
     if patch is not None:
@@ -205,19 +206,20 @@ CONTRACT_SPY_RECALL = _first(
 )
 # Round 1, seat 0 (Feyd) at Dutiful Service: Arrakeen I 1.40625, Immediate 2.86.
 MARKET = _first("contract_market", 1)
-# Round 9, seat 1 (Gurney Halleck) completed a contract at Sardaukar, its
-# other Agents on the High Council and the Deep Desert; it has Bene Gesserit
-# 2, seat 3 has 4. The recall tests put those two Agents on Arrakeen (combat,
-# value 8.0759) and Secrets (BG, value 5.125). Seed 7 reached Arrakeen and
-# Secrets themselves until 5654d7f8 (a Combat Intrigue pass right after a
-# card play no longer counts as a consecutive pass, 2026-10-07) moved its
-# game; seed 123 then reached a recall with two Agents until the user ruling
-# of 2026-10-14 (an optional effect of the Agent turn offers no refusal and
-# lapses at the turn's end, OQ-095 (2)) moved the heuristic games. 34 is the
-# first seed from 1 that reaches a recall with two Agents and passes the
-# recall tests below (of seeds 1-1499 only 34, 865, 1004, 1209 and 1430 do).
+# Round 6, seat 2 (Lady Amber Metulli) completed a contract at Sardaukar, its
+# other Agents on Arrakeen and the Swordmaster; it has Bene Gesserit 1, seat
+# 0 has 3. The recall tests put those two Agents on Arrakeen (combat) and
+# Secrets (BG). Seed 7 reached Arrakeen and Secrets themselves until
+# 5654d7f8 (a Combat Intrigue pass right after a card play no longer counts
+# as a consecutive pass, 2026-10-07) moved its game; seed 123 then reached a
+# recall with two Agents until the user ruling of 2026-10-14 (an optional
+# effect of the Agent turn offers no refusal and lapses at the turn's end,
+# OQ-095 (2)) moved the heuristic games, and seed 34 until cleanup-2d split
+# three Agent boxes per icon (2026-10-18). 865 is the first seed from 1 that
+# reaches a recall with two other Agents from Sardaukar and passes the
+# recall tests below (of seeds 1-1499 also 1004, 1209, 1382, 1430 and 1440).
 RECALL = _first(
-    "contract_reward_recall", 34, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
+    "contract_reward_recall", 865, lambda s, o: len(ENGINE.whole_actions(s, o)) > 1
 )
 # Round 3, seat 2 (Lady Amber Metulli), one Agent left, hand: Signet Ring,
 # Dune :0, Convincing Argument, Dune :1. Seed 7 reached a Covert Operation
@@ -282,7 +284,7 @@ def test_spy_placement_with_an_empty_supply_recalls_the_worst_post_first() -> No
     recall = _answer(state)
     assert recall == _act("recall_spy_for_placement", seat, post_id=POST_ASSEMBLY)
     # The window stays open with a Spy in supply: the placement follows.
-    after = ENGINE.apply(state, recall).state
+    after = apply_whole(ENGINE, state, recall).state
     assert after.decision_stack[-1].kind == "spy_placement"
     assert _answer(after) == _act("place_spy_on_space", seat, post_id=POST_FREMEN)
 
@@ -327,7 +329,7 @@ def test_contract_spy_with_an_empty_supply_never_declines() -> None:
     assert _act("decline_contract_spy", seat) in legal
     recall = _answer(CONTRACT_SPY_RECALL)
     assert recall == _act("recall_spy_for_contract", seat, post_id=POST_EMPEROR)
-    after = ENGINE.apply(CONTRACT_SPY_RECALL, recall).state
+    after = apply_whole(ENGINE, CONTRACT_SPY_RECALL, recall).state
     assert after.decision_stack[-1].kind == "contract_reward_spy"
     assert _answer(after) == _act("place_contract_spy", seat, post_id=POST_LANDSRAAD)
 
@@ -475,8 +477,8 @@ def _arrakeen_and_secrets() -> GameState:
 
     seat = _owner(RECALL)
     assert RECALL.players[seat].agent_locations == (
-        "high_council",
-        "deep_desert",
+        "arrakeen",
+        "swordmaster",
         "sardaukar",
     )
     return with_player(
@@ -487,7 +489,8 @@ def _arrakeen_and_secrets() -> GameState:
 def test_recall_takes_the_trailing_faction_space_over_a_combat_space() -> None:
     state = _arrakeen_and_secrets()
     seat = _owner(state)
-    # Secrets: BG 2 vs 4 -> 75; Arrakeen: 50 - 8.0759.
+    # Secrets: Bene Gesserit trailing by 2 -> 75; Arrakeen: 50 minus its
+    # space value.
     assert _answer(state) == _act(
         "recall_agent_for_contract", seat, space_id="secrets"
     )
@@ -505,8 +508,8 @@ def test_recall_prefers_a_factionless_non_combat_space() -> None:
 
 def test_recall_otherwise_takes_the_lowest_space_value() -> None:
     seat = _owner(RECALL)
-    # BG 3 vs 4: no longer trailing by 2. Secrets 50 - 9.675, Arrakeen
-    # 50 - 8.0759: the lower-valued Arrakeen scores higher.
+    # Bene Gesserit 3: no longer trailing by 2. Both score 50 minus their
+    # space value: the lower-valued Arrakeen scores higher.
     state = with_player(
         _arrakeen_and_secrets(),
         seat,
@@ -529,7 +532,7 @@ def _recall_in_reverse_board_order() -> tuple[GameState, str, str]:
     state = with_player(RECALL, seat, agent_locations=(second, first, "sardaukar"))
     offered = [
         a.arguments
-        for a in ENGINE.legal_actions(state, seat)
+        for a in ENGINE.whole_actions(state, seat)
         if a.action_id == "recall_agent_for_contract"
     ]
     assert offered == [(("space_id", second),), (("space_id", first),)]
@@ -710,7 +713,7 @@ def test_lltf_draw_trashes_the_cheapest_when_nothing_is_junk() -> None:
     assert draw == _act(
         "select_long_live_fighters_draw", seat, card_id="imperium:weirding_woman:0"
     )
-    after = ENGINE.apply(state, draw).state
+    after = apply_whole(ENGINE, state, draw).state
     assert _answer(after) == _act(
         "select_long_live_fighters_discard",
         seat,
@@ -731,7 +734,7 @@ def test_lltf_draw_uses_get_card_to_trash() -> None:
     state = _deck_top(LLTF, (signet, dagger, argument))
     draw = _answer(state)
     assert draw == _act("select_long_live_fighters_draw", seat, card_id=signet)
-    after = ENGINE.apply(state, draw).state
+    after = apply_whole(ENGINE, state, draw).state
     assert _answer(after) == _act(
         "select_long_live_fighters_discard", seat, card_id=argument
     )

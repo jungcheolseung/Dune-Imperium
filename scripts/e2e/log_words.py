@@ -136,7 +136,41 @@ GAMES = (
     # 1-299 finds seed 20 first (again with Family Atomics, the Feyd track,
     # research and the three v146 events, and with v147's unused Reveal
     # choice and Reveal choice rows naming their card with ``source``).
-    {"seats": ["random"] * 4, "game_seed": 20, "policy_seed": 20, **EVERY_EXPANSION},
+    # Codec v149 (the cleanup-2 engine changes) moves seed 20 off its Secrets
+    # steal. The same scan over random seeds 1-257 (2026-10-19) finds seed 22
+    # first (again with Family Atomics, the Feyd track, research, the three
+    # v146 events and v147's unused Reveal choice and Reveal choice rows; the
+    # exchanged Influence stays with seed 25).
+    # Stage B1 (codec v150) asks an Agent turn as a card pick and then a space
+    # pick, so random seats draw the card and the space in turn and seed 22
+    # loses its Secrets steal. A headless scan of the same games over random
+    # seeds 1-120 (2026-10-19) finds seed 39 first with the steal and Family
+    # Atomics, the Feyd track, research, the three v146 events and v147's
+    # unused Reveal choice and Reveal choice rows.
+    # Stage B3a (a waiting effect is picked before its target, so random
+    # seats draw the effect and then its target) moves seed 39 off its
+    # Secrets steal. A headless scan of the same games over random seeds
+    # 1-200 (2026-10-20) finds seed 197 the only one with the steal and
+    # Family Atomics, the Feyd track, research, the three v146 events and
+    # v147's unused Reveal choice.
+    # Stage B3b (a Contract completed in its owner's turn leaves its icons as
+    # rows of that turn, so random seats draw from another list) moves seed
+    # 197 off its Secrets steal. The same scan over random seeds 1-500
+    # (2026-10-20) finds seed 9 first with the steal and all of the above.
+    # Stage B3b-2 (the Reveal frame's effects come effect first) moves seed 9
+    # off its Secrets steal; the same scan over random seeds 1-400 finds seed
+    # 3 first with the steal and all of the above. Stage B3c-1 (a card is
+    # played effect first) moves seed 3 off its steal and its Feyd track; the
+    # same scan over random seeds 1-400 finds seed 283 first with all of it.
+    # Stage B3c-2b (an optional trash on the turn is its icon's row, then the
+    # card) moves seed 283 off its steal and its unused Reveal choice; the
+    # same scan over random seeds 1-400 finds seed 185 first with all of it.
+    {
+        "seats": ["random"] * 4,
+        "game_seed": 185,
+        "policy_seed": 185,
+        **EVERY_EXPANSION,
+    },
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -164,10 +198,44 @@ GAMES = (
     # troops, a mission's pieces on posts and an auction won (no single seed of
     # the 299 reaches them all with a round modifier too; seed 22 has the
     # modifier).
+    # Codec v149 (the cleanup-2 engine changes) moves seed 36 off Clear the
+    # Market, Mating Season, the secret picks revealed and the mission troops
+    # (it keeps Mercenaries), and seed 22 below has none of the first three
+    # either. A scan of the same games through GameSessionManager over random
+    # seeds 1-235 (2026-10-19) finds seed 106 first that, with seed 22 below,
+    # reaches every Scouts surface again (the draws, the item kinds, a round
+    # modifier, Clear the Market, a mission's pieces and troops, an auction
+    # won, Mercenaries, the secret picks revealed and Mating Season; seed 22
+    # has the round modifier and the mission troops).
+    # Stage B1 (codec v150: random seats draw an Agent turn's card and space
+    # in turn) moves seed 106 off the mission troops and Mercenaries, and
+    # seed 22 below off them too; no seed of 1-160 pairs with seed 22 again.
+    # A headless scan of the Scouts games over random seeds 1-160
+    # (2026-10-19) finds the pair 2 and 13 first that reaches every Scouts
+    # surface (seed 2: Clear the Market, Mercenaries, the secret picks
+    # revealed and an auction won; seed 13 below: a round modifier, Mating
+    # Season, a mission's pieces and troops and an auction won).
+    # Stage B2 (OQ-112: random seats draw over a Conflict reward's icon rows)
+    # moves seed 2 off the secret picks revealed and seed 13 off Mating
+    # Season. The same headless scan over random seeds 1-200 (2026-10-19)
+    # finds the pair 7 and 20 first (seed 7: a round modifier, Clear the
+    # Market, a mission's pieces and troops, an auction won and the secret
+    # picks revealed; seed 20 below: Mating Season and Mercenaries).
+    # Stage B3a (random seats draw a waiting effect and then its target)
+    # moves seed 7 off its round modifier and Clear the Market and seed 20
+    # off Mercenaries. The same headless scan over random seeds 1-200
+    # (2026-10-20) finds the pair 3 and 5 first (no single seed reaches every
+    # Scouts surface). Stage B3b-2 (the Reveal frame's effects) moves the pair
+    # off Clear the Market, Mercenaries and Mating Season; the same scan over
+    # random seeds 1-300 finds the pair 1 and 90 first. Stage B3c-1 (a card
+    # is played effect first) moves them again; the same scan finds the pair
+    # 2 and 209 first. Stage B3d-1 (the reward windows offer effect rows)
+    # moves seed 2 off its round modifier; the same scan finds the pair 4
+    # and 209 first.
     {
         "seats": ["random"] * 4,
-        "game_seed": 36,
-        "policy_seed": 36,
+        "game_seed": 4,
+        "policy_seed": 4,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -202,8 +270,13 @@ GAMES = (
         # mission troops and an auction won.
         # Codec v146 moves seed 22 off Mating Season (the game above has it);
         # it keeps the round modifier, mission troops and an auction won.
-        "game_seed": 22,
-        "policy_seed": 22,
+        # Stage B1 moves it off the mission troops; seed 13 pairs with seed 2
+        # above (see there), since stage B2 seed 20 with seed 7, since stage
+        # B3a seed 5 with seed 3, since stage B3b-2 seed 90 with seed 1,
+        # since stage B3c-1 seed 209 with seed 2, and since stage B3d-1 seed
+        # 209 with seed 4.
+        "game_seed": 209,
+        "policy_seed": 209,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -262,6 +335,9 @@ async ({gameId}) => {
     for (const lang of ["ko", "en"]) {
       setLanguage(lang, false);
       for (const entry of meta.log) {
+        // A step that only picks toward a waiting effect: the page's log
+        // shows the effect whole on its last step (stage B3, panels.js).
+        if (entry.pick) continue;
         if (entry.type === "chance") {
           take();
           const label = {type: "chance", decision_id: entry.decision_id,
@@ -290,6 +366,11 @@ async ({gameId}) => {
     if (!table || typeof table !== "object") continue;
     for (const entry of Object.values(table)) {
       if (entry && typeof entry.name === "string") names.add(entry.name);
+      // A Leader face's ability name, as the page shows it: Korean from the
+      // Korean print, English for Reverend Mother Jessica, whose face has
+      // no Korean scan (docs/rules/glossary-ko.md); its board repeat's line
+      // names it (cleanup-2c review).
+      if (entry && typeof entry.ability === "string") names.add(entry.ability);
     }
   }
   return {out, names: [...names], posts: Object.keys(state.catalog.posts)};
@@ -379,7 +460,7 @@ def check_coverage(records: list[dict]) -> None:
         "a Feyd track step": lambda s: s == "payload feyd_token_advanced.to_space",
         "a Skill instance": lambda s: s.endswith(".skill_instance_id"),
         "Family Atomics' removed cards": lambda s: s
-        == "payload family_atomics_used.removed",
+        == "payload imperium_row_cleared.removed",
         "an exchanged Influence": lambda s: s == "action exchange_reveal_influence",
         "a Secrets steal": lambda s: s.startswith("chance ") and ":secrets:steal:" in s,
         "a Combat/Endgame Intrigue pass": lambda s: s.startswith("action ")
@@ -473,30 +554,34 @@ def check_log(records, names, posts) -> None:
 
 # Lines whose words come from somewhere other than the event's own label
 # (user report 2026-10-10), rendered with the page's functions in both
-# languages: Staban Tuek's Smuggle Spice payout names the ability and the
-# Leader (panels.js EVENT_IMPLIED_LEADER, the catalog's names), the "game"
+# languages: Staban Tuek's Smuggle Spice -- its gain names him (the
+# ``leader`` source), its ``leader_ability_resolved`` names the ability and
+# the Leader (panels.js logEventHead, the catalog's names) -- the "game"
 # card holding it is titled for a Leader ability, and Esmar Tuek's Signet
-# taking a bonus spice says the spice was gained (not "-1").
+# taking a bonus spice is a gain line (cleanup-2c-4).
 NAMED_JS = r"""() => {
   const out = {};
   const calls = [];
   const realPrettify = window.prettify;
   window.prettify = (id) => { calls.push(String(id)); return realPrettify(id); };
-  const smuggle = {kind: "leader_ability_spice_gained",
-    payload: {player: 0, space_id: "hagga_basin", spice: 1, visitor: 3}};
-  const taken = {kind: "leader_signet_resolved",
-    payload: {bonus_spice: -1, player: 2, space_id: "hagga_basin"}};
+  const gain = {kind: "resources_gained",
+    payload: {player: 0, source: "round:1:player:0:leader:staban_tuek", spice: 1}};
+  const smuggle = {kind: "leader_ability_resolved",
+    payload: {leader_id: "staban_tuek", player: 0, visitor: 3}};
+  const taken = {kind: "resources_gained",
+    payload: {player: 2, source: "round:1:player:2:leader_signet", spice: 1}};
   const placed = {kind: "leader_signet_resolved",
-    payload: {bonus_spice: 1, player: 2, space_id: "tuek_sietch"}};
+    payload: {card_id: "player:2:starter:signet_ring:0", player: 2}};
   try {
     for (const lang of ["ko", "en"]) {
       setLanguage(lang, false);
       const staban = lookup("staban_tuek", "leaders");
       const group = {kind: "neutral", firstIndex: 1, lastIndex: 1,
-        items: [{event: smuggle, index: 1}]};
+        items: [{event: gain, index: 1}, {event: smuggle, index: 1}]};
       out[lang] = {
         leader: staban.name,
         ability: staban.ability,
+        gain: logEventLine(gain).textContent,
         smuggle: logEventLine(smuggle).textContent,
         title: neutralTitle(group),
         taken: logEventLine(taken).textContent,
@@ -516,11 +601,11 @@ def check_named_lines(page, posts: list[str], names: list[str]) -> None:
     shown = page.evaluate(NAMED_JS)
     check.ok(not shown["pretty"], "named lines: prettify() is never called", shown)
     expected = {
-        "ko": ("스타반 튜엑", "스파이스 밀수", "지도자 능력", "보너스 스파이스 1"),
-        "en": ("Staban Tuek", "Smuggle Spice", "Leader ability", "Took 1 bonus spice"),
+        "ko": ("스타반 튜엑", "스파이스 밀수", "지도자 능력"),
+        "en": ("Staban Tuek", "Smuggle Spice", "Leader ability"),
     }
-    verbs = {"ko": "획득", "en": "gained"}
-    for lang, (leader, ability, title, gained) in expected.items():
+    verbs = {"ko": "획득", "en": "Gained"}
+    for lang, (leader, ability, title) in expected.items():
         row = shown[lang]
         check.ok(
             (row["leader"], row["ability"]) == (leader, ability),
@@ -533,23 +618,28 @@ def check_named_lines(page, posts: list[str], names: list[str]) -> None:
             row["smuggle"],
         )
         check.ok(
+            leader in row["gain"] and verbs[lang] in row["gain"],
+            f"{lang}: Smuggle Spice's gain names the Leader",
+            row["gain"],
+        )
+        check.ok(
             row["title"] == title,
             f"{lang}: the card holding it is titled for a Leader ability",
             row["title"],
         )
         check.ok(
-            gained in row["taken"]
-            and verbs[lang] in row["taken"]
+            verbs[lang] in row["taken"]
+            and "1" in row["taken"]
             and "-1" not in row["taken"],
             f"{lang}: Esmar's Signet taking a bonus spice says it was gained",
             row["taken"],
         )
         check.ok(
-            "1" in row["placed"] and gained not in row["placed"],
-            f"{lang}: placing a bonus spice keeps its plain line",
+            verbs[lang] not in row["placed"],
+            f"{lang}: placing a bonus spice gains nothing",
             row["placed"],
         )
-        texts = [row["smuggle"], row["title"], row["taken"], row["placed"]]
+        texts = [row["gain"], row["smuggle"], row["title"], row["taken"], row["placed"]]
         ids = [
             found for text in texts if (found := engine_ids(strip(text, names), posts))
         ]

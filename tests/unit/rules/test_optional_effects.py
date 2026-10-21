@@ -10,6 +10,7 @@ refusal and does not hold the end back; the press lapses it.
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -24,6 +25,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
@@ -81,29 +83,28 @@ def _send(state: GameState, space_id: str, card_id: str | None = None) -> GameSt
 
     placement = next(
         action
-        for action in ENGINE.legal_actions(state, 0)
-        if action.action_id == "agent_turn"
-        and dict(action.arguments)["space_id"] == space_id
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
         and (card_id is None or dict(action.arguments)["card_id"] == card_id)
         and len(action.arguments) == 2
     )
-    state = ENGINE.apply(state, placement).state
+    state = apply_placement(ENGINE, state, placement).state
     while True:
         step = next(
             (
                 action
-                for action in ENGINE.legal_actions(state, 0)
+                for action in ENGINE.whole_actions(state, 0)
                 if action.action_id in MANDATORY_SPACE_STEPS
             ),
             None,
         )
         if step is None:
             return state
-        state = ENGINE.apply(state, step).state
+        state = apply_whole(ENGINE, state, step).state
 
 
 def _ids(state: GameState) -> set[str]:
-    return {action.action_id for action in ENGINE.legal_actions(state, 0)}
+    return {action.action_id for action in ENGINE.whole_actions(state, 0)}
 
 
 def test_an_unaffordable_optional_box_lapses_at_the_turn_end() -> None:
@@ -119,7 +120,7 @@ def test_an_unaffordable_optional_box_lapses_at_the_turn_end() -> None:
     assert "pay_agent_card_spice" not in legal
     assert FINISH.action_id in legal
     before = state.players[0]
-    finished = ENGINE.apply(state, FINISH)
+    finished = apply_whole(ENGINE, state, FINISH)
     lapsed = [
         event for event in finished.events if event.kind == "agent_card_effect_lapsed"
     ]
@@ -140,9 +141,9 @@ def test_an_affordable_optional_box_is_offered_beside_the_turn_end() -> None:
     legal = _ids(state)
     assert {"pay_agent_card_spice", FINISH.action_id} <= legal
     assert "decline_agent_card_payment" not in legal
-    paid = ENGINE.apply(state, DomainAction("pay_agent_card_spice", 0)).state
+    paid = apply_whole(ENGINE, state, DomainAction("pay_agent_card_spice", 0)).state
     assert paid.players[0].victory_points == state.players[0].victory_points + 1
-    finished = ENGINE.apply(paid, FINISH)
+    finished = apply_whole(ENGINE, paid, FINISH)
     assert "agent_card_effect_lapsed" not in {event.kind for event in finished.events}
 
 
@@ -156,7 +157,7 @@ def test_desert_tactics_trash_is_offered_without_a_refusal() -> None:
     assert "trash_card_for_desert_tactics" in legal
     assert "resolve_desert_tactics_without_trash" not in legal
     assert FINISH.action_id in legal
-    finished = ENGINE.apply(state, FINISH)
+    finished = apply_whole(ENGINE, state, FINISH)
     lapsed = [event for event in finished.events if event.kind == "board_effect_lapsed"]
     assert [dict(event.payload)["effect"] for event in lapsed] == [BOARD_ICON_TRASH]
 
@@ -189,14 +190,14 @@ def test_imperial_privilege_offers_its_trade_and_its_recall_together() -> None:
     assert "decline_imperial_privilege_intrigue" not in legal
     # The recall is mandatory: the end waits for it.
     assert FINISH.action_id not in legal
-    recalled = ENGINE.apply(
+    recalled = apply_whole(ENGINE, 
         state,
         DomainAction(
             "recall_agent_for_imperial_privilege", 0, (("space_id", "arrakeen"),)
         ),
     ).state
     assert "trash_intrigue_for_imperial_privilege" in _ids(recalled)
-    finished = ENGINE.apply(recalled, FINISH)
+    finished = apply_whole(ENGINE, recalled, FINISH)
     lapsed = [event for event in finished.events if event.kind == "board_effect_lapsed"]
     assert [dict(event.payload)["effect"] for event in lapsed] == [
         BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE
@@ -221,8 +222,8 @@ def test_a_spy_placement_passed_up_keeps_its_refusal() -> None:
     )
     space_id = next(
         dict(action.arguments)["space_id"]
-        for action in ENGINE.legal_actions(start, 0)
-        if action.action_id == "agent_turn" and len(action.arguments) == 2
+        for action in executable_placements(start, 0)
+        if len(action.arguments) == 2
     )
     state = _send(start, str(space_id))
     legal = _ids(state)
@@ -258,29 +259,29 @@ def test_other_memories_offers_no_refusal_and_waits_any_time_in_the_turn() -> No
     # Espionage's Spy is mandatory; the ability is offered throughout.
     while FINISH.action_id not in _ids(state):
         assert "use_other_memories" in _ids(state)
-        state = ENGINE.apply(
+        state = apply_whole(ENGINE, 
             state,
             next(
                 action
-                for action in ENGINE.legal_actions(state, 0)
+                for action in ENGINE.whole_actions(state, 0)
                 if action.action_id == "resolve_espionage_place_spy"
             ),
         ).state
     assert _ids(state) == {"use_other_memories", FINISH.action_id}
 
-    unused = ENGINE.apply(state, FINISH)
+    unused = apply_whole(ENGINE, state, FINISH)
     assert _lapses(unused.events) == [
         "round:1:player:0:board:espionage:other_memories:lapsed"
     ]
     assert unused.state.players[0].leader_face_id == "lady_jessica"
 
-    used = ENGINE.apply(state, DomainAction("use_other_memories", 0)).state
+    used = apply_whole(ENGINE, state, DomainAction("use_other_memories", 0)).state
     owner = used.players[0]
     assert (owner.leader_face_id, owner.memories) == ("reverend_mother_jessica", 0)
     assert set(deck) <= set(owner.hand)
     # The repeat costs one water, which the seat lacks: nothing to answer.
     assert _ids(used) == {FINISH.action_id}
-    finished = ENGINE.apply(used, FINISH)
+    finished = apply_whole(ENGINE, used, FINISH)
     assert _lapses(finished.events) == [
         "round:1:player:0:board:espionage:board_repeat:lapsed"
     ]
@@ -309,11 +310,12 @@ def test_the_repeat_lapses_an_unused_desert_tactics_trash_first() -> None:
         _ids(state)
     )
 
-    repeated = ENGINE.apply(state, pay)
+    repeated = apply_whole(ENGINE, state, pay)
 
     assert [event.kind for event in repeated.events] == [
         "board_effect_lapsed",
-        "leader_board_repeat_paid",
+        "resources_paid",
+        "leader_ability_resolved",
     ]
     assert dict(repeated.events[0].payload) == {
         "effect": BOARD_ICON_TRASH,
@@ -325,7 +327,7 @@ def test_the_repeat_lapses_an_unused_desert_tactics_trash_first() -> None:
     assert "trash_card_for_desert_tactics" in _ids(again)
     assert FINISH.action_id not in _ids(again)
     again = _send_steps(again)
-    finished = ENGINE.apply(again, FINISH)
+    finished = apply_whole(ENGINE, again, FINISH)
     assert _lapses(finished.events) == [
         "round:1:player:0:board:desert_tactics:trash:lapsed"
     ]
@@ -371,11 +373,11 @@ def test_the_repeat_leaves_the_scouts_mission_pieces_collected_once() -> None:
     )
     state = _send(state, "desert_tactics")
     collect = DomainAction("scouts_collect_mission", 0, (("choice", ""),))
-    assert collect in ENGINE.legal_actions(state, 0)
-    collected = ENGINE.apply(state, collect)
+    assert collect in ENGINE.whole_actions(state, 0)
+    collected = apply_whole(ENGINE, state, collect)
     assert [event.kind for event in collected.events] == ["scouts_mission_troops"]
 
-    repeated = ENGINE.apply(
+    repeated = apply_whole(ENGINE, 
         collected.state, DomainAction("pay_leader_board_repeat", 0)
     ).state
     again = _send_steps(repeated)
@@ -389,12 +391,12 @@ def _send_steps(state: GameState) -> GameState:
     while step := next(
         (
             action
-            for action in ENGINE.legal_actions(state, 0)
+            for action in ENGINE.whole_actions(state, 0)
             if action.action_id in MANDATORY_SPACE_STEPS
         ),
         None,
     ):
-        state = ENGINE.apply(state, step).state
+        state = apply_whole(ENGINE, state, step).state
     return state
 
 

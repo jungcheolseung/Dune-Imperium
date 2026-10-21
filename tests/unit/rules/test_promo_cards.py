@@ -9,8 +9,12 @@ documents leave open are recorded in ``docs/rules/open-questions.md``.
 
 from dataclasses import replace
 
+import pytest
+from tests.support.reward_windows import settle_reward_window
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS_BY_ID,
     imperium_deck_instance_ids,
@@ -29,6 +33,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -43,12 +48,20 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.combat import (
+    apply_combat_reward_influence,
     face_up_battle_icons,
     finish_combat,
+    legal_combat_reward_influence_actions,
+    offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
+from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind, top_frame
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.optional_trash import apply_optional_trash
 from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
 from dune_imperium.simulation import run_random_game
@@ -108,11 +121,20 @@ def _context(state: GameState) -> dict[str, object]:
 
 
 def _influence_frames(state: GameState) -> list[DecisionFrame]:
-    return [
-        frame
-        for frame in state.decision_stack
-        if frame.kind == "combat_reward_influence"
-    ]
+    """The Influence choices the recipient's reward window opens, one after
+    the other (stage B2, OQ-112: each is a row of the window), each answered
+    with its first legal Faction so the next one opens."""
+
+    frames: list[DecisionFrame] = []
+    while True:
+        state = settle_reward_window(state)
+        frame = top_frame(state)
+        if frame is None or frame.kind != FrameKind.COMBAT_REWARD_INFLUENCE:
+            return frames
+        frames.append(frame)
+        assert isinstance(frame.decision, PlayerDecision)
+        choice = legal_combat_reward_influence_actions(state, frame.decision.owner)[0]
+        state = apply_combat_reward_influence(state, choice).state
 
 
 def _payment_ids(state: GameState) -> list[str]:
@@ -238,10 +260,15 @@ def test_liet_may_pay_arrakis_revolt_and_keep_the_wall_behind_it() -> None:
     assert kept.state.shield_wall_present is True
     assert liet.sandworms_conflict == 0
     assert liet.resources.spice == 1  # 2 paid, 1 from the replacement
-    # The replacement's Intrigue card waits in its trash frame as its own
-    # step (user ruling 2026-10-10, OQ-106).
+    # The replacement's Intrigue card waits as its own step beside its trash
+    # (user ruling 2026-10-10, OQ-106), both on the owner's Agent turn as rows
+    # (user decision 2026-10-17, cleanup-2b).
     assert liet.intrigue_cards == ()
-    assert kept.state.decision_stack[-1].kind == "optional_trash"
+    assert kept.state.decision_stack[-1].kind == "agent_effects"
+    assert [
+        kind
+        for kind, _source, _value in turn_rows.pending(kept.state.decision_stack[-1])
+    ] == [turn_rows.OPTIONAL_TRASH, turn_rows.PLANETOLOGIST_INTRIGUE]
     drawn = apply_optional_trash(
         kept.state, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
     ).state
@@ -272,10 +299,14 @@ def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
     assert after.units_deployed_turn == 1
     assert _context(result.state)["pending_agent_effect"] is False
     assert [event.kind for event in result.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "shield_wall_destroyed",
         "sandworm_deployed",
+        "agent_card_effect_resolved",
     ]
+    assert result.events[-1] == agent_box_event(
+        agent_card_source(1, 0, revolt), revolt, 0, BoxOutcome.RESOLVED
+    )
 
 
 def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
@@ -296,14 +327,19 @@ def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
     assert kept.state.players[0].sandworms_conflict == 1
     assert kept.state.players[0].resources.spice == 0
     assert [event.kind for event in kept.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "sandworm_deployed",
+        "agent_card_effect_resolved",
     ]
 
     declined = apply_agent_card_payment(placed, actions["decline_agent_card_payment"])
     assert declined.state.players[0].resources.spice == 2
     assert declined.state.players[0].sandworms_conflict == 0
-    assert declined.events[0].kind == "agent_card_payment_declined"
+    assert declined.events == (
+        agent_box_event(
+            agent_card_source(1, 0, revolt), revolt, 0, BoxOutcome.DECLINED
+        ),
+    )
 
 
 def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
@@ -339,15 +375,16 @@ def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
         ("acquire_tech", (("tech_id", "servo_receivers"),)),
         ("resolve_tech_acquire_effect", (("effect", "signet"),)),
         ("gain_leader_signet_troop", ()),
-        ("agent_turn", (("card_id", revolt), ("space_id", "arrakeen"))),
+        ("choose_agent_card", (("card_id", revolt),)),
+        ("place_agent", (("space_id", "arrakeen"),)),
     ):
         action = next(
             action
-            for action in engine.legal_actions(state, 0)
+            for action in engine.whole_actions(state, 0)
             if action.action_id == action_id
             and all(dict(action.arguments)[key] == value for key, value in arguments)
         )
-        state = engine.apply(state, action).state
+        state = apply_whole(engine, state, action).state
     assert _context(state)["units_deploy_blocked"] is True
     return state
 
@@ -373,9 +410,10 @@ def test_arrakis_revolt_keeps_no_wall_payment_under_the_emperor_ban() -> None:
     assert removed.state.shield_wall_present is False
     assert removed.state.players[0].sandworms_conflict == 0
     assert [event.kind for event in removed.events] == [
-        "agent_card_payment_resolved",
+        "resources_paid",
         "shield_wall_destroyed",
         "sandworm_summon_unavailable",
+        "agent_card_effect_resolved",
     ]
 
     # Without the wall the payment could only summon, so only declining is
@@ -586,12 +624,15 @@ def test_a_new_conflict_and_combat_cleanup_carry_no_stale_pledge() -> None:
         combat_intrigue_complete=True,
         combat_rewards_resolved=True,
     )
-    finished = finish_combat(state)
+    # The winner takes the Conflict card as the Conflict-end step opens
+    # (OQ-108, user decision 2026-10-18); the cleanup after it only closes
+    # the Combat.
+    offered = offer_conflict_end_triggers(state)
+    assert offered.state.conflict_first_place_influence_bonus == 0
+    assert [event.kind for event in offered.events] == ["conflict_won"]
+    finished = finish_combat(offered.state)
     assert finished.state.conflict_first_place_influence_bonus == 0
-    assert [event.kind for event in finished.events] == [
-        "conflict_won",
-        "combat_cleaned_up",
-    ]
+    assert [event.kind for event in finished.events] == ["combat_cleaned_up"]
 
 
 # --------------------------------------------------------- The Beast's Spoils
@@ -641,13 +682,10 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert _context(resolved.state)["troops_recruited"] == 1
     assert _context(resolved.state)["pending_agent_effect"] is True
     assert _context(resolved.state)["trashes_remaining"] == 1
-    assert dict(resolved.events[0].payload) == {
-        "card_id": spoils,
-        "crysknife": 1,
-        "player": 0,
-        "spice": 1,
-        "troops": 1,
-    }
+    # The hook step pays the spice as a gain of the box; the box is not over
+    # (its trash is still to be answered), so it leaves no box event yet.
+    box = agent_card_source(1, 0, spoils)
+    assert resolved.events == (resources_gained_event(box, 0, spice=1),)
 
     actions = legal_agent_card_trash_actions(resolved.state, 0)
     assert {dict(action.arguments).get("card_id") for action in actions} == {
@@ -663,6 +701,12 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert trashed.state.players[0].trashed == (dagger,)
     assert _context(trashed.state)["pending_agent_effect"] is False
     assert "trashes_remaining" not in _context(trashed.state)
+    # The trash answer closes the box: its event comes last.
+    assert [event.kind for event in trashed.events] == [
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
+    assert trashed.events[-1] == agent_box_event(box, spoils, 0, BoxOutcome.RESOLVED)
 
     declined = apply_agent_card_trash(
         resolved.state,
@@ -670,6 +714,7 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     )
     assert _context(declined.state)["pending_agent_effect"] is False
     assert declined.state.players[0].trashed == ()
+    assert declined.events == (agent_box_event(box, spoils, 0, BoxOutcome.DECLINED),)
 
 
 def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
@@ -738,6 +783,53 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v147: the base catalog's 140 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 141
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the promo catalog's 1,806 ``agent_turn`` rows
+        # become 132 card and space picks.
+        - 1806
+        + 132
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon``, a row per
+        # icon a Conflict reward prints (14 here; Bloodlines adds the Deep
+        # Cover Spy).
+        + 14
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_action_codec.test_catalog_is_fixed...): 810 leave and
+        # 983 rows join (the promo cards add their own effect rows).
+        - 810
+        + 983
+        # v150 (stage B3b-2): the Reveal frame's effect rows: 152 whole
+        # templates leave and 28 rows join.
+        - 152
+        + 28
+        # v150 (stage B3c-1): 73 whole templates leave and 26 rows join.
+        - 73
+        + 26
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # offer effect rows: 234 whole templates leave and 82 rows join.
+        - 234
+        + 82
+        # v150 (stage B3d-2a): the windows opened for one effect offer it by
+        # its target rows: 1,494 whole templates leave and 54 rows join.
+        - 1494
+        + 54
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` / ``confirm_empty`` row naming the effect it answers: 37
+        # whole templates leave (five of them ids no handler ever answered)
+        # and 117 rows join.
+        - 37
+        + 117
+        # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go
+        # by their effect rows: draw_owed_intrigue and place_track_spy leave
+        # (2) and four rows join.
+        - 2
+        + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 16 rows join (the promo cards' among them).
+        - 13
+        + 16
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -759,21 +851,85 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v147: the CHOAM catalog's 144 ``source``-named Reveal rows, and
         # Calculus of Power may trash the promo Emperor card too (+1).
         + 145
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the CHOAM promo catalog's 1,911 ``agent_turn``
+        # rows become 136 card and space picks.
+        - 1911
+        + 136
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon`` (14) and,
+        # with the CHOAM module, ``resolve_contract_reward_icon`` (9).
+        + 14
+        + 9
+        # v150 (stage B3a, OQ-111): 866 whole templates leave and 1,043 rows
+        # join (see above).
+        - 866
+        + 1043
+        # v150 (stage B3b, OQ-112 (4)): the in-turn Contract rows, 23 whole
+        # templates and their 23 effect rows.
+        + 23
+        + 23
+        # v150 (stage B3b-2): 160 whole templates leave and 32 rows join.
+        - 160
+        + 32
+        # v150 (stage B3c-1): 78 whole templates leave and 26 rows join.
+        - 78
+        + 26
+        # v150 (stage B3d-1): 274 whole templates leave and 82 rows join.
+        - 274
+        + 82
+        # v150 (stage B3d-2a): the windows opened for one effect offer it by
+        # its target rows: 1,605 whole templates leave and 79 rows join.
+        - 1605
+        + 79
+        # v150 (stage B3d-3): the refusals and empty confirmations are
+        # ``decline`` / ``confirm_empty`` rows naming the effect they answer:
+        # 39 whole templates leave (five of them ids no handler ever answered)
+        # and 122 rows join.
+        - 39
+        + 122
+        # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go
+        # by their effect rows: draw_owed_intrigue and place_track_spy leave
+        # (2) and four rows join.
+        - 2
+        + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it:
+        # 13 whole templates leave and 16 rows join (the promo cards'
+        # among them).
+        - 13
+        + 16
     )
-    for action_id in (
-        "pay_agent_card_spice_for_sandworm",
-        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+    # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
+    # the card (an effect without a target is one row). The other cards that
+    # print a sandworm payment hold theirs in every catalog; the promo cards
+    # add only the rows that name them.
+    base = ActionCodec(RulesetConfig())
+    for action_id, option in (
+        ("pay_agent_card_spice_for_sandworm", "sandworm"),
+        (
+            "pay_agent_card_spice_for_sandworm_and_shield_wall",
+            "sandworm_and_shield_wall",
+        ),
     ):
         action = DomainAction(action_id=action_id, actor=1)
-        assert codec.decode(codec.encode(action), actor=1) == action
-        base = ActionCodec(RulesetConfig())
-        assert base.decode(base.encode(action), actor=1) == action
+        (row,) = steps_for(action, "arrakis_revolt")
+        assert dict(row.arguments)["option"] == option
+        assert codec.decode(codec.encode(row), actor=1) == row
+        with pytest.raises(ValueError, match="not present"):
+            base.encode(row)
+        (shared,) = steps_for(action, "branching_path")
+        assert base.decode(base.encode(shared), actor=1) == shared
+        assert codec.decode(codec.encode(shared), actor=1) == shared
+    # Pivotal Gambit's trash: the effect row, then any card of the promo
+    # catalog as its target.
     play = DomainAction(
         action_id="trash_agent_card",
         actor=2,
         arguments=(("card_id", _promo_instance("pivotal_gambit")),),
     )
-    assert codec.decode(codec.encode(play), actor=2) == play
+    rows = steps_for(play, "pivotal_gambit")
+    assert [row.action_id for row in rows] == ["trash", "choose_personal_card"]
+    for row in rows:
+        assert codec.decode(codec.encode(row), actor=2) == row
 
 
 def test_random_games_finish_with_the_promo_cards_in_both_rulesets() -> None:

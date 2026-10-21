@@ -31,9 +31,12 @@ from dune_imperium.content.arrakeen_scouts import (
     EVENTS_BY_ID,
     MISSIONS_BY_ID,
     SALES_BY_ID,
+    AuctionKind,
     AuctionSlot,
     AutomaticEffect,
     EventKind,
+    MissionKind,
+    RoundModifier,
     ScoutsPool,
     auctions_for,
     events_for,
@@ -42,6 +45,7 @@ from dune_imperium.content.arrakeen_scouts import (
     scouts_pool,
     subcommittees_for,
 )
+from dune_imperium.content.arrakeen_scouts.abilities import SCOUTS_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -56,6 +60,7 @@ from dune_imperium.rules.frames import (
     reset_turn_counters,
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
+from dune_imperium.rules.market_events import imperium_row_cleared_event
 from dune_imperium.rules.scouts_auctions import (
     AUCTION_PAUSE,
     auction_tasks,
@@ -425,7 +430,7 @@ def apply_scouts_draw(state: GameState, outcome: ChanceOutcome) -> RuleResult:
                     kind="scouts_subcommittees_revealed",
                     payload=(
                         ("round", round_number),
-                        ("subcommittee_ids", ",".join(drawn)),
+                        ("subcommittee_ids", tuple(drawn)),
                     ),
                 ),
             ),
@@ -441,7 +446,7 @@ def apply_scouts_draw(state: GameState, outcome: ChanceOutcome) -> RuleResult:
                 GameEvent(
                     event_id=f"round:{round_number}:scouts:mission_layout",
                     kind="scouts_mission_layout",
-                    payload=(("rounds", ",".join(map(str, layout))),),
+                    payload=(("rounds", layout),),
                 ),
             ),
         )
@@ -652,7 +657,7 @@ def _mating_season(state: GameState) -> RuleResult:
                 kind="scouts_maker_spice_added",
                 payload=(
                     ("amount", 1),
-                    ("space_ids", ",".join(space for space, _ in maker_bonus_spice)),
+                    ("space_ids", tuple(space for space, _ in maker_bonus_spice)),
                 ),
             ),
         ),
@@ -676,10 +681,8 @@ def _clear_row(state: GameState) -> RuleResult:
             imperium_deck=state.imperium_deck[5:],
         ),
         events=(
-            GameEvent(
-                event_id=f"round:{state.round_number}:scouts:clear_row",
-                kind="scouts_row_cleared",
-                payload=(("dealt", ",".join(dealt)), ("removed", ",".join(removed))),
+            imperium_row_cleared_event(
+                f"round:{state.round_number}:scouts:clear_row", removed, dealt
             ),
         ),
     )
@@ -723,7 +726,7 @@ def _deal_cleared_contracts(state: GameState, outcome: ChanceOutcome) -> RuleRes
                 # Joined: the old pair is back in the hidden bank, but its
                 # identities were public while face up (as Family Atomics'
                 # removed Row).
-                payload=(("dealt", ",".join(dealt)), ("removed", ",".join(removed))),
+                payload=(("dealt", tuple(dealt)), ("removed", tuple(removed))),
             ),
         ),
     )
@@ -736,7 +739,10 @@ def four_bonus_choice_is_queued(state: GameState) -> bool:
     """Whether a Friends Everywhere choice can open now.
 
     Like the Emperor track's Spy (``spy_moves.track_spy_is_queued``): after
-    any pending chance frame and after a Conflict's own reward choices.
+    any pending chance frame, after a Conflict's own reward choices and
+    after a completed Contract's reward window (an Influence 4 that also
+    completes Earn Any Alliance, whose reward came inside that step before
+    stage B2, OQ-112).
     """
 
     if not state.scouts_four_bonus_choices:
@@ -745,6 +751,8 @@ def four_bonus_choice_is_queued(state: GameState) -> bool:
     if frame is None:
         return True
     if isinstance(frame.decision, ChanceDecision):
+        return False
+    if frame.kind == FrameKind.CONTRACT_REWARD_ICONS:
         return False
     return not str(frame.kind).startswith("combat_reward")
 
@@ -810,3 +818,36 @@ def apply_scouts_return_specimens(state: GameState, action: DomainAction) -> Rul
     if kind == FrameKind.SCOUTS_MISSION:
         return apply_mission_join(state, action)
     raise ValueError("no Scouts frame offers a specimen return")
+
+
+# The Arrakeen Scouts mechanisms kept as engine code, named by the branch that
+# runs them (composed A7b, cleanup-1): each mission kind (``scouts_missions``),
+# automatic event and round modifier (this module, ``scouts_modifiers``), the
+# shared event (``scouts_effects``) and the auctions that are not sealed bids
+# (``scouts_auctions``). Every hook a Scouts record names is one of these.
+SCOUTS_HOOKS: Final = frozenset(
+    {
+        *(f"mission_{kind.value}" for kind in MissionKind),
+        *(f"automatic_{effect.value}" for effect in AutomaticEffect),
+        *(f"modifier_{modifier.value}" for modifier in RoundModifier),
+        "event_shared",
+        *(
+            f"auction_{kind.value}"
+            for kind in AuctionKind
+            if kind is not AuctionKind.SEALED
+        ),
+    }
+)
+
+
+def _check_scouts_hooks() -> None:
+    unknown = {
+        record.hook
+        for record in SCOUTS_ABILITIES.values()
+        if record.hook is not None and record.hook not in SCOUTS_HOOKS
+    }
+    if unknown:
+        raise ValueError(f"Scouts records name no engine branch: {sorted(unknown)}")
+
+
+_check_scouts_hooks()

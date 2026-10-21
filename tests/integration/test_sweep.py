@@ -689,12 +689,23 @@ def test_zero_coverage_expansion_universes_follow_the_ruleset_options() -> None:
 def test_zero_coverage_action_ids_follow_the_epic_catalog() -> None:
     # Control the Spice's paid trash adds the optional-trash templates to an
     # Epic catalog that has none of the options which otherwise hold them.
-    assert "trash_optional_card" not in zero_coverage({}, choam_module=False)[
-        "action_ids"
-    ]
-    assert "trash_optional_card" in zero_coverage(
-        {}, choam_module=False, epic_game=True
-    )["action_ids"]
+    # Since stage B3d-3 its trash and its refusal are rows of ids every
+    # catalog holds (``trash``, ``decline``), so the ids follow the Epic
+    # catalog's ids exactly, and its templates name Control the Spice.
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.adapters.action_codec import ActionTemplate
+    from dune_imperium.config import RulesetConfig
+
+    epic = ActionCodec(RulesetConfig(choam_module=False, epic_game=True)).catalog
+    assert zero_coverage({}, choam_module=False, epic_game=True)["action_ids"] == (
+        sorted({template.action_id for template in epic})
+    )
+    refusal = ActionTemplate(
+        "decline",
+        (("of", "trash"), ("printed", "control_the_spice"), ("source", "agent_card")),
+    )
+    assert refusal in epic
+    assert refusal not in ActionCodec(RulesetConfig(choam_module=False)).catalog
 
 
 def test_rotate_leaders_specs_are_deterministic_with_four_distinct_ids() -> None:

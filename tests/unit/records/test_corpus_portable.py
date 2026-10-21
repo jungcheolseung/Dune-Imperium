@@ -309,6 +309,26 @@ def test_step_keys_count_an_agent_turn_as_the_census_does() -> None:
     assert "cards_played:dagger" in keys
 
 
+def test_step_keys_count_a_space_pick_with_the_card_picked_before_it() -> None:
+    # Stage B1 (OQ-111): the Agent turn is a card pick and then a space pick;
+    # the card waits in the turn frame, so the space pick counts it.
+    before = _state(
+        _seat(),
+        frames=(_frame("turn", agent_card_pick="player:0:starter:dagger:1"),),
+    )
+    step = DomainAction(
+        "place_agent", 0, (("cost_option", 1), ("space_id", "sietch_tabr"))
+    )
+    keys = _keys(before, step)
+    assert "action_ids:place_agent" in keys
+    assert "agent_placements:sietch_tabr:1" in keys
+    assert "cards_played:dagger" in keys
+    pick = DomainAction(
+        "choose_agent_card", 0, (("card_id", "player:0:starter:dagger:1"),)
+    )
+    assert "action_ids:choose_agent_card" in _keys(_state(_seat()), pick)
+
+
 def test_draws_are_state_deltas_inside_another_step() -> None:
     step = DomainAction("resolve_board_effect", 0)
     before = _state(_seat(deck=("a", "b", "c")), _seat())

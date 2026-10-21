@@ -813,8 +813,9 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
 def test_a_divergence_signature_names_the_frame_on_top(
     tiny_corpus: Path, tmp_path: Path
 ) -> None:
-    """A recorded ``take_contract`` answers the Contract market, a frame an
-    Agent box's effects push over their own: refused, it names that frame."""
+    """A recorded ``choose_contract`` (the Contract market's target row,
+    stage B3d-2a) answers the Contract market, a frame an Agent box's effects
+    push over their own: refused, it names that frame."""
 
     copy = _copy(tiny_corpus, tmp_path)
     corpus = Corpus.open(copy)
@@ -822,7 +823,7 @@ def test_a_divergence_signature_names_the_frame_on_top(
     at = next(
         index
         for index, step in enumerate(steps)
-        if step["type"] == "action" and step["action_id"] == "take_contract"
+        if step["type"] == "action" and step["action_id"] == "choose_contract"
     )
     # The market sits on another frame, so the bottom one would not do.
     engine = UprisingRulesEngine()
@@ -841,7 +842,7 @@ def test_a_divergence_signature_names_the_frame_on_top(
         at,
         (
             "contract_market",
-            "take_contract",
+            "choose_contract",
             "action actor does not own the current decision",
         ),
     )
@@ -1147,8 +1148,8 @@ def test_workers_give_the_same_report(tiny_corpus: Path) -> None:
         (record.id, record.outcome, record.hits, record.runs) for record in two.records
     ]
     assert two.drift == one.drift == {}
-    with pytest.raises(ValueError, match="workers must be 1 to 4"):
-        check(corpus, rows, workers=5)
+    with pytest.raises(ValueError, match="workers must be 1 to 8"):
+        check(corpus, rows, workers=9)
 
 
 def test_a_check_in_this_process_runs_under_nice(
@@ -1160,7 +1161,7 @@ def test_a_check_in_this_process_runs_under_nice(
         niceness[0] += increment
         return niceness[0]
 
-    monkeypatch.setattr(os, "nice", nice)
+    monkeypatch.setattr(os, "nice", nice, raising=False)
     corpus = Corpus.open(tiny_corpus)
     assert _one(corpus).outcome == "exact"
     assert niceness == [NICENESS]
@@ -1177,7 +1178,7 @@ def test_a_refused_nice_does_not_stop_a_check(
     def refuse(increment: int) -> int:
         raise PermissionError(1, "Operation not permitted")
 
-    monkeypatch.setattr(os, "nice", refuse)
+    monkeypatch.setattr(os, "nice", refuse, raising=False)
     corpus = Corpus.open(tiny_corpus)
     assert _one(corpus).outcome == "exact"
     # A worker process starts the same way (a spawned one does not see

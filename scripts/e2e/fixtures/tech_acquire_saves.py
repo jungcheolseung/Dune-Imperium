@@ -25,7 +25,7 @@ for seed in range(30):
             continue
         owner = summary["decision"]["owner"]
         session = manager._get(gid)
-        actions = session.engine.legal_actions(session.state, owner)
+        actions = session.engine.whole_actions(session.state, owner)
         for tech_id in ("glowglobes", "navigation_chamber"):
             if tech_id in found:
                 continue
@@ -61,8 +61,8 @@ for seed in range(30):
         if len(found) == 2:
             print(json.dumps(found))
             sys.exit(0)
-        chosen = agents[owner].choose_action(
-            session.engine.observe(session.state, owner), actions
+        chosen = agents[owner].choose_action_with_state(
+            session.state, session.engine.observe(session.state, owner), actions
         )
         summary = manager.apply_action(
             gid, owner, summary["revision"], actions.index(chosen)
