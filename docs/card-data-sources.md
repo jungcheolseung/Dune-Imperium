@@ -21,6 +21,62 @@ Dire Wolf Digital's official rules and FAQ remain authoritative for rules
 adjudication. Dune Cards Hub remains the card-level fallback when a DIU value is
 missing, ambiguous, or conflicts with already verified content.
 
+The DIU-and-images route above is how Uprising, Bloodlines and Immortality were
+transcribed. The base game and Rise of Ix use the Steam app's data instead
+(next section).
+
+## Steam app data (base game and Rise of Ix)
+
+User decision 2026-10-21 ([base-game-and-ix-plan.md](base-game-and-ix-plan.md)
+sections 2 and 9 item 2). Reading card images cost twice: the 2026-09-26 blind
+audit corrected 114 findings (images misread among them), and the 2026-10-06
+comparison with the app found 52 more differences over 243 items. The Steam
+Dune: Imperium app (`com.direwolfdigital.dune`) defines every base-game
+(`BaseSet`, 150 definitions) and Rise of Ix (`RiseOfIx`, 85) card, leader,
+board space, Conflict and Tech tile, so the transcription reads that instead.
+
+- **Three layers, cheapest first.**
+  1. *Attribute table.* Each archetype's constructor values (copies
+     `CardCount`, Persuasion cost, Faction, Agent icons, Reveal Persuasion and
+     swords, acquire bonus, Conflict level and rewards, board-space cost and
+     reward, Tech cost) decoded by `scripts/dwgr/app_archetypes.py`. The public
+     copy of this table is the app AI's `agents/app_ai/data/archetypes.py`
+     (user decision 2026-10-05); card definitions are generated from it, and a
+     plain pytest compares every field of our definitions with it (section 9
+     item 4 of the plan). A printed value that differs from the app is an entry
+     in that test's exception list with its evidence (the card face or an
+     official document).
+  2. *English text.* `loc/en_US.json` holds each card's
+     `card.<kind>.<name>.agent` / `.reveal` text, with icons as
+     `<sprite name="...">` tags. Effects are written into our ability records
+     (DSL) from this text, reading icons by name rather than by pixels. The
+     sprite-name → icon mapping is confirmed once by pixels and pinned (a name
+     can lie: `IntrigueTrash` is the steal-Intrigue picture, 2026-10-08).
+  3. *Ability classes.* Read the card's disassembled ability class
+     (`scripts/dwgr/il2dis.py`) only when the text does not settle order,
+     may/must or timing; it costs about 90 thousand agent tokens per item.
+- **The card face is a check, not the source.** One look per card: does the
+  print match the app value? Where it does not, the card face, the FAQ errata
+  (for example Missionaria Protectiva's Faction) and the official rulebooks
+  decide, and the difference is recorded.
+- **Not a rules authority.** The app shows how Dire Wolf's digital edition
+  handles a case (user decision 2026-10-03). Official rulebooks and the FAQ
+  come first; where they are silent the question goes to
+  `docs/rules/open-questions.md` with the app's handling labelled "app
+  implementation".
+- **Nothing from the app is committed here.** App text, definitions, dumps and
+  comparison outputs stay in the assets checkout's git-ignored
+  `reference/dune-steam-app/<build-guid>/` on the machine that extracted them
+  (`scripts/dwgr/README.md`); rules documents cite the loc key, and
+  `scripts/dwgr/show_text.py <key> --data <extraction with loc/en_US.json>`
+  prints its text locally. This repository holds
+  names, numbers, our DSL and display text we wrote ourselves.
+- **Korean.** Names and text come from the official Korean edition only (the
+  Korean rulebooks and photos of printed Korean cards, read twice and
+  reconciled as in `docs/rules/korean-card-style.md`); the app's Korean strings
+  and Tabletop Simulator Korean mods are not used (user decisions 2026-10-07,
+  2026-10-21). A card without a Korean source shows its English name and face.
+
 ## UI display text
 
 The browser UI's English effect text (`src/dune_imperium/display/`) is not a
