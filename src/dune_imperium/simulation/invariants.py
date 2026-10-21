@@ -2,8 +2,11 @@
 
 ``PlayerState`` and ``GameState`` already enforce their local invariants on
 every construction (non-negative quantities, per-player component totals,
-single-zone rules within one container). The checks here add what only a
-sweep can see across containers and time:
+single-zone rules within one container); a ``GameState`` copy runs only the
+invariants whose fields it replaced (``GameState._check_copy``), so a sweep
+re-runs every one of them after each transition (``check_game_state``),
+which a wrong field table could otherwise let pass. The checks here add what
+only a sweep can see across containers and time:
 
 - global card conservation: every tracked instance sits in exactly one zone
   and the game-wide set never changes after setup (Reserve copies instead
@@ -40,7 +43,7 @@ from dune_imperium.core.observation import (
     revealed_contract_ids,
 )
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GameState, check_game_state
 from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
 from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
@@ -219,8 +222,10 @@ def _require_unique(instance_ids: Iterable[str], zone_name: str) -> tuple[str, .
 
 
 def check_state_invariants(state: GameState, census: CardCensus) -> None:
-    """Check global conservation of every tracked card population."""
+    """Check every ``GameState`` invariant, then global conservation of every
+    tracked card population."""
 
+    check_game_state(state)
     personal = _require_unique(_all_personal_instances(state), "personal cards")
     fixed_personal = frozenset(
         instance_id

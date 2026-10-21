@@ -175,14 +175,30 @@ def agent_turn_space_id(state: GameState, player: int) -> str | None:
     return None
 
 
+# Agent-turn effect frames already read, by identity, with their checked
+# context: one decision reads the same frame's context about twenty times
+# across the legal-action providers (docs/evaluation/engine-throughput-
+# 2026-10-12.md), and a frame never changes, so its context is built and
+# checked once. The entry keeps the frame, so its id is not reused while
+# cached. Callers get their own copy: about a quarter of them change it to
+# build the next frame.
+_CONTEXTS: dict[int, tuple[DecisionFrame, dict[str, ActionValue]]] = {}
+_CONTEXTS_LIMIT: Final = 256
+
+
 def current_agent_effect_context(
     state: GameState,
 ) -> tuple[DecisionFrame, dict[str, ActionValue]]:
-    """Return and validate the current Agent-turn effect frame."""
+    """Return and validate the current Agent-turn effect frame.
+
+    The context is a fresh dict the caller may change."""
 
     if not state.decision_stack:
         raise ValueError("there is no pending Agent-turn effect frame")
     frame = state.decision_stack[-1]
+    hit = _CONTEXTS.get(id(frame))
+    if hit is not None and hit[0] is frame:
+        return frame, dict(hit[1])
     if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
         frame.decision, PlayerDecision
     ):
@@ -190,7 +206,10 @@ def current_agent_effect_context(
     context = dict(frame.context)
     if not AGENT_EFFECT_CONTEXT_KEYS.issubset(context):
         raise ValueError("the Agent-turn effect frame is missing context")
-    return frame, context
+    if len(_CONTEXTS) >= _CONTEXTS_LIMIT:
+        _CONTEXTS.clear()
+    _CONTEXTS[id(frame)] = (frame, context)
+    return frame, dict(context)
 
 
 def pending_board_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
