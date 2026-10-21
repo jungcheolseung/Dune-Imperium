@@ -345,6 +345,33 @@ func placement_rows() -> Array:
 	return result
 
 
+# The card each acquisition event names; Reclaimed Forces stays in the Row
+# and its event names no card (render.js ACQUIRED_CARD).
+const ACQUIRED_CARD_EVENTS = ["card_acquired", "tleilaxu_card_acquired", "reclaimed_forces_acquired"]
+
+
+# What this seat has bought since its Reveal began (render.js boughtThisReveal).
+func bought_this_reveal() -> Array:
+	var log = snapshot.get("log")
+	var entries = log.get("entries", []) if log is Dictionary else []
+	var start = -1
+	for position in range(entries.size()):
+		var entry = entries[position]
+		if entry.get("action_id") == "reveal_turn" and int(entry.get("actor", -1)) == active_seat and not entry.get("undone", false):
+			start = position
+	if start < 0:
+		return []
+	var bought: Array = []
+	for entry in entries.slice(start + 1):
+		if int(entry.get("actor", -1)) != active_seat or entry.get("undone", false):
+			continue
+		for event in entry.get("events", []):
+			var payload = event.get("payload", {})
+			if event.get("kind") in ACQUIRED_CARD_EVENTS and payload is Dictionary and int(payload.get("player", -1)) == active_seat:
+				bought.append("reclaimed_forces" if event.kind == "reclaimed_forces_acquired" else str(payload.get("card_id", "")))
+	return bought
+
+
 func action_at(index: int) -> Dictionary:
 	for action in actions():
 		if int(action.get("index", -1)) == index:

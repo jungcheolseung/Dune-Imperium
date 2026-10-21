@@ -3,9 +3,16 @@ extends RefCounted
 var table: Control
 
 
+const UNAVAILABLE_HEADINGS = {"acquire": "render.unavailable_acquire_heading", "choice": "render.unavailable_choice_heading", "intrigue": "render.unavailable_intrigue_heading", "waiting": "render.unavailable_waiting_heading"}
+
+
 func render(actions: Array) -> void:
 	var payload = table.model.snapshot.get("actions")
 	if not payload is Dictionary:
+		return
+	var decision = table.model.summary().get("decision")
+	if decision is Dictionary and decision.get("kind") == "reveal":
+		_reveal(actions, payload)
 		return
 	var boxes = payload.get("agent_boxes")
 	if not boxes is Array:
@@ -38,6 +45,72 @@ func render(actions: Array) -> void:
 			_rows(other, other_disabled, lines)
 	else:
 		_rows(actions, waiting, lines)
+
+
+# A Reveal is a small shop (render.js renderRevealPanel): what was bought,
+# the Reveal effects left, each revealed card's choice under its own heading
+# with whether it may be left, what cannot be taken now, then the cards that
+# can be bought. Every choice of a revealed card waits on the Reveal frame
+# (codec v147, OQ-095 (7)); the server names the card each row belongs to.
+func _reveal(actions: Array, payload: Dictionary) -> void:
+	var model = table.model
+	var bought = model.bought_this_reveal()
+	if not bought.is_empty():
+		var line = table._label(table.content, model.ui("render.bought_cards_label") + ", ".join(bought.map(func(card): return model.name_of(str(card)))), 13)
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.set_meta("reveal_bought", bought)
+	var unavailable = payload.get("unavailable")
+	var greyed: Array = unavailable.get("rows", []) if unavailable is Dictionary else []
+	var buys = actions.filter(func(action): return str(action.action_id).begins_with("acquire"))
+	var effects = actions.filter(func(action): return not str(action.action_id).begins_with("acquire"))
+	var entries = payload.get("reveal_choices")
+	var groups: Array = []
+	var grouped: Dictionary = {}
+	for entry in entries if entries is Array else []:
+		var key = entry.get("key")
+		var rows = effects.filter(func(action): return action.get("reveal_choice") == key)
+		if rows.is_empty():
+			continue
+		groups.append({"entry": entry, "rows": rows, "greyed": greyed.filter(func(row): return row.get("reveal_choice") == key and row.get("surface") == "choice")})
+		grouped[key] = true
+	var others = effects.filter(func(action): return action.get("reveal_choice") == null or not grouped.has(action.reveal_choice))
+	if not others.is_empty():
+		_heading(model.ui("render.reveal_effects_heading"), "reveal_effects")
+		_rows(others, [], [])
+	var placed: Dictionary = {}
+	for group in groups:
+		var entry = group.entry
+		var heading = _heading(str(model.localized(entry, "name")) + " — " + model.phrase(model.localized(entry, "text")), "reveal_choice", 16)
+		heading.set_meta("reveal_choice", entry.get("key"))
+		var note = table._label(table.content, model.ui("render.reveal_choice_optional" if entry.get("optional", false) else "render.reveal_choice_mandatory"), 13)
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.set_meta("reveal_choice_note", bool(entry.get("optional", false)))
+		_rows(group.rows, [], [])
+		for row in group.greyed:
+			_unavailable_line(model.describe(row.action), model.phrase(model.localized(row, "reason")), row.get("refs", []))
+			placed[row.get("key")] = true
+	for surface in ["choice", "waiting", "intrigue"]:
+		_unavailable_group(greyed, surface, placed)
+	if not buys.is_empty():
+		_heading(model.ui("render.buyable_cards_heading"), "buyable")
+		_rows(buys, [], [])
+	_unavailable_group(greyed, "acquire", {})
+
+
+func _heading(text: String, kind: String, size = 15) -> Label:
+	var heading = table._label(table.content, text, size)
+	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	heading.set_meta("choice_heading", kind)
+	return heading
+
+
+func _unavailable_group(greyed: Array, surface: String, placed: Dictionary) -> void:
+	var rows = greyed.filter(func(row): return row.get("surface") == surface and not placed.has(row.get("key")))
+	if rows.is_empty():
+		return
+	_heading(table.model.ui(UNAVAILABLE_HEADINGS[surface]), "unavailable_" + surface)
+	for row in rows:
+		_unavailable_line(table.model.describe(row.action), table.model.phrase(table.model.localized(row, "reason")), row.get("refs", []))
 
 
 func _rows(actions: Array, waiting: Array, lines: Variant) -> void:

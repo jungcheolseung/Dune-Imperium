@@ -243,6 +243,17 @@ func test_two_step_placement() -> void:
 	model.words = {"ko": {"PAYLOAD_KEY_LABELS": {"source": "출처", "printed_box": "칸", "printed": "인쇄"}}}
 	var text = model.describe({"action_id": "resolve_research_icon", "arguments": {"source": "research", "printed": "a", "printed_box": 3}, "detail_ko": "연구 칸"})
 	check(not text.contains("출처") and not text.contains("칸:") and not text.contains("인쇄"), "a named printer hides its kind and box, and its name when the detail says it")
+	# What this seat bought since its own last live Reveal began (boughtThisReveal).
+	model.snapshot.log = {"entries": [
+		{"type": "action", "actor": 0, "action_id": "reveal_turn", "undone": false, "events": []},
+		{"type": "action", "actor": 0, "action_id": "acquire_imperium", "undone": false, "events": [{"kind": "card_acquired", "payload": {"player": 0.0, "card_id": "imperium:early:0"}}]},
+		{"type": "action", "actor": 0, "action_id": "reveal_turn", "undone": false, "events": []},
+		{"type": "action", "actor": 0, "action_id": "acquire_imperium", "undone": true, "events": [{"kind": "card_acquired", "payload": {"player": 0.0, "card_id": "imperium:undone:0"}}]},
+		{"type": "action", "actor": 1, "action_id": "acquire_imperium", "undone": false, "events": [{"kind": "card_acquired", "payload": {"player": 1.0, "card_id": "imperium:other:0"}}]},
+		{"type": "action", "actor": 0, "action_id": "acquire_reclaimed_forces", "undone": false, "events": [{"kind": "reclaimed_forces_acquired", "payload": {"player": 0.0}}]},
+		{"type": "action", "actor": 0, "action_id": "acquire_tleilaxu", "undone": false, "events": [{"kind": "tleilaxu_card_acquired", "payload": {"player": 0.0, "card_id": "tleilaxu:row:0"}}]},
+	]}
+	check(model.bought_this_reveal() == ["reclaimed_forces", "tleilaxu:row:0"], "only this Reveal's live purchases of this seat are listed")
 
 
 func test_private_deck() -> void:

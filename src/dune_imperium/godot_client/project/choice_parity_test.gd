@@ -18,6 +18,12 @@ func compare_layout(expected: Dictionary, phase: String) -> void:
 		print("BOX_DIFFERENCE ", JSON.stringify([boxes, expected_boxes]))
 	check(locks == expected_locks, phase + ": real browser locked-box notes")
 	check(JSON.stringify(zones) == JSON.stringify(expected.zones), phase + ": real browser pile headings and counts")
+	# A Reveal's card choices: one heading per card choice, in the browser's
+	# order, each with the same may-leave/must-choose note.
+	var reveals = table.content.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("reveal_choice")).map(func(label): return str(label.get_meta("reveal_choice")))
+	var notes = table.content.find_children("*", "Label", true, false).filter(func(label): return label.has_meta("reveal_choice_note")).map(func(label): return bool(label.get_meta("reveal_choice_note")))
+	if not check(JSON.stringify(reveals) == JSON.stringify(expected.get("reveals", [])) and JSON.stringify(notes) == JSON.stringify(expected.get("reveal_notes", [])), phase + ": real browser Reveal choice headings and notes"):
+		print("REVEAL_DIFFERENCE ", JSON.stringify([reveals, notes, expected.get("reveals"), expected.get("reveal_notes")]))
 	var found: Array = []
 	for button in table.content.find_children("*", "Button", true, false):
 		if button.has_meta("action_index"):

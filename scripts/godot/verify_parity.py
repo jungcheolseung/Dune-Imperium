@@ -275,7 +275,7 @@ def choice_fixtures(directory: Path) -> dict[str, dict[str, Any]]:
     if metadata.exists():
         cached: dict[str, dict[str, Any]] = json.loads(
             metadata.read_text(encoding='utf-8'))
-        if 'choice-research' in cached:
+        if 'choice-research' in cached and 'choice-reveal' in cached:
             return cached
         found = cached
     else:
@@ -299,8 +299,12 @@ def choice_layout(page: Any) -> dict[str, Any]:
     layout: dict[str, Any] = page.evaluate('''() => ({
         boxes: [...document.querySelectorAll('#actions .agent-box-heading[data-box]')]
             .map(n => ({box: Number(n.dataset.box), text: n.textContent})),
-        locks: [...document.querySelectorAll('#actions .agent-box-note')]
+        locks: [...document.querySelectorAll('#actions .agent-box-note[data-box]')]
             .map(n => ({box: Number(n.dataset.box), text: n.textContent})),
+        reveals: [...document.querySelectorAll('#actions .reveal-choice-heading')]
+            .map(n => n.dataset.choice),
+        reveal_notes: [...document.querySelectorAll('#actions .reveal-choice-note')]
+            .map(n => n.dataset.optional === 'true'),
         zones: [...document.querySelectorAll('#actions .zone-heading')]
             .map(n => ({zone: n.dataset.zone, text: n.textContent})),
         indices: [...document.querySelectorAll('#actions .action-item')]
@@ -474,7 +478,8 @@ def main() -> int:
                     ('turn-card-pending', 'turn-card-done') for kind in
                     ('trash-current', 'trash-earlier')]
                 scenarios += [('decision', name, False) for name in
-                              ('choice-research', 'choice-contract', 'choice-leader')]
+                              ('choice-research', 'choice-contract', 'choice-leader',
+                               'choice-reveal')]
             for kind, name, space_first in scenarios:
                 print(f'Compare {kind} (space first: {space_first})', flush=True)
                 path = '/saves/' + names[name] + '/load'

@@ -139,7 +139,20 @@ def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
                 if target is not None and name not in found:
                     saved = store.write(manager.save_game(game, name=name))
                     found[name] = dict(save_id=str(saved['save_id']), index=target)
-            if targets.keys() <= found.keys():
+            # A Reveal whose revealed cards' choices wait as rows of the
+            # Reveal, each under its card (reveal_choices, codec v147).
+            if ('choice-reveal' not in found
+                    and summary['decision'].get('kind') == 'reveal'):
+                payload = manager.legal_actions(game, owner)
+                entries = payload.get('reveal_choices') or []
+                grouped = {entry['key'] for entry in entries}
+                row = next((a for a in payload['actions']
+                            if a.get('reveal_choice') in grouped), None)
+                if row is not None:
+                    saved = store.write(manager.save_game(game, name='choice-reveal'))
+                    found['choice-reveal'] = dict(save_id=str(saved['save_id']),
+                                                  index=int(row['index']))
+            if targets.keys() | {'choice-reveal'} <= found.keys():
                 return found
             preferred = next((a for a in actions if
                 (a.action_id == 'pick_leader' and dict(a.arguments).get('leader_id')
@@ -149,4 +162,4 @@ def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
             summary = manager.apply_action(
                 game, owner, int(summary['revision']), actions.index(chosen))
     raise RuntimeError('bounded expansion UI walk missed: '
-                       + ', '.join(targets.keys() - found.keys()))
+                       + ', '.join((targets.keys() | {'choice-reveal'}) - found.keys()))
