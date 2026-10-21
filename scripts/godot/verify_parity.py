@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 
 from parity_fixtures import ensure_choice_expansions, ensure_extra_saves
 
+from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.agents import HeuristicAgent
 from dune_imperium.godot_client.launch import PROJECT, ensure_godot, free_port
 from dune_imperium.godot_client.ui_data import write_ui_data
@@ -29,6 +30,13 @@ from dune_imperium.launcher.supervisor import ServerProcess
 from dune_imperium.paths import PROJECT_ROOT, TMP_DIR
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
+
+
+def fixture_saves() -> Path:
+    """Fixtures are reused by name, so a codec change needs a fresh folder."""
+    saves = TMP_DIR / 'godot/parity' / f'saves-v{ACTION_CODEC_VERSION}'
+    saves.mkdir(parents=True, exist_ok=True)
+    return saves
 
 
 def fixtures(directory: Path) -> dict[str, str]:
@@ -398,8 +406,7 @@ def main() -> int:
     args = parser.parse_args()
     binary = ensure_godot(args.godot)
     directory = TMP_DIR / 'godot/parity'
-    saves = directory / 'saves'
-    saves.mkdir(parents=True, exist_ok=True)
+    saves = fixture_saves()
     names = fixtures(saves)
     choice_data: dict[str, dict[str, Any]] = {}
     if args.suite in ('info', 'quantity'):

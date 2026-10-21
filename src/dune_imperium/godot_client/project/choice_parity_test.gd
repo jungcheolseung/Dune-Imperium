@@ -23,7 +23,8 @@ func compare_layout(expected: Dictionary, phase: String) -> void:
 		if button.has_meta("action_index"):
 			found.append(int(button.get_meta("action_index")))
 	var want = expected.indices.map(func(index): return int(index))
-	check(found == want, phase + ": every visible browser action appears once in the same order")
+	if not check(found == want, phase + ": every visible browser action appears once in the same order"):
+		print("ACTION_DIFFERENCE ", JSON.stringify([found, want]))
 	for suffix in expected.suffixes:
 		var buttons = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(suffix.index))
 		if not buttons.is_empty():

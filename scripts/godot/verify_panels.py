@@ -8,7 +8,13 @@ import sys
 from typing import Any
 
 from parity_fixtures import ensure_extra_saves
-from verify_parity import choice_fixtures, digest, fixtures, request
+from verify_parity import (
+    choice_fixtures,
+    digest,
+    fixture_saves,
+    fixtures,
+    request,
+)
 
 from dune_imperium.godot_client.launch import PROJECT, ensure_godot, free_port
 from dune_imperium.godot_client.ui_data import write_ui_data
@@ -26,8 +32,7 @@ def main() -> int:
     binary = ensure_godot(args.godot)
     directory = TMP_DIR / 'godot/panels'
     directory.mkdir(parents=True, exist_ok=True)
-    saves = TMP_DIR / 'godot/parity/saves'
-    saves.mkdir(parents=True, exist_ok=True)
+    saves = fixture_saves()
     names = fixtures(saves)
     names.update(ensure_extra_saves(saves))
     choices = choice_fixtures(saves)
