@@ -117,6 +117,9 @@ Uprising 기본 룰셋 소속을 확정할 수 없다. 따라서 현재 규범 �
 
 목록에 있다는 사실은 해당 항목이 Uprising에 속하거나 속하지 않는다는 판정이
 아니다. 오직 현재 허용된 근거만으로 소속을 확정하지 않았다는 뜻이다.
+2026-10-22 정리: 위 이름 가운데 원판 카드·Leader는 [imperium-base.md](imperium-base.md) 13.2절, Rise of Ix
+카드·Leader(Archduke Armand Ecaz, Chaumurky, Ilesa Ecaz, "Princess" Yuna Moritani, Spaceport)는
+[rise-of-ix.md](rise-of-ix.md) 9.2절이 분류한다(원판·Ix 판에 적용, Uprising 판에는 적용하지 않음).
 2026-10-07 정리: Beguiling Pheromones·Chairdog·Ghola(Immortality)와 Guild
 Envoy(Uprising 기본)는 엔진이 FAQ 판정과 함께 구현한 지 오래라 위 활성 표로
 옮겼다. 남은 이름은 이번에 다시 분류하지 않았다(Bloodlines·Immortality를 켠 뒤로

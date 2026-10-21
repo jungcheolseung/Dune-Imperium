@@ -14,7 +14,7 @@
 
 대조 대상: Uprising 4인 기본 + CHOAM + 프로모 + Immortality + Bloodlines/Tech Module에 존재하는 카드·메커니즘.
 
-제외: Rise of Ix 전용(Appropriate, dreadnought, infiltration, Tech Negotiation, Tessia Vernius, Yuna Moritani, Ilesa Ecaz, Armand Ecaz, Helena Richese의 능력, Full Scale Assault, Second Wave, Imperial Bashar, Spaceport·Windtraps·Troop Transports·Spy Satellites·Chaumurky), 원본 Dune: Imperium 전용 카드(Bindu Suspension, Kwisatz Haderach, Power Play, Dispatch an Envoy, The Voice, Foldspace, Selective Breeding, Guild Bankers, Poison Snooper, Refocus, Test of Humanity, Reverend Mother Mohiam, Demand Respect, Staged Incident, Sort Through the Chaos, Calculated Hire, Mentat, Duke Leto 등), 3v3, Rivals·Solo, Auction variant.
+제외(2026-10-22에 감사함 — 원판 몫은 [imperium-base.md](imperium-base.md) 13.3절, Rise of Ix 몫은 [rise-of-ix.md](rise-of-ix.md) 9.3절; 같은 정리본 2026-06-07판을 다시 받아 원판·Ix 이름이 나오는 비공식 출처 항목 57개를 읽었다): Rise of Ix 전용(Appropriate, dreadnought, infiltration, Tech Negotiation, Tessia Vernius, Yuna Moritani, Ilesa Ecaz, Armand Ecaz, Helena Richese의 능력, Full Scale Assault, Second Wave, Imperial Bashar, Spaceport·Windtraps·Troop Transports·Spy Satellites·Chaumurky), 원본 Dune: Imperium 전용 카드(Bindu Suspension, Kwisatz Haderach, Power Play, Dispatch an Envoy, The Voice, Foldspace, Selective Breeding, Guild Bankers, Poison Snooper, Refocus, Test of Humanity, Reverend Mother Mohiam, Demand Respect, Staged Incident, Sort Through the Chaos, Calculated Hire, Mentat, Duke Leto 등), 3v3, Rivals·Solo, Auction variant.
 
 ## 일치 확인 항목 (코드로 직접 확인)
 
