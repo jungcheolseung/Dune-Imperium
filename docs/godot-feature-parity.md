@@ -24,17 +24,17 @@ Agent 차례는 카드 고르기 → 칸 고르기 두 걸음이다(B1). Godot�
 고른 배치를 두 걸음으로 보낸다. 이 문서의 아래 수치는 v148 기록이고, v151에서 다시 돌린 결과(완주·계약·대조·패널·메뉴 headless)는
 worklog [2026-10-21 Godot 클라이언트를 master v151에 맞춤]에 있다. Xvfb 화면 캡처 검사와 Windows 실기는 v151에서 다시 돌리지 않았다.
 
-## 웹에는 있고 Godot에는 없는 것 (2026-10-21 확인)
+## v145 뒤 웹에 생긴 흐름의 대응 (2026-10-21)
 
-10-18 리베이스는 Godot 소스를 그대로 옮겼으므로, v145 기준 뒤에 웹에 생긴 흐름은 아래 표만큼 빠져 있다.
-위 표의 "대응 내용"은 이 항목들을 포함하지 않는다. master v150의 변경(Agent 차례 두 걸음 등)은 따로 옮긴다.
+10-18 리베이스는 Godot 소스를 그대로 옮겼으므로, v145 기준 뒤에 웹에 생긴 흐름이 빠져 있었다(2026-10-21 재검증에서 찾음).
+같은 날 아래처럼 옮겼다.
 
-| 웹 기능 | 웹 위치 | Godot의 지금 동작 |
-| --- | --- | --- |
-| 턴 시작 카드 창(사용자 결정 2026-10-14): 턴 시작 play를 먼저, 그것만 묻고 "쓰지 않음"은 이 화면에서만 치운다 | `static/turn.js` turnStartWindowOf | Agent 차례에 섞어 보여 주며, 배치하면 그 play가 사라진다 |
-| Reveal 선택 묶음(codec v147): 공개 효과 → 카드별 선택 머리줄·남김 여부 → 살 수 있는 카드 | `static/render.js` revealChoiceGroups, `reveal_choices` | 서버 순서의 평면 목록(선택창 대조 `choice-contract` 실패) |
-| 서버 오류의 한국어 표시 | `static/errors_ko.js` | 서버의 영어 문구 그대로 |
-| 보류 선택 중 그 결정의 명시적 종료 행을 목록에 되돌림 | `static/render.js` 보류 선택 처리 | 종료 행이 목록에서 빠져 보류를 풀어야 고를 수 있다 |
+| 웹 기능 | 웹 위치 | Godot | 검증 |
+| --- | --- | --- | --- |
+| 턴 시작 카드 창(사용자 결정 2026-10-14): 턴 시작 play를 먼저, 그것만 묻고 "쓰지 않음"은 이 화면에서만 치운다 | `static/turn.js` turnStartWindowOf | `model.gd` payload()·`main.gd` 창, 테이블 클릭은 줄을 가리킴, 치운 턴은 설정 파일에 최근 24개 | 선택창 대조 `choice-turn-start`(Litany Against Fear), 모델 |
+| Reveal 선택 묶음(codec v147): 산 카드 → 공개 효과 → 카드별 선택 머리줄·남김 여부 → 지금 못 하는 것 → 살 수 있는 카드 | `static/render.js` renderRevealPanel | `choices.gd` _reveal | 선택창 대조 `choice-contract`·`choice-reveal`(Engineered Miracle), 모델 |
+| 서버 오류의 한국어 표시 | `static/errors_ko.js`, `i18n.js` serverErrorText | `ui_data.py` server_errors, `model.gd` server_error | 모델, Python |
+| 보류 선택 중 그 결정의 명시적 종료 행을 목록에 되돌림 | `static/render.js` | `main.gd` _render_choices | 코드 대조(이 흐름을 고정한 대조 국면은 없다) |
 
 ## 같은 국면의 직접 대조
 
