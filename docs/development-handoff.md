@@ -53,7 +53,7 @@
 
 - **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v151-bb05c259/`(기보 묶음, exact 2,000의 기준),
   `local/records/`(사람 판 문제 285곳·AI 실수), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
-  재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 옮긴다(`tmp/transfer/gate-data-2026-10-21.tar.gz`에 2026-10-21판을 묶어 두었다).
+  재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 묶어 옮긴다(2026-10-21에 만든 v150 기준 묶음은 낡아서 지웠다).
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
   "원격 저장소 인계 주의").
 
