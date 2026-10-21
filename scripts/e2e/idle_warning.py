@@ -17,7 +17,10 @@ One local game, seat 0 human and three heuristic seats, a fixed seed:
 [C] nothing is armed while the decision belongs to another seat or while a
     review is on screen (the summary edited in the page, then put back).
 
-About 55 seconds, nearly all of it waiting.
+The page runs on Playwright's clock (``page.clock``, installed before the
+page loads), and each wait moves that clock forward (``run_for``), firing
+the page's timers on the way. The 45 seconds of waiting take no real time;
+before 2026-10-21 the script slept them out (about 55 seconds a run).
 """
 
 from __future__ import annotations
@@ -65,9 +68,10 @@ def idle_after(page, since: float) -> list[float]:
 
 
 def sleep_until(page, since: float, seconds: float) -> None:
+    """Move the page's clock to ``seconds`` after ``since``."""
     left = since + seconds * 1000 - float(page.evaluate("performance.now()"))
     if left > 0:
-        time.sleep(left / 1000)
+        page.clock.run_for(int(left))
 
 
 def first_wait(page) -> None:
@@ -148,6 +152,7 @@ def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         try:
             _, page, rec = open_context(browser, "idle", LAPTOP_VIEWPORT)
+            page.clock.install()
             create_game(page, base, humans=(0,), seed=7)
             assert settled(page, 20)
             page.evaluate(WRAP_JS)
