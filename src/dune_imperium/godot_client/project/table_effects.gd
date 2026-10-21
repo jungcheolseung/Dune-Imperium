@@ -81,13 +81,19 @@ static func changes(before: Dictionary, after: Dictionary, reviewing: bool) -> A
 	return result
 
 
+# Whether `previous` was a replay picture: leaving a replay is no live step.
+var previous_reviewed = false
+
+
 func observe() -> void:
 	var snapshot = table.model.snapshot
-	var events = changes(previous, snapshot, not table.tools_ui.review.is_empty())
+	var reviewing = not table.tools_ui.review.is_empty()
+	var events = changes(previous, snapshot, reviewing or previous_reviewed)
 	var old_view = previous.get("view")
 	var old_seat = old_view.get("player", -1) if old_view is Dictionary else -1
-	var invalidated = previous.get("summary", {}).get("game_id") != snapshot.get("summary", {}).get("game_id") or previous.get("summary", {}).get("undo_count") != snapshot.get("summary", {}).get("undo_count") or old_seat != table.model.active_seat or not table.tools_ui.review.is_empty()
+	var invalidated = previous.get("summary", {}).get("game_id") != snapshot.get("summary", {}).get("game_id") or previous.get("summary", {}).get("undo_count") != snapshot.get("summary", {}).get("undo_count") or old_seat != table.model.active_seat or reviewing or previous_reviewed
 	previous = snapshot.duplicate(true)
+	previous_reviewed = reviewing
 	if invalidated:
 		shutdown()
 	if not table.tools_ui.prefs.get("animations", true) or table.tools_ui.prefs.get("reduced_motion", false):

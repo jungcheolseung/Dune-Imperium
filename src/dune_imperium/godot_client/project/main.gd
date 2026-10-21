@@ -124,7 +124,7 @@ func _ready() -> void:
 	credentials.clear()
 	doorbell.api = api
 	add_child(doorbell)
-	doorbell.changed.connect(_poll)
+	doorbell.changed.connect(_on_bell)
 	doorbell.closed.connect(func(): tools_ui.leave_game())
 	add_child(tools_ui)
 	await tools_ui.setup(self)
@@ -137,8 +137,8 @@ func _ready() -> void:
 	api.texture_ready.connect(_texture_ready)
 	var timer = Timer.new()
 	poll_timer = timer
-	timer.wait_time = 0.8
-	timer.timeout.connect(_poll)
+	timer.wait_time = WATCH_SECONDS
+	timer.timeout.connect(_watch)
 	add_child(timer)
 	timer.start()
 	get_tree().auto_accept_quit = false
@@ -673,9 +673,104 @@ func _accept(reply: Dictionary) -> bool:
 	return false
 
 
-func _poll() -> void:
-	if not closing and not busy and not refreshing and not game_id.is_empty():
-		_sync()
+# The server rings when the game changes (doorbell.gd): a ring says that
+# something changed, and only a stale picture is fetched again (session.js
+# onDoorbell). A ring that lands while this table posts its own step is
+# dropped; that step's own refresh reads the newer state.
+const BELL_COUNTERS = ["revision", "undo_count", "log_count", "confirmation", "thinking", "finished", "ai_pace"]
+const WATCH_SECONDS = 1.5
+const QUIET_BELL_MSEC = 5000
+const SAFETY_CHECK_MSEC = 10000
+# The latest ring heard while this table posted or refreshed; it is read
+# again once that lands, so it asks for a refresh only if it is newer than
+# what landed (the ring of this table's own step usually is not).
+var pending_bell: Dictionary = {}
+var last_summary_check = 0
+
+
+func _on_bell(bell: Dictionary) -> void:
+	if closing or game_id.is_empty():
+		return
+	var current = _live_summary()
+	var stale = current.is_empty() or BELL_COUNTERS.any(func(key): return bell.has(key) and bell.get(key) != current.get(key))
+	var players = bell.get("players")
+	var players_changed = players is Array and players != current.get("players")
+	if busy or refreshing:
+		# A snapshot under way may have been read before this ring
+		# (refreshAgain): compare it again once that snapshot lands.
+		pending_bell = bell
+		return
+	if stale:
+		_resync()
+		return
+	if players_changed:
+		# Names, claims and presence are public as the ring has them; a
+		# change to a claim or name this table holds is asked for
+		# (mySeatChanged), presence alone is not.
+		var before: Array = current.get("players", [])
+		if model.server_info.get("access", "open") == "remote" and model.owned_seats.any(func(seat): return seat < players.size() and seat < before.size() and (players[seat].get("claimed") != before[seat].get("claimed") or players[seat].get("name") != before[seat].get("name"))):
+			_resync()
+			return
+		current.players = players
+		_render()
+
+
+# The summary the live table shows; a replay keeps the live one aside.
+func _live_summary() -> Dictionary:
+	var shown = tools_ui.live_snapshot if not tools_ui.review.is_empty() else model.snapshot
+	var summary = shown.get("summary")
+	return summary if summary is Dictionary else {}
+
+
+func _resync() -> void:
+	if closing or game_id.is_empty():
+		return
+	await _sync()
+
+
+# `_sync` and the posts read a held ring when they finish; `_watch` is the
+# backstop.
+func _run_pending_bell() -> void:
+	if pending_bell.is_empty() or busy or refreshing or closing:
+		return
+	var bell = pending_bell
+	pending_bell = {}
+	_on_bell(bell)
+
+
+# Where the stream does not get through, while a seat thinks on the server's
+# worker (its rings may land while this table is busy), and as a slow
+# safety net, the summary is asked for and read as a ring
+# (startDoorbellPolling, recheckWhileThinking).
+var watching = false
+
+
+func _watch() -> void:
+	if closing or game_id.is_empty():
+		return
+	_run_pending_bell()
+	if busy or refreshing or watching:
+		return
+	var now = Time.get_ticks_msec()
+	var current = _live_summary()
+	var thinking = current.get("thinking") != null and not current.get("finished", false)
+	var quiet = not doorbell.live and now - doorbell.started_at > QUIET_BELL_MSEC
+	if not thinking and not quiet and now - last_summary_check < SAFETY_CHECK_MSEC:
+		return
+	last_summary_check = now
+	var game = game_id
+	watching = true
+	var reply = await api.call_json(HTTPClient.METHOD_GET, "/games/" + game)
+	watching = false
+	if game != game_id or closing:
+		return
+	if reply.ok and reply.data is Dictionary:
+		_on_bell(reply.data)
+	elif int(reply.code) == 404:
+		# The server answers and does not know the game: deleted, or a
+		# restarted server came back without it.
+		tools_ui.leave_game()
+		status.text = model.ui("session.game_missing")
 
 
 func _sync(preferred_seat = -2) -> bool:
@@ -714,6 +809,8 @@ func _sync(preferred_seat = -2) -> bool:
 	if data.get("log") is Dictionary and int(data.log.get("from", 0)) > 0:
 		var known = (tools_ui.live_snapshot if not tools_ui.review.is_empty() else model.snapshot).get("log", {})
 		if not known is Dictionary or int(known.get("seat", -1)) != int(data.log.seat) or known.get("entries", []).size() != int(data.log.from):
+			# Drop the log that does not line up and ask for it whole (mergeLog).
+			(tools_ui.live_snapshot if not tools_ui.review.is_empty() else model.snapshot).erase("log")
 			return await _sync(-1)
 		data.log.entries = known.entries + data.log.entries
 	tools_ui.anchor_clock(data)
@@ -745,6 +842,7 @@ func _sync(preferred_seat = -2) -> bool:
 		if model.summary().get("finished", false):
 			tab = "choices"
 		_render()
+	_run_pending_bell.call_deferred()
 	return true
 
 
@@ -1250,6 +1348,9 @@ func _render_choices(filtered: Array = []) -> void:
 		finish_button.disabled = busy
 	else:
 		finish_button.disabled = busy or model.finish_action().is_empty()
+	if not tools_ui.review.is_empty():
+		# A replay shows the past; nothing is sent from it.
+		finish_button.disabled = true
 	if tab == "log":
 		_render_log()
 		return
@@ -1553,11 +1654,12 @@ func _send_action(action: Dictionary, shown: Dictionary = {}) -> bool:
 	busy = false
 	feedback.complete(receipt, action if shown.is_empty() else shown, reply)
 	_render()
+	_run_pending_bell.call_deferred()
 	return accepted
 
 
 func _finish() -> void:
-	if busy:
+	if busy or not tools_ui.review.is_empty() or model.active_seat not in model.owned_seats:
 		return
 	var bid = model.selected_quantity(model.actions().filter(func(action): return action.action_id == "scouts_bid"))
 	if not bid.is_empty() and not model.finish_action().is_empty() and model.finish_action().action_id == "confirm_scouts_bid":
@@ -1586,7 +1688,7 @@ func _finish() -> void:
 
 
 func _mutate(path: String, extra: Dictionary) -> bool:
-	if busy:
+	if busy or not tools_ui.review.is_empty():
 		return false
 	busy = true
 	generation += 1
@@ -1598,6 +1700,7 @@ func _mutate(path: String, extra: Dictionary) -> bool:
 	await _sync()
 	busy = false
 	_render()
+	_run_pending_bell.call_deferred()
 	return accepted
 
 
@@ -1652,6 +1755,7 @@ func _show_saves() -> AcceptDialog:
 	dialog.ok_button_text = model.native("닫기")
 	dialog.theme = theme
 	dialog.set_meta("game_dialog", game_id)
+	dialog.set_meta("survives_undo", true)
 	var root = VBoxContainer.new()
 	root.custom_minimum_size = Vector2(600, 440)
 	dialog.add_child(root)

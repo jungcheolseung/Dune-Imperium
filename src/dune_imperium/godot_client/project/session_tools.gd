@@ -65,13 +65,16 @@ func text(key: String, values: Dictionary = {}) -> String:
 	return table.model.ui(key, values)
 
 
-func _dialog(title: String, dimensions = Vector2i(690, 520)) -> Array:
+# `stateless`: the window shows no game state, so an undo leaves it open.
+func _dialog(title: String, dimensions = Vector2i(690, 520), stateless = false) -> Array:
 	table._hide_preview()
 	var dialog = AcceptDialog.new()
 	dialog.title = title
 	dialog.ok_button_text = text("common.close")
 	dialog.theme = table.theme
 	dialog.set_meta("game_dialog", table.game_id)
+	if stateless:
+		dialog.set_meta("survives_undo", true)
 	var root = VBoxContainer.new()
 	root.custom_minimum_size = dimensions
 	dialog.add_child(root)
@@ -114,6 +117,7 @@ func new_game() -> void:
 	dialog.cancel_button_text = (table.model.native("취소") if table.model.language == "ko" else "Cancel")
 	dialog.theme = table.theme
 	dialog.set_meta("game_dialog", table.game_id)
+	dialog.set_meta("survives_undo", true)
 	var root = VBoxContainer.new()
 	root.custom_minimum_size = Vector2(720, 560)
 	dialog.add_child(root)
@@ -221,7 +225,7 @@ func games() -> void:
 	var response = await table.api.call_json(HTTPClient.METHOD_GET, "/games")
 	if not table._accept(response):
 		return
-	var parts = _dialog(text("html.game_list_title"))
+	var parts = _dialog(text("html.game_list_title"), Vector2i(690, 520), true)
 	for game in response.data:
 		var row = HBoxContainer.new()
 		parts[1].add_child(row)
@@ -263,7 +267,7 @@ func delete_game(id: String, list_dialog: Window) -> void:
 
 
 func connect_dialog() -> void:
-	var parts = _dialog(table.model.native("서버 / Server"), Vector2i(620, 190))
+	var parts = _dialog(table.model.native("서버 / Server"), Vector2i(620, 190), true)
 	var url = LineEdit.new()
 	url.placeholder_text = "http://host:port/#game=…"
 	parts[1].add_child(url)
@@ -341,7 +345,7 @@ func connect_server(origin: String, admin_key = "", wanted = "", browse = true) 
 func lobby() -> void:
 	if table.game_id.is_empty():
 		return
-	var parts = _dialog(text("html.lobby_title"), Vector2i(650, 360))
+	var parts = _dialog(text("html.lobby_title"), Vector2i(650, 360), true)
 	if table.model.server_info.get("admin", false):
 		var base = table.model.server_info.get("public_url")
 		var invite = (str(base) if base != null else table.api.base_url).trim_suffix("/") + "/#game=" + table.game_id
@@ -406,7 +410,7 @@ func leave_game() -> void:
 
 
 func settings() -> void:
-	var parts = _dialog(table.model.native("플레이 설정 / Preferences"), Vector2i(650, 500))
+	var parts = _dialog(table.model.native("플레이 설정 / Preferences"), Vector2i(650, 500), true)
 	var language = OptionButton.new()
 	language.add_item("한국어")
 	language.add_item("English")
@@ -465,7 +469,7 @@ func host_settings() -> void:
 
 
 func help() -> void:
-	var parts = _dialog(text("help.title"))
+	var parts = _dialog(text("help.title"), Vector2i(690, 520), true)
 	for key in table.model.words.get("ui", {}):
 		if not str(key).begins_with("help.") or key == "help.title":
 			continue
@@ -504,7 +508,7 @@ func _process(_delta: float) -> void:
 func save_dialog() -> void:
 	if table.game_id.is_empty() or table.busy:
 		return
-	var parts = _dialog(text("html.save_game"), Vector2i(600, 170))
+	var parts = _dialog(text("html.save_game"), Vector2i(600, 170), true)
 	var name = LineEdit.new()
 	name.placeholder_text = text("session.save_name_prompt")
 	parts[1].add_child(name)
@@ -522,7 +526,10 @@ func vp_ledger(seat: int) -> void:
 	var response = await table.api.call_json(HTTPClient.METHOD_GET, "/games/" + game + "/vp-ledger")
 	if game != table.game_id or not table._accept(response):
 		return
-	var parts = _dialog(text("panels.vp_ledger_title", {"name": table.model.seat_name(seat), "points": table.model.view().get("players", [])[seat].victory_points}), Vector2i(660, 460))
+	var players = table.model.view().get("players", [])
+	if seat < 0 or seat >= players.size():
+		return
+	var parts = _dialog(text("panels.vp_ledger_title", {"name": table.model.seat_name(seat), "points": players[seat].victory_points}), Vector2i(660, 460))
 	table._label(parts[1], text("panels.vp_ledger_note"), 14)
 	table._label(parts[1], "%s: %d" % [text("common.start") if table.model.words.ui.has("common.start") else table.model.native("시작 / Start"), int(response.data.start[seat])], 15)
 	var shown = table.model.snapshot.get("log", {}).get("entries", [])
@@ -567,8 +574,14 @@ func focus_log(index: int) -> void:
 
 func _review_meta(seat: int, cursor = -1, play = false) -> bool:
 	var game = table.game_id
+	# A later seat switch, seek or exit takes the replay over meanwhile.
+	review_serial += 1
+	var serial = review_serial
 	var response = await table.api.call_json(HTTPClient.METHOD_GET, "/games/" + game + "/review?seat=" + str(seat))
-	if table.game_id != game or not table._accept(response):
+	if serial != review_serial or table.game_id != game:
+		return false
+	if not table._accept(response):
+		playback = false
 		return false
 	if review.is_empty():
 		live_snapshot = table.model.snapshot.duplicate(true)
@@ -727,9 +740,11 @@ func exit_review() -> void:
 	table._render()
 
 
+# `keep_piles` (an undo): pile viewers re-read their pile and windows without
+# game state stay; anything else showing the old state closes.
 func close_game_dialogs(keep_piles = false) -> void:
 	for child in table.find_children("*", "Window", true, false):
-		if child.has_meta("game_dialog") and not child.is_queued_for_deletion() and not (keep_piles and child.has_meta("pile_viewer")):
+		if child.has_meta("game_dialog") and not child.is_queued_for_deletion() and not (keep_piles and (child.has_meta("pile_viewer") or child.has_meta("survives_undo"))):
 			child.hide()
 			child.queue_free()
 

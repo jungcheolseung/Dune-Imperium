@@ -1,6 +1,8 @@
 extends Node
 
-signal changed
+# A ring carries the public counters a snapshot is identified by
+# (sessions.py _doorbell); the table decides whether its picture is stale.
+signal changed(bell: Dictionary)
 signal connection_changed(online: bool)
 signal closed
 
@@ -15,11 +17,17 @@ var last_event: Dictionary = {}
 # The origin this connection was opened to; its request carries that
 # origin's cookies only, even if the table switches servers meanwhile.
 var origin = ""
+var started_at = 0
+# The server writes a heartbeat every 15 s (events.py): a stream silent for
+# longer than two of them is a dead connection, however its status reads.
+const SILENT_MSEC = 35000
+var heard_at = 0
 
 
 func start(id: String) -> void:
 	stop()
 	game_id = id
+	started_at = Time.get_ticks_msec()
 	_connect()
 
 
@@ -40,6 +48,7 @@ func _set_live(value: bool) -> void:
 
 func _connect() -> void:
 	origin = api.base_url
+	heard_at = Time.get_ticks_msec()
 	var url = origin
 	var secure = url.begins_with("https://")
 	var authority = url.trim_prefix("https://").trim_prefix("http://")
@@ -92,8 +101,12 @@ func _process(_delta: float) -> void:
 		if client.get_response_code() != 200:
 			_retry()
 			return
-		_set_live(true)
-		_consume(client.read_response_body_chunk())
+		var chunk = client.read_response_body_chunk()
+		if not chunk.is_empty():
+			heard_at = Time.get_ticks_msec()
+			_consume(chunk)
+		elif Time.get_ticks_msec() - heard_at > SILENT_MSEC:
+			_retry()
 	elif state in [HTTPClient.STATUS_CANT_RESOLVE, HTTPClient.STATUS_CANT_CONNECT, HTTPClient.STATUS_CONNECTION_ERROR, HTTPClient.STATUS_TLS_HANDSHAKE_ERROR]:
 		_retry()
 
@@ -113,6 +126,9 @@ func _consume(chunk: PackedByteArray) -> void:
 			return
 		var frame = buffer.slice(0, boundary).get_string_from_utf8()
 		buffer = buffer.slice(boundary + 2)
+		# Live once the stream speaks (its hello, a heartbeat), not when its
+		# headers arrive: a buffering proxy sends those and holds the body.
+		_set_live(true)
 		if frame.contains("event: closed"):
 			stop()
 			closed.emit()
@@ -124,4 +140,4 @@ func _consume(chunk: PackedByteArray) -> void:
 					if not last_event.is_empty() and int(data.get("seq", -1)) <= int(last_event.get("seq", -1)):
 						continue
 					last_event = data
-					changed.emit()
+					changed.emit(data)

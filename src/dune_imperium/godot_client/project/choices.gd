@@ -38,8 +38,11 @@ func render(actions: Array) -> void:
 				note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				note.set_meta("locked_box", int(box.box))
 			_rows(rows, disabled, [])
-		var other = actions.filter(func(action): return action.get("box") == null)
-		var other_disabled = waiting.filter(func(row): return row.get("box") == null)
+		# A row whose box has no heading (render.js: every row not placed in a
+		# group) still shows, under the others.
+		var headed_boxes = boxes.map(func(box): return box.box)
+		var other = actions.filter(func(action): return action.get("box") == null or action.get("box") not in headed_boxes)
+		var other_disabled = waiting.filter(func(row): return row.get("box") == null or row.get("box") not in headed_boxes)
 		if not other.is_empty() or not other_disabled.is_empty():
 			table._label(table.content, table.model.ui("render.agent_box_others_heading"), 17)
 			_rows(other, other_disabled, lines)
