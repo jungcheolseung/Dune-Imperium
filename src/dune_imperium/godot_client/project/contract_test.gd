@@ -67,7 +67,8 @@ func action_buttons(node: Node) -> Array:
 
 
 func play_first() -> bool:
-	var action = table.model.actions()[0]
+	# Whole placements stand for an Agent turn's card and space picks.
+	var action = table.model.table_actions()[0]
 	var before = table.model.signature()
 	if action.action_id == "agent_turn":
 		await table._choose_ref(action.arguments.card_id)
@@ -88,7 +89,7 @@ func play_first() -> bool:
 	else:
 		var found = false
 		for button in action_buttons(table.content):
-			if int(button.get_meta("action_index")) == int(action.index):
+			if int(button.get_meta("action_index")) == int(action.index) and (action.get("placement") == null or int(button.get_meta("placement", -1)) == int(action.placement)):
 				button.pressed.emit()
 				found = true
 				break
@@ -195,7 +196,7 @@ func run() -> void:
 		viewer = pile.get_meta("pile_viewer")
 		table._open_details(str(original[0]))
 		var detail = table.find_children("*", "Window", true, false).filter(func(window): return window.has_meta("detail_ref"))[0]
-		if not check(await table._mutate("undo", {"steps": 1}), "undo while a pile and nested detail are open"):
+		if not check(await table._mutate("undo", {"steps": table.model.undo_steps()}), "undo while a pile and nested detail are open"):
 			return
 		if not check(viewer.refs == original and pile.visible and (not is_instance_valid(detail) or not detail.visible), "undo refreshes the pile and closes its stale nested detail"):
 			return

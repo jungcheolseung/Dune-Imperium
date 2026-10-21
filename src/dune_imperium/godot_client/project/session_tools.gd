@@ -586,6 +586,12 @@ func review_goto(cursor: int) -> bool:
 	var serial = review_serial
 	var game = table.game_id
 	cursor = clampi(cursor, 0, int(review.meta.step_count))
+	# Never between a waiting effect and its target (review.js reviewGoto):
+	# past a pick step forward, or back before the effect.
+	var labels = review.meta.get("steps", [])
+	var back = cursor < int(review.get("cursor", 0))
+	while cursor > 0 and cursor < int(review.meta.step_count) and cursor - 1 < labels.size() and labels[cursor - 1] is Dictionary and labels[cursor - 1].get("pick", false):
+		cursor += -1 if back else 1
 	var response = await table.api.call_json(HTTPClient.METHOD_GET, "/games/" + game + "/review/" + str(cursor) + "?seat=" + str(review.seat))
 	if serial != review_serial or game != table.game_id or review.is_empty():
 		return false

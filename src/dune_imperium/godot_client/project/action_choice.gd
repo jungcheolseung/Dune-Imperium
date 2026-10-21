@@ -18,6 +18,8 @@ func setup(owner_table: Control, action: Dictionary, description: String, zone: 
 	accessibility_name = reading.title
 	accessibility_description = tooltip_text
 	set_meta("action_index", int(action.index))
+	if action.get("placement") != null:
+		set_meta("placement", int(action.placement))
 	set_meta("choice_suffix", table.model.choice_suffix(zone))
 	set_meta("action_reading", true)
 	if action.get("box") != null:

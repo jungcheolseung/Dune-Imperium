@@ -11,6 +11,26 @@ func check(condition: bool, message: String) -> void:
 		failures.append(message)
 
 
+# A server payload of whole placements (codec v150): one card pick per card
+# and graft, numbered from `first`, and `agent_placements` listing every
+# placement each pick leads to; `others` follow the card picks.
+func staged(placements: Array, others: Array = [], first = 0) -> Dictionary:
+	var rows: Array = []
+	var picks: Dictionary = {}
+	var listed: Array = []
+	for args in placements:
+		var key = JSON.stringify([args.card_id, args.get("graft", false)])
+		if not picks.has(key):
+			var chosen = {"card_id": args.card_id}
+			if args.get("graft", false):
+				chosen.graft = true
+			picks[key] = first + rows.size()
+			rows.append({"index": picks[key], "action_id": "choose_agent_card", "arguments": chosen})
+		listed.append({"index": picks[key], "placement": listed.size(), "arguments": args})
+	rows.append_array(others)
+	return {"actions": rows, "agent_placements": listed}
+
+
 func _initialize() -> void:
 	var model = Model.new()
 	model.words = {"terms": {"spice": {"ko": "스파이스", "en": "spice"}}, "ko": {"ACTION_LABELS": {"take": "선택"}}}
@@ -25,22 +45,19 @@ func _initialize() -> void:
 	check(not Expansions.scouts_visible(true, false, false, false) and Expansions.scouts_visible(true, true, false, false) and Expansions.scouts_visible(true, false, false, true) and not Expansions.scouts_visible(true, true, true, false), "Scouts opens for its decision or explicit browsing and does not cover the board during ordinary play")
 	check(model.phrase("{spice:2}") == "스파이스 2", "reviewed term and count")
 	check(model.localized({"detail": "available English", "detail_ko": null}, "detail") == "available English", "null Korean detail falls back to supplied English")
-	var actions = [
-		{"index": 2, "action_id": "agent_turn", "arguments": {"card_id": "player:0:starter:dagger:0", "space_id": "a"}},
-		{"index": 3, "action_id": "agent_turn", "arguments": {"card_id": "player:0:starter:dagger:1", "space_id": "b"}},
-		{"index": 4, "action_id": "take", "arguments": {}, "sent_by_turn_end": true},
-	]
-	model.adopt({"summary": {"game_id": "game", "revision": 5, "undo_count": 0}, "actions": {"actions": actions}})
+	var payload = staged([{"card_id": "player:0:starter:dagger:0", "space_id": "a"}, {"card_id": "player:0:starter:dagger:1", "space_id": "b"}], [{"index": 4, "action_id": "take", "arguments": {}, "sent_by_turn_end": true}], 2)
+	var actions = payload.actions
+	model.adopt({"summary": {"game_id": "game", "revision": 5, "undo_count": 0}, "actions": payload})
 	check(model.placements("player:0:starter:dagger:0").size() == 1, "copies never share a selection")
 	model.selected_card = "player:0:starter:dagger:0"
 	check(model.legal_refs().has("a") and not model.legal_refs().has("b"), "selected card limits targets")
 	model.hold(actions[2])
 	check(not model.held_action().is_empty(), "hold without sending")
-	model.adopt({"summary": {"game_id": "game", "revision": 5, "undo_count": 1}, "actions": {"actions": actions}})
+	model.adopt({"summary": {"game_id": "game", "revision": 5, "undo_count": 1}, "actions": payload})
 	check(model.held_action().is_empty(), "undo invalidates held index at equal revision")
 	check(model.selected_card.is_empty(), "new generation drops selection")
 	model.hold(actions[2])
-	model.adopt({"summary": {"game_id": "another", "revision": 5, "undo_count": 1}, "actions": {"actions": actions}})
+	model.adopt({"summary": {"game_id": "another", "revision": 5, "undo_count": 1}, "actions": payload})
 	check(model.held_action().is_empty(), "another game invalidates held index")
 	check(model.request_body(actions[0]).undo_count == 1, "action carries undo generation")
 	var text = model.describe({"action_id": "take", "arguments": {"effect_key": "internal_rule_key"}, "detail_ko": "{spice:2}"})
@@ -124,6 +141,7 @@ func _initialize() -> void:
 	later.summary.undo_count = 1
 	check(Effects.changes(earlier, later, false).is_empty(), "undo produces no false acquisition or resource cue")
 	test_staged_picks()
+	test_two_step_placement()
 	test_private_deck()
 	test_quantities()
 	test_choice_zones()
@@ -146,19 +164,21 @@ func test_staged_picks() -> void:
 	var second = "imperium:graft:0"
 	var invalid = "imperium:ordinary:1"
 	model.catalog = {"cards": {"ordinary": {}, "graft": {"graft": true}}, "spaces": {"a": {}, "b": {}}}
-	var rows = [
-		{"index": 0, "action_id": "agent_turn", "arguments": {"card_id": first, "space_id": "a", "graft": true}},
-		{"index": 1, "action_id": "agent_turn", "arguments": {"space_id": "a", "graft": true, "card_id": second}},
-		{"index": 2, "action_id": "agent_turn", "arguments": {"card_id": second, "space_id": "b", "graft": true}},
-		{"index": 3, "action_id": "agent_turn", "arguments": {"card_id": invalid, "space_id": "b"}},
-	]
-	model.adopt({"summary": {"game_id": "picks", "revision": 0}, "view": {"player": 0, "private": {"hand": [first, second, invalid]}}, "actions": {"actions": rows}})
+	var rows = staged([
+		{"card_id": first, "space_id": "a", "graft": true},
+		{"space_id": "a", "graft": true, "card_id": second},
+		{"card_id": second, "space_id": "b", "graft": true},
+		{"card_id": invalid, "space_id": "b"},
+	])
+	model.adopt({"summary": {"game_id": "picks", "revision": 0}, "view": {"player": 0, "private": {"hand": [first, second, invalid]}}, "actions": rows})
+	check(model.placement_rows().size() == 4 and model.table_actions().size() == 4, "the card picks are reached only through their placements")
+	check(model.offered(model.placements(second, "b")[0]) and not model.offered({"index": 1, "action_id": "agent_turn", "placement": 2, "arguments": {"card_id": second, "space_id": "a", "graft": true}}), "a placement is offered only with its own card pick, position and arguments")
 	check(model.pick_step("a") == "changed" and model.legal_refs().has(first) and not model.legal_refs().has(invalid), "space-first lights only matching physical cards")
 	check(model.pick_step(invalid) == "blocked" and model.selected_space == "a" and model.selected_card.is_empty(), "an invalid replacement preserves the selected space")
 	model.pick_step(first)
 	model.pick_step(second)
 	check(model.selected_card == first and model.selected_partner == second, "picking a graft card joins rather than replaces the first card")
-	check(model.picked_placements().size() == 1 and int(model.picked_placements()[0].index) == 0, "symmetric graft DTOs deduplicate and prefer the first card despite argument order")
+	check(model.picked_placements().size() == 1 and int(model.picked_placements()[0].pick_index) == 0, "symmetric graft DTOs deduplicate and prefer the first card despite argument order")
 	check(model.legal_refs().has(first) and model.legal_refs().has(second), "both grafted cards stay lit even when the chooser deduplicates their moves")
 	model.clear_pick("space")
 	check(model.picked_placements().size() == 2 and model.legal_refs().has("a") and model.legal_refs().has("b"), "a graft pair reaches the union of both offered routes")
@@ -179,6 +199,50 @@ func test_staged_picks() -> void:
 	model.catalog.spaces.a.options = [{"cost": {"spice": 1, "water": 2}}]
 	var discounted = {"arguments": {"space_id": "a", "cost_option": 0, "discount": "spice"}}
 	check(model.paid_cost(discounted) == {"spice": 0, "water": 2} and model.catalog.spaces.a.options[0].cost.spice == 1, "paid cost applies only the offered discount without changing printed catalog cost")
+
+
+func test_two_step_placement() -> void:
+	var model = Model.new()
+	var card = "imperium:graft:0"
+	model.catalog = {"cards": {"graft": {"graft": true}}, "spaces": {"a": {}, "b": {}}}
+	# The server holds the card pick (a reload or an undo of the space pick):
+	# its space picks become the placements, with the picked card.
+	var held = {"summary": {"game_id": "held", "revision": 7, "undo_count": 0, "undo": [{"seat": 0, "steps": 2}]}, "view": {"player": 0, "private": {"hand": [], "agent_card_pick": card, "agent_card_pick_graft": true}},
+		"actions": {"actions": [{"index": 0, "action_id": "place_agent", "arguments": {"space_id": "a"}}, {"index": 1, "action_id": "place_agent", "arguments": {"space_id": "b", "cost_option": 1}}], "agent_placements": null},
+		"log": {"entries": [{"type": "action", "actor": 0, "action_id": "choose_agent_card", "undone": false}, {"type": "action", "actor": 0, "action_id": "place_agent", "pick": true, "undone": true}, {"type": "action", "actor": 1, "action_id": "place_agent", "undone": false}]}}
+	model.adopt(JSON.parse_string(JSON.stringify(held)))
+	var rows = model.placement_rows()
+	check(rows.size() == 2 and rows[1].arguments == {"space_id": "b", "cost_option": 1.0, "card_id": card, "graft": true} and int(rows[1].index) == 1 and not rows[1].has("pick_index"), "a held card pick turns the space picks into whole placements")
+	check(model.selected_card == card, "the held card is the staged card")
+	model.clear_pick()
+	check(model.selected_card == card, "only an undo returns a card the server holds")
+	check(model.offered(rows[0]) and model.request_body(rows[0]).index == 0, "a held card's placement sends its own space pick")
+	check(model.legal_refs().has("a") and model.legal_refs().has("b"), "the held card's spaces stay lit")
+	check(model.undo_steps() == 1, "one undo takes one step unless the last two live steps are this seat's card and space picks")
+	# After the card pick lands the matching space pick follows (followWithSpace).
+	var placement = JSON.parse_string(JSON.stringify({"index": 5, "action_id": "agent_turn", "pick_index": 5, "placement": 0, "arguments": {"card_id": card, "graft": true, "space_id": "b", "cost_option": 1}}))
+	check(int(model.space_pick_for(placement).get("index", -1)) == 1, "the space pick with the same space arguments follows the card pick")
+	placement.arguments.graft = false
+	check(model.space_pick_for(placement).is_empty(), "a space pick never follows a different card or graft")
+	var placed = JSON.parse_string(JSON.stringify(held))
+	placed.summary.revision = 8
+	placed.view.private.agent_card_pick = null
+	placed.actions = {"actions": [{"index": 0, "action_id": "finish_conflict_end_intrigue", "arguments": {}}]}
+	placed.log.entries = [{"type": "action", "actor": 0, "action_id": "choose_agent_card", "undone": false}, {"type": "action", "actor": 0, "action_id": "place_agent", "undone": false}]
+	model.adopt(placed)
+	check(model.undo_steps() == 2, "a placement undoes as its card pick and its space pick")
+	check(model.selected_card.is_empty() and model.placement_rows().is_empty(), "no placement once the card pick is spent")
+	check(int(model.finish_action().get("index", -1)) == 0 and "resolve_scouts_choice_without_option" in Model.END_ACTIONS, "the server's newer explicit turn ends are the turn-end press")
+	# A trash icon is told apart by what printed it, and reads by that name.
+	model.snapshot.view.box_losing_trash = [{"action_id": "trash_optional_card", "card_id": "c", "source": "card", "printed": "imperium:graft:0", "printed_box": 1}]
+	var trash = {"action_id": "trash_optional_card", "arguments": {"card_id": "c", "source": "card", "printed": "imperium:graft:0", "printed_box": 1}}
+	check(model.loses_box(trash), "the printed icon's own trash loses its box")
+	var other = trash.duplicate(true)
+	other.arguments.printed_box = 2
+	check(not model.loses_box(other), "another icon of the same card does not lose that box")
+	model.words = {"ko": {"PAYLOAD_KEY_LABELS": {"source": "출처", "printed_box": "칸", "printed": "인쇄"}}}
+	var text = model.describe({"action_id": "resolve_research_icon", "arguments": {"source": "research", "printed": "a", "printed_box": 3}, "detail_ko": "연구 칸"})
+	check(not text.contains("출처") and not text.contains("칸:") and not text.contains("인쇄"), "a named printer hides its kind and box, and its name when the detail says it")
 
 
 func test_private_deck() -> void:
@@ -325,8 +389,9 @@ func test_reference_feedback() -> void:
 	var other = "imperium:other:0"
 	var graft = "imperium:graft:0"
 	model.catalog = {"cards": {"ordinary": {"name": "First"}, "other": {"name": "Other"}, "graft": {"name": "Graft", "graft": true}}, "spaces": {"a": {"name": "A"}, "b": {"name": "B"}, "c": {"name": "C"}}, "post_spaces": {"post_a": ["a", "b"]}}
-	var rows = [{"index": 0, "action_id": "agent_turn", "arguments": {"card_id": first, "space_id": "a"}}, {"index": 1, "action_id": "agent_turn", "arguments": {"card_id": other, "space_id": "b"}}, {"index": 2, "action_id": "agent_turn", "arguments": {"card_id": graft, "space_id": "b", "graft": true}}]
-	model.adopt(JSON.parse_string(JSON.stringify({"summary": {"game_id": "pointer", "revision": 1}, "view": {"player": 0, "private": {"hand": [first, other, graft]}}, "actions": {"actions": rows, "unavailable": {"refs": {"blocked": {"reason": "server reason", "reason_ko": "서버 이유"}}}}})))
+	var rows = staged([{"card_id": first, "space_id": "a"}, {"card_id": other, "space_id": "b"}, {"card_id": graft, "space_id": "b", "graft": true}])
+	rows.unavailable = {"refs": {"blocked": {"reason": "server reason", "reason_ko": "서버 이유"}}}
+	model.adopt(JSON.parse_string(JSON.stringify({"summary": {"game_id": "pointer", "revision": 1}, "view": {"player": 0, "private": {"hand": [first, other, graft]}}, "actions": rows})))
 	check(model.ref_feedback(first).kind == "available" and model.ref_feedback("a").kind == "available", "offered cards and spaces share the same available state")
 	check(model.ref_feedback("c").kind == "inspect" and model.ref_feedback("c").hint.is_empty(), "an absent legal action never invents an unavailable reason")
 	check(model.pick_step(first) == "changed" and model.ref_feedback(first).kind == "selected", "staged card selection is distinct from availability")

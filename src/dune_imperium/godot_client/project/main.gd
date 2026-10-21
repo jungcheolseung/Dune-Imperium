@@ -1117,10 +1117,24 @@ func _apply_placement(action: Dictionary, expected: String) -> void:
 		partner = model.selected_partner if action.arguments.card_id == model.selected_card else model.selected_card
 	var origin_game = game_id
 	var origin_seat = model.active_seat
-	if not await _send_action(action) or partner.is_empty():
+	if action.has("pick_index"):
+		# A whole placement is its card pick, then the matching space pick
+		# (turn.js applyPlacement); without that row the picked card's
+		# spaces stay on screen to choose from.
+		var pick = model.action_at(int(action.pick_index))
+		if pick.is_empty() or not await _send_action(pick):
+			return
+		if game_id != origin_game or model.active_seat != origin_seat:
+			return
+		var space = model.space_pick_for(action)
+		if space.is_empty() or not await _send_action(space):
+			return
+	elif not await _send_action(action):
 		return
-	var decision = model.summary().get("decision", {})
-	if game_id != origin_game or model.active_seat != origin_seat or decision.get("kind") != "graft_partner" or int(decision.get("owner", -1)) != origin_seat:
+	if partner.is_empty():
+		return
+	var decision = model.summary().get("decision")
+	if game_id != origin_game or model.active_seat != origin_seat or not decision is Dictionary or decision.get("kind") != "graft_partner" or int(decision.get("owner", -1)) != origin_seat:
 		return
 	for candidate in model.actions():
 		if candidate.action_id == "choose_graft_partner" and candidate.arguments.get("card_id") == partner:
@@ -1287,7 +1301,10 @@ func _render_choices(filtered: Array = []) -> void:
 				_button(content, model.name_of(card), _choose_ref.bind(card))
 		else:
 			_label(content, model.native("손패의 카드를 고르면 보드에서 갈 수 있는 칸이 빛납니다."), 15).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	choices.render(model.actions().filter(func(action): return action.action_id != "agent_turn" and (action.action_id not in Model.END_ACTIONS or action.action_id == "scouts_call")))
+	# A placement's two steps are offered as the placements above; shown
+	# raw only if the server listed no placement for them.
+	var steps_shown = model.placements().is_empty()
+	choices.render(model.actions().filter(func(action): return (steps_shown or action.action_id not in Model.PLACEMENT_STEPS) and (action.action_id not in Model.END_ACTIONS or action.action_id == "scouts_call")))
 
 
 func _render_market() -> void:
@@ -1481,6 +1498,9 @@ func _choose_action(action: Dictionary, expected: String) -> void:
 		return
 	if busy or expected != model.signature() or not model.offered(action):
 		return
+	if action.get("action_id") == Model.PLACEMENT_ACTION:
+		await _apply_placement(action, expected)
+		return
 	if action.get("sent_by_turn_end", false):
 		if int(model.held_action().get("index", -1)) == int(action.index):
 			model.held.clear()
@@ -1554,7 +1574,7 @@ func _mutate(path: String, extra: Dictionary) -> bool:
 
 
 func _undo() -> void:
-	await _mutate("undo", {"steps": 1})
+	await _mutate("undo", {"steps": model.undo_steps()})
 
 
 func _save_now() -> void:
@@ -1701,13 +1721,14 @@ func _run_smoke() -> void:
 	await _choose_ref(first.arguments.card_id)
 	await _choose_ref(first.arguments.space_id)
 	if int(model.summary().revision) == 0:
-		if not await _send_action(first):
-			_smoke_fail("place agent")
-			return
+		await _apply_placement(first, model.signature())
 	if int(model.summary().revision) <= 0:
 		_smoke_fail("server state did not advance")
 		return
-	if not await _mutate("undo", {"steps": 1}):
+	if model.undo_steps() != 2:
+		_smoke_fail("a placement undoes as its card and space picks")
+		return
+	if not await _mutate("undo", {"steps": model.undo_steps()}):
 		_smoke_fail("undo")
 		return
 	if int(model.summary().undo_count) != 1 or int(model.summary().revision) != 0:
@@ -1974,7 +1995,7 @@ func _run_capture() -> void:
 		await _capture("choice-hover")
 	_hide_preview()
 	if auto_placed:
-		if not await _mutate("undo", {"steps": 1}):
+		if not await _mutate("undo", {"steps": model.undo_steps()}):
 			_smoke_fail("native automatic placement undo")
 			return
 	_set_tab("table")

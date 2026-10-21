@@ -80,7 +80,9 @@ func press_action(action: Dictionary) -> void:
 	else:
 		var found = false
 		for button in buttons(table.content):
-			if int(button.get_meta("action_index", -1)) == int(action.index) or (button.has_meta("quantity_select") and int(action.index) in button.get_meta("action_indices", [])):
+			# A card's placements share its card pick; `placement` tells them apart.
+			var same_row = int(button.get_meta("action_index", -1)) == int(action.index) and (action.get("placement") == null or (button.has_meta("placement") and int(button.get_meta("placement")) == int(action.placement)))
+			if same_row or (button.has_meta("quantity_select") and int(action.index) in button.get_meta("action_indices", [])):
 				# Reading-surface choices draw their words in child labels.
 				var shown = button.accessibility_name if button.has_meta("action_reading") else button.text
 				if button.disabled or shown.is_empty():
@@ -116,9 +118,14 @@ func check_choices() -> bool:
 	for select in table.content.find_children("*", "OptionButton", true, false):
 		for index in select.get_meta("action_indices", []):
 			offered[int(index)] = true
+	var placements = table.model.placement_rows()
 	for action in table.model.actions():
-		if action.action_id == "agent_turn":
-			if table.model.placements(action.arguments.card_id, action.arguments.space_id).is_empty():
+		if action.action_id == "choose_agent_card":
+			# A card pick is reached through the placements it leads to.
+			if not placements.any(func(row): return int(row.get("pick_index", -1)) == int(action.index) and not table.model.placements(row.arguments.card_id, row.arguments.space_id).is_empty()):
+				return false
+		elif action.action_id == "place_agent":
+			if not placements.any(func(row): return not row.has("pick_index") and int(row.index) == int(action.index)):
 				return false
 		elif action.action_id in table.Model.AUCTION_AMOUNTS:
 			if not offered.has(int(action.index)) or table.finish_button.disabled:
@@ -250,7 +257,7 @@ func run(client: Control, seeds: String) -> void:
 					fail("legal action omitted from the choice controls")
 					return
 				count_key("decisions", str(summary.get("decision", {}).get("kind", "")))
-				var action = pick_action(actions)
+				var action = pick_action(table.model.table_actions())
 				var before = table.model.signature()
 				await press_action(action)
 				if stopped:

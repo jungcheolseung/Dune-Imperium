@@ -6,7 +6,14 @@ const NativeText = preload("res://native_text.gd")
 func native(text: String) -> String:
 	return str(NativeText.EN.get(text, text)) if language == "en" else text
 
-const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft", "pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue", "confirm_scouts_bid", "scouts_call"]
+const END_ACTIONS = ["finish_agent_turn", "finish_reveal", "finish_leader_draft", "pass_combat_intrigue", "pass_endgame_intrigue", "decline_conflict_end_intrigue", "finish_conflict_end_intrigue", "confirm_scouts_bid", "resolve_scouts_choice_without_option", "scouts_call"]
+# The engine asks an Agent turn as a card pick, then a space pick (codec v150);
+# the table shows each whole placement as one `agent_turn` row (turn.js).
+const PLACEMENT_ACTION = "agent_turn"
+const PLACEMENT_STEPS = ["choose_agent_card", "place_agent"]
+# Rows that name the entity printing their icon (core.js NAMED_PRINTER_ACTIONS).
+const NAMED_PRINTER_ACTIONS = ["trash_optional_card", "resolve_research_icon", "draw_owed_intrigue", "draw_owed_card", "recruit_reveal_troops", "draw_reveal_intrigue", "generate_reveal_specimens", "advance_reveal_tleilaxu", "advance_reveal_research", "gain_reveal_resources", "gain_reveal_faction_influence"]
+const TRASH_ICON_KEYS = ["source", "printed", "printed_box"]
 const AUCTION_AMOUNTS = ["scouts_bid", "scouts_call"]
 const FORCE_AMOUNTS = ["deploy_troops", "withdraw_troops", "deploy_commanders", "withdraw_commanders"]
 const SEAT_COLORS = [Color("438bde"), Color("d66063"), Color("42ac87"), Color("e4b955")]
@@ -298,12 +305,109 @@ func prompt() -> String:
 	return phrase(text)
 
 
+# The decision's whole placements (turn.js placementActions). With the card
+# picks the server lists every placement each pick leads to; `pick_index` is
+# the card pick sent first and `placement` tells a card's placements apart.
+# Once a card is picked (a reload, an undo) the space picks are the list.
+func placement_rows() -> Array:
+	var rows = actions()
+	var payload = snapshot.get("actions")
+	var listed = payload.get("agent_placements") if payload is Dictionary else null
+	var result: Array = []
+	if listed is Array and not listed.is_empty():
+		for entry in listed:
+			var index = int(entry.get("index", -1))
+			var pick = action_at(index)
+			if pick.get("action_id") != "choose_agent_card":
+				continue
+			var row: Dictionary = pick.duplicate(true)
+			row.merge(entry.duplicate(true), true)
+			row.action_id = PLACEMENT_ACTION
+			row.pick_index = index
+			result.append(row)
+		return result
+	var card = picked_card()
+	if card.is_empty():
+		return result
+	var grafted = bool(view().get("private", {}).get("agent_card_pick_graft", false))
+	for action in rows:
+		if action.get("action_id") != "place_agent":
+			continue
+		var row: Dictionary = action.duplicate(true)
+		var args: Dictionary = row.get("arguments", {}).duplicate()
+		args.card_id = card
+		if grafted:
+			args.graft = true
+		row.arguments = args
+		row.action_id = PLACEMENT_ACTION
+		row.placement = result.size()
+		result.append(row)
+	return result
+
+
+func action_at(index: int) -> Dictionary:
+	for action in actions():
+		if int(action.get("index", -1)) == index:
+			return action
+	return {}
+
+
+# The card the server holds as this seat's Agent pick; only an undo returns it.
+func picked_card() -> String:
+	var own = view().get("private", {})
+	var card = own.get("agent_card_pick") if own is Dictionary else null
+	return str(card) if card is String else ""
+
+
+# The space pick that finishes a placement once its card pick has landed
+# (turn.js followWithSpace): the same space arguments, for that card only.
+func space_pick_for(placement: Dictionary) -> Dictionary:
+	var args: Dictionary = placement.get("arguments", {})
+	var own = view().get("private", {})
+	if picked_card() != str(args.get("card_id", "")) or bool(own.get("agent_card_pick_graft", false)) != bool(args.get("graft", false)):
+		return {}
+	var wanted = _space_arguments(args)
+	for action in actions():
+		if action.get("action_id") == "place_agent" and _space_arguments(action.get("arguments", {})) == wanted:
+			return action
+	return {}
+
+
+func _space_arguments(args: Dictionary) -> String:
+	var keys = args.keys().filter(func(key): return key not in ["card_id", "graft"])
+	keys.sort()
+	return JSON.stringify(keys.map(func(key): return [key, args[key]]))
+
+
+# Rows a table object can answer: whole placements, never their two steps.
+func table_actions() -> Array:
+	return placement_rows() + actions().filter(func(action): return action.get("action_id") not in PLACEMENT_STEPS)
+
+
+# How many steps one undo takes back: a placement is its card pick and its
+# space pick (render.js lastMoveSteps).
+func undo_steps() -> int:
+	var available = 0
+	for item in summary().get("undo", []):
+		if int(item.get("seat", -1)) == active_seat:
+			available = int(item.get("steps", 0))
+	var log = snapshot.get("log")
+	var entries = log.get("entries", []) if log is Dictionary else []
+	var live = entries.filter(func(entry): return entry.get("type") == "action" and not entry.get("undone", false))
+	if available >= 2 and live.size() >= 2:
+		var pick = live[-2]
+		var space = live[-1]
+		if int(pick.get("actor", -1)) == active_seat and int(space.get("actor", -1)) == active_seat and pick.get("action_id") == "choose_agent_card" and space.get("action_id") == "place_agent":
+			return 2
+	return 1
+
+
 func placements(card: String = "", space: String = "", partner: String = "") -> Array:
 	var result: Array = []
 	var options: Dictionary = {}
-	for action in actions():
+	for action in placement_rows():
 		var args = action.get("arguments", {})
-		if action.get("action_id") != "agent_turn" or (not space.is_empty() and args.get("space_id") != space):
+		if not space.is_empty() and args.get("space_id") != space:
 			continue
 		if partner.is_empty():
 			if card.is_empty() or args.get("card_id") == card:
@@ -335,7 +439,7 @@ func can_pair(card: String, other: String) -> bool:
 		return false
 	if not entry(card).get("graft", false) and not entry(other).get("graft", false):
 		return false
-	return actions().any(func(action): return action.action_id == "agent_turn" and action.arguments.get("graft", false) and action.arguments.get("card_id") in [card, other])
+	return placement_rows().any(func(action): return action.arguments.get("graft", false) and action.arguments.get("card_id") in [card, other])
 
 
 func clear_pick(part = "") -> void:
@@ -350,6 +454,11 @@ func clear_pick(part = "") -> void:
 	elif part == "card":
 		selected_card = selected_partner
 		selected_partner = ""
+	# A card the server holds as picked stays picked (turn.js sanitizePick).
+	if not picked_card().is_empty():
+		selected_card = picked_card()
+		if part.is_empty() or part == "card":
+			selected_partner = ""
 
 
 func pick_step(ref: String) -> String:
@@ -387,7 +496,7 @@ func picked_ref(ref: String) -> bool:
 
 func ref_actions(ref: String) -> Array:
 	var result: Array = []
-	for action in actions():
+	for action in table_actions():
 		if _contains_ref(action.get("arguments", {}), ref):
 			result.append(action)
 	return result
@@ -450,8 +559,8 @@ func ref_feedback(ref: String, offered: Variant = null) -> Dictionary:
 
 func legal_refs() -> Dictionary:
 	var result: Dictionary = {}
-	for action in actions():
-		if action.get("action_id") == "agent_turn":
+	for action in table_actions():
+		if action.get("action_id") == PLACEMENT_ACTION:
 			var args = action.arguments
 			if not selected_space.is_empty() and args.get("space_id") != selected_space:
 				continue
@@ -532,9 +641,11 @@ func own_card_zone(ref: String) -> String:
 
 
 func loses_box(action: Dictionary) -> bool:
-	var ref = action.get("arguments", {}).get("card_id")
+	# The trash icon is told apart by what printed it (render.js losesBox).
+	var args = action.get("arguments", {})
+	var ref = args.get("card_id")
 	for row in view().get("box_losing_trash", []):
-		if row.action_id == action.action_id and (not ref is String or row.get("card_id") == ref):
+		if row.action_id == action.action_id and (not ref is String or row.get("card_id") == ref) and TRASH_ICON_KEYS.all(func(key): return row.get(key) == args.get(key)):
 			return true
 	return false
 
@@ -631,9 +742,13 @@ func describe(action: Dictionary, annotated = true) -> String:
 	var parts: PackedStringArray = []
 	if detail != null and not str(detail).is_empty():
 		parts.append(phrase(detail))
+	var names_printer = action.get("action_id") in NAMED_PRINTER_ACTIONS
 	for key in args:
 		var value = args[key]
 		if key in ["effect_key", "box", "cost_option"] or (value is String and value.is_empty()):
+			continue
+		# What printed the icon reads by its name; its kind and box are the engine's.
+		if names_printer and (key in ["source", "printed_box"] or (key == "printed" and action.get("action_id") != "trash_optional_card" and detail != null and not str(detail).is_empty())):
 			continue
 		if key == "discount" and args.has("cost_option") and args.has("space_id"):
 			continue
@@ -817,6 +932,11 @@ func leader_player(ref: String) -> Dictionary:
 
 
 func offered(action: Dictionary) -> bool:
+	if action.get("action_id") == PLACEMENT_ACTION:
+		for current in placement_rows():
+			if int(current.index) == int(action.get("index", -1)) and current.get("placement") == action.get("placement") and current.get("arguments", {}) == action.get("arguments", {}):
+				return true
+		return false
 	for current in actions():
 		if int(current.index) == int(action.get("index", -1)) and current.action_id == action.get("action_id") and current.get("arguments", {}) == action.get("arguments", {}):
 			return true

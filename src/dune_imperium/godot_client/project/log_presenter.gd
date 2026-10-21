@@ -21,6 +21,10 @@ func render(parent: VBoxContainer) -> void:
 	var shown = 0
 	for index in range(entries.size() - 1, maxi(-1, -1 if parent == table.content else entries.size() - 41), -1):
 		var entry = entries[index]
+		# A step that only picks toward a waiting effect: the step that ends
+		# it names the whole action (panels.js logGroups).
+		if entry.get("pick", false):
+			continue
 		var text = ""
 		var heading = table.model.native("게임 진행")
 		var actor = -1
