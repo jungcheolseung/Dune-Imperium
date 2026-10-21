@@ -89,6 +89,7 @@ the leaves are the file's value head, and a decision the older engine
 answered alone (``engine_order_answer``) takes that answer without a search.
 """
 
+import math
 import random
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -295,10 +296,15 @@ class NetworkSearchAgent:
             raise ValueError("agent seed must not be negative")
         if rollouts < 1 or candidates < 1 or horizon_rounds < 1:
             raise ValueError("rollouts, candidates, and horizon_rounds are positive")
+        if not (math.isfinite(flip_margin) and math.isfinite(prior_weight)):
+            raise ValueError("flip_margin and prior_weight must be finite")
         if flip_margin < 0 or prior_weight < 0:
             raise ValueError("flip_margin and prior_weight must not be negative")
         if halving == 1 or halving < 0:
             raise ValueError("halving is 0 (off) or at least 2 candidates")
+        if halving and halving * (halving - 1).bit_length() > rollouts * candidates:
+            # The first round alone would spend more than the plain budget.
+            raise ValueError("halving needs rollouts * candidates >= its first round")
         if family_atomics not in FAMILY_ATOMICS_DECIDERS:
             raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         from dune_imperium.training.older_teacher import (
@@ -561,11 +567,25 @@ class NetworkSearchAgent:
         and the best beats it by no more than ``flip_margin``. With the
         defaults this is the first candidate with the largest column sum."""
 
-        scores = self._scores_of(values, priors)
         played = [
             sum(not np.isnan(value) for value in column)
             for column in zip(*values, strict=True)
         ]
+        if not self.prior_weight and len(set(played)) == 1:
+            # Every candidate played the same worlds: compare the column sums
+            # themselves, so the defaults choose exactly as they always did
+            # (a mean divides by the world count, which rounds when it is
+            # not a power of two).
+            totals = [sum(column) for column in zip(*values, strict=True)]
+            best = totals.index(max(totals))
+            if (
+                best != 0
+                and self.flip_margin
+                and (totals[best] - totals[0]) / played[0] <= self.flip_margin
+            ):
+                return 0
+            return best
+        scores = self._scores_of(values, priors)
         eligible = [index for index, count in enumerate(played) if count == max(played)]
         best = max(eligible, key=lambda index: (scores[index], -index))
         if (

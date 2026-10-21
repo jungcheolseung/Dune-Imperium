@@ -92,7 +92,14 @@ def test_a_prior_weight_adds_the_network_s_log_probability(tmp_path: Path) -> No
 def test_the_shortlist_carries_log_probabilities_summing_to_one(
     tmp_path: Path,
 ) -> None:
-    seat = _seat(tmp_path, halving=4)
+    seat = NetworkSearchAgent(
+        _checkpoint(tmp_path),
+        seed=3,
+        rollouts=4,
+        candidates=2,
+        halving=4,
+        config=_RULES,
+    )
     state = _ENGINE.reset(_RULES, 3)
     chance = ChanceResolver(seed=3)
     while isinstance(decision := _ENGINE.current_decision(state), ChanceDecision):
@@ -209,7 +216,7 @@ def test_a_retraced_halving_seat_answers_like_the_one_that_searched(
         return NetworkSearchAgent(
             path,
             seed=11,
-            rollouts=2,
+            rollouts=4,
             candidates=2,
             halving=4,
             flip_margin=0.005,
@@ -247,3 +254,35 @@ def test_a_retraced_halving_seat_answers_like_the_one_that_searched(
     assert twin._rng.getstate() == decided[14][4]
     for state, view, actions, result, _ in decided[15:]:
         assert twin.choose_action_with_state(state, view, actions) == result.chosen
+
+
+def test_the_default_pick_compares_sums_exactly_whatever_the_world_count(
+    tmp_path: Path,
+) -> None:
+    """A mean over three worlds rounds; the defaults compare the column sums
+    themselves, as the seat always did (review note on 02d6e1fa)."""
+
+    seat = NetworkSearchAgent(
+        _checkpoint(tmp_path), seed=0, rollouts=3, candidates=2, config=_RULES
+    )
+    values = [[1 - 2**-53, 1.0], [0.0, 0.0], [0.0, 0.0]]
+    totals = [sum(column) for column in zip(*values, strict=True)]
+    assert seat._pick(values, ()) == totals.index(max(totals)) == 1
+
+
+def test_search_options_must_be_finite_and_within_the_budget(tmp_path: Path) -> None:
+    path = _checkpoint(tmp_path)
+    for options in ({"flip_margin": float("nan")}, {"prior_weight": float("inf")}):
+        with pytest.raises(ValueError, match="finite"):
+            NetworkSearchAgent(path, seed=0, config=_RULES, **options)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="first round"):
+        NetworkSearchAgent(path, seed=0, halving=16, config=_RULES)  # 16 x 4 > 40
+    NetworkSearchAgent(path, seed=0, halving=8, config=_RULES)  # 8 x 3 <= 40
+    for bad in (
+        "::flip=nan",
+        "::prior=inf",
+        "::flip=-0.1",
+        "::halving=1",
+        "::halving=-2",
+    ):
+        assert not is_agent_kind(f"search:{path}{bad}")

@@ -1,5 +1,6 @@
 """Named, seed-constructible baseline agents for evaluation tooling."""
 
+import math
 from collections.abc import Callable
 from typing import Final
 
@@ -284,7 +285,12 @@ def parse_search_kind(kind: str) -> tuple[str, dict[str, object]]:
         keyword, kind_of = _SEARCH_OPTIONS[name]
         if keyword in options:
             raise ValueError(f"search option given twice: {name!r}")
-        options[keyword] = kind_of(text)
+        value = kind_of(text)
+        if isinstance(value, float) and not (math.isfinite(value) and value >= 0):
+            raise ValueError(f"search option must be finite and not negative: {part!r}")
+        if name == "halving" and (value == 1 or int(value) < 0):
+            raise ValueError(f"halving is 0 (off) or at least 2 candidates: {part!r}")
+        options[keyword] = value
     return path, options
 
 
