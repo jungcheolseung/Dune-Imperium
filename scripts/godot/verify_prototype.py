@@ -35,6 +35,20 @@ def main() -> int:
         parser.error("--seeds requires one to eight nonnegative integers")
     binary = ensure_godot(args.godot)
     env = dict(os.environ, PYTHONPATH=str(PROJECT_ROOT / "src"))
+    # A fresh checkout has no imported resources (.godot/) yet, and the
+    # script checks below crash without them; import as the launcher does.
+    (TMP_DIR / "godot").mkdir(parents=True, exist_ok=True)
+    with (TMP_DIR / "godot" / "import.log").open("wb") as log:
+        imported = subprocess.run(
+            [str(binary), "--headless", "--editor", "--path", str(PROJECT),
+             "--import"],
+            cwd=PROJECT_ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
+            timeout=120, check=False,
+        )
+    if imported.returncode:
+        print(f"Godot import failed; see {TMP_DIR / 'godot' / 'import.log'}",
+              file=sys.stderr)
+        return imported.returncode
     for script in ("model_test.gd", "display_scale_test.gd"):
         checked = subprocess.run(
             [str(binary), "--headless", "--path", str(PROJECT),
