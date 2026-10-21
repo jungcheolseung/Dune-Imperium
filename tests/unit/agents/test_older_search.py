@@ -309,3 +309,34 @@ def test_every_playout_is_an_older_network_game(
     assert len(values) == 2 and all(len(row) == len(plan.candidates) for row in values)
     # One fresh walker per playout: worlds × candidates.
     assert len(walkers) == 2 * len(plan.candidates)
+
+
+def test_an_older_seat_keeps_that_engine_s_fixed_answers_without_searching(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A decision the older engine answered alone (``engine_order_answer``)
+    takes that answer before any shortlist; a current file's seat has no
+    such answers."""
+
+    import dune_imperium.agents.network_search_agent as module
+
+    state, player = _first_turn()
+    view = _ENGINE.observe(state, player)
+    legal = _ENGINE.legal_actions(state, player)
+    fixed = without_undo_actions(legal)[-1]
+    monkeypatch.setattr(module, "engine_order_answer", lambda *_: fixed)
+    older = NetworkSearchAgent(_older_file(tmp_path), seed=0, config=_RULES)
+    result = older.search_with_state(state, view, legal)
+    assert result.chosen == fixed and not result.searched
+
+    codec = ActionCodec(_RULES)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        PolicyValueNetwork(codec.size, hidden=(16,)),
+        ruleset=_RULES.identifier,
+        iteration=1,
+        codec=codec,
+    )
+    plain = NetworkSearchAgent(str(current), seed=0, rollouts=1, config=_RULES)
+    assert plain.search_with_state(state, view, legal).searched
