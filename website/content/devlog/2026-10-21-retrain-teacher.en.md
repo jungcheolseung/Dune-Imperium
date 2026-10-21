@@ -1,6 +1,6 @@
 +++
 title = "First codec v150 retraining attempt: the previous network as teacher"
-description = "An adapter let the previous codec's play network act on the new action units, followed by one distillation and PPO run. The new network was weaker than its teacher and was not installed."
+description = "An adapter let the previous codec's play network act on the new action units, followed by one distillation and reinforcement learning run. The new network was weaker than its teacher and was not installed."
 date = 2026-10-21T08:00:00+09:00
 publishDate = 2026-10-21
 lastmod = 2026-10-21
@@ -24,13 +24,13 @@ In the first run, 695 of 1,000 games hit the 30,000-step limit. The cause was a 
 
 The old network on the v149 engine was compared with the adapter on the v150 engine: one seat against three hard app AIs, all options and leader draft, 1,000 games each. Win rates were 54.7% and 54.8%, and 996 of the 1,000 games on the same seeds ended with the same final VP and ranks.
 
-## Distillation and PPO
+## Distillation and reinforcement learning
 
 One chain ran overnight on the Mac mini.
 
 1. 2,599,119 training rows from games played by the teacher (80 iterations, 17 minutes, no truncated games)
 2. Student, 4 epochs: 87.5% agreement with the teacher
-3. PPO (learning rate 1e-5), 800 iterations, 3.6 hours
+3. Reinforcement learning (REINFORCE, learning rate 1e-5), 800 iterations, 3.6 hours
 
 Win rates against three hard app AIs on the same 400 game seeds:
 
@@ -39,19 +39,19 @@ Win rates against three hard app AIs on the same 400 game seeds:
 | Old network (v149 engine) | 56.5% |
 | Adapter teacher (v150 engine) | 56.8% |
 | Teacher's distribution, top choice at each step | 57.5% |
-| Student, 4 epochs (PPO start) | 47.5% |
+| Student, 4 epochs (REINFORCE start) | 47.5% |
 | Student, 12 epochs (cosine learning-rate decay) | 52.0% |
-| PPO 300 / 600 / 800 iterations | 52.2% / 49.0% / 51.5% |
+| REINFORCE 300 / 600 / 800 iterations | 52.2% / 49.0% / 51.5% |
 
-Picking the teacher's top choice at each step already reached 57.5%, so splitting actions into steps was not itself a loss; the strength was lost in distillation. The student agreed with the teacher on 99.2% of confident decisions (top probability above 0.9) but only 79% of decisions where the teacher was split (below 0.6, 32% of all decisions). In-training 25-game evaluations moved between 0.41 and 0.54, so PPO at 1e-5 did not show steady improvement either.
+Picking the teacher's top choice at each step already reached 57.5%, so splitting actions into steps was not itself a loss; the strength was lost in distillation. The student agreed with the teacher on 99.2% of confident decisions (top probability above 0.9) but only 79% of decisions where the teacher was split (below 0.6, 32% of all decisions). In-training 25-game evaluations moved between 0.41 and 0.54, so REINFORCE at 1e-5 did not show steady improvement either.
 
-Finally, in a 2-vs-2 network comparison (1,400 games), the PPO 800 network's win rate was 7.0 points below the adapter teacher (95% interval −12.1 to −1.7 points).
+Finally, in a 2-vs-2 network comparison (1,400 games), the REINFORCE 800 network's win rate was 7.0 points below the adapter teacher (95% interval −12.1 to −1.7 points).
 
 ## Outcome and next decision
 
 The new network was not installed for play, and the search-seat comparison was not run. The adapter, its measurement tournament seat, and the student learning-rate decay option were merged into master. The adapter seat is for measurement only and cannot be chosen on the play server.
 
-Since the adapter reproduces the old network's strength on v150 almost exactly, there are three candidates: let search AI seats use the old network through the adapter (needs design and implementation), restart PPO from the 12-epoch student, or scale up distillation. None has been chosen yet.
+Since the adapter reproduces the old network's strength on v150 almost exactly, there are three candidates: let search AI seats use the old network through the adapter (needs design and implementation), restart REINFORCE from the 12-epoch student, or scale up distillation. None has been chosen yet.
 
 ## References
 

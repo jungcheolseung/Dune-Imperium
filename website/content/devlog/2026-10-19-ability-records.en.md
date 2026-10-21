@@ -51,7 +51,7 @@ The safeguard was a before-and-after engine comparison.
 
 Network input was changed to build card features from the ability records and action vectors from the action shape table. Because retraining would otherwise be needed again whenever something else changed, entity network files were made to store the feature table's names and to move columns by name when the table changes. Entities whose own features are unchanged give exactly the same output.
 
-Retraining distilled the play model as teacher (1.97 million rows, 95.2% agreement with the teacher), then 800 iterations of PPO at learning rate 1e-5. In a preliminary comparison (700 seeds, 1,400 games) the win-rate difference against the play model was +1.3 points, 95% interval [−3.9, +6.4], within noise, as were rank and score margin: a tie. The search-seat gate was skipped by decision, because the action units were about to change again and the model would be retrained. The play server's model stays the MLP. That MLP was migrated to codec v149 with 36,374 rows kept and 11 new rows starting from zero.
+Retraining distilled the play model as teacher (1.97 million rows, 95.2% agreement with the teacher), then 800 iterations of reinforcement learning (REINFORCE) at learning rate 1e-5. In a preliminary comparison (700 seeds, 1,400 games) the win-rate difference against the play model was +1.3 points, 95% interval [−3.9, +6.4], within noise, as were rank and score margin: a tie. The search-seat gate was skipped by decision, because the action units were about to change again and the model would be retrained. The play server's model stays the MLP. That MLP was migrated to codec v149 with 36,374 rows kept and 11 new rows starting from zero.
 
 ## A rule correction in the same period
 
