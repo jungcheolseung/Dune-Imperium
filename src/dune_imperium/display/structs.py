@@ -2,11 +2,11 @@
 
 Wording follows the same shared display contract as ``effect_dsl_text``:
 short imperative fragments, no trailing period, resources lowercase, game
-terms capitalized as printed. ``contract_condition_text`` is an exhaustive
-``match`` over ``ContractConditionKind`` so ``mypy`` fails if a new kind is
-added without matching text support; the two reward renderers each publish
-the dataclass field names they consume so a test can assert every field on
-``ContractReward``/``ConflictReward`` is handled.
+terms capitalized as printed. Every renderer reads the card's ability
+record (``contract_abilities``, ``conflict_abilities``) through a private
+reading of its pieces; a piece of a kind it does not know raises, and the
+content checks (``contracts.check_contract_terms``,
+``conflicts.check_conflict_reward_row``) refuse the same kinds at import.
 
 The ``_ko`` functions below are this module's Korean twins (feature decided
 2026-09-25: the effect text the engine *generates* gets a Korean version;
@@ -21,14 +21,34 @@ everything else (connectives, particles); a game term neither source has is
 left in English rather than invented, per the same file's "규칙" section.
 """
 
-from typing import assert_never
+from dataclasses import dataclass
 
+from dune_imperium.content.uprising.abilities import Ability
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
-from dune_imperium.content.uprising.conflicts import ConflictDefinition, ConflictReward
-from dune_imperium.content.uprising.contracts import (
-    ContractCondition,
-    ContractConditionKind,
-    ContractReward,
+from dune_imperium.content.uprising.conflicts import ConflictDefinition
+from dune_imperium.content.uprising.contracts import ContractDefinition
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquiredCard,
+    AllConditions,
+    AllianceTaken,
+    AtBoardSpace,
+    AtMakerSpace,
+    ContractTaken,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    EffectSection,
+    GainedSpiceThisTurn,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    PayResources,
+    PlaceSpy,
+    RecallAgent,
+    RecallSpy,
+    RecruitTroops,
+    TakeContract,
+    TakeControl,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
@@ -135,31 +155,32 @@ def _space_name_ko(space_id: str) -> str:
     return KOREAN_CARD_NAMES["spaces"][space_id]
 
 
-def contract_condition_text(condition: ContractCondition) -> str:
+def contract_condition_text(contract: ContractDefinition) -> str:
     """Render one standard Contract's printed completion condition."""
 
-    match condition.kind:
-        case ContractConditionKind.BOARD_SPACE:
-            space = BOARD_SPACES_BY_ID[condition.target]
+    match contract.requirement:
+        case AtBoardSpace(space_id=space_id):
+            space = BOARD_SPACES_BY_ID[space_id]
             return f"Send an Agent to {space.name}"
-        case ContractConditionKind.HARVEST_SPICE:
+        case AllConditions(
+            conditions=(AtMakerSpace(), GainedSpiceThisTurn(amount=amount))
+        ):
             return (
-                f"Send an Agent to a Maker space and gain {condition.amount} "
+                f"Send an Agent to a Maker space and gain {amount} "
                 "or more spice that turn"
             )
-        case ContractConditionKind.ACQUIRE_CARD:
-            return f"Acquire {_card_name(condition.target)}"
-        case ContractConditionKind.IMMEDIATE:
-            return "Complete immediately when taken"
-        case ContractConditionKind.EARN_ALLIANCE:
-            return "Take an Alliance token you do not already hold"
-        case ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH:
+        case AcquiredCard(card_id=card_id):
+            return f"Acquire {_card_name(card_id)}"
+        case ContractTaken() if contract.requires_intrigue_trash:
             return "Requires an Intrigue card: trash one when taken, completing at once"
-        case _:
-            assert_never(condition.kind)
+        case ContractTaken():
+            return "Complete immediately when taken"
+        case AllianceTaken():
+            return "Take an Alliance token you do not already hold"
+    raise TypeError(f"{contract.requirement!r} is not a Contract condition")
 
 
-def contract_condition_text_ko(condition: ContractCondition) -> str:
+def contract_condition_text_ko(contract: ContractDefinition) -> str:
     """Korean twin of ``contract_condition_text``.
 
     Verbs: Send an Agent 보내다 [Main p. 9], [Main p. 7], written as the
@@ -178,26 +199,19 @@ def contract_condition_text_ko(condition: ContractCondition) -> str:
     (``display.names_ko``, glossary "공간 이름" row).
     """
 
-    match condition.kind:
-        case ContractConditionKind.BOARD_SPACE:
-            return f"{_space_name_ko(condition.target)} 장소로 {{agent}}를 보냄"
-        case ContractConditionKind.HARVEST_SPICE:
+    match contract.requirement:
+        case AtBoardSpace(space_id=space_id):
+            return f"{_space_name_ko(space_id)} 장소로 {{agent}}를 보냄"
+        case AllConditions(
+            conditions=(AtMakerSpace(), GainedSpiceThisTurn(amount=amount))
+        ):
             return (
                 "메이커 게임판 장소로 {agent}를 보내고, 그 차례에 "
-                f"{{spice}} {condition.amount} 이상 얻음"
+                f"{{spice}} {amount} 이상 얻음"
             )
-        case ContractConditionKind.ACQUIRE_CARD:
-            return f"{_card_name_ko(condition.target)} 획득"
-        case ContractConditionKind.IMMEDIATE:
-            return "가져오는 즉시 완수"
-        case ContractConditionKind.EARN_ALLIANCE:
-            # "아무 팩션과 동맹이 됨" is the Bloodlines "Earn Any Alliance"
-            # Contract's own Korean print (``[KO card: Earn Any Alliance]``,
-            # docs/rules/glossary-ko.md's new source kind), which already
-            # gives the "not already held" nuance no icon in ICON_RULES
-            # covers either (English keeps it as plain words too).
-            return "아무 팩션과 {alliance}이 됨"
-        case ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH:
+        case AcquiredCard(card_id=card_id):
+            return f"{_card_name_ko(card_id)} 획득"
+        case ContractTaken() if contract.requires_intrigue_trash:
             # Two SEPARATE bare icons, not the combined {trash_intrigue}:
             # the English words "an Intrigue card" and "trash" are not
             # adjacent ("Requires an Intrigue card: trash one when taken"),
@@ -206,30 +220,69 @@ def contract_condition_text_ko(condition: ContractCondition) -> str:
             # separately (2026-09-25 review; the combined {trash_intrigue}
             # icon was a render-parity blocker here).
             return "{intrigue} 1장 필요, {trash} 후 가져오는 즉시 완수"
-        case _:
-            assert_never(condition.kind)
+        case ContractTaken():
+            return "가져오는 즉시 완수"
+        case AllianceTaken():
+            # "아무 팩션과 동맹이 됨" is the Bloodlines "Earn Any Alliance"
+            # Contract's own Korean print (``[KO card: Earn Any Alliance]``,
+            # docs/rules/glossary-ko.md's new source kind), which already
+            # gives the "not already held" nuance no icon in ICON_RULES
+            # covers either (English keeps it as plain words too).
+            return "아무 팩션과 {alliance}이 됨"
+    raise TypeError(f"{contract.requirement!r} is not a Contract condition")
 
 
-_HANDLED_CONTRACT_REWARD_FIELDS: frozenset[str] = frozenset(
-    {
-        "solari",
-        "water",
-        "troops",
-        "personal_cards",
-        "contracts",
-        "spies",
-        "recall_agents",
-        "influence_faction",
-        "influence",
-        "intrigue_cards",
-        "deep_cover_spies",
-    }
-)
+@dataclass(frozen=True, slots=True)
+class ContractRewardParts:
+    """A Contract's reward line read piece by piece, as the card text names
+    its gains (zero: not printed); the app-card scripts read it too."""
+
+    solari: int = 0
+    water: int = 0
+    troops: int = 0
+    personal_cards: int = 0
+    contracts: int = 0
+    spies: int = 0
+    recall_agents: int = 0
+    influence_faction: Faction | None = None
+    influence: int = 0
+    intrigue_cards: int = 0
+    deep_cover_spies: int = 0
 
 
-def contract_reward_text(reward: ContractReward) -> str:
+def contract_reward_parts(line: EffectSection) -> ContractRewardParts:
+    found: dict[str, int | Faction] = {}
+    counted = {"spies": 0, "deep_cover_spies": 0, "recall_agents": 0}
+    for reward in line.rewards:
+        match reward:
+            case GainResources(solari=solari, water=water):
+                found.update(solari=solari, water=water)
+            case RecruitTroops(count=count):
+                found["troops"] = count
+            case GainInfluence(times=times, factions=(faction,)):
+                found.update(influence=times, influence_faction=faction)
+            case DrawIntrigueCards(count=count):
+                found["intrigue_cards"] = count
+            case DrawPersonalCards(count=count):
+                found["personal_cards"] = count
+            case TakeContract(count=count):
+                found["contracts"] = count
+            case PlaceSpy(shared_post=True):
+                counted["deep_cover_spies"] += 1
+            case PlaceSpy():
+                counted["spies"] += 1
+            case RecallAgent():
+                counted["recall_agents"] += 1
+            case _:
+                raise TypeError(f"{reward!r} is not a Contract reward")
+    found.update({key: value for key, value in counted.items() if value})
+    return ContractRewardParts(**found)  # type: ignore[arg-type]
+
+
+def contract_reward_text(contract: ContractDefinition) -> str:
     """Render one standard Contract's printed reward line."""
 
+    reward = contract_reward_parts(contract.reward_line)
     parts: list[str] = []
     if reward.solari:
         parts.append(f"Gain {reward.solari} solari")
@@ -263,7 +316,7 @@ def contract_reward_text(reward: ContractReward) -> str:
     return ", ".join(parts)
 
 
-def contract_reward_text_ko(reward: ContractReward) -> str:
+def contract_reward_text_ko(contract: ContractDefinition) -> str:
     """Korean twin of ``contract_reward_text``.
 
     Every field the English renders as a bare ``{term:count}`` amount in the
@@ -285,6 +338,7 @@ def contract_reward_text_ko(reward: ContractReward) -> str:
     icons, which English never draws for these fields either.
     """
 
+    reward = contract_reward_parts(contract.reward_line)
     parts: list[str] = []
     if reward.solari:
         parts.append(f"{{solari:{reward.solari}}}")
@@ -312,29 +366,87 @@ def contract_reward_text_ko(reward: ContractReward) -> str:
     return ", ".join(parts)
 
 
-_HANDLED_CONFLICT_REWARD_FIELDS: frozenset[str] = frozenset(
-    {
-        "solari",
-        "spice",
-        "water",
-        "intrigue",
-        "troops",
-        "place_spies",
-        "deep_cover_spies",
-        "contracts",
-        "trash_cards",
-        "victory_points",
-        "choose_influence",
-        "choose_distinct_influence",
-        "faction_influence",
-        "influence_faction",
-        "control_space_id",
-        "optional_spice_cost",
-        "optional_solari_cost",
-        "optional_recall_spies",
-        "optional_victory_points",
+@dataclass(frozen=True, slots=True)
+class ConflictRowParts:
+    """A Conflict reward row read piece by piece, as the card text names its
+    gains (zero: not printed); each optional arrow's cost apart. The app-AI
+    synthesis script reads it too."""
+
+    solari: int = 0
+    spice: int = 0
+    water: int = 0
+    intrigue: int = 0
+    troops: int = 0
+    place_spies: int = 0
+    deep_cover_spies: int = 0
+    contracts: int = 0
+    trash_cards: int = 0
+    victory_points: int = 0
+    choose_influence: int = 0
+    choose_distinct_influence: int = 0
+    faction_influence: int = 0
+    influence_faction: Faction | None = None
+    control_space_id: str | None = None
+    optional_spice_cost: int = 0
+    optional_solari_cost: int = 0
+    optional_recall_spies: int = 0
+    optional_victory_points: int = 0
+
+
+def conflict_row_parts(row: Ability) -> ConflictRowParts:
+    found: dict[str, int | str | Faction] = {}
+    counted = {
+        "place_spies": 0,
+        "deep_cover_spies": 0,
+        "trash_cards": 0,
+        "choose_influence": 0,
     }
-)
+    for line in row.sections:
+        if line.costs:
+            match line.costs, line.rewards:
+                case (PayResources(solari=solari, spice=spice),), (
+                    GainVictoryPoints(amount=points),
+                ):
+                    if solari:
+                        found["optional_solari_cost"] = solari
+                    if spice:
+                        found["optional_spice_cost"] = spice
+                case (RecallSpy(count=count),), (GainVictoryPoints(amount=points),):
+                    found["optional_recall_spies"] = count
+                case _:
+                    raise TypeError(f"{line!r} is not a Conflict reward arrow")
+            found["optional_victory_points"] = points
+            continue
+        for reward in line.rewards:
+            match reward:
+                case GainResources(solari=solari, spice=spice, water=water):
+                    found.update(solari=solari, spice=spice, water=water)
+                case DrawIntrigueCards(count=count):
+                    found["intrigue"] = count
+                case RecruitTroops(count=count):
+                    found["troops"] = count
+                case PlaceSpy(shared_post=True):
+                    counted["deep_cover_spies"] += 1
+                case PlaceSpy():
+                    counted["place_spies"] += 1
+                case TakeContract(count=count):
+                    found["contracts"] = count
+                case TrashPersonalCard():
+                    counted["trash_cards"] += 1
+                case GainVictoryPoints(amount=amount):
+                    found["victory_points"] = amount
+                case GainInfluence(times=times, distinct=True):
+                    found["choose_distinct_influence"] = times
+                case GainInfluence(times=times, factions=(faction,)):
+                    found.update(faction_influence=times, influence_faction=faction)
+                case GainInfluence():
+                    counted["choose_influence"] += 1
+                case TakeControl(space_id=space_id):
+                    found["control_space_id"] = space_id
+                case _:
+                    raise TypeError(f"{reward!r} is not a Conflict reward")
+    found.update({key: value for key, value in counted.items() if value})
+    return ConflictRowParts(**found)  # type: ignore[arg-type]
 
 
 def _choose_influence_text(count: int, *, distinct: bool) -> str:
@@ -344,7 +456,7 @@ def _choose_influence_text(count: int, *, distinct: bool) -> str:
     return f"Gain {count} Influence (choose {choice} each time)"
 
 
-def _optional_trade_text(reward: ConflictReward) -> list[str]:
+def _optional_trade_text(reward: ConflictRowParts) -> list[str]:
     """One "You may <cost> → Gain N VP" part per printed arrow.
 
     Each optional cost is its own arrow; Economic Supremacy prints two
@@ -363,9 +475,10 @@ def _optional_trade_text(reward: ConflictReward) -> list[str]:
     return [f"You may {cost_text} → Gain {vp} VP" for cost_text in cost_texts]
 
 
-def conflict_reward_text(reward: ConflictReward) -> str:
+def conflict_reward_text(row: Ability) -> str:
     """Render one Conflict card's printed reward row."""
 
+    reward = conflict_row_parts(row)
     parts: list[str] = []
     if reward.solari:
         parts.append(f"Gain {reward.solari} solari")
@@ -412,12 +525,12 @@ def conflict_reward_text(reward: ConflictReward) -> str:
 def conflict_rewards_texts(definition: ConflictDefinition) -> list[str] | None:
     """Render "1st"/"2nd"/"3rd" reward lines, or None when unpublished."""
 
-    if definition.rewards is None:
+    if definition.reward_rows is None:
         return None
     labels = ("1st", "2nd", "3rd")
     return [
-        f"{label}: {conflict_reward_text(reward)}"
-        for label, reward in zip(labels, definition.rewards, strict=True)
+        f"{label}: {conflict_reward_text(row)}"
+        for label, row in zip(labels, definition.reward_rows, strict=True)
     ]
 
 
@@ -439,7 +552,7 @@ def _choose_influence_text_ko(count: int, *, distinct: bool) -> str:
     return f"{{influence_any:{count}}} (매번 {choice} 선택)"
 
 
-def _optional_trade_text_ko(reward: ConflictReward) -> list[str]:
+def _optional_trade_text_ko(reward: ConflictRowParts) -> list[str]:
     """Korean twin of ``_optional_trade_text``.
 
     "가능" is the terse nominal ending printed Korean card text uses for
@@ -473,7 +586,7 @@ def _optional_trade_text_ko(reward: ConflictReward) -> list[str]:
     ]
 
 
-def conflict_reward_text_ko(reward: ConflictReward) -> str:
+def conflict_reward_text_ko(row: Ability) -> str:
     """Korean twin of ``conflict_reward_text``.
 
     Follows the same "bare ``{term:count}``, no separate verb" rule as
@@ -491,6 +604,7 @@ def conflict_reward_text_ko(reward: ConflictReward) -> str:
     review). The space goes by its Korean name (공간 이름 row) either way.
     """
 
+    reward = conflict_row_parts(row)
     parts: list[str] = []
     if reward.solari:
         parts.append(f"{{solari:{reward.solari}}}")
@@ -539,10 +653,10 @@ def conflict_rewards_texts_ko(definition: ConflictDefinition) -> list[str] | Non
     print (Battle for Arrakeen / Siege of Arrakeen).
     """
 
-    if definition.rewards is None:
+    if definition.reward_rows is None:
         return None
     labels = ("1등", "2등", "3등")
     return [
-        f"{label}: {conflict_reward_text_ko(reward)}"
-        for label, reward in zip(labels, definition.rewards, strict=True)
+        f"{label}: {conflict_reward_text_ko(row)}"
+        for label, row in zip(labels, definition.reward_rows, strict=True)
     ]

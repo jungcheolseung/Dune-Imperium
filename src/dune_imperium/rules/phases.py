@@ -386,9 +386,7 @@ def _control_defense_frame(
     """
 
     conflict = CONFLICTS_BY_ID[conflict_id]
-    control_space_id = (
-        None if conflict.rewards is None else conflict.rewards[0].control_space_id
-    )
+    control_space_id = conflict.control_space_id
     if control_space_id is None:
         return None
     controllers = tuple(

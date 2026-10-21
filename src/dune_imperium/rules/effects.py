@@ -9,7 +9,6 @@ from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.contracts import (
-    ContractConditionKind,
     contract_for_instance,
 )
 from dune_imperium.content.uprising.effect_dsl import (
@@ -751,10 +750,9 @@ def eligible_agent_contract_ids(
     for instance_id in pending_agent_contract_ids(context):
         if instance_id not in owner.active_contract_ids:
             continue
-        condition = contract_for_instance(instance_id).condition
-        if condition.kind is ContractConditionKind.BOARD_SPACE or (
-            condition.kind is ContractConditionKind.HARVEST_SPICE
-            and spice_gained >= condition.amount
+        contract = contract_for_instance(instance_id)
+        if contract.board_space is not None or (
+            contract.harvest_spice and spice_gained >= contract.harvest_spice
         ):
             eligible.append(instance_id)
     return tuple(eligible)

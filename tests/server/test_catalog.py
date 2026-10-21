@@ -256,10 +256,7 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
     Latin (``tests/support/ko_text.py``, shared with the unit-level
     ``display/structs.py`` tests).
     """
-    from dune_imperium.content.uprising.contracts import (
-        CONTRACTS_BY_ID,
-        ContractConditionKind,
-    )
+    from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
     from dune_imperium.display.structs import _card_name, _card_name_ko
 
     terms = terms_keys()
@@ -278,11 +275,11 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
         assert_no_stray_latin(reward_ko)
         # A board space goes by its Korean name; an acquired card with no
         # known Korean print keeps its English name.
-        condition = CONTRACTS_BY_ID[contract_id].condition
+        acquired = CONTRACTS_BY_ID[contract_id].acquire_card
         allowed: frozenset[str] = frozenset()
-        if condition.kind is ContractConditionKind.ACQUIRE_CARD:
-            english = _card_name(condition.target)
-            korean = _card_name_ko(condition.target)
+        if acquired is not None:
+            english = _card_name(acquired)
+            korean = _card_name_ko(acquired)
             allowed = frozenset({english}) if english == korean else frozenset()
         assert_no_stray_latin(condition_ko, allowed)
 

@@ -5,9 +5,11 @@ docs/composed-effects-plan.md 5 (A5b): each Conflict card's three reward rows
 first line is what it gives -- resources, troops, Intrigue cards, Spies,
 Contracts, trashes, VP, chosen and fixed Influence, control of a space -- and
 each optional arrow ("3 spice -> 1 VP") is a line of its own.
-``content.uprising.conflicts`` compiles the rows back to the ``ConflictReward``
-the payer reads, so its order (by kind, OQ-002 / OQ-102) is unchanged. The
-printed text is ``display/structs.conflict_reward_text``.
+The payer (``rules.combat``, one row per icon since stage B2, OQ-112), the
+card definition (``ConflictDefinition.reward_rows``), the codec and the card
+text (``display/structs.conflict_reward_text``) read these rows; the compiled
+``ConflictReward`` copy is gone since the reward totals cleanup (2026-10-21),
+and ``conflicts.check_conflict_reward_row`` checks each row instead.
 """
 
 from collections.abc import Mapping

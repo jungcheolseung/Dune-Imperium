@@ -8,7 +8,6 @@ importing the placement module.
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.contracts import (
-    ContractConditionKind,
     contract_for_instance,
 )
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
@@ -114,10 +113,10 @@ def effective_agent_icons(
         )
     if isinstance(card, ImperiumCardEntry) and card.agent_icons_from_contracts:
         for instance_id in owner.active_contract_ids:
-            condition = contract_for_instance(instance_id).condition
-            if condition.kind is ContractConditionKind.BOARD_SPACE:
-                icons.append(BOARD_SPACES_BY_ID[condition.target].agent_icon)
-            elif condition.kind is ContractConditionKind.HARVEST_SPICE:
+            contract = contract_for_instance(instance_id)
+            if contract.board_space is not None:
+                icons.append(BOARD_SPACES_BY_ID[contract.board_space].agent_icon)
+            elif contract.harvest_spice:
                 icons.append(AgentIcon.SPICE_TRADE)
     if owner.leader_id == "gaius_helen_mohiam":
         # Clandestine: "Each card you play has the [Spy] icon" [Gaius Helen

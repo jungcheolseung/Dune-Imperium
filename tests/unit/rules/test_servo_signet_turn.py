@@ -20,14 +20,10 @@ from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.abilities import Ability, AbilityTiming
 from dune_imperium.content.uprising.conflicts import CONFLICTS
-from dune_imperium.content.uprising.contract_abilities import CONTRACT_ABILITIES
 from dune_imperium.content.uprising.contracts import (
     CONTRACT_SOURCES,
     CONTRACTS_BY_ID,
-    ContractCondition,
-    ContractConditionKind,
     ContractDefinition,
-    ContractReward,
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AcquiredCard,
@@ -45,7 +41,6 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.rules import contracts as contracts_rules
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.effect_steps import path_of
@@ -287,31 +282,21 @@ def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
             name="Fake Troop Acquire",
             sources=CONTRACT_SOURCES,
         ),
-        condition=ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=target),
-        reward=ContractReward(troops=1),
+        terms=Ability(
+            timing=AbilityTiming.CONTRACT,
+            sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+            requirement=AcquiredCard(target),
+        ),
     )
 
 
 def _install_fake_troop_contract(
     monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
 ) -> None:
-    """Add the fake Acquire Contract to the content tables, with the ability
-    record its reward window reads (stage B2, OQ-112)."""
+    """Add the fake Acquire Contract, whose definition holds its record."""
 
     monkeypatch.setitem(
         CONTRACTS_BY_ID, card_id, _fake_troop_contract(card_id, target)
-    )
-    monkeypatch.setattr(
-        contracts_rules,
-        "CONTRACT_ABILITIES",
-        {
-            **CONTRACT_ABILITIES,
-            card_id: Ability(
-                timing=AbilityTiming.CONTRACT,
-                sections=(EffectSection(rewards=(RecruitTroops(1),)),),
-                requirement=AcquiredCard(target),
-            ),
-        },
     )
 
 
