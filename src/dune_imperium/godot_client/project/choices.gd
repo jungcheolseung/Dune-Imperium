@@ -7,7 +7,7 @@ const UNAVAILABLE_HEADINGS = {"acquire": "render.unavailable_acquire_heading", "
 
 
 func render(actions: Array) -> void:
-	var payload = table.model.snapshot.get("actions")
+	var payload = table.model.payload()
 	if not payload is Dictionary:
 		return
 	var decision = table.model.summary().get("decision")

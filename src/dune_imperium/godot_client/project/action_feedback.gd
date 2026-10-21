@@ -61,7 +61,7 @@ func complete(context: Dictionary, action: Dictionary, reply: Dictionary) -> voi
 	receipt = {"context": context, "action": action.duplicate(true), "accepted": bool(reply.get("ok", false))}
 	if not receipt.accepted:
 		var data = reply.get("data")
-		receipt.error = str(data.get("detail", "")) if data is Dictionary else ""
+		receipt.error = table.model.server_error(data.get("detail", "")) if data is Dictionary else ""
 	refresh()
 
 

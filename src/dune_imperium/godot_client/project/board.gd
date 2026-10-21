@@ -90,7 +90,7 @@ func _draw() -> void:
 				_draw_caption(rect, model.name_of(id))
 	for post in model.catalog.get("posts", {}):
 		var point = model.catalog.posts[post]
-		if legal.has(post):
+		if not model.spy_post_actions(post).is_empty():
 			var selected = model.picked_ref(post)
 			var center = _point(point[0], point[1])
 			draw_circle(center, side * 0.012, Model.REF_COLORS.selected if selected else Model.REF_COLORS.available, false, 3.0 if selected else 2.0, true)
@@ -317,7 +317,7 @@ func _draw_public_markers() -> void:
 func _hit(position: Vector2) -> String:
 	for post in model.catalog.get("posts", {}):
 		var point = model.catalog.posts[post]
-		if position.distance_to(_point(point[0], point[1])) < 15 and model.legal_refs().has(post):
+		if position.distance_to(_point(point[0], point[1])) < 15 and not model.spy_post_actions(post).is_empty():
 			return post
 	for id in model.catalog.get("spaces", {}):
 		var entry = model.entry(id)

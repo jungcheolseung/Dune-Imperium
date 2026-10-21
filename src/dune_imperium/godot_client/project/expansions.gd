@@ -239,7 +239,7 @@ func _update_scouts() -> void:
 		if int(entry[0]) == int(view.get("round_number", -1)):
 			scouts_items.append(str(entry[1]))
 	var resolving = str(view.get("scouts_item", ""))
-	var payload = table.model.snapshot.get("actions")
+	var payload = table.model.payload()
 	if resolving == "secrets" and payload is Dictionary and payload.get("scouts_lines") is Dictionary and payload.scouts_lines.get("item_id") != null:
 		resolving = str(payload.scouts_lines.item_id)
 	if resolving == "secrets":
@@ -336,7 +336,7 @@ func decision_header(parent: Node) -> void:
 	var cursor = str(table.model.view().get("scouts_item", ""))
 	if cursor.is_empty():
 		return
-	var payload = table.model.snapshot.get("actions")
+	var payload = table.model.payload()
 	var id = cursor
 	if payload is Dictionary and payload.get("scouts_lines") is Dictionary and payload.scouts_lines.get("item_id") != null:
 		id = str(payload.scouts_lines.item_id)

@@ -340,12 +340,13 @@ func run() -> void:
 			if scenario.kind == "unique" and not scenario.get("space_first", false) and table.has_method("_apply_placement"):
 				var toggles = table.content.find_children("*", "Button", true, false).filter(func(button): return button.has_meta("action_list_toggle"))
 				toggles[0].pressed.emit()
+				# A card's placements share its card pick; `placement` tells them apart.
 				var listed: Array = []
-				var expected = indices(table.model.placements())
+				var expected = table.model.placements().map(func(action): return int(action.placement))
+				expected.sort()
 				for button in table.content.find_children("*", "Button", true, false):
-					var index = int(button.get_meta("action_index", -1))
-					if index in expected:
-						listed.append(index)
+					if button.has_meta("placement"):
+						listed.append(int(button.get_meta("placement")))
 				listed.sort()
 				check(listed == expected, "the full-list toggle reaches every placement DTO")
 				toggles = table.content.find_children("*", "Button", true, false).filter(func(button): return button.has_meta("action_list_toggle"))

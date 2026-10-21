@@ -73,8 +73,51 @@ func seat_marker(seat: int, reviewing = false) -> String:
 
 
 func actions() -> Array:
-	var payload = snapshot.get("actions")
-	return payload.get("actions", []) if payload is Dictionary else []
+	var data = payload()
+	return data.get("actions", []) if data is Dictionary else []
+
+
+# Turn-start plays are asked first and alone on the owner's table (user
+# decision 2026-10-14, turn.js turnStartWindowOf): while the seat's rows hold
+# a play the server tags `turn_start`, the table offers those plays and
+# "턴 시작 카드 쓰지 않음", nothing else. Putting the window aside sends
+# nothing and lasts for that turn (game:seat:revision); no other seat, no
+# spectator and no AI can tell it was up.
+const TURN_START_KEPT_LIMIT = 24
+var turn_start_kept: Array = []
+
+
+func payload() -> Variant:
+	var data = snapshot.get("actions")
+	if not data is Dictionary or turn_start_key() in turn_start_kept:
+		return data
+	var plays = data.get("actions", []).filter(func(action): return action is Dictionary and action.get("turn_start", false) == true)
+	if plays.is_empty():
+		return data
+	var windowed: Dictionary = data.duplicate()
+	windowed.actions = plays
+	for key in ["scouts_lines", "unavailable", "agent_boxes", "agent_placements"]:
+		windowed[key] = null
+	windowed.turn_start_window = true
+	return windowed
+
+
+func turn_start_window_open() -> bool:
+	var data = payload()
+	return data is Dictionary and data.get("turn_start_window", false)
+
+
+func turn_start_key() -> String:
+	var current = summary()
+	return "%s:%s:%s" % [current.get("game_id", ""), active_seat, int(current.get("revision", -1))]
+
+
+func keep_turn_start() -> void:
+	placement_cache = null
+	var key = turn_start_key()
+	turn_start_kept = turn_start_kept.filter(func(other): return other != key)
+	turn_start_kept.append(key)
+	turn_start_kept = turn_start_kept.slice(-TURN_START_KEPT_LIMIT)
 
 
 func signature() -> String:
@@ -86,6 +129,7 @@ func adopt(data: Dictionary) -> bool:
 	var before = signature()
 	var previous = snapshot
 	snapshot = data
+	placement_cache = null
 	if data.get("you") is Dictionary:
 		owned_seats = data.you.get("seats", []).map(func(seat): return int(seat))
 	if view().has("player"):
@@ -160,10 +204,10 @@ func finish_text() -> String:
 
 
 func scouts_currency() -> String:
-	var payload = snapshot.get("actions")
+	var data = payload()
 	var item = view().get("scouts_item", "")
-	if payload is Dictionary and payload.get("scouts_lines") is Dictionary:
-		item = payload.scouts_lines.get("item_id", item)
+	if data is Dictionary and data.get("scouts_lines") is Dictionary:
+		item = data.scouts_lines.get("item_id", item)
 	return str(catalog.get("scouts_items", {}).get(str(item), {}).get("currency", ""))
 
 
@@ -283,6 +327,38 @@ func label(table: String, key: String) -> String:
 	return phrase(words.get(language, {}).get(table, {}).get(key, key.replace("_", " ").capitalize()))
 
 
+# The server's English error, in Korean on the Korean table (i18n.js
+# serverErrorText): an exact sentence, else a pattern whose $N is group N
+# and #N group N plus one (an engine seat id read as the visible number).
+func server_error(detail: Variant) -> String:
+	if not detail is String:
+		return JSON.stringify(detail)
+	if language != "ko":
+		return detail
+	var errors = words.get("server_errors", {})
+	if errors.get("exact", {}).has(detail):
+		return str(errors.exact[detail])
+	for pair in errors.get("patterns", []):
+		var regex = RegEx.new()
+		if regex.compile(str(pair[0])) != OK:
+			continue
+		var found = regex.search(detail)
+		if found == null:
+			continue
+		var text = str(pair[1])
+		var marks = RegEx.new()
+		marks.compile("([$#])(\\d)")
+		var result = ""
+		var last = 0
+		for mark in marks.search_all(text):
+			result += text.substr(last, mark.get_start() - last)
+			var group = found.get_string(int(mark.get_string(2)))
+			result += str(int(group) + 1) if mark.get_string(1) == "#" else group
+			last = mark.get_end()
+		return result + text.substr(last)
+	return detail
+
+
 func prompt() -> String:
 	var decision = summary().get("decision")
 	if not decision is Dictionary:
@@ -310,9 +386,20 @@ func prompt() -> String:
 # the card pick sent first and `placement` tells a card's placements apart.
 # Once a card is picked (a reload, an undo) the space picks are the list.
 func placement_rows() -> Array:
+	# Built once per adopted snapshot (and window state); callers never edit rows.
+	if placement_cache is Array:
+		return placement_cache
+	placement_cache = _build_placement_rows()
+	return placement_cache
+
+
+var placement_cache: Variant = null
+
+
+func _build_placement_rows() -> Array:
 	var rows = actions()
-	var payload = snapshot.get("actions")
-	var listed = payload.get("agent_placements") if payload is Dictionary else null
+	var data = payload()
+	var listed = data.get("agent_placements") if data is Dictionary else null
 	var result: Array = []
 	if listed is Array and not listed.is_empty():
 		for entry in listed:
@@ -366,9 +453,9 @@ func bought_this_reveal() -> Array:
 		if int(entry.get("actor", -1)) != active_seat or entry.get("undone", false):
 			continue
 		for event in entry.get("events", []):
-			var payload = event.get("payload", {})
-			if event.get("kind") in ACQUIRED_CARD_EVENTS and payload is Dictionary and int(payload.get("player", -1)) == active_seat:
-				bought.append("reclaimed_forces" if event.kind == "reclaimed_forces_acquired" else str(payload.get("card_id", "")))
+			var fields = event.get("payload", {})
+			if event.get("kind") in ACQUIRED_CARD_EVENTS and fields is Dictionary and int(fields.get("player", -1)) == active_seat:
+				bought.append("reclaimed_forces" if event.kind == "reclaimed_forces_acquired" else str(fields.get("card_id", "")))
 	return bought
 
 
@@ -406,9 +493,23 @@ func _space_arguments(args: Dictionary) -> String:
 	return JSON.stringify(keys.map(func(key): return [key, args[key]]))
 
 
-# Rows a table object can answer: whole placements, never their two steps.
+# Rows a table object can answer: whole placements, never their two steps;
+# the raw steps only when the server listed no placement for them (turn.js
+# legalActionsFor outside the staged turn).
 func table_actions() -> Array:
-	return placement_rows() + actions().filter(func(action): return action.get("action_id") not in PLACEMENT_STEPS)
+	var placed = placement_rows()
+	if placed.is_empty():
+		return actions()
+	return placed + actions().filter(func(action): return action.get("action_id") not in PLACEMENT_STEPS)
+
+
+# An observation post answers only the rows that put a Spy there (turn.js
+# legalSpyPostActions); a placement's infiltration post is not a target.
+const SPY_DESTINATION_ACTIONS = ["place_acquisition_spy", "place_agent_card_spy", "place_combat_reward_spy", "place_contract_spy", "place_intrigue_spy", "place_leader_spy", "place_reveal_spy", "place_spy_on_space", "place_tech_spy", "resolve_espionage_place_spy", "move_spy"]
+
+
+func spy_post_actions(post: String) -> Array:
+	return actions().filter(func(action): return action.get("action_id") in SPY_DESTINATION_ACTIONS and action.get("arguments", {}).get("post_id") == post)
 
 
 # How many steps one undo takes back: a placement is its card pick and its
@@ -522,6 +623,8 @@ func picked_ref(ref: String) -> bool:
 
 
 func ref_actions(ref: String) -> Array:
+	if catalog.get("posts", {}).has(ref):
+		return spy_post_actions(ref)
 	var result: Array = []
 	for action in table_actions():
 		if _contains_ref(action.get("arguments", {}), ref):
@@ -542,7 +645,7 @@ func _contains_ref(value: Variant, ref: String) -> bool:
 
 
 func unavailable(ref: String) -> Dictionary:
-	var rows = snapshot.get("actions")
+	var rows = payload()
 	if rows is Dictionary and rows.get("unavailable") is Dictionary:
 		return rows.unavailable.get("refs", {}).get(ref, {})
 	return {}
@@ -724,8 +827,8 @@ func preview_refs(action: Dictionary) -> Array:
 	var refs: Dictionary = {}
 	_collect_refs(action.get("arguments", {}), refs)
 	# Whole-box actions may have no card argument; the server supplies its owner.
-	var payload = snapshot.get("actions")
-	var boxes = payload.get("agent_boxes") if payload is Dictionary else null
+	var data = payload()
+	var boxes = data.get("agent_boxes") if data is Dictionary else null
 	for box in boxes if boxes is Array else []:
 		if action.get("box") == box.get("box") and box.get("card_id") is String and box.card_id not in refs:
 			refs[box.card_id] = true

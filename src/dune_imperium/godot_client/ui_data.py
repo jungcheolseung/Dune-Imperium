@@ -90,10 +90,25 @@ def build_ui_data(static: Path = STATIC) -> dict[str, Any]:
     ))
     if not all(set(pair) == {"ko", "en"} for pair in ui.values()):
         raise ValueError("incomplete UI translation")
+    # The server's English error sentences in Korean (errors_ko.js, read by
+    # the browser's serverErrorText): exact sentences, then patterns.
+    error_source = (static / "errors_ko.js").read_text(encoding="utf-8")
+    error_patterns = re.search(
+        r"const SERVER_ERROR_KO_PATTERNS = (\[.*?\n\]);", error_source, re.DOTALL
+    )
+    if error_patterns is None:
+        raise ValueError("missing server error translations")
+    server_errors = {
+        "exact": json.loads(_block(error_source, "SERVER_ERROR_KO")),
+        "patterns": json.loads(error_patterns[1]),
+    }
+    for pattern, _ in server_errors["patterns"]:
+        re.compile(pattern)
     return {
         "ko": korean, "en": english, "terms": terms, "prompts": prompts,
         "ui": ui,
         "prompt_patterns": prompt_patterns,
+        "server_errors": server_errors,
     }
 
 

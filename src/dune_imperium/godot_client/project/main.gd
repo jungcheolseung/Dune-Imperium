@@ -669,7 +669,7 @@ func _accept(reply: Dictionary) -> bool:
 	if reply.ok:
 		return true
 	var detail = reply.data.get("detail", model.native("연결이 끊겼습니다. 다시 시도해 주세요.")) if reply.data is Dictionary else model.native("서버 응답을 읽지 못했습니다.")
-	status.text = model.native("처리하지 못했습니다: ") + str(detail)
+	status.text = model.native("처리하지 못했습니다: ") + model.server_error(detail)
 	return false
 
 
@@ -1092,6 +1092,10 @@ func _choose_ref(ref: String) -> void:
 		return
 	_inspect(ref)
 	if not model.placements().is_empty() and not tools_ui.prefs.get("full_action_list", false):
+		if ref == model.picked_card():
+			# A card the server holds as picked goes back by an undo of its pick (turn.js).
+			await _mutate("undo", {"steps": 1})
+			return
 		var step = model.pick_step(ref)
 		if step == "blocked":
 			status.text = model.native("선택한 카드로는 이 칸에 갈 수 없습니다. 다른 카드나 칸을 선택하세요.")
@@ -1127,7 +1131,7 @@ func _apply_placement(action: Dictionary, expected: String) -> void:
 		if game_id != origin_game or model.active_seat != origin_seat:
 			return
 		var space = model.space_pick_for(action)
-		if space.is_empty() or not await _send_action(space):
+		if space.is_empty() or not await _send_action(space, action):
 			return
 	elif not await _send_action(action):
 		return
@@ -1145,6 +1149,13 @@ func _apply_placement(action: Dictionary, expected: String) -> void:
 
 func _choose_ref_action(ref: String) -> void:
 	var candidates = model.ref_actions(ref)
+	if not candidates.is_empty() and model.turn_start_window_open():
+		# A turn-start play draws or passes the turn at once: in the window
+		# a table click points at its row instead of sending it (turn.js).
+		tab = "choices"
+		_render_choices(candidates)
+		status.text = model.ui("turn.start_window_pick_row", {"name": model.name_of(ref)})
+		return
 	if candidates.size() == 1:
 		if int(model.held_action().get("index", -1)) != int(candidates[0].index):
 			_choose_action(candidates[0], model.signature())
@@ -1226,6 +1237,8 @@ func _render_choices(filtered: Array = []) -> void:
 	finish_button.disabled = true
 	finish_button.text = model.finish_text()
 	selection.text = model.native("카드와 칸을 선택해 에이전트를 보내세요") if not model.placements().is_empty() else model.prompt() if not model.prompt().is_empty() else model.native("다른 플레이어의 차례입니다")
+	if model.turn_start_window_open():
+		selection.text = model.ui("turn.start_window_prompt")
 	if not model.selected_card.is_empty():
 		selection.text = model.name_of(model.selected_card) + (" + " + model.name_of(model.selected_partner) if not model.selected_partner.is_empty() else "") + "  →  " + (model.name_of(model.selected_space) if not model.selected_space.is_empty() else model.native("칸을 선택하세요"))
 	elif not model.selected_space.is_empty():
@@ -1256,6 +1269,13 @@ func _render_choices(filtered: Array = []) -> void:
 		for action in filtered:
 			_action_button(action)
 		return
+	if model.turn_start_window_open():
+		_label(content, model.ui("turn.start_window_hint"), 14).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		choices.render(model.actions())
+		var keep = _button(content, model.ui("turn.start_window_keep"), _keep_turn_start)
+		keep.set_meta("turn_start_keep", true)
+		keep.disabled = busy
+		return
 	if not model.placements().is_empty():
 		var full_list = tools_ui.prefs.get("full_action_list", false)
 		var list_toggle = _button(content, model.ui("turn.show_steps") if full_list else model.ui("turn.show_full_list", {"count": model.placements().size()}), func():
@@ -1274,6 +1294,9 @@ func _render_choices(filtered: Array = []) -> void:
 			var ref = model.get("selected_" + part)
 			if not str(ref).is_empty():
 				var chip = _button(picked, model.name_of(ref) + " ×", func():
+					if part == "card" and ref == model.picked_card():
+						await _mutate("undo", {"steps": 1})
+						return
 					model.clear_pick(part)
 					_render()
 				)
@@ -1304,7 +1327,10 @@ func _render_choices(filtered: Array = []) -> void:
 	# A placement's two steps are offered as the placements above; shown
 	# raw only if the server listed no placement for them.
 	var steps_shown = model.placements().is_empty()
-	choices.render(model.actions().filter(func(action): return (steps_shown or action.action_id not in Model.PLACEMENT_STEPS) and (action.action_id not in Model.END_ACTIONS or action.action_id == "scouts_call")))
+	# The turn-end press sends a held choice, so the decision's own explicit
+	# end (a Combat Intrigue pass) goes back into the list (render.js).
+	var ends_listed = not model.held_action().is_empty()
+	choices.render(model.actions().filter(func(action): return (steps_shown or action.action_id not in Model.PLACEMENT_STEPS) and (ends_listed or action.action_id not in Model.END_ACTIONS or action.action_id == "scouts_call")))
 
 
 func _render_market() -> void:
@@ -1511,7 +1537,9 @@ func _choose_action(action: Dictionary, expected: String) -> void:
 	await _send_action(action)
 
 
-func _send_action(action: Dictionary) -> bool:
+# `shown` names what the receipt reports when it is more than the row sent
+# (a whole placement for its space pick).
+func _send_action(action: Dictionary, shown: Dictionary = {}) -> bool:
 	if busy or not tools_ui.review.is_empty() or model.active_seat not in model.owned_seats or not model.offered(action):
 		return false
 	busy = true
@@ -1523,7 +1551,7 @@ func _send_action(action: Dictionary) -> bool:
 	tab = "choices"
 	await _sync()
 	busy = false
-	feedback.complete(receipt, action, reply)
+	feedback.complete(receipt, action if shown.is_empty() else shown, reply)
 	_render()
 	return accepted
 
@@ -1571,6 +1599,16 @@ func _mutate(path: String, extra: Dictionary) -> bool:
 	busy = false
 	_render()
 	return accepted
+
+
+# "턴 시작 카드 쓰지 않음": the window goes for this turn; nothing is sent.
+func _keep_turn_start() -> void:
+	if busy or not model.turn_start_window_open():
+		return
+	model.keep_turn_start()
+	tools_ui.prefs.turn_start_kept = model.turn_start_kept
+	tools_ui.save_preferences()
+	_render()
 
 
 func _undo() -> void:

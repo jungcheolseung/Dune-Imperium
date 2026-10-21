@@ -8,6 +8,7 @@ from dune_imperium.agents.agent_turn_steps import (
     PLACEMENT_ACTION,
     placements_for_steps,
 )
+from dune_imperium.rules.intrigue import plays_turn_start_option
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
 
@@ -103,6 +104,9 @@ def ensure_extra_saves(directory: Path) -> dict[str, str]:
     return {name: found[name] for name in wanted}
 
 
+EXTRA_CHOICES = {'choice-reveal', 'choice-turn-start'}
+
+
 def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
     """Save actual offered research/contract/leader decisions, never edited UI state."""
     store = SaveStore(directory)
@@ -152,14 +156,26 @@ def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
                     saved = store.write(manager.save_game(game, name='choice-reveal'))
                     found['choice-reveal'] = dict(save_id=str(saved['save_id']),
                                                   index=int(row['index']))
-            if targets.keys() | {'choice-reveal'} <= found.keys():
+            # A turn start that offers a turn-start play (Litany Against Fear,
+            # Withdrawn): the page asks it first and alone.
+            turn_start = next((i for i, a in enumerate(actions)
+                               if a.action_id == 'play_turn_start_card'
+                               or plays_turn_start_option(a)), None)
+            if turn_start is not None and 'choice-turn-start' not in found:
+                saved = store.write(manager.save_game(game, name='choice-turn-start'))
+                found['choice-turn-start'] = dict(save_id=str(saved['save_id']),
+                                                  index=turn_start)
+            if targets.keys() | EXTRA_CHOICES <= found.keys():
                 return found
             preferred = next((a for a in actions if
                 (a.action_id == 'pick_leader' and dict(a.arguments).get('leader_id')
-                 == 'shaddam_corrino_iv') or a.action_id == 'take_contract'), None)
+                 == 'shaddam_corrino_iv') or a.action_id == 'take_contract'
+                or (a.action_id.startswith('acquire')
+                    and 'litany' in str(dict(a.arguments).get('instance_id', '')))),
+                None)
             chosen = preferred or agents[owner].choose_action_with_state(
                 session.state, session.engine.observe(session.state, owner), actions)
             summary = manager.apply_action(
                 game, owner, int(summary['revision']), actions.index(chosen))
     raise RuntimeError('bounded expansion UI walk missed: '
-                       + ', '.join((targets.keys() | {'choice-reveal'}) - found.keys()))
+                       + ', '.join((targets.keys() | EXTRA_CHOICES) - found.keys()))

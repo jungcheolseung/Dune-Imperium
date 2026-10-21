@@ -275,7 +275,7 @@ def choice_fixtures(directory: Path) -> dict[str, dict[str, Any]]:
     if metadata.exists():
         cached: dict[str, dict[str, Any]] = json.loads(
             metadata.read_text(encoding='utf-8'))
-        if 'choice-research' in cached and 'choice-reveal' in cached:
+        if {'choice-research', 'choice-reveal', 'choice-turn-start'} <= cached.keys():
             return cached
         found = cached
     else:
@@ -307,7 +307,7 @@ def choice_layout(page: Any) -> dict[str, Any]:
             .map(n => n.dataset.optional === 'true'),
         zones: [...document.querySelectorAll('#actions .zone-heading')]
             .map(n => ({zone: n.dataset.zone, text: n.textContent})),
-        indices: [...document.querySelectorAll('#actions .action-item')]
+        indices: [...document.querySelectorAll('#actions .action-item[data-index]')]
             .map(n => Number(n.dataset.index)),
         suffixes: [...zoneSuffixes(state.actions.actions)].map(([a, zone]) =>
             ({index: a.index, text: zoneSuffixNode(zone).textContent}))
@@ -479,7 +479,7 @@ def main() -> int:
                     ('trash-current', 'trash-earlier')]
                 scenarios += [('decision', name, False) for name in
                               ('choice-research', 'choice-contract', 'choice-leader',
-                               'choice-reveal')]
+                               'choice-reveal', 'choice-turn-start')]
             for kind, name, space_first in scenarios:
                 print(f'Compare {kind} (space first: {space_first})', flush=True)
                 path = '/saves/' + names[name] + '/load'

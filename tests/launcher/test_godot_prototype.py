@@ -63,6 +63,15 @@ def test_native_ui_uses_the_browser_preferences_and_localized_seat_kinds() -> No
     assert data["ui"]["html.opt_tech"]["en"]
 
 
+def test_native_ui_carries_the_browser_server_error_translations() -> None:
+    errors = build_ui_data()["server_errors"]
+    stale = "the game advanced past the submitted revision"
+    assert errors["exact"][stale] == (
+        "그 사이 게임이 먼저 진행되어 화면이 최신 상태가 아닙니다"
+    )
+    assert ["^unknown game: (.+)$", "알 수 없는 게임입니다: $1"] in errors["patterns"]
+
+
 def test_native_ui_rejects_an_incomplete_browser_translation(tmp_path: Path) -> None:
     for name in (
         "labels.js", "labels_en.js", "core.js", "prompts_ko.js", "ui_text.js",

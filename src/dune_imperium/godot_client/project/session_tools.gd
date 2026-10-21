@@ -28,6 +28,8 @@ func setup(owner_table: Control) -> void:
 		if parsed is Dictionary:
 			prefs = parsed
 	table.model.language = str(prefs.get("language", "ko"))
+	var kept = prefs.get("turn_start_kept", [])
+	table.model.turn_start_kept = kept.filter(func(key): return key is String) if kept is Array else []
 	clock_label = table._label(table.new_button.get_parent(), "", 12)
 	clock_label.move_to_front()
 	menu = MenuButton.new()

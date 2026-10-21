@@ -254,6 +254,53 @@ func test_two_step_placement() -> void:
 		{"type": "action", "actor": 0, "action_id": "acquire_tleilaxu", "undone": false, "events": [{"kind": "tleilaxu_card_acquired", "payload": {"player": 0.0, "card_id": "tleilaxu:row:0"}}]},
 	]}
 	check(model.bought_this_reveal() == ["reclaimed_forces", "tleilaxu:row:0"], "only this Reveal's live purchases of this seat are listed")
+	test_turn_start_window()
+	test_server_errors()
+	test_table_objects()
+
+
+func test_table_objects() -> void:
+	var model = Model.new()
+	var card = "imperium:dagger:0"
+	model.catalog = {"spaces": {"a": {}}, "posts": {"post_a": [10, 10]}}
+	var spy = {"index": 1, "action_id": "place_spy_on_space", "arguments": {"post_id": "post_a"}}
+	var rows = staged([{"card_id": card, "space_id": "a", "infiltrate_post_id": "post_a"}], [spy])
+	model.adopt({"summary": {"game_id": "objects", "revision": 1}, "view": {"player": 0, "private": {"hand": [card]}}, "actions": rows})
+	check(model.ref_actions("post_a") == [spy] and model.spy_post_actions("post_a") == [spy], "a post answers its Spy destinations, never a placement that infiltrates through it")
+	var bare = {"summary": {"game_id": "objects", "revision": 2}, "view": {"player": 0, "private": {"hand": [card]}}, "actions": {"actions": [{"index": 0, "action_id": "choose_agent_card", "arguments": {"card_id": card}}], "agent_placements": null}}
+	model.adopt(bare)
+	check(model.placement_rows().is_empty() and model.ref_actions(card).size() == 1 and model.legal_refs().has(card), "without listed placements the hand still reaches the raw card pick")
+
+
+func test_server_errors() -> void:
+	var model = Model.new()
+	model.words = {"server_errors": {"exact": {"action index is out of range": "행동 번호가 범위를 벗어났습니다"}, "patterns": [["^unknown game: (.+)$", "알 수 없는 게임입니다: $1"], ["^save step (\\d+)\\b.*$", "저장 기록의 #1번째 수에 문제가 있습니다"]]}}
+	check(model.server_error("action index is out of range") == "행동 번호가 범위를 벗어났습니다", "an exact server sentence reads in Korean")
+	check(model.server_error("unknown game: abc") == "알 수 없는 게임입니다: abc", "a pattern keeps its group")
+	check(model.server_error("save step 4 broke") == "저장 기록의 5번째 수에 문제가 있습니다", "#N names the engine's zero-based number as the visible one")
+	check(model.server_error("something new") == "something new" and model.server_error({"code": 1}) == JSON.stringify({"code": 1}), "an unknown message stays as the server wrote it")
+	model.language = "en"
+	check(model.server_error("action index is out of range") == "action index is out of range", "the English table keeps the server's sentence")
+
+
+func test_turn_start_window() -> void:
+	var model = Model.new()
+	var play = {"index": 2, "action_id": "play_intrigue", "arguments": {"card_id": "intrigue:withdrawn:0", "option": 0}, "turn_start": true}
+	var rows = staged([{"card_id": "imperium:dagger:0", "space_id": "a"}], [play])
+	rows.agent_boxes = [{"box": 1}]
+	model.adopt({"summary": {"game_id": "start", "revision": 4, "undo_count": 0}, "view": {"player": 0, "private": {"hand": ["imperium:dagger:0"]}}, "actions": rows})
+	check(model.turn_start_window_open() and model.actions() == [play], "a turn-start play is asked first and alone")
+	check(model.placement_rows().is_empty() and model.payload().agent_boxes == null and not model.legal_refs().has("a"), "nothing else of the turn is offered while the window is up")
+	model.keep_turn_start()
+	check(not model.turn_start_window_open() and model.actions().size() == 2 and model.placement_rows().size() == 1, "putting the window aside brings the whole turn back, the play still in it")
+	var later = model.snapshot.duplicate(true)
+	later.summary.revision = 9
+	model.adopt(later)
+	check(model.turn_start_window_open(), "the seat's next turn asks again")
+	for index in range(30):
+		model.summary().revision = 100 + index
+		model.keep_turn_start()
+	check(model.turn_start_kept.size() == Model.TURN_START_KEPT_LIMIT and model.turn_start_kept[-1] == "start:0:129", "only the latest turns put aside are remembered")
 
 
 func test_private_deck() -> void:

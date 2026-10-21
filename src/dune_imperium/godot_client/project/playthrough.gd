@@ -122,7 +122,8 @@ func check_choices() -> bool:
 	for action in table.model.actions():
 		if action.action_id == "choose_agent_card":
 			# A card pick is reached through the placements it leads to.
-			if not placements.any(func(row): return int(row.get("pick_index", -1)) == int(action.index) and not table.model.placements(row.arguments.card_id, row.arguments.space_id).is_empty()):
+			var hand = table.model.view().get("private", {}).get("hand", [])
+			if not placements.any(func(row): return int(row.get("pick_index", -1)) == int(action.index) and row.arguments.card_id in hand and table.model.catalog.get("spaces", {}).has(row.arguments.space_id)):
 				return false
 		elif action.action_id == "place_agent":
 			if not placements.any(func(row): return not row.has("pick_index") and int(row.index) == int(action.index)):
@@ -257,6 +258,19 @@ func run(client: Control, seeds: String) -> void:
 					fail("legal action omitted from the choice controls")
 					return
 				count_key("decisions", str(summary.get("decision", {}).get("kind", "")))
+				if table.model.turn_start_window_open() and rng.randf() < 0.5:
+					# Put the turn-start window aside; the play stays offered.
+					var keep = buttons(table.content).filter(func(button): return button.has_meta("turn_start_keep"))
+					if keep.size() != 1 or keep[0].disabled:
+						fail("turn-start window without its keep control")
+						return
+					keep[0].pressed.emit()
+					await ready_frame()
+					if table.model.turn_start_window_open():
+						fail("turn-start window stayed after it was put aside")
+						return
+					count_key("actions", "keep_turn_start")
+					continue
 				var action = pick_action(table.model.table_actions())
 				var before = table.model.signature()
 				await press_action(action)
