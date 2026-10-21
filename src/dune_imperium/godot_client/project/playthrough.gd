@@ -81,7 +81,9 @@ func press_action(action: Dictionary) -> void:
 		var found = false
 		for button in buttons(table.content):
 			if int(button.get_meta("action_index", -1)) == int(action.index) or (button.has_meta("quantity_select") and int(action.index) in button.get_meta("action_indices", [])):
-				if button.disabled or button.text.is_empty():
+				# Reading-surface choices draw their words in child labels.
+				var shown = button.accessibility_name if button.has_meta("action_reading") else button.text
+				if button.disabled or shown.is_empty():
 					fail("action control disabled or empty")
 					return
 				button.pressed.emit()
