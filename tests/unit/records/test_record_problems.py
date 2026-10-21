@@ -1,6 +1,7 @@
 """Suites of judged human positions (records.problems)."""
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -24,6 +25,11 @@ from dune_imperium.records.problems import (
 )
 from dune_imperium.records.saves import SavedGame, human_decisions, read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import (
+    CARD_PICK_ACTION,
+    agent_card_pick_actions,
+    executable_placements,
+)
 from dune_imperium.rules.effect_steps import (
     STEP_SPECS,
     TARGET_SPECS,
@@ -810,3 +816,106 @@ def test_a_problem_at_a_named_reveal_choice_is_asked_before_its_effect_step(
     assert position.state == base
     assert position.right == mine[0]
     assert position.wrong == first_step(base, other)
+
+
+def _turn_effect_problem(
+    tmp_path: Path, network: Callable[[GameState, int], DomainAction]
+) -> tuple[Resolved | str, GameState, tuple[DomainAction, ...], DomainAction]:
+    """A problem at a whole action the migration takes as steps (a Plot
+    Intrigue card: its effect, its card, its option) at a turn where this
+    engine also offers the card picks; the network's move is ``network`` of
+    the state before the first step and the seat. Returns the resolution,
+    that state, the person's steps and the network's move."""
+
+    for seat in range(4):
+        game = _game_with_human(tmp_path, seat)
+        engine = UprisingRulesEngine()
+        record = migrate_record(game.parsed.replay, engine)
+        base: GameState | None = None
+        mine: list[DomainAction] = []
+        for state, migrated in walk(record, engine):
+            step = migrated.step
+            if not isinstance(step, DomainAction):
+                continue
+            if migrated.recorded_index is None and migrated.bridge == "effect_step":
+                base = state if not mine else base
+                mine.append(step)
+                continue
+            if (
+                migrated.bridge != "effect_last_step"
+                or base is None
+                or step.actor != seat
+                or not any(
+                    action.action_id == CARD_PICK_ACTION
+                    for action in engine.legal_actions(base, seat)
+                )
+            ):
+                base, mine = None, []
+                continue
+            mine.append(step)
+            move = network(base, seat)
+            assert migrated.recorded_index is not None
+            recorded = game.parsed.replay.steps[migrated.recorded_index]
+            assert isinstance(recorded, DomainAction)
+            common = {
+                "game": "bbbbbbbb",
+                "step": migrated.recorded_index,
+                "round": state.round_number,
+                "seat": seat,
+                "human": _text(recorded),
+            }
+            judged = [
+                {
+                    **common,
+                    "effect_order": True,
+                    "values": [[0, 1], [0, 1]],
+                    "human_col": 1,
+                }
+            ]
+            confirmed = [
+                {
+                    **common,
+                    "first": "human",
+                    "second": "human",
+                    "mean": 0.1,
+                    "error": 0.01,
+                    "p_human": 0.1,
+                    "net_first": _text(move),
+                }
+            ]
+            suite = build_suite([game], judged, confirmed, "test")
+            (position,) = resolve(suite).values()
+            return position, base, tuple(mine), move
+    pytest.fail("no whole action taken as steps beside the card picks")
+
+
+def test_a_placement_against_steps_is_asked_before_the_first_step(
+    tmp_path: Path,
+) -> None:
+    # Codec v150: the person's Plot card is three steps and the network's
+    # placement a card pick; the two part at the first step, where the card
+    # picks are offered beside it. At the last step only the Plot's option
+    # was offered, so the card pick was "not legal" (the Insider Information
+    # AI mistakes, found by the Reveal totals cleanup's gate, 2026-10-21).
+    position, base, mine, placement = _turn_effect_problem(
+        tmp_path, lambda state, seat: executable_placements(state, seat)[0]
+    )
+
+    assert isinstance(position, Resolved), position
+    assert position.state == base
+    assert position.right == mine[0]
+    assert (position.wrong,) == agent_card_pick_actions(placement.actor, (placement,))
+
+
+def test_a_refusal_this_engine_no_longer_has_is_reported_not_raised(
+    tmp_path: Path,
+) -> None:
+    # Since codec v149 an in-turn optional trash has no refusal (the turn's
+    # end lapses it), so a network's ``decline_optional_trash`` names a window
+    # this state is not in: it is asked as it is and reported, where it used
+    # to stop the whole check with a ValueError.
+    position, _, _, _ = _turn_effect_problem(
+        tmp_path, lambda state, seat: DomainAction("decline_optional_trash", seat)
+    )
+
+    assert position == "the wrong move decline_optional_trash{} is not legal"

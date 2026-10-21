@@ -713,6 +713,14 @@ def _position(
     if before_pick is not None or (
         _card_of(network) is not None and agent_card_pick(state, problem.seat) is None
     ):
+        if effect_path and before_pick is None:
+            # The person's move is a whole action taken as steps (a Plot
+            # Intrigue card, a turn-start card) and the other is a placement:
+            # the two part at its first step, where this engine offers the
+            # card picks beside it. At its last step only its own target is
+            # offered (the Insider Information mistakes, Litany Against Fear
+            # against a grafted Stilgar; codec v150).
+            state, person = effect_path[0]
         state, person, network = _placement_position(
             problem, state, person, network, before_pick
         )
@@ -791,7 +799,15 @@ def _effect_position(
         rewritten = rewrite_step(engine, base, network, codec, graft_box, reveal_source)
         if isinstance(rewritten, DomainAction):
             network = rewritten
-    theirs = path_of(without_pick(base), network) or (network,)
+    try:
+        theirs = path_of(without_pick(base), network) or (network,)
+    except ValueError:
+        # A move whose printer this state does not hold has no steps here:
+        # an in-turn ``decline_optional_trash``, which this engine no longer
+        # offers since codec v149 (the turn's end lapses the trash), names a
+        # window this state is not in. It is asked as it is, and
+        # ``_resolved`` reports it is not legal (as before codec v150).
+        theirs = (network,)
     parted = next(
         (
             index
