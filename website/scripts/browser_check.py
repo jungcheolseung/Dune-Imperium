@@ -13,6 +13,12 @@ from pathlib import Path
 
 from playwright.sync_api import expect, sync_playwright
 
+# The site scrolls smoothly unless the reader asks for reduced motion. A click right after an
+# in-page jump then races that scroll: Playwright scrolls the target again on every retry, Chrome
+# animates each of those scrolls, and the target never holds still long enough to count as stable
+# (seen with an installed Chrome through --browser, for the site of 2026-10-20 as well).
+MOTION = {"reduced_motion": "reduce"}
+
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
@@ -20,7 +26,7 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def check_languages_and_themes(browser, base: str, screenshots: Path | None) -> None:
-    context = browser.new_context(viewport={"width": 1440, "height": 1000}, color_scheme="dark")
+    context = browser.new_context(viewport={"width": 1440, "height": 1000}, color_scheme="dark", **MOTION)
     context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base) else route.abort())
     page = context.new_page()
     errors: list[str] = []
@@ -110,7 +116,7 @@ def check_languages_and_themes(browser, base: str, screenshots: Path | None) -> 
     assert not errors, errors
     context.close()
 
-    blocked = browser.new_context(color_scheme="dark")
+    blocked = browser.new_context(color_scheme="dark", **MOTION)
     blocked.add_init_script("Object.defineProperty(window, 'localStorage', {get() { throw new DOMException('Blocked', 'SecurityError'); }});")
     page = blocked.new_page()
     blocked_errors: list[str] = []
@@ -145,7 +151,7 @@ def main() -> None:
             if arguments.browser:
                 options["executable_path"] = str(arguments.browser)
             browser = playwright.chromium.launch(**options)
-            context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="ko-KR", color_scheme="light")
+            context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="ko-KR", color_scheme="light", **MOTION)
             context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base) else route.abort())
             page = context.new_page()
             errors = []
@@ -251,7 +257,7 @@ def main() -> None:
             context.close()
             check_languages_and_themes(browser, base, arguments.screenshots)
 
-            offline_js = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}, color_scheme="dark")
+            offline_js = browser.new_context(java_script_enabled=False, viewport={"width": 390, "height": 844}, color_scheme="dark", **MOTION)
             page = offline_js.new_page()
             page.goto(base)
             page.locator(".mobile-nav summary").click()
