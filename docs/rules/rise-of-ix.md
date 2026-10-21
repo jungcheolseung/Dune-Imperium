@@ -147,7 +147,7 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
   - 같은 "막지 않는다" 효과: 원판 Infiltrate(Intrigue), Helena Richese의 Eyes Everywhere, Invasion Ships. The Voice는 Agent가 아니라 이 효과들로도 넘지
     못한다(The Voice 판정 `[DI p. 13]`, Ix p. 7의 잠입 판정과 같은 이유 — 내 해석).
   - 이름: Uprising Spy의 "Infiltrate"(행동), 원판 Intrigue "Infiltrate", Ix의 "Infiltration" 아이콘은 다른 것이다. 엔진 id와 화면 용어집에서 셋을
-    가른다(계획 10.1절 3, P7).
+    가른다(계획 10.1절 3, P7). Ix Imperium 카드 Esmar Tuek는 Bloodlines 지도자 Esmar Tuek와 이름이 같다 — 엔진 id를 가른다(계획 4.2절 7).
 
 ## 8. 새 보드 칸 (`[Rise of Ix p. 12]`)
 
@@ -229,20 +229,23 @@ Uprising 위의 구현([epic-game-mode.md](epic-game-mode.md))을 다시 쓴다(
 
 | 카드 | 단계 | 1위 | 2위 | 3위 |
 | --- | --- | --- | --- | --- |
-| Skirmish (앱 `SkirmishE`) | I | Freighter, troop 1 | spice 2 | spice 1 |
-| Skirmish (앱 `SkirmishF`) | I | Freighter, spice 1 | 3 Solari | 2 Solari |
+| Skirmish (앱 `SkirmishE`, 에셋 `Skirmish I.webp`) | I | Freighter, troop 1 | spice 2 | spice 1 |
+| Skirmish (앱 `SkirmishF`, 에셋 `Skirmish II.webp`) | I | Freighter, spice 1 | 3 Solari | 2 Solari |
 | Trade Monopoly | II | Freighter 2, troop 1 | Intrigue, water | Intrigue -OR- water |
 | Economic Supremacy | III | [epic-game-mode.md](epic-game-mode.md) 6절 | | |
 
 블라인드 읽기(2026-10-22)의 한 agent가 이 카드들과 Hundro의 Freighter 아이콘(청록 방패)을 dreadnought로 읽었다. Rival 문장 `[Rise of Ix p. 8]`, FAQ의 Trade
-Monopoly 예 `[FAQ p. 3]`, 앱 태그(`Freighter`)로 바로잡았다. 어느 Skirmish 파일이 앱의 E·F인지는 P4에서 앱 능력 클래스로 맞춘다.
+Monopoly 예 `[FAQ p. 3]`, 앱 태그(`Freighter`)로 바로잡았다. Skirmish 파일과 앱 정의의 대응은 2026-10-22 카드별 조사에서 보상 값을 앱 능력
+클래스와 맞춰 정했다(원판도: `SkirmishA` = `Skirmish III.webp`, B = `Skirmish Iiii.webp`, C = `Skirmish II.webp`, D = `Skirmish I.webp`).
+Freighter 보상으로 그 자리에서 Windtraps를 얻으면 이번 승리에도 water를 받는다 — 디자이너 판정(BGG forum, "one from the Acquire effect and one
+for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판정 `[FAQ p. 4]`과 같은 방향이다. Detonation Devices도 같다.
 
 ## 13. 숨은 정보 (계획 10.1절 1)
 
 | 효과 | 아는 좌석 | 언제까지 | 비고 |
 | --- | --- | --- | --- |
 | Hundro Moritani의 Intelligence | Hundro 좌석이 Intrigue 덱 맨 위 카드 | 그 카드가 뽑힐 때까지 | 갖는 카드는 손(숨김). 비공개 결정이고 지도자 고르기와 묶지 않는다(lessons 2026-10-05). Epic에서는 모두 뽑은 뒤 |
-| Court Intrigue, Sonic Snoopers | 놓은 좌석이 Intrigue 덱 맨 아래 카드(들) | 덱을 다시 섞을 때까지 `[FAQ p. 2]` | 공개하지 않는다 `[Rise of Ix p. 10]` |
+| Court Intrigue, Sonic Snoopers | 놓은 좌석이 Intrigue 덱 맨 아래 카드(들) | 그 카드가 뽑힐 때까지(뽑히면 누가 가졌는지 안다), 또는 덱을 다시 섞을 때까지 `[FAQ p. 2]` | 공개하지 않는다 `[Rise of Ix p. 10]` |
 | Ilesa Ecaz의 따로 둔 카드 | Ilesa 좌석 | 둘째 turn에 공개(그 뒤 손에 있지만 공개 경로로 들어온 카드 — OQ-010) | 따로 둔 카드는 손·discard·in play가 아니어서 trash·discard 대상이 아니다(디자이너 판정) |
 | Tech 더미의 다음 타일 | 아무도 | 앞면으로 뒤집을 때까지 | chance. 앞면 타일 셋은 공개 |
 | Spaceport(덱 위에 놓기) | 모두 | 그 카드가 뽑힐 때까지 | 공개 경로로 덱 맨 위가 정해진다 |
@@ -285,8 +288,13 @@ Monopoly 예 `[FAQ p. 3]`, 앱 태그(`Freighter`)로 바로잡았다. 어느 Sk
 - Desert Ambush의 "for each troop you deploy this turn"은 OQ-029의 셈(같은 큐브를 retreat했다 다시 배치해도 두 번 세지 않음).
 - 효과 없는 Intrigue는 낼 수 없다(2026-10-06 원칙; Advanced Weaponry는 OQ-113).
 - trash된 카드의 남은 효과는 없다(OQ-022) — Unload는 trash되는 중의 trigger라 예외가 아니다(디자이너 판정).
+- 비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071의 사용자 원칙 일반화) — 버릴 카드에 Unload가 있어도 같다(Ix-Guild Compact에서 dreadnought가
+  둘 다 나가 있을 때, Invasion Ships를 Agent를 보낸 뒤에; 앱도 같다).
+- Troop Transports의 "You may deploy any of them to the Conflict"는 카드 문장이 배치를 허락하므로 Combat 칸에 Agent를 보내지 않은 turn에도 배치할 수 있다
+  (카드는 일반 규칙을 바꾼다 `[DI p. 6]`; 디자이너 판정도 Combat 해결 중의 배치가 가능하다는 쪽).
+- "Reveal Turn:" Tech를 Reveal turn 도중에 얻으면 그 turn에 쓴다(타일 문장; 지금 엔진은 Bloodlines의 Command 타일만 그렇게 한다 — P4 구현 메모).
 
-## 16. 새 질문 (OQ-119 ~ OQ-122)
+## 16. 새 질문
 
 [open-questions.md](open-questions.md)에 원문·앱 처리·추천과 함께 적었다. 원판 쪽은 OQ-113 ~ OQ-118([imperium-base.md](imperium-base.md) 17절).
 
@@ -294,3 +302,6 @@ Monopoly 예 `[FAQ p. 3]`, 앱 태그(`Freighter`)로 바로잡았다. 어느 Sk
 - OQ-120 — 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는가
 - OQ-121 — dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때(엔진 단계)
 - OQ-122 — Round Start 효과(Holtzman Engine, Shuttle Fleet, Ilesa의 따로 두기)의 순서
+- OQ-126 — Disposal Facility의 "Persuasion 6 이상"
+- OQ-127 — Combat 단계에 열린 Treachery의 Unload
+- 원판 쪽 OQ-123(The Spice Must Flow — Grand Conspiracy·Holtzman Engine)과 OQ-125(비용 N 이하 획득 — Boundless Ambition·Conscript)도 Ix 카드에 닿는다.

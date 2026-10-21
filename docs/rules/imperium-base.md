@@ -71,7 +71,8 @@ Must Flow (Base)"). P1 이후 이 표를 테스트로 고정한다(계획 10.1�
 **앱과 카드면이 다른 값.** 블라인드로 읽은 Dune Cards Hub 스캔(2026-10-22, agent 넷, 카드 181장)을 앱 속성과 기계 대조했다.
 Imperium 76종과 Tech 18장의 비용·Agent 아이콘·진영·무조건 Reveal 값에서 다른 곳은 **Duncan Idaho의 Reveal 검 하나**였다(앱 2, Dune
 Cards Hub 스캔 3). 사용자가 다른 실물 스캔(duneimperiumassets.com, 검 2)을 찾아 앱 값이 맞고 Dune Cards Hub 그림이 틀렸음을
-확인했다(2026-10-22). 그래서 카드면 확인에 쓰는 그림의 출처를 정할 일이 남았다(계획 2.4절 4, 사용자에게 묻는다).
+확인했다(2026-10-22). 그래서 카드면 확인에 쓰는 그림의 출처를 정할 일이 남았다(계획 2.4절 4, 사용자에게 묻는다). 시작 카드 7종과 Reserve 3종은
+이번 블라인드 읽기에 넣지 않았다(시작 카드는 Uprising과 같은 카드이고 이미 전사돼 있다). Arrakis Liaison은 앱 자료밖에 없으니 P3 전에 카드면으로 확인한다.
 
 ## 4. Setup (4인)
 
@@ -157,8 +158,9 @@ Uprising과 같은 틀이다([setup-and-game-flow.md](setup-and-game-flow.md), [
 | Secure Contract | Spice Trade | – | 3 Solari | | `[DI p. 18]` |
 | Sell Melange | Spice Trade | spice 2~5 | 낸 양에 따라 보드에 인쇄된 Solari; 한 turn에 한 번만 교환 | | `[DI p. 18]` |
 
-- **글로 없는 값.** Sell Melange의 교환표("the amount of Solari shown based on the cost you paid" `[DI p. 18]`)는 보드 그림에만 있다. 6절의
-  Influence 보너스와 같은 출처로 P2에서 정한다.
+- **글로 없는 값.** Sell Melange의 교환표("the amount of Solari shown based on the cost you paid" `[DI p. 18]`)는 보드 그림에만 있다. 앱 코드는
+  spice 2·3·4·5 → 6·8·10·12 Solari로 계산한다(`SpaceAbilities.BaseSet.SellMelangeSpaceAbility`, 2026-10-22 카드별 조사). 6절의 Influence 보너스와
+  같이 P2에서 보드 그림으로 확인해 정한다.
 - **같은 이름, 다른 인쇄(계획 4.2절 7).** 앱은 Arrakeen·Imperial Basin·Secrets를 원판과 Uprising이 함께 쓰는 정의 하나로 두고(인쇄가 같다),
   Heighliner(원판 spice 6 → troop 5·water 2 / Uprising spice 5 → troop 5)·Hagga Basin(원판 spice 2 / Uprising은 모래벌레 선택)·Sietch Tabr·
   Research Station·High Council·Swordmaster는 따로 둔다. 엔진 id도 이 구분을 따른다(같은 인쇄는 같은 id). Swordmaster와 High Council은 앱
@@ -174,7 +176,8 @@ Uprising과 같은 틀이다([setup-and-game-flow.md](setup-and-game-flow.md), [
 - Mentat 칸에 Agent를 보내면 카드 1장을 뽑고, Mentat이 칸에 있으면 가져와 Leader 위에 둔다. 이번 라운드 동안 Agent 하나로 쓴다(Agent turn에
   보낼 수 있다). Phase 5 Recall에 제 칸으로 돌린다. `[DI pp. 6, 13, 18]`
 - Mentat 아이콘(Conflict 보상·Intrigue): 칸에 있을 때만 가져온다(상대나 다른 칸에서 못 가져옴). Conflict 보상으로 받으면 다음 라운드에 Agent로
-  쓰고 이번 라운드 끝에 돌려놓지 않는다. `[DI p. 16]` Sort Through the Chaos를 이기면 Mentat은 다음 라운드 시작에 가져간다 `[FAQ p. 4]`.
+  쓰고 이번 라운드 끝에 돌려놓지 않는다. `[DI p. 16]` Sort Through the Chaos를 이기면 Mentat은 다음 라운드 시작에 가져간다 `[FAQ p. 4]`(Steam 앱은
+  Combat 중에 준다 — FAQ를 따른다). 그 다음 라운드 동안 Mentat 칸은 비어 있다. Mentat을 가진 좌석이 Mentat 자체를 Mentat 칸에 보낼 때는 OQ-124.
   Calculated Hire는 Mentat을 Landsraad의 제 자리에서만 가져온다 `[DI p. 13]`, Mentat이 그 자리에 있어야 낼 수 있다(디자이너 판정, BGG Forum).
 - 가져간 Mentat은 그 라운드 끝까지 그 플레이어의 Agent(그 색)로 모든 목적에 친다(디자이너 판정, BGG Forum — Archduke Armand Ecaz의 Coordination이
   센다). 그래서 Agent recall 효과(Urgent Mission)가 Mentat을 되돌릴 수 있고, Kwisatz Haderach가 Mentat을 옮길 수 있다.
@@ -240,8 +243,8 @@ The Voice 표식을 이미 Control marker 셋을 모두 놓은 플레이어가 �
   버리는 상대가 카드를 고른다(무작위 아님).
 - **The Voice** — 내 Control marker 하나로 고른 칸을 표시하고 내 다음 turn에 치운다. 상대가 그 칸에 Agent를 보내지 못하는 것은 한 turn 동안이다. Kwisatz
   Haderach도 막는다. 디자이너 판정 둘(BGG Forum): The Voice 뒤에 Bindu Suspension으로 turn을 넘긴 상대는 다음 turn에도 막힌다("next agent this round"),
-  Weirding Way(Ix)로 바로 둘째 turn을 한 상대는 그 둘째 turn에 막히지 않는다. 그래서 막힘은 **각 상대의 다음 Agent 배치**와 **Voice 주인의 다음 turn** 가운데
-  먼저 오는 때에 풀린다(디자이너 판정을 룰북 문장과 함께 읽은 것, OQ-057의 일괄 채택). Steam 앱은 다르게 한다 — 고른 칸을 그 라운드의 Recall까지
+  Weirding Way(Ix)로 바로 둘째 turn을 한 상대는 그 둘째 turn에 막히지 않는다. 이 두 판정은 "각 상대의 이번 라운드 다음 Agent 배치"까지로 읽어야 맞고,
+  룰북의 표식 문장("remove it on your next turn")과는 Bindu·Weirding Way의 경우에 갈린다 — 막힘이 풀리는 때는 OQ-116. Steam 앱은 또 다르게 한다 — 고른 칸을 그 라운드의 Recall까지
   Voice 주인을 뺀 모든 상대에게 막는다(`TheVoiceAbility`, OQ-116의 앱 처리). 룰북 문장이 있으므로 룰북을 따른다.
 - **Baron Vladimir Harkonnen** — 4절·12절.
 
@@ -365,16 +368,29 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 - 모든 recall은 Conflict의 Agent도(OQ-068) — 원판에는 Conflict에 Agent를 보내는 효과가 없다.
 - "Choose Two"는 둘을 먼저 정하고 해결한다(OQ-057 (4)).
 - 같은 순위 보상은 First Player부터(OQ-002), 순위 사이는 순위대로(OQ-102).
+- 카드가 **자기 효과로** 자신을 trash하면 인쇄된 나머지 이득은 그대로 받는다(OQ-022의 디자이너 후속 답글, OQ-027 확장) — Seek Allies·Foldspace·Power Play의
+  "Trash this card"를 먼저 해도 draw·Influence는 남는다. 다른 수단(Selective Breeding 등)으로 먼저 trash하면 남은 효과는 없다(OQ-022).
+- 비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071의 2026-09-29 사용자 원칙 일반화) — 버린 카드에 Rise of Ix의 Unload가 있어도 같다.
+- Finesse(Ix)·Shifting Allegiances로 같은 진영을 잃고 다시 얻을 수 있다(`[FAQ p. 4]`의 Shifting Allegiances 판정; Uprising의 Change Allegiances도 엔진이
+  6→5→6을 허용한다). 4칸에서 3으로 내려갔다 다시 4가 되면 4칸 보너스를 또 받는다(`[DI p. 7]`).
+- Calculated Hire·Urgent Mission은 자기 Reveal turn에도 낼 수 있다 — Mentat이 자리를 떠나거나 Agent가 칸을 비워 보드가 바뀐다(2026-10-06 원칙의 "무언가를
+  바꿀 수 있을 때", 내 해석).
+- Kwisatz Haderach는 내 다른 Agent가 있는 칸에도 보낼 수 있다("ANY board space (even if occupied)" `[Kwisatz Haderach card]`; 앱도 같다).
+- Countess Ariana의 −1은 Carryall·Thumper로 두 배를 한 뒤 harvest 전체에서 한 번 뺀다(덧셈이라 순서가 결과를 바꾸지 않는다; 앱도 같다).
 
-## 17. 새 질문 (OQ-113 ~ OQ-118, P0에서 한꺼번에)
+## 17. 새 질문 (P0에서 한꺼번에)
 
 [open-questions.md](open-questions.md)에 공식 원문·앱 처리·기존 원칙·추천과 함께 적었다. P0에서 사용자 판정을 받은 뒤 P1에 들어간다(계획 10.4절 2).
 
 - OQ-113 — 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건
 - OQ-114 — "Choose two:"는 서로 다른 둘인가 (Machinations, Battle for Arrakeen, Ix의 Shuttle Fleet)
 - OQ-115 — Baron Harkonnen의 Masterstroke: 공개가 의무인가, 4개를 어떻게 세나
-- OQ-116 — The Voice를 Control marker 없이 쓸 때
+- OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
 - OQ-117 — Bindu Suspension을 Reveal turn 대신 낼 수 있는가
 - OQ-118 — "each opponent discards two cards"에서 손에 한 장뿐일 때
+- OQ-123 — The Spice Must Flow를 세는 곳(Corner the Market; Ix의 Grand Conspiracy·Holtzman Engine도)
+- OQ-124 — Mentat을 Mentat 칸에 보낼 때
+- OQ-125 — "비용 N 이하 카드를 얻는다"(Bypass Protocol; Ix의 Boundless Ambition·Conscript, Uprising의 Impress 등도)에 Reserve 카드가 드는가
 
+OQ-123 ~ OQ-127은 카드별 조사(2026-10-22, agent 넷이 카드 181장·보드 칸 26을 한 장씩 본 것, 자료 `tmp/claude/d0c52597/sweep/`)에서 나왔다.
 Rise of Ix의 질문(OQ-119 ~)은 [rise-of-ix.md](rise-of-ix.md) 끝에 있다.

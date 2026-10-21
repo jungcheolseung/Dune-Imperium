@@ -137,13 +137,18 @@
 | [OQ-113](#oq-113--효과-없는-intrigue-금지-원칙과-원판ix-디자이너-판정-다섯-건) | 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건 | `OPEN` |
 | [OQ-114](#oq-114--choose-two는-서로-다른-둘인가) | "Choose two:"는 서로 다른 둘인가 | `OPEN` |
 | [OQ-115](#oq-115--baron-harkonnen의-masterstroke-공개가-의무인가-넷을-어떻게-세나) | Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나 | `OPEN` |
-| [OQ-116](#oq-116--the-voice를-쓸-control-marker가-없을-때) | The Voice를 쓸 Control marker가 없을 때 | `OPEN` |
+| [OQ-116](#oq-116--the-voice-막힘이-풀리는-때와-control-marker가-없을-때) | The Voice: 막힘이 풀리는 때와 Control marker가 없을 때 | `OPEN` |
 | [OQ-117](#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가) | Bindu Suspension을 Reveal turn 대신 낼 수 있는가 | `OPEN` |
 | [OQ-118](#oq-118--each-opponent-discards-two-cards에서-손에-한-장뿐일-때) | "each opponent discards two cards"에서 손에 한 장뿐일 때 | `OPEN` |
 | [OQ-119](#oq-119--ilesa-ecaz의-둘째-turn을-세는-법) | Ilesa Ecaz의 "둘째 turn"을 세는 법 | `OPEN` |
 | [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `OPEN` |
 | [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) | dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때 | `OPEN` |
 | [OQ-122](#oq-122--round-start-효과의-순서) | Round Start 효과의 순서 | `OPEN` |
+| [OQ-123](#oq-123--the-spice-must-flow를-세는-곳) | The Spice Must Flow를 세는 곳 | `OPEN` |
+| [OQ-124](#oq-124--mentat을-mentat-칸에-보낼-때) | Mentat을 Mentat 칸에 보낼 때 | `OPEN` |
+| [OQ-125](#oq-125--비용-n-이하-카드를-얻는다에-reserve-카드가-드는가) | "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가 | `OPEN` |
+| [OQ-126](#oq-126--disposal-facility의-persuasion-6-이상) | Disposal Facility의 "Persuasion 6 이상" | `OPEN` |
+| [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload) | Combat 단계에 열린 Treachery의 Unload | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -1912,7 +1917,7 @@
   `tests/server/test_turn_end.py`·`test_undo.py`(붙잡힌 단위·되돌리기), `scripts/e2e/combat_result.py`(화면).
 - 재개 조건: 공식 FAQ가 보상 한 줄 안의 순서를 정할 때.
 
-**OQ-113부터(2026-10-22): 원판 Dune: Imperium과 Rise of Ix.** P0([base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 12절)에서 규칙 명세
+**OQ-113부터(2026-10-22): 원판 Dune: Imperium과 Rise of Ix.** P0([base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 12절)에서 규칙 명세와 카드별 조사(카드 181장·보드 칸 26)로 모은 질문이다. 규칙 명세
 [imperium-base.md](imperium-base.md)·[rise-of-ix.md](rise-of-ix.md)를 쓰며 모은 질문이다. 사용자 결정(2026-10-21, 계획 10.4절 2)대로 한꺼번에 묻고,
 판정이 나오기 전에는 P1(엔진)에 들어가지 않는다. 각 항목은 공식 원문, 앱의 처리(보조 증거, 2026-10-03 사용자 결정), 기존 원칙, 추천을 함께 적는다.
 
@@ -1963,16 +1968,24 @@
   Influence는 없다(OQ-060).
 - 판정: (대기)
 
-## OQ-116 — The Voice를 쓸 Control marker가 없을 때
+## OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `OPEN` (2026-10-22 P0; 2026-10-22 같은 날 질문을 넓힘 — 카드별 조사가 처음 추천의 모순을 찾았다)
 - 인쇄: "Choose any board space. Opponents can't send their next Agents there this round." `[The Voice card]`
-- 공식: "Use one of your available Control markers to mark the board space you choose, then remove it on your next turn." `[DI p. 13]`
-- 질문: 내 Control marker 셋이 모두 Control 칸 깃발에 있을 때(또는 The Voice 두 장을 한 라운드에 써서 표식이 모자랄 때) The Voice의 효과가 있는가.
-- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): Control marker나 supply를 요구하지 않는다(`ActivatedAbilities.BaseSet.TheVoiceAbility::Cost` = `NoCostAction`). 다만 앱의 막힘은 **룰북과 다르다**: 고른 칸은 그 라운드의 Recall까지 Voice 주인을 뺀 모든 상대의 모든 Agent 배치를 막는다(`RoundPhase.Recall`에서 `Blocked`를 지움). 룰북은 "remove it on your next turn ... only stops opponents from sending Agents to that board space for one turn" `[DI p. 13]`이므로 막힘의 길이는 룰북을 따른다.
-- 추천: **효과는 그대로**, 표식은 기억을 돕는 장치로 본다 — 카드 문장은 표식을 조건으로 두지 않는다(내 해석). 엔진은 막힌 칸을 상태로 기억한다. 막힘이
-  풀리는 때는 각 상대의 다음 Agent 배치와 Voice 주인의 다음 turn 가운데 먼저 오는 때다([imperium-base.md](imperium-base.md) 13.1, 룰북과 디자이너 판정
-  둘을 함께 읽은 것).
+- 공식: "Use one of your available Control markers to mark the board space you choose, then remove it on your next turn. (The Voice only
+  stops opponents from sending Agents to that board space for one turn.)" `[DI p. 13]`
+- 디자이너 판정 둘(BGG forum, 정리본 2026-06-07판): The Voice 뒤에 Bindu Suspension으로 turn을 넘긴 상대는 그다음 turn에도 막힌다("since it's
+  your 'next agent this round'"); Weirding Way로 곧바로 둘째 turn을 한 상대는 그 둘째 turn에 막히지 않는다.
+- 질문: (1) 막힘은 언제 풀리나. (2) 내 Control marker 셋이 모두 깃발에 있을 때(또는 The Voice 두 장으로 표식이 모자랄 때) 효과가 있나.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): marker나 supply를 요구하지 않는다(`ActivatedAbilities.BaseSet.TheVoiceAbility::Cost` = `NoCostAction`). 막힘은 그
+  라운드의 Recall까지, Voice 주인을 뺀 모든 상대의 모든 Agent 배치에 걸린다(`RoundPhase.Recall`에서 `Blocked`를 지움).
+- 선택지 (1): (가) Voice 주인의 다음 turn에 풀린다 — 룰북의 표식 문장. (나) 상대마다 **이번 라운드의 다음 Agent 배치**까지(어느 칸에 보내든 한 번
+  보내면 그 상대에게는 풀린다) — 카드 문장 "their next Agents"와 디자이너 판정 둘이 이 읽기다. (다) 라운드 끝까지 모든 배치 — 앱.
+  보통 흐름(상대마다 Voice 주인의 다음 turn 전에 한 번씩 Agent를 보낸다)에서는 (가)와 (나)가 같고, 갈리는 것은 Bindu로 넘긴 turn과 Weirding Way의
+  추가 turn뿐이다. 이 명세의 첫 초안은 "(가)와 (나) 가운데 먼저 오는 때"라고 적었으나 그것은 Bindu 판정과 맞지 않는다.
+- 추천: (1) **(나)** — 카드 문장과 디자이너 판정 둘을 따르고, 룰북의 표식 문장은 보통 흐름의 때를 적은 것으로 읽는다(내 해석; 공식 룰북 문장과
+  갈리는 곳이라 사용자 판정이 필요하다). (2) **효과는 그대로**, 표식은 기억을 돕는 장치로 본다(카드 문장은 표식을 조건으로 두지 않는다; 앱도 같다).
+  엔진은 막힌 칸과 아직 막힌 상대를 상태로 기억한다.
 - 판정: (대기)
 
 ## OQ-117 — Bindu Suspension을 Reveal turn 대신 낼 수 있는가
@@ -2043,4 +2056,76 @@
 - 질문: 이 효과들이 공개·방어·뽑기와 어떤 순서이고, 좌석 사이 순서는 무엇인가.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): Round Start 시작 → Conflict 공개 → 좌석 순서로 각자 5장 → `RoundSetupFinished`(Holtzman Engine의 1장, Shuttle Fleet의 2 Solari) → `RoundSetupFinishedIlesa`(Ilesa의 따로 두기 — Holtzman로 뽑은 카드도 둘 수 있다) → turn. 뒤집은 Tech는 앞 라운드 Recall에서 되돌린다(룰북은 Round Start). 좌석 사이 순서는 좌석 목록 순서로 보이며 First Player부터인지는 확인 못 함. (Control 방어 배치는 원판 앱 확인 agent가 `GenerateConflictPhase.DeployControlTroops`로 찾았다.)
 - 추천: **공개 → Control 방어 → 각자 5장 → 뒤집은 Tech 되돌리기 → Round Start 능력(Holtzman Engine·Shuttle Fleet) → Ilesa의 따로 두기**, 좌석 사이는 First Player부터 시계 방향(OQ-002·OQ-102와 같은 좌석 순서). 5장 뒤로 두는 것은 "Set aside a card from your hand"가 이번 라운드 손을 뜻하기 때문이고(내 해석), Ilesa를 맨 뒤에 두는 것은 앱과 같다. Tech 되돌리기는 룰북대로 Round Start에 두되 그 앞에 아무 결정이 없으므로 앱(Recall)과 결과가 같다.
+- 판정: (대기)
+
+## OQ-123 — The Spice Must Flow를 세는 곳
+
+- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 인쇄: Corner the Market "If you have at least two The Spice Must Flow" / "If you have more The Spice Must Flow than each opponent", Grand Conspiracy
+  "1+ The Spice Must Flow", Holtzman Engine(Ix Tech) "Endgame: Worth [VP] if you have at least two The Spice Must Flow" `[card faces]`.
+- 공식: Corner the Market은 "Count the total number of The Spice Must Flow cards in your deck and your discard pile." `[FAQ p. 2]`. 그런데 Reveal turn
+  뒤에 뽑은 카드는 다음 라운드까지 손에 둔다 `[FAQ p. 3]`(Ix의 예: 마지막 라운드 Trade Monopoly 보상으로 Spaceport를 얻어 두 장을 뽑음) — Endgame에
+  손에 The Spice Must Flow가 있을 수 있다.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 가진 사본을 모두 센다(`CornerTheMarketAbility::CountTheSpiceMustFlow` @0x4c8f1a0, `GrandConspiracyAbility::CountTotalPoints`
+  @0x4bec350).
+- 지금 엔진: Uprising의 Secure Spice Trade 조건 `SpiceMustFlowCardsAtLeast`가 덱·손·버림·in play를 센다 — 판정 없이 정한 엔진 기본값이다.
+- 추천: **가진 사본을 모두 센다**(덱·손·버림 더미·in play; trash한 것은 빼고). FAQ 문장은 Endgame에 손이 비어 있는 보통 경우를 적은 것으로 읽는다(내
+  해석). 이 판정은 Uprising의 Secure Spice Trade에도 그대로 적용된다(지금 동작과 같다).
+- 판정: (대기)
+
+## OQ-124 — Mentat을 Mentat 칸에 보낼 때
+
+- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 공식: Mentat 칸 "Draw a card. If the Mentat is here, take it and place it on your Leader; this round, you may use it as one of your Agents to take an
+  Agent turn." `[DI p. 18]`; Mentat 아이콘 "Take the Mentat from its space on the board (if it's there; you can't take it from another player or another
+  space)." `[DI p. 16]`; Calculated Hire는 "can only take the Mentat from its starting position in the Landsraad" `[DI p. 13]`; Sort Through the Chaos를
+  이기면 "you take the Mentat at the start of the next round" `[FAQ p. 4]`.
+- 상황: Sort Through the Chaos나 Calculated Hire로 Mentat을 가진 좌석은 그 라운드에 Mentat 칸이 비어 있다. 그 좌석이 Mentat 자체를 Agent로 Mentat 칸에
+  보내면 "the Mentat is here"인가.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): `SpaceAbilities.BaseSet.MentatSpaceAbility` @0x4bca9b0이 칸 아래의 Mentat 개체를 찾아 보낸 좌석에게 recall한다 — 쉬고 있는
+  Mentat과 Agent로 놓인 Mentat을 가르지 않아, 아마 다시 가져가게 한다. 앱이 Mentat을 제 칸에 보내는 것 자체를 허용하는지는 확인 못 함.
+- 선택지: (가) 제 자리에 쉬고 있는 Mentat만 "here" — Agent로 보낸 Mentat은 다른 Agent처럼 칸을 차지하고 카드 1장만 뽑는다. (나) 문장 그대로 다시 가져간다
+  — 칸이 비고 Mentat을 또 쓸 수 있어, 2 Solari마다 Agent turn이 하나 더 생긴다. (다) Mentat은 제 칸에 보낼 수 없다.
+- 추천: **(가)** — p. 16과 Calculated Hire clarification이 말하는 것은 제 자리(starting position)에서 가져오는 것이고, 놓인 Agent는 Phase 5까지 칸에 남는다
+  `[DI p. 13]`(내 해석). (나)는 칸을 반복 가능한 추가 turn으로 만든다.
+- 판정: (대기)
+
+## OQ-125 — "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가
+
+- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 인쇄: Bypass Protocol(원판 Intrigue) "Acquire a card that costs [3] or less" / "[2 spice] → Acquire a card that costs [5] or less to the top of your deck",
+  Boundless Ambition(Ix 프로모) "Acquire a card that costs [5] or less", Archduke Armand Ecaz의 Conscript "You may acquire a card that costs [3] or less"
+  `[card faces]`. Uprising 계열에도 같은 문장이 있다: Impress·Inspire Awe(3 이하), Tleilaxu Master(Immortality, 6 이하).
+- 공식: 획득할 수 있는 카드는 "any of the five cards in the Imperium Row, or Arrakis Liaison or The Spice Must Flow from the Reserve (Foldspace is acquired
+  at the board space of the same name …)" `[DI p. 11]`; Foldspace는 Foldspace 아이콘으로만 얻는다 `[FAQ p. 2]`.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 어디서나 Imperium Row 카드만 고르게 한다.
+- 지금 엔진: `AcquireCardUpTo`가 Row 다섯 장과 Reserve 더미를 함께 낸다(`[Main p. 13]`을 근거로 적었으나 사용자 판정은 없다) — Uprising의 Impress·
+  Inspire Awe·Tleilaxu Master가 이렇게 돈다.
+- 추천: **Reserve 포함, Foldspace 제외.** "a card"는 획득 규칙이 얻을 수 있다고 한 카드 전체(Row + Reserve)로 읽는다(내 해석); 지금 Uprising 엔진과 같다.
+  앱과는 다르다. 판정은 Uprising 카드에도 그대로 적용된다.
+- 판정: (대기)
+
+## OQ-126 — Disposal Facility의 "Persuasion 6 이상"
+
+- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 인쇄: "Reveal Turn: If you have [Persuasion 6] or more, you may trash one of your cards in play." `[Disposal Facility tile]`
+- 공식: Persuasion은 token이 없고 Reveal turn 동안 얻고 쓰며, 남은 것은 사라진다 `[DI p. 11]`. "have"가 이번 turn에 얻은 합계인지 아직 쓰지 않고 남은 양인지는
+  침묵.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 이번 Reveal turn에 얻은 Persuasion(쓴 것 포함)으로 판정한다.
+- 추천: **이번 Reveal turn에 얻은 합계.** Persuasion은 쌓이는 자원이 아니라 이번 turn에 "얻은" 값으로만 존재한다(내 해석); 앱과 같다. 남은 양으로 읽으면
+  카드를 사기 전에만 쓸 수 있어 순서가 결과를 바꾼다.
+- 판정: (대기)
+
+## OQ-127 — Combat 단계에 열린 Treachery의 Unload
+
+- 상태: `OPEN` (2026-10-22 P0, 카드별 조사 두 갈래가 따로 찾음)
+- 인쇄: Treachery의 Reveal box(Unload) "[troop ×2] Deploy these troops to the Conflict." `[Treachery card]`. Unload는 그 카드를 discard하거나 trash할 때도
+  열린다 `[Rise of Ix p. 7]`.
+- 상황: Combat 해결 중에 Treachery가 trash되거나 버려진다 — Terrible Purpose(원판 Conflict) 1위의 trash 보상, Tessia Vernius가 보상으로 Snooper에
+  닿아 카드를 버리는 경우 등. 이때 Conflict는 이미 해결됐고 정리(troop을 supply로)가 남았다.
+- 디자이너 판정(BGG forum, Troop Transports): Combat 해결 중에 Shipping으로 recruit한 troop은 "just put them in your garrison. If you deployed them to
+  conflict they would immediately die".
+- 선택지: (가) 문장대로 Conflict에 배치한다(의무) — 정리 때 supply로 돌아간다. (나) garrison에 둔다.
+- 추천: **(가) 문장대로.** Treachery의 배치는 "Deploy these troops"로 의무이고, 디자이너 문장도 Combat 해결 중의 배치가 가능하다는 것을 전제로 한다(Troop
+  Transports는 "may deploy"라 garrison에 둘 수 있을 뿐이다; 내 해석). 원칙대로 읽은 것이며, 카드별 조사 agent 둘은 (나)를 추천했다.
 - 판정: (대기)
