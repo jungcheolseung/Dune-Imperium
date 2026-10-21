@@ -1148,8 +1148,8 @@ def test_workers_give_the_same_report(tiny_corpus: Path) -> None:
         (record.id, record.outcome, record.hits, record.runs) for record in two.records
     ]
     assert two.drift == one.drift == {}
-    with pytest.raises(ValueError, match="workers must be 1 to 4"):
-        check(corpus, rows, workers=5)
+    with pytest.raises(ValueError, match="workers must be 1 to 8"):
+        check(corpus, rows, workers=9)
 
 
 def test_a_check_in_this_process_runs_under_nice(

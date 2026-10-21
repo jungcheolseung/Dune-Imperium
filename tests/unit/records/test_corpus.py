@@ -10,6 +10,7 @@ from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.cli.records import main
 from dune_imperium.records.corpus import Corpus, CorpusRow, corpora
 from dune_imperium.records.migration import migrate_record, walk
+from dune_imperium.records.portable.trace import Fingerprint
 from dune_imperium.records.saves import read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
 
@@ -138,6 +139,28 @@ def test_a_record_walked_on_its_engine_matches_its_trace(tiny_corpus: Path) -> N
                 differences += 1
         assert differences == 0, row.id
         assert fingerprint(record.state) == trace.final()
+
+
+def test_the_corpus_fingerprint_digests_like_the_portable_one(
+    tiny_corpus: Path,
+) -> None:
+    # The corpus check's fingerprint digests again only what a step changed
+    # (``_StepFingerprint``); every state of every game digests to the
+    # portable code's bytes, and it collects the same classes.
+    corpus = Corpus.open(tiny_corpus)
+    engine = UprisingRulesEngine()
+    for row in corpus.rows():
+        record = migrate_record(corpus.replay(row), engine)
+        quick = corpus.fingerprint()
+        plain = Fingerprint(
+            names=corpus.manifest["fingerprint_fields"],
+            schema=corpus.manifest["class_schema"],
+            unordered=corpus.manifest["unordered_zones"],
+        )
+        states = [state for state, _ in walk(record, engine)] + [record.state]
+        assert type(quick) is not Fingerprint
+        assert [quick(state) for state in states] == [plain(s) for s in states]
+        assert quick.class_schema == plain.class_schema
 
 
 def test_a_shard_file_that_does_not_match_the_manifest_is_refused(
