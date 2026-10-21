@@ -370,18 +370,18 @@ func run() -> void:
 			await settled()
 			if scenario.kind == "multiple":
 				check(int(table.model.summary().revision) == revision, "ambiguous placement waits for its option")
-				var expected_indices = scenario.candidates.map(func(index): return int(index))
+				# A card's placements share its card pick; `placement` tells them apart.
+				var expected_placements = scenario.candidates.map(func(placement): return int(placement))
 				var shown: Array = []
 				for button in table.content.find_children("*", "Button", true, false):
-					var index = int(button.get_meta("action_index", -1))
-					if index in expected_indices:
-						shown.append(index)
+					if int(button.get_meta("action_index", -1)) == int(scenario.index) and button.has_meta("placement"):
+						shown.append(int(button.get_meta("placement")))
 				shown.sort()
-				check(shown == expected_indices, "native chooser contains exactly the browser options")
+				check(shown == expected_placements, "native chooser contains exactly the browser options")
 				for expected in scenario.costs:
-					var action = table.model.actions().filter(func(row): return int(row.index) == int(expected.index))[0]
+					var action = table.model.placement_rows().filter(func(row): return int(row.placement) == int(expected.placement))[0]
 					check(table.model.paid_cost(action) == expected.paid, "displayed cost equals browser's paid cost")
-					var buttons = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(action.index))
+					var buttons = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(action.index) and int(button.get_meta("placement", -1)) == int(action.placement))
 					if check(buttons.size() == 1, "each cost option keeps one actual action button"):
 						var labels = reading_lines(buttons[0], "payment")
 						var paid = table.model.cost_text(expected.paid)
@@ -389,7 +389,7 @@ func run() -> void:
 					if action.arguments.has("discount"):
 						var paid = table.model.cost_text(table.model.paid_cost(action))
 						check(table.model.describe(action).contains(table.model.native("지불 비용: ") + (table.model.ui("render.free") if paid.is_empty() else paid)), "the actual action label names the discounted payment")
-				var chosen = table.model.actions().filter(func(row): return int(row.index) == int(scenario.index))[0]
+				var chosen = table.model.placement_rows().filter(func(row): return int(row.placement) == int(scenario.placement))[0]
 				await capture_evidence("payment-options-ko")
 				if Array(OS.get_cmdline_user_args()).any(func(argument): return argument.begins_with("--evidence=")):
 					table.model.language = "en"
@@ -409,7 +409,7 @@ func run() -> void:
 					dialogs[0].confirmed.emit()
 					await process_frame
 				check(int(table.model.summary().revision) == revision, "inspecting multiple targets never sends a placement")
-				var buttons = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(chosen.index))
+				var buttons = table.content.find_children("*", "Button", true, false).filter(func(button): return int(button.get_meta("action_index", -1)) == int(chosen.index) and int(button.get_meta("placement", -1)) == int(chosen.placement))
 				if check(buttons.size() == 1, "chosen payment surface is reachable"):
 					table.content.get_parent().ensure_control_visible(buttons[0])
 					await process_frame

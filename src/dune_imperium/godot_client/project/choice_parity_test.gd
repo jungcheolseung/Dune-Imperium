@@ -132,17 +132,17 @@ func run() -> void:
 			await capture_evidence(str(scenario.fixture) + "-" + str(scenario.language))
 		var revision = int(table.model.summary().revision)
 		await press_action(int(scenario.index))
-		check(int(table.model.summary().revision) == revision + 1, "one click sends only the offered step")
+		check(int(table.model.summary().revision) == revision + int(scenario.steps), "one click sends the same engine steps as the browser")
 		check_receipt(seat)
 		compare_layout(scenario.after, "after")
 		if scenario.kind == "box":
 			await capture_evidence("box-locked-" + str(scenario.language))
-			await table._mutate("undo", {"steps": 1})
+			await table._mutate("undo", {"steps": table.model.undo_steps()})
 			compare_layout(scenario.restored, "undo")
 			check(int(table.model.summary().undo_count) == 1, "undo creates a fresh action generation")
 			check(not table.feedback.visible and table.feedback.receipt.is_empty(), "undo clears the previous applied receipt")
 			await press_action(int(scenario.other_index))
-			check(int(table.model.summary().revision) == revision + 1, "the second card's effect applies without a switch step")
+			check(int(table.model.summary().revision) == revision + int(scenario.other_steps), "the second card's effect applies without a switch step")
 	if failed:
 		quit(1)
 		return

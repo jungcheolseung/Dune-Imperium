@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import Any
 
 from dune_imperium.agents import HeuristicAgent
+from dune_imperium.agents.agent_turn_steps import (
+    PLACEMENT_ACTION,
+    placements_for_steps,
+)
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
 
@@ -38,7 +42,8 @@ def ensure_extra_saves(directory: Path) -> dict[str, str]:
                 continue
             owner = int(summary['decision']['owner'])
             session = manager._get(game)
-            actions = session.engine.legal_actions(session.state, owner)
+            # The server indexes whole actions (an effect and its target as one).
+            actions = session.engine.whole_actions(session.state, owner)
             view = manager.view(game, owner)
             top = view['private'].get('peeked_card_id')
             if top and top in view['private']['deck_cards']:
@@ -74,14 +79,21 @@ def ensure_extra_saves(directory: Path) -> dict[str, str]:
             ), None)
             piter = view['players'][owner]['leader_id'] == 'piter_de_vries'
             if preferred is None and piter:
-                preferred = next((a for a in actions if
-                    (a.action_id == 'agent_turn'
+                # An Agent turn is a card pick, then a space pick (codec v150):
+                # aim each step at a placement on Espionage.
+                steps = placements_for_steps(session.state, owner, actions)
+                shown = steps[0] if steps is not None else actions
+                preferred = next((a for a in shown if
+                    (a.action_id == PLACEMENT_ACTION
                      and dict(a.arguments).get('space_id') == 'espionage')
                     or a.action_id == 'use_intrigue_effect'), None)
+                if preferred is not None and steps is not None:
+                    preferred = steps[1](preferred)
             chosen = preferred
             if chosen is None:
-                chosen = agents[owner].choose_action(
-                    session.engine.observe(session.state, owner), actions)
+                chosen = agents[owner].choose_action_with_state(
+                    session.state, session.engine.observe(session.state, owner),
+                    actions)
             summary = manager.apply_action(
                 game, owner, int(summary['revision']), actions.index(chosen))
     missing = wanted - found.keys()
@@ -119,7 +131,8 @@ def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
                 continue
             owner = int(summary['decision']['owner'])
             session = manager._get(game)
-            actions = session.engine.legal_actions(session.state, owner)
+            # The server indexes whole actions (an effect and its target as one).
+            actions = session.engine.whole_actions(session.state, owner)
             for name, ids in targets.items():
                 target = next((i for i, a in enumerate(actions)
                                if a.action_id in ids), None)
@@ -131,8 +144,8 @@ def ensure_choice_expansions(directory: Path) -> dict[str, dict[str, Any]]:
             preferred = next((a for a in actions if
                 (a.action_id == 'pick_leader' and dict(a.arguments).get('leader_id')
                  == 'shaddam_corrino_iv') or a.action_id == 'take_contract'), None)
-            chosen = preferred or agents[owner].choose_action(
-                session.engine.observe(session.state, owner), actions)
+            chosen = preferred or agents[owner].choose_action_with_state(
+                session.state, session.engine.observe(session.state, owner), actions)
             summary = manager.apply_action(
                 game, owner, int(summary['revision']), actions.index(chosen))
     raise RuntimeError('bounded expansion UI walk missed: '

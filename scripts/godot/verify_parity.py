@@ -73,15 +73,15 @@ def fixtures(directory: Path) -> dict[str, str]:
                 continue
             owner = int(summary['decision']['owner'])
             session = manager._get(gid)
-            actions = session.engine.legal_actions(session.state, owner)
-            if any(a.action_id == 'agent_turn' and dict(a.arguments).get('graft')
-                   for a in actions):
+            actions = session.engine.whole_actions(session.state, owner)
+            if any(a.action_id == 'choose_agent_card'
+                   and dict(a.arguments).get('graft') for a in actions):
                 saved = store.write(manager.save_game(gid, name='parity-graft'))
                 names['parity-graft'] = str(saved['save_id'])
                 break
             buy = next((a for a in actions if a.action_id == 'acquire_tleilaxu'), None)
-            chosen = buy if buy is not None else agents[owner].choose_action(
-                session.engine.observe(session.state, owner), actions)
+            chosen = buy if buy is not None else agents[owner].choose_action_with_state(
+                session.state, session.engine.observe(session.state, owner), actions)
             summary = manager.apply_action(
                 gid, owner, int(summary['revision']), actions.index(chosen))
         else:
@@ -168,7 +168,9 @@ def browser_case(page: Any, base: str, game: str, kind: str,
                 (a['arguments']['card_id'], a['arguments']['space_id'])] == 1)
         card = chosen['arguments']['card_id']
         space = chosen['arguments']['space_id']
-        case.update(card=card, space=space, steps=2 if kind == 'graft' else 1)
+        # A placement is its card pick and its space pick (codec v150); a
+        # graft's partner follows as a third step.
+        case.update(card=card, space=space, steps=3 if kind == 'graft' else 2)
         click_ref(page, space if space_first else card, space=space_first)
         assert page.evaluate('state.summary.revision') == revision
         case['lit'] = page.evaluate('''(spaceFirst) =>
@@ -191,31 +193,36 @@ def browser_case(page: Any, base: str, game: str, kind: str,
         click_ref(page, card if space_first else space, space=not space_first)
         if kind == 'multiple':
             assert page.evaluate('state.summary.revision') == revision
+            # A card's placements share its card pick's index; `placement`
+            # tells them apart (render.js data-placement).
             candidates = page.evaluate('pickCandidates()')
-            case['candidates'] = sorted(a['index'] for a in candidates)
+            case['candidates'] = sorted(a['placement'] for a in candidates)
             shown = page.locator('#actions .action-item').evaluate_all(
-                '(nodes) => nodes.map(n => Number(n.dataset.index))')
-            assert all(index in shown for index in case['candidates'])
+                '(nodes) => nodes.map(n => Number(n.dataset.placement))')
+            assert all(placement in shown for placement in case['candidates'])
             case['costs'] = page.evaluate('''() => pickCandidates().map(a => ({
-                index: a.index, paid: paidCost(spaceOptionsFor(
+                placement: a.placement, paid: paidCost(spaceOptionsFor(
                     state.catalog.spaces[a.arguments.space_id])[
                     a.arguments.cost_option || 0].cost, a.arguments.discount)
             }))''')
             case['index'] = chosen['index']
-            selector = f'#actions .action-item[data-index="{chosen["index"]}"]'
+            case['placement'] = chosen['placement']
+            selector = ('#actions .action-item'
+                        f'[data-placement="{chosen["placement"]}"]')
             page.locator(selector + ' .action-info').click()
             case['preview_names'] = page.locator(
                 selector + ' .action-detail .popover-title').all_text_contents()
             assert len(case['preview_names']) == 2
-            case['preview_effect'] = page.evaluate('''index => {
-                const action = state.actions.actions.find(a => a.index === index);
+            case['preview_effect'] = page.evaluate('''placement => {
+                const action = placementActions().find(
+                    a => a.placement === placement);
                 const option = spaceOptionsFor(
                     state.catalog.spaces[action.arguments.space_id])[
                     action.arguments.cost_option || 0];
                 return option.effect_ko || option.effect;
-            }''', chosen['index'])
+            }''', chosen['placement'])
             selector = ('#actions .action-item'
-                        f'[data-index="{chosen["index"]}"] button')
+                        f'[data-placement="{chosen["placement"]}"] button')
             page.locator(selector).first.click()
     page.wait_for_function('''(target) => !state.busy && refreshFlight === null
         && state.summary.revision === target''', arg=revision + case['steps'])
@@ -327,8 +334,11 @@ def choice_case(page: Any, base: str, game: str, language: str, kind: str,
         case['index'])
     selector = f'#actions .action-item[data-index="{case["index"]}"] button'
     page.locator(selector).first.click()
+    # One row may post several engine steps (an effect and its target, stage
+    # B3); the browser's count is what the native click must match.
     page.wait_for_function('''revision => !state.busy && refreshFlight === null
-        && state.summary.revision === revision + 1''', arg=revision)
+        && state.summary.revision > revision''', arg=revision)
+    case['steps'] = page.evaluate('state.summary.revision') - revision
     case['after'] = choice_layout(page)
     if kind == 'box':
         assert case['after']['locks'], 'real bundled choice must lock the other box'
@@ -341,7 +351,8 @@ def choice_case(page: Any, base: str, game: str, language: str, kind: str,
         selector = f'#actions .action-item[data-index="{case["other_index"]}"] button'
         page.locator(selector).first.click()
         page.wait_for_function('''revision => !state.busy && refreshFlight === null
-            && state.summary.revision === revision + 1''', arg=revision)
+            && state.summary.revision > revision''', arg=revision)
+        case['other_steps'] = page.evaluate('state.summary.revision') - revision
     case['expected'] = digest(request(base, f'/games/{game}/snapshot?seat={seat}'))
     return case
 
