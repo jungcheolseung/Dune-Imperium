@@ -181,11 +181,12 @@
 
 **플레이 화면**
 
-- **Godot PC 클라이언트(다른 PC; 브랜치 `docs/godot-client-plan`에만 두고 master에는 넣지 않음, 사용자 결정):** 2026-10-18에 v148
-  위로 리베이스한 커밋 48개라 B단계(v150) 병합보다 앞이다(2026-10-21 master보다 264커밋 뒤). 먼저 v150에 맞춰야 한다. 클라이언트(`main.gd`·`model.gd`·
+- **Godot PC 클라이언트(다른 PC; 브랜치 `godot-client`(2026-10-21에 `docs/godot-client-plan`에서 이름을 바꿈)에만 두고 master에는 넣지 않음, 사용자 결정):** 2026-10-18에 v148
+  위로 리베이스한 커밋 48개라 B단계(v150) 병합보다 앞이다(2026-10-21 `6a26401e` 기준 master보다 314커밋 뒤). 먼저 지금 master(codec v151)에 맞춰야 한다. 클라이언트(`main.gd`·`model.gd`·
   `playthrough.gd`)가 옛 한 걸음 Agent 행 `agent_turn`을 20곳에서 읽는데, v150의 Agent 차례는 `choose_agent_card` → `place_agent` 두
   걸음이다. 기다리는 효과도 효과 줄 → 대상 줄로 바뀌었다(B3). master와 같이 고친 파일은 인수인계·worklog 둘뿐이다(2026-10-21 시험
-  병합). 계획과 상태는 그 브랜치의 `docs/godot-client-plan.md`와 인수인계에 있다.
+  병합). 계획과 상태는 그 브랜치의 `docs/godot-client-plan.md`와 인수인계에 있다. 2026-10-21 Claude 재검증(v148 그대로: 완주·계약·대조·메뉴
+  통과, 웹에서 빠진 턴 시작 카드 창·Reveal 선택 묶음, 보안 항목 3개)은 그 브랜치 worklog 맨 위에 있다.
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
 - **한국어 화면에 남은 영어(작음):** ⑤⑧⑨는 2026-10-14에 끝났다(OQ 번호·경로·명령 인자는 플레이 화면에서 뺌, 서버 오류는
@@ -256,7 +257,7 @@
 - `checkpoints/`는 git 무시라 기기 사이에는 파일을 복사한다. 탐색 AI 망을 바꿀 때는 새 이름으로 복사한 뒤
   `search.pt` 링크만 바꾼다. 저장 파일은 그 망 파일에 묶여 있어 옛 파일을 지우거나 덮어쓰면 그 저장을 못 연다.
 - 원격의 `kyungtae` 브랜치는 병합하지 않은 다른 사람의 브랜치다. 건드리지 않는다.
-- 원격의 `docs/godot-client-plan`은 다른 PC에서 하는 Godot 작업 브랜치다(위 "플레이 화면", master에 넣지 않음).
+- 원격의 `godot-client`(옛 이름 `docs/godot-client-plan`, 2026-10-21 원격에서 지움)는 다른 PC에서 하는 Godot 작업 브랜치다(위 "플레이 화면", master에 넣지 않음).
   `codex/windows-validation`은 2026-10-21에 master에 병합했다.
 
 ## 코드 탐색 지도
