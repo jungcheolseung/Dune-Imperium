@@ -17,6 +17,7 @@
 | 규칙에서 답이 나오는 평가 문제집(tips-v1) | [problem-set.md](problem-set.md) |
 | 처리량을 재는 절차 | [throughput-2026-09-10.md](throughput-2026-09-10.md). 학습 수집 약 2배(2026-10-12)는 [worklog/2026-10.md](../worklog/2026-10.md)에 있다 |
 | 현행 학습 엔진의 병목·개선 후보 | [engine-throughput-2026-10-12.md](engine-throughput-2026-10-12.md). WSL/5081에서 상태 복사·관측·앱 AI 비용을 나누고 임시 후보를 같은 판으로 대조 |
+| 모델 구조가 합리적인가, 다음 개선 순서 | [architecture-survey-2026-10-21.md](architecture-survey-2026-10-21.md). 다른 게임 AI 문헌 조사와 판단; 순서는 인수인계 "학습·AI" |
 
 ## 문서 목록
 
@@ -41,3 +42,4 @@
 | [m10-2026-10-11.md](m10-2026-10-11.md) | Y를 v142에 재적응한 Z@11681(Y보다 낫지 않음) | 계보 머리는 Y 유지 |
 | [problem-set.md](problem-set.md) | tips-v1 문제집의 구조와 codec마다의 재채굴 기록 | 갱신 중 |
 | [search-atomics-2026-10-12.md](search-atomics-2026-10-12.md) | 사용자가 본 탐색 AI의 이상한 수 네 장면 진단, 가문 핵 앱 규칙·단독 1등 전투 책략 보류 A/B, 셀프플레이 가문 핵 재적응(A)과 가치 진단 | 두 탐색 규칙의 근거, 가문 핵 학습 1단계 결과 |
+| [architecture-survey-2026-10-21.md](architecture-survey-2026-10-21.md) | 보드·카드·불완전 정보·대형 게임 AI의 구조 조사, 우리 두 망의 자리와 약점, 실험 E1~E8과 통과 규칙(측정 없음) | 계획의 근거 |
