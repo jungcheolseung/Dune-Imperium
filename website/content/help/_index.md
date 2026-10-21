@@ -2,7 +2,7 @@
 title = "도움말·문제 해결"
 description = "설치, 방 접속, 이미지, AI 선택과 저장에서 자주 묻는 질문을 모았습니다."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 60
 [params]
@@ -33,6 +33,7 @@ sources = ["README.md", "docs/remote-play-host-guide.md", "docs/remote-play-play
 ## 탐색 AI가 목록에 없습니다
 
 호스트가 호환 모델 파일과 추가 의존성을 준비했는지 확인하세요. 추가 패키지만 설치해도 모델이 자동으로 생기지는 않습니다.
+모델은 지금 엔진의 행동 버전에 맞게 학습한 것이어야 하며, 버전이 다른 모델은 목록에 나와도 기대만큼 강하지 않습니다.
 우선 별도 모델이 필요 없는 앱 AI로 시작할 수 있습니다. [AI 고르기]({{< relref "guides/choosing-ai.md" >}})
 
 ## 런처가 열리지 않거나 서버 시작에 실패합니다
@@ -72,7 +73,7 @@ uv run python -m dune_imperium.launcher.cli --check
 기본 저장 위치는 서버 PC의 프로젝트 폴더 안 `saves/`입니다. 업데이트로 규칙·행동 버전이 바뀌면 이전 저장을
 서버에서 바로 불러오지 못할 수 있습니다. 진행 중인 판은 같은 코드와 모델로 마치는 편이 좋습니다.
 원본 저장을 보존하고, 기보 이전이 필요하면
-[저장소의 기보 안내](https://github.com/jungcheolseung/Dune-Imperium/blob/e7e9ad4f/docs/human-records.md)를 확인하세요.
+[저장소의 기보 안내](https://github.com/jungcheolseung/Dune-Imperium/blob/master/docs/human-records.md)를 확인하세요.
 기보 이전과 예전 저장을 현재 서버에서 그대로 이어 하는 것은 같은 기능이 아닙니다.
 
 ## 버그나 제안은 어디에 남기나요?

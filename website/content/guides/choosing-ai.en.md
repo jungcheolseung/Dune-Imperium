@@ -2,7 +2,7 @@
 title = "Choosing an AI"
 description = "The default AI needs no model file; checkpoint and search AI require a compatible trained model."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 50
 [params]
@@ -39,7 +39,7 @@ Select the model in the launcher or use `checkpoints/play/search.pt`. In a termi
 uv run dune-imperium-server --autosave --search-checkpoint checkpoints/play/search.pt
 ```
 
-Search AI appears when the server can use the required model and packages. Guests do not need copies; the host runs the AI.
+Search AI appears when the server can use the required model and packages. The model must be trained for the engine's current action version (codec). A model from another version still loads, but decisions on actions it never learned fall back to the heuristic, so it plays weaker than expected. A model for the action units introduced on October 20, 2026 (codec v150) is still being retrained. Guests do not need copies; the host runs the AI.
 
 ## Thinking time
 

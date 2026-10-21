@@ -2,7 +2,7 @@
 title = "Hosting a room"
 description = "Run the server, create a room, and send friends the game link."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 20
 [params]
@@ -51,4 +51,4 @@ Keep the server PC and launcher running. Closing one guest's browser does not re
 
 Before stopping, use **Save now** in the host panel. Loading a save after restarting creates a new room link. Send that new link and have players reclaim their original seats.
 
-See the [detailed host guide](https://github.com/jungcheolseung/Dune-Imperium/blob/e7e9ad4f/docs/remote-play-host-guide.md) for firewall settings, address selection, releasing seats, and recovery. Native Windows hosting has not yet been validated on hardware.
+See the [detailed host guide](https://github.com/jungcheolseung/Dune-Imperium/blob/master/docs/remote-play-host-guide.md) for firewall settings, address selection, releasing seats, and recovery. Hosting on native Windows 11 has been checked, but guests connecting to a Windows host from another PC have not been tested yet.

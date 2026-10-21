@@ -2,7 +2,7 @@
 title = "Controls, saves, and updates"
 description = "Choosing cards and spaces, ending turns, undoing actions, saving, and version compatibility."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 40
 [params]
@@ -39,11 +39,11 @@ Restart the server and load from the save list. Restoring a remote game changes 
 
 ## Before updating
 
-Finish ongoing games with the same code and models where possible. A rules or action-version change may stop an old save from loading directly.
+Finish ongoing games with the same code and models where possible. A rules or action-version change may stop an old save from loading directly. Games with AI seats may also fail to load after an update that changes AI behaviour, because loading replays the AI's moves and compares them with the record.
 
 Keep the save folder and existing model files when moving or cleaning the project. Do not immediately delete the old model after replacing it; existing saves may depend on it.
 
-Tools can migrate earlier games into records for the current engine, but this does not guarantee resuming every old save in the current play server. See [game records](https://github.com/jungcheolseung/Dune-Imperium/blob/e7e9ad4f/docs/human-records.md).
+Tools can migrate earlier games into records for the current engine, but this does not guarantee resuming every old save in the current play server. See [game records](https://github.com/jungcheolseung/Dune-Imperium/blob/master/docs/human-records.md).
 
 ## More information
 

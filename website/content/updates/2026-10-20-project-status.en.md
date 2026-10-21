@@ -2,7 +2,7 @@
 title = "Initial status: available features and next work"
 description = "Current play features, installation method, and remaining engine and AI work as of October 20, 2026."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 tags = ["프로젝트 소식"]
 [params]
@@ -24,7 +24,7 @@ The interface provides Korean and English, saving/loading, permitted undo, and f
 - As a host: use [hosting a room]({{< relref path="guides/hosting.md" lang="en" >}}).
 - As a guest: use [joining a room]({{< relref path="guides/joining.md" lang="en" >}}).
 
-Installation is from source. The macOS launcher path has been checked; native Windows and separate Linux hardware checks remain. See [downloads]({{< relref path="downloads/_index.md" lang="en" >}}) and [validation scope]({{< relref path="about/support.md" lang="en" >}}).
+Installation is from source. The macOS launcher path has been checked; native Windows and separate Linux hardware checks remain. (Added October 21: checks of the launcher, server and remote seat joining on native Windows 11 had already been done on October 12 in separate work and were merged into master on the 21st. Manual checks such as guests connecting from other PCs remain.) See [downloads]({{< relref path="downloads/_index.md" lang="en" >}}) and [validation scope]({{< relref path="about/support.md" lang="en" >}}).
 
 ## Next work to record
 

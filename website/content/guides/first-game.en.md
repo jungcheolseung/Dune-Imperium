@@ -2,7 +2,7 @@
 title = "Your first game"
 description = "Prepare the source, start the server, and create a game with one human and three AI opponents."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 10
 [params]
@@ -11,7 +11,7 @@ sources = ["README.md", "pyproject.toml", ".python-version", "docs/remote-play-h
 +++
 Start with one human and three default AI opponents. You do not need model files or card and board images. You need a desktop browser and an environment that can run the game server.
 
-Launcher operation has been checked on macOS. Windows scripts and CLI paths exist, but native Windows and separate Linux hardware checks remain. [Validation scope]({{< relref path="about/support.md" lang="en" >}})
+The launcher and server have been checked on macOS and on native Windows 11. A few manual checks remain on Windows (such as guests connecting from other PCs), and Linux has not been checked separately. [Validation scope]({{< relref path="about/support.md" lang="en" >}})
 
 ## 1. Install Git and uv
 
@@ -83,7 +83,7 @@ The dependency command above is for a new play environment. In an existing devel
 ## 4. Create a game
 
 1. Set one of the four seats to human and the other three to app AI.
-2. Choose the base game and any familiar expansion options.
+2. Choose the rule options. The new-game screen opens with leader draft, CHOAM, promo cards, Bloodlines, Tech, Immortality, Go to 11 and Epic Game Mode all switched on (only Arrakeen Scouts is off). Uncheck them to learn the plain four-player game.
 3. Create the game and check whose decision is pending.
 4. Choose a card and space, resolve remaining choices, then press **End turn ▶**.
 

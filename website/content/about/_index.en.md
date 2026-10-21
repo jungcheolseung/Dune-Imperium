@@ -2,7 +2,7 @@
 title = "About the project"
 description = "A rules engine, a browser interface, and AI opponents for four-player Uprising."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 10
 [params]
@@ -29,8 +29,12 @@ We train models through repeated games and test both direct model decisions and 
 
 ## Current availability
 
-Installation is currently from source. The launcher and hosting workflow have been checked on macOS; native Windows and separate Linux checks remain. Original card and board images and trained models are not included in the source. A text interface and the default AI work without them.
+Installation is currently from source. The launcher and hosting workflow have been checked on macOS, and launcher, server and remote seat joining on native Windows 11; manual checks such as guests connecting from other PCs remain. Linux has not been checked separately. Original card and board images and trained models are not included in the source. A text interface and the default AI work without them. Development targets wide desktop screens; playing a whole game on a phone alone has not been validated.
 
 [Supported features]({{< relref path="about/support.md" lang="en" >}}) · [Downloads and installation]({{< relref path="downloads/_index.md" lang="en" >}}) · [Roadmap]({{< relref path="about/roadmap.md" lang="en" >}})
 
-This is an unofficial personal project, not a product or service provided by the original publisher.
+## The project and the original game
+
+This is an unofficial personal project, not an official game or digital product of the original publisher. Rules follow [Dire Wolf Digital's official resources](https://www.direwolfdigital.com/dune-imperium/resources/) first. Original card and board images are not distributed from this repository.
+
+Code and development documents are in the [GitHub repository](https://github.com/jungcheolseung/Dune-Imperium).

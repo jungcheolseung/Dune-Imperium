@@ -2,7 +2,7 @@
 title = "호스트로 방 만들기"
 description = "서버를 실행하고 방을 만든 뒤 친구들에게 참여 링크를 보냅니다."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 20
 [params]
@@ -62,5 +62,5 @@ Tailscale로 처음 연결하는 친구에게는 머신 공유 초대 링크도 
 그 링크를 다시 보내고 원래 좌석에 참여하게 합니다.
 
 Windows 방화벽·주소 선택·좌석 해제·복구의 상세 절차는
-[호스트 상세 가이드](https://github.com/jungcheolseung/Dune-Imperium/blob/e7e9ad4f/docs/remote-play-host-guide.md)를 참고하세요.
-Windows 네이티브 운영의 실기 검증은 아직 남아 있습니다.
+[호스트 상세 가이드](https://github.com/jungcheolseung/Dune-Imperium/blob/master/docs/remote-play-host-guide.md)를 참고하세요.
+Windows 11 네이티브 호스트의 서버 실행은 확인했지만, 다른 PC에서 Windows 호스트로 접속하는 경우는 아직 확인하지 않았습니다.

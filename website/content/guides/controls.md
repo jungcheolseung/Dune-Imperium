@@ -2,7 +2,7 @@
 title = "기본 조작·저장·업데이트"
 description = "카드와 칸 선택, 턴 종료, 되돌리기, 저장과 버전 변경 시 알아 둘 점을 안내합니다."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 40
 [params]
@@ -52,12 +52,13 @@ sources = ["README.md", "src/dune_imperium/server/static/ui_text.js", "src/dune_
 
 진행 중인 판은 사용하던 코드와 모델로 마친 뒤 업데이트하는 편이 좋습니다.
 규칙·행동 버전이 바뀌면 이전 저장을 현재 서버에서 바로 열지 못할 수 있습니다.
+AI 좌석이 있는 판은 불러올 때 AI의 수를 처음부터 다시 두어 기록과 대조하므로, AI의 동작이 바뀐 업데이트 뒤에도 열리지 않을 수 있습니다.
 
 프로젝트 폴더를 옮기거나 정리할 때는 저장 폴더와 사용하던 모델 파일을 함께 보존하세요.
 학습 모델을 새 파일로 교체해도 예전 파일을 바로 지우지 마세요. 기존 저장이 그 모델 파일을 필요로 할 수 있습니다.
 
 이전 판을 현재 엔진의 기보로 옮기는 도구는 있지만, 예전 게임을 현재 서버에서 언제나 그대로 이어 주는 기능을 뜻하지는 않습니다.
-이전이 필요하면 [기보 안내](https://github.com/jungcheolseung/Dune-Imperium/blob/e7e9ad4f/docs/human-records.md)를 확인하세요.
+이전이 필요하면 [기보 안내](https://github.com/jungcheolseung/Dune-Imperium/blob/master/docs/human-records.md)를 확인하세요.
 
 ## 더 알아보기
 

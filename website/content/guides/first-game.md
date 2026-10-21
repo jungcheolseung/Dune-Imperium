@@ -2,7 +2,7 @@
 title = "처음 한 판 시작하기"
 description = "소스를 준비하고 서버를 켠 다음 사람 한 명과 AI 세 명으로 첫 게임을 만듭니다."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 10
 [params]
@@ -13,8 +13,8 @@ sources = ["README.md", "pyproject.toml", ".python-version", "docs/remote-play-h
 처음에는 사람 한 명과 기본 AI 세 명으로 시작해 보세요. 학습 모델이나 카드·보드 이미지를
 준비하지 않아도 됩니다. PC의 브라우저와 게임 서버를 실행할 환경이 필요합니다.
 
-macOS에서는 런처 운영을 확인했습니다. Windows용 스크립트와 CLI 경로도 있지만 네이티브 실기 검증은 남아 있습니다.
-Linux 역시 별도 실기 검증이 남아 있습니다. [지원 현황]({{< relref "about/support.md" >}})
+macOS와 Windows 11(네이티브)에서 런처와 서버 실행을 확인했습니다. Windows는 다른 PC에서 접속하는 경우 같은 일부 수동 확인이 남아 있고,
+Linux는 별도 실기 확인이 남아 있습니다. [지원 현황]({{< relref "about/support.md" >}})
 
 ## 1. Git과 uv 준비
 
@@ -93,7 +93,7 @@ uv run dune-imperium-server --autosave
 ## 4. 첫 게임 만들기
 
 1. 네 좌석 중 내 좌석 하나를 사람으로, 나머지를 앱 AI로 설정합니다.
-2. 원하는 기본 게임과 확장 옵션을 고릅니다. 처음에는 익숙한 구성으로 시작하면 조작을 익히기 쉽습니다.
+2. 규칙 옵션을 고릅니다. 새 게임 화면은 지도자 드래프트, CHOAM, 프로모 카드, Bloodlines, Tech, Immortality, Go to 11, Epic Game Mode가 모두 켜진 채로 열립니다(Arrakeen Scouts만 꺼짐). 기본 4인 게임으로 익히려면 체크를 모두 끄세요.
 3. 게임을 만들고 화면에서 현재 내 차례와 선택할 수 있는 행동을 확인합니다.
 4. 카드와 칸을 고른 뒤 남은 선택을 처리하고 **턴 종료 ▶**를 누릅니다.
 

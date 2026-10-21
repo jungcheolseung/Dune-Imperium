@@ -2,7 +2,7 @@
 title = "Help and troubleshooting"
 description = "Answers to installation, connections, seats, AI models, and save-file questions."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 60
 [params]
@@ -27,7 +27,7 @@ Original images are not included in the source. The text interface works without
 
 ## Search AI is not listed
 
-Check that the host has a compatible model and the additional dependencies. Installing packages alone does not create a model file. You can start with app AI without a model. [Choosing an AI]({{< relref path="guides/choosing-ai.md" lang="en" >}})
+Check that the host has a compatible model and the additional dependencies. Installing packages alone does not create a model file. The model must be trained for the engine's current action version; a model from another version may appear in the list but plays weaker than expected. You can start with app AI without a model. [Choosing an AI]({{< relref path="guides/choosing-ai.md" lang="en" >}})
 
 ## The launcher will not open or the server fails to start
 
@@ -60,7 +60,7 @@ Check for **End turn ▶** or **Confirm ▶**. Some choices require explicit con
 
 The default folder is `saves/` inside the project on the server PC. Rules/action-version changes can prevent old saves from loading directly. Finish ongoing games on the same code and models when possible.
 
-Keep the originals and consult [record migration](https://github.com/jungcheolseung/Dune-Imperium/blob/e7e9ad4f/docs/human-records.md) if needed. Migrating a game record and resuming an old save unchanged are different features.
+Keep the originals and consult [record migration](https://github.com/jungcheolseung/Dune-Imperium/blob/master/docs/human-records.md) if needed. Migrating a game record and resuming an old save unchanged are different features.
 
 ## Where can I report a bug or suggest a feature?
 

@@ -2,7 +2,7 @@
 title = "AI 고르기"
 description = "별도 모델 없이 시작하는 기본 AI와 학습 모델을 사용하는 AI의 차이를 안내합니다."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 50
 [params]
@@ -46,6 +46,8 @@ uv run dune-imperium-server --autosave --search-checkpoint checkpoints/play/sear
 ```
 
 서버가 필요한 패키지와 모델을 사용할 수 있을 때 탐색 AI가 선택 목록에 나타납니다.
+모델은 지금 엔진의 행동 버전(codec)에 맞게 학습한 것이어야 합니다. 버전이 다른 모델도 불러올 수는 있지만,
+학습하지 않은 행동의 결정은 휴리스틱으로 대신하므로 기대만큼 강하지 않습니다. 2026년 10월 20일 행동 단위가 바뀐(codec v150) 뒤의 모델은 다시 학습하고 있습니다.
 원격 참가자에게는 모델을 복사할 필요가 없습니다. 서버 PC가 AI를 실행합니다.
 
 ## 생각하는 시간이 있나요?
