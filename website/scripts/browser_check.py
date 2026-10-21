@@ -79,8 +79,12 @@ def check_languages_and_themes(browser, base: str, screenshots: Path | None) -> 
     page.get_by_role("navigation", name="Article categories").get_by_role("link", name="Rules engine", exact=True).click()
     expect(page.get_by_role("heading", level=1)).to_have_text("Rules engine")
     expect(page.locator(".listing-grid .story-card")).to_have_count(1)
+    index = page.request.get(base + "en/index.json").json()
+    journal_urls = {item["url"] for item in index if item["section"] == "devlog" and not item["url"].endswith("/en/devlog/")}
     page.goto(base + "en/devlog/")
-    expect(page.locator(".journal-entry")).to_have_count(16)
+    expect(page.locator(".journal-entry")).to_have_count(len(journal_urls))
+    archive_urls = page.locator(".journal-entry h3 a").evaluate_all("links => links.map(link => link.getAttribute('href'))")
+    assert set(archive_urls) == journal_urls
     page.locator(".journal-entry h3 a").last.click()
     page.get_by_role("link", name="Next work").click()
     expect(page.get_by_role("heading", level=1)).to_have_text("Rules specification and a one-round engine")

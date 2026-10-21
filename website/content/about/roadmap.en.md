@@ -2,11 +2,11 @@
 title = "Roadmap"
 description = "Current development work and remaining checks, without promised release dates."
 date = 2026-10-20
-lastmod = 2026-10-20
+lastmod = 2026-10-21
 draft = false
 weight = 30
 [params]
-source_ref = "e7e9ad4f"
+source_ref = "c8f61677"
 sources = ["docs/development-handoff.md", "docs/composed-effects-plan.md", "docs/entity-network-plan.md"]
 +++
 The goal is a reliable rules engine and AI people want to play against. These are current directions, not a release schedule.
@@ -17,9 +17,9 @@ Four-player Uprising and selectable modules can be played to completion, against
 
 ## Continuing work
 
-**Make the rules engine's representation consistent.** Card and board effects have been moving to shared records. The next design work concerns more consistent player-action units. Replay checks accompany changes that affect saves and models.
+**Make the rules engine's representation consistent.** Card and board effects are recorded as shared pieces, and player actions are split into card, space, effect, and target steps. The plan's remaining stage adds Rise of Ix, base-game Imperium, and Conspiracy cards as the same records. Replay checks accompany changes that affect saves and models.
 
-**Represent cards and actions in the model.** We experiment with architectures that read entity features. A new architecture alone is not a reason to replace the play model; actual matches and search performance determine that choice.
+**Represent cards and actions in the model.** We experiment with architectures that read entity features and are retraining the play model for the new action units. A new architecture alone is not a reason to replace the play model; actual matches and search performance determine that choice.
 
 **Improve play usability.** Work continues on unavailable-choice explanations, confirmation and undo, and save/recovery guidance. Feedback from games with friends informs these changes.
 
