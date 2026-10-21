@@ -62,6 +62,7 @@ from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
     OLDER_PREFIX,
+    SEARCH_OPTION_SEPARATOR,
     SEARCH_PREFIX,
     SEARCH_VALUE_SEPARATOR,
     is_agent_kind,
@@ -2274,11 +2275,18 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
-        # A split search seat is a measurement tool; a table seat names one
-        # file, which is what the players are shown (``_public_seat_kind``).
-        if SEARCH_VALUE_SEPARATOR in assignment:
+        # A split search seat, or one with search options, is a measurement
+        # tool; a table seat names one file, which is what the players are
+        # shown (``_public_seat_kind``).
+        if assignment.startswith(SEARCH_PREFIX) and (
+            SEARCH_OPTION_SEPARATOR in assignment
+        ):
+            if SEARCH_VALUE_SEPARATOR in assignment:
+                raise SessionError(
+                    f"a split search seat is not a table seat: {assignment!r}"
+                )
             raise SessionError(
-                f"a split search seat is not a table seat: {assignment!r}"
+                f"a search seat with options is not a table seat: {assignment!r}"
             )
         # So is an older-codec network's seat, the stage B retrain's teacher
         # (``training.older_teacher``, 2026-10-21): whether it may sit at a

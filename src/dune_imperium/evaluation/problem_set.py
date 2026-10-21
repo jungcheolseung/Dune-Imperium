@@ -43,7 +43,11 @@ from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.adapters.observation_encoding import OBSERVATION_VERSION
 from dune_imperium.agents import Agent, StateAgent
 from dune_imperium.agents.agent_turn_steps import apply_whole
-from dune_imperium.agents.registry import SEARCH_VALUE_SEPARATOR, make_agent
+from dune_imperium.agents.registry import (
+    SEARCH_PREFIX,
+    make_agent,
+    parse_search_kind,
+)
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import (
     contract_for_instance,
@@ -451,9 +455,16 @@ def _seating(spec: MatchSpec) -> str:
 def _seat_label(kind: str) -> str:
     if ":" not in kind:
         return kind
-    policy, separator, value = kind.partition(":")[2].partition(SEARCH_VALUE_SEPARATOR)
-    label = Path(policy).stem
-    return f"{label}+{Path(value).stem}" if separator else label
+    if kind.startswith(SEARCH_PREFIX):
+        path, options = parse_search_kind(kind)
+        label = Path(path).stem
+        value = options.pop("value_path", None)
+        if value is not None:
+            label += f"+{Path(str(value)).stem}"
+        for name, setting in sorted(options.items()):
+            label += f"+{name}={setting}"
+        return label
+    return Path(kind.partition(":")[2]).stem
 
 
 def _engine(spec: MatchSpec) -> UprisingRulesEngine:
