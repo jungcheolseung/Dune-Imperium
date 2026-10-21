@@ -2979,13 +2979,13 @@ def _eligible_reveal_effects(
     )
 
 
-_GRANTED_EFFECTS_KEY = "granted_reveal_effects"
+_GRANTED_LINES_KEY = "granted_reveal_lines"
 
 
-def _granted_reveal_effects(
+def _granted_reveal_lines(
     context: dict[str, ActionValue],
 ) -> dict[str, int | None]:
-    """Decode which automatic Reveal effects already paid out this Reveal.
+    """Decode which automatic Reveal lines already paid out this Reveal.
 
     Keys are ``card#index`` over the card's Reveal lines; the value is the
     completed-Contract count a per-Contract Persuasion effect was last paid
@@ -2993,7 +2993,7 @@ def _granted_reveal_effects(
     effect.
     """
 
-    value = context.get(_GRANTED_EFFECTS_KEY, "")
+    value = context.get(_GRANTED_LINES_KEY, "")
     if not isinstance(value, str):
         raise RuntimeError("Reveal frame has invalid granted effects")
     granted: dict[str, int | None] = {}
@@ -3042,7 +3042,7 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
     frames = state.decision_stack
     position = _reveal_frame_position(frames)
     context = frame_context(frames[position])
-    granted = _granted_reveal_effects(context)
+    granted = _granted_reveal_lines(context)
     owner = state.players[player]
     revealed_ids = tuple(
         context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
@@ -3507,9 +3507,9 @@ def _record_granted_effects(
         return frames
     position = _reveal_frame_position(frames)
     context = frame_context(frames[position])
-    granted = _granted_reveal_effects(context)
+    granted = _granted_reveal_lines(context)
     granted.update(entries)
-    context[_GRANTED_EFFECTS_KEY] = _encode_granted(granted)
+    context[_GRANTED_LINES_KEY] = _encode_granted(granted)
     return (
         *frames[:position],
         with_context(frames[position], context),
@@ -3605,7 +3605,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         return result
     player = frame.decision.owner
     context = frame_context(frame)
-    granted = _granted_reveal_effects(context)
+    granted = _granted_reveal_lines(context)
     owner = state.players[player]
     revealed_ids = tuple(
         context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
@@ -3707,10 +3707,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                                 event_id=(
                                     f"{source}:{index}:late_contracts:{completed}"
                                 ),
-                                kind="reveal_effect_granted_late",
+                                kind="reveal_line_granted_late",
                                 payload=(
                                     ("card_id", card_id),
-                                    ("effect_index", index),
+                                    ("line_index", index),
                                     ("persuasion", delta),
                                     ("player", player),
                                 ),
@@ -3780,10 +3780,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 events.append(
                     GameEvent(
                         event_id=f"{source}:{index}:late",
-                        kind="reveal_effect_granted_late",
+                        kind="reveal_line_granted_late",
                         payload=(
                             ("card_id", card_id),
-                            ("effect_index", index),
+                            ("line_index", index),
                             ("persuasion", persuasion),
                             ("player", player),
                             ("solari", effect.solari),
@@ -5065,7 +5065,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             if effect.strength_per_other_sword_card and key in granted_at_start:
                 granted_at_start[key] = other_sword_cards[card_id]
     context: list[tuple[str, ActionValue]] = [
-        (_GRANTED_EFFECTS_KEY, _encode_granted(granted_at_start)),
+        (_GRANTED_LINES_KEY, _encode_granted(granted_at_start)),
         # Combat-icon deployment during the Reveal [Bloodlines p. 5]: open
         # when an icon arrived earlier this turn, counting this Reveal's
         # recruits toward the limit.

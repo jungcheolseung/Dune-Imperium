@@ -98,7 +98,7 @@ OTHER_FRAME_KEYS = frozenset(
         "deferred_reveal_choices",
         "exclude_space",
         "excluded_space_id",
-        "granted_reveal_effects",
+        "granted_reveal_lines",
         "guild_spy_fired",
         "hand",
         "icons",
