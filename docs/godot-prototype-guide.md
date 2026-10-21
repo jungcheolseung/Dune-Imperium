@@ -1,7 +1,7 @@
 # Godot 플레이 시제품 실행
 
 상태: Windows x64용 시작 스크립트와 PC 2D 시제품. 작업 브랜치는
-`docs/godot-client-plan`이며 master에는 반영하지 않는다.
+`godot-client`이며 master에는 반영하지 않는다.
 
 **Python·uv가 없는 Windows에서는 [설치 없는 ZIP 안내](godot-windows-package.md)를 따른다.**
 아래 저장소·uv 실행과 Git bundle은 개발 환경용이다. 개인 테스트 ZIP에는 런타임과 그림이 들어 있다.
@@ -146,12 +146,12 @@ Windows에서 시제품 때문에 새 에셋 심볼릭 링크를 만들 필요�
 
 ```powershell
 git bundle verify "C:\Downloads\godot-prototype.bundle"
-git fetch "C:\Downloads\godot-prototype.bundle" docs/godot-client-plan
+git fetch "C:\Downloads\godot-prototype.bundle" godot-client
 git worktree add --detach tmp/godot-complete-preview FETCH_HEAD
 ```
 
 이후 `tmp\godot-complete-preview\scripts\godot\Play Prototype.cmd`를 더블클릭한다.
-이 미리보기 작업 트리는 실행용이며, 본 구현과 커밋은 `docs/godot-client-plan` 브랜치에서 한다.
+이 미리보기 작업 트리는 실행용이며, 본 구현과 커밋은 `godot-client` 브랜치에서 한다.
 에셋은 메인 체크아웃에서 찾아 읽고, 미리보기 판의 저장·로그는 미리보기 작업 폴더에 둔다.
 기존 `tmp/godot-preview`의 저장을 유지하며 업데이트하려면 새 작업 트리를 만들지 않고,
 fetch 직후 다음을 실행해 그 미리보기 작업 트리만 새 커밋으로 옮긴다(master는 그대로다).

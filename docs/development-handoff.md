@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-18 (`docs/godot-client-plan`, 메인 메뉴·실행 중 호스팅과 수정본 Windows ZIP)
+기준일: 2026-10-21 (`godot-client`로 이름 변경과 Claude 재검증; 소스는 그대로 v148)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,7 +28,7 @@
 
 | 항목 | 값 |
 | --- | --- |
-| Godot 분기 · 원격 master | `docs/godot-client-plan`을 origin/master `7ba624ad`(composed-a1, 2026-10-16) 뒤로 리베이스. Godot 구현은 이 브랜치에만 유지 |
+| Godot 분기 · 원격 master | `godot-client`을 origin/master `7ba624ad`(composed-a1, 2026-10-16) 뒤로 리베이스. Godot 구현은 이 브랜치에만 유지 |
 | pytest | 직전 전체(2026-10-18 리베이스 직후) 7,766 통과·9 skip·PettingZoo 경고 2개, 7,775개 수집. 메인 메뉴 작업 뒤 관련 런처·원격 권한 회귀 337 통과·macOS 전용 2 skip(새 host control 16개 포함), 전체 재실행 안 함 |
 | Ruff · mypy | Godot 브랜치 `src tests scripts/godot` 통과, mypy 522파일. `scripts/`의 다른 기존 Ruff 오류 68건은 검사 대상 아님 |
 | 브라우저 E2E | `scripts/e2e/` 67종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-16 효과 조각 엔진 전환 A1(67 모두 통과) |
@@ -104,7 +104,11 @@
 
 **플레이 화면**
 
-- **Godot PC 2D 클라이언트:** `docs/godot-client-plan` 브랜치에만 구현, master 반영 금지(사용자 결정).
+- **Godot PC 2D 클라이언트:** `godot-client` 브랜치에만 구현, master 반영 금지(사용자 결정).
+  **2026-10-21 재검증과 다음 작업:** 완주(기본 4판·전 옵션 2판)·계약·대조 core/info/quantity·패널·메뉴는
+  통과했고, 깨져 있던 검사 도구 둘을 고쳤다. 웹에는 있는데 없는 흐름(턴 시작 카드 창, Reveal 선택 묶음,
+  서버 오류 한국어)과 보안 항목(관리자 쿠키 파일 저장, 프로젝트 밖 Godot 사용자 폴더, SSE origin)은
+  worklog [2026-10-21 Godot 브랜치 이름 변경과 Claude 재검증]에 있다. **다음은 master v150 이전**이다.
   **업데이트 ZIP/전체 패키지는 사용자가 요청할 때만 만든다**(2026-10-15 사용자 결정).
   시작 화면은 **싱글플레이·멀티플레이·설정·게임종료**다(`f5c09548`). 모드 선택 뒤 서버를 켜며,
   멀티플레이는 즉시 서버 설정에서 LAN/Tailscale 탐색·켜기/끄기·방 만들기·초대 링크 복사와

@@ -2,7 +2,7 @@
 
 사용자 결정(2026-10-14): 플레이 컴퓨터에 Python·uv가 없으며 앞으로도 설치를 전제로 하지 않는다.
 개발용 Git bundle 대신 **ZIP 전체를 풀고 더블클릭하는 폴더 배포본**을 제공한다.
-작업은 `docs/godot-client-plan` 브랜치에만 남긴다.
+작업은 `godot-client` 브랜치에만 남긴다.
 
 ## 실행
 
@@ -159,7 +159,7 @@ manifest 일치 검증으로 읽지 않는다. 전체본의 런타임·그림을
 ## 개발자 빌드
 
 빌드 머신은 저장소와 uv를 사용한다. 플레이 머신은 사용하지 않는다.
-`docs/godot-client-plan` 브랜치의 저장소 루트에서 실행한다. Windows PowerShell에서도
+`godot-client` 브랜치의 저장소 루트에서 실행한다. Windows PowerShell에서도
 아래 한 줄로 같은 Windows x64 ZIP을 만든다(Linux/WSL에서도 교차 빌드 가능).
 
 ```powershell

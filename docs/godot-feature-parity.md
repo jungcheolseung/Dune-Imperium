@@ -1,7 +1,7 @@
 # Godot의 기존 웹 기능 대응
 
 사용자 결정(2026-10-14): 비슷해진 테이블 배치를 유지하고 기존 기능 전체의 대응을 이어 간다.
-작업은 `docs/godot-client-plan`에서만 한다. 이 표는 구현한 대응과 실제 검증 범위를 구분한다. Windows 실기와 전수 카드 감사는 별도다.
+작업은 `godot-client`에서만 한다. 이 표는 구현한 대응과 실제 검증 범위를 구분한다. Windows 실기와 전수 카드 감사는 별도다.
 Python 규칙·AI·codec·저장 형식은 그대로 사용하고, 두 클라이언트의 표시와 입력을 대조한다.
 
 | 영역 | 대응 내용 | 현재 검증 / 남은 것 | 웹 검증 기준 |
@@ -17,6 +17,18 @@ Python 규칙·AI·codec·저장 형식은 그대로 사용하고, 두 클라이
 | 플레이 편의 | 한국어/영어, 도움말, 게임/좌석/차례 시계, 열 너비·손패 순서·접힘 설정 | 555 UI 번역+native 문구·동적 prompt, 시계/도움말, 실제 손패/열 드래그와 설정 저장, 접힘·두 언어의 1440×900/1100×740 입력 검사. Windows IME 실기 남음 | lang, clock, help, layout_custom, columns, seats, narrow |
 | 선택 불가 / 효과 | 이유·조건·비용, agent-box 구분·예고, 자원 변화·카드/단계/전투 연출·서로 다른 합성 효과음 | 서버 이유·예고·비용·shortfall·접목 box를 표현하고 합법 수량만 선택. 공개 변화/카드/단계 cue와 서로 다른 PCM 합성음·음량/끄기/움직임 줄이기. 실제 스피커 청취는 Windows 피드백 | unavailable, effect_text, card_hover, table_effects, phase_banner, scouts_decision_item |
 | 설치 없는 배포 | Windows 런타임·개인 그림 동봉, 앱 종료·서버 정리, 누적 프로그램 업데이트 | 이전 Windows 사용자 실행 확인. 최신 패널 업데이트 2.83 MiB. 보존한 직전 소스의 프로그램 353파일 및 새 ZIP/적용 복사본의 357파일 hash·최소 환경 시작/undo/종료 검증. 이전 전체 ZIP은 이번에 재검사하지 않음. 새 Windows 실기 피드백 남음 | native bootstrap/portable 회귀 및 실제 Windows 피드백 |
+
+## 웹에는 있고 Godot에는 없는 것 (2026-10-21 확인)
+
+10-18 리베이스는 Godot 소스를 그대로 옮겼으므로, v145 기준 뒤에 웹에 생긴 흐름은 아래 표만큼 빠져 있다.
+위 표의 "대응 내용"은 이 항목들을 포함하지 않는다. master v150의 변경(Agent 차례 두 걸음 등)은 따로 옮긴다.
+
+| 웹 기능 | 웹 위치 | Godot의 지금 동작 |
+| --- | --- | --- |
+| 턴 시작 카드 창(사용자 결정 2026-10-14): 턴 시작 play를 먼저, 그것만 묻고 "쓰지 않음"은 이 화면에서만 치운다 | `static/turn.js` turnStartWindowOf | Agent 차례에 섞어 보여 주며, 배치하면 그 play가 사라진다 |
+| Reveal 선택 묶음(codec v147): 공개 효과 → 카드별 선택 머리줄·남김 여부 → 살 수 있는 카드 | `static/render.js` revealChoiceGroups, `reveal_choices` | 서버 순서의 평면 목록(선택창 대조 `choice-contract` 실패) |
+| 서버 오류의 한국어 표시 | `static/errors_ko.js` | 서버의 영어 문구 그대로 |
+| 보류 선택 중 그 결정의 명시적 종료 행을 목록에 되돌림 | `static/render.js` 보류 선택 처리 | 종료 행이 목록에서 빠져 보류를 풀어야 고를 수 있다 |
 
 ## 같은 국면의 직접 대조
 
