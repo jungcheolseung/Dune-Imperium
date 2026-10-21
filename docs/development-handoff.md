@@ -63,9 +63,12 @@
 
 **엔진**
 
-- **원판·Rise of Ix — 계획·결정 끝, 다음 P0(2026-10-21):** [base-game-and-ix-plan.md](base-game-and-ix-plan.md). 새 세션이 12절
-  순서로 P0(공식 출처 등록·규칙 명세 두 편·앱 자료 로컬 추출·도구 시범·새 OQ 한꺼번에)를 Mac mini에서 시작한다. P0의 OQ 판정 전에는
-  P1(엔진) 착수 금지. [2026-10-21 원판·Rise of Ix 구현 계획]
+- **원판·Rise of Ix — P0 산출물 끝, 사용자 판정 대기(2026-10-22, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
+  [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
+  [rules/rise-of-ix.md](rules/rise-of-ix.md), 새 OQ-113 ~ OQ-127(`OPEN`), 진행 결정 D1 ~ D5(전사 흐름, 카드면 그림 출처, 보드에만 인쇄된 값, 도구 채택,
+  시범 전사 시점). **이 판정들이 나오기 전에는 P1(엔진) 착수 금지.** 측정 둘이 계획을 바꾼다: 원판·Ix는 앱 문구가 카드 칸을 다 덮지 않고(Imperium 76장 중
+  아이콘 태그 문구 14장), Dune Cards Hub 그림에 틀린 것이 섞여 있다(Duncan Idaho). 앱 자료·카드별 전사 자료는 git 밖(에셋
+  `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 worktree의 `tmp/claude/d0c52597/`). [2026-10-22 원판·Rise of Ix P0]
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
   다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —
