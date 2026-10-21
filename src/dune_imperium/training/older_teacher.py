@@ -30,6 +30,11 @@ A decision the older engine never asked -- a Conflict reward's or a
 Contract's icons in the seat's order (stage B2) -- takes that engine's
 fixed answer (``engine_order_answer``), and one with no mapped whole action
 goes to the heuristic, as ``NetworkAgent`` does with untrained rows.
+
+A search seat given such a file (``search:<path>``, ``reads_older_rows``)
+plays it the same way: its candidates are ranked by ``row_scores``, its
+playouts are ``OlderNetworkAgent`` games and its leaves the file's value
+head (``agents.network_search_agent``).
 """
 
 from __future__ import annotations
@@ -40,7 +45,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import torch
@@ -66,6 +71,12 @@ ENGINE_ORDER = "engine_order"
 FALLBACK = "fallback"
 
 _STRIPPED = (("printed",), ("printed", "source"))
+
+# The first codec that offers an Agent turn as a card pick and a space pick
+# (stage B1). An MLP file written before it reaches only a few rows of a
+# current catalog -- 84 of 4,311 for the play network -- so a seat plays it
+# through this module instead of its migrated rows (``reads_older_rows``).
+STEP_CODEC_VERSION: Final = 150
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +149,31 @@ def cached_older_network(path: str | Path) -> OlderNetwork:
 
     resolved = str(Path(path).expanduser())
     return _cached_older(resolved, os.path.getmtime(resolved))
+
+
+@lru_cache(maxsize=16)
+def _file_kind(path: str, modified: float) -> tuple[int, str] | None:
+    """The file's codec version and architecture, or None when it cannot be
+    read so (``load_checkpoint`` then reports what is wrong with it)."""
+
+    del modified  # part of the key so a rewritten file is read again
+    try:
+        document = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+        arch = document.get("arch")
+        kind = "mlp" if arch is None else str(arch.get("kind", "mlp"))
+        return int(document["action_codec_version"]), kind
+    except (RuntimeError, ValueError, KeyError, TypeError, AttributeError, OSError):
+        return None
+
+
+def reads_older_rows(path: str | Path) -> bool:
+    """Whether a seat plays ``path`` through this module: an MLP file of a
+    codec before ``STEP_CODEC_VERSION`` (the only architecture
+    ``load_older_network`` reads)."""
+
+    resolved = str(Path(path).expanduser())
+    found = _file_kind(resolved, os.path.getmtime(resolved))
+    return found is not None and found[1] == "mlp" and found[0] < STEP_CODEC_VERSION
 
 
 def load_older_agent(path: str, *, seed: int = 0) -> OlderNetworkAgent:
@@ -215,6 +251,48 @@ class OlderTeacher:
                 kept.append(whole)
                 targets.append(target)
         return tuple(kept), targets
+
+    def untrained_only(
+        self,
+        state: GameState,
+        player: int,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> bool:
+        """Whether no whole action of the decision has a row of the file:
+        ``answer`` hands such a decision to the heuristic."""
+
+        wholes, _ = self.wholes(state, player, legal_actions)
+        return all(older_row(self.older.rows, whole) is None for whole in wholes)
+
+    def row_scores(
+        self,
+        state: GameState,
+        player: int,
+        legal_actions: tuple[DomainAction, ...],
+        observation: np.ndarray,
+    ) -> np.ndarray:
+        """Each legal row's log probability under ``answer``'s distribution
+        (the softmax over the whole actions, summed onto their rows), in
+        log-sum-exp form so a small probability never rounds to zero; a row
+        no whole action reaches scores -inf. A search ranks its candidates
+        by it."""
+
+        scores = np.full(len(legal_actions), -np.inf, dtype=np.float64)
+        wholes, targets = self.wholes(state, player, legal_actions)
+        if not wholes:
+            return scores
+        rows = [older_row(self.older.rows, whole) for whole in wholes]
+        logits, _ = self.older.scores(observation, rows)
+        total = np.logaddexp.reduce(logits)
+        for target in set(targets):
+            mine = logits[[index for index, row in enumerate(targets) if row == target]]
+            scores[target] = np.logaddexp.reduce(mine) - total
+        return scores
+
+    def value(self, observation: np.ndarray) -> float:
+        """The file's value of the position."""
+
+        return self.older.scores(observation, [])[1]
 
     def whole_scores(
         self,
