@@ -61,7 +61,11 @@ from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
 from dune_imperium.training.checkpoint import load_checkpoint
 from dune_imperium.training.network import PolicyValueNetwork
-from dune_imperium.training.policy import PolicyRequest, without_undo_actions
+from dune_imperium.training.policy import (
+    BatchPolicy,
+    PolicyRequest,
+    without_undo_actions,
+)
 
 TemplateKey = tuple[str, tuple[tuple[str, Any], ...]]
 
@@ -445,6 +449,28 @@ class OlderNetworkAgent:
         return self._memory.choose(state, player, legal_actions, decide)
 
 
+# Each game's teacher answers in order: the legal catalog indices offered
+# and the answer over them (``OlderTeacherPolicy.answers``).
+GameAnswers = dict[int, list[tuple[tuple[int, ...], TeacherAnswer]]]
+
+
+def _label(
+    teacher: OlderTeacher, answers: GameAnswers, request: PolicyRequest
+) -> TeacherAnswer:
+    """The teacher's answer to ``request``, kept at the end of its game's list."""
+
+    answer = teacher.answer(
+        request.state,
+        request.seat,
+        request.view,
+        request.legal_actions,
+        request.observation,
+        key=(request.game, request.seat),
+    )
+    answers.setdefault(request.game, []).append((request.legal_indices, answer))
+    return answer
+
+
 @dataclass(slots=True)
 class OlderTeacherPolicy:
     """Sampled self-play policy of an ``OlderTeacher`` that keeps its answers.
@@ -457,9 +483,7 @@ class OlderTeacherPolicy:
 
     teacher: OlderTeacher
     seed: int
-    answers: dict[int, list[tuple[tuple[int, ...], TeacherAnswer]]] = field(
-        default_factory=dict
-    )
+    answers: GameAnswers = field(default_factory=dict)
     _rng: np.random.Generator | None = None
 
     def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
@@ -467,18 +491,33 @@ class OlderTeacherPolicy:
             self._rng = np.random.default_rng(self.seed)
         chosen: list[int] = []
         for request in requests:
-            answer = self.teacher.answer(
-                request.state,
-                request.seat,
-                request.view,
-                request.legal_actions,
-                request.observation,
-                key=(request.game, request.seat),
-            )
-            self.answers.setdefault(request.game, []).append(
-                (request.legal_indices, answer)
-            )
+            answer = _label(self.teacher, self.answers, request)
             size = len(answer.probabilities)
             pick = int(self._rng.choice(size, p=answer.probabilities))
             chosen.append(request.legal_indices[pick])
         return chosen
+
+
+@dataclass(slots=True)
+class LabelledStudentPolicy:
+    """A student plays; an ``OlderTeacher`` labels every decision it is asked.
+
+    Student-position distillation (DAgger; Czarnecki et al. 2019,
+    "Distilling Policy Distillation"): the data's positions are the ones
+    the student itself reaches, while each keeps the teacher's distribution
+    and value. ``student`` answers every request -- for the data a
+    ``TorchBatchPolicy`` sampling the student network at temperature 1, as
+    the collector's learner does -- after the teacher answered it, and
+    ``answers`` keeps those answers exactly as ``OlderTeacherPolicy.answers``
+    does, so ``older_distill.teacher_rows`` lines them up with the recorded
+    steps the same way.
+    """
+
+    teacher: OlderTeacher
+    student: BatchPolicy
+    answers: GameAnswers = field(default_factory=dict)
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        for request in requests:
+            _label(self.teacher, self.answers, request)
+        return self.student.act(requests)

@@ -11,13 +11,25 @@ collector's learner does, and the data keeps that distribution and the
 file's value of every position. Worker processes each play a share of an
 iteration's games and return their rows; the shard is their rows in the
 order of the games.
+
+With a student (``older_shard(student=...)``, ``distill_entity.py data
+--older --student``) the learner seats are the student's instead: a
+checkpoint of the current codec, loaded once per worker process for the
+game's ruleset (``load_student``), samples its policy at temperature 1
+over the same legal rows (``TorchBatchPolicy``, the collector's learner),
+and the teacher still answers every learner decision
+(``LabelledStudentPolicy``). The rows are the same ``TeacherData``, so a
+student is trained on the positions it reaches itself (student-position
+distillation, DAgger) on a mix of such shards and the teacher's own.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from functools import lru_cache
 from multiprocessing import get_context
 from pathlib import Path
 
@@ -26,11 +38,14 @@ import torch
 
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.config import RulesetConfig
+from dune_imperium.training.checkpoint import CheckpointInfo, load_checkpoint
 from dune_imperium.training.collect import LEARNER
+from dune_imperium.training.network import PolicyValueNetwork
 from dune_imperium.training.older_teacher import (
+    GameAnswers,
+    LabelledStudentPolicy,
     OlderTeacher,
     OlderTeacherPolicy,
-    TeacherAnswer,
     cached_older_network,
 )
 from dune_imperium.training.policy import AgentBatchPolicy
@@ -41,6 +56,7 @@ from dune_imperium.training.selfplay import (
     select_policy_steps,
 )
 from dune_imperium.training.teacher import TeacherData, _sparse, concatenate
+from dune_imperium.training.torch_policy import TorchBatchPolicy
 
 _SEATS = 4
 
@@ -57,11 +73,34 @@ class OlderJob:
     policy_seed: int
     opponent_seed: int
     max_steps: int
+    # The checkpoint playing the learner seats; None: the teacher plays them.
+    student_path: str | None = None
+
+
+@lru_cache(maxsize=2)
+def _cached_student(
+    path: str, modified: float, ruleset: RulesetConfig
+) -> tuple[PolicyValueNetwork, CheckpointInfo]:
+    del modified  # part of the key so a rewritten file reloads
+    network, info = load_checkpoint(Path(path), ruleset=ruleset)
+    network.eval()
+    return network, info
+
+
+def load_student(
+    path: str | Path, ruleset: RulesetConfig
+) -> tuple[PolicyValueNetwork, CheckpointInfo]:
+    """A student checkpoint answering ``ruleset``'s catalog, loaded once per
+    process and file (``load_checkpoint(ruleset=...)``, as a seat of
+    another game loads a file)."""
+
+    resolved = str(Path(path).expanduser())
+    return _cached_student(resolved, os.path.getmtime(resolved), ruleset)
 
 
 def teacher_rows(
     episodes: Sequence[Episode],
-    answers: dict[int, list[tuple[tuple[int, ...], TeacherAnswer]]],
+    answers: GameAnswers,
     *,
     ruleset: str,
     action_size: int,
@@ -122,7 +161,19 @@ def play_job(job: OlderJob) -> TeacherData:
     torch.set_num_threads(1)
     older = cached_older_network(job.teacher_path)
     teacher = OlderTeacher(older, seed=job.policy_seed)
-    policy = OlderTeacherPolicy(teacher, job.policy_seed)
+    policy: OlderTeacherPolicy | LabelledStudentPolicy
+    if job.student_path is None:
+        policy = OlderTeacherPolicy(teacher, job.policy_seed)
+    else:
+        network, _ = load_student(job.student_path, job.ruleset)
+        student = TorchBatchPolicy(
+            network,
+            torch.device("cpu"),
+            seed=job.policy_seed,
+            sample=True,
+            temperature=1.0,
+        )
+        policy = LabelledStudentPolicy(teacher, student)
     runner = SelfPlayRunner(
         job.ruleset, max_steps=job.max_steps, record=True, undo_actions=False
     )
@@ -153,8 +204,13 @@ def older_shard(
     opponent: str,
     seed: int,
     max_steps: int,
+    student: Path | None = None,
 ) -> TeacherData:
-    """One iteration's teacher rows, the games split over ``workers``."""
+    """One iteration's teacher rows, the games split over ``workers``.
+
+    With ``student`` that checkpoint plays the learner seats and the
+    teacher only labels them (module docstring).
+    """
 
     shares = [tuple(range(start, len(specs), workers)) for start in range(workers)]
     jobs = [
@@ -167,6 +223,7 @@ def older_shard(
             policy_seed=seed + 7_919 * number,
             opponent_seed=seed + 1 + 7_919 * number,
             max_steps=max_steps,
+            student_path=None if student is None else str(student),
         )
         for number, share in enumerate(shares)
         if share
