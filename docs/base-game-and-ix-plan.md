@@ -1,7 +1,7 @@
 # 원판 Dune: Imperium과 Rise of Ix 구현 계획
 
-상태: **P0 산출물 끝, 사용자 판정 진행 중** (2026-10-22, 브랜치 `claude/base-ix-p0-57d7eb`; 13절). OQ-114·115는 확정, OQ-113은 앱 조사 뒤 재판정,
-OQ-116 ~ OQ-127과 결정 D1 ~ D5는 판정 대기다. 남은 판정을 받은 뒤 P1에 들어간다.
+상태: **P0 산출물 끝, 사용자 판정 진행 중** (2026-10-22, 브랜치 `claude/base-ix-p0-57d7eb`; 13절). OQ-114 ~ OQ-118은 확정, OQ-113은 앱 조사 뒤 재판정,
+OQ-119 ~ OQ-127과 결정 D1 ~ D5는 판정 대기다. The Voice의 앱 지속시간 분석은 별도 재검증 대상으로 남았다. 남은 판정을 받은 뒤 P1에 들어간다.
 계획의 결정은 2026-10-21에 끝났다. 9절과 10.4절의 결정은 모두 사용자가 내렸다(미룬 것은 9절 7 보드 그림). 숫자는 master `0425224a`(codec v150)와 Steam 앱 4.1.2.1808(build `dad97e20`, 2026-10-21에도 설치된 빌드가 같음)의 로컬
 추출에서 셌다.
 
@@ -161,7 +161,7 @@ Dune Cards Hub 카드면과 모두 맞고, 장수(`CardCount`)가 룰북의 구�
 - **없는 것:** Spy, 모래벌레·Maker Hooks, Shield Wall, 계약(CHOAM 모듈), 전투 아이콘·Objective 카드.
 - **새 것:** Mentat(한 라운드 빌려 쓰는 Agent, `[DI p. 6]`, Calculated Hire·Sort Through the Chaos), 지배 칸이 Arrakeen·Carthag·
   Imperial Basin(`[DI p. 10]`), Reserve 세 더미(Arrakis Liaison, The Spice Must Flow, Foldspace — Foldspace는 칸으로만,
-  `[DI pp. 4, 11]`), The Voice(지배 표식으로 칸 막기, `[DI p. 13]`), Kwisatz Haderach류의 Agent 이동.
+  `[DI pp. 4, 11]`), The Voice(상대별 다음 Agent 배치 봉쇄, 별도 마커/UI 표시 — OQ-116), Kwisatz Haderach류의 Agent 이동.
 - **숨은 정보를 새로 다루는 것(앱 문구로 찾은 목록, 명세에서 다시 확인):** Paul Atreides(덱 맨 위를 언제든 본다 — 주인만 아는 카드가
   계속 생긴다), Baron Vladimir Harkonnen(게임 시작에 진영 둘을 비밀로 고르고 나중에 공개), Viscount Hundro Moritani(시작에 Intrigue 맨
   위 둘을 보고 하나를 갖고 하나를 위에 되돌림, Ix), Ilesa Ecaz(라운드 시작에 손의 카드를 따로 두었다가 둘째 turn에 되돌림, Ix),
@@ -444,8 +444,8 @@ P0는 문서와 측정이 대부분이라 Mac mini에서 ② 학습과 겹쳐도
   자리(이미지 xref 98)를 차이표가 모두 덮는다. FAQ의 원판·Ix 항목, 디자이너 판정 감사의 남은 몫(57개 읽음), 숨은 정보 절, 구성표, 결정 단위표.
 - 기록 정정: OQ-107의 Power Play(원판 카드). 카드 출처 정책: `AGENTS.md`·`card-data-sources.md`.
 - 새 OQ: **OQ-113 ~ OQ-127**(원판 쪽 9, Ix 쪽 6). 질문마다 공식 원문, Steam 앱의 처리(보조 증거; 앱 코드 확인 agent 둘과 카드별 조사가 읽음), 가장 가까운
-  기존 판정, 추천을 붙였다. 앱이 룰북과 다른 곳 넷(The Voice의 막힘 길이, Bindu Suspension 뒤 turn 계속, dreadnought가 돌아가는 때, Sort Through the
-  Chaos의 Mentat을 받는 때)은 명세가 룰북을 따른다.
+  기존 판정, 추천을 붙였다. P0가 앱과 룰북의 차이로 분류한 넷 중 The Voice의 막힘 길이는 앱 분석 재검증 대상으로, Bindu의 turn 계속은
+  사용자 제공 공식 문장의 선택형 pass로 정정했다(OQ-116·117, 2026-10-22). dreadnought 복귀와 Sort Through the Chaos의 Mentat 시점은 해당 명세를 따른다.
 - 카드별 조사(agent 넷, 2026-10-22 사용자 결정 "하위 에이전트로 동시에"): 카드 181장·보드 칸 26·체계 셋을 한 장씩 보고 전사 자료(앱 속성·문구·카드면·능력
   클래스를 합친 것, P3·P4의 입력)와 질문 후보를 남겼다(`tmp/claude/d0c52597/sweep/`, 약 230 KB). 후보 13건 가운데 5건이 OQ-123 ~ OQ-127이 됐고, 1건(The Voice가 풀리는 때)은
   OQ-116을 넓혔고, 나머지는 기존 원칙으로 정해져 명세의 "이미 정한 원칙" 절에 적었다. 정해진 것으로 본 점 약 170개는 그 파일에 근거와 함께 있다.
@@ -491,7 +491,12 @@ Leader 14명은 hook이 많아 P2·P4에서 지도자마다 따로 잰다. 정�
   - OQ-114: **확정** — 기존 동작대로 서로 다른 두 항목을 먼저 정하고 해결한다.
   - OQ-115: **확정** — 첫 조건 달성 시 의무 공개; 기존 "이번 turn에 3개 이상 배치" 조건의 계산·회수 판정을 따르고 문턱만 4.
     troop에 Sardaukar Commander를 포함하며 dreadnought는 제외한다. 세부는 OQ-115.
-  - OQ-116 ~ OQ-127: 판정 대기. 이번 결정은 P1 착수·병합·push·학습 또는 측정 재시작을 승인한 것이 아니다.
+  - OQ-116: **확정 B** — 상대별 이번 라운드 다음 Agent 배치까지. Bindu·Litany 등의 Agent 없는 pass는 봉쇄를 소비하지 않는다.
+    Control marker는 조건·비용이 아니고 별도 마커/UI로 표시한다. 앱의 라운드 전체 봉쇄 주장은 재검증한다.
+  - OQ-117: **확정 C** — 다른 행동 전 차례 시작에만 사용, 공개해야 하는 차례도 사용 가능. 뽑은 뒤 pass 여부는 선택.
+    사용자가 공식 문장으로 제시한 근거에 따라 의무 종료 추천을 폐기한다(고정 PDF와의 출처 차이는 OQ-117에 명시).
+  - OQ-118: **확정 A** — 두 장 강제 버리기는 가능한 만큼 수행, 한 장뿐이면 한 장. 비용 지불과 구분한다.
+  - OQ-119 ~ OQ-127: 판정 대기. 이번 결정은 P1 착수·병합·push·학습 또는 측정 재시작을 승인한 것이 아니다.
 - **D1 — 원판·Ix 전사 흐름(2.4절을 고침).** 숫자·아이콘·장수·진영은 앱 표에서 생성(도구 1). 아이콘뿐인 효과는 카드면 블라인드 읽기 + 앱 속성·태그 기계
   대조로 전사한다(13.2 1). 순서·may/must·시점이 카드면과 문구로 정해지지 않을 때만 능력 클래스를 읽는다. 추천: 이렇게 고친다.
 - **D2 — 카드면 확인 그림의 출처.** 에셋의 Dune Cards Hub 스캔으로 보고, 앱 값과 다르면 다른 실물 스캔(사용자가 찾은 duneimperiumassets.com)을 그 카드만

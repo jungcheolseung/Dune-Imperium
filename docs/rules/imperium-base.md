@@ -224,15 +224,16 @@ Bond 하나다 `[DI p. 16]`.
 | Earl Memnon Thorvald (1) | Connections: High Council 자리를 얻을 때 Influence 1(진영 골라) | Spice Hoard: spice 1 | |
 | Countess Ariana Thorvald (3) | Spice Addict: spice를 harvest할 때마다 spice 1 덜 얻고 카드 1장 | Hidden Reservoir: water 1 | 의무, Maker 칸에서 harvest할 때만 `[FAQ p. 2]` |
 
-The Voice 표식을 이미 Control marker 셋을 모두 놓은 플레이어가 쓸 때의 처리는 OQ-116.
+The Voice의 표시는 Control marker 수량과 무관한 별도 마커/UI로 한다(OQ-116, 2026-10-22 사용자 판정).
 
 ## 13. 카드 판정 (룰북 clarification, FAQ, 디자이너 판정)
 
-### 13.1 룰북 clarification `[DI p. 13]`
+### 13.1 룰북 clarification과 후속 판정 (기본 출처 `[DI p. 13]`; 차이는 개별 항목에 명시)
 
-- **Bindu Suspension** — 자기 Agent turn을 시작하며 다른 무엇보다 먼저 낸다. 카드 1장을 뽑고 곧바로 turn을 끝낸다(Steam 앱은 뽑은 뒤 넘길지
-  묻고 넘기지 않으면 turn을 잇게 한다 — 룰북을 따른다). 카드면은 "(Instead of taking an Agent or
-  Reveal turn.)"라고 한다 — Agent가 없을 때(Reveal 대신) 낼 수 있는지는 OQ-117.
+- **Bindu Suspension** — 차례 시작의 첫 행동으로만 낸다. 다른 행동을 하면 사용할 수 없다(기존 OQ-095 (6)의 turn-start 기준).
+  카드 1장을 뽑은 뒤 pass하거나 정상 진행할지 **선택**한다. Agent가 없어 공개해야 하는 차례도 시작에 사용할 수 있고, 이미 공개를 시작한 뒤에는
+  못 쓴다(OQ-117, 2026-10-22 사용자 선택 C). 사용자가 공식 문장으로 제시한 "then you may choose to pass your turn or play your turn normally"를
+  적용한다. 고정 PDF의 의무 종료 문장과의 차이·출처 범위는 OQ-117에 남겼으며, 의무 종료라는 이전 명세는 폐기한다.
 - **Calculated Hire** — 9절.
 - **Demand Respect** — 이겨서 받은 spice로 낼 수 있다(To the Victor…로 먼저 spice를 얻어도 된다).
 - **Kwisatz Haderach** — Agent가 남지 않아도 낼 수 있다(이미 칸에 있는 Agent를 보낸다). 방금 있던 칸으로 되돌려 보낼 수 있다. 게임에 한 번인 칸(High
@@ -241,11 +242,11 @@ The Voice 표식을 이미 Control marker 셋을 모두 놓은 플레이어가 �
 - **Paul Atreides / Poison Snooper** — 덱이 비면 맨 위를 볼 수 없다(discard를 섞어 덱을 만드는 것은 뽑아야 할 때뿐).
 - **Test of Humanity** — 상대는 내 왼쪽부터 시계 방향으로 고른다. 각자 할 수 있는 것을 골라야 한다(손이 비면 버리기 불가, 배치한 troop이 없으면 잃기 불가).
   버리는 상대가 카드를 고른다(무작위 아님).
-- **The Voice** — 내 Control marker 하나로 고른 칸을 표시하고 내 다음 turn에 치운다. 상대가 그 칸에 Agent를 보내지 못하는 것은 한 turn 동안이다. Kwisatz
-  Haderach도 막는다. 디자이너 판정 둘(BGG Forum): The Voice 뒤에 Bindu Suspension으로 turn을 넘긴 상대는 다음 turn에도 막힌다("next agent this round"),
-  Weirding Way(Ix)로 바로 둘째 turn을 한 상대는 그 둘째 turn에 막히지 않는다. 이 두 판정은 "각 상대의 이번 라운드 다음 Agent 배치"까지로 읽어야 맞고,
-  룰북의 표식 문장("remove it on your next turn")과는 Bindu·Weirding Way의 경우에 갈린다 — 막힘이 풀리는 때는 OQ-116. Steam 앱은 또 다르게 한다 — 고른 칸을 그 라운드의 Recall까지
-  Voice 주인을 뺀 모든 상대에게 막는다(`TheVoiceAbility`, OQ-116의 앱 처리). 룰북 문장이 있으므로 룰북을 따른다.
+- **The Voice** — 고른 칸에 각 상대의 **이번 라운드 다음 Agent 배치 한 번**을 막는다(OQ-116, 2026-10-22 사용자 선택 B,
+  카드 문구·디자이너 판정 채택). Bindu·Litany Against Fear 등으로 Agent를 보내지 않고 turn을 넘기면 그 상대의 봉쇄는 남는다.
+  다른 칸에 Agent를 보내면 그 상대에게는 풀리므로 Weirding Way의 추가 turn에는 봉쇄가 없다. 라운드가 끝나면 남은 봉쇄도 끝난다.
+  Control marker는 사용 조건·비용이 아니며 별도 목소리 마커나 UI로 표시한다. Kwisatz Haderach도 봉쇄를 넘지 못한다(`[DI p. 13]`).
+  P0의 "앱은 라운드 내내 막는다"는 분석은 사용자 지적에 따라 재검증 대상으로 남겼으며 검증된 앱 동작으로 단정하지 않는다.
 - **Baron Vladimir Harkonnen** — 4절·12절.
 
 ### 13.2 FAQ의 원판 항목 (`[FAQ pp. 1-4]`)
@@ -348,7 +349,7 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 | Kwisatz Haderach | 낸 좌석 | 옮길 내 Agent(어디에 있든) × 갈 칸(아무 칸, 차 있어도) | `[Kwisatz Haderach card]`, `[DI p. 13]` |
 | Other Memory | 낸 좌석 | 카드 1장 -OR- discard의 Bene Gesserit 카드 1장 | `[Other Memory card]` |
 | Test of Humanity | 각 상대(왼쪽부터) | 손에서 1장 버리기 -OR- 배치한 troop 1 잃기, 할 수 있는 것 중 | `[DI p. 13]` |
-| Mohiam | 각 상대(왼쪽부터) | 버릴 카드 2장 | `[FAQ p. 3]`; 한 장뿐일 때 OQ-118 |
+| Mohiam | 각 상대(왼쪽부터) | 손에서 최대 2장까지 가능한 만큼 의무로 버림 | `[FAQ p. 3]`; 한 장뿐이면 한 장(OQ-118, 사용자 확정) |
 | Baron의 진영 고르기 | Baron 좌석, 첫 라운드 전 | 진영 넷 중 둘(token 넷 중 둘이라 서로 다름) | `[DI p. 13]` `[FAQ p. 1]` |
 | Poison Snooper | 낸 좌석 | 뽑기 -OR- trash | `[Poison Snooper card]` |
 | "Choose two"(Machinations 1위, Battle for Arrakeen 2위) | 받는 좌석 | 나열된 것 가운데 둘 | OQ-114 |
@@ -385,9 +386,9 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 - OQ-113 — **미확정, 앱 조사 필요**: 다섯 사례 모두 막는 쪽에 잠정 동의만. 앱 구현을 확인한 뒤 사용자 재판정
 - OQ-114 — **확정(2026-10-22)**: 기존 Choose Two처럼 서로 다른 두 항목을 먼저 정하고 해결(Machinations, Battle for Arrakeen, Ix의 Shuttle Fleet)
 - OQ-115 — **확정(2026-10-22)**: Baron 첫 조건 달성 시 의무 공개; 기존 이번 turn 배치 조건의 문턱 4, Commander 포함·dreadnought 제외
-- OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
-- OQ-117 — Bindu Suspension을 Reveal turn 대신 낼 수 있는가
-- OQ-118 — "each opponent discards two cards"에서 손에 한 장뿐일 때
+- OQ-116 — **확정(2026-10-22)**: 상대별 이번 라운드 다음 Agent 배치 한 번까지; Agent 없는 pass는 소비하지 않음, 별도 마커/UI로 표시. 앱 지속시간 분석은 재검증
+- OQ-117 — **확정(2026-10-22)**: 차례 시작 첫 행동에만 사용, 공개해야 하는 차례도 가능; 뽑은 뒤 pass 여부 선택(의무 종료 명세 정정)
+- OQ-118 — **확정(2026-10-22)**: 강제 두 장 버리기는 가능한 만큼, 한 장뿐이면 한 장
 - OQ-123 — The Spice Must Flow를 세는 곳(Corner the Market; Ix의 Grand Conspiracy·Holtzman Engine도)
 - OQ-124 — Mentat을 Mentat 칸에 보낼 때
 - OQ-125 — "비용 N 이하 카드를 얻는다"(Bypass Protocol; Ix의 Boundless Ambition·Conscript, Uprising의 Impress 등도)에 Reserve 카드가 드는가

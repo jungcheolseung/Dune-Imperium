@@ -137,9 +137,9 @@
 | [OQ-113](#oq-113--효과-없는-intrigue-금지-원칙과-원판ix-디자이너-판정-다섯-건) | 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건 | `OPEN` |
 | [OQ-114](#oq-114--choose-two는-서로-다른-둘인가) | "Choose two:"는 서로 다른 둘인가 | `DECIDED` |
 | [OQ-115](#oq-115--baron-harkonnen의-masterstroke-공개가-의무인가-넷을-어떻게-세나) | Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나 | `DECIDED` |
-| [OQ-116](#oq-116--the-voice-막힘이-풀리는-때와-control-marker가-없을-때) | The Voice: 막힘이 풀리는 때와 Control marker가 없을 때 | `OPEN` |
-| [OQ-117](#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가) | Bindu Suspension을 Reveal turn 대신 낼 수 있는가 | `OPEN` |
-| [OQ-118](#oq-118--each-opponent-discards-two-cards에서-손에-한-장뿐일-때) | "each opponent discards two cards"에서 손에 한 장뿐일 때 | `OPEN` |
+| [OQ-116](#oq-116--the-voice-막힘이-풀리는-때와-control-marker가-없을-때) | The Voice: 막힘이 풀리는 때와 Control marker가 없을 때 | `DECIDED` |
+| [OQ-117](#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가) | Bindu Suspension을 Reveal turn 대신 낼 수 있는가 | `DECIDED` |
+| [OQ-118](#oq-118--each-opponent-discards-two-cards에서-손에-한-장뿐일-때) | "each opponent discards two cards"에서 손에 한 장뿐일 때 | `DECIDED` |
 | [OQ-119](#oq-119--ilesa-ecaz의-둘째-turn을-세는-법) | Ilesa Ecaz의 "둘째 turn"을 세는 법 | `OPEN` |
 | [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `OPEN` |
 | [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) | dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때 | `OPEN` |
@@ -1989,47 +1989,66 @@
 
 ## OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
 
-- 상태: `OPEN` (2026-10-22 P0; 2026-10-22 같은 날 질문을 넓힘 — 카드별 조사가 처음 추천의 모순을 찾았다)
+- 상태: `DECIDED` (2026-10-22 사용자 판정 B; 앱의 지속시간 분석은 재검증 필요)
 - 인쇄: "Choose any board space. Opponents can't send their next Agents there this round." `[The Voice card]`
-- 공식: "Use one of your available Control markers to mark the board space you choose, then remove it on your next turn. (The Voice only
+- 고정 룰북의 표시 안내: "Use one of your available Control markers to mark the board space you choose, then remove it on your next turn. (The Voice only
   stops opponents from sending Agents to that board space for one turn.)" `[DI p. 13]`
 - 디자이너 판정 둘(BGG forum, 정리본 2026-06-07판): The Voice 뒤에 Bindu Suspension으로 turn을 넘긴 상대는 그다음 turn에도 막힌다("since it's
   your 'next agent this round'"); Weirding Way로 곧바로 둘째 turn을 한 상대는 그 둘째 turn에 막히지 않는다.
 - 질문: (1) 막힘은 언제 풀리나. (2) 내 Control marker 셋이 모두 깃발에 있을 때(또는 The Voice 두 장으로 표식이 모자랄 때) 효과가 있나.
-- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): marker나 supply를 요구하지 않는다(`ActivatedAbilities.BaseSet.TheVoiceAbility::Cost` = `NoCostAction`). 막힘은 그
-  라운드의 Recall까지, Voice 주인을 뺀 모든 상대의 모든 Agent 배치에 걸린다(`RoundPhase.Recall`에서 `Blocked`를 지움).
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), P0 코드 분석, **지속시간 결론은 재검증 필요**): marker나 supply를 요구하지 않는다
+  (`ActivatedAbilities.BaseSet.TheVoiceAbility::Cost` = `NoCostAction`). P0는 Recall에서 `Blocked`를 지우는 코드로부터 라운드 내내
+  모든 상대 배치가 막힌다고 보고했다. 사용자는 앱 버그 또는 분석 오류 가능성을 지적했다. 상대별 배치 후 해제·우회 경로와 실제 동작을
+  확인하기 전에는 라운드 전체 봉쇄를 검증된 앱 동작으로 단정하지 않는다. 이 재검증은 아래 확정 판정을 보류시키지 않는다.
 - 선택지 (1): (가) Voice 주인의 다음 turn에 풀린다 — 룰북의 표식 문장. (나) 상대마다 **이번 라운드의 다음 Agent 배치**까지(어느 칸에 보내든 한 번
-  보내면 그 상대에게는 풀린다) — 카드 문장 "their next Agents"와 디자이너 판정 둘이 이 읽기다. (다) 라운드 끝까지 모든 배치 — 앱.
+  보내면 그 상대에게는 풀린다) — 카드 문장 "their next Agents"와 디자이너 판정 둘이 이 읽기다. (다) 라운드 끝까지 모든 배치 — P0 앱 분석의 미검증 결론.
   보통 흐름(상대마다 Voice 주인의 다음 turn 전에 한 번씩 Agent를 보낸다)에서는 (가)와 (나)가 같고, 갈리는 것은 Bindu로 넘긴 turn과 Weirding Way의
   추가 turn뿐이다. 이 명세의 첫 초안은 "(가)와 (나) 가운데 먼저 오는 때"라고 적었으나 그것은 Bindu 판정과 맞지 않는다.
 - 추천: (1) **(나)** — 카드 문장과 디자이너 판정 둘을 따르고, 룰북의 표식 문장은 보통 흐름의 때를 적은 것으로 읽는다(내 해석; 공식 룰북 문장과
   갈리는 곳이라 사용자 판정이 필요하다). (2) **효과는 그대로**, 표식은 기억을 돕는 장치로 본다(카드 문장은 표식을 조건으로 두지 않는다; 앱도 같다).
   엔진은 막힌 칸과 아직 막힌 상대를 상태로 기억한다.
-- 판정: (대기)
+- 판정(2026-10-22 사용자): **B — 상대마다 이번 라운드의 다음 Agent 배치 한 번까지만 봉쇄**한다. 카드 문구와 디자이너 판정을 따른다.
+  - Bindu 또는 기존 Litany Against Fear처럼 Agent를 보내지 않고 turn을 넘기는 효과는 봉쇄를 소비하지 않는다. 다른 칸에 Agent를 한 번 보내면
+    그 상대의 봉쇄는 끝나며, Weirding Way의 추가 turn에는 그 봉쇄가 남지 않는다. 라운드를 넘겨 유지하지 않는다.
+  - **Control marker는 비용·조건·수량 제한이 아니다.** 사용자: "단순히 그 칸이 막혀있다는 표시를 하기 위함이지".
+    별도 목소리 마커나 UI의 봉쇄 표시로 충분하다. Control marker를 가져오거나 지배 표시를 옮길 필요가 없고, 모두 사용 중이어도 효과는 유효하다.
+    어느 상대의 다음 배치가 아직 막혔는지 상태로 관리한다. 표시의 구체 디자인은 UI 구현 단계에서 정한다.
+  - 기존 turn-start pass와 같은 Agent 미배치 기준을 재사용한다(OQ-095 (6), `rules/agent_turn.py::legal_turn_start_card_actions`).
+    앱의 지속시간 재검증은 별도 후속 조사로 남긴다. 이번 작업은 판정 문서만 변경한다.
 
 ## OQ-117 — Bindu Suspension을 Reveal turn 대신 낼 수 있는가
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-22 사용자 정정·선택 C; 시작에만 사용, 뽑은 뒤 pass는 선택)
 - 인쇄: "At the start of your turn: [draw]. You may pass your turn. (Instead of taking an Agent or Reveal turn.)" `[Bindu Suspension card]`
-- 공식: "You must play this Intrigue card at the start of your Agent turn, before doing anything else. When you do, draw a card, then immediately end your
-  turn." `[DI p. 13]` 카드는 일반 규칙을 바꿀 수 있다 `[DI p. 6]`.
-- 질문: Agent가 남지 않아 이번 turn이 Reveal turn이어야 하는 좌석이 Bindu로 turn을 넘길 수 있나. (낸 뒤 turn을 계속할 수 없다는 것은 룰북이 정한다:
-  "then immediately end your turn".)
-- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 자기 turn을 시작할 때(아직 Agent·Reveal을 정하기 전, 비용 `IsTakingTurn(Undetermined)`)만 낼 수 있고, **남은 Agent는 보지 않는다** — Agent가 없는 좌석도 낼 수 있다는 쪽이다(그때 실제로 선택지가 뜨는지는 화면 흐름을 다 따라가지 못해 확인 못 함). 카드 1장을 뽑은 뒤 "turn을 넘기겠는가"를 묻고, 넘기면 정리로 가며, 넘기지 않으면 turn이 이어진다 — 이 마지막 점은 룰북의 "then immediately end your turn"과 다르므로 룰북을 따른다.
-- 추천: **넘길 수 있다** — 카드면이 "Instead of taking an Agent or Reveal turn"이라고 하고, 룰북 clarification의 "Agent turn"은 낼 때("turn을 시작하며 다른
-  무엇보다 먼저")를 말한 것으로 읽는다(내 해석). 엔진에서는 Bindu를 낸 뒤 고를 수 있는 것이 "턴 종료"뿐이다(OQ-095의 한 번 누르기).
-- 판정: (대기)
+- 사용자가 공식 문장으로 제시한 근거(2026-10-22): "You must play Bindu Suspension at the start of your Agent turn, before doing anything else.
+  When you do, draw a card, then you may choose to pass your turn or play your turn normally."
+  이 문장과 사용자의 아래 판정을 적용한다. 문장의 외부 URL·판본은 이번 대화에서 제공되지 않아 별도로 검증하지 않았다.
+- 출처 차이: manifest에 고정된 `2020_10_26` PDF `[DI p. 13]`에는 "then immediately end your turn"이라고 적혀 있다.
+  이 고정 PDF의 문장을 사용자가 제시한 선택형 문장의 출처로 인용하지 않는다. manifest의 파일·checksum을 바꾸거나 최신 판본을 검증했다고
+  주장하지 않는다. P0의 의무 종료 추천과 뒤이은 세션의 Agent turn 전용·의무 종료 추천은 아래 사용자 정정으로 폐기한다.
+- 질문: Agent가 없어 공개해야 하는 차례의 시작에도 쓸 수 있는가, 그리고 뽑은 뒤 pass가 의무인가.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 자기 turn을 시작할 때(아직 Agent·Reveal을 정하기 전, 비용 `IsTakingTurn(Undetermined)`)만 낼 수 있고, **남은 Agent는 보지 않는다** — Agent가 없는 좌석도 낼 수 있다는 쪽이다(그때 실제로 선택지가 뜨는지는 화면 흐름을 다 따라가지 못해 확인 못 함). 카드 1장을 뽑은 뒤 넘길지 묻고, 넘기지 않으면 turn이 이어진다.
+- 판정(2026-10-22 사용자, **C**): "무조건 턴 시작에만 쓸 수 있고, 다른 행동하면 못 쓰는거야. 쓰고 나서 턴 패스 여부는 may니까 선택이야".
+  - Agent·Reveal을 시작하기 전 **차례 시작의 첫 행동**으로만 사용한다. 다른 행동을 한 뒤에는 사용할 수 없다.
+    기존 turn-start 제한(OQ-095 (6), `frames.turn_start_is_open`; Litany Against Fear 등)과 같은 기준이다.
+  - Agent가 없어 공개해야 하는 차례에도 시작에 사용할 수 있다(C). 이미 공개를 시작한 뒤에는 사용할 수 없다.
+  - 카드 한 장을 뽑은 **뒤** pass 또는 정상 진행을 고른다. pass하면 이번 차례를 넘기고 미공개 상태로 다음 차례를 기다린다.
+    정상 진행을 고르면 가능한 Agent/Reveal turn을 계속한다. **강제 종료하지 않는다.**
+  - Litany Against Fear와는 turn-start 자격과 Agent를 보내지 않는 pass의 처리 원칙을 공유한다. Litany의 의무 pass 자체를 Bindu의 선택형 pass로
+    바꾸라는 결정은 아니다. 이번 작업은 판정 기록만이며, 엔진 연결·회귀 테스트는 해당 구현 단계에서 한다.
 
 ## OQ-118 — "each opponent discards two cards"에서 손에 한 장뿐일 때
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-22 사용자 판정 A)
 - 인쇄: Reverend Mother Mohiam "If you have another Bene Gesserit card in play, each opponent discards two cards." `[card face]`
 - 공식: 상대가 버릴 카드를 고르고 내 왼쪽부터 시계 방향 `[FAQ p. 3]`; discard는 손의 카드 `[FAQ p. 2]`. Test of Humanity에서는 "they can't discard if their
   hand is empty" `[DI p. 13]`. 두 장 중 일부만 할 수 있는 경우는 침묵.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 상대마다 `min(2, 손의 장수)`장을 버린다 — 한 장이면 그 한 장, 없으면 아무것도 없다("버릴 카드가 없었다" 로그가 따로 있다). 각 상대가 자기 카드를 한 장씩 고르고, 카드 주인 다음 좌석부터 순서대로(`PlayAbilities.BaseSet.ReverendMotherMohiamAbility`·`...DeferredAbility`).
 - 추천: **할 수 있는 만큼 버린다**(한 장이면 한 장) — 효과는 의무이고 `[FAQ p. 3]`, 강제 효과는 할 수 있는 데까지 한다(내 해석). 비용으로 "두 장 버리기"
   (Ixian Probe, Ix-Guild Compact)는 다르다: 비용은 다 내야 효과를 얻는다 `[DI p. 9]`.
-- 판정: (대기)
+- 판정(2026-10-22 사용자, **A**): "2장 버려야하는데 1장 뿐이면 그 1장이라도 버려야지". 의무 효과는 가능한 만큼 수행한다.
+  두 장 이상이면 두 장, 한 장이면 한 장, 손이 비었으면 0장이다. 비용으로 두 장을 버리는 효과는 여전히 비용 전액을 내야 한다
+  (`[DI p. 9]`). 각 상대가 자기 카드를 고르고 카드 사용자 다음 좌석부터 시계 방향으로 처리한다(`[FAQ p. 3]`).
 
 ## OQ-119 — Ilesa Ecaz의 "둘째 turn"을 세는 법
 

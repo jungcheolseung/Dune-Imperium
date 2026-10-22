@@ -113,6 +113,11 @@ manifest 키는 `imperium`·`imperium-player-aid`, 인용 이름은 Uprising의 
   적는다([imperium-base.md](imperium-base.md) "글로 없는 값").
 - **FAQ.** 2025-01-13 FAQ의 원판 항목은 원판 판에 적용한다. Missionaria Protectiva의
   진영 errata(Bene Gesserit, 2장) `[FAQ p. 1]`도 원판 카드다.
+- **Bindu Suspension의 문구 차이(2026-10-22).** 고정 PDF p. 13은 의무 종료 문장이지만,
+  사용자가 공식 문장으로 제공한 근거는 뽑은 뒤 pass 또는 정상 진행을 선택하게 한다.
+  적용 판정은 [OQ-117](open-questions.md#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가)의 C다.
+  제공 문장의 URL·판본은 별도로 검증하지 않았으므로 그 문장을 `[DI p. 13]`의 인용으로
+  바꾸어 적지 않는다. 이 판정 기록으로 manifest의 파일 버전·checksum을 변경하지 않는다.
 
 ### Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
 
