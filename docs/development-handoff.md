@@ -135,6 +135,9 @@
      차 −2%p 이내, 선생 확률 0.6 미만 결정의 불일치 21% → 15% 미만. 실패하면 원인이 자료 분포가 아니므로 E6으로.
      - **구현(2026-10-22, 브랜치 `e5-student-distill` `5be9d8fb`, 미병합):** `distill_entity.py data --older --teacher <v147> --student <학생>`
        (학생이 학습 좌석을 두고 선생이 모든 결정에 답을 붙임; 형식 같음, `--student` 없으면 바이트까지 예전과 같음; 실행 기록 `data-runs.jsonl`).
+     - **실행 중(2026-10-22 사용자 승인):** 위 커밋에 고정한 worktree에서 `checkpoints/2026-10-22/e5-student-distill/chain.py`.
+       `student12` → 학생 국면 80회 수집·12 epoch cosine → 새 학생으로 같은 과정 1회 더. 회차별 새 자료만 학습.
+       이어 선생·기존 학생·두 새 학생 각각 동일 시드 400판 및 확률 <0.6 결정 불일치 비교. 상태는 `run.status.json`, 상세 레시피는 같은 폴더 `README.md`. E6·서버 모델 교체는 자동 실행하지 않는다.
   5. **E6 kickstarting:** 가장 나은 학생에서 REINFORCE + β·KL(선생‖학생), β를 400회에 걸쳐 1 → 0, 모두 800회. 통과: 2:2 1,400판에서 선생 대비
      점추정 ≥ 0, 하한 > −3%p(B-800은 −7.0 [−12.1, −1.7]). 통과한 망만 탐색 좌석 관문(아래 판정 주의)으로 간다. 실패하면 증류 계보는 보류하고 어댑터를 쓴다.
      - **구현(2026-10-22, 브랜치 `e6-kickstart` `5adf2d43`, 미병합):** `dune-imperium-train --kickstart-teacher <v147> --kickstart-weight 1
