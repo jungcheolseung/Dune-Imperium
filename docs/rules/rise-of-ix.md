@@ -302,7 +302,8 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 - OQ-119 — **확정:** Ilesa Ecaz의 "둘째 turn"은 Agent 없는 pass와 Weirding Way 추가 turn 모두 센다.
 - OQ-120 — **확정:** 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는다.
 - OQ-121 — **앱 조사 후 재판정:** dreadnought 지배 선택·승리 효과의 순서와 지난 dreadnought의 복귀 시점. 기존 앱 분석도 재검증한다.
-- OQ-122 — Round Start 효과(Holtzman Engine, Shuttle Fleet, Ilesa의 따로 두기)의 순서
+- OQ-122 — **미확정:** Round Start 효과(Holtzman Engine, Shuttle Fleet, Ilesa)의 순서. 기존 OQ-072와 현재 코드 순서를 본문에 기록했다.
 - OQ-126 — Disposal Facility의 "Persuasion 6 이상"
 - OQ-127 — Combat 단계에 열린 Treachery의 Unload
-- 원판 쪽 OQ-123(The Spice Must Flow — Grand Conspiracy·Holtzman Engine)과 OQ-125(비용 N 이하 획득 — Boundless Ambition·Conscript)도 Ix 카드에 닿는다.
+- OQ-123은 **확정:** Grand Conspiracy·Holtzman Engine도 전체 보유 사본(덱·손·discard·in play, trash 제외)을 센다.
+- 원판 쪽 OQ-125(비용 N 이하 획득 — Boundless Ambition·Conscript)도 Ix 카드에 닿는다.

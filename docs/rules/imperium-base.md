@@ -177,7 +177,7 @@ Uprising과 같은 틀이다([setup-and-game-flow.md](setup-and-game-flow.md), [
   보낼 수 있다). Phase 5 Recall에 제 칸으로 돌린다. `[DI pp. 6, 13, 18]`
 - Mentat 아이콘(Conflict 보상·Intrigue): 칸에 있을 때만 가져온다(상대나 다른 칸에서 못 가져옴). Conflict 보상으로 받으면 다음 라운드에 Agent로
   쓰고 이번 라운드 끝에 돌려놓지 않는다. `[DI p. 16]` Sort Through the Chaos를 이기면 Mentat은 다음 라운드 시작에 가져간다 `[FAQ p. 4]`(Steam 앱은
-  Combat 중에 준다 — FAQ를 따른다). 그 다음 라운드 동안 Mentat 칸은 비어 있다. Mentat을 가진 좌석이 Mentat 자체를 Mentat 칸에 보낼 때는 OQ-124.
+  Combat 중에 준다 — FAQ를 따른다). 그 다음 라운드 동안 Mentat 칸은 비어 있다. Mentat 자체도 Mentat 칸에 보낼 수 있지만 카드 1장만 뽑고 Agent로 남는다(다시 가져오지 않음, OQ-124 사용자 확정).
   Calculated Hire는 Mentat을 Landsraad의 제 자리에서만 가져온다 `[DI p. 13]`, Mentat이 그 자리에 있어야 낼 수 있다(디자이너 판정, BGG Forum).
 - 가져간 Mentat은 그 라운드 끝까지 그 플레이어의 Agent(그 색)로 모든 목적에 친다(디자이너 판정, BGG Forum — Archduke Armand Ecaz의 Coordination이
   센다). 그래서 Agent recall 효과(Urgent Mission)가 Mentat을 되돌릴 수 있고, Kwisatz Haderach가 Mentat을 옮길 수 있다.
@@ -261,7 +261,7 @@ The Voice의 표시는 Control marker 수량과 무관한 별도 마커/UI로 �
 | Carryall | 1 | 기본 spice: Imperial Basin 1, Hagga Basin 2, The Great Flat 3 |
 | Chani (Imperium) → Retreat | 1, 3 | "any number"는 0 가능 |
 | Charisma → Intrigue cards | 1, 2 | 다음 Reveal turn에 쓰는 Plot은 그때까지 face-up으로 둔다 |
-| Corner the Market | 2 | 내 덱과 discard의 The Spice Must Flow를 센다; 상대 하나라도 같거나 많으면 둘째 조건 실패. 두 조건은 따로 1 VP씩(Rivals 문장 "You'll need three yourself to get 2 Victory Points" `[DI p. 20]`) |
+| Corner the Market | 2 | 전체 보유 The Spice Must Flow(덱·손·discard·in play, trash 제외)를 센다(OQ-123 사용자 확정; FAQ는 덱·discard를 열거); 상대 하나라도 같거나 많으면 둘째 조건 실패. 두 조건은 따로 1 VP씩(Rivals 문장 "You'll need three yourself to get 2 Victory Points" `[DI p. 20]`) |
 | Count Ilban Richese | 2 | 칸의 인쇄 비용으로 Solari를 낼 때만 |
 | Countess Ariana Thorvald | 2 | 의무; Maker 칸 harvest만 |
 | Demand Respect → Intrigue cards | 2 | 조건·비용을 갖춰야 낸다 |
@@ -389,8 +389,8 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 - OQ-116 — **확정(2026-10-22)**: 상대별 이번 라운드 다음 Agent 배치 한 번까지; Agent 없는 pass는 소비하지 않음, 별도 마커/UI로 표시. 앱 지속시간 분석은 재검증
 - OQ-117 — **확정(2026-10-22)**: 차례 시작 첫 행동에만 사용, 공개해야 하는 차례도 가능; 뽑은 뒤 pass 여부 선택(의무 종료 명세 정정)
 - OQ-118 — **확정(2026-10-22)**: 강제 두 장 버리기는 가능한 만큼, 한 장뿐이면 한 장
-- OQ-123 — The Spice Must Flow를 세는 곳(Corner the Market; Ix의 Grand Conspiracy·Holtzman Engine도)
-- OQ-124 — Mentat을 Mentat 칸에 보낼 때
+- OQ-123 — **확정:** 전체 보유 The Spice Must Flow를 센다(Corner the Market; Ix의 Grand Conspiracy·Holtzman Engine도).
+- OQ-124 — **확정 A:** Mentat을 제 칸에 보내면 카드 1장을 뽑고 Agent로 남는다. 다시 가져오지 않는다.
 - OQ-125 — "비용 N 이하 카드를 얻는다"(Bypass Protocol; Ix의 Boundless Ambition·Conscript, Uprising의 Impress 등도)에 Reserve 카드가 드는가
 
 OQ-123 ~ OQ-127은 카드별 조사(2026-10-22, agent 넷이 카드 181장·보드 칸 26을 한 장씩 본 것, 자료 `tmp/claude/d0c52597/sweep/`)에서 나왔다.

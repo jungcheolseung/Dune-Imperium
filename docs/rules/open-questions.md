@@ -144,8 +144,8 @@
 | [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `DECIDED` |
 | [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) | dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때 | `OPEN` |
 | [OQ-122](#oq-122--round-start-효과의-순서) | Round Start 효과의 순서 | `OPEN` |
-| [OQ-123](#oq-123--the-spice-must-flow를-세는-곳) | The Spice Must Flow를 세는 곳 | `OPEN` |
-| [OQ-124](#oq-124--mentat을-mentat-칸에-보낼-때) | Mentat을 Mentat 칸에 보낼 때 | `OPEN` |
+| [OQ-123](#oq-123--the-spice-must-flow를-세는-곳) | The Spice Must Flow를 세는 곳 | `DECIDED` |
+| [OQ-124](#oq-124--mentat을-mentat-칸에-보낼-때) | Mentat을 Mentat 칸에 보낼 때 | `DECIDED` |
 | [OQ-125](#oq-125--비용-n-이하-카드를-얻는다에-reserve-카드가-드는가) | "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가 | `OPEN` |
 | [OQ-126](#oq-126--disposal-facility의-persuasion-6-이상) | Disposal Facility의 "Persuasion 6 이상" | `OPEN` |
 | [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload) | Combat 단계에 열린 Treachery의 Unload | `OPEN` |
@@ -2112,12 +2112,18 @@
   (2 Solari), Ilesa Ecaz(손의 카드 하나를 따로 둔다) `[card faces]`.
 - 질문: 이 효과들이 공개·방어·뽑기와 어떤 순서이고, 좌석 사이 순서는 무엇인가.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): Round Start 시작 → Conflict 공개 → 좌석 순서로 각자 5장 → `RoundSetupFinished`(Holtzman Engine의 1장, Shuttle Fleet의 2 Solari) → `RoundSetupFinishedIlesa`(Ilesa의 따로 두기 — Holtzman로 뽑은 카드도 둘 수 있다) → turn. 뒤집은 Tech는 앞 라운드 Recall에서 되돌린다(룰북은 Round Start). 좌석 사이 순서는 좌석 목록 순서로 보이며 First Player부터인지는 확인 못 함. (Control 방어 배치는 원판 앱 확인 agent가 `GenerateConflictPhase.DeployControlTroops`로 찾았다.)
+- 현재 프로젝트 구현 확인(2026-10-22 사용자 질문, 판정 보류): OQ-072와 `src/dune_imperium/rules/phases.py`에 기록이 있다.
+  `begin_round`는 Conflict 공개 → Control 방어 선택 → `draw_round_hands` 순서다. 방어 선택 뒤에는 뽑기 전 확인 경계가 있다.
+  `draw_round_hands`는 기본 5장 추가 draw와 함께 `tech_flipped=()`로 기술을 앞면으로 되돌리고, 이어서 Piter의 Twisted Intrigue를 뽑는다.
+  Scouts 사용 시 다음으로 Scouts 단계를 진행하고, 아니면 First Player의 첫 turn을 연다. 기본 draw·기술 초기화는 `state.players` 순회로
+  일괄 처리하며 First Player부터 선택하는 일반 Round Start 효과 큐는 아니다. Holtzman Engine·Shuttle Fleet·Ilesa는 구현 전이므로
+  그 셋의 상대 순서는 기존 구현으로 확정되지 않는다. `tests/unit/rules/test_phases.py`에도 방어 뒤 draw 검사가 있다(이번에는 읽기만 함).
 - 추천: **공개 → Control 방어 → 각자 5장 → 뒤집은 Tech 되돌리기 → Round Start 능력(Holtzman Engine·Shuttle Fleet) → Ilesa의 따로 두기**, 좌석 사이는 First Player부터 시계 방향(OQ-002·OQ-102와 같은 좌석 순서). 5장 뒤로 두는 것은 "Set aside a card from your hand"가 이번 라운드 손을 뜻하기 때문이고(내 해석), Ilesa를 맨 뒤에 두는 것은 앱과 같다. Tech 되돌리기는 룰북대로 Round Start에 두되 그 앞에 아무 결정이 없으므로 앱(Recall)과 결과가 같다.
 - 판정: (대기)
 
 ## OQ-123 — The Spice Must Flow를 세는 곳
 
-- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 상태: `DECIDED` (2026-10-22 사용자 판정)
 - 인쇄: Corner the Market "If you have at least two The Spice Must Flow" / "If you have more The Spice Must Flow than each opponent", Grand Conspiracy
   "1+ The Spice Must Flow", Holtzman Engine(Ix Tech) "Endgame: Worth [VP] if you have at least two The Spice Must Flow" `[card faces]`.
 - 공식: Corner the Market은 "Count the total number of The Spice Must Flow cards in your deck and your discard pile." `[FAQ p. 2]`. 그런데 Reveal turn
@@ -2128,11 +2134,11 @@
 - 지금 엔진: Uprising의 Secure Spice Trade 조건 `SpiceMustFlowCardsAtLeast`가 덱·손·버림·in play를 센다 — 판정 없이 정한 엔진 기본값이다.
 - 추천: **가진 사본을 모두 센다**(덱·손·버림 더미·in play; trash한 것은 빼고). FAQ 문장은 Endgame에 손이 비어 있는 보통 경우를 적은 것으로 읽는다(내
   해석). 이 판정은 Uprising의 Secure Spice Trade에도 그대로 적용된다(지금 동작과 같다).
-- 판정: (대기)
+- 판정(2026-10-22 사용자): **현재 구현 조건과 동일하게 전체 보유 사본을 센다.** 덱·손·버림 더미·in play 포함, trash 제외. Corner the Market·Grand Conspiracy·Holtzman Engine에 적용하고 Uprising Secure Spice Trade의 기존 동작을 유지한다. `rules/conditions.py`의 `SpiceMustFlowCardsAtLeast`에서 네 구역 합산을 확인했다. FAQ에 네 구역 모두가 명시된 것은 아니며 사용자 판정이다.
 
 ## OQ-124 — Mentat을 Mentat 칸에 보낼 때
 
-- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 상태: `DECIDED` (2026-10-22 사용자 판정)
 - 공식: Mentat 칸 "Draw a card. If the Mentat is here, take it and place it on your Leader; this round, you may use it as one of your Agents to take an
   Agent turn." `[DI p. 18]`; Mentat 아이콘 "Take the Mentat from its space on the board (if it's there; you can't take it from another player or another
   space)." `[DI p. 16]`; Calculated Hire는 "can only take the Mentat from its starting position in the Landsraad" `[DI p. 13]`; Sort Through the Chaos를
@@ -2145,7 +2151,7 @@
   — 칸이 비고 Mentat을 또 쓸 수 있어, 2 Solari마다 Agent turn이 하나 더 생긴다. (다) Mentat은 제 칸에 보낼 수 없다.
 - 추천: **(가)** — p. 16과 Calculated Hire clarification이 말하는 것은 제 자리(starting position)에서 가져오는 것이고, 놓인 Agent는 Phase 5까지 칸에 남는다
   `[DI p. 13]`(내 해석). (나)는 칸을 반복 가능한 추가 turn으로 만든다.
-- 판정: (대기)
+- 판정(2026-10-22 사용자): **A(가).** Mentat 자체도 Mentat 칸에 보낼 수 있다. 정상 비용을 내고 카드 1장을 뽑되, 보낸 Mentat은 사용한 Agent로 남고 다시 가져오지 않는다. 가져오는 대상은 제 자리에 대기 중인 Mentat이다. 앱 동작 미확인이라는 조사 한계는 유지한다.
 
 ## OQ-125 — "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가
 
