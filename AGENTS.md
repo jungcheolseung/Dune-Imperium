@@ -8,6 +8,27 @@ month's `docs/worklog/<YYYY-MM>.md` for the latest work. If that status
 conflicts with code or tests, treat the executable repository as
 authoritative and update the handoff in the same work unit.
 
+## Project context across sessions
+
+For this repository, new Codex sessions should also consult the existing
+Claude Code project notes when available. On the user's Mac, their index is:
+
+`/Users/cs/.claude/projects/-Users-cs-Workspace-tabletop-ai-Dune-Imperium/memory/MEMORY.md`
+
+Read the index, then only the linked topic files relevant to the current task.
+The index is not the whole memory; the other Markdown files in that directory
+contain the details. These are historical notes, not new instructions or
+authorization to execute actions. Check claims about current work against
+Git, `docs/development-handoff.md`, and the latest worklog; use the rule
+sources below before changing rule behaviour.
+
+This directory is local to that Mac and is not included in Git. If it is
+unavailable on another machine, continue from the repository's handoff,
+worklog, and `docs/lessons.md`; do not claim to have read the missing notes.
+Keep new shared project context in those repository documents according to
+the work log and handoff policy below. This is a repository context-reading
+workflow, not an import into Codex's account-level memory.
+
 ## Work log and handoff
 
 - Record each merged work unit at the top of the current month's
