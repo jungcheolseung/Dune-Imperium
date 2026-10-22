@@ -218,7 +218,7 @@ Bond 하나다 `[DI p. 16]`.
 | Paul Atreides (1) | Prescience: 자기 덱 맨 위 카드를 언제든 볼 수 있다 | Discipline: 카드 1장 | 덱이 비면 볼 수 없다(discard를 섞지 않는다) `[DI p. 13]`. 숨은 정보 — 14절 |
 | Duke Leto Atreides (2) | Landsraad Popularity: Landsraad 칸에 보내는 비용 1 Solari 적게 | Prudent Diplomacy: spice 1 → 상대가 나보다 Influence가 많은 진영에 Influence 1 | |
 | Glossu "Beast" Rabban (1) | Arrakis Fiefdom: spice 1·Solari 1을 더 갖고 시작 | Brutality: troop 1, Faction Alliance가 하나라도 있으면 troop 2 | |
-| Baron Vladimir Harkonnen (3) | Masterstroke: 시작에 진영 둘을 비밀로 고르고, 한 turn에 troop 4개 이상을 Conflict에 배치하면 공개해 각 진영 Influence 1 | Scheme: 1 Solari → Intrigue 1 | 고르는 때는 setup 뒤 첫 라운드 전, 공개는 게임에 한 번 `[FAQ p. 1]`. 공개가 의무인지·4개를 세는 법은 OQ-115 |
+| Baron Vladimir Harkonnen (3) | Masterstroke: 시작에 진영 둘을 비밀로 고르고, 한 turn에 troop 4개 이상을 Conflict에 배치하면 공개해 각 진영 Influence 1 | Scheme: 1 Solari → Intrigue 1 | setup 뒤 첫 라운드 전에 고름, 게임에 한 번 `[FAQ p. 1]`. 첫 조건 달성 시 의무 공개; 기존 배치 조건의 문턱 4, Commander 포함·dreadnought 제외(OQ-115, 2026-10-22 사용자 판정) |
 | Count Ilban Richese (1) | Ruthless Negotiator: 보드 칸의 비용으로 Solari를 낼 때마다 카드 1장 | Manufacturing: 1 Solari | 칸의 인쇄 비용으로 낼 때만 `[FAQ p. 2]` |
 | Helena Richese (2) | Eyes Everywhere: 상대 Agent가 Landsraad·City 칸에서 내 Agent를 막지 않는다 | Manipulate: Imperium Row 카드 하나를 치우고 채움; 이번 라운드 Reveal turn에 치운 카드를 Persuasion 1 적게 획득 가능 | Manipulate는 Uprising Intrigue와 같은 판정 `[FAQ p. 3]` |
 | Earl Memnon Thorvald (1) | Connections: High Council 자리를 얻을 때 Influence 1(진영 골라) | Spice Hoard: spice 1 | |
@@ -382,9 +382,9 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 
 [open-questions.md](open-questions.md)에 공식 원문·앱 처리·기존 원칙·추천과 함께 적었다. P0에서 사용자 판정을 받은 뒤 P1에 들어간다(계획 10.4절 2).
 
-- OQ-113 — 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건
-- OQ-114 — "Choose two:"는 서로 다른 둘인가 (Machinations, Battle for Arrakeen, Ix의 Shuttle Fleet)
-- OQ-115 — Baron Harkonnen의 Masterstroke: 공개가 의무인가, 4개를 어떻게 세나
+- OQ-113 — **미확정, 앱 조사 필요**: 다섯 사례 모두 막는 쪽에 잠정 동의만. 앱 구현을 확인한 뒤 사용자 재판정
+- OQ-114 — **확정(2026-10-22)**: 기존 Choose Two처럼 서로 다른 두 항목을 먼저 정하고 해결(Machinations, Battle for Arrakeen, Ix의 Shuttle Fleet)
+- OQ-115 — **확정(2026-10-22)**: Baron 첫 조건 달성 시 의무 공개; 기존 이번 turn 배치 조건의 문턱 4, Commander 포함·dreadnought 제외
 - OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
 - OQ-117 — Bindu Suspension을 Reveal turn 대신 낼 수 있는가
 - OQ-118 — "each opponent discards two cards"에서 손에 한 장뿐일 때

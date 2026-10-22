@@ -65,7 +65,8 @@
 
 - **원판·Rise of Ix — P0 산출물 끝, 사용자 판정 대기(2026-10-22, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
   [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
-  [rules/rise-of-ix.md](rules/rise-of-ix.md), 새 OQ-113 ~ OQ-127(`OPEN`), 진행 결정 D1 ~ D5(전사 흐름, 카드면 그림 출처, 보드에만 인쇄된 값, 도구 채택,
+  [rules/rise-of-ix.md](rules/rise-of-ix.md), OQ-114·115는 사용자 판정 확정(서로 다른 두 항목; Baron 의무 공개·기존 배치 조건의 문턱 4·Commander 포함).
+  OQ-113은 다섯 사례의 앱 구현 조사 후 재판정(`OPEN`, 원칙 유지에 잠정 동의만), OQ-116 ~ OQ-127은 `OPEN`. 진행 결정 D1 ~ D5(전사 흐름, 카드면 그림 출처, 보드에만 인쇄된 값, 도구 채택,
   시범 전사 시점). **이 판정들이 나오기 전에는 P1(엔진) 착수 금지.** 측정 둘이 계획을 바꾼다: 원판·Ix는 앱 문구가 카드 칸을 다 덮지 않고(Imperium 76장 중
   아이콘 태그 문구 14장), Dune Cards Hub 그림에 틀린 것이 섞여 있다(Duncan Idaho). 앱 자료·카드별 전사 자료는 git 밖(에셋
   `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 worktree의 `tmp/claude/d0c52597/`). [2026-10-22 원판·Rise of Ix P0]

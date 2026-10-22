@@ -75,7 +75,7 @@
 | Memocorders | 2 | Influence 1(진영 골라) | Endgame: 네 track 모두 Influence 3 이상이면 1 VP | |
 | Minimic Film | 2 | – | Reveal turn: Persuasion 1 | |
 | Restricted Ordnance | 4 | – | Reveal turn: High Council 자리가 있으면 sword 4 | |
-| Shuttle Fleet | 6 | 진영 둘을 골라 Influence 1씩(OQ-114) | Round Start: 2 Solari | |
+| Shuttle Fleet | 6 | 서로 다른 진영 둘을 먼저 골라 Influence 1씩(OQ-114, 2026-10-22 사용자 확정) | Round Start: 2 Solari | |
 | Sonic Snoopers | 2 | Intrigue 1 | 이 타일 trash → Intrigue 몇 장이든 덱 맨 아래로, 그만큼 뽑기(맨 아래 카드는 공개하지 않음 `[Rise of Ix p. 10]`) | |
 | Spaceport | 5 | 카드 2장 | 얻는 카드를 덱 위에 놓을 수 있다 | |
 | Spy Satellites | 4 | – | spice 3 + 이 타일 trash → 1 VP(자기 turn에); Endgame: Influence 1 이하인 진영마다 1 VP | |

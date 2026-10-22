@@ -135,8 +135,8 @@
 | [OQ-111](#oq-111--두-단계-행동의-중간-상태) | 두 단계 행동의 중간 상태 | `DECIDED` |
 | [OQ-112](#oq-112--보상-한-줄-안의-아이콘-순서) | 보상 한 줄 안의 아이콘 순서 | `DECIDED` |
 | [OQ-113](#oq-113--효과-없는-intrigue-금지-원칙과-원판ix-디자이너-판정-다섯-건) | 효과 없는 Intrigue 금지 원칙과 원판·Ix 디자이너 판정 다섯 건 | `OPEN` |
-| [OQ-114](#oq-114--choose-two는-서로-다른-둘인가) | "Choose two:"는 서로 다른 둘인가 | `OPEN` |
-| [OQ-115](#oq-115--baron-harkonnen의-masterstroke-공개가-의무인가-넷을-어떻게-세나) | Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나 | `OPEN` |
+| [OQ-114](#oq-114--choose-two는-서로-다른-둘인가) | "Choose two:"는 서로 다른 둘인가 | `DECIDED` |
+| [OQ-115](#oq-115--baron-harkonnen의-masterstroke-공개가-의무인가-넷을-어떻게-세나) | Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나 | `DECIDED` |
 | [OQ-116](#oq-116--the-voice-막힘이-풀리는-때와-control-marker가-없을-때) | The Voice: 막힘이 풀리는 때와 Control marker가 없을 때 | `OPEN` |
 | [OQ-117](#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가) | Bindu Suspension을 Reveal turn 대신 낼 수 있는가 | `OPEN` |
 | [OQ-118](#oq-118--each-opponent-discards-two-cards에서-손에-한-장뿐일-때) | "each opponent discards two cards"에서 손에 한 장뿐일 때 | `OPEN` |
@@ -1934,16 +1934,19 @@
   3. Dispatch an Envoy는 Reveal turn에도, Agent를 보낸 뒤에도 낸다(아이콘은 붙지 않는다) — BGG Forum.
   4. Infiltrate는 Agent를 놓은 뒤에도 낸다 — 정리본 편집자의 추론("No specific source").
   5. Advanced Weaponry(Ix)의 Plot은 dreadnought가 이미 둘이어도 3 Solari를 내고 낸다 — 편집자의 추론.
-- 앱 처리: 확인하지 않았다(원칙의 적용 문제라 앱이 답을 바꾸지 않는다; 2026-10-06 원칙도 앱과 같은 쪽으로 정한 것이다 — 그날 worklog의 "앱이 맞는 것 같은데??").
+- 앱 처리: **미확인, 조사 필요**(2026-10-22 사용자 지시). 위 다섯 사례 각각의 play 허용 조건·비용·효과 불발 처리를 확인하고,
+  코드에서 확인한 것과 실제 앱 실행으로 확인한 것을 구분해 보고한 뒤 다시 판정한다. 앱은 보조 증거이며 공식 규칙의 대체 근거가 아니다.
 - 추천: **원칙대로 막는다.** 다섯 모두 2026-10-06에 막은 경우와 모양이 같다(1은 6칸 진영의 Influence, 3·4는 Agent를 보낸 뒤의 아이콘 효과, 2는 빈
   덱의 draw, 5는 얻을 수 없는 dreadnought). 원칙과 맞는 디자이너 판정(Charisma를 Persuasion을 안 써도 냄, Rapid Mobilization을 0개로 냄 — garrison에
   troop이 있을 때, Urgent Mission을 Agent가 남지 않아도 냄 — 보드에 Agent가 있을 때)은 그대로 채택한다. 2026-10-06 판정이 Impress와 "any number"의 0을
   남긴 것과 같은 선이다.
-- 판정: (대기)
+- 판정: **미확정 유지**(2026-10-22 사용자: "일단은 나도 기존원칙대로 다섯 사례 모두 막는게 맞다고 보여져.
+  일단 이건 확정하지 말고 앱 구현 확인해보자고 기록해둬"). 기존 원칙 유지에 잠정 동의했지만 승인으로 취급하지 않는다.
+  다음 할 일은 다섯 사례의 앱 구현 조사이며, 조사 결과를 받은 뒤 사용자가 확정한다.
 
 ## OQ-114 — "Choose two:"는 서로 다른 둘인가
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-22 사용자 판정; 원판·Ix 구현은 아직)
 - 인쇄: Machinations(원판 Conflict) 1위 "Choose two:" 아래 진영 Influence 아이콘 넷, Battle for Arrakeen(원판 Conflict) 2위 "Choose two:" 아래
   Intrigue·spice 2·3 Solari 셋, Shuttle Fleet(Ix Tech) 획득 효과 "Choose two:" 아래 진영 Influence 넷 `[card faces]`. 어느 카드도 "different"를 적지 않는다.
 - 공식 문서: 침묵. "Gain two Influence" 아이콘이 한 진영이라는 문장 `[DI p. 16]`은 다른 아이콘(두 chevron)의 정의다.
@@ -1951,11 +1954,14 @@
 - 기존 원칙: "Choose Two"는 둘을 먼저 정하고 나서 해결한다(OQ-057 (4), 디자이너 판정; Stitched Horror "보상 넷 중 둘"). Uprising의 Propaganda는 "서로 다른
   진영 둘"이 인쇄돼 있다.
 - 추천: **나열된 것 가운데 서로 다른 둘**, 둘을 먼저 정하고 해결(OQ-057 (4)). "Choose two"는 목록에서 두 항목을 고르는 말로 읽는다(내 해석).
-- 판정: (대기)
+- 판정(2026-10-22 사용자): **서로 다른 두 항목**. "당연히 서로 다른 두 항목이지. 이건 같은 동작이 이미 그렇게 구현되어 있잖아".
+  기존 Choose Two 동작을 원판·Ix에도 적용한다. Machinations·Battle for Arrakeen·Shuttle Fleet 모두 중복 선택을 허용하지 않고,
+  두 항목을 먼저 정한 뒤 해결한다(OQ-057 (4)). 새로 중복 선택을 도입하는 문제가 아니라 기존 원칙의 적용 확인이다.
+  공식 문서의 공백을 사용자 판정으로 확정한 것이며, 새 공식 clarification이 나온 것으로 적지 않는다.
 
 ## OQ-115 — Baron Harkonnen의 Masterstroke: 공개가 의무인가, 넷을 어떻게 세나
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-22 사용자 판정; 원판·Ix 구현은 아직)
 - 인쇄: "At start of game, secretly choose 2 Factions. When you deploy 4+ troops to the Conflict in a turn, reveal your choices and gain one Influence with
   each." `[Baron Vladimir Harkonnen card]`
 - 공식: token 넷 가운데 둘을 진영 면이 아래로 가게 두고 나머지 둘은 보이지 않게 상자로 `[DI p. 13]`. 진영은 모든 setup 뒤 첫 라운드 전에 고르고, 공개와
@@ -1966,7 +1972,20 @@
   (2) 그 turn에 배치한 troop이 Conflict에 동시에 넷 이상 있는 순간(Coercive Negotiation·Distraction의 디자이너 판정 셈, OQ-029·OQ-016; 앱의 누적 셈과 다르다 — 앱은 retreat했다 다시 배치한 troop을 두 번 센다). troop만 센다
   — dreadnought는 아니다 `[Rise of Ix p. 6]`. 자기 turn 밖(Round Start의 Control 방어)은 turn이 아니므로 세지 않는다(OQ-063). 고른 진영이 6칸이면 그
   Influence는 없다(OQ-060).
-- 판정: (대기)
+- 판정(2026-10-22 사용자, "공개A/ 계산A"):
+  - **공개는 의무**다. 처음 조건을 달성하면 비밀 진영 둘을 공개하고 각 Influence를 얻는다(게임당 한 번). 나중 turn으로 미루지 않는다.
+    카드의 의무 문장과 `[FAQ pp. 1, 3]`에 근거하며, 진영이 6칸이면 해당 Influence만 불발한다(OQ-060).
+  - **기존 Distraction·Coercive Negotiation의 이번 turn 배치 조건과 같은 판정으로, 문턱만 3 → 4**다. 사용자:
+    "병력 계산은 지금 구현에도 책략 중에 '이번턴에 병력3개 이상 배치했을때' 조건과 숫자만 다른거지.
+    커맨더도 troop에 포함할 수 있고 그런 조건들 다 동일하게 적용해야지".
+    이번 turn에 배치한 병력이 Conflict에 동시에 넷 이상 있었던 순간을 기준으로 하며, 기존 배치 최고치·효과 retreat·임의 회수·
+    조건을 사용한 뒤의 회수 제한을 동일하게 적용한다(OQ-016·OQ-029). 단순 누적 배치 횟수로 바꾸지 않는다.
+    자기 turn 밖의 Control 방어 배치는 합산하지 않는다(OQ-063).
+  - **Sardaukar Commander도 troop으로 포함**한다(`[Bloodlines p. 4]`, `bloodlines.md` 3절). dreadnought는 troop이 아니므로 제외한다
+    (`[Rise of Ix p. 6]`). 기존 조건의 계산 원칙을 재사용하되, 현재 `UnitsDeployedThisTurnAtLeast`는 sandworm까지 세는 unit 조건이므로
+    그 전체 유닛 합계를 Baron의 troop 수와 혼동하지 않는다. 이후 조합 구현에서도 Commander를 빠뜨리지 않는다.
+  - 이는 기존 사용자·디자이너 판정을 Baron에 적용한 프로젝트 판정이다. Baron 전용 공식 배치 계산 clarification으로 취급하지 않는다.
+    이번 작업은 판정 기록만이며, 엔진 연결과 회귀 테스트는 해당 구현 단계에서 한다.
 
 ## OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
 
