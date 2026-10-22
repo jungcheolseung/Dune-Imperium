@@ -111,8 +111,8 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
   그 깃발에 dreadnought를 놓는다(있던 Control marker를 덮는다). 두 번째 dreadnought도 Conflict에 있었으면 garrison으로. 그 칸의 Control 보너스(1 Solari·
   1 Solari·1 spice, 방어 배치 troop 1)를 받는다. 지배는 **다음** Combat 단계 끝까지이고, 그때 dreadnought는 garrison으로 돌아가며 덮였던 marker의
   주인이 다시 지배한다. Detonation Devices가 있으면 지배 대신 dreadnought 하나를 supply로 돌려 1 VP를 얻을 수 있다.
-  - Steam 앱은 다르게 한다: 놓은 dreadnought를 **그 라운드의** Recall에서 garrison으로 돌린다(`RoundPhase.Recall`, OQ-121의 앱 처리). 룰북 문장과
-    예가 다음 Combat 단계 끝까지라고 하므로 룰북을 따른다.
+  - P0의 앱 분석은 지배한 그 라운드 Recall에 복귀한다고 보고했으나, 새 지배와 지난 라운드 지배를 구분하는 상태·복귀 조건을
+    재검증해야 한다. 확정된 앱 동작이나 공식 규칙과의 차이로 단정하지 않는다. 지배 선택과 복귀의 처리 순서도 앱 조사 후 재판정한다(OQ-121).
   - 룰북 예: 지난 라운드의 dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, 그 뒤 "as the Combat phase ends" 지난 dreadnought가
     garrison으로 갔다 `[Rise of Ix p. 6]`. 이 순서의 엔진 단계는 OQ-121.
   - 한 번에 locations 위에 있는 dreadnought는 둘을 넘지 않는다(놓이는 것 하나 + 다음 Combat 끝에 떠나는 것 하나) — 세 칸이 다 막히는 일은 없다.
@@ -139,7 +139,8 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
   - "discard"는 따로 말이 없으면 손의 카드다 `[FAQ p. 2]` — Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다.
   - 디자이너 판정: 비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다(BGG Forum 2023, 최신 판정). trash되는
     카드의 Unload는 trash되는 중에 일어난다(OQ-022의 예외가 아니다). Esmar Tuek를 Cull로 trash해 얻은 spice로 그 Agent box를 낼 수 없다(OQ-022).
-  - 공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는지는 OQ-120.
+  - 공개한 Unload 카드를 같은 Reveal turn에 trash하면 **다시 얻는다**(OQ-120, 2026-10-22 사용자 확정). 공개와 trash는 별도 사건이며
+    turn당 1회 제한을 두지 않는다. 공식 예도 같은 Esmar Tuek를 discard한 뒤 trash하면 효과를 다시 받는다 `[Rise of Ix p. 7]`.
 - **Infiltration.** Agent의 옆얼굴이 든 Agent 아이콘은 그 아이콘의 칸에서 상대 Agent(여럿이어도)를 무시하고 보낼 수 있게 한다. 자기 Agent가 이미 있는
   칸에는 못 보낸다. The Voice는 넘지 못한다. Dispatch an Envoy로 더한 아이콘은 잠입하지 못한다. `[Rise of Ix p. 7]` 잠입은 선택이다(빈 칸에 보통처럼
   보내도 된다) `[FAQ p. 2]`. 잠입 아이콘 카드 7장: Bounty Hunter(City), CHOAM Delegate(Spice Trade), Court Intrigue(Emperor), Embedded Agent(Landsraad),
@@ -213,7 +214,7 @@ Duke Leto의 Landsraad 할인은 Dreadnought 칸에도 든다(3 → 2). Kwisatz 
 | Leader | 왼쪽 능력 | Signet Ring | 판정·주의 |
 | --- | --- | --- | --- |
 | Archduke Armand Ecaz (2) | Coordination: Reveal turn에 Landsraad·City·Spice Trade 칸에 Agent 둘 이상이면 in play 카드 하나를 trash할 수 있다 | Conscript: 비용 3 이하 카드 하나를 얻을 수 있다 | `[FAQ p. 1]`; Mentat도 그의 Agent로 센다(디자이너 판정) |
-| Ilesa Ecaz (3) | One Step Ahead: Round Start에 손의 카드 하나를 따로 둔다. 라운드의 둘째 turn을 시작할 때 공개해 손으로 되돌린다. 그 turn에 그 카드로 Agent를 보내면 Agent 아이콘이 정확히 하나면 spice 1, 아니면 1 Solari | Guild Contacts: 1 Solari → Foldspace 획득 | `[Rise of Ix p. 10]` `[FAQ p. 2]`; "둘째 turn"을 세는 법은 OQ-119 |
+| Ilesa Ecaz (3) | One Step Ahead: Round Start에 손의 카드 하나를 따로 둔다. 라운드의 둘째 turn을 시작할 때 공개해 손으로 되돌린다. 그 turn에 그 카드로 Agent를 보내면 Agent 아이콘이 정확히 하나면 spice 1, 아니면 1 Solari | Guild Contacts: 1 Solari → Foldspace 획득 | `[Rise of Ix p. 10]` `[FAQ p. 2]`; Agent 없는 pass와 Weirding Way 추가 turn 모두 센다(OQ-119 사용자 확정) |
 | Prince Rhombur Vernius (1) | Heavy Lasgun Cannons: dreadnought strength 4 | Ixian Technology: Acquire Tech -OR- Tech Negotiation | 오른쪽 아이콘이 Tech Negotiation인 근거: Rival 문장 "Acquire Tech if he can. If not, he will use the Tech Negotiation icon" `[Rise of Ix p. 8]` |
 | "Princess" Yuna Moritani (2) | Smuggling Operation: water 없이 시작; 자기 turn에 Solari를 얻을 때마다 1 더 | Final Delivery: 7 Solari → Influence 1(골라)·troop 1·spice 1 | `[FAQ p. 3]`; Dividends로 남의 turn에 받는 1 Solari에는 붙지 않는다(OQ-042·OQ-063 "your turn") |
 | Tessia Vernius (4) | Careful Observation: 시작에 Snooper token을 각 track의 Influence 2 칸에. 그 token에 도달할 때마다 Snooper track의 맨 위 덮이지 않은 보상을 받는다(① discard → spice 1, ② 그 track의 4칸 보너스, ③ 그 track에 Influence 1, ④ ②와 ③) | Duplicity: Influence 1 잃기 → Snooper token이 있는 진영에 Influence 1 | 디자이너 판정 9.3. "도달"은 Influence를 한꺼번에 얻으며 지나가도 도달(Uprising과 같다, [uprising-systems.md](uprising-systems.md)) |
@@ -298,9 +299,9 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 
 [open-questions.md](open-questions.md)에 원문·앱 처리·추천과 함께 적었다. 원판 쪽은 OQ-113 ~ OQ-118([imperium-base.md](imperium-base.md) 17절).
 
-- OQ-119 — Ilesa Ecaz의 "둘째 turn": Bindu Suspension으로 넘긴 turn, Weirding Way의 추가 turn을 세는가
-- OQ-120 — 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는가
-- OQ-121 — dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때(엔진 단계)
+- OQ-119 — **확정:** Ilesa Ecaz의 "둘째 turn"은 Agent 없는 pass와 Weirding Way 추가 turn 모두 센다.
+- OQ-120 — **확정:** 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는다.
+- OQ-121 — **앱 조사 후 재판정:** dreadnought 지배 선택·승리 효과의 순서와 지난 dreadnought의 복귀 시점. 기존 앱 분석도 재검증한다.
 - OQ-122 — Round Start 효과(Holtzman Engine, Shuttle Fleet, Ilesa의 따로 두기)의 순서
 - OQ-126 — Disposal Facility의 "Persuasion 6 이상"
 - OQ-127 — Combat 단계에 열린 Treachery의 Unload

@@ -140,8 +140,8 @@
 | [OQ-116](#oq-116--the-voice-막힘이-풀리는-때와-control-marker가-없을-때) | The Voice: 막힘이 풀리는 때와 Control marker가 없을 때 | `DECIDED` |
 | [OQ-117](#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가) | Bindu Suspension을 Reveal turn 대신 낼 수 있는가 | `DECIDED` |
 | [OQ-118](#oq-118--each-opponent-discards-two-cards에서-손에-한-장뿐일-때) | "each opponent discards two cards"에서 손에 한 장뿐일 때 | `DECIDED` |
-| [OQ-119](#oq-119--ilesa-ecaz의-둘째-turn을-세는-법) | Ilesa Ecaz의 "둘째 turn"을 세는 법 | `OPEN` |
-| [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `OPEN` |
+| [OQ-119](#oq-119--ilesa-ecaz의-둘째-turn을-세는-법) | Ilesa Ecaz의 "둘째 turn"을 세는 법 | `DECIDED` |
+| [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `DECIDED` |
 | [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) | dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때 | `OPEN` |
 | [OQ-122](#oq-122--round-start-효과의-순서) | Round Start 효과의 순서 | `OPEN` |
 | [OQ-123](#oq-123--the-spice-must-flow를-세는-곳) | The Spice Must Flow를 세는 곳 | `OPEN` |
@@ -2052,38 +2052,57 @@
 
 ## OQ-119 — Ilesa Ecaz의 "둘째 turn"을 세는 법
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-22 사용자: "둘 다 추천하는대로")
 - 인쇄: "Round Start: Set aside a card from your hand. At the start of your second turn in a round, reveal that card and return it to your hand. If you use
   it to send an Agent this turn: ..." `[Ilesa Ecaz card]`. 첫 turn에 Reveal turn을 하면 따로 둔 카드를 공개 카드에 더한다 `[Rise of Ix p. 10]`.
 - 질문: (a) Bindu Suspension(원판 Intrigue)으로 넘긴 turn을 turn으로 세나. (b) Weirding Way(Ix)의 "You may take another turn immediately after this one"으로
   하는 turn을 세나.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 좌석마다 `TurnOfRound` 셈을 turn이 열릴 때마다(`PlayerTurnPhase.PrePlayerTurn`) 1 올리고 Recall에서 0으로 돌리며, `OneStepAheadTurnAbility`는 그 값이 2인 turn 시작에 돈다. Bindu Suspension으로 넘긴 turn도(넘기기는 셈을 올린 뒤에 정해진다), Weirding Way의 추가 turn도(같은 좌석에 새 turn 단계가 열린다) 센다. 따로 두기는 모두 5장을 뽑고 Holtzman Engine·Shuttle Fleet가 돈 뒤다(`RoundSetupFinishedIlesa`).
 - 추천: **둘 다 센다.** Bindu는 "pass your turn"이고 Weirding Way는 "take another turn"이라 둘 다 turn이다(내 해석).
-- 판정: (대기)
+- 판정(2026-10-22 사용자): **패스한 차례와 추가 차례 모두 센다.** 첫 turn을 Bindu·Litany Against Fear 등으로 Agent를 보내지 않고
+  넘겼다면 다음 자기 turn이 둘째 turn이고, Weirding Way로 첫 turn 직후 받은 추가 turn도 둘째 turn이다. 그 둘째 turn 시작에 따로 둔 카드를
+  공개해 손으로 돌려받는다. Agent 배치 횟수를 세는 것이 아니다. The Voice의 다음 Agent 봉쇄는 Agent 없는 pass로 소비하지 않는다는
+  OQ-116과 구분한다. Bindu를 쓰고 정상 진행을 고르면 그 진행은 같은 turn이며, 별도 turn으로 하나 더 세지 않는다(OQ-117).
 
 ## OQ-120 — 공개한 Unload 카드를 같은 Reveal turn에 trash하면
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-22 사용자: "공개할 때 받고, 폐기하니까 또 받고")
 - 공식: Unload Reveal box는 Reveal turn에 공개할 때(이때는 "ignore the Unload icon, and gain its Reveal effects normally"), 그 카드를 discard할 때, trash할
   때 얻는다 `[Rise of Ix pp. 7, 12]`. 디자이너 판정: trash되는 카드의 Unload는 trash되는 중에 일어난다(BGG Forum).
+- 공식 예: Guild Chief Administrator로 Esmar Tuek를 discard해 효과를 받은 뒤 같은 카드를 trash하면 같은 효과를 또 받는다
+  (`[Rise of Ix p. 7]`). 같은 카드의 별도 사건으로 효과를 반복해서 받을 수 있다는 근거다.
 - 상황: Reveal turn에 Unload 카드(예: CHOAM Delegate, 3 Solari)를 공개해 Reveal box를 얻은 뒤, 같은 turn에 Disposal Facility(Ix Tech)나 Archduke Armand
   Ecaz의 Coordination으로 in play의 그 카드를 trash한다.
 - 질문: trash로 Reveal box를 한 번 더 얻는가.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 다시 준다 — `UnloadAbility`는 "이미 공개했다"를 보지 않고 그 카드의 Reveal 능력을 돌리며, Disposal Facility와 Armand Ecaz의 Coordination은 모두 `TrashCard`를 쓰고 `TrashCard`는 어느 구역의 카드든 `ImperiumTrashed`를 낸다. discard 쪽은 `Discard` 행동이 손(또는 덱)에서 버릴 때만 Unload를 연다; 라운드 끝 정리는 `Move`라 열지 않는다.
 - 추천: **또 얻는다.** "when you trash the card"는 공개와 별개의 사건이고 조건을 달지 않는다 `[Rise of Ix p. 7]`; "ignore the Unload icon"은 공개할 때 Reveal box를 한 번만 얻는다는 말로 읽는다(내 해석). 디자이너 판정("Unload effects are of course still activated as they are being trashed")과 앱도 같은 쪽이다. Clean Up은 discard가 아니므로 Unload를 열지 않는다(`[FAQ p. 2]` discard = 손의 카드).
-- 판정: (대기)
+- 판정(2026-10-22 사용자): **공개 시 받고, 같은 Reveal turn에 폐기하면 다시 받는다.** 공개와 trash는 별도 사건이다.
+  예: CHOAM Delegate를 공개해 3 Solari를 받고 다른 효과로 폐기하면 Unload로 3 Solari를 다시 받는다. 카드별 turn당 1회 제한을 만들지 않는다.
+  Clean Up에서 in play 카드를 discard pile로 옮기는 정리는 discard 효과가 아니므로 Unload를 발동시키지 않는다.
 
 ## OQ-121 — dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `OPEN` (2026-10-22 사용자: 앱 구현 확인 필요; 순서 제안 미확정)
 - 공식: dreadnought가 있는 Conflict를 이기면 dreadnought가 없는 Control 칸 하나를 골라야 하고, 지배는 다음 Combat 단계 끝까지다. 룰북 예: 지난 라운드의
   dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, "as the Combat phase ends" 지난 dreadnought가 garrison으로 갔다 `[Rise of Ix p. 6]`.
 - 질문(엔진 단계): (1) 승자가 지배 칸을 고르는 결정은 승자의 보상 줄 하나인가(인쇄 보상과 순서 자유, OQ-112), 보상 뒤 따로인가. "When you win a Conflict"
   Intrigue(To the Victor…, Demand Respect, Strategic Push)·Windtraps·Detonation Devices와의 순서. (2) 지난 라운드 dreadnought가 garrison으로 가는 단계:
   Conflict 끝 Intrigue 창과 정리(troop을 supply로, marker 0) 앞인가 뒤인가.
-- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): (1) 승자의 지배 고르기는 인쇄 보상(`ResolveCombat`)을 다 준 뒤 마지막 Combat 창(`PlayCombatResolutionIntrigueCards`)에서 승자가 고르는 지연 능력이다(`ConflictAbilities.RiseOfIx.DreadnoughtControlAbility`); Windtraps는 그 창이 열릴 때 자동으로, Detonation Devices는 같은 고르기 안의 "지배 대신 VP" 확인이다. (2) **앱은 룰북과 다르다**: 놓은 dreadnought를 **그 라운드의** Recall에서 garrison으로 돌린다(`RoundPhase.Recall`, 화면 안내 "It will return to its owner's garrison at the end of the round") — 그래서 앱에서는 지난 라운드의 dreadnought가 칸에 남아 있는 일이 없다. 룰북은 "until the end of the next Combat phase"이고 그 예가 바로 지난 라운드의 dreadnought가 남은 경우다 `[Rise of Ix p. 6]`.
-- 추천: (1) **승자의 인쇄 보상을 모두 받은 뒤, Conflict 끝 Intrigue 창 앞에 승자 혼자의 단계**로 둔다(Detonation Devices의 VP 고르기도 그 단계 안). 지배는 카드에 인쇄된 보상이 아니라 이긴 결과로 생기는 규칙이라 OQ-112의 보상 줄에 섞지 않는다(내 해석; 앱의 순서와 같다). (2) **룰북대로 다음 Combat 단계 끝**에, 그 단계의 보상·Conflict 끝 창·정리(troop을 supply로) 다음에 garrison으로 — 새 승자는 아직 남은 dreadnought의 칸을 고를 수 없다(룰북 예). 앱과 다르다는 것을 명세에 적는다.
-- 판정: (대기)
+- P0 앱 분석(Steam 4.1.2.1808(build `dad97e20`), **재검증 전의 조사 기록**): (1) 승자의 지배 고르기는 인쇄 보상(`ResolveCombat`) 뒤
+  마지막 Combat 창(`PlayCombatResolutionIntrigueCards`)의 지연 능력(`ConflictAbilities.RiseOfIx.DreadnoughtControlAbility`)이라고 보고했다.
+  Windtraps는 창이 열릴 때 자동, Detonation Devices는 같은 선택 안의 "지배 대신 VP"라고 기록했다.
+  (2) `RoundPhase.Recall`과 화면 안내 "It will return to its owner's garrison at the end of the round"로부터 지배한 바로 그 라운드에
+  돌아온다고 결론지었다. **지배한 라운드·복귀 대상의 구분 및 실제 실행을 다시 확인하기 전에는 확정된 앱 동작이나 공식 규칙과의 차이로 단정하지 않는다.**
+- 미확정 제안의 이력: P0는 인쇄 보상 뒤·Conflict 끝 책략 창 앞에 지배/Detonation 결정을 고정 배치하자고 추천했다.
+  다만 이를 "앱과 같은 순서"라고 한 근거는 위의 같은 창 안에서 고른다는 조사 기록과 일치하지 않아 철회한다.
+  후속 판정 논의에서는 모든 순위 보상 뒤 승리 효과 단계에서 지배/Detonation·Windtraps·승리 시 책략의 독립 효과를 승자가 원하는 순서로
+  처리하는 A안을 제안했다(OQ-108·112의 적용 제안). **P0안과 후속 A안 모두 사용자 승인 전**이다.
+- 판정: **미확정 유지, 앱 조사 후 재판정**(2026-10-22 사용자: "이건 앱에서는 어떻게 되고 있는지 확인해야한다고 기록해야겠다").
+  다음 조사는 (1) 순위 보상·지배/Detonation·Windtraps·승리 시 책략의 실제 처리 순서와 선택 가능 범위,
+  (2) 새 지배 dreadnought와 지난 라운드 지배 dreadnought를 구분하는 상태 및 복귀 조건,
+  (3) 새 승자의 지배 선택·troop 반환·전투 종료 효과·Combat 끝·Recall 사이의 복귀 시점이다.
+  코드에서 확인한 것과 실제 앱 실행으로 확인한 것을 구분해 보고한다. 공식 `[Rise of Ix p. 6]`의 다음 Combat 끝이라는 근거는 유지하며,
+  앱 결과로 공식 문장을 덮어쓰지 않는다. 이번에는 조사 필요 사항만 기록했으며 앱 조사를 수행하지 않았다.
 
 ## OQ-122 — Round Start 효과의 순서
 
