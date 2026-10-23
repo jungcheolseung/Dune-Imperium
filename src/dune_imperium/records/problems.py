@@ -621,7 +621,7 @@ def resolve(
             ):
                 picks.append((state, migrated.step))
                 continue
-            if migrated.recorded_index is not None and migrated.bridge is None:
+            if migrated.recorded_index is not None:
                 for refused in turn_ends.get(migrated.recorded_index, ()):
                     resolved[refused.problem_id] = _position(
                         engine,
