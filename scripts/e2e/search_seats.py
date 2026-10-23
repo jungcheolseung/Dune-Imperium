@@ -658,7 +658,8 @@ def scenario_game(base: str, browser, needles: list[str]) -> None:
     check.ok(
         seats[0] == "human"
         and all(
-            kind.startswith("search:") and kind.endswith("l3-e2e.pt")
+            # with the server's search options (sessions.SERVER_SEARCH_OPTIONS)
+            kind.startswith("search:") and kind.endswith("l3-e2e.pt::flip=0.01")
             for kind in seats[1:]
         ),
         "the server seats its network's real file",

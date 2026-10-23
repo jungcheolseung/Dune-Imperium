@@ -67,6 +67,7 @@ from dune_imperium.agents.registry import (
     SEARCH_VALUE_SEPARATOR,
     is_agent_kind,
     is_background_agent_kind,
+    parse_search_kind,
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
@@ -170,9 +171,18 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 HUMAN_SEAT: Final = "human"
 # The bare kind the browser sends for the server's own search AI: the
-# manager seats ``search:<its checkpoint>`` there (``create_game``), so a
-# save records the very file the seat played with.
+# manager seats ``search:<its checkpoint>`` with ``SERVER_SEARCH_OPTIONS``
+# there (``create_game``), so a save records the very file and options the
+# seat played with.
 SEARCH_SEAT: Final = "search"
+# E1's flip margin: the network's first candidate stays unless another one's
+# mean is better by more than 0.01. It passed both of its 400-game tests
+# (handoff "학습·AI" E1, 2026-10-23). A save seated before it keeps
+# ``search:<path>`` and plays on without it.
+SERVER_SEARCH_OPTIONS: Final = f"{SEARCH_OPTION_SEPARATOR}flip=0.01"
+# The one search option a table seat may carry; the others (``value``,
+# ``prior``, ``halving``) stay measurement tools.
+_TABLE_SEARCH_OPTIONS: Final = frozenset({"flip_margin"})
 # The banner prompt once nothing mandatory is left in an Agent turn
 # (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
 AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
@@ -568,9 +578,10 @@ class GameSessionManager:
         ``rollout``, ``rollout_strong``, ``checkpoint:<path>`` or
         ``search:<path>``; or ``search``, the server's own search AI, which
         is seated as ``search:<path>`` of the checkpoint the manager was
-        given (refused when it has none). The browser offers ``search``
-        rather than a path, and only where the server has one, and seats
-        three ``app_ai`` beside one human by default on an open server.
+        given, with ``SERVER_SEARCH_OPTIONS`` (refused when it has none).
+        The browser offers ``search`` rather than a path, and only where
+        the server has one, and seats three ``app_ai`` beside one human by
+        default on an open server.
 
         Host-only on a remote server: a ``checkpoint:<path>`` seat makes the
         server open a file, and search seats spend its CPU.
@@ -640,7 +651,7 @@ class GameSessionManager:
             return assignment
         if self._search_checkpoint is None:
             raise SessionError("this server has no search AI")
-        return f"{SEARCH_PREFIX}{self._search_checkpoint}"
+        return f"{SEARCH_PREFIX}{self._search_checkpoint}{SERVER_SEARCH_OPTIONS}"
 
     def list_games(self, *, credentials: Credentials = ANONYMOUS) -> list[JsonObject]:
         """Return the summary of every open session.
@@ -2275,9 +2286,9 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
-        # A split search seat, or one with search options, is a measurement
-        # tool; a table seat names one file, which is what the players are
-        # shown (``_public_seat_kind``).
+        # A split search seat, or one with a search option other than the
+        # flip margin, is a measurement tool; a table seat names one file,
+        # which is what the players are shown (``_public_seat_kind``).
         if assignment.startswith(SEARCH_PREFIX) and (
             SEARCH_OPTION_SEPARATOR in assignment
         ):
@@ -2285,9 +2296,11 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
                 raise SessionError(
                     f"a split search seat is not a table seat: {assignment!r}"
                 )
-            raise SessionError(
-                f"a search seat with options is not a table seat: {assignment!r}"
-            )
+            _, options = parse_search_kind(assignment)
+            if not options.keys() <= _TABLE_SEARCH_OPTIONS:
+                raise SessionError(
+                    f"a search seat with options is not a table seat: {assignment!r}"
+                )
         # So is an older-codec network's seat, the stage B retrain's teacher
         # (``training.older_teacher``, 2026-10-21): whether it may sit at a
         # table is still the user's decision.

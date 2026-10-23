@@ -200,9 +200,17 @@ def test_search_options_parse_and_stay_off_the_tables(tmp_path: Path) -> None:
         assert not is_agent_kind(f"search:{path}{bad}") or bad == "::halving=1"
     with pytest.raises(ValueError):
         make_agent(f"search:{path}::halving=1", 0, _RULES)
-    with pytest.raises(SessionError, match="with options"):
-        _validate_seats((kind, "human", "human", "human"), _RULES)
+    # A table seat may carry the flip margin (the server's search AI does,
+    # ``SERVER_SEARCH_OPTIONS``); the other options stay measurement tools.
+    for refused in (kind, f"search:{path}::prior=0.03", f"search:{path}::halving=8"):
+        with pytest.raises(SessionError, match="with options"):
+            _validate_seats((refused, "human", "human", "human"), _RULES)
+    with pytest.raises(SessionError, match="split"):
+        _validate_seats(
+            (f"search:{path}::value={path}", "human", "human", "human"), _RULES
+        )
     _validate_seats((f"search:{path}", "human", "human", "human"), _RULES)
+    _validate_seats((f"search:{path}::flip=0.01", "human", "human", "human"), _RULES)
 
 
 def test_a_retraced_halving_seat_answers_like_the_one_that_searched(
