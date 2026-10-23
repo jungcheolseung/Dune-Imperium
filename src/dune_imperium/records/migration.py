@@ -568,21 +568,13 @@ def migrate_record(
                     else step
                 )
                 bridged = _bridge(engine, state, asked, bridges)
-                if (
-                    bridged is None
-                    and drops_refusals
-                    and isinstance(recorded, DomainAction)
-                    and recorded.action_id in _OPTIONAL_REFUSALS
-                ):
-                    dropped.append((index, OPTIONAL_REFUSAL_DROPPED))
-                    break
-                if (
-                    bridged is None
-                    and drops_turn_row_refusals
-                    and isinstance(recorded, DomainAction)
-                    and recorded.action_id in _TURN_ROW_REFUSALS
-                ):
-                    dropped.append((index, TURN_ROW_REFUSAL_DROPPED))
+                lapsed = (
+                    lapsed_refusal(recorded, replay.action_codec_version)
+                    if bridged is None
+                    else None
+                )
+                if lapsed is not None:
+                    dropped.append((index, lapsed))
                     break
                 if (
                     bridged is None
@@ -810,6 +802,27 @@ TURN_ROW_REFUSAL_DROPPED: Final = "turn_row_refusal"
 _TURN_ROW_REFUSALS: Final = frozenset(
     {"decline_optional_trash", "decline_research_bonus"}
 )
+
+
+def lapsed_refusal(step: ReplayStep, codec: int) -> str | None:
+    """Why a codec ``codec`` engine's refusal of an optional effect has no
+    counterpart here, or None for any other step.
+
+    Such an effect waits on the turn with no refusal and the turn's end
+    lapses it: ``OPTIONAL_REFUSAL_DROPPED`` before codec v146,
+    ``TURN_ROW_REFUSAL_DROPPED`` before v149. Whether this engine still
+    offers the refusal at a state (a bundled selection part way through) is
+    the caller's check."""
+
+    if not isinstance(step, DomainAction):
+        return None
+    if codec < OPTIONAL_REFUSALS_CODEC and step.action_id in _OPTIONAL_REFUSALS:
+        return OPTIONAL_REFUSAL_DROPPED
+    if codec < TURN_ROW_REFUSALS_CODEC and step.action_id in _TURN_ROW_REFUSALS:
+        return TURN_ROW_REFUSAL_DROPPED
+    return None
+
+
 # Also from v149 (cleanup-2b, rule decision 1, OQ-060): Shipping's and a Tech
 # tile's acquire "Influence with any Faction" no longer offer a Faction at
 # the top. A recording engine's pick of one gained nothing; this engine's

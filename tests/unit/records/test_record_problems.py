@@ -14,11 +14,13 @@ from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.records.problems import (
     HumanProblem,
     Resolved,
+    Suite,
     answer,
     build_mistake_suite,
     build_suite,
     load_suite,
     merge_suites,
+    position_state,
     resolve,
     save_suite,
     summarize,
@@ -907,15 +909,157 @@ def test_a_placement_against_steps_is_asked_before_the_first_step(
     assert (position.wrong,) == agent_card_pick_actions(placement.actor, (placement,))
 
 
+@pytest.mark.parametrize(
+    ("refusal", "reason"),
+    [
+        ("decline_optional_trash", "turn_row_refusal"),
+        ("decline_tech", "optional_refusal"),
+    ],
+)
 def test_a_refusal_this_engine_no_longer_has_is_reported_not_raised(
-    tmp_path: Path,
+    tmp_path: Path, refusal: str, reason: str
 ) -> None:
-    # Since codec v149 an in-turn optional trash has no refusal (the turn's
-    # end lapses it), so a network's ``decline_optional_trash`` names a window
-    # this state is not in: it is asked as it is and reported, where it used
-    # to stop the whole check with a ValueError.
+    # Since codec v149 an in-turn optional trash has no refusal, and since
+    # v146 an Agent turn's optional effect (the turn's end lapses it), so a
+    # network's refusal names a window this state is not in. It used to stop
+    # the whole check with a ValueError, then read "not legal"; it is
+    # reported as having no counterpart (c3adefb4:471, fb716981:607).
     position, _, _, _ = _turn_effect_problem(
-        tmp_path, lambda state, seat: DomainAction("decline_optional_trash", seat)
+        tmp_path, lambda state, seat: DomainAction(refusal, seat)
     )
 
-    assert position == "the wrong move decline_optional_trash{} is not legal"
+    assert position == (
+        f"the network's move {refusal} has no counterpart on this engine ({reason})"
+    )
+
+
+def _hand_problem(
+    game: SavedGame,
+    index: int,
+    state: GameState,
+    right: DomainAction,
+    wrong: DomainAction,
+) -> HumanProblem:
+    """A ``human_right`` problem at recorded step ``index``, judged at
+    ``state``: built by hand, as ``build_suite`` finds no position at a
+    step this engine drops."""
+
+    return HumanProblem(
+        problem_id=f"{game.game_id[:8]}:{index}",
+        game=game.game_id,
+        recorded_index=index,
+        seat=right.actor,
+        round_number=state.round_number,
+        kind="effect_order",
+        family="human_right",
+        right=right,
+        wrong=wrong,
+        evidence={},
+        judged_state=position_state(state),
+    )
+
+
+def test_a_person_s_refusal_and_turn_end_are_asked_at_the_turn_end(
+    tmp_path: Path,
+) -> None:
+    # Before codec v146 an Agent turn's optional effect had a refusal; this
+    # engine lapses the effect at the turn's end and the migration drops the
+    # refusal (OQ-095 (2)). A person who refused and ended the turn at once
+    # made one decision here, ending the turn, in the state the refusal was
+    # judged in (885ed2f0:578 and :756). One who refused and played on, and
+    # a network's refusal, have no single move here.
+    engine = UprisingRulesEngine()
+    game = _game_with_human(tmp_path, 0)
+    steps = game.parsed.replay.steps
+    record = migrate_record(game.parsed.replay, engine)
+    before = {
+        migrated.recorded_index: state
+        for state, migrated in walk(record, engine)
+        if migrated.recorded_index is not None
+    }
+
+    def ends_turn(index: int) -> bool:
+        refusal, following = steps[index], steps[index + 1]
+        assert isinstance(refusal, DomainAction)
+        return (
+            isinstance(following, DomainAction)
+            and following.action_id == "finish_agent_turn"
+            and following.actor == refusal.actor
+        )
+
+    refusals = [index for index, why in record.dropped if why == "optional_refusal"]
+    ended = next(index for index in refusals if ends_turn(index))
+    played_on = next(index for index in refusals if not ends_turn(index))
+    refusal, finish, other_refusal = steps[ended], steps[ended + 1], steps[played_on]
+    assert isinstance(refusal, DomainAction) and isinstance(finish, DomainAction)
+    assert isinstance(other_refusal, DomainAction)
+    turn_end = before[ended + 1]
+    seat = refusal.actor
+    other = next(
+        action for action in engine.whole_actions(turn_end, seat) if action != finish
+    )
+    problems = (
+        _hand_problem(game, ended, turn_end, refusal, other),
+        # The network's refusal against the person's turn end itself.
+        _hand_problem(game, ended + 1, turn_end, finish, refusal),
+        _hand_problem(game, played_on, turn_end, other_refusal, other),
+    )
+    suite = Suite(
+        note="test",
+        records={game.game_id: json.loads(game.path.read_text(encoding="utf-8"))},
+        problems=problems,
+    )
+
+    resolved = resolve(suite, engine)
+
+    position = resolved[problems[0].problem_id]
+    assert isinstance(position, Resolved), position
+    assert position.state == turn_end
+    assert position.right == finish
+    assert position.wrong == (
+        other if other in position.legal else first_step(turn_end, other)
+    )
+    assert resolved[problems[1].problem_id] == (
+        f"the network's move {refusal.action_id} has no counterpart on this "
+        "engine (optional_refusal)"
+    )
+    assert resolved[problems[2].problem_id] == (
+        f"the person's move at step {played_on} has no counterpart on this "
+        "engine (optional_refusal)"
+    )
+
+
+def test_a_refusal_this_engine_still_offers_is_asked(tmp_path: Path) -> None:
+    # Outside its owner's turn an optional trash keeps its window and its
+    # refusal (codec v149, cleanup-2b): Water Discipline, a Scouts card, has a
+    # seat trash a card while others draw. A network's
+    # ``decline_optional_trash`` there is asked as a move of this engine.
+    engine = UprisingRulesEngine()
+    path = tmp_path / f"{'c' * 32}.json"
+    path.write_text(
+        (DATA / "v141-app_ai-1009.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    game = read_saved_game(path)
+    record = migrate_record(game.parsed.replay, engine)
+    index = 259
+    trash = game.parsed.replay.steps[index]
+    assert isinstance(trash, DomainAction)
+    assert trash.action_id == "trash_optional_card"
+    state = next(
+        state
+        for state, migrated in walk(record, engine)
+        if migrated.recorded_index == index
+    )
+    decline = DomainAction("decline_optional_trash", trash.actor)
+    suite = Suite(
+        note="test",
+        records={game.game_id: json.loads(path.read_text(encoding="utf-8"))},
+        problems=(_hand_problem(game, index, state, trash, decline),),
+    )
+
+    (position,) = resolve(suite, engine).values()
+
+    assert isinstance(position, Resolved), position
+    assert position.wrong in position.legal
+    assert position.wrong.action_id == "decline"

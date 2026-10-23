@@ -42,6 +42,16 @@ plot, say). Stage B3 asks a waiting effect before its target the same way:
 a problem whose person's move is a whole action with a target is asked at
 the effect when the network's move resolves another effect (or none), and
 at the target once the person's effect is picked when it picks the same one.
+
+An optional effect of the turn has no refusal since codec v146 (the Agent
+turn's) and v149 (one raised in its owner's own turn): it waits on the turn
+and the turn's end lapses it (OQ-095 (2), ``migration.lapsed_refusal``). A
+recorded refusal then leaves the state as it was, and the migration drops
+it. A person who refused and ended the turn at once made, on this engine,
+the one decision of ending the turn there, so the problem is asked at that
+turn end with it as the person's move. A refusal followed by anything else,
+and a network's refusal, chose to leave the effect and play on, which no
+single move here does: such a problem does not resolve, and says so.
 """
 
 import dataclasses
@@ -60,7 +70,10 @@ from dune_imperium.core.state import GameState
 from dune_imperium.paths import LOCAL_DIR
 from dune_imperium.records.migration import (
     GRAFT_BOXES_CODEC,
+    OPTIONAL_REFUSAL_DROPPED,
+    TURN_ROW_REFUSAL_DROPPED,
     graft_box_held,
+    lapsed_refusal,
     migrate_record,
     rewrite_step,
     walk,
@@ -128,6 +141,13 @@ _SPACE_PICK_BRIDGE: Final = "agent_space_pick"
 _EFFECT_STEP_BRIDGE: Final = "effect_step"
 _PLACEMENT: Final = "agent_turn"
 _SPACE_PICK: Final = "place_agent"
+# A recorded refusal the migration dropped because the turn's end lapses
+# the effect here (``migration.lapsed_refusal``), and the presses that end
+# a seat's own turn.
+_LAPSED_REFUSALS: Final = frozenset(
+    {OPTIONAL_REFUSAL_DROPPED, TURN_ROW_REFUSAL_DROPPED}
+)
+_TURN_ENDS: Final = frozenset({"finish_agent_turn", "finish_reveal"})
 
 
 def _plain(value: object) -> Any:
@@ -573,6 +593,15 @@ def resolve(
         ).replay
         record = migrate_record(replay, engine)
         wanted = {problem.recorded_index: problem for problem in problems}
+        dropped = dict(record.dropped)
+        # A person's refusal the migration dropped, with their turn's end
+        # recorded right after it: asked at that turn end (module docstring).
+        turn_ends = {
+            problem.recorded_index + 1: problem
+            for problem in problems
+            if dropped.get(problem.recorded_index) in _LAPSED_REFUSALS
+            and _ends_turn(replay.steps, problem)
+        }
         # The state before a card pick the migration put in front of a
         # recorded placement (codec v150): the position is asked there when
         # the problem's moves send different cards.
@@ -592,6 +621,21 @@ def resolve(
             ):
                 picks.append((state, migrated.step))
                 continue
+            refused = (
+                turn_ends.get(migrated.recorded_index)
+                if migrated.recorded_index is not None and migrated.bridge is None
+                else None
+            )
+            if refused is not None:
+                resolved[refused.problem_id] = _position(
+                    engine,
+                    refused,
+                    state,
+                    migrated.step,
+                    replay.action_codec_version,
+                    migrated.graft_box,
+                    migrated.reveal_source,
+                )
             if migrated.recorded_index not in wanted:
                 before_pick = None
                 picks = []
@@ -618,7 +662,6 @@ def resolve(
             )
             before_pick = None
             picks = []
-        dropped = dict(record.dropped)
         for problem in problems:
             if problem.problem_id in resolved:
                 continue
@@ -638,6 +681,47 @@ def resolve(
                 else "the record never reaches the position"
             )
     return resolved
+
+
+def _ends_turn(steps: Sequence[ReplayStep], problem: HumanProblem) -> bool:
+    """Whether the step recorded right after the problem's is the seat's
+    own turn end."""
+
+    index = problem.recorded_index + 1
+    following = steps[index] if index < len(steps) else None
+    return (
+        isinstance(following, DomainAction)
+        and following.actor == problem.seat
+        and following.action_id in _TURN_ENDS
+    )
+
+
+def _lapsed_refusal(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    network: DomainAction,
+    codec: int,
+    graft_box: int,
+) -> str | None:
+    """Why the network's move, a refusal of an optional effect this engine
+    lapses at the turn's end (``migration.lapsed_refusal``), has no
+    counterpart at ``state``; None for any other move, and for a refusal
+    this engine still offers there (box ``graft_box``'s row before codec
+    v143)."""
+
+    reason = lapsed_refusal(network, codec)
+    if reason is None:
+        return None
+    offered = {
+        *engine.legal_actions(state, network.actor),
+        *engine.whole_actions(state, network.actor),
+    }
+    if network in offered or tagged(network, graft_box) in offered:
+        return None
+    return (
+        f"the network's move {network.action_id} has no counterpart on this "
+        f"engine ({reason})"
+    )
 
 
 def _card_of(move: DomainAction) -> tuple[str, bool] | None:
@@ -710,6 +794,20 @@ def _position(
     # through the same rewrite bridges (either may have been renamed).
     person = migrated if isinstance(migrated, DomainAction) else problem.person
     network = problem.wrong if problem.family == "human_right" else problem.right
+    # The network's move was weighed before the person's first step here.
+    lapsed = _lapsed_refusal(
+        engine,
+        before_pick
+        if before_pick is not None
+        else effect_path[0][0]
+        if effect_path
+        else state,
+        network,
+        codec,
+        graft_box,
+    )
+    if lapsed is not None:
+        return lapsed
     if before_pick is not None or (
         _card_of(network) is not None and agent_card_pick(state, problem.seat) is None
     ):
@@ -802,11 +900,11 @@ def _effect_position(
     try:
         theirs = path_of(without_pick(base), network) or (network,)
     except ValueError:
-        # A move whose printer this state does not hold has no steps here:
-        # an in-turn ``decline_optional_trash``, which this engine no longer
-        # offers since codec v149 (the turn's end lapses the trash), names a
-        # window this state is not in. It is asked as it is, and
-        # ``_resolved`` reports it is not legal (as before codec v150).
+        # A move whose printer this state does not hold has no steps here,
+        # such as a window this state is not in. It is asked as it is, and
+        # ``_resolved`` reports it is not legal (as before codec v150). An
+        # in-turn ``decline_optional_trash`` of an older engine, the case
+        # that first raised here, is reported before (``_lapsed_refusal``).
         theirs = (network,)
     parted = next(
         (
