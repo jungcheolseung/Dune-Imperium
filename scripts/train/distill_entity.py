@@ -34,7 +34,10 @@ format, so ``train`` reads a folder mixing them with teacher-played ones;
 
 ``train`` fits one student to every shard in the folder and writes its
 best held-out epoch as ``student.pt`` with an ``epochs.jsonl`` log
-(docs/entity-network-plan.md section 5, P2).
+(docs/entity-network-plan.md section 5, P2). With ``--pack`` the shards are
+joined on disk in ``<folder>/packed`` (``pack_teacher_data``) instead of in
+memory, for data larger than the machine's memory; the student trains the
+same.
 """
 
 from __future__ import annotations
@@ -75,6 +78,7 @@ from dune_imperium.training.teacher import (
     choice_frequency,
     concatenate,
     load_teacher_data,
+    pack_teacher_data,
     save_teacher_data,
     split_rows,
     student_choices,
@@ -271,7 +275,10 @@ def train(arguments: argparse.Namespace) -> int:
     if not shards:
         print(f"no shards in {arguments.data}", file=sys.stderr)
         return 1
-    data = concatenate([load_teacher_data(path) for path in shards])
+    if arguments.pack:
+        data = pack_teacher_data(shards, arguments.data / "packed")
+    else:
+        data = concatenate([load_teacher_data(path) for path in shards])
     ruleset = RulesetConfig.from_identifier(data.ruleset)
     torch.manual_seed(arguments.seed)
     student: PolicyValueNetwork
@@ -437,6 +444,11 @@ def main(argv: list[str] | None = None) -> int:
     data.set_defaults(run=make_data)
     student = commands.add_parser("train", help="fit one student to the shards")
     student.add_argument("--data", type=Path, required=True)
+    student.add_argument(
+        "--pack",
+        action="store_true",
+        help="join the shards on disk in <data>/packed and read rows from there",
+    )
     student.add_argument("--out", type=Path, required=True)
     student.add_argument("--arch", choices=("entity", "mlp"), required=True)
     student.add_argument("--aux-vp", action="store_true")

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import json
 import math
 import time
 from collections.abc import Callable, Sequence
@@ -301,6 +302,126 @@ def concatenate(parts: Sequence[TeacherData]) -> TeacherData:
         legal_offsets=offsets("legal_offsets"),
         **plain,
     )
+
+
+PACK_MANIFEST = "manifest.json"
+_PACK_FORMAT = 1
+# Which count each array's length follows: decisions (an offsets array has
+# one more), observation values or offered actions.
+_PACK_COUNTS = {
+    "obs_columns": "obs",
+    "obs_values": "obs",
+    "legal_indices": "legal",
+    "teacher": "legal",
+}
+
+
+def _pack_entries(shards: Sequence[Path]) -> list[dict[str, object]]:
+    return [
+        {
+            "path": str(path.resolve()),
+            "bytes": path.stat().st_size,
+            "modified_ns": path.stat().st_mtime_ns,
+        }
+        for path in shards
+    ]
+
+
+def _open_pack(directory: Path, manifest: dict[str, object]) -> TeacherData:
+    arrays = {
+        name: np.load(directory / f"{name}.npy", mmap_mode="r") for name in _ARRAYS
+    }
+    return TeacherData(
+        ruleset=str(manifest["ruleset"]),
+        action_size=int(str(manifest["action_size"])),
+        **arrays,
+    )
+
+
+def pack_teacher_data(shards: Sequence[Path], directory: Path) -> TeacherData:
+    """``concatenate`` of the ``shards``, kept on disk in ``directory``.
+
+    Every array is written there one shard at a time and read back as a
+    read-only memory map, so building it holds one shard rather than the
+    parts and their join (twice the data set: on 2026-10-23 twice the mixed
+    distillation data, 5.2M rows, took the 16 GB machine to its limit), and
+    training reads in only the rows of each minibatch. The arrays equal
+    ``concatenate``'s element for element, so a student trains the same.
+    A pack whose manifest names the same shards in the same order (resolved
+    path, size, modification time) is reused; any other is rebuilt. The
+    manifest is written last, so an interrupted pack is never reused.
+    """
+
+    if not shards:
+        raise ValueError("nothing to pack")
+    entries = _pack_entries(shards)
+    manifest_path = directory / PACK_MANIFEST
+    if manifest_path.exists():
+        stored = json.loads(manifest_path.read_text())
+        if stored.get("format") == _PACK_FORMAT and stored.get("shards") == entries:
+            return _open_pack(directory, stored)
+        manifest_path.unlink()
+    directory.mkdir(parents=True, exist_ok=True)
+
+    counts: list[dict[str, int]] = []
+    catalogs: set[tuple[str, int]] = set()
+    for path in shards:
+        with np.load(path) as arrays:
+            obs_offsets = arrays["obs_offsets"]
+            counts.append(
+                {
+                    "row": int(obs_offsets.shape[0]) - 1,
+                    "obs": int(obs_offsets[-1]),
+                    "legal": int(arrays["legal_offsets"][-1]),
+                }
+            )
+            catalogs.add((str(arrays["ruleset"]), int(arrays["action_size"])))
+    if len(catalogs) != 1:
+        raise ValueError("the shards come from different catalogs")
+    ruleset, action_size = catalogs.pop()
+    totals = {key: sum(count[key] for count in counts) for key in counts[0]}
+
+    outputs: dict[str, np.ndarray] = {}
+    base = dict.fromkeys(totals, 0)
+    for path, count in zip(shards, counts, strict=True):
+        part = load_teacher_data(path)
+        for name in _ARRAYS:
+            values = getattr(part, name)
+            offsets = name.endswith("_offsets")
+            key = _PACK_COUNTS.get(name, "row")
+            if name not in outputs:
+                outputs[name] = np.lib.format.open_memmap(
+                    directory / f"{name}.npy",
+                    mode="w+",
+                    dtype=values.dtype,
+                    shape=(totals[key] + offsets, *values.shape[1:]),
+                )
+            out = outputs[name]
+            if out.dtype != values.dtype or out.shape[1:] != values.shape[1:]:
+                raise ValueError(f"{path}: {name} is {values.dtype} {values.shape}")
+            if offsets:
+                # Each shard's offsets start at 0; shift them past the rows
+                # (observation values or offered actions) packed before it.
+                into = "obs" if name == "obs_offsets" else "legal"
+                row = base["row"]
+                out[row + 1 : row + count["row"] + 1] = values[1:] + base[into]
+                out[0] = 0
+            else:
+                out[base[key] : base[key] + count[key]] = values
+        for key in base:
+            base[key] += count[key]
+    for out in outputs.values():
+        out.flush()  # type: ignore[attr-defined]
+    del outputs
+    manifest: dict[str, object] = {
+        "format": _PACK_FORMAT,
+        "ruleset": ruleset,
+        "action_size": action_size,
+        "rows": totals["row"],
+        "shards": entries,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
+    return _open_pack(directory, manifest)
 
 
 # -- the student ------------------------------------------------------------
