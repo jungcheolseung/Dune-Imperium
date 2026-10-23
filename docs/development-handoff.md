@@ -28,7 +28,7 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림) |
 | pytest | 8,292개 통과(2026-10-23 `search-parts` 병합 뒤)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 557파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `engine-checks` 브랜치(68종 모두 통과, 392초) |
