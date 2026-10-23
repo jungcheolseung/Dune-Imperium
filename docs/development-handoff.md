@@ -63,18 +63,15 @@
 
 **엔진**
 
-- **원판·Rise of Ix — P0 산출물 끝, 사용자 판정 대기(2026-10-22, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
+- **원판·Rise of Ix — P0 산출물 끝, 판정 둘 남음(2026-10-23, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
   [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
-  [rules/rise-of-ix.md](rules/rise-of-ix.md), OQ-114·115는 사용자 판정 확정(서로 다른 두 항목; Baron 의무 공개·기존 배치 조건의 문턱 4·Commander 포함).
-  OQ-116~118도 확정(The Voice 상대별 다음 Agent 배치·독립 표시, Bindu 첫 행동 전용·pass 선택, 강제 discard는 가능한 만큼).
-  OQ-119·120도 확정(Ilesa는 pass·추가 turn 모두 셈; 공개한 Unload 카드를 폐기하면 다시 받음).
-  OQ-113은 다섯 사례의 앱 구현 조사 후 재판정(`OPEN`, 원칙 유지에 잠정 동의만), OQ-121은 지배·승리 효과 순서와 복귀의 앱 조사 후 재판정.
-  OQ-123·124도 확정(전체 보유 The Spice Must Flow 계산; Mentat 자체를 제 칸에 보내면 1장 draw 후 Agent로 남음).
-  OQ-122·125 ~ OQ-127은 `OPEN`. OQ-122에 기존 판정과 현재 코드 순서를 기록했으며 Ix 효과 셋은 구현 전이다.
-  The Voice의 앱 지속시간 분석은 재검증 필요. 진행 결정 D1 ~ D5(전사 흐름, 카드면 그림 출처, 보드에만 인쇄된 값, 도구 채택,
-  시범 전사 시점). **이 판정들이 나오기 전에는 P1(엔진) 착수 금지.** 측정 둘이 계획을 바꾼다: 원판·Ix는 앱 문구가 카드 칸을 다 덮지 않고(Imperium 76장 중
-  아이콘 태그 문구 14장), Dune Cards Hub 그림에 틀린 것이 섞여 있다(Duncan Idaho). 앱 자료·카드별 전사 자료는 git 밖(에셋
-  `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 worktree의 `tmp/claude/d0c52597/`). [2026-10-22 원판·Rise of Ix P0]
+  [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-114~120·122~127과 진행 결정 D1~D5는 사용자 판정 확정(2026-10-22·23).
+  **남은 것:** OQ-113(효과 없는 Intrigue 다섯 사례)·OQ-121(dreadnought 지배·복귀)은 앱 구현 조사 뒤 재판정(`OPEN`), The Voice의 앱 지속시간
+  분석(OQ-116) 재검증. **이 둘이 끝나기 전에는 P1(엔진) 착수 금지.** 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
+  (`render/prefabs`, 아이콘·숫자가 칸마다 있음) + 영어 문구. 카드면 스캔은 새로 읽지 않고, P0의 카드면 블라인드 읽기 181장과 한 번 기계 대조해
+  다른 카드만 사람이 본다. 도구(D4): 1 채택, 2(화면 조각 → 기록 초안)·시범 전사 5장·갈래 나누기는 P3 첫 묶음에서 시범(D5), 디컴파일러는 P3 끝에
+  다시 묻는다. 앱 자료·P0 읽기는 git 밖(에셋 `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 안 `p0-readings/`).
+  [2026-10-22 원판·Rise of Ix P0] [2026-10-23 원판·Ix 남은 판정]
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
   다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —

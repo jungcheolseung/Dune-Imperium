@@ -112,7 +112,7 @@ Uprising과 같은 틀이다([setup-and-game-flow.md](setup-and-game-flow.md), [
 - Influence 2 도달 → 1 VP(내려가면 잃음). Influence 4 도달 → 그 칸에 인쇄된 보너스(내려가도 돌려주지 않고, 다시 올라오면 또 받음). 처음 4에
   도달한 플레이어가 Alliance token과 그 VP를 얻고, 더 높이 올라온 상대에게 넘긴다. `[DI p. 7]` FAQ의 Alliance 판정(동률 상대에게 넘김, 3 이하로
   내려가면 잃음) `[FAQ p. 1]`. 모두 Uprising과 같다([uprising-systems.md](uprising-systems.md)).
-- **글로 없는 값 (출처 미확정).** 원판 Influence 4칸 보너스 넷은 룰북에 글로 없고 보드 그림에만 있다("the bonus shown on that space of the track"
+- **글로 없는 값 (출처는 앱 — 계획 13.5 D3, 2026-10-23 사용자 결정).** 원판 Influence 4칸 보너스 넷은 룰북에 글로 없고 보드 그림에만 있다("the bonus shown on that space of the track"
   `[DI p. 7]`). 룰북 p. 4의 setup 그림은 보드 이미지가 426×649 픽셀이라 이 아이콘을 읽기에 작다 — Uprising에서 작은 그림으로 읽다 틀린 일이
   있다(`docs/lessons.md` 2026-09-19). 그래서 이 명세는 값을 적지 않는다. P2 전에 앱(Influence 처리 `worm.canis.actions.GainFactionInfluence`와
   보드 장면)에서 값을 읽고, 고화질 보드 그림을 찾으면(계획 9절 7, 미룸) 그것으로 확인한다.

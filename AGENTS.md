@@ -80,10 +80,13 @@ authoritative and update the handoff in the same work unit.
 - For the base game (Dune: Imperium) and Rise of Ix, transcribe from the Steam
   app's data instead of reading card images (user decision 2026-10-21,
   `docs/base-game-and-ix-plan.md` sections 2 and 9): its attribute table
-  (copies, cost, Faction, Agent icons, Reveal values, acquire bonus) and its
-  English card text, whose icons are named sprites. The card-face image is
-  then a check ("does the print match the app value?"), and the app's code is
-  read only where the text leaves order, may/must or timing open. App text,
+  (copies, cost, Faction, Agent icons, Reveal values, acquire bonus), the
+  per-card UI layouts the app draws each face with (icon sprites, numbers
+  and switched-on boxes; user decision 2026-10-23) and its English card
+  text, whose icons are named sprites. Card-face images are not read again;
+  the digital edition is compared with print once by script, and only the
+  cards that differ get a human look. The app's code is read only where the
+  layout and text leave order, may/must or timing open. App text,
   definitions and extractions stay in the assets checkout's git-ignored
   `reference/dune-steam-app/`; only names, numbers, our DSL and our own
   display text enter this repository. Details: `docs/card-data-sources.md`.

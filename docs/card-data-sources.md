@@ -35,7 +35,8 @@ Dune: Imperium app (`com.direwolfdigital.dune`) defines every base-game
 (`BaseSet`, 150 definitions) and Rise of Ix (`RiseOfIx`, 85) card, leader,
 board space, Conflict and Tech tile, so the transcription reads that instead.
 
-- **Three layers, cheapest first.**
+- **Four layers.** Layers 1, 2 and 4 are the transcription; layer 3 is read
+  only where they leave a question open.
   1. *Attribute table.* Each archetype's constructor values (copies
      `CardCount`, Persuasion cost, Faction, Agent icons, Reveal Persuasion and
      swords, acquire bonus, Conflict level and rewards, board-space cost and
@@ -53,12 +54,28 @@ board space, Conflict and Tech tile, so the transcription reads that instead.
      sprite-name → icon mapping is confirmed once by pixels and pinned (a name
      can lie: `IntrigueTrash` is the steal-Intrigue picture, 2026-10-08).
   3. *Ability classes.* Read the card's disassembled ability class
-     (`scripts/dwgr/il2dis.py`) only when the text does not settle order,
-     may/must or timing; it costs about 90 thousand agent tokens per item.
-- **The card face is a check, not the source.** One look per card: does the
-  print match the app value? Where it does not, the card face, the FAQ errata
-  (for example Missionaria Protectiva's Faction) and the official rulebooks
-  decide, and the difference is recorded.
+     (`scripts/dwgr/il2dis.py`) only when the layout and text do not settle
+     order, may/must or timing; it costs about 90 thousand agent tokens per
+     item.
+  4. *Card layouts* (user decision D1, 2026-10-23). The UI prefab the app
+     draws each card face with (`render/prefabs/UI_crd_<kind>_<name>.prefab.json`,
+     extracted by `scripts/dwgr/app_assets.py prefabs`) holds the printed
+     layout box by box: icon sprite names (`m_Sprite`), numbers and words
+     (`m_text`, e.g. "Choose two:"), and which elements are switched on
+     (`active`). Base-game and Rise of Ix text covers few icon-only boxes
+     (14 of 76 Imperium cards carry icon tags), so these layouts, not the
+     card images, fill that gap. Leaders are in `P_ui_PlayerInformation_*`.
+     The 264 sprite names used on cards are matched to our icons once, by
+     pixels, like the text's sprite tags.
+- **The card face is a check, not the source.** Base-game and Rise of Ix
+  card images are not read again (D1). The digital edition is compared with
+  print once, by script: the layouts against the blind card-face readings
+  the P0 session made of all 181 cards (kept in the assets checkout's
+  `reference/dune-steam-app/<build-guid>/analysis/base-ix-2026-10-22/p0-readings/`),
+  and only the cards that differ get a human look, with a second print scan
+  of that card if needed (D2). Where they differ, the FAQ errata (for example
+  Missionaria Protectiva's Faction), the official rulebooks and the printed
+  card decide, and the difference is recorded with its evidence.
 - **Not a rules authority.** The app shows how Dire Wolf's digital edition
   handles a case (user decision 2026-10-03). Official rulebooks and the FAQ
   come first; where they are silent the question goes to
