@@ -1951,6 +1951,42 @@
   덱의 draw, 5는 얻을 수 없는 dreadnought). 원칙과 맞는 디자이너 판정(Charisma를 Persuasion을 안 써도 냄, Rapid Mobilization을 0개로 냄 — garrison에
   troop이 있을 때, Urgent Mission을 Agent가 남지 않아도 냄 — 보드에 Agent가 있을 때)은 그대로 채택한다. 2026-10-06 판정이 Impress와 "any number"의 0을
   남긴 것과 같은 선이다.
+- **사용자 방향(2026-10-23)**: "원칙을 앱처럼 바꿈 … 이렇게 가야겠는데..? uprising에서는 이 faq의 디자이너 판정이 적용이 안 됐지?? … intrigue 항목
+  전체를 다 분석해서 imperium base 기준의 규칙이고 업라이징에도 적용해야하는 기준이라면 그대로 적용해야해." 2026-10-06 원칙(효과가 하나라도 바뀔
+  때만)을 버리는 쪽이다. 세부는 아래 분석을 본 뒤 정한다(상태는 `OPEN` 유지).
+- 분석 1 — 커뮤니티 정리본(2026-06-07판) "Intrigue cards" 항목의 일반 판정. 카드 하나가 아니라 모든 판에 걸리는 문장이다:
+  - G1 조건·비용을 갖춰야 낸다 `[FAQ p. 2]` — 엔진 같음.
+  - G2 "you can't pay the cost of an intrigue and 'do nothing' on the right side of the arrow"(디자이너) — 엔진 같음(OQ-071).
+  - G3 효과가 둘이면 하나는 해야 하고, 비용에 묶인 쪽은 안 할 수 있고(Strategic Stockpiling), 갖춘 Influence 조건에 묶인 쪽은 거절 못 한다(Depart
+    for Arrakis)(디자이너).
+  - G4 Intrigue는 "in one piece" — 플레이어가 시작하는 행동으로 끊지 못하고, 그 Intrigue로 얻은 진영 보너스도 먼저 끝낸다(디자이너). 엔진과의 대조는 아직.
+  - G5 Plot은 Agent turn이나 Reveal turn에 낸다; 다음 Reveal에 쓰는 효과(Charisma, Recruitment Mission)는 앞에 펴 둔다 `[FAQ p. 2]` — 엔진 같음.
+  - G6 "You can play Intrigues that give you Card draw (e.g. Water of Life) even if you have zero cards left to draw."(디자이너) — Water of Life는 비용(water·
+    spice)이 있는 줄이므로 비용 뒤의 draw도 뽑을 것이 없어도 된다. **엔진은 막는다**(10-06).
+  - G7 Rapid Mobilization은 0개를 배치하며 낼 수 있다("zero is a number", 디자이너) — 엔진은 "any number"의 0은 허용하나 배치할 유닛이 하나는 있어야 낸다.
+  - G8 Shield Wall 아이콘은 "may"라 부수지 않아도 된다(Detonation·Special Mission·Unexpected Allies, 디자이너).
+  - G9 효과 둘 중 하나만 살아도 낸다(False Orders, Impress — 디자이너·Hidden Assets) — 엔진 같음.
+  - G10 트랙 맨 위의 Influence는 불발하고 낸다(Know Their Ways, 디자이너) — **엔진은 막는다**(10-06의 "모두 6인 진영의 Influence 줄").
+  - 정리본 편집자의 추론(출처 없음): Advanced Weaponry(dreadnought 둘), Counterattack(supply에 troop 없음), Infiltrate(Agent를 보낸 뒤).
+- 분석 2 — 같은 카드들의 앱 판정(Steam `dad97e20`, 코드만): 원판 카드는 비용·대상만 보고, **Uprising·Immortality 카드 가운데 일부는 "쓸모 있음"을
+  비용으로 적어 막는다**: Intelligence Report·Cunning·Breakthrough는 `HasDrawableCard`(뽑을 카드가 있어야), Counterattack·Detonation은
+  `CanDeployUnits`/`CanBlowShieldWall`, Special Mission은 `CanDeployOnCircle`/`CanRecallSpy`. 반대로 Shaddam's Favor·Call to Arms·Illicit Dealings·
+  Shadowy Bargain(Plot)은 비용 없음, Mercenaries는 3 Solari만, Unexpected Allies는 water 2만, Depart for Arrakis는 Influence 3 또는 spice 2만 본다.
+  그래서 "앱처럼"은 카드마다 다르고 하나의 원칙이 되지 않는다. 앱과 디자이너 판정이 갈리는 곳: G6(앱은 Uprising draw 셋을 막음), G2(앱은
+  Mercenaries·Depart for Arrakis·Unexpected Allies를 비용만으로 허용).
+- 분석 3 — 2026-10-06에 막힌 엔진 사례(테스트 이름 기준)를 "디자이너 일반 판정 먼저, 그다음 앱" 순서로 다시 보면:
+  - 풀린다(허용): 뽑을 카드가 없는 draw — Intelligence Report, Cunning(무료 draw), Emperor's Invitation(draw), Breakthrough(둘째 marker 뒤),
+    Twisted Discerning·Sadistic(G6; 앞의 셋은 앱과 다름) / 맨 위 Influence — 단일 진영 Influence 줄, Rapid Engineering의 Influence 줄(G10) / Tleilaxu
+    트랙 끝 — Illicit Dealings, Shadowy Bargain Endgame(G10 유추, 앱도 비용 없음) / 빈 supply — Shaddam's Favor, Shadowy Bargain Plot(앱 같음) / Agent를
+    보낸 뒤의 아이콘·조건 면제 — Emperor's Invitation 아이콘, Twisted Resourceful, Insider Information 면제(Dispatch an Envoy 판정) / Call to Arms(앱
+    같음, Charisma 판정) / Twisted Calculating(유닛 없으면 0 Solari로 불발).
+  - 그대로 막힌다: 비용 뒤 오른쪽이 아무것도 못 하는 줄 — Sleeper Unit(recall → recruit, 빈 supply), Adaptive Tactics, Gruesome Sacrifice, Navigation
+    카드의 비용 줄, Mercenaries(둘 다 불가), Depart for Arrakis(2 spice → 빈 supply), Unexpected Allies(Shield Wall 없고 sandworm 불가)(G2; 뒤의 셋은
+    앱과 다름) / Tech를 얻어야 하는 Battlefield Research·Rapid Engineering(디자이너 "must acquire a tech") / 대상 없는 Inspire Awe·Reach Agreement /
+    Combat Intrigue의 유닛 조건 / Emperor of the Known Universe의 배치 금지.
+  - 판정 필요: garrison에 배치할 유닛이 없는 Counterattack·Detonation 배치 줄·Twisted Devious(앱은 막고, Rapid Mobilization의 "0도 수"는 허용 쪽) /
+    Honor Guard(둘 다 불발 — G3 "하나는 해야"를 어떻게 읽나) / Twisted Unnatural(Intrigue draw도 G6인가) / Twisted Withdrawn(다른 좌석이 모두
+    공개했을 때의 pass) / Special Mission의 City Spy(이번 turn 회수 뒤) / Harvest Cells의 창.
 - 판정: **미확정 유지**(2026-10-22 사용자: "일단은 나도 기존원칙대로 다섯 사례 모두 막는게 맞다고 보여져.
   일단 이건 확정하지 말고 앱 구현 확인해보자고 기록해둬"). 기존 원칙 유지에 잠정 동의했지만 승인으로 취급하지 않는다.
   다음 할 일은 다섯 사례의 앱 구현 조사이며, 조사 결과를 받은 뒤 사용자가 확정한다.
@@ -2131,6 +2167,24 @@
     300으로 가는 갈래는 다 풀지 않았다). 창에서는 결정 없는 timing-3 능력(Windtraps)이 먼저 저절로 돌고, 지배 고르기(지연 능력 버튼,
     Detonation Devices는 그 안의 "지배 대신 VP" 확인)와 "When you win a Conflict" Intrigue를 승자가 원하는 순서로 고른다(P0 분석 그대로, 이번에
     다시 보지 않음).
+- **사용자 방향(2026-10-23)**: (1) "앱처럼 순위마다 창 … 이거도 이렇게 가야할거 같은데... 항상 이게 문제네. 관련 이슈 모두 체크 필요해. 전투 보상
+  받는 순서, 전투 결과가 나오고 나서 쓸 수 있는 책략, 등등" (2) "이거는 좀 자세히 알려줘" — 둘 다 아래 분석을 본 뒤 정한다.
+- 앱의 Combat 단계 전체(2026-10-23, 코드만): 상태 0 시작 → 100 Combat Intrigue 창(연속 pass까지) → 200 보상 목록(`DetermineRewards`: 순위·동률·sandworm
+  두 배 항목) → 순위 항목마다 { 300 그 항목의 인쇄 보상(`ResolveCombat`; 1위면 **이때** battle icon, 다음 항목이 sandworm 두 배면 곧바로 그것도) → 400
+  그 좌석의 해결 창(`PlayCombatResolutionIntrigueCards`: 결정 없는 timing-3 능력은 저절로, 그다음 그 좌석이 원하는 순서로 고르는 것 — 선택형 Conflict
+  보상 조각(`GainAnyInfluenceConflictAbility`, Uprising의 `GainAnyTwoInfluenceConflictAbility`·`TakeControlConflictAbility`·`PlaceSpyCombatResolutionAbility`·
+  `Recall2SpiesVPAbility`·`PayAttributeToGainVPAbility`), 지배 dreadnought, "When you win" Intrigue(To the Victor, Demand Respect, Strategic Push),
+  Windtraps·Economic Supremacy, Immortality의 Harvest Cells) → 항목을 지움(`RemoveAt(0)`) } → 마지막 창 끝에 좌석마다 Conflict 유닛을 옮김.
+  timing-3 목록은 ctor에서 `AbilityTiming = 3`을 두는 능력 전부를 훑은 것이다.
+- 엔진(Uprising)과 다른 점:
+  - 순서: 엔진은 모든 순위 보상 → 승자 효과(Conflict 카드·battle icon, Planetary Array, OQ-108) → troop·Commander 반환 → 좌석별 Conflict 끝 Intrigue 창
+    (Harvest Cells) → marker 정리([combat-and-round-end.md](combat-and-round-end.md) 6절). 앱은 순위마다 "보상 → 그 좌석의 창"이고 유닛은 마지막에 옮긴다.
+  - battle icon: Uprising 룰북은 "모든 순위 보상을 처리한 뒤" 승자가 Conflict 카드를 가져가 icon을 맞춘다 `[Main p. 14]` — 앱(1위 보상 때)은 이것과 다르므로
+    이 부분은 앱을 따를 수 없다(공식 우선).
+  - 선택형 Conflict 보상: 엔진은 보상 줄 안의 아이콘 순서(OQ-112)로 바로 처리하고, 앱은 그 조각을 창으로 미뤄 다른 창 능력과 순서를 고르게 한다.
+  - Conflict 끝 Intrigue: 엔진은 유닛 반환 뒤 모든 좌석에 창을 연다. 앱은 보상받는 좌석의 창에서만 고르는 것으로 보인다 — 보상이 없는 좌석(4위·
+    strength 0)이 창을 갖는지는 아직 확인하지 않았다. Harvest Cells의 셈도 다르다(엔진은 Conflict 끝에 잃은 troop 3+, 앱은 `TroopsDeployedThisConflict`).
+  - 순위 사이의 순서는 OQ-102(순위대로, 앱처럼)와 같다.
 - 판정: **미확정 유지, 앱 조사 후 재판정**(2026-10-22 사용자: "이건 앱에서는 어떻게 되고 있는지 확인해야한다고 기록해야겠다").
   다음 조사는 (1) 순위 보상·지배/Detonation·Windtraps·승리 시 책략의 실제 처리 순서와 선택 가능 범위,
   (2) 새 지배 dreadnought와 지난 라운드 지배 dreadnought를 구분하는 상태 및 복귀 조건,
