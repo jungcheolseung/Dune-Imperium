@@ -1934,8 +1934,19 @@
   3. Dispatch an Envoy는 Reveal turn에도, Agent를 보낸 뒤에도 낸다(아이콘은 붙지 않는다) — BGG Forum.
   4. Infiltrate는 Agent를 놓은 뒤에도 낸다 — 정리본 편집자의 추론("No specific source").
   5. Advanced Weaponry(Ix)의 Plot은 dreadnought가 이미 둘이어도 3 Solari를 내고 낸다 — 편집자의 추론.
-- 앱 처리: **미확인, 조사 필요**(2026-10-22 사용자 지시). 위 다섯 사례 각각의 play 허용 조건·비용·효과 불발 처리를 확인하고,
-  코드에서 확인한 것과 실제 앱 실행으로 확인한 것을 구분해 보고한 뒤 다시 판정한다. 앱은 보조 증거이며 공식 규칙의 대체 근거가 아니다.
+- 앱 처리(2026-10-23 조사, Steam 4.1.2.1808(build `dad97e20`), 보조 증거; **코드만 읽었고 앱을 실행해 보지는 않았다**):
+  - 판정 틀: Intrigue를 낼 수 있는지는 `WormAbilityDefinition::CanBeRun` = 인쇄된 비용을 낼 수 있음(`MeetsCost`) + 대상이 있음(`HasTargets`) +
+    소진되지 않음(`IsUnexhausted`)이다(기반 `Canis.entities.AbilityDefinition::CanBeRun`). 효과가 지금 무언가를 바꾸는지는 보지 않는다 — 카드가
+    비용이나 대상으로 적어 둔 조건만 막는다(예: Councilor's Dispensation의 원로회 자리).
+  - 1 Know Their Ways: 비용 없음(`GainInfluenceIntrigueAbility::Cost` = `NoCostAction`), 대상 없음 → Fremen 6에서도 낸다(얻는 Influence 없음). 디자이너 판정과 같다.
+  - 2 Water of Life: 비용은 water 1과 spice 1뿐(`WaterOfLifeAbility::Cost`, `HasResources::AtLeast` 둘) — 뽑을 카드를 보지 않는다 → 덱·버린 더미가
+    비어도 낸다. 디자이너 판정과 같다.
+  - 3 Dispatch an Envoy, 4 Infiltrate: 비용 없음(`NoCostAction`), 카드 정의에 시점 제한 없음 → 카드 쪽에서는 Agent를 보낸 뒤나 Reveal turn에도 막지
+    않는다. turn 흐름이 Plot을 언제 내놓는지는 끝까지 따라가지 않았다.
+  - 5 Advanced Weaponry의 Plot: 비용이 3 Solari **와 supply의 dreadnought**(`HasUnitsInSupply<WormDreadnought>::Any`)다 → dreadnought 둘을 이미
+    가졌으면 **낼 수 없다**. 정리본 편집자의 추론과 다르고 2026-10-06 원칙과 같다.
+  - 정리: 앱은 1~4를 허용하고 5만 막는다. 2026-10-06 원칙(효과가 하나라도 무언가를 바꿀 때만 낸다)은 앱보다 엄격하다 — 그날 사용자가 "앱이 맞는
+    것 같은데"라고 한 것은 원로회 자리처럼 카드에 적힌 조건의 예였다.
 - 추천: **원칙대로 막는다.** 다섯 모두 2026-10-06에 막은 경우와 모양이 같다(1은 6칸 진영의 Influence, 3·4는 Agent를 보낸 뒤의 아이콘 효과, 2는 빈
   덱의 draw, 5는 얻을 수 없는 dreadnought). 원칙과 맞는 디자이너 판정(Charisma를 Persuasion을 안 써도 냄, Rapid Mobilization을 0개로 냄 — garrison에
   troop이 있을 때, Urgent Mission을 Agent가 남지 않아도 냄 — 보드에 Agent가 있을 때)은 그대로 채택한다. 2026-10-06 판정이 Impress와 "any number"의 0을
@@ -1989,7 +2000,7 @@
 
 ## OQ-116 — The Voice: 막힘이 풀리는 때와 Control marker가 없을 때
 
-- 상태: `DECIDED` (2026-10-22 사용자 판정 B; 앱의 지속시간 분석은 재검증 필요)
+- 상태: `DECIDED` (2026-10-22 사용자 판정 B; 2026-10-23 앱 재검증 — 앱도 B)
 - 인쇄: "Choose any board space. Opponents can't send their next Agents there this round." `[The Voice card]`
 - 고정 룰북의 표시 안내: "Use one of your available Control markers to mark the board space you choose, then remove it on your next turn. (The Voice only
   stops opponents from sending Agents to that board space for one turn.)" `[DI p. 13]`
@@ -2000,6 +2011,12 @@
   (`ActivatedAbilities.BaseSet.TheVoiceAbility::Cost` = `NoCostAction`). P0는 Recall에서 `Blocked`를 지우는 코드로부터 라운드 내내
   모든 상대 배치가 막힌다고 보고했다. 사용자는 앱 버그 또는 분석 오류 가능성을 지적했다. 상대별 배치 후 해제·우회 경로와 실제 동작을
   확인하기 전에는 라운드 전체 봉쇄를 검증된 앱 동작으로 단정하지 않는다. 이 재검증은 아래 확정 판정을 보류시키지 않는다.
+- 앱 재검증(2026-10-23, Steam 4.1.2.1808(build `dad97e20`), 보조 증거; 코드만 읽음): **앱도 B다 — P0의 "라운드 내내 모든 상대"는 틀렸다.** P0가 풀지 않은
+  `PlayerTurnPhase/<Cleanup>d__17::MoveNext`가 turn 끝마다, 그 turn이 Agent turn이었으면(`WormAttributes.PlayerTurn` = `AgentTurn`, `TakeAgentTurn`이
+  정함) 막힌 칸마다 그 좌석을 예외 목록(`BlockExceptions`)에 더한다. 모든 좌석이 예외가 되면 막힘(`Blocked`)과 목록을 지운다. 다음 turn 시작
+  (`PrePlayerTurn`)은 예외 목록에 든 좌석에게 막힘을 풀어 준다. turn 시작마다 turn 종류를 `Undetermined`로 되돌리므로 Bindu Suspension의 pass(`PassTurn`,
+  Agent turn을 거치지 않음)는 막힘을 쓰지 않고, Weirding Way의 추가 turn은 앞 Agent turn 끝에 이미 예외가 돼 막히지 않는다. 라운드 끝 Recall은
+  남은 막힘을 지운다(P0가 본 부분).
 - 선택지 (1): (가) Voice 주인의 다음 turn에 풀린다 — 룰북의 표식 문장. (나) 상대마다 **이번 라운드의 다음 Agent 배치**까지(어느 칸에 보내든 한 번
   보내면 그 상대에게는 풀린다) — 카드 문장 "their next Agents"와 디자이너 판정 둘이 이 읽기다. (다) 라운드 끝까지 모든 배치 — P0 앱 분석의 미검증 결론.
   보통 흐름(상대마다 Voice 주인의 다음 turn 전에 한 번씩 Agent를 보낸다)에서는 (가)와 (나)가 같고, 갈리는 것은 Bindu로 넘긴 turn과 Weirding Way의
@@ -2100,6 +2117,20 @@
   다만 이를 "앱과 같은 순서"라고 한 근거는 위의 같은 창 안에서 고른다는 조사 기록과 일치하지 않아 철회한다.
   후속 판정 논의에서는 모든 순위 보상 뒤 승리 효과 단계에서 지배/Detonation·Windtraps·승리 시 책략의 독립 효과를 승자가 원하는 순서로
   처리하는 A안을 제안했다(OQ-108·112의 적용 제안). **P0안과 후속 A안 모두 사용자 승인 전**이다.
+- 앱 재검증(2026-10-23, Steam 4.1.2.1808(build `dad97e20`), 보조 증거; 코드만 읽음):
+  - (2) 새것과 지난 것의 구분: 보드 전체에 표식 하나(`WormAttributes.NewDreadnoughtSpace`)가 이번 Combat에 고른 칸을 적는다. 고를 수 있는 칸은
+    지배 칸(`IsControllable`)이면서 **dreadnought가 없는 칸**이다(`DreadnoughtControlAbility/<>c__DisplayClass8_0::<Targets>b__0`의
+    `OfType<WormDreadnought>` → `IsEmpty`) — 지난 라운드 dreadnought가 있는 칸은 고르지 못한다(룰북 예와 같다; P0의 "필터 없음"은 틀렸다).
+  - (3) 복귀: 라운드 끝 Recall(`RoundPhase/<Recall>d__13`)이 그 표식과 **다른** 칸(`<Recall>b__6`이 `op_Inequality`)의 dreadnought와 Conflict의
+    dreadnought를 garrison으로 옮긴 뒤 표식을 지운다(coroutine 상태 순서 25 → 68). 그래서 라운드 N에 놓은 dreadnought는 라운드 N의 Recall에
+    남고, 라운드 N+1의 Combat 동안 그 칸을 막고 지배하며, 라운드 N+1의 Recall에 돌아간다. P0의 "놓은 그 라운드 Recall에 돌아간다"는 비교를
+    거꾸로 읽은 것이다. 룰북("as the Combat phase ends")과 같은 라운드이고, 앱은 Combat 끝이 아니라 Makers 뒤 Recall에서 옮긴다 — Makers
+    단계에는 지배를 읽는 것이 없어 결과 차이는 보이지 않는다(내 판단). 진 쪽 Conflict dreadnought도 앱은 Recall에서 garrison으로 옮긴다.
+  - (1) 순서: Combat의 보상 상태(`ResolveCombat`, 300)는 순위 보상 목록의 첫 항목 하나를 주고 목록에서 뺀다(`Skip(1)`). 이어서 그 좌석의 해결
+    창(`PlayCombatResolutionIntrigueCards`, 400)이 열리고 항목이 남았으면 300으로 돌아간다 — 순위마다 보상 → 그 좌석의 창으로 보인다(300에서 곧장
+    300으로 가는 갈래는 다 풀지 않았다). 창에서는 결정 없는 timing-3 능력(Windtraps)이 먼저 저절로 돌고, 지배 고르기(지연 능력 버튼,
+    Detonation Devices는 그 안의 "지배 대신 VP" 확인)와 "When you win a Conflict" Intrigue를 승자가 원하는 순서로 고른다(P0 분석 그대로, 이번에
+    다시 보지 않음).
 - 판정: **미확정 유지, 앱 조사 후 재판정**(2026-10-22 사용자: "이건 앱에서는 어떻게 되고 있는지 확인해야한다고 기록해야겠다").
   다음 조사는 (1) 순위 보상·지배/Detonation·Windtraps·승리 시 책략의 실제 처리 순서와 선택 가능 범위,
   (2) 새 지배 dreadnought와 지난 라운드 지배 dreadnought를 구분하는 상태 및 복귀 조건,

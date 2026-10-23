@@ -114,8 +114,8 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
   그 깃발에 dreadnought를 놓는다(있던 Control marker를 덮는다). 두 번째 dreadnought도 Conflict에 있었으면 garrison으로. 그 칸의 Control 보너스(1 Solari·
   1 Solari·1 spice, 방어 배치 troop 1)를 받는다. 지배는 **다음** Combat 단계 끝까지이고, 그때 dreadnought는 garrison으로 돌아가며 덮였던 marker의
   주인이 다시 지배한다. Detonation Devices가 있으면 지배 대신 dreadnought 하나를 supply로 돌려 1 VP를 얻을 수 있다.
-  - P0의 앱 분석은 지배한 그 라운드 Recall에 복귀한다고 보고했으나, 새 지배와 지난 라운드 지배를 구분하는 상태·복귀 조건을
-    재검증해야 한다. 확정된 앱 동작이나 공식 규칙과의 차이로 단정하지 않는다. 지배 선택과 복귀의 처리 순서도 앱 조사 후 재판정한다(OQ-121).
+  - 앱(2026-10-23 재검증, 코드만): dreadnought가 있는 칸은 고르지 못하고, 놓은 dreadnought는 다음 라운드 Combat까지 남았다가 그 라운드
+    Recall에 garrison으로 간다 — 룰북과 같은 라운드다(P0의 "그 라운드 Recall"은 틀렸다). 지배 선택과 복귀의 엔진 단계는 OQ-121.
   - 룰북 예: 지난 라운드의 dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, 그 뒤 "as the Combat phase ends" 지난 dreadnought가
     garrison으로 갔다 `[Rise of Ix p. 6]`. 이 순서의 엔진 단계는 OQ-121.
   - 한 번에 locations 위에 있는 dreadnought는 둘을 넘지 않는다(놓이는 것 하나 + 다음 Combat 끝에 떠나는 것 하나) — 세 칸이 다 막히는 일은 없다.
@@ -306,7 +306,7 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 
 - OQ-119 — **확정:** Ilesa Ecaz의 "둘째 turn"은 Agent 없는 pass와 Weirding Way 추가 turn 모두 센다.
 - OQ-120 — **확정:** 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는다.
-- OQ-121 — **앱 조사 후 재판정:** dreadnought 지배 선택·승리 효과의 순서와 지난 dreadnought의 복귀 시점. 기존 앱 분석도 재검증한다.
+- OQ-121 — **재판정 대기(앱 재검증 끝, 2026-10-23):** dreadnought 지배 선택·승리 효과의 순서와 지난 dreadnought의 복귀 시점.
 - OQ-122 — **확정(2026-10-23):** Round Start는 공개 → 방어 → 5장·Tech 되돌리기 → Holtzman Engine·Shuttle Fleet → Ilesa의 따로 두기(4절 "쓰기" 아래).
 - OQ-126 — **확정(2026-10-23):** Disposal Facility는 그 Reveal turn에 얻은 Persuasion 합계(쓴 것 포함)로 판정한다.
 - OQ-127 — **확정(2026-10-23):** Combat 보상 중 열린 Treachery의 Unload는 Conflict에 배치하고 곧 supply로 돌아간다.
