@@ -59,6 +59,9 @@
 - **쓰기.** 능력마다 쓰는 때가 적혀 있다(Reveal turn, Conflict 승리, Round Start, Endgame 등). 뒤집기 아이콘이 있는 능력은 자기 turn(Agent·Reveal)
   가운데 라운드에 한 번, 쓰면 뒷면으로 뒤집고 다음 라운드 Round Start에 되돌린다 `[Rise of Ix p. 4]` `[FAQ p. 1]`(첫 영어판은 Agent turn만이라고
   잘못 적었다). 때를 적지 않은 능력은 자기 turn 가운데 쓴다 `[FAQ p. 4]`(예: Spy Satellites의 첫 능력).
+- **Round Start 순서**(OQ-122, 2026-10-23 사용자 확정, 앱과 같음): Conflict 공개 → Control 방어 → 각자 5장(뒤집은 Tech 되돌리기를 함께) →
+  Holtzman Engine의 카드 1장·Shuttle Fleet의 2 Solari → Ilesa의 따로 두기(Holtzman Engine으로 뽑은 카드까지 든 손에서) → 첫 turn. 좌석 사이는
+  First Player부터.
 - **Appropriate** — Solari와 spice를 섞어 낼 수 없다. Negotiator 하나가 1 Solari를 깎는다 `[Rise of Ix p. 10]`. Shipping 맨 위 회수와 함께 쓰면 Acquire
   Tech가 둘이고 각각 따로다(−2 할인을 Solari 구매에 붙일 수 없다; Negotiator는 어느 쪽에나) — 디자이너 판정(Direwolf Discord).
 
@@ -67,7 +70,7 @@
 | Artillery | 1 | – | Reveal turn: sword를 주는 공개 카드마다 sword 1 | |
 | Chaumurky | 4 | Intrigue 2 | Endgame: 동률을 이긴다(다른 동률 기준보다 먼저 `[FAQ p. 1]`) | |
 | Detonation Devices | 3 | – | dreadnought로 이겼을 때 칸을 지배하는 대신 dreadnought 하나를 supply로 돌려 1 VP("may") | |
-| Disposal Facility | 3 | trash 1 | Reveal turn: Persuasion 6 이상이면 in play 카드 하나를 trash할 수 있다 | |
+| Disposal Facility | 3 | trash 1 | Reveal turn: 그 turn에 얻은 Persuasion 합계(쓴 것 포함)가 6 이상이면 in play 카드 하나를 trash할 수 있다(OQ-126) | |
 | Flagship | 8 | 1 VP | 4 Solari → troop 3 | ○ |
 | Holoprojectors | 3 | – | discard → 카드 1장 | ○ |
 | Holtzman Engine | 6 | – | Round Start: 카드 1장; Endgame: The Spice Must Flow 2장 이상이면 1 VP | |
@@ -141,6 +144,8 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
     카드의 Unload는 trash되는 중에 일어난다(OQ-022의 예외가 아니다). Esmar Tuek를 Cull로 trash해 얻은 spice로 그 Agent box를 낼 수 없다(OQ-022).
   - 공개한 Unload 카드를 같은 Reveal turn에 trash하면 **다시 얻는다**(OQ-120, 2026-10-22 사용자 확정). 공개와 trash는 별도 사건이며
     turn당 1회 제한을 두지 않는다. 공식 예도 같은 Esmar Tuek를 discard한 뒤 trash하면 효과를 다시 받는다 `[Rise of Ix p. 7]`.
+  - Combat 보상 지급 중(Terrible Purpose의 trash 보상 등)에 열린 Treachery의 Unload는 문장대로 troop 둘을 Conflict에 배치하고, 그 troop은 바로
+    다음 단계에서 supply로 돌아간다(OQ-127, 2026-10-23 사용자 확정, 앱과 같음).
 - **Infiltration.** Agent의 옆얼굴이 든 Agent 아이콘은 그 아이콘의 칸에서 상대 Agent(여럿이어도)를 무시하고 보낼 수 있게 한다. 자기 Agent가 이미 있는
   칸에는 못 보낸다. The Voice는 넘지 못한다. Dispatch an Envoy로 더한 아이콘은 잠입하지 못한다. `[Rise of Ix p. 7]` 잠입은 선택이다(빈 칸에 보통처럼
   보내도 된다) `[FAQ p. 2]`. 잠입 아이콘 카드 7장: Bounty Hunter(City), CHOAM Delegate(Spice Trade), Court Intrigue(Emperor), Embedded Agent(Landsraad),
@@ -302,8 +307,8 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 - OQ-119 — **확정:** Ilesa Ecaz의 "둘째 turn"은 Agent 없는 pass와 Weirding Way 추가 turn 모두 센다.
 - OQ-120 — **확정:** 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는다.
 - OQ-121 — **앱 조사 후 재판정:** dreadnought 지배 선택·승리 효과의 순서와 지난 dreadnought의 복귀 시점. 기존 앱 분석도 재검증한다.
-- OQ-122 — **미확정:** Round Start 효과(Holtzman Engine, Shuttle Fleet, Ilesa)의 순서. 기존 OQ-072와 현재 코드 순서를 본문에 기록했다.
-- OQ-126 — Disposal Facility의 "Persuasion 6 이상"
-- OQ-127 — Combat 단계에 열린 Treachery의 Unload
+- OQ-122 — **확정(2026-10-23):** Round Start는 공개 → 방어 → 5장·Tech 되돌리기 → Holtzman Engine·Shuttle Fleet → Ilesa의 따로 두기(4절 "쓰기" 아래).
+- OQ-126 — **확정(2026-10-23):** Disposal Facility는 그 Reveal turn에 얻은 Persuasion 합계(쓴 것 포함)로 판정한다.
+- OQ-127 — **확정(2026-10-23):** Combat 보상 중 열린 Treachery의 Unload는 Conflict에 배치하고 곧 supply로 돌아간다.
 - OQ-123은 **확정:** Grand Conspiracy·Holtzman Engine도 전체 보유 사본(덱·손·discard·in play, trash 제외)을 센다.
-- 원판 쪽 OQ-125(비용 N 이하 획득 — Boundless Ambition·Conscript)도 Ix 카드에 닿는다.
+- 원판 쪽 OQ-125(비용 N 이하 획득 — Boundless Ambition·Conscript)도 Ix 카드에 닿는다: **확정(2026-10-23)** Row와 Reserve, Foldspace 제외.

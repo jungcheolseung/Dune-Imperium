@@ -392,7 +392,8 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 - OQ-118 — **확정(2026-10-22)**: 강제 두 장 버리기는 가능한 만큼, 한 장뿐이면 한 장
 - OQ-123 — **확정:** 전체 보유 The Spice Must Flow를 센다(Corner the Market; Ix의 Grand Conspiracy·Holtzman Engine도).
 - OQ-124 — **확정 A:** Mentat을 제 칸에 보내면 카드 1장을 뽑고 Agent로 남는다. 다시 가져오지 않는다.
-- OQ-125 — "비용 N 이하 카드를 얻는다"(Bypass Protocol; Ix의 Boundless Ambition·Conscript, Uprising의 Impress 등도)에 Reserve 카드가 드는가
+- OQ-125 — **확정(2026-10-23)**: "비용 N 이하 카드를 얻는다"(Bypass Protocol; Ix의 Boundless Ambition·Conscript, Uprising의 Impress 등도)는 Row와
+  Reserve에서 고르고 Foldspace는 뺀다(지금 Uprising 엔진 그대로; 앱은 Row만)
 
 OQ-123 ~ OQ-127은 카드별 조사(2026-10-22, agent 넷이 카드 181장·보드 칸 26을 한 장씩 본 것, 자료 `tmp/claude/d0c52597/sweep/`)에서 나왔다.
 Rise of Ix의 질문(OQ-119 ~)은 [rise-of-ix.md](rise-of-ix.md) 끝에 있다.

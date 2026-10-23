@@ -143,12 +143,12 @@
 | [OQ-119](#oq-119--ilesa-ecaz의-둘째-turn을-세는-법) | Ilesa Ecaz의 "둘째 turn"을 세는 법 | `DECIDED` |
 | [OQ-120](#oq-120--공개한-unload-카드를-같은-reveal-turn에-trash하면) | 공개한 Unload 카드를 같은 Reveal turn에 trash하면 | `DECIDED` |
 | [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) | dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때 | `OPEN` |
-| [OQ-122](#oq-122--round-start-효과의-순서) | Round Start 효과의 순서 | `OPEN` |
+| [OQ-122](#oq-122--round-start-효과의-순서) | Round Start 효과의 순서 | `DECIDED` |
 | [OQ-123](#oq-123--the-spice-must-flow를-세는-곳) | The Spice Must Flow를 세는 곳 | `DECIDED` |
 | [OQ-124](#oq-124--mentat을-mentat-칸에-보낼-때) | Mentat을 Mentat 칸에 보낼 때 | `DECIDED` |
-| [OQ-125](#oq-125--비용-n-이하-카드를-얻는다에-reserve-카드가-드는가) | "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가 | `OPEN` |
-| [OQ-126](#oq-126--disposal-facility의-persuasion-6-이상) | Disposal Facility의 "Persuasion 6 이상" | `OPEN` |
-| [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload) | Combat 단계에 열린 Treachery의 Unload | `OPEN` |
+| [OQ-125](#oq-125--비용-n-이하-카드를-얻는다에-reserve-카드가-드는가) | "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가 | `DECIDED` |
+| [OQ-126](#oq-126--disposal-facility의-persuasion-6-이상) | Disposal Facility의 "Persuasion 6 이상" | `DECIDED` |
+| [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload) | Combat 단계에 열린 Treachery의 Unload | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2109,7 +2109,7 @@
 
 ## OQ-122 — Round Start 효과의 순서
 
-- 상태: `OPEN` (2026-10-22 P0)
+- 상태: `DECIDED` (2026-10-23 사용자 판정)
 - 공식: Round Start는 Conflict 공개 → 각자 5장 뽑기 `[DI p. 8]`, Control 방어 배치는 공개에 이어서 `[DI p. 10]`(OQ-072의 공개 → 방어 → 뽑기). 뒤집은 Tech는
   "At the start of the next round (during Phase 1: Round Start)" 되돌린다 `[Rise of Ix p. 4]`. "Round Start:" 능력: Holtzman Engine(카드 1장), Shuttle Fleet
   (2 Solari), Ilesa Ecaz(손의 카드 하나를 따로 둔다) `[card faces]`.
@@ -2122,7 +2122,12 @@
   일괄 처리하며 First Player부터 선택하는 일반 Round Start 효과 큐는 아니다. Holtzman Engine·Shuttle Fleet·Ilesa는 구현 전이므로
   그 셋의 상대 순서는 기존 구현으로 확정되지 않는다. `tests/unit/rules/test_phases.py`에도 방어 뒤 draw 검사가 있다(이번에는 읽기만 함).
 - 추천: **공개 → Control 방어 → 각자 5장 → 뒤집은 Tech 되돌리기 → Round Start 능력(Holtzman Engine·Shuttle Fleet) → Ilesa의 따로 두기**, 좌석 사이는 First Player부터 시계 방향(OQ-002·OQ-102와 같은 좌석 순서). 5장 뒤로 두는 것은 "Set aside a card from your hand"가 이번 라운드 손을 뜻하기 때문이고(내 해석), Ilesa를 맨 뒤에 두는 것은 앱과 같다. Tech 되돌리기는 룰북대로 Round Start에 두되 그 앞에 아무 결정이 없으므로 앱(Recall)과 결과가 같다.
-- 판정: (대기)
+- 판정(2026-10-23 사용자): **앱과 같은 순서.** Conflict 공개 → Control 방어 배치 → 각자 5장 뽑기(뒤집은 Tech를 앞면으로 되돌리기를 함께) →
+  결정이 없는 Round Start 효과(Piter의 Twisted Intrigue 뽑기, Holtzman Engine의 카드 1장, Shuttle Fleet의 2 Solari) → Ilesa Ecaz의 따로 두기
+  (Holtzman Engine으로 뽑은 카드까지 든 손에서 고른다) → Scouts 또는 First Player의 첫 turn. 좌석 사이는 First Player부터 시계 방향이다.
+  결정이 있는 것은 Ilesa 하나(한 좌석)라 좌석 순서는 처리·기록 순서에만 닿는다 — 지금 `draw_round_hands`는 모든 좌석을 한 번에 갱신한다.
+  지금 코드의 공개 → 방어 → 뽑기·기술 되돌리기 → Piter 순서는 그대로이고, Ix 효과 셋은 P4에서 Piter 뒤·Scouts 앞에 붙인다. Tech 되돌리기는
+  룰북대로 Round Start에 둔다(앱은 앞 라운드 Recall) — 그 사이에 결정이 없어 결과가 같다.
 
 ## OQ-123 — The Spice Must Flow를 세는 곳
 
@@ -2160,7 +2165,7 @@
 
 ## OQ-125 — "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가
 
-- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 상태: `DECIDED` (2026-10-23 사용자 판정)
 - 인쇄: Bypass Protocol(원판 Intrigue) "Acquire a card that costs [3] or less" / "[2 spice] → Acquire a card that costs [5] or less to the top of your deck",
   Boundless Ambition(Ix 프로모) "Acquire a card that costs [5] or less", Archduke Armand Ecaz의 Conscript "You may acquire a card that costs [3] or less"
   `[card faces]`. Uprising 계열에도 같은 문장이 있다: Impress·Inspire Awe(3 이하), Tleilaxu Master(Immortality, 6 이하).
@@ -2171,22 +2176,30 @@
   Inspire Awe·Tleilaxu Master가 이렇게 돈다.
 - 추천: **Reserve 포함, Foldspace 제외.** "a card"는 획득 규칙이 얻을 수 있다고 한 카드 전체(Row + Reserve)로 읽는다(내 해석); 지금 Uprising 엔진과 같다.
   앱과는 다르다. 판정은 Uprising 카드에도 그대로 적용된다.
-- 판정: (대기)
+- 판정(2026-10-23 사용자): **Reserve 포함, Foldspace 제외.** "Acquire a card that costs N or less"는 획득 규칙이 얻을 수 있다고 한 카드 —
+  Imperium Row 다섯 장과 Reserve의 Arrakis Liaison·The Spice Must Flow `[DI p. 11]` — 가운데 비용 N 이하에서 고른다. Foldspace는 Foldspace
+  아이콘으로만 얻으므로 빠진다 `[FAQ p. 2]`. Bypass Protocol·Boundless Ambition·Archduke Armand Ecaz의 Conscript에 적용한다. Uprising의
+  Impress·Inspire Awe·Tleilaxu Master는 지금 동작(`AcquireCardUpTo`가 Row와 Reserve 더미를 함께 냄)을 그대로 두고, 그 근거가 이제 이 판정이다
+  (`effect_dsl.AcquireCardUpTo` docstring의 `[Main p. 13]` 옆에 OQ-125를 적는 것은 다음 코드 작업 때). 앱(Row만)과는 다르다.
 
 ## OQ-126 — Disposal Facility의 "Persuasion 6 이상"
 
-- 상태: `OPEN` (2026-10-22 P0, 카드별 조사)
+- 상태: `DECIDED` (2026-10-23 사용자 판정)
 - 인쇄: "Reveal Turn: If you have [Persuasion 6] or more, you may trash one of your cards in play." `[Disposal Facility tile]`
 - 공식: Persuasion은 token이 없고 Reveal turn 동안 얻고 쓰며, 남은 것은 사라진다 `[DI p. 11]`. "have"가 이번 turn에 얻은 합계인지 아직 쓰지 않고 남은 양인지는
   침묵.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 이번 Reveal turn에 얻은 Persuasion(쓴 것 포함)으로 판정한다.
 - 추천: **이번 Reveal turn에 얻은 합계.** Persuasion은 쌓이는 자원이 아니라 이번 turn에 "얻은" 값으로만 존재한다(내 해석); 앱과 같다. 남은 양으로 읽으면
   카드를 사기 전에만 쓸 수 있어 순서가 결과를 바꾼다.
-- 판정: (대기)
+- 판정(2026-10-23 사용자): **이번 Reveal turn에 얻은 Persuasion의 합계**(구매에 쓴 것 포함)가 6 이상이면 쓸 수 있다. 카드를 산 뒤에도 쓸 수
+  있고, 순서가 결과를 바꾸지 않는다. 앱과 같다.
+- 구현 메모(P4): Bloodlines의 Command (6+)가 이미 같은 값 — 그 Reveal turn에 생성한 Persuasion `[Bloodlines pp. 5, 12]`, 카드 밖에서 생긴 것도 셈
+  (OQ-033·043) — 으로 판정하므로 그 계수(`reveal_turn._generated_persuasion`)를 쓴다. 그래서 합계가 같은 Reveal turn 안에서 나중에 6에 이르면
+  그때 쓸 수 있다(이 판정의 "순서가 결과를 바꾸지 않는다"에서 나오는 것).
 
 ## OQ-127 — Combat 단계에 열린 Treachery의 Unload
 
-- 상태: `OPEN` (2026-10-22 P0, 카드별 조사 두 갈래가 따로 찾음)
+- 상태: `DECIDED` (2026-10-23 사용자 판정)
 - 인쇄: Treachery의 Reveal box(Unload) "[troop ×2] Deploy these troops to the Conflict." `[Treachery card]`. Unload는 그 카드를 discard하거나 trash할 때도
   열린다 `[Rise of Ix p. 7]`.
 - 상황: Combat 해결 중에 Treachery가 trash되거나 버려진다 — Terrible Purpose(원판 Conflict) 1위의 trash 보상, Tessia Vernius가 보상으로 Snooper에
@@ -2196,4 +2209,12 @@
 - 선택지: (가) 문장대로 Conflict에 배치한다(의무) — 정리 때 supply로 돌아간다. (나) garrison에 둔다.
 - 추천: **(가) 문장대로.** Treachery의 배치는 "Deploy these troops"로 의무이고, 디자이너 문장도 Combat 해결 중의 배치가 가능하다는 것을 전제로 한다(Troop
   Transports는 "may deploy"라 garrison에 둘 수 있을 뿐이다; 내 해석). 원칙대로 읽은 것이며, 카드별 조사 agent 둘은 (나)를 추천했다.
-- 판정: (대기)
+- 앱 처리(2026-10-23 보강, Steam 4.1.2.1808(build `dad97e20`), 보조 증거; 코드만 읽었고 앱을 실행해 보지는 않음): `TreacheryRevealAbility`는
+  좌석이 배치 가능할 때(`WormPlayer::get_CanDeploy` → `Deployable`) `DeployUnits`로 Conflict에 배치하고, 아니면 배치하지 않는다. `Deployable`은
+  Conflict 구역을 처음 만들 때 참이 되고, 바꾸는 곳은 Uprising Shaddam의 `EmperorOfTheKnownUniverseSuppressAbility` 하나다. 앱의 Combat 단계는
+  보상 지급(`ResolveCombat`)과 마지막 Intrigue 창(`PlayCombatResolutionIntrigueCards`) 뒤에 각 좌석의 Conflict 병력을 supply(`WormPlayer.Supply`)로
+  옮긴다. 그러므로 앱도 (가)다.
+- 판정(2026-10-23 사용자): **(가) 문장대로 Conflict에 배치.** "Combat 해결 중"은 엔진 Combat 단계의 보상 지급이다([combat-and-round-end.md](combat-and-round-end.md)
+  6절 엔진 순서의 "모든 보상"). 그때 열린 Treachery의 Unload는 troop 둘을 Conflict에 배치하고, 그 troop은 바로 다음 단계(troop·Commander 반환)에서
+  다른 병력과 함께 supply로 돌아간다 — 보상을 다 준 뒤 troop은 supply로 `[DI p. 12]`. 카드 문장(의무)·엔진 순서·앱이 모두 이쪽이다. Troop
+  Transports("may deploy")에 대한 디자이너 판정은 그 카드가 garrison을 고를 수 있다는 뜻으로 읽는다.
