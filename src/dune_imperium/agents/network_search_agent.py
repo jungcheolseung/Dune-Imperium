@@ -89,6 +89,7 @@ the leaves are the file's value head, and a decision the older engine
 answered alone (``engine_order_answer``) takes that answer without a search.
 """
 
+import math
 import random
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -168,6 +169,19 @@ DEFAULT_SEARCH_EFFECT_ORDER = False
 DEFAULT_FAMILY_ATOMICS = "app"
 # Hold strength-only Combat Intrigue while alone in the lead (module docstring).
 DEFAULT_HOLD_COMBAT_LEAD = True
+# Experiments of the 2026-10-21 order (handoff "학습·AI", E1 and E3), off by
+# default: a searched decision keeps the network's first candidate unless
+# another's mean playout value beats it by more than ``flip_margin``; its
+# candidates are ranked by mean value plus ``prior_weight`` times their log
+# probability under the network; ``halving`` shortlists that many candidates
+# and spends the same playouts (``rollouts * candidates``) by sequential
+# halving instead of every candidate in every world. In the 2026-09 labels
+# the search overturned the network's first choice in 44% of decisions, and
+# in 41% the mean values differed by less than 0.005
+# (docs/evaluation/m10-2026-09-22.md section 15).
+DEFAULT_FLIP_MARGIN = 0.0
+DEFAULT_PRIOR_WEIGHT = 0.0
+DEFAULT_HALVING = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +190,10 @@ class SearchResult:
 
     ``values[world][candidate]`` holds each playout's value on the value
     head's scale; ``candidates`` are in the network's own order, so the
-    choice is the first candidate with the largest column sum. A decision
+    choice is the first candidate with the largest column sum (the defaults;
+    ``flip_margin``, ``prior_weight`` and ``halving`` change it, and under
+    ``halving`` a candidate dropped in an early round holds NaN in the worlds
+    it never played). A decision
     the seat answered without searching (a single offered action, a single
     untried candidate, or Agent-effect ordering left to the network) has
     ``searched`` false and no candidates or values.
@@ -196,10 +213,12 @@ class SearchResult:
 
 @dataclass(frozen=True, slots=True)
 class _Shortlist:
-    """A decision's candidates for the search, best network logit first."""
+    """A decision's candidates for the search, best network logit first,
+    with each one's log probability under the network (``priors``)."""
 
     key: tuple[object, ...]
     candidates: tuple[DomainAction, ...]
+    priors: tuple[float, ...] = ()
 
 
 class _Taken:
@@ -269,11 +288,23 @@ class NetworkSearchAgent:
         value_path: str | None = None,
         family_atomics: str = DEFAULT_FAMILY_ATOMICS,
         hold_combat_lead: bool = DEFAULT_HOLD_COMBAT_LEAD,
+        flip_margin: float = DEFAULT_FLIP_MARGIN,
+        prior_weight: float = DEFAULT_PRIOR_WEIGHT,
+        halving: int = DEFAULT_HALVING,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
         if rollouts < 1 or candidates < 1 or horizon_rounds < 1:
             raise ValueError("rollouts, candidates, and horizon_rounds are positive")
+        if not (math.isfinite(flip_margin) and math.isfinite(prior_weight)):
+            raise ValueError("flip_margin and prior_weight must be finite")
+        if flip_margin < 0 or prior_weight < 0:
+            raise ValueError("flip_margin and prior_weight must not be negative")
+        if halving == 1 or halving < 0:
+            raise ValueError("halving is 0 (off) or at least 2 candidates")
+        if halving and halving * (halving - 1).bit_length() > rollouts * candidates:
+            # The first round alone would spend more than the plain budget.
+            raise ValueError("halving needs rollouts * candidates >= its first round")
         if family_atomics not in FAMILY_ATOMICS_DECIDERS:
             raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         from dune_imperium.training.older_teacher import (
@@ -319,6 +350,9 @@ class NetworkSearchAgent:
         self.search_effect_order = search_effect_order
         self.family_atomics = family_atomics
         self.hold_combat_lead = hold_combat_lead
+        self.flip_margin = flip_margin
+        self.prior_weight = prior_weight
+        self.halving = halving
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
         self._taken = _Taken()
@@ -494,15 +528,74 @@ class NetworkSearchAgent:
         if len(candidates) == 1:
             result = SearchResult(chosen=candidates[0], searched=False)
         else:
-            values = self._search(state, observation.player, candidates)
-            totals = [sum(column) for column in zip(*values, strict=True)]
-            # Candidates are in the network's own order, so a tie keeps its pick.
-            chosen = candidates[totals.index(max(totals))]
+            if self.halving:
+                values = self._search_halving(
+                    state, observation.player, candidates, plan.priors
+                )
+            else:
+                values = self._search(state, observation.player, candidates)
+            chosen = candidates[self._pick(values, plan.priors)]
             result = SearchResult(
                 chosen=chosen, searched=True, candidates=candidates, values=values
             )
         self._taken.record(plan.key, result.chosen)
         return result
+
+    def _scores_of(
+        self, values: Sequence[Sequence[float]], priors: Sequence[float]
+    ) -> list[float]:
+        """Each candidate's mean playout value over the worlds it played,
+        plus ``prior_weight`` times its log probability (-inf for a
+        candidate that played no world)."""
+
+        scores = []
+        for index, column in enumerate(zip(*values, strict=True)):
+            played = [value for value in column if not np.isnan(value)]
+            score = sum(played) / len(played) if played else -np.inf
+            if self.prior_weight and priors and np.isfinite(priors[index]):
+                score += self.prior_weight * priors[index]
+            scores.append(score)
+        return scores
+
+    def _pick(
+        self, values: Sequence[Sequence[float]], priors: Sequence[float]
+    ) -> int:
+        """The searched decision's choice among the candidates that played
+        the most worlds (all of them, unless ``halving`` dropped some): the
+        best score, first on a tie (candidates are in the network's own
+        order), kept on the network's first candidate when it is among them
+        and the best beats it by no more than ``flip_margin``. With the
+        defaults this is the first candidate with the largest column sum."""
+
+        played = [
+            sum(not np.isnan(value) for value in column)
+            for column in zip(*values, strict=True)
+        ]
+        if not self.prior_weight and len(set(played)) == 1:
+            # Every candidate played the same worlds: compare the column sums
+            # themselves, so the defaults choose exactly as they always did
+            # (a mean divides by the world count, which rounds when it is
+            # not a power of two).
+            totals = [sum(column) for column in zip(*values, strict=True)]
+            best = totals.index(max(totals))
+            if (
+                best != 0
+                and self.flip_margin
+                and (totals[best] - totals[0]) / played[0] <= self.flip_margin
+            ):
+                return 0
+            return best
+        scores = self._scores_of(values, priors)
+        eligible = [index for index, count in enumerate(played) if count == max(played)]
+        best = max(eligible, key=lambda index: (scores[index], -index))
+        if (
+            best != 0
+            and self.flip_margin
+            and 0 in eligible
+            and scores[best] - scores[0] <= self.flip_margin
+        ):
+            return 0
+        return best
 
     def replay_decision(
         self,
@@ -535,7 +628,8 @@ class NetworkSearchAgent:
         if not isinstance(plan, _Shortlist):
             return plan == action
         if len(plan.candidates) > 1:
-            for _ in self._worlds(state, observation.player):
+            count = self._world_count(len(plan.candidates))
+            for _ in self._worlds(state, observation.player, count):
                 pass
         self._taken.record(plan.key, action)
         return action in plan.candidates
@@ -593,9 +687,18 @@ class NetworkSearchAgent:
         # always finite.
         reached = [int(index) for index in order if np.isfinite(scores[index])]
         ranked = reached or [int(index) for index in order]
+        # Log probabilities under the network: an older codec's scores are
+        # already its log probabilities, a current file's are logits.
+        finite = scores[np.isfinite(scores)]
+        if self._older is not None or not finite.size:
+            priors = scores
+        else:
+            priors = scores - np.logaddexp.reduce(finite)
+        kept = ranked[: self.halving or self.candidates]
         return _Shortlist(
             key=key,
-            candidates=tuple(fresh[index] for index in ranked[: self.candidates]),
+            candidates=tuple(fresh[index] for index in kept),
+            priors=tuple(float(priors[index]) for index in kept),
         )
 
     # -- expert iteration ---------------------------------------------------
@@ -641,16 +744,71 @@ class NetworkSearchAgent:
             )
         return tuple(values)
 
-    def _worlds(self, state: GameState, seat: int) -> Iterator[tuple[GameState, int]]:
+    def _halving_rounds(self, count: int) -> list[int]:
+        """New worlds per round of sequential halving over ``count``
+        candidates: the budget ``rollouts * candidates`` split evenly over
+        ceil(log2(count)) rounds among the candidates still in, half of
+        them kept after each round (Gumbel AlphaZero's schedule). It depends
+        only on ``count``, so a retraced decision draws as many worlds."""
+
+        budget = self.rollouts * self.candidates
+        rounds = max(1, (count - 1).bit_length())
+        remaining, alive, schedule = budget, count, []
+        for left in range(rounds, 0, -1):
+            new = max(1, remaining // (left * alive))
+            schedule.append(new)
+            remaining -= new * alive
+            alive = max(1, (alive + 1) // 2)
+        return schedule
+
+    def _world_count(self, count: int) -> int:
+        """How many worlds a searched decision of ``count`` candidates draws."""
+
+        return sum(self._halving_rounds(count)) if self.halving else self.rollouts
+
+    def _search_halving(
+        self,
+        state: GameState,
+        seat: int,
+        candidates: tuple[DomainAction, ...],
+        priors: Sequence[float],
+    ) -> tuple[tuple[float, ...], ...]:
+        """``values[world][candidate]`` by sequential halving: every candidate
+        still in plays each round's new worlds (the same worlds and chance
+        streams for all of them), then the better half by ``_scores_of``
+        stays (the first on a tie); a dropped candidate holds NaN in the
+        worlds it did not play."""
+
+        horizon = state.round_number + self.horizon_rounds
+        alive = list(range(len(candidates)))
+        rows: list[list[float]] = []
+        worlds = self._worlds(state, seat, self._world_count(len(candidates)))
+        for new in self._halving_rounds(len(candidates)):
+            for _ in range(new):
+                world, chance_seed = next(worlds)
+                row = [float("nan")] * len(candidates)
+                for index in alive:
+                    after = self._engine.apply(world, candidates[index]).state
+                    row[index] = self._playout(after, seat, horizon, chance_seed)
+                rows.append(row)
+            scores = self._scores_of(rows, priors)
+            ranked = sorted(alive, key=lambda index: (-scores[index], index))
+            alive = sorted(ranked[: max(1, (len(alive) + 1) // 2)])
+        return tuple(tuple(row) for row in rows)
+
+    def _worlds(
+        self, state: GameState, seat: int, count: int | None = None
+    ) -> Iterator[tuple[GameState, int]]:
         """Draw a searched decision's worlds and chance seeds from ``_rng``.
 
         The only use of ``_rng``: ``_search`` plays the candidates in each
         world, and ``replay_decision`` draws them only to move the stream
         on exactly as far. Playouts never touch ``_rng``, so drawing the
         worlds lazily between them or all at once uses it the same way.
+        ``count`` defaults to ``rollouts``.
         """
 
-        for _ in range(self.rollouts):
+        for _ in range(self.rollouts if count is None else count):
             world = determinize(state, seat, self._rng)
             # Common random numbers: every candidate meets the same world
             # and the same chance stream, so they differ only by the action.

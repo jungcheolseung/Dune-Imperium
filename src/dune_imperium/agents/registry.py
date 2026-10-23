@@ -1,5 +1,6 @@
 """Named, seed-constructible baseline agents for evaluation tooling."""
 
+import math
 from collections.abc import Callable
 from typing import Final
 
@@ -237,6 +238,18 @@ SEARCH_PREFIX: Final = "search:"
 # ``search:<policy path>::value=<value path>`` searches with one file's policy
 # and another file's value head at the leaves (``NetworkSearchAgent``).
 SEARCH_VALUE_SEPARATOR: Final = "::value="
+# Measurement options of a search seat, after the path in any order:
+# ``::value=<path>`` (above), ``::flip=<margin>``, ``::prior=<weight>`` and
+# ``::halving=<candidates>`` (``NetworkSearchAgent``'s ``flip_margin``,
+# ``prior_weight`` and ``halving``: experiments E1 and E3 of the 2026-10-21
+# order). A table seat names one file and no options.
+SEARCH_OPTION_SEPARATOR: Final = "::"
+_SEARCH_OPTIONS: Final = {
+    "value": ("value_path", str),
+    "flip": ("flip_margin", float),
+    "prior": ("prior_weight", float),
+    "halving": ("halving", int),
+}
 # A file of an older codec played greedily over the whole actions a current
 # decision stands for, by its own head rows: ``older:<path>``
 # (``training.older_teacher``; the stage B retrain's teacher, 2026-10-21).
@@ -255,14 +268,41 @@ def is_background_agent_kind(kind: str) -> bool:
     return kind.startswith(SEARCH_PREFIX)
 
 
+def parse_search_kind(kind: str) -> tuple[str, dict[str, object]]:
+    """A ``search:`` seat's file and its options as ``NetworkSearchAgent``
+    keyword arguments; raises ``ValueError`` for a malformed one."""
+
+    path, *parts = kind[len(SEARCH_PREFIX) :].split(SEARCH_OPTION_SEPARATOR)
+    if not path:
+        raise ValueError("search agent kind needs a path")
+    options: dict[str, object] = {}
+    for part in parts:
+        name, equals, text = part.partition("=")
+        if name == "value" and equals and not text:
+            raise ValueError("search agent kind needs a path after ::value=")
+        if name not in _SEARCH_OPTIONS or not equals or not text:
+            raise ValueError(f"unknown or empty search option: {part!r}")
+        keyword, kind_of = _SEARCH_OPTIONS[name]
+        if keyword in options:
+            raise ValueError(f"search option given twice: {name!r}")
+        value = kind_of(text)
+        if isinstance(value, float) and not (math.isfinite(value) and value >= 0):
+            raise ValueError(f"search option must be finite and not negative: {part!r}")
+        if name == "halving" and (value == 1 or int(value) < 0):
+            raise ValueError(f"halving is 0 (off) or at least 2 candidates: {part!r}")
+        options[keyword] = value
+    return path, options
+
+
 def is_agent_kind(kind: str) -> bool:
     """Return whether ``make_agent`` can build ``kind``."""
 
     if kind.startswith(SEARCH_PREFIX):
-        path, separator, value_path = kind[len(SEARCH_PREFIX) :].partition(
-            SEARCH_VALUE_SEPARATOR
-        )
-        return bool(path) and (not separator or bool(value_path))
+        try:
+            parse_search_kind(kind)
+        except ValueError:
+            return False
+        return True
     return (
         kind in BASELINE_AGENT_FACTORIES
         or (kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX))
@@ -295,20 +335,10 @@ def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Age
 
         return load_older_agent(path, seed=seed)
     if kind.startswith(SEARCH_PREFIX):
-        path, separator, value_path = kind[len(SEARCH_PREFIX) :].partition(
-            SEARCH_VALUE_SEPARATOR
-        )
-        if not path:
-            raise ValueError("search agent kind needs a path")
-        if separator and not value_path:
-            raise ValueError("search agent kind needs a path after ::value=")
+        path, options = parse_search_kind(kind)
         from dune_imperium.agents.network_search_agent import NetworkSearchAgent
 
-        if separator:
-            return NetworkSearchAgent(
-                path, seed=seed, config=config, value_path=value_path
-            )
-        return NetworkSearchAgent(path, seed=seed, config=config)
+        return NetworkSearchAgent(path, seed=seed, config=config, **options)  # type: ignore[arg-type]
     try:
         factory = BASELINE_AGENT_FACTORIES[kind]
     except KeyError:

@@ -33,6 +33,7 @@ from dune_imperium.core.state import GameState, canonical_state_hash  # noqa: E4
 from dune_imperium.rules.frames import FrameKind  # noqa: E402
 from dune_imperium.server.session_log import undo_window  # noqa: E402
 from dune_imperium.server.sessions import (  # noqa: E402
+    SERVER_SEARCH_OPTIONS,
     GameSession,
     GameSessionManager,
     JsonObject,
@@ -96,9 +97,21 @@ def search_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
 
     class _Smaller(NetworkSearchAgent):
         def __init__(
-            self, path: str, *, seed: int, config: RulesetConfig | None = None
+            self,
+            path: str,
+            *,
+            seed: int,
+            config: RulesetConfig | None = None,
+            flip_margin: float = 0.0,
         ) -> None:
-            super().__init__(path, seed=seed, rollouts=2, candidates=2, config=config)
+            super().__init__(
+                path,
+                seed=seed,
+                rollouts=2,
+                candidates=2,
+                config=config,
+                flip_margin=flip_margin,
+            )
 
     # ``make_agent`` imports the class from the module when a seat is built.
     monkeypatch.setattr(search_module, "NetworkSearchAgent", _Smaller)
@@ -341,7 +354,8 @@ def test_only_search_seats_think_in_the_background() -> None:
 def test_a_bare_search_seat_plays_the_servers_checkpoint(
     search_kind: str, tmp_path: Path, symlink_support: None,
 ) -> None:
-    """``search`` seats ``search:<the real file>`` of the manager's network.
+    """``search`` seats ``search:<the real file>`` of the manager's network,
+    with the server's search options (E1's flip margin).
 
     The server is handed a symlink (``checkpoints/play/search.pt`` is one),
     resolved when it starts: the game and its save name the file the link
@@ -359,7 +373,8 @@ def test_a_bare_search_seat_plays_the_servers_checkpoint(
         ("human", "search", "heuristic", "search"), game_seed=HUMAN_FIRST_SEED
     )
     game_id = _text(summary["game_id"])
-    seated = f"search:{network}"
+    seated = f"search:{network}{SERVER_SEARCH_OPTIONS}"
+    assert SERVER_SEARCH_OPTIONS == "::flip=0.01"
     assert summary["seats"] == ["human", seated, "heuristic", seated]
     assert [_obj(player)["kind"] for player in _list(summary["players"])] == [
         "human",
@@ -367,7 +382,9 @@ def test_a_bare_search_seat_plays_the_servers_checkpoint(
         "heuristic",
         seated,
     ]
-    assert isinstance(manager._sessions[game_id].agents[1], NetworkSearchAgent)
+    seat = manager._sessions[game_id].agents[1]
+    assert isinstance(seat, NetworkSearchAgent)
+    assert seat.flip_margin == 0.01
     summary = _advance(manager, summary, 12)
     assert _seat_steps(manager._sessions[game_id].steps, {1, 3}) > 0
 
@@ -380,6 +397,9 @@ def test_a_bare_search_seat_plays_the_servers_checkpoint(
     link.symlink_to(other)
     restored = manager.restore_game(document)
     assert restored["seats"] == ["human", seated, "heuristic", seated]
+    seat = manager._sessions[_text(restored["game_id"])].agents[3]
+    assert isinstance(seat, NetworkSearchAgent)
+    assert seat.flip_margin == 0.01
     manager.wait_for_ai(_text(restored["game_id"]))
     # Only a restart reads the link again.
     later = manager.create_game(
@@ -387,6 +407,36 @@ def test_a_bare_search_seat_plays_the_servers_checkpoint(
     )
     assert _list(later["seats"])[1] == seated
     manager.wait_for_ai(_text(later["game_id"]))
+
+
+def test_a_save_seated_before_the_flip_margin_plays_on_without_it(
+    search_kind: str,
+) -> None:
+    """A save names its seat's options: one seated as ``search:<path>``
+    (before 2026-10-23) retraces its search answers and plays on without the
+    flip margin, as the session that made it would have."""
+
+    network = Path(search_kind.removeprefix("search:"))
+    manager = GameSessionManager(search_checkpoint=network)
+    summary = manager.create_game(
+        ("human", search_kind, "heuristic", "heuristic"), game_seed=HUMAN_FIRST_SEED
+    )
+    summary = _advance(manager, summary, 12)
+    session = manager._sessions[_text(summary["game_id"])]
+    assert _seat_steps(session.steps, {1}) > 0
+    restored = manager.restore_game(_roundtrip(manager.save_game(session.game_id)))
+    assert _list(restored["seats"])[1] == search_kind
+    twin = manager._sessions[_text(restored["game_id"])]
+    seat = twin.agents[1]
+    assert isinstance(seat, NetworkSearchAgent)
+    assert seat.flip_margin == 0.0
+    assert twin.steps == session.steps
+
+    saved_steps = len(session.steps)
+    summary = _advance(manager, summary, 12)
+    restored = _advance(manager, restored, 12)
+    assert _seat_steps(session.steps[saved_steps:], {1}) > 0
+    assert twin.steps == session.steps
 
 
 def test_a_bare_search_seat_is_refused_without_a_checkpoint() -> None:

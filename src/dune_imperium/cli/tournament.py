@@ -40,7 +40,9 @@ def _build_parser() -> argparse.ArgumentParser:
             f"(choices: {', '.join(sorted(BASELINE_AGENT_FACTORIES))}, or "
             "checkpoint:<path> for a trained policy, search:<path> for it with "
             "determinized search, search:<path>::value=<path> to search with "
-            "another file's value head; default: heuristic,random)"
+            "another file's value head, and ::flip=<margin>, ::prior=<weight>, "
+            "::halving=<candidates> for the search experiments; default: "
+            "heuristic,random)"
         ),
     )
     parser.add_argument(
