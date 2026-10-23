@@ -84,9 +84,10 @@
 - **Reveal 상태 이름 정리 끝(2026-10-21, codec v151):** 합계 정리 뒤 게임 상태에 남은 옛 이름 셋이 코드의 "Reveal 기록 줄"을 따른다 —
   Reveal frame의 `granted_reveal_lines`, 사건 `reveal_line_granted_late`와 그 `line_index`. 행동 줄은 그대로이고 상태 해시만 바뀌어 codec
   번호만 올렸다(계획 6절 3번). [2026-10-21 Reveal 상태 이름 정리]
-- **문제집 검사(2026-10-21 복구):** `dune-imperium-records problems check`가 사람 판 문제집 285곳 가운데 279곳(v149와 같음, 원래부터 안 풀리는
-  6곳: 대응 없는 사람의 거절 2·옛 엔진의 거절인 망의 수 4), AI 실수 문제집 3곳 모두를 푼다. B단계 이후 멈추던 두 원인은
-  [2026-10-21 문제집 검사 복구]에.
+- **문제집 검사(2026-10-21 복구, 2026-10-23 거절 정리):** `dune-imperium-records problems check`가 사람 판 문제집 285곳 가운데 281곳,
+  AI 실수 문제집 3곳 모두를 푼다. 안 풀리는 4곳은 망의 수가 codec v146·v149에서 없어진 선택 효과 거절이라 이 엔진에 짝이 없다고
+  보고한다(뺄지는 사용자 결정 대기). 사람이 거절하고 바로 턴을 끝낸 2곳은 그 턴 종료로 묻는다([human-records.md](human-records.md) 4절).
+  B단계 이후 멈추던 두 원인은 [2026-10-21 문제집 검사 복구]에.
 - **② 재학습 (가) — 선생 어댑터 병합, 첫 사슬의 망은 선생보다 약함(2026-10-21):** 플레이 망 `checkpoints/play/readapt-v147-4400.pt`(MLP,
   v147)를 v150에서 쓰는 어댑터 `training/older_teacher.py`: 결정마다 휴리스틱이 보는 온 행동(`agents.agent_turn_steps.placements_for_steps`:
   카드+칸 `agent_turn`, 효과+대상, 옛 엔진의 고르기)에 파일의 v147 행 번호를 붙여(그대로 → `printed` 떼고 → `source`도 떼고) 파일 자신의 정책
