@@ -1,7 +1,7 @@
 """Suites of judged human positions (records.problems)."""
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,6 +9,7 @@ import pytest
 
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
 from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.records.problems import (
@@ -933,6 +934,29 @@ def test_a_refusal_this_engine_no_longer_has_is_reported_not_raised(
     )
 
 
+def _record_game(tmp_path: Path, name: str, letter: str) -> SavedGame:
+    path = tmp_path / f"{letter * 32}.json"
+    path.write_text((DATA / name).read_text(encoding="utf-8"), encoding="utf-8")
+    return read_saved_game(path)
+
+
+def _states(game: SavedGame, engine: UprisingRulesEngine) -> dict[int, GameState]:
+    """The state each recorded step was migrated from, by its index."""
+
+    record = migrate_record(game.parsed.replay, engine)
+    return {
+        migrated.recorded_index: state
+        for state, migrated in walk(record, engine)
+        if migrated.recorded_index is not None
+    }
+
+
+def _move(steps: Sequence[ReplayStep], index: int) -> DomainAction:
+    step = steps[index]
+    assert isinstance(step, DomainAction)
+    return step
+
+
 def _hand_problem(
     game: SavedGame,
     index: int,
@@ -959,73 +983,95 @@ def _hand_problem(
     )
 
 
-def test_a_person_s_refusal_and_turn_end_are_asked_at_the_turn_end(
+def _suite(game: SavedGame, *problems: HumanProblem) -> Suite:
+    record = json.loads(game.path.read_text(encoding="utf-8"))
+    return Suite(note="test", records={game.game_id: record}, problems=problems)
+
+
+def test_a_person_s_refusals_and_turn_end_are_asked_at_the_turn_end(
     tmp_path: Path,
 ) -> None:
     # Before codec v146 an Agent turn's optional effect had a refusal; this
     # engine lapses the effect at the turn's end and the migration drops the
-    # refusal (OQ-095 (2)). A person who refused and ended the turn at once
+    # refusal (OQ-095 (2)). A person who refused and then ended the turn
     # made one decision here, ending the turn, in the state the refusal was
-    # judged in (885ed2f0:578 and :756). One who refused and played on, and
-    # a network's refusal, have no single move here.
+    # judged in (885ed2f0:578 and :756); so did one who refused two effects
+    # in a row. A network's refusal has no single move here.
     engine = UprisingRulesEngine()
-    game = _game_with_human(tmp_path, 0)
+    game = _record_game(tmp_path, "v135-app_ai-3.json", "b")
     steps = game.parsed.replay.steps
-    record = migrate_record(game.parsed.replay, engine)
-    before = {
-        migrated.recorded_index: state
-        for state, migrated in walk(record, engine)
-        if migrated.recorded_index is not None
-    }
-
-    def ends_turn(index: int) -> bool:
-        refusal, following = steps[index], steps[index + 1]
-        assert isinstance(refusal, DomainAction)
-        return (
-            isinstance(following, DomainAction)
-            and following.action_id == "finish_agent_turn"
-            and following.actor == refusal.actor
-        )
-
-    refusals = [index for index, why in record.dropped if why == "optional_refusal"]
-    ended = next(index for index in refusals if ends_turn(index))
-    played_on = next(index for index in refusals if not ends_turn(index))
-    refusal, finish, other_refusal = steps[ended], steps[ended + 1], steps[played_on]
-    assert isinstance(refusal, DomainAction) and isinstance(finish, DomainAction)
-    assert isinstance(other_refusal, DomainAction)
-    turn_end = before[ended + 1]
+    before = _states(game, engine)
+    refusal, finish = _move(steps, 42), _move(steps, 43)
+    assert (refusal.action_id, finish.action_id) == (
+        "decline_sardaukar_commander",
+        "finish_agent_turn",
+    )
+    assert [_move(steps, index).action_id for index in (121, 122, 123)] == [
+        "decline_tech",
+        "decline_sardaukar_commander",
+        "finish_agent_turn",
+    ]
     seat = refusal.actor
-    other = next(
-        action for action in engine.whole_actions(turn_end, seat) if action != finish
-    )
+    asked = {42: (before[43], finish), 121: (before[123], _move(steps, 123))}
+    other = {
+        index: next(
+            action for action in engine.whole_actions(state, seat) if action != end
+        )
+        for index, (state, end) in asked.items()
+    }
     problems = (
-        _hand_problem(game, ended, turn_end, refusal, other),
+        _hand_problem(game, 42, before[43], refusal, other[42]),
         # The network's refusal against the person's turn end itself.
-        _hand_problem(game, ended + 1, turn_end, finish, refusal),
-        _hand_problem(game, played_on, turn_end, other_refusal, other),
-    )
-    suite = Suite(
-        note="test",
-        records={game.game_id: json.loads(game.path.read_text(encoding="utf-8"))},
-        problems=problems,
+        _hand_problem(game, 43, before[43], finish, refusal),
+        _hand_problem(game, 121, before[123], _move(steps, 121), other[121]),
     )
 
-    resolved = resolve(suite, engine)
+    resolved = resolve(_suite(game, *problems), engine)
 
-    position = resolved[problems[0].problem_id]
-    assert isinstance(position, Resolved), position
-    assert position.state == turn_end
-    assert position.right == finish
-    assert position.wrong == (
-        other if other in position.legal else first_step(turn_end, other)
-    )
+    for index, (state, end) in asked.items():
+        position = resolved[f"{game.game_id[:8]}:{index}"]
+        assert isinstance(position, Resolved), position
+        assert position.state == state
+        assert position.right == end
+        assert position.wrong == (
+            other[index]
+            if other[index] in position.legal
+            else first_step(state, other[index])
+        )
     assert resolved[problems[1].problem_id] == (
-        f"the network's move {refusal.action_id} has no counterpart on this "
-        "engine (optional_refusal)"
+        "the network's move decline_sardaukar_commander has no counterpart on "
+        "this engine (optional_refusal)"
     )
-    assert resolved[problems[2].problem_id] == (
-        f"the person's move at step {played_on} has no counterpart on this "
-        "engine (optional_refusal)"
+
+
+def test_a_person_s_refusal_before_another_move_has_no_counterpart(
+    tmp_path: Path,
+) -> None:
+    # A refusal followed by another move left the effect and played on; here
+    # the effect stays pending through that move, and no move stands for the
+    # refusal.
+    engine = UprisingRulesEngine()
+    game = _record_game(tmp_path, "v141-random-3038.json", "c")
+    steps = game.parsed.replay.steps
+    refusal, following = _move(steps, 42), _move(steps, 43)
+    assert (refusal.action_id, following.action_id) == (
+        "decline_sardaukar_commander",
+        "use_family_atomics",
+    )
+    state = _states(game, engine)[43]
+    other = next(
+        action
+        for action in engine.whole_actions(state, refusal.actor)
+        if action != following
+    )
+
+    (position,) = resolve(
+        _suite(game, _hand_problem(game, 42, state, refusal, other)), engine
+    ).values()
+
+    assert position == (
+        "the person's move at step 42 has no counterpart on this engine "
+        "(optional_refusal)"
     )
 
 
@@ -1035,30 +1081,15 @@ def test_a_refusal_this_engine_still_offers_is_asked(tmp_path: Path) -> None:
     # seat trash a card while others draw. A network's
     # ``decline_optional_trash`` there is asked as a move of this engine.
     engine = UprisingRulesEngine()
-    path = tmp_path / f"{'c' * 32}.json"
-    path.write_text(
-        (DATA / "v141-app_ai-1009.json").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    game = read_saved_game(path)
-    record = migrate_record(game.parsed.replay, engine)
-    index = 259
-    trash = game.parsed.replay.steps[index]
-    assert isinstance(trash, DomainAction)
+    game = _record_game(tmp_path, "v141-app_ai-1009.json", "d")
+    trash = _move(game.parsed.replay.steps, 259)
     assert trash.action_id == "trash_optional_card"
-    state = next(
-        state
-        for state, migrated in walk(record, engine)
-        if migrated.recorded_index == index
-    )
+    state = _states(game, engine)[259]
     decline = DomainAction("decline_optional_trash", trash.actor)
-    suite = Suite(
-        note="test",
-        records={game.game_id: json.loads(path.read_text(encoding="utf-8"))},
-        problems=(_hand_problem(game, index, state, trash, decline),),
-    )
 
-    (position,) = resolve(suite, engine).values()
+    (position,) = resolve(
+        _suite(game, _hand_problem(game, 259, state, trash, decline)), engine
+    ).values()
 
     assert isinstance(position, Resolved), position
     assert position.wrong in position.legal

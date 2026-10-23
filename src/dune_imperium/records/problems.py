@@ -47,9 +47,10 @@ An optional effect of the turn has no refusal since codec v146 (the Agent
 turn's) and v149 (one raised in its owner's own turn): it waits on the turn
 and the turn's end lapses it (OQ-095 (2), ``migration.lapsed_refusal``). A
 recorded refusal then leaves the state as it was, and the migration drops
-it. A person who refused and ended the turn at once made, on this engine,
-the one decision of ending the turn there, so the problem is asked at that
-turn end with it as the person's move. A refusal followed by anything else,
+it. A person who refused (one such effect or several in a row) and then
+ended the turn made, on this engine, the one decision of ending the turn
+there, so the problem is asked at that turn end with it as the person's
+move. A refusal followed by anything else,
 and a network's refusal, chose to leave the effect and play on, which no
 single move here does: such a problem does not resolve, and says so.
 """
@@ -596,12 +597,11 @@ def resolve(
         dropped = dict(record.dropped)
         # A person's refusal the migration dropped, with their turn's end
         # recorded right after it: asked at that turn end (module docstring).
-        turn_ends = {
-            problem.recorded_index + 1: problem
-            for problem in problems
-            if dropped.get(problem.recorded_index) in _LAPSED_REFUSALS
-            and _ends_turn(replay.steps, problem)
-        }
+        turn_ends: dict[int, list[HumanProblem]] = {}
+        for problem in problems:
+            end = _turn_end_after(replay.steps, dropped, problem)
+            if end is not None:
+                turn_ends.setdefault(end, []).append(problem)
         # The state before a card pick the migration put in front of a
         # recorded placement (codec v150): the position is asked there when
         # the problem's moves send different cards.
@@ -621,21 +621,17 @@ def resolve(
             ):
                 picks.append((state, migrated.step))
                 continue
-            refused = (
-                turn_ends.get(migrated.recorded_index)
-                if migrated.recorded_index is not None and migrated.bridge is None
-                else None
-            )
-            if refused is not None:
-                resolved[refused.problem_id] = _position(
-                    engine,
-                    refused,
-                    state,
-                    migrated.step,
-                    replay.action_codec_version,
-                    migrated.graft_box,
-                    migrated.reveal_source,
-                )
+            if migrated.recorded_index is not None and migrated.bridge is None:
+                for refused in turn_ends.get(migrated.recorded_index, ()):
+                    resolved[refused.problem_id] = _position(
+                        engine,
+                        refused,
+                        state,
+                        migrated.step,
+                        replay.action_codec_version,
+                        migrated.graft_box,
+                        migrated.reveal_source,
+                    )
             if migrated.recorded_index not in wanted:
                 before_pick = None
                 picks = []
@@ -683,17 +679,37 @@ def resolve(
     return resolved
 
 
-def _ends_turn(steps: Sequence[ReplayStep], problem: HumanProblem) -> bool:
-    """Whether the step recorded right after the problem's is the seat's
-    own turn end."""
+def _turn_end_after(
+    steps: Sequence[ReplayStep],
+    dropped: Mapping[int, str],
+    problem: HumanProblem,
+) -> int | None:
+    """Where the seat's own turn end is recorded right after the problem's
+    step, a refusal the migration dropped (``_LAPSED_REFUSALS``), past the
+    seat's further such refusals (each leaves the state as it was); None
+    when another step comes first, or the problem's step is not one."""
 
+    def lapsed(index: int) -> bool:
+        step = steps[index] if index < len(steps) else None
+        return (
+            dropped.get(index) in _LAPSED_REFUSALS
+            and isinstance(step, DomainAction)
+            and step.actor == problem.seat
+        )
+
+    if not lapsed(problem.recorded_index):
+        return None
     index = problem.recorded_index + 1
+    while lapsed(index):
+        index += 1
     following = steps[index] if index < len(steps) else None
-    return (
+    if (
         isinstance(following, DomainAction)
         and following.actor == problem.seat
         and following.action_id in _TURN_ENDS
-    )
+    ):
+        return index
+    return None
 
 
 def _lapsed_refusal(
