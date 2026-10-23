@@ -182,6 +182,13 @@ DEFAULT_HOLD_COMBAT_LEAD = True
 DEFAULT_FLIP_MARGIN = 0.0
 DEFAULT_PRIOR_WEIGHT = 0.0
 DEFAULT_HALVING = 0
+# With ``network_draft`` the network picks the seat's Leader in the draft
+# instead of the search: playouts end with the round, too soon to judge a
+# Leader, and on 2026-10-23 a search seat overturned the network's Gurney
+# Halleck (probability about 1.0) for Liet Kynes in a game against people.
+# Off by default; a measurement option (handoff "학습·AI", 2026-10-24).
+DEFAULT_NETWORK_DRAFT = False
+LEADER_PICK = "choose_leader"
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +298,7 @@ class NetworkSearchAgent:
         flip_margin: float = DEFAULT_FLIP_MARGIN,
         prior_weight: float = DEFAULT_PRIOR_WEIGHT,
         halving: int = DEFAULT_HALVING,
+        network_draft: bool = DEFAULT_NETWORK_DRAFT,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
@@ -353,6 +361,7 @@ class NetworkSearchAgent:
         self.flip_margin = flip_margin
         self.prior_weight = prior_weight
         self.halving = halving
+        self.network_draft = network_draft
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
         self._taken = _Taken()
@@ -668,6 +677,12 @@ class NetworkSearchAgent:
                 state, observation, legal_actions
             )
         offered = without_undo_actions(legal_actions)
+        if self.network_draft and all(
+            action.action_id == LEADER_PICK for action in offered
+        ):
+            return self._answerer.choose_action_with_state(
+                state, observation, legal_actions
+            )
         if len(offered) == 1:
             return offered[0]
         if self._untrained(state, observation.player, offered):

@@ -294,3 +294,65 @@ def test_search_options_must_be_finite_and_within_the_budget(tmp_path: Path) -> 
         "::halving=-2",
     ):
         assert not is_agent_kind(f"search:{path}{bad}")
+
+
+def test_a_network_draft_seat_lets_the_network_pick_the_leader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``::draft=network``: the Leader pick is the network's, with no
+    playouts, and a retrace draws no worlds for it."""
+
+    path = _checkpoint(tmp_path)
+    config = RulesetConfig(leader_draft=True)
+    state = _ENGINE.reset(config, 5)
+    chance = ChanceResolver(seed=5)
+    while isinstance(decision := _ENGINE.current_decision(state), ChanceDecision):
+        state = _ENGINE.apply(state, chance.resolve(decision)).state
+    assert isinstance(decision, PlayerDecision)
+    actions = _ENGINE.legal_actions(state, decision.owner)
+    assert len(actions) > 1 and {action.action_id for action in actions} == {
+        "choose_leader"
+    }
+    view = _ENGINE.observe(state, decision.owner)
+
+    def seat(*, network_draft: bool = False) -> NetworkSearchAgent:
+        return NetworkSearchAgent(
+            path,
+            seed=3,
+            rollouts=2,
+            candidates=3,
+            config=config,
+            network_draft=network_draft,
+        )
+
+    greedy = seat()._answerer.choose_action_with_state(state, view, actions)
+    plain = seat().search_with_state(state, view, actions)
+    assert plain.searched
+
+    def no_playouts(*_: object) -> float:
+        raise AssertionError("the network picks the Leader")
+
+    monkeypatch.setattr(NetworkSearchAgent, "_playout", no_playouts)
+    drafting = seat(network_draft=True)
+    result = drafting.search_with_state(state, view, actions)
+    assert not result.searched and result.chosen == greedy
+    twin = seat(network_draft=True)
+    before = twin._rng.getstate()
+    assert twin.replay_decision(state, view, actions, result.chosen)
+    assert twin._rng.getstate() == before
+
+
+def test_the_draft_option_parses_and_stays_off_the_tables(tmp_path: Path) -> None:
+    path = _checkpoint(tmp_path)
+    kind = f"search:{path}::flip=0.01::draft=network"
+    assert parse_search_kind(kind) == (
+        path,
+        {"flip_margin": 0.01, "network_draft": True},
+    )
+    seat = make_agent(kind, 0, _RULES)
+    assert isinstance(seat, NetworkSearchAgent) and seat.network_draft
+    assert not make_agent(f"search:{path}", 0, _RULES).network_draft  # type: ignore[attr-defined]
+    for bad in ("::draft=1", "::draft=", "::draft=search"):
+        assert not is_agent_kind(f"search:{path}{bad}")
+    with pytest.raises(SessionError, match="with options"):
+        _validate_seats((kind, "human", "human", "human"), _RULES)

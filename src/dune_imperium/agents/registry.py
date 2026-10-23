@@ -242,14 +242,26 @@ SEARCH_VALUE_SEPARATOR: Final = "::value="
 # ``::value=<path>`` (above), ``::flip=<margin>``, ``::prior=<weight>`` and
 # ``::halving=<candidates>`` (``NetworkSearchAgent``'s ``flip_margin``,
 # ``prior_weight`` and ``halving``: experiments E1 and E3 of the 2026-10-21
-# order). A table seat names one file and no options.
+# order), and ``::draft=network`` (``network_draft``: the network picks the
+# Leader, 2026-10-24). A table seat takes only the flip margin
+# (``server.sessions``).
 SEARCH_OPTION_SEPARATOR: Final = "::"
-_SEARCH_OPTIONS: Final = {
+
+
+def _draft_option(text: str) -> bool:
+    if text != "network":
+        raise ValueError(f"the draft option is ::draft=network, not {text!r}")
+    return True
+
+
+_SEARCH_OPTIONS: Final[dict[str, tuple[str, Callable[[str], object]]]] = {
     "value": ("value_path", str),
     "flip": ("flip_margin", float),
     "prior": ("prior_weight", float),
     "halving": ("halving", int),
+    "draft": ("network_draft", _draft_option),
 }
+
 # A file of an older codec played greedily over the whole actions a current
 # decision stands for, by its own head rows: ``older:<path>``
 # (``training.older_teacher``; the stage B retrain's teacher, 2026-10-21).
@@ -288,7 +300,7 @@ def parse_search_kind(kind: str) -> tuple[str, dict[str, object]]:
         value = kind_of(text)
         if isinstance(value, float) and not (math.isfinite(value) and value >= 0):
             raise ValueError(f"search option must be finite and not negative: {part!r}")
-        if name == "halving" and (value == 1 or int(value) < 0):
+        if name == "halving" and isinstance(value, int) and (value == 1 or value < 0):
             raise ValueError(f"halving is 0 (off) or at least 2 candidates: {part!r}")
         options[keyword] = value
     return path, options
