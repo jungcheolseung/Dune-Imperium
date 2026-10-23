@@ -50,9 +50,9 @@ recorded refusal then leaves the state as it was, and the migration drops
 it. A person who refused (one such effect or several in a row) and then
 ended the turn made, on this engine, the one decision of ending the turn
 there, so the problem is asked at that turn end with it as the person's
-move. A refusal followed by anything else,
-and a network's refusal, chose to leave the effect and play on, which no
-single move here does: such a problem does not resolve, and says so.
+move. A refusal followed by anything else, and a network's refusal, chose
+to leave the effect and play on, which no single move here does: such a
+problem does not resolve, and says so.
 """
 
 import dataclasses
