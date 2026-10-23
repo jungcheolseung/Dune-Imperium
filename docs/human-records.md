@@ -191,7 +191,7 @@ uv run dune-imperium-records check
 - `records.problems`: 진단에서 두 판정이 일치한 포지션을 기보째 고정한 문제집이다. 포지션은 이 이전으로 되살린다. 채점은 `dune-imperium-records problems check|score`([evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 6절).
   - **지운 거절(2026-10-23):** 옛 엔진에서 판정한 수가 2절의 `optional_refusal`·`turn_row_refusal` 거절이면 그 수만 따로 옮길 다리가 없다. 거절은 상태를 바꾸지 않고, 이 엔진에서는 그 효과가 turn에 남았다가 턴 종료에 사라진다.
     - 사람이 거절하고(같은 좌석의 지운 거절이 더 이어져도) 바로 자기 턴을 끝냈으면, 이 엔진에서는 그 자리에서 "턴 종료" 한 번이 같은 결정이다. 그래서 그 턴 종료 앞 국면에서, 턴 종료를 사람의 수로 묻는다(`885ed2f0:578`·`:756`, `decline_tech` 뒤 `finish_agent_turn`). 판정은 거절 뒤를 망이 이어 둔 값이었고 다시 판정하지는 않았다.
-    - 거절 뒤에 다른 수를 둔 사람, 그리고 망의 거절은 "그 효과를 두고 계속 둔다"는 선택이다. 이 엔진에는 그것을 한 수로 하는 행동이 없다. 앞의 것은 그대로 "the person's move at step N has no counterpart on this engine (optional_refusal)", 뒤의 것은 "the network's move <id> has no counterpart on this engine (optional_refusal|turn_row_refusal)"로 보고하고 채점에서 뺀다(`8f8df4bc:765`·`fb716981:447`의 Twisted Mentat 회수 거절, `c3adefb4:471`·`fb716981:607`의 turn 안 trash 거절). 이 엔진이 그 자리에서 아직 내는 거절(turn 밖 Water Discipline의 trash 창 등)은 그대로 묻는다.
+    - 거절 뒤에 다른 수를 둔 사람, 그리고 망의 거절은 "그 효과를 두고 계속 둔다"는 선택이다. 이 엔진에는 그것을 한 수로 하는 행동이 없다. 앞의 것은 그대로 "the person's move at step N has no counterpart on this engine (optional_refusal)", 뒤의 것은 "the network's move <id> has no counterpart on this engine (optional_refusal|turn_row_refusal)"로 보고하고 채점에서 뺀다(`8f8df4bc:765`·`fb716981:447`의 Twisted Mentat 회수 거절, `c3adefb4:471`·`fb716981:607`의 turn 안 trash 거절 — 이 4곳은 같은 날 사용자 결정으로 문제집에서 뺐다). 이 엔진이 그 자리에서 아직 내는 거절(turn 밖 Water Discipline의 trash 창 등)은 그대로 묻는다.
 
 ## 5. 한계
 
