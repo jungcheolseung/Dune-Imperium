@@ -2022,7 +2022,10 @@
 - 인쇄: "At the start of your turn: [draw]. You may pass your turn. (Instead of taking an Agent or Reveal turn.)" `[Bindu Suspension card]`
 - 사용자가 공식 문장으로 제시한 근거(2026-10-22): "You must play Bindu Suspension at the start of your Agent turn, before doing anything else.
   When you do, draw a card, then you may choose to pass your turn or play your turn normally."
-  이 문장과 사용자의 아래 판정을 적용한다. 문장의 외부 URL·판본은 이번 대화에서 제공되지 않아 별도로 검증하지 않았다.
+  이 문장과 사용자의 아래 판정을 적용한다. 출처(2026-10-23 확인): 커뮤니티 정리본(elessar, 2026-06-07판)의 "Bindu Suspension" 항목이 이 문장을 싣고, 출처를 "Dune Imperium Rulebook"과
+  "BGG Forum (Note Paul's correction on the language of the link above)" 두 줄로 적는다 — 룰북 clarification의 문구를 디자이너가 BGG에서 고친
+  것이라는 뜻이다(그 BGG 글 자체는 열지 않았다). 공식 문서의 새 판본이 아니라 디자이너 정정이다.
+  P0의 디자이너 판정 감사가 이 항목을 놓친 까닭: 출처 줄이 둘인 항목을 첫 줄(룰북)에서 끊어 공식 출처로 분류했다(lessons 2026-10-22 보강).
 - 출처 차이: manifest에 고정된 `2020_10_26` PDF `[DI p. 13]`에는 "then immediately end your turn"이라고 적혀 있다.
   이 고정 PDF의 문장을 사용자가 제시한 선택형 문장의 출처로 인용하지 않는다. manifest의 파일·checksum을 바꾸거나 최신 판본을 검증했다고
   주장하지 않는다. P0의 의무 종료 추천과 뒤이은 세션의 Agent turn 전용·의무 종료 추천은 아래 사용자 정정으로 폐기한다.
@@ -2152,6 +2155,8 @@
 - 추천: **(가)** — p. 16과 Calculated Hire clarification이 말하는 것은 제 자리(starting position)에서 가져오는 것이고, 놓인 Agent는 Phase 5까지 칸에 남는다
   `[DI p. 13]`(내 해석). (나)는 칸을 반복 가능한 추가 turn으로 만든다.
 - 판정(2026-10-22 사용자): **A(가).** Mentat 자체도 Mentat 칸에 보낼 수 있다. 정상 비용을 내고 카드 1장을 뽑되, 보낸 Mentat은 사용한 Agent로 남고 다시 가져오지 않는다. 가져오는 대상은 제 자리에 대기 중인 Mentat이다. 앱 동작 미확인이라는 조사 한계는 유지한다.
+- 같은 방향의 커뮤니티 기록(2026-10-23 보강; 정리본의 "Discussion: BGG forum", 디자이너 판정이 아닌 토론): Mentat을 이미 누가 가져갔어도 Mentat 칸에는 갈 수 있고,
+  카드 1장을 뽑으려고 갈 수도 있다. 칸이 비어 있어도 갈 수 있다는 점만 같은 쪽이고, Mentat 자체를 보낸 경우는 말하지 않는다.
 
 ## OQ-125 — "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가
 

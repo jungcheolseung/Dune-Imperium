@@ -302,6 +302,7 @@ The Voice의 표시는 Control marker 수량과 무관한 별도 마커/UI로 �
 | Kwisatz Haderach: Chairdog로 두 번 못 씀; Agent 먼저 놓고 뽑기; Influence 요구 칸은 못 넘음 | 채택, 13.1 |
 | Mentat은 가져간 라운드 동안 그 플레이어의 Agent(모든 목적) | 채택, 9절 |
 | Calculated Hire는 Mentat이 제 자리에 있어야 낸다 | 채택, 9절 |
+| Bindu Suspension: 뽑은 뒤 "you may choose to pass your turn or play your turn normally" — 룰북 p. 13의 "then immediately end your turn"을 고친 문구(BGG Forum, Paul의 정정) | 사용자 판정 C로 채택(OQ-117). P0 감사는 이 항목을 놓쳤다(2026-10-23 다시 걸러 찾음) |
 | The Voice와 Bindu Suspension·Weirding Way | 채택, 13.1 |
 | CHOAM Shares는 7 Solari를 내야 낸다; Allied Armada는 Alliance와 spice 2가 있어야 낸다 | 채택(FAQ p. 2 "pay its costs"와 같다) |
 | Recruitment Mission은 소급하지 않는다 | 채택 |

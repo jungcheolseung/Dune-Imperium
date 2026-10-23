@@ -113,11 +113,13 @@ manifest 키는 `imperium`·`imperium-player-aid`, 인용 이름은 Uprising의 
   적는다([imperium-base.md](imperium-base.md) "글로 없는 값").
 - **FAQ.** 2025-01-13 FAQ의 원판 항목은 원판 판에 적용한다. Missionaria Protectiva의
   진영 errata(Bene Gesserit, 2장) `[FAQ p. 1]`도 원판 카드다.
-- **Bindu Suspension의 문구 차이(2026-10-22).** 고정 PDF p. 13은 의무 종료 문장이지만,
-  사용자가 공식 문장으로 제공한 근거는 뽑은 뒤 pass 또는 정상 진행을 선택하게 한다.
-  적용 판정은 [OQ-117](open-questions.md#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가)의 C다.
-  제공 문장의 URL·판본은 별도로 검증하지 않았으므로 그 문장을 `[DI p. 13]`의 인용으로
-  바꾸어 적지 않는다. 이 판정 기록으로 manifest의 파일 버전·checksum을 변경하지 않는다.
+- **Bindu Suspension의 문구 차이(2026-10-22, 출처 2026-10-23 확인).** 고정 PDF p. 13은 의무 종료 문장("then immediately end
+  your turn")이지만, 사용자가 제시한 문장은 뽑은 뒤 pass 또는 정상 진행을 고르게 한다("then you may choose to pass your turn or
+  play your turn normally"). 그 문장의 출처는 커뮤니티 정리본(elessar, 2026-06-07판)의 "Bindu Suspension" 항목이고, 정리본은 출처를
+  "Dune Imperium Rulebook"과 "BGG Forum (Note Paul's correction on the language of the link above)" 두 줄로 적는다 — 룰북 clarification의
+  문구를 디자이너가 BGG에서 고친 것이다(그 BGG 글 자체는 열지 않았다). 공식 문서의 새 판본이 아니라 디자이너 정정이므로 `[DI p. 13]`의
+  인용으로 바꾸어 적지 않고, manifest의 파일 버전·checksum도 바꾸지 않는다. 적용 판정은
+  [OQ-117](open-questions.md#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가)의 C다.
 
 ### Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
 
