@@ -100,7 +100,9 @@ Y는 X를 v141에서 800 iteration 이은 망이다(`readapt-v141/Y/iteration_10
 - 사람이 정답: `human_right` 59곳
 - 망이 정답: `network_right` 53곳(대조군)
 
-v142 병합 뒤(같은 날) `human_right` 2곳(`c3adefb4:1089`, `fb716981:739`)을 뺐다(사용자 결정). 두 곳 모두 판정에서 진 망의 수가 Navigation Chamber 정가를 내는 수였는데, v142부터 불법이다. 지금 문제집은 110곳(`human_right` 57, `network_right` 53)이다.
+v142 병합 뒤(같은 날) `human_right` 2곳(`c3adefb4:1089`, `fb716981:739`)을 뺐다(사용자 결정). 두 곳 모두 판정에서 진 망의 수가 Navigation Chamber 정가를 내는 수였는데, v142부터 불법이다. 지금 문제집은 110곳(`human_right` 57, `network_right` 53)이다
+
+뒤에 보탠 판까지 285곳 가운데, 선택 효과의 거절이 없어진 codec v146(OQ-095 (2), Agent turn의 선택 효과)에서 4곳, v149(정리-2b, turn 안 trash)에서 2곳이 풀리지 않게 됐다. 2026-10-23부터 그중 2곳(`885ed2f0:578`·`:756`, 사람이 Tech를 거절하고 바로 턴 종료)은 그 턴 종료로 다시 묻고, 망의 거절인 4곳(`8f8df4bc:765`·`fb716981:447`·`c3adefb4:471`·`fb716981:607`)은 이 엔진에 짝이 없다([../human-records.md](../human-records.md) 4절). 그 4곳은 같은 날 사용자 결정으로 뺐다. 지금 문제집은 281곳(`human_right` 153, `network_right` 128, 판 4개)이고 모두 풀린다. 뺀 전 파일은 `local/records/human-problems.before-drop-2026-10-23.json`, 파일의 `note`에도 적었다..
 
 코드는 `records.problems`다. 만든 명령은 `scripts/records/human_diagnosis.py freeze`, 채점은 `dune-imperium-records problems check|score`다.
 
