@@ -413,21 +413,30 @@ def test_a_save_seated_before_the_flip_margin_plays_on_without_it(
     search_kind: str,
 ) -> None:
     """A save names its seat's options: one seated as ``search:<path>``
-    (before 2026-10-23) restores and plays on without the flip margin."""
+    (before 2026-10-23) retraces its search answers and plays on without the
+    flip margin, as the session that made it would have."""
 
     network = Path(search_kind.removeprefix("search:"))
     manager = GameSessionManager(search_checkpoint=network)
     summary = manager.create_game(
         ("human", search_kind, "heuristic", "heuristic"), game_seed=HUMAN_FIRST_SEED
     )
-    game_id = _text(summary["game_id"])
-    manager.wait_for_ai(game_id)
-    restored = manager.restore_game(_roundtrip(manager.save_game(game_id)))
+    summary = _advance(manager, summary, 12)
+    session = manager._sessions[_text(summary["game_id"])]
+    assert _seat_steps(session.steps, {1}) > 0
+    restored = manager.restore_game(_roundtrip(manager.save_game(session.game_id)))
     assert _list(restored["seats"])[1] == search_kind
-    seat = manager._sessions[_text(restored["game_id"])].agents[1]
+    twin = manager._sessions[_text(restored["game_id"])]
+    seat = twin.agents[1]
     assert isinstance(seat, NetworkSearchAgent)
     assert seat.flip_margin == 0.0
-    manager.wait_for_ai(_text(restored["game_id"]))
+    assert twin.steps == session.steps
+
+    saved_steps = len(session.steps)
+    summary = _advance(manager, summary, 12)
+    restored = _advance(manager, restored, 12)
+    assert _seat_steps(session.steps[saved_steps:], {1}) > 0
+    assert twin.steps == session.steps
 
 
 def test_a_bare_search_seat_is_refused_without_a_checkpoint() -> None:

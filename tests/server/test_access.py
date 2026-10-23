@@ -607,6 +607,11 @@ def test_public_seat_kind_hides_a_search_path_too() -> None:
         == "search:champion.pt"
     )
     assert _public_seat_kind("search:D:\\m\\s.pt", hide_path=True) == "search:s.pt"
+    # The server's own search AI carries its options (SERVER_SEARCH_OPTIONS).
+    assert (
+        _public_seat_kind("search:/home/host/r/champion.pt::flip=0.01", hide_path=True)
+        == "search:champion.pt::flip=0.01"
+    )
     assert (
         _public_seat_kind("search:/home/host/runs/champion.pt", hide_path=False)
         == "search:/home/host/runs/champion.pt"

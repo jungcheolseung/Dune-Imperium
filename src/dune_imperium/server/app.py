@@ -194,8 +194,8 @@ class CreateGameRequest(BaseModel):
             "much stronger, about 1.4s a searched decision on the browser's "
             "default rules, 3.3s at the 90th percentile, thought on a "
             "background worker), or 'search' (the server's own search AI, "
-            "set with --search-checkpoint; GET /whoami says whether it has "
-            "one)."
+            "set with --search-checkpoint and seated as "
+            "'search:<path>::flip=0.01'; GET /whoami says whether it has one)."
         ),
     )
     choam_module: bool = False

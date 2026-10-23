@@ -2251,7 +2251,8 @@ def _public_seat_kind(assignment: str, *, hide_path: bool) -> str:
     """Return a seat assignment as the players of the game may see it.
 
     A ``checkpoint:<path>`` or ``search:<path>`` seat names a file on the
-    host's disk; remote players get the file name only.
+    host's disk; remote players get the file name only, with a search seat's
+    options after it (the server's own ``::flip=0.01``).
     """
 
     if hide_path:
