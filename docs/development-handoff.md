@@ -66,13 +66,14 @@
 - **원판·Rise of Ix — P0 산출물 끝, 판정 둘 남음(2026-10-23, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
   [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
   [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-114~120·122~127과 진행 결정 D1~D5는 사용자 판정 확정(2026-10-22·23).
-  **남은 것:** OQ-113(효과 없는 Intrigue)·OQ-121(dreadnought 지배·Combat 순서)의 세부 판정(`OPEN`). 앱 재조사는 끝났고(2026-10-23, OQ-116의 앱도
+  **남은 것:** OQ-113(효과 없는 Intrigue)·OQ-121(dreadnought 지배·Combat 순서)의 세부 판정(`OPEN`). OQ-121의 복귀 시점은 확정(2026-10-24:
+  지난 지배 dreadnought는 룰북대로 Combat 단계 끝, Conflict에 남은 것은 troop 정리 때). 앱 재조사는 끝났고(2026-10-23, OQ-116의 앱도
   B로 확인), 사용자 방향은 OQ-113 = 10-06 원칙을 버리고 디자이너 일반 판정을 Uprising에도, OQ-121 = 앱처럼 순위마다 창 — **둘 다 Uprising
   엔진·codec을 바꾸므로 AI 세션과 맞춘다. 판정 전에는 P1(엔진) 착수 금지.** 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
   (`render/prefabs`, 아이콘·숫자가 칸마다 있음) + 영어 문구. 카드면 스캔은 새로 읽지 않고, P0의 카드면 블라인드 읽기 181장과 한 번 기계 대조해
   다른 카드만 사람이 본다. 도구(D4): 1 채택, 2(화면 조각 → 기록 초안)·시범 전사 5장·갈래 나누기는 P3 첫 묶음에서 시범(D5), 디컴파일러는 P3 끝에
   다시 묻는다. 앱 자료·P0 읽기는 git 밖(에셋 `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 안 `p0-readings/`).
-  [2026-10-22 원판·Rise of Ix P0] [2026-10-23 원판·Ix 남은 판정]
+  [2026-10-22 원판·Rise of Ix P0] [2026-10-23 원판·Ix 남은 판정] [2026-10-24 OQ-121 dreadnought 복귀 시점]
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
   다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —

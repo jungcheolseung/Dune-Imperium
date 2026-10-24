@@ -2138,7 +2138,8 @@
 
 ## OQ-121 — dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때
 
-- 상태: `OPEN` (2026-10-22 사용자: 앱 구현 확인 필요; 순서 제안 미확정)
+- 상태: `OPEN` — **부분 확정(2026-10-24 사용자)**: 질문 (2)·(3)의 복귀 시점은 맨 아래 "판정 — dreadnought가 garrison으로 가는 때"로 확정.
+  (1) Combat 안의 보상·창 순서는 미확정(2026-10-22 사용자: 앱 구현 확인 필요; 순서 제안 미확정)
 - 공식: dreadnought가 있는 Conflict를 이기면 dreadnought가 없는 Control 칸 하나를 골라야 하고, 지배는 다음 Combat 단계 끝까지다. 룰북 예: 지난 라운드의
   dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, "as the Combat phase ends" 지난 dreadnought가 garrison으로 갔다 `[Rise of Ix p. 6]`.
 - 질문(엔진 단계): (1) 승자가 지배 칸을 고르는 결정은 승자의 보상 줄 하나인가(인쇄 보상과 순서 자유, OQ-112), 보상 뒤 따로인가. "When you win a Conflict"
@@ -2191,6 +2192,38 @@
   (3) 새 승자의 지배 선택·troop 반환·전투 종료 효과·Combat 끝·Recall 사이의 복귀 시점이다.
   코드에서 확인한 것과 실제 앱 실행으로 확인한 것을 구분해 보고한다. 공식 `[Rise of Ix p. 6]`의 다음 Combat 끝이라는 근거는 유지하며,
   앱 결과로 공식 문장을 덮어쓰지 않는다. 이번에는 조사 필요 사항만 기록했으며 앱 조사를 수행하지 않았다.
+- **판정 — dreadnought가 garrison으로 가는 때(2026-10-24 사용자, 질문 (2)·(3) 확정; (1) 순서는 미확정).** 예(라운드 3에 놓은 dreadnought가
+  라운드 4 Agent turn 동안 지배하고, 라운드 4 승자는 그 칸을 고르지 못함)로 룰북과 앱의 차이 구간을 설명한 뒤 사용자가 추천 셋을 모두 골랐다.
+  1. **지난 라운드 지배 dreadnought는 Combat 단계 끝에** garrison으로 간다(룰북대로; 앱의 Recall이 아님). "Your control lasts until the end of
+     the next Combat phase. At that time, your dreadnought returns to your garrison (and control of the location returns to the owner of any
+     Control marker your dreadnought may have been covering)." `[Rise of Ix p. 6]`; 룰북 예 "Finally, as the Combat phase ends" `[Rise of Ix p. 6]`.
+     Combat 단계의 마지막 일이다 — 모든 순위 보상·지배 선택·승리 시 효과·유닛 정리·marker 0 뒤. 그 순서 자체(질문 (1))는 OQ-121 Combat 순서 판정을
+     따르고, 복귀는 그 순서의 맨 끝에 둔다. 지배 기간은 "until the end of the next Combat phase"로 조건이 없어서, 그 Combat에 승자가 없거나(공동
+     1위) 승자에게 dreadnought가 없어도 돌아간다. 새 승자가 지배 칸을 고를 때는 지난 dreadnought가 아직 있어 그 칸을 고르지 못한다("where there
+     is not already a dreadnought" `[Rise of Ix p. 6]`).
+  2. **Conflict에 남은 dreadnought는 troop을 supply로 돌리는 정리 단계에서 함께** garrison으로 간다. 진 쪽 전부(공동 1위 포함)와, 이긴 쪽이 둘을
+     냈을 때 지배하러 가지 않는 하나가 여기에 든다. 지배 칸으로 가는 하나만 지배 결정 때 Conflict를 떠난다. 근거: "When Combat resolves, your
+     dreadnoughts in the Conflict don't return to your supply. If you don't win the Conflict, return them to your garrison instead." ·
+     "(If your second dreadnought was also in the Conflict, return it to your garrison.)" `[Rise of Ix p. 6]`. 이 "instead"를 원판의
+     "Once all rewards have been given, each player takes their troops from the Conflict and puts them in their supply" `[DI p. 12]` 자리로 읽은
+     것은 프로젝트 판정이다. 룰북 예의 Ned(2위 보상 뒤 garrison)와 결과가 같다(사이에 다른 일이 없다). 결과가 나온 뒤 "Conflict의 dreadnought"를
+     읽는 효과는 없다(Full-Scale Assault는 Reveal, Cannon Turrets는 결과 전의 Combat Intrigue).
+  3. **Detonation Devices는 지배하러 갈 Conflict의 dreadnought를** supply로 보낸다("instead of taking control of a board space with it"
+     `[Detonation Devices tile]`; "with it"을 그 dreadnought로 읽은 것은 내 해석을 사용자가 채택). 칸 위의 지난 dreadnought나 garrison의 것은 고를 수
+     없다. Detonation과 상관없이 지난 dreadnought는 1의 Combat 끝에, 이긴 쪽의 남은 하나는 2의 정리 단계에 garrison으로 간다. Detonation 결정이
+     어느 자리에 오는지는 지배 선택과 함께 질문 (1)이 정한다.
+  - 앱과의 차이(보조 증거, 위 2026-10-23 재검증): 앱은 지난 지배 dreadnought와 Conflict의 dreadnought를 모두 Makers 뒤 Recall에서 옮긴다. 차이
+    구간(Makers, Recall의 첫 일인 Endgame 판정 `[DI p. 13]`)에서 지배·dreadnought 위치·garrison dreadnought를 읽는 것이 있는지 다시 확인했다.
+    Makers는 Agent가 없는 Maker 칸 셋에 spice 1을 놓을 뿐이고 `[DI p. 13]`, Ix 룰북은 Makers·Recall에 아무것도 더하지 않는다. 그 구간에는 turn이
+    없어 Control 보너스·방어 배치가 일어나지 않는다. Endgame에 읽히는 원판·Ix 책략 6장(Corner the Market, Plans Within Plans, Tiebreaker, Grand
+    Conspiracy, Machine Culture, War Chest)과 Tech 4장(Chaumurky, Holtzman Engine, Memocorders, Spy Satellites; 앱 카드 자료로 훑음) 가운데 위치를
+    읽는 것은 없다 — Grand Conspiracy의 "2 dreadnoughts"는 가진 수이고, Endgame 동률의 "garrisoned troops"는 dreadnought를 세지 않는다
+    ([rise-of-ix.md](rise-of-ix.md) 6절 표). 그래서 지금 원판·Ix 카드로는 결과가 같다. 그래도 공식 문장과 사용자 상시 지시("보이는 것만 똑같다고 냅뒀다가
+    지금 엄청 고생 중이잖아. … 일단은 원칙대로의 방향을 택하도록 해", [lessons](../lessons.md) 2026-10-19)로 룰북을 골랐다. 룰북대로 두면 지배를 읽는 다른 확장과 섞는 판(P7)에서 이 "결과가 같다"를 다시
+    확인하지 않아도 된다. 앱이 Recall 안에서 Endgame 판정 앞과 뒤 어디서 옮기는지는 읽지 않았다(결과에 영향 없음).
+  - 테스트(P4 구현 때): 룰북 예를 좌석별로 문자 그대로 고정한다(lessons 2026-10-07). Frida는 Arrakeen을 고르지 못하고 Imperial Basin에서 Ned의
+    marker를 덮는다. Ned의 dreadnought는 Combat 정리 때 garrison으로 간다. Bodie의 dreadnought는 Combat 끝에 garrison으로 가고, Ned가 Arrakeen
+    지배를 되찾는다. Makers에 들어갈 때 이미 그 상태다.
 
 ## OQ-122 — Round Start 효과의 순서
 

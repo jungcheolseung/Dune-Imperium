@@ -524,7 +524,9 @@ Leader 14명은 hook이 많아 P2·P4에서 지도자마다 따로 잰다. 정�
   - OQ-120: **확정** — Unload 카드를 공개해 보상을 받은 뒤 같은 Reveal turn에 trash하면 다시 받는다.
   - OQ-121: 앱 재검증 끝(2026-10-23): dreadnought가 있는 칸은 못 고르고, 지난 dreadnought는 다음 라운드 Recall에 돌아간다(P0 분석은 틀림). 사용자
     방향: 앱처럼 순위마다 "보상 → 그 좌석의 창" — Combat 단계의 관련 문제(battle icon 시점은 공식대로, 선택형 보상 조각, Conflict 끝 Intrigue 창)를
-    정한 뒤 확정. 복귀 시점은 사용자가 자세한 설명을 요청했다.
+    정한 뒤 확정. **복귀 시점은 확정(2026-10-24, 부분 확정)**: 지난 지배 dreadnought는 룰북대로 Combat 단계의 마지막 일로 garrison에(앱의
+    Recall이 아님), Conflict에 남은 dreadnought(진 쪽, 이긴 쪽의 두 번째)는 troop을 supply로 돌리는 정리 때, Detonation Devices는 지배하러 갈
+    Conflict의 것만 supply로. 지금 원판·Ix 카드로는 앱과 결과가 같지만 공식 문장과 "원칙대로" 지시로 골랐다.
   - OQ-122: **확정(2026-10-23)** — 앱과 같은 순서: 공개 → Control 방어 → 각자 5장(Tech 되돌리기 함께) → 결정 없는 Round Start 효과(Twisted·
     Holtzman Engine·Shuttle Fleet) → Ilesa의 따로 두기(Holtzman으로 뽑은 카드까지 든 손에서) → Scouts/첫 turn. 좌석은 First Player부터.
   - OQ-123: **확정** — 현재 조건처럼 전체 보유 The Spice Must Flow를 센다(덱·손·discard·in play, trash 제외).

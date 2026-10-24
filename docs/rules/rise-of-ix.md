@@ -109,15 +109,20 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
   (디자이너 판정, BGG forum).
 - **힘.** Conflict의 dreadnought 하나는 strength 3(Prince Rhombur Vernius는 4). troop이 없어도 dreadnought가 있으면 strength가 0이 되지 않고, sword가
   세지고, Combat Intrigue를 낼 수 있다 `[Rise of Ix p. 6]` `[FAQ p. 2]`. garrison의 dreadnought는 아무것도 하지 않는다 `[FAQ p. 2]`.
-- **끈질김.** Combat이 해결되면 Conflict의 dreadnought는 supply로 가지 않는다. 이기지 못하면(공동 1위 포함) garrison으로.
+- **끈질김.** Combat이 해결되면 Conflict의 dreadnought는 supply로 가지 않는다. 이기지 못하면(공동 1위 포함) garrison으로 — troop을 supply로
+  돌리는 정리 단계에서 함께(OQ-121 판정 2, 2026-10-24).
 - **지배.** dreadnought가 하나라도 있는 Conflict를 이기면 Arrakeen·Carthag·Imperial Basin 가운데 **dreadnought가 없는** 칸 하나를 골라(의무, "must")
-  그 깃발에 dreadnought를 놓는다(있던 Control marker를 덮는다). 두 번째 dreadnought도 Conflict에 있었으면 garrison으로. 그 칸의 Control 보너스(1 Solari·
-  1 Solari·1 spice, 방어 배치 troop 1)를 받는다. 지배는 **다음** Combat 단계 끝까지이고, 그때 dreadnought는 garrison으로 돌아가며 덮였던 marker의
-  주인이 다시 지배한다. Detonation Devices가 있으면 지배 대신 dreadnought 하나를 supply로 돌려 1 VP를 얻을 수 있다.
+  그 깃발에 dreadnought를 놓는다(있던 Control marker를 덮는다). 두 번째 dreadnought도 Conflict에 있었으면 garrison으로(위 끈질김의 정리 단계).
+  그 칸의 Control 보너스(1 Solari·1 Solari·1 spice, 방어 배치 troop 1)를 받는다. 지배는 **다음** Combat 단계 끝까지이고, 그때 dreadnought는
+  garrison으로 돌아가며 덮였던 marker의 주인이 다시 지배한다. Detonation Devices가 있으면 지배 대신 지배하러 갈 Conflict의 dreadnought를
+  supply로 돌려 1 VP를 얻을 수 있다(칸 위·garrison의 것은 아님, OQ-121 판정 3).
+  - **엔진(OQ-121 판정 1, 2026-10-24 사용자): 지난 지배 dreadnought는 Combat 단계의 마지막 일로** garrison에 돌아간다(룰북대로). 그 Combat에
+    승자가 없어도 돌아간다. Combat 안의 순서는 OQ-121 (1)의 판정을 따르고, 복귀는 그 맨 끝이다.
   - 앱(2026-10-23 재검증, 코드만): dreadnought가 있는 칸은 고르지 못하고, 놓은 dreadnought는 다음 라운드 Combat까지 남았다가 그 라운드
-    Recall에 garrison으로 간다 — 룰북과 같은 라운드다(P0의 "그 라운드 Recall"은 틀렸다). 지배 선택과 복귀의 엔진 단계는 OQ-121.
+    Recall에 garrison으로 간다 — 룰북과 같은 라운드지만 Combat 끝이 아니라 Makers 뒤다(P0의 "그 라운드 Recall"은 틀렸다). 지금 원판·Ix
+    카드로는 그 사이에 지배·위치를 읽는 것이 없어 결과가 같지만, 엔진은 공식 문장을 따른다(OQ-121).
   - 룰북 예: 지난 라운드의 dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, 그 뒤 "as the Combat phase ends" 지난 dreadnought가
-    garrison으로 갔다 `[Rise of Ix p. 6]`. 이 순서의 엔진 단계는 OQ-121.
+    garrison으로 갔다 `[Rise of Ix p. 6]`. P4에서 좌석별로 문자 그대로 테스트한다(OQ-121).
   - 한 번에 locations 위에 있는 dreadnought는 둘을 넘지 않는다(놓이는 것 하나 + 다음 Combat 끝에 떠나는 것 하나) — 세 칸이 다 막히는 일은 없다.
 - **유닛.** "unit"은 troop 또는 dreadnought다. 배치 규칙은 "이번 turn에 recruit한 유닛 전부 + garrison에서 유닛 둘까지"로 바뀐다. **원판 카드의
   "troop"은 유닛을 뜻하지 않아 dreadnought에 작용하지 않는다** `[Rise of Ix p. 6]`.
@@ -306,7 +311,8 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 
 - OQ-119 — **확정:** Ilesa Ecaz의 "둘째 turn"은 Agent 없는 pass와 Weirding Way 추가 turn 모두 센다.
 - OQ-120 — **확정:** 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는다.
-- OQ-121 — **재판정 대기(앱 재검증 끝, 2026-10-23):** dreadnought 지배 선택·승리 효과의 순서와 지난 dreadnought의 복귀 시점.
+- OQ-121 — **부분 확정(2026-10-24):** 복귀 시점 — 지난 지배 dreadnought는 Combat 단계 끝(룰북대로, 앱의 Recall이 아님), Conflict에 남은
+  dreadnought는 troop 정리 때, Detonation Devices는 Conflict의 것만(6절). dreadnought 지배 선택·승리 효과의 순서는 재판정 대기(앱 재검증 끝, 2026-10-23).
 - OQ-122 — **확정(2026-10-23):** Round Start는 공개 → 방어 → 5장·Tech 되돌리기 → Holtzman Engine·Shuttle Fleet → Ilesa의 따로 두기(4절 "쓰기" 아래).
 - OQ-126 — **확정(2026-10-23):** Disposal Facility는 그 Reveal turn에 얻은 Persuasion 합계(쓴 것 포함)로 판정한다.
 - OQ-127 — **확정(2026-10-23):** Combat 보상 중 열린 Treachery의 Unload는 Conflict에 배치하고 곧 supply로 돌아간다.
