@@ -27,6 +27,8 @@
 - [한국어 용어집(KR·EN 룰북 대조)](glossary-ko.md): 브라우저 UI가 쓰는 한국어 게임 용어. 규칙 근거가 아니라 화면 문구의 어휘 표다.
 - [공식 clarification과 FAQ 색인](official-rulings-index.md)
 - [공식 문서만으로 확정할 수 없는 항목](open-questions.md)
+- [이 게임에서 정한 판정 (공지)](house-rulings-ko.md): 위 목록의 판정을 플레이하는 사람에게 알리는 한국어 공지(출처끼리 다른 곳 /
+  앱과 다른 곳 / 그 밖의 판정). `src/dune_imperium/display/house_rulings.toml`에서 만들고, 게임 화면 도움말도 같은 목록을 보인다
 - [디자이너 커뮤니티 판정 대조(2026-09-08)](designer-rulings-audit.md): 공식 문서 밖의 Paul Dennen 판정과 엔진의 불일치 목록, 반영 미결정
 
 ## 읽는 법

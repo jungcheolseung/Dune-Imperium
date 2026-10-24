@@ -1217,6 +1217,21 @@ img.seat-disc.pictured { border-radius: 50%; }
 .help-mark .icon { height: 1.5em; }
 .help-turn { margin: 0; padding-left: 1.2rem; }
 .help-turn li { margin: 0.15rem 0; }
+/* The rulings notice: one folded list per group (help.js helpRulings). */
+.help-rulings-intro { margin: 0 0 0.4rem; }
+.help-rulings { margin: 0.25rem 0; }
+.help-rulings > summary { cursor: pointer; font-weight: 600; }
+.help-rulings dl { margin: 0.3rem 0 0.5rem; }
+.help-rulings dt { margin-top: 0.45rem; font-weight: 600; }
+.help-rulings dd { margin: 0.1rem 0 0 1rem; }
+.help-ruling-tag {
+  font-weight: normal;
+  font-size: 0.8em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 0.3em;
+}
+.help-ruling-sources { display: block; margin-top: 0.1rem; font-size: 0.9em; }
 kbd {
   font: inherit;
   font-size: 0.8em;

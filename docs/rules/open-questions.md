@@ -2,6 +2,10 @@
 
 이 목록은 규칙을 임의로 메우지 않기 위한 판정 대장이다. 아래 항목은 현재 확인한 Main Rulebook, Board Space Guide, 2025-01-13 FAQ에 명시적 답이 없거나, 구현에 필요한 정도로 순서가 정해져 있지 않다. 각 항목은 공식 근거가 나타나기 전까지 프로젝트가 어떤 판정을 채택했는지, 또는 아직 판정하지 않았는지를 기록한다.
 
+판정을 새로 적거나 바꾸면 플레이하는 사람에게 알리는 공지 항목도 함께 고친다: `src/dune_imperium/display/house_rulings.toml`을
+고치고 `uv run scripts/house_rulings_doc.py`로 [house-rulings-ko.md](house-rulings-ko.md)를 다시 만든다(사용자 요청 2026-10-24; 결정된 질문이
+공지에서 빠지면 `tests/unit/display/test_house_rulings.py`가 잡는다. 바뀐 판정의 문장은 테스트가 잡지 못한다).
+
 상태 값은 다음과 같다.
 
 - `OPEN`: 공식 판정이 더 필요하고 프로젝트 확정도 내리지 않았다.

@@ -327,6 +327,56 @@ _TERM_FILLERS = {"a", "an", "and", "any", "card", "cards", "for", "in", "of", "o
 _TERM_FILLERS |= {"one", "or", "the", "this", "to", "turn", "two"}
 
 
+# The base-game and Rise of Ix names the rulings notice uses (OQ-113 ~ 127).
+_BASE_IX_NAMES = (
+    "Advanced Weaponry",
+    "Arrakis Liaison",
+    "Baron Harkonnen",
+    "Battle for Arrakeen",
+    "Bindu Suspension",
+    "Bypass Protocol",
+    "Corner the Market",
+    "Disposal Facility",
+    "Dispatch an Envoy",
+    "Double Cross",
+    "Foldspace",
+    "Grand Conspiracy",
+    "Holtzman Engine",
+    "Ilesa Ecaz",
+    "Infiltrate",
+    "Know Their Ways",
+    "Machinations",
+    "Machine Culture",
+    "Masterstroke",
+    "Rapid Mobilization",
+    "Reverend Mother Mohiam",
+    "Shuttle Fleet",
+    "The Voice",
+    "Treachery",
+    "Unload",
+    "Urgent Mission",
+    "Water of Life",
+    "Weirding Way",
+    "Acquire Tech",
+)
+
+
+def _house_ruling_texts(fields: tuple[str, ...]) -> list[tuple[str, str]]:
+    """The rulings notice's texts (display.house_rulings), as the page shows
+    them through the catalog."""
+
+    rulings = build_catalog()["house_rulings"]
+    assert isinstance(rulings, list) and rulings, "no rulings in the catalog"
+    texts: list[tuple[str, str]] = []
+    for entry in rulings:
+        assert isinstance(entry, dict)
+        for field in fields:
+            value = entry[field]
+            if isinstance(value, str) and value:
+                texts.append((f"house_rulings.{entry['oq']}.{field}", value))
+    return texts
+
+
 def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
     """A rule word the glossary gives in Korean is never left in English.
 
@@ -352,7 +402,6 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
             name = entry.get("name") if isinstance(entry, dict) else None
             if isinstance(name, str):
                 names.add(name)
-    keep = sorted(names, key=len, reverse=True)
 
     texts = [
         (f"{table}.{key}", text)
@@ -360,6 +409,10 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
         for key, text in rows.items()
     ]
     texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    texts += _house_ruling_texts(("title_ko", "ruling_ko", "sources_ko"))
+    # The rulings notice also names base-game and Rise of Ix cards, which no
+    # catalog holds yet (docs/rules/imperium-base.md, rise-of-ix.md).
+    keep = sorted([*names, *_BASE_IX_NAMES], key=len, reverse=True)
     leaks = []
     for where, text in texts:
         bare = re.sub(r"\{\{?[A-Za-z0-9_:]+\}?\}|\S*/\S*", " ", text)
@@ -815,6 +868,8 @@ def test_no_open_question_number_path_or_command_argument_reaches_a_player() -> 
     page = _PageText()
     page.feed((_STATIC / "index.html").read_text())
     texts += [("index.html", text) for text in page.found]
+    texts += _house_ruling_texts(("title", "ruling", "sources"))
+    texts += _house_ruling_texts(("title_ko", "ruling_ko", "sources_ko"))
     assert len(texts) > 1000, "the tables were not read"
     # A hole's or a term's name is code, not what the player reads.
     leaks = [
