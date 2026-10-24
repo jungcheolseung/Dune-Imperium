@@ -63,17 +63,18 @@
 
 **엔진**
 
-- **원판·Rise of Ix — P0 산출물 끝, 판정 하나 남음(2026-10-24, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합; OQ-113 판정은 그 위의
-  `claude/oq113-rulings-64c269`):** 계획 [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
-  [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-113~120·122~127과 진행 결정 D1~D5는 사용자 판정 확정(2026-10-22·23·24). OQ-113은 통일 기준 (C)
-  "비용을 낸 것만 보장"(비용 줄은 보상이 살아야, 비용 없는 효과는 불발해도 낸다; 2026-10-24) — **Uprising 엔진에서 10-06 막기 가운데 비용 없는
-  경우를 푸는 구현(codec 변경, 구현 목록은 OQ-113)은 별도 작업이고 착수 전에 AI 세션·사용자 확인 (결정).** 출처와 다르게 정한 곳은 사람들에게
-  알릴 공지 목록으로 모으기로 했다(OQ-113 "공지 대상"; 전체 목록은 아직 없음). **남은 것:** OQ-121(dreadnought 지배·Combat 순서)의 세부 판정
-  (`OPEN`, 사용자 방향 = 앱처럼 순위마다 창 — Uprising 엔진·codec을 바꾸므로 AI 세션과 맞춘다). **판정 전에는 P1(엔진) 착수 금지.** 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
+- **원판·Rise of Ix — P0 판정 모두 끝(2026-10-25, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
+  [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
+  [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-113~127과 진행 결정 D1~D5는 모두 사용자 판정 확정(2026-10-22~25). OQ-113은 통일 기준 (C)
+  "비용을 낸 것만 보장"(비용 줄은 보상이 살아야, 비용 없는 효과는 불발해도 낸다). OQ-121은 세 판 공통으로 순위마다 "보상 + 그 좌석의 창"이고
+  (Uprising에서는 Planetary Array의 카드가 승자의 창으로, OQ-108 재판정), 지난 지배 dreadnought는 룰북대로 Combat 단계 끝, Conflict에 남은 것은
+  troop 정리 때 돌아간다. 출처와 다르게 정한 곳은 도움말 창의 판정 공지와 [rules/house-rulings-ko.md](rules/house-rulings-ko.md)에 있다(2026-10-24).
+  **다음 (결정):** Uprising 엔진 구현 — OQ-113의 10-06 막기 가운데 비용 없는 경우를 풀기(구현 목록은 OQ-113)와 OQ-121의 Planetary Array 자리.
+  codec이 바뀌므로 착수 전에 AI 세션·사용자 확인. 그 뒤 P1(엔진). 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
   (`render/prefabs`, 아이콘·숫자가 칸마다 있음) + 영어 문구. 카드면 스캔은 새로 읽지 않고, P0의 카드면 블라인드 읽기 181장과 한 번 기계 대조해
   다른 카드만 사람이 본다. 도구(D4): 1 채택, 2(화면 조각 → 기록 초안)·시범 전사 5장·갈래 나누기는 P3 첫 묶음에서 시범(D5), 디컴파일러는 P3 끝에
   다시 묻는다. 앱 자료·P0 읽기는 git 밖(에셋 `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 안 `p0-readings/`).
-  [2026-10-22 원판·Rise of Ix P0] [2026-10-23 원판·Ix 남은 판정]
+  [2026-10-22 원판·Rise of Ix P0] [2026-10-23 원판·Ix 남은 판정] [2026-10-24 OQ-121 dreadnought 복귀 시점]
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
   다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —
