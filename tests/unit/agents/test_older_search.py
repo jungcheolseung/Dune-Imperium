@@ -178,6 +178,39 @@ def test_the_leaves_are_the_older_file_s_value(tmp_path: Path) -> None:
     assert seat._leaf_value(view) == seat.older.older.scores(encoded, [])[1]
 
 
+def test_a_current_file_can_search_with_an_older_file_s_leaves(
+    tmp_path: Path,
+) -> None:
+    """``search:<current>::value=<older>``: the leaves are the older file's
+    value (through the adapter), the candidates the current file's."""
+
+    older = _older_file(tmp_path)
+    codec = ActionCodec(_RULES)
+    torch.manual_seed(1)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        PolicyValueNetwork(codec.size, hidden=(16,)),
+        ruleset=_RULES.identifier,
+        iteration=1,
+        codec=codec,
+    )
+    split = make_agent(f"search:{current}::value={older}", 0, _RULES)
+    assert isinstance(split, NetworkSearchAgent) and split.older is None
+    state, player = _first_turn()
+    view = _ENGINE.observe(state, player)
+    older_seat = NetworkSearchAgent(older, seed=0, config=_RULES)
+    plain = NetworkSearchAgent(str(current), seed=0, config=_RULES)
+    assert split._leaf_value(view) == older_seat._leaf_value(view)
+    assert split._leaf_value(view) != plain._leaf_value(view)
+    actions = _ENGINE.legal_actions(state, player)
+    shortlist, alone = (
+        seat._shortlist(state, view, actions) for seat in (split, plain)
+    )
+    assert isinstance(shortlist, _Shortlist) and isinstance(alone, _Shortlist)
+    assert shortlist.candidates == alone.candidates
+
+
 @dataclass(frozen=True, slots=True)
 class _Decided:
     state: GameState
