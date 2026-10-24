@@ -1563,8 +1563,9 @@ group = "project"
 game = "uprising"
 title_ko = "행성 군사력의 카드를 뽑는 때"
 title = "When Planetary Array's card is drawn"
-ruling_ko = "교전 보상을 다 준 뒤 승자가 교전 카드를 가져가고 배틀 아이콘을 확인한 다음, 병력 반환·교전 끝 창·나머지 정리를 한다. 행성 군사력의 카드는 이때 뽑아 창에 답하기 전에 핸드에 든다."
-ruling = "After all Conflict rewards the winner takes the Conflict card and its battle icon is checked, then troops go home, the Conflict-end window opens and clean-up finishes; Planetary Array's card is drawn at that point, before any window is answered."
+ruling_ko = "행성 군사력의 카드는 이긴 데 걸린 효과라서 승자의 보상 창에서 뽑는다(2위 보상보다 앞). 승자가 교전 카드를 가져가 배틀 아이콘을 확인하는 것은 그대로 모든 순위 보상 뒤이고, 그다음 병력 반환·교전 끝 창·나머지 정리를 한다."
+ruling = "Planetary Array's card is an effect of winning, so it is drawn in the winner's reward window, before the second place is paid. The winner still takes the Conflict card and checks its battle icon after every place's reward, then troops go home, the Conflict-end window opens and clean-up finishes."
+engine_pending = true
 
 [[ruling]]
 oq = "OQ-109"
@@ -1789,6 +1790,26 @@ title_ko = "공개한 Unload 카드를 같은 차례에 폐기하면"
 title = "Trashing a revealed Unload card in the same turn"
 ruling_ko = "Unload 카드를 공개해 효과를 받은 뒤 같은 공개 차례에 다른 효과로 폐기하면 그 효과를 한 번 더 받는다. 정리 때 플레이 영역에서 버림 더미로 옮기는 것은 버리기가 아니라 Unload를 일으키지 않는다."
 ruling = "A revealed Unload card trashed by another effect in the same Reveal turn gives its Reveal effect again; moving it to the discard pile at Clean Up is not a discard and triggers nothing."
+
+[[ruling]]
+oq = "OQ-121"
+group = "project"
+game = "base_ix"
+title_ko = "전투 보상은 순위마다 그 사람의 창에서"
+title = "Each place's reward comes in that player's window"
+ruling_ko = "교전 보상은 순위 순서로 한 사람씩, 그 사람의 창에서 받는다. 승자의 창에는 보상 아이콘과 함께 드레드노트 지배(해야 하고, Detonation Devices가 있으면 그 대신 드레드노트를 개인 공급처로 돌려 승점 1), Windtraps, Strategic Push의 승리 몫, 승리 책략(To the Victor…, Demand Respect)이 들고, 승자가 순서를 고른다. 승리 책략은 이 창에서만 낼 수 있다. 공동 1위면 승리 효과가 없다."
+ruling = "Conflict rewards go place by place, each in that player's window. The winner's window holds the reward icons together with the dreadnought's control (mandatory; with Detonation Devices the dreadnought may instead go back to the supply for 1 VP), Windtraps, Strategic Push's winning part and the winning Intrigue cards (To the Victor…, Demand Respect), in the winner's order. Winning Intrigue cards can be played only in this window. A tie for first has no winning effects."
+
+[[ruling]]
+oq = "OQ-121 (복귀)"
+group = "sources_differ"
+game = "base_ix"
+title_ko = "드레드노트가 주둔지로 돌아가는 때"
+title = "When dreadnoughts go back to the garrison"
+ruling_ko = "지난 라운드에 칸을 지배한 드레드노트는 다음 전투 단계의 맨 끝에 주둔지로 돌아간다. 그 전투의 승자는 아직 드레드노트가 있는 그 칸을 고를 수 없다. 교전 칸에 남은 드레드노트(진 쪽 전부, 승자가 둘을 냈을 때 지배하러 가지 않는 하나)는 병력을 개인 공급처로 돌릴 때 함께 주둔지로 간다. Detonation Devices로 개인 공급처에 보내는 것은 지배하러 갈 교전 칸의 드레드노트다."
+ruling = "A dreadnought that controlled a space since last round goes back to its garrison at the very end of the next Combat phase, so that Combat's winner cannot choose its space. Dreadnoughts left in the Conflict (all of the losers', and the winner's second) go to the garrison when troops go back to the supply. Detonation Devices sends the Conflict dreadnought that would take control back to the supply."
+sources_ko = "Rise of Ix 룰북(따름) — 앱은 둘 다 라운드 끝 회수 때 옮긴다(지금 카드로는 결과가 같다)."
+sources = "The Rise of Ix rulebook (followed); the app moves both at the round's Recall (the same result with today's cards)."
 
 [[ruling]]
 oq = "OQ-122"
