@@ -501,12 +501,34 @@
 
 ## OQ-042 — Suspensor Suits의 "자기 turn"과 배치 불가
 
-- 상태: `DECIDED` (project convention)
+- 상태: `DECIDED` (project convention) — **2026-10-25 재조사로 재판정 대기**(맨 아래). 그 전까지 엔진과 판정 공지는 2026-09-07 판정대로다.
 - Suspensor Suits("자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치")는 (a) "자기 turn"의 범위, (b) supply에 troop이 없거나 배치가 금지된 경우(Emperor of the Known Universe), (c) Conflict가 없는 시점을 말하지 않는다 `[Tech tile face]`.
 - 판정(2026-09-07): (a) 자기 Agent turn 또는 Reveal turn frame이 열려 있는 동안(그 위에 쌓인 상대 결정 포함)의 draw·Secrets 강탈만 센다; Combat 보상·Endgame·상대 turn 중의 획득은 세지 않는다. (b)(c) 엔진이 전이 뒤에 빚진 수만큼 supply에서 Conflict로 옮기고(Reveal 중이면 Reveal 전투력 계산에 합산), supply가 모자라거나 배치가 막혔거나 Conflict가 없으면 부족분은 소멸하고 소급하지 않는다(OQ-030과 같은 방향; 이벤트 `suspensor_deployment_unavailable`). Reveal 중 배치는 그 Reveal의 배치 카운터에 합산된다.
 - 보강(2026-09-26, tile 면 "For each Intrigue card you draw or steal during your turn"): (a)의 제한은 turn뿐이다. Intrigue deck에서 카드를 바로 가져오는 효과 — Bene Gesserit Influence 4 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal — 도 모두 센다(`intrigue_deck.credit_suspensor_suits`). (2026-10-10 부기, [OQ-106](#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다): 앞의 넷과 Tleilaxu track의 Intrigue는 자기 turn 안에서는 소유자의 `draw_owed_intrigue` 단계로 남고, 그 단계에서 뽑을 때 센다 — 여전히 그 turn의 draw다.)
 - 보강(2026-10-02, 사용자 판정 L2-Q4, 같은 날 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): 사용자: "로그 + 클릭 전 경고". (b)(c)의 부족분은 고를 것이 없으므로 결정 창을 열지 않는다(배치는 의무이고 전이 뒤 hook에서 일어난다). 대신 이벤트를 빠짐없이 남기고 미리 경고한다. supply가 일부만 채우는 부분 부족도 이제 남은 troop을 `suspensor_deployment_unavailable`로 남긴다(`troops`는 배치하지 못한 수, `deployed`는 배치한 수; 전에는 하나도 배치하지 못할 때만 이벤트가 있었고 부분 부족은 흔적 없이 사라졌다). 플레이 서버는 Intrigue를 뽑는 행동의 dry run에서 이 이벤트를 읽어 "반중력 의복: 병력 2개 중 1개만 배치" 같은 경고를 누르기 전에 붙인다 — OQ-030의 자유 순서로 supply를 먼저 채울 수 있는 시점이다. reshuffle이 필요한 draw도 같다: 그 배치는 섞기 chance 단계의 hook에서 정해지지만, 서버의 미리보기가 사본에서 그 섞기를 frame의 선택지 순서 그대로 한 번 더 돌려(새 더미에서 뽑는 장수는 순서와 무관하다) 그 단계의 부족분 이벤트만 더한다(`sessions.shortfall_outcome`; 뽑힌 카드는 읽지 않고, 되돌림 가능 여부·전투력 미리보기는 원래 dry run 그대로). `tests/unit/rules/test_tech.py::test_suspensor_suits_logs_the_troops_the_supply_cannot_cover`, `tests/server/test_sessions.py::test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose`.
 - 재개 조건: 공식 FAQ가 Suspensor Suits의 시점을 정할 때.
+- **재조사(2026-10-25, 사용자 "공식 규칙, faq, 앱 구현 찾아보자")** — 계기: 판정 공지 작업(2026-10-24)이 (b)의 근거 "OQ-030과 같은 방향(소급 없음)"이
+  2026-10-04의 OQ-030 재판정(같은 player turn 안의 recruit 부족분 보충)과 어긋난다고 짚었다.
+  - 공식 문서: 소급을 말하지 않는다. "(If you run out of troops in your supply, you can't recruit more until some return there.)" `[Main p. 10]`
+    `[DI p. 10]`; "When you recruit a troop, it must come from your supply." `[FAQ p. 4]`; specimen은 "at any time" supply로 돌릴 수 있고 recruit할
+    troop이 없을 때 쓸모 있다 `[Immortality p. 8]`. "When you lose a troop, return it to your supply" `[DI p. 16]`.
+  - 디자이너 판정(커뮤니티 정리본 2026-06-07판, Suspensor Suits 항목): Shaddam의 Signet Ring을 낸 turn에 Intrigue를 얻으면 **"You still gain the
+    troop, but it just goes to your Garrison instead of deploying."**(Message from designer). 2026-09-09 감사([designer-rulings-audit.md](designer-rulings-audit.md))는
+    이것을 "반영"으로 적었으나, **지금 엔진은 반영하지 않는다**: `tech.deploy_suspensor_troops`는 배치가 막히면(`units_deployment_blocked`) troop을 recruit하지
+    않고 부족분 이벤트만 남긴다(Conflict가 없을 때도 같다). 이 판정에 따르면 Suspensor Suits는 "recruit 1(troop 아이콘) + 그 troop 배치"이고, 배치만
+    막힐 수 있다. 같은 항목의 다른 판정 둘(타일을 사기 전에 뽑은 Intrigue는 세지 않음, Imperium Ceremony의 keep은 draw 1)은 엔진과 같다.
+  - 앱(Steam `dad97e20`, 코드만; Bloodlines가 없어 Suspensor Suits 자체는 없다): 부족분 카운터가 넷이다 — recruit(`UngainedTroops`, `GainUnits`가 쌓음),
+    **supply에서 Conflict로 배치(`UndeployedTroops`, Double Cross·Treachery의 Unload·specimen 반환이 씀)**, specimen(`UngainedSpecimens`), Ix Negotiator
+    (`UnaddedTechNegotiators`). troop이 supply로 돌아오는 행동(`LoseUnits` 뒤의 `TroopsReturnedToSupply`, `PaySpecimens`, `PayTechNegotiators`,
+    `RetreatUnits`)이 그때마다 넷을 채우고(배치 몫은 recruit해 곧바로 `DeployUnits`), turn 끝(`ResetEndOfTurnAttributes`)에 0으로 만든다. Suspensor Suits와
+    같은 모양("troop, deploy it to the Conflict")인 Treachery의 Unload가 `UndeployedTroops`를 쓰므로, 앱 방식이라면 Suspensor의 부족분도 같은 turn 안에서
+    나중에 Conflict로 들어간다.
+  - Immortality 프로모 **Piter, Genius Advisor는 앱에 있다**(`TleilaxuArchetypes.Promo.PiterGeniusAdvisor`, `ActivatedAbilities.Promo.PiterGeniusAdvisorAbility`):
+    garrison 또는 Conflict에서 troop 하나를 잃게 하고(`LoseUnits`) 곧바로 `TroopsReturnedToSupply`를 불러 위 부족분을 채운 뒤 카드 2장을 뽑는다. 우리
+    엔진은 OQ-030(2026-10-04)으로 recruit 부족분은 같은 경로로 채우지만 배치 부족분 기록은 없다.
+  - 판정할 것: (1) 배치가 막혔거나 Conflict가 없을 때 — 디자이너 판정대로 garrison으로 recruit(어느 쪽이든 엔진 결함으로 고친다). (2) supply 부족분 —
+    (가) OQ-030·앱처럼 기록해 같은 player turn 안에 supply가 돌아오면 Conflict에 배치, (나) 지금처럼 소멸하고 (b)의 근거 문장만 고침.
+
 
 ## OQ-043 — Command (6+) 판정에 세는 Persuasion의 범위
 

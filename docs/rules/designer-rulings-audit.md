@@ -45,7 +45,7 @@
 | Sardaukar II contract: recall 대상이 없으면 불발 | `rules/contracts.py`(`contract_recall_unavailable`; 2026-10-02부터 소유자가 recall 창에서 `resolve_contract_without_recall`로 확인한다, OQ-068) |
 | Harvest contract: contract를 받기 전 같은 turn에 얻은 spice도 셈 | `rules/effects.py` `eligible_agent_contract_ids`(turn이 열린 때부터의 좌석 카운터 `spice_at_turn_start`·`spice_spent_turn`), `docs/lessons.md` 2026-08-28. **2026-10-06 정정**: 이 행은 "일치"로 적혀 있었지만 엔진은 Agent 배치 뒤에 얻은 spice만 세어, 같은 turn에 배치 전 Plot으로 얻은 spice가 빠졌다(Steam 앱과의 카드 대조에서 발견). 이제 turn 전체를 세어 판정과 일치한다(`tests/unit/rules/test_contracts.py::test_harvest_counts_plot_spice_gained_before_the_placement`). |
 | Rapid Dropships는 Agent 배치 뒤에만 | `rules/tech.py` `legal_tech_flip_actions` |
-| Suspensor Suits: 구매 전 draw는 troop 없음, Shaddam Signet turn에는 garrison | `rules/intrigue_deck.py`, OQ-042 |
+| Suspensor Suits: 구매 전 draw는 troop 없음, Shaddam Signet turn에는 garrison | `rules/intrigue_deck.py`, OQ-042. **2026-10-25 정정**: Signet turn의 garrison은 반영돼 있지 않다 — `tech.deploy_suspensor_troops`는 배치가 막히면 troop을 recruit하지 않는다(OQ-042 재조사) |
 | Forbidden Weapons: Influence가 있으면 반드시 잃음 | `rules/tech.py` `legal_tech_reveal_actions` |
 | Ornithopter Fleet: Crysknife·Desert Mouse VP 불가, 획득 즉시 매칭 | `rules/effect_interpreter.py:149`, `rules/ornithopter.py` |
 | wild 두 개끼리 Endgame 매칭 | `rules/endgame.py` `_endgame_wild_matches` |
