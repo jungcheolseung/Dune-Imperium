@@ -2,7 +2,8 @@
 
 상태: **P0 산출물 끝, 판정은 둘 남음** (2026-10-22, 브랜치 `claude/base-ix-p0-57d7eb`; 13절). OQ-114 ~ OQ-120·122 ~ OQ-127과 결정 D1 ~ D5는 확정
 (2026-10-22·23 사용자). OQ-113·121은 앱 재조사를 마쳤고(2026-10-23, OQ-116의 앱 재검증도 끝 — 앱도 B), 사용자가 방향을 정했다: OQ-113은 10-06 원칙을
-버리는 쪽, OQ-121은 앱처럼 순위마다 창. 둘 다 Uprising 엔진에 닿아 세부 판정을 받은 뒤 P1에 들어간다.
+버리는 쪽, OQ-121은 앱처럼 순위마다 창. 둘 다 Uprising 엔진에 닿아 세부 판정을 받은 뒤 P1에 들어간다. OQ-121의 Combat 순서는 2026-10-24~25에
+확정했다(13.5절; 브랜치 `claude/oq121-combat-order-853acb`, 복귀 시점은 `claude/oq121-dreadnought-return-dcd084`).
 계획의 결정은 2026-10-21에 끝났다. 9절과 10.4절의 결정은 모두 사용자가 내렸다(미룬 것은 9절 7 보드 그림). 숫자는 master `0425224a`(codec v150)와 Steam 앱 4.1.2.1808(build `dad97e20`, 2026-10-21에도 설치된 빌드가 같음)의 로컬
 추출에서 셌다.
 
@@ -525,6 +526,14 @@ Leader 14명은 hook이 많아 P2·P4에서 지도자마다 따로 잰다. 정�
   - OQ-121: 앱 재검증 끝(2026-10-23): dreadnought가 있는 칸은 못 고르고, 지난 dreadnought는 다음 라운드 Recall에 돌아간다(P0 분석은 틀림). 사용자
     방향: 앱처럼 순위마다 "보상 → 그 좌석의 창" — Combat 단계의 관련 문제(battle icon 시점은 공식대로, 선택형 보상 조각, Conflict 끝 Intrigue 창)를
     정한 뒤 확정. 복귀 시점은 사용자가 자세한 설명을 요청했다.
+    **Combat 순서 확정(2026-10-24~25, 하나씩 여섯)**: 세 판(Uprising·원판·Ix)이 같은 순서를 쓴다. 순위마다 "보상 + 그 좌석의 창" → (Uprising)
+    battle icon(공식대로 마지막 창 뒤) → troop·Commander는 supply로, Conflict에 남은 dreadnought는 garrison으로 → 좌석별 Conflict 끝 창(Harvest Cells,
+    셈은 지금 엔진) → marker 0 → 지난 dreadnought 복귀(다른 세션 판정).
+    - 창 안에서는 보상 아이콘과 창 능력(지배·Detonation·Windtraps·Planetary Array·Strategic Push 몫·승리 책략)을 좌석이 원하는 순서로 처리한다.
+    - 승리 책략은 승자의 창에서만 낸다.
+    - Uprising에서 바뀌는 것은 Planetary Array의 자리(승자의 창, OQ-108 재판정) 하나이고, 구현 전이다. codec·기보가 바뀌므로 AI 세션과
+      사용자 확인 뒤에 한다.
+    - 세부는 OQ-121 "판정 — Combat 단계 순서".
   - OQ-122: **확정(2026-10-23)** — 앱과 같은 순서: 공개 → Control 방어 → 각자 5장(Tech 되돌리기 함께) → 결정 없는 Round Start 효과(Twisted·
     Holtzman Engine·Shuttle Fleet) → Ilesa의 따로 두기(Holtzman으로 뽑은 카드까지 든 손에서) → Scouts/첫 turn. 좌석은 First Player부터.
   - OQ-123: **확정** — 현재 조건처럼 전체 보유 The Spice Must Flow를 센다(덱·손·discard·in play, trash 제외).

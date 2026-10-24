@@ -1677,6 +1677,11 @@
 - 판정(2026-10-07, 사용자 "순위대로 (앱처럼)"): 보상은 순위 순서로 한 수령자씩 준다(같은 순위는 OQ-002대로 First Player부터). 한 수령자의 보상 전체 — 자동 부분과 선택, sandworm 두 배의 두 번째 몫까지 — 를 다 답한 뒤에 다음 수령자에게 준다. 그 수령자가 보류해 둔 Conflict 보상의 Contract 아이콘(OQ-059의 2026-10-02 L2-Q2 "보상 끝까지 보류 후 불발")은 다음 수령자에게 넘어가기 전에 불발한다.
 - 귀결의 예: Skirmish (Crysknife)에서 Bene Gesserit 3인 승자가 Intrigue 덱의 마지막 한 장을 두고 Influence 선택으로 Bene Gesserit 4에 닿으면, 이제 그 마지막 카드는 승자가 뽑고 2위의 인쇄된 Intrigue는 버림 더미를 섞어 뽑는다 `[FAQ p. 2]`. 전에는 2위가 마지막 카드를 먼저 뽑았다.
 - 보조 증거(공식 규칙 아님): 앱도 각 수령자의 보상을 순위 순서로 끝까지 해결한 뒤 다음 수령자로 넘어간다(로컬 분석, 2026-10-07).
+- 확장(2026-10-25, [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) 판정 1·3, 원판·Ix와 통일): 한 수령자의 몫은
+  이제 **그 좌석의 창** 전체다 — 보상 아이콘 줄과 창 능력 줄(승자의 승리 효과: Planetary Array, Ix의 dreadnought 지배·Windtraps·Strategic
+  Push, 원판의 승리 책략). 그것을 다 끝낸 뒤 다음 수령자에게 간다. 순위 순서와 같은 순위 안의 순서는 그대로다. 보조 증거(커뮤니티 정리본의
+  "Message from designer"): "Combat Phase Timing" 항목은 순위 순(1위→3위, 동률은 그 라운드 turn 순서)을, "Combat Rewards Timing" 항목은 First
+  Player부터 turn 순서를 권해 둘이 갈린다(정리본에 날짜가 없다). 정리본 저자의 지금 Combat 요약표는 순위 순이다(OQ-121 "찾아본 자료").
 - 구현: `rules/combat.resolve_combat_rewards`(수령자 하나를 지급하고, 선택 frame이나 대기열(Intrigue draw, track Spy 등)이 생기면 멈춘다 — 그것들이 답해지면 엔진이 다시 부른다), `_pay_next_combat_reward`, `combat_rewards_done`(frame이 닫힐 때 `contracts`도 이것으로 판정), `GameState.combat_rewards_paid`(Conflict 공개 때 0), 보류 아이콘의 불발은 `contracts.combat_held_contract_owner`.
 - 테스트: `tests/unit/rules/test_combat.py`(`test_the_engine_pays_the_next_recipient_only_after_the_winner_answers`, `test_the_winner_s_influence_draw_takes_the_last_intrigue_card_first`, `test_tied_trash_choices_open_one_seat_at_a_time_from_the_first_player`), `tests/unit/rules/test_bloodlines_contracts.py::test_a_winner_s_held_icon_fizzles_before_the_second_place_is_paid`.
 - 재개 조건: 공식 FAQ가 순위가 다른 수령자 사이의 보상 순서를 정할 때.
@@ -1807,12 +1812,18 @@
 
 ## OQ-108 — Planetary Array의 카드를 뽑는 때
 
-- 상태: `DECIDED` (2026-10-18 사용자 결정 "그래 둘다 B가 맞겠다" — 아래 (B))
+- 상태: `DECIDED` (2026-10-18 사용자 결정 "그래 둘다 B가 맞겠다" — 아래 (B); **2026-10-25 재판정: 카드는 승자의 창에서**, 맨 아래와 OQ-121)
 - 근거 문장: "When you win a Conflict: draw a card" `[Planetary Array Tech tile]`(단독 승자만, `[FAQ p. 4]`). Conflict 카드는 "모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의 supply에 놓고 battle icon 일치를 확인한다. [Main p. 14]"이고, 정리(troop 반환, marker 0, sandworm)는 그다음 절이다 [Main p. 14].
 - 결정 전 엔진: Conflict 카드는 정리(`combat.finish_combat`)에서 줬다 — v149 첫 커밋에서는 Conflict 끝 창 뒤. Planetary Array의 카드는 그때 빚지고 단계가 가라앉으면 뽑는데(`tech.draw_owed_tech_cards`), 정리 끝의 Round Start 멈춤(chance, OQ-103)과 Round Start 미룸(OQ-072)이 그것을 다음 라운드 손패 5장 뒤로 보낸다. 이 시점을 정한 판정은 없다(엔진 흐름에서 생겼다). v148까지는 정리에서 Harvest Cells가 발동해 그 선택 창이 위에 있으면 정리에서 바로 뽑았다. v149는 Harvest Cells를 창에서 해결하므로 그 경우도 손패 뒤다(같음 확인의 정해진 차이 `planetary_array_after_the_hand`).
 - 선택지: (A) 지금처럼 다음 손패 뒤. (B) Conflict 카드를 보상 직후·troop 반환 전에 주고 카드를 그때 뽑는다 — 카드 문구와 규칙의 순서에 맞는다. 다만 덱이 얇을 때 섞는 때가 달라져, v148 기보 2,000판 가운데 약 70판이 그 지점에서 기록에 없는 섞기를 만나 이어서 옮길 수 없다(2026-10-18 측정, 다리를 만들 수 없는 갈라짐).
 - **결정 (B):** 보상을 다 준 뒤 승자가 Conflict 카드를 가져가고 battle icon을 확인한다 — 그다음 troop 반환, Conflict 끝 창, 나머지 정리(sandworm, Combat marker 0). Planetary Array의 카드는 이때 빚지고 그 단계가 가라앉으면 뽑으므로, 창에 답하기 전에 손에 든다(덱이 비면 그 자리에서 버린 더미를 섞는다). 구현 `combat._award_conflict`(`offer_conflict_end_triggers`가 부른다), codec v149(정리-2와 함께).
   - 기보 다리(v149 미만): 옛 기록은 그 카드를 정리에서(그 정리에 Harvest Cells가 발동했을 때) 또는 다음 라운드 패 뒤에 뽑았다. 같은 결정의 섞기가 기록에 있으면 그것을(`tech_draw_at_the_win`), 다른 결정으로 같은 카드를 섞은 기록이 있으면(이 엔진은 덱 맨 위 카드를 한 라운드 일찍 가져가므로 이긴 순간이나 다음 Round Start에 섞고, 옛 엔진은 다음 패 뒤 그 카드를 뽑을 때 같은 카드를 섞었다) 그 섞인 순서를 이 엔진의 결정으로 가져온다(`reshuffle_moved`). 그 사이 다른 카드가 버린 더미에 들어가 섞을 카드가 달라진 기록은 갈라진다.
+- **재판정(2026-10-25, 사용자 "PA는 승자의 창 (추천)", [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) 판정 2)**:
+  Planetary Array의 카드는 Conflict 카드를 가져갈 때가 아니라 **승자의 창(1위 보상 창)의 자동 줄**로 뽑는다 — 2위 보상 전이다. "When you win a
+  Conflict"는 이긴 데 걸린 효과이고, Conflict 카드를 가져가 battle icon을 맞추는 일(모든 순위 보상 뒤 `[Main p. 14]`)과는 다른 일로 본다. Ix의
+  Windtraps("When you win a Conflict" water 1)도 승자의 창에 두므로(OQ-121 판정 6 (1)) 같은 문구의 Tech가 같은 때에 발동한다. Conflict 카드와
+  battle icon은 (B) 그대로 마지막 순위 창 뒤, troop 반환 전이다. **구현 전**: 엔진은 아직 (B)대로 `_award_conflict`에서 뽑는다(OQ-121의
+  "Uprising 엔진에 생기는 일" 1).
 
 ## OQ-109 — 세포 수확 획득 중에 뽑힌 책략 카드와 Conflict 끝 창
 
@@ -1912,6 +1923,11 @@
     줄 사이 순서는 자유다.
   - 게임이 끝나는 단계에서 완수된 계약(Endgame Navigation 카드의 Influence로 얻은 동맹의 Earn Any Alliance)은 아무도 결정에
     답하지 않으므로 창을 옛 순서로 곧바로 받는다(옛 엔진과 같다).
+- 확장(2026-10-25, [OQ-121](#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) 판정 3·6, 원판·Ix와 통일): Conflict 보상의
+  이 창이 **그 좌석의 창**이다. 보상 아이콘 줄과 함께 창 능력 줄 — 승자의 dreadnought 지배(Detonation 포함, 의무), 승리 책략 play(승자의 창에서만),
+  Strategic Push의 승리 몫·Windtraps·Planetary Array(자동) — 이 같은 창에 나오고 좌석이 전부의 순서를 고른다. 앱은 자동 보상 조각을 창 전에
+  한꺼번에 주는데 따르지 않는다(이 OQ의 판정 1·2와 같은 원칙). 창 안에서 얻은 승리 효과(보상으로 뽑은 승리 책략, 보상으로 얻은 Windtraps·Detonation
+  Devices·Planetary Array)도 곧바로 줄이 된다. Uprising 내용으로는 Planetary Array 줄만 생긴다(구현 전, OQ-108 재판정).
 - 테스트: `tests/unit/rules/test_combat.py`, `test_contracts.py`, `test_bloodlines_contracts.py`, `test_economic_supremacy.py`,
   `test_pauses.py`(창·줄·사건), `tests/unit/records/test_record_migration.py`(옛 기록에서 줄을 빼고 다리가 되살림),
   `tests/server/test_turn_end.py`·`test_undo.py`(붙잡힌 단위·되돌리기), `scripts/e2e/combat_result.py`(화면).
@@ -2138,7 +2154,9 @@
 
 ## OQ-121 — dreadnought 지배를 놓는 때와 지난 dreadnought가 떠나는 때
 
-- 상태: `OPEN` (2026-10-22 사용자: 앱 구현 확인 필요; 순서 제안 미확정)
+- 상태: `OPEN` — **부분 확정(2026-10-24~25 사용자)**: 질문 (1) Combat 안의 순서는 맨 아래 "판정 — Combat 단계 순서"로 확정(세 판 공통).
+  질문 (2) 복귀 시점은 같은 날 다른 세션의 판정(브랜치 `claude/oq121-dreadnought-return-dcd084`, 이 OQ의 "판정 — dreadnought가 garrison으로
+  가는 때")이고, 두 브랜치를 병합하면 `DECIDED`
 - 공식: dreadnought가 있는 Conflict를 이기면 dreadnought가 없는 Control 칸 하나를 골라야 하고, 지배는 다음 Combat 단계 끝까지다. 룰북 예: 지난 라운드의
   dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, "as the Combat phase ends" 지난 dreadnought가 garrison으로 갔다 `[Rise of Ix p. 6]`.
 - 질문(엔진 단계): (1) 승자가 지배 칸을 고르는 결정은 승자의 보상 줄 하나인가(인쇄 보상과 순서 자유, OQ-112), 보상 뒤 따로인가. "When you win a Conflict"
@@ -2185,12 +2203,90 @@
   - Conflict 끝 Intrigue: 엔진은 유닛 반환 뒤 모든 좌석에 창을 연다. 앱은 보상받는 좌석의 창에서만 고르는 것으로 보인다 — 보상이 없는 좌석(4위·
     strength 0)이 창을 갖는지는 아직 확인하지 않았다. Harvest Cells의 셈도 다르다(엔진은 Conflict 끝에 잃은 troop 3+, 앱은 `TroopsDeployedThisConflict`).
   - 순위 사이의 순서는 OQ-102(순위대로, 앱처럼)와 같다.
-- 판정: **미확정 유지, 앱 조사 후 재판정**(2026-10-22 사용자: "이건 앱에서는 어떻게 되고 있는지 확인해야한다고 기록해야겠다").
+- 판정(2026-10-22, 질문 (1)은 아래 2026-10-24~25 판정으로 대체): **미확정 유지, 앱 조사 후 재판정**(2026-10-22 사용자: "이건 앱에서는 어떻게 되고 있는지 확인해야한다고 기록해야겠다").
   다음 조사는 (1) 순위 보상·지배/Detonation·Windtraps·승리 시 책략의 실제 처리 순서와 선택 가능 범위,
   (2) 새 지배 dreadnought와 지난 라운드 지배 dreadnought를 구분하는 상태 및 복귀 조건,
   (3) 새 승자의 지배 선택·troop 반환·전투 종료 효과·Combat 끝·Recall 사이의 복귀 시점이다.
   코드에서 확인한 것과 실제 앱 실행으로 확인한 것을 구분해 보고한다. 공식 `[Rise of Ix p. 6]`의 다음 Combat 끝이라는 근거는 유지하며,
   앱 결과로 공식 문장을 덮어쓰지 않는다. 이번에는 조사 필요 사항만 기록했으며 앱 조사를 수행하지 않았다.
+- **판정 — Combat 단계 순서(2026-10-24~25 사용자, 질문 (1) 확정).** 위 "사용자 방향"에서 시작해 여섯 가지를 하나씩 받았다. 매번 예, 공식 문장,
+  앱 처리를 먼저 설명했다. 원판·Rise of Ix·Uprising 세 판이 같은 순서를 쓴다(사용자: "당연히 uprising이나 원판,ix랑 통일해야 맞긴 해").
+  - **통일 순서**: Combat Intrigue 창(연속 pass까지) → 순위마다 **그 좌석의 창**(OQ-102 순위 순, 같은 순위는 OQ-002, 두 번째 수령자부터 그 앞에
+    멈춤 OQ-103) → (Uprising) 승자가 Conflict 카드를 가져가 battle icon 확인 → 정리: Conflict의 troop·Commander는 supply로, Conflict의
+    dreadnought(진 쪽 전부와 승자의 둘째)는 garrison으로 → 좌석별 Conflict 끝 Intrigue 창(Harvest Cells) → sandworm은 bank로, Combat marker
+    0 → 마지막으로 지난 라운드의 지배 dreadnought가 garrison으로. 정리의 dreadnought와 맨 끝의 복귀는 같은 날 다른 세션의 판정이다(아래 5 (2)).
+  1. **뼈대는 순위마다 "보상 + 그 좌석의 창"**(사용자 "순위마다 창 (추천)"). Ix 룰북 예는 1위 Frida가 보상을 받고 dreadnought로 지배한 뒤에
+     2위 Ned가 보상을 받는다("Frida wins, taking the first-place reward. She must also take control of a location with her dreadnought." 다음에
+     "Ned claims the second-place reward." `[Rise of Ix p. 6]`). Demand Respect 해설은 승리 보상의 spice를 먼저 받고 그것으로 낼 수 있다고 한다
+     `[DI p. 13]`. 승리 보상으로 받은 승리 책략은 곧바로 낼 수 있다 `[FAQ p. 4]`. 원판의 "wait until you've won, then play them (before moving
+     on to the next phase)" `[DI p. 12]`는 어느 순서도 막지 않는다. 앱도 순위마다 창이다(위 재검증).
+  2. **battle icon은 마지막 순위 창 뒤**: "Finally, the winner takes the Conflict card, places it in their supply face up, then checks for a battle
+     icon match" `[Main p. 14]`. 앱은 1위 보상 때 처리하는데 공식과 달라 따르지 않는다. 원판은 승자가 Conflict 카드를 가져가지 않으므로 이
+     칸이 없다 `[DI pp. 8, 12]`. **Planetary Array는 승자의 창**(사용자 "PA는 승자의 창 (추천)"): Ix의 Windtraps와 같은 "When you win a
+     Conflict" Tech이므로 같은 때에 둔다. Conflict 카드를 가져가는 일과 이긴 데 걸린 효과를 다른 일로 본다. [OQ-108](#oq-108--planetary-array의-카드를-뽑는-때)
+     (B)를 고친다.
+  3. **보상 아이콘과 창 능력은 한 창**(사용자 "(가) 한 창 (추천)", 앱 방식 (나)와 자세히 비교한 뒤): 그 좌석의 보상 아이콘 줄(OQ-112, 자동
+     아이콘도 줄)과 창 능력 줄이 한 창에 나오고, 좌석이 전부의 순서를 고른다. 앱은 자동 보상 조각을 창 전에 한꺼번에 주고, 선택형 조각과 창
+     능력만 고르게 한다. 결과는 대개 같고, 갈리는 것은 같은 공용 자원(예: supply의 troop)을 두고 다투는 드문 경우다. OQ-027·OQ-112·2026-09-30
+     원칙("자동인 것도 줄")과 같은 모양이라 골랐다.
+  4. **Harvest Cells는 모든 보상 뒤 Conflict 끝 창 하나에서**(사용자 "(가) Conflict 끝 창 하나 (추천)"): 보상을 받았든 아니든 같은 창이다.
+     여는 조건(공개 사실, OQ-103)과 좌석 순서(First Player부터, OQ-002)는 지금 Uprising 엔진 그대로다. 근거: troop은 모든 보상 뒤 supply로
+     간다 `[Main p. 14]` `[DI p. 12]`. 그 반환이 "lost"다 `[FAQ p. 1]`. "This card is played after combat resolves."(OQ-057 (11)). 보조 증거:
+     Dire Wolf 고객지원 답(2023-09-22, BGG 글 3105807에 옮겨 적힘) "when you are returning troops from the conflict to your supply", 아래
+     커뮤니티 요약표. 앱(2026-10-09 로컬 보고서 `analysis/conflict-end-2026-10-09/report.md`)은 따르지 않는다. 앱에서는 보상받은 좌석이 자기
+     창에서 낸다. 보상 없는 좌석은 첫 무리의 첫 좌석이 Harvest Cells를 쥐었을 때만 빈 보상 항목으로 창을 받아, 다른 좌석은 못 내고 로그가
+     손패를 드러낸다.
+  5. (1) **Harvest Cells가 세는 것은 엔진 그대로**: Conflict 끝 반환에서 supply로 간 troop과 Sardaukar Commander다(Commander는 troop
+     `[Bloodlines p. 4]`). Combat 도중에 잃거나 retreat한 troop, 그리고 dreadnought는 세지 않는다. 사용자가 짚은 정리본 문장 "Harvest Cells may
+     not be played based off troops lost from Staged Incident"(BGG Forum, non official explanation)와 같다. 앱은 이번 Conflict에 배치한 troop
+     수(`TroopsDeployedThisConflict`)를 센다. 따르지 않는다. troop·Commander 반환의 자리는 4로 정해진다: 마지막 순위 창과 battle icon 뒤,
+     Conflict 끝 창 앞(지금 엔진).
+     (2) **Conflict에 남은 dreadnought는 정리 때 troop과 함께 garrison으로**: 진 쪽 전부(공동 1위 포함)와, 승자가 둘을 냈을 때 지배하러
+     가지 않는 하나다. 사용자는 처음에 "(ㄱ) 그 좌석의 창 끝"(Ix 예의 서술 순서)을 골랐다. 그 뒤 같은 날 다른 세션에서 이미 "정리 단계에서
+     함께"를 골랐음을 알고, 둘을 맞추어 "정리 때 함께 (추천)"으로 정했다. 근거는 그 판정의 "If you don't win the Conflict, return them to your
+     garrison instead." `[Rise of Ix p. 6]`이다. "instead"는 supply로 가는 정리 자리를 가리킨다. 결과는 (ㄱ)과 같다.
+  6. (1) **승자의 창**(사용자 "위처럼 (추천)"):
+     - 보상 아이콘 줄.
+     - **dreadnought 지배**는 의무 줄이다("you must choose" `[Rise of Ix p. 6]`). Detonation Devices가 있으면 그 줄 안에서 지배 대신 그
+       dreadnought를 supply로 돌려 1 VP를 얻는다("may" `[Detonation Devices tile]`; 무엇을 supply로 보내는지는 다른 세션 판정 3).
+     - **Windtraps**(water 1), **Planetary Array**(카드 1장), **Strategic Push**의 "If you win this Conflict" 몫(Solari 2)은 고를 것 없는 자동
+       줄이다.
+     - **To the Victor…·Demand Respect**는 쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다.
+     - 창 안에서 얻은 승리 효과도 곧바로 줄이 생긴다. 보상으로 뽑은 승리 책략 `[FAQ p. 4]`, 보상으로 얻은 Windtraps·Detonation Devices(디자이너
+       판정, [rise-of-ix.md](rise-of-ix.md) 12절)가 그렇다. 디자이너는 그 이유를 "because you are still in the 'When you win a Conflict' phase
+       when earning this reward"라고 했다(BGG 글 2865696, 2022-05-13). 같은 문구인 Planetary Array에도 같은 원리를 적용한다.
+     - 공동 1위면 승리 효과 줄이 없다 `[FAQ p. 4]`. 의무 줄과 자동 줄을 다 받아야 창이 닫힌다.
+     (2) **승리 책략은 승자의 창에서만**(사용자 "(ㄴ) 승자의 창에서만", 자료를 찾아본 뒤): 모든 보상 뒤의 Conflict 끝 창에서 다시 낼 수
+     없다. 원판의 "(before moving on to the next phase)" `[DI p. 12]`은 마감으로 읽는다. 문장만으로는 더 늦게 내는 것도 읽히므로 이것은
+     프로젝트 판정이다. 같은 쪽의 보조 증거: 디자이너의 "'When you win a Conflict' phase"(위), 커뮤니티 요약표(아래), 앱
+     (`ToTheVictorAbility`는 승자 자신의 보상 뒤 창에서만, 2026-10-09 보고서). 승자의 창은 보상 줄 때문에 늘 열리므로, 승리 책략을 쥐었는지는
+     드러나지 않는다.
+  - **찾아본 자료(2026-10-25)**:
+    - 공식 FAQ와 커뮤니티 정리본(elessar, 2026-06-07판)에는 승리 책략을 미루는 것에 관한 항목이 없다.
+    - 정리본의 "Combat Phase Timing" 항목은 비공식 "Combat Phase - Quick Reference"(elessar, PDF 한 장, Direwolf가 만든 것이 아니라고 적혀
+      있음)를 가리킨다. 그 순서: Combat 책략 → 순위 → 1위가 보상과 "When You Win a Conflict" 카드를 원하는 순서로, 그다음 2위, 3위(순위 순은
+      디자이너 권고로 적음) → 정리(troop을 supply로, 승자의 dreadnought 지배, 지난 dreadnought 복귀) → Harvest Cells(3개 이상 돌린 좌석, turn
+      순서).
+    - 이 요약표는 위 1·3·4·5 (1)·6 (2)와 같다. 다른 것은 승자의 지배를 정리에 두는 것 하나다. 우리는 Ix 예를 따라 승자의 창에 둔다. 그
+      사이에 지배를 읽는 것이 없어 결과는 같다.
+    - BGG 글 3332576("Play window of 'When you win a Conflict' cards")은 사용자가 읽고 도움이 안 된다고 했다. BGG는 이 환경에서 봇 확인에
+      막혀, 다른 글은 2026-10-09 세션이 받아 둔 것(`tmp/claude/92ce9c58-…/conflict-window/recheck-designer/`)만 읽었다.
+  - **앱의 유닛 반환에 대한 두 조사가 엇갈린다**: 2026-10-09 보고서(코드, 오프셋 있음)는 보상받은 좌석의 troop을 그 좌석의 창 안에서 곧바로
+    supply로, 보상 없는 좌석의 troop은 Recall에서 옮긴다고 했다. 위 2026-10-23 재검증과 [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload)의
+    앱 메모는 마지막 창 뒤라고 적었다. 판정은 공식 문장을 따르므로 이 차이를 쓰지 않았고 다시 읽지 않았다. OQ-127의 결론은 어느 쪽이든
+    같다.
+  - **Uprising 엔진에 생기는 일**(구현 전. codec·기보가 바뀌는 별도 작업이므로, 시작 전에 AI 세션과 사용자에게 확인한다):
+    1. Planetary Array의 카드를 Conflict 카드 수여(`combat._award_conflict`)에서 빼고, 승자의 보상 창(`combat_reward_icons`)의 자동 줄로
+       옮긴다. 승자 덱을 섞는 때가 달라질 수 있어 기보 다리가 필요하다. OQ-108의 2026-10-18 이동은 v148 기보 2,000판 가운데 약 70판에서
+       갈라졌다. AI 좌석과 옛 기보가 쓰는 고정 줄 순서(`agents/engine_order.py`)에도 그 줄을 넣는다.
+    2. 보상 창이 창 능력 줄을 받을 수 있게 한다. Uprising만의 내용으로는 Planetary Array 하나지만, P7(Uprising+Ix)의 dreadnought 지배·Windtraps·
+       Strategic Push와 원판의 승리 책략이 같은 틀을 쓴다.
+    3. 그대로인 것: battle icon과 Conflict 카드의 때, troop·Commander 반환의 자리, Conflict 끝 창(여는 조건·순서·Harvest Cells의 셈), OQ-102의
+       순위 순서, OQ-103의 멈춤 자리.
+  - **원판·Ix(P1·P4)**: 위 순서를 처음부터 쓴다. 룰북 예는 좌석별로 고정한다(lessons 2026-10-07).
+    - 원판 p. 12: Abby 1위(1 VP와 Arrakeen 지배) → John 2위(4 Solari) → Ned는 없음.
+    - Ix p. 6: Frida 1위 보상과 Imperial Basin 지배 → Ned 2위 보상 → 정리에서 Ned의 dreadnought가 garrison으로 → Combat 끝에 Bodie의 지난
+      dreadnought가 garrison으로. 다른 세션의 테스트 메모와 같다.
 
 ## OQ-122 — Round Start 효과의 순서
 
