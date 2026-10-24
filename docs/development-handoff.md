@@ -63,12 +63,13 @@
 
 **엔진**
 
-- **원판·Rise of Ix — P0 산출물 끝, 판정 둘 남음(2026-10-23, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합):** 계획
-  [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
-  [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-114~120·122~127과 진행 결정 D1~D5는 사용자 판정 확정(2026-10-22·23).
-  **남은 것:** OQ-113(효과 없는 Intrigue)·OQ-121(dreadnought 지배·Combat 순서)의 세부 판정(`OPEN`). 앱 재조사는 끝났고(2026-10-23, OQ-116의 앱도
-  B로 확인), 사용자 방향은 OQ-113 = 10-06 원칙을 버리고 디자이너 일반 판정을 Uprising에도, OQ-121 = 앱처럼 순위마다 창 — **둘 다 Uprising
-  엔진·codec을 바꾸므로 AI 세션과 맞춘다. 판정 전에는 P1(엔진) 착수 금지.** 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
+- **원판·Rise of Ix — P0 산출물 끝, 판정 하나 남음(2026-10-24, 브랜치 `claude/base-ix-p0-57d7eb`, 미병합; OQ-113 판정은 그 위의
+  `claude/oq113-rulings-64c269`):** 계획 [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
+  [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-113~120·122~127과 진행 결정 D1~D5는 사용자 판정 확정(2026-10-22·23·24). OQ-113은 통일 기준 (C)
+  "비용을 낸 것만 보장"(비용 줄은 보상이 살아야, 비용 없는 효과는 불발해도 낸다; 2026-10-24) — **Uprising 엔진에서 10-06 막기 가운데 비용 없는
+  경우를 푸는 구현(codec 변경, 구현 목록은 OQ-113)은 별도 작업이고 착수 전에 AI 세션·사용자 확인 (결정).** 출처와 다르게 정한 곳은 사람들에게
+  알릴 공지 목록으로 모으기로 했다(OQ-113 "공지 대상"; 전체 목록은 아직 없음). **남은 것:** OQ-121(dreadnought 지배·Combat 순서)의 세부 판정
+  (`OPEN`, 사용자 방향 = 앱처럼 순위마다 창 — Uprising 엔진·codec을 바꾸므로 AI 세션과 맞춘다). **판정 전에는 P1(엔진) 착수 금지.** 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
   (`render/prefabs`, 아이콘·숫자가 칸마다 있음) + 영어 문구. 카드면 스캔은 새로 읽지 않고, P0의 카드면 블라인드 읽기 181장과 한 번 기계 대조해
   다른 카드만 사람이 본다. 도구(D4): 1 채택, 2(화면 조각 → 기록 초안)·시범 전사 5장·갈래 나누기는 P3 첫 묶음에서 시범(D5), 디컴파일러는 P3 끝에
   다시 묻는다. 앱 자료·P0 읽기는 git 밖(에셋 `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 안 `p0-readings/`).
