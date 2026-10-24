@@ -628,8 +628,9 @@ group = "project"
 game = "uprising"
 title_ko = "반중력 의복의 \"자기 차례\"와 배치 부족"
 title = "Suspensor Suits: \"your turn\" and shortfalls"
-ruling_ko = "반중력 의복은 자기 에이전트 차례나 공개 차례에 책략을 뽑거나 훔칠 때만 병력 1을 교전 칸에 배치한다(전투 보상·종료 단계·다른 플레이어의 차례는 세지 않고, 책략 카드덱에서 바로 가져오는 효과는 센다). 개인 공급처가 모자라거나 배치가 막혔거나 교전이 없으면 모자란 만큼 사라지고, 기록과 클릭 전 경고로 알린다."
-ruling = "Suspensor Suits deploys a troop only for Intrigue cards drawn or stolen in your own Agent or Reveal turn (not in Combat rewards, the Endgame or another player's turn; effects taking straight from the Intrigue Deck count). A shortfall of supply, a deployment ban or no Conflict loses that many, shown in the log and warned of before you click."
+ruling_ko = "반중력 의복은 자기 에이전트 차례나 공개 차례에 책략을 뽑거나 훔칠 때만 병력 1을 소집해 교전 칸에 배치한다(전투 보상·종료 단계·다른 플레이어의 차례는 세지 않고, 책략 카드덱에서 바로 가져오는 효과는 센다). 배치가 막혔거나 교전이 없으면 그 병력은 주둔지에 남는다. 개인 공급처가 모자라면 모자란 만큼 기록해 두었다가, 같은 차례 안에 개인 공급처로 병력이 돌아오면 곧바로 소집해 교전 칸에 배치한다."
+ruling = "Suspensor Suits recruits a troop and deploys it to the Conflict only for Intrigue cards drawn or stolen in your own Agent or Reveal turn (not in Combat rewards, the Endgame or another player's turn; effects taking straight from the Intrigue Deck count). With a deployment ban or no Conflict the troop stays in your garrison. What the supply cannot cover is noted, and if troops come back to your supply later in the same turn they are recruited and deployed at once."
+engine_pending = true
 
 [[ruling]]
 oq = "OQ-043"

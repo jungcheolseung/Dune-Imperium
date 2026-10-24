@@ -124,7 +124,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Self-Destroying Messages | 4 | Intrigue 2 | Reveal Turn: Persuasion 1 |
 | Servo-Receivers | 2 | Leader의 Signet Ring 능력 1회 사용 — 갈색·금색 반지 = Signet Ring 아이콘 "you use the Signet Ring ability … on your Leader" `[Main p. 20]` (2026-09-26 정정, 이전 전사는 Shield Wall 파괴; 해결 시점은 [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력)) | 자신의 Signet Ring은 Emperor·Guild·BG·Fremen Agent 아이콘을 가진다 |
 | Spy Drones | 5 | Spy with Deep Cover 2 | Flip → Solari 1; 이번 turn Spy를 recall했으면 trash 1(선택) |
-| Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치 |
+| Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 recruit해 Conflict에 배치(막히면 garrison, supply 부족분은 같은 turn 안에 보충 — OQ-042 2026-10-25 재판정, 엔진 반영 전) |
 | Training Depot | 1 | — | Reveal Turn: Command (6+): 검 2 |
 
 - Navigation Chamber의 감소는 의무다. spice와 Solari를 함께 받는 칸에서만 어느 쪽을 줄일지 고르고(4인 보드에는 그런 칸이 없다), Spice Refinery·Gather Support의 화살표 비용 옵션(`[Board Guide pp. 1-2]`)에도 닿는다. 타일 문장(may 없음)을 읽은 project reading이며 공식 판정은 아니다([OQ-104](open-questions.md#oq-104--navigation-chamber의-할인은-의무인가)).

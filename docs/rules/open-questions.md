@@ -501,7 +501,7 @@
 
 ## OQ-042 — Suspensor Suits의 "자기 turn"과 배치 불가
 
-- 상태: `DECIDED` (project convention) — **2026-10-25 재조사로 재판정 대기**(맨 아래). 그 전까지 엔진과 판정 공지는 2026-09-07 판정대로다.
+- 상태: `DECIDED` (project convention; **2026-10-25 재판정, 엔진 반영 전** — 맨 아래. 엔진은 아직 2026-09-07 판정대로 돈다)
 - Suspensor Suits("자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치")는 (a) "자기 turn"의 범위, (b) supply에 troop이 없거나 배치가 금지된 경우(Emperor of the Known Universe), (c) Conflict가 없는 시점을 말하지 않는다 `[Tech tile face]`.
 - 판정(2026-09-07): (a) 자기 Agent turn 또는 Reveal turn frame이 열려 있는 동안(그 위에 쌓인 상대 결정 포함)의 draw·Secrets 강탈만 센다; Combat 보상·Endgame·상대 turn 중의 획득은 세지 않는다. (b)(c) 엔진이 전이 뒤에 빚진 수만큼 supply에서 Conflict로 옮기고(Reveal 중이면 Reveal 전투력 계산에 합산), supply가 모자라거나 배치가 막혔거나 Conflict가 없으면 부족분은 소멸하고 소급하지 않는다(OQ-030과 같은 방향; 이벤트 `suspensor_deployment_unavailable`). Reveal 중 배치는 그 Reveal의 배치 카운터에 합산된다.
 - 보강(2026-09-26, tile 면 "For each Intrigue card you draw or steal during your turn"): (a)의 제한은 turn뿐이다. Intrigue deck에서 카드를 바로 가져오는 효과 — Bene Gesserit Influence 4 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal — 도 모두 센다(`intrigue_deck.credit_suspensor_suits`). (2026-10-10 부기, [OQ-106](#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다): 앞의 넷과 Tleilaxu track의 Intrigue는 자기 turn 안에서는 소유자의 `draw_owed_intrigue` 단계로 남고, 그 단계에서 뽑을 때 센다 — 여전히 그 turn의 draw다.)
@@ -528,6 +528,21 @@
     엔진은 OQ-030(2026-10-04)으로 recruit 부족분은 같은 경로로 채우지만 배치 부족분 기록은 없다.
   - 판정할 것: (1) 배치가 막혔거나 Conflict가 없을 때 — 디자이너 판정대로 garrison으로 recruit(어느 쪽이든 엔진 결함으로 고친다). (2) supply 부족분 —
     (가) OQ-030·앱처럼 기록해 같은 player turn 안에 supply가 돌아오면 Conflict에 배치, (나) 지금처럼 소멸하고 (b)의 근거 문장만 고침.
+- **재판정(2026-10-25 사용자, "그래 (가)로 가자")** — 위 2026-09-07 판정의 (b)(c)를 바꾼다. (a)(자기 turn의 범위)는 그대로다.
+  1. Suspensor Suits는 Intrigue 한 장마다 **troop 1을 recruit하고 그 troop을 Conflict에 배치**한다. 배치가 막혔거나(Emperor of the Known Universe)
+     Conflict가 없으면 recruit한 troop은 garrison에 남는다 — 디자이너 판정 "You still gain the troop, but it just goes to your Garrison instead of
+     deploying."(커뮤니티 정리본, Message from designer). 이것은 2026-09-09 감사가 이미 채택한 판정을 엔진에 맞추는 것이다.
+  2. supply가 모자라 recruit하지 못한 수는 그 좌석에 **배치 몫으로 기록**하고, 같은 player turn 안에 그 좌석의 supply에 troop이 돌아오면 엔진이
+     묻지 않고 곧바로 recruit해 Conflict에 배치한다(그때도 배치가 막혔으면 garrison). 기록의 수명은 OQ-030(2026-10-04)의 recruit 부족분과 같다:
+     turn이 열릴 때 모든 좌석에서 지우고, 열린 turn이 없을 때 남은 기록은 버린다. 근거: 같은 troop 아이콘의 recruit 부족분을 OQ-030이 같은 turn
+     안에 채우므로 출처에 따라 다르게 돌지 않게 한다(사용자 상시 지시 "원칙대로"). 앱의 같은 모양(Treachery의 Unload가 쓰는 `UndeployedTroops`)과 같다.
+  3. 채우는 순서: 같은 supply로 recruit 부족분(OQ-030)과 이 배치 몫이 함께 기다리면 앱처럼 recruit 부족분 다음 배치 몫이다(앱
+     `TroopsReturnedToSupply`가 `UngainedTroops`, 그다음 `UndeployedTroops` 순). OQ-030의 Arrakeen Scouts 줄 대기 규칙도 그대로 따른다.
+  - 구현 목록(엔진 반영 전; 관측·codec이 바뀌므로 Uprising 구현 묶음(OQ-113·121)과 함께, 시작 전에 AI 세션·사용자 확인):
+    `rules/tech.deploy_suspensor_troops`(막힘·Conflict 없음은 garrison으로 recruit, 부족분은 기록), 좌석 상태에 배치 몫 기록(OQ-030의
+    `PlayerState.ungained_troops` 옆), `rules/shortfall.py`의 채우기(recruit 부족분 다음), `frames.reset_turn_counters`·`drop_stale_shortfalls`, 관측의
+    `shortfall` 구간, 판정 공지 OQ-042 항목의 "엔진 반영 전" 해제. 테스트: 막힘 → garrison, supply 0에서 뽑은 뒤 troop 손실로 채워져 Conflict로,
+    turn 경계에서 버려짐. 원판·Ix의 Double Cross·Treachery(supply에서 Conflict로 배치)도 같은 기록을 쓴다(P3·P4).
 
 
 ## OQ-043 — Command (6+) 판정에 세는 Persuasion의 범위
